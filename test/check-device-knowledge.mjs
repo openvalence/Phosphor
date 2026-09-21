@@ -38,7 +38,7 @@ const SRC = join(WEBUI, 'src');
 // The device catalog header lives in the SIBLING machine repo, not here.
 // Globbed rather than named so the harvest survives the header being renamed;
 // a miss is not fatal (deviceFieldNames() degrades to the channel-id half).
-const CATALOG_DIR = join(WEBUI, '..', 'ValenceDrive', 'include', 'comms');
+const CATALOG_DIR = join(WEBUI, '..', 'Nucleus', 'flagship_p4', 'src', 'hub');
 const CATALOG_H = (() => {
   try {
     const hit = readdirSync(CATALOG_DIR).find((f) => /Catalog\.h$/.test(f));

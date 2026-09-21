@@ -5,7 +5,7 @@
  * The fixture below is A MACHINE THAT DOES NOT EXIST. It uses channel ids this
  * project has never allocated, field names nothing here publishes, a
  * device-defined category (>=128) whose name only that machine knows, and a
- * string setting no Valence Drive has ever shipped.
+ * string setting no Nucleus has ever shipped.
  *
  * If buildSettingsModel() produces a correct, complete, sensibly-widgeted page
  * for it, then the renderer is genuinely generic — and "a new firmware settings

@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 /**
  * Vite builds the single-file HTML bundle (JS/CSS/fonts inlined).
  *
- * The Valence Drive LittleFS pipeline (build_webui.py) copies ONLY
+ * The machine LittleFS pipeline (the archived S3 repo's build_webui.py) copies ONLY
  * dist/index.html into data/ — separately-emitted asset files never
  * reach the device. So the self-hosted WOFF2 fonts MUST be inlined as base64
  * data URIs. assetsInlineLimit is raised above the largest subsetted font

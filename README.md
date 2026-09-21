@@ -56,7 +56,7 @@ two that need nothing but the repo:
 | `node test/telebuf-sim.mjs` | nothing — the T18 timeline regression |
 | `npm run check:shell` / `check:dash` | Playwright (bundled), no device |
 | `node test/valence-live.mjs <host>` and friends | a hub at `<host>:82` |
-| `node test/pairing-roundtrip.mjs` | the device twin, `../ValenceDrive/sim/valencesim` |
+| `node test/pairing-roundtrip.mjs` | the device twin, `../Nucleus/sim/valencesim` |
 
 `test/fixtures/valencesim-catalog.{bin,etag}` is a byte copy of Valence's own
 (`../Valence/clients/js/test/fixtures/`) — a real hub's real catalog bytes, so
@@ -67,7 +67,7 @@ the JS SHA-256 is checked against the C++ one. Never hand-edit it; re-copy it.
 | repo | what it is | how Phosphor touches it |
 |---|---|---|
 | [`../Valence`](../Valence) | the protocol: SPEC, registry, conformance, the JS client | **imported directly** — every `import` of `../../Valence/clients/js/*` is a live relative path to the sibling checkout. Read-only from here; changes there are RFCs. |
-| `../ValenceDrive` | the reference hub (the machine's firmware) | nothing at build time. `test/check-device-knowledge.mjs` reads its catalog header *if present*, to harvest the field names Phosphor must not know. Its `sim/valencesim` is what the device tests talk to. |
+| `../Nucleus` | the reference hub (the machine's firmware) | nothing at build time. `test/check-device-knowledge.mjs` reads its catalog header *if present*, to harvest the field names Phosphor must not know. Its `sim/valencesim` is what the device tests talk to. |
 
 Both must sit beside this repo in the same parent directory. There is no
 package, no pin and no vendored copy: Phosphor tracks the sibling working tree,

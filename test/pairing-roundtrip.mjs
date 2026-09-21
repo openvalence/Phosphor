@@ -26,7 +26,7 @@
  * NEEDS THE DEVICE TWIN, not Valence Bench: bench grants `configure` to every
  * session by construction (hub/bench/README.md), so every assertion below
  * would pass without proving anything. Skips loudly (exit 2) when the binary
- * is absent -- tracked as ph-3gi until ValenceDrive lands sim/valencesim.
+ * is absent -- tracked as ph-3gi until Nucleus lands sim/valencesim.
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -45,11 +45,11 @@ const argv = process.argv.slice(2);
 const simIdx = argv.indexOf('--sim');
 const SIM_EXE = simIdx >= 0
   ? argv[simIdx + 1]
-  : new URL('../../ValenceDrive/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, '');
+  : new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, '');
 
 if (!existsSync(SIM_EXE)) {
   console.log('[SKIP] pairing-roundtrip: no device twin at ' + SIM_EXE +
-    ' -- ValenceDrive has not landed sim/valencesim yet (ph-3gi). Pass --sim <path> to run it.');
+    ' -- Nucleus has not landed sim/valencesim yet (ph-3gi). Pass --sim <path> to run it.');
   process.exit(2);
 }
 

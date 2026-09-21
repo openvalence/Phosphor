@@ -2,7 +2,7 @@
   /**
    * Field.svelte — renders ONE catalog field, whatever it is.
    *
-   * This component has never heard of a Valence Drive. It is handed a field
+   * This component has never heard of a Nucleus. It is handed a field
    * descriptor produced by buildSettingsModel() and picks a control from the
    * field's TYPE and its RFC-009 constraints. A machine that ships a setting we
    * have never seen renders here correctly, with the right bounds, the right

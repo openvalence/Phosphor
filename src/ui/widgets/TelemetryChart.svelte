@@ -4,7 +4,7 @@
    *
    * Reproduces the character of the pre-refactor features/diag.js graph (a
    * scrolling multi-lane scope with gridlines, per-lane auto-scale and a live
-   * numeric readout) but knows nothing about Valence Drive: it never binds to a
+   * numeric readout) but knows nothing about Nucleus: it never binds to a
    * channel id or a wire field name. It is handed a list of REGISTRY roles
    * (`ROLE.telemetryPosition`, `ROLE.telemetryCurrent`, ...) and resolves each
    * one against `machine.catalog.model.byRole` — exactly the mechanism

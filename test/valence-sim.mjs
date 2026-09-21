@@ -1,15 +1,15 @@
 /**
  * valence-sim.mjs — end-to-end proof of valence-js v1.0 against VALENCESIM.
  *
- * valencesim lives in the SIBLING machine repo (../ValenceDrive/sim/valencesim)
+ * valencesim lives in the SIBLING machine repo (../Nucleus/sim/valencesim)
  * and embeds the REAL valence::Hub, the REAL vmotion engine and the REAL device
  * catalog behind a real WebSocket server, so this exercises the same library the
  * firmware runs — without touching the machine. Valence Bench is NOT a stand-in:
  * it has no motion engine and grants every session `configure`, which defeats
- * steps 2 through 4 below. Blocked on ph-3gi until ValenceDrive lands sim/.
+ * steps 2 through 4 below. Blocked on ph-3gi until Nucleus lands sim/.
  *
- *   Build:  cmake --build ../ValenceDrive/sim/valencesim/build
- *   Run it: ../ValenceDrive/sim/valencesim/build/valencesim.exe machine \
+ *   Build:  cmake --build ../Nucleus/sim/valencesim/build
+ *   Run it: ../Nucleus/sim/valencesim/build/valencesim.exe machine \
  *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns
  *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82]
  *
