@@ -1,8 +1,8 @@
 /**
- * valence-tuning.mjs — LIVE proof of the vmotion tuning surface
- * (0x1120/0x1121/0x1122 STATE + 0x3120 vmotion-set INTENT).
+ * valence-tuning.mjs — LIVE proof of the kinetic tuning surface
+ * (0x1120/0x1121/0x1122 STATE + 0x3120 kinetic-set INTENT).
  *
- * This is the gate on retiring `POST /api/vmotion`: 20 live-tune knobs that
+ * This is the gate on retiring `POST /api/kinetic`: 20 live-tune knobs that
  * were reachable ONLY over device-specific HTTP are now protocol channels, so a
  * third-party client is as capable as the hosted UI. If every knob reads and
  * round-trips here, the HTTP writer has nothing left that is exclusively its own.
@@ -86,7 +86,7 @@ async function roundTrip(s, ch, key, name, current, alt, eq) {
 }
 
 async function main() {
-  console.log('vmotion tuning live test → ws://' + HOST + ':' + PORT + '/');
+  console.log('kinetic tuning live test → ws://' + HOST + ':' + PORT + '/');
   const { s, seen } = await open();
   const lim = seen.get(CH_LIMITS), chase = seen.get(CH_CHASE), wav = seen.get(CH_WAVE);
   ok('all three tuning channels granted + retained', !!lim && !!chase && !!wav, 'roles=' + s._roles);

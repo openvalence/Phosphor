@@ -2,7 +2,7 @@
  * valence-sim.mjs — end-to-end proof of valence-js v1.0 against VALENCESIM.
  *
  * valencesim lives in the SIBLING machine repo (../Nucleus/sim/valencesim)
- * and embeds the REAL valence::Hub, the REAL vmotion engine and the REAL device
+ * and embeds the REAL valence::Hub, the REAL kinetic engine and the REAL device
  * catalog behind a real WebSocket server, so this exercises the same library the
  * firmware runs — without touching the machine. Valence Bench is NOT a stand-in:
  * it has no motion engine and grants every session `configure`, which defeats
@@ -150,7 +150,7 @@ async function main() {
     info('0x' + id.toString(16) + ' ' + (e ? e.name + ' (' + e.clsName + ', ' +
       (e.layout ? e.layout.length + ' fields' : e.schema.length + ' schema keys') + ')' : 'NOT ADVERTISED'));
   }
-  ok('0x1111 vmotion-diag decodes live', seen1.states.has(CH.MOTION_DIAG),
+  ok('0x1111 kinetic-diag decodes live', seen1.states.has(CH.MOTION_DIAG),
     seen1.states.has(CH.MOTION_DIAG)
       ? 'plans=' + seen1.states.get(CH.MOTION_DIAG).plans + ' anomalies=' + seen1.states.get(CH.MOTION_DIAG).anomalies
       : '');
@@ -213,7 +213,7 @@ async function main() {
 
   // ========================================================================
   // 19-CHANNEL SIM-FIDELITY FOLLOW-ON (2026-07-28) — the Phosphor milestone-1
-  // gap: machine-modes/modes-set, the 3 vmotion tuning cards + sm-set,
+  // gap: machine-modes/modes-set, the 3 kinetic tuning cards + sm-set,
   // fray-d Advanced pattern + its 6 modifier lanes + writer, the preset
   // roster/store/cmd trio, machine-admin. Each family below: subscribe once,
   // write -> post-clamp ECHO -> STATE reflect, plus one invalid-write ->
@@ -279,7 +279,7 @@ async function main() {
       !!nacked && nacked.name === 'INVALID_VALUE', nacked ? nacked.name : 'no NACK!');
   }
 
-  // ---- vmotion tuning: sm-limits/chase/waveform (0x1120-2) / sm-set (0x3120)
+  // ---- kinetic tuning: sm-limits/chase/waveform (0x1120-2) / sm-set (0x3120)
   {
     // One sm-set write touches all THREE STATE cards in the same hub tick, so
     // every waitFor listener is armed BEFORE the write goes out (not chained
@@ -306,9 +306,9 @@ async function main() {
       Math.abs(echo.applied[2] - 20) < 0.01, 'applied[2]=' + echo.applied[2]);
 
     const [reflectedLim, reflectedChase, reflectedWav] = await Promise.all([limP, chaseP, wavP]);
-    ok('0x1120 vmotion-limits STATE reflects the clamped vmax_ovr', reflectedLim);
-    ok('0x1121 vmotion-chase STATE reflects handoff_k', reflectedChase);
-    ok('0x1122 vmotion-waveform STATE reflects blend_steps', reflectedWav);
+    ok('0x1120 kinetic-limits STATE reflects the clamped vmax_ovr', reflectedLim);
+    ok('0x1121 kinetic-chase STATE reflects handoff_k', reflectedChase);
+    ok('0x1122 kinetic-waveform STATE reflects blend_steps', reflectedWav);
 
     await s1.sendIntent(CH19.SM_SET, { 2: 0, 12: 1.5, 18: 6 }); // restore factory defaults
 
