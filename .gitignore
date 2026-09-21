@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env.local
+.playwright-mcp/
+
+# Rust / Tauri build output
+src-tauri/target/
+
+# Tauri regenerates the whole mobile project from tauri.conf.json:
+#   npx tauri android init
+# Nothing in here is hand-maintained, so it is not carried across.
+src-tauri/gen/

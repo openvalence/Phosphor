@@ -1,0 +1,381 @@
+/**
+ * telebuf-sim.mjs — synthetic replay proving the render-delay fix against
+ * REALISTIC arrival jitter (measured on-device via jitter-measure.mjs: mean
+ * ~20-45ms, p95 45-55ms, occasional gaps to 120ms). Not part of the app.
+ *
+ * Simulates constant-velocity motion (10 mm/s) pushed into a telebuf at
+ * irregular intervals drawn from the measured distribution, then compares
+ * rAF-rendered output (a) sampled at raw "now" (the current/buggy behavior)
+ * vs (b) sampled at renderClock.stableRenderTime(now) (the fix). Metric:
+ * per-frame velocity implied by consecutive rendered positions — smooth
+ * motion should show a tight, low-variance distribution around 10mm/s;
+ * snap-and-hold shows alternating ~0 and large spikes (the "jitter").
+ *
+ * Also carries deterministic pass/fail assertions (below the simulation) for
+ * sampleAt()'s cubic-Hermite interpolation: velocity continuity across a
+ * shared sample boundary, the linear fallback for a tangent-less first span,
+ * the overshoot clamp on a bad velocity estimate, and — under clumped arrivals
+ * — that the stored tangent is measured against the RECONSTRUCTED schedule
+ * rather than arrival time (webui.md T18). Exits nonzero on any assertion
+ * failure.
+ *
+ * Run: node test/telebuf-sim.mjs
+ */
+import { createTelebuf, createRenderClock } from '../src/ui/hero/telebuf.js';
+
+const TRUE_VEL_MM_S = 10;
+const SIM_MS = 8000;
+const RAF_DT = 16.667;
+
+// Jittered arrival intervals: mostly ~20ms, occasional gap to ~120ms,
+// matching the on-device WS measurement (mean 19.5ms, p95 55.5ms, max 120ms).
+function nextGapMs(rng) {
+  const r = rng();
+  if (r < 0.85) return 15 + rng() * 15;      // 15-30ms, the common case
+  if (r < 0.97) return 30 + rng() * 30;      // 30-60ms, a slower beat
+  return 60 + rng() * 60;                     // 60-120ms, a real stall
+}
+
+function mulberry32(seed) {
+  let a = seed;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// `frameGap` is the FRAME clock, separate from the arrival clock above: a
+// webview with its own rAF cadence is the only thing that differs between the
+// device-served page and the Tauri shell. Defaults to a steady 60 fps.
+function simulate(useDelay, frameGap, arrivalGap) {
+  const rng = mulberry32(42);
+  const tele = createTelebuf();
+  const clock = createRenderClock();
+  const gapOf = frameGap || (() => RAF_DT);
+  const arriveOf = arrivalGap || nextGapMs;
+
+  let simT = 0;       // "true" clock, ms
+  let nextPushAt = 0;
+  let pos = 0;
+
+  const framePositions = [];
+  let lastFrameDt = RAF_DT;
+
+  while (simT < SIM_MS) {
+    // Advance real pushes up to current sim time.
+    while (nextPushAt <= simT) {
+      pos = TRUE_VEL_MM_S * (nextPushAt / 1000);
+      tele.push(pos, nextPushAt);
+      clock.noteArrival(nextPushAt);
+      nextPushAt += arriveOf(rng);
+    }
+
+    clock.update(lastFrameDt);
+    const sampleAtT = useDelay ? clock.stableRenderTime(simT) : simT;
+    const r = tele.sampleAt(sampleAtT);
+    framePositions.push({ t: simT, v: r.value, holding: r.holding });
+
+    const dt = gapOf(rng, simT);
+    simT += dt;
+    lastFrameDt = dt;
+  }
+  return framePositions;
+}
+
+function analyze(label, frames) {
+  // Skip the first 200ms warm-up (buffer/delay still filling).
+  const warm = frames.filter((f) => f.t > 200 && f.v != null);
+  const vels = [];
+  for (let i = 1; i < warm.length; i++) {
+    const dv = warm[i].v - warm[i - 1].v;
+    const dt = (warm[i].t - warm[i - 1].t) / 1000;
+    vels.push(dv / dt);
+  }
+  const mean = vels.reduce((a, b) => a + b, 0) / vels.length;
+  const variance = vels.reduce((a, b) => a + (b - mean) ** 2, 0) / vels.length;
+  const sd = Math.sqrt(variance);
+  const holds = vels.filter((v) => Math.abs(v) < 0.01).length;
+  const spikes = vels.filter((v) => Math.abs(v) > TRUE_VEL_MM_S * 2).length;
+  console.log(`${label}: mean implied vel=${mean.toFixed(2)}mm/s  stdev=${sd.toFixed(2)}mm/s  ` +
+    `held-frames=${holds}/${vels.length} (${(100 * holds / vels.length).toFixed(1)}%)  ` +
+    `spike-frames(>2x true vel)=${spikes}`);
+}
+
+console.log(`True velocity: ${TRUE_VEL_MM_S} mm/s. Arrival jitter drawn from the on-device WS measurement.\n`);
+analyze('BEFORE (raw "now", no render delay)', simulate(false));
+analyze('AFTER  (adaptive render-delay clock)', simulate(true));
+
+// ---------------------------------------------------------------------------
+// Deterministic assertions — Hermite continuity and overshoot clamping.
+//
+// sampleAt() Hermite-interpolates between bracketing samples using a
+// per-sample tangent stored at push time (bufVel). Reusing the SAME stored
+// tangent as both a span's outgoing derivative and the next span's incoming
+// derivative is supposed to make the curve's velocity match exactly at the
+// shared sample boundary, regardless of the two spans having different
+// lengths. These checks prove that property numerically rather than trusting
+// the algebra, and prove the overshoot clamp actually bites on a bad
+// velocity estimate rather than only on paper.
+// ---------------------------------------------------------------------------
+
+// The deterministic fixtures below hand-craft TRUSTED timestamps to probe the
+// interpolation math itself, so they opt out of the arrival-time rescheduling
+// (jitter regression #5) — which has its own burst-replay section further down.
+let fails = 0;
+const ok = (name, cond, extra) => {
+  console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  — ' + extra : ''));
+  if (!cond) fails++;
+};
+
+console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
+
+// ---- claim: velocity is continuous across a shared sample boundary --------
+{
+  const tele = createTelebuf({ reschedule: false });
+  // Three real samples with uneven spans (40ms then 50ms) and different
+  // implied velocities either side of B, so a naive per-span tangent would
+  // show a visible kink at B if continuity did not hold.
+  tele.push(0, 0);     // A
+  tele.push(10, 40);   // B: v_B = 10/40 = 0.25 units/ms
+  tele.push(15, 90);   // C: v_C = 5/50  = 0.10 units/ms
+
+  const d = 0.5; // ms, small enough to approximate the instantaneous slope
+  const leftSlope = (tele.sampleAt(40).value - tele.sampleAt(40 - d).value) / d;
+  const rightSlope = (tele.sampleAt(40 + d).value - tele.sampleAt(40).value) / d;
+  const slopeDiff = Math.abs(leftSlope - rightSlope);
+  ok('Hermite slope matches across the shared A-B/B-C boundary',
+     slopeDiff < 0.01,
+     `left=${leftSlope.toFixed(4)} right=${rightSlope.toFixed(4)} diff=${slopeDiff.toFixed(5)}`);
+}
+
+// ---- claim: linear fallback still applies to the first (tangent-less) span ----
+{
+  const tele = createTelebuf({ reschedule: false });
+  tele.push(0, 0);    // A: no prior sample -> bufVel[A] is NaN
+  tele.push(10, 40);  // B
+  const mid = tele.sampleAt(20).value; // exact midpoint of a straight 0->10 run
+  ok('first span (no stored tangent) falls back to linear', Math.abs(mid - 5) < 1e-9,
+     `mid=${mid}`);
+}
+
+// ---- claim: a bad velocity estimate cannot fling the marker past the clamp ----
+{
+  const tele = createTelebuf({ reschedule: false });
+  tele.push(0, 0);      // A
+  tele.push(1000, 10);  // B: v_B = 100 units/ms — an absurd jump
+  tele.push(1001, 20);  // C: v_C = 0.1 units/ms
+
+  const overshoot = 0.15 * Math.abs(1001 - 1000); // = 0.15, per sampleAt()'s own rule
+  const lo = Math.min(1000, 1001) - overshoot;
+  const hi = Math.max(1000, 1001) + overshoot;
+  const mid = tele.sampleAt(15).value; // midpoint of the B-C span, where B's huge tangent dominates
+  ok('overshoot from an absurd velocity estimate is clamped',
+     mid >= lo - 1e-9 && mid <= hi + 1e-9,
+     `value=${mid.toFixed(4)} bound=[${lo.toFixed(4)}, ${hi.toFixed(4)}]`);
+  // B's huge incoming tangent pushes the raw (unclamped) curve above `hi`
+  // for this fixture — confirm the clamp actually saturated at the ceiling
+  // rather than the fixture happening to land inside the bound on its own.
+  ok('the clamp actually engaged (value pinned to the ceiling)',
+     Math.abs(mid - hi) < 1e-9, `value=${mid.toFixed(4)} hi=${hi.toFixed(4)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Burst replay — jitter regression #5 (arrival-time stamping).
+//
+// Reproduces the on-device measurement of 2026-07-28: the hub samples evenly
+// (~30ms) but the network delivers CLUMPS — three samples land with one
+// identical Date.now() stamp, then nothing for ~90ms. The old push() dropped
+// the duplicates (~18% of all motion) and the display snapped/froze (107
+// snap frames + 17 freezes in 719 rendered). With rescheduling (the default),
+// every sample must survive and the rendered output must be smooth.
+// ---------------------------------------------------------------------------
+{
+  const tele = createTelebuf();
+  const clock = createRenderClock();
+  const VEL = 10 / 1000;               // 10 mm/s in mm per ms
+  const BURST_EVERY = 90, PER_BURST = 3, SIM = 6000;
+
+  let pushed = 0;
+  const frames = [];
+  let nextBurst = 0;
+  for (let now = 0; now < SIM; now += RAF_DT) {
+    while (nextBurst <= now) {
+      const arrive = nextBurst;        // all three share ONE arrival stamp
+      for (let k = PER_BURST - 1; k >= 0; k--) {
+        const sampledAt = arrive - k * (BURST_EVERY / PER_BURST); // hub's even sampling instants
+        tele.push(VEL * sampledAt, arrive);
+        clock.noteArrival(arrive);
+        pushed++;
+      }
+      nextBurst += BURST_EVERY;
+    }
+    clock.update(RAF_DT);
+    const r = tele.sampleAt(clock.stableRenderTime(now));
+    frames.push(r.value);
+  }
+
+  ok('burst replay keeps every sample (duplicates no longer dropped)',
+     tele.length === Math.min(pushed, 256), 'kept=' + tele.length + ' pushed=' + pushed);
+
+  const warm = frames.filter((v, i) => v != null && i > 30);
+  const vels = [];
+  for (let i = 1; i < warm.length; i++) vels.push((warm[i] - warm[i - 1]) / (RAF_DT / 1000));
+  const spikes = vels.filter((v) => Math.abs(v) > 2 * 10).length;
+  const holds = vels.filter((v) => Math.abs(v) < 0.01).length;
+  const mean = vels.reduce((a, b) => a + b, 0) / vels.length;
+  ok('burst replay renders zero snap frames (implied vel never >2x true)',
+     spikes === 0, 'spikes=' + spikes + '/' + vels.length);
+  ok('burst replay renders (almost) zero held frames', holds <= vels.length * 0.02,
+     'held=' + holds + '/' + vels.length);
+  ok('burst replay mean implied velocity tracks truth', Math.abs(mean - 10) < 1,
+     'mean=' + mean.toFixed(2) + 'mm/s');
+}
+
+// ---------------------------------------------------------------------------
+// Dwell/resume replay — the "random position for one tick on first movement
+// or direction change" report (operator, 2026-07-28). A pattern dwells at a
+// stroke end; the hub sheds the unchanging channel (gaps of ~600ms); motion
+// resumes with a burst. The period estimator must NOT learn from the dwell
+// gaps, and the schedule must resync across the hole — no wild frame on
+// resume.
+// ---------------------------------------------------------------------------
+{
+  const tele = createTelebuf();
+  const clock = createRenderClock();
+  const VEL = 20 / 1000; // mm per ms while moving
+  let t = 0, pos = 0;
+  const push = (p2, at) => { tele.push(p2, at); clock.noteArrival(at); };
+
+  // Phase 1: steady streaming, 30ms cadence, 2s.
+  for (; t < 2000; t += 30) { pos = VEL * t; push(pos, t); }
+  // Phase 2: dwell — value frozen, shed to one push each 600ms for 3s.
+  const dwellPos = pos;
+  for (; t < 5000; t += 600) push(dwellPos, t);
+  // Phase 3: resume — direction REVERSED, bursty 3-at-a-time clumps every 90ms.
+  const t0 = t;
+  for (; t < 8000; t += 90) {
+    for (let k = 2; k >= 0; k--) push(dwellPos - VEL * ((t - t0) - k * 30), t);
+  }
+
+  // Render Phase 3 (plus a short settle) and hunt wild frames.
+  const frames = [];
+  for (let now = t0 + 200; now < t; now += RAF_DT) {
+    clock.update(RAF_DT);
+    const r = tele.sampleAt(clock.stableRenderTime(now));
+    if (r.value != null) frames.push(r.value);
+  }
+  const vels = [];
+  for (let i = 1; i < frames.length; i++) vels.push(Math.abs((frames[i] - frames[i - 1]) / (RAF_DT / 1000)));
+  const wild = vels.filter((v) => v > 2 * 20).length;
+  ok('dwell/resume replay: no wild frame after motion resumes', wild === 0,
+     'wild=' + wild + '/' + vels.length + ' maxVel=' + Math.max(...vels).toFixed(1) + 'mm/s');
+}
+
+// ---------------------------------------------------------------------------
+// Clumped arrivals — the stored TANGENT must come from the reconstructed
+// schedule, not the arrival delta (webui.md T18).
+//
+// The hub samples evenly; TCP delivers clumps that share ONE arrival stamp,
+// then a gap. push() reschedules the STORED timestamps onto an even,
+// future-anchored timeline, so a tangent measured against arrival time sits in
+// a different time base than the span sampleAt() divides it by: inside a clump
+// the arrival delta is zero or negative (the schedule already leads arrival by
+// LEAD_MS), which yields no usable tangent at all — the interpolator silently
+// drops to linear and the extrapolation velocity stays stale at whatever it
+// was before the clumping started. Neither symptom shows on a still frame, so
+// assert on the numbers: every tangent finite, and the extrapolation velocity
+// consistent with the spacing the ring actually stored.
+// ---------------------------------------------------------------------------
+{
+  const tele = createTelebuf();
+  const VEL = 10 / 1000;                 // 10 mm/s, in mm per ms
+  const HUB_PERIOD = 30, PER_CLUMP = 3, CLUMP_EVERY = 90;
+
+  let arrive = 0;
+  let sampled = 0;
+  // Steady clumped delivery: three evenly-sampled points share one arrival.
+  for (; arrive < 3000; arrive += CLUMP_EVERY) {
+    for (let k = 0; k < PER_CLUMP; k++) {
+      tele.push(VEL * sampled, arrive);
+      sampled += HUB_PERIOD;
+    }
+  }
+  // ...then a real gap (a shed channel), then clumped delivery resumes.
+  arrive += 250; sampled += 250;
+  for (let n = 0; n < 10; n++, arrive += CLUMP_EVERY) {
+    for (let k = 0; k < PER_CLUMP; k++) {
+      tele.push(VEL * sampled, arrive);
+      sampled += HUB_PERIOD;
+    }
+  }
+
+  // The curve's own average slope across the newest buffered span, in the
+  // ring's stored time base — this is what the tangents must agree with.
+  const probe = [];
+  for (let t = arrive - 400; t <= arrive + 40; t += 5) {
+    const r = tele.sampleAt(t);
+    if (r.value != null) probe.push({ t, v: r.value, vel: r.velPerMs, extra: r.extrapolating });
+  }
+  ok('clumped arrivals: every interpolated value and tangent is finite',
+     probe.every((x) => isFinite(x.v) && isFinite(x.vel)), 'probes=' + probe.length);
+
+  const first = probe[0], last = probe[probe.length - 1];
+  const curveVel = (last.v - first.v) / (last.t - first.t);   // mm per ms, stored time base
+  const tail = probe.filter((x) => x.extra);
+  const extrapVel = tail.length ? tail[tail.length - 1].vel : NaN;
+  ok('clumped arrivals: the extrapolation tangent is finite and non-zero',
+     isFinite(extrapVel) && Math.abs(extrapVel) > 1e-6, 'velPerMs=' + extrapVel);
+  ok('clumped arrivals: the tangent matches the reconstructed spacing, not the arrival delta',
+     isFinite(extrapVel) && Math.abs(extrapVel - curveVel) <= 0.3 * Math.abs(curveVel),
+     'tangent=' + extrapVel.toFixed(5) + ' curve=' + curveVel.toFixed(5) + ' mm/ms');
+}
+
+// ---------------------------------------------------------------------------
+// FRAME-CLOCK cadence, against the reported "position telemetry jitters in the
+// Tauri shell but not the device-served page".
+//
+// Both shells run the same WS, the same decode and the same one-epoch
+// stamping, so arrivals were not obviously the variable and the webview's
+// frame clock was the suspect. This falsifies that: `holding` (the render
+// instant outran the newest sample past the extrapolate window, so the frame
+// repeats a value and the next arrival snaps) is a function of the ARRIVAL
+// gap against the render delay, not of how fast or how evenly frames land.
+// A late frame samples a buffer that took the intervening arrivals with it.
+//
+// So a shell that jitters more is either receiving a different arrival
+// cadence or reading a different clock. Neither is measurable from here:
+// LinkBar's `render` chip reports fps, buffer delay, held percentage and
+// epoch skew off a live shell, and its position-rate heatmap row reports the
+// arrival cadence. Read those, do not guess.
+// ---------------------------------------------------------------------------
+{
+  const heldPct = (frames) => {
+    const warm = frames.filter((f) => f.t > 400 && f.v != null);
+    return 100 * warm.filter((f) => f.holding).length / Math.max(1, warm.length);
+  };
+  const steady60 = heldPct(simulate(true));
+  const steady30 = heldPct(simulate(true, () => 33.333));
+  // A webview that pauses compositing (unfocused, occluded, a busy main
+  // thread) delivers the same average frame count, off the beat.
+  const stalling = heldPct(simulate(true, (rng) => (rng() < 0.02 ? 250 : 16.667)));
+  // The variable that DOES move it: arrivals stopping while frames continue.
+  const starved = heldPct(simulate(true, null, (rng) => (rng() < 0.05 ? 400 : nextGapMs(rng))));
+
+  console.log('\nheld frames vs the two candidate variables');
+  console.log('  steady 60 fps:              ' + steady60.toFixed(1) + '% held');
+  console.log('  steady 30 fps:              ' + steady30.toFixed(1) + '% held');
+  console.log('  60 fps with 250 ms stalls:  ' + stalling.toFixed(1) + '% held');
+  console.log('  60 fps, arrivals starved:   ' + starved.toFixed(1) + '% held');
+
+  ok('a slower frame clock does not add held frames',
+     Math.abs(steady30 - steady60) < 2, steady30.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
+  ok('a stalling frame clock does not add them either (the frame-cadence hypothesis fails)',
+     Math.abs(stalling - steady60) < 2, stalling.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
+  ok('starved ARRIVALS do, which is what the held counter is for',
+     starved > steady60 + 2, starved.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
+}
+
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS'));
+process.exit(fails ? 1 : 0);

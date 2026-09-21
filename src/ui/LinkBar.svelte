@@ -1,0 +1,499 @@
+<script>
+  /**
+   * LinkBar.svelte — the persistent header: are we even talking to the machine?
+   *
+   * CLAUDE.md 3 (Ground Truth Doctrine) applied to the link itself, not just to
+   * settings: this bar never claims a healthier link than machine.link.phase
+   * actually reports, and it says so LOUDLY the moment phase !== 'live' —
+   * there is no fallback control path on this firmware (HTTP is read-only), so
+   * a dead link means nothing on the page can drive the machine, and the
+   * operator must know that at a glance, not discover it by a control that
+   * quietly does nothing.
+   *
+   * Restores the pre-refactor identity (tag `webui-prerefactor`): the
+   * registration crosshair, the SD·32 wordmark, the live activity heatmap
+   * canvas, the two link-health dots, and the chip row. The two safety-
+   * relevant facts — link phase and access tier — are pinned chips that never
+   * scroll out of view; everything else rides a horizontally-scrolling strip
+   * so a phone never gets page-level horizontal overflow.
+   *
+   * Everything here reads machine.* (and the catalog's own role-tagged
+   * fields) plus the browser's own location/theme — never a device fact that
+   * isn't something the machine actually sent.
+   */
+  import { untrack } from 'svelte';
+  import { machine } from '../model/machine.svelte.js';
+  import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
+  import { bytes, since } from '../model/format.js';
+  import { ROLE } from '../model/roles.js';
+  import { ac } from '../model/theme.js';
+
+  /** Presentation only — every phase machine.link.phase can actually be. */
+  const PHASE = {
+    idle: { label: 'idle', tone: 'dim' },
+    connecting: { label: 'connecting…', tone: 'warn' },
+    handshaking: { label: 'handshaking…', tone: 'warn' },
+    live: { label: 'live', tone: 'good' },
+    retrying: { label: 'reconnecting…', tone: 'warn' },
+    failed: { label: 'no link', tone: 'bad' },
+  };
+
+  const phaseInfo = $derived(PHASE[machine.link.phase] || { label: String(machine.link.phase), tone: 'dim' });
+  const isLive = $derived(machine.link.phase === 'live');
+  const hasSession = $derived(machine.link.sessionId != null);
+  const tierLabel = $derived(hasSession
+    ? (ACCESS_NAME[machine.link.roles] || ('tier ' + machine.link.roles))
+    : '--');
+
+  const hostFallback = $derived(typeof location !== 'undefined' ? location.hostname : '--');
+  const identity = $derived(machine.link.hubIdentity);
+  const hubLabel = $derived(identity ? (identity.hub_name || identity.product || hostFallback) : hostFallback);
+  const fwLabel = $derived(identity && identity.fw_version ? identity.fw_version : '');
+
+  const catalogLabel = $derived(
+    machine.catalog.ready
+      ? ('ready · ' + bytes(machine.catalog.bytes) + (machine.catalog.cached ? ' · cached' : ' · fetched'))
+      : 'not loaded'
+  );
+
+  // A liveness readout needs a clock of its own — nothing else in this bar
+  // re-renders on a schedule, so without a tick "since(...)" would freeze the
+  // instant a frame stops arriving, which is exactly the moment it matters most.
+  let nowTick = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => { nowTick = Date.now(); }, 1000);
+    return () => clearInterval(id);
+  });
+  function ageLabel(ms, _tick) { return since(ms); }
+  const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
+  const rxTone = $derived.by(() => {
+    if (!isLive || !machine.stats.lastRxMs) return 'dim';
+    const age = nowTick - machine.stats.lastRxMs;
+    if (age < 1500) return 'good';
+    if (age < 3000) return 'warn';
+    return 'bad';
+  });
+  const rxToneLabel = $derived(
+    rxTone === 'good' ? 'flowing' : rxTone === 'warn' ? 'gapping' : rxTone === 'bad' ? 'stalled' : 'no data'
+  );
+
+  // Render health, published by whichever widget owns the rAF loop. This is
+  // the instrument for "position telemetry jitters in one shell but not the
+  // other": fps is the WEBVIEW's frame cadence, held% is how often the render
+  // instant outran the newest sample. Low fps blames the shell, a high held%
+  // at a healthy fps blames arrivals, which the position-rate heatmap row
+  // then shows directly. `--` until a rail is on screen and drawing.
+  const render = $derived(machine.stats.render);
+  const renderLabel = $derived(
+    render.fps == null ? '--'
+      : render.fps + ' fps · ' + render.delayMs + ' ms · ' + render.heldPct + '% held'
+        + (Math.abs(render.skewMs || 0) > 2 ? ' · skew ' + render.skewMs + ' ms' : '')
+  );
+  const renderTone = $derived(
+    render.fps == null ? 'dim'
+      : (render.heldPct > 10 || render.fps < 30 || Math.abs(render.skewMs || 0) > 2) ? 'warn' : 'good'
+  );
+
+  // ===========================================================================
+  // Activity heatmap — rows = live telemetry series discovered by ROLE, plus a
+  // link-activity row derived from protocol stats (never device knowledge:
+  // the roles are registry vocabulary and machine.stats is protocol-level).
+  // A machine that publishes none of the telemetry roles simply gets the one
+  // link-activity row — never a fabricated series.
+  // ===========================================================================
+  const heatRows = $derived.by(() => {
+    const rows = [];
+    const byRole = machine.catalog.model && machine.catalog.model.byRole;
+    if (byRole) {
+      // Two RATE rows before the magnitude rows: telemetry cadence is per
+      // channel, and "position stutters" is answered by seeing the position
+      // channel's own arrival rate next to another live channel's. Both
+      // decline when the machine does not publish the role.
+      const pos = byRole.get(ROLE.telemetryPosition);
+      if (pos && pos.length) rows.push({ key: 'pos-rate', kind: 'rate', label: 'position rate', field: pos[0] });
+      const plan = byRole.get(ROLE.planCurrent) || byRole.get(ROLE.planStart);
+      if (plan && plan.length) rows.push({ key: 'plan-rate', kind: 'rate', label: 'plan rate', field: plan[0] });
+      const vel = byRole.get(ROLE.telemetryVelocity);
+      if (vel && vel.length) rows.push({ key: 'vel', label: 'velocity', field: vel[0] });
+      const cur = byRole.get(ROLE.telemetryCurrent);
+      if (cur && cur.length) rows.push({ key: 'cur', label: 'current', field: cur[0] });
+      const pwr = byRole.get(ROLE.telemetryPowerBus);
+      if (pwr && pwr.length) rows.push({ key: 'pwr', label: 'bus power', field: pwr[0] });
+    }
+    rows.push({ key: 'link', kind: 'rate', label: 'link activity', field: null });
+    return rows;
+  });
+
+  const heatmapAriaLabel = $derived(
+    'Activity heatmap, last ~3 seconds. Rows: ' + heatRows.map((r) => r.label).join(', ') + '.'
+  );
+
+  const AG_COLS = 14, AG_CELL = 4, AG_GAP = 1;
+  let heatCanvas = $state(null);
+
+  // The bar's height is variable (banners appear and disappear). Publishing
+  // the MEASURED height lets everything else that sticks to the viewport top
+  // (nav rail, tab strip) sit exactly below this bar instead of under it.
+  let barH = $state(0);
+  $effect(() => {
+    document.documentElement.style.setProperty('--linkbar-h', barH + 'px');
+    return () => document.documentElement.style.removeProperty('--linkbar-h');
+  });
+
+  $effect(() => {
+    const rows = heatRows;             // establishes the reactive dependency
+    const canvas = heatCanvas;
+    if (!canvas || typeof window === 'undefined') return;
+
+    const reduceMotion = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = AG_COLS * (AG_CELL + AG_GAP);
+    const cssH = rows.length * (AG_CELL + AG_GAP + 1);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Bounded history buffer, newest column last.
+    let data = [];
+    for (let c = 0; c < AG_COLS; c++) data.push(rows.map(() => 0));
+
+    // Adaptive per-row ceilings: a field with a catalog-declared max scales
+    // against that (ground truth); a field with none — or the link-activity
+    // row, which has no "max" at all — scales against a slowly-decaying
+    // observed peak, so "fully lit" always means "near this row's own recent
+    // peak" rather than a guessed, device-specific number.
+    const peaks = {};
+    // untrack: see the note on the first paint below. This seed read is in the
+    // effect body itself, so tracking it re-runs the whole effect on every
+    // telemetry frame and the history buffer above never survives a tick.
+    const lastCount = untrack(() => {
+      const seed = {};
+      for (const r of rows) {
+        seed[r.key] = r.field
+          ? (machine.stats.pushesByChannel[r.field.channelId] || 0)
+          : machine.stats.statePushes;
+      }
+      return seed;
+    });
+
+    function sampleFrac(row) {
+      if (row.kind === 'rate') {
+        const cur = row.field
+          ? (machine.stats.pushesByChannel[row.field.channelId] || 0)
+          : machine.stats.statePushes;
+        const delta = Math.max(0, cur - (lastCount[row.key] || 0));
+        lastCount[row.key] = cur;
+        const ceiling = Math.max((peaks[row.key] || 1) * 0.995, delta, 1);
+        peaks[row.key] = ceiling;
+        return Math.min(1, delta / ceiling);
+      }
+      const sample = machine.samples[row.field.channelId];
+      const raw = sample ? sample[row.field.name] : null;
+      if (typeof raw !== 'number' || !isFinite(raw)) return 0;
+      const abs = Math.abs(raw);
+      let ceiling;
+      if (isFinite(row.field.max) && row.field.max > 0) {
+        ceiling = Math.abs(row.field.max);
+      } else {
+        ceiling = Math.max((peaks[row.key] || 0) * 0.995, abs, 1e-6);
+        peaks[row.key] = ceiling;
+      }
+      return Math.min(1, abs / ceiling);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, cssW, cssH);
+      for (let c = 0; c < AG_COLS; c++) {
+        for (let r = 0; r < rows.length; r++) {
+          const v = data[c][r];
+          const a = Number((0.06 + v * 0.85).toFixed(2));
+          ctx.fillStyle = ac('r', a);
+          ctx.fillRect(c * (AG_CELL + AG_GAP), r * (AG_CELL + AG_GAP + 1), AG_CELL, AG_CELL);
+        }
+      }
+    }
+
+    function tick() {
+      const frame = rows.map(sampleFrac);
+      if (reduceMotion) {
+        // Freeze the scroll animation but keep painting current values: every
+        // column shows the same live reading instead of a moving history, so
+        // the grid holds still while still being honest about "now".
+        data = data.map(() => frame.slice());
+      } else {
+        data.shift();
+        data.push(frame);
+      }
+      draw();
+    }
+
+    // The first paint MUST be untracked. sampleFrac() reads machine.stats and
+    // machine.samples, and a read made synchronously inside an effect becomes
+    // that effect's dependency — so a tracked first tick re-runs this whole
+    // body on every telemetry frame, re-declaring `data` and refilling it with
+    // zeros ~25x a second. The grid still scrolls; it just has no history left
+    // to scroll, so every column but the newest reads empty. The interval's
+    // own ticks are untracked by construction (async, outside the scope).
+    untrack(tick);
+    const id = setInterval(tick, 220);
+    return () => clearInterval(id);
+  });
+</script>
+
+<!-- Registration crosshair — pinned top-right of the viewport, decorative. -->
+<svg class="crosshair" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M7 0v14M0 7h14"/>
+  <circle cx="7" cy="7" r="2.5"/>
+</svg>
+
+<header class="linkbar" bind:clientHeight={barH}>
+  <div class="hdr-row">
+    <div class="header-left">
+      <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
+      <span class="wordmark">SD&middot;32</span>
+      <span class="link-dot tone-{phaseInfo.tone}" role="img" aria-label={'session link: ' + phaseInfo.label}></span>
+      <span class="link-dot tone-{rxTone}" role="img" aria-label={'telemetry: ' + rxToneLabel}></span>
+    </div>
+
+    <!-- ONE flat row of equal chips (OG). Phase and tier lead it because they
+         are the two safety-relevant reads and the narrow-viewport rules below
+         drop from the tail — they are the last to go, without needing a
+         separate pinned zone to say so. -->
+    <div class="chips">
+      <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
+        <span class="chip-dot"></span>{phaseInfo.label}
+      </span>
+      <span class="chip">
+        <span class="chip-lbl">tier</span>{tierLabel}
+      </span>
+      <span class="chip chip-opt" title={fwLabel ? ('firmware ' + fwLabel) : ''}>
+        <span class="chip-lbl">hub</span>
+        <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
+      </span>
+      <span class="chip chip-opt">
+        <span class="chip-lbl">catalog</span>{catalogLabel}
+      </span>
+      <span class="chip chip-opt tone-{renderTone}"
+            title="frames per second · telemetry jitter buffer · frames that outran the newest sample · rAF-vs-sample-stamp clock skew">
+        <span class="chip-lbl">render</span>
+        <span class="mono">{renderLabel}</span>
+      </span>
+      <span class="chip chip-opt-last tone-{rxTone}">
+        <span class="chip-lbl">rx</span>
+        <span class="mono">{rxAge}</span>
+      </span>
+    </div>
+  </div>
+
+  {#if !isLive}
+    <div class="banner tone-{phaseInfo.tone}" role="alert">
+      <strong>{phaseInfo.label}</strong>
+      — no hub link: nothing on this page can drive the machine right now.
+      {#if machine.link.closeReason}<span class="reason">({machine.link.closeReason})</span>{/if}
+    </div>
+  {/if}
+
+  {#if machine.link.error}
+    <!-- RFC-033: SUBSCRIBE_REJECTED (and any other link-level protocol error
+         this client causes) surfaces here, not just in the Valence pane's
+         NACK table — it means a client bug, and burying it in a list of
+         routine NACKs is how it goes unnoticed. -->
+    <div class="banner tone-bad" role="alert">
+      <strong>Link error</strong> — {machine.link.error}
+    </div>
+  {/if}
+</header>
+
+<style>
+  .crosshair {
+    position: fixed;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    right: 8px;
+    width: 14px;
+    height: 14px;
+    color: var(--line-3);
+    z-index: 60;
+    pointer-events: none;
+  }
+
+  .linkbar {
+    position: sticky;
+    /* Parks below the shell's chrome rather than under it. --shell-chrome-top
+       is the height ShellBar reserves as `.app` padding (0px with no shell),
+       and here the page is the scrollport, so the offset is measured from the
+       viewport and has to restate it. */
+    top: var(--shell-chrome-top, 0px);
+    z-index: 20;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--line);
+    /* Keeps the bar's content out of the status-bar/notch zone; the
+       background still paints under it. Reads the shared inset var rather
+       than env() directly — when shell chrome sits above this bar, that bar
+       owns the notch and this one must not pad for it twice (style.css). */
+    padding: calc(8px + var(--chrome-inset-top, 0px)) var(--gap) 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Desktop reserves the same space, but the offset MUST go back to zero.
+     `.app` is the scroll container there (height-capped flex column,
+     overflow:hidden), and a sticky offset is measured from the scrollport
+     INSET BY THAT CONTAINER'S PADDING — so `.app`'s padding-top already moved
+     this bar down, and restating it here lands the bar at twice the chrome
+     height. Nothing scrolls this column anyway (`.frame` owns the only
+     scroll), so sticky here is inert and 0 is the honest value.
+     Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
+  @media (min-width: 960px) {
+    .linkbar { top: 0; }
+  }
+
+  /* OG .hdr-row verbatim. Deliberately does NOT wrap: the linkbar is fixed
+     chrome the whole page reserves height for, so a row that grows a second
+     line silently covers content below it. The chips shed instead of wrapping
+     — see the narrow-viewport drops below. */
+  .hdr-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .act-grid {
+    image-rendering: pixelated;
+    flex: 0 0 auto;
+    border-radius: 1px;
+  }
+
+  /* OG .wordmark verbatim: Chakra Petch 500 at 1rem, NOT mono/700. The
+     letter-spacing is --s-scaled so the mark tracks the global control scale
+     rather than the font size. */
+  .wordmark {
+    font-family: var(--font);
+    font-weight: 500;
+    font-size: 1rem;
+    letter-spacing: calc(var(--s) * 1px);
+    color: var(--ink-hi);
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .link-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--line-2);
+    flex: 0 0 auto;
+    transition: background .2s, box-shadow .2s;
+  }
+  .link-dot.tone-good { background: var(--good); box-shadow: var(--glow-reality); }
+  .link-dot.tone-warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .link-dot.tone-bad  { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .link-dot.tone-dim  { background: var(--line-2); box-shadow: none; }
+
+  /* ---- chips: ONE flat right-justified row ---- */
+  .chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    min-width: 0;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+
+  /* OG .chip verbatim (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every
+     chip wears these exact metrics — there is no heavier variant. A chip that
+     matters more says so with its tone color and its position in the row, not
+     by being bolder than its neighbors. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: .62rem;
+    font-weight: 400;
+    padding: 3px 6px;
+    border-radius: var(--radius);
+    background: var(--chip);
+    border: 1px solid var(--chip-line);
+    color: var(--tx-val);
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .chip-lbl {
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-size: .6rem;
+  }
+  .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
+  }
+
+  /* Tone rides the text color plus a tinted border, on any chip that has one.
+     The dot already carries the state; the border tint is the second,
+     non-color-dependent channel. */
+  .chip.tone-good { border-color: color-mix(in srgb, var(--good) 45%, var(--chip-line)); color: var(--good); }
+  .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn); }
+  .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad); }
+  .chip.tone-good .mono { color: var(--good); }
+  .chip.tone-warn .mono { color: var(--warn); }
+  .chip.tone-bad  .mono { color: var(--bad); }
+
+  /* Narrow viewports shed chips from the tail rather than wrapping the row or
+     scrolling it. Phase and tier carry no drop class and therefore never
+     leave — they are the two facts an operator must be able to see before
+     touching anything. Marked by class, not :nth-child: a positional selector
+     silently retargets the moment a chip becomes conditional. */
+  @media (max-width: 560px) {
+    .chip-opt { display: none; }
+  }
+  @media (max-width: 400px) {
+    .chip-opt-last { display: none; }
+  }
+
+  .banner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+    padding: 6px 8px;
+    border-radius: var(--r-s);
+    background: color-mix(in srgb, var(--bad) 12%, var(--bg-card));
+    border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .banner.tone-warn {
+    background: color-mix(in srgb, var(--warn) 12%, var(--bg-card));
+    border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  }
+  .banner.tone-dim {
+    background: var(--bg-card);
+    border-color: var(--line);
+    color: var(--ink-dim);
+  }
+  .banner strong { text-transform: uppercase; }
+  .reason { color: var(--ink-faint); }
+
+  /* rem, never px: the wordmark tracks --s instead of pinning to one scale. */
+  @media (max-width: 400px) {
+    .wordmark { font-size: .82rem; }
+  }
+</style>

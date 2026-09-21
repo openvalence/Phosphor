@@ -1,0 +1,80 @@
+/**
+ * main.js — the entry point, and the whole Tauri seam.
+ *
+ * Everything device-specific about "how do I reach the machine and prove who I
+ * am" is decided in this file and nowhere else. The device-hosted bundle infers
+ * the host from location and mints a token over same-origin HTTP; a Tauri shell
+ * overrides those two things and gets an identical UI. That is the "~15 lines
+ * apart" promise, and it only holds because everything above this file is
+ * generic — the page renders whatever catalog the hub sends, so it has no other
+ * reason to care which machine it is talking to.
+ */
+
+import { mount } from 'svelte';
+import App from './App.svelte';
+import './style.css';
+import { connect } from './model/machine.svelte.js';
+import { applyTheme, currentThemeId } from './model/theme.js';
+
+// Client preferences, applied before first paint so the page never flashes the
+// default palette. These are BROWSER state, not machine state — the
+// ground-truth doctrine does not apply and nothing here is sent to the device.
+applyTheme(currentThemeId());
+try {
+  if (localStorage.getItem('ui_hivis') === '1') document.documentElement.classList.add('hivis');
+  if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
+} catch (e) { /* private mode: preferences are an optimization, never a requirement */ }
+
+// Whatever served this bundle IS the machine's front door — today the C5
+// bridge, which hosts this page and /uitoken on port 80 and the Valence WS
+// on port 82 of the SAME host. So both URLs derive from `location`: the host
+// from location.hostname here, the WS port from connect()'s default 82, and
+// the mint from a SAME-ORIGIN relative /uitoken (the protocol client's
+// mintUrl() picks the relative form whenever host === location.hostname,
+// which is exactly this case). Nothing about a particular device is baked in
+// — a literal IP here would work on one bench and nowhere else.
+//
+// Except inside the Tauri shell, where the host is the operator's choice and
+// /uitoken minting runs through the shell's Rust-side fetch (no browser
+// same-origin rules). TAURI_ENV_PLATFORM is set only by the Tauri CLI's
+// build, so the embedded bundle compiles this branch away entirely.
+const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+
+async function boot() {
+  // ?hub=<host> points THIS page at a hub other than its own origin. It is
+  // the DEV override and the only one: `vite dev` serves from localhost, so
+  // `?hub=<device>` is how a dev session reaches a real machine (/uitoken
+  // stays same-origin-only, so such a session lands at watch tier, which is
+  // honest). Harmless on the served page: absent parameter, origin rules as
+  // always. No fallback host — an empty hostname means the page was opened
+  // from a file:// URL with no hub to talk to, and connecting to a
+  // hardcoded address would be a guess about someone else's network.
+  const hubOverride = new URLSearchParams(location.search).get('hub');
+  let host = hubOverride || location.hostname;
+  if (SHELL) {
+    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+    const { setHttpGet } = await import('../../Valence/clients/js/index.js');
+    setHttpGet(async (url) => {
+      const r = await tauriFetch(url, { method: 'GET' });
+      return r.ok ? await r.text() : null;
+    });
+    // Shell chrome: discovery + transport control live OUTSIDE the kernel UI.
+    const { default: ShellBar } = await import('./shell/ShellBar.svelte');
+    const bar = document.createElement('div');
+    document.body.appendChild(bar);
+    mount(ShellBar, { target: bar });
+
+    // NO baked-in host: discovery IS the shell's front door (operator ruling,
+    // 2026-07-28). Auto-connect only re-joins a hub the operator explicitly
+    // chose before (saved by ShellBar on a successful WS connect).
+    const saved = localStorage.getItem('shell_host');
+    if (saved && (localStorage.getItem('shell_mode') || 'ws') === 'ws') {
+      connect({ host: saved });
+    }
+    return;
+  }
+  connect({ host });
+}
+boot();
+
+export default mount(App, { target: document.getElementById('app') });

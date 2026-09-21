@@ -1,0 +1,542 @@
+/**
+ * style.css — design tokens, reset, and the ground-truth visual language.
+ *
+ * The palette, type ramp and accent semantics are ported from the pre-refactor
+ * page (tag `webui-prerefactor`). That identity is deliberate and locked: the
+ * neutral chassis is frozen, only the two ACCENT hues change with a theme, and
+ * the SAFETY colors (--warn amber, --bad red) are identical in every theme so
+ * hazard styling reads the same however the operator dresses the instrument.
+ *
+ * ── ONE NAMING COLLISION, READ THIS ────────────────────────────────────────
+ * The original sheet used `--ink` for the page BACKGROUND. Here `--ink` is the
+ * primary TEXT color, matching the rest of the rebuilt component layer. The
+ * original background/ramp names (--screen, --chip, --line-0..4, --tx-*) are
+ * all still defined below with their original meanings, so CSS ported from the
+ * old page works — except that it must use `--bg` where it used to say
+ * `--ink`. Getting this wrong renders dark text on a dark panel.
+ *
+ * CASING IS A CSS DECISION, NEVER BAKED INTO A STRING. Every label is written
+ * in sentence case in the markup and dressed by `text-transform` where a
+ * surface wants uppercase (chrome, card heads, footer keys) or lowercase
+ * (hero numeral labels). A literal ALL-CAPS string cannot be re-cased by a
+ * theme, breaks a screen reader's pronunciation, and drifts from the surface
+ * next to it. Device strings are the machine's own wording and are dressed
+ * the same way, never rewritten.
+ *
+ * Components carry their own scoped <style>. This file holds only what must be
+ * global: tokens, the reset, and the [data-shadow] states — because "has the
+ * machine confirmed this?" is a safety property and must look identical on
+ * every control in the page.
+ */
+
+/* ---- fonts ------------------------------------------------------------- */
+@font-face {
+  font-family: 'Chakra Petch';
+  src: url('./fonts/ChakraPetch-400.woff2') format('woff2');
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: 'Chakra Petch';
+  src: url('./fonts/ChakraPetch-500.woff2') format('woff2');
+  font-weight: 500; font-display: swap;
+}
+@font-face {
+  font-family: 'Martian Mono';
+  src: url('./fonts/MartianMono.woff2') format('woff2');
+  font-weight: 300 700; font-display: swap;
+}
+
+:root {
+  /* ---- surfaces (the frozen neutral chassis) ---- */
+  --bg:        #08090B;   /* page AND panel background — identical, always */
+  --bg-raised: #0D0F13;   /* bars that float above the page */
+  --bg-card:   #111318;   /* a live value lives here */
+  --bg-sunken: #040507;   /* recessed displays: scopes, log */
+  --screen:    #040507;   /* original name, same surface */
+  --chip:      #111318;   /* original name, same surface */
+
+  --line-0: #121419;   /* outer nested frame */
+  --line-1: #1D2026;   /* inner panel frame, dividers */
+  --chip-line: #1D2026;   /* original name for the chip's own hairline */
+  --line-2: #272B31;   /* dim glyphs, hairline emphasis */
+  --line-3: #33373E;   /* brackets, ruler majors */
+  --line-4: #454A54;   /* bracket highlight */
+  --line:      var(--line-1);
+  --line-soft: var(--line-0);
+
+  /* ---- text ramp ---- */
+  --tx-hi:    #ECEFF4;   /* headings */
+  --tx:       #C3C8D1;   /* body */
+  --tx-val:   #A8AEB9;   /* nominal numerals (quiet) */
+  --tx-mut:   #666C78;   /* labels */
+  --tx-ghost: #4D525C;   /* hints, ruler numerals */
+  --tx-faint: #2C3037;   /* index numerals, watermarks */
+  --ink:       var(--tx);        /* TEXT — see the collision note above */
+  --ink-hi:    var(--tx-hi);
+  --ink-dim:   var(--tx-mut);
+  --ink-faint: var(--tx-ghost);
+
+  /* ---- accents ----
+     reality = MEASURED TRUTH (live motion, confirmed values, active controls)
+     intent  = COMMANDED / DESIRED / NOT YET CONFIRMED
+     Themes (model/theme.js) override only these four properties. */
+  --reality: #4DA6FF;
+  --intent:  #A78BFA;
+  --warn:    #F5B94D;   /* never themed: safety */
+  --bad:     #FF4757;   /* never themed: safety */
+  --estop:   var(--bad);
+  --good:    var(--reality);
+
+  --reality-rgb:     77,166,255;
+  --intent-rgb:      167,139,250;
+  --intent-deep-rgb: 139,92,246;
+  --glow-reality: 0 0 18px rgba(var(--reality-rgb),.5), 0 0 42px rgba(var(--reality-rgb),.16);
+  --glow-intent:  0 0 14px rgba(var(--intent-deep-rgb),.16);
+  --glow-warn:    0 0 18px rgba(245,185,77,.5), 0 0 42px rgba(245,185,77,.16);
+
+  /* ---- metrics ----
+     --radius is 2px, not a soft corner. The instrument look is square; this is
+     part of the identity, not an oversight. */
+  --radius: 2px;
+  --r:   var(--radius);
+  --r-s: var(--radius);
+  --s:   1.12;                        /* global control scale */
+  --tap: calc(var(--s) * 44px);       /* minimum touch target */
+  /* Slider thumb — named because the intent echo must enclose the HANDLE, and
+     a range input's own box is only the 2px track (range-slider block below). */
+  --slider-thumb-w: calc(var(--s) * 11px);
+  --slider-thumb-h: calc(var(--s) * 18px);
+  --gap: 12px;
+  /* Reading measure: the widest a column of labeled values may get before
+     the eye stops tracking a row left to right. 48ch of Chakra Petch at the
+     root scale is ~64 characters of real text (its `0` is wider than its
+     average glyph), so a card reflows into columns instead of stretching one
+     across a 1920 pane. */
+  --measure: 48ch;
+
+  --font: 'Chakra Petch', system-ui, sans-serif;
+  --mono: 'Martian Mono', ui-monospace, monospace;
+  /* Nominal numeral weight. html.hivis lifts every readout in one flip without
+     touching alarm-swell weights. Martian Mono's weight axis does not change
+     glyph advance, so numerals never reflow. */
+  --num-wght: 400;
+
+  color-scheme: dark;
+}
+
+/* Terse instrument — `.explain` marks TEACHING COPY in common modules (hero
+   instruments: usage hints, field descriptions restated on cards). Settings
+   fields (Field.svelte's .field-desc) deliberately never carry it: a knob you
+   visit occasionally keeps its explanation, an instrument you live on does
+   not. Browser preference (ui_terse), twin of hivis below. */
+html.terse .explain { display: none; }
+
+/* High legibility — brighter text, heavier numerals, hierarchy preserved. */
+html.hivis {
+  --tx:       #E4E8EF;
+  --tx-val:   #C9CFD9;
+  --tx-mut:   #8A919D;
+  --tx-ghost: #6B7280;
+  --num-wght: 480;
+
+  /* Edge-to-edge devices (index.html sets viewport-fit=cover): the status
+     bar / notch overlaps the viewport, and exactly ONE bar — whichever is
+     topmost — absorbs that inset so content clears it. The LinkBar owns it
+     by default; when the Tauri shell mounts its own chrome ABOVE the
+     LinkBar, ShellBar takes ownership and zeroes this. Do not read
+     env(safe-area-inset-top) anywhere else: two bars padding for the same
+     notch is the double-gap bug. */
+  --chrome-inset-top: env(safe-area-inset-top, 0px);
+}
+@media (prefers-contrast: more) {
+  :root { --tx: #E4E8EF; --tx-mut: #8A919D; --tx-ghost: #6B7280; --line-1: #2A2F36; }
+}
+
+/* ---- reset ------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+/* Root scale — every rem-sized rule in this sheet (labels, chips, buttons,
+   card titles) rides on this. Ported verbatim from the pre-refactor page
+   (og-ref/style.css: `html { font-size: calc(var(--s) * 16px); }`) — omitting
+   it left every rem-based size in the rebuild ~11% smaller than the OG at
+   the same --s, which was the single biggest source of the "everything
+   reads smaller/off" drift. */
+html { font-size: calc(var(--s) * 16px); }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  /* No font-size here: inherits the scaled html size above, same as the OG
+     sheet (og-ref/style.css's `body` rule never set one either). A literal
+     px value here would peg body text regardless of --s. */
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+button:disabled, input:disabled, select:disabled { cursor: not-allowed; }
+h1, h2, h3, p { margin: 0; }
+
+/* Focus must be visible: this page is operated by keyboard, and by people who
+   cannot see it well. */
+:focus-visible {
+  outline: 2px solid var(--reality);
+  outline-offset: 2px;
+}
+
+.mono, output, .num {
+  font-family: var(--mono);
+  font-weight: var(--num-wght);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* =========================================================================
+   GROUND TRUTH — "has the machine agreed yet?"
+   =========================================================================
+
+   The ladder reuses the page's own accent semantics rather than inventing a
+   color: INTENT purple already means "commanded, not yet measured truth"
+   everywhere else in this instrument (it is the color of the rail's commanded
+   marker), so an unconfirmed control wearing intent-purple is saying exactly
+   what the rail says. Escalation then borrows the safety ramp.
+
+     pending   intent purple   — sent, awaiting the machine's echo
+     overdue   warn amber      — same meaning, escalating (>500 ms)
+     fault     bad red         — refused or timed out; value has snapped back
+     settled   reality blue    — the one moment the page says yes
+
+   Deliberate details:
+   - INSET box-shadow, never a border: a border changes layout metrics and
+     makes controls jump a pixel as state changes, which reads as jitter on a
+     page that updates constantly. A settings field ALSO draws an outward echo
+     that spreads from its control (Field.svelte owns it, and says why there);
+     that one is allowed to read as an outline because it lives on an
+     absolutely-positioned pseudo-element and so contributes no layout at all.
+     Anything that occupies space still obeys the rule above.
+   - `fault` does NOT pulse. A pulsing failure reads as "still trying"; a
+     refused write has already finished failing and should sit still to be read.
+   - Color is never the only channel — every unconfirmed control also renders
+     a textual reason beneath it (Field.svelte's .field-reason/.field-error).
+*/
+[data-shadow='pending'] {
+  box-shadow: inset 0 0 0 1.5px rgba(var(--intent-rgb), .65);
+}
+[data-shadow='overdue'] {
+  box-shadow: inset 0 0 0 2px var(--warn);
+  animation: unconfirmed-breathe 1.4s ease-in-out infinite;
+}
+[data-shadow='fault'] {
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+.settled { animation: confirm-flash 0.9s ease-out 1; }
+
+/* Radius of the intent echo's wavefront (Field.svelte). Registered rather than
+   plain, because an unregistered custom property is a raw token and animates
+   as a discrete swap — the pulse would jump instead of spreading. */
+@property --pr {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+@keyframes unconfirmed-breathe {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--warn); }
+  50%      { box-shadow: inset 0 0 0 2px rgba(245,185,77,.45); }
+}
+@keyframes confirm-flash {
+  0%   { box-shadow: inset 0 0 0 2px var(--reality); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-shadow='overdue'] { animation: none; }
+  .settled { animation: none; }
+  * { transition: none !important; }
+}
+
+/* =========================================================================
+   OG CONTROL LANGUAGE — element defaults + og-* utility classes, ported
+   verbatim from tag `webui-prerefactor`.
+
+   Values are unchanged from the original; only token names are adapted for
+   this file's naming fix (--nwght -> --num-wght, --ink -> --bg — see the
+   collision note at the top of this file).
+
+   Transition timing convention: state color changes run .12-.15s, glow
+   shadows run .2-.3s. Nothing in this control language runs longer.
+   ========================================================================= */
+
+/* ---- Range sliders: thin hairline track, rectangular thumb ----
+   The thumb's size is a NAMED fact because two unrelated things need it: the
+   thumb rules below, and the intent echo, which has to expand past the 2px
+   track to enclose the handle (Field.svelte). Both read the var; neither
+   restates the number. */
+input[type="range"] {
+  width: 100%;
+  height: 2px;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 12px 0;
+  background: var(--line-2);
+  outline: none;
+  touch-action: pan-y;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--slider-thumb-w);
+  height: var(--slider-thumb-h);
+  border-radius: 0;
+  background: var(--bg);
+  border: 1px solid var(--tx-val);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--bg);
+  transition: border-color .12s, box-shadow .12s;
+}
+input[type="range"]::-moz-range-thumb {
+  width: var(--slider-thumb-w);
+  height: var(--slider-thumb-h);
+  border-radius: 0;
+  background: var(--bg);
+  border: 1px solid var(--tx-val);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--bg);
+  transition: border-color .12s, box-shadow .12s;
+}
+/* Thumb ignites --reality + glow while dragged. */
+input[type="range"]:active::-webkit-slider-thumb {
+  border-color: var(--reality);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+}
+input[type="range"]:active::-moz-range-thumb {
+  border-color: var(--reality);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+}
+
+/* ---- Select ---- */
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: .82rem;
+  font-family: 'Chakra Petch', sans-serif;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23575C66' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+}
+select:focus { outline: none; border-color: var(--reality); }
+
+/* ---- Scrollbars ---- */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 0; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) var(--bg); }
+
+/* ---- Panel chrome: the canonical OG panel recipe. Components apply
+   .og-panel instead of restating background + border + outline + the
+   corner-bracket SVGs by hand. ---- */
+.og-panel {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--line-1);
+  outline: 1px solid var(--line-0);
+  outline-offset: 4px;
+  /* Corner brackets: TL=--line-4, TR=--line-2, BL=--line-2, BR=--line-3 */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 0L0 0L0 8' stroke='%23454A54' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 0L8 0L8 8' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 8L0 8L0 0' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 8L8 8L8 0' stroke='%2333373E' stroke-width='1' fill='none'/%3E%3C/svg%3E");
+  background-position: top left, top right, bottom left, bottom right;
+  background-size: 8px 8px;
+  background-repeat: no-repeat;
+}
+
+/* Recessed display surface: scopes, readouts, the log. */
+.og-screen {
+  background: var(--screen);
+  box-shadow: inset 0 2px 8px rgba(0,0,0,.7);
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius);
+}
+
+/* ---- Value input: recessed numeral field ---- */
+.og-num {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-1);
+  background: var(--screen);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.6);
+  color: var(--tx-val);
+  font-size: .9rem;
+  font-family: 'Martian Mono', monospace;
+  font-variation-settings: "wght" var(--num-wght), "wdth" 90;
+}
+.og-num:focus { outline: none; border-color: var(--reality); }
+/* Native spinners clash with the instrument styling and are too small to be
+   useful touch targets — nudge/trim buttons cover the increment use-case. */
+.og-num::-webkit-outer-spin-button,
+.og-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.og-num[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* ---- Switch ---- */
+.og-switch { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+/* Visually hidden, NOT display:none — keeps the checkbox in the tab order for
+   keyboard focus; the focus ring draws on .track instead. */
+.og-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.og-switch input:focus-visible + .track {
+  outline: 2px solid var(--reality);
+  outline-offset: 1px;
+}
+.og-switch .track {
+  width: 40px;
+  height: 22px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  position: relative;
+  transition: border-color .15s;
+  flex: 0 0 auto;
+}
+.og-switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius);
+  background: var(--tx-mut);
+  transition: transform .15s, background .15s;
+}
+.og-switch input:checked + .track { border-color: var(--reality); }
+.og-switch input:checked + .track::after {
+  transform: translateX(18px);
+  background: var(--reality);
+  box-shadow: 0 0 6px rgba(var(--reality-rgb),.4);
+}
+
+/* ---- Buttons ----
+   Deviation from the OG: .og-btn does NOT carry width:100%. The original
+   .btn did, and that was a documented flex-row trap — width is auto here,
+   callers opt into full width themselves. */
+.og-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  font-size: .82rem;
+  font-weight: 500;
+  font-family: 'Chakra Petch', sans-serif;
+  cursor: pointer;
+  background: transparent;
+  color: var(--tx);
+  transition: border-color .12s, color .12s;
+}
+.og-btn:hover { border-color: var(--line-4); }
+.og-btn:active { border-color: var(--reality); color: var(--reality); }
+.og-btn:disabled, .og-btn[aria-disabled="true"] {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.og-btn.primary { border-color: var(--reality); color: var(--reality); }
+.og-btn.primary:hover { box-shadow: var(--glow-reality); }
+.og-btn.danger { border-color: var(--bad); color: var(--bad); }
+.og-btn.danger:hover { box-shadow: 0 0 10px rgba(255,71,87,.2); }
+/* Running is AMBER, never red — --bad is reserved for hazard/e-stop. */
+.og-btn.running {
+  border-color: var(--warn);
+  color: var(--warn);
+  box-shadow: var(--glow-warn);
+  letter-spacing: .14em;
+}
+.og-btn.running:hover { box-shadow: var(--glow-warn); }
+.og-btn.on {
+  border-color: var(--reality);
+  color: var(--reality);
+  box-shadow: var(--glow-reality);
+}
+.og-btn.sm { min-height: 30px; font-size: .72rem; padding: 4px 8px; }
+
+/* ---- Segmented control ---- */
+.og-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.og-seg button {
+  flex: 1;
+  min-width: 50px;
+  min-height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--tx-mut);
+  font-size: .76rem;
+  font-weight: 500;
+  font-family: 'Chakra Petch', sans-serif;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.og-seg button:hover { border-color: var(--line-4); }
+.og-seg button:disabled { opacity: .45; cursor: not-allowed; }
+.og-seg button.active {
+  border-color: var(--reality);
+  color: var(--reality);
+  box-shadow: var(--glow-reality);
+}
+
+/* ---- app frame --------------------------------------------------------- */
+.app {
+  max-width: 1680px;
+  margin: 0 auto;
+  padding-left: var(--gap);
+  padding-right: var(--gap);
+  /* ShellBar (Tauri shell only, see shell/ShellBar.svelte) is fixed chrome
+     under the LinkBar and publishes its measured height here (0 otherwise) —
+     extra top padding keeps it from covering the LinkBar/hero zone, in both
+     scroll modes below. */
+  padding-top: var(--shell-chrome-top, 0px);
+}
+
+/* Mobile: a normally-scrolling page. SafetyBar is fixed bottom:0 and no
+   longer publishes a measured height (--safety-h is gone with the desktop
+   restructure below), so reserve FIXED clearance instead — it must clear
+   the tallest normal dock: one op row + one banner.
+   Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
+@media (max-width: 959px) {
+  .app {
+    min-height: 100vh;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Desktop: the page NEVER scrolls as a page. .app is a viewport-height flex
+   column (dvh with a vh fallback for browsers that lack it); App.svelte's
+   .frame (the nav+pane row) is the one region with its own scroll/overflow,
+   so the column's total height always fits without spilling the viewport.
+   Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
+@media (min-width: 960px) {
+  .app {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
