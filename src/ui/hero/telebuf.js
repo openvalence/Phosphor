@@ -288,7 +288,52 @@ export function createTelebuf(opts = {}) {
     lastArrivalTs = 0; periodMs = 40;
   }
 
-  return { push, sampleAt, reset, get length() { return len; } };
+  /** Visit stored samples oldest first, at their RECONSTRUCTED times. */
+  function forEach(fn) {
+    for (let i = 0; i < len; i++) {
+      const idx = (head + i) % CAP;
+      fn(bufT[idx], bufV[idx]);
+    }
+  }
+
+  return { push, sampleAt, reset, forEach, get length() { return len; } };
+}
+
+/**
+ * Strip-chart path over REAL samples only (RENDERING Â§13 law 9): no point is
+ * synthesized and nothing is drawn across link silence.
+ *
+ * Constraints:
+ * - `gaps` are link-stale spans ({from, to}, `to` null while still stale) from
+ *   the model's one freshness rule. A span between two samples starts a new
+ *   segment with a move; the newest sample holds only up to the first span
+ *   after it, and is returned as `marker` so the caller can dim it.
+ * - Between two samples with no span, the value was unchanged until the later
+ *   one arrived (STATE pushes on change, SPEC Â§9.1), so spacing beyond `joinMs`
+ *   draws as hold-then-step, never as an invented slope.
+ *
+ * @param {Array<{t: number, v: number}>} points oldest first
+ * @param {Array<{from: number, to: number|null}>} gaps
+ * @returns {{ops: Array<{t: number, v: number, pen: 'M'|'L'}>, marker: {t: number, v: number}|null}}
+ */
+export function chartPath(points, gaps, nowMs, joinMs) {
+  const cut = (t0, t1) => gaps.some((g) => g.from < t1 && (g.to == null || g.to > t0));
+  const ops = [];
+  let prev = null;
+  for (const p of points) {
+    if (!prev || cut(prev.t, p.t)) {
+      ops.push({ t: p.t, v: p.v, pen: 'M' });
+    } else {
+      if (p.t - prev.t > joinMs) ops.push({ t: p.t, v: prev.v, pen: 'L' });
+      ops.push({ t: p.t, v: p.v, pen: 'L' });
+    }
+    prev = p;
+  }
+  if (!prev) return { ops, marker: null };
+  const after = gaps.filter((g) => g.to == null || g.to > prev.t);
+  const end = after.length ? Math.max(prev.t, Math.min(...after.map((g) => g.from))) : nowMs;
+  if (end > prev.t) ops.push({ t: end, v: prev.v, pen: 'L' });
+  return { ops, marker: after.length ? prev : null };
 }
 
 /**

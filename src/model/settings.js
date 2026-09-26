@@ -53,7 +53,7 @@ export const WIDGET = {
   action: 'action',       // row 6 (`trigger`), discovered by role in pass 2
 };
 
-const NUMERIC_TYPES = new Set([
+export const NUMERIC_TYPES = new Set([
   PACKED.u8, PACKED.i8, PACKED.u16, PACKED.i16,
   PACKED.u32, PACKED.i32, PACKED.f32,
 ]);

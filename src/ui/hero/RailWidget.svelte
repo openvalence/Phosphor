@@ -61,7 +61,7 @@
    * work off whatever `[lo, hi]` and unit the catalog reports instead of an
    * assumed 0-999mm rail.
    */
-  import { machine, getSession } from '../../model/machine.svelte.js';
+  import { machine, getSession, freshness } from '../../model/machine.svelte.js';
   import { isFieldEnabled } from '../../model/settings.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
@@ -429,6 +429,8 @@
       ctx.globalAlpha = 1;
     }
 
+    const isFresh = (f) => { const fr = freshness(f.channelId); return !!fr && !fr.stale; };
+
     function draw(nowMs) {
       let dtMs = nowMs - lastFrameTs;
       if (dtMs <= 0 || dtMs > 500) dtMs = 16.667;
@@ -475,7 +477,9 @@
       if (pos) {
         const r = posTele.sampleAt(tRender);
         posDisplay = r.value;
-        fresh = r.fresh;
+        // The model's one freshness rule, not the telebuf's own hold window:
+        // a parked machine's position is silent and still true (SPEC Â§9.1).
+        fresh = r.value != null && isFresh(pos);
         if (r.holding) censusHeld++;
         let speedPerSec = null;
         if (vel) {
@@ -496,7 +500,7 @@
       if (target) {
         const rt = targetTele.sampleAt(tRender);
         targetDisplay = rt.value;
-        targetFresh = rt.fresh;
+        targetFresh = rt.value != null && isFresh(target);
       } else {
         targetDisplay = null; targetFresh = false;
       }

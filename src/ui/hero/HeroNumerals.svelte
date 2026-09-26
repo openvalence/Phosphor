@@ -39,6 +39,7 @@
    * like the reference — do not split them into dimmed spans.
    */
   import { unitOf, precisionFor, labelFor } from '../../model/format.js';
+  import { freshness, staleReason } from '../../model/machine.svelte.js';
 
   let {
     posField = null,
@@ -85,7 +86,9 @@
   // match the reference; it only ever raises the floor, never lowers real
   // precision.
   const posPrecision = $derived(Math.max(1, precisionFor(posField)));
-  const posText = $derived(padNumeral(fresh ? posVal : null, padIntDigits, posPrecision));
+  // A stale position stays on screen, dimmed, with its age on hover (law 8).
+  const posText = $derived(padNumeral(posVal, padIntDigits, posPrecision));
+  const staleTitle = $derived(fresh || !posField ? undefined : staleReason(freshness(posField.channelId)));
   // The label carries the unit once ("actual · mm", matching the reference) —
   // no separate unit span rides next to the numeral itself.
   const posLabel = $derived(
@@ -113,7 +116,7 @@
   const lagText = $derived(padNumeral(lagVal, padIntDigits, lagPrecision));
 </script>
 
-<div class="hero-numerals" class:stale={!fresh}>
+<div class="hero-numerals" class:stale={!fresh} title={staleTitle}>
   <div class="hn-item hn-primary">
     <span class="hn-label">
       <svg class="hn-reticle" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">

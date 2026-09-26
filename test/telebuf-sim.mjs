@@ -21,7 +21,7 @@
  *
  * Run: node test/telebuf-sim.mjs
  */
-import { createTelebuf, createRenderClock } from '../src/ui/hero/telebuf.js';
+import { createTelebuf, createRenderClock, chartPath } from '../src/ui/hero/telebuf.js';
 
 const TRUE_VEL_MM_S = 10;
 const SIM_MS = 8000;
@@ -375,6 +375,54 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
      Math.abs(stalling - steady60) < 2, stalling.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
   ok('starved ARRIVALS do, which is what the held counter is for',
      starved > steady60 + 2, starved.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
+}
+
+// ---------------------------------------------------------------------------
+// TelemetryChart path (RENDERING Â§13 laws 8, 9). The chart stores arrivals in a
+// rescheduling telebuf and cuts its line at link-stale spans. The span is built
+// the way the model's freshness rule opens and closes one: from the last proof
+// of life to the first frame back. A 1 s hole exceeds the default 600 ms
+// deadman window (registry LIMITS.deadman_default_ms), so the model marks it.
+// ---------------------------------------------------------------------------
+console.log('\nchartPath â€” gaps, never fabricated points\n');
+{
+  const tele = createTelebuf({ capacity: 420 });
+  const arrivals = [];
+  for (let t = 0; t < 2000; t += 40) arrivals.push(t);
+  for (let t = 3000; t <= 4000; t += 40) arrivals.push(t);
+  for (const t of arrivals) tele.push(t / 100, t);
+  const pts = [];
+  tele.forEach((t, v) => pts.push({ t, v }));
+  const lastBefore = pts.filter((p) => p.v < 20).pop();
+  const firstAfter = pts.find((p) => p.v >= 30);
+  const gaps = [{ from: 1960, to: 3000 }];
+  const { ops, marker } = chartPath(pts, gaps, 4100, 160);
+  const inside = ops.filter((o) => o.t > lastBefore.t && o.t < firstAfter.t);
+  ok('a 1 s arrival hole renders zero points inside the hole', inside.length === 0,
+     inside.length + ' inside (' + lastBefore.t.toFixed(0) + '..' + firstAfter.t.toFixed(0) + ' ms)');
+  const resume = ops.findIndex((o) => o.t === firstAfter.t);
+  ok('the first arrival after the hole starts a new segment', resume > 0 && ops[resume].pen === 'M');
+  ok('every op is a real sample or its hold, never an interpolated value',
+     ops.every((o) => pts.some((p) => p.v === o.v)));
+  ok('no marker once the link is back', marker === null);
+
+  // Still dead at render time: the line stops at the last proof of life and
+  // the last real sample becomes the (dimmed) marker.
+  const dead = chartPath(pts.filter((p) => p.v < 20), [{ from: 1960, to: null }], 3500, 160);
+  const tail = dead.ops[dead.ops.length - 1];
+  ok('a dead link draws nothing past the last proof of life', tail.t <= Math.max(1960, lastBefore.t),
+     'tail at ' + tail.t.toFixed(0) + ' ms');
+  ok('the last real sample is returned as the stale marker',
+     dead.marker && dead.marker.t === lastBefore.t && dead.marker.v === lastBefore.v);
+
+  // Live link, silent channel (on-change, SPEC Â§9.1): the value was unchanged
+  // until the next push, so it holds and steps; it never slopes across.
+  const idle = chartPath([{ t: 0, v: 1 }, { t: 5000, v: 2 }], [], 6000, 160);
+  const mid = idle.ops.filter((o) => o.t > 0 && o.t < 5000);
+  ok('an idle channel on a live link holds then steps, no invented slope',
+     mid.length === 0 && idle.ops[1].v === 1 && idle.ops[2].v === 2 && idle.ops[1].t === 5000);
+  ok('a live link holds the newest sample to now, unmarked',
+     idle.ops[idle.ops.length - 1].t === 6000 && idle.marker === null);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS'));

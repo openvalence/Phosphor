@@ -38,7 +38,7 @@
  */
 
 import {
-  createSession, CHANNEL_CLASS, PRIORITY, NACK, acquireToken, getInstanceId, toHex,
+  createSession, CHANNEL_CLASS, PRIORITY, NACK, LIMITS, acquireToken, getInstanceId, toHex,
 } from '../../../Valence/clients/js/index.js';
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
@@ -156,6 +156,9 @@ export const machine = $state({
     hubIdentity: null,      // RFC-016 in-band identity, when the hub sends it
     limits: {},             // the hub's declared ceilings, from WELCOME
     subsDropped: 0,         // channels we had to shed to fit max_subscriptions
+    stale: true,            // freshness(): written only by checkFreshness()
+    staleTick: 0,           // advances at 1 Hz while stale, so stale ages re-render
+    openedAt: 0,            // this socket's open; older samples are a past session's
   },
 
   /** Catalog + everything derived from it. Replaced wholesale on adoption. */
@@ -186,6 +189,77 @@ export function getSession() {
 /** Is the hub plane usable for writes right now? */
 export function isLive() {
   return !!session && session.isLive;
+}
+
+// ---- freshness (RENDERING Â§13 law 8) --------------------------------------
+
+/**
+ * Link silence past this makes every value stale: the deadman window the hub
+ * declared in WELCOME (SPEC Â§6.6), the silence after which the hub parks this
+ * session too. The session PINGs at 0.6x it and every PONG stamps
+ * `stats.lastRxMs`, so a healthy link always lands a frame inside it.
+ * Per-channel age against the grant rate cannot decide this: a granted rate is
+ * a ceiling and a periodic channel pushes at min(grant, change rate) (SPEC
+ * Â§9.1), so a parked machine's position is silent AND true.
+ */
+export function staleAfterMs() {
+  return machine.link.deadmanMs || LIMITS.deadman_default_ms;
+}
+
+/**
+ * The one freshness rule every value surface uses. `stale` when the link is not
+ * live, has been silent past staleAfterMs(), or this value predates the current
+ * session (a reconnect re-pushes every retained value, Â§9.1, so an older stamp
+ * is unconfirmed). Null when the channel never reported: absent, not stale.
+ * `ageMs` is read only on the stale path so fresh readouts never re-render on
+ * the tick.
+ */
+export function freshness(channelId) {
+  const ts = machine.sampleTs[channelId];
+  if (!ts) return null;
+  if (!machine.link.stale && ts >= machine.link.openedAt) return { stale: false, ageMs: 0 };
+  return { stale: true, ageMs: Math.max(0, (machine.link.staleTick || Date.now()) - ts) };
+}
+
+/** Hover text for a stale value: its age in words (law 5: never color alone). */
+export function staleReason(fr) {
+  if (!fr || !fr.stale) return undefined;
+  const s = fr.ageMs / 1000;
+  return 'stale: last update ' + (s < 60 ? s.toFixed(1) + ' s' : Math.round(s / 60) + ' min') + ' ago';
+}
+
+function checkFreshness() {
+  const now = Date.now();
+  const stale = machine.link.phase !== 'live' || now - machine.stats.lastRxMs > staleAfterMs();
+  if (stale !== machine.link.stale) { machine.link.stale = stale; machine.link.staleTick = now; }
+  else if (stale && now - machine.link.staleTick >= 1000) machine.link.staleTick = now;
+}
+if (typeof setInterval === 'function') setInterval(checkFreshness, 100);
+
+/**
+ * Every inbound frame, PING and PONG included, is proof of life (SPEC Â§6.5).
+ * The session answers those internally and emits nothing, so the activity
+ * clock is stamped at the socket. The platform WebSocket takes a listener; the
+ * shell's BLE duck exposes only a plain `onmessage`, which gets wrapped.
+ */
+function stampingSocket(Impl) {
+  const Base = Impl || globalThis.WebSocket;
+  if (!Base) return undefined;
+  return function StampingSocket(url, protocols) {
+    const ws = new Base(url, protocols);
+    const stamp = () => { machine.stats.lastRxMs = Date.now(); };
+    if (typeof ws.addEventListener === 'function') {
+      ws.addEventListener('message', stamp);
+    } else {
+      let handler = null;
+      Object.defineProperty(ws, 'onmessage', {
+        configurable: true,
+        get: () => handler && ((ev) => { stamp(); handler(ev); }),
+        set: (fn) => { handler = fn; },
+      });
+    }
+    return ws;
+  };
 }
 
 /**
@@ -367,10 +441,11 @@ export function connect(opts = {}) {
     autoReconnect: true,
     // Shell seam: a non-WS binding (BLE GATT) rides in as a WebSocket duck.
     // undefined = the platform WebSocket, which is every non-shell build.
-    WebSocketImpl: opts.WebSocketImpl,
+    WebSocketImpl: stampingSocket(opts.WebSocketImpl),
   });
 
   session.on('open', () => {
+    machine.link.openedAt = Date.now();
     machine.link.phase = 'handshaking';
     machine.link.error = null;
   });

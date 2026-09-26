@@ -14,7 +14,7 @@
    * flight. The `data-shadow` attribute carries the write's lifecycle so CSS can
    * show unconfirmed state without this component knowing what amber means.
    */
-  import { machine } from '../model/machine.svelte.js';
+  import { machine, freshness, staleReason } from '../model/machine.svelte.js';
   import { WIDGET, isFieldEnabled } from '../model/settings.js';
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { formatValue, unitOf, optionLabel, precisionFor, labelFor } from '../model/format.js';
@@ -30,6 +30,7 @@
   const sample = $derived(machine.samples[field.channelId]);
   const value = $derived(displayValue(field, sample));
   const status = $derived(statusOf(field));
+  const fresh = $derived(freshness(field.channelId));
   const sh = $derived(shadowOf(field));
 
   // Three independent reasons a control may be unusable, and they are NOT
@@ -227,7 +228,8 @@
         <span class="unit">{unitOf(field)}</span>
       </span>
     {:else if showValueChip}
-      <output class="field-value" class:readout={field.widget === WIDGET.readout} for={field.uid}>
+      <output class="field-value" class:readout={field.widget === WIDGET.readout} for={field.uid}
+              class:stale={fresh && fresh.stale} title={staleReason(fresh)}>
         {#if field.options}
           {optionLabel(field, value)}
         {:else}
@@ -690,6 +692,11 @@
   .field-value.readout {
     color: var(--reality);
     text-shadow: 0 0 8px rgba(var(--reality-rgb), .35);
+  }
+  /* Stale (law 8): the HeroNumerals stale voice; the title carries the age. */
+  .field-value.stale {
+    color: var(--tx-ghost);
+    text-shadow: none;
   }
 
   /* Typeable chip (slider archetype). The recess comes from .field-value; the
