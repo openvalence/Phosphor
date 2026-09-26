@@ -344,7 +344,7 @@
 
   .unit {
     color: var(--tx-ghost);
-    font-size: 0.85em;
+    font-size: max(11px, 0.85em);
     margin-left: 2px;
   }
 

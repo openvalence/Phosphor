@@ -124,7 +124,7 @@
     color: var(--ink-faint);
     text-transform: uppercase;
     letter-spacing: .05em;
-    font-size: 9.5px;
+    font-size: 11px;
   }
   .v {
     color: var(--ink-dim);

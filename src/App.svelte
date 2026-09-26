@@ -479,7 +479,7 @@
   }
   .rail-lbl {
     padding: 2px 8px 4px;
-    font-size: 9.5px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;
@@ -514,7 +514,7 @@
   .rail-glyph {
     flex: 0 0 auto;
     width: 24px;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: .04em;
     color: var(--ink-faint);

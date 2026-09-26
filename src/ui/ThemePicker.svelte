@@ -255,7 +255,7 @@
   .hv-state {
     color: var(--ink-faint);
     text-transform: uppercase;
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: .04em;
   }
 

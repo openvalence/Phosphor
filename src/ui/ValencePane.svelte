@@ -214,7 +214,7 @@
   th {
     color: var(--ink-faint);
     text-transform: uppercase;
-    font-size: 10.5px;
+    font-size: 11px;
     letter-spacing: 0.03em;
     font-weight: 500;
   }

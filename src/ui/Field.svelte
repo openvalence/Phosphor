@@ -609,14 +609,14 @@
 
   /* A lowercase Martian Mono `i` — the typeface this UI already uses for
      values and readouts, so the mark reads as instrument, not as prose. At
-     10px/line-height 1 the ink lands centered in the box on its own; no
+     11px/line-height 1 the ink lands centered in the box on its own; no
      optical nudge is applied. Re-check that if the size or family changes,
      because the grid centers the LINE BOX, not the ink inside it. */
   .info .glyph {
     display: block;
     font-family: var(--mono);
     font-weight: 400;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
   }
 

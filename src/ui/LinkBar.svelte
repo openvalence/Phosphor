@@ -436,7 +436,7 @@
     color: var(--ink-faint);
     text-transform: uppercase;
     letter-spacing: .04em;
-    font-size: .6rem;
+    font-size: .62rem;
   }
   .chip-dot {
     width: 6px;

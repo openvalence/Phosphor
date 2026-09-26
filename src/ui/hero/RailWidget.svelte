@@ -1107,7 +1107,7 @@
   }
   .rail-tape-assembly.drag-live .rail-tape { transition: none; }
   .rail-tape-micro {
-    font-size: calc(var(--s) * 9px);
+    font-size: max(11px, calc(var(--s) * 9px));
     letter-spacing: 0.18em;
     color: var(--tx-ghost);
     white-space: nowrap;
@@ -1149,7 +1149,7 @@
   .rail-endcap {
     position: absolute;
     bottom: 2px;
-    font-size: 0.56rem;
+    font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
     pointer-events: none;
   }
@@ -1233,7 +1233,7 @@
     top: calc(var(--s) * -17px);
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.6rem;
+    font-size: max(11px, 0.6rem);
     color: var(--intent);
     white-space: nowrap;
     pointer-events: none;
@@ -1291,7 +1291,7 @@
     align-items: center;
     margin-top: 4px;
     font-family: var(--mono);
-    font-size: 0.58rem;
+    font-size: max(11px, 0.58rem);
     color: var(--tx-ghost);
   }
   .rail-trk { color: var(--tx-ghost); }

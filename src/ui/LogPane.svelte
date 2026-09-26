@@ -244,7 +244,7 @@
   .line.lvl-error .text { color: var(--bad); }
 
   .chip {
-    font-size: 10.5px;
+    font-size: 11px;
     padding: 1px 6px;
     border-radius: 999px;
     background: var(--bg-card);

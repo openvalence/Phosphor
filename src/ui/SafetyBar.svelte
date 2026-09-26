@@ -525,7 +525,7 @@
   .btn .ico { width: 14px; height: 14px; display: inline-grid; }
   .btn .ico :global(svg) { width: 14px; height: 14px; }
   .btn small {
-    font-size: .56rem;
+    font-size: max(11px, .56rem);
     color: var(--tx-mut);
     font-weight: 400;
   }
