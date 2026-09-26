@@ -46,21 +46,57 @@ npm run tauri build          # bundled installers under src-tauri/target/release
 
 ### Tests
 
-Plain `node` scripts, no framework. `npm run check` (the `build` gate) runs the
-two that need nothing but the repo:
+Plain `node` scripts, no framework. `npm test` runs every device-free suite in
+order and stops on the first failure (the `build` gate runs `npm run check`,
+its first half):
 
 | command | needs |
 |---|---|
-| `npm run check` | nothing — device-knowledge scan + settings model |
+| `node test/check-device-knowledge.mjs` | nothing |
+| `node test/check-registry-pins.mjs` | nothing |
+| `node test/settings-model.test.mjs` | nothing |
+| `node test/plugins.test.mjs` | nothing — plugin host, no device, no browser |
 | `node test/valence-wire.test.mjs` | nothing — golden bytes + the catalog fixture |
 | `node test/telebuf-sim.mjs` | nothing — the T18 timeline regression |
-| `npm run check:shell` / `check:dash` | Playwright (bundled), no device |
-| `node test/valence-live.mjs <host>` and friends | a hub at `<host>:82` |
-| `node test/pairing-roundtrip.mjs` | the device twin, `../Nucleus/sim/valencesim` |
 
-`test/fixtures/valencesim-catalog.{bin,etag}` is a byte copy of Valence's own
-(`../Valence/clients/js/test/fixtures/`) — a real hub's real catalog bytes, so
-the JS SHA-256 is checked against the C++ one. Never hand-edit it; re-copy it.
+`npm run test:browser` runs the Playwright suites, still with no device:
+
+| command | needs |
+|---|---|
+| `npm run check:shell` | Playwright (bundled), no device |
+| `npm run check:dash` | Playwright (bundled), no device |
+| `npm run check:responsive` | Playwright (bundled), no device |
+
+Everything below is a live probe or bench script, run by hand and never part
+of `npm test`. None of them carry a baked default host any more (ph-vdk.21) —
+name the hub every time.
+
+| command | needs |
+|---|---|
+| `node test/valence-live.mjs --ip <host> [--port 82]` | a hub at `<host>:82` |
+| `node test/valence-auth.mjs --ip <host> [--port 82]` | a hub at `<host>:82` |
+| `node test/valence-modes.mjs <host>` | a hub at `<host>:82` — fails against valencesim today (Nucleus val-091.11, motion writes) |
+| `node test/valence-tuning.mjs <host>` | a hub at `<host>:82` — fails against valencesim today (val-091.12, pattern engine) |
+| `node test/valence-writeplane.mjs <host> [port]` | a hub at `<host>:82` |
+| `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves |
+| `node test/model-vs-device.mjs <host>` | a hub at `<host>:82` |
+| `node test/position-jitter-probe.mjs <host> ...` | a hub at `<host>:82`, commands real moves |
+| `node test/streamed-outlier-probe.mjs <host> [durationMs]` | a hub at `<host>:82`, commands real moves |
+| `node test/rail-probe.mjs <host>` | a hub at `<host>:82`, machine already moving |
+| `node test/wire-forensics.mjs <host>` | a hub at `<host>:82`, machine already moving |
+| `node test/render-vs-samplerate-probe.mjs` | pre-captured `test/evidence/trace-{30,25}hz.json`, produced by `position-jitter-probe.mjs` against a live hub |
+| `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser |
+| `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser |
+| `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
+| `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser — not a Valence hub |
+| `node test/valence-sim.mjs [--host] [--port]` | the device twin, `../Nucleus/sim/valencesim/build/valencesim.exe` — fails today (val-091.11/.12) |
+| `node test/pairing-roundtrip.mjs` | the device twin, `../Nucleus/sim/valencesim/build/valencesim.exe` |
+
+`test/fixtures/valencesim-catalog.{bin,etag}` is captured from the device
+twin, not hand-copied from Valence: build `../Nucleus/sim/valencesim` (its own
+README has the recipe), run it, then `node test/valence-sim.mjs` — its last
+step writes both files from that session's real BLOB_CHUNK bytes and the etag
+the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
 
 ## Its relatives
 
@@ -72,6 +108,8 @@ the JS SHA-256 is checked against the C++ one. Never hand-edit it; re-copy it.
 Both must sit beside this repo in the same parent directory. There is no
 package, no pin and no vendored copy: Phosphor tracks the sibling working tree,
 which is the point during development.
+
+Tier-2 plugins (shell-loaded, plus a dev-only `?plugin=` path): [docs/PLUGINS.md](docs/PLUGINS.md).
 
 Carved out of the archived `SlopDrive-32` machine repo (`webui/`), where it was
 called SlopDeck. Doctrine lives in `.claude/rules/`; volatile truth lives on the

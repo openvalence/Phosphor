@@ -13,7 +13,8 @@
  */
 import { createSession, CH, PRIORITY } from '../../Valence/clients/js/index.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/wire-forensics.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const samples = [];

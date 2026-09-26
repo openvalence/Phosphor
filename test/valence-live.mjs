@@ -7,7 +7,7 @@
  * Valence field bug #3: source-ownership teardown must survive same-instance
  * re-HELLO without a reboot between runs).
  *
- * Run:  node test/valence-live.mjs [--ip 192.168.1.229] [--port 82]
+ * Run:  node test/valence-live.mjs --ip <host> [--port 82]
  * Uses node's built-in WebSocket (node ≥22). Exits 1 on any failure.
  */
 
@@ -15,7 +15,8 @@ import { createSession, CH, PRIORITY, nackName } from '../../Valence/clients/js/
 
 const args = process.argv.slice(2);
 function argOf(flag, def) { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : def; }
-const IP = argOf('--ip', '192.168.1.229');
+const IP = argOf('--ip', null);
+if (!IP) { console.error('usage: node test/valence-live.mjs --ip <host> [--port 82] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(argOf('--port', '82'), 10);
 
 if (typeof WebSocket === 'undefined') {

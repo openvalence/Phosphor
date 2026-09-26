@@ -55,7 +55,8 @@ import { buildSettingsModel } from '../src/model/settings.js';
 import { claimRoles, ROLE } from '../src/model/roles.js';
 import { writeFileSync } from 'node:fs';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/position-jitter-probe.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 const POS_HZ_ARG = process.argv[4] != null && process.argv[4] !== '' ? parseFloat(process.argv[4]) : null;
 const MODE = process.argv[5] || 'full';

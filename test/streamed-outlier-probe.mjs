@@ -56,7 +56,8 @@ import { claimRoles, ROLE } from '../src/model/roles.js';
 import { createTelebuf, createRenderClock } from '../src/ui/hero/telebuf.js';
 import { writeFileSync } from 'node:fs';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/streamed-outlier-probe.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = 82;
 const DURATION_MS = parseInt(process.argv[3] || '20000', 10);
 const TELEMETRY_HZ = 25; // production policy (machine.svelte.js)

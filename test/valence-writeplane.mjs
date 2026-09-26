@@ -14,15 +14,15 @@
  * 0x3200 pattern-cmd, 0x3101 home, or 0x0005 safety intents. The machine is
  * unhomed + latched STOP; window config is not motion and is restored.
  *
- * Run:  node test/valence-writeplane.mjs           (exits 1 on any failure)
- *       node test/valence-writeplane.mjs 192.168.1.229 82
+ * Run:  node test/valence-writeplane.mjs <host> [port]   (exits 1 on any failure)
  */
 
 import { createSession, CH } from '../../Valence/clients/js/index.js';
 import { PRIORITY } from '../../Valence/clients/js/frames.js';
 import { acquireToken } from '../../Valence/clients/js/credentials.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/valence-writeplane.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 
 let failures = 0;

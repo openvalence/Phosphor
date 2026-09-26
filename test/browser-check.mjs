@@ -38,7 +38,8 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/browser-check.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PAGE_URL = 'http://' + HOST + '/';
 const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
 mkdirSync(OUT, { recursive: true });

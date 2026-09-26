@@ -24,7 +24,8 @@ import { createSession } from '../../Valence/clients/js/index.js';
 import { PRIORITY } from '../../Valence/clients/js/frames.js';
 import { acquireToken } from '../../Valence/clients/js/credentials.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/valence-tuning.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 
 const CH_LIMITS = 0x1120, CH_CHASE = 0x1121, CH_WAVE = 0x1122;

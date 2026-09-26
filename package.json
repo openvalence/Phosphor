@@ -8,12 +8,16 @@
     "build": "npm run check && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "check": "node test/check-device-knowledge.mjs && node test/check-registry-pins.mjs && node test/settings-model.test.mjs",
+    "check": "node test/check-device-knowledge.mjs && node test/check-registry-pins.mjs && node test/settings-model.test.mjs && node test/plugins.test.mjs",
     "check:generic": "node test/check-device-knowledge.mjs",
     "check:pins": "node test/check-registry-pins.mjs",
     "check:model": "node test/settings-model.test.mjs",
+    "check:plugins": "node test/plugins.test.mjs",
     "check:shell": "node test/shell-chrome-geometry.test.mjs",
     "check:dash": "node test/dash-measure.test.mjs",
+    "check:responsive": "node test/responsive-matrix.mjs",
+    "test": "npm run check && node test/valence-wire.test.mjs && node test/telebuf-sim.mjs",
+    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive",
     "tauri": "tauri"
   },
   "devDependencies": {

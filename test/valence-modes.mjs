@@ -26,7 +26,8 @@ import { createSession, CH } from '../../Valence/clients/js/index.js';
 import { PRIORITY } from '../../Valence/clients/js/frames.js';
 import { acquireToken } from '../../Valence/clients/js/credentials.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/valence-modes.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 
 let failures = 0;

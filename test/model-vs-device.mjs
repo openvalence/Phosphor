@@ -21,7 +21,8 @@ import { acquireToken } from '../../Valence/clients/js/credentials.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { claimRoles, ROLE } from '../src/model/roles.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/model-vs-device.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 
 const s = createSession({

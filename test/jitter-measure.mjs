@@ -9,7 +9,8 @@
  */
 import { chromium } from 'playwright';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/jitter-measure.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const DURATION_MS = parseInt(process.argv[3] || '8000', 10);
 const PAGE_URL = 'http://' + HOST + '/';
 

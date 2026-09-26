@@ -15,7 +15,7 @@
  *
  * Read-only: no intents, no motion, nothing written to the device.
  *
- * Run:  node test/valence-auth.mjs [--ip 192.168.1.229] [--port 82]
+ * Run:  node test/valence-auth.mjs --ip <host> [--port 82]
  */
 
 import { createSession, ACCESS, ACCESS_NAME } from '../../Valence/clients/js/index.js';
@@ -24,7 +24,8 @@ import { getInstanceId } from '../../Valence/clients/js/identity.js';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
-const IP = argOf('--ip', '192.168.1.229');
+const IP = argOf('--ip', null);
+if (!IP) { console.error('usage: node test/valence-auth.mjs --ip <host> [--port 82] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(argOf('--port', '82'), 10);
 // Which posture are we asserting? Pre-flip, validateToken() returns control
 // unconditionally, so a tokenless HELLO and a replayed token BOTH come back

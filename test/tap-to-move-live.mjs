@@ -29,7 +29,8 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createSession, CH, PRIORITY } from '../../Valence/clients/js/index.js';
 
-const HOST = process.argv[2] || '192.168.1.229';
+const HOST = process.argv[2];
+if (!HOST) { console.error('usage: node test/tap-to-move-live.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PAGE_URL = 'http://' + HOST + '/';
 const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
 mkdirSync(OUT, { recursive: true });
