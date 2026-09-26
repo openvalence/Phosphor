@@ -19,6 +19,7 @@
  */
 
 import { ROLE, claimRoles } from '../model/roles.js';
+import { AXIS_HERO_SPEC } from '../model/roles.js';
 import RailWidget from './hero/RailWidget.svelte';
 import PatternWidget from './hero/PatternWidget.svelte';
 import LimitsWidget from './hero/LimitsWidget.svelte';
@@ -26,9 +27,10 @@ import LimitsWidget from './hero/LimitsWidget.svelte';
 /**
  * Registered heroes, in render order.
  *
- * `require` roles must ALL resolve or the hero declines entirely — a rail that
- * knows its window but not its position would draw a carriage that is always
- * at zero, which is worse than no rail at all.
+ * `require` roles must ALL resolve, and each `requireOne` list at least one,
+ * or the hero declines entirely (RENDERING §13 law 7) — a rail that knows its
+ * window but not its position would draw a carriage that is always at zero,
+ * which is worse than no rail at all.
  *
  * `zone` decides where App.svelte puts a claimed hero:
  *   'instrument' — pinned chrome in the hero strip (never scrolls away with a
@@ -41,24 +43,9 @@ const HEROES = [
     id: 'rail',
     zone: 'instrument',
     component: RailWidget,
-    spec: {
-      require: { min: ROLE.windowMin, max: ROLE.windowMax },
-      // `move` (RFC-032 command.position) and `target` (telemetry.target) are
-      // both optional: a machine with only the window roles still gets a
-      // correct, read-only window editor. Only when BOTH are present does
-      // the input tape become a live command surface (see RailWidget).
-      optional: {
-        pos: ROLE.telemetryPosition, vel: ROLE.telemetryVelocity,
-        move: ROLE.commandPosition, target: ROLE.telemetryTarget,
-        // RFC-041: the machine's ACTUAL travel extent, as opposed to
-        // window.min/window.max's own static catalog bounds (see
-        // RailWidget's `hi` derivation for why those are the wrong source).
-        // Absent on any hub that has not tagged these roles yet — the rail
-        // falls back to the window fields' bounds exactly as it does today.
-        extentMeasured: ROLE.geometryMeasuredTravel,
-        extentMax: ROLE.geometryMaxTravel,
-      },
-    },
+    // Only when BOTH `move` and `target` resolve does the input tape become a
+    // live command surface (see RailWidget).
+    spec: AXIS_HERO_SPEC,
   },
   {
     id: 'pattern',

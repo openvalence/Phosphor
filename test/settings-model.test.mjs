@@ -18,7 +18,7 @@
 import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, unclaimedHeroFields,
 } from '../src/model/settings.js';
-import { claimRoles, withoutClaimed, ROLE } from '../src/model/roles.js';
+import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor } from '../src/model/format.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag } from '../src/model/actions.js';
 import {
@@ -59,6 +59,7 @@ const CATALOG = [
         provenanceName: 'planned', rank: UI_RANK.hero,
       }),
       lf('carriage_rate', PACKED.i16, { unit: 'mm/s', scale: 10, role: ROLE.telemetryVelocity }),
+      lf('carriage_goal', PACKED.u16, { unit: 'mm', scale: 100, role: ROLE.telemetryTarget }),
     ],
     schema: null,
   },
@@ -299,13 +300,24 @@ ok('a non-action schema field is NOT an action',
    !model.actions.some((a) => a.name === 'travel_lo'));
 
 // ---- claim: heroes claim by role, and decline when roles are absent -------
-const railClaim = claimRoles(model.byRole, {
-  require: { min: ROLE.windowMin, max: ROLE.windowMax },
-  optional: { pos: ROLE.telemetryPosition, vel: ROLE.telemetryVelocity },
-});
+const railClaim = claimRoles(model.byRole, AXIS_HERO_SPEC);
 ok('rail hero claims this unknown machine\'s window by ROLE', !!railClaim);
 ok('and binds to fields whose names it could not have known',
    railClaim && railClaim.min.name === 'travel_lo' && railClaim.pos.name === 'carriage_mm');
+
+// Law 7: the axis hero needs window + position + a commanded side, or nothing.
+{
+  const without = (...drop) => buildSettingsModel(CATALOG.map((e) => ({
+    ...e, layout: e.layout && e.layout.filter((f) => !drop.includes(f.role)),
+  }))).byRole;
+  ok('a window-only hub gets no axis hero',
+     claimRoles(without(ROLE.telemetryPosition, ROLE.telemetryTarget), AXIS_HERO_SPEC) === null);
+  ok('window + position with no commanded side still declines',
+     claimRoles(without(ROLE.telemetryTarget), AXIS_HERO_SPEC) === null);
+  ok('the commanded side may be command.position instead of telemetry.target',
+     !!claimRoles(new Map([...without(ROLE.telemetryTarget),
+       [ROLE.commandPosition, [{ uid: 'x:1', role: ROLE.commandPosition }]]]), AXIS_HERO_SPEC));
+}
 
 const patternClaim = claimRoles(model.byRole, {
   require: { running: ROLE.patternRunning, select: ROLE.patternSelect },

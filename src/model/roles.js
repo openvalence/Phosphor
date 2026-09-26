@@ -197,7 +197,8 @@ export function isPeakRole(role) {
  *
  * A claim spec looks like:
  *   { require: { min: ROLE.windowMin, max: ROLE.windowMax },
- *     optional: { pos: ROLE.telemetryPosition } }
+ *     optional: { pos: ROLE.telemetryPosition, move: ROLE.commandPosition },
+ *     requireOne: [['pos', 'move']] }
  *
  * Returns null if ANY required role is missing — the caller then renders
  * nothing bespoke and the generic path picks the fields up as normal controls.
@@ -235,8 +236,31 @@ export function claimRoles(byRole, spec) {
       out[name] = null;
     }
   }
+  // Law 7: each `requireOne` list names optional keys of which at least one
+  // must resolve, or the hero declines like any unmet requirement.
+  for (const keys of spec.requireOne || []) {
+    if (!keys.some((k) => out[k])) return null;
+  }
   return out;
 }
+
+/**
+ * RENDERING §10 `axis-hero`: window, live position, and the commanded side of
+ * the §8.4 overlay (telemetry.target or command.position). Anything less
+ * declines (law 7); the window fields then render as Tier-0 controls.
+ */
+export const AXIS_HERO_SPEC = {
+  require: { min: ROLE.windowMin, max: ROLE.windowMax, pos: ROLE.telemetryPosition },
+  requireOne: [['move', 'target']],
+  optional: {
+    vel: ROLE.telemetryVelocity,
+    move: ROLE.commandPosition, target: ROLE.telemetryTarget,
+    // RFC-041 travel extent; absent means the rail falls back to the window
+    // fields' own bounds.
+    extentMeasured: ROLE.geometryMeasuredTravel,
+    extentMax: ROLE.geometryMaxTravel,
+  },
+};
 
 /**
  * Remove claimed fields from the generic settings tree.
