@@ -73,9 +73,13 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 // ---- the fake hub ---------------------------------------------------------
-function safetyEdge(kind, word) {
-  return cbMap([[K.event_kind, cbUint(kind)],
-    [K.body, cbMap([[1, cbUint(word)], [2, cbUint(1)], [3, cbUint(7)], [4, cbUint(1)]])]]);
+// `seq` is the registry-global seq_of_state (34) when given -- ph-vdk.14's
+// reconciliation key, distinct from the device-schema body fields below it.
+function safetyEdge(kind, word, seq) {
+  const top = [[K.event_kind, cbUint(kind)]];
+  if (seq != null) top.push([K.seq_of_state, cbUint(seq)]);
+  top.push([K.body, cbMap([[1, cbUint(word)], [2, cbUint(1)], [3, cbUint(7)], [4, cbUint(1)]])]);
+  return cbMap(top);
 }
 function hubFor(cat, wire) {
   return (ws) => {
@@ -247,6 +251,42 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const stale = await line.evaluate((el) => el.classList.contains('stale') && /stale/.test(el.textContent)
     && parseFloat(getComputedStyle(el).opacity) < 1);
   ok(tag + ': the edge dims and says stale once the link drops', stale);
+  await ctx.close();
+}
+
+// ---- ph-vdk.14: safety-events reconciled against the 0x0003 latch ---------
+{
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'none' });
+  const send = (type, ch, payload) => { try { wire.socket.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
+
+  // Two edges delivered in ARRIVAL order but out of SEQ order: a resend or a
+  // relay hop can still land a stale edge after a fresher one.
+  send(FRAME.EVENT, CORE_CHANNEL.safety_events, safetyEdge(SAFETY_EVENT_KIND.estop_latched, 1, 5));
+  await page.waitForTimeout(150);
+  send(FRAME.EVENT, CORE_CHANNEL.safety_events, safetyEdge(SAFETY_EVENT_KIND.estop_cleared, 0, 3));
+  await page.waitForTimeout(150);
+  await page.click('.safetydock .evline');
+  await page.waitForTimeout(150);
+  const rows = page.locator('.logpane .feed .line');
+  ok('reconciliation: the feed holds both edges', await rows.count() === 2, String(await rows.count()));
+  const supersededRows = page.locator('.logpane .feed .line.superseded');
+  ok('reconciliation: the older-seq edge is marked superseded', await supersededRows.count() === 1, String(await supersededRows.count()));
+  const acceptedText = await rows.nth(0).textContent();
+  ok('reconciliation: the higher-seq edge (received first) is not superseded',
+    !(await rows.nth(0).evaluate((el) => el.classList.contains('superseded'))), acceptedText.trim());
+
+  // The latch changes -- two different 9-byte `safety` STATE snapshots, the
+  // second an adoption baseline that will not count as a real value change,
+  // the third and fourth what the bead means by a transition -- with no
+  // matching edge on 0x000E at all: a diagnostic, never a fabricated event.
+  send(FRAME.STATE, CORE_CHANNEL.safety, new Uint8Array(9));
+  await page.waitForTimeout(100);
+  send(FRAME.STATE, CORE_CHANNEL.safety, new Uint8Array(9).fill(1));
+  await page.waitForTimeout(600);
+  const diagLine = page.locator('.logpane .feed .line.diag');
+  const diagText = await diagLine.textContent().catch(() => '');
+  ok('reconciliation: a latch change with no edge shows the diagnostic line',
+    /latch changed, no event received/.test(diagText), JSON.stringify(diagText.trim()));
   await ctx.close();
 }
 

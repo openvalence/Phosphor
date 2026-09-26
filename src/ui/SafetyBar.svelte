@@ -121,7 +121,12 @@
   // later edges may have been missed, so the line is history, not state.
   // TODO(rfc-x3n): add the device anomaly log once the catalog can say which
   // device EVENT channel it is.
-  const latestSafety = $derived(machine.events.safety[machine.events.safety.length - 1] || null);
+  // ph-vdk.14: a synthesized `diagnostic` record (the client noticing a gap,
+  // never device data) is feed-only -- the dock's one-line summary shows the
+  // latest real edge.
+  const latestSafety = $derived(
+    machine.events.safety.findLast((e) => !e.diagnostic) || null
+  );
   const unreadSafety = $derived(machine.events.safety.filter((e) => e.at > logView.safetySeenAt).length);
   const safetyStale = $derived(!!latestSafety && (machine.link.phase !== 'live' || machine.link.stale
     || latestSafety.at < machine.link.openedAt));

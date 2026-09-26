@@ -186,6 +186,25 @@ let session = null;
 let _host = '';
 let _lastOpts = {};
 
+/**
+ * ph-vdk.14: reconciling the safety-events (0x000E) history against the
+ * safety (0x0003) latch via `seq_of_state`, without ever reading a device
+ * catalog field name (RENDERING §13 law 6; also what keeps this off
+ * check-device-knowledge.mjs's list -- the latch's own packed fields, e.g.
+ * its per-INITIATION sequence counter, are THIS device's schema, not
+ * registry vocabulary). `seqOfState` (registry global key 34) is the one
+ * comparable number a client actually has, so "the current STATE seq" is
+ * tracked as the highest seqOfState any accepted edge has carried -- an edge
+ * older than that already-seen value is superseded by construction.
+ * `safetyLastLatch` is compared OPAQUELY (never by field) purely to notice
+ * THAT the snapshot changed, for the separate no-edge-received diagnostic.
+ * Reset in forgetDevice(); untouched by an in-place reconnect, matching the
+ * events ring it feeds.
+ */
+let safetyMaxSeq = -1;
+let safetyLastLatch;
+let safetyEdgeSeen = false;
+
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
   return session;
@@ -540,6 +559,26 @@ export function connect(opts = {}) {
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
     machine.stats.lastRxMs = Date.now();
+
+    // ph-vdk.14: did the safety latch actually change, with nothing on its
+    // EVENT twin (0x000E) to say so? Compared OPAQUELY -- this never reads a
+    // field, only asks whether the snapshot differs from the last one.
+    if (channelId === CORE_CHANNEL.safety) {
+      const prev = safetyLastLatch;
+      safetyLastLatch = sample;
+      const changed = prev !== undefined && JSON.stringify(sample) !== JSON.stringify(prev);
+      if (changed) {
+        safetyEdgeSeen = false;
+        // ponytail: a fixed grace window, not a real join with the edge that
+        // may still be in flight on the same wire. Generous against ordinary
+        // jitter; a hub that reliably reorders its own STATE/EVENT pair would
+        // need a real correlation id instead of this timer.
+        setTimeout(() => {
+          if (session !== s) return;   // this session has since been torn down
+          if (!safetyEdgeSeen) push(machine.events.safety, { diagnostic: true, at: Date.now() }, SAFETY_MAX);
+        }, 250);
+      }
+    }
   });
 
   session.on('event', (evt) => {
@@ -551,7 +590,18 @@ export function connect(opts = {}) {
     const name = entry ? entry.name : ('channel ' + evt.channel);
     const rec = { ...evt, channelName: name, at: Date.now() };
     if (evt.channel === CORE_CHANNEL.log) push(machine.events.log, rec, LOG_MAX);
-    else if (evt.channel === CORE_CHANNEL.safety_events) push(machine.events.safety, rec, SAFETY_MAX);
+    else if (evt.channel === CORE_CHANNEL.safety_events) {
+      // ph-vdk.14: an edge older than the newest one already accepted is
+      // superseded -- it describes a 0x0003 frame a later edge has already
+      // moved past. A hub that omits seq_of_state gets no verdict either way
+      // (Ground Truth: absence of the number is not evidence of staleness).
+      if (rec.seqOfState != null) {
+        rec.superseded = rec.seqOfState < safetyMaxSeq;
+        if (!rec.superseded) safetyMaxSeq = rec.seqOfState;
+      }
+      safetyEdgeSeen = true;
+      push(machine.events.safety, rec, SAFETY_MAX);
+    }
     else if (evt.channel in CORE_CHANNEL_NAME) push(machine.events.session, rec, EVT_MAX);
     // TODO(rfc-x3n): no catalog key says which device EVENT channel is the
     // anomaly log, so every device-tier EVENT shares this ring.
@@ -669,6 +719,9 @@ function forgetDevice() {
   machine.link.hubIdentity = null;
   machine.link.limits = {};
   machine.link.subsDropped = 0;
+  safetyMaxSeq = -1;
+  safetyLastLatch = undefined;
+  safetyEdgeSeen = false;
 }
 
 /** Tear down (used by tests and by the Tauri shell on host change). */

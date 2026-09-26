@@ -39,6 +39,14 @@
   });
   const currentList = $derived(lists[tab] || []);
 
+  // ph-vdk.37: per-tab empty copy, not one generic placeholder for all four.
+  const EMPTY_TEXT = {
+    log: 'No log lines yet.',
+    anomaly: 'No device events yet.',
+    safety: 'No safety events yet -- the latch has not changed this session.',
+    session: 'No session events yet.',
+  };
+
   // ---- generic body decoding -----------------------------------------------
 
   function invert(obj) {
@@ -75,7 +83,9 @@
 
   /** Every top-level field of an event object, generically, for the session tab. */
   function topFields(evt) {
-    const skip = new Set(['at', 'channelName', 'channel', 'body']);
+    // `superseded` is a locally-derived reconciliation flag (ph-vdk.14), not
+    // a wire field; the safety tab renders it as its own dedicated chip.
+    const skip = new Set(['at', 'channelName', 'channel', 'body', 'superseded']);
     const kindMap = evt.channel != null ? KIND_NAMES[evt.channel] : null;
     const out = [];
     for (const k of Object.keys(evt)) {
@@ -140,7 +150,7 @@
 
   <div class="feed og-screen" bind:this={containerEl} onscroll={onScroll} role="log" aria-live="polite">
     {#if !currentList.length}
-      <p class="empty">Nothing yet.</p>
+      <p class="empty">{EMPTY_TEXT[tab] || 'Nothing yet.'}</p>
     {:else if tab === 'log'}
       {#each currentList as evt, i (i + '-' + evt.at)}
         {@const fields = bodyFields(evt)}
@@ -165,6 +175,29 @@
           <span class="text">{evt.channelName || ('channel ' + evt.channel)}</span>
           {#each fields as f}<span class="kv">{f.key}={f.display}</span>{/each}
         </div>
+      {/each}
+    {:else if tab === 'safety'}
+      <!-- ph-vdk.14: reconciled against the 0x0003 latch via seq_of_state
+           (machine.svelte.js). A `diagnostic` record is synthesized locally
+           (Ground Truth: it states that the client noticed a gap, never a
+           value the device did not send) when the latch changed with no
+           matching edge; a `superseded` edge is a real device record that
+           arrived out of order. -->
+      {#each currentList as evt, i (i + '-' + evt.at)}
+        {#if evt.diagnostic}
+          <div class="line diag">
+            <time class="mono">{timeOf(evt)}</time>
+            <span class="text">latch changed, no event received</span>
+          </div>
+        {:else}
+          {@const fields = topFields(evt)}
+          <div class="line" class:superseded={evt.superseded}>
+            <time class="mono">{timeOf(evt)}</time>
+            <span class="text">{evt.channelName || ('channel ' + evt.channel)}</span>
+            {#each fields as f}<span class="kv">{f.key}={f.display}</span>{/each}
+            {#if evt.superseded}<span class="chip">superseded</span>{/if}
+          </div>
+        {/if}
       {/each}
     {:else}
       {#each currentList as evt, i (i + '-' + evt.at)}
@@ -251,6 +284,11 @@
   }
   .line.lvl-warn .text { color: var(--warn); }
   .line.lvl-error .text { color: var(--bad); }
+  /* Reconciliation states (ph-vdk.14), neither a hazard: an out-of-order
+     edge dims like SafetyBar's own .stale; a synthesized diagnostic (no
+     device data, just a gap the client noticed) reads as muted italic. */
+  .line.superseded { opacity: .55; }
+  .line.diag .text { color: var(--ink-faint); font-style: italic; }
 
   .chip {
     font-size: 11px;
