@@ -10,16 +10,18 @@
  *   (c) the API object a plugin gets has no session/socket/transport handle,
  *       and its gated methods refuse undeclared permissions;
  *   (d) the TCode parser maps L0 lines to normalized samples, and a line
- *       arriving over the (fake) listener reaches submitMotion.
+ *       arriving over the (fake) listener reaches submitMotion;
+ *   (e) submitMotion's router sends a samples STREAM when the catalog has one
+ *       and the hub grants it, and the command.position setpoint otherwise.
  *
  * Run: node test/plugins.test.mjs
  */
 
 import { readFileSync } from 'node:fs';
-import { decodeCatalog } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue } from '../src/model/settings.js';
 import { ROLE, claimAll } from '../src/model/roles.js';
-import { motionTarget } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor } from '../src/model/motion.js';
 import { createPluginHost, validateManifest } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
@@ -195,7 +197,7 @@ console.log('(d) TCode adapter');
   await new Promise((r) => setTimeout(r, 0));
   ok('adapter listens on the manifest port (8000)', onLine && onLine.port === 8000);
   onLine.fn('L0250I200');
-  ok('a TCP line reaches submitMotion as (0.25, 200)', eq(calls.motion, [[0.25, 200]]));
+  ok('a TCP line reaches submitMotion with its duration, (0.25, 200)', eq(calls.motion, [[0.25, 200]]));
   host.setEnabled('tcode-adapter', false);
   ok('disabling closes the listener', closed >= 1);
 }
@@ -213,6 +215,82 @@ console.log('motion target');
   const r = motionTarget(model, samples, 0.25);
   ok('0.25 of a 20..120 window -> 45', r.field && r.field.role === ROLE.commandPosition && r.value === 45, String(r.value));
   ok('input is clamped to the window', motionTarget(model, samples, 7).value === 120);
+}
+
+// ---- (e) the motion door: STREAM when granted, setpoint otherwise ----------
+console.log('(e) motion door routing');
+{
+  // Synthetic hub: names deliberately unlike any device's, so only class,
+  // direction, stream_kind, role and unit can find the fields.
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const lay = (name, extra) => ({ name, type: 2, typeName: 'u16', scale: 10000, unitId: null, ...extra });
+  const stream = (layout, kind = STREAM_KIND.samples) => ({
+    id: 0x7000, cls: CHANNEL_CLASS.STREAM, dirName: 'c2h', streamKind: kind, maxRateHz: 100, layout,
+  });
+  function fakeSession({ grant = true } = {}) {
+    const s = {
+      sent: [], asked: [],
+      state: { sessionId: 1, grantedPublishes: new Map() },
+      hubNowUs: () => 1_000_000,
+      publish(w) {
+        s.asked.push(w);
+        if (grant) s.state.grantedPublishes.set(w[0][0], { channel: w[0][0], rate: w[0][1] });
+        return Promise.resolve(grant ? [{ channel: w[0][0], rate: w[0][1] }] : []);
+      },
+      publishSamples(ch, sample, o) { s.sent.push({ ch, sample, anchor: o.anchor }); return { seq: 0, n: 1 }; },
+    };
+    return s;
+  }
+  function door(entries, s) {
+    const out = { set: [], log: [] };
+    const d = createMotionDoor({
+      session: () => s, entries: () => entries,
+      setpoint: (n) => { out.set.push(n); return { ok: true }; },
+      log: (level, msg) => out.log.push({ level, msg }),
+    });
+    return { d, out };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  const s1 = fakeSession();
+  const e1 = [stream([lay('a', { unitId: UNIT_ID.normalized }), lay('b', { type: 3, typeName: 'i16', scale: 1000 })])];
+  const { d: d1, out: o1 } = door(e1, s1);
+  const first = d1(0.25, 200);
+  ok('first input asks for the grant lazily and is held, not sent as a setpoint',
+    !first.ok && s1.asked.length === 1 && s1.asked[0][0][0] === 0x7000 && s1.asked[0][0][1] === 100 && o1.set.length === 0);
+  await tick();
+  ok('granted: input rides publishSamples', d1(0.25, 200).ok && s1.sent.length === 1 && s1.sent[0].ch === 0x7000);
+  ok('target by unit fallback carries the norm, other fields 0', eq(s1.sent[0].sample, { a: 0.25, b: 0 }));
+  ok('duration becomes the anchor lead (hubNow + 200 ms)', s1.sent[0].anchor === 1_200_000);
+  d1(0.5);
+  ok('no duration: anchored at hubNow', s1.sent[1].anchor === 1_000_000);
+  d1(2, 5000);
+  ok('norm clamped to 1, lead capped at max_future_schedule_ms',
+    s1.sent[2].sample.a === 1 && s1.sent[2].anchor === 1_000_000 + LIMITS.max_future_schedule_ms * 1000);
+  ok('the live path is logged once', o1.log.filter((l) => /samples STREAM/.test(l.msg)).length === 1);
+
+  const e2 = [stream([lay('x', { unitId: UNIT_ID.normalized }), lay('y', { unitId: UNIT_ID.normalized, role: 'input.target' })])];
+  const s2 = fakeSession();
+  const { d: d2 } = door(e2, s2);
+  d2(0.4); await tick(); d2(0.4, 20);
+  ok('role input.target outranks the unit fallback', eq(s2.sent[0].sample, { x: 0, y: 0.4 }));
+
+  s2.publishSamples = () => { throw new PublishError('RATE_EXCEEDED', 0x7000, 'too fast'); };
+  const { d: d2b, out: o2b } = door(e2, s2);
+  const r1 = d2b(0.4, 20);
+  d2b(0.4, 20);
+  ok('a PublishError returns its code and is logged once per code',
+    !r1.ok && r1.reason === 'RATE_EXCEEDED' && o2b.log.filter((l) => /RATE_EXCEEDED/.test(l.msg)).length === 1);
+
+  const { d: d3, out: o3 } = door([stream([lay('a', { unitId: UNIT_ID.normalized })], STREAM_KIND.segments)], fakeSession());
+  ok('no samples-kind STREAM: setpoint path, logged', d3(0.3, 100).ok && eq(o3.set, [0.3]) && /setpoint/.test(o3.log[0].msg));
+
+  const s4 = fakeSession({ grant: false });
+  const { d: d4, out: o4 } = door(e1, s4);
+  d4(0.3); await tick();
+  ok('hub grants nothing: setpoint path, logged', d4(0.6).ok && eq(o4.set, [0.6]) && /publish refused/.test(o4.log[0].msg));
+  d4(0.7);
+  ok('a refusal is asked once per session', s4.asked.length === 1);
 }
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');

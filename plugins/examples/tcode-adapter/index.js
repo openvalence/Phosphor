@@ -6,8 +6,9 @@
 //   motion input through api.submitMotion, i.e. the model's intent path.
 // - TCode timing is arrival-relative by definition ("reach X over I ms,
 //   starting now"), so arrival time is the correct clock here, unlike a
-//   streamed telemetry timeline. A burst collapses to the latest target at
-//   the model's coalescing rate.
+//   streamed telemetry timeline. The I interval rides along as durationMs;
+//   the model carries it on the hub's motion STREAM when granted, and drops
+//   it on the command.position fallback (docs/PLUGINS.md).
 // - Only the L0 (stroke) axis. Other axes, S (speed) suffixes and device
 //   commands (D*, $*) are ignored, never guessed at.
 // - Port: 8000, the TCode network convention (MultiFunPlayer's default UDP

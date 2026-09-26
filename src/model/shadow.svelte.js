@@ -85,8 +85,8 @@
 import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
-import { motionTarget } from './motion.js';
-import { NACK, NACK_NAME, SAFETY_OP, HOME_OP } from '../../../Valence/clients/js/index.js';
+import { motionTarget, createMotionDoor } from './motion.js';
+import { NACK, NACK_NAME, SAFETY_OP, HOME_OP, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -449,29 +449,40 @@ export function sendCommand(field, value, opts = {}) {
   schedule(field.channelId);
 }
 
+const LOG_LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, name]) => [name, Number(n)]));
+const motionDoor = createMotionDoor({
+  session: getSession,
+  entries: () => machine.catalog.entries,
+  setpoint: (norm) => {
+    const t = motionTarget(machine.catalog.model, machine.samples, norm);
+    if (!t.field) return { ok: false, reason: t.reason };
+    sendCommand(t.field, t.value);
+    return { ok: true };
+  },
+  // Client-side lines ride the device log ring, tagged, the way plugin lines do.
+  log: (level, message) => {
+    const ring = machine.events.log;
+    ring.push({ channel: null, channelName: 'client', at: Date.now(), body: { level: LOG_LEVEL[level], tag: 'motion', message } });
+    if (ring.length > 400) ring.splice(0, ring.length - 400);
+  },
+});
+
 /**
  * Submit a normalized motion input (0..1 across the stroke window) — the
  * model's motion-input door, used by tier-2 adapters (RFC-044 rung 1).
  *
- * Today this rides entry point 3: the target becomes a `command.position`
- * setpoint with the same shadow lifecycle and catalog-rate coalescing as the
- * rail tape, so a burst of inputs collapses to the latest one per interval.
- * `durationMs` is ACCEPTED AND DROPPED: a setpoint carries no deadline, so the
- * hub plans the move from actual state at its point-move ceilings.
- * TODO(ph-vdk.26): route to the motion-segment STREAM
- * ({target, duration}) once the Valence JS client can publish streams; that
- * is the translation RFC-044 names, and it keeps `durationMs`.
+ * Routed by motion.js createMotionDoor: the hub's samples-kind motion STREAM
+ * when this session holds a publish grant for it (asked for on first use),
+ * carrying `durationMs` in the sample's timestamp; otherwise entry point 3, a
+ * `command.position` setpoint that drops `durationMs`. Which path is live, and
+ * every stream refusal, lands in the log pane under the `motion` tag.
  *
  * @param {number} norm 0..1
  * @param {number} [durationMs] the source's requested transit time
  * @returns {{ok: boolean, reason?: string}}
  */
 export function submitMotion(norm, durationMs) {
-  void durationMs;
-  const t = motionTarget(machine.catalog.model, machine.samples, norm);
-  if (!t.field) return { ok: false, reason: t.reason };
-  sendCommand(t.field, t.value);
-  return { ok: true };
+  return motionDoor(norm, durationMs);
 }
 
 // ---------------------------------------------------------------------------

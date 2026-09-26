@@ -78,12 +78,18 @@ The **freeze candidate** rows are what freezes at that trigger; the
 experimental rows may still change until they are promoted by a later
 ruling. Tracked as `ph-vdk.30`.
 
-**Motion input today.** `submitMotion` rides `command.position`: the target
-becomes a setpoint on the machine's move channel, coalesced at that
-channel's advertised rate, and `durationMs` is dropped. The translation
-RFC-044 names (a `{target, duration}` segment on the motion STREAM) waits on
-the Valence JS client learning to publish a stream (Valence `rfc-ts3`,
-Phosphor `ph-vdk.26`). The call signature does not change when it lands.
+**Motion input.** `submitMotion` publishes on the hub's samples-kind c2h
+STREAM when the catalog has one: the grant is asked for on the first call
+(that call returns `{ok: false}` while it is in flight), the target field is
+found by the RFC-071 draft role `input.target` or else by unit `normalized`,
+and `durationMs` becomes the sample's timestamp lead (SPEC §5.4: a sample
+describes an instant, so "reach X over I ms" is the point at now + I, capped
+at `max_future_schedule_ms`). A hub with no such stream, or one that grants
+nothing, gets the `command.position` setpoint instead, coalesced at the move
+channel's rate, with `durationMs` dropped. The live path and every stream
+refusal (with its `PublishError` code) land in the log pane under `motion`.
+Timed segments (`{target, duration, end_velocity}`, SPEC §9.6) are the closer
+fit and wait on RFC-058 ruling what an absent end velocity encodes.
 
 ## Manifest (`manifest.json`, beside the module)
 
@@ -168,7 +174,8 @@ Production builds compile that path out.
   listens on 127.0.0.1:8000 (MultiFunPlayer's default endpoint port; the
   spec pins none, drafted as Valence RFC-061), each line is parsed for `L0`
   (`L0500I100` = 0.5 over 100 ms; other axes, `S` and device commands are
-  ignored) and submitted with `submitMotion`. The hub never sees TCode.
+  ignored) and submitted with `submitMotion`, the `I` interval as its
+  duration. The hub never sees TCode.
 
 ## Testing
 
