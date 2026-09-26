@@ -153,7 +153,9 @@ export function applyTheme(id) {
   if (id === 'custom') injectCustomCss(p);
   if (id === 'phosphor') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = id;
-  try { localStorage.setItem(STORAGE_KEY, id); } catch (e) {}
+  // An unknown id is not persisted over: a plugin theme chosen last session
+  // is unknown at first paint and becomes known when its plugin registers.
+  if (known) { try { localStorage.setItem(STORAGE_KEY, id); } catch (e) {} }
 
   Object.assign(ACCENT, p);
   _cache = {};
@@ -162,6 +164,18 @@ export function applyTheme(id) {
     b.classList.toggle('active', b.dataset.theme === id);
   });
   return p;
+}
+
+/**
+ * Add an accent pair from a theme plugin (plugins/host.js validates it).
+ * Only the two accents are expressible; the chassis and safety colors are not.
+ */
+export function registerTheme(t) {
+  if (THEMES.some(x => x.id === t.id)) return;
+  THEMES.push({ id: t.id, name: t.name, reality: t.reality, intent: t.intent });
+  const el = document.getElementById('themeCss');
+  if (el) el.textContent += cssBlockFor(t.id, derivePalette(t.reality, t.intent));
+  if (currentThemeId() === t.id) applyTheme(t.id);
 }
 
 export function setCustomColors(realityHex, intentHex) {

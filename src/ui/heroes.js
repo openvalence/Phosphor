@@ -18,7 +18,7 @@
  * "opportunities, not requirements" doctrine as executable code.
  */
 
-import { ROLE, claimRoles } from '../model/roles.js';
+import { ROLE, claimAll } from '../model/roles.js';
 import { AXIS_HERO_SPEC } from '../model/roles.js';
 import RailWidget from './hero/RailWidget.svelte';
 import PatternWidget from './hero/PatternWidget.svelte';
@@ -79,20 +79,13 @@ const HEROES = [
 ];
 
 /**
- * Resolve every hero against the live role index.
+ * Resolve every hero against the live role index: the built-ins first, then
+ * whatever tier-2 plugin heroes are active (plugins/plugins.svelte.js).
  *
  * @param {Map<string, Array>} byRole from buildSettingsModel
- * @returns {{widgets: Array<{id, component, fields}>, claimed: Set<string>}}
+ * @param {Array} [extra] plugin heroes, already carrying their component
+ * @returns {{widgets: Array<{id, component, fields, zone}>, claimed: Set<string>}}
  */
-export function heroClaims(byRole) {
-  const widgets = [];
-  const claimed = new Set();
-  if (!byRole) return { widgets, claimed };
-  for (const h of HEROES) {
-    const fields = claimRoles(byRole, h.spec);
-    if (!fields) continue;             // machine lacks the roles: decline
-    widgets.push({ id: h.id, component: h.component, fields, zone: h.zone });
-    for (const uid of fields.claimed) claimed.add(uid);
-  }
-  return { widgets, claimed };
+export function heroClaims(byRole, extra = []) {
+  return claimAll(byRole, [...HEROES, ...extra]);
 }

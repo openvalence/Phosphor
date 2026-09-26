@@ -263,6 +263,31 @@ export const AXIS_HERO_SPEC = {
 };
 
 /**
+ * Resolve an ordered list of hero specs against the live role index. The ONE
+ * claim loop: built-in heroes (heroes.js) and tier-2 plugin heroes
+ * (plugins/host.js) both pass through here, so a plugin claims exactly the
+ * way a built-in does. Each hero's own fields are returned alongside it.
+ *
+ * @param {Map<string, Array>} byRole from buildSettingsModel
+ * @param {Array<{spec: Object}>} heroes in render order
+ * @returns {{widgets: Array, claimed: Set<string>}}
+ */
+export function claimAll(byRole, heroes) {
+  const widgets = [];
+  const claimed = new Set();
+  if (!byRole) return { widgets, claimed };
+  for (const h of heroes) {
+    const fields = claimRoles(byRole, h.spec);
+    if (!fields) continue;             // machine lacks the roles: decline
+    widgets.push({ ...h, fields });
+    // `absorb: false` is a read-only view: it binds the fields without
+    // taking their controls away from the generic tree.
+    if (h.absorb !== false) for (const uid of fields.claimed) claimed.add(uid);
+  }
+  return { widgets, claimed };
+}
+
+/**
  * Remove claimed fields from the generic settings tree.
  *
  * A field drawn twice — once inside the rail widget and again as a loose
