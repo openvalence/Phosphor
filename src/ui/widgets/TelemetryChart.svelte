@@ -288,6 +288,11 @@
       </div>
     {/if}
   </div>
+{:else}
+  <!-- ph-vdk.37: this card is unconditional in App.svelte's Overview list
+       (machineItems), so a hub with no telemetry-role fields must say so
+       rather than leaving a titled card with nothing under it. -->
+  <p class="empty">No telemetry-role fields on this hub.</p>
 {/if}
 
 <style>
@@ -299,6 +304,12 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .empty {
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    margin: 0;
   }
 
   .tchart-legend {

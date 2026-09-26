@@ -525,7 +525,7 @@ select:focus { outline: none; border-color: var(--reality); }
 /* ---- touch: every control clears the 40px fingertip floor -------------- */
 @media (pointer: coarse) {
   :root { --range-hit: 19px; }
-  .og-btn.sm, .og-seg button, select, .og-switch { min-height: 40px; }
+  .og-btn.sm, .og-seg button, select, .og-switch, .og-num { min-height: 40px; }
 }
 
 /* ---- app frame --------------------------------------------------------- */

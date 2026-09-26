@@ -138,9 +138,13 @@
     .facts { flex-wrap: nowrap; overflow-x: auto; }
   }
 
-  /* Touch: a clickable fact keeps its metrics and gains a 40px hit area. */
+  /* Touch: a clickable fact grows a real 40px hit box. An invisible
+     pseudo-element extension (the usual T24 preference) does not survive
+     here: FootStrip sits flush against the bottom of the desktop `.app`
+     shell (style.css: a fixed-height flex column, `overflow: hidden`), so
+     anything the pseudo-element grows downward is clipped away before it
+     reaches the floor. */
   @media (pointer: coarse) {
-    .fact-btn { position: relative; }
-    .fact-btn::before { content: ''; position: absolute; inset: -12px -4px; }
+    .fact-btn { min-height: 40px; align-items: center; }
   }
 </style>

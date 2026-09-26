@@ -43,11 +43,14 @@
           {#if p.kind}<span class="chip">{p.kind}</span>{/if}
           <span class="chip status-{p.status}">{p.status}</span>
           {#if p.status !== 'invalid'}
-            <label class="toggle">
-              <input type="checkbox" checked={p.status === 'active'}
-                     onchange={(e) => setPluginEnabled(p.name, e.currentTarget.checked)} />
+            <span class="toggle">
+              <label class="og-switch">
+                <input type="checkbox" role="switch" aria-checked={p.status === 'active'} checked={p.status === 'active'}
+                       onchange={(e) => setPluginEnabled(p.name, e.currentTarget.checked)} />
+                <span class="track"></span>
+              </label>
               enabled
-            </label>
+            </span>
           {/if}
         </header>
         {#if p.description}<p>{p.description}</p>{/if}

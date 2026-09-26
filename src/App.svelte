@@ -338,8 +338,23 @@
           <h3 class="drill-title">{drillItem.title}</h3>
           {@render groupCard(drillItem)}
         </section>
-      {:else}
+      {:else if settingItems.length}
         <DashGrid viewId={current.id} items={settingItems} />
+      {:else}
+        <!-- ph-vdk.37: a category can be genuinely empty for THIS hub (no
+             fields survived rank/class projection) rather than broken; say
+             which, using the same counts the advanced/diagnostic toggles
+             below already carry. -->
+        <p class="cat-empty">
+          Nothing to show here yet.
+          {#if visibleGroups.diag}
+            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} {visibleGroups.diag === 1 ? 'is' : 'are'} hidden below.
+          {:else if visibleGroups.hidden}
+            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} {visibleGroups.hidden === 1 ? 'is' : 'are'} hidden below.
+          {:else}
+            This hub has no fields at this rank or class for {current.label}.
+          {/if}
+        </p>
       {/if}
       {#if visibleGroups.hidden || showAdvanced}
         <button class="adv-toggle" type="button" onclick={toggleAdvanced}
@@ -487,6 +502,13 @@
 
   .bare-transport { padding-top: var(--gap); }
 
+  .cat-empty {
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    padding: var(--gap) 0;
+    margin: 0;
+  }
+
   /* ---- desktop frame: rail + pane ----------------------------------------
      The one non-scrolling row of the desktop column (style.css's .app):
      bounded to whatever height is left after LinkBar/hero-strip/FootStrip/
@@ -593,6 +615,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+  }
+
+  /* Touch: a >=960px touch tablet still gets the desktop rail, so its own
+     controls need the fingertip floor same as every other coarse-pointer
+     control (law 12). Grown for real rather than via a hit-area pseudo: both
+     sit inside `.rail`'s scrolling box, where an overflowing pseudo-element
+     would be clipped by the scrollport before it reached 40px. */
+  @media (pointer: coarse) {
+    .rail-collapse { min-width: 40px; min-height: 40px; }
+    .rail-tab { min-height: 40px; }
   }
 
   /* ---- phone: horizontal tab strip ---------------------------------------

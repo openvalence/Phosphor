@@ -28,20 +28,26 @@
   // Same-origin is the only page that can mint a control credential.
   const crossOrigin = $derived(typeof location !== 'undefined' && link.host !== location.hostname);
 
-  // A 4 Hz clock only while a countdown is on screen.
+  // A 4 Hz clock while a countdown OR the catalog-receive elapsed time is on
+  // screen (ph-vdk.37: this component only renders pre-catalog, so 'live'
+  // always means "waiting on the catalog transfer" here).
   let now = $state(Date.now());
   $effect(() => {
-    if (link.phase !== 'retrying' || !link.retryAt) return;
+    if (!((link.phase === 'retrying' && link.retryAt) || link.phase === 'live')) return;
     const t = setInterval(() => { now = Date.now(); }, 250);
     return () => clearInterval(t);
   });
   const waitS = $derived(link.retryAt ? Math.max(0, Math.ceil((link.retryAt - now) / 1000)) : null);
+  // clients/js emits no BLOB progress event for the catalog transfer (ph-vdk.37
+  // note), so there is no byte count to show. Elapsed time is the honest
+  // substitute; a fake percentage is worse than none at all.
+  const receiveS = $derived(link.since ? Math.max(0, Math.floor((now - link.since) / 1000)) : 0);
 
   const down = $derived(link.phase === 'retrying' || link.phase === 'failed');
   const status = $derived.by(() => {
     if (!hub) return 'No hub chosen. This page was opened without one.';
     switch (link.phase) {
-      case 'live': return 'Connected to ' + hub + '. Adopting its catalog…';
+      case 'live': return 'Connected to ' + hub + '. Receiving catalog' + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
       case 'handshaking': return 'Reached ' + hub + '. Handshaking…';
       case 'retrying':
         return 'No link to ' + hub + (link.closeReason ? ' (' + link.closeReason + ')' : '') + '. '

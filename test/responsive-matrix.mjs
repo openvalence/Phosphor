@@ -174,7 +174,11 @@ function fakeHub(ws, hubName = 'Responsive fixture') {
 }
 
 // ---- in-page measurement --------------------------------------------------
-function measure({ phone }) {
+// `coarse` gates the tap-target/reach checks (pointer: coarse, any width: a
+// touch tablet at 960px+ is coarse but not phone); `phone` still gates the
+// page-scroll-specific sticky check. Defaults to `phone` for callers that
+// have not been updated to distinguish the two (scenario checks).
+function measure({ phone, coarse = phone }) {
   const fails = [];
   const vw = window.innerWidth, vh = window.innerHeight;
   const vis = (el) => {
@@ -261,12 +265,13 @@ function measure({ phone }) {
     return vis(el);
   });
 
-  // targets + reach (phones). A hit box is what a finger actually lands on
-  // (T24): after scrolling the control clear, probe 19.5px out from its center
-  // in all four directions with elementFromPoint, so a pseudo-element hit
-  // extension counts and a neighbor stealing the edge does not. Controls in
-  // fixed chrome are not scrolled; their rendered box is the measure.
-  if (phone) {
+  // targets + reach (any coarse pointer, not only phones). A hit box is what
+  // a finger actually lands on (T24): after scrolling the control clear,
+  // probe 19.5px out from its center in all four directions with
+  // elementFromPoint, so a pseudo-element hit extension counts and a
+  // neighbor stealing the edge does not. Controls in fixed chrome are not
+  // scrolled; their rendered box is the measure.
+  if (coarse) {
     const seen = new Map();
     const blocked = new Map();
     const owns = (box, hit) => hit && (box.contains(hit) || (hit.control && box.contains(hit.control)) || hit.contains(box) && hit.matches('label'));
@@ -328,50 +333,64 @@ const table = [];
 let total = 0;
 const pageErrors = [];
 
+// One pass over one viewport/pointer combination. `coarse` (independent of
+// viewport size) drives Playwright's touch emulation, so a >=960px "touch
+// tablet" pass -- the case that has no phone-sized surrogate -- gets a real
+// (pointer: coarse) media match rather than being inferred from width.
+// Screenshots are taken only on the canonical (non-extra) pass: the coarse
+// re-visit exists to run the target check, not to double the evidence dir.
+async function visitViewport(w, h, dpr, tag, phone, coarse, takeShots) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, hasTouch: coarse, isMobile: false });
+  await ctx.addInitScript(([etag, bytes]) => {
+    try {
+      if (!sessionStorage.getItem('rm.seeded')) {
+        localStorage.clear();
+        localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+        sessionStorage.setItem('rm.seeded', '1');
+      }
+    } catch (e) { /* no storage: the harness will report a missing catalog */ }
+  }, [ETAG, toHex(CAT)]);
+  await ctx.routeWebSocket(/:82\//, fakeHub);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push(tag + ': ' + e));
+  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
+  const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+  if (!up) { table.push([tag, '-', 'boot', 'no nav tabs rendered (catalog not adopted?)']); total++; await ctx.close(); return; }
+  await page.waitForTimeout(600);
+  const labels = await page.$$eval(tabSel, (els) => els.map((e) => e.getAttribute('title') || e.textContent.trim()));
+  for (let i = 0; i < labels.length; i++) {
+    const view = slug(labels[i]);
+    await page.locator(tabSel).nth(i).click();
+    await page.waitForTimeout(350);
+    const fails = [...await page.evaluate(measure, { phone, coarse }), ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
+    if (takeShots) {
+      await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
+      // Tiles, not fullPage: a fullPage capture resizes the viewport and
+      // Chromium drops touch emulation (pointer: coarse) for the rest of
+      // the session, so every later measurement would be a mouse layout.
+      const docH = await page.evaluate(() => document.scrollingElement.scrollHeight);
+      for (let t = 0, y = 0; t < 6 && (t === 0 || y < docH - h / 3); t++, y += Math.round(h * 0.8)) {
+        await page.evaluate((y) => window.scrollTo(0, y), y);
+        await page.screenshot({ path: join(OUT, view + '-' + tag + (t ? '-' + (t + 1) : '') + '.png') });
+      }
+      await page.evaluate(() => window.scrollTo(0, 0));
+    }
+    for (const [k, d] of fails) { table.push([tag, view, k, d]); total++; }
+  }
+  await ctx.close();
+}
+
 for (const [w, h, dpr2] of VIEWPORTS) {
   for (const dpr of dpr2 ? [1, 2] : [1]) {
     const tag = w + 'x' + h + (dpr === 2 ? '@2x' : '');
     if (ONLY && !tag.startsWith(ONLY)) continue;
     const phone = Math.min(w, h) < 600;
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, hasTouch: phone, isMobile: false });
-    await ctx.addInitScript(([etag, bytes]) => {
-      try {
-        if (!sessionStorage.getItem('rm.seeded')) {
-          localStorage.clear();
-          localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
-          sessionStorage.setItem('rm.seeded', '1');
-        }
-      } catch (e) { /* no storage: the harness will report a missing catalog */ }
-    }, [ETAG, toHex(CAT)]);
-    await ctx.routeWebSocket(/:82\//, fakeHub);
-    const page = await ctx.newPage();
-    page.on('pageerror', (e) => pageErrors.push(tag + ': ' + e));
-    await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
-    const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
-    if (!up) { table.push([tag, '-', 'boot', 'no nav tabs rendered (catalog not adopted?)']); total++; await ctx.close(); continue; }
-    await page.waitForTimeout(600);
-    const labels = await page.$$eval(tabSel, (els) => els.map((e) => e.getAttribute('title') || e.textContent.trim()));
-    for (let i = 0; i < labels.length; i++) {
-      const view = slug(labels[i]);
-      await page.locator(tabSel).nth(i).click();
-      await page.waitForTimeout(350);
-      const fails = [...await page.evaluate(measure, { phone }), ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
-      if (SHOTS) {
-        await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
-        // Tiles, not fullPage: a fullPage capture resizes the viewport and
-        // Chromium drops touch emulation (pointer: coarse) for the rest of
-        // the session, so every later measurement would be a mouse layout.
-        const docH = await page.evaluate(() => document.scrollingElement.scrollHeight);
-        for (let t = 0, y = 0; t < 6 && (t === 0 || y < docH - h / 3); t++, y += Math.round(h * 0.8)) {
-          await page.evaluate((y) => window.scrollTo(0, y), y);
-          await page.screenshot({ path: join(OUT, view + '-' + tag + (t ? '-' + (t + 1) : '') + '.png') });
-        }
-        await page.evaluate(() => window.scrollTo(0, 0));
-      }
-      for (const [k, d] of fails) { table.push([tag, view, k, d]); total++; }
-    }
-    await ctx.close();
+    await visitViewport(w, h, dpr, tag, phone, phone, SHOTS);
+    // Phone-sized viewports are already a coarse-pointer pass. Everything
+    // wider (tablet, desktop) also needs one: a >=960px touch tablet is the
+    // gap ph-vdk.8 named, and the mouse-only pass above never exercises it.
+    if (!phone) await visitViewport(w, h, dpr, tag + '+coarse', phone, true, false);
   }
 }
 // ---- scenarios: first run, reconnect, class switch ---------------------------
