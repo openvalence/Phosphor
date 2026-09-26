@@ -60,18 +60,33 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
-```bash
-# Example:
-# npm install
-# npm test
-```
+Commands live in `README.md` (`npm run dev`, `npm run build`, the `check`/
+`check:*` test scripts, `npm run tauri dev|build`). Do not restate them here.
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Design rulings (the tier system, the widget contract, delivery vehicles,
+the framework choice) are `docs/DESIGN.md` -- read it before touching
+`src/ui/heroes.js`, `src/model/`, or `src-tauri/`. The plugin/widget API
+(when it lands) is documented in `docs/PLUGINS.md`.
+
+Engineering doctrine (ground-truth, build chain, governance) is
+`.claude/rules/`. The Valence repo (`../Valence`) is READ-ONLY from here --
+changes there are RFCs, never local edits. The device-knowledge scan
+(`test/check-device-knowledge.mjs`) gates `npm run build`; it fails on any
+literal channel id or field name lifted from one machine's catalog.
+
+Volatile truth (what's landed, open bugs, milestones) lives on the dev
+board (`bd`, prefix `ph-`), never in this file or in prose here.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- American English throughout.
+- Comments are constraints (what the code cannot show), not narration --
+  see `.claude/rules/webui.md` and the Valence repo's `cpp-style.md` for the
+  full doctrine this mirrors.
+- JS/CSS work in this repo runs in ponytail (lazy-senior-dev) mode: reuse
+  before you write, stdlib/native before a dependency, shortest working
+  diff.
+- Never add a `Co-Authored-By: Claude ...` (or similar AI co-author)
+  trailer to git commit messages in this repo.

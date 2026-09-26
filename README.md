@@ -76,3 +76,5 @@ which is the point during development.
 Carved out of the archived `SlopDrive-32` machine repo (`webui/`), where it was
 called SlopDeck. Doctrine lives in `.claude/rules/`; volatile truth lives on the
 dev board (`bd`, prefix `ph`).
+
+Design rulings: [`docs/DESIGN.md`](docs/DESIGN.md).
