@@ -65,9 +65,11 @@
 
   const resolvedSeries = $derived(candidates.filter((f) => selected.includes(f.role)));
 
-  // Status tokens from style.css, not an invented categorical ramp: the hard
-  // rule is "invent no colors".
-  const PALETTE_VARS = ['--reality', '--good', '--warn', '--bad'];
+  // Accent/neutral tokens from style.css, not an invented categorical ramp:
+  // the hard rule is "invent no colors". --warn and --bad are hazard-only
+  // (webui.md: identical in every theme, never decorative) and never belong
+  // in a lane cycle, however many candidates a catalog advertises.
+  const PALETTE_VARS = ['--reality', '--intent', '--tx-hi', '--line-4'];
   function paletteVarFor(f) {
     return PALETTE_VARS[Math.max(0, candidates.indexOf(f)) % PALETTE_VARS.length];
   }
