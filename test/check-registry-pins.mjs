@@ -54,10 +54,12 @@ function section(name) {
 
 const udp = section('udp_discovery');
 const ble = section('ble_identity');
+const mdnsService = (registryText.match(/^\s+mdns_service:\s*"([^"]+)"/m) || [])[1];
 
 const registryValues = {
   udp_port: udp.port,
   udp_magic: udp.magic, // ASCII, e.g. "VLNC"
+  mdns_service: mdnsService, // under `limits:`, not emitted to Rust
   ble_service_uuid: ble.service_uuid.toLowerCase(),
   ble_write_char_uuid: ble.write_char_uuid.toLowerCase(),
   ble_notify_char_uuid: ble.notify_char_uuid.toLowerCase(),
@@ -116,6 +118,14 @@ checkPin(
   'discovery.rs MAGIC vs registry udp_discovery.magic ("' + registryValues.udp_magic + '")',
 );
 
+checkPin(
+  'src-tauri/src/discovery.rs',
+  /const MDNS_SERVICE: &str = "([^"]+)";/,
+  (m) => m[1],
+  registryValues.mdns_service,
+  'discovery.rs MDNS_SERVICE vs registry limits.mdns_service',
+);
+
 // src/shell/ble-ws.js -- BLE UUIDs. Not codegen output (see file banner); gated here.
 checkPin(
   'src/shell/ble-ws.js',
@@ -152,7 +162,7 @@ checkPin(
 
 console.log('registry-pins check');
 console.log('  registry : ' + REGISTRY);
-console.log('  pins     : 5 (2 Rust, 3 JS)');
+console.log('  pins     : 6 (3 Rust, 3 JS)');
 
 if (!failures.length) {
   console.log('\nPASS — every hand-copied registry pin matches registry.yaml.');

@@ -65,8 +65,8 @@
     mode === 'ble' && phase === 'live' && endpoint && endpoint.ipv4 && endpoint.wsPort
   );
 
-  // SPEC 13.8 UDP discovery, the WS-side front door (DESIGN.md; operator
-  // ruling 2026-07-28). The Rust command owns the socket and the nonce match;
+  // SPEC 13.8 UDP discovery plus 13.7 mDNS, the WS-side front door (DESIGN.md;
+  // operator ruling 2026-07-28). The Rust command owns the sockets and the merge;
   // this only renders candidates and hands a click to connectWs.
   const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
   async function findHubs() {
@@ -76,7 +76,7 @@
     found = [];
     try {
       found = await invoke('discover_hubs', { timeoutMs: 2500 });
-      if (found.length === 0) note = 'no hubs answered on UDP ' + DISCOVERY_PORT;
+      if (found.length === 0) note = 'no hubs answered on UDP ' + DISCOVERY_PORT + ' or mDNS';
     } catch (e) {
       note = 'discovery failed: ' + e;
     } finally {
@@ -149,7 +149,8 @@
     <button class="sb-btn" onclick={findHubs} disabled={finding}>
       {finding ? 'finding…' : 'find hubs'}
     </button>
-    {#each found as f (f.hub_instance_id)}
+    <!-- mDNS-only hits carry no durable id (discovery.rs), so ip:port keys them. -->
+    {#each found as f (f.hub_instance_id ?? f.ip + ':' + f.ws_port)}
       <button class="sb-hub ws mono" onclick={() => connectWs(f.ip, f.ws_port)}>
         <span class="hub-name">{f.hub_name || 'hub'}</span>
         <span class="hub-addr">{f.ip}:{f.ws_port}</span>
