@@ -1,0 +1,16 @@
+{
+  "name": "stroke-gauge",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "widget",
+  "entry": "index.js",
+  "description": "A vertical gauge: the stroke window as a band, the live position as a tick. Read-only.",
+  "roles": [
+    "telemetry.position",
+    "window.min",
+    "window.max",
+    "geometry.measured_travel",
+    "geometry.max_travel"
+  ],
+  "permissions": []
+}

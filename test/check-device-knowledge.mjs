@@ -76,6 +76,13 @@ const RETIRED_NAMES = [
   'waveform_centered',
 ];
 
+/**
+ * `plugins/` (repo root) is DELIBERATELY never scanned: SRC above is the whole
+ * walk. A tier-2 plugin is ALLOWED to know one machine's channel ids and field
+ * names -- that is exactly what makes it tier 2 rather than kernel
+ * (docs/PLUGINS.md, "promotion"). The plugin HOST lives under src/plugins/
+ * and is scanned like any other kernel file: it must know nothing.
+ */
 /** Paths exempt from the check, and why. */
 const EXEMPT = [
   join('src', 'model', 'roles.js'),  // registry vocabulary, not device facts

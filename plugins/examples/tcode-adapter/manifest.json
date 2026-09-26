@@ -1,0 +1,10 @@
+{
+  "name": "tcode-adapter",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "adapter",
+  "entry": "index.js",
+  "description": "RFC-044 rung 1: TCode L0 from a local TCP source (MultiFunPlayer and friends) becomes motion input through the model. The hub never sees TCode.",
+  "roles": ["command.position", "window.min", "window.max"],
+  "permissions": ["motion", "net.listen:8000"]
+}

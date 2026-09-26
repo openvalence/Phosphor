@@ -23,7 +23,7 @@
   }
 
   function settingsCard(node, name) {
-    let off = host.mountSettings(name, node);
+    const off = host.mountSettings(name, node);
     return { destroy() { off(); } };
   }
 </script>

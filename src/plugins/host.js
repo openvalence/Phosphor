@@ -50,16 +50,6 @@ export function validateManifest(m) {
   return errs;
 }
 
-/** Ports a manifest may listen on, from its `net.listen:<port>` permissions. */
-export function declaredPorts(m) {
-  const out = [];
-  for (const p of (m && m.permissions) || []) {
-    const hit = PERM_RE.exec(p);
-    if (hit && hit[2]) out.push(Number(hit[2]));
-  }
-  return out;
-}
-
 class PermissionError extends Error {
   constructor(plugin, perm) {
     super('plugin "' + plugin + '" did not declare permission "' + perm + '"');
