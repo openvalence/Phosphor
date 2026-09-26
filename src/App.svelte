@@ -151,6 +151,24 @@
     return (label || '?').slice(0, 2).toUpperCase();
   }
 
+  // WAI-ARIA tabs pattern: roving tabindex (only the active tab is in the Tab
+  // order; ArrowUp/Down or Left/Right move focus AND selection between tabs
+  // within the strip, so a plain Tab key leaves the whole tablist in one
+  // step instead of stepping through every tab). Vertical for the desktop
+  // rail, horizontal for the phone strip — same handler, one axis argument.
+  function onTablistKeydown(e, vertical) {
+    const nextKey = vertical ? 'ArrowDown' : 'ArrowRight';
+    const prevKey = vertical ? 'ArrowUp' : 'ArrowLeft';
+    if (e.key !== nextKey && e.key !== prevKey) return;
+    e.preventDefault();
+    const list = [...e.currentTarget.querySelectorAll('[role=tab]')];
+    const idx = list.indexOf(document.activeElement);
+    if (idx < 0) return;
+    const next = list[(idx + (e.key === nextKey ? 1 : -1) + list.length) % list.length];
+    next.focus();
+    active = next.dataset.tabId;
+  }
+
   // Card-zone hero titles come from OUR registry ids (heroes.js), never a
   // device string — a plain first-letter capitalization is all that needs.
   function capitalize(s) {
@@ -382,22 +400,29 @@
          (the OG .hero-row — numerals left, transport right, one baseline),
          threaded down as a layout snippet. -->
     <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
+    {#if !instrumentHeroes.length}
+      <!-- No hero row to ride in: pause and home still need a home. Stop and
+           e-stop never depend on this; the safety dock always carries them. -->
+      <div class="bare-transport"><TransportBar /></div>
+    {/if}
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
            forbids giving a non-interactive landmark an interactive role. -->
       <nav class="rail" class:mini={railMini} aria-label="Sections">
         <button type="button" class="rail-collapse" onclick={toggleRail}
                 aria-expanded={!railMini}
+                aria-label={railMini ? 'Expand navigation' : 'Collapse navigation'}
                 title={railMini ? 'Expand navigation' : 'Collapse navigation'}>
           <span aria-hidden="true">{railMini ? '»' : '«'}</span>
         </button>
-        <div role="tablist" aria-orientation="vertical">
+        <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
           {#each navSections as sec (sec.label)}
             <div class="rail-sec">
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
-                <button role="tab" class="rail-tab"
+                <button role="tab" class="rail-tab" data-tab-id={t.id}
                         aria-selected={current && current.id === t.id}
+                        tabindex={current && current.id === t.id ? 0 : -1}
                         class:on={current && current.id === t.id}
                         title={t.label}
                         onclick={() => selectTab(t.id)}>
@@ -419,9 +444,11 @@
       <HeroStrip heroes={instrumentHeroes} />
     </div>
     <nav class="tabs" aria-label="Sections" bind:this={tabsNav}>
-      <div role="tablist">
+      <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
         {#each tabs as t (t.id)}
-          <button role="tab" aria-selected={current && current.id === t.id}
+          <button role="tab" data-tab-id={t.id}
+                  aria-selected={current && current.id === t.id}
+                  tabindex={current && current.id === t.id ? 0 : -1}
                   class:on={current && current.id === t.id}
                   onclick={() => selectTab(t.id)}>{t.label}</button>
         {/each}
@@ -440,11 +467,6 @@
      TransportBar is the OG's `.spine-transport` (Pause/Halt/E-Stop/Home),
      promoted out of the safety dock (operator ruling 2026-07-28). Desktop
      threads it INTO the instrument hero row via the accessory snippet — no
-    {#if !instrumentHeroes.length}
-      <!-- No hero row to ride in: pause and home still need a home. Stop and
-           e-stop never depend on this; the safety dock always carries them. -->
-      <div class="bare-transport"><TransportBar /></div>
-    {/if}
      overlay positioning; the row itself is the alignment. A phone's page
      scrolls instead, so it keeps its own full-width row ABOVE the hero
      strip (OG mobile behavior), each button sharing the row equally.
@@ -462,6 +484,8 @@
       flex: 1 1 0;
     }
   }
+
+  .bare-transport { padding-top: var(--gap); }
 
   /* ---- desktop frame: rail + pane ----------------------------------------
      The one non-scrolling row of the desktop column (style.css's .app):
@@ -525,8 +549,6 @@
   .rail-lbl {
     padding: 2px 8px 4px;
     font-size: 11px;
-  .bare-transport { padding-top: var(--gap); }
-
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;

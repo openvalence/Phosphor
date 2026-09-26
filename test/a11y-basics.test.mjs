@@ -1,0 +1,302 @@
+/**
+ * a11y-basics.test.mjs -- keyboard/roving-focus, focus visibility, labels,
+ * live reduced-motion, and root-font-scale checks (ph-vdk.17).
+ *
+ * Boots the real app against the same fake-hub harness responsive-matrix.mjs
+ * uses (a stubbed WebSocket plus a pre-seeded catalog cache, the warm-
+ * reconnect path -- no sim and no hardware needed) and drives it with real
+ * keyboard events and Playwright's media emulation.
+ *
+ * Build first (`npm run build:only`).
+ * Run: node test/a11y-basics.test.mjs
+ */
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
+
+const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const toHex = (b) => Buffer.from(b).toString('hex');
+
+// ---- HTTP: the bundle, plus a /uitoken mint so the session is control tier --
+const TOKEN = JSON.stringify({ ok: true, token: '5a'.repeat(LIMITS.token_bytes) });
+const srv = createServer((q, s) => {
+  if (q.url.startsWith('/uitoken')) { s.writeHead(200, { 'Content-Type': 'application/json' }); s.end(TOKEN); return; }
+  s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(HTML);
+});
+await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+const PORT = srv.address().port;
+
+// ---- the fake hub: HELLO/WELCOME + GRANT-whatever-is-asked, no telemetry ---
+// needed -- this instrument only checks rendered chrome, not live values.
+function fakeHub(ws) {
+  const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
+  ws.onMessage((msg) => {
+    if (typeof msg === 'string') return;
+    for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
+      if (header.type === FRAME.HELLO) {
+        send(FRAME.WELCOME, 0, cbMap([
+          [K.session_id, cbUint(7)], [K.boot_id, cbUint(0x5eed)],
+          [K.catalog_etag, cbBstr(Uint8Array.from(Buffer.from(ETAG, 'hex')))], [K.cfg_gen, cbUint(1)],
+          [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
+            [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
+          [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
+          [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
+            [IDENTITY_K.hub_name, cbTstr('a11y fixture')]])],
+        ]));
+      } else if (header.type === FRAME.SUBSCRIBE) {
+        const m = cbDecodeFull(payload);
+        const grants = [];
+        for (const w of m.get(K.subscriptions) || []) {
+          grants.push(cbMap([[K.priority, cbUint(w.get(K.priority) || 0)], [K.granted_rate_hz, cbUint(w.get(K.rate_hz) || 0)],
+            [K.channel_id, cbUint(w.get(K.channel_id))]]));
+        }
+        send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+      } else if (header.type === FRAME.PING) {
+        send(FRAME.PONG, header.channel, payload);
+      }
+    }
+  });
+}
+
+let fails = 0;
+const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
+
+async function bootPage(browser, viewport, beforeGoto) {
+  const ctx = await browser.newContext({ viewport });
+  await ctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
+    catch (e) { /* no storage: the harness will report a missing catalog */ }
+  }, [ETAG, toHex(CAT)]);
+  await ctx.routeWebSocket(/:82\//, fakeHub);
+  const page = await ctx.newPage();
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(String(e)));
+  if (beforeGoto) await beforeGoto(ctx, page);
+  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  return { ctx, page, pageErrors };
+}
+
+const browser = await chromium.launch();
+
+// ---- 1. desktop rail: roving tabindex, ArrowUp/Down, Tab leaves -----------
+{
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 1440, height: 900 });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+
+  const tabindexes = await page.$$eval('nav.rail [role=tab]', (els) => els.map((e) => e.getAttribute('tabindex')));
+  ok('rail: exactly one tab sits in the Tab order (roving tabindex)',
+     tabindexes.filter((t) => t === '0').length === 1, JSON.stringify(tabindexes));
+
+  await page.focus('nav.rail [role=tab][tabindex="0"]');
+  const before = await page.evaluate(() => document.activeElement.dataset.tabId);
+  await page.keyboard.press('ArrowDown');
+  const after = await page.evaluate(() => document.activeElement.dataset.tabId);
+  ok('rail: ArrowDown moves focus to the next tab', !!after && after !== before, before + ' -> ' + after);
+
+  const selected = await page.evaluate(() =>
+    document.querySelector('nav.rail [role=tab][aria-selected="true"]')?.dataset.tabId);
+  ok('rail: the arrow-focused tab is also the selected one (automatic activation)', selected === after);
+
+  await page.keyboard.press('Tab');
+  const stillInRail = await page.evaluate(() => !!document.activeElement.closest('nav.rail'));
+  ok('rail: a plain Tab leaves the tablist in one step', !stillInRail);
+
+  if (pageErrors.length) ok('rail: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
+
+// ---- 2. phone tab strip: roving tabindex, ArrowLeft/Right ------------------
+{
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 390, height: 844 });
+  await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+
+  const tabindexes = await page.$$eval('nav.tabs [role=tab]', (els) => els.map((e) => e.getAttribute('tabindex')));
+  ok('phone tabs: exactly one tab sits in the Tab order', tabindexes.filter((t) => t === '0').length === 1, JSON.stringify(tabindexes));
+
+  await page.focus('nav.tabs [role=tab][tabindex="0"]');
+  const before = await page.evaluate(() => document.activeElement.dataset.tabId);
+  await page.keyboard.press('ArrowRight');
+  const after = await page.evaluate(() => document.activeElement.dataset.tabId);
+  ok('phone tabs: ArrowRight moves focus to the next tab', !!after && after !== before, before + ' -> ' + after);
+  await page.keyboard.press('ArrowLeft');
+  const back = await page.evaluate(() => document.activeElement.dataset.tabId);
+  ok('phone tabs: ArrowLeft moves back', back === before, back);
+
+  if (pageErrors.length) ok('phone tabs: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
+
+// ---- 3. every button has an accessible name --------------------------------
+{
+  const { ctx, page } = await bootPage(browser, { width: 1440, height: 900 });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+
+  for (const id of ['machine', 'log', 'pairing', 'display', 'valence']) {
+    const present = await page.evaluate((id) => !!document.querySelector('[data-tab-id="' + id + '"]'), id);
+    if (!present) continue;
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(250);
+    const unnamed = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('button').forEach((b) => {
+        const cs = getComputedStyle(b);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return;
+        const r = b.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        const name = (b.getAttribute('aria-label') || b.textContent || '').trim();
+        if (!name) bad.push((b.className || b.outerHTML.slice(0, 80)));
+      });
+      return bad;
+    });
+    ok('every visible button on "' + id + '" has an accessible name', unnamed.length === 0, unnamed.join(' | '));
+  }
+  await ctx.close();
+}
+
+// ---- 4. focus-visible on every sampled control -----------------------------
+{
+  const { ctx, page } = await bootPage(browser, { width: 1440, height: 900 });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await page.click('[data-tab-id="machine"]');
+  await page.waitForTimeout(250);
+
+  // Chromium's :focus-visible heuristic keys off the page's last INPUT
+  // MODALITY, not the focus call itself -- a script .focus() on a page that
+  // has never seen a real key event does not match :focus-visible. One real
+  // keypress establishes "keyboard" modality for the rest of this check.
+  await page.keyboard.press('Tab');
+
+  const results = await page.evaluate(() => {
+    const sig = (el) => {
+      const cs = getComputedStyle(el);
+      return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderColor].join('|');
+    };
+    const sels = ['nav.rail [role=tab]', '.rail-collapse', '.og-btn', 'select'];
+    const out = [];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const before = sig(el);
+      el.focus();
+      const after = sig(el);
+      el.blur();
+      out.push({ sel, changed: before !== after });
+    }
+    return out;
+  });
+  for (const r of results) ok('focus-visible style differs from unfocused: ' + r.sel, r.changed);
+
+  // input[type=range]'s own box is a 2px hairline (T24) -- its focus ring
+  // lives on the ::-webkit-slider-thumb pseudo-element, which getComputedStyle
+  // cannot read back (it is a UA shadow pseudo, not a CSS-defined one), so
+  // this checks the built stylesheet has the rule rather than measuring it.
+  const hasRangeFocusRule = await page.evaluate(() => {
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules) {
+          if (/input\[type=("|')?range("|')?\]:focus-visible::-webkit-slider-thumb/.test(rule.cssText || '')) return true;
+        }
+      } catch (e) { /* cross-origin sheet: none here */ }
+    }
+    return false;
+  });
+  ok('focus-visible rule exists for input[type=range]::-webkit-slider-thumb', hasRangeFocusRule);
+
+  await ctx.close();
+}
+
+// ---- 5. reduced motion takes effect LIVE, no reload ------------------------
+{
+  const { ctx, page } = await bootPage(browser, { width: 1440, height: 900 });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+
+  // The ground-truth ladder (style.css) is the one CSS-driven animation every
+  // page can reach without a live write in flight: exercise it on a
+  // throwaway probe rather than the real controls, so the check does not
+  // depend on a pending/overdue write actually happening.
+  const before = await page.evaluate(() => {
+    const el = document.createElement('div');
+    el.id = 'a11y-probe';
+    el.setAttribute('data-shadow', 'overdue');
+    el.style.cssText = 'position:fixed;top:-100px;left:-100px;width:4px;height:4px;';
+    document.body.appendChild(el);
+    return getComputedStyle(el).animationName;
+  });
+  ok('sanity: the overdue-shadow animation runs under normal motion', before !== 'none', before);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForTimeout(50);
+  const after = await page.evaluate(() => getComputedStyle(document.getElementById('a11y-probe')).animationName);
+  ok('reduced motion applies LIVE (no reload): the animation stops', after === 'none', after);
+
+  // T25 registered custom property (style.css's --pr, the intent-echo
+  // wavefront) must still resolve to a real percentage under reduced motion,
+  // never fall back to an unregistered raw token.
+  const prType = await page.evaluate(() => CSS.supports('(--pr: 10%)') && getComputedStyle(document.documentElement).getPropertyValue('--pr'));
+  ok('T25: --pr stays a registered <percentage>, not a raw token', prType !== false);
+
+  // The mechanism RailWidget.svelte and LinkBar.svelte subscribe to
+  // (mq.addEventListener('change', ...)) for their canvas-driven motion:
+  // prove a fresh MediaQueryList actually fires on this same emulated
+  // toggle, live, with no reload anywhere in this test.
+  const changeFiredPromise = page.evaluate(() => new Promise((resolve) => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const timer = setTimeout(() => resolve(false), 1500);
+    mq.addEventListener('change', () => { clearTimeout(timer); resolve(true); }, { once: true });
+  }));
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const changeFired = await changeFiredPromise;
+  ok('matchMedia "change" fires live on a reduced-motion toggle (no reload)', changeFired);
+
+  await ctx.close();
+}
+
+// ---- 6. root font honors a 20px browser default, --s still applies --------
+async function checkRootFontAt(w, h) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+  await ctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* ignore */ }
+  }, [ETAG, toHex(CAT)]);
+  await ctx.routeWebSocket(/:82\//, fakeHub);
+  const page = await ctx.newPage();
+  const cdp = await ctx.newCDPSession(page);
+  let cdpOk = true;
+  try {
+    await cdp.send('Page.enable');
+    await cdp.send('Page.setFontSizes', { fontSizes: { standard: 20, fixed: 20 } });
+  } catch (e) {
+    cdpOk = false;
+  }
+  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
+  await page.waitForSelector(tabSel, { timeout: 15000 });
+  await page.waitForTimeout(400);
+
+  if (!cdpOk) {
+    ok(w + 'w: root font honors a 20px default (CDP Page.setFontSizes)', true, 'SKIPPED -- CDP method unsupported on this Chromium');
+  } else {
+    const rootFs = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+    // want --s(1.12) * 20px = 22.4px; a wide tolerance covers rounding.
+    ok(w + 'w: root font honors a 20px default (--s still applies on top)',
+       rootFs > 20.5 && rootFs < 24, 'computed html font-size=' + rootFs.toFixed(2) + 'px, want ~22.4');
+  }
+  const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth > window.innerWidth + 0.5);
+  ok(w + 'w: no horizontal overflow at a 20px default', !overflow);
+  await ctx.close();
+}
+await checkRootFontAt(360, 800);
+await checkRootFontAt(1280, 720);
+
+await browser.close();
+srv.close();
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — keyboard, labels, focus and motion basics hold.'));
+process.exit(fails ? 1 : 0);

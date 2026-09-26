@@ -145,8 +145,14 @@
     const canvas = heatCanvas;
     if (!canvas || typeof window === 'undefined') return;
 
-    const reduceMotion = window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // A `let`, not a one-time const: this effect only re-runs when heatRows
+    // changes (rare, catalog-driven), so a mid-session preference flip must
+    // reach `tick()` (below, on its own setInterval) some other way — the
+    // media-query listener updates this closure variable live (T25).
+    const mq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reduceMotion = mq ? mq.matches : false;
+    const onMqChange = (e) => { reduceMotion = e.matches; };
+    if (mq) mq.addEventListener('change', onMqChange);
 
     const dpr = window.devicePixelRatio || 1;
     const cssW = AG_COLS * (AG_CELL + AG_GAP);
@@ -242,7 +248,7 @@
     // own ticks are untracked by construction (async, outside the scope).
     untrack(tick);
     const id = setInterval(tick, 220);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); if (mq) mq.removeEventListener('change', onMqChange); };
   });
 </script>
 

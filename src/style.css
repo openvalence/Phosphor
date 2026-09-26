@@ -160,12 +160,14 @@ html.hivis {
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 /* Root scale — every rem-sized rule in this sheet (labels, chips, buttons,
-   card titles) rides on this. Ported verbatim from the pre-refactor page
-   (og-ref/style.css: `html { font-size: calc(var(--s) * 16px); }`) — omitting
-   it left every rem-based size in the rebuild ~11% smaller than the OG at
-   the same --s, which was the single biggest source of the "everything
-   reads smaller/off" drift. */
-html { font-size: calc(var(--s) * 16px); }
+   card titles) rides on this. Percent, not a hardcoded px: a percentage on
+   `html` resolves against the browser's OWN default font size (the operator's
+   text-size preference), so raising that preference still grows every rem in
+   the page while --s keeps applying multiplicatively on top (ph-vdk.17). The
+   pre-refactor page used a literal 16px (og-ref/style.css) — omitting the
+   multiplier entirely once left every rem-based size ~11% smaller than the OG
+   at the same --s, which is why --s still has to be part of this rule. */
+html { font-size: calc(var(--s) * 100%); }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -317,6 +319,18 @@ input[type="range"]:active::-webkit-slider-thumb {
   box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
 }
 input[type="range"]:active::-moz-range-thumb {
+  border-color: var(--reality);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+}
+/* The track's own outline is suppressed above (it is a 2px hairline, not a
+   useful focus target); the ring belongs on the THUMB, the part a keyboard
+   user is actually steering. Same treatment as :active — a range control has
+   no unfocused-but-visibly-different state otherwise. */
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  border-color: var(--reality);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+}
+input[type="range"]:focus-visible::-moz-range-thumb {
   border-color: var(--reality);
   box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
 }

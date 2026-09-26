@@ -329,9 +329,19 @@
   let hostEl = $state(null);
   let canvasEl = $state(null);
 
-  const reducedMotion = (typeof window !== 'undefined' && window.matchMedia)
+  // Reactive, not a one-time read: a preference toggled mid-session (T25 —
+  // motion must honor a LIVE change, no reload) must reach the rAF loop
+  // below, which reads this on every frame.
+  let reducedMotion = $state((typeof window !== 'undefined' && window.matchMedia)
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false;
+    : false);
+  $effect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => { reducedMotion = mq.matches; };
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  });
 
   $effect(() => {
     if (!hostEl || !canvasEl) return;
