@@ -78,7 +78,10 @@ function fieldValue(f, t) {
   if (f.name === 'tgt_10um') return 75 + 50 * Math.sin((t + 120) / 900);
   if (f.name === 'speed') return 180 * Math.cos(t / 900);
   if (f.name === 'flags' && f.bits && f.bits.includes('homed')) return 1;   // homed
-  if (/^src\d$/.test(f.name)) return +f.name.slice(3);   // one owner slot per input source
+  // ph-0pw: all four slots report src 0 -- a zeroed control-owner snapshot is
+  // legal on the wire, and PairingPane's owners list must not crash on the
+  // duplicate key (it keys by slot index, never by src).
+  if (/^src\d$/.test(f.name)) return 0;
   if (f.name === 'cur_norm') return 0.5 + 0.4 * Math.sin(t / 700);
   if (f.name in OVERRIDE) return OVERRIDE[f.name];
   if (f.default != null) return f.default;

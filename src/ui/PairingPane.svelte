@@ -209,7 +209,11 @@
       const src = ownerSample['src' + i];
       const owner = ownerSample['owner' + i];
       if (src === undefined || owner === undefined) break;
-      out.push({ src, owner });
+      // Keyed by slot index (i), never by src: src is a wire-reported field,
+      // not a stable identity, and a zeroed or partly-populated snapshot with
+      // duplicate src ids is legal on the wire (ph-0pw) — Svelte's each_key
+      // guard needs a key unique BY CONSTRUCTION, which only the loop index is.
+      out.push({ i, src, owner });
     }
     return out;
   });
@@ -448,7 +452,7 @@
       <p class="note">No motion source is currently owned by any session.</p>
     {:else}
       <ul class="owners">
-        {#each owners as o (o.src)}
+        {#each owners as o (o.i)}
           <li>
             <div class="who">
               <span class="src mono">source {o.src}</span>
