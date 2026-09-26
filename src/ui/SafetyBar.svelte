@@ -27,7 +27,7 @@
    * role table lives (`NOT_HOMED` -> `action.home`, `ESTOP_ACTIVE` ->
    * `action.safety`'s `estop_clear` op) — this component only renders it.
    */
-  import { machine, getSession } from '../model/machine.svelte.js';
+  import { machine, getSession, specSafetyAction } from '../model/machine.svelte.js';
   import { runAction, lastRefusal, remedyForLastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
   import { SAFETY_OP, HOME_OP } from '../../../Valence/clients/js/index.js';
   import { optionLabel } from '../model/format.js';
@@ -50,23 +50,11 @@
    * simulator whose catalog omitted the role. A missing garnish must never
    * cost the emergency stop.
    *
-   * So: locate it by its protocol identity (the spec-defined channel name),
-   * and treat any role tag as an additional discovery path rather than the
-   * only one.
+   * So: locate it by its spec-core channel id (machine.svelte.js
+   * specSafetyAction), and treat any role tag as an additional discovery path
+   * rather than the only one.
    */
-  const specSafety = $derived.by(() => {
-    const e = machine.catalog.entries.find((x) => x.name === 'safety-intents');
-    if (!e || !e.schema) return null;
-    const f = e.schema.find((x) => x.options && x.options.length);
-    if (!f) return null;
-    return {
-      uid: e.id + ':' + f.key, channelId: e.id, channelName: e.name,
-      key: f.key, name: f.name, label: f.name, desc: f.desc || '',
-      role: 'action.safety', options: f.options,
-      optionAccess: f.optionAccess || null,
-      access: f.access != null ? f.access : e.access,
-    };
-  });
+  const specSafety = $derived.by(specSafetyAction);
 
   // De-duplicate: if the hub DID annotate its safety channel, the role-derived
   // action and the spec-derived one are the same field.

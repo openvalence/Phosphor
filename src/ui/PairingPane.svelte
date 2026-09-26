@@ -40,25 +40,22 @@
    *
    * ── Channel discovery ──────────────────────────────────────────────────────
    *
-   * The 0x000A/0x0009 admin surface is located by SPEC-CORE NAME, never by a
-   * literal id — these channels are part of the protocol itself and exist on
-   * every conforming hub, so binding to their names is portable in exactly
-   * the way binding to a device's own channel numbers is not. The pending
-   * list requires `configure` to even subscribe, so a `watch`/`control`
+   * The pending-pairing/session-admin surface is located by its registry
+   * spec-core id (CORE_CHANNEL), never by name (RENDERING §13 law 6). The
+   * pending list requires `configure` to even subscribe, so a `watch`/`control`
    * session never sees it (correct — see the locked-state note below); the
    * live tier/pairing-modes/window-open signals this pane's OWN ceremony
    * relies on instead come off session-level events (welcome/pairGrant/event)
    * that exist for any session, at any tier.
    */
-  import { machine, getSession } from '../model/machine.svelte.js';
+  import { machine, getSession, coreEntry } from '../model/machine.svelte.js';
+  import { CORE_CHANNEL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { runAction } from '../model/shadow.svelte.js';
   import { ACCESS, ACCESS_NAME, NACK, bytesEqual, getInstanceId, setPairedToken } from '../../../Valence/clients/js/index.js';
   import { PAIRING_MODE, PAIRING_MODE_NAME, PAIRING_EVENT_KIND } from '../../../Valence/clients/js/frames.js';
 
-  const entryNamed = (n) => machine.catalog.entries.find((e) => e.name === n) || null;
-
-  const pendingEntry = $derived(entryNamed('pending-pairing'));
-  const adminEntry = $derived(entryNamed('session-admin'));
+  const pendingEntry = $derived(coreEntry(CORE_CHANNEL.pending_pairing));
+  const adminEntry = $derived(coreEntry(CORE_CHANNEL.session_admin));
   const sample = $derived(pendingEntry ? machine.samples[pendingEntry.id] : null);
 
   // ── live tier + pairing-surface state, mirrored from session-level events ──
@@ -101,7 +98,7 @@
     const offGrant = s.on('grant', syncRoles);
     const offPairGrant = s.on('pairGrant', (g) => { syncRoles(); onPairGrant(g); });
     const offEvent = s.on('event', (evt) => {
-      if (evt.channelName !== 'pairing-events') return;
+      if (evt.channel !== CORE_CHANNEL.pairing_events) return;
       if (evt.kind === PAIRING_EVENT_KIND.window_opened) liveWindowOpen = true;
       else if (evt.kind === PAIRING_EVENT_KIND.window_closed) liveWindowOpen = false;
       onPairingEvent(evt);
@@ -148,6 +145,9 @@
     ? adminEntry.schema.find((f) => f.options && f.options.length) : null);
   const opIndex = (label) => (opField && opField.options.indexOf(label)) ?? -1;
 
+  // TODO(rfc-ph-vdk.7): session-admin's value keys are named in the registry
+  // note but not registered as numbers, so this is a spec-core FIELD-name
+  // lookup; the channel itself is bound by id above.
   /** Schema keys by name, so we never hardcode a CBOR key number. */
   const keyOf = (name) => {
     const f = adminEntry && adminEntry.schema
@@ -199,7 +199,7 @@
   // Absent channel -> nothing to draw (guarded by `{#if ownerEntry}` below),
   // the same graceful-degrade every hero widget already does when its roles
   // are absent.
-  const ownerEntry = $derived(entryNamed('control-owner'));
+  const ownerEntry = $derived(coreEntry(CORE_CHANNEL.control_owner));
   const ownerSample = $derived(ownerEntry ? machine.samples[ownerEntry.id] : null);
 
   const owners = $derived.by(() => {

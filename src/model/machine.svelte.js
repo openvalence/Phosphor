@@ -40,6 +40,7 @@
 import {
   createSession, CHANNEL_CLASS, PRIORITY, NACK, acquireToken, getInstanceId, toHex,
 } from '../../../Valence/clients/js/index.js';
+import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
 import { ROLE } from './roles.js';
 
@@ -91,6 +92,7 @@ const TELEMETRY_ROLES = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, R
 const LOG_MAX = 400;
 const ANOM_MAX = 200;
 const EVT_MAX = 120;
+const SAFETY_MAX = 120;
 const NACK_MAX = 60;
 
 /**
@@ -112,7 +114,7 @@ function blankCatalog() {
 }
 
 function blankEvents() {
-  return { log: [], anomaly: [], session: [], nacks: [] };
+  return { log: [], anomaly: [], safety: [], session: [], nacks: [] };
 }
 
 function blankStats() {
@@ -184,6 +186,34 @@ export function getSession() {
 /** Is the hub plane usable for writes right now? */
 export function isLive() {
   return !!session && session.isLive;
+}
+
+/**
+ * A spec-core channel's catalog entry, found by its registry id
+ * (`CORE_CHANNEL.*`), never by name (RENDERING §13 law 6). Null when this hub
+ * does not declare it.
+ */
+export function coreEntry(id) {
+  return machine.catalog.entries.find((e) => e.id === id) || null;
+}
+
+/**
+ * The safety-intents op select as an action, bound to spec-core identity so a
+ * hub that never role-tagged it keeps its e-stop (RENDERING §13 law 2). The one
+ * discovery path for SafetyBar and TransportBar.
+ */
+export function specSafetyAction() {
+  const e = coreEntry(CORE_CHANNEL.safety_intents);
+  if (!e || !e.schema) return null;
+  const f = e.schema.find((x) => x.options && x.options.length);
+  if (!f) return null;
+  return {
+    uid: e.id + ':' + f.key, channelId: e.id, channelName: e.name,
+    key: f.key, name: f.name, label: f.name, desc: f.desc || '',
+    role: 'action.safety', options: f.options,
+    optionAccess: f.optionAccess || null,
+    access: f.access != null ? f.access : e.access,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -417,15 +447,18 @@ export function connect(opts = {}) {
 
   session.on('event', (evt) => {
     machine.stats.lastRxMs = Date.now();
-    // Route by the channel's CLASS and the catalog's own naming rather than by
-    // a hardcoded id table: an unknown EVENT channel still lands somewhere
-    // visible instead of being silently dropped.
+    // Routed by spec-core IDENTITY (RENDERING §13 law 6), never by name. The
+    // name rides along for display only. Every unrouted EVENT still lands in a
+    // visible ring; none is dropped.
     const entry = machine.catalog.entries.find((e) => e.id === evt.channel);
     const name = entry ? entry.name : ('channel ' + evt.channel);
     const rec = { ...evt, channelName: name, at: Date.now() };
-    if (/log/i.test(name)) push(machine.events.log, rec, LOG_MAX);
-    else if (/anomaly/i.test(name)) push(machine.events.anomaly, rec, ANOM_MAX);
-    else push(machine.events.session, rec, EVT_MAX);
+    if (evt.channel === CORE_CHANNEL.log) push(machine.events.log, rec, LOG_MAX);
+    else if (evt.channel === CORE_CHANNEL.safety_events) push(machine.events.safety, rec, SAFETY_MAX);
+    else if (evt.channel in CORE_CHANNEL_NAME) push(machine.events.session, rec, EVT_MAX);
+    // TODO(rfc-ph-vdk.7): no catalog key says which device EVENT channel is the
+    // anomaly log, so every device-tier EVENT shares this ring.
+    else push(machine.events.anomaly, rec, ANOM_MAX);
   });
 
   session.on('sessionEvent', (evt) => {

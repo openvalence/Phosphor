@@ -11,7 +11,7 @@
    * surface) stays in the safety dock — see SafetyBar.svelte. Manual is absent
    * because manual mode has no protocol role yet (see RailWidget's header).
    */
-  import { machine, getSession } from '../model/machine.svelte.js';
+  import { machine, getSession, specSafetyAction } from '../model/machine.svelte.js';
   import { runAction } from '../model/shadow.svelte.js';
   import { SAFETY_OP, HOME_OP } from '../../../Valence/clients/js/index.js';
 
@@ -26,22 +26,10 @@
    * SafetyBar.svelte, this bar's sibling surface — same catalog, same reason).
    * `action.*` roles are the right discovery path for device-defined verbs,
    * but safety-intents is a SPEC-CORE channel every conforming hub has, so it
-   * is ALSO located by its protocol identity — a hub that forgot to annotate
-   * it must not lose its stop/estop buttons.
+   * is ALSO located by its spec-core channel id (specSafetyAction) — a hub
+   * that forgot to annotate it must not lose its stop/estop buttons.
    */
-  const specSafety = $derived.by(() => {
-    const e = machine.catalog.entries.find((x) => x.name === 'safety-intents');
-    if (!e || !e.schema) return null;
-    const f = e.schema.find((x) => x.options && x.options.length);
-    if (!f) return null;
-    return {
-      uid: e.id + ':' + f.key, channelId: e.id, channelName: e.name,
-      key: f.key, name: f.name, label: f.name, desc: f.desc || '',
-      role: 'action.safety', options: f.options,
-      optionAccess: f.optionAccess || null,
-      access: f.access != null ? f.access : e.access,
-    };
-  });
+  const specSafety = $derived.by(specSafetyAction);
 
   const actions = $derived(
     specSafety && !roleActions.some((a) => a.uid === specSafety.uid)

@@ -1,6 +1,6 @@
 <script>
   /**
-   * LogPane.svelte — device log, motion anomalies, session events.
+   * LogPane.svelte — device log, device-defined events, safety edges, session events.
    *
    * All three rings are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
    * unknown things render generically rather than being dropped, so this
@@ -20,11 +20,12 @@
   } from '../../../Valence/clients/js/index.js';
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
 
-  let tab = $state('log'); // log | anomaly | session
+  let tab = $state('log'); // log | anomaly | safety | session
 
   const lists = $derived({
     log: machine.events.log,
     anomaly: machine.events.anomaly,
+    safety: machine.events.safety,
     session: machine.events.session,
   });
   const currentList = $derived(lists[tab] || []);
@@ -118,7 +119,10 @@
       Log <span class="count">{machine.events.log.length}</span>
     </button>
     <button role="tab" class="og-btn sm" aria-selected={tab === 'anomaly'} class:on={tab === 'anomaly'} onclick={() => selectTab('anomaly')}>
-      Anomalies <span class="count">{machine.events.anomaly.length}</span>
+      Device <span class="count">{machine.events.anomaly.length}</span>
+    </button>
+    <button role="tab" class="og-btn sm" aria-selected={tab === 'safety'} class:on={tab === 'safety'} onclick={() => selectTab('safety')}>
+      Safety <span class="count">{machine.events.safety.length}</span>
     </button>
     <button role="tab" class="og-btn sm" aria-selected={tab === 'session'} class:on={tab === 'session'} onclick={() => selectTab('session')}>
       Session <span class="count">{machine.events.session.length}</span>

@@ -12,6 +12,10 @@
  *      `chase_dense_ms`, ...). The list is extracted from the firmware header
  *      at check time, so it stays honest as the catalog grows: add a field to
  *      the device and this check immediately starts guarding it too.
+ *   3. A channel or field NAME used to bind: `.name === '...'`, a regex or
+ *      string test on a name. RENDERING §13 law 6: bind by role or registry
+ *      identity, never by name. Applies to roles.js too; only the protocol
+ *      pane, which shows wire identity by design, is exempt.
  *
  * WHAT IS DELIBERATELY ALLOWED:
  *   - the protocol client — consumed from the sibling Valence repo's
@@ -121,7 +125,13 @@ function deviceFieldNames() {
   return names;
 }
 
-const files = walk(SRC).filter((p) => {
+/** Exempt from the name-binding rule only: RENDERING §10 protocol-pane. */
+const NAME_EXEMPT = [
+  join('src', 'ui', 'ValencePane.svelte'),
+];
+
+const allFiles = walk(SRC);
+const files = allFiles.filter((p) => {
   const rel = relative(WEBUI, p);
   return !EXEMPT.some((e) => rel.startsWith(e));
 });
@@ -133,6 +143,15 @@ const findings = [];
 
 /**
  * Blank out comments while PRESERVING line numbering.
+// A name compared against a string literal, or tested by regex/string method.
+const NAME_ID = String.raw`(?:\bname|channelName)\b`;
+const NAME_BINDING = [
+  new RegExp(String.raw`(?<!typeof\s+[\w.]*)` + NAME_ID + String.raw`\s*[!=]==?\s*['"${'`'}]`),
+  new RegExp(String.raw`['"${'`'}]\s*[!=]==?\s*[\w.]*` + NAME_ID),
+  new RegExp(String.raw`\/[a-z]*\.test\(\s*[\w.]*` + NAME_ID + String.raw`\s*\)`),
+  new RegExp(NAME_ID + String.raw`\.(?:startsWith|endsWith|includes|match|search)\(`),
+];
+
  *
  * This matters more than it looks. The files most likely to discuss channel
  * ids and field names are exactly the ones that explain why binding to them is
@@ -149,8 +168,11 @@ function stripComments(text) {
     .replace(/\/\/[^\n]*/g, blank);        // // ...
 }
 
-for (const file of files) {
-  const rel = relative(WEBUI, file).split(sep).join('/');
+for (const file of allFiles) {
+  const relNative = relative(WEBUI, file);
+  const rel = relNative.split(sep).join('/');
+  const leakChecked = files.includes(file);
+  const nameChecked = !NAME_EXEMPT.some((e) => relNative.startsWith(e));
   const text = readFileSync(file, 'utf8');
   const lines = stripComments(text).split(/\r?\n/);
   const rawLines = text.split(/\r?\n/);
@@ -165,6 +187,12 @@ for (const file of files) {
 
     // 2. this device's wire field names
     for (const name of fieldNames) {
+    // 3. binding by channel/field name
+    if (nameChecked && NAME_BINDING.some((re) => re.test(code))) {
+      findings.push({ rel, line: i + 1, kind: 'name binding', hit: 'name match', text: line.trim() });
+    }
+    if (!leakChecked) return;
+
       // Word-boundary match so `pattern` does not fire on `patterns`.
       const re = new RegExp('\\b' + name + '\\b');
       if (re.test(code)) {
@@ -191,5 +219,5 @@ for (const f of findings) {
   console.log('      ' + f.text.slice(0, 120));
 }
 console.log('\nEvery one of these makes the UI work on THIS device and no other.');
-console.log('Bind to a catalog annotation or a registry role instead.');
+console.log('Bind to a catalog annotation, a registry role, or a CORE_CHANNEL id instead.');
 process.exit(1);
