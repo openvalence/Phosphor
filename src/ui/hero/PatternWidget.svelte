@@ -12,6 +12,8 @@
   import { writeSetting, displayValue, statusOf } from '../../model/shadow.svelte.js';
   import { optionLabel, labelFor } from '../../model/format.js';
   import Field from '../Field.svelte';
+  import { settingNeedsConfirm, confirmCopy } from '../../model/actions.js';
+  import { askConfirm } from '../confirm.svelte.js';
 
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
@@ -22,21 +24,30 @@
   const depth = $derived(fields.depth);
   const stroke = $derived(fields.stroke);
   const sensation = $derived(fields.sensation);
+  const bgRun = $derived(fields.bgRun);
 
   function sampleOf(f) { return f ? machine.samples[f.channelId] : undefined; }
 
-  function enabledOf(f) {
-    if (!f || f.readOnly) return false;
-    if (!isFieldEnabled(f, sampleOf(f))) return false;
-    if (machine.link.phase !== 'live') return false;
+  // Why a control is gray, in words (law 3); '' when usable. Same reasons,
+  // same order, as Field.svelte.
+  function reasonOf(f) {
+    if (!f || f.readOnly) return 'read-only';
+    if (machine.link.phase !== 'live') return 'no hub link';
     const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
-    if (!e) return false;
-    return (machine.link.roles | 0) >= (e.access | 0);
+    if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'this session is not authorized to change this';
+    if (!isFieldEnabled(f, sampleOf(f))) return 'the machine is refusing this right now';
+    return '';
   }
+  const enabledOf = (f) => !reasonOf(f);
 
   const runningVal = $derived(displayValue(running, sampleOf(running)));
   const isRunning = $derived(!!runningVal);
   const runningEnabled = $derived(enabledOf(running));
+
+  // RENDERING §10.1: co-located with run/stop; false -> true confirms first.
+  const bgOn = $derived(bgRun ? !!displayValue(bgRun, sampleOf(bgRun)) : false);
+  const bgEnabled = $derived(enabledOf(bgRun));
+  const headReason = $derived(reasonOf(running) || (bgRun ? reasonOf(bgRun) : ''));
 
   const selectVal = $derived(displayValue(select, sampleOf(select)));
   const selectEnabled = $derived(enabledOf(select));
@@ -58,6 +69,13 @@
     writeSetting(running, isRunning ? 0 : 1);
   }
 
+  async function toggleBg() {
+    if (!bgEnabled) return;
+    const to = bgOn ? 0 : 1;
+    if (settingNeedsConfirm(bgRun, bgOn, to) && !(await askConfirm(confirmCopy(bgRun)))) return;
+    writeSetting(bgRun, to);
+  }
+
   function chooseOption(i) {
     if (!selectEnabled || Number(selectVal) === i) return;
     writeSetting(select, i);
@@ -77,7 +95,15 @@
       <span class="run-dot" aria-hidden="true"></span>
       <span class="run-text">{isRunning ? 'Stop pattern' : 'Start pattern'}</span>
     </button>
+    {#if bgRun}
+      <button type="button" class="bg-btn og-btn" role="switch" aria-checked={bgOn}
+              disabled={!bgEnabled} data-shadow={statusOf(bgRun)}
+              title={reasonOf(bgRun) || bgRun.desc} onclick={toggleBg}>
+        {labelFor(bgRun)}: {bgOn ? 'on' : 'off'}
+      </button>
+    {/if}
   </div>
+  {#if headReason}<p class="hint">{headReason}</p>{/if}
 
   {#if select.options && select.options.length}
     <!-- OG .pat-grid/.pat-tile: bordered label tiles, active = intent border
@@ -144,7 +170,10 @@
 
   .pattern-head {
     display: flex;
+    gap: 8px;
   }
+  .bg-btn { flex: 0 0 auto; min-height: var(--tap); padding: 0 12px; }
+  .bg-btn[aria-checked='true'] { border-color: var(--warn); color: var(--warn); }
 
   /* Chrome (border/color/disabled/hover) comes from the global .og-btn /
      .og-btn.primary / .og-btn.running utilities — restating those here would

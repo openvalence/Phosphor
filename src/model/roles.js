@@ -98,6 +98,9 @@ export const ROLE = {
   patternDepth: 'pattern.depth',
   patternStroke: 'pattern.stroke',
   patternSensation: 'pattern.sensation',
+
+  // RENDERING §10.1: an autonomous source keeps running after its session ends
+  sourceBackgroundRun: 'source.background_run',
 };
 
 /**
@@ -170,6 +173,8 @@ export const ROLE_LABEL = {
   [ROLE.patternDepth]: 'Depth',
   [ROLE.patternStroke]: 'Stroke',
   [ROLE.patternSensation]: 'Sensation',
+
+  [ROLE.sourceBackgroundRun]: 'Run in background',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */

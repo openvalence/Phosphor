@@ -58,6 +58,7 @@ const HEROES = [
         depth: ROLE.patternDepth,
         stroke: ROLE.patternStroke,
         sensation: ROLE.patternSensation,
+        bgRun: ROLE.sourceBackgroundRun,
       },
     },
   },

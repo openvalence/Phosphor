@@ -20,7 +20,7 @@ import {
 } from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
-import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag } from '../src/model/actions.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended } from '../src/model/actions.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
   SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS,
@@ -428,6 +428,43 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const copy = confirmCopy(act('action.reboot', { options: ['reserved', 'warm_reboot'], desc: 'Restart the hub.' }), 1);
   ok('confirm copy is the catalog\'s own option label and desc',
      copy.title === 'warm reboot' && copy.body === 'Restart the hub.', JSON.stringify(copy));
+}
+
+// ---- pattern-panel: background_run bound by role (RENDERING §10.1) --------
+{
+  const gen = buildSettingsModel([{
+    id: 0x0220, name: 'gen', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0,
+    priority: 1, category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control',
+    settingChannel: 0x0292,
+    layout: [
+      lf('go', PACKED.u8, { min: 0, max: 1, settingKey: 1, role: ROLE.patternRunning }),
+      lf('which', PACKED.u8, { settingKey: 2, role: ROLE.patternSelect, options: ['a', 'b'] }),
+      lf('linger', PACKED.u8, { min: 0, max: 1, settingKey: 3, role: FIELD_ROLE.source_background_run,
+        desc: 'Keep going after the session ends.' }),
+    ],
+    schema: null,
+  }]);
+  const claim = claimRoles(gen.byRole, {
+    require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
+    optional: { bgRun: ROLE.sourceBackgroundRun },
+  });
+  ok('the pattern hero finds background_run by ROLE, whatever it is named',
+     claim && claim.bgRun && claim.bgRun.name === 'linger');
+  ok('...and consumes it, so it is never also a buried settings-card toggle',
+     !withoutClaimed(gen.categories, claim.claimed).some((c) => c.groups.some((g) =>
+       g.fields.some((f) => f.role === FIELD_ROLE.source_background_run))));
+  ok('its label names the quantity from the role', labelFor(claim.bgRun) === 'Run in background');
+  const s = (go, linger) => ({ [0x0220]: { go, which: 0, linger } });
+  const owners = (...o) => Object.fromEntries(o.flatMap((v, i) => [['src' + i, i], ['owner' + i, v]]));
+  ok('running + background_run + nobody owning a source -> unattended',
+     isUnattended(gen.byRole, s(1, 1), owners(0, 0, 0, 0)));
+  ok('a session owning a source again clears it',
+     !isUnattended(gen.byRole, s(1, 1), owners(0, 0, 77, 0)));
+  ok('background_run off is never unattended', !isUnattended(gen.byRole, s(1, 0), owners(0, 0)));
+  ok('stopped is never unattended', !isUnattended(gen.byRole, s(0, 1), owners(0, 0)));
+  ok('no control-owner report yet reads as unattended (the safe side)',
+     isUnattended(gen.byRole, s(1, 1), undefined));
+  ok('a hub without the role never shows the chip', !isUnattended(model.byRole, {}, undefined));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

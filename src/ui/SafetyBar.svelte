@@ -33,6 +33,8 @@
   import { optionLabel } from '../model/format.js';
   import { needsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
+  import { isUnattended } from '../model/actions.js';
+  import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
 
   const roleActions = $derived(
     ((machine.catalog.model && machine.catalog.model.actions) || []).filter(
@@ -66,6 +68,8 @@
       : roleActions
   );
   const linkUp = $derived(machine.link.phase === 'live');
+  const unattended = $derived(isUnattended(machine.catalog.model && machine.catalog.model.byRole,
+    machine.samples, machine.samples[CH_CONTROL_OWNER]));
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
   const isHomeRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.home');
@@ -252,6 +256,11 @@
 </script>
 
 <div class="safetydock" role="group" aria-label="Safety controls">
+  {#if unattended}
+    <!-- RENDERING §10.1 rule 3: moving with nobody attached is shown in words,
+         never inferred. Clears when a session owns a source again. -->
+    <div class="unattended" role="status">Unattended: moving with no session in control</div>
+  {/if}
   {#if lastRefusal.code != null}
     <!-- THE GLOBAL REFUSAL SURFACE. Any of shadow.svelte.js's three write
          paths — a settings slider, an action button, the rail's move tape —
@@ -393,6 +402,12 @@
     }
   }
 
+  .unattended {
+    padding: 4px 8px;
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    font-size: .8rem;
+  }
   .dock {
     display: flex;
     align-items: stretch;

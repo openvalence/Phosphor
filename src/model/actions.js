@@ -60,6 +60,26 @@ export function settingNeedsConfirm(field, from, to) {
 }
 
 /**
+ * RENDERING §10.1 rule 3: a source with background_run on is running and no
+ * session owns a source. Reported values only, never a pending request.
+ * control-owner does not say WHICH source is the generator (source ids are not
+ * registry vocabulary), so any owned source reads as attended.
+ */
+// ponytail: any-owner test; per-source once control sources are registry vocabulary.
+export function isUnattended(byRole, samples, ownerSample) {
+  const first = (r) => ((byRole && byRole.get(r)) || [])[0];
+  const bg = first(FIELD_ROLE.source_background_run);
+  const run = first(FIELD_ROLE.pattern_running);
+  if (!bg || !run) return false;
+  const on = (f) => { const s = samples[f.channelId]; return !!(s && s[f.name]); };
+  if (!on(bg) || !on(run)) return false;
+  for (let i = 0; ownerSample && ownerSample['owner' + i] !== undefined; i++) {
+    if (ownerSample['owner' + i]) return false;
+  }
+  return true;
+}
+
+/**
  * Confirm-dialog copy, straight from the catalog: the op's own option label
  * (or the field's label) as the title, its `desc` as the body.
  */

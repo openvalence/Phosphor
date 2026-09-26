@@ -17,6 +17,8 @@
   import { machine, freshness, staleReason } from '../model/machine.svelte.js';
   import { WIDGET, isFieldEnabled, reportedValue } from '../model/settings.js';
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
+  import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
+  import { askConfirm } from './confirm.svelte.js';
   import { formatValue, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
 
   let { field } = $props();
@@ -63,6 +65,17 @@
   function commit(v) {
     if (!enabled) return;
     writeSetting(field, v);
+  }
+
+  // RENDERING §10.1 rule 2: a background_run enable confirms first; a cancel
+  // puts the switch back to what the machine reports.
+  async function commitToggle(el) {
+    const to = el.checked ? 1 : 0;
+    if (settingNeedsConfirm(field, value, to) && !(await askConfirm(confirmCopy(field)))) {
+      el.checked = !!value;
+      return;
+    }
+    commit(to);
   }
 
   /**
@@ -285,7 +298,7 @@
       <label class="og-switch" class:is-disabled={!enabled}>
         <input type="checkbox" id={field.uid}
                role="switch" aria-checked={!!value} checked={!!value} disabled={!enabled}
-               onchange={(e) => commit(e.currentTarget.checked ? 1 : 0)} />
+               onchange={(e) => commitToggle(e.currentTarget)} />
         <span class="track"></span>
       </label>
       <span class="toggle-text">{field.options ? optionLabel(field, value) : (value ? 'on' : 'off')}</span>
