@@ -20,10 +20,11 @@ import {
 } from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
+import { readFileSync } from 'node:fs';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended } from '../src/model/actions.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
-  SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS,
+  SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS, decodeCatalog,
   VALUE_ASPECT, VALUE_SCOPE, UNIT_ID,
 } from '../../Valence/clients/js/index.js';
 
@@ -428,6 +429,52 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const copy = confirmCopy(act('action.reboot', { options: ['reserved', 'warm_reboot'], desc: 'Restart the hub.' }), 1);
   ok('confirm copy is the catalog\'s own option label and desc',
      copy.title === 'warm reboot' && copy.body === 'Restart the hub.', JSON.stringify(copy));
+}
+
+// ---- generic triggers (§8.2 row 6): every non-persistent verb is reachable --
+{
+  const intent = (id, category, schema) => ({
+    id, name: 'x' + id, cls: CHANNEL_CLASS.INTENT, dir: 1, access: 1, maxRateHz: 2,
+    priority: 1, category, categoryKnown: category != null, categoryName: 'hardware',
+    settingChannel: null, layout: null, schema,
+  });
+  const m = buildSettingsModel([
+    intent(0x0301, UI_CATEGORY.hardware, [{ key: 1, name: 'op', type: 0, role: 'action.admin',
+      options: ['reserved', 'clear_fault', 'warm_reboot'] }]),
+    intent(0x0302, UI_CATEGORY.hardware, [{ key: 1, name: 'op', type: 0, role: 'action.home',
+      options: ['reserved', 'seek'] }]),
+    intent(0x0303, null, [
+      { key: 1, name: 'op', type: 0, role: 'action.preset', options: ['reserved', 'keep', 'drop'] },
+      { key: 2, name: 'slot', type: 0, min: 0, max: 31 },
+      { key: 3, name: 'title', type: 4 },
+    ]),
+    intent(0x0304, UI_CATEGORY.hardware, [{ key: 1, name: 'restart', type: 3, role: 'action.reboot' }]),
+  ]);
+  const hw = m.categories.find((c) => c.id === UI_CATEGORY.hardware);
+  const inHw = hw ? hw.groups.flatMap((g) => g.fields) : [];
+  ok('a categorized action.* verb renders as a trigger in its own category',
+     inHw.some((f) => f.channelId === 0x0301 && f.widget === WIDGET.action));
+  ok('a categorized payload-less reboot trigger lands there too, confirm-gated',
+     inHw.some((f) => f.channelId === 0x0304) && needsConfirm(inHw.find((f) => f.channelId === 0x0304), true));
+  ok('an admin op does not confirm', !needsConfirm(inHw.find((f) => f.channelId === 0x0301), 1));
+  ok('home stays with the persistent region, never drawn twice',
+     !inHw.some((f) => f.channelId === 0x0302) && !m.looseActions.some((a) => a.channelId === 0x0302));
+  const loose = m.looseActions.find((a) => a.channelId === 0x0303);
+  ok('an uncategorized verb is a loose action (Overview card), never dropped', !!loose);
+  ok('its sibling schema fields ride as the op payload',
+     loose && loose.payload.map((p) => p.key).join(',') === '2,3', loose && JSON.stringify(loose.payload.map((p) => p.name)));
+  ok('the fixture machine\'s own action.service verb is reachable too',
+     model.looseActions.some((a) => a.role === 'action.service'));
+}
+{
+  // A real hub's bytes: its only verbs are safety and home, both persistent.
+  const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
+    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+  const generic = real.categories.flatMap((c) => c.groups.flatMap((g) => g.fields))
+    .filter((f) => f.widget === WIDGET.action);
+  ok('fixture hub: safety/home verbs are not duplicated onto settings tabs',
+     generic.length === 0 && real.looseActions.length === 0,
+     generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role)).join(',') || 'none');
 }
 
 // ---- pattern-panel: background_run bound by role (RENDERING §10.1) --------
