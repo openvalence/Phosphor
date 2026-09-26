@@ -25,9 +25,9 @@ import {
   getMtu,
 } from '@mnlphlp/plugin-blec';
 
-export const BLE_SERVICE = '534c4f50-5359-4e43-8000-000000000001';
-const CHAR_C2H_WRITE = '534c4f50-5359-4e43-8000-000000000002';
-const CHAR_H2C_NOTIFY = '534c4f50-5359-4e43-8000-000000000003';
+export const BLE_SERVICE = '56414c45-4e43-4531-8000-000000000001';
+const CHAR_C2H_WRITE = '56414c45-4e43-4531-8000-000000000002';
+const CHAR_H2C_NOTIFY = '56414c45-4e43-4531-8000-000000000003';
 
 // Live wire counters for the ShellBar's diagnostics line — on-device field
 // debugging without adb. Reset on each bridge instantiation.

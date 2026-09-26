@@ -68,7 +68,7 @@
   // SPEC 13.8 UDP discovery, the WS-side front door (DESIGN.md; operator
   // ruling 2026-07-28). The Rust command owns the socket and the nonce match;
   // this only renders candidates and hands a click to connectWs.
-  const DISCOVERY_PORT = 21328; // for the empty-result line only; discovery.rs is the home
+  const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
   async function findHubs() {
     if (finding) return;
     finding = true;
