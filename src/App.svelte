@@ -542,6 +542,12 @@
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line-0);
   }
+  /* Landscape phone: link bar plus tab strip plus the fixed dock would pin
+     half of a 390px screen. The tab strip gives way; the link bar (phase and
+     tier) and the dock (e-stop) stay. */
+  @media (max-height: 500px) {
+    .tabs { position: static; }
+  }
   .tabs > div {
     display: flex;
     gap: 4px;

@@ -131,7 +131,16 @@
     font-size: 11px;
   }
 
-  @media (max-width: 480px) {
-    .footstrip { font-size: 10.5px; }
+  /* Desktop: one row that scrolls sideways, never three rows taken from a
+     pane that is already sharing the viewport with the pinned hero. */
+  @media (min-width: 960px) {
+    .footstrip { flex-wrap: nowrap; }
+    .facts { flex-wrap: nowrap; overflow-x: auto; }
+  }
+
+  /* Touch: a clickable fact keeps its metrics and gains a 40px hit area. */
+  @media (pointer: coarse) {
+    .fact-btn { position: relative; }
+    .fact-btn::before { content: ''; position: absolute; inset: -12px -4px; }
   }
 </style>

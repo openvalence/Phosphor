@@ -252,7 +252,7 @@
   <circle cx="7" cy="7" r="2.5"/>
 </svg>
 
-<header class="linkbar" bind:clientHeight={barH}>
+<header class="linkbar" bind:offsetHeight={barH}>
   <div class="hdr-row">
     <div class="header-left">
       <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
@@ -404,14 +404,20 @@
   .link-dot.tone-dim  { background: var(--line-2); box-shadow: none; }
 
   /* ---- chips: ONE flat right-justified row ---- */
+  /* Whatever does not fit on the one line wraps below a clipped edge, so the
+     row sheds from its tail at ANY width, not only at the breakpoints below.
+     Phase and tier lead the row and are the last to go. */
   .chips {
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: flex-end;
+    gap: 2em 6px;
     margin-left: auto;
     min-width: 0;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    max-height: 1.5em;
+    overflow: hidden;
   }
 
   /* OG .chip verbatim (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every

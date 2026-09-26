@@ -83,13 +83,14 @@
     letter-spacing: 0.03em;
   }
 
-  /* OG .fld2 — compact 2-col slider grid (mock r6, Pattern card), same recipe
-     as PatternWidget's. Field.svelte owns every other visual (label, chip,
+  /* OG .fld2 — compact slider grid (mock r6, Pattern card), same recipe
+     as PatternWidget's: 220px columns, so one column on a phone (a fixed
+     1fr 1fr overflows a 360px screen). Field.svelte owns every other visual (label, chip,
      hairline slider); this only owns the grid rhythm and tightens the
      slider's vertical margin to the OG's fld2-specific value. */
   .fld2 {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
     gap: 12px 16px;
   }
   .fld2 :global(input[type='range']) {

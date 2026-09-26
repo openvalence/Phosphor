@@ -511,6 +511,15 @@
     white-space: nowrap;
     transition: border-color .12s, color .12s;
   }
+  @media (pointer: coarse) {
+    .btn { min-height: 40px; }
+  }
+  /* Short screens (landscape phone, laptop window): the group labels are
+     waypoints and the buttons carry their own names, so the dock gives the
+     labels' row back to the page. */
+  @media (max-height: 500px), (min-width: 960px) and (max-height: 860px) {
+    .grp-lbl { display: none; }
+  }
   .btn:disabled { opacity: 0.4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .btn:not(:disabled):active { border-color: var(--reality); color: var(--reality); }

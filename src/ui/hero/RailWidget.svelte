@@ -1261,9 +1261,13 @@
   }
   /* The OG 12px zone is a mouse-era number. On a touch screen the INVISIBLE
      hit area widens to the tap floor — the 3px visible bar is unchanged, so
-     1:1 fidelity holds while a fingertip can still find the edge. */
+     1:1 fidelity holds while a fingertip can still find the edge. Band,
+     handles and scrub track also reach the 40px floor, grown about the
+     band's own center line (--s * 33px) so nothing visible shifts. */
   @media (pointer: coarse) {
-    .rail-band-handle { width: var(--tap); }
+    .rail-band-handle { width: var(--tap); top: calc(var(--s) * 33px - 21px); height: 42px; }
+    .rail-band { top: calc(var(--s) * 33px - 20px); height: 40px; }
+    .rail-tape-track { height: 40px; }
   }
   .rail-band-handle::before {
     content: '';
@@ -1277,6 +1281,7 @@
   .rail-waiting {
     position: absolute;
     inset: 0;
+    max-width: none;
     display: flex;
     align-items: center;
     justify-content: center;

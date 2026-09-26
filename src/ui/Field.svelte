@@ -448,7 +448,7 @@
      Expand to the thumb's band; --slider-thumb-h is style.css's single source
      for that height, shared with the thumb rules themselves. */
   .field[data-widget='slider']::after {
-    --echo-pad: calc(var(--slider-thumb-h) / 2 + 2px);
+    --echo-pad: calc(var(--slider-thumb-h) / 2 + 2px - var(--range-hit));
   }
 
   .field[data-shadow='pending']::after,
@@ -749,6 +749,12 @@
     font-size: .76rem;
     text-align: right;
   }
+  /* Touch: the 18px info/reset box keeps its look and gains an invisible
+     40px hit area; the typeable chip grows to the fingertip floor. */
+  @media (pointer: coarse) {
+    .info::before { content: ''; position: absolute; inset: -12px; }
+    .field-value .chip-num { padding: 10px 0; min-width: 40px; }
+  }
   .field-value .chip-num::-webkit-inner-spin-button,
   .field-value .chip-num::-webkit-outer-spin-button {
     -webkit-appearance: none;
@@ -867,6 +873,9 @@
   .stepper button:disabled {
     opacity: .45;
     cursor: not-allowed;
+  }
+  @media (pointer: coarse) {
+    .stepper button { flex-basis: 40px; }
   }
 
   /* Status lamps (indicator archetype). Same wrap cadence as .bitfield so a

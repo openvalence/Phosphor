@@ -243,13 +243,14 @@
   .pat-tile.on .pat-tile-label { color: var(--intent); }
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* OG .fld2 — compact 2-col slider grid (mock r6, Pattern card). Field.svelte
+  /* OG .fld2 — compact slider grid (mock r6, Pattern card): 220px columns,
+     so one column on a phone (a fixed 1fr 1fr overflows 360px). Field.svelte
      owns every other visual (label, chip, hairline slider); this only owns
      the grid rhythm and tightens the slider's vertical margin to the OG's
      fld2-specific value (the page-wide default is roomier). */
   .fld2 {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
     gap: 12px 16px;
   }
   .fld2 :global(input[type='range']) {
