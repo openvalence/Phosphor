@@ -365,7 +365,7 @@
     </div>
 
   {:else if field.widget === WIDGET.segmented}
-    <div class="og-seg" role="radiogroup" aria-labeledby={field.uid} id={field.uid}>
+    <div class="og-seg" role="radiogroup" aria-labelledby={field.uid} id={field.uid}>
       {#each field.options as opt, i}
         <button type="button" role="radio" aria-checked={Number(value) === i}
                 class:active={Number(value) === i} disabled={!enabled}

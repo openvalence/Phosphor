@@ -58,7 +58,8 @@ for (const cat of model.categories) {
     for (const f of g.fields) {
       const w = f.widget.padEnd(9);
       const bounds = (f.min != null && f.max != null) ? ('[' + f.min + '..' + f.max + ']') : '';
-      const key = f.readOnly ? 'read-only' : ('-> ch 0x' + f.writeChannel.toString(16) + ' key ' + f.settingKey);
+      const wc = f.writeChannel ?? f.lo?.writeChannel;
+      const key = f.readOnly ? 'read-only' : (wc == null ? '(merged range)' : ('-> ch 0x' + wc.toString(16) + ' key ' + (f.settingKey ?? f.lo?.settingKey)));
       console.log('      ' + w + ' ' + f.name.padEnd(20) + ' ' + String(f.unit).padEnd(7)
         + ' ' + bounds.padEnd(18) + ' ' + key);
     }

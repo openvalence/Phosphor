@@ -17,7 +17,6 @@
     "check:dash": "node test/dash-measure.test.mjs",
     "check:safety": "node test/safety-reach.test.mjs",
     "check:responsive": "node test/responsive-matrix.mjs",
-    "check:responsive": "node test/responsive-matrix.mjs",
     "check:a11y": "node test/a11y-basics.test.mjs",
     "test": "npm run check && node test/valence-wire.test.mjs && node test/telebuf-sim.mjs",
     "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:a11y",
