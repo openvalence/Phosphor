@@ -34,12 +34,18 @@
   import { writeSetting } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
+  import PluginsPane from './plugins/PluginsPane.svelte';
+  import { pluginsUi, pluginHeroes } from './plugins/plugins.svelte.js';
 
   const model = $derived(machine.catalog.model);
 
   // Hero widgets get first refusal on the fields they understand. Whatever they
   // take is removed from the generic tree so no value is drawn twice.
-  const heroes = $derived(model ? heroClaims(model.byRole) : { widgets: [], claimed: new Set() });
+  // Tier-2 plugin heroes claim through the same pass, after the built-ins;
+  // pluginsUi.gen re-runs it when a plugin is enabled, disabled or faults.
+  const heroes = $derived(model
+    ? heroClaims(model.byRole, (pluginsUi.gen, pluginHeroes()))
+    : { widgets: [], claimed: new Set() });
   const categories = $derived(model ? withoutClaimed(model.categories, heroes.claimed) : []);
 
   // heroes.js's zone split: 'instrument' heroes are pinned chrome (the hero
@@ -54,12 +60,13 @@
     { id: 'machine', label: 'Overview' },
     ...categories.map((c) => ({ id: 'cat' + c.key, label: c.label, cat: c })),
   ]);
-  const consoleTabs = [
+  const consoleTabs = $derived([
     { id: 'pairing', label: 'Pairing' },
     { id: 'valence', label: 'Valence' },
     { id: 'log', label: 'Log' },
     { id: 'display', label: 'Display' },
-  ];
+    ...(pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }] : []),
+  ]);
   const tabs = $derived([...machineTabs, ...consoleTabs]);
   const navSections = $derived([
     { label: 'Machine', tabs: machineTabs },
@@ -227,7 +234,7 @@
     // chrome — same component, generic DashGrid treatment (drag/resize/etc).
     ...heroes.widgets
       .filter((h) => h.zone === 'card')
-      .map((h) => ({ id: 'hero:' + h.id, title: capitalize(h.id), snippet: heroCard, hero: h })),
+      .map((h) => ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
   ]);
 </script>
 
@@ -248,7 +255,7 @@
 {/snippet}
 
 {#snippet heroCard(item)}
-  <item.hero.component fields={item.hero.fields} />
+  <item.hero.component fields={item.hero.fields} hero={item.hero} />
 {/snippet}
 
 {#snippet pane()}
@@ -290,6 +297,8 @@
       <LogPane />
     {:else if current.id === 'display'}
       <ThemePicker />
+    {:else if current.id === 'plugins'}
+      <PluginsPane />
     {/if}
   </main>
 {/snippet}

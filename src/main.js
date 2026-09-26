@@ -15,6 +15,7 @@ import App from './App.svelte';
 import './style.css';
 import { connect } from './model/machine.svelte.js';
 import { applyTheme, currentThemeId } from './model/theme.js';
+import { loadPlugins } from './plugins/plugins.svelte.js';
 
 // Client preferences, applied before first paint so the page never flashes the
 // default palette. These are BROWSER state, not machine state — the
@@ -76,5 +77,8 @@ async function boot() {
   connect({ host });
 }
 boot();
+// Tier-2 plugins: shell plugins folder, or ?plugin= in a dev build; a no-op on
+// the page a hub serves. See docs/PLUGINS.md.
+loadPlugins();
 
 export default mount(App, { target: document.getElementById('app') });
