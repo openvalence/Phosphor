@@ -15,11 +15,14 @@
  * Run: node test/settings-model.test.mjs
  */
 
-import { buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget } from '../src/model/settings.js';
+import {
+  buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, unclaimedHeroFields,
+} from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE } from '../src/model/roles.js';
 import { labelFor } from '../src/model/format.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
+  VALUE_ASPECT, VALUE_SCOPE, UNIT_ID,
 } from '../../Valence/clients/js/index.js';
 
 let fails = 0;
@@ -36,7 +39,8 @@ const ok = (name, cond, extra) => {
 // EVERY field and falls back to `actual` when the catalog omits it.
 const lf = (name, type, extra = {}) => ({
   name, type, typeName: String(type), unit: '', scale: 1,
-  provenanceName: 'actual', ...extra,
+  provenanceName: 'actual', rank: UI_RANK.detail, aspect: VALUE_ASPECT.live,
+  scope: VALUE_SCOPE.session, scopeName: 'session', unitId: null, ...extra,
 });
 
 const CATALOG = [
@@ -50,7 +54,7 @@ const CATALOG = [
       // the end of this file.
       lf('carriage_mm', PACKED.u16, {
         unit: 'mm', scale: 100, role: ROLE.telemetryPosition,
-        provenanceName: 'planned',
+        provenanceName: 'planned', rank: UI_RANK.hero,
       }),
       lf('carriage_rate', PACKED.i16, { unit: 'mm/s', scale: 10, role: ROLE.telemetryVelocity }),
     ],
@@ -76,6 +80,8 @@ const CATALOG = [
       }),
       // read-only: no setting_key. Must render as a readout, never an input.
       lf('travel_measured', PACKED.f32, { unit: 'mm', group: 'Travel' }),
+      // field-level diagnostic rank inside an ordinary channel
+      lf('travel_raw', PACKED.f32, { unit: 'mm', group: 'Travel', rank: UI_RANK.diagnostic }),
       lf('gate', PACKED.bitfield8, {
         role: ROLE.enabledMask,
         bits: ['travel_lo', 'travel_hi', '', '', '', '', '', ''],
@@ -137,9 +143,25 @@ const CATALOG = [
         settingKey: 22, group: 'Identity', role: ROLE.identityName,
         desc: 'Name shown to clients.',
       }),
+      // hero rank, no Tier-1 widget binds it: Overview must still surface it
+      lf('tank_level', PACKED.u8, { unit: '%', group: 'Lubrication', rank: UI_RANK.hero }),
       lf('gate', PACKED.bitfield8, {
         role: ROLE.enabledMask, bits: ['lube_mode', 'warm_enable', 'rig_name'],
       }),
+    ],
+    schema: null,
+  },
+
+  // --- a diagnostic-rank CHANNEL, authored after a later-sorting category ---
+  {
+    id: 0x0214, name: 'meter', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0,
+    maxRateHz: 1, priority: 0, category: UI_CATEGORY.system, categoryKnown: true,
+    categoryName: 'system', settingChannel: null, rank: UI_RANK.diagnostic,
+    layout: [
+      lf('run_count', PACKED.u32, { group: 'Totals', aspect: VALUE_ASPECT.total,
+        scope: VALUE_SCOPE.lifetime, scopeName: 'lifetime', unitId: UNIT_ID.count }),
+      lf('top_rate', PACKED.f32, { unit: 'mm/s', group: 'Totals', aspect: VALUE_ASPECT.peak,
+        unitId: UNIT_ID.mm_s }),
     ],
     schema: null,
   },
@@ -168,7 +190,7 @@ const model = buildSettingsModel(CATALOG);
 const limits = model.categories.find((c) => c.id === UI_CATEGORY.limits);
 ok('a categorized channel becomes a tab', !!limits);
 ok('two channels sharing a category MERGE into one tab (SPEC 8.8)',
-   limits && limits.groups.length === 2,
+   limits && limits.groups.filter((g) => !g.diagnostic).length === 2,
    limits ? 'groups: ' + limits.groups.map((g) => g.name).join(', ') : 'no tab');
 ok('the merged tab holds fields from BOTH channels',
    limits && new Set(limits.groups.flatMap((g) => g.fields.map((f) => f.channelId))).size === 2);
@@ -195,6 +217,16 @@ ok('an ordinary field is not advanced',
 // The absent-rank default (-> detail) is the DECODER's job, pinned in
 // Valence's clients/js/test/valence-wire.test.mjs. Asserting it here against
 // a hand-built fixture would only prove the fixture.
+
+// ---- claim: RENDERING §12/§3 tab order, §9 diagnostic placement ------------
+ok('tabs follow registry order, not authoring order; unknown ids sort as other',
+   model.categories.map((c) => c.id).join(',') === [UI_CATEGORY.limits, UI_CATEGORY.system, 180].join(','),
+   model.categories.map((c) => c.id).join(','));
+ok('a field-ranked diagnostic lands in a trailing diagnostic group',
+   limits.groups.at(-1).diagnostic && limits.groups.at(-1).fields.some((f) => f.name === 'travel_raw')
+   && !limits.groups.slice(0, -1).some((g) => g.fields.some((f) => f.name === 'travel_raw')));
+ok('a diagnostic CHANNEL makes its unranked fields diagnostic',
+   model.categories.find((c) => c.id === UI_CATEGORY.system).groups.every((g) => g.diagnostic));
 
 // ---- claim: a device-defined category renders with ITS OWN label ----------
 const upkeep = model.categories.find((c) => c.id === 180);
@@ -278,6 +310,13 @@ const patternClaim = claimRoles(model.byRole, {
 });
 ok('a hero whose required roles are ABSENT declines entirely', patternClaim === null,
    'this machine has no pattern generator, so no generator card is drawn');
+
+// ---- claim: hero rank reaches Overview unless a Tier-1 widget took it -----
+{
+  const left = unclaimedHeroFields(model.fields, railClaim.claimed).map((f) => f.name);
+  ok('an unclaimed hero-rank field is surfaced', left.includes('tank_level'), left.join(','));
+  ok('a hero-rank field a widget claimed is not surfaced twice', !left.includes('carriage_mm'));
+}
 
 // ---- claim: claimed fields are not ALSO drawn generically -----------------
 const pruned = withoutClaimed(model.categories, railClaim.claimed);

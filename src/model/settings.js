@@ -19,7 +19,7 @@
  */
 
 import {
-  PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT,
+  PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY,
 } from '../../../Valence/clients/js/index.js';
 import { ROLE, isActionRole } from './roles.js';
 
@@ -285,6 +285,11 @@ function makeField(entry, f, settingIndex, maskField) {
     // ladder, so both spellings mean the same thing and a machine may ship
     // either. Deciding it once here keeps every consumer from re-ORing it.
     advanced: f.rank === UI_RANK.advanced || !!(f.flagBits && f.flagBits.advanced),
+    // RENDERING §9: diagnostic material goes last, collapsed. A diagnostic
+    // CHANNEL makes its unranked (detail-default) fields diagnostic too; a
+    // field that ranks itself anything else keeps its own rank.
+    diagnostic: f.rank === UI_RANK.diagnostic
+      || (entry.rank === UI_RANK.diagnostic && (f.rank ?? UI_RANK.detail) === UI_RANK.detail),
     bits: f.bits || null,
     settingKey: readOnly ? null : f.settingKey,
     writeChannel: readOnly ? null : entry.settingChannel,
@@ -438,7 +443,9 @@ export function buildSettingsModel(entries) {
         id: entry.category,
         name: entry.categoryKnown ? entry.categoryName : ('category' + entry.category),
         label: categoryLabel(entry),
+        known: !!entry.categoryKnown,
         groups: new Map(),
+        diagGroups: new Map(),
         // A category is writable if ANY of its channels names a settingChannel.
         // A purely read-only category (diagnostics) still gets a tab — telemetry
         // is worth showing — it just contains no inputs.
@@ -448,18 +455,33 @@ export function buildSettingsModel(entries) {
     const cat = catMap.get(key);
     if (!field.readOnly) cat.writable = true;
     const gname = field.group || '';
-    if (!cat.groups.has(gname)) cat.groups.set(gname, { name: gname, fields: [] });
-    cat.groups.get(gname).fields.push(field);
+    const bucket = field.diagnostic ? cat.diagGroups : cat.groups;
+    if (!bucket.has(gname)) {
+      bucket.set(gname, { name: gname, diagnostic: field.diagnostic, fields: [] });
+    }
+    bucket.get(gname).fields.push(field);
   }
 
-  // Presentation order is AUTHORING order — the device chose it deliberately
-  // (SPEC 8.9) and re-sorting alphabetically would scramble a curated page.
-  const categories = [...catMap.values()].map((c) => ({
-    ...c,
-    groups: [...c.groups.values()],
-  }));
+  // Tabs in registry order (RENDERING §12). An unrecognized or vendor id sorts
+  // where `other` does (§3), keeping its own tab and label; never dropped.
+  // Within a tab, catalog declaration order, diagnostic groups last (§9).
+  const rankOf = (c) => (c.known ? c.id : UI_CATEGORY.other);
+  const categories = [...catMap.values()]
+    .sort((a, b) => (rankOf(a) - rankOf(b)) || (a.id - b.id))
+    .map(({ diagGroups, ...c }) => ({
+      ...c,
+      groups: [...c.groups.values(), ...diagGroups.values()],
+    }));
 
   return { categories, actions, byRole, fields };
+}
+
+/**
+ * Hero-rank fields no Tier-1 widget claimed. RENDERING §4: hero is surfaced by
+ * default on every class, so these go on Overview as well as in their tab.
+ */
+export function unclaimedHeroFields(fields, claimed) {
+  return fields.filter((f) => f.rank === UI_RANK.hero && !claimed.has(f.uid));
 }
 
 // ---------------------------------------------------------------------------

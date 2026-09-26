@@ -28,7 +28,7 @@
   import TelemetryChart from './ui/widgets/TelemetryChart.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import { machine } from './model/machine.svelte.js';
-  import { isFieldEnabled } from './model/settings.js';
+  import { isFieldEnabled, unclaimedHeroFields } from './model/settings.js';
   import { writeSetting } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -149,11 +149,17 @@
     try { localStorage.setItem('sd32.showAdvanced', showAdvanced ? '1' : '0'); } catch (e) { /* private mode */ }
   }
 
+  // RENDERING §9: diagnostic-rank groups come last (settings.js) and stay
+  // collapsed until asked for, with the count stated. Browser-local.
+  let showDiagnostic = $state(false);
+
   const visibleGroups = $derived.by(() => {
-    if (!current || !current.cat) return { groups: [], hidden: 0 };
+    if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0 };
     let hidden = 0;
+    let diag = 0;
     const groups = [];
     for (const g of current.cat.groups) {
+      if (g.diagnostic && !showDiagnostic) { diag += g.fields.length; continue; }
       const fields = g.fields.filter((f) => {
         if (showAdvanced || !f.advanced) return true;
         hidden++;
@@ -161,7 +167,7 @@
       });
       if (fields.length) groups.push({ ...g, fields });
     }
-    return { groups, hidden };
+    return { groups, hidden, diag };
   });
 
   /**
@@ -203,14 +209,21 @@
    */
   const settingItems = $derived(
     visibleGroups.groups.map((g) => ({
-      id: 'group:' + current.cat.id + ':' + (g.name || 'ungrouped'),
-      title: g.name || 'Settings',
+      id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
+      title: g.name || (g.diagnostic ? 'Diagnostics' : 'Settings'),
       snippet: groupCard,
       group: g,
     }))
   );
 
+  // RENDERING §4: hero rank is surfaced by default. What no Tier-1 widget
+  // claimed still reaches Overview.
+  const heroLeft = $derived(model ? unclaimedHeroFields(model.fields, heroes.claimed) : []);
+
   const machineItems = $derived([
+    ...(heroLeft.length
+      ? [{ id: 'widget:hero-rank', title: 'Machine', snippet: groupCard, group: { fields: heroLeft } }]
+      : []),
     { id: 'widget:telemetry', title: 'Telemetry', snippet: telemetryCard },
     // Card-zone heroes (heroes.js) are ordinary Overview cards, not pinned
     // chrome — same component, generic DashGrid treatment (drag/resize/etc).
@@ -253,6 +266,16 @@
             Hide advanced settings
           {:else}
             Show {visibleGroups.hidden} advanced setting{visibleGroups.hidden === 1 ? '' : 's'}
+          {/if}
+        </button>
+      {/if}
+      {#if visibleGroups.diag || showDiagnostic}
+        <button class="adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)}
+                aria-expanded={showDiagnostic}>
+          {#if showDiagnostic}
+            Hide diagnostics
+          {:else}
+            Show {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'}
           {/if}
         </button>
       {/if}
