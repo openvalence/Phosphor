@@ -350,18 +350,42 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
 - Edit mode places, moves, resizes and deletes from a palette of every
   placeable control. Outside edit mode nothing drags (`DashItem.svelte`: the
   grab handle is the only draggable surface).
-- Rests on RENDERING §12 and law 10. OPEN: it strains §11 ("pages are
-  derived, never designed per app") and §9 ("region assignment is never a
-  per-app choice"); reconciliation is `ph-e82.1`.
+- Rests on RENDERING §12 and law 10. CLOSED (operator ruling 2026-09-26,
+  `ph-e82.1` item 1): saved layouts, including the home page, are NOT the
+  catalog-built UI (§10.2). The catalog-built UI stays and earns its keep on
+  hardware remote controls and embedded processors with screens and buttons;
+  every field stays reachable through it regardless of any saved layout. The
+  home is additional, never a replacement, which is what keeps §11 ("pages
+  are derived, never designed per app") and §9 ("region assignment is never a
+  per-app choice") true of the derived tree.
 
 ### 10.2 The control contract
 
-- A CONTROL is one catalog field plus one presentation. Writable fields offer
-  knob, slider, stepper, toggle; readouts offer number, bar, bulb, graph.
+- A CONTROL is one catalog field plus one presentation. The ARCHETYPE is
+  picked by the catalog (RENDERING §8.2) and is NOT user-editable. Within it
+  the user picks a presentation by READ/WRITE CLASS (operator ruling
+  2026-09-26): any writable field may take any writable presentation (knob,
+  slider, stepper, segmented, toggle, and so on); any read-only field may
+  take any read-only presentation (number, bar, bulb, graph, hero numeral). A
+  writable field may ALSO be placed as a read-only presentation, a
+  display-only instance: the set speed inside a pattern shown as a hero
+  numeral rather than a small control, for example.
 - The offered set comes from the field's archetype (RENDERING §8.2, §8.4) and
   its facts: bar needs bounds, toggle and bulb need a bool, graph needs a
   client-side history (gaps, never zeros: law 9). The user chooses how a
   field looks, never what it binds to (laws 6, 7).
+- Range presentations (knob, slider, stepper, bar) take PER-PLACEMENT min,
+  max, step, default (operator ruling 2026-09-26). A placement may NARROW the
+  catalog's bounds, never widen them; the default must lie inside the
+  narrowed range. This narrowing rule is the orchestrator's reading of Ground
+  Truth (law 4) and law 7: a placement never claims more range than the
+  field's own essential binding supports, and it never hides a live value
+  that falls outside the narrowed display window.
+- A toggle placement may be configured as two discrete values, or as
+  MOMENTARY override-and-return (operator ruling 2026-09-26): press applies
+  value A, release restores the previous value. Both are ordinary
+  echo-confirmed writes (law 4); if the link drops mid-press the hub's value
+  stands, never a client-side assumption of what release would have sent.
 - Seam: `src/model/settings.js` (`resolveArchetype`, `resolveWidget`,
   `WIDGET`, whose `segmented`/`bitfield`/`secret` already are presentations
   inside one archetype) and `src/ui/Field.svelte`.
@@ -369,9 +393,10 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
   a text reason (law 5), graying with the gate named (law 3), stale dimming
   (law 8). An echo pair travels as one control and a tagged min/max pair is
   one range control (RENDERING §11; `mergeRangePairs` in `settings.js`).
-- OPEN (`ph-e82.1`): a choice that crosses an archetype boundary (slider vs
-  stepper, §8.2 rows 9/10; readout vs graph, rows 12/13 vs 15) against §8.2's
-  first-match rule.
+- CLOSED (operator ruling 2026-09-26, `ph-e82.1`): resolved by the
+  read/write-class rule above, not by §8.2's first-match row. Slider vs
+  stepper and readout vs graph are both presentations inside one read/write
+  class; the archetype §8.2 assigns is a catalog fact the user never edits.
 - Role-claiming composites are controls: rail hero, plan strip (nested in
   the rail per RENDERING §10 `plan-view`), pattern panel, limits. They place,
   resize and save like any control. Claim-or-decline is unchanged
@@ -382,7 +407,13 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
 - Persisted keys are stable ids (law 10): a role when the field has one,
   else its uid; composites as `hero:<id>`. An id the catalog lacks stays
   inert in storage (`src/model/dashboard.svelte.js`). OPEN (`ph-e82.1`): a
-  uid is channel id plus field name, which law 10 calls wire vocabulary.
+  uid is channel id plus field name, which law 10 calls wire vocabulary. A
+  Valence RFC, "User-authored surfaces and presentation choice", drafted
+  tonight (2026-09-26), carries the carve-out: the uid key is allowed for
+  USER-AUTHORED SURFACES ONLY, never for the conformant derived baseline.
+  Stands OPEN here until that RFC is accepted (never code against an
+  unaccepted clause); the same RFC also carries the archetype/presentation
+  rule and the range-narrowing rule above.
 - OPEN (`ph-e82.1`): single fields placeable anywhere, or only inside nests.
 
 ### 10.3 The top strip: safety and window chrome
@@ -483,3 +514,4 @@ operator rules otherwise.
 | 2026-09-26 | §8 | Hub-served page is the backup delivery; parity may break (§10.7). | operator |
 | 2026-09-26 | §8 | "Divergence is build configuration, never code" no longer binds shell-only capabilities; "mobile-first" under review (§10.7, §10.9). | operator |
 | 2026-09-26 | §10 | The builder rulings (§10.1 to §10.9) established. | operator |
+| 2026-09-26 | §10.1, §10.2 | Presentation-by-read/write-class rule, range-narrowing rule, and toggle momentary-override ruling recorded. Home-vs-derived-pages question closed: the home is additional, the catalog-built UI stays canonical. Law 10 uid carve-out and the presentation rule handed to a draft Valence RFC ("User-authored surfaces and presentation choice"). | operator |
