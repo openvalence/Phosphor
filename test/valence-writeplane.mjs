@@ -86,7 +86,7 @@ async function main() {
      'new=[' + newMin + ', ' + newMax + ']');
 
   // config-set 0x3000 → ECHO (post-clamp APPLIED) — the ground-truth confirm the
-  // bridge adopts into the rail band. This IS the write-plane defect path.
+  // hub adopts into the rail band. This IS the write-plane defect path.
   const wConfirm = waitConfig(s, () => true); // any re-publish proves the device processed it
   const echo = await s.sendConfigSet({ 1: newMin, 2: newMax });
   const a1 = echo.applied[1], a2 = echo.applied[2];
@@ -116,7 +116,7 @@ async function main() {
   // ===== Part 2: config-set → machine-config STATE reflects APPLIED (user_speed)
   // user_speed (field 3) is NOT homing-gated, so its 0x1000 STATE field DOES
   // reflect the applied value — proving the full request→echo→on-change-STATE
-  // adoption loop the bridge depends on, end-to-end at the wire level. =========
+  // adoption loop the hub depends on, end-to-end at the wire level. =========
   const newSpd = Math.round((typeof origSpd === 'number' ? origSpd : 50)) + 15;
   const wSpd = waitConfig(s, (x) => near(x.user_speed, newSpd));
   const sEcho = await s.sendConfigSet({ 3: newSpd });

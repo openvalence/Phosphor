@@ -91,7 +91,7 @@ const claim = claimRoles(model.byRole, {
   },
 });
 // The outer bound for "impossible", off the catalog's own published max for
-// the speed ceiling setting. The S3 has no HTTP surface to ask.
+// the speed ceiling setting. The hub has no HTTP surface to ask.
 const SPEED_CEIL = (claim && claim.speedCeil && claim.speedCeil.max) || 10000;
 console.log('catalog speed ceiling: ' + SPEED_CEIL + ' mm/s');
 if (!claim || !claim.pos || !claim.move) {

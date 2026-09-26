@@ -63,7 +63,7 @@ const CATALOG_H = (() => {
 const RETIRED_NAMES = [
   // sd-4k1.14: motion-modes knobs that became reserved bytes or vanished.
   'blend_mode', 'stream_speed_mode', 'motion_backend', 'home_style',
-  // sd-4k1: settings deleted with the RP2350 motion port.
+  // sd-4k1: settings retired when the motion backend changed.
   'centering', 'reshape', 'soften',
   // Retired infeasibility policies — the select is {stretch, blend} now, and
   // an option LABEL is as much device knowledge as a field name.
