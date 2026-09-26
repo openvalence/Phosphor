@@ -1,0 +1,376 @@
+/**
+ * responsive-matrix.mjs -- does every view hold up at every screen size?
+ *
+ * Renders the FULL app with no hub: Playwright's WebSocket route stands in for
+ * the hub on :82, the recorded valencesim catalog is pre-seeded into the
+ * client's etag cache (the warm-reconnect path, zero BLOB frames), and a
+ * synthetic STATE stream feeds every subscribed channel from the catalog's own
+ * layouts (defaults, else mid-bounds). The values are FIXTURE values, never
+ * shown as a real machine: this is a layout instrument only. Uses the
+ * FIXTURE, never a running valencesim, so it needs no sim and no hardware;
+ * point the built page at `/?hub=127.0.0.1` with valencesim up for real STATE.
+ *
+ * Per viewport it visits every nav tab, screenshots it to
+ * test/evidence/responsive/<view>-<w>x<h>[@2x][-<tile>].png (scrolled tiles on
+ * a page that scrolls) and asserts:
+ *   overflow   no horizontal page scroll
+ *   target     interactive hit boxes >= 40x40 CSS px on phones (T24: the
+ *              rendered box; a range input is measured by its thumb, a hidden
+ *              switch input by its label)
+ *   clip       no leaf text clipped by its own overflow box
+ *   sticky     phone: tab strip parks flush under the link bar (T22)
+ *   chrome     no two fixed/sticky bars overlap
+ *   reach      phone: every control can be scrolled clear of fixed chrome
+ *   font       no text below 11px
+ *   measure    no prose line past ~100 characters; no chart under 24px tall
+ *
+ * Build first (`npm run build:only`); this builds nothing.
+ * Run: node test/responsive-matrix.mjs [--only 360x800] [--no-shots]
+ *        [--html <other build's index.html> --out <dir>]   (A/B a build)
+ */
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFileSync, mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
+import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS } from '../../Valence/clients/js/frames.js';
+
+const args = process.argv.slice(2);
+const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
+const ONLY = argOf('--only', null);
+const SHOTS = !args.includes('--no-shots');
+
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const OUT = argOf('--out', null) || join(HERE, 'evidence', 'responsive');
+mkdirSync(OUT, { recursive: true });
+
+const HTML = readFileSync(argOf('--html', null) || new URL('../dist/index.html', import.meta.url));
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+const ENTRIES = decodeCatalog(CAT);
+const toHex = (b) => Buffer.from(b).toString('hex');
+
+// ---- HTTP: the bundle, plus a /uitoken mint so the session is control tier --
+const TOKEN = JSON.stringify({ ok: true, token: '5a'.repeat(LIMITS.token_bytes) });
+const srv = createServer((q, s) => {
+  if (q.url.startsWith('/uitoken')) { s.writeHead(200, { 'Content-Type': 'application/json' }); s.end(TOKEN); return; }
+  s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(HTML);
+});
+await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+const PORT = srv.address().port;
+
+// ---- synthetic STATE ------------------------------------------------------
+const OVERRIDE = {
+  window_min: 10, window_max: 140, max_rail: 150, measured_stroke: 150,
+  enabled_mask: 0xff, heap_free: 124000, uptime_s: 3725, rssi: -58, sessions: 1,
+  owner_session: 1, flags: 0, word: 0, count: 0, capacity: 8, generation: 1,
+};
+function fieldValue(f, t) {
+  if (f.name === 'pos_10um' || f.name === 'raw_10um') return 75 + 50 * Math.sin(t / 900);
+  if (f.name === 'tgt_10um') return 75 + 50 * Math.sin((t + 120) / 900);
+  if (f.name === 'speed') return 180 * Math.cos(t / 900);
+  if (f.name === 'flags' && f.bits && f.bits.includes('homed')) return 1;   // homed
+  if (/^src\d$/.test(f.name)) return +f.name.slice(3);   // one owner slot per input source
+  if (f.name === 'cur_norm') return 0.5 + 0.4 * Math.sin(t / 700);
+  if (f.name in OVERRIDE) return OVERRIDE[f.name];
+  if (f.default != null) return f.default;
+  if (f.min != null && f.max != null) return f.min + (f.max - f.min) * 0.4;
+  return 0;
+}
+const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
+  [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
+function encodePacked(layout, t) {
+  const n = layout.reduce((a, f) => a + (SIZE[f.type] ?? f.declaredSize ?? 0), 0);
+  const out = new Uint8Array(n);
+  const dv = new DataView(out.buffer);
+  let off = 0;
+  for (const f of layout) {
+    const sz = SIZE[f.type] ?? f.declaredSize ?? 0;
+    const v = fieldValue(f, t);
+    const raw = f.type === PACKED.f32 || f.type === PACKED.bitfield8 ? v : Math.round(v * (f.scale || 1));
+    const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+    switch (f.type) {
+      case PACKED.u8: case PACKED.bitfield8: dv.setUint8(off, clamp(raw, 0, 255)); break;
+      case PACKED.i8: dv.setInt8(off, clamp(raw, -128, 127)); break;
+      case PACKED.u16: dv.setUint16(off, clamp(raw, 0, 65535), true); break;
+      case PACKED.i16: dv.setInt16(off, clamp(raw, -32768, 32767), true); break;
+      case PACKED.u32: dv.setUint32(off, clamp(raw, 0, 4294967295), true); break;
+      case PACKED.i32: dv.setInt32(off, raw | 0, true); break;
+      case PACKED.f32: dv.setFloat32(off, v, true); break;
+      default: break;   // strings stay zero-padded empty
+    }
+    off += sz;
+  }
+  return out;
+}
+
+// ---- the fake hub ---------------------------------------------------------
+const LOG_LINES = [
+  [2, 'sys', 'boot complete, fixture hub (responsive matrix)'],
+  [3, 'kinetic', 'waveform segment reshaped to hold its deadline: amplitude budget floor reached at 0.62 of the requested stroke, which is a deliberately long line to test wrapping'],
+  [4, 'link', 'SUBSCRIBE_REJECTED would look like this if the batching regressed'],
+];
+function logEvent(lvl, tag, msg, ms) {
+  return cbMap([[K.event_kind, cbUint(0)], [K.body, cbMap([[1, cbUint(lvl)], [2, cbTstr(tag)], [3, cbUint(ms)], [4, cbTstr(msg)]])]]);
+}
+function fakeHub(ws) {
+  const subs = new Set();
+  let timer = null;
+  const t0 = Date.now();
+  const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
+  const pushState = (id) => {
+    const e = ENTRIES.find((x) => x.id === id);
+    if (e && e.layout) send(FRAME.STATE, id, encodePacked(e.layout, Date.now() - t0));
+  };
+  ws.onMessage((msg) => {
+    if (typeof msg === 'string') return;
+    for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
+      if (header.type === FRAME.HELLO) {
+        send(FRAME.WELCOME, 0, cbMap([
+          [K.session_id, cbUint(7)], [K.boot_id, cbUint(0x5eed)],
+          [K.catalog_etag, cbBstr(Uint8Array.from(Buffer.from(ETAG, 'hex')))], [K.cfg_gen, cbUint(1)],
+          [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
+            [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
+          [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
+          [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
+            [IDENTITY_K.hub_name, cbTstr('Responsive fixture')]])],
+        ]));
+      } else if (header.type === FRAME.SUBSCRIBE) {
+        const m = cbDecodeFull(payload);
+        const grants = [];
+        for (const w of m.get(K.subscriptions) || []) {
+          const ch = w.get(K.channel_id);
+          subs.add(ch);
+          grants.push(cbMap([[K.priority, cbUint(w.get(K.priority) || 0)], [K.granted_rate_hz, cbUint(w.get(K.rate_hz) || 0)],
+            [K.channel_id, cbUint(ch)]]));
+          pushState(ch);
+          if (ch === 0x8) LOG_LINES.forEach(([l, tg, s], i) => send(FRAME.EVENT, 0x8, logEvent(l, tg, s, 1000 + i)));
+        }
+        send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+        if (!timer) timer = setInterval(() => { for (const id of [0x1100, 0x1110]) if (subs.has(id)) pushState(id); }, 40);
+      } else if (header.type === FRAME.PING) {
+        send(FRAME.PONG, header.channel, payload);
+      }
+    }
+  });
+  ws.onClose(() => clearInterval(timer));
+}
+
+// ---- in-page measurement --------------------------------------------------
+function measure({ phone }) {
+  const fails = [];
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const vis = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const name = (el) => {
+    const c = el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).filter((x) => !x.startsWith('svelte-')).join('.') : '';
+    const t = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24);
+    return el.tagName.toLowerCase() + c + (t ? ' "' + t + '"' : '');
+  };
+
+  // overflow
+  const sw = document.scrollingElement.scrollWidth;
+  if (sw > vw + 0.5) {
+    // Culprit = sticks out past the viewport while its parent does not, and
+    // no ancestor clips or scrolls it (those never widen the page).
+    const culprits = [];
+    for (const el of document.querySelectorAll('body *')) {
+      const r = el.getBoundingClientRect();
+      if (r.right <= vw + 0.5 || !vis(el)) continue;
+      if (el.parentElement.getBoundingClientRect().right > vw + 0.5) continue;
+      let clipped = false;
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX !== 'visible') { clipped = true; break; }
+      }
+      if (!clipped) culprits.push(name(el) + ' right=' + Math.round(r.right));
+    }
+    fails.push(['overflow', 'scrollWidth ' + sw + ' > ' + vw + (culprits.length ? ': ' + culprits.slice(0, 3).join('; ') : '')]);
+  }
+
+  // font floor
+  const small = new Map();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.data.trim()) continue;
+    const el = n.parentElement;
+    if (!el || !vis(el)) continue;
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    if (fs < 10.95) { const k = name(el).split(' "')[0] + ' ' + fs.toFixed(1) + 'px'; small.set(k, (small.get(k) || 0) + 1); }
+  }
+  for (const [k, c] of small) fails.push(['font', k + (c > 1 ? ' x' + c : '')]);
+
+  // clipped text
+  for (const el of document.querySelectorAll('body *')) {
+    if (![...el.childNodes].some((c) => c.nodeType === 3 && c.data.trim())) continue;
+    if (!vis(el) || el.clientWidth <= 2) continue;   // visually-hidden (sr-only) text is meant to be clipped
+    const cs = getComputedStyle(el);
+    if (!/(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') continue;
+    if (el.scrollWidth > el.clientWidth + 1) fails.push(['clip', name(el) + ' ' + el.scrollWidth + '>' + el.clientWidth]);
+  }
+
+  // prose measure + chart height
+  for (const el of document.querySelectorAll('p, .field-desc, .explain, li')) {
+    if (!vis(el) || el.textContent.trim().length < 100) continue;
+    const fs = parseFloat(getComputedStyle(el).fontSize);
+    const chars = el.clientWidth / (fs * 0.5);
+    if (chars > 105) fails.push(['measure', name(el) + ' ~' + Math.round(chars) + ' chars/line']);
+  }
+  for (const el of document.querySelectorAll('canvas, svg')) {
+    if (!vis(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width >= 200 && r.height < 24 && !el.closest('button, .ico, .tbtn, .btn')) fails.push(['measure', 'chart ' + name(el) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)]);
+  }
+
+  // fixed/sticky chrome overlap
+  const chrome = [...document.querySelectorAll('body *')].filter((el) => {
+    const p = getComputedStyle(el).position;
+    return (p === 'fixed' || p === 'sticky') && vis(el) && getComputedStyle(el).pointerEvents !== 'none' && !el.parentElement.closest('[style*="fixed"], .safetydock, .linkbar, nav.tabs');
+  });
+  for (let i = 0; i < chrome.length; i++) for (let j = i + 1; j < chrome.length; j++) {
+    const a = chrome[i].getBoundingClientRect(), b = chrome[j].getBoundingClientRect();
+    if (chrome[i].contains(chrome[j]) || chrome[j].contains(chrome[i])) continue;
+    const ov = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    const oh = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    if (ov > 1 && oh > 1) fails.push(['chrome', name(chrome[i]) + ' overlaps ' + name(chrome[j]) + ' by ' + Math.round(ov) + 'px']);
+  }
+
+  const INTERACTIVE = 'button, a[href], input:not([type=hidden]), select, textarea, [role=tab], [role=button], [role=slider], [role=switch], summary';
+  const controls = [...document.querySelectorAll(INTERACTIVE)].filter((el) => {
+    if (el.matches('input') && getComputedStyle(el).opacity === '0') return !!el.closest('label') && vis(el.closest('label'));
+    return vis(el);
+  });
+
+  // targets + reach (phones). A hit box is what a finger actually lands on
+  // (T24): after scrolling the control clear, probe 19.5px out from its center
+  // in all four directions with elementFromPoint, so a pseudo-element hit
+  // extension counts and a neighbor stealing the edge does not. Controls in
+  // fixed chrome are not scrolled; their rendered box is the measure.
+  if (phone) {
+    const seen = new Map();
+    const blocked = new Map();
+    const owns = (box, hit) => hit && (box.contains(hit) || (hit.control && box.contains(hit.control)) || hit.contains(box) && hit.matches('label'));
+    for (const el of controls) {
+      const box = el.matches('input') && getComputedStyle(el).opacity === '0' ? el.closest('label') : el;
+      const inChrome = chrome.some((f) => f.contains(box));
+      if (!inChrome) box.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const r = box.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let ok = r.width >= 39.5 && r.height >= 39.5;
+      if (!ok && !inChrome) {
+        ok = [[-19.5, 0], [19.5, 0], [0, -19.5], [0, 19.5]].every(([dx, dy]) =>
+          owns(box, document.elementFromPoint(Math.min(vw - 1, Math.max(0, cx + dx)), Math.min(vh - 1, Math.max(0, cy + dy)))));
+      }
+      const k = name(box).split(' "')[0];
+      if (!ok) {
+        const s = seen.get(k) || { n: 0, ex: name(box) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) };
+        s.n++; seen.set(k, s);
+      }
+      if (inChrome) continue;
+      const hit = document.elementFromPoint(Math.min(vw - 1, Math.max(0, cx)), Math.min(vh - 1, Math.max(0, cy)));
+      const cover = hit && !owns(box, hit) && chrome.find((f) => f.contains(hit));
+      if (cover && !blocked.has(k)) blocked.set(k, name(box) + ' under ' + name(cover).split(' "')[0]);
+    }
+    for (const [, s] of seen) fails.push(['target', s.ex + (s.n > 1 ? ' (x' + s.n + ')' : '')]);
+    for (const [, v] of blocked) fails.push(['reach', v]);
+    window.scrollTo(0, 0);
+    document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; });
+  }
+  return fails;
+}
+
+function stickyCheck() {
+  const lb = document.querySelector('.linkbar');
+  const tabs = document.querySelector('nav.tabs');
+  if (!lb || !tabs || getComputedStyle(tabs).position !== 'sticky') return [];
+  window.scrollTo(0, 0);
+  const tabsDocTop = tabs.getBoundingClientRect().top;
+  window.scrollTo(0, 4000);
+  const a = lb.getBoundingClientRect(), b = tabs.getBoundingClientRect();
+  const stuck = document.scrollingElement.scrollTop >= tabsDocTop - a.height;
+  const out = [];
+  if (Math.abs(a.top) > 1) out.push(['sticky', 'linkbar top=' + a.top.toFixed(1) + ' when scrolled']);
+  if (b.top < a.bottom - 1) out.push(['sticky', 'tabs slide under the linkbar: top=' + b.top.toFixed(1) + ' vs ' + a.bottom.toFixed(1)]);
+  else if (stuck && Math.abs(b.top - a.bottom) > 1) out.push(['sticky', 'tabs top=' + b.top.toFixed(1) + ' vs linkbar bottom=' + a.bottom.toFixed(1)]);
+  window.scrollTo(0, 0);
+  return out;
+}
+
+// ---- the matrix -----------------------------------------------------------
+const VIEWPORTS = [
+  [320, 568], [360, 800], [390, 844, 2], [412, 915], [844, 390], [768, 1024], [1024, 768],
+  [1280, 720], [1440, 900, 2], [1920, 1080], [2560, 1440], [3840, 2160],
+];
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const browser = await chromium.launch();
+const table = [];
+let total = 0;
+const pageErrors = [];
+
+for (const [w, h, dpr2] of VIEWPORTS) {
+  for (const dpr of dpr2 ? [1, 2] : [1]) {
+    const tag = w + 'x' + h + (dpr === 2 ? '@2x' : '');
+    if (ONLY && !tag.startsWith(ONLY)) continue;
+    const phone = Math.min(w, h) < 600;
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, hasTouch: phone, isMobile: false });
+    await ctx.addInitScript(([etag, bytes]) => {
+      try {
+        if (!sessionStorage.getItem('rm.seeded')) {
+          localStorage.clear();
+          localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+          sessionStorage.setItem('rm.seeded', '1');
+        }
+      } catch (e) { /* no storage: the harness will report a missing catalog */ }
+    }, [ETAG, toHex(CAT)]);
+    await ctx.routeWebSocket(/:82\//, fakeHub);
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => pageErrors.push(tag + ': ' + e));
+    await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
+    const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+    if (!up) { table.push([tag, '-', 'boot', 'no nav tabs rendered (catalog not adopted?)']); total++; await ctx.close(); continue; }
+    await page.waitForTimeout(600);
+    const labels = await page.$$eval(tabSel, (els) => els.map((e) => e.getAttribute('title') || e.textContent.trim()));
+    for (let i = 0; i < labels.length; i++) {
+      const view = slug(labels[i]);
+      await page.locator(tabSel).nth(i).click();
+      await page.waitForTimeout(350);
+      const fails = [...await page.evaluate(measure, { phone }), ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
+      if (SHOTS) {
+        await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
+        // Tiles, not fullPage: a fullPage capture resizes the viewport and
+        // Chromium drops touch emulation (pointer: coarse) for the rest of
+        // the session, so every later measurement would be a mouse layout.
+        const docH = await page.evaluate(() => document.scrollingElement.scrollHeight);
+        for (let t = 0, y = 0; t < 6 && (t === 0 || y < docH - h / 3); t++, y += Math.round(h * 0.8)) {
+          await page.evaluate((y) => window.scrollTo(0, y), y);
+          await page.screenshot({ path: join(OUT, view + '-' + tag + (t ? '-' + (t + 1) : '') + '.png') });
+        }
+        await page.evaluate(() => window.scrollTo(0, 0));
+      }
+      for (const [k, d] of fails) { table.push([tag, view, k, d]); total++; }
+    }
+    await ctx.close();
+  }
+}
+await browser.close();
+srv.close();
+
+// Dedupe identical findings across views so the table reads per viewport.
+const rows = new Map();
+for (const [tag, view, k, d] of table) {
+  const key = tag + '|' + k + '|' + d;
+  const r = rows.get(key) || { tag, k, d, views: [] };
+  r.views.push(view); rows.set(key, r);
+}
+console.log('\nresponsive matrix: ' + total + ' finding(s)\n');
+for (const r of rows.values()) console.log('  ' + r.tag.padEnd(12) + r.k.padEnd(9) + r.d + '   [' + (r.views.length > 3 ? r.views.length + ' views' : r.views.join(',')) + ']');
+if (pageErrors.length) { console.log('\npage errors:'); pageErrors.forEach((e) => console.log('  ' + e)); }
+console.log('\n' + (total || pageErrors.length ? 'FAILURES' : 'ALL PASS -- every view holds at every size.'));
+process.exit(total || pageErrors.length ? 1 : 0);
