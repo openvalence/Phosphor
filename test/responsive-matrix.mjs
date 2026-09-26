@@ -121,6 +121,11 @@ const LOG_LINES = [
 function logEvent(lvl, tag, msg, ms) {
   return cbMap([[K.event_kind, cbUint(0)], [K.body, cbMap([[1, cbUint(lvl)], [2, cbTstr(tag)], [3, cbUint(ms)], [4, cbTstr(msg)]])]]);
 }
+// A latched-then-cleared e-stop on safety-events, so the dock's edge line is
+// on screen at every size.
+function safetyEdge(kind, word) {
+  return cbMap([[K.event_kind, cbUint(kind)], [K.body, cbMap([[1, cbUint(word)], [2, cbUint(1)], [3, cbUint(7)], [4, cbUint(1)]])]]);
+}
 function fakeHub(ws, hubName = 'Responsive fixture') {
   const subs = new Set();
   let timer = null;
@@ -153,6 +158,7 @@ function fakeHub(ws, hubName = 'Responsive fixture') {
             [K.channel_id, cbUint(ch)]]));
           pushState(ch);
           if (ch === 0x8) LOG_LINES.forEach(([l, tg, s], i) => send(FRAME.EVENT, 0x8, logEvent(l, tg, s, 1000 + i)));
+          if (ch === 0xe) [[1, 1], [2, 0]].forEach(([k, wd]) => send(FRAME.EVENT, 0xe, safetyEdge(k, wd)));
         }
         send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
         if (!timer) timer = setInterval(() => { for (const id of [0x1100, 0x1110]) if (subs.has(id)) pushState(id); }, 40);

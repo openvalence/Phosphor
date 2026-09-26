@@ -431,7 +431,7 @@
   {/if}
 
   <FootStrip />
-  <SafetyBar />
+  <SafetyBar onopenlog={() => selectTab('log')} />
   <ConfirmLayer onreview={() => selectTab('pairing')} />
 </div>
 
@@ -440,6 +440,11 @@
      TransportBar is the OG's `.spine-transport` (Pause/Halt/E-Stop/Home),
      promoted out of the safety dock (operator ruling 2026-07-28). Desktop
      threads it INTO the instrument hero row via the accessory snippet — no
+    {#if !instrumentHeroes.length}
+      <!-- No hero row to ride in: pause and home still need a home. Stop and
+           e-stop never depend on this; the safety dock always carries them. -->
+      <div class="bare-transport"><TransportBar /></div>
+    {/if}
      overlay positioning; the row itself is the alignment. A phone's page
      scrolls instead, so it keeps its own full-width row ABOVE the hero
      strip (OG mobile behavior), each button sharing the row equally.
@@ -520,6 +525,8 @@
   .rail-lbl {
     padding: 2px 8px 4px;
     font-size: 11px;
+  .bare-transport { padding-top: var(--gap); }
+
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;

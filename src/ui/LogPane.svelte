@@ -19,8 +19,17 @@
     CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME,
   } from '../../../Valence/clients/js/index.js';
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
+  import { logView } from './logview.svelte.js';
 
-  let tab = $state('log'); // log | anomaly | safety | session
+  // log | anomaly | safety | session; shared so the safety dock can open a feed.
+  const tab = $derived(logView.tab);
+
+  // Everything in the Safety feed counts as read while it is on screen.
+  $effect(() => {
+    if (tab !== 'safety') return;
+    void machine.events.safety[machine.events.safety.length - 1];
+    logView.safetySeenAt = Date.now();
+  });
 
   const lists = $derived({
     log: machine.events.log,
@@ -108,7 +117,7 @@
   });
 
   function selectTab(t) {
-    tab = t;
+    logView.tab = t;
     atBottom = true;
   }
 </script>

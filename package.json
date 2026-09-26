@@ -15,10 +15,11 @@
     "check:plugins": "node test/plugins.test.mjs",
     "check:shell": "node test/shell-chrome-geometry.test.mjs",
     "check:dash": "node test/dash-measure.test.mjs",
+    "check:safety": "node test/safety-reach.test.mjs",
     "check:responsive": "node test/responsive-matrix.mjs",
     "check:responsive": "node test/responsive-matrix.mjs",
     "test": "npm run check && node test/valence-wire.test.mjs && node test/telebuf-sim.mjs",
-    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive",
+    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety",
     "tauri": "tauri"
   },
   "devDependencies": {

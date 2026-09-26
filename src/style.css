@@ -527,15 +527,15 @@ select:focus { outline: none; border-color: var(--reality); }
   padding-top: var(--shell-chrome-top, 0px);
 }
 
-/* Mobile: a normally-scrolling page. SafetyBar is fixed bottom:0 and no
-   longer publishes a measured height (--safety-h is gone with the desktop
-   restructure below), so reserve FIXED clearance instead — it must clear
-   the tallest normal dock: one op row + one banner.
+/* Mobile: a normally-scrolling page. SafetyBar is fixed bottom:0 and
+   publishes its measured height as --dock-h (it grows with banners and the
+   safety-edge line); the fallback covers the first paint before it measures.
+   The extra --gap keeps the last control's hit area clear of the dock edge.
    Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
 @media (max-width: 959px) {
   .app {
     min-height: 100vh;
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--dock-h, calc(84px + env(safe-area-inset-bottom, 0px))) + var(--gap));
   }
 }
 

@@ -10,6 +10,10 @@
    * (hold/resume/override/bypass/force_home/estop_clear, and the refusal
    * surface) stays in the safety dock — see SafetyBar.svelte. Manual is absent
    * because manual mode has no protocol role yet (see RailWidget's header).
+   *
+   * Stop and e-stop here are EXTRA instances: the safety dock renders both at
+   * every width and in every state, so nothing about stop reachability may
+   * depend on this bar being mounted (RENDERING §13 law 1).
    */
   import { machine, getSession, specSafetyAction } from '../model/machine.svelte.js';
   import { runAction } from '../model/shadow.svelte.js';
@@ -151,7 +155,7 @@
   {#if stopCtl}
     <button
       type="button"
-      class="tbtn"
+      class="tbtn btn-stop"
       disabled={!canFire(stopCtl.action, stopCtl.value)}
       title={reasonFor(stopCtl.action, stopCtl.value) || stopCtl.label}
       onclick={() => fire(stopCtl.action, stopCtl.value, stopCtl.label, stopCtl.key)}
@@ -228,6 +232,12 @@
     white-space: nowrap;
     transition: border-color .12s, color .12s;
   }
+  /* Law 12: stop and e-stop are at least --tap at every pointer type; the
+     row's default stretch carries the neighbors to the same height. */
+  .tbtn.btn-stop, .tbtn.btn-estop {
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
   .tbtn:disabled { opacity: .45; }
   .tbtn:not(:disabled):hover { border-color: var(--line-4); }
   .tbtn:not(:disabled):active { border-color: var(--reality); color: var(--reality); }
@@ -265,16 +275,14 @@
     color: var(--bad);
   }
 
-  /* MOBILE/DESKTOP E-STOP SPLIT. Breakpoint matches App.svelte's `isDesktop`
-     matchMedia and SafetyBar's own 960px rule (the two are one positioning
-     decision). Below it the page scrolls, so the fixed safety dock — never
-     scrollable-away — owns the e-stop instead; this bar's copy only exists
-     at desktop widths. */
+  /* Below App.svelte's `isDesktop` breakpoint the page scrolls, and the fixed
+     safety dock's pair sits a thumb away, so this bar drops its copies there
+     rather than stacking a second stop above the fold. */
   @media (max-width: 959px) {
     /* Compound selector on purpose: the base `.tbtn` rule also sets display —
-       a bare `.btn-estop` ties on specificity and can lose the cascade to it
-       depending on rule order. `.tbtn.btn-estop` outranks both. */
-    .tbtn.btn-estop { display: none; }
+       a bare class ties on specificity and can lose the cascade to it
+       depending on rule order. */
+    .tbtn.btn-estop, .tbtn.btn-stop { display: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {

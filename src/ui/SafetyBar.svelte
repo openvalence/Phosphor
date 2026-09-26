@@ -14,9 +14,10 @@
    * never guess which ops are exempt; `session.canUse(channelId, key, value)`
    * asks the catalog's own per-option `option_access` (RFC-009 key 17), the
    * exact same data the hub gates on, so this dock and the hub cannot disagree
-   * about what a given session may press. The e-stop itself renders OUTSIDE
-   * the scrolling op groups as the dock's one fixed, oversized control — it
-   * must never be the button that happens to be off-screen when it is needed.
+   * about what a given session may press. The e-stop and stop render OUTSIDE
+   * the scrolling op groups as the dock's fixed pair, at every width and in
+   * every state (RENDERING §13 law 1): this dock is the one surface stop
+   * reachability depends on; TransportBar's copies are extra instances only.
    *
    * GLOBAL REFUSAL SURFACE: this dock is pinned to the viewport, so it is the
    * one place a refusal from ANY control (a settings slider, an action
@@ -35,6 +36,11 @@
   import { askConfirm } from './confirm.svelte.js';
   import { isUnattended } from '../model/actions.js';
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
+  import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
+  import { logView } from './logview.svelte.js';
+
+  // Called after the dock points LogPane at its Safety feed; App switches nav.
+  let { onopenlog = null } = $props();
 
   const roleActions = $derived(
     ((machine.catalog.model && machine.catalog.model.actions) || []).filter(
@@ -75,20 +81,76 @@
   const isHomeRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.home');
 
   /**
-   * The e-stop, pulled out of its op group and rendered as the dock's one
-   * oversized fixed control. Matched by wire value ONLY within a safety-role
-   * action — SAFETY_OP numbers are the safety op table's; the same integer in
-   * a home channel is a different verb entirely.
+   * One safety op located by wire value, ONLY within a safety-role action:
+   * SAFETY_OP numbers are the safety op table's; the same integer in a home
+   * channel is a different verb entirely.
    */
-  const estopCtl = $derived.by(() => {
+  function safetyOp(value) {
     for (const a of actions) {
       if (!isSafetyRole(a) || !a.options || !a.options.length) continue;
-      if (SAFETY_OP.estop < a.options.length) {
-        const label = a.options[SAFETY_OP.estop] || 'estop';
-        return { action: a, value: SAFETY_OP.estop, label, key: a.uid + ':' + SAFETY_OP.estop };
+      if (value < a.options.length) {
+        return { action: a, value, label: a.options[value] || OP_NAME[value], key: a.uid + ':' + value };
       }
     }
     return null;
+  }
+  const OP_NAME = Object.fromEntries(Object.entries(SAFETY_OP).map(([k, v]) => [v, k]));
+
+  /**
+   * The fixed pair, e-stop then stop. Never absent: an op the catalog cannot
+   * back yet (no link, no catalog, a hub missing the op) renders disabled with
+   * its reason, so the stop affordance is never a thing that appears later.
+   */
+  const fixedCtls = $derived([SAFETY_OP.estop, SAFETY_OP.stop].map((op) => {
+    const ctl = safetyOp(op);
+    const why = ctl ? reasonFor(ctl.action, ctl.value)
+      : !linkUp ? 'no hub link'
+      : !machine.catalog.ready ? 'no catalog yet'
+      : 'this hub advertises no ' + OP_NAME[op] + ' op';
+    return {
+      op, ctl, why,
+      cls: op === SAFETY_OP.estop ? 'btn-estop' : 'btn-stop',
+      label: ctl ? ctl.label : OP_NAME[op],
+      enabled: !!ctl && canFire(ctl.action, ctl.value),
+    };
+  }));
+
+  // ---- latest safety edge ----------------------------------------------------
+  // The core safety-events ring only (routed by channel identity in
+  // machine.svelte.js). Stale when the link has not been live since the edge:
+  // later edges may have been missed, so the line is history, not state.
+  // TODO(rfc-x3n): add the device anomaly log once the catalog can say which
+  // device EVENT channel it is.
+  const latestSafety = $derived(machine.events.safety[machine.events.safety.length - 1] || null);
+  const unreadSafety = $derived(machine.events.safety.filter((e) => e.at > logView.safetySeenAt).length);
+  const safetyStale = $derived(!!latestSafety && (machine.link.phase !== 'live' || machine.link.stale
+    || latestSafety.at < machine.link.openedAt));
+  let now = $state(Date.now());
+  $effect(() => {
+    if (!latestSafety) return;
+    now = Date.now();
+    const t = setInterval(() => { now = Date.now(); }, 1000);
+    return () => clearInterval(t);
+  });
+  function kindName(evt) {
+    return SAFETY_EVENT_KIND_NAME[evt.kind] || ('kind ' + evt.kind);
+  }
+  function ageText(ms) {
+    const sec = Math.max(0, Math.round(ms / 1000));
+    if (sec < 60) return sec + ' s ago';
+    if (sec < 3600) return Math.floor(sec / 60) + ' min ago';
+    return Math.floor(sec / 3600) + ' h ago';
+  }
+  function openSafetyLog() {
+    logView.tab = 'safety';
+    if (onopenlog) onopenlog();
+  }
+
+  // Mobile reserves page clearance for this fixed dock from its measured
+  // height (style.css .app), so a banner or the edge line never covers content.
+  let dockH = $state(0);
+  $effect(() => {
+    if (dockH) document.documentElement.style.setProperty('--dock-h', dockH + 'px');
   });
 
   /**
@@ -226,12 +288,12 @@
    * Real ops a session merely lacks access to stay GRAYED, never hidden —
    * that doctrine is unchanged.
    *
-   * The e-stop is also filtered from its group here — it renders separately
-   * as the dock's fixed control, and drawing it twice would be worse than
-   * either rendering alone.
+   * The e-stop and stop are also filtered from their group here — they render
+   * separately as the dock's fixed pair, and drawing one twice in the same
+   * dock would be worse than either rendering alone.
    *
-   * Operator ruling 2026-07-28: pause/stop and home also leave this group —
-   * they render in TransportBar now (see below). `force_home` is dev-only
+   * Operator ruling 2026-07-28: pause and home also leave this group — they
+   * render in TransportBar (see below). `force_home` is dev-only
    * and stays here for now, unfiltered, until a dev affordance exists to
    * hide/disable it properly.
    */
@@ -244,18 +306,15 @@
     return (action.options || [])
       .map((label, i) => ({ label: label || String(i), value: i, access: accessOf(i) }))
       .filter((o) => o.value !== 0)
-      .filter((o) => !(isSafetyRole(action) && o.value === SAFETY_OP.estop))
-      // Operator ruling 2026-07-28: pause/stop (safety-role) and home
-      // (home-role) moved out of the dock into TransportBar, the top-of-page
-      // hero-row transport row — they render there now, not here.
-      .filter((o) => !(isSafetyRole(action) && (o.value === SAFETY_OP.pause || o.value === SAFETY_OP.stop)))
+      .filter((o) => !(isSafetyRole(action) && (o.value === SAFETY_OP.estop || o.value === SAFETY_OP.stop)))
+      .filter((o) => !(isSafetyRole(action) && o.value === SAFETY_OP.pause))
       .filter((o) => !(isHomeRole(action) && o.value === HOME_OP.home))
       .sort((a, b) => a.access - b.access);
   }
 
 </script>
 
-<div class="safetydock" role="group" aria-label="Safety controls">
+<div class="safetydock" role="group" aria-label="Safety controls" bind:offsetHeight={dockH}>
   {#if unattended}
     <!-- RENDERING §10.1 rule 3: moving with nobody attached is shown in words,
          never inferred. Clears when a session owns a source again. -->
@@ -288,28 +347,43 @@
     </div>
   {/if}
 
-  {#if !machine.catalog.ready}
-    <p class="empty">Safety controls unavailable — no catalog yet.</p>
-  {:else if !actions.length}
-    <p class="empty">This hub advertises no safety or home actions.</p>
-  {:else}
-    <div class="dock">
-      {#if estopCtl}
+  {#if latestSafety}
+    <!-- Tier-1 anomaly surface: the latest safety edge, its age, and how many
+         arrived unread. Opens the Safety feed (LogPane), which is the history. -->
+    <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
+            title={safetyStale ? 'stale: the link has not been live since this edge, later edges may be missing'
+                               : 'open the safety event history'}>
+      <span class="evkind">{displayLabel(kindName(latestSafety))}</span>
+      <span class="evage">{ageText(now - latestSafety.at)}</span>
+      {#if safetyStale}<span class="evtag">stale</span>{/if}
+      {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
+    </button>
+  {/if}
+
+  <div class="dock">
+    <div class="pair">
+      {#each fixedCtls as f (f.op)}
         <button
           type="button"
-          class="btn btn-estop"
-          disabled={!canFire(estopCtl.action, estopCtl.value)}
-          title={reasonFor(estopCtl.action, estopCtl.value) || estopCtl.label}
-          onclick={() => fire(estopCtl.action, estopCtl.value, estopCtl.label, estopCtl.key)}
+          class="btn fixed {f.cls}"
+          disabled={!f.enabled}
+          title={f.why || f.label}
+          onclick={() => f.ctl && fire(f.ctl.action, f.ctl.value, f.ctl.label, f.ctl.key)}
         >
           <span class="row">
-            <span class="ico" aria-hidden="true">{@html iconMarkup(SAFETY_META[SAFETY_OP.estop].icon)}</span>
-            <span class="lbl">{busy[estopCtl.key] ? '…' : estopCtl.label}</span>
+            <span class="ico" aria-hidden="true">{@html iconMarkup(SAFETY_META[f.op].icon)}</span>
+            <span class="lbl">{f.ctl && busy[f.ctl.key] ? '…' : displayLabel(f.label)}</span>
           </span>
-          <small>{SAFETY_META[SAFETY_OP.estop].subtitle}</small>
+          <small>{SAFETY_META[f.op].subtitle}</small>
         </button>
-      {/if}
+      {/each}
+    </div>
 
+    {#if !machine.catalog.ready}
+      <p class="empty">No catalog yet.</p>
+    {:else if !actions.length}
+      <p class="empty">This hub advertises no safety or home actions.</p>
+    {:else}
       <div class="groups">
         {#each actions as action (action.uid)}
           {#if action.options && action.options.length}
@@ -361,12 +435,12 @@
           {/if}
         {/each}
       </div>
+    {/if}
 
-      {#if lastResult && !lastResult.ok}
-        <p class="err" role="status">refused ({lastResult.label}): {lastResult.error}</p>
-      {/if}
-    </div>
-  {/if}
+    {#if lastResult && !lastResult.ok}
+      <p class="err" role="status">refused ({lastResult.label}): {lastResult.error}</p>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -414,6 +488,20 @@
     gap: 12px;
   }
 
+  /* ---- the fixed pair: e-stop + stop -------------------------------------
+     Law 12: at least --tap in both axes at EVERY pointer type, not only under
+     (pointer: coarse); the stop is the one control never sized for a mouse. */
+  .pair {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 6px;
+  }
+  .btn.fixed {
+    align-self: stretch;
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
+
   /* ---- the e-stop: OG hazard-stripe wash (tag webui-prerefactor) ---------
      No fill, no glow, no uppercase/bold override — pixel-checked against
      test/evidence/og-ref/og-full.png: a quiet two-line chip like
@@ -421,14 +509,8 @@
      stripe wash in the safety red plus the alert-triangle icon; text and
      icon stay the default ink color at rest and only redden on hover/active.
      Same visual as TransportBar's copy (operator requirement: shared look).
-     Fixed OUTSIDE .groups: the one control that must never scroll away. */
-  .btn-estop {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
+     The stripe is static: no hazard animation exists to reduce. */
+  .btn.btn-estop {
     min-width: 96px;
     padding: 0 14px;
     background-image: repeating-linear-gradient(135deg, rgba(255, 71, 87, .09) 0 5px, rgba(255, 71, 87, .012) 5px 10px);
@@ -441,19 +523,6 @@
   .btn-estop:not(:disabled):active {
     border-color: var(--bad);
     color: var(--bad);
-  }
-
-  /* Operator ruling 2026-07-28: desktop shows the e-stop in TransportBar
-     (top of page) instead — hide the dock's copy there. The dock keeps
-     rendering it below 960px, wherever the page scrolls, so it is never the
-     button that happens to be off-screen when it is needed. Breakpoint
-     matches App.svelte's `isDesktop` matchMedia. */
-  @media (min-width: 960px) {
-    /* Compound selector on purpose: the base `.btn` rule also sets display
-       and sits later in this block — a bare `.btn-estop` ties on specificity
-       and loses the cascade to it. `.btn.btn-estop` outranks both regardless
-       of rule order. */
-    .btn.btn-estop { display: none; }
   }
 
   /* ---- op groups: labeled clusters, one scrolling row --------------------
@@ -560,9 +629,45 @@
   .btn.recover:disabled { opacity: 0.5; }
 
   .empty {
+    align-self: center;
     font-size: 12.5px;
     color: var(--ink-faint);
     margin: 0;
+  }
+
+  /* ---- latest safety edge ---------------------------------------------------
+     One line, never a second row of buttons. Dimmed AND worded when stale
+     (law 8; law 5: never color alone). */
+  .evline {
+    align-self: flex-start;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    font-size: 12px;
+    color: var(--ink);
+    text-align: left;
+    min-width: 0;
+    transition: border-color .12s;
+  }
+  @media (pointer: coarse) {
+    .evline { min-height: 40px; }
+  }
+  .evline:hover { border-color: var(--line-4); }
+  .evline.stale { opacity: .55; }
+  .evkind { text-transform: capitalize; white-space: nowrap; }
+  .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); white-space: nowrap; }
+  .evtag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+    border: 1px solid var(--line-2);
+    padding: 0 5px;
+    white-space: nowrap;
   }
 
   .err {
@@ -573,6 +678,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .btn { transition: none; }
+    .btn, .evline { transition: none; }
   }
 </style>
