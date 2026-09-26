@@ -20,6 +20,7 @@
   import FootStrip from './ui/FootStrip.svelte';
   import SafetyBar from './ui/SafetyBar.svelte';
   import ConfirmLayer from './ui/ConfirmLayer.svelte';
+  import { askConfirm } from './ui/confirm.svelte.js';
   import TransportBar from './ui/TransportBar.svelte';
   import ValencePane from './ui/ValencePane.svelte';
   import LogPane from './ui/LogPane.svelte';
@@ -179,25 +180,21 @@
    * "restore factory" verb the machine did not advertise, and never a
    * client-side guess: a field whose catalog published no default is not
    * touched, and neither is one the mask, the tier or the link has closed.
-   * Two-click arm because it moves many settings at once.
+   * Confirmed through the overlay layer because it moves many settings at once.
    */
-  let resetArmed = $state(false);
-  let resetTimer = null;
   const resettable = $derived(
     visibleGroups.groups
       .flatMap((g) => g.fields)
       .filter((f) => !f.readOnly && f.dflt != null
                      && isFieldEnabled(f, machine.samples[f.channelId]))
   );
-  function resetCategory() {
-    clearTimeout(resetTimer);
-    if (!resetArmed) {
-      resetArmed = true;
-      resetTimer = setTimeout(() => { resetArmed = false; }, 4000);
-      return;
-    }
-    resetArmed = false;
-    for (const f of resettable) writeSetting(f, f.dflt);
+  async function resetCategory() {
+    const n = resettable.length;
+    const ok = await askConfirm({
+      title: 'Reset ' + n + ' setting' + (n === 1 ? '' : 's') + ' to defaults',
+      body: 'Each field goes back to the default its own catalog entry declares.',
+    });
+    if (ok) for (const f of resettable) writeSetting(f, f.dflt);
   }
 
   /**
@@ -281,13 +278,8 @@
         </button>
       {/if}
       {#if resettable.length && machine.link.phase === 'live'}
-        <button class="adv-toggle reset-cat" type="button" onclick={resetCategory}
-                class:armed={resetArmed}>
-          {#if resetArmed}
-            Confirm: reset {resettable.length} setting{resettable.length === 1 ? '' : 's'} to defaults
-          {:else}
-            Reset this page to defaults
-          {/if}
+        <button class="adv-toggle reset-cat" type="button" onclick={resetCategory}>
+          Reset this page to defaults
         </button>
       {/if}
     {:else if current.id === 'pairing'}
@@ -588,7 +580,4 @@
     letter-spacing: .04em;
   }
   .adv-toggle:hover { color: var(--ink); border-color: var(--line-3); }
-  /* Armed wears --warn, the hazard token every theme keeps identical: this
-     click moves many machine settings at once. */
-  .reset-cat.armed { color: var(--warn); border-color: var(--warn); }
 </style>
