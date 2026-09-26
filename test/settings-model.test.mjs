@@ -325,7 +325,19 @@ const patternClaim = claimRoles(model.byRole, {
   require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
 });
 ok('a hero whose required roles are ABSENT declines entirely', patternClaim === null,
-   'this machine has no pattern generator, so no generator card is drawn');
+   'this synthesized machine has no pattern generator, so no generator card is drawn');
+{
+  // The real hub now carries one (Nucleus val-091.12): the same claim binds.
+  const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
+    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+  const claim = claimRoles(real.byRole, {
+    require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
+    optional: { bgRun: ROLE.sourceBackgroundRun },
+  });
+  ok('fixture hub: the pattern generator card IS drawn, background_run bound beside run/stop',
+     !!claim && claim.running.name === 'running' && claim.select.name === 'pattern'
+       && !!claim.bgRun && claim.bgRun.name === 'background_run');
+}
 
 // ---- claim: hero rank reaches Overview unless a Tier-1 widget took it -----
 {
@@ -500,14 +512,18 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      model.looseActions.some((a) => a.role === 'action.service'));
 }
 {
-  // A real hub's bytes: its only verbs are safety and home, both persistent.
+  // A real hub's bytes: safety and home (both persistent) plus the preset
+  // store's CRUD verb, which is uncategorized and so rides Overview until a
+  // generator-advanced widget claims it (ph-vdk.11).
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
     new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
   const generic = real.categories.flatMap((c) => c.groups.flatMap((g) => g.fields))
     .filter((f) => f.widget === WIDGET.action);
+  const drawn = generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role));
   ok('fixture hub: safety/home verbs are not duplicated onto settings tabs',
-     generic.length === 0 && real.looseActions.length === 0,
-     generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role)).join(',') || 'none');
+     !drawn.some((r) => r !== 'action.preset'), drawn.join(',') || 'none');
+  ok('fixture hub: the preset store verb is reachable exactly once',
+     drawn.filter((r) => r === 'action.preset').length === 1, drawn.join(',') || 'none');
 }
 
 // ---- pattern-panel: background_run bound by role (RENDERING §10.1) --------

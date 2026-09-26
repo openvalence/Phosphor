@@ -350,6 +350,11 @@ async function main() {
     try { await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, {}); } catch (e) { nacked = e; }
     ok('pattern-advanced-cmd: an empty write NACKs INVALID_VALUE',
       !!nacked && nacked.name === 'INVALID_VALUE', nacked ? nacked.name : 'no NACK!');
+
+    // Restore the catalog defaults. The hub republishes on CHANGE only, so a
+    // second run against the same sim would otherwise wait on a push that
+    // never comes (its write would change nothing).
+    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 1: false, 2: 0, 3: 10, 4: 0, 21: 100, 22: 1 });
   }
 
   // ---- preset roster/store/cmd trio (0x1220 / 0x5220 / 0x3220) ------------
