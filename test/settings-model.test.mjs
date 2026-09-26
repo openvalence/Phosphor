@@ -20,8 +20,10 @@ import {
 } from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE } from '../src/model/roles.js';
 import { labelFor } from '../src/model/format.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag } from '../src/model/actions.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
+  SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS,
   VALUE_ASPECT, VALUE_SCOPE, UNIT_ID,
 } from '../../Valence/clients/js/index.js';
 
@@ -367,6 +369,31 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      labelFor(named('log_dropped', 'Log lines dropped since boot.')) === 'log_dropped');
   ok('a one-word desc clause is not a label',
      labelFor(named('blend_mode_reserved', 'Retired. Unused padding now.')) === 'blend_mode_reserved');
+}
+
+// ---- confirm posture comes from registry vocabulary (RENDERING §7, §10.1) --
+{
+  const act = (role, extra = {}) => ({ channelId: 0x0291, key: 1, role, desc: '', ...extra });
+  ok('a registered reboot tag confirms', needsConfirm(act('action.reboot'), 1));
+  ok('a registered reset tag confirms', needsConfirm(act('action.reset', { options: ['x', 'y'] }), 1));
+  ok('an admin tag does not', !needsConfirm(act('action.admin'), 1));
+  ok('an unregistered tag falls back to a plain trigger', !needsConfirm(act('action.service'), 2));
+  ok('the tag is the role suffix', actionTag(act('action.preset_save')) === 'preset_save');
+  const safety = act('action.safety', { channelId: CH_SAFETY_INTENTS });
+  ok('override_on / bypass_on on the spec-core safety channel confirm',
+     needsConfirm(safety, SAFETY_OP.override_on) && needsConfirm(safety, SAFETY_OP.bypass_on));
+  ok('...but turning them off, or stopping, never waits on a dialog',
+     !needsConfirm(safety, SAFETY_OP.override_off) && !needsConfirm(safety, SAFETY_OP.estop)
+     && !needsConfirm(safety, SAFETY_OP.stop));
+  ok('the same op number on a device channel is another verb: no confirm',
+     !needsConfirm(act('action.safety'), SAFETY_OP.override_on));
+  const bg = { role: FIELD_ROLE.source_background_run };
+  ok('background_run false->true confirms', settingNeedsConfirm(bg, 0, 1));
+  ok('background_run true->false does not', !settingNeedsConfirm(bg, 1, 0));
+  ok('an ordinary toggle does not', !settingNeedsConfirm({ role: '' }, 0, 1));
+  const copy = confirmCopy(act('action.reboot', { options: ['reserved', 'warm_reboot'], desc: 'Restart the hub.' }), 1);
+  ok('confirm copy is the catalog\'s own option label and desc',
+     copy.title === 'warm reboot' && copy.body === 'Restart the hub.', JSON.stringify(copy));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

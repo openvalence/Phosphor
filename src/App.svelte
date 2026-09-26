@@ -19,6 +19,7 @@
   import LinkBar from './ui/LinkBar.svelte';
   import FootStrip from './ui/FootStrip.svelte';
   import SafetyBar from './ui/SafetyBar.svelte';
+  import ConfirmLayer from './ui/ConfirmLayer.svelte';
   import TransportBar from './ui/TransportBar.svelte';
   import ValencePane from './ui/ValencePane.svelte';
   import LogPane from './ui/LogPane.svelte';
@@ -382,6 +383,7 @@
 
   <FootStrip />
   <SafetyBar />
+  <ConfirmLayer onreview={() => selectTab('pairing')} />
 </div>
 
 <style>

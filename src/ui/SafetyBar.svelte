@@ -31,6 +31,8 @@
   import { runAction, lastRefusal, remedyForLastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
   import { SAFETY_OP, HOME_OP } from '../../../Valence/clients/js/index.js';
   import { optionLabel } from '../model/format.js';
+  import { needsConfirm, confirmCopy } from '../model/actions.js';
+  import { askConfirm } from './confirm.svelte.js';
 
   const roleActions = $derived(
     ((machine.catalog.model && machine.catalog.model.actions) || []).filter(
@@ -187,6 +189,7 @@
   let lastResult = $state(null); // { ok, label, error, at } — this dock's OWN last press
 
   async function fire(action, value, label, btnKey) {
+    if (needsConfirm(action, value) && !(await askConfirm(confirmCopy(action, value)))) return;
     busy = { ...busy, [btnKey]: true };
     const result = await runAction(action, value);
     busy = { ...busy, [btnKey]: false };
