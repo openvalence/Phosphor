@@ -170,9 +170,10 @@
 
   .pattern-head {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
   }
-  .bg-btn { flex: 0 0 auto; min-height: var(--tap); padding: 0 12px; }
+  .bg-btn { flex: 0 1 auto; min-width: 0; min-height: var(--tap); padding: 0 12px; }
   .bg-btn[aria-checked='true'] { border-color: var(--warn); color: var(--warn); }
 
   /* Chrome (border/color/disabled/hover) comes from the global .og-btn /
