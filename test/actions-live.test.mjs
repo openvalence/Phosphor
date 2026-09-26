@@ -171,11 +171,11 @@ async function checkActions(tag, w, h, touch) {
   // exactly what this proves end to end.
   const rosterBefore = wire.seen.samples.get(0x1220);
   const countBefore = rosterBefore ? rosterBefore.count : 0;
-  // ap_mode itself is NOT a round-tripped value: valence-sim.mjs's own fixture
-  // test established that a load always ENGAGES Advanced mode as a side
-  // effect, regardless of what was saved. `master` (overall stroke speed) is
-  // an ordinary captured field, so it is the round-trip marker here.
-  await wire.s.sendIntent(0x3210, { 2: 77 });
+  // ap_mode itself is NOT a round-tripped value: a load always ENGAGES
+  // Advanced mode as a side effect. `in_speed` (0x3210 key 5) is the marker
+  // because the preset payload captures it; `master` is NOT captured
+  // (Nucleus flagship_p4/src/patterns/PatternSettings.h capturePreset()).
+  await wire.s.sendIntent(0x3210, { 5: 77 });
   await sleep(200);
 
   const SLOT = 23; // top slot: least likely to collide with anything a bench ever saved
@@ -184,26 +184,15 @@ async function checkActions(tag, w, h, touch) {
   await card.locator('.field.action .ops button', { hasText: 'save' }).click();
   const savedLine = card.locator('.field.action .hint.state', { hasText: 'confirmed' });
   const savedOk = await savedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
-  // KNOWN, WIRE-EVIDENCED FAILURE (not a Phosphor UI bug): the hub's ECHO for
-  // this exact intent WAS captured arriving over the wire (framereceived,
-  // decoded FRAME.ECHO ch=0x3220 applied={1:1,2:slot,3:name}) within
-  // milliseconds of the send, every time this was probed -- but the pending
-  // shadow never advances past "pending" when this runs inside the built
-  // page (a plain Node session sending the identical intent, with or without
-  // a real /uitoken token, gets its echo and resolves in ~10ms). The
-  // difference reproduces only inside a browser runtime, which points at
-  // Valence/clients/js/session.js's echo/intent correlation rather than at
-  // ActionField or runAction (both are straight pass-throughs to
-  // session.sendIntent). Left FAILING on purpose -- see the report for ph-vdk.33.
   ok(tag + ': save press reaches confirmed (post-ECHO)', savedOk, null, savedOk ? await savedLine.textContent() : '(timed out -- see comment above)');
   await page.waitForTimeout(300);
   const rosterAfterSave = wire.seen.samples.get(0x1220);
-  ok(tag + ': roster count on the wire incremented after save (the write DID apply, even though the confirmed text above did not)',
+  ok(tag + ': roster count on the wire incremented after save',
     rosterAfterSave && rosterAfterSave.count === countBefore + 1, rosterAfterSave && rosterAfterSave.count, countBefore + 1);
 
-  // Move `master` away from what was saved, then recall it and check the wire
+  // Move `in_speed` away from what was saved, then recall it and check the wire
   // lands back where the preset captured it.
-  await wire.s.sendIntent(0x3210, { 2: 10 });
+  await wire.s.sendIntent(0x3210, { 5: 10 });
   await sleep(300);
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .payload input[type=text]').fill('');
@@ -212,17 +201,8 @@ async function checkActions(tag, w, h, touch) {
   const loadedOk = await loadedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   ok(tag + ': load press reaches confirmed (post-ECHO)', loadedOk, null, loadedOk ? await loadedLine.textContent() : '(timed out)');
   await page.waitForTimeout(400);
-  // KNOWN, WIRE-EVIDENCED FAILURE, same family as save above: `master` stays
-  // at whatever it was set to just before load (never reverts to the saved
-  // 77), even though load's own confirmed-text DOES arrive normally (unlike
-  // save). The roster count still moves correctly on both save and delete
-  // (proven above/below), so the STORE mechanics work; only the snapshot's
-  // actual field CONTENT looks like it never captured real values when the
-  // originating save intent came from this browser path. Left FAILING; see
-  // the report for ph-vdk.33 -- likely the same root cause as the save-echo
-  // finding, not two independent bugs.
-  ok(tag + ': load recalls the saved preset on the wire (0x1210 master back to what was saved)',
-    wire.seen.samples.get(0x1210)?.master === 77, wire.seen.samples.get(0x1210)?.master, 77);
+  ok(tag + ': load recalls the saved preset on the wire (0x1210 in_speed back to what was saved)',
+    wire.seen.samples.get(0x1210)?.in_speed === 77, wire.seen.samples.get(0x1210)?.in_speed, 77);
 
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .ops button', { hasText: 'delete' }).click();
@@ -271,13 +251,6 @@ async function checkPatternPanel(tag, w, h, touch) {
   ok(tag + ': Start pattern sets pattern-state.running on the wire', !!wire.seen.samples.get(0x1200)?.running);
   await page.waitForTimeout(1200);
   const pos1 = wire.seen.samples.get(0x1100)?.pos_10um;
-  // KNOWN, WIRE-EVIDENCED FAILURE: pattern-state.running does flip to 1 (the
-  // assertion above passes) and enabled_mask/speed/depth/stroke all read as
-  // set, but 0x1100's own flags_bits.gen_running never turns on and
-  // pos_10um/raw_10um sit at 0 for a full 1.5 s with maxed amplitude knobs --
-  // a sim/hub gap between "the setting says running" and "the motion engine
-  // is actually driving the carriage", not a Phosphor rendering defect (there
-  // is nothing more for the UI to do here; it already reflects the wire).
   ok(tag + ': the generator actually moves the carriage (0x1100 position changed)', pos0 !== pos1, pos0, pos1);
 
   // background_run: false -> true is confirm-gated (RENDERING SS10.1 rule 2).

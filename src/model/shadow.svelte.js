@@ -282,10 +282,13 @@ function clearTimers(sh) {
 function ensureShadow(shadowKey, channelId, label) {
   let sh = shadows[shadowKey];
   if (!sh) {
-    sh = shadows[shadowKey] = {
+    // Read back through `shadows`: `a = obj[k] = {...}` yields the RAW object,
+    // and writes to it bypass the $state proxy, so a first press never re-renders.
+    shadows[shadowKey] = {
       status: STATUS.confirmed, requested: undefined, applied: undefined,
       error: null, settled: false, sentAt: 0, channelId, label,
     };
+    sh = shadows[shadowKey];
   } else {
     sh.channelId = channelId;
     sh.label = label;
