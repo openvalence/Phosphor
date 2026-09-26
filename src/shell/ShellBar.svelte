@@ -11,11 +11,17 @@
    *   Valence).
    * - BLE sessions have no HTTP sideband, so no /uitoken: they land at watch
    *   tier by design. Control arrives with the WS upgrade.
+   * - A live BLE session hops to WS once, automatically, when WELCOME offers
+   *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
+   *   opens, and falls back to BLE if the WS session is not live in time.
    */
+  import { untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
+  import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { machine, connect, disconnect } from '../model/machine.svelte.js';
-  import { makeBleWebSocket, ipv4ToString, BLE_SERVICE, bleStats } from './ble-ws.js';
+  import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
+  import { advFlags, upgradeTarget } from './ble-adv.js';
 
   let scanning = $state(false);
   let hubs = $state([]);
@@ -57,13 +63,26 @@
     if (mode !== 'ble') { stats = ''; return; }
     const t = setInterval(() => {
       stats = 'rx ' + bleStats.rx + ' tx ' + bleStats.tx
+        + (bleStats.mtu ? ' mtu ' + bleStats.mtu + (bleStats.mtu < MTU_FLOOR ? ' (<' + MTU_FLOOR + ')' : '') : '')
         + (bleStats.lastError ? ' err ' + bleStats.lastError : '');
     }, 1000);
     return () => clearInterval(t);
   });
-  const canUpgrade = $derived(
-    mode === 'ble' && phase === 'live' && endpoint && endpoint.ipv4 && endpoint.wsPort
+  // The scan hit a BLE session rides: its flags gate the upgrade, and it is
+  // what a failed upgrade falls back to.
+  let bleDev = $state(null);
+  const target = $derived(
+    upgradeTarget({ mode, phase, endpoint, adv: bleDev && advFlags(bleDev) })
   );
+  // Plain, not $state: one automatic attempt per operator-chosen BLE connect,
+  // so a fallback cannot loop. The manual button stays for a retry.
+  let upgradeTried = false;
+  $effect(() => {
+    if (target && !upgradeTried) {
+      upgradeTried = true;
+      untrack(() => upgrade());
+    }
+  });
 
   // SPEC 13.8 UDP discovery plus 13.7 mDNS, the WS-side front door (DESIGN.md;
   // operator ruling 2026-07-28). The Rust command owns the sockets and the merge;
@@ -107,11 +126,17 @@
     }
   }
 
+  function pickBle(dev) {
+    upgradeTried = false;
+    connectBle(dev);
+  }
+
   async function connectBle(dev) {
     // Never GATT-connect with a scan still running: Android's stack handles
     // it badly, and the scan has done its job the moment a hub is chosen.
     if (scanning) { await stopScan().catch(() => {}); scanning = false; }
     disconnect();
+    bleDev = dev;
     mode = 'ble';
     localStorage.setItem('shell_mode', 'ble');
     note = 'BLE → ' + (dev.name || dev.address) + ' (watch tier until WS upgrade)';
@@ -129,10 +154,54 @@
     connect({ host, port: port || 82 });
   }
 
-  function upgrade() {
-    const ip = ipv4ToString(endpoint.ipv4);
-    note = 'upgraded → ws://' + ip + ':' + endpoint.wsPort;
-    connectWs(ip, endpoint.wsPort);
+  const WS_PROBE_MS = 3000;
+  const WS_LIVE_MS = 8000;
+
+  // Opens and closes a bare socket: proves the endpoint answers before the
+  // live BLE session is touched.
+  function wsReachable(host, port) {
+    return new Promise((resolve) => {
+      let ws = null;
+      const done = (ok) => {
+        clearTimeout(timer);
+        try { ws?.close(); } catch (e) { /* already closed */ }
+        resolve(ok);
+      };
+      const timer = setTimeout(() => done(false), WS_PROBE_MS);
+      try { ws = new WebSocket('ws://' + host + ':' + port + '/', [WS_SUBPROTOCOL]); } catch (e) { done(false); return; }
+      ws.onopen = () => done(true);
+      ws.onerror = () => done(false);
+    });
+  }
+
+  async function untilLive(ms) {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 100))) {
+      if (machine.link.phase === 'live') return true;
+    }
+    return false;
+  }
+
+  // Same instance_id on the new transport (the session client persists it),
+  // so the hub treats the HELLO as a migration (SPEC 6.3), not a newcomer.
+  let upgrading = false;
+  async function upgrade() {
+    const t = target, dev = bleDev;
+    if (!t || !dev || upgrading) return;
+    upgrading = true;
+    try { await hop(t, dev); } finally { upgrading = false; }
+  }
+
+  async function hop(t, dev) {
+    const url = 'ws://' + t.host + ':' + t.port;
+    note = 'probing ' + url;
+    if (!(await wsReachable(t.host, t.port))) { note = url + ' unreachable, staying on BLE'; return; }
+    holdForMigration();
+    connectWs(t.host, t.port);
+    const live = await untilLive(WS_LIVE_MS);
+    await releaseHeld();
+    if (live) { note = 'upgraded → ' + url; return; }
+    note = 'WS upgrade failed, back on BLE';
+    connectBle(dev);
   }
 </script>
 
@@ -161,10 +230,13 @@
 
     <button class="sb-btn" onclick={scan}>{scanning ? 'stop' : 'scan BLE'}</button>
     {#each hubs as h (h.address)}
-      <button class="sb-hub mono" onclick={() => connectBle(h)}>
+      {@const adv = advFlags(h)}
+      <button class="sb-hub mono" onclick={() => pickBle(h)}>
         <span class="hub-name">{h.name || 'hub'}</span>
         <span class="hub-addr">{h.address}</span>
         {#if h.rssi}<span class="hub-rssi">{h.rssi} dBm</span>{/if}
+        {#if adv?.pairing}<span class="hub-pair">pairing</span>{/if}
+        {#if adv?.ws}<span class="hub-pair">WS</span>{/if}
       </button>
     {/each}
     {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
@@ -174,9 +246,9 @@
            onkeydown={(e) => { if (e.key === 'Enter') connectWs(manualHost); }} />
     <button class="sb-btn" onclick={() => connectWs(manualHost)}>WS</button>
 
-    {#if canUpgrade}
+    {#if target}
       <button class="sb-btn sb-upgrade" onclick={upgrade}>
-        ↑ WS {ipv4ToString(endpoint.ipv4)}:{endpoint.wsPort}
+        ↑ WS {target.host}:{target.port}
       </button>
     {/if}
     {#if note}<span class="sb-note">{note}</span>{/if}

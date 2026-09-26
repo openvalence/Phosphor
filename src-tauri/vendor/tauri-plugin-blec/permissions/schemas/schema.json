@@ -367,6 +367,18 @@
           "markdownDescription": "Denies the list_services command without any pre-configured scope."
         },
         {
+          "description": "Enables the mtu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-mtu",
+          "markdownDescription": "Enables the mtu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the mtu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-mtu",
+          "markdownDescription": "Denies the mtu command without any pre-configured scope."
+        },
+        {
           "description": "Enables the recv command without any pre-configured scope.",
           "type": "string",
           "const": "allow-recv",
@@ -437,6 +449,18 @@
           "type": "string",
           "const": "deny-send-string",
           "markdownDescription": "Denies the send_string command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_android_mtu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-android-mtu",
+          "markdownDescription": "Enables the set_android_mtu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_android_mtu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-android-mtu",
+          "markdownDescription": "Denies the set_android_mtu command without any pre-configured scope."
         },
         {
           "description": "Enables the stop_scan command without any pre-configured scope.",

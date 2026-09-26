@@ -23,15 +23,43 @@ import {
   subscribe as blecSubscribe,
   send as blecSend,
   getMtu,
+  setAndroidMtu,
 } from '@mnlphlp/plugin-blec';
 
 export const BLE_SERVICE = '56414c45-4e43-4531-8000-000000000001';
 const CHAR_C2H_WRITE = '56414c45-4e43-4531-8000-000000000002';
 const CHAR_H2C_NOTIFY = '56414c45-4e43-4531-8000-000000000003';
 
+// SPEC §13.4: negotiate MTU >= 250 before catalog transfer. blec requests
+// during connect on Android only (desktop stacks negotiate on their own), so
+// this must be set before connect. 517 is the ATT maximum; the peer
+// negotiates down.
+const MTU_REQUEST = 517;
+export const MTU_FLOOR = 250;
+
 // Live wire counters for the ShellBar's diagnostics line — on-device field
 // debugging without adb. Reset on each bridge instantiation.
-export const bleStats = { rx: 0, tx: 0, lastError: '' };
+export const bleStats = { rx: 0, tx: 0, mtu: 0, lastError: '' };
+
+// The one duck blec can back: it holds ONE connection at a time.
+let current = null;
+
+/**
+ * Make the live duck's next close() a migration handoff (SPEC §6.3): no
+ * GOODBYE is written and the GATT link stays up, so the hub sees the WS HELLO
+ * while BLE is still attached and closes BLE itself, instead of running
+ * session-loss teardown on it.
+ */
+export function holdForMigration() {
+  if (current) current._held = true;
+}
+
+/** Drop a held GATT link. Normally the hub has already closed it. */
+export async function releaseHeld() {
+  if (!current?._held) return;
+  current._held = false;
+  await blecDisconnect().catch(() => {});
+}
 
 /**
  * Build a WebSocket-duck class bound to one BLE peripheral address.
@@ -49,21 +77,25 @@ export function makeBleWebSocket(address) {
       this.onerror = null;
       this._dead = false;
       this._writeQ = Promise.resolve();
+      this._held = false;
       bleStats.rx = 0;
       bleStats.tx = 0;
+      bleStats.mtu = 0;
       bleStats.lastError = '';
+      current = this;
       this._open();
     }
 
     async _open() {
       try {
+        await setAndroidMtu(MTU_REQUEST).catch(() => {});
         await blecConnect(address, () => this._dropped());
         await blecSubscribe(CHAR_H2C_NOTIFY, BLE_SERVICE, (data) => {
           if (this._dead || !this.onmessage) return;
           bleStats.rx++;
           this.onmessage({ data: new Uint8Array(data).buffer });
         });
-        this.mtu = await getMtu().catch(() => 0);
+        this.mtu = bleStats.mtu = await getMtu().catch(() => 0);
         if (this._dead) { blecDisconnect().catch(() => {}); return; }
         this.readyState = 1; // OPEN
         if (this.onopen) this.onopen();
@@ -89,7 +121,7 @@ export function makeBleWebSocket(address) {
     }
 
     send(buf) {
-      if (this._dead || this.readyState !== 1) return;
+      if (this._held || this._dead || this.readyState !== 1) return;
       const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf)
         : ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)
         : null;
@@ -111,17 +143,11 @@ export function makeBleWebSocket(address) {
       if (this._dead) { return; }
       this._dead = true;
       this.readyState = 2; // CLOSING
-      blecDisconnect().catch(() => {}).then?.(() => {});
+      if (!this._held) blecDisconnect().catch(() => {});
       Promise.resolve().then(() => {
         this.readyState = 3;
         if (this.onclose) this.onclose({ code: 1000, reason: 'client close' });
       });
     }
   };
-}
-
-/** u32 big-endian (WELCOME key 47) → dotted quad, or null. */
-export function ipv4ToString(v) {
-  if (!v) return null;
-  return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255].join('.');
 }

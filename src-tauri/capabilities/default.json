@@ -11,6 +11,8 @@
       "identifier": "http:default",
       "allow": [{ "url": "http://**" }]
     },
-    "blec:default"
+    "blec:default",
+    "blec:allow-mtu",
+    "blec:allow-set-android-mtu"
   ]
 }

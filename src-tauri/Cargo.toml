@@ -33,6 +33,8 @@ tokio = { version = "1", features = ["net", "io-util", "rt"] }
 
 # Vendored 0.12.0 + panic-across-JNI fix (Android notify/event channels used
 # expect() on the binder thread — a dropped receiver aborted the whole app).
+# build.rs also declares `mtu` and `set_android_mtu`, which upstream omits, so
+# no permission exists to allow them (SPEC 13.4 MTU).
 # Upstream issue pending; drop this patch when a fixed release ships.
 [patch.crates-io]
 tauri-plugin-blec = { path = "vendor/tauri-plugin-blec" }
