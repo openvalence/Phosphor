@@ -19,7 +19,7 @@ import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, unclaimedHeroFields,
 } from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
-import { labelFor } from '../src/model/format.js';
+import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag } from '../src/model/actions.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
@@ -165,6 +165,7 @@ const CATALOG = [
         scope: VALUE_SCOPE.lifetime, scopeName: 'lifetime', unitId: UNIT_ID.count }),
       lf('top_rate', PACKED.f32, { unit: 'mm/s', group: 'Totals', aspect: VALUE_ASPECT.peak,
         unitId: UNIT_ID.mm_s }),
+      lf('rate_now', PACKED.f32, { unit: 'mm/s', group: 'Totals', unitId: UNIT_ID.mm_s }),
     ],
     schema: null,
   },
@@ -337,6 +338,27 @@ const pruned = withoutClaimed(model.categories, railClaim.claimed);
 const stillThere = pruned.flatMap((c) => c.groups.flatMap((g) => g.fields))
   .some((f) => railClaim.claimed.has(f.uid));
 ok('fields absorbed by a hero vanish from the generic tree', !stillThere);
+
+// ---- claim: value axes and units (RENDERING §5, §6) -----------------------
+{
+  const f = (n) => model.fields.find((x) => x.name === n);
+  const sys = model.categories.find((c) => c.id === UI_CATEGORY.system);
+  ok('a peak rides its live companion as a marker', f('rate_now').peak === f('top_rate'));
+  ok('...and leaves its group, so it is never drawn as a live value',
+     !sys.groups.some((g) => g.fields.includes(f('top_rate'))));
+  ok('a statistic shows its scope', labelFor(f('run_count')) === 'Run count · lifetime total',
+     labelFor(f('run_count')));
+  ok('the peak tag names aspect and scope', statTag(f('top_rate')) === 'session peak');
+  ok('a live value carries no tag', statTag(f('rate_now')) === '');
+  ok('unit_id drives the suffix', unitOf({ unit: 'furlong/s', unitId: UNIT_ID.mm_s }) === 'mm/s');
+  ok('no unit_id falls back to the catalog string verbatim',
+     unitOf({ unit: 'furlong', unitId: null }) === 'furlong');
+  ok('a count unit renders whole', precisionFor(f('run_count')) === 0);
+  const pick = claimRoles(new Map([[ROLE.telemetryVelocity, [
+    { uid: 'p', aspect: VALUE_ASPECT.peak }, { uid: 'l', aspect: VALUE_ASPECT.live }]]]),
+  { require: { v: ROLE.telemetryVelocity } });
+  ok('a hero never binds a peak as the live value', pick && pick.v.uid === 'l');
+}
 
 // ---- claim: unknown things degrade, never crash --------------------------
 const weird = buildSettingsModel([{
