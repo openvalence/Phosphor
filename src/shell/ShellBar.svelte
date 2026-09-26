@@ -20,6 +20,7 @@
   import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
   import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { machine, connect, disconnect } from '../model/machine.svelte.js';
+  import HostEntry from '../ui/HostEntry.svelte';
   import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
   import { advFlags, upgradeTarget } from './ble-adv.js';
 
@@ -48,7 +49,7 @@
   });
   // No baked-in address: discovery is the front door. The input remembers
   // only a host the operator themselves connected to before.
-  let manualHost = $state(localStorage.getItem('shell_host') || '');
+  const manualHost = localStorage.getItem('shell_host') || '';
   let mode = $state(localStorage.getItem('shell_mode') || 'ws');
   let note = $state('');
   let expanded = $state(true);
@@ -242,9 +243,7 @@
     {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
 
     <span class="sb-sep"></span>
-    <input class="sb-host mono" bind:value={manualHost} placeholder="host"
-           onkeydown={(e) => { if (e.key === 'Enter') connectWs(manualHost); }} />
-    <button class="sb-btn" onclick={() => connectWs(manualHost)}>WS</button>
+    <HostEntry dense recent={false} label="WS" value={manualHost} onpick={connectWs} />
 
     {#if target}
       <button class="sb-btn sb-upgrade" onclick={upgrade}>
@@ -347,16 +346,6 @@
   .sb-hub .hub-pair { color: var(--reality); font-weight: 600; }
   /* Solid border: a WS candidate from UDP discovery, not a BLE scan hit. */
   .sb-hub.ws { border-style: solid; }
-  .sb-host {
-    width: 130px;
-    min-height: 36px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 2px 8px;
-    color: var(--ink);
-    font-size: 0.72rem;
-  }
   .sb-sep { flex: 0 0 8px; }
   .sb-note { color: var(--ink-faint); font-style: italic; font-size: 11px; }
 </style>

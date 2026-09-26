@@ -23,6 +23,7 @@
    */
   import DashItem from './DashItem.svelte';
   import { dashboardLayout } from '../../model/dashboard.svelte.js';
+  import { view } from '../../model/viewport.svelte.js';
 
   let { viewId, items } = $props();
 
@@ -30,7 +31,9 @@
   // changes in place — e.g. a caller that swaps tabs without remounting —
   // picks up the right view's saved layout instead of freezing on whichever
   // viewId it first mounted with.
-  const layout = $derived(dashboardLayout(viewId));
+  // Per renderer class too (RFC-062 draft item 7): a class switch swaps in
+  // that class's own saved arrangement.
+  const layout = $derived(dashboardLayout(viewId, view.cls));
   const baseArranged = $derived(layout.arrange(items));
 
   let dragId = $state(null);
@@ -179,7 +182,7 @@
 
   <div class="dash-grid">
     {#each displayList as item, i (item.id)}
-      <div class="dash-cell" style={'--span:' + item.span} use:registerCell={item.id}>
+      <div class="dash-cell" data-id={item.id} style={'--span:' + item.span} use:registerCell={item.id}>
         <DashItem
           {item}
           span={item.span}

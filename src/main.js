@@ -13,7 +13,7 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
-import { connect } from './model/machine.svelte.js';
+import { connect, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyTheme, currentThemeId } from './model/theme.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 
@@ -47,11 +47,13 @@ async function boot() {
   // `?hub=<device>` is how a dev session reaches a real machine (/uitoken
   // stays same-origin-only, so such a session lands at watch tier, which is
   // honest). Harmless on the served page: absent parameter, origin rules as
-  // always. No fallback host — an empty hostname means the page was opened
-  // from a file:// URL with no hub to talk to, and connecting to a
-  // hardcoded address would be a guess about someone else's network.
+  // always. It is also what the hub picker (ui/HubPicker.svelte) writes, so a
+  // hosted page reloads onto the hub its operator chose. No hardcoded
+  // fallback: an empty hostname (a file:// open) falls back only to a hub
+  // this browser itself reached before, else to the picker, never to a guess
+  // about someone else's network.
   const hubOverride = new URLSearchParams(location.search).get('hub');
-  let host = hubOverride || location.hostname;
+  const { host, port } = parseHost(hubOverride || location.hostname || recentHubs()[0] || '');
   if (SHELL) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
     const { setHttpGet } = await import('../../Valence/clients/js/index.js');
@@ -74,7 +76,7 @@ async function boot() {
     }
     return;
   }
-  connect({ host });
+  if (host) connect({ host, port });
 }
 boot();
 // Tier-2 plugins: shell plugins folder, or ?plugin= in a dev build; a no-op on

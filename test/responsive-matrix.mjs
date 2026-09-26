@@ -24,15 +24,21 @@
  *   font       no text below 11px
  *   measure    no prose line past ~100 characters; no chart under 24px tall
  *
+ * After the matrix, three scenario checks (ph-vdk.13, ph-vdk.5):
+ *   picker   file:// and a refused hub render the hub picker, not a blank
+ *            page; a dropped link shows its state and re-adopts the hub
+ *   class    a renderer-class switch keeps the active tab and a write in
+ *            flight, and waits for a held pointer (RFC-062 draft)
+ *
  * Build first (`npm run build:only`); this builds nothing.
- * Run: node test/responsive-matrix.mjs [--only 360x800] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, resolve } from 'node:path';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS } from '../../Valence/clients/js/frames.js';
@@ -115,7 +121,7 @@ const LOG_LINES = [
 function logEvent(lvl, tag, msg, ms) {
   return cbMap([[K.event_kind, cbUint(0)], [K.body, cbMap([[1, cbUint(lvl)], [2, cbTstr(tag)], [3, cbUint(ms)], [4, cbTstr(msg)]])]]);
 }
-function fakeHub(ws) {
+function fakeHub(ws, hubName = 'Responsive fixture') {
   const subs = new Set();
   let timer = null;
   const t0 = Date.now();
@@ -135,7 +141,7 @@ function fakeHub(ws) {
             [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
           [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
           [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
-            [IDENTITY_K.hub_name, cbTstr('Responsive fixture')]])],
+            [IDENTITY_K.hub_name, cbTstr(hubName)]])],
         ]));
       } else if (header.type === FRAME.SUBSCRIBE) {
         const m = cbDecodeFull(payload);
@@ -359,6 +365,141 @@ for (const [w, h, dpr2] of VIEWPORTS) {
     await ctx.close();
   }
 }
+// ---- scenarios: first run, reconnect, class switch ---------------------------
+const scen = (name, cond, extra) => {
+  if (!cond) { table.push(['scenario', name, 'fail', extra || '']); total++; }
+  console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
+};
+async function seeded(viewport, route) {
+  const ctx = await browser.newContext({ viewport, hasTouch: viewport.width < 600 });
+  await ctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* none */ }
+  }, [ETAG, toHex(CAT)]);
+  if (route) await ctx.routeWebSocket(/:82\//, route);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push('scenario: ' + e));
+  return { ctx, page };
+}
+
+if (!ONLY || ONLY === 'picker') {
+  console.log('\npicker scenarios');
+  // file://: no hostname, no ?hub, nothing remembered.
+  const htmlArg = argOf('--html', null);
+  const fileUrl = htmlArg ? pathToFileURL(resolve(htmlArg)).href : new URL('../dist/index.html', import.meta.url).href;
+  for (const vp of [{ width: 360, height: 800 }, { width: 1280, height: 720 }]) {
+    const { ctx, page } = await seeded(vp, null);
+    await page.goto(fileUrl);
+    const shown = await page.waitForSelector('.picker input[aria-label="Hub address"]', { timeout: 8000 }).then(() => true).catch(() => false);
+    const text = shown ? await page.textContent('.picker') : '';
+    scen('file:// ' + vp.width + 'px renders the picker', shown && text.includes('No hub chosen') && text.includes('?hub='));
+    const f = shown ? await page.evaluate(measure, { phone: vp.width < 600 }) : [];
+    scen('file:// ' + vp.width + 'px picker passes the layout checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+    await ctx.close();
+  }
+
+  // A hub that refuses every session: retrying with a countdown, and Retry now.
+  let opens = 0;
+  {
+    const { ctx, page } = await seeded({ width: 360, height: 800 }, (ws) => { opens++; ws.close({ code: 1011, reason: 'refused' }); });
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    const st = await page.waitForSelector('.picker .pk-status[data-phase=retrying]', { timeout: 8000 }).catch(() => null);
+    const txt = st ? await st.textContent() : '';
+    scen('a refused hub shows the picker with its retry state', !!st && /Retrying/.test(txt), txt.trim());
+    const before = opens;
+    await page.click('.picker button:has-text("Retry now")').catch(() => {});
+    await page.waitForTimeout(400);
+    scen('Retry now opens a session without waiting out the backoff', opens > before, before + ' -> ' + opens);
+    const f = await page.evaluate(measure, { phone: true });
+    scen('refused-hub picker passes the phone layout checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+    await ctx.close();
+  }
+
+  // A hub that drops the link and comes back rebooted: the page shows the
+  // drop, keeps its last values, and adopts the new session's identity.
+  {
+    let n = 0;
+    const { ctx, page } = await seeded({ width: 1280, height: 800 }, (ws) => {
+      n++;
+      fakeHub(ws, n === 1 ? 'Responsive fixture' : 'Rebooted fixture');
+      if (n === 1) setTimeout(() => ws.close({ code: 1011, reason: 'reboot' }), 1500);
+    });
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    const line = await page.waitForSelector('.pk-line[data-phase=retrying]', { timeout: 8000 }).catch(() => null);
+    const railKept = !!(await page.$('nav.rail'));
+    scen('a dropped link is announced, and the page stays', !!line && railKept);
+    const back = await page.waitForSelector('.pk-line[data-phase=retrying]', { state: 'detached', timeout: 8000 }).then(() => true).catch(() => false);
+    await page.waitForTimeout(300);
+    const lb = await page.textContent('.linkbar');
+    scen('the reconnect adopts the rebooted hub', back && lb.includes('Rebooted fixture') && !lb.includes('Responsive fixture'));
+    await ctx.close();
+  }
+}
+
+if (!ONLY || ONLY === 'class') {
+  console.log('\nclass-switch scenarios');
+  const { ctx, page } = await seeded({ width: 1280, height: 800 }, (ws) => fakeHub(ws));
+  await page.goto('http://127.0.0.1:' + PORT + '/');
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(500);
+  // A category tab with a range control (the write under test).
+  const railTabs = page.locator('nav.rail [role=tab]');
+  let label = '';
+  for (let i = 1; i < await railTabs.count(); i++) {
+    await railTabs.nth(i).click();
+    await page.waitForTimeout(250);
+    if (await page.$('.content input[type=range]')) { label = (await railTabs.nth(i).getAttribute('title')) || ''; break; }
+  }
+  scen('found a category with a range control', !!label, label);
+  const inFlight = () => page.$$eval('[data-shadow]', (els) => els.filter((e) => e.getAttribute('data-shadow') !== 'confirmed').length);
+  const base = await inFlight();
+  await page.focus('.content input[type=range]');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(100);
+  const pre = await inFlight();
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.waitForTimeout(300);
+  const tabNow = await page.$eval('nav.tabs [aria-selected=true]', (e) => e.textContent.trim()).catch(() => '');
+  scen('full -> handheld keeps the active category', tabNow === label, tabNow + ' vs ' + label);
+  const post = await inFlight();
+  scen('a write in flight is still shown after the switch', pre > base && post > base, base + ' -> ' + pre + ' -> ' + post);
+
+  // RFC-062 item 5: no switch while a pointer is down.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForSelector('nav.rail', { timeout: 3000 });
+  await page.mouse.move(600, 400);
+  await page.mouse.down();
+  await page.setViewportSize({ width: 400, height: 800 });
+  await page.waitForTimeout(300);
+  const held = !!(await page.$('nav.rail'));
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const released = !!(await page.$('nav.tabs'));
+  scen('a class switch waits for the pointer to lift', held && released);
+  const railTab = await page.$eval('nav.tabs [aria-selected=true]', (e) => e.textContent.trim()).catch(() => '');
+  scen('the round trip still lands on the same category', railTab === label, railTab);
+  await ctx.close();
+
+  // §11 handheld drill-in: a promoted group opens its own page, which holds
+  // the same layout floor as every other view.
+  const phone = await seeded({ width: 390, height: 844 }, (ws) => fakeHub(ws));
+  await phone.page.goto('http://127.0.0.1:' + PORT + '/');
+  await phone.page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+  const tabs = phone.page.locator('nav.tabs [role=tab]');
+  let opened = false;
+  for (let i = 1; i < await tabs.count() && !opened; i++) {
+    await tabs.nth(i).click();
+    await phone.page.waitForTimeout(250);
+    // The fixture's one group past eight controls is diagnostic-rank.
+    await phone.page.click('.adv-toggle:has-text("Show") >> text=/diagnostic/', { timeout: 500 }).catch(() => {});
+    await phone.page.waitForTimeout(150);
+    const btn = await phone.page.$('.drill-open');
+    if (btn) { await btn.click(); await phone.page.waitForTimeout(250); opened = !!(await phone.page.$('.drill-page .field')); }
+  }
+  const f = opened ? await phone.page.evaluate(measure, { phone: true }) : [];
+  scen('a promoted group opens as its own page and passes the phone checks', opened && f.length === 0, f.map((x) => x.join(' ')).join('; '));
+  await phone.ctx.close();
+}
+
 await browser.close();
 srv.close();
 

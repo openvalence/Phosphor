@@ -27,19 +27,27 @@
  * All localStorage access is wrapped in try/catch: private browsing, a full
  * quota, or storage disabled outright must degrade to "layout doesn't
  * persist," never to a broken page.
+ *
+ * ── ONE LAYOUT PER RENDERER CLASS (RFC-062 draft item 7) ────────────────────
+ * Keyed on (class, viewId): a card order arranged on a desktop is never
+ * applied to the phone projection, and each class gets its own back.
+ * Before classes existed every layout lived under `sd32.dash.<viewId>`; that
+ * key is READ as the `full` class's fallback and never written or deleted,
+ * because renaming the legacy `sd32.*` keys is an operator decision.
  */
 
 const DEFAULT_SPAN = 12;
 const MIN_SPAN = 1;
 const MAX_SPAN = 12;
 
-function storageKey(viewId) {
-  return 'sd32.dash.' + viewId;
+function storageKey(cls, viewId) {
+  return 'phosphor.dash.' + cls + '.' + viewId;
 }
 
-function loadLayout(viewId) {
+function loadLayout(cls, viewId) {
   try {
-    const raw = localStorage.getItem(storageKey(viewId));
+    let raw = localStorage.getItem(storageKey(cls, viewId));
+    if (raw == null && cls === 'full') raw = localStorage.getItem('sd32.dash.' + viewId);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -48,9 +56,9 @@ function loadLayout(viewId) {
   }
 }
 
-function saveLayout(viewId, map) {
+function saveLayout(cls, viewId, map) {
   try {
-    localStorage.setItem(storageKey(viewId), JSON.stringify(map));
+    localStorage.setItem(storageKey(cls, viewId), JSON.stringify(map));
   } catch (e) {
     // Private mode / quota exceeded / storage disabled. The in-memory layout
     // still works for this page load; it just won't survive a reload.
@@ -63,30 +71,32 @@ function clampSpan(span) {
   return Math.min(MAX_SPAN, Math.max(MIN_SPAN, n));
 }
 
-// One reactive layout store per viewId, cached so switching tabs and coming
-// back keeps in-memory edits and doesn't re-read localStorage every time.
+// One reactive layout store per (class, viewId), cached so switching tabs and
+// coming back keeps in-memory edits and doesn't re-read localStorage every time.
 const registry = new Map();
 
 /**
  * Get (or lazily create) the reactive layout controller for one dashboard
- * view. `viewId` namespaces persistence, e.g. "cat2" for the machine's
- * second settings category — each view keeps its own arrangement.
+ * view under one renderer class. `viewId` namespaces persistence, e.g. "cat2"
+ * for the machine's second settings category — each view keeps its own
+ * arrangement, per class.
  */
-export function dashboardLayout(viewId) {
-  let l = registry.get(viewId);
+export function dashboardLayout(viewId, cls = 'full') {
+  const key = cls + '|' + viewId;
+  let l = registry.get(key);
   if (!l) {
-    l = createLayout(viewId);
-    registry.set(viewId, l);
+    l = createLayout(cls, viewId);
+    registry.set(key, l);
   }
   return l;
 }
 
-function createLayout(viewId) {
+function createLayout(cls, viewId) {
   /** @type {Record<string, {span:number, order:number}>} */
-  const map = $state(loadLayout(viewId));
+  const map = $state(loadLayout(cls, viewId));
 
   function persist() {
-    saveLayout(viewId, { ...map });
+    saveLayout(cls, viewId, { ...map });
   }
 
   function nextOrder() {
@@ -144,14 +154,14 @@ function createLayout(viewId) {
     persist();
   }
 
-  /** Clear this view's saved layout — the "reset layout" affordance. */
+  /**
+   * Clear this view's saved layout — the "reset layout" affordance. Persists
+   * an EMPTY map rather than removing the key, so the legacy fallback above
+   * cannot resurrect the layout the operator just reset.
+   */
   function reset() {
     for (const k of Object.keys(map)) delete map[k];
-    try {
-      localStorage.removeItem(storageKey(viewId));
-    } catch (e) {
-      // already degraded to in-memory-only; nothing further to clean up
-    }
+    persist();
   }
 
   return { arrange, setSpan, commitOrder, reset };

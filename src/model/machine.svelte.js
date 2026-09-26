@@ -146,6 +146,10 @@ export const machine = $state({
   link: {
     phase: 'idle',          // idle | connecting | handshaking | live | retrying | failed
     since: 0,
+    host: '',               // the hub this page is pointed at; '' = none chosen
+    port: 82,
+    attempts: 0,            // consecutive failed opens since the last good one
+    retryAt: 0,             // ms timestamp of the next automatic attempt; 0 = unknown
     sessionId: null,
     roles: 0,               // access tier granted to THIS session
     error: null,
@@ -180,6 +184,7 @@ export const machine = $state({
 
 let session = null;
 let _host = '';
+let _lastOpts = {};
 
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
@@ -427,11 +432,17 @@ export function connect(opts = {}) {
   // still connecting is the UI stating a value the device never sent.
   if (host !== _host) forgetDevice();
   _host = host;
+  _lastOpts = opts;
+  machine.link.host = host;
+  machine.link.port = opts.port || 82;
+  machine.link.attempts = 0;
+  machine.link.retryAt = 0;
 
   machine.link.phase = 'connecting';
   machine.link.since = Date.now();
 
-  session = createSession({
+  let s = null;
+  s = createSession({
     host: _host,
     port: opts.port || 82,
     clientKind: 'webui',
@@ -442,12 +453,20 @@ export function connect(opts = {}) {
     // Shell seam: a non-WS binding (BLE GATT) rides in as a WebSocket duck.
     // undefined = the platform WebSocket, which is every non-shell build.
     WebSocketImpl: stampingSocket(opts.WebSocketImpl),
+    // The close event carries no delay, so the library's own log line is the
+    // only place the backoff it chose is visible. If that wording changes the
+    // countdown disappears and the attempt count still shows.
+    log: (level, msg, delayMs) => {
+      if (msg === 'reconnect in' && s === session) machine.link.retryAt = Date.now() + delayMs;
+    },
   });
+  session = s;
 
   session.on('open', () => {
     machine.link.openedAt = Date.now();
     machine.link.phase = 'handshaking';
     machine.link.error = null;
+    machine.link.retryAt = 0;
   });
 
   session.on('welcome', (w) => {
@@ -510,6 +529,9 @@ export function connect(opts = {}) {
   session.on('live', () => {
     machine.link.phase = 'live';
     machine.link.since = Date.now();
+    machine.link.attempts = 0;
+    // BLE addresses are not hosts a page can dial; only WS hubs are remembered.
+    if (!opts.WebSocketImpl) rememberHub(hostLabel(host, opts.port));
   });
 
   session.on('state', (channelId, sample, tsMs) => {
@@ -531,7 +553,7 @@ export function connect(opts = {}) {
     if (evt.channel === CORE_CHANNEL.log) push(machine.events.log, rec, LOG_MAX);
     else if (evt.channel === CORE_CHANNEL.safety_events) push(machine.events.safety, rec, SAFETY_MAX);
     else if (evt.channel in CORE_CHANNEL_NAME) push(machine.events.session, rec, EVT_MAX);
-    // TODO(rfc-ph-vdk.7): no catalog key says which device EVENT channel is the
+    // TODO(rfc-x3n): no catalog key says which device EVENT channel is the
     // anomaly log, so every device-tier EVENT shares this ring.
     else push(machine.events.anomaly, rec, ANOM_MAX);
   });
@@ -559,6 +581,10 @@ export function connect(opts = {}) {
   });
 
   session.on('close', (c) => {
+    // A session replaced by retryNow()/disconnect() closes asynchronously;
+    // its late close must not overwrite the successor's phase.
+    if (s !== session) return;
+    if (c.willReconnect) machine.link.attempts++;
     machine.link.phase = c.willReconnect ? 'retrying' : 'failed';
     machine.link.willReconnect = !!c.willReconnect;
     machine.link.closeReason = c.reason || '';
@@ -652,4 +678,63 @@ export function disconnect() {
   session = null;
   machine.link.phase = 'idle';
   forgetDevice();
+}
+
+/**
+ * Skip the backoff wait: a fresh session to the same hub, keeping whatever
+ * the page shows (it stays dimmed stale until the hub re-pushes, law 8).
+ */
+export function retryNow() {
+  if (!session || session.isLive) return;
+  const s = session;
+  session = null;
+  try { s.close(); } catch (e) { /* already closed */ }
+  connect(_lastOpts);
+}
+
+/**
+ * Point this page at another hub (the hosted-page picker). `port` defaults
+ * to the Valence WS port. The page URL gains ?hub= so a reload keeps it.
+ */
+export function switchHub(host, port) {
+  disconnect();
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set('hub', hostLabel(host, port));
+    history.replaceState(null, '', u);
+  } catch (e) { /* file:// or a sandboxed frame: the picker still works */ }
+  connect({ host, port });
+}
+
+// ---- remembered hubs (browser convenience, never machine state) -----------
+
+const RECENT_KEY = 'hub_recent';
+const RECENT_MAX = 5;
+
+/** `host` or `host:port` when the port is not the default. */
+export function hostLabel(host, port) {
+  return port && port !== 82 ? host + ':' + port : host;
+}
+
+/** Split `host[:port]`; a bare IPv6 literal keeps its colons. */
+export function parseHost(text) {
+  const t = String(text || '').trim();
+  const m = /^([^:]+):(\d{1,5})$/.exec(t);
+  return m ? { host: m[1], port: +m[2] } : { host: t, port: undefined };
+}
+
+/** Hubs this browser reached before, most recent first. */
+export function recentHubs() {
+  try {
+    const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(a) ? a.filter((h) => typeof h === 'string' && h) : [];
+  } catch (e) { return []; }
+}
+
+function rememberHub(label) {
+  if (!label) return;
+  try {
+    const a = [label, ...recentHubs().filter((h) => h !== label)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(a));
+  } catch (e) { /* private mode: the list is a convenience */ }
 }

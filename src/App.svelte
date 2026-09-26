@@ -11,9 +11,10 @@
    * below. Add a settings channel to the firmware and it appears.
    *
    * ONE NAV MODEL, TWO RENDERINGS. The same tabs array (and the same `active`
-   * id) drives a sidebar rail on desktop and a horizontal tab strip on a
-   * phone — resizing the window mid-session must never lose the operator's
-   * place or fork the nav logic.
+   * id) drives a sidebar rail in the `full` renderer class and a horizontal
+   * tab strip in `handheld` and `glance` (model/viewport.svelte.js, RFC-062
+   * draft). A class switch mid-session must never lose the operator's place
+   * or a pending write, and never forks the nav logic.
    */
   import Field from './ui/Field.svelte';
   import ActionField from './ui/ActionField.svelte';
@@ -30,9 +31,13 @@
   import HeroStrip from './ui/HeroStrip.svelte';
   import TelemetryChart from './ui/widgets/TelemetryChart.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
+  import HubPicker from './ui/HubPicker.svelte';
+  import { untrack } from 'svelte';
+  import { view } from './model/viewport.svelte.js';
+  import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
   import { isFieldEnabled, unclaimedHeroFields, WIDGET } from './model/settings.js';
-  import { writeSetting } from './model/shadow.svelte.js';
+  import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
@@ -77,17 +82,34 @@
   let active = $state('machine');
   const current = $derived(tabs.find((t) => t.id === active) || tabs[0]);
 
-  // Desktop vs phone decides WHICH rendering of the nav mounts (rail vs tab
-  // strip) — a matchMedia subscription, not a resize listener, so it costs
-  // nothing between actual breakpoint crossings.
-  let isDesktop = $state(false);
-  $effect(() => {
-    const mq = window.matchMedia('(min-width: 960px)');
-    const apply = () => { isDesktop = mq.matches; };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+  // The renderer class decides WHICH rendering of the nav mounts (rail vs tab
+  // strip). RFC-062 draft: re-derived live with hysteresis, and never while a
+  // pointer is down (model/viewport.svelte.js).
+  const isDesktop = $derived(view.cls === 'full');
+
+  // Scroll anchor across a class switch: the card at the top of the view
+  // before the remount is brought back into view after it.
+  let anchor = null;
+  $effect.pre(() => {
+    view.cls;
+    anchor = untrack(topCardId);
   });
+  $effect(() => {
+    view.cls;
+    const id = anchor;
+    anchor = null;
+    if (!id) return;
+    for (const el of document.querySelectorAll('.dash-cell[data-id]')) {
+      if (el.dataset.id === id) { el.scrollIntoView({ block: 'center' }); break; }
+    }
+  });
+  function topCardId() {
+    for (const el of document.querySelectorAll('.dash-cell[data-id]')) {
+      const top = el.closest('.content')?.getBoundingClientRect().top ?? 0;
+      if (el.getBoundingClientRect().bottom > top) return el.dataset.id;
+    }
+    return null;
+  }
 
   // NAV-SWITCH VISIBILITY. A tab switch must always produce visible change
   // (operator-reported defect: a pane switched below the fold, with nothing
@@ -99,15 +121,18 @@
   // while scrolled halfway down the previous one inherits that scroll offset.
   let contentEl = $state(null);
   $effect(() => {
-    active; // dependency: re-run this on every tab switch
-    if (isDesktop && contentEl) contentEl.scrollTop = 0;
+    active; // dependency: re-run this on every tab switch, NOT on a class switch
+    untrack(() => { if (isDesktop && contentEl) contentEl.scrollTop = 0; });
   });
 
   // Mobile: the tab strip itself must scroll to the top of the viewport on
   // activation, since the page (not a bounded region) is what scrolls here.
   let tabsNav = $state(null);
+  // The promoted group page open in the active category (RENDERING §11).
+  let drill = $state(null);
   function selectTab(id) {
     active = id;
+    drill = null;
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
   }
 
@@ -213,14 +238,20 @@
    * a firmware update that adds a card, and lets the same browser talk to a
    * different machine without scrambling either layout.
    */
+  // RENDERING §11 per class: a group past the class's density budget is a
+  // card that opens its own page, never a hidden one.
   const settingItems = $derived(
-    visibleGroups.groups.map((g) => ({
+    projectGroups(visibleGroups.groups, view.cls).map(({ group: g, drill: promoted }) => ({
       id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
       title: g.name || (g.diagnostic ? 'Diagnostics' : 'Settings'),
-      snippet: groupCard,
+      snippet: promoted ? drillCard : groupCard,
       group: g,
+      promoted,
     }))
   );
+  // The open drill-in page, while its group is still promoted under this
+  // class; `full` shows every section inline instead.
+  const drillItem = $derived(settingItems.find((it) => it.promoted && it.id === drill) || null);
 
   // RENDERING §4: hero rank is surfaced by default. What no Tier-1 widget
   // claimed still reaches Overview.
@@ -254,6 +285,17 @@
   </div>
 {/snippet}
 
+<!-- A promoted group's card. Writes in flight inside it stay visible here
+     (law 5): the controls rendering them are one tap away. -->
+{#snippet drillCard(item)}
+  {@const busy = item.group.fields.filter((f) => statusOf(f) !== STATUS.confirmed).length}
+  <button type="button" class="og-btn drill-open" onclick={() => (drill = item.id)}>
+    <span>{item.group.fields.length} settings</span>
+    {#if busy}<span class="drill-busy" data-shadow="pending">{busy} in flight</span>{/if}
+    <span aria-hidden="true">›</span>
+  </button>
+{/snippet}
+
 {#snippet telemetryCard()}
   <TelemetryChart />
 {/snippet}
@@ -269,9 +311,18 @@
 {#snippet pane()}
   <main class="pane">
     {#if current.id === 'machine'}
+      <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
       <DashGrid viewId="machine" items={machineItems} />
     {:else if current.cat}
-      <DashGrid viewId={current.id} items={settingItems} />
+      {#if drillItem}
+        <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
+        <section class="og-panel drill-page" aria-label={drillItem.title}>
+          <h3 class="drill-title">{drillItem.title}</h3>
+          {@render groupCard(drillItem)}
+        </section>
+      {:else}
+        <DashGrid viewId={current.id} items={settingItems} />
+      {/if}
       {#if visibleGroups.hidden || showAdvanced}
         <button class="adv-toggle" type="button" onclick={toggleAdvanced}
                 aria-expanded={showAdvanced}>
@@ -292,7 +343,7 @@
           {/if}
         </button>
       {/if}
-      {#if resettable.length && machine.link.phase === 'live'}
+      {#if resettable.length && machine.link.phase === 'live' && !drillItem}
         <button class="adv-toggle reset-cat" type="button" onclick={resetCategory}>
           Reset this page to defaults
         </button>
@@ -313,6 +364,7 @@
 
 <div class="app">
   <LinkBar />
+  {#if machine.catalog.ready}<HubPicker mode="link" />{/if}
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -321,22 +373,10 @@
        sit above the tab strip. CARD-zone heroes render as ordinary Overview
        dashboard cards instead (see machineItems). -->
   {#if !machine.catalog.ready}
-    <section class="boot">
-      <p class="boot-msg">
-        {#if machine.link.phase === 'live'}
-          Adopting catalog…
-        {:else if machine.link.phase === 'retrying'}
-          Link lost — reconnecting. {machine.link.closeReason}
-        {:else if machine.link.phase === 'failed'}
-          No hub link. {machine.link.closeReason || 'The machine is not answering on the Valence port.'}
-        {:else}
-          Connecting to the hub…
-        {/if}
-      </p>
-      <!-- Deliberately no fallback control path. HTTP is read-only since fw
-           2.1.73, so a page with no hub link genuinely cannot drive anything,
-           and pretending otherwise would be the exact lie the doctrine forbids. -->
-    </section>
+    <!-- Deliberately no fallback control path: a page with no hub link
+         genuinely cannot drive anything. The picker says where the link
+         stands and how to point the page at a hub. -->
+    <HubPicker />
   {:else if isDesktop}
     <!-- Desktop: the transport row rides INSIDE the instrument hero row
          (the OG .hero-row — numerals left, transport right, one baseline),
@@ -360,7 +400,7 @@
                         aria-selected={current && current.id === t.id}
                         class:on={current && current.id === t.id}
                         title={t.label}
-                        onclick={() => (active = t.id)}>
+                        onclick={() => selectTab(t.id)}>
                   <span class="rail-glyph mono" aria-hidden="true">{glyph(t.label)}</span>
                   {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
                 </button>
@@ -582,14 +622,23 @@
     gap: 14px var(--gap);
   }
 
-  .boot {
-    display: grid;
-    place-items: center;
-    min-height: 40vh;
-    padding: var(--gap);
-    text-align: center;
+  /* ---- §11 drill-in (handheld, glance) ---------------------------------- */
+  .drill-open {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
   }
-  .boot-msg { color: var(--ink-dim); max-width: 40ch; }
+  .drill-busy { color: var(--intent); }
+  .drill-back { margin-bottom: var(--gap); }
+  .drill-page { padding: 12px; }
+  .drill-title {
+    margin: 0 0 12px;
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink-dim);
+  }
 
   .adv-toggle {
     display: block;
