@@ -27,6 +27,9 @@ tauri-plugin-log = "2"
 tauri-plugin-http = "2"
 # BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android
 tauri-plugin-blec = "0.12"
+# Plugin TCP line service (src/plugins.rs). Already in the tree via tauri;
+# named here only to enable net + io-util.
+tokio = { version = "1", features = ["net", "io-util", "rt"] }
 
 # Vendored 0.12.0 + panic-across-JNI fix (Android notify/event channels used
 # expect() on the binder thread — a dropped receiver aborted the whole app).
