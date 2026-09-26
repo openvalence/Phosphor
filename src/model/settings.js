@@ -22,6 +22,7 @@ import {
   PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY,
 } from '../../../Valence/clients/js/index.js';
 import { ROLE, isActionRole } from './roles.js';
+import { isPersistentAction } from './actions.js';
 
 // ---------------------------------------------------------------------------
 // Archetype derivation (RENDERING.md §8.2) and its widget projection
@@ -269,9 +270,6 @@ function makeField(entry, f, settingIndex, maskField) {
     rank: f.rank,
     rankName: f.rankName,
     aspect: f.aspect,
-    scope: f.scope,
-    // RENDERING §6: format.js prefers this over the free `unit` string.
-    unitId: f.unitId ?? null,
     // RFC-048 key 22. Which pipeline stage this number is: demand / planned /
     // actual. Absent on the wire means `actual` (the codec resolves that), so
     // this is always set and labelFor() can qualify a label without asking
@@ -370,18 +368,6 @@ export function buildSettingsModel(entries) {
     }
   }
 
-  // RENDERING §5.4 companions: a peak readout rides its live twin (same
-  // channel and group, same role, else same unit) as a marker, and leaves
-  // the group. No twin: it stays a standalone readout, labeled as a peak.
-  const sameUnit = (a, b) => (a.unitId != null ? a.unitId === b.unitId : !!a.unit && a.unit === b.unit);
-  for (const p of fields) {
-    if (p.aspect !== VALUE_ASPECT.peak || !p.readOnly) continue;
-    const live = fields.find((f) => f.channelId === p.channelId && f.group === p.group
-      && f.readOnly && !f.aspect && !f.peak
-      && (p.role ? f.role === p.role : sameUnit(f, p)));
-    if (live) { live.peak = p; p.companionOf = live.uid; }
-  }
-
   // ---- pass 2: INTENT schema fields that are ACTIONS ----------------------
   //
   // RFC-019: `action.<name>` is an open role convention. A schema field tagged
@@ -411,7 +397,6 @@ export function buildSettingsModel(entries) {
           desc: f.desc || '',
           role: f.role,
           unit: f.unit || '',
-          unitId: f.unitId ?? null,
           min: f.min,
           max: f.max,
           access: f.access != null ? f.access : entry.access,
@@ -433,6 +418,13 @@ export function buildSettingsModel(entries) {
         optionAccess: f.optionAccess || null,
         access: f.access != null ? f.access : entry.access,
         group: f.group || '',
+        type: f.type,
+        // The other schema fields of the same INTENT ride with the op (a
+        // preset's slot and name, say). Roled value fields are claimed by
+        // their own widgets and never ride here.
+        payload: entry.schema.filter((p) => p !== f && !p.role && p.rank !== UI_RANK.hidden)
+          .map((p) => ({ key: p.key, name: p.name, label: humanize(p.name), desc: p.desc || '',
+                         type: p.type, unit: p.unit || '', min: p.min, max: p.max })),
         archetype: UI_ARCHETYPE.trigger,   // §8.2 row 6
         widget: WIDGET.action,
       };
@@ -449,9 +441,9 @@ export function buildSettingsModel(entries) {
   // single Tuning tab. Keying the map on the category NUMBER is what makes the
   // merge happen; keying it on the channel would draw three unrelated tabs.
   const catMap = new Map();
-  for (const field of fields) {
+  const place = (field) => {
     const entry = entries.find((e) => e.id === field.channelId);
-    if (entry.category == null) continue;   // uncategorized: not a settings tab
+    if (entry.category == null) return false;   // uncategorized: not a settings tab
     const key = entry.category;
     if (!catMap.has(key)) {
       catMap.set(key, {
@@ -476,7 +468,14 @@ export function buildSettingsModel(entries) {
       bucket.set(gname, { name: gname, diagnostic: field.diagnostic, fields: [] });
     }
     bucket.get(gname).fields.push(field);
-  }
+    return true;
+  };
+  for (const field of fields) place(field);
+
+  // Generic triggers (§8.2 row 6) join their channel's category like any
+  // field. Uncategorized ones are `looseActions`, drawn on Overview. The
+  // persistent region's verbs (safety, home) are drawn there, never twice.
+  const looseActions = actions.filter((a) => !isPersistentAction(a) && !place(a));
 
   // Tabs in registry order (RENDERING §12). An unrecognized or vendor id sorts
   // where `other` does (§3), keeping its own tab and label; never dropped.
@@ -486,13 +485,10 @@ export function buildSettingsModel(entries) {
     .sort((a, b) => (rankOf(a) - rankOf(b)) || (a.id - b.id))
     .map(({ diagGroups, ...c }) => ({
       ...c,
-      // A peak drawn on its live twin leaves its group.
-      groups: [...c.groups.values(), ...diagGroups.values()]
-        .map((g) => ({ ...g, fields: g.fields.filter((f) => !f.companionOf) }))
-        .filter((g) => g.fields.length),
+      groups: [...c.groups.values(), ...diagGroups.values()],
     }));
 
-  return { categories, actions, byRole, fields };
+  return { categories, actions, looseActions, byRole, fields };
 }
 
 /**

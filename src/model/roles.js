@@ -180,6 +180,14 @@ export function isActionRole(role) {
   return typeof role === 'string' && role.startsWith(ACTION_PREFIX);
 }
 
+/**
+ * Open convention: `<role>.peak` is the peak-hold companion of `<role>`.
+ * @param {string} role @returns {boolean}
+ */
+export function isPeakRole(role) {
+  return typeof role === 'string' && role.endsWith('.peak');
+}
+
 // ---------------------------------------------------------------------------
 // Claiming
 // ---------------------------------------------------------------------------
@@ -209,9 +217,8 @@ export function claimRoles(byRole, spec) {
     if (!list || !list.length) return null;
     // Ambiguity is possible in principle (two channels both claiming
     // window.min). First-authored wins, deterministically, rather than
-    // guessing which one is "the real" one. A peak/total/min/mean companion
-    // is never a live binding (RENDERING §5.4).
-    return list.find((f) => !f.aspect) || null;
+    // guessing which one is "the real" one.
+    return list[0];
   };
 
   for (const [name, role] of Object.entries(spec.require || {})) {

@@ -35,6 +35,14 @@ export function isDestructive(action, value) {
   return false;
 }
 
+// Verbs the persistent region draws by identity and tag (SafetyBar,
+// TransportBar); the generic trigger path never draws them a second time.
+const PERSISTENT_TAGS = new Set([ACTION_TAG.safety, ACTION_TAG.home]);
+
+export function isPersistentAction(action) {
+  return PERSISTENT_TAGS.has(actionTag(action));
+}
+
 /** Must pressing this op go through the confirm layer first? */
 export function needsConfirm(action, value) {
   if (!action) return false;

@@ -16,6 +16,7 @@
    * place or fork the nav logic.
    */
   import Field from './ui/Field.svelte';
+  import ActionField from './ui/ActionField.svelte';
   import LinkBar from './ui/LinkBar.svelte';
   import FootStrip from './ui/FootStrip.svelte';
   import SafetyBar from './ui/SafetyBar.svelte';
@@ -30,7 +31,7 @@
   import TelemetryChart from './ui/widgets/TelemetryChart.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import { machine } from './model/machine.svelte.js';
-  import { isFieldEnabled, unclaimedHeroFields } from './model/settings.js';
+  import { isFieldEnabled, unclaimedHeroFields, WIDGET } from './model/settings.js';
   import { writeSetting } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -225,6 +226,10 @@
   // claimed still reaches Overview.
   const heroLeft = $derived(model ? unclaimedHeroFields(model.fields, heroes.claimed) : []);
 
+  // Uncategorized generic triggers (settings.js looseActions) that no hero
+  // claimed get one Overview card, so no advertised verb is unreachable.
+  const looseActions = $derived(model ? model.looseActions.filter((a) => !heroes.claimed.has(a.uid)) : []);
+
   const machineItems = $derived([
     ...(heroLeft.length
       ? [{ id: 'widget:hero-rank', title: 'Machine', snippet: groupCard, group: { fields: heroLeft } }]
@@ -235,13 +240,16 @@
     ...heroes.widgets
       .filter((h) => h.zone === 'card')
       .map((h) => ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
+    ...(looseActions.length
+      ? [{ id: 'widget:actions', title: 'Actions', snippet: groupCard, group: { fields: looseActions } }]
+      : []),
   ]);
 </script>
 
 {#snippet groupCard(item)}
   <div class="card-body">
     {#each item.group.fields as f (f.uid)}
-      <Field field={f} />
+      {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
     {/each}
   </div>
 {/snippet}
