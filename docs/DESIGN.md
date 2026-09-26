@@ -381,11 +381,13 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
   Truth (law 4) and law 7: a placement never claims more range than the
   field's own essential binding supports, and it never hides a live value
   that falls outside the narrowed display window.
-- A toggle placement may be configured as two discrete values, or as
-  MOMENTARY override-and-return (operator ruling 2026-09-26): press applies
-  value A, release restores the previous value. Both are ordinary
-  echo-confirmed writes (law 4); if the link drops mid-press the hub's value
-  stands, never a client-side assumption of what release would have sent.
+- A toggle placement is configured as two discrete values, each an ordinary
+  echo-confirmed write (law 4). A momentary override-and-return mode was
+  considered and WITHDRAWN (operator ruling 2026-09-26): a client-side
+  restore that depends on the client surviving the press runs against the
+  Valence principle that policy lives on the hub, and it does not earn its
+  place. If a hold-to-run ever matters (an accessory pump held on), it is a
+  hub-side write that reverts unless refreshed, and it rides an RFC.
 - Seam: `src/model/settings.js` (`resolveArchetype`, `resolveWidget`,
   `WIDGET`, whose `segmented`/`bitfield`/`secret` already are presentations
   inside one archetype) and `src/ui/Field.svelte`.
@@ -514,4 +516,4 @@ operator rules otherwise.
 | 2026-09-26 | §8 | Hub-served page is the backup delivery; parity may break (§10.7). | operator |
 | 2026-09-26 | §8 | "Divergence is build configuration, never code" no longer binds shell-only capabilities; "mobile-first" under review (§10.7, §10.9). | operator |
 | 2026-09-26 | §10 | The builder rulings (§10.1 to §10.9) established. | operator |
-| 2026-09-26 | §10.1, §10.2 | Presentation-by-read/write-class rule, range-narrowing rule, and toggle momentary-override ruling recorded. Home-vs-derived-pages question closed: the home is additional, the catalog-built UI stays canonical. Law 10 uid carve-out and the presentation rule handed to a draft Valence RFC ("User-authored surfaces and presentation choice"). | operator |
+| 2026-09-26 | §10.1, §10.2 | Presentation-by-read/write-class rule, range-narrowing rule recorded; a momentary toggle mode was considered and withdrawn the same day (toggles are two-valued). Home-vs-derived-pages question closed: the home is additional, the catalog-built UI stays canonical. Law 10 uid carve-out and the presentation rule handed to a draft Valence RFC ("User-authored surfaces and presentation choice"). | operator |
