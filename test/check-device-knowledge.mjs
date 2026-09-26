@@ -136,13 +136,6 @@ const files = allFiles.filter((p) => {
   return !EXEMPT.some((e) => rel.startsWith(e));
 });
 
-const fieldNames = deviceFieldNames();
-const harvestedCount = fieldNames.size;
-for (const n of RETIRED_NAMES) fieldNames.add(n);
-const findings = [];
-
-/**
- * Blank out comments while PRESERVING line numbering.
 // A name compared against a string literal, or tested by regex/string method.
 const NAME_ID = String.raw`(?:\bname|channelName)\b`;
 const NAME_BINDING = [
@@ -152,6 +145,13 @@ const NAME_BINDING = [
   new RegExp(NAME_ID + String.raw`\.(?:startsWith|endsWith|includes|match|search)\(`),
 ];
 
+const fieldNames = deviceFieldNames();
+const harvestedCount = fieldNames.size;
+for (const n of RETIRED_NAMES) fieldNames.add(n);
+const findings = [];
+
+/**
+ * Blank out comments while PRESERVING line numbering.
  *
  * This matters more than it looks. The files most likely to discuss channel
  * ids and field names are exactly the ones that explain why binding to them is
@@ -180,6 +180,12 @@ for (const file of allFiles) {
   lines.forEach((code, i) => {
     const line = rawLines[i] || '';
 
+    // 3. binding by channel/field name
+    if (nameChecked && NAME_BINDING.some((re) => re.test(code))) {
+      findings.push({ rel, line: i + 1, kind: 'name binding', hit: 'name match', text: line.trim() });
+    }
+    if (!leakChecked) return;
+
     // 1. channel-id literals
     for (const m of code.matchAll(/\b0x0[0-9a-fA-F]{3}\b/g)) {
       findings.push({ rel, line: i + 1, kind: 'channel id', hit: m[0], text: line.trim() });
@@ -187,12 +193,6 @@ for (const file of allFiles) {
 
     // 2. this device's wire field names
     for (const name of fieldNames) {
-    // 3. binding by channel/field name
-    if (nameChecked && NAME_BINDING.some((re) => re.test(code))) {
-      findings.push({ rel, line: i + 1, kind: 'name binding', hit: 'name match', text: line.trim() });
-    }
-    if (!leakChecked) return;
-
       // Word-boundary match so `pattern` does not fire on `patterns`.
       const re = new RegExp('\\b' + name + '\\b');
       if (re.test(code)) {
