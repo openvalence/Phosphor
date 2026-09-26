@@ -119,6 +119,9 @@ A widget declares:
   `card` is an ordinary dashboard card the generic grid lays out and
   reorders. Tier 2 plugins compose into the same slots Tier 0 already builds
   instead of fighting it;
+  *(Superseded 2026-09-26 by §10.2: every widget, plugin widgets included, is a
+  placeable control on the builder grid. The two zones describe today's code
+  until phase (c) lands.)*
 - what it receives: a scoped view of the shadow store for its channels/roles
   + the catalog entries it bound;
 - what it may do: submit intents (queued through the core's pending->echo
@@ -134,6 +137,8 @@ widget API is frozen the way Valence's `hub.hpp`/`client.hpp` are frozen
 (governance C-6): additive evolution only, versioned, never breaking. Design
 it small and boring. The v1 contract, with the freeze candidate marked,
 is [PLUGINS.md](PLUGINS.md); the trigger is tracked on the board.
+*(Re-timed 2026-09-26: the freeze also waits for the builder's control
+contract, §10.2, because plugin widgets change shape under it.)*
 
 ## 5. Compliance testing -- the sim modes
 
@@ -198,7 +203,8 @@ The ladder, description only -- status for each item lives on the dev board
    target), plugin loader and two example Tier-2 plugins
    ([PLUGINS.md](PLUGINS.md)).
 4. **API freeze + docs** -- widget contract documented, versioned, frozen;
-   community plugin list opened.
+   community plugin list opened. *(Re-timed 2026-09-26: after the builder's
+   control contract, §10.2.)*
 5. Embedded-UI ruling (§8) executed wherever it lands.
 
 ## 8. RULED (operator, 2026-07-27) -- delivery vehicles
@@ -212,6 +218,9 @@ delivery:
   browser on the LAN, doubles as the emergency surface (tokenless e-stop is
   role-exempt by design). SlopDrive-32 (archived, S3, 16 MB) shipped this
   first; Nucleus (P4) inherits the role.
+  *(Amended 2026-09-26, §10.7: the hub-served page is the BACKUP delivery;
+  parity with the shell may break. "ALL controls" now means every field
+  stays reachable per RENDERING §12, not that every shell feature ships.)*
 - **Hosted (the universal path):** a canonical community-hosted instance of
   the same client, served over **plain http** (deliberate -- see landmine
   below), for hubs that cannot or should not serve assets. The
@@ -280,6 +289,11 @@ onramp, guest/iOS surface, and emergency stop. The faces cross-promote (page
 code. The bar: discovery just works, the mobile app just works -- and if an
 iOS store listing ever becomes possible, it just works too (the Tauri iOS
 target stays buildable; no promises on Apple).
+*(Amended 2026-09-26, §10.7: "divergence is build configuration, never code"
+no longer binds where the served page lacks the host capability: window
+chrome, the builder, the embedded buttplug server and plugins may be shell
+code. "Mobile-first" is under review while the mobile layout is unresolved,
+§10.9.)*
 
 **Transport doctrine (same ruling):** Valence is the only protocol that
 matters and is transport-agnostic (Valence SPEC.md §13); every hub SHOULD
@@ -313,3 +327,159 @@ mount by closure; see [PLUGINS.md](PLUGINS.md).
 > DEMO-CANDIDATE: a minimal vanilla-JS plugin (`mount`/`unmount`, no
 > framework at all) rendering one live-updating card, to prove the ABI
 > insurance concretely -- no Svelte required to build a Tier-2 widget.
+
+## 10. The builder (operator rulings 2026-09-26)
+
+Phosphor is a UI builder. Valence is the framework behind it, optimized for
+embedded controllers. Nothing below is coded yet. The phased plan is epic
+`ph-e82`; status lives there, never here (C-2). Rulings still owed are on
+`ph-e82.1` and `ph-e82.7` and are marked OPEN below.
+
+### 10.1 The home page replaces Overview
+
+- The home page is a user-arranged grid. It replaces the Overview tab
+  (`src/App.svelte`: the `machine` tab and `machineItems`).
+- Everything that lived only on Overview becomes a module or is deleted with
+  C-9 proof: hero-rank leftovers, telemetry, card-zone heroes, loose actions.
+- The derived category pages stay. Every field remains reachable without the
+  home page (RENDERING §12: classes differ in projection, never in reachable
+  content). The home is an additional surface, never the only path to a
+  field.
+- A home the user has not built is seeded from rank (RENDERING §4, hero
+  surfaced; `ph-vdk.36`) plus the migrated layout of §10.6.
+- Edit mode places, moves, resizes and deletes from a palette of every
+  placeable control. Outside edit mode nothing drags (`DashItem.svelte`: the
+  grab handle is the only draggable surface).
+- Rests on RENDERING §12 and law 10. OPEN: it strains §11 ("pages are
+  derived, never designed per app") and §9 ("region assignment is never a
+  per-app choice"); reconciliation is `ph-e82.1`.
+
+### 10.2 The control contract
+
+- A CONTROL is one catalog field plus one presentation. Writable fields offer
+  knob, slider, stepper, toggle; readouts offer number, bar, bulb, graph.
+- The offered set comes from the field's archetype (RENDERING §8.2, §8.4) and
+  its facts: bar needs bounds, toggle and bulb need a bool, graph needs a
+  client-side history (gaps, never zeros: law 9). The user chooses how a
+  field looks, never what it binds to (laws 6, 7).
+- Seam: `src/model/settings.js` (`resolveArchetype`, `resolveWidget`,
+  `WIDGET`, whose `segmented`/`bitfield`/`secret` already are presentations
+  inside one archetype) and `src/ui/Field.svelte`.
+- Every presentation keeps the universal contract: the four-state ladder with
+  a text reason (law 5), graying with the gate named (law 3), stale dimming
+  (law 8). An echo pair travels as one control and a tagged min/max pair is
+  one range control (RENDERING §11; `mergeRangePairs` in `settings.js`).
+- OPEN (`ph-e82.1`): a choice that crosses an archetype boundary (slider vs
+  stepper, §8.2 rows 9/10; readout vs graph, rows 12/13 vs 15) against §8.2's
+  first-match rule.
+- Role-claiming composites are controls: rail hero, plan strip (nested in
+  the rail per RENDERING §10 `plan-view`), pattern panel, limits. They place,
+  resize and save like any control. Claim-or-decline is unchanged
+  (`claimAll`, `src/model/roles.js`; law 7).
+- Plugin widgets use the same contract. `registerHero`'s card-only zone
+  (`src/plugins/host.js`) is superseded; §4's `renders` zones describe today's
+  code only. The plugin API freeze (`ph-vdk.30`, §4) waits for this contract.
+- Persisted keys are stable ids (law 10): a role when the field has one,
+  else its uid; composites as `hero:<id>`. An id the catalog lacks stays
+  inert in storage (`src/model/dashboard.svelte.js`). OPEN (`ph-e82.1`): a
+  uid is channel id plus field name, which law 10 calls wire vocabulary.
+- OPEN (`ph-e82.1`): single fields placeable anywhere, or only inside nests.
+
+### 10.3 The top strip: safety and window chrome
+
+- All safety controls live at the TOP. The bottom edge sits against the
+  Windows taskbar, where a missed click is jarring; at the top there is
+  nothing to hit by accident. Supersedes the bottom dock
+  (`src/ui/SafetyBar.svelte`, `.safetydock`).
+- NON-NEGOTIABLE: the top strip always carries an e-stop the user cannot
+  remove. It is bound by safety-op identity (law 2; `fixedCtls` in
+  `SafetyBar.svelte`), never scrolled or hidden (laws 1, 11; RENDERING §9
+  `persistent`).
+- Every safety op is also a placeable module. A second e-stop on the grid is
+  fine; the strip's copy is the one that cannot go.
+- The global refusal surface and the unattended chip (RENDERING §10.1 rule 3)
+  stay in the strip, because it is the one surface always on screen.
+- Phosphor replaces the OS title bar with its own decorations, and the shell
+  bar merges into the strip. Seams: `src-tauri/tauri.conf.json` (window
+  decorations), `src-tauri/capabilities/default.json` (window permissions),
+  `src/shell/ShellBar.svelte`. Windows first; Android has no frame; the
+  served page draws the strip without window controls.
+- One strip, one top reserve, one safe-area owner (`.claude/rules/webui.md`
+  T22). Safety colors stay unthemeable in the new chrome (law 13).
+
+### 10.4 Full width
+
+16:9-class windows use the full width. The `.app` cap (`max-width: 1680px`,
+`src/style.css`) goes; prose keeps its measure. Absorbs `ph-gf8`'s width
+half.
+
+### 10.5 Grid, scale, resize
+
+- Cells are square and sized in device pixels, about 32 to 40 at 3840x2160
+  and 125 percent Windows scale, converted through `devicePixelRatio`. Cell
+  count follows the window. Replaces the 12-column span model
+  (`dashboard.svelte.js`, `DashItem.svelte`).
+- A browser-style scale control multiplies the cell edge. It scales cells and
+  tokens, never CSS `zoom` on a subtree holding a positional control, until a
+  test proves `RailWidget`'s pointer mapping survives (`ph-gf8`).
+- Under a coarse pointer the scale clamps so no hit target falls below the
+  40 CSS px floor (law 12).
+- Each control is resizable in cells and switches between vertical and
+  horizontal control layout by its own aspect.
+- Renderer-class selection (`src/model/rclass.js`, `viewport.svelte.js`) stays
+  in CSS px and is independent of the grid.
+
+### 10.6 Nests and layouts
+
+- A NEST is a control holding a subgrid, scrolling or fixed. A nest with its
+  contents is saveable as a reusable module; members the current catalog
+  lacks stay inert.
+- A scrolling nest never hides pending or degraded state (RENDERING §9): its
+  frame carries the in-flight count, as `drillCard` does in `App.svelte`.
+- LAYOUTS are named and saved per user per client, stored locally, with the
+  try/catch degrade `dashboard.svelte.js` already uses. Sync is a later
+  maybe, not planned.
+- Migration: today's `phosphor.dash.<class>.<view>` maps and the legacy
+  `sd32.dash.*` keys seed a layout named Default. Legacy keys are read, never
+  written or deleted.
+
+### 10.7 Delivery: the hub-served page is the backup
+
+The shell is the primary delivery. The hub-served page is the BACKUP: the
+zero-install onramp, the guest surface, the emergency stop. Parity with the
+shell may break; the served page still meets every RENDERING §13 law and
+keeps every field reachable. Amends §8's embedded ruling and its "divergence
+is build configuration, never code" clause (amendments below). Seam:
+`src/main.js`, the one delivery seam.
+
+### 10.8 buttplug, embedded
+
+- Phosphor embeds a buttplug server in the shell, not Intiface. Games and
+  apps connect to Phosphor as an Intiface-compatible server.
+- The machine is a buttplug device whose commands enter the kernel intent
+  path (`submitMotion`, `src/plugins/host.js`, the TCode adapter's door).
+  The Prime Rule holds on the machine side: one Valence session, no side
+  channel. The buttplug fork's own Valence hardware manager
+  (`buttplug_server_hwmgr_slopsync`, its own session) is not linked.
+- Toys buttplug supports appear as modules under §10.2 and as relationship
+  targets. OPEN, raised to the operator: relationships are hub policy that
+  survives Phosphor closing (accessory rulings, same date), and a toy
+  connected to Phosphor cannot be evaluated on the hub.
+- The listener binds loopback. LAN exposure is `ph-vdk.28`'s ruling, the same
+  question the TCode listener (`src-tauri/src/plugins.rs`) already raised.
+
+### 10.9 Mobile: unresolved
+
+OPEN (`ph-e82.7`). Likely the handheld class keeps an auto-built layout and
+desktop gets the builder. Top-strip safety applies on phones unless the
+operator rules otherwise.
+
+## Amendments
+
+| Date | Section | Change | Approved by |
+|---|---|---|---|
+| 2026-09-26 | §4 | `renders` zones (instrument, card) superseded by grid placement; plugin widgets are placeable controls (§10.2). | operator |
+| 2026-09-26 | §4, §7 | Plugin API freeze re-timed behind the control contract (§10.2). | operator |
+| 2026-09-26 | §8 | Hub-served page is the backup delivery; parity may break (§10.7). | operator |
+| 2026-09-26 | §8 | "Divergence is build configuration, never code" no longer binds shell-only capabilities; "mobile-first" under review (§10.7, §10.9). | operator |
+| 2026-09-26 | §10 | The builder rulings (§10.1 to §10.9) established. | operator |
