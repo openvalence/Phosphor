@@ -132,8 +132,8 @@ plugins. Anything a plugin "needs" beyond this is a Prime Rule event (§2).
 **Freeze discipline:** the moment the first external plugin exists, the
 widget API is frozen the way Valence's `hub.hpp`/`client.hpp` are frozen
 (governance C-6): additive evolution only, versioned, never breaking. Design
-it small and boring. **Not yet reached:** no Tier-2 plugin loader or
-`mount(slotEl, api)`/`unmount()` ABI exists in this repo yet -- see §9.
+it small and boring. The v1 contract, with the freeze candidate marked,
+is [PLUGINS.md](PLUGINS.md); the trigger is tracked on the board.
 
 ## 5. Compliance testing -- the sim modes
 
@@ -176,9 +176,9 @@ Nucleus's own board for the sim side).
   checkout (`../Valence/clients/js/index.js` and friends) -- there is no
   local copy or package boundary between the two. The existing widgets
   (`src/ui/`, `src/ui/hero/`, `src/ui/widgets/`) are the Tier-1 exemplars.
-- Tauri 2 shell owns: plugin discovery/loading (planned, §4), the community
-  plugin list (planned), updates, multi-hub connections (SPEC §13.8 UDP
-  discovery -- `src-tauri/src/discovery.rs` -- + manual host entry; **not
+- Tauri 2 shell owns: plugin discovery/loading ([PLUGINS.md](PLUGINS.md)),
+  the community plugin list (planned), updates, multi-hub connections
+  (SPEC §13.8 UDP discovery -- `src-tauri/src/discovery.rs` -- + manual host entry; **not
   mDNS**, corrected from the original SlopDeck-era text), and whatever the
   embedded-UI ruling (§8) leaves to it.
 - The UI kernel stays publishable as the community "webui framework" project
@@ -195,7 +195,8 @@ The ladder, description only -- status for each item lives on the dev board
    founding widgets; Tier 0/1 split explicit in the codebase.
 3. **Tauri 2 shell** -- shell ships (`src-tauri/`, vendored
    `tauri-plugin-blec` at `src-tauri/vendor/tauri-plugin-blec/`, Android
-   target). Plugin loader and a first dogfood Tier-2 plugin remain.
+   target), plugin loader and two example Tier-2 plugins
+   ([PLUGINS.md](PLUGINS.md)).
 4. **API freeze + docs** -- widget contract documented, versioned, frozen;
    community plugin list opened.
 5. Embedded-UI ruling (§8) executed wherever it lands.
@@ -305,7 +306,9 @@ components. The plugin ABI is framework-neutral -- a plugin exports
 treats it as a black box in its slot. This is what makes the C-6-style API
 freeze survivable: Phosphor can upgrade Svelte majors without breaking one
 plugin, and plugin authors can use any framework or none. Svelte's internals
-never become public API. **Not yet built** -- see §4/§7.
+never become public API. Realized as `activate(api)` plus a hero's
+`mount(el, fields)` returning `{update, unmount}`, the api reaching the
+mount by closure; see [PLUGINS.md](PLUGINS.md).
 
 > DEMO-CANDIDATE: a minimal vanilla-JS plugin (`mount`/`unmount`, no
 > framework at all) rendering one live-updating card, to prove the ABI
