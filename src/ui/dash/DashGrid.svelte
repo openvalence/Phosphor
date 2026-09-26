@@ -18,7 +18,7 @@
    * order/span lives in local, ephemeral state (previewIds / resizePreviewSpan)
    * — nothing is written to the persisted layout until pointer-up. That keeps
    * every intermediate frame of a drag purely cosmetic and trivially
-   * cancellable, and it means layout.arrange() (the persisted source of
+   * cancelable, and it means layout.arrange() (the persisted source of
    * truth) never needs to know a drag is happening.
    */
   import DashItem from './DashItem.svelte';
