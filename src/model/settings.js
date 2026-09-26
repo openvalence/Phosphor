@@ -270,6 +270,9 @@ function makeField(entry, f, settingIndex, maskField) {
     rank: f.rank,
     rankName: f.rankName,
     aspect: f.aspect,
+    scope: f.scope,
+    // RENDERING §6: format.js prefers this over the free `unit` string.
+    unitId: f.unitId ?? null,
     // RFC-048 key 22. Which pipeline stage this number is: demand / planned /
     // actual. Absent on the wire means `actual` (the codec resolves that), so
     // this is always set and labelFor() can qualify a label without asking
@@ -368,6 +371,18 @@ export function buildSettingsModel(entries) {
     }
   }
 
+  // RENDERING §5.4 companions: a peak readout rides its live twin (same
+  // channel and group, same role, else same unit) as a marker, and leaves
+  // the group. No twin: it stays a standalone readout, labeled as a peak.
+  const sameUnit = (a, b) => (a.unitId != null ? a.unitId === b.unitId : !!a.unit && a.unit === b.unit);
+  for (const p of fields) {
+    if (p.aspect !== VALUE_ASPECT.peak || !p.readOnly) continue;
+    const live = fields.find((f) => f.channelId === p.channelId && f.group === p.group
+      && f.readOnly && !f.aspect && !f.peak
+      && (p.role ? f.role === p.role : sameUnit(f, p)));
+    if (live) { live.peak = p; p.companionOf = live.uid; }
+  }
+
   // ---- pass 2: INTENT schema fields that are ACTIONS ----------------------
   //
   // RFC-019: `action.<name>` is an open role convention. A schema field tagged
@@ -397,6 +412,7 @@ export function buildSettingsModel(entries) {
           desc: f.desc || '',
           role: f.role,
           unit: f.unit || '',
+          unitId: f.unitId ?? null,
           min: f.min,
           max: f.max,
           access: f.access != null ? f.access : entry.access,
@@ -485,7 +501,10 @@ export function buildSettingsModel(entries) {
     .sort((a, b) => (rankOf(a) - rankOf(b)) || (a.id - b.id))
     .map(({ diagGroups, ...c }) => ({
       ...c,
-      groups: [...c.groups.values(), ...diagGroups.values()],
+      // A peak drawn on its live twin leaves its group.
+      groups: [...c.groups.values(), ...diagGroups.values()]
+        .map((g) => ({ ...g, fields: g.fields.filter((f) => !f.companionOf) }))
+        .filter((g) => g.fields.length),
     }));
 
   return { categories, actions, looseActions, byRole, fields };

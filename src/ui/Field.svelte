@@ -15,9 +15,9 @@
    * show unconfirmed state without this component knowing what amber means.
    */
   import { machine, freshness, staleReason } from '../model/machine.svelte.js';
-  import { WIDGET, isFieldEnabled } from '../model/settings.js';
+  import { WIDGET, isFieldEnabled, reportedValue } from '../model/settings.js';
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
-  import { formatValue, unitOf, optionLabel, precisionFor, labelFor } from '../model/format.js';
+  import { formatValue, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
 
   let { field } = $props();
 
@@ -172,6 +172,16 @@
     if (!isFinite(n)) return 0;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
+
+  // RENDERING §5.4: a peak companion (settings.js) is a marker on this live
+  // readout, always tagged as a peak, never shown as the live value.
+  const peakValue = $derived(field.peak
+    ? reportedValue(field.peak, machine.samples[field.peak.channelId]) : undefined);
+  const peakFrac = $derived.by(() => {
+    const n = Number(peakValue);
+    if (!hasBounds || peakValue == null || !isFinite(n)) return null;
+    return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
+  });
 </script>
 
 <div class="field" data-shadow={status} data-widget={field.widget}
@@ -234,6 +244,7 @@
           {optionLabel(field, value)}
         {:else}
           {formatValue(field, value)}<span class="unit">{unitOf(field)}</span>
+          {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatValue(field.peak, peakValue)}{unitOf(field.peak)}</span>{/if}
         {/if}
       </output>
     {/if}
@@ -245,6 +256,7 @@
     {#if hasBounds}
       <div class="readout-bar" aria-hidden="true">
         <div class="readout-bar-fill" style="width: {boundedFrac * 100}%"></div>
+        {#if peakFrac != null}<div class="readout-bar-peak" style="left: {peakFrac * 100}%"></div>{/if}
       </div>
     {/if}
 
@@ -753,6 +765,20 @@
     background: var(--reality);
     box-shadow: 0 0 6px rgba(var(--reality-rgb), .4);
     transition: width .4s cubic-bezier(.3, .7, .3, 1);
+  }
+  .readout-bar { position: relative; }
+  .readout-bar-peak {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--ink);
+  }
+  .peak-tag {
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--ink-dim);
   }
 
   /* Free-text/secret value entries — same recess as .field-value/.og-num

@@ -7,6 +7,35 @@
  */
 
 import { ROLE_LABEL } from './roles.js';
+import { UNIT_ID, VALUE_ASPECT, VALUE_SCOPE_NAME } from '../../../Valence/clients/js/index.js';
+
+/**
+ * RENDERING §6: conventional suffix per registry unit id. An id missing here
+ * (or null: absent/unrecognized on the wire) falls back to the catalog's own
+ * unit string, never a guess.
+ */
+const UNIT_SUFFIX = {
+  [UNIT_ID.mm]: 'mm', [UNIT_ID.mm_s]: 'mm/s', [UNIT_ID.mm_s2]: 'mm/s²', [UNIT_ID.mm_s3]: 'mm/s³',
+  [UNIT_ID.normalized]: '', [UNIT_ID.percent]: '%', [UNIT_ID.hz]: 'Hz', [UNIT_ID.ms]: 'ms',
+  [UNIT_ID.s]: 's', [UNIT_ID.v]: 'V', [UNIT_ID.a]: 'A', [UNIT_ID.w]: 'W', [UNIT_ID.wh]: 'Wh',
+  [UNIT_ID.deg_c]: '°C', [UNIT_ID.count]: '', [UNIT_ID.bytes]: 'B', [UNIT_ID.db]: 'dB',
+  [UNIT_ID.n]: 'N', [UNIT_ID.kpa]: 'kPa', [UNIT_ID.ml]: 'mL', [UNIT_ID.ml_min]: 'mL/min',
+  [UNIT_ID.rpm]: 'rpm', [UNIT_ID.bpm]: 'bpm',
+};
+
+/** Aspects that are a statistic over some span, so their scope must show (§5.4). */
+const STAT_ASPECTS = new Set([VALUE_ASPECT.peak, VALUE_ASPECT.min, VALUE_ASPECT.mean, VALUE_ASPECT.total]);
+
+/**
+ * "session peak", "lifetime total": the aspect and scope a statistic must
+ * carry on screen (RENDERING §5.4 honesty). '' for a live value.
+ */
+export function statTag(field) {
+  if (!field || !STAT_ASPECTS.has(field.aspect)) return '';
+  const scope = VALUE_SCOPE_NAME[field.scope] || VALUE_SCOPE_NAME[0];
+  return field.aspect === VALUE_ASPECT.total ? scope + ' total' : scope + ' ' + (
+    field.aspect === VALUE_ASPECT.peak ? 'peak' : field.aspect === VALUE_ASPECT.min ? 'min' : 'mean');
+}
 
 /**
  * PROVENANCE (RFC-048 key 22) -> the adjective that goes in front of a label.
@@ -47,6 +76,11 @@ const PROVENANCE_QUALIFIER = { demand: 'Demand', planned: 'Planned' };
  * unroled field keeps today's behavior everywhere too.
  */
 export function labelFor(field) {
+  const tag = statTag(field);
+  return baseLabel(field) + (tag ? ' · ' + tag : '');
+}
+
+function baseLabel(field) {
   if (!field) return '';
   const role = field.role && ROLE_LABEL[field.role];
   if (!role) return descLabel(field) || (field.label != null ? field.label : '');
@@ -74,6 +108,7 @@ function descLabel(field) {
 
 /** Decimal places implied by a step. step 0.05 -> 2, step 1 -> 0, absent -> 2. */
 export function precisionFor(field) {
+  if (field && (field.unitId === UNIT_ID.count || field.unitId === UNIT_ID.bytes)) return 0;
   const step = field && field.step;
   if (step == null || !isFinite(step) || step <= 0) {
     // No step published. Integers read better without a false ".00"; floats
@@ -104,6 +139,7 @@ function groupThousands(s) {
 
 /** Unit suffix, or '' when the catalog gave none. */
 export function unitOf(field) {
+  if (field && field.unitId != null && field.unitId in UNIT_SUFFIX) return UNIT_SUFFIX[field.unitId];
   const u = field && field.unit;
   if (!u || u === 'flag' || u === 'count' || u === '-') return '';
   return u;
