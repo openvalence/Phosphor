@@ -233,22 +233,19 @@ async function main() {
     PATTERN_PRESETS_ROSTER: 0x1220, PATTERN_PRESETS: 0x5220, PATTERN_PRESETS_CMD: 0x3220,
     MACHINE_ADMIN: 0x30f0,
   };
+  // A channel's ABSENCE from the catalog is the capability answer (SPEC §6.3):
+  // Nucleus builds pattern-* only with has_pattern and machine-admin only with
+  // has_drive. Test what the catalog advertises, skip what it does not.
+  const has = (id) => s1.channelMap.has(id);
+  const absent = Object.entries(CH19).filter(([, id]) => !has(id)).map(([n]) => n);
+  if (absent.length) info('not in this catalog, skipped: ' + absent.join(', '));
   s1.subscribe([
-    [CH19.MACHINE_MODES, 0, PRIORITY.background],
-    [CH19.SM_LIMITS, 0, PRIORITY.background],
-    [CH19.SM_CHASE, 0, PRIORITY.background],
-    [CH19.SM_WAVEFORM, 0, PRIORITY.background],
-    [CH19.PATTERN_ADVANCED, 0, PRIORITY.background],
-    [CH19.AP_MOD_SPEEDIN, 0, PRIORITY.background],
-    [CH19.AP_MOD_SPEEDOUT, 0, PRIORITY.background],
-    [CH19.AP_MOD_ACCELIN, 0, PRIORITY.background],
-    [CH19.AP_MOD_ACCELOUT, 0, PRIORITY.background],
-    [CH19.AP_MOD_DEPTH1, 0, PRIORITY.background],
-    [CH19.AP_MOD_DEPTH2, 0, PRIORITY.background],
-    [CH19.PATTERN_PRESETS_ROSTER, 0, PRIORITY.background],
-  ]);
+    CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_CHASE, CH19.SM_WAVEFORM,
+    CH19.PATTERN_ADVANCED, CH19.AP_MOD_SPEEDIN, CH19.AP_MOD_SPEEDOUT, CH19.AP_MOD_ACCELIN,
+    CH19.AP_MOD_ACCELOUT, CH19.AP_MOD_DEPTH1, CH19.AP_MOD_DEPTH2, CH19.PATTERN_PRESETS_ROSTER,
+  ].filter(has).map((id) => [id, 0, PRIORITY.background]));
   const want19 = [CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_CHASE, CH19.SM_WAVEFORM,
-    CH19.PATTERN_ADVANCED, CH19.PATTERN_PRESETS_ROSTER];
+    CH19.PATTERN_ADVANCED, CH19.PATTERN_PRESETS_ROSTER].filter(has);
   for (let i = 0; i < 60 && !want19.every((c) => seen1.states.has(c)); i++) await delay(50);
   ok('every newly-subscribed 19-channel STATE delivered its initial push (was UNKNOWN_CHANNEL-only before this pass)',
     want19.every((c) => seen1.states.has(c)),
@@ -256,17 +253,21 @@ async function main() {
 
   // ---- machine-modes (0x1030) / modes-set (0x3030) ------------------------
   {
-    const echo = await s1.sendModesSet({ 3: 1, 4: 1 });
-    ok('modes-set ECHO carries post-clamp APPLIED values (stream_speed_mode, overshoot_clamp)',
-      echo.applied[3] === 1 && echo.applied[4] === 1, JSON.stringify(echo.applied));
-    const reflected = await waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.MACHINE_MODES && sm.stream_speed_mode === 1 && sm.overshoot_clamp === 1,
+    // Key 3 (stream_speed_mode) is a permanent gap like keys 1/2, so the one
+    // live mode is overshoot_clamp (key 4): flip it and put it back.
+    const was = seen1.states.get(CH19.MACHINE_MODES)?.overshoot_clamp ?? 1;
+    const alt = was ? 0 : 1;
+    const reflectedP = waitFor(s1, 'state',
+      (ch, sm) => ch === CH19.MACHINE_MODES && sm.overshoot_clamp === alt,
       2000, 'machine-modes reflect').then(() => true).catch(() => false);
-    ok('0x1030 machine-modes STATE reflects the applied modes', reflected);
-    const restore = await s1.sendModesSet({ 3: 0, 4: 0 });
-    ok('modes-set RESTORED', restore.applied[3] === 0 && restore.applied[4] === 0);
+    const echo = await s1.sendModesSet({ 4: alt });
+    ok('modes-set ECHO carries the post-clamp APPLIED overshoot_clamp',
+      echo.applied[4] === alt, JSON.stringify(echo.applied));
+    ok('0x1030 machine-modes STATE reflects the applied mode', await reflectedP);
+    const restore = await s1.sendModesSet({ 4: was });
+    ok('modes-set RESTORED', restore.applied[4] === was);
 
-    // Keys 1/2 (blend_mode/transport) are PERMANENT GAPS — the catalog
+    // Keys 1/2/3 (blend_mode/transport/stream_speed_mode) are PERMANENT GAPS — the catalog
     // declares no schema field for them at all anymore (see addModesSet's own
     // comment), so a client-side encode of {1:...} throws locally before a
     // frame is even sent; that is the client-side half of the same "no live
@@ -320,7 +321,7 @@ async function main() {
 
   // ---- fray-d Advanced pattern: pattern-advanced + 6 modifiers (0x1210 family)
   // writer pattern-advanced-cmd (0x3210) ------------------------------------
-  {
+  if (has(CH19.PATTERN_ADVANCED_CMD)) {
     // Same "arm every listener before the write" rule as the sm-set block
     // above — this one write touches BOTH pattern-advanced and its
     // pattern-adv-mod-speedin lane in the same tick.
@@ -352,7 +353,7 @@ async function main() {
   }
 
   // ---- preset roster/store/cmd trio (0x1220 / 0x5220 / 0x3220) ------------
-  {
+  if (has(CH19.PATTERN_PRESETS_CMD)) {
     const rosterBefore = seen1.states.get(CH19.PATTERN_PRESETS_ROSTER);
     const countBefore = rosterBefore ? rosterBefore.count : 0;
     info('preset roster before: count=' + countBefore + ' capacity=' + (rosterBefore && rosterBefore.capacity));
@@ -400,7 +401,7 @@ async function main() {
   }
 
   // ---- machine-admin (0x30F0) ----------------------------------------------
-  {
+  if (has(CH19.MACHINE_ADMIN)) {
     const clearFault = await s1.sendIntent(CH19.MACHINE_ADMIN, { 1: 1 });
     ok('machine-admin clear_fault ECHOes the accepted op', clearFault.applied[1] === 1);
     const saveConfig = await s1.sendIntent(CH19.MACHINE_ADMIN, { 1: 2 });
