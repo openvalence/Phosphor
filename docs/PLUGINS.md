@@ -152,10 +152,12 @@ module text from a `blob:` URL. Enable state is a localStorage list
 Restart the app to pick up a new or changed plugin. The Plugins tab is a Console tab, so
 like the rest of the nav it appears once a hub's catalog is adopted.
 
-**CSP.** None needed today: `tauri.conf.json` sets `security.csp` to null.
-The moment a CSP is set (`ph-vdk.19`) it must allow `script-src blob:`, or
-every plugin shows an `import:` error on its row. Plugin files come through
-the `plugins_list` command, so no asset-protocol scope is involved.
+**CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
+carries `blob:` for this loader; drop it and every plugin shows an `import:`
+error on its row. A plugin runs under the page's policy, so `connect-src`
+(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; loopback TCP
+is `net.listenTcp`. Plugin files come through the `plugins_list` command, so
+no asset-protocol scope is involved.
 
 **The hub-served page never loads plugins.** A hub serves one file and
 nothing else. For development only, a `vite dev` build accepts

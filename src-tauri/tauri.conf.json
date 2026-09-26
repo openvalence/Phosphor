@@ -15,14 +15,15 @@
         "title": "Phosphor",
         "width": 1440,
         "height": 900,
-        "minWidth": 1000,
-        "minHeight": 640,
+        "minWidth": 320,
+        "minHeight": 390,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws:; object-src 'none'; base-uri 'none'",
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "bundle": {
