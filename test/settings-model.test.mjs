@@ -340,6 +340,39 @@ const stillThere = pruned.flatMap((c) => c.groups.flatMap((g) => g.fields))
   .some((f) => railClaim.claimed.has(f.uid));
 ok('fields absorbed by a hero vanish from the generic tree', !stillThere);
 
+// ---- ph-vdk.32: RENDERING §11 -- a min/max role pair is ONE range control --
+{
+  // Window-only: strip telemetry.position so the axis hero declines (law 7
+  // above) and travel_lo/travel_hi fall all the way to Tier-0.
+  const windowOnly = buildSettingsModel(CATALOG.map((e) => ({
+    ...e, layout: e.layout && e.layout.filter((f) => f.role !== ROLE.telemetryPosition),
+  })));
+  ok('a window-only hub still gets no axis hero',
+     claimRoles(windowOnly.byRole, AXIS_HERO_SPEC) === null);
+
+  const travel = windowOnly.categories.flatMap((c) => c.groups).find((g) => g.name === 'Travel');
+  ok('the Travel group survives with no hero to absorb it', !!travel);
+  ok('window.min/window.max merge into ONE range field, not two independent sliders',
+     travel && travel.fields.filter((f) => f.widget === WIDGET.range).length === 1
+     && !travel.fields.some((f) => f.role === ROLE.windowMin || f.role === ROLE.windowMax));
+  const rangeField = travel && travel.fields.find((f) => f.widget === WIDGET.range);
+  ok('the merged field keeps both halves, in order',
+     rangeField && rangeField.lo.name === 'travel_lo' && rangeField.hi.name === 'travel_hi');
+  ok('its label drops the min/max suffix common to both roles',
+     rangeField && labelFor(rangeField) === 'Window', rangeField && labelFor(rangeField));
+  ok('a read-only companion in the same group is untouched by the merge',
+     travel.fields.some((f) => f.name === 'travel_measured' && f.widget === WIDGET.readout));
+
+  // The ordinary CATALOG fixture DOES have a claimable axis hero (railClaim,
+  // above), which absorbs window.min/window.max before this pair would ever
+  // reach the merge's own group. Either way, `pruned` (the hero-claimed,
+  // generic-tree-pruned model from just above) must carry no leftover range
+  // control -- a hero absorbing the pair must not leave its Tier-0 sibling
+  // drawn a second time underneath it.
+  ok('a hero-claimed min/max pair leaves no merged range control behind',
+     !pruned.flatMap((c) => c.groups.flatMap((g) => g.fields)).some((f) => f.widget === WIDGET.range));
+}
+
 // ---- claim: value axes and units (RENDERING §5, §6) -----------------------
 {
   const f = (n) => model.fields.find((x) => x.name === n);

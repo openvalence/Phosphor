@@ -21,7 +21,7 @@
 import {
   PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY,
 } from '../../../Valence/clients/js/index.js';
-import { ROLE, isActionRole } from './roles.js';
+import { ROLE, ROLE_LABEL, isActionRole } from './roles.js';
 import { isPersistentAction } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,7 @@ export const WIDGET = {
   text: 'text',           // row 11
   secret: 'secret',       // row 11 + flags.secret: value never on the wire
   action: 'action',       // row 6 (`trigger`), discovered by role in pass 2
+  range: 'range',         // RENDERING §11: a tagged min/max pair, one dual-thumb control
 };
 
 export const NUMERIC_TYPES = new Set([
@@ -309,6 +310,57 @@ function makeField(entry, f, settingIndex, maskField) {
 }
 
 // ---------------------------------------------------------------------------
+// RENDERING §11: min/max role pairs -> one dual-thumb range control
+// ---------------------------------------------------------------------------
+
+/**
+ * Registry role pairs that name a [min, max] of the same tagged quantity.
+ * `window.min`/`window.max` is the one pair the registry defines today; a
+ * future pair of the same shape is added here, never pattern-matched off a
+ * field NAME (that would be device knowledge, see roles.js's own doctrine).
+ */
+const MIN_MAX_ROLE_PAIRS = [[ROLE.windowMin, ROLE.windowMax]];
+
+/**
+ * Within one card group, replace a min/max role pair with one merged `range`
+ * field carrying both halves (`lo`/`hi`), when both are present, writable and
+ * still ordinary sliders. Declines per-pair otherwise (missing half, either
+ * side read-only or not a slider) and leaves the fields untouched — an
+ * opportunity, never a requirement, the same rule every role binding in this
+ * codebase already follows (roles.js).
+ */
+function mergeRangePairs(fields) {
+  let out = fields;
+  for (const [minRole, maxRole] of MIN_MAX_ROLE_PAIRS) {
+    const lo = out.find((f) => f.role === minRole && f.widget === WIDGET.slider && !f.readOnly);
+    const hi = out.find((f) => f.role === maxRole && f.widget === WIDGET.slider && !f.readOnly);
+    if (!lo || !hi) continue;
+    const loL = ROLE_LABEL[minRole] || lo.label;
+    const hiL = ROLE_LABEL[maxRole] || hi.label;
+    const stripLo = loL.replace(/\bmin\b/i, '').replace(/\s+/g, ' ').trim();
+    const stripHi = hiL.replace(/\bmax\b/i, '').replace(/\s+/g, ' ').trim();
+    const label = (stripLo && stripLo.toLowerCase() === stripHi.toLowerCase()) ? stripLo : loL + ' / ' + hiL;
+    const range = {
+      uid: lo.uid + '+' + hi.uid,
+      widget: WIDGET.range,
+      label,
+      group: lo.group,
+      // Both halves are the SAME channel in every case the registry defines
+      // today (window.min/window.max are settings of one channel); carried
+      // here only so a channel census over the generic tree (grouping,
+      // per-channel counts) still finds this merged field's channel.
+      channelId: lo.channelId,
+      advanced: lo.advanced || hi.advanced,
+      flagBits: { restart_required: !!(lo.flagBits && lo.flagBits.restart_required)
+                        || !!(hi.flagBits && hi.flagBits.restart_required) },
+      lo, hi,
+    };
+    out = [range, ...out.filter((f) => f !== lo && f !== hi)];
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // The model
 // ---------------------------------------------------------------------------
 
@@ -503,7 +555,7 @@ export function buildSettingsModel(entries) {
       ...c,
       // A peak drawn on its live twin leaves its group.
       groups: [...c.groups.values(), ...diagGroups.values()]
-        .map((g) => ({ ...g, fields: g.fields.filter((f) => !f.companionOf) }))
+        .map((g) => ({ ...g, fields: mergeRangePairs(g.fields.filter((f) => !f.companionOf)) }))
         .filter((g) => g.fields.length),
     }));
 

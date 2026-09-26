@@ -31,7 +31,16 @@
 
   const sample = $derived(machine.samples[field.channelId]);
   const value = $derived(displayValue(field, sample));
-  const status = $derived(statusOf(field));
+  // A range field has no shadow key of its own (settings.js's merge invents
+  // no writeChannel/settingKey) — the echo overlay reads the WORSE of its two
+  // real fields' statuses, so a write still in flight on either thumb keeps
+  // the whole control's intent echo alive (Ground Truth: never show settled
+  // while a request is outstanding).
+  const STATUS_RANK = { fault: 3, overdue: 2, pending: 1, confirmed: 0 };
+  const worstStatus = (a, b) => (STATUS_RANK[a] >= STATUS_RANK[b] ? a : b);
+  const status = $derived(
+    field.widget === WIDGET.range ? worstStatus(statusOf(field.lo), statusOf(field.hi)) : statusOf(field)
+  );
   const fresh = $derived(freshness(field.channelId));
   const sh = $derived(shadowOf(field));
 
@@ -90,6 +99,57 @@
     if (field.max != null) n = Math.min(field.max, n);
     commit(Math.round(n * 1e6) / 1e6);
   }
+
+  // ---- RENDERING §11: dual-thumb range (a merged min/max role pair) -------
+  //
+  // WIDGET.range wraps TWO ordinary fields (settings.js's `lo`/`hi`), each
+  // with its own channel, sample and shadow — the generic single-field
+  // derivations above (sample/value/status/enabled/reason) do not apply and
+  // are recomputed per side here. Each thumb writes through the SAME
+  // writeSetting() path an independent slider would use, so the shadow
+  // lifecycle and Ground Truth echo are unchanged; this is one control drawn
+  // over two fields, not a new write mechanism.
+  const isRange = $derived(field.widget === WIDGET.range);
+  const loSample = $derived(isRange ? machine.samples[field.lo.channelId] : null);
+  const hiSample = $derived(isRange ? machine.samples[field.hi.channelId] : null);
+  const loValue = $derived(isRange ? displayValue(field.lo, loSample) : null);
+  const hiValue = $derived(isRange ? displayValue(field.hi, hiSample) : null);
+  const loEnabled = $derived(isRange && !field.lo.readOnly && isFieldEnabled(field.lo, loSample)
+    && machine.link.phase === 'live' && canWrite(field.lo));
+  const hiEnabled = $derived(isRange && !field.hi.readOnly && isFieldEnabled(field.hi, hiSample)
+    && machine.link.phase === 'live' && canWrite(field.hi));
+  const loFrac = $derived.by(() => {
+    if (!isRange) return 0;
+    const n = Number(loValue);
+    if (!isFinite(n) || field.lo.max <= field.lo.min) return 0;
+    return Math.max(0, Math.min(1, (n - field.lo.min) / (field.lo.max - field.lo.min)));
+  });
+  const hiFrac = $derived.by(() => {
+    if (!isRange) return 1;
+    const n = Number(hiValue);
+    if (!isFinite(n) || field.hi.max <= field.hi.min) return 1;
+    return Math.max(0, Math.min(1, (n - field.hi.min) / (field.hi.max - field.hi.min)));
+  });
+  function clampField(f, n) {
+    let v = n;
+    if (f.min != null) v = Math.max(f.min, v);
+    if (f.max != null) v = Math.min(f.max, v);
+    return Math.round(v * 1e6) / 1e6;
+  }
+  // Each thumb is also held inside the OTHER thumb's live value, so the pair
+  // can never cross on screen (a min past its own max reads as a lie about
+  // which end of the window is which).
+  function commitLo(n) {
+    if (!loEnabled || !isFinite(n)) return;
+    const ceiling = isFinite(Number(hiValue)) ? Number(hiValue) : field.lo.max;
+    writeSetting(field.lo, clampField(field.lo, Math.min(n, ceiling)));
+  }
+  function commitHi(n) {
+    if (!hiEnabled || !isFinite(n)) return;
+    const floor = isFinite(Number(loValue)) ? Number(loValue) : field.hi.min;
+    writeSetting(field.hi, clampField(field.hi, Math.max(n, floor)));
+  }
+  const rangeStep = (f) => f.step || 1;
 
   /** Move one step-sized tick from wherever the value currently sits. */
   function nudge(dir) {
@@ -347,6 +407,31 @@
          under every slider is exactly the "flat wall of gray text" the OG
          never had). -->
 
+  {:else if field.widget === WIDGET.range}
+    <!-- RENDERING §11: one dual-thumb control over the merged min/max pair.
+         Two overlapping range inputs, transparent tracks, pointer-events
+         live on the thumb only (style.css's pseudo-elements) so either thumb
+         is grabbable without the other's invisible track stealing the hit.
+         Both keep the global 40px touch box (T24: --range-hit). -->
+    <div class="range-dual" bind:this={ctrlEl}>
+      <div class="range-track" aria-hidden="true"></div>
+      <div class="range-fill" aria-hidden="true"
+           style="left: {loFrac * 100}%; right: {(1 - hiFrac) * 100}%"></div>
+      <input type="range" class="range-lo" class:on-top={loFrac >= hiFrac}
+             min={field.lo.min} max={field.lo.max} step={rangeStep(field.lo)}
+             value={loValue ?? field.lo.min} disabled={!loEnabled}
+             aria-label={'minimum ' + field.label}
+             oninput={(e) => commitLo(Number(e.currentTarget.value))} />
+      <input type="range" class="range-hi"
+             min={field.hi.min} max={field.hi.max} step={rangeStep(field.hi)}
+             value={hiValue ?? field.hi.max} disabled={!hiEnabled}
+             aria-label={'maximum ' + field.label}
+             oninput={(e) => commitHi(Number(e.currentTarget.value))} />
+    </div>
+    <output class="field-value range-readout mono">
+      {formatValue(field.lo, loValue)}{unitOf(field.lo)} &ndash; {formatValue(field.hi, hiValue)}{unitOf(field.hi)}
+    </output>
+
   {:else if field.widget === WIDGET.stepper}
     <!-- §8.4 stepper: typeable, and increments in step-sized ticks. The typing
          half is the native input; the increment half CANNOT be, because the
@@ -379,7 +464,7 @@
 
   {#if sh && sh.status === 'fault' && sh.error}
     <p class="field-error" role="status">refused: {sh.error}</p>
-  {:else if reason && !field.readOnly}
+  {:else if reason && !field.readOnly && !isRange}
     <p class="field-reason">{reason}</p>
   {/if}
 </div>
@@ -447,7 +532,8 @@
      leave the handle outside the very outline it is supposed to be inside.
      Expand to the thumb's band; --slider-thumb-h is style.css's single source
      for that height, shared with the thumb rules themselves. */
-  .field[data-widget='slider']::after {
+  .field[data-widget='slider']::after,
+  .field[data-widget='range']::after {
     --echo-pad: calc(var(--slider-thumb-h) / 2 + 2px - var(--range-hit));
   }
 
@@ -513,6 +599,48 @@
      part of reading as one instrument row with its label/chip. */
   .field input[type='range'] {
     margin: 8px 0 2px;
+  }
+
+  /* RENDERING §11 dual-thumb range: two overlapping input[type=range], each
+     stripped to a transparent hit-only layer (pointer-events live on the
+     thumb pseudo-element alone) over one shared visual track/fill pair. The
+     wrapper's own height reproduces the plain slider's box exactly
+     (2px track + the same touch padding, style.css's --range-hit) so a range
+     field takes no more vertical room than a single slider did. */
+  .range-dual {
+    position: relative;
+    height: calc(2px + 2 * var(--range-hit));
+    margin: 8px 0 2px;
+  }
+  .range-dual input[type='range'] {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    background: transparent;
+    pointer-events: none;
+  }
+  .range-dual input[type='range']::-webkit-slider-thumb { pointer-events: auto; }
+  .range-dual input[type='range']::-moz-range-thumb { pointer-events: auto; }
+  /* Equal z-index by default; the low thumb lifts above the high one only
+     once they meet, so it stays reachable instead of being permanently
+     buried under the thumb it just caught up to. */
+  .range-dual .range-lo { z-index: 2; }
+  .range-dual .range-hi { z-index: 2; }
+  .range-dual .range-lo.on-top { z-index: 3; }
+  .range-track, .range-fill {
+    position: absolute;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .range-track { left: 0; right: 0; background: var(--line-2); }
+  .range-fill { background: var(--reality); box-shadow: 0 0 6px rgba(var(--reality-rgb), .35); }
+
+  .field-value.range-readout {
+    display: block;
+    width: fit-content;
+    margin-top: 2px;
   }
 
   /* Quiet label voice — same recipe as the hero numerals' .hn-label. Size
