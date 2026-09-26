@@ -52,6 +52,17 @@ heroes are **card zone only**: they render as Overview dashboard cards, which
 DashGrid lays out, reorders and persists under the stable id
 `hero:plugin:<name>:<hero id>`. Pinned instrument chrome stays first-party.
 
+**Replace mode (experimental, `ph-vdk.29`).** `registerHero` accepts an
+optional `replaces: '<built-in hero id>'` (the id a built-in registers with in
+`src/ui/heroes.js`'s `HEROES` array, e.g. `'rail'`). When such a plugin is
+enabled and its own claim succeeds, `claimAll` skips the named built-in
+entirely for that pass (DESIGN §3: a tier-2 widget "renders instead", by the
+operator's explicit choice to enable the plugin). When the plugin's claim
+fails, or the plugin is disabled, the built-in claims normally — a `replaces`
+plugin can only ever add a substitution, never leave a field unclaimed. An
+unrecognized id is simply never matched: no built-in of that name to suppress,
+same "opportunity, never requirement" degrade as an unknown role.
+
 ## The API (v1)
 
 | member | what | status |
@@ -65,6 +76,7 @@ DashGrid lays out, reorders and persists under the stable id
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `manifest`, `apiVersion`, `log(msg, level)` | identity and the log pane | **freeze candidate** |
+| `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |

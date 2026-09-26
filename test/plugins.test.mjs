@@ -293,5 +293,74 @@ console.log('(e) motion door routing');
   ok('a refusal is asked once per session', s4.asked.length === 1);
 }
 
+// ---- (f) tier-2 replace mode (ph-vdk.29, DESIGN §3 "renders instead") -----
+console.log('(f) tier-2 replace mode');
+{
+  // A synthetic built-in, standing in for a real heroes.js entry -- claimAll
+  // does not care where a hero descriptor came from, only its shape.
+  const builtins = [{ id: 'gauge-builtin', zone: 'card', spec: { require: { p: ROLE.telemetryPosition } } }];
+
+  // A replacer whose own claim succeeds: the built-in is skipped entirely.
+  const { host } = makeHost();
+  host.add({ ...gaugeManifest, name: 'replacer' }, {
+    activate(api) {
+      api.registerHero({
+        id: 'gauge', replaces: 'gauge-builtin',
+        spec: { require: { p: ROLE.telemetryPosition } }, mount() {},
+      });
+    },
+  });
+  const heroesA = [...builtins, ...host.heroes()];
+  ok('the plugin descriptor carries replaces',
+     heroesA.some((h) => h.id === 'plugin:replacer:gauge' && h.replaces === 'gauge-builtin'));
+  const claimA = claimAll(model.byRole, heroesA);
+  ok('the plugin claims the fields', claimA.widgets.some((w) => w.id === 'plugin:replacer:gauge'));
+  ok('the built-in it replaces never renders alongside it',
+     !claimA.widgets.some((w) => w.id === 'gauge-builtin'));
+  ok('the field is claimed once, by the plugin', claimA.widgets.filter((w) => w.fields.p).length === 1);
+
+  // Disabling the plugin must never leave the field unclaimed: the built-in
+  // returns the moment nothing replaces it.
+  host.setEnabled('replacer', false);
+  const claimB = claimAll(model.byRole, [...builtins, ...host.heroes()]);
+  ok('a disabled replacer is gone from the claim list',
+     !host.heroes().some((h) => h.id === 'plugin:replacer:gauge'));
+  ok('the built-in claims normally once nothing replaces it',
+     claimB.widgets.some((w) => w.id === 'gauge-builtin'));
+
+  // A replacer whose OWN claim fails (roles absent): same rule, the built-in
+  // is never suppressed on the strength of an unmet plugin alone.
+  const { host: host2 } = makeHost();
+  host2.add({ ...gaugeManifest, name: 'failing' }, {
+    activate(api) {
+      api.registerHero({
+        id: 'nope', replaces: 'gauge-builtin',
+        spec: { require: { none: 'some.role.nobody.has' } }, mount() {},
+      });
+    },
+  });
+  const claimC = claimAll(model.byRole, [...builtins, ...host2.heroes()]);
+  ok('a replacer that cannot claim never suppresses the built-in',
+     !claimC.widgets.some((w) => w.id === 'plugin:failing:nope')
+     && claimC.widgets.some((w) => w.id === 'gauge-builtin'));
+
+  // An unrecognized replaces target degrades silently -- no built-in of that
+  // name to suppress, same "opportunity, never requirement" rule as an
+  // unknown role.
+  const { host: host3 } = makeHost();
+  host3.add({ ...gaugeManifest, name: 'stray' }, {
+    activate(api) {
+      api.registerHero({
+        id: 'stray', replaces: 'no-such-builtin',
+        spec: { require: { p: ROLE.telemetryPosition } }, mount() {},
+      });
+    },
+  });
+  const claimD = claimAll(model.byRole, [...builtins, ...host3.heroes()]);
+  ok('an unrecognized replaces target is a no-op, not an error',
+     claimD.widgets.some((w) => w.id === 'plugin:stray:stray')
+     && claimD.widgets.some((w) => w.id === 'gauge-builtin'));
+}
+
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');
 process.exit(fails ? 1 : 0);

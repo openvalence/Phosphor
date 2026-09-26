@@ -141,6 +141,9 @@ export function createPluginHost(deps) {
         if (!def || typeof def.id !== 'string' || typeof def.mount !== 'function' || !def.spec) {
           throw new Error('registerHero needs {id, spec, mount}');
         }
+        if (def.replaces != null && typeof def.replaces !== 'string') {
+          throw new Error('registerHero: replaces must be a built-in hero id string');
+        }
         rec.heroes.push({ def, failed: false });
         if (rec.status === 'active') changed();
       },
@@ -302,6 +305,12 @@ export function createPluginHost(deps) {
           title: String(h.def.title || h.def.id),
           spec: h.def.spec,
           absorb: h.def.absorb !== false,
+          // DESIGN §3 tier-2 "renders instead": the built-in hero id (from
+          // heroes.js's HEROES) this plugin takes over when its own claim
+          // succeeds. roles.js's claimAll resolves it; a name that matches no
+          // current built-in is simply never suppressed (opportunity, never a
+          // requirement).
+          replaces: h.def.replaces || null,
           plugin: rec.manifest.name,
           slot: h,
         });

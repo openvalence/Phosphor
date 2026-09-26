@@ -266,21 +266,41 @@ export const AXIS_HERO_SPEC = {
  * (plugins/host.js) both pass through here, so a plugin claims exactly the
  * way a built-in does. Each hero's own fields are returned alongside it.
  *
+ * DESIGN §3 tier-2 "renders instead": a hero descriptor may carry
+ * `replaces: '<built-in hero id>'` (plugins/host.js's `registerHero`). Its
+ * OWN claim is resolved first, independent of list order, so a built-in
+ * earlier in `heroes` is skipped outright rather than claimed and then
+ * discarded. When the replacer declines (roles absent, plugin disabled) the
+ * built-in is never suppressed and claims normally in the pass below —
+ * fields are never left unclaimed just because a replacement was requested.
+ *
  * @param {Map<string, Array>} byRole from buildSettingsModel
- * @param {Array<{spec: Object}>} heroes in render order
+ * @param {Array<{spec: Object, replaces?: string}>} heroes in render order
  * @returns {{widgets: Array, claimed: Set<string>}}
  */
 export function claimAll(byRole, heroes) {
   const widgets = [];
   const claimed = new Set();
   if (!byRole) return { widgets, claimed };
-  for (const h of heroes) {
+
+  const claimOne = (h) => {
     const fields = claimRoles(byRole, h.spec);
-    if (!fields) continue;             // machine lacks the roles: decline
+    if (!fields) return false;         // machine lacks the roles: decline
     widgets.push({ ...h, fields });
     // `absorb: false` is a read-only view: it binds the fields without
     // taking their controls away from the generic tree.
     if (h.absorb !== false) for (const uid of fields.claimed) claimed.add(uid);
+    return true;
+  };
+
+  const suppressed = new Set();
+  for (const h of heroes) {
+    if (!h.replaces) continue;
+    if (claimOne(h)) suppressed.add(h.replaces);
+  }
+  for (const h of heroes) {
+    if (h.replaces || suppressed.has(h.id)) continue;   // already resolved above, or superseded
+    claimOne(h);
   }
   return { widgets, claimed };
 }
@@ -305,7 +325,14 @@ export function withoutClaimed(categories, claimedUids) {
   for (const cat of categories) {
     const groups = [];
     for (const g of cat.groups) {
-      const fields = g.fields.filter((f) => !claimedUids.has(f.uid));
+      // settings.js's WIDGET.range merges a min/max pair into one field with
+      // no uid of its own a hero would ever claim (`lo.uid+'+'+hi.uid`); drop
+      // it too when EITHER half is claimed, same "consumed, not half-shown"
+      // rule as an ordinary field, so a hero absorbing window.min/window.max
+      // cannot leave its merged sibling drawn a second time underneath it.
+      const fields = g.fields.filter((f) => !claimedUids.has(f.uid)
+        && !(f.lo && claimedUids.has(f.lo.uid))
+        && !(f.hi && claimedUids.has(f.hi.uid)));
       if (fields.length) groups.push({ ...g, fields });
     }
     if (groups.length) out.push({ ...cat, groups });
