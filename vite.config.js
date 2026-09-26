@@ -9,24 +9,22 @@ import { resolve } from 'node:path';
 /**
  * Vite builds the single-file HTML bundle (JS/CSS/fonts inlined).
  *
- * The machine LittleFS pipeline (the archived S3 repo's build_webui.py) copies ONLY
- * dist/index.html into data/ — separately-emitted asset files never
- * reach the device. So the self-hosted WOFF2 fonts MUST be inlined as base64
- * data URIs. assetsInlineLimit is raised above the largest subsetted font
- * (~21KB for MartianMono.woff2) so Vite emits them inline rather than as
- * separate files. 100KB gives comfortable headroom.
+ * The shipped artifact is ONE file, dist/index.html — separately-emitted
+ * asset files never reach a device flash pipeline. So the self-hosted WOFF2
+ * fonts MUST be inlined as base64 data URIs. assetsInlineLimit is raised
+ * above the largest subsetted font (~21KB for MartianMono.woff2) so Vite
+ * emits them inline rather than as separate files. 100KB gives comfortable
+ * headroom.
  *
- * `npm run build` emits BOTH dist/index.html and dist/index.html.gz. The gz is
- * what gets served: the C5 bridge sends it with Content-Encoding: gzip, and
- * the LittleFS path (build_webui.py, which gzips into data/ for its own
- * upload) is the other consumer. Producing it here means a plain `npm run
- * build` is enough for anything that wants the shipped artifact, with no
- * PlatformIO in the loop.
+ * `npm run build` emits BOTH dist/index.html and dist/index.html.gz. The gz
+ * is what a gzip-serving hub consumes; producing it here means a plain
+ * `npm run build` is enough for anything that wants the shipped artifact,
+ * with no device-side build step in the loop.
  *
- * SVELTE 5: the plugin is pinned to the v4 line because it is the last one that
- * peers against Vite 5, and both vite-plugin-singlefile and build_webui.py are
- * tuned to Vite 5's asset emission. Svelte compiles to direct DOM operations,
- * so the framework's runtime cost on a page served off LittleFS stays small.
+ * SVELTE 5: the plugin is pinned to the v4 line because it is the last one
+ * that peers against Vite 5, and vite-plugin-singlefile is tuned to Vite 5's
+ * asset emission. Svelte compiles to direct DOM operations, so the
+ * framework's runtime cost on a flash-served page stays small.
  */
 
 // UI bundle build identifier — the footer "ui" chip (§1.6h). Short git hash

@@ -25,14 +25,14 @@ try {
   if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
 } catch (e) { /* private mode: preferences are an optimization, never a requirement */ }
 
-// Whatever served this bundle IS the machine's front door — today the C5
-// bridge, which hosts this page and /uitoken on port 80 and the Valence WS
-// on port 82 of the SAME host. So both URLs derive from `location`: the host
-// from location.hostname here, the WS port from connect()'s default 82, and
-// the mint from a SAME-ORIGIN relative /uitoken (the protocol client's
-// mintUrl() picks the relative form whenever host === location.hostname,
-// which is exactly this case). Nothing about a particular device is baked in
-// — a literal IP here would work on one bench and nowhere else.
+// Whatever served this bundle IS the machine's front door: the hub hosts
+// this page and /uitoken, and its Valence WS lives on the same host. So both
+// URLs derive from `location`: the host from location.hostname here, the WS
+// port from connect()'s default 82, and the mint from a SAME-ORIGIN relative
+// /uitoken (the protocol client's mintUrl() picks the relative form whenever
+// host === location.hostname, which is exactly this case). Nothing about a
+// particular device is baked in — a literal IP here would work on one bench
+// and nowhere else.
 //
 // Except inside the Tauri shell, where the host is the operator's choice and
 // /uitoken minting runs through the shell's Rust-side fetch (no browser
