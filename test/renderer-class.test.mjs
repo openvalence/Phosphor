@@ -16,8 +16,8 @@ import {
   nextClass, promotes, projectGroups, CLASSES,
   FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER,
 } from '../src/model/rclass.js';
-import { buildSettingsModel } from '../src/model/settings.js';
-import { decodeCatalog } from '../../Valence/clients/js/index.js';
+import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
+import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY } from '../../Valence/clients/js/index.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -90,6 +90,32 @@ for (const cat of model.categories) {
 ok('every category reaches the same fields, in catalog order, under every class',
    same && model.categories.length > 0, model.categories.length + ' categories');
 ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promoted group(s)');
+
+// ---- RENDERING §4/§12: rank-driven default surfacing per class ---------------
+// One field per rank, plus unranked, an unknown rank, an advanced-bit control
+// and a claimed control, declared out of rank order so a sort would show.
+{
+  const f = (name, rank, extra = {}) => ({ name, type: PACKED.u8, typeName: 'u8', unit: '', scale: 1, rank, ...extra });
+  const entries = [{
+    id: 0x0f00, name: 'synthetic', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 1,
+    category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control', settingChannel: null, schema: null,
+    layout: [
+      f('c_one', UI_RANK.control), f('d_one', UI_RANK.detail), f('h_one', UI_RANK.hero),
+      f('a_one', UI_RANK.advanced), f('g_one', UI_RANK.diagnostic), f('x_one', UI_RANK.hidden),
+      f('u_one', undefined), f('k_one', 9), f('c_two', UI_RANK.control),
+      f('c_adv', UI_RANK.control, { flagBits: { advanced: true } }), f('c_claimed', UI_RANK.control),
+    ],
+  }];
+  const synth = buildSettingsModel(entries);
+  const claimed = new Set(synth.fields.filter((x) => x.name === 'c_claimed').map((x) => x.uid));
+  const names = (cls) => surfacedFields(synth.fields, claimed, cls).map((x) => x.name).join(',');
+  ok('glance surfaces hero only', names('glance') === 'h_one', names('glance'));
+  ok('handheld surfaces hero + control, declaration order', names('handheld') === 'c_one,h_one,c_two', names('handheld'));
+  ok('full surfaces hero + control, declaration order', names('full') === 'c_one,h_one,c_two', names('full'));
+  const tabbed = synth.categories.flatMap((c) => c.groups.flatMap((g) => g.fields.map((x) => x.name)));
+  ok('detail, unranked, unknown-rank and claimed fields stay reachable on the category page',
+     ['d_one', 'u_one', 'k_one', 'c_claimed'].every((n) => tabbed.includes(n)) && !tabbed.includes('x_one'), tabbed.join(','));
+}
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));
 process.exit(fails ? 1 : 0);

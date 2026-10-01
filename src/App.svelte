@@ -36,7 +36,7 @@
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
-  import { isFieldEnabled, unclaimedHeroFields, WIDGET } from './model/settings.js';
+  import { isFieldEnabled, surfacedFields, WIDGET } from './model/settings.js';
   import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -271,9 +271,9 @@
   // class; `full` shows every section inline instead.
   const drillItem = $derived(settingItems.find((it) => it.promoted && it.id === drill) || null);
 
-  // RENDERING §4: hero rank is surfaced by default. What no Tier-1 widget
-  // claimed still reaches Overview.
-  const heroLeft = $derived(model ? unclaimedHeroFields(model.fields, heroes.claimed) : []);
+  // RENDERING §4/§12: rank-driven default surfacing for this class. What no
+  // Tier-1 widget claimed reaches Overview.
+  const heroLeft = $derived(model ? surfacedFields(model.fields, heroes.claimed, view.cls) : []);
 
   // Uncategorized generic triggers (settings.js looseActions) that no hero
   // claimed get one Overview card, so no advertised verb is unreachable.

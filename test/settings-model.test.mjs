@@ -16,7 +16,7 @@
  */
 
 import {
-  buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, unclaimedHeroFields,
+  buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, surfacedFields,
 } from '../src/model/settings.js';
 import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
@@ -341,7 +341,7 @@ ok('a hero whose required roles are ABSENT declines entirely', patternClaim === 
 
 // ---- claim: hero rank reaches Overview unless a Tier-1 widget took it -----
 {
-  const left = unclaimedHeroFields(model.fields, railClaim.claimed).map((f) => f.name);
+  const left = surfacedFields(model.fields, railClaim.claimed, 'glance').map((f) => f.name);
   ok('an unclaimed hero-rank field is surfaced', left.includes('tank_level'), left.join(','));
   ok('a hero-rank field a widget claimed is not surfaced twice', !left.includes('carriage_mm'));
 }

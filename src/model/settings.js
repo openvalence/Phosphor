@@ -563,11 +563,17 @@ export function buildSettingsModel(entries) {
 }
 
 /**
- * Hero-rank fields no Tier-1 widget claimed. RENDERING §4: hero is surfaced by
- * default on every class, so these go on Overview as well as in their tab.
+ * The home screen's default surfacing under a renderer class, minus what a
+ * Tier-1 widget claimed. RENDERING §4/§12: hero on every class, control on
+ * handheld and full, one navigation step away (its category page) on glance.
+ * Detail and below are never surfaced here; they stay reachable on their
+ * category page, so this adds a surface and never gates one. Unranked and
+ * unknown ranks are detail (§4) and fail the bound.
  */
-export function unclaimedHeroFields(fields, claimed) {
-  return fields.filter((f) => f.rank === UI_RANK.hero && !claimed.has(f.uid));
+export function surfacedFields(fields, claimed, cls) {
+  const max = cls === 'glance' ? UI_RANK.hero : UI_RANK.control;
+  return mergeRangePairs(fields.filter((f) =>
+    f.rank <= max && !f.advanced && !f.companionOf && !claimed.has(f.uid)));
 }
 
 // ---------------------------------------------------------------------------
