@@ -16,7 +16,6 @@
    *   role field's uid-form key is an alias of its role key (ph-e82.9).
    * - Only the `full` class builds (ph-e82.7); other classes always show the seed.
    */
-  import { untrack } from 'svelte';
   import DashGrid from './dash/DashGrid.svelte';
   import Palette from './Palette.svelte';
   import Field from './Field.svelte';
@@ -37,14 +36,6 @@
   const builder = $derived(view.cls === 'full');
   const layout = $derived(dashboardLayout(VIEW, view.cls));
   let editing = $state(false);
-
-  // DashGrid's nests read is untracked while the map is missing (a missing
-  // own key subscribes to nothing), so a first nest would never draw: create
-  // the map before the grid reads it. An empty map still shows the seed.
-  $effect.pre(() => {
-    const cls = view.cls;
-    untrack(() => viewMap(layouts, cls, VIEW));
-  });
   let width = $state(0);
   const cols = $derived(cellCount(width, grid.cell));
 
@@ -90,8 +81,6 @@
 
   const keys = $derived.by(() => {
     if (!builder) return seed;
-    // Subscribes to the map's creation: viewMap's own-key check on a missing key is untracked.
-    void Object.keys(layouts.layouts[layouts.active]);
     const m = viewMap(layouts, view.cls, VIEW, false);
     const plain = Object.keys(m).filter((k) => !isNest(m[k]));
     const nested = layout.nests().flatMap((n) => n.keys);
@@ -153,11 +142,7 @@
 </div>
 
 <style>
-  /* Contains DashGrid's absolute announce region: anchored to the initial
-     containing block, it leaks below the fold once the palette pushes the
-     grid down, and scrolls the top strip away (law 11). */
   .home {
-    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--gap);

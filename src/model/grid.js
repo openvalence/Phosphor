@@ -184,7 +184,10 @@ const modulesOf = (s) => (s && s.modules && typeof s.modules === 'object' && !Ar
 
 // A key deleted from a Svelte $state proxy stays an own property whose value
 // reads undefined (svelte 5.56 proxy.js deleteProperty), so presence needs both.
-const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined;
+// The value read goes FIRST: on a proxy it subscribes to a missing key, which
+// hasOwnProperty does not, so a derived reading a map that does not exist yet
+// re-runs when it is created (ph-e82.10).
+const own = (o, k) => o[k] !== undefined && Object.prototype.hasOwnProperty.call(o, k);
 const validName = (n) => typeof n === 'string' && n.trim() !== '' && !(n.trim() in Object.prototype);
 
 /** Old {[id]: {span, order}} map -> placements, reading order kept. */

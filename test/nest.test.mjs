@@ -253,6 +253,22 @@ const nests = (await topIds()).filter((id) => id.startsWith('nest:'));
 const placedMod = nests.find((id) => id !== fresh);
 ok('Insert places the module as a new nest with its members', nests.length === 2 && (await membersOf(placedMod)).join() === cards.slice(0, 2).join(), nests);
 await page.click('button:has-text("Done")');
+
+// ph-e82.10: a view whose map does not exist yet still draws its first nest.
+let bare = -1, bareKey = '';
+for (let i = 1; i < await tabs.count() && bare < 0; i++) {
+  if (i === tab) continue;
+  await tabs.nth(i).click();
+  await page.waitForTimeout(200);
+  const k = await page.evaluate(() => document.querySelector('.dash-grid[data-view]')?.getAttribute('data-view'));
+  if (k && !Object.prototype.hasOwnProperty.call((await stored()).layouts.Default, k)) { bare = i; bareKey = k; }
+}
+ok('found a category page with no stored map', bare > 0, bareKey);
+await page.click('button:has-text("Edit layout")');
+await page.click('button:has-text("New nest")');
+await page.waitForTimeout(150);
+ok('New nest on a view with no map draws at once (ph-e82.10)', (await topIds()).some((id) => id.startsWith('nest:')), await topIds());
+await page.click('button:has-text("Done")');
 ok('no page errors', pageErrors.length === 0, pageErrors);
 
 await browser.close();

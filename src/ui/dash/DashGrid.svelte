@@ -261,7 +261,11 @@
 </div>
 
 <style>
+  /* Positioned so the absolute announce region is contained here: anchored to
+     the initial containing block it leaks below the fold and scrolling the
+     document to it carries the top strip away (law 11, ph-e82.10). */
   .dash-wrap {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;

@@ -623,6 +623,8 @@ if (!ONLY || ONLY === 'home') {
     const f = [...await page.evaluate(measure, { phone: false }), ...await page.evaluate(stripCheck)];
     scen(w + 'x' + h + ': the home with its palette open passes the layout and strip checks', f.length === 0,
       f.map((x) => x.join(' ')).join('; '));
+    scen(w + 'x' + h + ': each grid contains its own announce region (ph-e82.10)', await page.$$eval('.dash-wrap > [aria-live]',
+      (els) => els.length > 0 && els.every((el) => el.offsetParent === el.parentElement)));
     await ctx.close();
   }
 }
