@@ -1,0 +1,165 @@
+<script>
+  /**
+   * Home.svelte: the home page (DESIGN §10.1). An ADDITIONAL surface: the
+   * derived category pages keep every field reachable without it
+   * (RENDERING §12), so nothing here is the only path to a field.
+   *
+   * Constraints:
+   * - Membership is the key set of this view's placement map in the active
+   *   layout, plus every nest's members. View id 'machine' is the map the
+   *   migrated Default layout already holds (grid.js loadStore); never rename it.
+   * - A map with no plain key is a home the user has not built: it shows the
+   *   seed (rank-surfaced fields, telemetry, card-zone heroes, loose actions).
+   *   BUILT keeps a home emptied by deletes from reseeding; the grid's Reset
+   *   clears it, which reseeds.
+   * - Keys the catalog no longer resolves stay in the map, inert (law 10).
+   * - Only the `full` class builds (ph-e82.7); other classes always show the seed.
+   */
+  import { untrack } from 'svelte';
+  import DashGrid from './dash/DashGrid.svelte';
+  import Palette from './Palette.svelte';
+  import Field from './Field.svelte';
+  import ActionField from './ActionField.svelte';
+  import Control from './widgets/Control.svelte';
+  import TelemetryChart from './widgets/TelemetryChart.svelte';
+  import { dashboardLayout, layouts, grid } from '../model/dashboard.svelte.js';
+  import { viewMap, cellCount, isNest } from '../model/grid.js';
+  import { view } from '../model/viewport.svelte.js';
+  import { specSafetyAction } from '../model/machine.svelte.js';
+  import { placeableControls, surfacedFields, WIDGET } from '../model/settings.js';
+  import { labelFor, optionLabel } from '../model/format.js';
+
+  let { model, heroes } = $props();
+
+  const VIEW = 'machine';
+  const BUILT = 'home:built';
+  const builder = $derived(view.cls === 'full');
+  const layout = $derived(dashboardLayout(VIEW, view.cls));
+  let editing = $state(false);
+
+  // DashGrid's nests read is untracked while the map is missing (a missing
+  // own key subscribes to nothing), so a first nest would never draw: create
+  // the map before the grid reads it. An empty map still shows the seed.
+  $effect.pre(() => {
+    const cls = view.cls;
+    untrack(() => viewMap(layouts, cls, VIEW));
+  });
+  let width = $state(0);
+  const cols = $derived(cellCount(width, grid.cell));
+
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const KIND_SECTION = { composite: 'Composites', plugin: 'Plugin widgets', safety: 'Safety' };
+
+  // Every module this catalog can place, in palette order: summaries,
+  // composites, plugin widgets, safety, then fields by category.
+  const modules = $derived.by(() => {
+    const out = new Map();
+    const put = (id, title, section, extra) => out.set(id, { id, title, section, snippet: body, ...extra });
+    const rank = surfacedFields(model.fields, heroes.claimed, view.cls);
+    if (rank.length) put('widget:hero-rank', 'Machine', 'Summaries', { kind: 'module', fields: rank });
+    put('widget:telemetry', 'Telemetry', 'Summaries', { kind: 'module', telemetry: true });
+    const loose = model.looseActions.filter((a) => !heroes.claimed.has(a.uid));
+    if (loose.length) put('widget:actions', 'Actions', 'Summaries', { kind: 'module', fields: loose });
+
+    const catOf = new Map();
+    for (const c of model.categories) for (const g of c.groups) for (const f of g.fields) catOf.set(f.uid, c.label);
+    const controls = placeableControls(model, { heroes: heroes.widgets, safety: specSafetyAction() });
+    for (const k of ['composite', 'plugin', 'safety']) {
+      for (const c of controls.filter((x) => x.kind === k)) {
+        put(c.key, k === 'safety' ? cap(optionLabel(c.action, c.op).replace(/_/g, ' ')) : c.hero.title || cap(c.hero.id),
+          KIND_SECTION[k], { kind: k, control: c });
+      }
+    }
+    const fields = controls.filter((x) => x.kind === 'field');
+    for (const sec of [...model.categories.map((c) => c.label), 'Other fields']) {
+      for (const c of fields.filter((x) => (catOf.get(x.field.uid) || 'Other fields') === sec)) {
+        put(c.key, labelFor(c.field), sec, { kind: 'field', control: c, fields: [c.field] });
+      }
+    }
+    return out;
+  });
+
+  // The seed, in order: rank surfacing (RENDERING §4, ph-vdk.36), telemetry,
+  // card-zone heroes, loose actions.
+  const seed = $derived([
+    'widget:hero-rank', 'widget:telemetry',
+    ...heroes.widgets.filter((h) => h.zone === 'card').map((h) => 'hero:' + h.id),
+    'widget:actions',
+  ]);
+
+  const keys = $derived.by(() => {
+    if (!builder) return seed;
+    // Subscribes to the map's creation: viewMap's own-key check on a missing key is untracked.
+    void Object.keys(layouts.layouts[layouts.active]);
+    const m = viewMap(layouts, view.cls, VIEW, false);
+    const plain = Object.keys(m).filter((k) => !isNest(m[k]));
+    const nested = layout.nests().flatMap((n) => n.keys);
+    return [...new Set([...(plain.length ? plain : seed), ...nested])];
+  });
+  const items = $derived(keys.filter((k) => modules.has(k)).map((k) => modules.get(k)));
+  const placed = $derived(new Set(keys));
+
+  // Writes the top level only: nest members stay in their nests, nests keep their contents.
+  function commit(next) {
+    viewMap(layouts, view.cls, VIEW)[BUILT] = { x: 0, y: 0, w: 1, h: 1 };
+    const nests = layout.nests();
+    const inNest = new Set(nests.flatMap((n) => n.keys));
+    layout.move([...next.filter((it) => !inNest.has(it.id)), ...nests.map((n) => ({ id: n.id }))], cols, null);
+  }
+  function add(key, nest = '') {
+    if (!modules.has(key) || placed.has(key)) return;
+    if (nest) layout.nestAdd(nest, key);
+    else commit([...items, modules.get(key)]);
+  }
+  function remove(key) {
+    const next = items.filter((it) => it.id !== key);
+    for (const n of layout.nests()) if (n.keys.includes(key)) layout.nestRemove(n.id, key);
+    delete viewMap(layouts, view.cls, VIEW)[key];
+    commit(next);
+  }
+</script>
+
+{#snippet body(item)}
+  {#if editing && builder}
+    <button type="button" class="og-btn sm home-remove" aria-label={'Remove ' + item.title + ' from home'}
+            onclick={() => remove(item.id)}>Remove</button>
+  {/if}
+  {#if item.control}
+    <Control control={item.control} w={item.w} h={item.h} />
+  {:else if item.telemetry}
+    <TelemetryChart />
+  {:else}
+    <div class="home-fields">
+      {#each item.fields as f (f.uid)}
+        {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
+<div class="home" bind:clientWidth={width}>
+  {#if editing && builder}
+    <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
+  {/if}
+  <DashGrid viewId={VIEW} {items} bind:editing />
+</div>
+
+<style>
+  /* Contains DashGrid's absolute announce region: anchored to the initial
+     containing block, it leaks below the fold once the palette pushes the
+     grid down, and scrolls the top strip away (law 11). */
+  .home {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+  }
+  .home-remove { float: right; margin: 0 0 6px 6px; }
+  /* App.svelte's .card-body: columns capped at the reading measure. */
+  .home-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, min(100%, var(--measure)));
+    gap: 14px var(--gap);
+  }
+</style>

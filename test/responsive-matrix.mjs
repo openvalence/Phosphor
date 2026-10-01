@@ -36,12 +36,14 @@
  *            flight, and waits for a held pointer (RFC-062 draft)
  *   scale    no horizontal page scroll at any scale step; the target floor
  *            holds at the smallest scale on phones (ph-e82.3, law 12)
+ *   home     full: the home in edit mode with every palette section open
+ *            passes the layout and strip checks (ph-e82.5)
  *   nest     phone: a scrolling nest is not a scroll region of its own, a
  *            wheel over it scrolls the page, the page passes the layout
  *            checks (ph-e82.6)
  *
  * Build first (`npm run build:only`); this builds nothing.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|scale|nest] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -510,13 +512,15 @@ if (!ONLY || ONLY === 'class') {
   for (let i = 1; i < await railTabs.count(); i++) {
     await railTabs.nth(i).click();
     await page.waitForTimeout(250);
-    if (await page.$('.content input[type=range]')) { label = (await railTabs.nth(i).getAttribute('title')) || ''; break; }
+    if (await page.$('.content input[type=range]:not(:disabled)')) { label = (await railTabs.nth(i).getAttribute('title')) || ''; break; }
   }
   scen('found a category with a range control', !!label, label);
   const inFlight = () => page.$$eval('[data-shadow]', (els) => els.filter((e) => e.getAttribute('data-shadow') !== 'confirmed').length);
   const base = await inFlight();
-  await page.focus('.content input[type=range]');
-  await page.keyboard.press('ArrowRight');
+  const range = '.content input[type=range]:not(:disabled)';
+  await page.focus(range);
+  // A range at its max does not move on ArrowRight: step away from the end it sits at.
+  await page.keyboard.press(await page.$eval(range, (el) => Number(el.value) >= Number(el.max)) ? 'ArrowLeft' : 'ArrowRight');
   await page.waitForTimeout(100);
   const pre = await inFlight();
   await page.setViewportSize({ width: 400, height: 800 });
@@ -606,6 +610,23 @@ if (!ONLY || ONLY === 'glance') {
 // ---- scale (ph-e82.3): one context per (viewport, wished step); the wish is
 // stored before boot, the model clamps it, every tab is checked at the
 // applied step.
+// ---- home (ph-e82.5): the full-class home in edit mode, palette open --------
+if (!ONLY || ONLY === 'home') {
+  console.log('\nhome scenarios');
+  for (const [w, h] of [[1280, 720], [1920, 1080]]) {
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
+    await page.waitForTimeout(300);
+    const f = [...await page.evaluate(measure, { phone: false }), ...await page.evaluate(stripCheck)];
+    scen(w + 'x' + h + ': the home with its palette open passes the layout and strip checks', f.length === 0,
+      f.map((x) => x.join(' ')).join('; '));
+    await ctx.close();
+  }
+}
+
 if (!ONLY || ONLY === 'scale') {
   console.log('\nscale scenarios');
   async function atScale(w, h, coarse, step, check) {

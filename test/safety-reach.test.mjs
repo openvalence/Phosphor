@@ -17,6 +17,8 @@
  *            covered, and at least --tap in both axes
  *   hero     no-hero catalog: no hero slot rendered (the case is real)
  *   row      hero catalog, desktop: the hero row's stop/e-stop also >= --tap
+ * At 1280x720, both catalogs: every home module deleted, the strip pair stays
+ * (ph-e82.5).
  * Once, at 1280x720 and 360x800:
  *   motion   prefers-reduced-motion: no transition or animation on the pair
  *   edge     the latest safety edge renders with its unread count, opens the
@@ -209,6 +211,23 @@ for (const catalog of ['none', 'hero']) {
       await ctx.close();
     }
   }
+}
+
+// ---- ph-e82.5: an emptied home still leaves the strip's stop pair ------------
+for (const catalog of ['none', 'hero']) {
+  const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
+  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
+    await page.locator('.home .home-remove').first().click();
+  }
+  const left = await page.locator('.home .dash-cell').count();
+  ok(catalog + ': every home module deleted', left === 0, left + ' left');
+  const m = await page.evaluate(measurePair);
+  for (const [name, b] of [['e-stop', m.estop], ['stop', m.stop]]) {
+    ok(catalog + ': empty home: strip ' + name + ' shown, enabled, on screen, uncovered, >= --tap',
+      !!b && b.shown && !b.disabled && b.onScreen && b.uncovered && b.w >= m.tap - 0.5 && b.h >= m.tap - 0.5, b && JSON.stringify(b));
+  }
+  await ctx.close();
 }
 
 // ---- reduced motion ---------------------------------------------------------

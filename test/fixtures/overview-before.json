@@ -1,0 +1,100 @@
+{
+ "full": [
+  {
+   "title": "Machine",
+   "uids": [
+    "4624:ap_mode",
+    "4624:master",
+    "4624:max_depth",
+    "4624:min_depth",
+    "4624:in_speed",
+    "4624:out_speed",
+    "4624:in_accel",
+    "4624:out_accel"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Telemetry",
+   "uids": [],
+   "actions": []
+  },
+  {
+   "title": "Pattern",
+   "uids": [
+    "4608:speed",
+    "4608:depth",
+    "4608:stroke",
+    "4608:sensation"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Limits",
+   "uids": [
+    "4096:user_speed",
+    "4096:user_accel",
+    "4096:input_speed",
+    "4096:input_accel",
+    "4096:input_jerk"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Actions",
+   "uids": [],
+   "actions": [
+    "Op"
+   ]
+  }
+ ],
+ "handheld": [
+  {
+   "title": "Machine",
+   "uids": [
+    "4624:ap_mode",
+    "4624:master",
+    "4624:max_depth",
+    "4624:min_depth",
+    "4624:in_speed",
+    "4624:out_speed",
+    "4624:in_accel",
+    "4624:out_accel"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Telemetry",
+   "uids": [],
+   "actions": []
+  },
+  {
+   "title": "Pattern",
+   "uids": [
+    "4608:speed",
+    "4608:depth",
+    "4608:stroke",
+    "4608:sensation"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Limits",
+   "uids": [
+    "4096:user_speed",
+    "4096:user_accel",
+    "4096:input_speed",
+    "4096:input_accel",
+    "4096:input_jerk"
+   ],
+   "actions": []
+  },
+  {
+   "title": "Actions",
+   "uids": [],
+   "actions": [
+    "Op"
+   ]
+  }
+ ]
+}

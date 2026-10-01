@@ -28,14 +28,15 @@
   import PairingPane from './ui/PairingPane.svelte';
   import ThemePicker from './ui/ThemePicker.svelte';
   import HeroStrip from './ui/HeroStrip.svelte';
-  import TelemetryChart from './ui/widgets/TelemetryChart.svelte';
+  import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
   import { untrack } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
-  import { isFieldEnabled, surfacedFields, WIDGET } from './model/settings.js';
+  import { isFieldEnabled, WIDGET } from './model/settings.js';
+  import { UI_CATEGORY } from '../../Valence/clients/js/index.js';
   import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -54,18 +55,46 @@
   const heroes = $derived(model
     ? heroClaims(model.byRole, (pluginsUi.gen, pluginHeroes()))
     : { widgets: [], claimed: new Set() });
-  const categories = $derived(model ? withoutClaimed(model.categories, heroes.claimed) : []);
+
+  // The derived tree carries every field without the home (DESIGN §10.1,
+  // RENDERING §12): a card-zone hero sits on the page of the category its
+  // claimed fields came from, and uncategorized triggers join the `other`
+  // overflow page (RENDERING §3).
+  const categories = $derived.by(() => {
+    if (!model) return [];
+    const kept = new Map(withoutClaimed(model.categories, heroes.claimed).map((c) => [c.key, c]));
+    const homeOf = (h) => {
+      const uids = new Set(h.fields.claimed);
+      const c = model.categories.find((c) => c.groups.some((g) => g.fields.some((f) =>
+        uids.has(f.uid) || (f.lo && uids.has(f.lo.uid)) || (f.hi && uids.has(f.hi.uid)))));
+      return c ? c.key : null;
+    };
+    const cards = heroes.widgets.filter((h) => h.zone === 'card');
+    const cats = model.categories.map((c) => ({
+      ...(kept.get(c.key) || { ...c, groups: [] }),
+      heroes: cards.filter((h) => homeOf(h) === c.key),
+    }));
+    const loose = model.looseActions.filter((a) => !heroes.claimed.has(a.uid));
+    const strays = cards.filter((h) => homeOf(h) == null);
+    if (loose.length || strays.length) {
+      const groups = loose.length ? [{ name: 'Actions', diagnostic: false, fields: loose }] : [];
+      const other = cats.find((c) => c.known && c.id === UI_CATEGORY.other);
+      if (other) { other.groups = [...other.groups, ...groups]; other.heroes = [...other.heroes, ...strays]; }
+      else cats.push({ key: 'other', id: UI_CATEGORY.other, label: 'Other', known: true, writable: true, groups, heroes: strays });
+    }
+    return cats.filter((c) => c.groups.length || c.heroes.length);
+  });
 
   // heroes.js's zone split: 'instrument' heroes are pinned chrome (the hero
-  // strip, below); 'card' heroes render as ordinary Overview cards instead
-  // (folded into machineItems below).
+  // strip, below); 'card' heroes are home modules and category-page cards.
   const instrumentHeroes = $derived(heroes.widgets.filter((h) => h.zone === 'instrument'));
 
   // Nav: the machine's categories, plus our own fixed views. The fixed ones are
   // about the LINK and the BROWSER rather than the machine, which is why they
   // are the only hardcoded entries in the page.
+  // Tab id 'machine' is the home grid's storage view id (Home.svelte).
   const machineTabs = $derived([
-    { id: 'machine', label: 'Overview' },
+    { id: 'machine', label: 'Home' },
     ...categories.map((c) => ({ id: 'cat' + c.key, label: c.label, cat: c })),
   ]);
   const consoleTabs = $derived([
@@ -260,41 +289,20 @@
    */
   // RENDERING §11 per class: a group past the class's density budget is a
   // card that opens its own page, never a hidden one.
-  const settingItems = $derived(
-    projectGroups(visibleGroups.groups, view.cls).map(({ group: g, drill: promoted }) => ({
+  const settingItems = $derived([
+    ...(current && current.cat ? current.cat.heroes : []).map((h) =>
+      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
+    ...projectGroups(visibleGroups.groups, view.cls).map(({ group: g, drill: promoted }) => ({
       id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
       title: g.name || (g.diagnostic ? 'Diagnostics' : 'Settings'),
       snippet: promoted ? drillCard : groupCard,
       group: g,
       promoted,
-    }))
-  );
+    })),
+  ]);
   // The open drill-in page, while its group is still promoted under this
   // class; `full` shows every section inline instead.
   const drillItem = $derived(settingItems.find((it) => it.promoted && it.id === drill) || null);
-
-  // RENDERING §4/§12: rank-driven default surfacing for this class. What no
-  // Tier-1 widget claimed reaches Overview.
-  const heroLeft = $derived(model ? surfacedFields(model.fields, heroes.claimed, view.cls) : []);
-
-  // Uncategorized generic triggers (settings.js looseActions) that no hero
-  // claimed get one Overview card, so no advertised verb is unreachable.
-  const looseActions = $derived(model ? model.looseActions.filter((a) => !heroes.claimed.has(a.uid)) : []);
-
-  const machineItems = $derived([
-    ...(heroLeft.length
-      ? [{ id: 'widget:hero-rank', title: 'Machine', snippet: groupCard, group: { fields: heroLeft } }]
-      : []),
-    { id: 'widget:telemetry', title: 'Telemetry', snippet: telemetryCard },
-    // Card-zone heroes (heroes.js) are ordinary Overview cards, not pinned
-    // chrome — same component, generic DashGrid treatment (drag/resize/etc).
-    ...heroes.widgets
-      .filter((h) => h.zone === 'card')
-      .map((h) => ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
-    ...(looseActions.length
-      ? [{ id: 'widget:actions', title: 'Actions', snippet: groupCard, group: { fields: looseActions } }]
-      : []),
-  ]);
 </script>
 
 {#snippet groupCard(item)}
@@ -316,10 +324,6 @@
   </button>
 {/snippet}
 
-{#snippet telemetryCard()}
-  <TelemetryChart />
-{/snippet}
-
 {#snippet transportAccessory()}
   <TransportBar />
 {/snippet}
@@ -332,7 +336,7 @@
   <main class="pane">
     {#if current.id === 'machine'}
       <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
-      <DashGrid viewId="machine" items={machineItems} />
+      {#if model}<Home {model} {heroes} />{/if}
     {:else if current.cat}
       {#if drillItem}
         <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
@@ -405,8 +409,8 @@
        view's PANE and never inside one: losing sight of the carriage because
        you opened a settings tab would be a regression from the old page. On
        desktop they run full width above the nav+pane frame; on a phone they
-       sit above the tab strip. CARD-zone heroes render as ordinary Overview
-       dashboard cards instead (see machineItems). -->
+       sit above the tab strip. CARD-zone heroes are home modules and cards on
+       their category's page instead. -->
   {#if !machine.catalog.ready}
     <!-- Deliberately no fallback control path: a page with no hub link
          genuinely cannot drive anything. The picker says where the link
