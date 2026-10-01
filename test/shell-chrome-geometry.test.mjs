@@ -56,6 +56,10 @@ ok('no shell: LinkBar is the strip\'s first row', Math.abs(g.lbTop - g.stripTop)
 ok('no shell: desktop column is exactly one viewport', Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
 ok('no shell: page does not scroll', !g.scrolls);
 ok('nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
+// ph-wks: the notch inset must not depend on html.hivis.
+const inset = await page.evaluate(() => [document.documentElement.classList.contains('hivis'),
+  getComputedStyle(document.documentElement).getPropertyValue('--chrome-inset-top').trim()]);
+ok('--chrome-inset-top is defined without html.hivis', !inset[0] && inset[1] !== '', JSON.stringify(inset));
 
 // ---- with a simulated shell row ----------------------------------------------
 await page.evaluate((h) => {
