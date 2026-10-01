@@ -492,7 +492,8 @@ export function buildSettingsModel(entries) {
         // their own widgets and never ride here.
         payload: entry.schema.filter((p) => p !== f && !p.role && p.rank !== UI_RANK.hidden)
           .map((p) => ({ key: p.key, name: p.name, label: humanize(p.name), desc: p.desc || '',
-                         type: p.type, unit: p.unit || '', min: p.min, max: p.max })),
+                         type: p.type, unit: p.unit || '', min: p.min, max: p.max,
+                         secret: !!(p.flagBits && p.flagBits.secret) })),
         archetype: UI_ARCHETYPE.trigger,   // §8.2 row 6
         widget: WIDGET.action,
       };

@@ -54,7 +54,10 @@
   async function press(v) {
     if (reasonFor(v)) return;
     if (needsConfirm(action, v) && !(await askConfirm(confirmCopy(action, v)))) return;
-    runAction(action, v, payloadFields());
+    const fields = payloadFields();
+    // A secret is sent once and never kept on screen (RFC-009.4).
+    for (const p of action.payload || []) if (p.secret) delete draft[p.key];
+    runAction(action, v, fields);
   }
 
   const statusText = $derived(
@@ -77,7 +80,9 @@
         <input type="checkbox" checked={!!draft[p.key]}
                onchange={(e) => (draft[p.key] = e.currentTarget.checked)} />
       {:else if p.type === CBOR_FIELD.tstr_t}
-        <input type="text" value={draft[p.key] ?? ''}
+        <!-- RFC-009.4: a secret payload masks like Field's secret widget. -->
+        <input type={p.secret ? 'password' : 'text'} autocomplete={p.secret ? 'new-password' : undefined}
+               value={draft[p.key] ?? ''}
                oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
       {:else}
         <input type="number" min={p.min} max={p.max}
@@ -103,7 +108,7 @@
   .ops { display: flex; flex-wrap: wrap; gap: 6px; }
   .ops button { min-height: var(--tap); padding: 0 14px; text-transform: capitalize; }
   .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
-  .payload input[type='number'], .payload input[type='text'] { min-height: var(--tap); width: 12ch; }
+  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   .why { color: var(--ink-faint); }
   .action[data-shadow='fault'] .state { color: var(--bad); }

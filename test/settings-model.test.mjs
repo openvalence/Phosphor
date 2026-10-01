@@ -25,7 +25,7 @@ import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
   SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS, decodeCatalog,
-  VALUE_ASPECT, VALUE_SCOPE, UNIT_ID,
+  VALUE_ASPECT, VALUE_SCOPE, UNIT_ID, CBOR_FIELD,
 } from '../../Valence/clients/js/index.js';
 
 let fails = 0;
@@ -561,6 +561,23 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('no control-owner report yet reads as unattended (the safe side)',
      isUnattended(gen.byRole, s(1, 1), undefined));
   ok('a hub without the role never shows the chip', !isUnattended(model.byRole, {}, undefined));
+}
+
+// ---- ph-vic: a secret action payload is flagged so ActionField masks it -----
+{
+  const m = buildSettingsModel([{
+    id: 0x0399, name: 'net', cls: CHANNEL_CLASS.INTENT, dir: 1, access: 2, maxRateHz: 0, priority: 1,
+    category: null, settingChannel: null, layout: null,
+    schema: [
+      { key: 1, name: 'op', type: CBOR_FIELD.uint_t, role: 'action.join', options: ['', 'join'], rank: UI_RANK.detail },
+      { key: 2, name: 'ssid', type: CBOR_FIELD.tstr_t, rank: UI_RANK.detail },
+      { key: 3, name: 'pass', type: CBOR_FIELD.tstr_t, rank: UI_RANK.detail, flags: 4, flagBits: { secret: true } },
+    ],
+  }]);
+  const act = m.actions[0];
+  ok('a secret schema payload field reaches the action as secret',
+     act && act.payload.find((p) => p.name === 'pass').secret === true
+       && act.payload.find((p) => p.name === 'ssid').secret === false);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));
