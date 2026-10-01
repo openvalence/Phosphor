@@ -1,3 +1,5 @@
+#[cfg(desktop)]
+mod buttplug;
 mod discovery;
 mod plugins;
 
@@ -12,6 +14,20 @@ pub fn run() {
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,
+      #[cfg(desktop)]
+      buttplug::bp_status,
+      #[cfg(desktop)]
+      buttplug::bp_start,
+      #[cfg(desktop)]
+      buttplug::bp_stop,
+      #[cfg(desktop)]
+      buttplug::bp_scan_start,
+      #[cfg(desktop)]
+      buttplug::bp_scan_stop,
+      #[cfg(desktop)]
+      buttplug::bp_devices,
+      #[cfg(desktop)]
+      buttplug::bp_machine_present,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -20,6 +36,11 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      #[cfg(desktop)]
+      {
+        use tauri::Manager;
+        app.manage(buttplug::init(app.handle()));
       }
       Ok(())
     })

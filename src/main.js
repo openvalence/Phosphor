@@ -79,6 +79,8 @@ async function boot() {
 // Tier-2 plugins: shell plugins folder, or ?plugin= in a dev build; a no-op on
 // the page a hub serves. See docs/PLUGINS.md.
 loadPlugins();
+// The embedded buttplug server's machine rides the same host (docs/BUTTPLUG.md).
+if (SHELL) import('./plugins/buttplug.js').then((m) => m.loadButtplug()).catch((e) => console.error('buttplug bridge failed to load', e));
 
 // The page mounts whatever boot() does: a failed shell import costs the
 // window controls, never the strip's e-stop.
