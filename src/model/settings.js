@@ -693,19 +693,25 @@ export function minCells(presentationOrCells, orientation = 'h') {
  * it is that role's first-authored field, else its uid. The uid (channel id
  * plus field name) is the RFC-080 draft's user-surface carve-out
  * (ph-e82.1 item 3); a key the catalog no longer resolves stays inert.
+ * Compares uids, never object identity: in the app `fields` are $state
+ * proxies while `byRole` (a Map) holds the raw objects (ph-e82.9).
  */
 export function controlKey(f, byRole) {
   if (f.lo && f.hi) return controlKey(f.lo, byRole) + '+' + controlKey(f.hi, byRole);
   const first = f.role && byRole && byRole.get(f.role);
-  return first && first[0] === f ? 'role:' + f.role : 'uid:' + f.uid;
+  return first && first[0].uid === f.uid ? 'role:' + f.role : uidKey(f);
 }
+
+/** The all-uid key. Builds before ph-e82.9 saved role fields under it; placements accept it as an alias. */
+const uidKey = (f) => (f.lo && f.hi ? uidKey(f.lo) + '+' + uidKey(f.hi) : 'uid:' + f.uid);
 
 const SAFETY_OP_NAME = Object.fromEntries(Object.entries(SAFETY_OP).map(([k, v]) => [v, k]));
 
 /**
  * Everything a builder palette may place, one entry per control:
  *   {key, kind: 'field'|'composite'|'plugin'|'safety', cells, ...}
- * field: `field` and `presentations` (default first). composite/plugin: the
+ * field: `field`, `presentations` (default first), and `alias`, the uid-form
+ * key a role field also answers to (null when the key is already uid-form). composite/plugin: the
  * claimed `hero` from heroClaims (claim-or-decline unchanged, law 7).
  * safety: the safety-intents `action` and one `op`, bound by identity
  * (law 2); the top strip's own e-stop is not one of these and never moves.
@@ -719,7 +725,8 @@ export function placeableControls(model, { heroes = [], safety = null } = {}) {
   const out = [];
   const singles = mergeRangePairs(model.fields.filter((f) => !f.companionOf));
   for (const f of [...singles, ...model.actions]) {
-    out.push({ key: controlKey(f, model.byRole), kind: 'field', field: f,
+    const key = controlKey(f, model.byRole);
+    out.push({ key, alias: key === uidKey(f) ? null : uidKey(f), kind: 'field', field: f,
       presentations: offeredPresentations(f) });
   }
   for (const h of heroes) {

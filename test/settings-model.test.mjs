@@ -607,6 +607,17 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('an unroled field keys on its uid (ph-e82.1 item 3)', slider && slider.key === 'uid:' + slider.field.uid);
   ok('a key the catalog lacks resolves to nothing: inert, never rebound',
      !ctls.find((c) => c.key === 'uid:' + slider.field.channelId + ':renamed_away'));
+  // ph-e82.9: in the app `machine` is deep $state, so fields arrive as proxies
+  // while byRole (a Map) holds the raw objects. A fresh Proxy per read mimics it.
+  const wrap = (o) => (o && typeof o === 'object' ? new Proxy(o, { get: (t, k) => wrap(Reflect.get(t, k)) }) : o);
+  const proxied = placeableControls({ ...real, fields: wrap(real.fields), actions: wrap(real.actions) });
+  const roleKeys = (cs) => cs.filter((c) => c.kind === 'field' && c.key.includes('role:')).map((c) => c.key).sort().join();
+  ok('proxied fields still key role fields by role (ph-e82.9)',
+     roleKeys(ctls) !== '' && roleKeys(proxied) === roleKeys(ctls), roleKeys(proxied));
+  const roled = ctls.find((c) => c.kind === 'field' && c.key.startsWith('role:') && !c.key.includes('+'));
+  ok('a role field answers to its uid-form key as an alias (saved homes from before ph-e82.9)',
+     roled && roled.alias === 'uid:' + roled.field.uid);
+  ok('an unroled field has no alias', slider && slider.alias === null);
   ok('orientation follows aspect: w >= h is horizontal', orientationOf(4, 4) === 'h' && orientationOf(3, 4) === 'v');
   ok('minimum cells differ per orientation', minCells(WIDGET.slider, 'h').join() !== minCells(WIDGET.slider, 'v').join());
 

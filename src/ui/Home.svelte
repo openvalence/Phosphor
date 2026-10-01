@@ -12,7 +12,8 @@
    *   seed (rank-surfaced fields, telemetry, card-zone heroes, loose actions).
    *   BUILT keeps a home emptied by deletes from reseeding; the grid's Reset
    *   clears it, which reseeds.
-   * - Keys the catalog no longer resolves stay in the map, inert (law 10).
+   * - Keys the catalog no longer resolves stay in the map, inert (law 10). A
+   *   role field's uid-form key is an alias of its role key (ph-e82.9).
    * - Only the `full` class builds (ph-e82.7); other classes always show the seed.
    */
   import { untrack } from 'svelte';
@@ -96,8 +97,14 @@
     const nested = layout.nests().flatMap((n) => n.keys);
     return [...new Set([...(plain.length ? plain : seed), ...nested])];
   });
-  const items = $derived(keys.filter((k) => modules.has(k)).map((k) => modules.get(k)));
-  const placed = $derived(new Set(keys));
+  // Homes saved before ph-e82.9 key role fields by uid: both forms resolve to
+  // one control, which keeps the saved key as its id (its placement entry).
+  const aliases = $derived(new Map([...modules.values()].filter((m) => m.control && m.control.alias)
+    .map((m) => [m.control.alias, m.id])));
+  const canon = (k) => aliases.get(k) || k;
+  const items = $derived(keys.filter((k) => modules.has(canon(k)))
+    .map((k) => (k === canon(k) ? modules.get(k) : { ...modules.get(canon(k)), id: k })));
+  const placed = $derived(new Set(keys.map(canon)));
 
   // Writes the top level only: nest members stay in their nests, nests keep their contents.
   function commit(next) {
@@ -112,9 +119,10 @@
     else commit([...items, modules.get(key)]);
   }
   function remove(key) {
-    const next = items.filter((it) => it.id !== key);
-    for (const n of layout.nests()) if (n.keys.includes(key)) layout.nestRemove(n.id, key);
-    delete viewMap(layouts, view.cls, VIEW)[key];
+    const gone = keys.filter((k) => canon(k) === canon(key));
+    const next = items.filter((it) => !gone.includes(it.id));
+    for (const n of layout.nests()) for (const k of gone) if (n.keys.includes(k)) layout.nestRemove(n.id, k);
+    for (const k of gone) delete viewMap(layouts, view.cls, VIEW)[k];
     commit(next);
   }
 </script>

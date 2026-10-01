@@ -181,16 +181,17 @@ async function release() {
 // ---- the page ---------------------------------------------------------------
 const browser = await chromium.launch();
 // The catalog is seeded once per context: a reload must keep the saved home.
-async function open(w, h) {
+async function open(w, h, store = null) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
-  await ctx.addInitScript(([etag, hex, live]) => {
+  await ctx.addInitScript(([etag, hex, live, store]) => {
     try {
       if (sessionStorage.getItem('home.seeded')) return;
       localStorage.clear();
       if (!live) localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes: hex }));
+      if (store) localStorage.setItem('phosphor.layouts', store);
       sessionStorage.setItem('home.seeded', '1');
     } catch (e) { /* no storage: the boot assertion reports it */ }
-  }, [ETAG, Buffer.from(CAT).toString('hex'), LIVE]);
+  }, [ETAG, Buffer.from(CAT).toString('hex'), LIVE, store && JSON.stringify(store)]);
   if (!LIVE) await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => ok('no page error', false, String(e)));
@@ -357,6 +358,22 @@ if (!LIVE) {
 
   checkReach('full', BEFORE.full, await harvestDerived(page));
   await ctx.close();
+
+  // ---- a home saved before ph-e82.9 keyed a role field by uid ------------------
+  console.log('\n[full 1280x900, pre-ph-e82.9 home]');
+  const roled = placeableControls(MODEL).find((c) => c.alias && !c.key.includes('+'));
+  const old = await open(1280, 900, { active: 'Default', modules: {},
+    layouts: { Default: { 'full.machine': { [roled.alias]: { x: 0, y: 0, w: 12, h: 2 }, 'home:built': { x: 0, y: 9, w: 1, h: 1 } } } } });
+  ok('alias: the uid-form key still draws its control', JSON.stringify(await topIds(old.page)) === JSON.stringify([roled.alias]),
+    await topIds(old.page));
+  await editBtn(old.page).click();
+  await old.page.waitForTimeout(150);
+  ok('alias: the palette shows the role key as placed', await old.page.$eval('.palette li[data-key="' + roled.key + '"] button',
+    (b) => b.textContent.trim()) === 'Remove');
+  await old.page.$eval('.palette li[data-key="' + roled.key + '"] button', (b) => b.click());
+  await old.page.waitForTimeout(150);
+  ok('alias: Remove by the role key drops the uid-form entry', (await topIds(old.page)).length === 0, await topIds(old.page));
+  await old.ctx.close();
 
   // ---- handheld ---------------------------------------------------------------
   console.log('\n[handheld 390x844]');
