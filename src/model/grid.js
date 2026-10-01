@@ -14,6 +14,11 @@
  *   READ to seed the layout named Default, never written or deleted.
  * - Every storage access degrades to in-memory on a throw (private mode,
  *   quota, storage disabled).
+ * - A placement entry is {x, y, w, h}, plus `nest` on a nest and an optional
+ *   `look` (the control's presentation and per-placement config, DESIGN
+ *   §10.2). An entry without `look` is valid and means the derived
+ *   presentation on the catalog's bounds, so entries saved before `look`
+ *   existed need no migration.
  */
 
 /** Default cell edge in device px: the 32 to 40 band of DESIGN §10.5. */
@@ -103,9 +108,10 @@ export function pack(items, map, cols, pin = null) {
   };
   const byId = new Map(items.map((it) => [it.id, it]));
 
+  const lookOf = (e) => (e && typeof e === 'object' && e.look ? { look: e.look } : {});
   if (pin && byId.has(pin.id)) {
     const { w, h } = size(pin);
-    placed.push({ ...byId.get(pin.id), x: int(pin.x, 0, cols - w, 0), y: int(pin.y, 0, Infinity, 0), w, h });
+    placed.push({ ...byId.get(pin.id), x: int(pin.x, 0, cols - w, 0), y: int(pin.y, 0, Infinity, 0), w, h, ...lookOf(map[pin.id]) });
   }
 
   const saved = [], fresh = [];
@@ -118,7 +124,7 @@ export function pack(items, map, cols, pin = null) {
   saved.sort((a, b) => a.y - b.y || a.x - b.x || (a.it.id < b.it.id ? -1 : 1));
   for (const { it, e, x, y } of saved) {
     const { w, h } = size(e);
-    const r = { ...it, x: Math.min(x, cols - w), y, w, h };
+    const r = { ...it, x: Math.min(x, cols - w), y, w, h, ...lookOf(e) };
     while (!fits(r)) r.y++;
     while (r.y > 0 && fits({ ...r, y: r.y - 1 })) r.y--;
     placed.push(r);
@@ -138,12 +144,30 @@ export function pack(items, map, cols, pin = null) {
   return placed.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
-/** Write placements into `map`; ids not in `placed` are left untouched, a nest keeps its contents. */
+/** Write placements into `map`; ids not in `placed` are left untouched, a nest keeps its contents, a look stays. */
 function write(map, placed) {
   for (const p of placed) {
-    const nest = isNest(map[p.id]) ? map[p.id].nest : null;
-    map[p.id] = nest ? { x: p.x, y: p.y, w: p.w, h: p.h, nest } : { x: p.x, y: p.y, w: p.w, h: p.h };
+    const prev = map[p.id];
+    const e = { x: p.x, y: p.y, w: p.w, h: p.h };
+    if (isNest(prev)) e.nest = prev.nest;
+    if (prev && typeof prev === 'object' && prev.look) e.look = prev.look;
+    map[p.id] = e;
   }
+}
+
+/**
+ * Set placement `id`'s look ({pres, min, max, step, default, a, b}, settings.js
+ * placementLook), or clear it with null or {}. An id with no entry yet is
+ * written at `at` ({x, y, w, h}, where it is drawn now) so it does not move.
+ */
+export function setLook(map, id, look, at = null) {
+  const prev = map[id] && typeof map[id] === 'object' ? map[id]
+    : at ? { x: at.x, y: at.y, w: at.w, h: at.h } : {};
+  const e = { ...prev };
+  const l = look && typeof look === 'object' ? clone(look) : {};
+  if (Object.keys(l).length) e.look = l; else delete e.look;
+  map[id] = e;
+  return true;
 }
 
 /** Commit a drag or resize: place with `pin`, compact, write every present item. */
@@ -302,8 +326,10 @@ export function deleteLayout(store, name) {
 // A member the current items lack is inert, exactly as at the top level.
 
 /**
- * ph-e82.1 item 4, OPEN: single fields placeable anywhere (false) or only
- * inside nests (true). Coded as anywhere; veto-able on ph-e82.6.
+ * ph-e82.1 item 4: single fields placeable anywhere (false) or only inside
+ * nests (true). Anywhere by operator ruling 2026-10-01 (DESIGN §10.2): the
+ * RFC-080 draft leaves it open (its open question 3), so the builder keeps
+ * anywhere until that RFC rules.
  */
 export const FIELDS_NESTS_ONLY = false;
 

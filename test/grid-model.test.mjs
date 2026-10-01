@@ -4,7 +4,8 @@
  * named layouts, inert absent ids, storage that throws, and the migration of
  * the per-class span maps and the legacy sd32 keys; nests and modules
  * (ph-e82.6): round trip, reinsertion under a different catalog with inert
- * members, and the single-field placement flag both ways.
+ * members, and the single-field placement flag both ways; a placement's look
+ * (presentation and config) through pack, commits and storage.
  *
  * Run: node test/grid-model.test.mjs
  */
@@ -14,7 +15,7 @@ import {
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
-  saveModule, insertModule, deleteModule, resetMap,
+  saveModule, insertModule, deleteModule, resetMap, setLook,
 } from '../src/model/grid.js';
 
 let fails = 0;
@@ -249,6 +250,44 @@ console.log('nests');
      && addNest(gm) === 'nest:1' && nestAdd(gm, 'nest:2', 'a') && gm['nest:2'].nest.map.a === null);
   ok('a store without modules loads with an empty set',
      JSON.stringify(loadStore(memStorage({ [STORE_KEY]: JSON.stringify({ active: 'A', layouts: { A: {} } }) })).modules) === '{}');
+}
+
+// ---- a placement's look (DESIGN §10.2; operator ruling 2026-10-01) ----------
+{
+  // An entry saved before `look` existed is still valid: derived presentation, catalog bounds.
+  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const map = { a: { x: 0, y: 0, w: 8, h: 2 }, b: { x: 8, y: 0, w: 8, h: 2 } };
+  const p0 = pack(items, map, 48);
+  ok('look: an entry without one packs as before, with no look on the item', p0.every((p) => !('look' in p))
+     && JSON.stringify(p0.map(({ id, x, y, w, h }) => [id, x, y, w, h])) === '[["a",0,0,8,2],["b",8,0,8,2],["c",0,2,48,1]]');
+  const look = { pres: 'knob', min: 10, max: 40, step: 2, default: 20 };
+  setLook(map, 'a', look);
+  ok('look: setLook keeps the place and stores a copy', map.a.x === 0 && map.a.w === 8 && JSON.stringify(map.a.look) === JSON.stringify(look) && map.a.look !== look);
+  ok('look: pack hands it to the placed item', pack(items, map, 48).find((p) => p.id === 'a').look.pres === 'knob');
+  const c = pack(items, map, 48).find((p) => p.id === 'c');
+  setLook(map, 'c', { pres: 'toggle', a: 0, b: 5 }, c);
+  ok('look: an unsaved item is written where it is drawn, so it does not move',
+     map.c.x === c.x && map.c.y === c.y && map.c.w === c.w && map.c.look.b === 5);
+  commitPin(map, items, 48, { id: 'b', x: 20, y: 0, w: 6, h: 2 });
+  commitOrder(map, items, 48, ['c', 'a', 'b']);
+  ok('look: survives a drag and a reorder', map.a.look.min === 10 && map.c.look.b === 5 && !map.b.look);
+  ok('look: the pinned item keeps its look mid-drag',
+     pack(items, map, 48, { id: 'a', x: 30, y: 4, w: 8, h: 2 }).find((p) => p.id === 'a').look.max === 40);
+  setLook(map, 'a', null);
+  setLook(map, 'c', {});
+  ok('look: null or {} clears it, the place stays', !('look' in map.a) && !('look' in map.c) && Number.isFinite(map.a.x));
+
+  const st = memStorage();
+  const store = loadStore(st);
+  setLook(viewMap(store, 'full', 'machine'), 'uid:9:x', { pres: 'bar', min: 1 }, { x: 0, y: 0, w: 4, h: 1 });
+  saveStore(st, store);
+  ok('look: survives a store round trip', loadStore(st).layouts.Default['full.machine']['uid:9:x'].look.min === 1);
+  const n = {};
+  const nid = addNest(n);
+  nestAdd(n, nid, 'k');
+  setLook(n[nid].nest.map, 'k', { pres: 'numeral' }, { x: 0, y: 0, w: 3, h: 3 });
+  commitPin(n, [{ id: nid }], 48, { id: nid, x: 0, y: 2, w: 16, h: 6 });
+  ok('look: a nest member keeps its own look in the nest map when the nest moves', n[nid].nest.map.k.look.pres === 'numeral');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

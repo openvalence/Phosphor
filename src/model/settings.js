@@ -588,12 +588,14 @@ export function surfacedFields(fields, claimed, cls) {
 // ---------------------------------------------------------------------------
 
 /**
- * ph-e82.1 item 2. false: a field is offered only its derived archetype's own
- * projections (the conservative read of RENDERING §8.2 first match). true: the
- * read/write-class rule of the RFC-080 draft, item 3. Flip it only when
- * RFC-080 is accepted; never code against an unaccepted clause.
+ * ph-e82.1 item 2. true: the read/write-class rule of the RFC-080 draft, item
+ * 3 (any writable presentation for a writable field, plus display-only
+ * read-only ones). false: only the derived archetype's own projections (the
+ * conservative read of RENDERING §8.2 first match). true codes against a
+ * DRAFT RFC by operator ruling 2026-10-01 (DESIGN §10.2); if RFC-080 is
+ * rejected or amended, this follows it.
  */
-export const CROSS_ARCHETYPE = false;
+export const CROSS_ARCHETYPE = true;
 
 /** Each archetype's projections, keyed by UI_ARCHETYPE code. */
 export const PRESENTATIONS = {
@@ -639,6 +641,9 @@ const NEEDS = {
   [WIDGET.numeral]: (f) => NUMERIC_TYPES.has(f.type) && !isSecret(f),
 };
 
+/** A field a toggle can write two values of: a bool, two or more options, or bounds (RFC-080 draft item 5). */
+const twoValued = (f) => NEEDS[WIDGET.toggle](f) || (bounded(f) && plainNumber(f)) || !!(f.options && f.options.length >= 2);
+
 /**
  * The presentations a user may pick for one field, its derived widget first.
  * The user chooses how a field looks, never what it binds (laws 6, 7).
@@ -649,8 +654,77 @@ export function offeredPresentations(f, crossArchetype = CROSS_ARCHETYPE) {
     : f.readOnly ? [...READ_ONLY_PRESENTATIONS]
     : [...WRITABLE_PRESENTATIONS, ...READ_ONLY_PRESENTATIONS];
   const out = [f.widget];
-  for (const p of pool) if (!out.includes(p) && (!NEEDS[p] || NEEDS[p](f))) out.push(p);
+  for (const p of pool) {
+    const need = crossArchetype && p === WIDGET.toggle ? twoValued : NEEDS[p];
+    if (!out.includes(p) && (!need || need(f))) out.push(p);
+  }
   return out;
+}
+
+/** Range presentations: a placement may narrow min, max, step and default (RFC-080 draft item 4). */
+export const RANGE_PRESENTATIONS = new Set([WIDGET.slider, WIDGET.knob, WIDGET.stepper, WIDGET.bar]);
+
+const num = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+const whole = (x) => Math.abs(x - Math.round(x)) < 1e-9;
+const toggleDefaults = (f) => (NEEDS[WIDGET.toggle](f) || f.options ? [0, 1] : [f.min, f.max]);
+const toggleFits = (f, v) => (f.options && f.options.length ? whole(v) && v >= 0 && v < f.options.length
+  : NEEDS[WIDGET.toggle](f) ? v === 0 || v === 1
+  : bounded(f) && v >= f.min && v <= f.max);
+
+/**
+ * A placement's look applied to its field (DESIGN §10.2; RFC-080 draft items 3
+ * to 5). `look` is the placement entry's {pres, min, max, step, default, a, b};
+ * every part is optional. Returns {pres, field, kind, toggle, errors}:
+ * - pres: the look's presentation when the field still offers it, else the
+ *   derived widget.
+ * - field: the field narrowed for display and the write clamp only (the hub
+ *   stays the referee). `narrowed` marks a placement range tighter than the
+ *   catalog's; `toggle` {a, b} marks a toggle that is not plain off/on.
+ * - kind: 'range' or 'toggle' when the presentation takes per-placement
+ *   config, else null.
+ * - errors: a refused part in words; that part keeps the catalog's value.
+ * A placement narrows, never widens; a step is a whole multiple of the
+ * catalog step; the default lies inside the placement's range; a toggle's
+ * two values differ and lie inside the field's range.
+ */
+export function placementLook(f, look, crossArchetype = CROSS_ARCHETYPE) {
+  const l = look && typeof look === 'object' ? look : {};
+  const offered = offeredPresentations(f, crossArchetype);
+  const pres = offered.includes(l.pres) ? l.pres : offered[0];
+  const errors = [];
+  let field = f, kind = null, toggle = null;
+  if (RANGE_PRESENTATIONS.has(pres) && bounded(f) && plainNumber(f)) {
+    kind = 'range';
+    let min = num(l.min) ?? f.min, max = num(l.max) ?? f.max;
+    if (!(min >= f.min && max <= f.max && min < max)) {
+      errors.push('the range must lie inside ' + f.min + ' to ' + f.max);
+      min = f.min; max = f.max;
+    }
+    let step = num(l.step) ?? f.step;
+    if (step != null && !(step > 0 && (!f.step || whole(step / f.step)))) {
+      errors.push('the step must be a whole multiple of ' + f.step);
+      step = f.step;
+    }
+    let dflt = num(l.default) ?? f.dflt;
+    if (dflt != null && !(dflt >= min && dflt <= max)) {
+      if (num(l.default) != null) errors.push('the default must lie inside the range');
+      dflt = f.dflt != null && f.dflt >= min && f.dflt <= max ? f.dflt : null;
+    }
+    if (min !== f.min || max !== f.max || step !== f.step || dflt !== f.dflt) {
+      field = { ...f, min, max, step, dflt, narrowed: min !== f.min || max !== f.max, ownDefault: dflt !== f.dflt };
+    }
+  } else if (pres === WIDGET.toggle && !f.readOnly) {
+    kind = 'toggle';
+    const [da, db] = toggleDefaults(f);
+    let a = num(l.a) ?? da, b = num(l.b) ?? db;
+    if (!(a !== b && toggleFits(f, a) && toggleFits(f, b))) {
+      errors.push('a toggle writes two different values inside the field\'s range');
+      a = da; b = db;
+    }
+    toggle = { a, b };
+    if (!NEEDS[WIDGET.toggle](f) || a !== 0 || b !== 1) field = { ...f, toggle };
+  }
+  return { pres, field, kind, toggle, errors };
 }
 
 /**

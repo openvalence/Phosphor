@@ -7,7 +7,8 @@
    *
    * Contract: <DashGrid viewId="cat2" items={items} bind:editing />, `items`
    * [{id, title, snippet, kind?, fields?}], `id` a STABLE string (law 10),
-   * `snippet` rendered as the body, `fields` (or `group.fields`) counted on a
+   * `snippet` rendered as the body (handed the placed item, which adds x, y,
+   * w, h, `look` and `setLook(look)`), `fields` (or `group.fields`) counted on a
    * nest's frame while in flight. Nests stored in the view are drawn as
    * items; an item that is a member of a nest is drawn inside it, not at the
    * top level. With `layout` (a dashboardLayout().nest(id) controller) this
@@ -56,7 +57,10 @@
   let nameDraft = $state('');
   let moduleDraft = $state('');
 
-  const placed = $derived(layout.arrange(all, cols, pin && pin.mode !== 'stack' ? pin : null));
+  // Each placed item carries its entry's `look` (grid.js pack) and a setter
+  // bound to THIS grid's map, so one control in two nests keeps two looks.
+  const placed = $derived(layout.arrange(all, cols, pin && pin.mode !== 'stack' ? pin : null)
+    .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
   const displayList = $derived.by(() => {
     if (!stackOrder) return placed;
     const byId = new Map(placed.map((p) => [p.id, p]));

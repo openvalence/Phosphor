@@ -416,7 +416,28 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
   Stands OPEN here until that RFC is accepted (never code against an
   unaccepted clause); the same RFC also carries the archetype/presentation
   rule and the range-narrowing rule above.
-- OPEN (`ph-e82.1`): single fields placeable anywhere, or only inside nests.
+- RULED (operator, 2026-10-01, `ph-e82.1` items 2 and 4): design as though
+  RFC-080 is accepted.
+  - `CROSS_ARCHETYPE` is true (`src/model/settings.js`): the palette offers
+    the read/write-class set above, display-only instances included.
+  - Per-placement narrowing (RFC-080 item 4) and two-valued toggles (item 5)
+    are coded. A placement entry in the layout store carries an optional
+    `look` {pres, min, max, step, default, a, b} beside {x, y, w, h}
+    (`src/model/grid.js` `setLook`; the home's edit mode sets it,
+    `src/ui/LookEditor.svelte`). An entry without `look` is valid and means
+    the derived presentation on the catalog's bounds, so no saved layout
+    migrates. `settings.js` `placementLook` is the one rule: narrow, never
+    widen; a step is a whole multiple of the catalog step; the default lies
+    inside the placement's range; a toggle's two values differ and lie inside
+    the field's range (a bool, two or more options, or bounds); a refused part
+    keeps the catalog's value and is named in words. A reported value outside
+    a narrowed range is shown as it is and marked, never pinned (law 4).
+  - Single fields: RFC-080 leaves placement open (its open question 3), so
+    fields stay placeable anywhere (`FIELDS_NESTS_ONLY` false in `grid.js`).
+  - C-5 flag, recorded: this codes against a DRAFT RFC (RFC-080, ruling
+    pending as `rfc-94c`), against the never-code-against-an-unaccepted-clause
+    rule, by operator ruling. If RFC-080 is rejected or amended, the builder
+    follows it.
 
 ### 10.3 The top strip: safety and window chrome
 
@@ -517,3 +538,4 @@ operator rules otherwise.
 | 2026-09-26 | §8 | "Divergence is build configuration, never code" no longer binds shell-only capabilities; "mobile-first" under review (§10.7, §10.9). | operator |
 | 2026-09-26 | §10 | The builder rulings (§10.1 to §10.9) established. | operator |
 | 2026-09-26 | §10.1, §10.2 | Presentation-by-read/write-class rule, range-narrowing rule recorded; a momentary toggle mode was considered and withdrawn the same day (toggles are two-valued). Home-vs-derived-pages question closed: the home is additional, the catalog-built UI stays canonical. Law 10 uid carve-out and the presentation rule handed to a draft Valence RFC ("User-authored surfaces and presentation choice"). | operator |
+| 2026-10-01 | §10.2 | Design as though RFC-080 is accepted: read/write-class presentations on (`CROSS_ARCHETYPE`), per-placement `look` (range narrowing, two-valued toggles) carried in the layout store, single fields placeable anywhere (RFC-080 leaves it open). Codes against a DRAFT RFC by ruling; C-5 flag recorded in §10.2. | operator |

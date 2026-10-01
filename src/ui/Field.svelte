@@ -84,16 +84,28 @@
     writeSetting(field, v);
   }
 
+  // A placement's two-valued toggle (settings.js placementLook, RFC-080 draft
+  // item 5): on means the machine reports B; a press writes the other value.
+  const tog = $derived(field.toggle || null);
+  const toggleOn = $derived(tog ? Number(value) === tog.b : !!value);
+
   // RENDERING §10.1 rule 2: a background_run enable confirms first; a cancel
   // puts the switch back to what the machine reports.
   async function commitToggle(el) {
-    const to = el.checked ? 1 : 0;
+    const to = tog ? (el.checked ? tog.b : tog.a) : el.checked ? 1 : 0;
     if (settingNeedsConfirm(field, value, to) && !(await askConfirm(confirmCopy(field)))) {
-      el.checked = !!value;
+      el.checked = toggleOn;
       return;
     }
     commit(to);
   }
+
+  // RFC-080 draft item 4: ground truth wins over a placement's narrowing. A
+  // reported value outside it is shown as it is and marked, never pinned.
+  const outOfRange = $derived.by(() => {
+    const n = Number(value);
+    return !!field.narrowed && value != null && isFinite(n) && (n < field.min || n > field.max);
+  });
 
   /**
    * Write a number the operator produced, held inside the published bounds and
@@ -167,10 +179,11 @@
 
   const step = $derived(field.step || (precisionFor(field) === 0 ? 1 : 0.01));
 
-  // Reset-to-default writes the catalog's OWN declared default as an ordinary
-  // intent and waits for the echo, so the machine still decides. Never a
-  // client-side guess at what a default should be, and never offered on a
-  // field whose catalog published none.
+  // Reset-to-default writes the catalog's OWN declared default, or the one the
+  // user set on this placement (RFC-080 draft item 4, `ownDefault`), as an
+  // ordinary intent and waits for the echo, so the machine still decides.
+  // Never a client-side guess at what a default should be, and never offered
+  // when neither published one.
   const hasDefault = $derived(field.dflt != null && !field.readOnly && !displayOnly);
   const atDefault = $derived(hasDefault && String(value) === String(field.dflt));
 
@@ -372,8 +385,8 @@
       {/if}
       {#if hasDefault}
         <button type="button" class="info reset" disabled={!enabled || atDefault}
-                title={atDefault ? 'Already at the machine default'
-                       : 'Reset to the machine default (' + formatValue(field, field.dflt) + unitOf(field) + ')'}
+                title={(atDefault ? 'Already at ' : 'Reset to ') + (field.ownDefault ? 'this control\'s default' : 'the machine default')
+                       + (atDefault ? '' : ' (' + formatValue(field, field.dflt) + unitOf(field) + ')')}
                 onclick={() => commit(field.dflt)}>
           <span class="glyph" aria-hidden="true">&#8635;</span>
           <span class="sr-only">Reset {labelFor(field)} to default</span>
@@ -443,11 +456,12 @@
     <div class="toggle-row">
       <label class="og-switch" class:is-disabled={!enabled}>
         <input type="checkbox" id={field.uid}
-               role="switch" aria-checked={!!value} checked={!!value} disabled={!enabled}
+               role="switch" aria-checked={toggleOn} checked={toggleOn} disabled={!enabled}
                onchange={(e) => commitToggle(e.currentTarget)} />
         <span class="track"></span>
       </label>
-      <span class="toggle-text">{field.options ? optionLabel(field, value) : (value ? 'on' : 'off')}</span>
+      <span class="toggle-text">{field.options ? optionLabel(field, value)
+        : tog ? formatValue(field, value) + unitOf(field) : (value ? 'on' : 'off')}</span>
     </div>
 
   {:else if pres === WIDGET.segmented}
@@ -582,6 +596,11 @@
     <svg class="graph" bind:this={ctrlEl} viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
       <path d={graphD} />
     </svg>
+  {/if}
+
+  {#if outOfRange}
+    <p class="field-reason out-of-range" role="status">outside this control's range
+      ({formatValue(field, field.min)} to {formatValue(field, field.max)}{unitOf(field)})</p>
   {/if}
 
   {#if field.desc}<p class="field-desc" id={descId + '-inline'}>{field.desc}</p>{/if}

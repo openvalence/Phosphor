@@ -42,6 +42,7 @@ function controller(read, write, members) {
     arrange: (items, cols, pin = null) => G.pack(items, read(), cols, pin),
     move(items, cols, pin) { G.commitPin(write(), items, cols, pin); persist(); },
     order(items, cols, ids) { G.commitOrder(write(), items, cols, ids); persist(); },
+    setLook(id, look, at) { G.setLook(write(), id, look, at); persist(); },
     // An emptied map, not a deleted key: the migration can never resurrect it.
     reset() { G.resetMap(write(), members); persist(); },
   };
@@ -53,6 +54,7 @@ function controller(read, write, members) {
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
  *   order(items, cols, ids)    -> commit a reading order
+ *   setLook(id, look, at?)     -> a placement's presentation and config (grid.js setLook)
  *   reset()                    -> forget this view's placements (nests stay)
  * Nests (DESIGN §10.6):
  *   nests()                    -> [{id, title, scroll, keys}] in this view

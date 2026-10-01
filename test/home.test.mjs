@@ -348,6 +348,28 @@ if (!LIVE) {
   ok('build: the home survives a reload', JSON.stringify((await topIds(page)).sort()) === JSON.stringify([...want, nestId].sort()), await topIds(page));
   ok('build: the nest keeps its member across the reload', JSON.stringify(await inNest()) === JSON.stringify([nested]), await inNest());
 
+  // look (DESIGN §10.2, RFC-080 draft items 3, 4 by operator ruling): a placement
+  // narrows its range above the reported value and takes another presentation.
+  await editBtn(page).click();
+  await page.waitForTimeout(150);
+  const cell = page.locator('.home .dash-cell[data-id="' + fieldKey + '"]');
+  const fld = MODEL.fields.find((f) => f.uid === sliderUid);
+  const cur = Number(await cell.locator('.field input[type=range]').inputValue());
+  const edge = cur < fld.max ? ['Min', (cur + fld.max) / 2] : ['Max', (fld.min + cur) / 2];
+  await cell.locator('input[aria-label^="' + edge[0] + ' of"]').fill(String(edge[1]));
+  await cell.locator('input[aria-label^="' + edge[0] + ' of"]').dispatchEvent('change');
+  await cell.locator('select[aria-label^="Presentation of"]').selectOption('knob');
+  await page.waitForTimeout(200);
+  await doneBtn(page).click();
+  await page.reload();
+  await boot(page, 1280);
+  const knob = cell.locator('.field[data-widget=knob]');
+  ok('look: the chosen presentation survives a reload', await knob.count() === 1);
+  ok('look: a reported value outside the narrowed range is marked, not pinned',
+    await cell.locator('.out-of-range').count() === 1 && (await cell.locator('.knob-val').textContent()).includes(String(Math.round(cur))),
+    await cell.locator('.knob-val').textContent());
+  ok('look: the knob reads the narrowed bounds', Number(await knob.locator('.knob').getAttribute('aria-value' + edge[0].toLowerCase())) === edge[1]);
+
   // an emptied home stays empty across a reload (never reseeded)
   await editBtn(page).click();
   await page.locator('.home .dash-cell[data-id="' + nestId + '"] button', { hasText: 'Ungroup' }).click();

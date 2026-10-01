@@ -18,6 +18,7 @@
 import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, surfacedFields,
   placeableControls, offeredPresentations, minCells, orientationOf, READ_ONLY_PRESENTATIONS,
+  CROSS_ARCHETYPE, placementLook,
 } from '../src/model/settings.js';
 import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
@@ -582,11 +583,15 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
        !bad((c) => c.presentations.length && c.presentations[0] === c.field.widget).length);
     ok(name + ': no bar, knob or slider without bounds',
        !bad((c) => c.presentations.every((p) => ![WIDGET.bar, WIDGET.knob, WIDGET.slider].includes(p) || hasBounds(c.field))).length);
-    ok(name + ': no toggle or bulb for a non-bool',
-       !bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || isBool(c.field))).length,
-       bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || isBool(c.field))).join(','));
-    ok(name + ': no graph unless the archetype is chart (conservative read, ph-e82.1 item 2)',
-       !bad((c) => !c.presentations.includes(WIDGET.graph) || c.field.archetype === UI_ARCHETYPE.chart).length);
+    const twoValues = (f) => isBool(f) || !!(f.options && f.options.length >= 2) || (hasBounds(f) && !f.options);
+    ok(name + ': no toggle on a field without two values to write (bool, options or bounds), none read-only',
+       !bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || (twoValues(c.field) && !c.field.readOnly))).length,
+       bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || (twoValues(c.field) && !c.field.readOnly))).join(','));
+    ok(name + ': no bulb for a non-bool',
+       !bad((c) => c.presentations.every((p) => p !== WIDGET.indicator || isBool(c.field) || c.field.type === PACKED.bitfield8)).length);
+    ok(name + ': conservative read (flag off): no toggle for a non-bool, no graph unless the archetype is chart',
+       fields.every((c) => offeredPresentations(c.field, false).every((p) =>
+         (p !== WIDGET.toggle || isBool(c.field)) && (p !== WIDGET.graph || c.field.archetype === UI_ARCHETYPE.chart))));
     const keys = ctls.map((c) => c.key);
     ok(name + ': every placement key is unique', new Set(keys).size === keys.length);
     ok(name + ': every presentation has a minimum footprint per orientation',
@@ -595,10 +600,45 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
 
   const ctls = placeableControls(real);
   const slider = ctls.find((c) => c.kind === 'field' && c.field.widget === WIDGET.slider && !c.field.role);
-  ok('a slider-class field is offered slider and knob, never a cross-archetype stepper by default',
-     slider && slider.presentations.join() === 'slider,knob', slider && slider.presentations.join());
-  ok('the flag flips it to the read/write class: stepper and display-only instances join',
-     slider && ['stepper', 'numeral', 'bar'].every((p) => offeredPresentations(slider.field, true).includes(p)));
+  ok('CROSS_ARCHETYPE is on by operator ruling 2026-10-01 (RFC-080 draft item 3)', CROSS_ARCHETYPE === true);
+  ok('a slider-class field takes the read/write class: stepper, toggle and display-only instances join',
+     slider && ['slider', 'knob', 'stepper', 'toggle', 'numeral', 'bar'].every((p) => slider.presentations.includes(p)),
+     slider && slider.presentations.join());
+  ok('with the flag off it keeps its archetype\'s projections only',
+     slider && offeredPresentations(slider.field, false).join() === 'slider,knob');
+
+  // Per-placement look (RFC-080 draft items 4, 5; operator ruling 2026-10-01).
+  const f = slider.field, span = f.max - f.min;
+  const lo = f.min + span / 4, hi = f.max - span / 4;
+  const none = placementLook(f, null);
+  ok('look: none is the derived widget on the catalog field', none.pres === f.widget && none.field === f && !none.errors.length);
+  ok('look: a presentation the field does not offer falls back to the derived widget',
+     placementLook(f, { pres: WIDGET.secret }).pres === f.widget);
+  const nar = placementLook(f, { pres: WIDGET.knob, min: lo, max: hi });
+  ok('look: a range presentation narrows min and max and marks it',
+     nar.pres === WIDGET.knob && nar.kind === 'range' && nar.field.min === lo && nar.field.max === hi && nar.field.narrowed
+       && !nar.errors.length && f.min !== lo);
+  const wide = placementLook(f, { min: f.min - 1, max: f.max + 1 });
+  ok('look: widening is refused in words and keeps the catalog range',
+     wide.errors.length === 1 && wide.field.min === f.min && wide.field.max === f.max && !wide.field.narrowed);
+  const dflt = placementLook(f, { min: lo, max: hi, default: f.max });
+  ok('look: a default outside the placement range is refused', dflt.errors.length === 1 && dflt.field.dflt !== f.max);
+  ok('look: a default inside it is the placement\'s own', placementLook(f, { min: lo, max: hi, default: lo }).field.ownDefault === true);
+  if (f.step) {
+    ok('look: a step that is not a whole multiple of the catalog step is refused',
+       placementLook(f, { step: f.step * 1.5 }).errors.length === 1 && placementLook(f, { step: f.step * 2 }).field.step === f.step * 2);
+  }
+  const tog = placementLook(f, { pres: WIDGET.toggle, a: f.min, b: hi });
+  ok('look: a toggle on a non-bool writes two values inside the range',
+     tog.kind === 'toggle' && tog.field.toggle.a === f.min && tog.field.toggle.b === hi && !tog.errors.length);
+  ok('look: equal or out-of-range toggle values are refused',
+     placementLook(f, { pres: WIDGET.toggle, a: lo, b: lo }).errors.length === 1
+       && placementLook(f, { pres: WIDGET.toggle, a: f.min, b: f.max + 1 }).errors.length === 1);
+  const boolF = ctls.find((c) => c.kind === 'field' && c.field.widget === WIDGET.toggle && !c.field.readOnly);
+  ok('look: a plain bool toggle keeps the catalog field (off writes 0, on writes 1)',
+     boolF && placementLook(boolF.field, { pres: WIDGET.toggle }).field === boolF.field);
+  const roF = ctls.find((c) => c.kind === 'field' && c.field.readOnly && c.field.widget === WIDGET.readout);
+  ok('look: a read-only field never takes a toggle', roF && placementLook(roF.field, { pres: WIDGET.toggle }).pres === roF.field.widget);
   const ro = ctls.find((c) => c.kind === 'field' && c.field.readOnly && c.field.widget === WIDGET.readout);
   ok('...and a read-only field never gains a writing presentation under it',
      ro && offeredPresentations(ro.field, true).every((p) => READ_ONLY_PRESENTATIONS.has(p)));

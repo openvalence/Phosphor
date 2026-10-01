@@ -21,6 +21,7 @@
   import Field from './Field.svelte';
   import ActionField from './ActionField.svelte';
   import Control from './widgets/Control.svelte';
+  import LookEditor from './LookEditor.svelte';
   import TelemetryChart from './widgets/TelemetryChart.svelte';
   import { dashboardLayout, layouts, grid } from '../model/dashboard.svelte.js';
   import { viewMap, cellCount, isNest } from '../model/grid.js';
@@ -122,7 +123,10 @@
             onclick={() => remove(item.id)}>Remove</button>
   {/if}
   {#if item.control}
-    <Control control={item.control} w={item.w} h={item.h} />
+    {#if editing && builder && item.kind === 'field' && item.setLook}
+      <LookEditor control={item.control} look={item.look} onchange={item.setLook} />
+    {/if}
+    <Control control={item.control} look={item.look} w={item.w} h={item.h} />
   {:else if item.telemetry}
     <TelemetryChart />
   {:else}

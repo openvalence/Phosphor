@@ -34,7 +34,7 @@
   </div>
   {#if control}
     <div class="cell sized" data-pres="control" style="width: {size.w * 48}px; height: {size.h * 48}px">
-      <Control {control} presentation="slider" w={size.w} h={size.h} />
+      <Control {control} look={{ pres: 'slider' }} w={size.w} h={size.h} />
     </div>
   {/if}
 {/if}
