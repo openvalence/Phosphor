@@ -53,6 +53,11 @@
   import { runAction } from '../model/shadow.svelte.js';
   import { ACCESS, ACCESS_NAME, NACK, bytesEqual, getInstanceId, setPairedToken } from '../../../Valence/clients/js/index.js';
   import { PAIRING_MODE, PAIRING_MODE_NAME, PAIRING_EVENT_KIND } from '../../../Valence/clients/js/frames.js';
+  import ProvisionWizard from './ProvisionWizard.svelte';
+  import { provisionCategory } from './wizard/steps.js';
+
+  const setupCat = $derived(provisionCategory(machine.catalog.model));
+  let setupOpen = $state(false);
 
   const pendingEntry = $derived(coreEntry(CORE_CHANNEL.pending_pairing));
   const adminEntry = $derived(coreEntry(CORE_CHANNEL.session_admin));
@@ -366,6 +371,12 @@
     </p>
   </div>
 
+  <p class="setup">
+    <button type="button" class="og-btn sm" disabled={!setupCat} onclick={() => (setupOpen = true)}>Set up this machine</button>
+    {#if !setupCat}<span class="note">This hub advertises no setup settings to step through.</span>{/if}
+  </p>
+  {#if setupOpen && setupCat}<ProvisionWizard category={setupCat} onclose={() => (setupOpen = false)} />{/if}
+
   {#if liveRoles < ACCESS.configure}
     <div class="claim">
       <button class="pair-btn og-btn" disabled={claiming} onclick={startClaim}>
@@ -499,6 +510,7 @@
   .tier p { margin: 0; }
   .tier p + p { margin-top: .35rem; }
   .tier .modes { color: var(--ink-dim); }
+  .setup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 var(--gap); }
   .claim { margin-bottom: var(--gap); padding-bottom: var(--gap); border-bottom: 1px solid var(--line-soft); }
   /* Base chrome is .og-btn — only the good-accent tint is added here. */
   .pair-btn { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); padding: 0 16px; }
