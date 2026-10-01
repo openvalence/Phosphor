@@ -539,7 +539,7 @@ select:focus { outline: none; border-color: var(--reality); }
 
 /* Mobile: a normally-scrolling page. Nothing is fixed to the bottom edge
    (DESIGN §10.3), so the only bottom clearance is the phone's own inset.
-   Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
+   Breakpoint matches App.svelte's `isDesktop` (960px). */
 @media (max-width: 959px) {
   .app {
     min-height: 100vh;
@@ -551,9 +551,11 @@ select:focus { outline: none; border-color: var(--reality); }
    column (dvh with a vh fallback for browsers that lack it); App.svelte's
    .frame (the nav+pane row) is the one region with its own scroll/overflow,
    so the column's total height always fits without spilling the viewport.
-   Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
+   Breakpoint matches App.svelte's `isDesktop` (class `full`, 960px up);
+   glance can sit past 960 (no pointer, rclass.js) and mounts the scrolling
+   tab-strip page, so it keeps the page scroll. */
 @media (min-width: 960px) {
-  .app {
+  html:not([data-rc=glance]) .app {
     height: 100vh;
     height: 100dvh;
     display: flex;
@@ -568,3 +570,14 @@ select:focus { outline: none; border-color: var(--reality); }
 @media (min-width: 960px) and (max-height: 860px) {
   .hero-strip .explain { display: none; }
 }
+
+/* ---- glance: categories are a menu stack (RENDERING §12) ----------------
+   App.svelte's tab strip becomes a vertical menu; a promoted subgroup's page
+   (every subgroup promotes under glance, §11) replaces the menu until its
+   back button. Not sticky: a pinned stack would fill a watch-sized screen.
+   The e-stop lives in the top strip, never here (law 1). Selectors outrank
+   App.svelte's scoped rules by specificity, not by load order. */
+html[data-rc=glance] nav.tabs { position: static; }
+html[data-rc=glance] nav.tabs > [role=tablist] { flex-direction: column; overflow-x: visible; }
+html[data-rc=glance] nav.tabs > [role=tablist] > [role=tab] { white-space: normal; text-align: left; }
+html[data-rc=glance] .app:has(.drill-page) nav.tabs { display: none; }

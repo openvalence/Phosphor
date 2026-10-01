@@ -8,14 +8,13 @@
  *
  * Constraints:
  * - Widths are CSS px (device-independent), never device pixels.
- * - The handheld/full band sits entirely BELOW 960px on purpose: every
- *   composition media query in the tree (style.css .app, TopStrip and
- *   TransportBar's e-stop split, LinkBar) switches at 960. So `handheld`
- *   always means width < 960 and the CSS agrees with it; inside the band a
- *   `full` page keeps its rail but scrolls as a page with the sticky top strip,
- *   which those queries already render correctly. Moving FULL_UP off 960
- *   without first keying those queries on `data-rc` puts the e-stop on a
- *   bar that scrolls away.
+ * - The handheld/full band sits entirely BELOW 960px on purpose: the
+ *   composition media queries (style.css .app, App.svelte's rail/tab split,
+ *   LinkBar) switch at 960. So `handheld` always means width < 960 and the
+ *   CSS agrees with it; inside the band a `full` page keeps its rail but
+ *   scrolls as a page under the sticky top strip.
+ * - The e-stop pair lives in the top strip at every width and class (law 1),
+ *   so no class choice here can strand it.
  * - The class chooses projection only. Input primitives follow the pointer
  *   through CSS `(pointer: coarse)` rules (RFC-062 item 3), not through this.
  */
@@ -45,10 +44,8 @@ export function nextClass(prev, width, pointer) {
     if (c === 'handheld' && width < GLANCE_DOWN) c = 'glance';
     if (c === 'glance' && width >= GLANCE_UP) c = 'handheld';
   }
-  // RFC-062 draft item 2: no pointer selects glance. Held to < FULL_UP for
-  // the reason in the header: a glance page at 960+ would lose its e-stop.
-  // TODO(ph-vdk.5): drop the width guard once the e-stop split keys on data-rc.
-  if (pointer === 'none' && width < FULL_UP) c = 'glance';
+  // RFC-062 draft item 2: no pointer selects glance, at any width.
+  if (pointer === 'none') c = 'glance';
   return c;
 }
 

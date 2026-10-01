@@ -33,7 +33,7 @@ ok('first derivation: 360 coarse is handheld', nextClass(null, 360, 'coarse') ==
 ok('first derivation: 200 is glance', nextClass(null, 200, 'fine') === 'glance');
 ok('a large touch tablet is full: pointer picks primitives, not class', nextClass(null, 1280, 'coarse') === 'full');
 ok('no pointer selects glance', nextClass(null, 600, 'none') === 'glance');
-ok('no pointer at 960+ stays full (e-stop split guard)', nextClass(null, 1280, 'none') === 'full');
+ok('no pointer at 960+ is glance too (the e-stop lives in the top strip)', nextClass(null, 1280, 'none') === 'glance');
 
 ok('bands are at least 10 % of their boundary',
    (FULL_UP - FULL_DOWN) / 2 >= 0.1 * (FULL_UP + FULL_DOWN) / 2

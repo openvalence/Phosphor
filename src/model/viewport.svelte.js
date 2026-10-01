@@ -12,7 +12,7 @@
  *   was never committed. Applied on the last pointerup/pointercancel.
  * - Nothing here may touch machine state or the write plane. Pending writes
  *   live in shadow.svelte.js at module scope, so a remount cannot drop them.
- * - `data-rc` on <html> mirrors the class for CSS; no rule keys on it yet.
+ * - `data-rc` on <html> mirrors the class for CSS (style.css glance menu stack).
  */
 
 import { nextClass } from './rclass.js';

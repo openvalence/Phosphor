@@ -27,14 +27,16 @@
  *   font       no text below 11px
  *   measure    no prose line past ~100 characters; no chart under 24px tall
  *
- * After the matrix, three scenario checks (ph-vdk.13, ph-vdk.5):
+ * After the matrix, scenario checks (ph-vdk.13, ph-vdk.5, ph-vdk.38):
  *   picker   file:// and a refused hub render the hub picker, not a blank
  *            page; a dropped link shows its state and re-adopts the hub
+ *   glance   no pointer selects glance at 1280: a vertical category menu, a
+ *            subgroup screen replaces it, the page passes the layout checks
  *   class    a renderer-class switch keeps the active tab and a write in
  *            flight, and waits for a held pointer (RFC-062 draft)
  *
  * Build first (`npm run build:only`); this builds nothing.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -553,6 +555,46 @@ if (!ONLY || ONLY === 'class') {
   const f = opened ? await phone.page.evaluate(measure, { phone: true }) : [];
   scen('a promoted group opens as its own page and passes the phone checks', opened && f.length === 0, f.map((x) => x.join(' ')).join('; '));
   await phone.ctx.close();
+}
+
+// ---- glance (ph-vdk.38): no pointer selects glance at any width (RFC-062
+// draft item 2), categories become a menu stack (RENDERING §12) and the page
+// scrolls rather than taking the desktop frame. Playwright cannot emulate
+// (pointer: none), so matchMedia answers it for the class derivation only.
+if (!ONLY || ONLY === 'glance') {
+  console.log('\nglance scenarios');
+  const { ctx, page } = await seeded({ width: 1280, height: 800 }, (ws) => fakeHub(ws));
+  await ctx.addInitScript(() => {
+    const mm = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (/pointer:\s*(none|coarse)/.test(q) ? { matches: /none/.test(q), media: q,
+      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} } : mm(q));
+  });
+  await page.goto('http://127.0.0.1:' + PORT + '/');
+  const up = await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 }).then(() => true).catch(() => false);
+  await page.waitForTimeout(500);
+  scen('no pointer at 1280 is glance with the tab menu', up && await page.evaluate(() => document.documentElement.dataset.rc) === 'glance');
+  const stack = await page.$$eval('nav.tabs [role=tab]', (els) => els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.top]));
+  scen('categories are a vertical menu stack', stack.length > 1 && stack.every(([x, y], i) => i === 0 || (x === stack[0][0] && y > stack[i - 1][1])),
+    JSON.stringify(stack.slice(0, 3)));
+  let drilled = false;
+  const tabs = page.locator('nav.tabs [role=tab]');
+  for (let i = 1; i < await tabs.count() && !drilled; i++) {
+    await tabs.nth(i).click();
+    await page.waitForTimeout(250);
+    const f = [...await page.evaluate(measure, { phone: false }), ...await page.evaluate(stripCheck)];
+    scen('glance ' + (await tabs.nth(i).textContent()).trim() + ' passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+    const btn = await page.$('.drill-open');
+    if (!btn) continue;
+    await btn.click();
+    await page.waitForTimeout(250);
+    drilled = !!(await page.$('.drill-page'));
+    scen('a subgroup screen replaces the menu', drilled && !(await page.isVisible('nav.tabs')));
+    await page.click('.drill-back');
+    await page.waitForTimeout(250);
+    scen('back returns to the menu', await page.isVisible('nav.tabs [role=tab]'));
+  }
+  scen('found a promoted subgroup to open', drilled);
+  await ctx.close();
 }
 
 await browser.close();
