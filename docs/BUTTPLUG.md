@@ -36,7 +36,7 @@ Commands (all async):
 | `bp_toy_scalar(index, feature, value: i32)` | the feature's scalar output (vibrate, oscillate, constrict, spray, temperature, led, position) to `value` steps |
 | `bp_toy_rotate(index, feature, speed: i32)` | rotate at `speed` steps; the sign is the direction |
 | `bp_toy_linear(index, feature, position: u32, ms: u32)` | HwPositionWithDuration: reach `position` steps over `ms` |
-| `bp_toy_stop(index)` | zero every non-position output of that toy |
+| `bp_toy_stop(index)` | upstream StopCmd for that toy alone, outputs only (sensor subscriptions survive), write acknowledged (bounded at 1 s) |
 | `bp_toy_read(index, feature, input: string)` | one reading (`Battery`, `Rssi`, `Button`, `Pressure`) as an integer |
 | `bp_stop_all()` | upstream StopCmd for every device, each write acknowledged (bounded at 1 s) |
 
@@ -124,18 +124,13 @@ The server does not start by itself; the shell calls `bp_start`. `port` in
   narrows its range shows a value offset from the steps the module sent.
 - **Toy stops.** The strip e-stop is hub safety and does not reach toys. Each
   module has its own Stop (`bp_toy_stop`, which also drops a queued
-  command), and `bp_stop_all` stops every toy. Upstream's StopCmd ignores
-  its device index and stops every device, so `bp_toy_stop` sends zero
-  outputs (upstream's per-device stop set, every non-position output)
-  instead. The same upstream behavior means an app's StopDeviceCmd for one
-  toy stops all of them.
+  command), and `bp_stop_all` stops every toy. Both are upstream's stop
+  set (a zero per stoppable feature; position outputs hold). A StopCmd
+  naming one device stopping only that device needs the fork at 36110484
+  or later; before it, any one-device stop, an app's StopDeviceCmd
+  included, stopped every device.
 - **Sensors** are read on mount and every 30 s; a failed read keeps the last
   value dimmed, with the reason (law 8).
-- **Index race (upstream).** The fork assigns a device index without a lock,
-  so two devices finishing their connection together can share an index and
-  one silently replaces the other in the device list. The machine connects at
-  hub presence, long before a scan, so it is not exposed; two toys connecting
-  in the same moment are.
 
 ## Tests
 
@@ -145,12 +140,12 @@ The server does not start by itself; the shell calls `bp_start`. `port` in
   handshake, RequestDeviceList returns the machine, LinearCmd and
   StopDeviceCmd reach the event sink, hub loss removes the machine).
 - `cargo test` toys: upstream simulated devices (2-motor vibrator, rotator,
-  stroker) stand in for BLE hardware, one per server because of the index
-  race. `scalar_toy_commands_and_stops`, `rotate_toy_and_stop_all`,
-  `linear_toy_takes_position_and_duration`: each command lands as the
-  device's applied output on `bp://output`, refusals resolve as errors, the
-  machine is refused, a toy stop zeroes every output, stop-all reaches a
-  toy. No simulated device has a sensor; reads are covered on the JS side.
+  stroker) stand in for BLE hardware, all three and the machine connecting
+  in one scan (distinct indices, fork b898a4d1). `scalar_toy_commands_and_stops`,
+  `rotate_toy_and_stop_all`, `linear_toy_takes_position_and_duration`:
+  each command lands as the device's applied output on `bp://output`,
+  refusals resolve as errors, the machine is refused, a toy stop zeroes that
+  toy and leaves a running rotator alone, stop-all zeroes every toy. No simulated device has a sensor; reads are covered on the JS side.
 - `node test/buttplug-bridge.test.mjs`: the webview half through the real
   plugin host.
 - `node test/buttplug-toys.test.mjs`: module registration and withdrawal

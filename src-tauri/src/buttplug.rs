@@ -18,8 +18,6 @@
 // - Toy commands (bp_toy_*) enter through `Run::op`, an in-process server over
 //   the same device manager, so they get upstream's range checks. They refuse
 //   the machine: it moves only through the intent path.
-// - Upstream's StopCmd ignores its device index and stops every device, so a
-//   one-toy stop is zero outputs, never a StopCmd (toy_stop).
 // See: docs/BUTTPLUG.md
 
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
@@ -422,24 +420,12 @@ impl Buttplug {
       .await
   }
 
-  /// Zero every stoppable output on one toy (upstream's per-device stop set);
-  /// position outputs hold, as upstream's stop leaves them.
+  /// One toy's upstream stop set, outputs only: sensor subscriptions survive.
+  /// Resolves on the write ack (bounded at 1 s upstream); position holds.
   pub async fn toy_stop(&self, index: u32) -> Result<(), String> {
-    let (op, d) = self.toy(index).await?;
-    let mut errs = Vec::new();
-    for f in d.device_features().values() {
-      for t in [OutputType::Rotate].into_iter().chain(SCALAR) {
-        if t == OutputType::Position || !f.contains_output(t) {
-          continue;
-        }
-        let cmd = OutputCommand::from_output_type(t, 0).expect("value output");
-        let msg = ButtplugClientMessageV4::OutputCmd(OutputCmdV4::new(index, f.feature_index(), cmd));
-        if let Err(e) = op_call(&op, msg).await {
-          errs.push(format!("feature {} {t}: {e}", f.feature_index()));
-        }
-      }
-    }
-    if errs.is_empty() { Ok(()) } else { Err(errs.join("; ")) }
+    let (op, _) = self.toy(index).await?;
+    let msg = ButtplugClientMessageV4::StopCmd(StopCmdV4::new(Some(index), None, false, true));
+    op_call(&op, msg).await.map(|_| ())
   }
 
   /// Every device's stop set, write-acknowledged upstream (bounded at 1 s).
@@ -1013,40 +999,45 @@ mod tests {
     assert!(!bp.status().running);
   }
 
-  /// A running server with the machine and ONE upstream simulated toy
-  /// standing in for BLE hardware. One toy per server: upstream allocates
-  /// device indices without a lock, so devices connecting together can share
-  /// an index and one silently replaces the other (docs/BUTTPLUG.md).
-  async fn toy(archetype: &str) -> (Buttplug, Events, Device, Device) {
+  /// A running server with the machine and three upstream simulated toys
+  /// (2-motor vibrator, rotator, stroker) standing in for BLE hardware, all
+  /// connecting together: the machine is announced as the scan starts.
+  struct Toys {
+    bp: Buttplug,
+    rx: Events,
+    vib: Device,
+    rot: Device,
+    lin: Device,
+    machine: Device,
+  }
+
+  async fn toys() -> Toys {
     let (tx, rx) = mpsc::unbounded_channel();
     let bp = Buttplug::new(Arc::new(move |ev, v| {
       let _ = tx.send((ev, v));
     }));
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    bp.start_with(port, vec![SimulatedDeviceConfigEntry::new(archetype, None)]).await.unwrap();
+    let sim = ["simulated-2vibe", "simulated-rotator", "simulated-stroker"]
+      .map(|a| SimulatedDeviceConfigEntry::new(a, None))
+      .to_vec();
+    bp.start_with(port, sim).await.unwrap();
     bp.machine_present(true);
-    let mut want = 1;
+    bp.scan(true).await.unwrap();
     for _ in 0..200 {
-      let n = bp.devices().await.len();
-      if n == want && want == 2 {
+      if bp.devices().await.len() == 4 {
         break;
-      }
-      if n == 1 && want == 1 {
-        bp.scan(true).await.unwrap();
-        want = 2;
       }
       tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    let mut devices = bp.devices().await;
-    assert_eq!(devices.len(), 2, "{archetype} and the machine");
-    devices.sort_by_key(|d| d.kind != "toy");
-    let machine = devices.pop().unwrap();
-    let toy = devices.pop().unwrap();
-    assert_eq!((toy.kind, machine.kind), ("toy", "machine"));
-    for d in [&toy, &machine] {
+    let devices = bp.devices().await;
+    assert_eq!(devices.len(), 4, "three toys and the machine, distinct indices: {:?}",
+      devices.iter().map(|d| (d.index, &d.name)).collect::<Vec<_>>());
+    for d in &devices {
       assert!(!d.key.is_empty() && d.key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'), "key {}", d.key);
     }
-    (bp, rx, toy, machine)
+    let with = |kind: &str| devices.iter().find(|d| d.kind == "toy" && d.controls.iter().any(|c| c.kind == kind)).unwrap().clone();
+    let machine = devices.iter().find(|d| d.kind == "machine").unwrap().clone();
+    Toys { vib: with("scalar"), rot: with("rotate"), lin: with("linear"), machine, bp, rx }
   }
 
   async fn next_output(rx: &mut Events) -> Value {
@@ -1067,13 +1058,15 @@ mod tests {
 
   #[tokio::test(flavor = "multi_thread")]
   async fn scalar_toy_commands_and_stops() {
-    let (bp, mut rx, vib, machine) = toy("simulated-2vibe").await;
+    let Toys { bp, mut rx, vib, rot, machine, .. } = toys().await;
     // One control per feature, with the feature's own step range.
     assert_eq!(vib.controls.len(), 2);
     assert!(vib.controls.iter().all(|c| c.kind == "scalar" && c.ty == "Vibrate" && c.range == Some([0, 100])));
 
     bp.toy_scalar(vib.index, 1, 40).await.unwrap();
     assert_eq!(next_output(&mut rx).await, out(vib.index, 1, "Vibrate", 40.0));
+    bp.toy_rotate(rot.index, 0, 30).await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(rot.index, 0, "Rotate", 30.0));
 
     // Refusals resolve as error strings.
     assert!(bp.toy_scalar(vib.index, 0, 101).await.is_err(), "past the step range");
@@ -1083,9 +1076,18 @@ mod tests {
     assert!(e.contains("machine"), "the machine is refused: {e}");
     assert!(bp.toy_stop(machine.index).await.is_err());
 
-    // A toy stop zeroes every output of that toy.
+    // A toy stop zeroes that toy's outputs and leaves the rotator turning:
+    // nothing for the rotator arrives before the marker write after it.
     bp.toy_stop(vib.index).await.unwrap();
-    let mut got = vec![next_output(&mut rx).await, next_output(&mut rx).await];
+    bp.toy_scalar(vib.index, 0, 7).await.unwrap();
+    let mut got = Vec::new();
+    loop {
+      let o = next_output(&mut rx).await;
+      if o == out(vib.index, 0, "Vibrate", 7.0) {
+        break;
+      }
+      got.push(o);
+    }
     got.sort_by_key(|v| v["feature"].as_u64());
     assert_eq!(got, vec![out(vib.index, 0, "Vibrate", 0.0), out(vib.index, 1, "Vibrate", 0.0)]);
     bp.stop().await;
@@ -1093,21 +1095,26 @@ mod tests {
 
   #[tokio::test(flavor = "multi_thread")]
   async fn rotate_toy_and_stop_all() {
-    let (bp, mut rx, rot, _) = toy("simulated-rotator").await;
+    let Toys { bp, mut rx, vib, rot, .. } = toys().await;
     let c = &rot.controls[0];
     assert_eq!((c.kind, c.ty.as_str()), ("rotate", "Rotate"));
-    let lo = c.range.unwrap()[0];
-    assert!(lo < 0, "rotate range is signed: {:?}", c.range);
+    assert!(c.range.unwrap()[0] < 0, "rotate range is signed: {:?}", c.range);
     bp.toy_rotate(rot.index, 0, -30).await.unwrap();
     assert_eq!(next_output(&mut rx).await, out(rot.index, 0, "Rotate", -30.0));
+    bp.toy_scalar(vib.index, 0, 20).await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(vib.index, 0, "Vibrate", 20.0));
     bp.stop_all().await.unwrap();
-    assert_eq!(next_output(&mut rx).await, out(rot.index, 0, "Rotate", 0.0));
+    let mut got = vec![next_output(&mut rx).await, next_output(&mut rx).await, next_output(&mut rx).await];
+    got.sort_by_key(|v| (v["index"].as_u64(), v["feature"].as_u64()));
+    let mut want = vec![out(rot.index, 0, "Rotate", 0.0), out(vib.index, 0, "Vibrate", 0.0), out(vib.index, 1, "Vibrate", 0.0)];
+    want.sort_by_key(|v| (v["index"].as_u64(), v["feature"].as_u64()));
+    assert_eq!(got, want, "stop-all zeroes every toy");
     bp.stop().await;
   }
 
   #[tokio::test(flavor = "multi_thread")]
   async fn linear_toy_takes_position_and_duration() {
-    let (bp, mut rx, lin, _) = toy("simulated-stroker").await;
+    let Toys { bp, mut rx, lin, .. } = toys().await;
     let c = &lin.controls[0];
     assert_eq!((c.kind, c.ty.as_str(), c.range, c.ms), ("linear", "HwPositionWithDuration", Some([0, 1000]), Some([0, 100000])));
     bp.toy_linear(lin.index, 0, 500, 250).await.unwrap();
