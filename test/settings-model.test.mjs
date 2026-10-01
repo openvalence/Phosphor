@@ -17,8 +17,9 @@
 
 import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, surfacedFields,
+  placeableControls, offeredPresentations, minCells, orientationOf, READ_ONLY_PRESENTATIONS,
 } from '../src/model/settings.js';
-import { claimRoles, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
+import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
 import { readFileSync } from 'node:fs';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended } from '../src/model/actions.js';
@@ -561,6 +562,66 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('no control-owner report yet reads as unattended (the safe side)',
      isUnattended(gen.byRole, s(1, 1), undefined));
   ok('a hub without the role never shows the chip', !isUnattended(model.byRole, {}, undefined));
+}
+
+// ---- ph-e82.4: the control contract (DESIGN §10.2) -------------------------
+{
+  const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
+    new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
+  const isBool = (f) => (f.options ? f.options.length === 2 && /^(off|disabled|no|false)$/i.test(f.options[0])
+    : f.min === 0 && f.max === 1 && f.type !== PACKED.f32) || (f.type === PACKED.bitfield8 && !f.bits);
+  const hasBounds = (f) => f.min != null && f.max != null && f.max > f.min;
+  for (const [name, m] of [['fixture machine', model], ['valencesim', real]]) {
+    const ctls = placeableControls(m);
+    const fields = ctls.filter((c) => c.kind === 'field');
+    const bad = (pred) => fields.filter((c) => !pred(c)).map((c) => c.key);
+    ok(name + ': every field is placeable (minus companions and merged halves)',
+       fields.length === m.fields.filter((f) => !f.companionOf).length + m.actions.length
+         - fields.filter((c) => c.field.widget === WIDGET.range).length);
+    ok(name + ': every offered set is non-empty and leads with the derived widget',
+       !bad((c) => c.presentations.length && c.presentations[0] === c.field.widget).length);
+    ok(name + ': no bar, knob or slider without bounds',
+       !bad((c) => c.presentations.every((p) => ![WIDGET.bar, WIDGET.knob, WIDGET.slider].includes(p) || hasBounds(c.field))).length);
+    ok(name + ': no toggle or bulb for a non-bool',
+       !bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || isBool(c.field))).length,
+       bad((c) => c.presentations.every((p) => p !== WIDGET.toggle || isBool(c.field))).join(','));
+    ok(name + ': no graph unless the archetype is chart (conservative read, ph-e82.1 item 2)',
+       !bad((c) => !c.presentations.includes(WIDGET.graph) || c.field.archetype === UI_ARCHETYPE.chart).length);
+    const keys = ctls.map((c) => c.key);
+    ok(name + ': every placement key is unique', new Set(keys).size === keys.length);
+    ok(name + ': every presentation has a minimum footprint per orientation',
+       fields.every((c) => c.presentations.every((p) => minCells(p, 'h').length === 2 && minCells(p, 'v').length === 2)));
+  }
+
+  const ctls = placeableControls(real);
+  const slider = ctls.find((c) => c.kind === 'field' && c.field.widget === WIDGET.slider && !c.field.role);
+  ok('a slider-class field is offered slider and knob, never a cross-archetype stepper by default',
+     slider && slider.presentations.join() === 'slider,knob', slider && slider.presentations.join());
+  ok('the flag flips it to the read/write class: stepper and display-only instances join',
+     slider && ['stepper', 'numeral', 'bar'].every((p) => offeredPresentations(slider.field, true).includes(p)));
+  const ro = ctls.find((c) => c.kind === 'field' && c.field.readOnly && c.field.widget === WIDGET.readout);
+  ok('...and a read-only field never gains a writing presentation under it',
+     ro && offeredPresentations(ro.field, true).every((p) => READ_ONLY_PRESENTATIONS.has(p)));
+  ok('a range pair is one control keyed by both roles',
+     ctls.some((c) => c.key === 'role:' + ROLE.windowMin + '+role:' + ROLE.windowMax && c.presentations.join() === 'range'));
+  ok('an unroled field keys on its uid (ph-e82.1 item 3)', slider && slider.key === 'uid:' + slider.field.uid);
+  ok('a key the catalog lacks resolves to nothing: inert, never rebound',
+     !ctls.find((c) => c.key === 'uid:' + slider.field.channelId + ':renamed_away'));
+  ok('orientation follows aspect: w >= h is horizontal', orientationOf(4, 4) === 'h' && orientationOf(3, 4) === 'v');
+  ok('minimum cells differ per orientation', minCells(WIDGET.slider, 'h').join() !== minCells(WIDGET.slider, 'v').join());
+
+  const claim = claimAll(real.byRole, [{ id: 'rail', spec: AXIS_HERO_SPEC, cells: { h: [10, 4], v: [4, 10] } },
+    { id: 'nope', spec: { require: { x: 'no.such.role' } } }]);
+  const withHeroes = placeableControls(real, { heroes: claim.widgets, safety: {
+    channelId: 9, key: 1, options: ['', 'estop_clear', 'stop', 'hold', 'pause', 'resume', 'estop', 'override_on',
+      'override_off', 'bypass_on', 'bypass_off', 'vendor_op'] } });
+  const rail = withHeroes.find((c) => c.key === 'hero:rail');
+  ok('a claiming composite is placeable with its own minimum cells',
+     rail && rail.kind === 'composite' && minCells(rail.cells, 'v').join() === '4,10');
+  ok('a declining composite is not placeable (law 7)', !withHeroes.some((c) => c.key === 'hero:nope'));
+  const safety = withHeroes.filter((c) => c.kind === 'safety').map((c) => c.key);
+  ok('safety ops are placeable by registry name, index 0 and unnamed ops never',
+     safety.includes('safety:estop') && safety.includes('safety:stop') && safety.length === 10, safety.join(','));
 }
 
 // ---- ph-vic: a secret action payload is flagged so ActionField masks it -----

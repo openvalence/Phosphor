@@ -14,14 +14,21 @@
    * flight. The `data-shadow` attribute carries the write's lifecycle so CSS can
    * show unconfirmed state without this component knowing what amber means.
    */
+  import { untrack } from 'svelte';
   import { machine, freshness, staleReason } from '../model/machine.svelte.js';
-  import { WIDGET, isFieldEnabled, reportedValue } from '../model/settings.js';
+  import { WIDGET, READ_ONLY_PRESENTATIONS, isFieldEnabled, reportedValue } from '../model/settings.js';
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { formatValue, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
 
-  let { field } = $props();
+  // `presentation`: one of settings.js offeredPresentations(field), chosen by
+  // the user (DESIGN §10.2); absent means the derived widget. `orientation`
+  // follows the placement's own aspect (settings.js orientationOf).
+  let { field, presentation = null, orientation = 'h' } = $props();
+  const pres = $derived(presentation || field.widget);
+  // A read-only presentation of a writable field writes nothing (RFC-080 draft item 3).
+  const displayOnly = $derived(!field.readOnly && READ_ONLY_PRESENTATIONS.has(pres));
 
   // ⓘ affordance state (OG density doctrine — a description is NOT printed
   // inline by default, it lives behind a per-field toggle). Local, default
@@ -49,10 +56,11 @@
   const maskOn = $derived(isFieldEnabled(field, sample));
   const linkUp = $derived(machine.link.phase === 'live');
   const tierOk = $derived(canWrite(field));
-  const enabled = $derived(!field.readOnly && maskOn && linkUp && tierOk);
+  const enabled = $derived(!field.readOnly && !displayOnly && maskOn && linkUp && tierOk);
 
   const reason = $derived(
-    field.readOnly ? 'read-only — the machine reports this, it is not a setting'
+    displayOnly ? ''
+    : field.readOnly ? 'read-only — the machine reports this, it is not a setting'
     : !linkUp ? 'no hub link'
     : !tierOk ? 'this session is not authorized to change settings'
     : !maskOn ? 'the machine is refusing this setting right now'
@@ -163,7 +171,7 @@
   // intent and waits for the echo, so the machine still decides. Never a
   // client-side guess at what a default should be, and never offered on a
   // field whose catalog published none.
-  const hasDefault = $derived(field.dflt != null && !field.readOnly);
+  const hasDefault = $derived(field.dflt != null && !field.readOnly && !displayOnly);
   const atDefault = $derived(hasDefault && String(value) === String(field.dflt));
 
   // A control that prints its own value owns the whole row; a chip repeating it
@@ -172,9 +180,8 @@
   // control cannot: a slider has no numerals, a readout has no control at all,
   // and a bare number input has nowhere to put a unit.
   const showValueChip = $derived(
-    field.widget === WIDGET.slider
-    || field.widget === WIDGET.readout
-    || (field.widget === WIDGET.stepper && unitOf(field) !== '')
+    pres === WIDGET.slider || pres === WIDGET.readout || pres === WIDGET.bar || pres === WIDGET.graph
+    || (pres === WIDGET.stepper && unitOf(field) !== '')
   );
 
   // ---- intent echo origin ---------------------------------------------------
@@ -182,7 +189,7 @@
   // own fraction of the published range, so the echo leaves from under the
   // operator's thumb. Anything without a handle pulses from its center.
   const pulseX = $derived.by(() => {
-    if (field.widget !== WIDGET.slider) return 50;
+    if (pres !== WIDGET.slider) return 50;
     const n = Number(value);
     if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 50;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min))) * 100;
@@ -220,7 +227,7 @@
   // The slider is the one writable numeric with no numerals of its own, so its
   // chip carries the typing. A readout must never become typeable (no
   // setting_key at all), and the stepper/text/secret controls already type.
-  const typeableChip = $derived(showValueChip && field.widget === WIDGET.slider && !field.options);
+  const typeableChip = $derived(showValueChip && pres === WIDGET.slider && !field.options);
 
   // Size the box from the field's OWN published bounds, so a 0..1 budget knob
   // does not reserve room for six digits. Falls back wide, never narrow: a
@@ -237,7 +244,7 @@
   // A readout with no bounds (a status string, an unbounded counter) gets no
   // bar — there is no range to show it against.
   const hasBounds = $derived(
-    field.widget === WIDGET.readout && field.min != null && field.max != null && field.max > field.min
+    (pres === WIDGET.readout || pres === WIDGET.bar) && field.min != null && field.max != null && field.max > field.min
   );
   const boundedFrac = $derived.by(() => {
     if (!hasBounds) return 0;
@@ -255,13 +262,91 @@
     if (!hasBounds || peakValue == null || !isFinite(n)) return null;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
+
+  // ---- the four-state ladder in words (law 5) --------------------------------
+  // Fault keeps its own line below (`refused: <why>`); this names the rest.
+  const ladder = $derived(
+    status === 'pending' ? 'sent, waiting for the machine'
+    : status === 'overdue' ? 'still waiting for the machine'
+    : status === 'fault' && !(sh && sh.error) ? 'refused'
+    : sh && sh.settled ? 'confirmed'
+    : ''
+  );
+
+  // ---- knob: a bounded numeric as a rotary control ---------------------------
+  // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range.
+  const KNOB_DRAG_PX = 160;
+  const KNOB_CIRC = 2 * Math.PI * 40;
+  const KNOB_ARC = 0.75 * KNOB_CIRC;
+  const knobFrac = $derived.by(() => {
+    const n = Number(value);
+    if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 0;
+    return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
+  });
+  let knobDrag = null;
+  function knobDown(e) {
+    if (!enabled) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const n = Number(value);
+    knobDrag = { y: e.clientY, v: isFinite(n) ? n : field.min, last: n };
+  }
+  function knobMove(e) {
+    if (!knobDrag) return;
+    const raw = knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * (field.max - field.min);
+    const n = field.min + Math.round((raw - field.min) / step) * step;
+    if (n !== knobDrag.last) { knobDrag.last = n; commitNumber(n); }
+  }
+  function knobKey(e) {
+    const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
+    if (dir) { e.preventDefault(); nudge(dir); }
+    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); commitNumber(e.key === 'Home' ? field.min : field.max); }
+  }
+
+  // ---- graph: reported values only, held as steps, broken where the link was
+  // stale (laws 8, 9). The ring is plain state the template never reads (T23).
+  const GRAPH_MS = 30000;
+  const ring = [];
+  let graphD = $state('');
+  $effect(() => {
+    if (pres !== WIDGET.graph) return;
+    const t = machine.sampleTs[field.channelId];
+    const v = Number(reportedValue(field, sample));
+    const stale = !!(fresh && fresh.stale);
+    untrack(() => {
+      const last = ring[ring.length - 1];
+      if (stale) { if (last && last.v != null) ring.push({ t: Date.now(), v: null }); }
+      else if (t && isFinite(v) && (!last || t > last.t)) ring.push({ t, v });
+      while (ring.length && ring[0].t < Date.now() - GRAPH_MS) ring.shift();
+      graphD = graphPath(ring);
+    });
+  });
+  function graphPath(pts) {
+    const vals = pts.filter((p) => p.v != null).map((p) => p.v);
+    if (!vals.length) return '';
+    let lo = field.min, hi = field.max;
+    if (lo == null || hi == null || hi <= lo) {
+      lo = Math.min(...vals); hi = Math.max(...vals);
+      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    }
+    const now = Date.now();
+    const x = (t) => (100 - ((now - t) / GRAPH_MS) * 100).toFixed(2);
+    const y = (v) => (38 - Math.max(0, Math.min(1, (v - lo) / (hi - lo))) * 36).toFixed(2);
+    let d = '', open = false;
+    for (const p of pts) {
+      if (p.v == null) { open = false; continue; }
+      d += open ? ' H' + x(p.t) + ' V' + y(p.v) : ' M' + x(p.t) + ' ' + y(p.v);
+      open = true;
+    }
+    return d.trim();
+  }
 </script>
 
-<div class="field" data-shadow={status} data-widget={field.widget}
+<div class="field" data-shadow={status} data-widget={pres} data-orient={orientation}
      bind:this={fieldEl}
      style="--pulse-x: {pulseX}%; --echo-top: {echoTop}px; --echo-bottom: {echoBottom}px"
      class:disabled={!enabled && !field.readOnly}
-     class:readonly={field.readOnly}
+     class:readonly={field.readOnly || displayOnly}
+     class:stale={!!(fresh && fresh.stale)}
      class:settled={sh && sh.settled}>
 
   <div class="field-head">
@@ -295,6 +380,7 @@
         </button>
       {/if}
     </span>
+    <span class="ladder" role="status">{ladder}</span>
     {#if typeableChip}
       <!-- A slider publishes no numerals of its own, so this chip is the only
            place an exact value can be entered. Editable values must LOOK
@@ -311,7 +397,7 @@
         <span class="unit">{unitOf(field)}</span>
       </span>
     {:else if showValueChip}
-      <output class="field-value" class:readout={field.widget === WIDGET.readout} for={field.uid}
+      <output class="field-value" class:readout={READ_ONLY_PRESENTATIONS.has(pres)} for={field.uid}
               class:stale={fresh && fresh.stale} title={staleReason(fresh)}>
         {#if field.options}
           {optionLabel(field, value)}
@@ -323,7 +409,7 @@
     {/if}
   </div>
 
-  {#if field.widget === WIDGET.readout}
+  {#if pres === WIDGET.readout}
     <!-- No control at all. A field with no setting_key is effective truth and
          must never render as something you can push. -->
     {#if hasBounds}
@@ -333,7 +419,7 @@
       </div>
     {/if}
 
-  {:else if field.widget === WIDGET.indicator}
+  {:else if pres === WIDGET.indicator}
     <!-- §8.4 indicator: a status lamp is NEVER the sole carrier of the fact,
          so every lamp is paired with its state in words (§13). Read-only by
          construction — this branch draws no control at all. -->
@@ -353,7 +439,7 @@
       {/if}
     </div>
 
-  {:else if field.widget === WIDGET.toggle}
+  {:else if pres === WIDGET.toggle}
     <div class="toggle-row">
       <label class="og-switch" class:is-disabled={!enabled}>
         <input type="checkbox" id={field.uid}
@@ -364,7 +450,7 @@
       <span class="toggle-text">{field.options ? optionLabel(field, value) : (value ? 'on' : 'off')}</span>
     </div>
 
-  {:else if field.widget === WIDGET.segmented}
+  {:else if pres === WIDGET.segmented}
     <div class="og-seg" role="radiogroup" aria-labelledby={field.uid} id={field.uid}>
       {#each field.options as opt, i}
         <button type="button" role="radio" aria-checked={Number(value) === i}
@@ -373,7 +459,7 @@
       {/each}
     </div>
 
-  {:else if field.widget === WIDGET.select}
+  {:else if pres === WIDGET.select}
     <select id={field.uid} disabled={!enabled}
             onchange={(e) => commit(Number(e.currentTarget.value))}>
       {#each field.options as opt, i}
@@ -381,7 +467,7 @@
       {/each}
     </select>
 
-  {:else if field.widget === WIDGET.bitfield}
+  {:else if pres === WIDGET.bitfield}
     <div class="bitfield" id={field.uid}>
       {#each field.bits as bitName, b}
         {#if bitName}
@@ -397,7 +483,7 @@
       {/each}
     </div>
 
-  {:else if field.widget === WIDGET.slider}
+  {:else if pres === WIDGET.slider}
     <input id={field.uid} type="range" bind:this={ctrlEl}
            min={field.min} max={field.max} step={step}
            value={value ?? field.min} disabled={!enabled}
@@ -407,7 +493,7 @@
          under every slider is exactly the "flat wall of gray text" the OG
          never had). -->
 
-  {:else if field.widget === WIDGET.range}
+  {:else if pres === WIDGET.range}
     <!-- RENDERING §11: one dual-thumb control over the merged min/max pair.
          Two overlapping range inputs, transparent tracks, pointer-events
          live on the thumb only (style.css's pseudo-elements) so either thumb
@@ -432,7 +518,7 @@
       {formatValue(field.lo, loValue)}{unitOf(field.lo)} &ndash; {formatValue(field.hi, hiValue)}{unitOf(field.hi)}
     </output>
 
-  {:else if field.widget === WIDGET.stepper}
+  {:else if pres === WIDGET.stepper}
     <!-- §8.4 stepper: typeable, and increments in step-sized ticks. The typing
          half is the native input; the increment half CANNOT be, because the
          global sheet strips native spinners on purpose. Hence the flanking
@@ -448,23 +534,61 @@
               onclick={() => nudge(1)}>+</button>
     </div>
 
-  {:else if field.widget === WIDGET.text}
+  {:else if pres === WIDGET.text}
     <input id={field.uid} type="text" class="value-input"
            value={value ?? ''} disabled={!enabled}
            onchange={(e) => commit(e.currentTarget.value)} />
 
-  {:else if field.widget === WIDGET.secret}
+  {:else if pres === WIDGET.secret}
     <!-- RFC-009.4: a secret's value NEVER appears in STATE. We can say whether
          one is set, and we can replace it. We can never show it. -->
     <input id={field.uid} type="password" class="value-input" placeholder={value ? '•••••• (set)' : 'not set'}
            disabled={!enabled} onchange={(e) => commit(e.currentTarget.value)} />
+
+  {:else if pres === WIDGET.knob}
+    <!-- Drag up or down, or use the keys; every change is an ordinary
+         echo-confirmed write through commitNumber(). -->
+    <div class="knob" id={field.uid} bind:this={ctrlEl} role="slider" tabindex={enabled ? 0 : -1}
+         aria-label={labelFor(field)} aria-valuemin={field.min} aria-valuemax={field.max}
+         aria-valuenow={Number(value)} aria-disabled={!enabled}
+         class:is-disabled={!enabled}
+         onpointerdown={knobDown} onpointermove={knobMove}
+         onpointerup={() => (knobDrag = null)} onpointercancel={() => (knobDrag = null)}
+         onkeydown={knobKey}>
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="knob-track" cx="50" cy="50" r="40"
+                stroke-dasharray="{KNOB_ARC} {KNOB_CIRC}" transform="rotate(135 50 50)" />
+        <circle class="knob-fill" cx="50" cy="50" r="40"
+                stroke-dasharray="{KNOB_ARC * knobFrac} {KNOB_CIRC}" transform="rotate(135 50 50)" />
+        <line class="knob-hand" x1="50" y1="50" x2="50" y2="18"
+              transform="rotate({-135 + 270 * knobFrac} 50 50)" />
+      </svg>
+      <span class="knob-val">{formatValue(field, value)}<span class="unit">{unitOf(field)}</span></span>
+    </div>
+
+  {:else if pres === WIDGET.bar}
+    <div class="meter" bind:this={ctrlEl} aria-hidden="true">
+      <div class="meter-fill" style="--f: {boundedFrac}"></div>
+      {#if peakFrac != null}<div class="meter-peak" style="--f: {peakFrac}"></div>{/if}
+    </div>
+
+  {:else if pres === WIDGET.numeral}
+    <output class="numeral" id={field.uid} bind:this={ctrlEl} title={staleReason(fresh)}>
+      {field.options ? optionLabel(field, value) : formatValue(field, value)}<span class="unit">{unitOf(field)}</span>
+      {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatValue(field.peak, peakValue)}{unitOf(field.peak)}</span>{/if}
+    </output>
+
+  {:else if pres === WIDGET.graph}
+    <svg class="graph" bind:this={ctrlEl} viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+      <path d={graphD} />
+    </svg>
   {/if}
 
   {#if field.desc}<p class="field-desc" id={descId + '-inline'}>{field.desc}</p>{/if}
 
   {#if sh && sh.status === 'fault' && sh.error}
     <p class="field-error" role="status">refused: {sh.error}</p>
-  {:else if reason && !field.readOnly && !isRange}
+  {:else if reason && !field.readOnly && !displayOnly && !isRange}
     <p class="field-reason">{reason}</p>
   {/if}
 </div>
@@ -1055,5 +1179,122 @@
     height: 16px;
     accent-color: var(--reality);
   }
+
+  /* ---- the ladder's words (law 5): in the head row, so it shifts nothing --- */
+  .ladder {
+    margin-left: auto;
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--tx-mut);
+  }
+  .field[data-shadow='overdue'] .ladder { color: var(--warn); }
+  .field[data-shadow='fault'] .ladder { color: var(--bad); }
+
+  /* ---- builder presentations (DESIGN §10.2) -------------------------------- */
+  .knob {
+    position: relative;
+    align-self: center;
+    width: 100%;
+    max-width: 160px;
+    aspect-ratio: 1;
+    touch-action: none;
+    cursor: ns-resize;
+  }
+  .knob.is-disabled { opacity: .45; cursor: not-allowed; }
+  .knob:focus-visible { outline: 1px solid var(--reality); outline-offset: 2px; }
+  .knob svg { width: 100%; height: 100%; display: block; }
+  .knob circle { fill: none; stroke-width: 6; }
+  .knob-track { stroke: var(--line-2); }
+  .knob-fill { stroke: var(--reality); }
+  .knob-hand { stroke: var(--tx-val); stroke-width: 3; }
+  .knob-val {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: .85rem;
+    color: var(--tx-val);
+    pointer-events: none;
+  }
+
+  .meter {
+    position: relative;
+    height: 8px;
+    background: var(--line-2);
+    border-radius: var(--r-s);
+    overflow: hidden;
+  }
+  .meter-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: calc(var(--f) * 100%);
+    background: var(--reality);
+    box-shadow: 0 0 6px rgba(var(--reality-rgb), .4);
+  }
+  .meter-peak {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--f) * 100%);
+    width: 2px;
+    background: var(--ink);
+  }
+
+  .numeral {
+    font-family: var(--mono);
+    font-weight: var(--num-wght);
+    font-size: 1.6rem;
+    line-height: 1.1;
+    color: var(--tx-val);
+  }
+  .numeral .unit, .knob-val .unit {
+    margin-left: 3px;
+    font-family: var(--font);
+    font-size: .7rem;
+    color: var(--tx-ghost);
+  }
+
+  .graph {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+  .graph path {
+    fill: none;
+    stroke: var(--reality);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  /* Stale (law 8): every value surface dims, not only the chip. */
+  .field.stale :is(.numeral, .meter-fill, .graph path, .knob-fill, .lamp.lit i) {
+    opacity: .45;
+  }
+  .field.stale .numeral { color: var(--tx-ghost); }
+
+  /* ---- vertical orientation (w < h): the control runs along the long side -- */
+  .field[data-orient='v'] { height: 100%; }
+  .field[data-orient='v'][data-widget='slider'] input[type='range'] {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: calc(2px + 2 * var(--range-hit));
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 96px;
+    padding: 0 var(--range-hit);
+    margin: 0 auto;
+    touch-action: pan-x;
+  }
+  .field[data-orient='v'] .meter {
+    flex: 1 1 auto;
+    width: 8px;
+    height: auto;
+    align-self: center;
+  }
+  .field[data-orient='v'] .meter-fill { inset: auto 0 0 0; width: auto; height: calc(var(--f) * 100%); }
+  .field[data-orient='v'] .meter-peak { left: 0; right: 0; top: auto; bottom: calc(var(--f) * 100%); width: auto; height: 2px; }
+  .field[data-orient='v'] .stepper { flex-direction: column-reverse; }
+  .field[data-orient='v'] .og-seg { flex-direction: column; }
 
 </style>

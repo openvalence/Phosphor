@@ -144,6 +144,10 @@ export function createPluginHost(deps) {
         if (def.replaces != null && typeof def.replaces !== 'string') {
           throw new Error('registerHero: replaces must be a built-in hero id string');
         }
+        const cellPair = (c) => Array.isArray(c) && c.length === 2 && c.every((n) => Number.isInteger(n) && n > 0 && n <= 64);
+        if (def.cells != null && !(cellPair(def.cells.h) && cellPair(def.cells.v))) {
+          throw new Error('registerHero: cells must be {h: [w, h], v: [w, h]} in whole grid cells');
+        }
         rec.heroes.push({ def, failed: false });
         if (rec.status === 'active') changed();
       },
@@ -292,6 +296,8 @@ export function createPluginHost(deps) {
    * Hero specs from active plugins, in the shape heroes.js's claim loop takes.
    * Card zone only: pinned instrument chrome stays first-party (RENDERING.md
    * §13 law 11 is about safety facts, and plugin code is not reviewed chrome).
+   * On the builder grid each is a placeable control keyed
+   * `hero:plugin:<name>:<id>` (settings.js placeableControls, DESIGN §10.2).
    */
   function heroes() {
     const out = [];
@@ -311,6 +317,8 @@ export function createPluginHost(deps) {
           // current built-in is simply never suppressed (opportunity, never a
           // requirement).
           replaces: h.def.replaces || null,
+          // Builder minimum footprint per orientation; absent takes the composite default.
+          cells: h.def.cells || null,
           plugin: rec.manifest.name,
           slot: h,
         });

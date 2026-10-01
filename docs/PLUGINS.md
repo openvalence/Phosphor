@@ -52,6 +52,17 @@ heroes are **card zone only**: they render as Overview dashboard cards, which
 DashGrid lays out, reorders and persists under the stable id
 `hero:plugin:<name>:<hero id>`. Pinned instrument chrome stays first-party.
 
+**Placement (builder, DESIGN §10.2).** A claimed plugin hero is a placeable
+control like any built-in one: `src/model/settings.js` `placeableControls`
+lists it under the same `hero:plugin:<name>:<hero id>` key, and a saved layout
+finds it again by that key (an absent plugin's key stays inert). It places,
+resizes and persists the way a composite does. `registerHero` accepts an
+optional `cells: {h: [w, h], v: [w, h]}`, the minimum footprint in grid cells
+for a horizontal (w >= h) and a vertical placement; absent, the composite
+default applies, and a malformed value fails registration. `el` sits inside the
+placed cell, so a hero that cares about its orientation reads its own
+box. A hero that throws leaves the palette with its claims, exactly as above.
+
 **Replace mode (experimental, `ph-vdk.29`).** `registerHero` accepts an
 optional `replaces: '<built-in hero id>'` (the id a built-in registers with in
 `src/ui/heroes.js`'s `HEROES` array, e.g. `'rail'`). When such a plugin is
@@ -76,6 +87,7 @@ same "opportunity, never requirement" degrade as an unknown role.
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `manifest`, `apiVersion`, `log(msg, level)` | identity and the log pane | **freeze candidate** |
+| `registerHero`'s `cells: {h: [w, h], v: [w, h]}` | minimum footprint in builder grid cells per orientation (DESIGN §10.2, `ph-e82.4`) | experimental |
 | `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
@@ -211,6 +223,6 @@ A plugin that proves itself becomes standard by PR (DESIGN §3):
    is the point.
 2. If it needed a role the registry lacks, that is a Valence RFC first.
 3. Port the widget into `src/ui/hero/` and register it in `src/ui/heroes.js`
-   beside the built-ins, with a zone.
+   beside the built-ins, with a zone and its `cells`.
 4. It now ships to every hub, served page included, so it meets the
    RENDERING.md §13 conformance laws there.

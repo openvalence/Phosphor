@@ -19,6 +19,7 @@
  */
 
 import { ROLE, claimAll } from '../model/roles.js';
+import { placeableControls } from '../model/settings.js';
 import { AXIS_HERO_SPEC, ADVGEN_SPEC } from '../model/roles.js';
 import RailWidget from './hero/RailWidget.svelte';
 import PatternWidget from './hero/PatternWidget.svelte';
@@ -43,6 +44,7 @@ const HEROES = [
   {
     id: 'rail',
     zone: 'instrument',
+    cells: { h: [10, 4], v: [4, 10] },   // builder minimum per orientation (settings.js minCells)
     component: RailWidget,
     // Only when BOTH `move` and `target` resolve does the input tape become a
     // live command surface (see RailWidget).
@@ -51,6 +53,7 @@ const HEROES = [
   {
     id: 'pattern',
     zone: 'card',
+    cells: { h: [8, 5], v: [5, 8] },
     component: PatternWidget,
     spec: {
       require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
@@ -66,6 +69,7 @@ const HEROES = [
   {
     id: 'limits',
     zone: 'card',
+    cells: { h: [6, 4], v: [4, 6] },
     component: LimitsWidget,
     spec: {
       // A machine with only a user limit set still gets the widget; the input
@@ -96,4 +100,16 @@ const HEROES = [
  */
 export function heroClaims(byRole, extra = []) {
   return claimAll(byRole, [...HEROES, ...extra]);
+}
+
+/**
+ * Every control a builder palette may place (DESIGN §10.2): fields, the heroes
+ * that claimed, plugin heroes, and safety ops. See settings.js placeableControls.
+ *
+ * @param {Object} model buildSettingsModel output
+ * @param {Array} [extra] plugin heroes, as for heroClaims
+ * @param {Object|null} [safety] machine.svelte.js specSafetyAction()
+ */
+export function placeable(model, extra = [], safety = null) {
+  return placeableControls(model, { heroes: model ? heroClaims(model.byRole, extra).widgets : [], safety });
 }

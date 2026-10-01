@@ -19,7 +19,7 @@
  */
 
 import {
-  PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY,
+  PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP,
 } from '../../../Valence/clients/js/index.js';
 import { ROLE, ROLE_LABEL, isActionRole } from './roles.js';
 import { isPersistentAction } from './actions.js';
@@ -52,6 +52,11 @@ export const WIDGET = {
   secret: 'secret',       // row 11 + flags.secret: value never on the wire
   action: 'action',       // row 6 (`trigger`), discovered by role in pass 2
   range: 'range',         // RENDERING §11: a tagged min/max pair, one dual-thumb control
+  // Builder presentations (DESIGN §10.2): never derived, only chosen by a user.
+  knob: 'knob',           // a bounded numeric as a rotary control
+  bar: 'bar',             // a bounded value as a meter
+  numeral: 'numeral',     // a value as a hero numeral
+  graph: 'graph',         // a numeric as a time series from the client ring
 };
 
 export const NUMERIC_TYPES = new Set([
@@ -575,6 +580,158 @@ export function surfacedFields(fields, claimed, cls) {
   const max = cls === 'glance' ? UI_RANK.hero : UI_RANK.control;
   return mergeRangePairs(fields.filter((f) =>
     f.rank <= max && !f.advanced && !f.companionOf && !claimed.has(f.uid)));
+}
+
+// ---------------------------------------------------------------------------
+// The control contract (DESIGN §10.2): presentation registry and placement
+// ---------------------------------------------------------------------------
+
+/**
+ * ph-e82.1 item 2. false: a field is offered only its derived archetype's own
+ * projections (the conservative read of RENDERING §8.2 first match). true: the
+ * read/write-class rule of the RFC-080 draft, item 3. Flip it only when
+ * RFC-080 is accepted; never code against an unaccepted clause.
+ */
+export const CROSS_ARCHETYPE = false;
+
+/** Each archetype's projections, keyed by UI_ARCHETYPE code. */
+export const PRESENTATIONS = {
+  [UI_ARCHETYPE.readout]: [WIDGET.readout, WIDGET.bar, WIDGET.numeral],
+  [UI_ARCHETYPE.indicator]: [WIDGET.indicator],
+  [UI_ARCHETYPE.chart]: [WIDGET.graph, WIDGET.readout, WIDGET.numeral],
+  [UI_ARCHETYPE.toggle]: [WIDGET.toggle, WIDGET.bitfield],
+  [UI_ARCHETYPE.select]: [WIDGET.segmented, WIDGET.select],
+  [UI_ARCHETYPE.slider]: [WIDGET.slider, WIDGET.knob],
+  [UI_ARCHETYPE.stepper]: [WIDGET.stepper, WIDGET.knob],
+  [UI_ARCHETYPE.text]: [WIDGET.text, WIDGET.secret],
+  [UI_ARCHETYPE.trigger]: [WIDGET.action],
+};
+
+/** Presentations that write nothing: on a writable field, a display-only instance. */
+export const READ_ONLY_PRESENTATIONS = new Set([
+  WIDGET.readout, WIDGET.indicator, WIDGET.bar, WIDGET.numeral, WIDGET.graph,
+]);
+const WRITABLE_PRESENTATIONS = [
+  WIDGET.slider, WIDGET.knob, WIDGET.stepper, WIDGET.segmented, WIDGET.select,
+  WIDGET.toggle, WIDGET.bitfield, WIDGET.text, WIDGET.secret,
+];
+
+const bounded = (f) => f.min != null && f.max != null && f.max > f.min;
+const plainNumber = (f) => NUMERIC_TYPES.has(f.type) && !(f.options && f.options.length);
+const isSecret = (f) => !!(f.flagBits && f.flagBits.secret);
+
+/** The field facts each presentation needs. A presentation absent here needs none. */
+const NEEDS = {
+  [WIDGET.bar]: (f) => bounded(f) && plainNumber(f),
+  [WIDGET.knob]: (f) => bounded(f) && plainNumber(f),
+  [WIDGET.slider]: (f) => bounded(f) && plainNumber(f),
+  [WIDGET.stepper]: plainNumber,
+  [WIDGET.toggle]: (f) => looksBooleanField(f) || (f.type === PACKED.bitfield8 && !f.bits),
+  [WIDGET.indicator]: (f) => looksBooleanField(f) || f.type === PACKED.bitfield8,
+  [WIDGET.bitfield]: (f) => f.type === PACKED.bitfield8 && !!f.bits,
+  [WIDGET.segmented]: (f) => !!(f.options && f.options.length),
+  [WIDGET.select]: (f) => !!(f.options && f.options.length),
+  [WIDGET.text]: (f) => STRING_TYPES.has(f.type) && !isSecret(f),
+  [WIDGET.secret]: (f) => STRING_TYPES.has(f.type) && isSecret(f),
+  // The history ring is the graph presentation's own (Field.svelte).
+  [WIDGET.graph]: (f) => plainNumber(f) && !looksBooleanField(f),
+  [WIDGET.numeral]: (f) => NUMERIC_TYPES.has(f.type) && !isSecret(f),
+};
+
+/**
+ * The presentations a user may pick for one field, its derived widget first.
+ * The user chooses how a field looks, never what it binds (laws 6, 7).
+ */
+export function offeredPresentations(f, crossArchetype = CROSS_ARCHETYPE) {
+  if (f.widget === WIDGET.range || f.widget === WIDGET.action) return [f.widget];
+  const pool = !crossArchetype ? (PRESENTATIONS[f.archetype] || [])
+    : f.readOnly ? [...READ_ONLY_PRESENTATIONS]
+    : [...WRITABLE_PRESENTATIONS, ...READ_ONLY_PRESENTATIONS];
+  const out = [f.widget];
+  for (const p of pool) if (!out.includes(p) && (!NEEDS[p] || NEEDS[p](f))) out.push(p);
+  return out;
+}
+
+/**
+ * Minimum footprint in grid cells, [w, h], per orientation. Starting values,
+ * tuned on the grid, not derived.
+ */
+const MIN_CELLS = {
+  [WIDGET.readout]: { h: [4, 1], v: [2, 2] },
+  [WIDGET.indicator]: { h: [3, 1], v: [2, 2] },
+  [WIDGET.toggle]: { h: [3, 1], v: [2, 2] },
+  [WIDGET.segmented]: { h: [6, 1], v: [3, 4] },
+  [WIDGET.select]: { h: [4, 1], v: [3, 2] },
+  [WIDGET.bitfield]: { h: [6, 2], v: [3, 4] },
+  [WIDGET.slider]: { h: [6, 2], v: [2, 6] },
+  [WIDGET.stepper]: { h: [5, 1], v: [2, 4] },
+  [WIDGET.text]: { h: [6, 1], v: [4, 2] },
+  [WIDGET.secret]: { h: [6, 1], v: [4, 2] },
+  [WIDGET.action]: { h: [4, 2], v: [3, 3] },
+  [WIDGET.range]: { h: [8, 2], v: [8, 2] },   // one layout: a dual-thumb track stays horizontal
+  [WIDGET.knob]: { h: [3, 3], v: [3, 3] },
+  [WIDGET.bar]: { h: [4, 1], v: [1, 4] },
+  [WIDGET.numeral]: { h: [4, 2], v: [3, 3] },
+  [WIDGET.graph]: { h: [6, 3], v: [4, 4] },
+};
+const COMPOSITE_CELLS = { h: [8, 4], v: [4, 8] };
+const SAFETY_CELLS = { h: [3, 2], v: [2, 3] };
+
+/** Orientation follows a control's own aspect: w >= h is horizontal. */
+export function orientationOf(w, h) {
+  return w >= h ? 'h' : 'v';
+}
+
+/** [w, h] in cells for a presentation (or a control's declared `cells`). */
+export function minCells(presentationOrCells, orientation = 'h') {
+  const c = typeof presentationOrCells === 'string' ? MIN_CELLS[presentationOrCells] : presentationOrCells;
+  return (c || COMPOSITE_CELLS)[orientation === 'v' ? 'v' : 'h'];
+}
+
+/**
+ * Persisted key for a single-field control (law 10): its registry role when
+ * it is that role's first-authored field, else its uid. The uid (channel id
+ * plus field name) is the RFC-080 draft's user-surface carve-out
+ * (ph-e82.1 item 3); a key the catalog no longer resolves stays inert.
+ */
+export function controlKey(f, byRole) {
+  if (f.lo && f.hi) return controlKey(f.lo, byRole) + '+' + controlKey(f.hi, byRole);
+  const first = f.role && byRole && byRole.get(f.role);
+  return first && first[0] === f ? 'role:' + f.role : 'uid:' + f.uid;
+}
+
+const SAFETY_OP_NAME = Object.fromEntries(Object.entries(SAFETY_OP).map(([k, v]) => [v, k]));
+
+/**
+ * Everything a builder palette may place, one entry per control:
+ *   {key, kind: 'field'|'composite'|'plugin'|'safety', cells, ...}
+ * field: `field` and `presentations` (default first). composite/plugin: the
+ * claimed `hero` from heroClaims (claim-or-decline unchanged, law 7).
+ * safety: the safety-intents `action` and one `op`, bound by identity
+ * (law 2); the top strip's own e-stop is not one of these and never moves.
+ *
+ * @param {Object} model buildSettingsModel output
+ * @param {{heroes?: Array, safety?: Object|null}} [o] claimed hero widgets;
+ *        machine.svelte.js specSafetyAction()
+ */
+export function placeableControls(model, { heroes = [], safety = null } = {}) {
+  if (!model) return [];
+  const out = [];
+  const singles = mergeRangePairs(model.fields.filter((f) => !f.companionOf));
+  for (const f of [...singles, ...model.actions]) {
+    out.push({ key: controlKey(f, model.byRole), kind: 'field', field: f,
+      presentations: offeredPresentations(f) });
+  }
+  for (const h of heroes) {
+    out.push({ key: 'hero:' + h.id, kind: h.plugin ? 'plugin' : 'composite', hero: h,
+      cells: h.cells || COMPOSITE_CELLS });
+  }
+  const ops = (safety && safety.options) || [];
+  for (let op = 1; op < ops.length; op++) {
+    // An op with no registry name has only an index to key on (law 10): not placeable.
+    if (SAFETY_OP_NAME[op]) out.push({ key: 'safety:' + SAFETY_OP_NAME[op], kind: 'safety', action: safety, op, cells: SAFETY_CELLS });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

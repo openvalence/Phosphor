@@ -19,7 +19,7 @@
 
 import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError } from '../../Valence/clients/js/index.js';
-import { buildSettingsModel, reportedValue } from '../src/model/settings.js';
+import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor } from '../src/model/motion.js';
 import { createPluginHost, validateManifest } from '../src/plugins/host.js';
@@ -142,6 +142,44 @@ console.log('(b) throwing plugins are contained');
   ok('a module without activate() is listed as an error', host.list().find((p) => p.name === 'noentry').status === 'error');
   host.add({ name: 'Bad Name!' }, gauge);
   ok('an invalid manifest is listed and never run', host.list().some((p) => p.status === 'invalid'));
+}
+
+// ---- (b2) plugin heroes are placeable controls (DESIGN §10.2, ph-e82.4) -------
+console.log('(b2) plugin heroes place, resize and persist like any control');
+{
+  const { host } = makeHost();
+  host.add(gaugeManifest, gauge);
+  const sized = {
+    activate(api) {
+      api.registerHero({ id: 'dial', cells: { h: [5, 3], v: [3, 5] }, spec: { require: { p: ROLE.telemetryPosition } },
+        absorb: false, mount() { return {}; } });
+    },
+  };
+  host.add({ ...gaugeManifest, name: 'sized' }, sized);
+  const ctls = placeableControls(model, { heroes: claimAll(model.byRole, host.heroes()).widgets });
+  const g = ctls.find((c) => c.key === 'hero:plugin:stroke-gauge:gauge');
+  ok('a plugin hero is placeable under its stable key hero:plugin:<name>:<id>', g && g.kind === 'plugin');
+  ok('it is resizable: a minimum per orientation, the composite default when undeclared',
+    g && minCells(g.cells, 'h').length === 2 && minCells(g.cells, 'v').length === 2);
+  const d = ctls.find((c) => c.key === 'hero:plugin:sized:dial');
+  ok('a declared footprint is honored', d && minCells(d.cells, 'v').join() === '3,5');
+  ok('the key is the same on every pass, so a saved layout finds it again',
+    placeableControls(model, { heroes: claimAll(model.byRole, host.heroes()).widgets })
+      .some((c) => c.key === 'hero:plugin:stroke-gauge:gauge'));
+  const badCells = { activate(api) { api.registerHero({ id: 'z', cells: { h: [0, 2] }, spec: {}, mount() {} }); } };
+  host.add({ ...gaugeManifest, name: 'badcells' }, badCells);
+  ok('malformed cells are refused at registration, never placed',
+    host.list().find((p) => p.name === 'badcells').status === 'error'
+      && !host.heroes().some((h) => h.plugin === 'badcells'));
+  const throwing = { activate(api) { api.registerHero({ id: 't', spec: { require: { p: ROLE.telemetryPosition } },
+    mount() { throw new Error('boom'); } }); } };
+  host.add({ ...gaugeManifest, name: 'throwing' }, throwing);
+  const t = claimAll(model.byRole, host.heroes()).widgets.find((w) => w.plugin === 'throwing');
+  host.mountHero(t, {}, t.fields);
+  const after = claimAll(model.byRole, host.heroes());
+  ok('a throwing plugin hero leaves the palette and its field returns to the generic tree',
+    !placeableControls(model, { heroes: after.widgets }).some((c) => c.key === 'hero:plugin:throwing:t')
+      && !after.claimed.has(t.fields.p.uid));
 }
 
 // ---- (c) the API object has no transport handle -----------------------------
