@@ -93,9 +93,9 @@
  * every batch by the known sample period and anchored it slightly in the
  * FUTURE of "now", so the interpolator always saw an even timeline. push()
  * now restores that mechanism: `tsMs` is treated as an arrival HINT, and the
- * STORED timestamp is reconstructed as max(arrival + LEAD, prev + period),
- * capped at arrival + MAX_LEAD — where `period` is an EMA of arrival gaps
- * (bursts average out: 0,0,90,0,0,85… means ~30). Steady state stores
+ * STORED timestamp is reconstructed as max(arrival, prev + trimmed period),
+ * capped at arrival + SCHEDULE_MAX_LEAD_MS, where `period` is an EMA of
+ * arrival gaps (bursts average out: 0,0,90,0,0,85… means ~30). Steady state stores
  * perfectly even spans; a burst after a gap lands as N even spans that
  * exactly absorb the gap; a genuine stall (arrival far past the schedule)
  * resyncs forward through the max(). The render clock keeps measuring RAW
@@ -104,6 +104,27 @@
  * ring. Do not "simplify" this back to storing arrival time — that IS
  * regression #5.
  */
+
+// Client display latency on a steady stream is the render delay plus however
+// far the push() schedule leads arrival. The knobs for both are here.
+
+/**
+ * Ceiling on how far the push() schedule may lead arrival. A schedule riding
+ * this cap stores arrival time plus a constant, which is regression #5 with an
+ * offset, so keep it near one clump's spread, not a latency budget.
+ */
+const SCHEDULE_MAX_LEAD_MS = 60;
+
+/**
+ * push() respaces at this fraction of the EMA period. Must stay below 1: the
+ * schedule is a max(), so at exactly 1 any EMA noise ratchets it forward and
+ * it never comes back until it sits on SCHEDULE_MAX_LEAD_MS.
+ */
+const SCHEDULE_PERIOD_TRIM = 0.98;
+
+/** createRenderClock's clamp on p95_gap * 1.5 + frame_dt. */
+const RENDER_DELAY_MIN_MS = 20;
+const RENDER_DELAY_MAX_MS = 120;
 
 /**
  * @param {{capacity?: number, holdMs?: number, extrapolateMs?: number}} [opts]
@@ -143,8 +164,6 @@ export function createTelebuf(opts = {}) {
   // exercising pure interpolation math) pass `reschedule: false` and their
   // stamps are stored as-is.
   const RESCHEDULE = opts.reschedule !== false;
-  const LEAD_MS = 30;        // how far ahead of arrival the schedule aims
-  const MAX_LEAD_MS = 150;   // hard cap on schedule-ahead-of-arrival drift
   let periodMs = 40;         // EMA of arrival gaps — zero-gap bursts average out
   let lastArrivalTs = 0;
 
@@ -177,11 +196,11 @@ export function createTelebuf(opts = {}) {
         // arrival instead of extending the old cadence across the hole.
         ts = Math.max(tsMs, bufT[newestIdx] + 1);
       } else {
-        ts = Math.max(tsMs + LEAD_MS, bufT[newestIdx] + Math.max(1, periodMs));
+        ts = Math.max(tsMs, bufT[newestIdx] + Math.max(1, periodMs * SCHEDULE_PERIOD_TRIM));
         // Cap schedule-ahead-of-arrival drift, but NEVER drop a sample for
         // it — monotonic +1ms is always available (dropping data was the
         // original regression-#5 sin).
-        ts = Math.max(Math.min(ts, tsMs + MAX_LEAD_MS), bufT[newestIdx] + 1);
+        ts = Math.max(Math.min(ts, tsMs + SCHEDULE_MAX_LEAD_MS), bufT[newestIdx] + 1);
       }
     }
 
@@ -398,8 +417,8 @@ export function createTrail(opts = {}) {
  * @param {{minDelayMs?: number, maxDelayMs?: number, slewMsPerFrame?: number, gapCapacity?: number}} [opts]
  */
 export function createRenderClock(opts = {}) {
-  const MIN_DELAY_MS = opts.minDelayMs != null ? opts.minDelayMs : 20;
-  const MAX_DELAY_MS = opts.maxDelayMs != null ? opts.maxDelayMs : 120;
+  const MIN_DELAY_MS = opts.minDelayMs != null ? opts.minDelayMs : RENDER_DELAY_MIN_MS;
+  const MAX_DELAY_MS = opts.maxDelayMs != null ? opts.maxDelayMs : RENDER_DELAY_MAX_MS;
   // 4ms/frame: acquires a safe delay within ~1s of a hub-pacing burst
   // starting (see this file's header, "jitter regression #4") instead of
   // chasing it for the burst's whole duration.

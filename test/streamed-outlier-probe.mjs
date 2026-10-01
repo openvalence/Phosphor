@@ -6,7 +6,7 @@
  * INTENTs (small steps, short waits) keeps the carriage moving continuously
  * for the whole capture, exactly like the operator's streamed-content
  * complaint, while telemetry.position/target are subscribed at the
- * production TELEMETRY_HZ (25Hz) policy.
+ * production TELEMETRY_HZ (50 Hz) policy.
  *
  * GOVERNING RULING (operator, verbatim): "it's not the webui's job to
  * determine if motion is acceptable. That is the machine's choice and
@@ -60,7 +60,7 @@ const HOST = process.argv[2];
 if (!HOST) { console.error('usage: node test/streamed-outlier-probe.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = 82;
 const DURATION_MS = parseInt(process.argv[3] || '20000', 10);
-const TELEMETRY_HZ = 25; // production policy (machine.svelte.js)
+const TELEMETRY_HZ = 50; // production policy (machine.svelte.js)
 const STEP_INTERVAL_MS = 120; // continuous-motion cadence, well under any throttle
 
 if (typeof WebSocket === 'undefined') {

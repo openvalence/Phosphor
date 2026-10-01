@@ -31,10 +31,8 @@
  * and `TELEMETRY_HZ` below actually govern. A higher DRAW rate cannot make a
  * ragged SUBSCRIBE rate look better — more frames just render the same uneven
  * samples more finely (see telebuf.js's interpolation, which is where
- * smoothness is actually won). Raising subscribe rate is a mistake in the
- * OTHER direction too — see TELEMETRY_HZ below: the fastest available rate
- * (the catalog's 60 Hz ceiling) measured WORSE than a slower one, because the
- * hub can't pace it evenly.
+ * smoothness is actually won). Subscribe rate DOES set display latency,
+ * though: see TELEMETRY_HZ below.
  */
 
 import {
@@ -57,35 +55,22 @@ import { ROLE } from './roles.js';
 const MAX_SUBSCRIBE_HZ = 30;
 
 /**
- * Live kinematic telemetry (the rail comet: position/target/velocity) gets
- * its OWN subscribe rate instead of MAX_SUBSCRIBE_HZ — measured, not guessed,
- * against the real device with the carriage moving
- * (test/position-jitter-probe.mjs).
+ * Subscribe rate for the roles the rail's comet and hero numerals read
+ * (TELEMETRY_ROLES); every other channel keeps MAX_SUBSCRIBE_HZ. This is a
+ * LATENCY knob: telebuf.js's render delay is sized from the p95 arrival gap,
+ * so a shorter period is a shorter display lag.
  *
- * The hub paces each STATE subscription on its own ValenceHubService task
- * tick (firmware: 5 ms — SPEC's pacer truncates `periodMs = 1000/rate_hz` to
- * whole ms and only checks it at tick boundaries). The closer a channel's
- * wished period sits to that 5 ms grain, the more the delivery shows
- * duplicate-timestamp/burst artifacts: measured on-device, 60 Hz (16.7 ms
- * period, the catalog's own advertised ceiling — NOT reachable at any higher
- * rate regardless of draw rate) produced duplicate-timestamped pushes on ~9%
- * of samples and a visibly heavier tail (p95/max inter-arrival,
- * implied-acceleration p95) than 25 Hz (40 ms = exactly 8 hub ticks), which
- * measured ZERO duplicates and the tightest p95/max-vs-median ratio of every
- * rate from 20-60 Hz tried under a full realistic subscription load (all
- * ~30 channels live, not isolated). An aligned 40/50 Hz sounded like it should
- * win on paper (also exact tick multiples) but measured WORSE than 25 Hz in
- * practice — the tick's fraction of the period (5ms/25ms=20% at 40Hz vs
- * 5ms/40ms=12.5% at 25Hz) tracked the real jitter better than alignment alone.
+ * The hub paces a subscription on its 5 ms tick, pushing at the first tick at
+ * least 1000/rate ms (truncated to whole ms) after the last push (Valence
+ * subscription.hpp dueForPush). 50 Hz is four whole ticks. 60 Hz truncates to
+ * 16 ms, which the tick rounds up to 20: 50 Hz delivered under a 60 Hz grant.
  *
- * Only the three ROLES that feed the rail's live comet/numerals get this
- * treatment; every other channel (settings, diagnostics, tuning) keeps the
- * MAX_SUBSCRIBE_HZ policy — this is not "subscribe to everything faster", it
- * is "the one signal a human's eye tracks in real time gets a SUBSCRIBE rate
- * chosen for even pacing, independent of and much lower than the DRAW rate
- * that renders it".
+ * Never a rate the hub refuses: SUBSCRIBE refuses per wish only on channel,
+ * access or subscription count (SPEC §6.7), and a wish above the channel's
+ * max_rate_hz is clamped to it, by subscriptionWishes() here and by the hub
+ * (SPEC §10.2).
  */
-const TELEMETRY_HZ = 25;
+const TELEMETRY_HZ = 50;
 const TELEMETRY_ROLES = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, ROLE.telemetryVelocity]);
 
 /** Bounded rings — an EVENT channel is a firehose and memory is not free. */

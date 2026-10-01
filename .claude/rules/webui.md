@@ -67,9 +67,10 @@ only from plausible streaming gaps. Idle, shed and dwell gaps are mode
 switches, and one 600 ms gap taught the estimator a garbage period whose first
 post-resume spans rendered as a one-tick wrong position.
 **Fix:** `src/ui/hero/telebuf.js` `push()` reconstructs timestamps
-(max of arrival plus lead and prev plus EMA period, capped, monotonic, never
-dropping a sample); EMA gated to gaps under min(4x period, 200 ms); a gap over
-500 ms resyncs the schedule. Regression tests in
+(max of arrival and prev plus a trimmed EMA period, capped, monotonic, never
+dropping a sample; the trim below 1 keeps EMA noise from ratcheting the
+schedule ahead of arrival, which is latency, not smoothness); EMA gated to
+gaps under min(4x period, 200 ms); a gap over 500 ms resyncs the schedule. Regression tests in
 `test/telebuf-sim.mjs`.
 
 ## T22 -- a sticky offset is measured from a DIFFERENT box depending on who scrolls

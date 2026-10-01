@@ -281,8 +281,8 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
 // then a gap. push() reschedules the STORED timestamps onto an even,
 // future-anchored timeline, so a tangent measured against arrival time sits in
 // a different time base than the span sampleAt() divides it by: inside a clump
-// the arrival delta is zero or negative (the schedule already leads arrival by
-// LEAD_MS), which yields no usable tangent at all — the interpolator silently
+// the arrival delta is zero or negative (the schedule already leads arrival),
+// which yields no usable tangent at all — the interpolator silently
 // drops to linear and the extrapolation velocity stays stale at whatever it
 // was before the clumping started. Neither symptom shows on a still frame, so
 // assert on the numbers: every tangent finite, and the extrapolation velocity
@@ -375,6 +375,25 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
      Math.abs(stalling - steady60) < 2, stalling.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
   ok('starved ARRIVALS do, which is what the held counter is for',
      starved > steady60 + 2, starved.toFixed(1) + '% vs ' + steady60.toFixed(1) + '%');
+}
+
+// ---------------------------------------------------------------------------
+// Display latency on an even stream (ph-6vh). Arrivals every 35-45 ms with a
+// few ms of jitter, the P4 hub's measured cadence at a 25 Hz grant. Lag is
+// how far the rendered position trails the true one, in ms. The render delay
+// alone is ~80 ms here; the schedule's lead on arrival is the rest. With the
+// period untrimmed, EMA noise ratchets the lead up to SCHEDULE_MAX_LEAD_MS and
+// it never comes back, which is the failure this guards.
+// ---------------------------------------------------------------------------
+{
+  const even = (rng) => (rng() < 0.7 ? 35 : rng() < 0.83 ? 40 : 45) + (rng() - 0.5) * 6;
+  const lags = simulate(true, null, even)
+    .filter((f) => f.t > 4000 && f.v != null)
+    .map((f) => f.t - f.v * (1000 / TRUE_VEL_MM_S))
+    .sort((a, b) => a - b);
+  const p95 = lags[Math.floor(lags.length * 0.95)];
+  console.log('\neven-stream display lag p95: ' + p95.toFixed(0) + ' ms');
+  ok('the schedule does not ratchet ahead of arrival', p95 < 110, p95.toFixed(0) + ' ms');
 }
 
 // ---------------------------------------------------------------------------
