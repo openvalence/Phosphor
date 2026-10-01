@@ -580,9 +580,12 @@ export function connect(opts = {}) {
       // superseded -- it describes a 0x0003 frame a later edge has already
       // moved past. A hub that omits seq_of_state gets no verdict either way
       // (Ground Truth: absence of the number is not evidence of staleness).
+      // Older is SPEC §7.3 serial arithmetic on the u16 seq, never `<`: a
+      // plain compare marks every edge after the wrap superseded forever.
       if (rec.seqOfState != null) {
-        rec.superseded = rec.seqOfState < safetyMaxSeq;
-        if (!rec.superseded) safetyMaxSeq = rec.seqOfState;
+        const behind = (safetyMaxSeq - rec.seqOfState) & 0xffff;
+        rec.superseded = safetyMaxSeq >= 0 && behind > 0 && behind < 0x8000;
+        if (!rec.superseded) safetyMaxSeq = rec.seqOfState & 0xffff;
       }
       safetyEdgeSeen = true;
       push(machine.events.safety, rec, SAFETY_MAX);

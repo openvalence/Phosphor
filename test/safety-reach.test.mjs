@@ -22,6 +22,8 @@
  *   edge     the latest safety edge renders with its unread count, opens the
  *            Safety feed, clears the count, and dims once the link drops
  *   fire     pressing the strip e-stop puts a safety frame on the wire
+ * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
+ * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
  * Build first (`npm run build:only`). Run: node test/safety-reach.test.mjs
  */
@@ -274,6 +276,9 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const acceptedText = await rows.nth(0).textContent();
   ok('reconciliation: the higher-seq edge (received first) is not superseded',
     !(await rows.nth(0).evaluate((el) => el.classList.contains('superseded'))), acceptedText.trim());
+  const summary = await page.locator('.topstrip .evline').textContent();
+  ok('reconciliation: the strip summarizes the newest seq, not the last arrival',
+    /estop latched/.test(summary) && !/cleared/.test(summary), JSON.stringify(summary.trim()));
 
   // The latch changes -- two different 9-byte `safety` STATE snapshots, the
   // second an adoption baseline that will not count as a real value change,
@@ -287,6 +292,28 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const diagText = await diagLine.textContent().catch(() => '');
   ok('reconciliation: a latch change with no edge shows the diagnostic line',
     /latch changed, no event received/.test(diagText), JSON.stringify(diagText.trim()));
+  await ctx.close();
+}
+
+// ---- ph-vdk.14: seq_of_state is a u16 compared by SPEC §7.3 serial arithmetic
+{
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'none' });
+  const send = (seq, kind, word) => wire.socket.send(Buffer.from(encodeFrame(FRAME.EVENT, CORE_CHANNEL.safety_events,
+    safetyEdge(kind, word, seq))));
+  send(65534, SAFETY_EVENT_KIND.estop_latched, 1);
+  await page.waitForTimeout(150);
+  send(1, SAFETY_EVENT_KIND.estop_cleared, 0);       // newer across the wrap
+  await page.waitForTimeout(150);
+  send(65533, SAFETY_EVENT_KIND.estop_latched, 1);   // older than both
+  await page.waitForTimeout(150);
+  await page.click('.topstrip .evline');
+  await page.waitForTimeout(150);
+  const flags = await page.locator('.logpane .feed .line')
+    .evaluateAll((els) => els.map((el) => el.classList.contains('superseded')));
+  ok('wrap: only the edge behind the wrapped seq is superseded',
+    JSON.stringify(flags) === '[false,false,true]', JSON.stringify(flags));
+  const summary = await page.locator('.topstrip .evline').textContent();
+  ok('wrap: the strip summarizes the post-wrap edge', /estop cleared/.test(summary), JSON.stringify(summary.trim()));
   await ctx.close();
 }
 

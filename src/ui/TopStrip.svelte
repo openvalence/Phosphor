@@ -128,10 +128,10 @@
   // TODO(rfc-x3n): add the device anomaly log once the catalog can say which
   // device EVENT channel it is.
   // ph-vdk.14: a synthesized `diagnostic` record (the client noticing a gap,
-  // never device data) is feed-only -- the strip's one-line summary shows the
-  // latest real edge.
+  // never device data) and a `superseded` edge (arrived after a newer
+  // seq_of_state) are feed-only -- the summary shows the newest real edge.
   const latestSafety = $derived(
-    machine.events.safety.findLast((e) => !e.diagnostic) || null
+    machine.events.safety.findLast((e) => !e.diagnostic && !e.superseded) || null
   );
   const unreadSafety = $derived(machine.events.safety.filter((e) => e.at > logView.safetySeenAt).length);
   const safetyStale = $derived(!!latestSafety && (machine.link.phase !== 'live' || machine.link.stale
