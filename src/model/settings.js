@@ -547,7 +547,8 @@ export function buildSettingsModel(entries) {
   for (const field of fields) place(field);
 
   // Generic triggers (§8.2 row 6) join their channel's category like any
-  // field. Uncategorized ones are `looseActions`, drawn on Overview. The
+  // field. Uncategorized ones are `looseActions`: a home module and the
+  // `other` overflow page (RENDERING §3; App.svelte). The
   // persistent region's verbs (safety, home) are drawn there, never twice.
   const looseActions = actions.filter((a) => !isPersistentAction(a) && !place(a));
 

@@ -48,8 +48,9 @@ first, then active plugins. `require` must all resolve or the hero declines
 and its fields stay generic; claimed fields leave the generic tree unless the
 hero sets `absorb: false` (a read-only view that must not take a control
 away; the stroke-gauge example does). Plugin
-heroes are **card zone only**: they render as Overview dashboard cards, which
-DashGrid lays out, reorders and persists under the stable id
+heroes are **card zone only**: they render as home modules and as cards on
+their category page, which DashGrid lays out, reorders and persists under the
+stable id
 `hero:plugin:<name>:<hero id>`. Pinned instrument chrome stays first-party.
 
 **Placement (builder, DESIGN §10.2).** A claimed plugin hero is a placeable

@@ -37,8 +37,9 @@ import AdvancedGeneratorWidget from './hero/AdvancedGeneratorWidget.svelte';
  * `zone` decides where App.svelte puts a claimed hero:
  *   'instrument' — pinned chrome in the hero strip (never scrolls away with a
  *                  settings tab; the operator's live instrument).
- *   'card'       — an ordinary dashboard card in the Overview pane, laid out
- *                  and reordered by DashGrid like any other card.
+ *   'card'       — a home module (Home.svelte) and a card at the top of the
+ *                  category page its claimed fields came from, laid out by
+ *                  DashGrid like any other card.
  */
 const HEROES = [
   {

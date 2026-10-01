@@ -3,7 +3,7 @@
  * UI frame against the real device (or any live hub serving the bundle).
  *
  * Asserts, at a desktop viewport:
- *   - the nav rail renders with an Overview tab plus machine-derived entries,
+ *   - the nav rail renders with a Home tab plus machine-derived entries,
  *     switching tabs swaps the pane, and the mini-rail collapse works;
  *   - TransportBar (top-of-page, operator ruling 2026-07-28) renders the
  *     hazard-striped e-stop, visible and fireable, while the safety dock's
@@ -55,7 +55,7 @@ const railUp = await page.waitForSelector('nav.rail [role="tab"]', { timeout: 25
 ok('nav rail renders (catalog adopted)', railUp);
 
 const railTabs = await page.$$eval('nav.rail [role="tab"]', (els) => els.map((e) => e.textContent.trim()));
-ok('rail has Overview + machine categories + console entries', railTabs.length >= 6,
+ok('rail has Home + machine categories + console entries', railTabs.length >= 6 && /home/i.test(railTabs[0]),
    railTabs.join(' | '));
 ok('no legacy top tab strip at desktop width', (await page.$('nav.tabs')) == null);
 
@@ -114,19 +114,18 @@ const dockBox = await page.$eval('.topstrip', (el) => {
 ok('safety dock fully on screen without scrolling', dockBox);
 
 // ---- edit-layout mode -------------------------------------------------------
-await page.click('nav.rail [role="tab"]');            // back to Overview
-await page.waitForSelector('.dash-grid', { timeout: 5000 });
-// Card-zone heroes (pattern, limits) now live in the Overview grid beside
-// the telemetry card — the instrument zone holds only the rail.
-ok('Overview holds telemetry + card-zone hero cards', (await page.$$('.dash-item')).length >= 3,
-   (await page.$$('.dash-item')).length + ' cards');
+await page.click('nav.rail [role="tab"]');            // back to Home
+await page.waitForSelector('.home .dash-grid', { timeout: 5000 });
+// An unbuilt home is the seed: rank-surfaced fields, telemetry and the
+// card-zone heroes (pattern, limits); the instrument zone holds only the rail.
+ok('the seeded home holds telemetry + card-zone hero modules', (await page.$$('.home .dash-item')).length >= 3,
+   (await page.$$('.home .dash-item')).length + ' modules');
 ok('handles hidden while reading', (await page.$$('.dash-item .handle')).length === 0);
-const editBtn = await page.$$('.dash-toolbar button');
-await editBtn[0].click();                              // Edit layout
+await page.click('.home .dash-toolbar button:has-text("Edit layout")');
 ok('handles appear in edit mode', (await page.$$('.dash-item .handle')).length > 0);
 const editButtons = await page.$$eval('.dash-toolbar button', (els) => els.map((e) => e.textContent.trim()));
 ok('edit mode offers Reset + Done', editButtons.join(',').includes('Reset') && editButtons.join(',').includes('Done'));
-await page.click('.dash-toolbar button:last-child');   // Done
+await page.click('.home .dash-toolbar .done-btn');
 ok('handles hide again on Done', (await page.$$('.dash-item .handle')).length === 0);
 
 // ---- terse mode -------------------------------------------------------------
@@ -322,7 +321,7 @@ const staleCols = await page.$eval('canvas.act-grid', (c) => {
 ok('activity grid retains scroll history', staleCols <= 2,
    staleCols + '/14 columns at the empty baseline');
 
-await page.click('nav.rail [role="tab"]');             // back to Overview for the shot
+await page.click('nav.rail [role="tab"]');             // back to Home for the shot
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: join(OUT, 'flagship-desktop.png'), fullPage: false });
 

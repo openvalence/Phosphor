@@ -289,8 +289,8 @@
     {/if}
   </div>
 {:else}
-  <!-- ph-vdk.37: this card is unconditional in App.svelte's Overview list
-       (machineItems), so a hub with no telemetry-role fields must say so
+  <!-- ph-vdk.37: the Telemetry home module is offered on every hub
+       (Home.svelte), so a hub with no telemetry-role fields must say so
        rather than leaving a titled card with nothing under it. -->
   <p class="empty">No telemetry-role fields on this hub.</p>
 {/if}
