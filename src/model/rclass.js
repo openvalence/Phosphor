@@ -9,10 +9,10 @@
  * Constraints:
  * - Widths are CSS px (device-independent), never device pixels.
  * - The handheld/full band sits entirely BELOW 960px on purpose: every
- *   composition media query in the tree (style.css .app, SafetyBar and
+ *   composition media query in the tree (style.css .app, TopStrip and
  *   TransportBar's e-stop split, LinkBar) switches at 960. So `handheld`
  *   always means width < 960 and the CSS agrees with it; inside the band a
- *   `full` page keeps its rail but scrolls as a page with the fixed dock,
+ *   `full` page keeps its rail but scrolls as a page with the sticky top strip,
  *   which those queries already render correctly. Moving FULL_UP off 960
  *   without first keying those queries on `data-rc` puts the e-stop on a
  *   bar that scrolls away.
