@@ -73,6 +73,24 @@ const MAX_SUBSCRIBE_HZ = 30;
 const TELEMETRY_HZ = 50;
 const TELEMETRY_ROLES = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, ROLE.telemetryVelocity]);
 
+/**
+ * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
+ * WELCOME's retained_pending counts only WELCOME's own grants, so only a
+ * channel wished here gates LIVE: the safety latch MUST be adopted before
+ * this client can act (SPEC §11.5 item 2). control_owner and hub_status ride
+ * along because the catalog path subscribed them on every hub anyway; that
+ * path skips these ids so nothing is wished twice. Safety and control_owner
+ * are on-change (0); hub_status asks MAX_SUBSCRIBE_HZ, which the hub clamps to
+ * its max_rate_hz exactly as the catalog path would. Never more than
+ * max_subscriptions_per_frame (16): the hub rejects the HELLO's wishes past it.
+ */
+const HELLO_WISHES = [
+  [CORE_CHANNEL.safety, 0, PRIORITY.critical],
+  [CORE_CHANNEL.control_owner, 0, PRIORITY.critical],
+  [CORE_CHANNEL.hub_status, MAX_SUBSCRIBE_HZ, PRIORITY.background],
+];
+const HELLO_IDS = new Set(HELLO_WISHES.map((w) => w[0]));
+
 /** Bounded rings — an EVENT channel is a firehose and memory is not free. */
 const LOG_MAX = 400;
 const ANOM_MAX = 200;
@@ -323,6 +341,7 @@ function subscriptionWishes(entries, maxSubs, telemetryChanIds) {
   const wishes = [];
   for (const e of entries) {
     if (e.dir !== 0) continue;                       // h2c only; we do not publish
+    if (HELLO_IDS.has(e.id)) continue;               // wished in HELLO
     if (e.cls !== CHANNEL_CLASS.STATE && e.cls !== CHANNEL_CLASS.EVENT) continue;
     // EVENTs are edge-driven; a rate on them is meaningless. On-change STATE
     // channels advertise 0 and mean it.
@@ -350,7 +369,8 @@ function subscriptionWishes(entries, maxSubs, telemetryChanIds) {
   // the LEAST important: sorting by priority descending keeps safety and motion
   // and sheds background diagnostics, which is the same ordering the hub itself
   // uses when it sheds under congestion (SPEC 10.4).
-  const cap = (typeof maxSubs === 'number' && maxSubs > 0) ? maxSubs : wishes.length;
+  // The HELLO wishes hold their own slots of the session cap.
+  const cap = (typeof maxSubs === 'number' && maxSubs > 0) ? Math.max(0, maxSubs - HELLO_WISHES.length) : wishes.length;
   if (wishes.length <= cap) return wishes;
   const ranked = wishes.slice().sort((a, b) => b[2] - a[2]);
   const kept = ranked.slice(0, cap);
@@ -453,6 +473,7 @@ export function connect(opts = {}) {
     clientName: opts.clientName || 'Phosphor',
     instanceId: getInstanceId(),
     token: (h) => acquireToken(h),
+    subscriptions: HELLO_WISHES,
     autoReconnect: true,
     // Shell seam: a non-WS binding (BLE GATT) rides in as a WebSocket duck.
     // undefined = the platform WebSocket, which is every non-shell build.
@@ -485,6 +506,10 @@ export function connect(opts = {}) {
     // The hub's own declared ceilings. max_subscriptions is the one that bites:
     // exceeding it drops the whole SUBSCRIBE silently. See subscriptionWishes().
     machine.link.limits = w.limits || {};
+    // §6.7 snapshot adoption: session.js rebuilt its grants from this WELCOME
+    // and emits them as 'grant' right after 'welcome'; mirror the reset so a
+    // previous session's grants never show as current.
+    machine.grants = {};
   });
 
   session.on('catalog', (entries, _map, meta) => {
@@ -503,8 +528,9 @@ export function connect(opts = {}) {
       cached: !!(meta && meta.cached),
       model: buildSettingsModel(entries),
     };
-    // Subscribe only once we know what exists. Wishing for channels before the
-    // catalog is how a client ends up hardcoding ids.
+    // Device channels are subscribed only once we know what exists: wishing
+    // for them before the catalog is how a client ends up hardcoding ids. The
+    // registry's core channels already rode HELLO (HELLO_WISHES).
     // ONE combined wish list, STATE and EVENT together — RFC-033 settled that
     // mixing classes in a SUBSCRIBE is legal; the only real constraint is the
     // per-frame wish count, which subscribeInBatches() sizes from the hub's

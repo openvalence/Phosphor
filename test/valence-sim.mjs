@@ -103,9 +103,8 @@ async function openSession(label, extra = {}) {
   s.connect();
   await live;
   // LIVE means "catalog adopted + the retained pushes WELCOME promised are in".
-  // This client SUBSCRIBEs after WELCOME (so WELCOME promises none), and the
-  // hub's retained push for a fresh grant flows on its next pacing walk — give
-  // the subscribed channels a moment to land before asserting on them.
+  // The wishes above ride HELLO, so WELCOME grants them and LIVE waits for
+  // their retained STATE; the loop is a bound for a hub that promises fewer.
   const wantAll = [CH.SAFETY, CH.MACHINE_CONFIG, CH.MOTION_DIAG];
   for (let i = 0; i < 60 && !wantAll.every((c) => seen.states.has(c)); i++) await delay(50);
   return { s, seen };
