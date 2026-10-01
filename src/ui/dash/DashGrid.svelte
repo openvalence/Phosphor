@@ -5,8 +5,13 @@
    * control (§10.6). Math and storage: model/grid.js via
    * model/dashboard.svelte.js.
    *
-   * Contract: <DashGrid viewId="cat2" items={items} />, `items` [{id, title,
-   * snippet}], `id` a STABLE string (law 10), `snippet` rendered as the body.
+   * Contract: <DashGrid viewId="cat2" items={items} bind:editing />, `items`
+   * [{id, title, snippet, kind?, fields?}], `id` a STABLE string (law 10),
+   * `snippet` rendered as the body, `fields` (or `group.fields`) counted on a
+   * nest's frame while in flight. Nests stored in the view are drawn as
+   * items; an item that is a member of a nest is drawn inside it, not at the
+   * top level. With `layout` (a dashboardLayout().nest(id) controller) this
+   * is a nest's own subgrid: no toolbar, no nests inside.
    *
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
@@ -17,16 +22,28 @@
    *   ph-e82.7's ruling); a drag there commits a reading order, never cells.
    */
   import DashItem from './DashItem.svelte';
+  import Nest from './Nest.svelte';
   import {
     dashboardLayout, grid, stepScale, layouts, layoutNames,
-    switchLayout, saveLayoutAs, renameLayout, deleteLayout,
+    switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
   } from '../../model/dashboard.svelte.js';
-  import { cellCount } from '../../model/grid.js';
+  import { cellCount, placeable } from '../../model/grid.js';
   import { view } from '../../model/viewport.svelte.js';
 
-  let { viewId, items } = $props();
+  let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null } = $props();
 
-  const layout = $derived(dashboardLayout(viewId, view.cls));
+  const layout = $derived(given || dashboardLayout(viewId, view.cls));
+  const nests = $derived(given ? [] : layout.nests());
+  const all = $derived.by(() => {
+    if (!nests.length) return items;
+    const byId = new Map(items.map((it) => [it.id, it]));
+    const inNest = new Set(nests.flatMap((n) => n.keys));
+    return [
+      ...items.filter((it) => !inNest.has(it.id)),
+      ...nests.map((n) => ({ id: n.id, title: n.title, kind: 'nest', snippet: nestCard, nest: n,
+        members: n.keys.map((k) => byId.get(k)).filter(Boolean) })),
+    ];
+  });
 
   let width = $state(0);
   let winW = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
@@ -35,11 +52,11 @@
 
   let pin = $state(null);        // {id, x, y, w, h, mode} while a pointer drag is in flight
   let stackOrder = $state(null); // ids while a stacked drag is in flight
-  let editing = $state(false);
   let announceMsg = $state('');
   let nameDraft = $state('');
+  let moduleDraft = $state('');
 
-  const placed = $derived(layout.arrange(items, cols, pin && pin.mode !== 'stack' ? pin : null));
+  const placed = $derived(layout.arrange(all, cols, pin && pin.mode !== 'stack' ? pin : null));
   const displayList = $derived.by(() => {
     if (!stackOrder) return placed;
     const byId = new Map(placed.map((p) => [p.id, p]));
@@ -55,7 +72,7 @@
   }
 
   const announce = (msg) => { announceMsg = msg; };
-  const titleOf = (id) => (items.find((it) => it.id === id) || {}).title || id;
+  const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
 
   /** Client point -> cell; rows past the grid's end are cell-sized. */
@@ -101,11 +118,11 @@
   function pointerEnd(id) {
     if (!pin || pin.id !== id) return;
     if (pin.mode === 'stack') {
-      layout.order(items, cols, stackOrder);
+      layout.order(all, cols, stackOrder);
       announce(titleOf(id) + ' moved to position ' + (stackOrder.indexOf(id) + 1) + ' of ' + stackOrder.length);
     } else {
-      layout.move(items, cols, pin);
-      const p = layout.arrange(items, cols).find((q) => q.id === id);
+      layout.move(all, cols, pin);
+      const p = layout.arrange(all, cols).find((q) => q.id === id);
       if (p) announce(titleOf(id) + ' at ' + where(p));
     }
     pin = null;
@@ -123,20 +140,20 @@
       const to = i + dy;
       if (to < 0 || to >= ids.length) return;
       [ids[i], ids[to]] = [ids[to], ids[i]];
-      layout.order(items, cols, ids);
+      layout.order(all, cols, ids);
       announce(titleOf(id) + ' moved to position ' + (to + 1) + ' of ' + ids.length);
     } else if (!stack) {
       const p = placed[i];
-      layout.move(items, cols, { id, x: p.x + dx, y: p.y, w: p.w, h: p.h });
-      const q = layout.arrange(items, cols).find((r) => r.id === id);
+      layout.move(all, cols, { id, x: p.x + dx, y: p.y, w: p.w, h: p.h });
+      const q = layout.arrange(all, cols).find((r) => r.id === id);
       if (q) announce(titleOf(id) + ' at ' + where(q));
     }
   }
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
-    layout.move(items, cols, { id, x: p.x, y: p.y, w: Math.max(1, p.w + dw), h: Math.max(1, p.h + dh) });
-    const q = layout.arrange(items, cols).find((r) => r.id === id);
+    layout.move(all, cols, { id, x: p.x, y: p.y, w: Math.max(1, p.w + dw), h: Math.max(1, p.h + dh) });
+    const q = layout.arrange(all, cols).find((r) => r.id === id);
     if (q) announce(titleOf(id) + ' resized to ' + q.w + ' by ' + q.h + ' cells');
   }
 
@@ -156,11 +173,24 @@
   function nameOp(fn, ok, fail) {
     if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
+  function newNest() {
+    const id = layout.addNest();
+    if (id) announce('Added an empty nest');
+  }
+  function insertModule() {
+    if (moduleDraft && layout.insertModule(moduleDraft)) announce('Placed module ' + moduleDraft);
+  }
 </script>
+
+{#snippet nestCard(item)}
+  <Nest {item} parent={layout} {editing} {stack} {announce}
+        candidates={all.filter((it) => it.kind !== 'nest' && placeable(it.kind, true))} />
+{/snippet}
 
 <svelte:window onresize={() => (winW = window.innerWidth)} />
 
 <div class="dash-wrap">
+  {#if !given}
   <div class="dash-toolbar">
     <div class="scale" role="group" aria-label="Scale">
       <button type="button" class="og-btn sm" aria-label="Scale down"
@@ -183,13 +213,24 @@
       <button type="button" class="og-btn sm" disabled={layoutNames().length < 2}
               onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
       <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
+      <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
+      {#if moduleNames().length}
+        <select class="layout-pick" aria-label="Module" bind:value={moduleDraft}>
+          <option value="">Module…</option>
+          {#each moduleNames() as n (n)}<option value={n}>{n}</option>{/each}
+        </select>
+        <button type="button" class="og-btn sm" disabled={!moduleDraft} onclick={insertModule}>Insert</button>
+        <button type="button" class="og-btn sm" disabled={!moduleDraft}
+                onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
+      {/if}
       <button type="button" class="done-btn og-btn sm" onclick={() => setEditing(false)}>Done</button>
     {:else}
       <button type="button" class="og-btn sm" onclick={() => setEditing(true)}>Edit layout</button>
     {/if}
   </div>
+  {/if}
 
-  <div class="dash-grid" class:stack bind:this={gridEl} bind:clientWidth={width}
+  <div class="dash-grid" class:stack bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols}>
     {#each displayList as item, i (item.id)}
       <div class="dash-cell" data-id={item.id} use:registerCell={item.id}
@@ -210,6 +251,7 @@
           onresizeend={() => pointerEnd(item.id)}
           onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
           onkeyresize={(dw, dh) => keyResize(item.id, dw, dh)}
+          onremove={onremove && placeable(item.kind, false) ? () => onremove(item.id) : null}
         />
       </div>
     {/each}

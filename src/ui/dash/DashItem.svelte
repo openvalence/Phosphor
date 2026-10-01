@@ -37,6 +37,8 @@
     onresizeend,
     onkeymove,
     onkeyresize,
+    // Set on a nest member: edit mode offers "Out" (back to the top level).
+    onremove = null,
   } = $props();
 
   // ---- grab handle: drag to reorder --------------------------------------
@@ -112,6 +114,10 @@
       </button>
     {/if}
     <h3 class="dash-title" data-pidx={pidx}>{item.title}</h3>
+    {#if editing && onremove}
+      <button type="button" class="og-btn sm out" aria-label={'Move ' + item.title + ' out of the nest'}
+              onclick={onremove}>Out</button>
+    {/if}
   </div>
 
   <div class="dash-body">
@@ -204,10 +210,14 @@
     color: var(--line-3);
   }
 
+  /* Fills the rest of the frame, so a scrolling nest's region has a height to scroll in. */
   .dash-body {
+    flex: 1 1 auto;
+    min-height: 0;
     padding: var(--gap);
     min-width: 0;
   }
+  .out { margin-left: auto; }
 
   /* ---- handles ----
      Near-invisible until hover/focus — the frame should read as quiet

@@ -138,9 +138,12 @@ export function pack(items, map, cols, pin = null) {
   return placed.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
-/** Write placements into `map`; ids not in `placed` are left untouched. */
+/** Write placements into `map`; ids not in `placed` are left untouched, a nest keeps its contents. */
 function write(map, placed) {
-  for (const p of placed) map[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h };
+  for (const p of placed) {
+    const nest = isNest(map[p.id]) ? map[p.id].nest : null;
+    map[p.id] = nest ? { x: p.x, y: p.y, w: p.w, h: p.h, nest } : { x: p.x, y: p.y, w: p.w, h: p.h };
+  }
 }
 
 /** Commit a drag or resize: place with `pin`, compact, write every present item. */
@@ -170,12 +173,18 @@ export function commitOrder(map, items, cols, orderedIds) {
 
 // ---- named layouts ---------------------------------------------------------------
 
-/** Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map } } }. */
+/**
+ * Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map } }, modules: { [name]: module } }.
+ * Modules (saved nests) belong to no layout and no view.
+ */
 function emptyStore() {
-  return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: {} } };
+  return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: {} }, modules: {} };
 }
+const modulesOf = (s) => (s && s.modules && typeof s.modules === 'object' && !Array.isArray(s.modules) ? s.modules : {});
 
-const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+// A key deleted from a Svelte $state proxy stays an own property whose value
+// reads undefined (svelte 5.56 proxy.js deleteProperty), so presence needs both.
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined;
 const validName = (n) => typeof n === 'string' && n.trim() !== '' && !(n.trim() in Object.prototype);
 
 /** Old {[id]: {span, order}} map -> placements, reading order kept. */
@@ -212,7 +221,7 @@ export function loadStore(storage) {
     const s = readJson(storage, STORE_KEY);
     if (s && typeof s === 'object' && s.layouts && typeof s.layouts === 'object') {
       const names = Object.keys(s.layouts).filter((n) => validName(n) && s.layouts[n] && typeof s.layouts[n] === 'object');
-      if (names.length) return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts };
+      if (names.length) return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts, modules: modulesOf(s) };
     }
     const seed = {};
     const legacy = {};
@@ -227,7 +236,7 @@ export function loadStore(storage) {
       }
     }
     for (const [view, k] of Object.entries(legacy)) if (!own(seed, view)) seed[view] = migrateSpans(readJson(storage, k));
-    return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: seed } };
+    return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: seed }, modules: {} };
   } catch (e) {
     return emptyStore();
   }
@@ -279,6 +288,118 @@ export function deleteLayout(store, name) {
   if (!own(store.layouts, name) || names.length < 2) return false;
   delete store.layouts[name];
   if (store.active === name) store.active = Object.keys(store.layouts)[0];
+  return true;
+}
+
+// ---- nests and modules (DESIGN §10.6) ---------------------------------------------
+//
+// A nest is a placement entry that also carries a subgrid:
+//   map['nest:<n>'] = { x, y, w, h, nest: { title, scroll, map: { [memberId]: {x, y, w, h} | null } } }
+// The member map's keys ARE the membership; null is a member not yet placed.
+// A member the current items lack is inert, exactly as at the top level.
+
+/**
+ * ph-e82.1 item 4, OPEN: single fields placeable anywhere (false) or only
+ * inside nests (true). Coded as anywhere; veto-able on ph-e82.6.
+ */
+export const FIELDS_NESTS_ONLY = false;
+
+/** May a control of `kind` sit at the top level or in a nest? A nest never nests. */
+export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
+  if (kind === 'nest') return !inNest;
+  return inNest || !nestsOnly || kind !== 'field';
+}
+
+export const NEST_W = 16;
+export const NEST_H = 6;
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+export function isNest(e) {
+  return !!(e && typeof e === 'object' && e.nest && typeof e.nest === 'object'
+    && e.nest.map && typeof e.nest.map === 'object' && !Array.isArray(e.nest.map));
+}
+
+/** The nests in one placement map: [{id, title, scroll, keys}], `keys` present or inert. */
+export function nestsIn(map) {
+  return Object.keys(map).filter((id) => isNest(map[id])).map((id) => {
+    const n = map[id].nest;
+    return { id, title: typeof n.title === 'string' && n.title.trim() ? n.title : 'Nest', scroll: n.scroll !== false, keys: Object.keys(n.map) };
+  });
+}
+
+/** Add a nest below everything in `map`; `members` is copied. Returns the new id. */
+export function addNest(map, { title = 'Nest', scroll = true, w = NEST_W, h = NEST_H, members = {} } = {}) {
+  let i = 1;
+  while (own(map, 'nest:' + i)) i++;
+  const id = 'nest:' + i;
+  const y = Object.values(map).reduce((m, e) => (e && Number.isFinite(e.y) && Number.isFinite(e.h) ? Math.max(m, e.y + e.h) : m), 0);
+  map[id] = { x: 0, y, w: int(w, 1, 1000, NEST_W), h: int(h, 1, MAX_H, NEST_H),
+    nest: { title: String(title), scroll: scroll !== false, map: clone(members && typeof members === 'object' ? members : {}) } };
+  return id;
+}
+
+/** Make `key` a member of nest `id`, unplaced. A nest never joins a nest. */
+export function nestAdd(map, id, key) {
+  if (!isNest(map[id]) || own(map[id].nest.map, key) || /^nest:/.test(key)) return false;
+  map[id].nest.map[key] = null;
+  return true;
+}
+
+/** Drop `key` from nest `id`; a present item returns to the top level. */
+export function nestRemove(map, id, key) {
+  if (!isNest(map[id]) || !own(map[id].nest.map, key)) return false;
+  delete map[id].nest.map[key];
+  return true;
+}
+
+export function setNest(map, id, { title, scroll } = {}) {
+  if (!isNest(map[id])) return false;
+  if (typeof title === 'string' && title.trim()) map[id].nest.title = title.trim();
+  if (typeof scroll === 'boolean') map[id].nest.scroll = scroll;
+  return true;
+}
+
+/** Ungroup: present members return to the top level; inert members go with the nest. */
+export function removeNest(map, id) {
+  if (!isNest(map[id])) return false;
+  delete map[id];
+  return true;
+}
+
+/** Save nest `id` of `map` as a module named `name`; a taken name is refused. */
+export function saveModule(store, map, id, name) {
+  const n = validName(name) && name.trim();
+  if (!store.modules) store.modules = {};
+  if (!n || !isNest(map[id]) || own(store.modules, n)) return false;
+  const e = map[id];
+  store.modules[n] = { title: n, scroll: e.nest.scroll !== false, w: e.w, h: e.h, members: clone(e.nest.map) };
+  return true;
+}
+
+/** Place module `name` as a new nest in `map`; members `map`'s view lacks stay inert. Returns the id or null. */
+export function insertModule(store, map, name) {
+  const m = store.modules && own(store.modules, name) ? store.modules[name] : null;
+  if (!m || typeof m !== 'object') return null;
+  return addNest(map, { title: m.title, scroll: m.scroll, w: m.w, h: m.h, members: m.members });
+}
+
+/**
+ * Forget the arrangement in `map`, never its content: a nest keeps its size and
+ * members and reflows; in a nest's own map (`members` true) every member stays,
+ * unplaced.
+ */
+export function resetMap(map, members = false) {
+  for (const k of Object.keys(map)) {
+    if (isNest(map[k])) map[k] = { w: map[k].w, h: map[k].h, nest: map[k].nest };
+    else if (members) map[k] = null;
+    else delete map[k];
+  }
+}
+
+export function deleteModule(store, name) {
+  if (!store.modules || !own(store.modules, name)) return false;
+  delete store.modules[name];
   return true;
 }
 

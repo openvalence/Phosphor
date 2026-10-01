@@ -2,7 +2,9 @@
  * grid-model.test.mjs -- the builder grid model (DESIGN §10.5, §10.6),
  * device-free: cell conversion, cell count, the coarse-pointer scale clamp,
  * named layouts, inert absent ids, storage that throws, and the migration of
- * the per-class span maps and the legacy sd32 keys.
+ * the per-class span maps and the legacy sd32 keys; nests and modules
+ * (ph-e82.6): round trip, reinsertion under a different catalog with inert
+ * members, and the single-field placement flag both ways.
  *
  * Run: node test/grid-model.test.mjs
  */
@@ -11,6 +13,8 @@ import {
   cellCssPx, cellCount, allowedSteps, clampScale, stepScale, pack, commitPin, commitOrder,
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
+  FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
+  saveModule, insertModule, deleteModule, resetMap,
 } from '../src/model/grid.js';
 
 let fails = 0;
@@ -39,6 +43,7 @@ const throwing = {
 };
 const items = (...ids) => ids.map((id) => ({ id, title: id }));
 const ids = (list) => list.map((p) => p.id).join(',');
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // ---- device px -> CSS px ------------------------------------------------------
 console.log('cells');
@@ -167,6 +172,83 @@ console.log('migration');
 
   const existing = memStorage({ [STORE_KEY]: JSON.stringify({ active: 'A', layouts: { A: { 'full.v': { q: { x: 1, y: 0, w: 2, h: 1 } } } } }), 'sd32.dash.v': '{}' });
   ok('an existing store is loaded as is, migration skipped', loadStore(existing).layouts.A['full.v'].q.x === 1 && !loadStore(existing).layouts.Default);
+}
+
+// ---- nests and modules (ph-e82.6) ----------------------------------------------
+console.log('nests');
+{
+  ok('single fields are placeable anywhere by default (ph-e82.1 item 4, veto-able)', FIELDS_NESTS_ONLY === false
+     && placeable('field', false) && placeable('field', true));
+  ok('nests-only: a field is refused at the top level, welcome in a nest, other kinds unaffected',
+     !placeable('field', false, true) && placeable('field', true, true) && placeable('composite', false, true) && placeable(undefined, false, true));
+  ok('a nest never nests, either way', placeable('nest', false) && !placeable('nest', true) && !placeable('nest', true, true));
+
+  const st = memStorage();
+  const s = loadStore(st);
+  const top = viewMap(s, 'full', 'home');
+  commitPin(top, items('a', 'b', 'c', 'd'), 40, { id: 'd', x: 0, y: 0, w: 10, h: 2 });
+  const id = addNest(top, { title: 'Pump', scroll: true });
+  ok('addNest makes a nest entry below everything', isNest(top[id]) && top[id].y >= 2 && id === 'nest:1');
+  ok('a second nest gets its own id', addNest(top) === 'nest:2' && removeNest(top, 'nest:2') && !top['nest:2']);
+  ok('members join unplaced', nestAdd(top, id, 'a') && nestAdd(top, id, 'b') && nestAdd(top, id, 'c') && top[id].nest.map.a === null);
+  ok('a member cannot join twice, a nest cannot join a nest', !nestAdd(top, id, 'a') && !nestAdd(top, id, 'nest:9'));
+  const n = top[id].nest.map;
+  commitPin(n, items('a', 'b', 'c'), 12, { id: 'c', x: 0, y: 0, w: 12, h: 3 });
+  ok('the subgrid places like any grid', n.c.y === 0 && n.c.h === 3 && n.a.y >= 3, JSON.stringify(n));
+  const topItems = [...items('d'), { id, title: 'Pump' }];
+  commitPin(top, topItems, 40, { id, x: 0, y: 0, w: 20, h: 6 });
+  ok('moving the nest keeps its contents', isNest(top[id]) && top[id].w === 20 && top[id].nest.map.c.h === 3);
+  commitOrder(top, topItems, 40, ['d', id]);
+  ok('reordering keeps its contents', isNest(top[id]) && top[id].nest.map.c.h === 3);
+  ok('nestsIn lists members, present or not',
+     JSON.stringify(nestsIn(top)) === JSON.stringify([{ id, title: 'Pump', scroll: true, keys: ['a', 'b', 'c'] }]));
+  ok('setNest renames and flips scroll', setNest(top, id, { title: ' Pump 2 ', scroll: false })
+     && nestsIn(top)[0].title === 'Pump 2' && !nestsIn(top)[0].scroll && setNest(top, id, { title: 'Pump', scroll: true }));
+
+  // Serialize, deserialize: the module and the nest both survive a reload.
+  ok('save as module', saveModule(s, top, id, 'Pump'));
+  ok('a taken or empty module name is refused', !saveModule(s, top, id, 'Pump') && !saveModule(s, top, id, ' ') && !saveModule(s, top, 'nest:9', 'X'));
+  saveStore(st, s);
+  const back = loadStore(st);
+  const mod = back.modules.Pump;
+  ok('the module round-trips', !!mod && mod.scroll === true && mod.w === 20 && mod.h === 6
+     && JSON.stringify(mod.members) === JSON.stringify(n), JSON.stringify(mod));
+  ok('the nest round-trips in its layout', JSON.stringify(back.layouts.Default['full.home'][id]) === JSON.stringify(top[id]));
+  n.c.h = 4;
+  ok('the module is a copy, not the live nest', s.modules.Pump.members.c.h === 3);
+
+  // Reinsert under a different catalog: b is absent, x is new.
+  const other = viewMap(back, 'handheld', 'cat9');
+  const nid = insertModule(back, other, 'Pump');
+  const sub = other[nid].nest.map;
+  const present = items('a', 'c', 'x').filter((it) => own(sub, it.id));
+  ok('reinsertion keeps the inert member', nestsIn(other)[0].keys.join() === 'a,b,c' && JSON.stringify(sub.b) === JSON.stringify(mod.members.b));
+  ok('the inert member is never placed, never an error', ids(pack(present, sub, 12)) === 'c,a');
+  commitPin(sub, present, 12, { id: 'a', x: 0, y: 0, w: 6, h: 1 });
+  ok('a commit under the other catalog leaves the inert member untouched', JSON.stringify(sub.b) === JSON.stringify(mod.members.b) && sub.a.w === 6);
+  ok('an unknown module inserts nothing', insertModule(back, other, 'Nope') === null && nestsIn(other).length === 1);
+  ok('the reinserted nest saves again with its inert member', saveModule(back, other, nid, 'Pump B') && own(back.modules['Pump B'].members, 'b'));
+  saveStore(st, back);
+  const again = loadStore(st);
+  ok('and survives another round trip', JSON.stringify(again.modules['Pump B'].members.b) === JSON.stringify(mod.members.b)
+     && nestsIn(again.layouts.Default['handheld.cat9'])[0].keys.join() === 'a,b,c');
+
+  // Reset forgets arrangement, never content; ungroup frees present members.
+  const r = again.layouts.Default['full.home'];
+  resetMap(r);
+  ok('reset keeps the nest, its size and members', isNest(r[id]) && r[id].w === 20 && r[id].x === undefined && !r.d && nestsIn(r)[0].keys.length === 3);
+  resetMap(r[id].nest.map, true);
+  ok('a nest reset keeps every member, unplaced', Object.keys(r[id].nest.map).length === 3 && Object.values(r[id].nest.map).every((v) => v === null));
+  ok('nestRemove drops one member', nestRemove(r, id, 'b') && !own(r[id].nest.map, 'b') && !nestRemove(r, id, 'b'));
+  ok('ungroup removes the nest', removeNest(r, id) && !r[id] && !removeNest(r, id));
+  ok('delete module', deleteModule(again, 'Pump') && !again.modules.Pump && !deleteModule(again, 'Pump'));
+  // A key deleted from a $state proxy still answers hasOwnProperty, reading undefined.
+  const ghost = { active: 'A', layouts: { A: {}, B: undefined }, modules: { M: undefined } };
+  const gm = { 'nest:1': undefined, 'nest:2': { x: 0, y: 0, w: 4, h: 4, nest: { title: 'N', scroll: true, map: { a: undefined } } } };
+  ok('a proxy-deleted key reads as absent', !switchLayout(ghost, 'B') && saveLayoutAs(ghost, 'B') && deleteModule(ghost, 'M') === false
+     && addNest(gm) === 'nest:1' && nestAdd(gm, 'nest:2', 'a') && gm['nest:2'].nest.map.a === null);
+  ok('a store without modules loads with an empty set',
+     JSON.stringify(loadStore(memStorage({ [STORE_KEY]: JSON.stringify({ active: 'A', layouts: { A: {} } }) })).modules) === '{}');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

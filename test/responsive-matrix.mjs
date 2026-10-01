@@ -36,9 +36,12 @@
  *            flight, and waits for a held pointer (RFC-062 draft)
  *   scale    no horizontal page scroll at any scale step; the target floor
  *            holds at the smallest scale on phones (ph-e82.3, law 12)
+ *   nest     phone: a scrolling nest is not a scroll region of its own, a
+ *            wheel over it scrolls the page, the page passes the layout
+ *            checks (ph-e82.6)
  *
  * Build first (`npm run build:only`); this builds nothing.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|scale] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|scale|nest] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -49,7 +52,7 @@ import { join, resolve } from 'node:path';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS } from '../../Valence/clients/js/frames.js';
-import { SCALE_STEPS, SCALE_KEY } from '../src/model/grid.js';
+import { SCALE_STEPS, SCALE_KEY, STORE_KEY } from '../src/model/grid.js';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
@@ -644,6 +647,59 @@ if (!ONLY || ONLY === 'scale') {
       (await page.evaluate(measure, { phone: true, coarse: true })).filter(([k]) => k === 'target').map(([, d]) => d));
     scen(w + 'x' + h + ': the smallest scale clamps (' + r.applied + ') and the target floor holds',
       r.applied !== Math.round(SCALE_STEPS[0] * 100) + '%' && r.out.length === 0, [...new Set(r.out)].slice(0, 4).join('; '));
+  }
+}
+
+// ---- nest (ph-e82.6): a nested scroll never traps the page scroll on a phone.
+// Every card of the first multi-card category goes into one short scrolling
+// nest through the stored layout.
+if (!ONLY || ONLY === 'nest') {
+  console.log('\nnest scenarios');
+  for (const [w, h] of [[320, 568], [360, 800], [390, 844]]) {
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+    const tabs = page.locator('nav.tabs [role=tab]');
+    let tab = -1, key = '', ids = [];
+    for (let i = 1; i < await tabs.count() && tab < 0; i++) {
+      await tabs.nth(i).click();
+      await page.waitForTimeout(200);
+      const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
+        ids: [...el.children].map((c) => c.getAttribute('data-id')) })).catch(() => null);
+      if (g && g.ids.length >= 2) { tab = i; key = g.key; ids = g.ids; }
+    }
+    const store = { active: 'Default', modules: {}, layouts: { Default: { [key]: {
+      'nest:1': { x: 0, y: 0, w: 20, h: 4, nest: { title: 'Nest', scroll: true, map: Object.fromEntries(ids.map((id) => [id, null])) } },
+    } } } };
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
+    await page.reload();
+    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+    if (tab > 0) await tabs.nth(tab).click();
+    await page.waitForTimeout(300);
+    const body = page.locator('.dash-cell[data-id="nest:1"] .nest-body');
+    const r = await body.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { overflow: cs.overflowY, sh: el.scrollHeight, ch: el.clientHeight, members: el.querySelectorAll('.dash-cell').length };
+    }).catch(() => null);
+    const tag = w + 'x' + h;
+    scen(tag + ': the nest renders with every card', !!r && r.members === ids.length, JSON.stringify(r));
+    scen(tag + ': the nest is not a scroll region of its own', !!r && /visible|clip/.test(r.overflow) && r.sh <= r.ch + 1, JSON.stringify(r));
+    let moved = '';
+    if (r) {
+      await body.evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 120));
+      await page.waitForTimeout(100);
+      const box = await body.boundingBox();
+      const before = await page.evaluate(() => document.scrollingElement.scrollTop);
+      await page.mouse.move(box.x + box.width / 2, Math.min(box.y + 60, h - 20));
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(250);
+      const after = await page.evaluate(() => document.scrollingElement.scrollTop);
+      moved = before + ' -> ' + after;
+      scen(tag + ': a wheel over the nest scrolls the page', after > before, moved);
+    }
+    const f = await page.evaluate(measure, { phone: true });
+    scen(tag + ': a page holding a nest passes the phone checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+    await ctx.close();
   }
 }
 

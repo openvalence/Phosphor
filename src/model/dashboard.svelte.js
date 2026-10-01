@@ -21,15 +21,31 @@ const storage = hasWindow ? (() => { try { return window.localStorage; } catch (
 const mem = { length: 0, key: () => null, getItem: () => null, setItem() {} };
 const ls = storage || mem;
 
-/** The named layouts store: { active, layouts }. */
+/** The named layouts store: { active, layouts, modules } (grid.js). */
 export const layouts = $state(G.loadStore(ls));
 const persist = () => G.saveStore(ls, $state.snapshot(layouts));
+const saved = (r) => (r && persist(), r);
 
 export const layoutNames = () => Object.keys(layouts.layouts);
-export const switchLayout = (n) => G.switchLayout(layouts, n) && (persist(), true);
-export const saveLayoutAs = (n) => G.saveLayoutAs(layouts, n) && (persist(), true);
-export const renameLayout = (a, b) => G.renameLayout(layouts, a, b) && (persist(), true);
-export const deleteLayout = (n) => G.deleteLayout(layouts, n) && (persist(), true);
+export const switchLayout = (n) => saved(G.switchLayout(layouts, n));
+export const saveLayoutAs = (n) => saved(G.saveLayoutAs(layouts, n));
+export const renameLayout = (a, b) => saved(G.renameLayout(layouts, a, b));
+export const deleteLayout = (n) => saved(G.deleteLayout(layouts, n));
+
+/** Saved nests (modules), shared by every layout and view. */
+export const moduleNames = () => Object.keys(layouts.modules || {});
+export const deleteModule = (n) => saved(G.deleteModule(layouts, n));
+
+// Reads never write: arrange and nests run inside $derived, where a state write throws.
+function controller(read, write, members) {
+  return {
+    arrange: (items, cols, pin = null) => G.pack(items, read(), cols, pin),
+    move(items, cols, pin) { G.commitPin(write(), items, cols, pin); persist(); },
+    order(items, cols, ids) { G.commitOrder(write(), items, cols, ids); persist(); },
+    // An emptied map, not a deleted key: the migration can never resurrect it.
+    reset() { G.resetMap(write(), members); persist(); },
+  };
+}
 
 /**
  * Placement controller for one view under one renderer class, always reading
@@ -37,17 +53,31 @@ export const deleteLayout = (n) => G.deleteLayout(layouts, n) && (persist(), tru
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
  *   order(items, cols, ids)    -> commit a reading order
- *   reset()                    -> forget this view's placements
+ *   reset()                    -> forget this view's placements (nests stay)
+ * Nests (DESIGN §10.6):
+ *   nests()                    -> [{id, title, scroll, keys}] in this view
+ *   nest(id)                   -> the same controller over nest `id`'s subgrid
+ *   addNest({title, scroll, w, h}?) -> new nest id
+ *   nestAdd(id, key) / nestRemove(id, key) / setNest(id, {title, scroll}) / removeNest(id)
+ *   saveModule(id, name)       -> save nest `id` as a module; a taken name is refused
+ *   insertModule(name)         -> place a module as a new nest; returns its id or null
  */
 export function dashboardLayout(viewId, cls = 'full') {
+  const read = () => G.viewMap(layouts, cls, viewId, false);
   const map = () => G.viewMap(layouts, cls, viewId);
+  const sub = (id) => () => (G.isNest(read()[id]) ? read()[id].nest.map : {});
+  const edit = (fn) => (...a) => saved(fn(map(), ...a));
   return {
-    // Read-only: arrange runs inside $derived, where a state write throws.
-    arrange: (items, cols, pin = null) => G.pack(items, G.viewMap(layouts, cls, viewId, false), cols, pin),
-    move(items, cols, pin) { G.commitPin(map(), items, cols, pin); persist(); },
-    order(items, cols, ids) { G.commitOrder(map(), items, cols, ids); persist(); },
-    // An empty map, not a deleted key: the migration can never resurrect it.
-    reset() { const m = map(); for (const k of Object.keys(m)) delete m[k]; persist(); },
+    ...controller(read, map, false),
+    nests: () => G.nestsIn(read()),
+    nest: (id) => controller(sub(id), sub(id), true),
+    addNest: edit(G.addNest),
+    nestAdd: edit(G.nestAdd),
+    nestRemove: edit(G.nestRemove),
+    setNest: edit(G.setNest),
+    removeNest: edit(G.removeNest),
+    saveModule: (id, name) => saved(G.saveModule(layouts, read(), id, name)),
+    insertModule: (name) => saved(G.insertModule(layouts, map(), name)),
   };
 }
 

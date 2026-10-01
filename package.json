@@ -18,11 +18,12 @@
     "check:safety": "node test/safety-reach.test.mjs",
     "check:contract": "node test/control-contract.test.mjs",
     "check:responsive": "node test/responsive-matrix.mjs",
+    "check:nest": "node test/nest.test.mjs",
     "check:a11y": "node test/a11y-basics.test.mjs",
     "check:live": "node test/actions-live.test.mjs",
     "test": "npm run check && node test/valence-wire.test.mjs && node test/telebuf-sim.mjs && node test/server-pane.test.mjs && node test/buttplug-bridge.test.mjs",
     "test:bp-sim": "node test/buttplug-estop-sim.mjs",
-    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:a11y",
+    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:nest && npm run check:a11y",
     "tauri": "tauri"
   },
   "devDependencies": {
