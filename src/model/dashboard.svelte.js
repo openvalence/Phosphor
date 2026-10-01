@@ -1,168 +1,94 @@
 /**
- * dashboard.svelte.js — Home-Assistant-style dashboard layout: state + persistence.
+ * dashboard.svelte.js -- reactive half of the builder grid: the named layouts
+ * store, the live cell metrics, and the scale control. The math and the
+ * storage rules are in grid.js (device-free, tested by
+ * test/grid-model.test.mjs); this file only adds runes and the DOM.
  *
- * Pure layout math over caller-supplied items — {id, title, snippet}. This
- * file has never heard of a channel, a field, or a machine; it only knows
- * "some string id wants a span and a position." That is deliberate: the
- * device-knowledge checker (test/check-device-knowledge.mjs) enforces zero
- * wire vocabulary above the Valence protocol client, and a dashboard-layout engine has no
- * business needing any.
- *
- * ── STABILITY ACROSS MACHINES IS THE KEY REQUIREMENT ────────────────────────
- * The saved layout is a MAP keyed by item id — { [id]: {span, order} } — never
- * an array. That is the whole reason ids are stable strings and not indices:
- * an array position means nothing once the set of widgets changes, but a map
- * entry either matches an id or it doesn't.
- *   - An id present in storage but ABSENT from the current `items` (a
- *     different machine, a hidden feature) is simply never visited by
- *     arrange() below — it stays in storage, inert, in case that machine
- *     comes back, but it can never crash or misplace anything live.
- *   - An id present in `items` but ABSENT from storage (a new machine, a
- *     freshly added widget) gets DEFAULT_SPAN and appends after every item
- *     storage does know about, in the order `items` was handed to us.
- * Connecting to a different machine therefore never scrambles a saved layout
- * and never throws — worst case, some items you don't recognize sit unused in
- * localStorage and some items you do have land at the end with a default span.
- *
- * All localStorage access is wrapped in try/catch: private browsing, a full
- * quota, or storage disabled outright must degrade to "layout doesn't
- * persist," never to a broken page.
- *
- * ── ONE LAYOUT PER RENDERER CLASS (RFC-062 draft item 7) ────────────────────
- * Keyed on (class, viewId): a card order arranged on a desktop is never
- * applied to the phone projection, and each class gets its own back.
- * Before classes existed every layout lived under `sd32.dash.<viewId>`; that
- * key is READ as the `full` class's fallback and never written or deleted,
- * because renaming the legacy `sd32.*` keys is an operator decision.
+ * Constraints:
+ * - Knows nothing of channels or fields: items are caller-supplied stable ids
+ *   (test/check-device-knowledge.mjs).
+ * - Scale is applied as the `--s` token on <html> and the cell edge, never as
+ *   CSS `zoom`: RailWidget maps clientX through getBoundingClientRect, and
+ *   zoom on a subtree holding it is unproven (ph-gf8).
+ * - One placement map per (renderer class, view) inside each named layout, so
+ *   a desktop arrangement is never applied to the phone projection.
  */
 
-const DEFAULT_SPAN = 12;
-const MIN_SPAN = 1;
-const MAX_SPAN = 12;
+import * as G from './grid.js';
 
-function storageKey(cls, viewId) {
-  return 'phosphor.dash.' + cls + '.' + viewId;
-}
+const hasWindow = typeof window !== 'undefined';
+const storage = hasWindow ? (() => { try { return window.localStorage; } catch (e) { return null; } })() : null;
+const mem = { length: 0, key: () => null, getItem: () => null, setItem() {} };
+const ls = storage || mem;
 
-function loadLayout(cls, viewId) {
-  try {
-    let raw = localStorage.getItem(storageKey(cls, viewId));
-    if (raw == null && cls === 'full') raw = localStorage.getItem('sd32.dash.' + viewId);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch (e) {
-    return {};
-  }
-}
+/** The named layouts store: { active, layouts }. */
+export const layouts = $state(G.loadStore(ls));
+const persist = () => G.saveStore(ls, $state.snapshot(layouts));
 
-function saveLayout(cls, viewId, map) {
-  try {
-    localStorage.setItem(storageKey(cls, viewId), JSON.stringify(map));
-  } catch (e) {
-    // Private mode / quota exceeded / storage disabled. The in-memory layout
-    // still works for this page load; it just won't survive a reload.
-  }
-}
-
-function clampSpan(span) {
-  const n = Math.round(Number(span));
-  if (!Number.isFinite(n)) return DEFAULT_SPAN;
-  return Math.min(MAX_SPAN, Math.max(MIN_SPAN, n));
-}
-
-// One reactive layout store per (class, viewId), cached so switching tabs and
-// coming back keeps in-memory edits and doesn't re-read localStorage every time.
-const registry = new Map();
+export const layoutNames = () => Object.keys(layouts.layouts);
+export const switchLayout = (n) => G.switchLayout(layouts, n) && (persist(), true);
+export const saveLayoutAs = (n) => G.saveLayoutAs(layouts, n) && (persist(), true);
+export const renameLayout = (a, b) => G.renameLayout(layouts, a, b) && (persist(), true);
+export const deleteLayout = (n) => G.deleteLayout(layouts, n) && (persist(), true);
 
 /**
- * Get (or lazily create) the reactive layout controller for one dashboard
- * view under one renderer class. `viewId` namespaces persistence, e.g. "cat2"
- * for the machine's second settings category — each view keeps its own
- * arrangement, per class.
+ * Placement controller for one view under one renderer class, always reading
+ * the ACTIVE layout, so a switch re-places every mounted grid.
+ *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order
+ *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
+ *   order(items, cols, ids)    -> commit a reading order
+ *   reset()                    -> forget this view's placements
  */
 export function dashboardLayout(viewId, cls = 'full') {
-  const key = cls + '|' + viewId;
-  let l = registry.get(key);
-  if (!l) {
-    l = createLayout(cls, viewId);
-    registry.set(key, l);
-  }
-  return l;
+  const map = () => G.viewMap(layouts, cls, viewId);
+  return {
+    // Read-only: arrange runs inside $derived, where a state write throws.
+    arrange: (items, cols, pin = null) => G.pack(items, G.viewMap(layouts, cls, viewId, false), cols, pin),
+    move(items, cols, pin) { G.commitPin(map(), items, cols, pin); persist(); },
+    order(items, cols, ids) { G.commitOrder(map(), items, cols, ids); persist(); },
+    // An empty map, not a deleted key: the migration can never resurrect it.
+    reset() { const m = map(); for (const k of Object.keys(m)) delete m[k]; persist(); },
+  };
 }
 
-function createLayout(cls, viewId) {
-  /** @type {Record<string, {span:number, order:number}>} */
-  const map = $state(loadLayout(cls, viewId));
+// ---- cell metrics and scale ---------------------------------------------------
 
-  function persist() {
-    saveLayout(cls, viewId, { ...map });
+let wanted = G.loadScale(ls);
+
+/** Live metrics: `cell` is the CSS px edge, `scale` the applied step, `steps` the allowed ones. */
+export const grid = $state({ cell: G.CELL_DEVICE_PX, scale: 1, steps: [1] });
+
+let baseS = NaN;
+function refresh() {
+  const root = document.documentElement;
+  if (!Number.isFinite(baseS)) {
+    root.style.removeProperty('--s');
+    baseS = parseFloat(getComputedStyle(root).getPropertyValue('--s'));
   }
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const steps = G.allowedSteps({ coarse, viewportPx: window.innerWidth });
+  const s = G.clampScale(wanted, steps);
+  if (s === 1 || !Number.isFinite(baseS)) root.style.removeProperty('--s');
+  else root.style.setProperty('--s', String(baseS * s));
+  grid.steps = steps;
+  grid.scale = s;
+  grid.cell = G.cellCssPx(G.CELL_DEVICE_PX, window.devicePixelRatio || 1, s);
+}
 
-  function nextOrder() {
-    let max = -1;
-    for (const k in map) {
-      if (map[k] && Number.isFinite(map[k].order) && map[k].order > max) max = map[k].order;
-    }
-    return max + 1;
-  }
+/** Step the scale up (1) or down (-1), or reset it (0). Persisted as the wish; the clamp re-applies per window. */
+export function stepScale(dir) {
+  wanted = dir === 0 ? 1 : G.stepScale(grid.scale, dir, grid.steps);
+  G.saveScale(ls, wanted);
+  refresh();
+}
 
-  /**
-   * Merge the caller's live `items` with the saved map into a sorted,
-   * fully-specified render list: [{id, title, snippet, span, order}, ...].
-   *
-   * PURE — never writes to `map`. Safe to call from a $derived on every
-   * render; the "give unknown ids a default and append them" behavior
-   * described above happens here at read time rather than by mutating
-   * storage, so merely *looking* at a layout never persists anything.
-   */
-  function arrange(items) {
-    let maxOrder = -1;
-    for (const it of items) {
-      const e = map[it.id];
-      if (e && Number.isFinite(e.order) && e.order > maxOrder) maxOrder = e.order;
-    }
-    const out = items.map((it) => {
-      const e = map[it.id];
-      if (e) return { ...it, span: clampSpan(e.span ?? DEFAULT_SPAN), order: e.order };
-      maxOrder += 1;
-      return { ...it, span: DEFAULT_SPAN, order: maxOrder };
-    });
-    out.sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id));
-    return out;
-  }
-
-  /** Set one item's column span (clamped 1..12), persisted immediately. */
-  function setSpan(id, span) {
-    const cur = map[id];
-    map[id] = { span: clampSpan(span), order: cur ? cur.order : nextOrder() };
-    persist();
-  }
-
-  /**
-   * Commit a full new ordering: an array of item ids, first = position 0.
-   * Spans are preserved for ids already in the map; ids seen for the first
-   * time (still on their default position) get DEFAULT_SPAN. Used by both
-   * pointer-drag drop and keyboard reorder — the only two places an order
-   * actually changes.
-   */
-  function commitOrder(orderedIds) {
-    orderedIds.forEach((id, i) => {
-      const cur = map[id];
-      map[id] = { span: cur ? cur.span : DEFAULT_SPAN, order: i };
-    });
-    persist();
-  }
-
-  /**
-   * Clear this view's saved layout — the "reset layout" affordance. Persists
-   * an EMPTY map rather than removing the key, so the legacy fallback above
-   * cannot resurrect the layout the operator just reset.
-   */
-  function reset() {
-    for (const k of Object.keys(map)) delete map[k];
-    persist();
-  }
-
-  return { arrange, setSpan, commitOrder, reset };
+if (hasWindow) {
+  // After the module graph, so style.css (imported after App in main.js) is live.
+  queueMicrotask(refresh);
+  window.addEventListener('resize', refresh);
+  window.matchMedia?.('(pointer: coarse)').addEventListener?.('change', refresh);
+  // A DPR change (monitor move, browser zoom) does not always fire resize.
+  const watchDpr = () => window.matchMedia?.('(resolution: ' + window.devicePixelRatio + 'dppx)')
+    .addEventListener?.('change', () => { refresh(); watchDpr(); }, { once: true });
+  watchDpr();
 }

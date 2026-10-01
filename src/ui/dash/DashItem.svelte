@@ -15,40 +15,29 @@
    * scoped to the two handles alone so the page still scrolls normally on a
    * phone when you touch anywhere else on a card.
    *
-   * Resize is self-contained: on resize-start this measures its OWN rendered
-   * width (which equals the grid cell's content width) and divides by the
-   * current span to get a per-column pixel size, then reports whole-column
-   * deltas as the pointer moves. DashGrid never has to hand this component
-   * grid metrics.
+   * Both handles report raw client positions; DashGrid alone maps them to
+   * cells, because only it knows the grid's tracks.
    */
   let {
     item,
-    span,
+    w,
+    h,
     // 1-based display-order position, zero-padded ("01", "02"...), supplied
     // by DashGrid from the arranged list — absent for any caller that omits
     // it, which renders the plain unnumbered prefix instead.
     pidx = null,
     dragging = false,
     editing = false,
+    stack = false,
     ongrabstart,
     ongrabmove,
     ongrabend,
     onresizestart,
-    onresizepreview,
+    onresizemove,
     onresizeend,
     onkeymove,
     onkeyresize,
   } = $props();
-
-  let rootEl;
-  let resizing = $state(false);
-  let colPx = 0;
-  let resizeStartX = 0;
-  let resizeStartSpan = 1;
-
-  function clamp(n) {
-    return Math.min(12, Math.max(1, n));
-  }
 
   // ---- grab handle: drag to reorder --------------------------------------
   function onGrabPointerDown(e) {
@@ -70,48 +59,39 @@
     const key = e.key;
     if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
     e.preventDefault();
-    if (e.shiftKey) {
-      onkeyresize && onkeyresize(key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1);
-    } else {
-      onkeymove && onkeymove(key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1);
-    }
+    const d = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
+    const horiz = key === 'ArrowLeft' || key === 'ArrowRight';
+    if (e.shiftKey) onkeyresize && onkeyresize(horiz ? d : 0, horiz ? 0 : d);
+    else onkeymove && onkeymove(horiz ? d : 0, horiz ? 0 : d);
   }
 
-  // ---- resize handle: drag a corner to change span -----------------------
+  // ---- resize handle: drag the corner to change w x h -------------------
   function onResizePointerDown(e) {
     if (e.button !== undefined && e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const rect = rootEl.getBoundingClientRect();
-    colPx = rect.width / Math.max(1, span);
-    resizeStartX = e.clientX;
-    resizeStartSpan = span;
-    resizing = true;
     onresizestart && onresizestart();
   }
   function onResizePointerMove(e) {
-    if (!resizing || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const deltaCols = colPx > 0 ? Math.round((e.clientX - resizeStartX) / colPx) : 0;
-    onresizepreview && onresizepreview(clamp(resizeStartSpan + deltaCols));
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    onresizemove && onresizemove(e.clientX, e.clientY);
   }
   function onResizePointerUp(e) {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    if (resizing) {
-      const deltaCols = colPx > 0 ? Math.round((e.clientX - resizeStartX) / colPx) : 0;
-      resizing = false;
-      onresizeend && onresizeend(clamp(resizeStartSpan + deltaCols));
-    }
+    onresizeend && onresizeend();
   }
   function onResizeKeyDown(e) {
     const key = e.key;
-    if (key !== 'ArrowLeft' && key !== 'ArrowRight') return;
+    if (!key.startsWith('Arrow')) return;
     e.preventDefault();
-    onkeyresize && onkeyresize(key === 'ArrowLeft' ? -1 : 1);
+    const d = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
+    const horiz = key === 'ArrowLeft' || key === 'ArrowRight';
+    onkeyresize && onkeyresize(horiz ? d : 0, horiz ? 0 : d);
   }
 </script>
 
-<div class="dash-item og-panel" class:dragging class:editing bind:this={rootEl}>
+<div class="dash-item og-panel" class:dragging class:editing>
   <div class="dash-head card-head">
     <!-- Handles are edit-mode-only: the reading surface stays quiet and a
          card's own controls never compete with layout chrome. -->
@@ -144,9 +124,9 @@
     {@render item.snippet(item)}
   </div>
 
-  {#if editing}
+  {#if editing && !stack}
     <button type="button" class="handle resize"
-            aria-label={'Resize ' + item.title + ' — currently ' + span + ' of 12 columns. Arrow keys shrink or grow it.'}
+            aria-label={'Resize ' + item.title + ', currently ' + w + ' by ' + h + ' cells. Arrow keys shrink or grow it.'}
             title="Drag to resize — arrow keys shrink/grow"
             onpointerdown={onResizePointerDown}
             onpointermove={onResizePointerMove}
@@ -163,9 +143,11 @@
 <style>
   /* Chrome (background, inner border, outer bracket outline) comes from the
      .og-panel utility in style.css — restating it here would fork the recipe. */
+  /* Fills its grid area, so a resize in cells is a visible resize. */
   .dash-item {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-width: 0;
   }
   .dash-item.dragging {
@@ -275,11 +257,5 @@
   .handle.resize svg {
     width: 9px;
     height: 9px;
-  }
-
-  /* Span is a desktop/tablet concept — on a phone every item is forced full
-     width by DashGrid, so resizing has nothing to do. */
-  @media (max-width: 640px) {
-    .handle.resize { display: none; }
   }
 </style>

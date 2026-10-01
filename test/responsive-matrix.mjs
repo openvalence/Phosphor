@@ -34,9 +34,11 @@
  *            subgroup screen replaces it, the page passes the layout checks
  *   class    a renderer-class switch keeps the active tab and a write in
  *            flight, and waits for a held pointer (RFC-062 draft)
+ *   scale    no horizontal page scroll at any scale step; the target floor
+ *            holds at the smallest scale on phones (ph-e82.3, law 12)
  *
  * Build first (`npm run build:only`); this builds nothing.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|scale] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -47,6 +49,7 @@ import { join, resolve } from 'node:path';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS } from '../../Valence/clients/js/frames.js';
+import { SCALE_STEPS, SCALE_KEY } from '../src/model/grid.js';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
@@ -595,6 +598,53 @@ if (!ONLY || ONLY === 'glance') {
   }
   scen('found a promoted subgroup to open', drilled);
   await ctx.close();
+}
+
+// ---- scale (ph-e82.3): one context per (viewport, wished step); the wish is
+// stored before boot, the model clamps it, every tab is checked at the
+// applied step.
+if (!ONLY || ONLY === 'scale') {
+  console.log('\nscale scenarios');
+  async function atScale(w, h, coarse, step, check) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: coarse });
+    await ctx.addInitScript(([etag, bytes, k, v]) => {
+      try { localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); localStorage.setItem(k, v); } catch (e) { /* none */ }
+    }, [ETAG, toHex(CAT), SCALE_KEY, String(step)]);
+    await ctx.routeWebSocket(/:82\//, fakeHub);
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => pageErrors.push('scale: ' + e));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
+    await page.waitForSelector(tabSel, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const applied = await page.$eval('.scale [aria-label="Reset scale"]', (e) => e.textContent.trim()).catch(() => '?');
+    const out = [];
+    for (let i = 0; i < await page.locator(tabSel).count(); i++) {
+      await page.locator(tabSel).nth(i).click();
+      await page.waitForTimeout(200);
+      for (const f of await check(page)) out.push(f);
+    }
+    await ctx.close();
+    return { applied, out };
+  }
+  const overflow = (page) => page.evaluate(() => {
+    const sw = document.scrollingElement.scrollWidth;
+    return sw > innerWidth + 0.5 ? ['scrollWidth ' + sw + ' > ' + innerWidth] : [];
+  });
+  for (const [w, h, coarse] of [[360, 800, true], [1280, 720, false], [3840, 2160, false]]) {
+    const bad = [];
+    for (const step of SCALE_STEPS) {
+      const r = await atScale(w, h, coarse, step, overflow);
+      if (r.out.length) bad.push(step + ' (applied ' + r.applied + '): ' + r.out[0]);
+    }
+    scen(w + 'x' + h + ': no horizontal page scroll at any scale step', bad.length === 0, bad.join('; '));
+  }
+  for (const [w, h] of [[320, 568], [360, 800], [390, 844]]) {
+    const r = await atScale(w, h, true, SCALE_STEPS[0], async (page) =>
+      (await page.evaluate(measure, { phone: true, coarse: true })).filter(([k]) => k === 'target').map(([, d]) => d));
+    scen(w + 'x' + h + ': the smallest scale clamps (' + r.applied + ') and the target floor holds',
+      r.applied !== Math.round(SCALE_STEPS[0] * 100) + '%' && r.out.length === 0, [...new Set(r.out)].slice(0, 4).join('; '));
+  }
 }
 
 await browser.close();

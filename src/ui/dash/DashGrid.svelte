@@ -1,210 +1,220 @@
 <script>
   /**
-   * DashGrid.svelte — the dashboard container: a 12-column grid that arranges
-   * caller-supplied items and lets the operator drag to reorder, drag a
-   * corner to resize, or do either from the keyboard.
+   * DashGrid.svelte -- the builder grid: square device-px cells (DESIGN §10.5),
+   * items placed at {x, y, w, h} in cells, named layouts and the scale
+   * control (§10.6). Math and storage: model/grid.js via
+   * model/dashboard.svelte.js.
    *
-   * Contract (see model/dashboard.svelte.js for the persistence half):
-   *   <DashGrid viewId="cat2" items={items} />
-   * `items`: [{ id, title, snippet }], `id` a STABLE string (never an index),
-   * `snippet` a Svelte 5 snippet rendered as the item body.
+   * Contract: <DashGrid viewId="cat2" items={items} />, `items` [{id, title,
+   * snippet}], `id` a STABLE string (law 10), `snippet` rendered as the body.
    *
-   * This component owns the interaction choreography; DashItem only reports
-   * raw pointer positions / key presses for the item IT is attached to, and
-   * everything here is keyed by item id so a machine swap can never scramble
-   * which callback affects which widget.
-   *
-   * Drag preview vs. commit: while a drag or resize is in flight, the visual
-   * order/span lives in local, ephemeral state (previewIds / resizePreviewSpan)
-   * — nothing is written to the persisted layout until pointer-up. That keeps
-   * every intermediate frame of a drag purely cosmetic and trivially
-   * cancelable, and it means layout.arrange() (the persisted source of
-   * truth) never needs to know a drag is happening.
+   * Constraints:
+   * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
+   *   writes the layout, so every intermediate frame is cancelable.
+   * - Rows are minmax(cell, auto): `h` is a floor, and a card whose content
+   *   is taller grows its rows rather than clipping a control.
+   * - Under 641 CSS px every item is stacked full width (mobile is
+   *   ph-e82.7's ruling); a drag there commits a reading order, never cells.
    */
   import DashItem from './DashItem.svelte';
-  import { dashboardLayout } from '../../model/dashboard.svelte.js';
+  import {
+    dashboardLayout, grid, stepScale, layouts, layoutNames,
+    switchLayout, saveLayoutAs, renameLayout, deleteLayout,
+  } from '../../model/dashboard.svelte.js';
+  import { cellCount } from '../../model/grid.js';
   import { view } from '../../model/viewport.svelte.js';
 
   let { viewId, items } = $props();
 
-  // $derived (not a plain const) so a DashGrid instance whose `viewId` prop
-  // changes in place — e.g. a caller that swaps tabs without remounting —
-  // picks up the right view's saved layout instead of freezing on whichever
-  // viewId it first mounted with.
-  // Per renderer class too (RFC-062 draft item 7): a class switch swaps in
-  // that class's own saved arrangement.
   const layout = $derived(dashboardLayout(viewId, view.cls));
-  const baseArranged = $derived(layout.arrange(items));
 
-  let dragId = $state(null);
-  let previewIds = $state(null);
-  let resizeId = $state(null);
-  let resizePreviewSpan = $state(null);
-  let announceMsg = $state('');
+  let width = $state(0);
+  let winW = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
+  const stack = $derived(winW <= 640);
+  const cols = $derived(cellCount(width, grid.cell));
+
+  let pin = $state(null);        // {id, x, y, w, h, mode} while a pointer drag is in flight
+  let stackOrder = $state(null); // ids while a stacked drag is in flight
   let editing = $state(false);
+  let announceMsg = $state('');
+  let nameDraft = $state('');
 
-  // What actually renders: the committed arrangement, overlaid with whatever
-  // drag/resize preview is currently in flight (if any).
+  const placed = $derived(layout.arrange(items, cols, pin && pin.mode !== 'stack' ? pin : null));
   const displayList = $derived.by(() => {
-    let list = baseArranged;
-    if (previewIds) {
-      const byId = new Map(baseArranged.map((it) => [it.id, it]));
-      list = previewIds.map((id) => byId.get(id)).filter(Boolean);
-    }
-    if (resizeId != null && resizePreviewSpan != null) {
-      list = list.map((it) => (it.id === resizeId ? { ...it, span: resizePreviewSpan } : it));
-    }
-    return list;
+    if (!stackOrder) return placed;
+    const byId = new Map(placed.map((p) => [p.id, p]));
+    return stackOrder.map((id) => byId.get(id)).filter(Boolean);
   });
 
-  // Plain (non-reactive) map of item id -> its cell element, kept only for
-  // pointer-position hit-testing during drag. Never read during render.
+  let gridEl;
   /** @type {Map<string, HTMLElement>} */
   const cellEls = new Map();
   function registerCell(node, id) {
     cellEls.set(id, node);
-    return {
-      destroy() {
-        if (cellEls.get(id) === node) cellEls.delete(id);
-      },
-    };
+    return { destroy() { if (cellEls.get(id) === node) cellEls.delete(id); } };
   }
 
-  function announce(msg) {
-    announceMsg = msg;
+  const announce = (msg) => { announceMsg = msg; };
+  const titleOf = (id) => (items.find((it) => it.id === id) || {}).title || id;
+  const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
+
+  /** Client point -> cell; rows past the grid's end are cell-sized. */
+  function cellAt(clientX, clientY) {
+    const r = gridEl.getBoundingClientRect();
+    const x = Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left) / grid.cell)));
+    const tracks = getComputedStyle(gridEl).gridTemplateRows.split(' ').map(parseFloat).filter(Number.isFinite);
+    let y = 0, top = r.top;
+    for (; y < tracks.length && clientY >= top + tracks[y]; y++) top += tracks[y];
+    if (y === tracks.length) y += Math.max(0, Math.floor((clientY - top) / grid.cell));
+    return { x, y };
   }
 
-  // ---- drag-to-reorder ----------------------------------------------------
-  function dragStart(id) {
-    dragId = id;
-    previewIds = baseArranged.map((it) => it.id);
+  // ---- pointer: move / resize ------------------------------------------------
+  function grabStart(id) {
+    if (stack) { stackOrder = placed.map((p) => p.id); pin = { id, mode: 'stack' }; return; }
+    const p = placed.find((q) => q.id === id);
+    if (p) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move' };
   }
-  function dragMove(id, clientX, clientY) {
-    if (dragId !== id || !previewIds) return;
-    let hit = null;
-    for (const [otherId, el] of cellEls) {
-      if (otherId === id) continue;
-      const r = el.getBoundingClientRect();
-      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-        hit = { id: otherId, before: clientX < r.left + r.width / 2 };
-        break;
-      }
-    }
-    if (!hit) return;
-    const ids = previewIds.filter((x) => x !== id);
-    let idx = ids.indexOf(hit.id);
-    if (idx < 0) return;
-    if (!hit.before) idx += 1;
-    ids.splice(idx, 0, id);
-    previewIds = ids;
-  }
-  function dragEnd(id) {
-    if (dragId === id && previewIds) {
-      layout.commitOrder(previewIds);
-      const idx = previewIds.indexOf(id);
-      const it = baseArranged.find((x) => x.id === id);
-      if (it && idx >= 0) announce(it.title + ' moved to position ' + (idx + 1) + ' of ' + previewIds.length);
-    }
-    dragId = null;
-    previewIds = null;
-  }
-
-  // ---- drag-to-resize -------------------------------------------------------
   function resizeStart(id) {
-    resizeId = id;
+    const p = placed.find((q) => q.id === id);
+    if (p && !stack) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize' };
   }
-  function resizePreview(id, span) {
-    if (resizeId === id) resizePreviewSpan = span;
-  }
-  function resizeEnd(id, span) {
-    if (resizeId === id) {
-      layout.setSpan(id, span);
-      const it = baseArranged.find((x) => x.id === id);
-      if (it) announce(it.title + ' resized to ' + span + ' of 12 columns');
+  function pointerMove(id, clientX, clientY) {
+    if (!pin || pin.id !== id) return;
+    if (pin.mode === 'stack') {
+      for (const [other, el] of cellEls) {
+        if (other === id) continue;
+        const r = el.getBoundingClientRect();
+        if (clientY < r.top || clientY > r.bottom) continue;
+        const ids = stackOrder.filter((x) => x !== id);
+        ids.splice(ids.indexOf(other) + (clientY < r.top + r.height / 2 ? 0 : 1), 0, id);
+        stackOrder = ids;
+        return;
+      }
+      return;
     }
-    resizeId = null;
-    resizePreviewSpan = null;
+    const c = cellAt(clientX, clientY);
+    pin = pin.mode === 'move'
+      ? { ...pin, x: c.x, y: c.y }
+      : { ...pin, w: Math.max(1, c.x - pin.x + 1), h: Math.max(1, c.y - pin.y + 1) };
+  }
+  function pointerEnd(id) {
+    if (!pin || pin.id !== id) return;
+    if (pin.mode === 'stack') {
+      layout.order(items, cols, stackOrder);
+      announce(titleOf(id) + ' moved to position ' + (stackOrder.indexOf(id) + 1) + ' of ' + stackOrder.length);
+    } else {
+      layout.move(items, cols, pin);
+      const p = layout.arrange(items, cols).find((q) => q.id === id);
+      if (p) announce(titleOf(id) + ' at ' + where(p));
+    }
+    pin = null;
+    stackOrder = null;
   }
 
-  // ---- keyboard move / resize ----------------------------------------------
-  function keyMove(id, dir) {
-    const ids = baseArranged.map((it) => it.id);
-    const idx = ids.indexOf(id);
-    if (idx < 0) return;
-    const to = idx + dir;
-    if (to < 0 || to >= ids.length) return;
-    const next = ids.slice();
-    [next[idx], next[to]] = [next[to], next[idx]];
-    layout.commitOrder(next);
-    const it = baseArranged.find((x) => x.id === id);
-    if (it) announce(it.title + ' moved to position ' + (to + 1) + ' of ' + next.length);
+  // ---- keyboard ------------------------------------------------------------------
+  // Up/Down walk the reading order (parity with the old reorder); Left/Right
+  // step one cell; shift + arrows resize.
+  function keyMove(id, dx, dy) {
+    const ids = placed.map((p) => p.id);
+    const i = ids.indexOf(id);
+    if (i < 0) return;
+    if (dy) {
+      const to = i + dy;
+      if (to < 0 || to >= ids.length) return;
+      [ids[i], ids[to]] = [ids[to], ids[i]];
+      layout.order(items, cols, ids);
+      announce(titleOf(id) + ' moved to position ' + (to + 1) + ' of ' + ids.length);
+    } else if (!stack) {
+      const p = placed[i];
+      layout.move(items, cols, { id, x: p.x + dx, y: p.y, w: p.w, h: p.h });
+      const q = layout.arrange(items, cols).find((r) => r.id === id);
+      if (q) announce(titleOf(id) + ' at ' + where(q));
+    }
   }
-  function keyResize(id, delta) {
-    const it = baseArranged.find((x) => x.id === id);
-    if (!it) return;
-    const next = Math.min(12, Math.max(1, it.span + delta));
-    layout.setSpan(id, next);
-    announce(it.title + ' resized to ' + next + ' of 12 columns');
+  function keyResize(id, dw, dh) {
+    const p = placed.find((q) => q.id === id);
+    if (!p || stack) return;
+    layout.move(items, cols, { id, x: p.x, y: p.y, w: Math.max(1, p.w + dw), h: Math.max(1, p.h + dh) });
+    const q = layout.arrange(items, cols).find((r) => r.id === id);
+    if (q) announce(titleOf(id) + ' resized to ' + q.w + ' by ' + q.h + ' cells');
   }
 
+  // ---- toolbar -------------------------------------------------------------------
   function resetLayout() {
     layout.reset();
-    dragId = null;
-    previewIds = null;
-    resizeId = null;
-    resizePreviewSpan = null;
+    pin = null;
+    stackOrder = null;
     announce('Layout reset to default');
   }
-
-  function enterEditing() {
-    editing = true;
-    announce('Layout edit mode on');
+  function setEditing(on) {
+    editing = on;
+    pin = null;
+    stackOrder = null;
+    announce('Layout edit mode ' + (on ? 'on' : 'off'));
   }
-  function doneEditing() {
-    editing = false;
-    dragId = null;
-    previewIds = null;
-    resizeId = null;
-    resizePreviewSpan = null;
-    announce('Layout edit mode off');
+  function nameOp(fn, ok, fail) {
+    if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
 </script>
 
+<svelte:window onresize={() => (winW = window.innerWidth)} />
+
 <div class="dash-wrap">
   <div class="dash-toolbar">
+    <div class="scale" role="group" aria-label="Scale">
+      <button type="button" class="og-btn sm" aria-label="Scale down"
+              disabled={grid.scale === grid.steps[0]} onclick={() => stepScale(-1)}>−</button>
+      <button type="button" class="og-btn sm" aria-label="Reset scale"
+              title="Reset scale" onclick={() => stepScale(0)}>{Math.round(grid.scale * 100)}%</button>
+      <button type="button" class="og-btn sm" aria-label="Scale up"
+              disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
+    </div>
     {#if editing}
-      <button type="button" class="reset-btn og-btn sm" onclick={resetLayout}>Reset layout</button>
-      <button type="button" class="reset-btn done-btn og-btn sm" onclick={doneEditing}>Done</button>
+      <select class="layout-pick" aria-label="Layout" value={layouts.active}
+              onchange={(e) => switchLayout(e.currentTarget.value) && announce('Layout ' + layouts.active)}>
+        {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
+      </select>
+      <input class="layout-name" type="text" aria-label="Layout name" placeholder="Layout name" bind:value={nameDraft} />
+      <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
+              onclick={() => nameOp(saveLayoutAs, 'Saved layout', 'That name is taken')}>Save as</button>
+      <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
+              onclick={() => nameOp((n) => renameLayout(layouts.active, n), 'Renamed to', 'That name is taken')}>Rename</button>
+      <button type="button" class="og-btn sm" disabled={layoutNames().length < 2}
+              onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
+      <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
+      <button type="button" class="done-btn og-btn sm" onclick={() => setEditing(false)}>Done</button>
     {:else}
-      <button type="button" class="reset-btn og-btn sm" onclick={enterEditing}>Edit layout</button>
+      <button type="button" class="og-btn sm" onclick={() => setEditing(true)}>Edit layout</button>
     {/if}
   </div>
 
-  <div class="dash-grid">
+  <div class="dash-grid" class:stack bind:this={gridEl} bind:clientWidth={width}
+       style={'--cell:' + grid.cell + 'px;--cols:' + cols}>
     {#each displayList as item, i (item.id)}
-      <div class="dash-cell" data-id={item.id} style={'--span:' + item.span} use:registerCell={item.id}>
+      <div class="dash-cell" data-id={item.id} use:registerCell={item.id}
+           style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
         <DashItem
           {item}
-          span={item.span}
+          w={item.w}
+          h={item.h}
           pidx={String(i + 1).padStart(2, '0')}
-          editing={editing}
-          dragging={dragId === item.id}
-          ongrabstart={() => dragStart(item.id)}
-          ongrabmove={(x, y) => dragMove(item.id, x, y)}
-          ongrabend={() => dragEnd(item.id)}
+          {editing}
+          {stack}
+          dragging={pin?.id === item.id}
+          ongrabstart={() => grabStart(item.id)}
+          ongrabmove={(x, y) => pointerMove(item.id, x, y)}
+          ongrabend={() => pointerEnd(item.id)}
           onresizestart={() => resizeStart(item.id)}
-          onresizepreview={(s) => resizePreview(item.id, s)}
-          onresizeend={(s) => resizeEnd(item.id, s)}
-          onkeymove={(dir) => keyMove(item.id, dir)}
-          onkeyresize={(delta) => keyResize(item.id, delta)}
+          onresizemove={(x, y) => pointerMove(item.id, x, y)}
+          onresizeend={() => pointerEnd(item.id)}
+          onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
+          onkeyresize={(dw, dh) => keyResize(item.id, dw, dh)}
         />
       </div>
     {/each}
   </div>
 
-  <!-- Keyboard reorder/resize is the only interaction that needs an explicit
-       announcement — pointer drags are already visible to a sighted operator
-       watching the live preview. -->
   <div class="sr-only" aria-live="polite">{announceMsg}</div>
 </div>
 
@@ -217,39 +227,44 @@
 
   .dash-toolbar {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    align-items: center;
     gap: 6px;
   }
-  /* Base chrome (border, padding, font) comes from .og-btn.sm — only the
-     Done state's distinguishing color is layered on top here. */
+  .scale { display: flex; gap: 2px; margin-right: auto; }
+  .scale button { min-width: 40px; font-variant-numeric: tabular-nums; }
+  .layout-pick { width: auto; }
+  .layout-name {
+    width: 12em;
+    padding: 6px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--tx);
+    font: inherit;
+    font-size: .82rem;
+  }
   .done-btn {
     color: var(--ink-hi);
     border-color: var(--line-4);
   }
 
+  /* Tracks are exactly one cell; the spacing lives inside .dash-cell so the
+     cell pitch IS the cell edge (test/dash-measure.test.mjs measures it). */
   .dash-grid {
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    /* .og-panel's outer outline paints 4px OUTSIDE each card's border box
-       (outline-offset), so the grid needs room on both axes: a gap wide
-       enough that neighboring outlines never touch, and edge padding so
-       outlines on the outermost row/column never clip against this
-       container. */
-    gap: max(var(--gap), 14px);
-    padding: 5px;
-    align-items: start;
-  }
-
-  .dash-cell {
-    grid-column: span var(--span, 12);
+    grid-template-columns: repeat(var(--cols), var(--cell));
+    grid-auto-rows: minmax(var(--cell), auto);
     min-width: 0;
   }
+  .dash-grid.stack { grid-template-columns: minmax(0, 1fr); }
 
-  /* Phone: every item forced full width. A 3-column layout on a 360px
-     screen is unusable, so saved spans are deliberately ignored here — only
-     the grid-column changes; reordering (position in the DOM) still applies. */
-  @media (max-width: 640px) {
-    .dash-cell { grid-column: 1 / -1; }
+  /* .og-panel's outline paints 4px outside each card's border box; 7px of
+     padding keeps neighboring outlines apart and off the grid's edge. */
+  .dash-cell {
+    padding: 7px;
+    min-width: 0;
   }
 
   .sr-only {
@@ -263,8 +278,4 @@
     white-space: nowrap;
     border: 0;
   }
-
-  /* Reduced motion: style.css already forces `* { transition: none !important }`
-     globally under prefers-reduced-motion, which covers every transition this
-     component or DashItem might use — no local overrides needed here. */
 </style>

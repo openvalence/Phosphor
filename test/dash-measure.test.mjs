@@ -2,9 +2,12 @@
  * dash-measure.test.mjs -- is a dashboard card's content column readable?
  *
  * The operator's report: "cards too wide to track left-to-right at 1440px."
- * DashGrid arranges 12 columns and dashboard.svelte.js's DEFAULT_SPAN is 12,
- * so a settings card is FULL WIDTH by default and its `.card-body` column is
- * whatever the pane happens to be.
+ * A settings card is DEFAULT_W cells wide (model/grid.js), the full pane at
+ * these widths, so its `.card-body` column is whatever the pane happens to be.
+ *
+ * Second half (ph-e82.3): the grid's cell edge, measured from the rendered
+ * track at deviceScaleFactor 1.25 and 2, is CELL_DEVICE_PX device px, and the
+ * scale control multiplies it.
  *
  * No device is needed and none is used: this reads the `.card-body` rule out
  * of the shipped stylesheet, applies it to a probe element at the pane widths
@@ -20,6 +23,40 @@
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { CELL_DEVICE_PX, SCALE_KEY } from '../src/model/grid.js';
+import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
+
+const CAT = readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)).toString('hex');
+const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+
+// The same fake hub test/a11y-basics.test.mjs boots against: WELCOME with the
+// fixture etag (the catalog is pre-seeded in the cache), GRANT whatever is asked.
+function fakeHub(ws) {
+  const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
+  ws.onMessage((msg) => {
+    if (typeof msg === 'string') return;
+    for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
+      if (header.type === FRAME.HELLO) {
+        send(FRAME.WELCOME, 0, cbMap([
+          [K.session_id, cbUint(7)], [K.boot_id, cbUint(0x5eed)],
+          [K.catalog_etag, cbBstr(Uint8Array.from(Buffer.from(ETAG, 'hex')))], [K.cfg_gen, cbUint(1)],
+          [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
+            [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
+          [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
+          [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
+            [IDENTITY_K.hub_name, cbTstr('dash fixture')]])],
+        ]));
+      } else if (header.type === FRAME.SUBSCRIBE) {
+        const grants = (cbDecodeFull(payload).get(K.subscriptions) || []).map((w) => cbMap([[K.priority, cbUint(w.get(K.priority) || 0)],
+          [K.granted_rate_hz, cbUint(w.get(K.rate_hz) || 0)], [K.channel_id, cbUint(w.get(K.channel_id))]]));
+        send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+      } else if (header.type === FRAME.PING) {
+        send(FRAME.PONG, header.channel, payload);
+      }
+    }
+  });
+}
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const srv = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(HTML); });
@@ -112,6 +149,29 @@ const narrow = await page.evaluate((tpl) => {
 }, res.tpl);
 ok('a 300px card is one column and does not overflow', narrow.n === 1 && narrow.w <= 300.5,
    narrow.n + ' x ' + narrow.w.toFixed(0) + 'px');
+
+// ---- the cell edge in device px ------------------------------------------
+for (const [dpr, scale] of [[1.25, 1], [2, 1], [1.25, 1.25]]) {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr });
+  await ctx.addInitScript(([k, v, etag, bytes]) => {
+    try { localStorage.setItem(k, v); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* none */ }
+  }, [SCALE_KEY, String(scale), ETAG, CAT]);
+  await ctx.routeWebSocket(/:82\//, fakeHub);
+  const pg = await ctx.newPage();
+  await pg.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await pg.waitForSelector('.dash-grid', { timeout: 15000 });
+  await pg.waitForTimeout(300);
+  const m = await pg.evaluate(() => {
+    const g = document.querySelector('.dash-grid');
+    const tracks = getComputedStyle(g).gridTemplateColumns.split(' ').map(parseFloat);
+    return { track: tracks[0], n: tracks.length, width: g.clientWidth, dpr: devicePixelRatio };
+  });
+  const want = Math.round(CELL_DEVICE_PX * scale);
+  ok('DPR ' + dpr + ' scale ' + scale + ': cell edge is ' + want + ' device px',
+     Math.abs(m.track * m.dpr - want) < 0.05, (m.track * m.dpr).toFixed(2) + ' device px, ' + m.n + ' cells in ' + m.width + ' CSS px');
+  ok('DPR ' + dpr + ' scale ' + scale + ': cell count follows the grid width', m.n === Math.floor(m.width / m.track + 1e-6));
+  await ctx.close();
+}
 
 await browser.close();
 srv.close();
