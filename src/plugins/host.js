@@ -148,8 +148,16 @@ export function createPluginHost(deps) {
         if (def.cells != null && !(cellPair(def.cells.h) && cellPair(def.cells.v))) {
           throw new Error('registerHero: cells must be {h: [w, h], v: [w, h]} in whole grid cells');
         }
-        rec.heroes.push({ def, failed: false });
+        const slot = { def, failed: false };
+        rec.heroes.push(slot);
         if (rec.status === 'active') changed();
+        // Withdraw this hero (a device that went away); its placement key stays inert.
+        return () => {
+          const i = rec.heroes.indexOf(slot);
+          if (i < 0) return;
+          rec.heroes.splice(i, 1);
+          changed();
+        };
       },
       registerSettings: (mount) => {
         if (typeof mount !== 'function') throw new Error('registerSettings needs a mount function');

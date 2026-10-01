@@ -28,6 +28,18 @@ pub fn run() {
       buttplug::bp_devices,
       #[cfg(desktop)]
       buttplug::bp_machine_present,
+      #[cfg(desktop)]
+      buttplug::bp_toy_scalar,
+      #[cfg(desktop)]
+      buttplug::bp_toy_linear,
+      #[cfg(desktop)]
+      buttplug::bp_toy_rotate,
+      #[cfg(desktop)]
+      buttplug::bp_toy_stop,
+      #[cfg(desktop)]
+      buttplug::bp_toy_read,
+      #[cfg(desktop)]
+      buttplug::bp_stop_all,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -15,6 +15,11 @@
 //   so machine stops are read off the client message stream in serve().
 // - Every command is async: buttplug spawns on the ambient tokio runtime, and
 //   Tauri runs sync commands on the main thread, outside it.
+// - Toy commands (bp_toy_*) enter through `Run::op`, an in-process server over
+//   the same device manager, so they get upstream's range checks. They refuse
+//   the machine: it moves only through the intent path.
+// - Upstream's StopCmd ignores its device index and stops every device, so a
+//   one-toy stop is zero outputs, never a StopCmd (toy_stop).
 // See: docs/BUTTPLUG.md
 
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
@@ -24,8 +29,12 @@ use async_trait::async_trait;
 use buttplug_core::connector::ButtplugConnector;
 use buttplug_core::errors::ButtplugDeviceError;
 use buttplug_core::message::{
-  ButtplugClientMessageV4, ButtplugDeviceMessage, ButtplugServerMessageV4, DeviceListV4,
-  RequestDeviceListV0, StartScanningV0, StopScanningV0,
+  ButtplugClientMessageV4, ButtplugDeviceMessage, ButtplugMessageSpecVersion,
+  ButtplugServerMessageV4, DeviceFeature, DeviceFeatureInput, DeviceFeatureOutput, DeviceListV4,
+  DeviceMessageInfoV4,
+  InputCmdV4, InputCommandType, InputType, InputTypeReading, OutputCmdV4, OutputCommand,
+  OutputHwPositionWithDuration, OutputType, OutputValue, RequestDeviceListV0, RequestServerInfoV4,
+  StartScanningV0, StopCmdV4, StopScanningV0,
 };
 use buttplug_core::ButtplugResultFuture;
 use buttplug_server::connector::ButtplugRemoteServerConnector;
@@ -43,11 +52,12 @@ use buttplug_server::message::serializer::ButtplugServerJSONSerializer;
 use buttplug_server::message::spec_enums::ButtplugCheckedClientMessageV4;
 use buttplug_server::message::{
   ButtplugClientMessageV0, ButtplugClientMessageV1, ButtplugClientMessageV2,
-  ButtplugClientMessageV3, ButtplugClientMessageVariant,
+  ButtplugClientMessageV3, ButtplugClientMessageVariant, ButtplugServerMessageVariant,
 };
-use buttplug_server::ButtplugServerBuilder;
+use buttplug_server::{ButtplugServer, ButtplugServerBuilder};
 use buttplug_server_device_config::{
-  load_protocol_configs, Endpoint, ProtocolCommunicationSpecifier, WebsocketSpecifier,
+  load_protocol_configs, Endpoint, ProtocolCommunicationSpecifier, SimulatedDeviceConfigEntry,
+  WebsocketSpecifier,
 };
 use buttplug_transport_websocket_tungstenite::ButtplugWebsocketServerTransportBuilder;
 use futures::future::{self, BoxFuture, FutureExt};
@@ -79,10 +89,91 @@ pub struct Status {
 #[derive(Clone, Serialize)]
 pub struct Device {
   index: u32,
+  /// Stable across sessions (protocol plus address), for layout keys (law 10).
+  key: String,
   name: String,
   kind: &'static str,
   connected: bool,
   features: Vec<String>,
+  controls: Vec<ToyControl>,
+}
+
+/// One feature as a module control. `range` is in the steps the bp_toy_*
+/// command takes; `ms` is a linear feature's duration range.
+#[derive(Clone, Serialize)]
+pub struct ToyControl {
+  feature: u32,
+  description: String,
+  kind: &'static str,
+  #[serde(rename = "type")]
+  ty: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  range: Option<[i32; 2]>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  ms: Option<[i32; 2]>,
+}
+
+/// Outputs a plain step value drives, in upstream's stop-command order.
+const SCALAR: [OutputType; 7] = [
+  OutputType::Constrict,
+  OutputType::Temperature,
+  OutputType::Spray,
+  OutputType::Led,
+  OutputType::Oscillate,
+  OutputType::Vibrate,
+  OutputType::Position,
+];
+/// Inputs that answer a Read with a value (InputTypeReading).
+const READABLE: [InputType; 4] = [InputType::Battery, InputType::Rssi, InputType::Button, InputType::Pressure];
+
+/// The one output a feature's control drives: linear over rotate over scalar.
+fn output_of(f: &DeviceFeature) -> Option<(&'static str, OutputType)> {
+  if f.contains_output(OutputType::HwPositionWithDuration) {
+    return Some(("linear", OutputType::HwPositionWithDuration));
+  }
+  if f.contains_output(OutputType::Rotate) {
+    return Some(("rotate", OutputType::Rotate));
+  }
+  SCALAR.into_iter().find(|t| f.contains_output(*t)).map(|t| ("scalar", t))
+}
+
+fn readable(i: &DeviceFeatureInput) -> bool {
+  i.command().contains(InputCommandType::Read)
+}
+
+fn controls_of(f: &DeviceFeature) -> Vec<ToyControl> {
+  let mut out = Vec::new();
+  let control = |kind, ty: String, range, ms| ToyControl {
+    feature: f.feature_index(),
+    description: f.description().clone(),
+    kind,
+    ty,
+    range,
+    ms,
+  };
+  if let Some((kind, t)) = output_of(f) {
+    let r = f.get_output_limits(t).map(|l| l.step_limit()).map(|r| [r.start(), r.end()]);
+    let ms = match f.get_output(t) {
+      Some(DeviceFeatureOutput::HwPositionWithDuration(p)) => Some([p.duration().start(), p.duration().end()]),
+      _ => None,
+    };
+    out.push(control(kind, t.to_string(), r, ms));
+  }
+  for t in READABLE {
+    if f.get_input(t).is_some_and(readable) {
+      out.push(control("sensor", t.to_string(), None, None));
+    }
+  }
+  out
+}
+
+/// [a-z0-9-] only: the key lands inside a `hero:plugin:<name>:<id>` layout key.
+fn device_key(protocol: &str, address: &str) -> String {
+  format!("{protocol}-{address}")
+    .to_lowercase()
+    .chars()
+    .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+    .collect()
 }
 
 struct Shared {
@@ -140,6 +231,8 @@ impl Shared {
 
 struct Run {
   dm: Arc<ServerDeviceManager>,
+  /// Phosphor's own handshaken server over `dm`, for the bp_toy_* commands.
+  op: Arc<ButtplugServer>,
   tasks: Vec<JoinHandle<()>>,
 }
 
@@ -166,6 +259,12 @@ impl Buttplug {
   }
 
   pub async fn start(&self, port: u16) -> Result<(), String> {
+    self.start_with(port, vec![]).await
+  }
+
+  /// A non-empty `sim` replaces the real toy managers with upstream's
+  /// simulated devices (the tests' fake toys).
+  async fn start_with(&self, port: u16, sim: Vec<SimulatedDeviceConfigEntry>) -> Result<(), String> {
     if port == 0 {
       return Err("port 0 is not a listening port".into());
     }
@@ -174,18 +273,35 @@ impl Buttplug {
     // port is an error to the caller, not a line in the log.
     std::net::TcpListener::bind(("127.0.0.1", port))
       .map_err(|e| format!("127.0.0.1:{}: {}", port, e))?;
+    let real = sim.is_empty();
     let dcm = load_protocol_configs(&None, &None, false)
-      .and_then(|mut b| b.finish())
+      .and_then(|mut b| b.simulated_devices(sim).finish())
       .map_err(|e| e.to_string())?;
     let mut b = ServerDeviceManagerBuilder::new(dcm);
     b.comm_manager(MachineManagerBuilder(self.sh.clone()));
-    toy_managers(&mut b);
+    if real {
+      toy_managers(&mut b);
+    } else {
+      b.add_simulated_devices_if_configured();
+    }
+    b.emit_output_observations(true);
     let dm = Arc::new(b.finish().map_err(|e| e.to_string())?);
+    let op = Arc::new(
+      ButtplugServerBuilder::with_shared_device_manager(dm.clone())
+        .name(SERVER_NAME)
+        .finish()
+        .map_err(|e| e.to_string())?,
+    );
+    let rsi = RequestServerInfoV4::new(SERVER_NAME, ButtplugMessageSpecVersion::Version4, 0);
+    op.parse_message(ButtplugClientMessageVariant::V4(ButtplugClientMessageV4::RequestServerInfo(rsi)))
+      .await
+      .map_err(|e| format!("operator handshake: {:?}", e))?;
     let tasks = vec![
       tokio::spawn(watch_devices(dm.clone(), self.sh.clone())),
+      tokio::spawn(watch_outputs(dm.clone(), self.sh.clone())),
       tokio::spawn(serve(dm.clone(), port, self.sh.clone())),
     ];
-    *self.run.lock().await = Some(Run { dm, tasks });
+    *self.run.lock().await = Some(Run { dm, op, tasks });
     self.sh.port.store(port, Ordering::Relaxed);
     self.sh.running.store(true, Ordering::Relaxed);
     self.sh.emit_status();
@@ -247,6 +363,110 @@ impl Buttplug {
     }
   }
 
+  /// A toy as the device list reports it, with the operator server; the
+  /// machine is refused.
+  async fn toy(&self, index: u32) -> Result<(Arc<ButtplugServer>, DeviceMessageInfoV4), String> {
+    let (dm, op) = {
+      let run = self.run.lock().await;
+      let r = run.as_ref().ok_or("buttplug server is not running")?;
+      (r.dm.clone(), r.op.clone())
+    };
+    if is_machine(&dm, index) {
+      return Err(format!("device {index} is the machine; it moves only through the intent path"));
+    }
+    let msg = ButtplugCheckedClientMessageV4::RequestDeviceList(RequestDeviceListV0::default());
+    let Ok(ButtplugServerMessageV4::DeviceList(dl)) = dm.parse_message(msg).await else {
+      return Err("device list unavailable".into());
+    };
+    let d = dl.devices().get(&index).ok_or(format!("no device {index}"))?;
+    Ok((op, d.clone()))
+  }
+
+  async fn toy_feature(&self, index: u32, feature: u32) -> Result<(Arc<ButtplugServer>, DeviceFeature), String> {
+    let (op, d) = self.toy(index).await?;
+    let f = d.device_features().get(&feature).ok_or(format!("device {index} has no feature {feature}"))?;
+    Ok((op, f.clone()))
+  }
+
+  /// One OutputCmd through the operator server; resolves on the server's ack.
+  async fn toy_output(&self, index: u32, feature: u32, kind: &str, cmd: impl FnOnce(OutputType) -> OutputCommand) -> Result<(), String> {
+    let (op, f) = self.toy_feature(index, feature).await?;
+    match output_of(&f) {
+      Some((k, t)) if k == kind => {
+        let msg = ButtplugClientMessageV4::OutputCmd(OutputCmdV4::new(index, feature, cmd(t)));
+        op_call(&op, msg).await.map(|_| ())
+      }
+      _ => Err(format!("device {index} feature {feature} has no {kind} output")),
+    }
+  }
+
+  pub async fn toy_scalar(&self, index: u32, feature: u32, value: i32) -> Result<(), String> {
+    self
+      .toy_output(index, feature, "scalar", |t| {
+        OutputCommand::from_output_type(t, value).expect("SCALAR holds value outputs only")
+      })
+      .await
+  }
+
+  pub async fn toy_linear(&self, index: u32, feature: u32, position: u32, ms: u32) -> Result<(), String> {
+    self
+      .toy_output(index, feature, "linear", |_| {
+        OutputCommand::HwPositionWithDuration(OutputHwPositionWithDuration::new(position, ms))
+      })
+      .await
+  }
+
+  pub async fn toy_rotate(&self, index: u32, feature: u32, speed: i32) -> Result<(), String> {
+    self
+      .toy_output(index, feature, "rotate", |_| OutputCommand::Rotate(OutputValue::new(speed)))
+      .await
+  }
+
+  /// Zero every stoppable output on one toy (upstream's per-device stop set);
+  /// position outputs hold, as upstream's stop leaves them.
+  pub async fn toy_stop(&self, index: u32) -> Result<(), String> {
+    let (op, d) = self.toy(index).await?;
+    let mut errs = Vec::new();
+    for f in d.device_features().values() {
+      for t in [OutputType::Rotate].into_iter().chain(SCALAR) {
+        if t == OutputType::Position || !f.contains_output(t) {
+          continue;
+        }
+        let cmd = OutputCommand::from_output_type(t, 0).expect("value output");
+        let msg = ButtplugClientMessageV4::OutputCmd(OutputCmdV4::new(index, f.feature_index(), cmd));
+        if let Err(e) = op_call(&op, msg).await {
+          errs.push(format!("feature {} {t}: {e}", f.feature_index()));
+        }
+      }
+    }
+    if errs.is_empty() { Ok(()) } else { Err(errs.join("; ")) }
+  }
+
+  /// Every device's stop set, write-acknowledged upstream (bounded at 1 s).
+  pub async fn stop_all(&self) -> Result<(), String> {
+    let op = self.run.lock().await.as_ref().map(|r| r.op.clone()).ok_or("buttplug server is not running")?;
+    op_call(&op, ButtplugClientMessageV4::StopCmd(StopCmdV4::default())).await.map(|_| ())
+  }
+
+  /// One reading from a toy sensor (`input` is a type name, e.g. "Battery").
+  pub async fn toy_read(&self, index: u32, feature: u32, input: String) -> Result<i64, String> {
+    let (op, f) = self.toy_feature(index, feature).await?;
+    let t = READABLE
+      .into_iter()
+      .find(|t| t.to_string() == input && f.get_input(*t).is_some_and(readable))
+      .ok_or(format!("device {index} feature {feature} has no readable {input}"))?;
+    let msg = ButtplugClientMessageV4::InputCmd(InputCmdV4::new(index, feature, t, InputCommandType::Read));
+    match op_call(&op, msg).await? {
+      ButtplugServerMessageV4::InputReading(r) => Ok(match r.reading() {
+        InputTypeReading::Battery(v) => v.data().into(),
+        InputTypeReading::Rssi(v) => v.data().into(),
+        InputTypeReading::Button(v) => v.data().into(),
+        InputTypeReading::Pressure(v) => v.data().into(),
+      }),
+      other => Err(format!("unexpected reply {:?}", other)),
+    }
+  }
+
   pub fn machine_present(&self, present: bool) {
     if self.sh.present.swap(present, Ordering::Relaxed) == present {
       return;
@@ -285,12 +505,15 @@ fn device_list(dm: &ServerDeviceManager, dl: &DeviceListV4) -> Vec<Device> {
       }
       features.sort();
       features.dedup();
+      let id = dm.device_info(d.device_index()).map(|i| i.identifier().clone());
       Device {
         index: d.device_index(),
+        key: id.map_or_else(String::new, |i| device_key(i.protocol(), i.address())),
         name: d.device_display_name().clone().unwrap_or_else(|| d.device_name().clone()),
         kind: if is_machine(dm, d.device_index()) { "machine" } else { "toy" },
         connected: true,
         features,
+        controls: d.device_features().values().flat_map(controls_of).collect(),
       }
     })
     .collect();
@@ -322,6 +545,33 @@ fn stops_machine(msg: &ButtplugClientMessageVariant, dm: &ServerDeviceManager) -
     None => false,
     Some(None) => true,
     Some(Some(i)) => is_machine(dm, i),
+  }
+}
+
+/// One call into the operator server, its error reply as a string.
+async fn op_call(op: &ButtplugServer, msg: ButtplugClientMessageV4) -> Result<ButtplugServerMessageV4, String> {
+  match op.parse_message(ButtplugClientMessageVariant::V4(msg)).await {
+    Ok(ButtplugServerMessageVariant::V4(m)) => Ok(m),
+    Err(ButtplugServerMessageVariant::V4(ButtplugServerMessageV4::Error(e))) => Err(e.error_message().clone()),
+    other => Err(format!("unexpected reply {:?}", other)),
+  }
+}
+
+/// Applied toy outputs, from any client, as bp://output. The machine is left
+/// out: its motion is bp://motion, and an app streams it far faster.
+async fn watch_outputs(dm: Arc<ServerDeviceManager>, sh: Arc<Shared>) {
+  // A lagged receiver ends the stream; resubscribe. dm (held here) owns the
+  // sender, so the stream never ends for good while this task runs.
+  while let Some(obs) = dm.output_observation_stream() {
+    futures::pin_mut!(obs);
+    while let Some(o) = obs.next().await {
+      if !is_machine(&dm, o.device_index) {
+        (sh.sink)(
+          "bp://output",
+          json!({ "index": o.device_index, "feature": o.feature_index, "type": o.output_type, "value": o.value }),
+        );
+      }
+    }
   }
 }
 
@@ -575,6 +825,36 @@ pub async fn bp_devices(bp: State<'_, Buttplug>) -> Result<Vec<Device>, String> 
 }
 
 #[tauri::command]
+pub async fn bp_toy_scalar(bp: State<'_, Buttplug>, index: u32, feature: u32, value: i32) -> Result<(), String> {
+  bp.toy_scalar(index, feature, value).await
+}
+
+#[tauri::command]
+pub async fn bp_toy_linear(bp: State<'_, Buttplug>, index: u32, feature: u32, position: u32, ms: u32) -> Result<(), String> {
+  bp.toy_linear(index, feature, position, ms).await
+}
+
+#[tauri::command]
+pub async fn bp_toy_rotate(bp: State<'_, Buttplug>, index: u32, feature: u32, speed: i32) -> Result<(), String> {
+  bp.toy_rotate(index, feature, speed).await
+}
+
+#[tauri::command]
+pub async fn bp_toy_stop(bp: State<'_, Buttplug>, index: u32) -> Result<(), String> {
+  bp.toy_stop(index).await
+}
+
+#[tauri::command]
+pub async fn bp_toy_read(bp: State<'_, Buttplug>, index: u32, feature: u32, input: String) -> Result<i64, String> {
+  bp.toy_read(index, feature, input).await
+}
+
+#[tauri::command]
+pub async fn bp_stop_all(bp: State<'_, Buttplug>) -> Result<(), String> {
+  bp.stop_all().await
+}
+
+#[tauri::command]
 pub async fn bp_machine_present(bp: State<'_, Buttplug>, present: bool) -> Result<(), String> {
   bp.machine_present(present);
   Ok(())
@@ -731,5 +1011,108 @@ mod tests {
     assert!(bp.devices().await.iter().all(|d| d.kind != "machine"), "hub loss removes the machine");
     bp.stop().await;
     assert!(!bp.status().running);
+  }
+
+  /// A running server with the machine and ONE upstream simulated toy
+  /// standing in for BLE hardware. One toy per server: upstream allocates
+  /// device indices without a lock, so devices connecting together can share
+  /// an index and one silently replaces the other (docs/BUTTPLUG.md).
+  async fn toy(archetype: &str) -> (Buttplug, Events, Device, Device) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let bp = Buttplug::new(Arc::new(move |ev, v| {
+      let _ = tx.send((ev, v));
+    }));
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    bp.start_with(port, vec![SimulatedDeviceConfigEntry::new(archetype, None)]).await.unwrap();
+    bp.machine_present(true);
+    let mut want = 1;
+    for _ in 0..200 {
+      let n = bp.devices().await.len();
+      if n == want && want == 2 {
+        break;
+      }
+      if n == 1 && want == 1 {
+        bp.scan(true).await.unwrap();
+        want = 2;
+      }
+      tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let mut devices = bp.devices().await;
+    assert_eq!(devices.len(), 2, "{archetype} and the machine");
+    devices.sort_by_key(|d| d.kind != "toy");
+    let machine = devices.pop().unwrap();
+    let toy = devices.pop().unwrap();
+    assert_eq!((toy.kind, machine.kind), ("toy", "machine"));
+    for d in [&toy, &machine] {
+      assert!(!d.key.is_empty() && d.key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'), "key {}", d.key);
+    }
+    (bp, rx, toy, machine)
+  }
+
+  async fn next_output(rx: &mut Events) -> Value {
+    loop {
+      let (ev, v) = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("bp://output within 5 s")
+        .unwrap();
+      if ev == "bp://output" {
+        return v;
+      }
+    }
+  }
+
+  fn out(index: u32, feature: u32, ty: &str, value: f64) -> Value {
+    json!({ "index": index, "feature": feature, "type": ty, "value": value })
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn scalar_toy_commands_and_stops() {
+    let (bp, mut rx, vib, machine) = toy("simulated-2vibe").await;
+    // One control per feature, with the feature's own step range.
+    assert_eq!(vib.controls.len(), 2);
+    assert!(vib.controls.iter().all(|c| c.kind == "scalar" && c.ty == "Vibrate" && c.range == Some([0, 100])));
+
+    bp.toy_scalar(vib.index, 1, 40).await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(vib.index, 1, "Vibrate", 40.0));
+
+    // Refusals resolve as error strings.
+    assert!(bp.toy_scalar(vib.index, 0, 101).await.is_err(), "past the step range");
+    assert!(bp.toy_rotate(vib.index, 0, 5).await.is_err(), "a vibrator has no rotate output");
+    assert!(bp.toy_scalar(vib.index, 9, 5).await.is_err(), "no such feature");
+    let e = bp.toy_linear(machine.index, 0, 5000, 100).await.unwrap_err();
+    assert!(e.contains("machine"), "the machine is refused: {e}");
+    assert!(bp.toy_stop(machine.index).await.is_err());
+
+    // A toy stop zeroes every output of that toy.
+    bp.toy_stop(vib.index).await.unwrap();
+    let mut got = vec![next_output(&mut rx).await, next_output(&mut rx).await];
+    got.sort_by_key(|v| v["feature"].as_u64());
+    assert_eq!(got, vec![out(vib.index, 0, "Vibrate", 0.0), out(vib.index, 1, "Vibrate", 0.0)]);
+    bp.stop().await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn rotate_toy_and_stop_all() {
+    let (bp, mut rx, rot, _) = toy("simulated-rotator").await;
+    let c = &rot.controls[0];
+    assert_eq!((c.kind, c.ty.as_str()), ("rotate", "Rotate"));
+    let lo = c.range.unwrap()[0];
+    assert!(lo < 0, "rotate range is signed: {:?}", c.range);
+    bp.toy_rotate(rot.index, 0, -30).await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(rot.index, 0, "Rotate", -30.0));
+    bp.stop_all().await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(rot.index, 0, "Rotate", 0.0));
+    bp.stop().await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn linear_toy_takes_position_and_duration() {
+    let (bp, mut rx, lin, _) = toy("simulated-stroker").await;
+    let c = &lin.controls[0];
+    assert_eq!((c.kind, c.ty.as_str(), c.range, c.ms), ("linear", "HwPositionWithDuration", Some([0, 1000]), Some([0, 100000])));
+    bp.toy_linear(lin.index, 0, 500, 250).await.unwrap();
+    assert_eq!(next_output(&mut rx).await, out(lin.index, 0, "HwPositionWithDuration", 500.0));
+    assert!(bp.toy_scalar(lin.index, 0, 5).await.is_err(), "linear is not scalar");
+    bp.stop().await;
   }
 }

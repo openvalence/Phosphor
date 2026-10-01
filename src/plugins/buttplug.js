@@ -8,6 +8,8 @@
  * - A stop sends nothing. The machine holds at its last target; stopping the
  *   machine is the operator's strip e-stop, which the hub latches and which
  *   no app's StopDeviceCmd can clear (docs/BUTTPLUG.md).
+ * - Toys the server finds are this adapter's heroes (buttplug-toys.js), so
+ *   they place as hero:plugin:buttplug:<toy key> and leave with the adapter.
  * - Shell only: the server is src-tauri/src/buttplug.rs.
  * See: docs/BUTTPLUG.md
  */
@@ -73,12 +75,25 @@ export function bridge(api, shell) {
 
 /** Add the adapter to the app's plugin host. Shell only. */
 export async function loadButtplug() {
-  const [{ host }, { machine }, { invoke }, { listen }] = await Promise.all([
+  const [{ host }, { machine }, { invoke }, { listen }, { mount, unmount }, { toyModules }, { default: ToyModule }] = await Promise.all([
     import('./plugins.svelte.js'),
     import('../model/machine.svelte.js'),
     import('@tauri-apps/api/core'),
     import('@tauri-apps/api/event'),
+    import('svelte'),
+    import('./buttplug-toys.js'),
+    import('../ui/hero/ToyModule.svelte'),
   ]);
   const shell = { listen, invoke, live: () => machine.link.phase === 'live' };
-  host.add(manifest, { activate: (api) => bridge(api, shell) }, { source: 'built-in' });
+  const render = (el, toy) => {
+    const c = mount(ToyModule, { target: el, props: { toy, shell } });
+    return { unmount: () => unmount(c) };
+  };
+  host.add(manifest, {
+    activate: (api) => {
+      const offMachine = bridge(api, shell);
+      const offToys = toyModules(api, shell, render);
+      return () => { offToys(); offMachine(); };
+    },
+  }, { source: 'built-in' });
 }
