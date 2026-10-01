@@ -104,6 +104,33 @@ export const ROLE = {
 };
 
 /**
+ * DRAFT vocabulary for RENDERING §10 `generator-advanced`: no hub may emit
+ * these until the RFCs are accepted, so a widget binding them declines on
+ * every catalog today and its fields stay Tier 0. Never fall back to field
+ * names (law 6). Move each into ROLE when the registry carries it.
+ */
+// TODO(rfc-bf4): RFC-081 master roles; run/stop is ROLE.patternRunning.
+// TODO(rfc-0sm): RFC-066 lane roles, one complete set per STATE channel.
+// TODO(rfc-2n5): RFC-067 store op select.
+export const DRAFT_ROLE = {
+  advgenMode: 'advgen.mode',
+  advgenMaster: 'advgen.master',
+  advgenDepthMax: 'advgen.depth_max',
+  advgenDepthMin: 'advgen.depth_min',
+  advgenSpeedIn: 'advgen.speed_in',
+  advgenSpeedOut: 'advgen.speed_out',
+  advgenAccelIn: 'advgen.accel_in',
+  advgenAccelOut: 'advgen.accel_out',
+  laneAmplitude: 'lane.amplitude',
+  laneInStep: 'lane.in_step',
+  laneInWait: 'lane.in_wait',
+  laneOutStep: 'lane.out_step',
+  laneOutWait: 'lane.out_wait',
+  laneOffset: 'lane.offset',
+  actionStore: 'action.store',
+};
+
+/**
  * ROLE -> HUMAN DISPLAY LABEL.
  *
  * A role is registry vocabulary (the Valence repo's registry.yaml,
@@ -239,6 +266,27 @@ export function claimRoles(byRole, spec) {
   for (const keys of spec.requireOne || []) {
     if (!keys.some((k) => out[k])) return null;
   }
+  // `instances: { key: { roles: {k: role}, min } }`: a role set repeated once
+  // per channel (RFC-066 lanes). An instance is a channel carrying EVERY role
+  // in the set; partial channels are left to Tier 0. The count is whatever
+  // the catalog declares, in ascending channel id; fewer than `min` declines.
+  for (const [name, inst] of Object.entries(spec.instances || {})) {
+    const byCh = new Map();
+    for (const [k, role] of Object.entries(inst.roles)) {
+      for (const f of byRole.get(role) || []) {
+        if (f.aspect) continue;
+        if (!byCh.has(f.channelId)) byCh.set(f.channelId, { channelId: f.channelId });
+        const m = byCh.get(f.channelId);
+        if (!m[k]) m[k] = f;             // first in the entry wins
+      }
+    }
+    const keys = Object.keys(inst.roles);
+    const list = [...byCh.values()].filter((m) => keys.every((k) => m[k]))
+      .sort((a, b) => a.channelId - b.channelId);
+    if (list.length < (inst.min ?? 1)) return null;
+    out[name] = list;
+    for (const m of list) for (const k of keys) out.claimed.add(m[k].uid);
+  }
   return out;
 }
 
@@ -257,6 +305,43 @@ export const AXIS_HERO_SPEC = {
     // fields' own bounds.
     extentMeasured: ROLE.geometryMeasuredTravel,
     extentMax: ROLE.geometryMaxTravel,
+  },
+};
+
+/**
+ * RENDERING §10 `generator-advanced`, on DRAFT_ROLE only: declines on every
+ * catalog until RFC-081/066 are ruled and a hub adopts them (law 7).
+ */
+export const ADVGEN_SPEC = {
+  require: {
+    running: ROLE.patternRunning,
+    master: DRAFT_ROLE.advgenMaster,
+    depthMax: DRAFT_ROLE.advgenDepthMax,
+    depthMin: DRAFT_ROLE.advgenDepthMin,
+    speedIn: DRAFT_ROLE.advgenSpeedIn,
+    speedOut: DRAFT_ROLE.advgenSpeedOut,
+    accelIn: DRAFT_ROLE.advgenAccelIn,
+    accelOut: DRAFT_ROLE.advgenAccelOut,
+  },
+  optional: {
+    bgRun: ROLE.sourceBackgroundRun,
+    mode: DRAFT_ROLE.advgenMode,
+    presetOp: DRAFT_ROLE.actionStore,
+  },
+  // At least one lane, not RFC-066's four nor the reference hub's six:
+  // the count is an open ruling (rfc-0sm).
+  instances: {
+    lanes: {
+      min: 1,
+      roles: {
+        amplitude: DRAFT_ROLE.laneAmplitude,
+        inStep: DRAFT_ROLE.laneInStep,
+        inWait: DRAFT_ROLE.laneInWait,
+        outStep: DRAFT_ROLE.laneOutStep,
+        outWait: DRAFT_ROLE.laneOutWait,
+        offset: DRAFT_ROLE.laneOffset,
+      },
+    },
   },
 };
 

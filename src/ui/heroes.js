@@ -19,10 +19,11 @@
  */
 
 import { ROLE, claimAll } from '../model/roles.js';
-import { AXIS_HERO_SPEC } from '../model/roles.js';
+import { AXIS_HERO_SPEC, ADVGEN_SPEC } from '../model/roles.js';
 import RailWidget from './hero/RailWidget.svelte';
 import PatternWidget from './hero/PatternWidget.svelte';
 import LimitsWidget from './hero/LimitsWidget.svelte';
+import AdvancedGeneratorWidget from './hero/AdvancedGeneratorWidget.svelte';
 
 /**
  * Registered heroes, in render order.
@@ -76,6 +77,12 @@ const HEROES = [
         inputJerk: ROLE.limitInputJerk,
       },
     },
+  },
+  {
+    id: 'advanced-generator',
+    zone: 'card',
+    component: AdvancedGeneratorWidget,
+    spec: ADVGEN_SPEC,
   },
 ];
 
