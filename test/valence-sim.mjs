@@ -38,6 +38,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createSession, CH, PRIORITY, SAFETY_OP, ACCESS, NACK } from '../../Valence/clients/js/index.js';
 import { toHex } from '../../Valence/clients/js/sha256.js';
+import { acquireToken } from '../../Valence/clients/js/credentials.js';
 
 const args = process.argv.slice(2);
 const argOf = (flag, def) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : def; };
@@ -80,6 +81,9 @@ async function openSession(label, extra = {}) {
     clientName: 'valence-js sim-test',
     autoReconnect: false,
     catalogStore,
+    // Bare sessions land at watch; every intent below needs control, so each
+    // connect mints a single-use /uitoken (HTTP on port 80).
+    token: (h) => acquireToken(h),
     subscriptions: [
       [CH.SAFETY, 0, PRIORITY.critical],
       [CH.MACHINE_CONFIG, 0, PRIORITY.elevated],

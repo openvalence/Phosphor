@@ -12,10 +12,10 @@
  *   mode (a) knock-and-approve: the second joiner's knock parks; the
  *     configure session approves it over session-admin (0x0009).
  *
- * B is deliberately approved at CONFIGURE, not the UI's control default: in
- * the sim, bare sessions already float at `control`, so only a configure
- * grant PROVES the reconnect tier came from the trust-ledger rung of
- * validateToken rather than the convenience floor.
+ * B is deliberately approved at CONFIGURE, not the UI's control default: a
+ * configure grant can only have come from the trust-ledger rung of
+ * validateToken, never from /uitoken (capped at control) or the bare floor.
+ * The bare floor is `watch`, the device posture (SPEC §12.2/§12.3).
  *
  * Channel ids 0x0009/0x000A/0x000B are SPEC-CORE (CHANNEL-GRID.md), the same
  * standing as CH_SAFETY — not device knowledge.
@@ -93,7 +93,7 @@ try {
     subscriptions: [[CH_PENDING, 1.0, PRIORITY.normal], [CH_PAIR_EVENTS, 1.0, PRIORITY.normal]],
   });
   const wA2 = await connectAndWelcome(a2, 'A2');
-  ok('token reconnect lands at configure (ledger rung, not the sim floor)',
+  ok('token reconnect lands at configure (ledger rung, not the bare floor)',
      (wA2.roles | 0) === ACCESS.configure, 'roles=' + wA2.roles);
 
   let pending = null, knockEvt = null;
@@ -107,7 +107,7 @@ try {
   // ---- mode (a): B knocks, parks --------------------------------------------
   const b1 = mkSession('joiner B', 0xB2);
   const wB1 = await connectAndWelcome(b1, 'B1');
-  ok('bare session floats at the sim control floor', (wB1.roles | 0) === ACCESS.control,
+  ok('bare session lands at watch, the device floor', (wB1.roles | 0) === ACCESS.watch,
      'roles=' + wB1.roles);
   const grantB = nextPairGrant(b1, 'B approve', 8000);
   b1.sendPairReq();
