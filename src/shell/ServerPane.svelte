@@ -11,7 +11,8 @@
    * - The listener is loopback only until ph-vdk.28 rules otherwise; the note
    *   below states that and must change with it.
    * - Red is for safety only (RENDERING law 13): log levels and faults are
-   *   text plus amber, never red.
+   *   text plus amber, never red. Stop all toys is not hub safety and stays
+   *   neutral.
    */
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -61,6 +62,13 @@
               onclick={() => bp.scan(!s.scanning)}>{s.scanning ? 'stop scan' : 'scan for toys'}</button>
       {#if s.scanning}<span class="sp-note">scanning…</span>{/if}
       {#if s.scan.reason}<span class="sp-ladder" data-phase={s.scan.phase}>{s.scan.reason}</span>{/if}
+    </div>
+
+    <div class="sp-row">
+      <button class="sp-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
+              onclick={bp.stopAll}>stop all toys</button>
+      {#if s.stopAll.reason}<span class="sp-ladder" data-phase={s.stopAll.phase}>{s.stopAll.reason}</span>{/if}
+      <span class="sp-note">toys only: this is not the machine e-stop, which stays in the top strip</span>
     </div>
 
     {#if s.ready}

@@ -25,6 +25,7 @@ export const blank = () => ({
   log: [],
   run: { want: null, phase: 'settled', reason: '' },
   scan: { want: null, phase: 'settled', reason: '' },
+  stopAll: { phase: 'settled', reason: '' },
 });
 
 const msg = (e) => String(e?.message ?? e);
@@ -74,6 +75,24 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     try { applyStatus(await invoke('bp_status')); } catch (e) { /* the event may still confirm */ }
   }
 
+  // No status echo exists for a stop: the server's ack (every device's write
+  // acknowledged, bounded at 1 s server-side) is the confirmation.
+  async function stopAll() {
+    const w = s.stopAll;
+    if (!s.ready || !s.running || w.phase === 'pending') return;
+    Object.assign(w, { phase: 'pending', reason: 'stopping every toy' });
+    clearTimeout(timers.stopAll);
+    timers.stopAll = setTimeout(() => {
+      if (w.phase === 'pending') Object.assign(w, { phase: 'overdue', reason: 'no ack after ' + echoMs / 1000 + ' s' });
+    }, echoMs);
+    let err = null;
+    try { err = await invoke('bp_stop_all'); } catch (e) { err = msg(e); }
+    clearTimeout(timers.stopAll);
+    Object.assign(w, err == null
+      ? { phase: 'settled', reason: 'all toys stopped' }
+      : { phase: 'fault', reason: 'stop all failed: ' + err });
+  }
+
   async function init() {
     try {
       applyStatus(await invoke('bp_status'));
@@ -103,6 +122,7 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     start: (port) => request('run', true, 'bp_start', { port }),
     stop: () => request('run', false, 'bp_stop'),
     scan: (on) => request('scan', on, on ? 'bp_scan_start' : 'bp_scan_stop'),
+    stopAll,
     dispose() {
       disposed = true;
       Object.values(timers).forEach(clearTimeout);

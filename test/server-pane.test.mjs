@@ -124,4 +124,38 @@ function fakeShell(cmds) {
   bp.dispose();
 }
 
+// --- stop all toys: enabled only while running, ack settles, error text surfaces
+{
+  let running = false;
+  let ack = null;
+  const sh = fakeShell({
+    bp_status: () => ({ running, port: BP_PORT, clients: 0, scanning: false }),
+    bp_stop_all: () => { if (ack instanceof Error) throw ack.message; return ack; },
+  });
+  const s = blank();
+  const bp = createBp(s, sh.api);
+  await bp.init();
+  await bp.stopAll();
+  assert.ok(!sh.calls.some((c) => c[0] === 'bp_stop_all'), 'not sent while the server is off');
+
+  running = true;
+  sh.emit('bp://status', { running: true, port: BP_PORT, clients: 1, scanning: false });
+  const p = bp.stopAll();
+  assert.equal(s.stopAll.phase, 'pending');
+  await p;
+  assert.equal(sh.calls.at(-1)[0], 'bp_stop_all');
+  assert.equal(s.stopAll.phase, 'settled');
+
+  ack = new Error('buttplug server is not running');
+  await bp.stopAll();
+  assert.equal(s.stopAll.phase, 'fault');
+  assert.match(s.stopAll.reason, /stop all failed: buttplug server is not running/);
+
+  ack = 'device 2 did not acknowledge';
+  await bp.stopAll();
+  assert.equal(s.stopAll.phase, 'fault', 'a resolved error string is a fault too');
+  assert.match(s.stopAll.reason, /device 2 did not acknowledge/);
+  bp.dispose();
+}
+
 console.log('server-pane: ok');
