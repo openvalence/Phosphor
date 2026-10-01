@@ -22,6 +22,7 @@
   import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { machine, connect, disconnect } from '../model/machine.svelte.js';
   import HostEntry from '../ui/HostEntry.svelte';
+  import ServerPane from './ServerPane.svelte';
   import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
   import { advFlags, upgradeTarget } from './ble-adv.js';
 
@@ -236,6 +237,7 @@
 
       <span class="sb-sep"></span>
       <HostEntry dense recent={false} label="WS" value={manualHost} onpick={connectWs} />
+      <ServerPane />
 
       {#if target}
         <button class="sb-btn sb-upgrade" onclick={upgrade}>
