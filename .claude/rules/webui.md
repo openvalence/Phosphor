@@ -89,10 +89,11 @@ still establishes a scrollport), so the constraint rectangle already starts at
 `.app`'s CONTENT box, below the padding that reserved the chrome. The same
 `top: <chrome>` insets a second time and the bar lands at exactly twice the
 chrome height. Both modes read as correct in code review; only one is.
-**Fix:** one reserve (`.app` padding-top), chrome pinned at `top: 0`, and the
-sticky offset restated ONLY in the mode where the page is the scrollport.
-`test/shell-chrome-geometry.test.mjs` asserts flush stacking in both
-modes with no device present.
+**Fix:** no reserve at all. Every top bar lives inside ONE in-flow strip
+(`src/ui/TopStrip.svelte`) sticky at `top: 0`, and the only restated offset
+is the phone tab strip's `--strip-h`, in the mode where the page is the
+scrollport. `test/shell-chrome-geometry.test.mjs` asserts flush stacking in
+both modes with no device present.
 **Companion:** exactly one bar may absorb `env(safe-area-inset-top)`. The
 topmost one owns it via `--chrome-inset-top`; two bars padding for the same
 notch is the same double-gap bug wearing a phone.

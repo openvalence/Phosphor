@@ -41,7 +41,7 @@ await page.waitForTimeout(500);
 const RAIL_PX = 188;
 const paneCases = [
   { label: '1440', appW: 1440 },
-  { label: '1920', appW: 1680 },   // .app max-width caps here
+  { label: '1920', appW: 1920 },
 ];
 
 const res = await page.evaluate(({ cases, railPx }) => {

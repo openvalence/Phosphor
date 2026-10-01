@@ -146,8 +146,8 @@ html.hivis {
   /* Edge-to-edge devices (index.html sets viewport-fit=cover): the status
      bar / notch overlaps the viewport, and exactly ONE bar — whichever is
      topmost — absorbs that inset so content clears it. The LinkBar owns it
-     by default; when the Tauri shell mounts its own chrome ABOVE the
-     LinkBar, ShellBar takes ownership and zeroes this. Do not read
+     by default; when the Tauri shell's row sits ABOVE the LinkBar in the top
+     strip, ShellStrip takes ownership and zeroes this. Do not read
      env(safe-area-inset-top) anywhere else: two bars padding for the same
      notch is the double-gap bug. */
   --chrome-inset-top: env(safe-area-inset-top, 0px);
@@ -530,26 +530,20 @@ select:focus { outline: none; border-color: var(--reality); }
 
 /* ---- app frame --------------------------------------------------------- */
 .app {
-  max-width: 1680px;
-  margin: 0 auto;
+  /* Full window width at every size (DESIGN §10.4); prose keeps its own
+     measure (--measure). The top strip (ui/TopStrip.svelte) is in flow, so
+     no chrome reserve lives here. */
   padding-left: var(--gap);
   padding-right: var(--gap);
-  /* ShellBar (Tauri shell only, see shell/ShellBar.svelte) is fixed chrome
-     under the LinkBar and publishes its measured height here (0 otherwise) —
-     extra top padding keeps it from covering the LinkBar/hero zone, in both
-     scroll modes below. */
-  padding-top: var(--shell-chrome-top, 0px);
 }
 
-/* Mobile: a normally-scrolling page. SafetyBar is fixed bottom:0 and
-   publishes its measured height as --dock-h (it grows with banners and the
-   safety-edge line); the fallback covers the first paint before it measures.
-   The extra --gap keeps the last control's hit area clear of the dock edge.
+/* Mobile: a normally-scrolling page. Nothing is fixed to the bottom edge
+   (DESIGN §10.3), so the only bottom clearance is the phone's own inset.
    Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
 @media (max-width: 959px) {
   .app {
     min-height: 100vh;
-    padding-bottom: calc(var(--dock-h, calc(84px + env(safe-area-inset-bottom, 0px))) + var(--gap));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

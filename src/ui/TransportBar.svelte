@@ -3,15 +3,15 @@
    * TransportBar.svelte — the OG transport subset, promoted to the hero row.
    *
    * Operator ruling 2026-07-28: Pause / Halt / E-Stop / Home move out of the
-   * safety dock and into the instrument zone, top-right, the way the OG's
+   * safety region and into the instrument zone, top-right, the way the OG's
    * `.spine-transport` sat in its hero row. This renders ONLY that subset —
    * registry op constants (SAFETY_OP.pause/stop/estop, HOME_OP.home), the same
-   * vocabulary ui/SafetyBar.svelte already discovers by. Everything else
+   * vocabulary ui/TopStrip.svelte already discovers by. Everything else
    * (hold/resume/override/bypass/force_home/estop_clear, and the refusal
-   * surface) stays in the safety dock — see SafetyBar.svelte. Manual is absent
+   * surface) stays in the top strip — see TopStrip.svelte. Manual is absent
    * because manual mode has no protocol role yet (see RailWidget's header).
    *
-   * Stop and e-stop here are EXTRA instances: the safety dock renders both at
+   * Stop and e-stop here are EXTRA instances: the top strip renders both at
    * every width and in every state, so nothing about stop reachability may
    * depend on this bar being mounted (RENDERING §13 law 1).
    */
@@ -27,7 +27,7 @@
 
   /**
    * THE E-STOP MUST NOT DEPEND ON AN OPTIONAL ANNOTATION (copied from
-   * SafetyBar.svelte, this bar's sibling surface — same catalog, same reason).
+   * TopStrip.svelte, this bar's sibling surface — same catalog, same reason).
    * `action.*` roles are the right discovery path for device-defined verbs,
    * but safety-intents is a SPEC-CORE channel every conforming hub has, so it
    * is ALSO located by its spec-core channel id (specSafetyAction) — a hub
@@ -70,7 +70,7 @@
    * REGISTRY VOCABULARY — icon + subtitle keyed by SAFETY_OP/HOME_OP wire
    * value, the same op-identity findOp() above locates each control by.
    * Two separate tables, not one keyed by raw number: a SAFETY_OP value and
-   * a HOME_OP value are different verbs (see SafetyBar.svelte's estopCtl
+   * a HOME_OP value are different verbs (see TopStrip.svelte's estopCtl
    * comment on this exact hazard), so one flat table would risk a silent
    * cross-namespace collision. Icon path strings are copied VERBATIM from
    * the OG's ui.js ICONS table (Lucide, MIT); the svg wrapper attrs below
@@ -131,7 +131,7 @@
     await runAction(action, value);
     busy = { ...busy, [btnKey]: false };
     // Refusals surface globally via shadow.svelte.js's `lastRefusal`, rendered
-    // by the safety dock — nothing left for this bar to do on failure.
+    // by the top strip — nothing left for this bar to do on failure.
   }
 </script>
 
@@ -255,7 +255,7 @@
     font-weight: 400;
   }
 
-  /* ---- the e-stop: OG hazard-stripe wash (copied from SafetyBar's
+  /* ---- the e-stop: OG hazard-stripe wash (copied from TopStrip's
      .btn-estop — same visual, same constraint). No fill, no glow, no
      uppercase/bold override: pixel-checked against og-full.png, this is a
      plain tbtn like its neighbors whose only hazard cue is the diagonal
@@ -275,8 +275,8 @@
     color: var(--bad);
   }
 
-  /* Below App.svelte's `isDesktop` breakpoint the page scrolls, and the fixed
-     safety dock's pair sits a thumb away, so this bar drops its copies there
+  /* Below App.svelte's `isDesktop` breakpoint the page scrolls, and the top
+     strip's pair sits a thumb away, so this bar drops its copies there
      rather than stacking a second stop above the fold. */
   @media (max-width: 959px) {
     /* Compound selector on purpose: the base `.tbtn` rule also sets display —

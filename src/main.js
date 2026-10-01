@@ -61,26 +61,27 @@ async function boot() {
       const r = await tauriFetch(url, { method: 'GET' });
       return r.ok ? await r.text() : null;
     });
-    // Shell chrome: discovery + transport control live OUTSIDE the kernel UI.
-    const { default: ShellBar } = await import('./shell/ShellBar.svelte');
-    const bar = document.createElement('div');
-    document.body.appendChild(bar);
-    mount(ShellBar, { target: bar });
-
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
     // 2026-07-28). Auto-connect only re-joins a hub the operator explicitly
-    // chose before (saved by ShellBar on a successful WS connect).
+    // chose before (saved by ShellStrip on a successful WS connect).
     const saved = localStorage.getItem('shell_host');
     if (saved && (localStorage.getItem('shell_mode') || 'ws') === 'ws') {
       connect({ host: saved });
     }
-    return;
+    // Shell chrome (window controls, discovery, transport) is a row of the
+    // kernel's top strip, handed in from here so the served bundle never
+    // carries it.
+    return (await import('./shell/ShellStrip.svelte')).default;
   }
   if (host) connect({ host, port });
+  return null;
 }
-boot();
 // Tier-2 plugins: shell plugins folder, or ?plugin= in a dev build; a no-op on
 // the page a hub serves. See docs/PLUGINS.md.
 loadPlugins();
 
-export default mount(App, { target: document.getElementById('app') });
+// The page mounts whatever boot() does: a failed shell import costs the
+// window controls, never the strip's e-stop.
+boot()
+  .catch((e) => { console.error('shell chrome failed to load', e); return null; })
+  .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell } }));

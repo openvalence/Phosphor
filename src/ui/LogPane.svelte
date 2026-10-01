@@ -21,7 +21,7 @@
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
   import { logView } from './logview.svelte.js';
 
-  // log | anomaly | safety | session; shared so the safety dock can open a feed.
+  // log | anomaly | safety | session; shared so the top strip can open a feed.
   const tab = $derived(logView.tab);
 
   // Everything in the Safety feed counts as read while it is on screen.
@@ -285,7 +285,7 @@
   .line.lvl-warn .text { color: var(--warn); }
   .line.lvl-error .text { color: var(--bad); }
   /* Reconciliation states (ph-vdk.14), neither a hazard: an out-of-order
-     edge dims like SafetyBar's own .stale; a synthesized diagnostic (no
+     edge dims like TopStrip's own .stale; a synthesized diagnostic (no
      device data, just a gap the client noticed) reads as muted italic. */
   .line.superseded { opacity: .55; }
   .line.diag .text { color: var(--ink-faint); font-style: italic; }

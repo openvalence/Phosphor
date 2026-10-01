@@ -67,7 +67,7 @@ Founding set (operator-ratified 2026-07-27), current implementation:
 | Widget | Binds to |
 |---|---|
 | Rail hero + telemetry chart | motion telemetry/window/command roles (`RailWidget.svelte`) + motion STATE channel (`TelemetryChart.svelte`) |
-| Safety bar + anomaly log | safety STATE, motion-anomaly EVENT (`SafetyBar.svelte`, `LogPane.svelte`'s anomaly tab) |
+| Safety bar + anomaly log | safety STATE, motion-anomaly EVENT (`TopStrip.svelte`, `LogPane.svelte`'s anomaly tab) |
 | Plan strip | plan-strip channel (`PlanStrip.svelte`); Kinetic tuning itself still renders through the generic Tier-0 settings cards -- no dedicated tuning widget exists yet |
 | fray-d Advanced generator panel | pattern role family (running/select/speed/depth/stroke/sensation) + preset store (`PatternWidget.svelte`) |
 
@@ -422,11 +422,11 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
 
 - All safety controls live at the TOP. The bottom edge sits against the
   Windows taskbar, where a missed click is jarring; at the top there is
-  nothing to hit by accident. Supersedes the bottom dock
-  (`src/ui/SafetyBar.svelte`, `.safetydock`).
+  nothing to hit by accident. Supersedes the bottom dock; the strip is
+  `src/ui/TopStrip.svelte`.
 - NON-NEGOTIABLE: the top strip always carries an e-stop the user cannot
   remove. It is bound by safety-op identity (law 2; `fixedCtls` in
-  `SafetyBar.svelte`), never scrolled or hidden (laws 1, 11; RENDERING §9
+  `TopStrip.svelte`), never scrolled or hidden (laws 1, 11; RENDERING §9
   `persistent`).
 - Every safety op is also a placeable module. A second e-stop on the grid is
   fine; the strip's copy is the one that cannot go.
@@ -435,7 +435,7 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
 - Phosphor replaces the OS title bar with its own decorations, and the shell
   bar merges into the strip. Seams: `src-tauri/tauri.conf.json` (window
   decorations), `src-tauri/capabilities/default.json` (window permissions),
-  `src/shell/ShellBar.svelte`. Windows first; Android has no frame; the
+  `src/shell/ShellStrip.svelte`. Windows first; Android has no frame; the
   served page draws the strip without window controls.
 - One strip, one top reserve, one safe-area owner (`.claude/rules/webui.md`
   T22). Safety colors stay unthemeable in the new chrome (law 13).

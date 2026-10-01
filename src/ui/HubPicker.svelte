@@ -13,7 +13,7 @@
    *
    * Constraints:
    * - Renders link state only; never machine values, never a write.
-   * - In the shell the hub field lives in ShellBar (same HostEntry). Showing
+   * - In the shell the hub field lives in ShellStrip (same HostEntry). Showing
    *   a second one here would be two doors to one room.
    */
   import HostEntry from './HostEntry.svelte';

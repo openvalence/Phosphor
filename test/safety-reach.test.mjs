@@ -13,7 +13,7 @@
  * window.max role stripped (claims NO hero, the unannotated-hub case of
  * ph-vdk.1). At 360x800, 844x390, 1280x720 and 1920x1080, each with a mouse and
  * with touch, it asserts:
- *   dock     the dock's e-stop and stop are visible, enabled, on screen, not
+ *   strip    the top strip's e-stop and stop are visible, enabled, on screen, not
  *            covered, and at least --tap in both axes
  *   hero     no-hero catalog: no hero slot rendered (the case is real)
  *   row      hero catalog, desktop: the hero row's stop/e-stop also >= --tap
@@ -21,7 +21,7 @@
  *   motion   prefers-reduced-motion: no transition or animation on the pair
  *   edge     the latest safety edge renders with its unread count, opens the
  *            Safety feed, clears the count, and dims once the link drops
- *   fire     pressing the dock e-stop puts a safety frame on the wire
+ *   fire     pressing the strip e-stop puts a safety frame on the wire
  *
  * Build first (`npm run build:only`). Run: node test/safety-reach.test.mjs
  */
@@ -164,8 +164,8 @@ function measurePair() {
   return {
     tap,
     heroes: document.querySelectorAll('.hero-slot').length,
-    estop: box(document.querySelector('.safetydock .btn-estop')),
-    stop: box(document.querySelector('.safetydock .btn-stop')),
+    estop: box(document.querySelector('.topstrip .btn-estop')),
+    stop: box(document.querySelector('.topstrip .btn-stop')),
     rowEstop: box(row('.btn-estop')),
     rowStop: box(row('.btn-stop')),
   };
@@ -194,9 +194,9 @@ for (const catalog of ['none', 'hero']) {
       const m = await page.evaluate(measurePair);
       if (catalog === 'none') ok(tag + ': no hero claims', m.heroes === 0, m.heroes + ' hero slot(s)');
       for (const [name, b] of [['e-stop', m.estop], ['stop', m.stop]]) {
-        ok(tag + ': dock ' + name + ' shown, enabled, on screen, uncovered',
+        ok(tag + ': strip ' + name + ' shown, enabled, on screen, uncovered',
           !!b && b.shown && !b.disabled && b.onScreen && b.uncovered, b && JSON.stringify(b));
-        ok(tag + ': dock ' + name + ' >= --tap (' + m.tap.toFixed(1) + ')',
+        ok(tag + ': strip ' + name + ' >= --tap (' + m.tap.toFixed(1) + ')',
           !!b && b.w >= m.tap - 0.5 && b.h >= m.tap - 0.5, size(b));
       }
       if (catalog === 'hero' && w >= 960) {
@@ -213,7 +213,7 @@ for (const catalog of ['none', 'hero']) {
 {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', reducedMotion: 'reduce' });
   const m = await page.evaluate(measurePair);
-  for (const [name, b] of [['dock e-stop', m.estop], ['dock stop', m.stop], ['row e-stop', m.rowEstop], ['row stop', m.rowStop]]) {
+  for (const [name, b] of [['strip e-stop', m.estop], ['strip stop', m.stop], ['row e-stop', m.rowEstop], ['row stop', m.rowStop]]) {
     ok('reduced motion: ' + name + ' has no transition or animation',
       !!b && /^0s(, 0s)*$/.test(b.transition) && b.animation === 'none', b && (b.transition + ' / ' + b.animation));
   }
@@ -224,9 +224,9 @@ for (const catalog of ['none', 'hero']) {
 for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const tag = w + 'x' + h;
   const { ctx, page, wire } = await open(browser, { w, h, touch, catalog: 'none', edges: true });
-  const line = page.locator('.safetydock .evline');
+  const line = page.locator('.topstrip .evline');
   const text = await line.textContent({ timeout: 5000 }).catch(() => '');
-  ok(tag + ': dock shows the latest edge with its unread count',
+  ok(tag + ': strip shows the latest edge with its unread count',
     /estop cleared/.test(text) && /\d+ s ago/.test(text) && /2 new/.test(text), JSON.stringify(text.trim()));
   await line.click();
   await page.waitForTimeout(300);
@@ -238,11 +238,11 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   ok(tag + ': viewing the feed clears the unread count', !/new/.test(after), JSON.stringify(after.trim()));
 
   const before = wire.seen.length;
-  await page.locator('.safetydock .btn-estop').click();
+  await page.locator('.topstrip .btn-estop').click();
   await page.waitForTimeout(300);
   const fired = wire.seen.slice(before).some((f) => f.type === FRAME.ESTOP
     || (f.type === FRAME.INTENT && f.channel === CORE_CHANNEL.safety_intents));
-  ok(tag + ': the dock e-stop puts a safety frame on the wire', fired);
+  ok(tag + ': the strip e-stop puts a safety frame on the wire', fired);
 
   await page.evaluate(() => { document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
   wire.edges = false;   // a reconnect must not re-send them as fresh edges
@@ -265,7 +265,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(150);
   send(FRAME.EVENT, CORE_CHANNEL.safety_events, safetyEdge(SAFETY_EVENT_KIND.estop_cleared, 0, 3));
   await page.waitForTimeout(150);
-  await page.click('.safetydock .evline');
+  await page.click('.topstrip .evline');
   await page.waitForTimeout(150);
   const rows = page.locator('.logpane .feed .line');
   ok('reconciliation: the feed holds both edges', await rows.count() === 2, String(await rows.count()));

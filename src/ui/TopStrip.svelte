@@ -1,6 +1,9 @@
 <script>
   /**
-   * SafetyBar.svelte — the persistent, always-reachable safety dock.
+   * TopStrip.svelte -- the one top strip (DESIGN §10.3): the shell's row
+   * (window controls, discovery, transport; shell only), the LinkBar, and
+   * the persistent safety region. One sticky box at top 0 in both scroll
+   * modes, so there is no reserve to double-count (webui.md T22).
    *
    * Discovers what to render entirely from the catalog: any INTENT action
    * whose RFC-019 role starts with `action.safety` or `action.home` lands
@@ -13,13 +16,14 @@
    * connected session, including a bare watch-tier viewer, may fire them. We
    * never guess which ops are exempt; `session.canUse(channelId, key, value)`
    * asks the catalog's own per-option `option_access` (RFC-009 key 17), the
-   * exact same data the hub gates on, so this dock and the hub cannot disagree
+   * exact same data the hub gates on, so this strip and the hub cannot disagree
    * about what a given session may press. The e-stop and stop render OUTSIDE
-   * the scrolling op groups as the dock's fixed pair, at every width and in
-   * every state (RENDERING §13 law 1): this dock is the one surface stop
+   * the scrolling op groups as the strip's fixed pair, at every width and in
+   * every state (RENDERING §13 law 1): this strip is the one surface stop
    * reachability depends on; TransportBar's copies are extra instances only.
+   * Builder edit mode must never remove the pair (DESIGN §10.3).
    *
-   * GLOBAL REFUSAL SURFACE: this dock is pinned to the viewport, so it is the
+   * GLOBAL REFUSAL SURFACE: this strip is pinned to the viewport, so it is the
    * one place a refusal from ANY control (a settings slider, an action
    * button, the rail's move tape — any of shadow.svelte.js's three entry
    * points) is guaranteed to be visible even after the control that sent it
@@ -38,9 +42,11 @@
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
+  import LinkBar from './LinkBar.svelte';
 
-  // Called after the dock points LogPane at its Safety feed; App switches nav.
-  let { onopenlog = null } = $props();
+  // onopenlog: called after the strip points LogPane at its Safety feed; App
+  // switches nav. Shell: the shell's row (main.js), null on the served page.
+  let { onopenlog = null, shell: Shell = null } = $props();
 
   const roleActions = $derived(
     ((machine.catalog.model && machine.catalog.model.actions) || []).filter(
@@ -122,7 +128,7 @@
   // TODO(rfc-x3n): add the device anomaly log once the catalog can say which
   // device EVENT channel it is.
   // ph-vdk.14: a synthesized `diagnostic` record (the client noticing a gap,
-  // never device data) is feed-only -- the dock's one-line summary shows the
+  // never device data) is feed-only -- the strip's one-line summary shows the
   // latest real edge.
   const latestSafety = $derived(
     machine.events.safety.findLast((e) => !e.diagnostic) || null
@@ -151,15 +157,15 @@
     if (onopenlog) onopenlog();
   }
 
-  // Mobile reserves page clearance for this fixed dock from its measured
-  // height (style.css .app), so a banner or the edge line never covers content.
-  let dockH = $state(0);
+  // The phone tab strip sticks just below this strip (App.svelte .tabs).
+  let stripH = $state(0);
   $effect(() => {
-    if (dockH) document.documentElement.style.setProperty('--dock-h', dockH + 'px');
+    document.documentElement.style.setProperty('--strip-h', stripH + 'px');
+    return () => document.documentElement.style.removeProperty('--strip-h');
   });
 
   /**
-   * Group caption from the ROLE that put the action in this dock — registry
+   * Group caption from the ROLE that put the action in this strip — registry
    * vocabulary, not device knowledge. An action here by any other role prefix
    * falls back to its own catalog label.
    */
@@ -178,7 +184,7 @@
    * two-namespace split as TransportBar's copy: a SAFETY_OP value and a
    * HOME_OP value are different verbs, so one flat table keyed by raw
    * number would risk a silent cross-namespace collision. pause/stop/home
-   * never actually reach this dock's option groups (see optionButtons'
+   * never actually reach this strip's option groups (see optionButtons'
    * filters below) — they render in TransportBar now — so in practice only
    * a future op could ever match here; absence still means label-only.
    */
@@ -257,7 +263,7 @@
   }
 
   let busy = $state({});
-  let lastResult = $state(null); // { ok, label, error, at } — this dock's OWN last press
+  let lastResult = $state(null); // { ok, label, error, at } — this strip's OWN last press
 
   async function fire(action, value, label, btnKey) {
     if (needsConfirm(action, value) && !(await askConfirm(confirmCopy(action, value)))) return;
@@ -283,7 +289,7 @@
    * WIRE VALUE 0 IS NOT RENDERED. RFC-034 (registry.yaml `field_roles`
    * doctrine) is normative: for a select field carrying an `action.*` role,
    * value 0 is NEVER an operation — every op table numbers its real ops from
-   * 1, and 0 exists only to keep the option array index-aligned. This dock
+   * 1, and 0 exists only to keep the option array index-aligned. This strip
    * used to gray it instead (an index-completeness argument borrowed from
    * listbox semantics), which put a permanently dead button labeled
    * "reserved" in the operator's face — a wire-format alignment artifact
@@ -294,8 +300,8 @@
    * that doctrine is unchanged.
    *
    * The e-stop and stop are also filtered from their group here — they render
-   * separately as the dock's fixed pair, and drawing one twice in the same
-   * dock would be worse than either rendering alone.
+   * separately as the strip's fixed pair, and drawing one twice in the same
+   * strip would be worse than either rendering alone.
    *
    * Operator ruling 2026-07-28: pause and home also leave this group — they
    * render in TransportBar (see below). `force_home` is dev-only
@@ -319,166 +325,160 @@
 
 </script>
 
-<div class="safetydock" role="group" aria-label="Safety controls" bind:offsetHeight={dockH}>
-  {#if unattended}
-    <!-- RENDERING §10.1 rule 3: moving with nobody attached is shown in words,
-         never inferred. Clears when a session owns a source again. -->
-    <div class="unattended" role="status">Unattended: moving with no session in control</div>
-  {/if}
-  {#if lastRefusal.code != null}
-    <!-- THE GLOBAL REFUSAL SURFACE. Any of shadow.svelte.js's three write
-         paths — a settings slider, an action button, the rail's move tape —
-         lands here the instant the hub refuses it, whether or not the
-         control that sent it is still on screen (CLAUDE.md 3, Ground Truth
-         Doctrine: a swallowed refusal misrepresents machine state). The
-         remedy button only appears when THIS hub's catalog actually
-         advertises the action that clears it. -->
-    <div class="recovery" role="alert">
-      <span>
-        refused{lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''}:
-        {lastRefusal.codeName}{lastRefusal.detail ? ' — ' + lastRefusal.detail : ''}
-      </span>
-      {#if remedy}
-        <button
-          type="button"
-          class="btn recover"
-          disabled={!canFire(remedy.action, remedy.op)}
-          title={reasonFor(remedy.action, remedy.op)}
-          onclick={fireRemedy}
-        >
-          {remedyBusy ? '…' : 'Fix: ' + optionLabel(remedy.action, remedy.op)}
-        </button>
-      {/if}
-    </div>
-  {/if}
-
-  {#if latestSafety}
-    <!-- Tier-1 anomaly surface: the latest safety edge, its age, and how many
-         arrived unread. Opens the Safety feed (LogPane), which is the history. -->
-    <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
-            title={safetyStale ? 'stale: the link has not been live since this edge, later edges may be missing'
-                               : 'open the safety event history'}>
-      <span class="evkind">{displayLabel(kindName(latestSafety))}</span>
-      <span class="evage">{ageText(now - latestSafety.at)}</span>
-      {#if safetyStale}<span class="evtag">stale</span>{/if}
-      {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
-    </button>
-  {/if}
-
-  <div class="dock">
-    <div class="pair">
-      {#each fixedCtls as f (f.op)}
-        <button
-          type="button"
-          class="btn fixed {f.cls}"
-          disabled={!f.enabled}
-          title={f.why || f.label}
-          onclick={() => f.ctl && fire(f.ctl.action, f.ctl.value, f.ctl.label, f.ctl.key)}
-        >
-          <span class="row">
-            <span class="ico" aria-hidden="true">{@html iconMarkup(SAFETY_META[f.op].icon)}</span>
-            <span class="lbl">{f.ctl && busy[f.ctl.key] ? '…' : displayLabel(f.label)}</span>
-          </span>
-          <small>{SAFETY_META[f.op].subtitle}</small>
-        </button>
-      {/each}
-    </div>
-
-    {#if !machine.catalog.ready}
-      <p class="empty">No catalog yet.</p>
-    {:else if !actions.length}
-      <p class="empty">This hub advertises no safety or home actions.</p>
-    {:else}
-      <div class="groups">
-        {#each actions as action (action.uid)}
-          {#if action.options && action.options.length}
-            {@const opts = optionButtons(action)}
-            {#if opts.length}
-              <div class="grp">
-                <span class="grp-lbl">{groupLabel(action)}</span>
-                <div class="grp-btns">
-                  {#each opts as opt (action.uid + ':' + opt.value)}
-                    {@const key = action.uid + ':' + opt.value}
-                    {@const meta = metaFor(action, opt.value)}
-                    <button
-                      type="button"
-                      class="btn"
-                      disabled={!canFire(action, opt.value)}
-                      title={reasonFor(action, opt.value) || opt.label}
-                      onclick={() => fire(action, opt.value, opt.label, key)}
-                    >
-                      <span class="row">
-                        {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
-                        <span class="lbl">{busy[key] ? '…' : displayLabel(opt.label)}</span>
-                      </span>
-                      {#if meta}<small>{meta.subtitle}</small>{/if}
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          {:else}
-            {@const meta = metaFor(action, 1)}
-            <div class="grp">
-              <span class="grp-lbl">{groupLabel(action)}</span>
-              <div class="grp-btns">
-                <button
-                  type="button"
-                  class="btn"
-                  disabled={!canFire(action, 1)}
-                  title={reasonFor(action, 1) || action.label}
-                  onclick={() => fire(action, 1, action.label, action.uid)}
-                >
-                  <span class="row">
-                    {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
-                    <span class="lbl">{busy[action.uid] ? '…' : displayLabel(action.label)}</span>
-                  </span>
-                  {#if meta}<small>{meta.subtitle}</small>{/if}
-                </button>
-              </div>
-            </div>
-          {/if}
-        {/each}
+<!-- "deep": empty strip space drags the undecorated shell window; buttons
+     and other clickables opt out on their own (Tauri drag.js). -->
+<div class="topstrip" data-tauri-drag-region="deep" bind:offsetHeight={stripH}>
+  {#if Shell}<Shell />{/if}
+  <LinkBar />
+  <div class="safety" role="group" aria-label="Safety controls">
+    {#if unattended}
+      <!-- RENDERING §10.1 rule 3: moving with nobody attached is shown in words,
+           never inferred. Clears when a session owns a source again. -->
+      <div class="unattended" role="status">Unattended: moving with no session in control</div>
+    {/if}
+    {#if lastRefusal.code != null}
+      <!-- THE GLOBAL REFUSAL SURFACE. Any of shadow.svelte.js's three write
+           paths — a settings slider, an action button, the rail's move tape —
+           lands here the instant the hub refuses it, whether or not the
+           control that sent it is still on screen (CLAUDE.md 3, Ground Truth
+           Doctrine: a swallowed refusal misrepresents machine state). The
+           remedy button only appears when THIS hub's catalog actually
+           advertises the action that clears it. -->
+      <div class="recovery" role="alert">
+        <span>
+          refused{lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''}:
+          {lastRefusal.codeName}{lastRefusal.detail ? ' — ' + lastRefusal.detail : ''}
+        </span>
+        {#if remedy}
+          <button
+            type="button"
+            class="btn recover"
+            disabled={!canFire(remedy.action, remedy.op)}
+            title={reasonFor(remedy.action, remedy.op)}
+            onclick={fireRemedy}
+          >
+            {remedyBusy ? '…' : 'Fix: ' + optionLabel(remedy.action, remedy.op)}
+          </button>
+        {/if}
       </div>
     {/if}
 
-    {#if lastResult && !lastResult.ok}
-      <p class="err" role="status">refused ({lastResult.label}): {lastResult.error}</p>
+    {#if latestSafety}
+      <!-- Tier-1 anomaly surface: the latest safety edge, its age, and how many
+           arrived unread. Opens the Safety feed (LogPane), which is the history. -->
+      <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
+              title={safetyStale ? 'stale: the link has not been live since this edge, later edges may be missing'
+                                 : 'open the safety event history'}>
+        <span class="evkind">{displayLabel(kindName(latestSafety))}</span>
+        <span class="evage">{ageText(now - latestSafety.at)}</span>
+        {#if safetyStale}<span class="evtag">stale</span>{/if}
+        {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
+      </button>
     {/if}
+
+    <div class="dock">
+      <div class="pair">
+        {#each fixedCtls as f (f.op)}
+          <button
+            type="button"
+            class="btn fixed {f.cls}"
+            disabled={!f.enabled}
+            title={f.why || f.label}
+            onclick={() => f.ctl && fire(f.ctl.action, f.ctl.value, f.ctl.label, f.ctl.key)}
+          >
+            <span class="row">
+              <span class="ico" aria-hidden="true">{@html iconMarkup(SAFETY_META[f.op].icon)}</span>
+              <span class="lbl">{f.ctl && busy[f.ctl.key] ? '…' : displayLabel(f.label)}</span>
+            </span>
+            <small>{SAFETY_META[f.op].subtitle}</small>
+          </button>
+        {/each}
+      </div>
+
+      {#if !machine.catalog.ready}
+        <p class="empty">No catalog yet.</p>
+      {:else if !actions.length}
+        <p class="empty">This hub advertises no safety or home actions.</p>
+      {:else}
+        <div class="groups">
+          {#each actions as action (action.uid)}
+            {#if action.options && action.options.length}
+              {@const opts = optionButtons(action)}
+              {#if opts.length}
+                <div class="grp">
+                  <span class="grp-lbl">{groupLabel(action)}</span>
+                  <div class="grp-btns">
+                    {#each opts as opt (action.uid + ':' + opt.value)}
+                      {@const key = action.uid + ':' + opt.value}
+                      {@const meta = metaFor(action, opt.value)}
+                      <button
+                        type="button"
+                        class="btn"
+                        disabled={!canFire(action, opt.value)}
+                        title={reasonFor(action, opt.value) || opt.label}
+                        onclick={() => fire(action, opt.value, opt.label, key)}
+                      >
+                        <span class="row">
+                          {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
+                          <span class="lbl">{busy[key] ? '…' : displayLabel(opt.label)}</span>
+                        </span>
+                        {#if meta}<small>{meta.subtitle}</small>{/if}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            {:else}
+              {@const meta = metaFor(action, 1)}
+              <div class="grp">
+                <span class="grp-lbl">{groupLabel(action)}</span>
+                <div class="grp-btns">
+                  <button
+                    type="button"
+                    class="btn"
+                    disabled={!canFire(action, 1)}
+                    title={reasonFor(action, 1) || action.label}
+                    onclick={() => fire(action, 1, action.label, action.uid)}
+                  >
+                    <span class="row">
+                      {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
+                      <span class="lbl">{busy[action.uid] ? '…' : displayLabel(action.label)}</span>
+                    </span>
+                    {#if meta}<small>{meta.subtitle}</small>{/if}
+                  </button>
+                </div>
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+
+      {#if lastResult && !lastResult.ok}
+        <p class="err" role="status">refused ({lastResult.label}): {lastResult.error}</p>
+      {/if}
+    </div>
   </div>
 </div>
 
 <style>
-  .safetydock {
-    left: 0;
-    right: 0;
-    /* Safety chrome always wins the bottom edge, and that ownership is now
-       EXCLUSIVE: ShellBar's chrome moved to the top of the page (see
-       ShellBar.svelte), so nothing else ever competes for this z-index. */
+  /* Desktop: the first row of .app's 100dvh flex column, where sticky is
+     inert. Phone: the page scrolls and this sticks at the viewport top.
+     Full bleed through .app's side padding (DESIGN §10.4). ConfirmLayer sits
+     at z 29, under this. */
+  .topstrip {
+    position: sticky;
+    top: 0;
     z-index: 30;
+    flex: none;
+    margin: 0 calc(var(--gap) * -1);
     background: var(--bg-raised);
-    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .safety {
     padding: 6px var(--gap);
     display: flex;
     flex-direction: column;
     gap: 6px;
-  }
-
-  /* Breakpoint matches App.svelte's `isDesktop` matchMedia (960px) — the two
-     rules below are the mobile/desktop halves of one positioning decision. */
-  @media (max-width: 959px) {
-    .safetydock {
-      position: fixed;
-      bottom: 0;
-      padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-    }
-  }
-  @media (min-width: 960px) {
-    .safetydock {
-      /* .app is a 100dvh flex column (style.css) and this is its last row —
-         a normal flex item, always on screen without being pinned. */
-      position: static;
-    }
   }
 
   .unattended {
@@ -531,8 +531,8 @@
   }
 
   /* ---- op groups: labeled clusters, one scrolling row --------------------
-     ONE ROW, always. A wrapping dock grows as the machine advertises more
-     ops, and a dock that grows upward covers the page. Scrolling keeps the
+     ONE ROW, always. A wrapping strip grows as the machine advertises more
+     ops, and a strip that grows downward covers the page. Scrolling keeps the
      height constant; the e-stop sits outside this scroll area entirely. */
   .groups {
     display: flex;
@@ -589,7 +589,7 @@
     .btn { min-height: 40px; }
   }
   /* Short screens (landscape phone, laptop window): the group labels are
-     waypoints and the buttons carry their own names, so the dock gives the
+     waypoints and the buttons carry their own names, so the strip gives the
      labels' row back to the page. */
   @media (max-height: 500px), (min-width: 960px) and (max-height: 860px) {
     .grp-lbl { display: none; }
@@ -602,7 +602,7 @@
      Labels are the hub's own catalog strings — capitalize is presentation
      only (see displayLabel()), never a hardcoded string. Ops absent from
      SAFETY_META/HOME_META render no .ico/small — label-only, single line,
-     same as before this pass; a future hub op must not break this dock. */
+     same as before this pass; a future hub op must not break this strip. */
   .btn .row { display: flex; align-items: center; gap: 4px; }
   .btn .lbl { text-transform: capitalize; }
   .btn .ico { width: 14px; height: 14px; display: inline-grid; }

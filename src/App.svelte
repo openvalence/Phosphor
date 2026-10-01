@@ -18,9 +18,8 @@
    */
   import Field from './ui/Field.svelte';
   import ActionField from './ui/ActionField.svelte';
-  import LinkBar from './ui/LinkBar.svelte';
   import FootStrip from './ui/FootStrip.svelte';
-  import SafetyBar from './ui/SafetyBar.svelte';
+  import TopStrip from './ui/TopStrip.svelte';
   import ConfirmLayer from './ui/ConfirmLayer.svelte';
   import { askConfirm } from './ui/confirm.svelte.js';
   import TransportBar from './ui/TransportBar.svelte';
@@ -42,6 +41,9 @@
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
   import { pluginsUi, pluginHeroes } from './plugins/plugins.svelte.js';
+
+  // shell: the Tauri shell's strip row from main.js, null on the served page.
+  let { shell = null } = $props();
 
   const model = $derived(machine.catalog.model);
 
@@ -396,7 +398,7 @@
 {/snippet}
 
 <div class="app">
-  <LinkBar />
+  <TopStrip {shell} onopenlog={() => selectTab('log')} />
   {#if machine.catalog.ready}<HubPicker mode="link" />{/if}
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
@@ -417,7 +419,7 @@
     <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
     {#if !instrumentHeroes.length}
       <!-- No hero row to ride in: pause and home still need a home. Stop and
-           e-stop never depend on this; the safety dock always carries them. -->
+           e-stop never depend on this; the top strip always carries them. -->
       <div class="bare-transport"><TransportBar /></div>
     {/if}
     <div class="frame">
@@ -473,14 +475,13 @@
   {/if}
 
   <FootStrip />
-  <SafetyBar onopenlog={() => selectTab('log')} />
   <ConfirmLayer onreview={() => selectTab('pairing')} />
 </div>
 
 <style>
   /* ---- instrument zone (mobile only) -------------------------------------
      TransportBar is the OG's `.spine-transport` (Pause/Halt/E-Stop/Home),
-     promoted out of the safety dock (operator ruling 2026-07-28). Desktop
+     promoted out of the safety region (operator ruling 2026-07-28). Desktop
      threads it INTO the instrument hero row via the accessory snippet — no
      overlay positioning; the row itself is the alignment. A phone's page
      scrolls instead, so it keeps its own full-width row ABOVE the hero
@@ -511,8 +512,8 @@
 
   /* ---- desktop frame: rail + pane ----------------------------------------
      The one non-scrolling row of the desktop column (style.css's .app):
-     bounded to whatever height is left after LinkBar/hero-strip/FootStrip/
-     SafetyBar, with no overflow of its own — .content is the only region
+     bounded to whatever height is left after TopStrip/hero-strip/FootStrip,
+     with no overflow of its own — .content is the only region
      that scrolls. min-height:0 is required for a flex child to shrink below
      its content's natural height instead of forcing the column to overflow. */
   .frame {
@@ -628,14 +629,14 @@
   }
 
   /* ---- phone: horizontal tab strip ---------------------------------------
-     Sticky just below the link bar, because on a phone the settings list is
+     Sticky just below the top strip, because on a phone the settings list is
      long and losing the tab bar means scrolling all the way back up to change
      section. Horizontally scrollable rather than wrapping: a machine may
      publish more categories than fit, and a wrapping tab bar that grows to
      three rows pushes the actual content off-screen. */
   .tabs {
     position: sticky;
-    top: var(--linkbar-h, 0px);
+    top: var(--strip-h, 0px);
     z-index: 15;
     margin: 0 calc(var(--gap) * -1);
     padding: 6px var(--gap);
@@ -643,9 +644,9 @@
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line-0);
   }
-  /* Landscape phone: link bar plus tab strip plus the fixed dock would pin
-     half of a 390px screen. The tab strip gives way; the link bar (phase and
-     tier) and the dock (e-stop) stay. */
+  /* Landscape phone: the top strip plus the tab strip would pin half of a
+     390px screen. The tab strip gives way; the top strip (phase, tier,
+     e-stop) stays. */
   @media (max-height: 500px) {
     .tabs { position: static; }
   }

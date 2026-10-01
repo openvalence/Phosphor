@@ -26,7 +26,7 @@
    *    channel's own catalog-advertised rate instead of a hand-rolled
    *    client-side guess, and a refusal (this device: NACK NOT_HOMED while
    *    unhomed) is no longer silent — see `moveShadow` below and
-   *    ui/SafetyBar.svelte's global refusal surface. When a machine has not
+   *    ui/TopStrip.svelte's global refusal surface. When a machine has not
    *    annotated its move channel this way, the tape correctly declines —
    *    spans the window, disabled, with a reason — exactly like a
    *    Field.svelte control the session cannot write. That decline path is
@@ -113,7 +113,7 @@
   /**
    * May THIS session command a move? `move` has no enabled_mask (it is not a
    * RFC-009 setting) and no writeChannel/settingKey — its own `access` is the
-   * whole gate, checked the same way SafetyBar checks an option's access:
+   * whole gate, checked the same way TopStrip checks an option's access:
    * against the catalog's own data, so this can never disagree with what the
    * hub will actually accept. Reads machine.link.roles/phase explicitly
    * because the session object lives outside Svelte's reactivity.
@@ -881,7 +881,7 @@
         </div>
       </div>
       <!-- The tape has no persistent widget of its own once a drag ends, so a
-           refusal here is ALSO caught by ui/SafetyBar.svelte's global surface
+           refusal here is ALSO caught by ui/TopStrip.svelte's global surface
            (shadow.svelte.js's `lastRefusal`) — this is the local, inline echo
            of the exact same fault, not a second source of truth. -->
       {#if moveShadow && moveShadow.status === STATUS.fault && moveShadow.error}

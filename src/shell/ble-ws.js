@@ -37,7 +37,7 @@ const CHAR_H2C_NOTIFY = '56414c45-4e43-4531-8000-000000000003';
 const MTU_REQUEST = 517;
 export const MTU_FLOOR = 250;
 
-// Live wire counters for the ShellBar's diagnostics line — on-device field
+// Live wire counters for the ShellStrip's diagnostics line — on-device field
 // debugging without adb. Reset on each bridge instantiation.
 export const bleStats = { rx: 0, tx: 0, mtu: 0, lastError: '' };
 

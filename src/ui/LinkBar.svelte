@@ -131,15 +131,6 @@
   const AG_COLS = 14, AG_CELL = 4, AG_GAP = 1;
   let heatCanvas = $state(null);
 
-  // The bar's height is variable (banners appear and disappear). Publishing
-  // the MEASURED height lets everything else that sticks to the viewport top
-  // (nav rail, tab strip) sit exactly below this bar instead of under it.
-  let barH = $state(0);
-  $effect(() => {
-    document.documentElement.style.setProperty('--linkbar-h', barH + 'px');
-    return () => document.documentElement.style.removeProperty('--linkbar-h');
-  });
-
   $effect(() => {
     const rows = heatRows;             // establishes the reactive dependency
     const canvas = heatCanvas;
@@ -258,7 +249,7 @@
   <circle cx="7" cy="7" r="2.5"/>
 </svg>
 
-<header class="linkbar" bind:offsetHeight={barH}>
+<header class="linkbar">
   <div class="hdr-row">
     <div class="header-left">
       <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
@@ -328,36 +319,18 @@
     pointer-events: none;
   }
 
+  /* Positioned by its parent, TopStrip.svelte; never sticky on its own. */
   .linkbar {
-    position: sticky;
-    /* Parks below the shell's chrome rather than under it. --shell-chrome-top
-       is the height ShellBar reserves as `.app` padding (0px with no shell),
-       and here the page is the scrollport, so the offset is measured from the
-       viewport and has to restate it. */
-    top: var(--shell-chrome-top, 0px);
-    z-index: 20;
     background: var(--bg-raised);
     border-bottom: 1px solid var(--line);
     /* Keeps the bar's content out of the status-bar/notch zone; the
        background still paints under it. Reads the shared inset var rather
-       than env() directly — when shell chrome sits above this bar, that bar
-       owns the notch and this one must not pad for it twice (style.css). */
+       than env() directly — when the shell's row sits above this bar, that
+       row owns the notch and this one must not pad for it twice (style.css). */
     padding: calc(8px + var(--chrome-inset-top, 0px)) var(--gap) 8px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-  }
-
-  /* Desktop reserves the same space, but the offset MUST go back to zero.
-     `.app` is the scroll container there (height-capped flex column,
-     overflow:hidden), and a sticky offset is measured from the scrollport
-     INSET BY THAT CONTAINER'S PADDING — so `.app`'s padding-top already moved
-     this bar down, and restating it here lands the bar at twice the chrome
-     height. Nothing scrolls this column anyway (`.frame` owns the only
-     scroll), so sticky here is inert and 0 is the honest value.
-     Breakpoint matches App.svelte's `isDesktop` matchMedia (960px). */
-  @media (min-width: 960px) {
-    .linkbar { top: 0; }
   }
 
   /* OG .hdr-row verbatim. Deliberately does NOT wrap: the linkbar is fixed

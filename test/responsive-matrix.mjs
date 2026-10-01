@@ -18,7 +18,10 @@
  *              rendered box; a range input is measured by its thumb, a hidden
  *              switch input by its label)
  *   clip       no leaf text clipped by its own overflow box
- *   sticky     phone: tab strip parks flush under the link bar (T22)
+ *   sticky     phone: tab strip parks flush under the top strip (T22)
+ *   strip      one e-stop, inside the top strip, on screen with every scroll
+ *              container scrolled to its end (law 11); nothing fixed to the
+ *              bottom edge; .app spans the window (DESIGN §10.3, §10.4)
  *   chrome     no two fixed/sticky bars overlap
  *   reach      phone: every control can be scrolled clear of fixed chrome
  *   font       no text below 11px
@@ -249,7 +252,7 @@ function measure({ phone, coarse = phone }) {
   // fixed/sticky chrome overlap
   const chrome = [...document.querySelectorAll('body *')].filter((el) => {
     const p = getComputedStyle(el).position;
-    return (p === 'fixed' || p === 'sticky') && vis(el) && getComputedStyle(el).pointerEvents !== 'none' && !el.parentElement.closest('[style*="fixed"], .safetydock, .linkbar, nav.tabs');
+    return (p === 'fixed' || p === 'sticky') && vis(el) && getComputedStyle(el).pointerEvents !== 'none' && !el.parentElement.closest('[style*="fixed"], .topstrip, nav.tabs');
   });
   for (let i = 0; i < chrome.length; i++) for (let j = i + 1; j < chrome.length; j++) {
     const a = chrome[i].getBoundingClientRect(), b = chrome[j].getBoundingClientRect();
@@ -304,8 +307,31 @@ function measure({ phone, coarse = phone }) {
   return fails;
 }
 
+function stripCheck() {
+  const out = [];
+  const own = document.querySelectorAll('.topstrip .btn-estop');
+  if (own.length !== 1) out.push(['strip', own.length + ' e-stop(s) in the top strip']);
+  window.scrollTo(0, document.scrollingElement.scrollHeight);
+  document.querySelectorAll('*').forEach((el) => { if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight; });
+  const r = own[0] && own[0].getBoundingClientRect();
+  if (r && !(r.width > 0 && r.top >= -0.5 && r.left >= -0.5 && r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5)) {
+    out.push(['strip', 'e-stop off screen when scrolled to the end: ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',')]);
+  }
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none') continue;
+    const b = el.getBoundingClientRect();
+    if (b.width > 0 && b.height > 0 && b.bottom >= innerHeight - 1) out.push(['strip', 'fixed bar at the bottom edge: ' + el.className]);
+  }
+  const app = document.querySelector('.app').getBoundingClientRect();
+  if (Math.abs(app.width - document.documentElement.clientWidth) > 1) out.push(['strip', '.app ' + Math.round(app.width) + 'px wide in a ' + document.documentElement.clientWidth + 'px window']);
+  window.scrollTo(0, 0);
+  document.querySelectorAll('*').forEach((el) => { el.scrollTop = 0; });
+  return out;
+}
+
 function stickyCheck() {
-  const lb = document.querySelector('.linkbar');
+  const lb = document.querySelector('.topstrip');
   const tabs = document.querySelector('nav.tabs');
   if (!lb || !tabs || getComputedStyle(tabs).position !== 'sticky') return [];
   window.scrollTo(0, 0);
@@ -314,9 +340,9 @@ function stickyCheck() {
   const a = lb.getBoundingClientRect(), b = tabs.getBoundingClientRect();
   const stuck = document.scrollingElement.scrollTop >= tabsDocTop - a.height;
   const out = [];
-  if (Math.abs(a.top) > 1) out.push(['sticky', 'linkbar top=' + a.top.toFixed(1) + ' when scrolled']);
-  if (b.top < a.bottom - 1) out.push(['sticky', 'tabs slide under the linkbar: top=' + b.top.toFixed(1) + ' vs ' + a.bottom.toFixed(1)]);
-  else if (stuck && Math.abs(b.top - a.bottom) > 1) out.push(['sticky', 'tabs top=' + b.top.toFixed(1) + ' vs linkbar bottom=' + a.bottom.toFixed(1)]);
+  if (Math.abs(a.top) > 1) out.push(['sticky', 'top strip top=' + a.top.toFixed(1) + ' when scrolled']);
+  if (b.top < a.bottom - 1) out.push(['sticky', 'tabs slide under the top strip: top=' + b.top.toFixed(1) + ' vs ' + a.bottom.toFixed(1)]);
+  else if (stuck && Math.abs(b.top - a.bottom) > 1) out.push(['sticky', 'tabs top=' + b.top.toFixed(1) + ' vs top strip bottom=' + a.bottom.toFixed(1)]);
   window.scrollTo(0, 0);
   return out;
 }
@@ -363,7 +389,8 @@ async function visitViewport(w, h, dpr, tag, phone, coarse, takeShots) {
     const view = slug(labels[i]);
     await page.locator(tabSel).nth(i).click();
     await page.waitForTimeout(350);
-    const fails = [...await page.evaluate(measure, { phone, coarse }), ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
+    const fails = [...await page.evaluate(measure, { phone, coarse }), ...await page.evaluate(stripCheck),
+      ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
     if (takeShots) {
       await page.evaluate(() => { window.scrollTo(0, 0); document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
       // Tiles, not fullPage: a fullPage capture resizes the viewport and

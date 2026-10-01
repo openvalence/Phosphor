@@ -283,7 +283,7 @@ export function coreEntry(id) {
 /**
  * The safety-intents op select as an action, bound to spec-core identity so a
  * hub that never role-tagged it keeps its e-stop (RENDERING §13 law 2). The one
- * discovery path for SafetyBar and TransportBar.
+ * discovery path for TopStrip and TransportBar.
  */
 export function specSafetyAction() {
   const e = coreEntry(CORE_CHANNEL.safety_intents);

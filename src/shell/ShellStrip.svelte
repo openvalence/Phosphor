@@ -1,8 +1,8 @@
 <script>
   /**
-   * ShellBar.svelte — the Tauri shell's own chrome: hub discovery + transport
-   * control. SHELL ONLY (mounted by main.js's SHELL branch; never in the
-   * embedded bundle).
+   * ShellStrip.svelte -- the Tauri shell's row of the top strip: window
+   * controls, hub discovery, transport control. SHELL ONLY (main.js hands it
+   * to App, which hands it to TopStrip; never in the embedded bundle).
    *
    * Constraints:
    * - This is SHELL chrome, not kernel UI: it may know about transports and
@@ -17,6 +17,7 @@
    */
   import { untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
   import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { machine, connect, disconnect } from '../model/machine.svelte.js';
@@ -28,25 +29,16 @@
   let hubs = $state([]);
   let finding = $state(false);
   let found = $state([]);
-  // The bar publishes its own MEASURED height as --shell-chrome-top so the
-  // page reserves exactly that much top padding (style.css's .app) and the
-  // LinkBar sticks below it. clientHeight includes padding, so the notch
-  // inset this bar absorbs is already in the number. The kernel reads the var
-  // with a 0px default and never knows the shell exists.
-  //
-  // Zeroing --chrome-inset-top is the other half of that: this bar is now the
-  // topmost chrome, so it owns the notch and the LinkBar must not pad for the
-  // same inset a second time.
-  let barH = $state(0);
+  // This row is the topmost thing in the strip, so it owns the notch inset
+  // and the LinkBar below it must not pad for the same inset again (T22).
   $effect(() => {
     const root = document.documentElement.style;
-    root.setProperty('--shell-chrome-top', barH + 'px');
     root.setProperty('--chrome-inset-top', '0px');
-    return () => {
-      root.removeProperty('--shell-chrome-top');
-      root.removeProperty('--chrome-inset-top');
-    };
+    return () => root.removeProperty('--chrome-inset-top');
   });
+  // decorations:false applies to desktop only; a phone shell has no frame to
+  // replace, so it gets no window controls.
+  const win = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM) ? null : getCurrentWindow();
   // No baked-in address: discovery is the front door. The input remembers
   // only a host the operator themselves connected to before.
   const manualHost = localStorage.getItem('shell_host') || '';
@@ -206,86 +198,91 @@
   }
 </script>
 
-<div class="shellbar" class:collapsed={!expanded} bind:clientHeight={barH}>
-  <!-- Hangs from the top now: the glyph points toward where tapping moves
-       the bar's free edge — down (▾) when collapsed-and-about-to-expand,
-       up (▴) when expanded-and-about-to-collapse. -->
-  <button class="sb-toggle mono" onclick={() => (expanded = !expanded)}
-          aria-label="toggle shell bar">{expanded ? '▴' : '▾'} shell</button>
-  {#if expanded}
-    <span class="sb-mode mono" data-mode={mode}>{mode.toUpperCase()}</span>
-    <span class="sb-phase mono">{phase}</span>
+<div class="shellrow" class:collapsed={!expanded}>
+  <div class="sb-left">
+    <!-- The glyph points toward where tapping moves the row's free edge:
+         down (▾) to expand, up (▴) to collapse. -->
+    <button class="sb-toggle mono" onclick={() => (expanded = !expanded)}
+            aria-label="toggle shell bar">{expanded ? '▴' : '▾'} shell</button>
+    {#if expanded}
+      <span class="sb-mode mono" data-mode={mode}>{mode.toUpperCase()}</span>
+      <span class="sb-phase mono">{phase}</span>
 
-    <button class="sb-btn" onclick={findHubs} disabled={finding}>
-      {finding ? 'finding…' : 'find hubs'}
-    </button>
-    <!-- mDNS-only hits carry no durable id (discovery.rs), so ip:port keys them. -->
-    {#each found as f (f.hub_instance_id ?? f.ip + ':' + f.ws_port)}
-      <button class="sb-hub ws mono" onclick={() => connectWs(f.ip, f.ws_port)}>
-        <span class="hub-name">{f.hub_name || 'hub'}</span>
-        <span class="hub-addr">{f.ip}:{f.ws_port}</span>
-        <span class="hub-fw">{f.fw_version || '?'}</span>
-        {#if f.pairing_window_open}<span class="hub-pair">pairing</span>{/if}
+      <button class="sb-btn" onclick={findHubs} disabled={finding}>
+        {finding ? 'finding…' : 'find hubs'}
       </button>
-    {/each}
+      <!-- mDNS-only hits carry no durable id (discovery.rs), so ip:port keys them. -->
+      {#each found as f (f.hub_instance_id ?? f.ip + ':' + f.ws_port)}
+        <button class="sb-hub ws mono" onclick={() => connectWs(f.ip, f.ws_port)}>
+          <span class="hub-name">{f.hub_name || 'hub'}</span>
+          <span class="hub-addr">{f.ip}:{f.ws_port}</span>
+          <span class="hub-fw">{f.fw_version || '?'}</span>
+          {#if f.pairing_window_open}<span class="hub-pair">pairing</span>{/if}
+        </button>
+      {/each}
 
-    <button class="sb-btn" onclick={scan}>{scanning ? 'stop' : 'scan BLE'}</button>
-    {#each hubs as h (h.address)}
-      {@const adv = advFlags(h)}
-      <button class="sb-hub mono" onclick={() => pickBle(h)}>
-        <span class="hub-name">{h.name || 'hub'}</span>
-        <span class="hub-addr">{h.address}</span>
-        {#if h.rssi}<span class="hub-rssi">{h.rssi} dBm</span>{/if}
-        {#if adv?.pairing}<span class="hub-pair">pairing</span>{/if}
-        {#if adv?.ws}<span class="hub-pair">WS</span>{/if}
-      </button>
-    {/each}
-    {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
+      <button class="sb-btn" onclick={scan}>{scanning ? 'stop' : 'scan BLE'}</button>
+      {#each hubs as h (h.address)}
+        {@const adv = advFlags(h)}
+        <button class="sb-hub mono" onclick={() => pickBle(h)}>
+          <span class="hub-name">{h.name || 'hub'}</span>
+          <span class="hub-addr">{h.address}</span>
+          {#if h.rssi}<span class="hub-rssi">{h.rssi} dBm</span>{/if}
+          {#if adv?.pairing}<span class="hub-pair">pairing</span>{/if}
+          {#if adv?.ws}<span class="hub-pair">WS</span>{/if}
+        </button>
+      {/each}
+      {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
 
-    <span class="sb-sep"></span>
-    <HostEntry dense recent={false} label="WS" value={manualHost} onpick={connectWs} />
+      <span class="sb-sep"></span>
+      <HostEntry dense recent={false} label="WS" value={manualHost} onpick={connectWs} />
 
-    {#if target}
-      <button class="sb-btn sb-upgrade" onclick={upgrade}>
-        ↑ WS {target.host}:{target.port}
-      </button>
+      {#if target}
+        <button class="sb-btn sb-upgrade" onclick={upgrade}>
+          ↑ WS {target.host}:{target.port}
+        </button>
+      {/if}
+      {#if note}<span class="sb-note">{note}</span>{/if}
+      {#if stats}<span class="sb-note mono">{stats}</span>{/if}
     {/if}
-    {#if note}<span class="sb-note">{note}</span>{/if}
-    {#if stats}<span class="sb-note mono">{stats}</span>{/if}
+  </div>
+  {#if win}
+    <span class="sb-win">
+      <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
+      </button>
+      <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
+        <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
+      </button>
+      <button class="sb-wbtn" aria-label="Close" title="Close" onclick={() => win.close()}>
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+      </button>
+    </span>
   {/if}
 </div>
 
 <style>
-  .shellbar {
-    position: fixed;
-    /* TOPMOST chrome. It must be, and the offset must be 0: `.app` reserves
-       this bar's measured height as its own padding-top, which pushes the
-       LinkBar down by exactly that much. Offsetting the bar as well
-       double-counts — it lands over the LinkBar's lower half (drawing behind
-       it) with dead space above and below. */
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 21; /* above the LinkBar's stacking (20): it scrolls under this */
+  .shellrow {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    /* Topmost chrome owns the notch inset (style.css --chrome-inset-top),
-       and the $effect above zeroes that var so the LinkBar stops padding for
-       it. No inset-bottom: this never touches the bottom edge, SafetyBar
-       owns that exclusively. */
-    padding: calc(4px + env(safe-area-inset-top, 0px)) 10px 4px;
-    background: color-mix(in srgb, var(--bg-raised) 94%, transparent);
+    align-items: flex-start;
+    /* The one reader of env(safe-area-inset-top) while the shell is up; the
+       $effect above zeroes the LinkBar's share (style.css --chrome-inset-top). */
+    padding-top: env(safe-area-inset-top, 0px);
     border-bottom: 1px solid var(--line);
     font-size: 0.72rem;
     color: var(--ink-dim);
   }
-  .collapsed {
-    padding: 0 10px;
-    background: color-mix(in srgb, var(--bg-raised) 70%, transparent);
-    border-bottom: none;
+  .sb-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 10px;
   }
+  .collapsed { border-bottom: none; }
+  .collapsed .sb-left { padding-block: 0; }
   .sb-toggle {
     color: var(--ink-faint);
     font-size: 0.68rem;
@@ -348,4 +345,17 @@
   .sb-hub.ws { border-style: solid; }
   .sb-sep { flex: 0 0 8px; }
   .sb-note { color: var(--ink-faint); font-style: italic; font-size: 11px; }
+  /* Pinned top-right however .sb-left wraps. Empty row space is the window
+     drag region (TopStrip's data-tauri-drag-region). */
+  .sb-win { flex: 0 0 auto; display: flex; }
+  .sb-wbtn {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 32px;
+    padding: 0;
+    color: var(--ink-dim);
+  }
+  .sb-wbtn:hover { color: var(--ink); background: var(--line-soft); }
+  .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
 </style>

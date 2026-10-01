@@ -1,10 +1,10 @@
 /**
- * chrome-geom.mjs — does shell chrome stack correctly above the LinkBar?
+ * shell-chrome-geometry.test.mjs -- does the top strip stack flush (T22)?
  *
- * The ShellBar itself is not in the device bundle, so this simulates it: a
- * fixed bar at top:0 plus the --shell-chrome-top reserve it publishes. That is
- * exactly the geometry contract the two changed rules implement, so if the
- * LinkBar lands anywhere but flush under the fake bar, the shell is broken.
+ * One strip (ui/TopStrip.svelte) holds every top bar and sits in flow, sticky
+ * at top 0, so there is no reserve to double-count. The shell's row is not in
+ * the device bundle, so this simulates it: a 34px block prepended inside the
+ * strip, which is exactly where TopStrip mounts ShellStrip.
  *
  * Deliberately NOT part of `npm run check`: that script runs inside every
  * firmware build (build_webui.py), and launching a browser there would put a
@@ -23,69 +23,72 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 let fails = 0;
-const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
+const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  -- ' + extra : '')); if (!c) fails++; };
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-await page.waitForSelector('.linkbar', { timeout: 15000 });
+await page.waitForSelector('.topstrip .linkbar', { timeout: 15000 });
 
-const BAR = 34;   // a plausible ShellBar height
+const ROW = 34;   // a plausible shell row height
 
-// ---- baseline: no shell chrome ---------------------------------------------
-let g = await page.evaluate(() => {
+const geom = () => page.evaluate(() => {
+  const strip = document.querySelector('.topstrip').getBoundingClientRect();
   const lb = document.querySelector('.linkbar').getBoundingClientRect();
+  const fake = document.querySelector('#fake-shell');
   const app = document.querySelector('.app').getBoundingClientRect();
-  return { lbTop: lb.top, appTop: app.top, appH: app.height, vh: window.innerHeight,
-           scrolls: document.scrollingElement.scrollHeight > window.innerHeight + 2 };
+  const bottomFixed = [...document.querySelectorAll('body *')].filter((el) => {
+    const cs = getComputedStyle(el);
+    const b = el.getBoundingClientRect();
+    return cs.position === 'fixed' && cs.pointerEvents !== 'none' && b.height > 0 && b.bottom >= innerHeight - 1;
+  }).length;
+  return { stripTop: strip.top, stripL: strip.left, stripW: strip.width, lbTop: lb.top,
+           fakeBottom: fake ? fake.getBoundingClientRect().bottom : null,
+           appH: app.height, vw: document.documentElement.clientWidth, vh: innerHeight, bottomFixed,
+           scrolls: document.scrollingElement.scrollHeight > innerHeight + 2 };
 });
-ok('no shell: LinkBar is flush at the viewport top', Math.abs(g.lbTop) < 1, 'top=' + g.lbTop);
+
+// ---- served page: no shell row ---------------------------------------------
+let g = await geom();
+ok('no shell: strip flush at the viewport top', Math.abs(g.stripTop) < 1, 'top=' + g.stripTop);
+ok('no shell: strip spans the window', Math.abs(g.stripL) < 1 && Math.abs(g.stripW - g.vw) < 1, g.stripL + '+' + g.stripW + ' vs ' + g.vw);
+ok('no shell: LinkBar is the strip\'s first row', Math.abs(g.lbTop - g.stripTop) < 1);
 ok('no shell: desktop column is exactly one viewport', Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
 ok('no shell: page does not scroll', !g.scrolls);
+ok('nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
 
-// ---- with simulated shell chrome -------------------------------------------
+// ---- with a simulated shell row ----------------------------------------------
 await page.evaluate((h) => {
-  const bar = document.createElement('div');
-  bar.id = 'fake-shell';
-  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:' + h
-    + 'px;z-index:21;background:#123';
-  document.body.appendChild(bar);
-  document.documentElement.style.setProperty('--shell-chrome-top', h + 'px');
-  document.documentElement.style.setProperty('--chrome-inset-top', '0px');
-}, BAR);
+  const row = document.createElement('div');
+  row.id = 'fake-shell';
+  row.style.cssText = 'height:' + h + 'px;background:#123';
+  document.querySelector('.topstrip').prepend(row);
+}, ROW);
 await page.waitForTimeout(300);
-
-g = await page.evaluate(() => {
-  const lb = document.querySelector('.linkbar').getBoundingClientRect();
-  const fb = document.querySelector('#fake-shell').getBoundingClientRect();
-  const app = document.querySelector('.app').getBoundingClientRect();
-  return { lbTop: lb.top, lbBottom: lb.bottom, fbBottom: fb.bottom, appH: app.height,
-           vh: window.innerHeight,
-           scrolls: document.scrollingElement.scrollHeight > window.innerHeight + 2 };
-});
-ok('shell: LinkBar starts exactly where the shell chrome ends (no gap)',
-   Math.abs(g.lbTop - g.fbBottom) < 1, 'lbTop=' + g.lbTop + ' barBottom=' + g.fbBottom);
-ok('shell: LinkBar does not slide under the shell chrome (no overlap)',
-   g.lbTop >= g.fbBottom - 0.5);
-ok('shell: no dead space above the chrome', Math.abs(g.fbBottom - BAR) < 1);
-ok('shell: desktop column still exactly one viewport',
-   Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
+g = await geom();
+ok('shell: the row is flush at the top', Math.abs(g.stripTop) < 1 && Math.abs(g.fakeBottom - ROW) < 1, 'rowBottom=' + g.fakeBottom);
+ok('shell: LinkBar starts exactly where the row ends', Math.abs(g.lbTop - g.fakeBottom) < 1, 'lbTop=' + g.lbTop);
+ok('shell: desktop column still exactly one viewport', Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
 ok('shell: page still does not scroll', !g.scrolls);
 
-// ---- mobile: the LinkBar must stick BELOW the chrome, not under it ---------
+// ---- phone: the page scrolls; the strip sticks, the tabs park under it --------
 await page.setViewportSize({ width: 420, height: 800 });
 await page.waitForTimeout(300);
 await page.evaluate(() => window.scrollTo(0, 600));
 await page.waitForTimeout(300);
-g = await page.evaluate(() => {
-  const lb = document.querySelector('.linkbar').getBoundingClientRect();
-  const fb = document.querySelector('#fake-shell').getBoundingClientRect();
-  return { lbTop: lb.top, fbBottom: fb.bottom };
+g = await geom();
+const tabs = await page.evaluate(() => {
+  const t = document.querySelector('nav.tabs');
+  return t && getComputedStyle(t).position === 'sticky' ? t.getBoundingClientRect().top : null;
 });
-ok('mobile scrolled: sticky LinkBar parks below the chrome, not beneath it',
-   g.lbTop >= g.fbBottom - 0.5, 'lbTop=' + g.lbTop + ' barBottom=' + g.fbBottom);
+ok('phone scrolled: strip stays at the top', Math.abs(g.stripTop) < 1, 'top=' + g.stripTop);
+ok('phone scrolled: shell row still leads the strip', Math.abs(g.fakeBottom - ROW) < 1);
+const stripBottom = await page.evaluate(() => document.querySelector('.topstrip').getBoundingClientRect().bottom);
+ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
+   'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
+ok('phone: nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
 
 await browser.close();
 srv.close();
-console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — shell chrome stacks.'));
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- the top strip stacks.'));
 process.exit(fails ? 1 : 0);

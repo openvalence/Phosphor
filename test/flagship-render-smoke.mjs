@@ -75,7 +75,7 @@ await page.click('.rail-collapse');
 ok('rail expands again', (await page.$$('nav.rail .rail-name')).length >= 6);
 
 // ---- safety dock ------------------------------------------------------------
-const dock = await page.waitForSelector('.safetydock .dock', { timeout: 10000 })
+const dock = await page.waitForSelector('.topstrip .dock', { timeout: 10000 })
   .then(() => true).catch(() => false);
 ok('safety dock renders', dock);
 
@@ -90,16 +90,16 @@ const tbEstopVisible = await page.$eval('.transportbar .btn-estop',
 ok('TransportBar e-stop visible at desktop', tbEstopVisible);
 const estopEnabled = await page.$eval('.transportbar .btn-estop', (b) => !b.disabled).catch(() => false);
 ok('e-stop is fireable for this session', estopEnabled);
-const dockEstopHidden = await page.$eval('.safetydock .btn-estop',
+const dockEstopHidden = await page.$eval('.topstrip .btn-estop',
   (b) => getComputedStyle(b).display === 'none').catch(() => false);
 ok('safety dock e-stop CSS-hidden at desktop (TransportBar shows it here instead)', dockEstopHidden);
 
 // Pause/stop/home moved to TransportBar (operator ruling 2026-07-28) and no
 // longer render as dock buttons at all.
-const dockLabels = await page.$$eval('.safetydock button', (els) => els.map((e) => e.textContent.trim().toLowerCase()));
+const dockLabels = await page.$$eval('.topstrip button', (els) => els.map((e) => e.textContent.trim().toLowerCase()));
 ok('no value-0 "reserved" placeholder rendered', !dockLabels.some((t) => /reserved|unused|none/.test(t)),
    dockLabels.join(' | '));
-ok('op groups carry role labels', (await page.$$('.safetydock .grp-lbl')).length >= 1);
+ok('op groups carry role labels', (await page.$$('.topstrip .grp-lbl')).length >= 1);
 
 // ---- fixed-viewport architecture (UX maturity pass) ------------------------
 // Desktop must never scroll as a page: the pane region is the only scroll
@@ -107,7 +107,7 @@ ok('op groups carry role labels', (await page.$$('.safetydock .grp-lbl')).length
 const pageScrolls = await page.evaluate(() =>
   document.scrollingElement.scrollHeight > window.innerHeight + 2);
 ok('desktop page does not scroll (fixed-viewport column)', !pageScrolls);
-const dockBox = await page.$eval('.safetydock', (el) => {
+const dockBox = await page.$eval('.topstrip', (el) => {
   const r = el.getBoundingClientRect();
   return r.top >= 0 && r.bottom <= window.innerHeight + 1 && r.height > 0;
 });

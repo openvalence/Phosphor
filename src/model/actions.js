@@ -35,7 +35,7 @@ export function isDestructive(action, value) {
   return false;
 }
 
-// Verbs the persistent region draws by identity and tag (SafetyBar,
+// Verbs the persistent region draws by identity and tag (TopStrip,
 // TransportBar); the generic trigger path never draws them a second time.
 const PERSISTENT_TAGS = new Set([ACTION_TAG.safety, ACTION_TAG.home]);
 

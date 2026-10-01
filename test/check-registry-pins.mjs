@@ -149,15 +149,15 @@ checkPin(
   'ble-ws.js CHAR_H2C_NOTIFY vs registry ble_identity.notify_char_uuid',
 );
 
-// src/shell/ShellBar.svelte -- discovery port, used only for the empty-result
+// src/shell/ShellStrip.svelte -- discovery port, used only for the empty-result
 // message string (discovery.rs owns the real socket), but a stale number
 // there lies to the operator about what port it actually probed.
 checkPin(
-  'src/shell/ShellBar.svelte',
+  'src/shell/ShellStrip.svelte',
   /DISCOVERY_PORT = (\d+);/,
   (m) => m[1],
   registryValues.udp_port,
-  'ShellBar.svelte DISCOVERY_PORT vs registry udp_discovery.port',
+  'ShellStrip.svelte DISCOVERY_PORT vs registry udp_discovery.port',
 );
 
 console.log('registry-pins check');

@@ -1,7 +1,7 @@
 <script>
   /**
    * HostEntry.svelte — type a hub address, or pick one this browser reached
-   * before. Shared by the hosted page's HubPicker and the shell's ShellBar,
+   * before. Shared by the hosted page's HubPicker and the shell's ShellStrip,
    * so there is one host field in the codebase.
    *
    * Constraints:

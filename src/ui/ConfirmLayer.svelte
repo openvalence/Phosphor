@@ -6,8 +6,8 @@
    * Constraints:
    * - Never covers or disables the stop affordance or the persistent region
    *   (§8.4 stop row): no page-wide scrim, no `inert`, no aria-modal. The card
-   *   is bounded to the middle of the viewport so the top transport row and the
-   *   bottom safety dock stay visible and clickable mid-confirm.
+   *   is bounded to the middle of the viewport so the top strip and the top
+   *   transport row stay visible and clickable mid-confirm.
    * - Tab is trapped inside the card; Escape cancels from anywhere. Focus
    *   returns to the control that opened it.
    * - Copy is whatever the caller passed from the catalog; this file adds only
@@ -98,8 +98,8 @@
 {/if}
 
 <style>
-  /* Below the fixed safety dock (z 30) and bounded to the middle band of the
-     viewport, so neither the dock nor the top transport row is ever under it. */
+  /* Below the top strip (z 30) and bounded to the middle band of the
+     viewport, so neither the strip nor the top transport row is ever under it. */
   .overlay {
     position: fixed;
     z-index: 29;

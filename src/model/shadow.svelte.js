@@ -61,7 +61,7 @@
  * A refused write can be invisible: the rail tape has no persistent widget to
  * decorate once the drag ends, and a control can simply be off-screen when its
  * NACK lands. `lastRefusal` is a SINGLE reactive record, updated by every fault
- * of every kind above, that `ui/SafetyBar.svelte` (pinned to the viewport)
+ * of every kind above, that `ui/TopStrip.svelte` (pinned to the viewport)
  * renders unconditionally — so a refusal is visible even from a control that
  * cannot show it itself. `NACK_REMEDY` maps a NACK code to the RFC-019 action
  * role that clears it (`NOT_HOMED` -> `action.home`, `ESTOP_ACTIVE` ->
@@ -153,7 +153,7 @@ export function clearLastRefusal() {
  * Both the role strings and the op enums are registry vocabulary: `HOME_OP`/
  * `SAFETY_OP` come straight from the Valence protocol client's index.js (generated from
  * registry.yaml), and `action.home`/`action.safety` are the same open-role
- * strings ui/SafetyBar.svelte already keys its own discovery on. Extending
+ * strings ui/TopStrip.svelte already keys its own discovery on. Extending
  * this table to a new code needs no protocol change — it is a mapping between
  * two things the catalog already publishes, never a new number.
  */
