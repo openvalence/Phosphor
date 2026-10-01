@@ -90,8 +90,9 @@ The server does not start by itself; the shell calls `bp_start`. `port` in
   `{stop: true}`. The bridge submits nothing for it, so the machine holds at
   its last target. A stop is NOT a Valence safety op: apps send stops on
   every disconnect, and a latched `stop` would need an operator clear each
-  time. Whether an app stop should map to `safety_intent_ops::stop` is an
-  open operator ruling.
+  time. Ruled (operator, 2026-10-01, [DESIGN §10.8](DESIGN.md)): an app's
+  stop or disconnect never maps to a safety op; the hub e-stop stays the
+  only latch.
 - **E-stop.** No client-side gate: the hub's latch (safety 0x0003) refuses
   the motion, whoever sends it. `test/buttplug-estop-sim.mjs` streams
   through the real adapter and motion door into valencesim, asserts an

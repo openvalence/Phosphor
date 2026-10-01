@@ -331,9 +331,21 @@ mount by closure; see [PLUGINS.md](PLUGINS.md).
 ## 10. The builder (operator rulings 2026-09-26)
 
 Phosphor is a UI builder. Valence is the framework behind it, optimized for
-embedded controllers. Nothing below is coded yet. The phased plan is epic
-`ph-e82`; status lives there, never here (C-2). Rulings still owed are on
-`ph-e82.1` and `ph-e82.7` and are marked OPEN below.
+embedded controllers. The phased plan is epic `ph-e82`; status lives there,
+never here (C-2). The phases landed on 2026-10-01 in these commits:
+
+- (a) top strip, full width: `72203c4`.
+- (b) grid, scale, named layouts: `e25b83c`.
+- (c) control contract: `64796b7`; per-placement look (§10.2): `204480e`.
+- (d) home page: `72f0b6a`.
+- (e) nests and modules: `3af57d2`.
+- (f) is the mobile ruling (`ph-e82.7`, §10.9), not code; nothing landed.
+- (g) buttplug embed: `5e8d81d` (server pane), `5976718` (server and
+  machine), `53fadf3` (toys as modules), `ee49622` (stop all toys),
+  `185bc64` (per-device toy stop).
+
+Rulings still owed are marked OPEN below (`ph-e82.7`; the relationship
+question in §10.8).
 
 ### 10.1 The home page replaces Overview
 
@@ -357,7 +369,18 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
   every field stays reachable through it regardless of any saved layout. The
   home is additional, never a replacement, which is what keeps §11 ("pages
   are derived, never designed per app") and §9 ("region assignment is never a
-  per-app choice") true of the derived tree.
+  per-app choice") true of the derived tree. Confirmed as coded (operator
+  ruling 2026-10-01).
+- As coded (`72f0b6a`): card-zone heroes (pattern, limits, plugin heroes)
+  are home modules AND cards at the top of the category page their claimed
+  fields came from (the `other` page when none is categorized); loose
+  actions are a home module AND join the `other` overflow page (RENDERING
+  §3), so nothing Overview showed is reachable only from the home. Home
+  membership is the key set of the active layout's `<class>.machine`
+  placement map plus every nest's members; a map with no plain key shows
+  the seed. The view id stays `machine`, the id the migrated Default layout
+  already holds. Telemetry is a home module only: it is not a field, and its
+  lanes' fields are reachable elsewhere.
 
 ### 10.2 The control contract
 
@@ -408,14 +431,15 @@ embedded controllers. Nothing below is coded yet. The phased plan is epic
   code only. The plugin API freeze (`ph-vdk.30`, §4) waits for this contract.
 - Persisted keys are stable ids (law 10): a role when the field has one,
   else its uid; composites as `hero:<id>`. An id the catalog lacks stays
-  inert in storage (`src/model/dashboard.svelte.js`). OPEN (`ph-e82.1`): a
-  uid is channel id plus field name, which law 10 calls wire vocabulary. A
-  Valence RFC, "User-authored surfaces and presentation choice", drafted
-  tonight (2026-09-26), carries the carve-out: the uid key is allowed for
-  USER-AUTHORED SURFACES ONLY, never for the conformant derived baseline.
-  Stands OPEN here until that RFC is accepted (never code against an
-  unaccepted clause); the same RFC also carries the archetype/presentation
-  rule and the range-narrowing rule above.
+  inert in storage (`src/model/grid.js`). A uid is channel id plus field
+  name, which law 10 calls wire vocabulary; the Valence RFC-080 draft
+  ("User-authored surfaces and presentation choice", item 6) carries the
+  carve-out: the uid key is allowed for USER-AUTHORED SURFACES ONLY, never
+  for the conformant derived baseline. RULED (operator, 2026-10-01,
+  `ph-e82.1` item 3): uid keys stand as coded, `uid:<channel>:<field>` for
+  a field with no role, inert when absent, never rebound. A role field's
+  uid-form key (written by builds before `ph-e82.9`) resolves to the same
+  control as its role key. Codes against the draft by ruling, as below.
 - RULED (operator, 2026-10-01, `ph-e82.1` items 2 and 4): design as though
   RFC-080 is accepted.
   - `CROSS_ARCHETYPE` is true (`src/model/settings.js`): the palette offers
@@ -519,6 +543,12 @@ is build configuration, never code" clause (amendments below). Seam:
   targets. OPEN, raised to the operator: relationships are hub policy that
   survives Phosphor closing (accessory rulings, same date), and a toy
   connected to Phosphor cannot be evaluated on the hub.
+- RULED (operator, 2026-10-01): an app's stop or disconnect leaves the
+  machine holding its last target; the hub e-stop stays the only latch. A
+  client stop submits nothing and never maps to a safety op
+  (`src/plugins/buttplug.js`; [BUTTPLUG.md](BUTTPLUG.md), Stop): apps stop
+  on every disconnect, and a latched stop would need an operator clear each
+  time.
 - The listener binds loopback. LAN exposure is `ph-vdk.28`'s ruling, the same
   question the TCode listener (`src-tauri/src/plugins.rs`) already raised.
 
@@ -539,3 +569,5 @@ operator rules otherwise.
 | 2026-09-26 | §10 | The builder rulings (§10.1 to §10.9) established. | operator |
 | 2026-09-26 | §10.1, §10.2 | Presentation-by-read/write-class rule, range-narrowing rule recorded; a momentary toggle mode was considered and withdrawn the same day (toggles are two-valued). Home-vs-derived-pages question closed: the home is additional, the catalog-built UI stays canonical. Law 10 uid carve-out and the presentation rule handed to a draft Valence RFC ("User-authored surfaces and presentation choice"). | operator |
 | 2026-10-01 | §10.2 | Design as though RFC-080 is accepted: read/write-class presentations on (`CROSS_ARCHETYPE`), per-placement `look` (range narrowing, two-valued toggles) carried in the layout store, single fields placeable anywhere (RFC-080 leaves it open). Codes against a DRAFT RFC by ruling; C-5 flag recorded in §10.2. | operator |
+| 2026-10-01 | §10.8 | An app's stop or disconnect leaves the machine holding its last target; the hub e-stop stays the only latch. | operator |
+| 2026-10-01 | §10, §10.1, §10.2 | `ph-e82.1` items 1 (the home is an additional surface) and 3 (uid keys for unroled fields, inert when absent) confirmed as coded; the "nothing coded yet" note replaced by the per-phase commit list; §10.1 records the home's coded decisions. | operator |
