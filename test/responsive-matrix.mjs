@@ -42,12 +42,13 @@
  *            edit mode has no horizontal scroll; layout handles stay 40 CSS
  *            px at the smallest scale (ph-e82.15)
  *   builder  1280 and 360: a category page in edit mode under a compact
- *            layout, with a collapsed nest holding a write-free member, an
- *            empty nest and a card selected (selection bar), passes the
- *            layout and strip checks (ph-e82.20)
- *   nest     phone: a scrolling nest is not a scroll region of its own, a
- *            wheel over it scrolls the page, the page passes the layout
- *            checks (ph-e82.6)
+ *            layout, with a nest holding a member (stored with the fold flag
+ *            an older build wrote, inert now), an empty nest and a card
+ *            selected (selection bar), passes the layout and strip checks
+ *            (ph-e82.20, ph-e82.22)
+ *   nest     phone: a nest is not a scroll region of its own, a wheel over
+ *            it scrolls the page, the page passes the layout checks
+ *            (ph-e82.6)
  *   phosphor the served page with a hub has no Phosphor group; the shell
  *            bundle (shell-build.mjs) carries it, and every Phosphor pane
  *            passes the layout and strip checks at desktop, landscape phone
@@ -708,7 +709,15 @@ if (!ONLY || ONLY === 'scale') {
     const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
     await page.waitForSelector(tabSel, { timeout: 15000 });
     await page.waitForTimeout(300);
-    const applied = await page.$eval('.scale [aria-label="Reset scale"]', (e) => e.textContent.trim()).catch(() => '?');
+    // The scale lives in the edit-mode Layout menu (ph-e82.22).
+    const applied = await (async () => {
+      await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+      await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+      const t = await page.$eval('.dash-menu .scale [aria-label="Reset scale"]', (e) => e.textContent.trim());
+      await page.keyboard.press('Escape');
+      await page.locator('.home .dash-toolbar .done-btn').click();
+      return t;
+    })().catch(() => '?');
     const out = [];
     for (let i = 0; i < await page.locator(tabSel).count(); i++) {
       await page.locator(tabSel).nth(i).click();
@@ -734,13 +743,13 @@ if (!ONLY || ONLY === 'scale') {
     const r = await atScale(w, h, true, SCALE_STEPS[0], async (page) =>
       (await page.evaluate(measure, { phone: true, coarse: true })).filter(([k]) => k === 'target').map(([, d]) => d));
     scen(w + 'x' + h + ': the smallest scale clamps (' + r.applied + ') and the target floor holds',
-      r.applied !== Math.round(SCALE_STEPS[0] * 100) + '%' && r.out.length === 0, [...new Set(r.out)].slice(0, 4).join('; '));
+      r.applied !== '?' && r.applied !== Math.round(SCALE_STEPS[0] * 100) + '%' && r.out.length === 0, [...new Set(r.out)].slice(0, 4).join('; '));
   }
 }
 
-// ---- nest (ph-e82.6): a nested scroll never traps the page scroll on a phone.
-// Every card of the first multi-card category goes into one short scrolling
-// nest through the stored layout.
+// ---- nest (ph-e82.6): a nest never traps the page scroll on a phone. Every
+// card of the first multi-card category goes into one short nest through the
+// stored layout (with the scroll flag an older build wrote, inert now).
 if (!ONLY || ONLY === 'nest') {
   console.log('\nnest scenarios');
   for (const [w, h] of [[320, 568], [360, 800], [390, 844]]) {
@@ -822,9 +831,10 @@ if (!ONLY || ONLY === 'builder') {
     await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[1] + '"] .handle.grab').click();
     await page.waitForTimeout(200);
     const ready = await page.evaluate(() => ({ compact: !!document.querySelector('.dash-wrap[data-density="compact"]'),
-      folded: !!document.querySelector('.nest.collapsed'), empty: !!document.querySelector('.nest-empty'), selbar: !!document.querySelector('.dash-selbar') }));
-    scen(tag + ': the builder chrome is on screen (compact, folded nest, empty nest, selection bar)',
-      ready.compact && ready.folded && ready.empty && ready.selbar, JSON.stringify(ready));
+      member: !!document.querySelector('.dash-cell[data-id="nest:1"] .nest-body .dash-cell'), empty: !!document.querySelector('.nest-empty'),
+      selbar: !!document.querySelector('.dash-selbar') }));
+    scen(tag + ': the builder chrome is on screen (compact, nest with a member, empty nest, selection bar)',
+      ready.compact && ready.member && ready.empty && ready.selbar, JSON.stringify(ready));
     const f = [...await page.evaluate(measure, { phone }), ...await page.evaluate(stripCheck)];
     scen(tag + ': the builder in edit mode passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
     await ctx.close();

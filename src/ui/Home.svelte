@@ -110,7 +110,8 @@
     layout.move([...next.filter((it) => !inNest.has(it.id)), ...nests.map((n) => ({ id: n.id }))], cols, pin);
   }
   // `pres` is a look picked in the palette; `at` the cell area a palette drop
-  // showed (a drop into a nest joins it unplaced). One undo step each.
+  // showed (a drop into a nest joins it unplaced); with none, the first free
+  // rect. One undo step each.
   function add(key, nest = '', pres = null, at = null) {
     const m = modules.get(key);
     if (!m || placed.has(key) || !placeable(m.kind, !!nest)) return;
@@ -120,13 +121,15 @@
     if (pres && pres !== m.control?.presentations?.[0]) (nest ? layout.nest(nest) : layout).setLook(key, { pres });
   }
   // `all` (the palette) removes every placement of the control; a card's own Remove only itself.
+  // Every card is fixed where it is drawn first, so the removed one leaves a hole;
+  // the closing commit only saves.
   function remove(key, all = true) {
     checkpoint();
+    commit(items);
     const gone = all ? keys.filter((k) => canon(k) === canon(key)) : [key];
-    const next = items.filter((it) => !gone.includes(it.id));
     for (const n of layout.nests()) for (const k of gone) if (n.keys.includes(k)) layout.nestRemove(n.id, k);
     for (const k of gone) delete viewMap(layouts, view.cls, VIEW)[k];
-    commit(next);
+    commit(items.filter((it) => !gone.includes(it.id)));
   }
   // The grid's selection: a nest goes with its members, except a member another nest also holds.
   function removeIds(ids) {

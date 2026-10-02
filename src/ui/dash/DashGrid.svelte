@@ -23,7 +23,10 @@
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
    *   writes the layout, so every intermediate frame is cancelable (Escape).
-   *   The preview is the commit's own result (grid.js settle).
+   *   Placements are absolute (grid.js place): the preview moves the dragged
+   *   card only, and a resize stops at a neighbor rather than pushing it.
+   * - An add (New nest, Insert, Duplicate) is committed at once, so the first
+   *   free rect it was drawn at is where it stays.
    * - DOM order is reading order, frozen while a drag is in flight: moving the
    *   node that holds pointer capture drops the capture.
    * - Nothing on the grid transitions or animates: a layout switch or a
@@ -38,8 +41,9 @@
    * - `ondropkey(key, rect)` takes a palette entry dragged onto the grid in
    *   edit mode (grid.js MODULE_MIME); `rect` is the cell area the drop target
    *   showed, null when stacked. A nest's grid hands it on with the nest's id.
-   * - The toolbar holds one row at 1280 CSS px: the rarely used layout and
-   *   module operations sit in one popover menu (test/responsive-matrix.mjs).
+   * - Outside edit mode the toolbar is the layout picker and Edit layout only;
+   *   scale, density and the layout and module operations sit in one popover
+   *   menu (test/responsive-matrix.mjs).
    */
   import DashItem from './DashItem.svelte';
   import Nest from './Nest.svelte';
@@ -49,7 +53,7 @@
     layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
-  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
@@ -209,6 +213,13 @@
     if (pin.mode === 'move') { moveTo(id, c, clientX, clientY); return; }
     const r = resizeRect(pin.start, pin.edge, c, cols, minOf(placed.find((q) => q.id === id)));
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
+    const b = blocker(placed, r, id);
+    if (b) {
+      if (!pin.blocked) announce(titleOf(id) + ': blocked by ' + titleOf(b.id));
+      pin = { ...pin, blocked: b.id };
+      return;
+    }
+    if (pin.blocked) pin = { ...pin, blocked: null };
     dragMoved = true;
     resizeNote(id, pin, r, pin.refused);
     pin = { ...pin, ...r };
@@ -276,7 +287,7 @@
       layout.move(all, cols, pin);
       const p = layout.arrange(all, cols).find((q) => q.id === id);
       const flip = p && pin.start && orientationOf(p.w, p.h) !== orientationOf(pin.start.w, pin.start.h);
-      if (p) announce(titleOf(id) + ' at ' + where(p) + (pin.refused ? ', its minimum' : '') + (flip ? ', now ' + ORIENT[orientationOf(p.w, p.h)] : ''));
+      if (p) announce(titleOf(id) + ' at ' + where(p) + (pin.refused ? ', its minimum' : '') + (pin.blocked ? ', blocked by ' + titleOf(pin.blocked) : '') + (flip ? ', now ' + ORIENT[orientationOf(p.w, p.h)] : ''));
     }
     pin = null;
     stackOrder = null;
@@ -322,8 +333,9 @@
       const id = p.kind === 'nest' ? layout.duplicate(p.id) : onduplicate(p.id);
       if (id) made.push(id);
     }
+    if (made.length) layout.move([...all, ...made.filter((id) => !all.some((it) => it.id === id)).map((id) => ({ id }))], cols, null);
     sel = made;
-    announce(made.length ? 'Duplicated ' + made.length + ', placed below' : 'Nothing here can be duplicated');
+    announce(made.length ? 'Duplicated ' + made.length : 'Nothing here can be duplicated');
   }
   // Home deletes from the home; a nest member steps out of its nest; elsewhere a nest ungroups.
   function deleteSel(list = selItems) {
@@ -365,7 +377,7 @@
     }
     const p = nudgePin(placed, id, dx, dy, cols);
     if (!p) {
-      announce(titleOf(id) + (dx ? ' is at the edge' : dy < 0 ? ' is at the top of its columns' : ' is at the bottom of its columns'));
+      announce(titleOf(id) + (dx ? ': at the edge' : ': nothing free above'));
       return;
     }
     layout.move(all, cols, p);
@@ -386,6 +398,8 @@
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
     const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p));
+    const b = blocker(placed, r, id);
+    if (b) { announce(titleOf(id) + ': blocked by ' + titleOf(b.id)); return; }
     layout.move(all, cols, { id, x: r.x, y: r.y, w: r.w, h: r.h });
     const q = layout.arrange(all, cols).find((x) => x.id === id);
     if (!q) return;
@@ -446,7 +460,7 @@
     if (to === layouts.active) return;
     if (baseline !== null && layoutJson() !== baseline) {
       pendingSwitch = to;
-      announce(layouts.active + ' has changes since editing began; keep or discard them before switching');
+      announce(layouts.active + ' changed while editing: keep or discard');
       return;
     }
     doSwitch(to);
@@ -467,8 +481,8 @@
   }
   function exportText() {
     layoutText = exportLayout(layouts.active);
-    navigator.clipboard?.writeText(layoutText).then(() => announce('Layout ' + layouts.active + ' copied as JSON'), () => {});
-    announce('Layout ' + layouts.active + ' exported below');
+    navigator.clipboard?.writeText(layoutText).then(() => announce('Layout ' + layouts.active + ' copied'), () => {});
+    announce('Layout ' + layouts.active + ' exported');
   }
   function importText() {
     try {
@@ -476,10 +490,10 @@
       layoutText = '';
       if (baseline !== null && layoutJson() !== baseline) {
         pendingSwitch = name;
-        announce('Imported layout ' + name + '; keep or discard the changes to ' + layouts.active + ' to switch to it');
+        announce('Imported layout ' + name + ': keep or discard ' + layouts.active + ' changes');
       } else {
         doSwitch(name);
-        announce('Imported layout ' + name + ' and switched to it');
+        announce('Imported layout ' + name);
       }
     } catch (err) {
       announce('Not imported: ' + err.message);
@@ -488,18 +502,22 @@
   function nameOp(fn, ok, fail) {
     if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
+  /** Fix a new unplaced entry at the first free rect it is drawn at (grid.js addNest). */
+  const settleNew = (id) => {
+    if (id) layout.move(all.some((it) => it.id === id) ? all : [...all, { id }], cols, null);
+    return id;
+  };
   function newNest() {
-    const id = layout.addNest();
-    if (id) announce('Added an empty nest');
+    if (settleNew(layout.addNest())) announce('Added an empty nest');
   }
   function insertModule() {
     const here = preview ? preview.filter((m) => m.title).length : 0;
-    if (moduleDraft && layout.insertModule(moduleDraft)) {
-      announce('Placed module ' + moduleDraft + ', ' + here + ' of ' + (preview ? preview.length : 0) + ' members available here');
+    if (moduleDraft && settleNew(layout.insertModule(moduleDraft))) {
+      announce('Placed module ' + moduleDraft + ', ' + here + ' of ' + (preview ? preview.length : 0) + ' members here');
     }
   }
   function undoOnce() {
-    if (undoLast()) { pin = null; stackOrder = null; announce('Undid the last layout change'); }
+    if (undoLast()) { pin = null; stackOrder = null; announce('Undone'); }
   }
   // Ctrl+Z (Cmd+Z) in edit mode, unless a text control owns the keystroke.
   function onKey(e) {
@@ -519,7 +537,7 @@
 </script>
 
 {#snippet nestCard(item)}
-  <Nest {item} parent={layout} {editing} {stack} {announce} target={pin?.into === item.id}
+  <Nest {item} parent={layout} {editing} {announce} target={pin?.into === item.id}
         ondragout={(it, x, y, phase) => childOut(item.id, it, x, y, phase)}
         ondropkey={ondropkey && ((key) => ondropkey(key, null, item.id))}
         candidates={all.filter((it) => it.kind !== 'nest' && placeable(it.kind, true))} />
@@ -530,20 +548,12 @@
 <div class="dash-wrap" data-density={given ? null : density()}>
   {#if !given}
   <div class="dash-toolbar">
-    <div class="scale" role="group" aria-label="Scale">
-      <button type="button" class="og-btn sm" aria-label="Scale down"
-              disabled={grid.scale === grid.steps[0]} onclick={() => stepScale(-1)}>−</button>
-      <button type="button" class="og-btn sm" aria-label="Reset scale"
-              title="Reset scale" onclick={() => stepScale(0)}>{Math.round(grid.scale * 100)}%</button>
-      <button type="button" class="og-btn sm" aria-label="Scale up"
-              disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
-    </div>
     <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active} onchange={pick}>
       {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
     </select>
     {#if editing}
       <div class="edit-ops" role="group" aria-label="Layout editing">
-        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo the last layout change (Ctrl+Z)"
+        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
                 onclick={undoOnce}>Undo</button>
         <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
         <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
@@ -560,13 +570,23 @@
                   onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
           <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
         </div>
-        <label class="og-switch density">
-          <input type="checkbox" role="switch" checked={density() === 'compact'}
-                 onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
-          <span class="track"></span>Compact cards in {layouts.active}
-        </label>
+        <div class="menu-row view-row">
+          <div class="scale" role="group" aria-label="Scale">
+            <button type="button" class="og-btn sm" aria-label="Scale down" title="Scale down"
+                    disabled={grid.scale === grid.steps[0]} onclick={() => stepScale(-1)}>−</button>
+            <button type="button" class="og-btn sm" aria-label="Reset scale"
+                    title="Reset scale" onclick={() => stepScale(0)}>{Math.round(grid.scale * 100)}%</button>
+            <button type="button" class="og-btn sm" aria-label="Scale up" title="Scale up"
+                    disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
+          </div>
+          <label class="og-switch density">
+            <input type="checkbox" role="switch" checked={density() === 'compact'}
+                   onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
+            <span class="track"></span>Compact cards
+          </label>
+        </div>
         <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
-                  placeholder="Export fills this; paste a layout here to import" bind:value={layoutText}></textarea>
+                  placeholder="Paste layout JSON to import" bind:value={layoutText}></textarea>
         <div class="menu-row">
           <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
           <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
@@ -582,11 +602,10 @@
                     onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
           </div>
           {#if preview}
-            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here{preview.some((m) => !m.title)
-              ? '; the rest stay inert until a catalog has them' : ''}</p>
+            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here</p>
             <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
               {#each preview as m (m.key)}
-                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not available here)'}</li>
+                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not on this machine)'}</li>
               {/each}
             </ul>
           {/if}
@@ -598,22 +617,20 @@
   </div>
   {#if pendingSwitch}
     <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
-      <span class="sel-n">{layouts.active} changed since editing began.</span>
+      <span class="sel-n">{layouts.active} changed while editing</span>
       <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
       <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
       <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
     </div>
   {:else if editing && !selSet.size}
-    <p class="dash-hint">Drag a card by its grip, resize it by any edge or corner, or drag a palette entry onto the grid.
-      Click grips to select (Shift adds) or drag across empty grid. Keyboard: focus a grip; arrows move, Shift+arrows
-      resize, Space selects, Enter picks a look, Delete removes, Esc cancels a drag. Ctrl+Z undoes the last change.</p>
+    <p class="dash-hint">Drag grips to move, edges to resize</p>
   {/if}
   {/if}
   {#if editing && selSet.size}
     <div class="dash-selbar" role="group" aria-label="Selection">
       <span class="sel-n">{selSet.size} selected</span>
       <button type="button" class="og-btn sm" disabled={!selItems.some(canDup)} onclick={duplicateSel}
-              title={selItems.some(canDup) ? 'Copy below' : 'A control is placed once per grid; a nest can hold it twice'}>Duplicate</button>
+              title={selItems.some(canDup) ? 'Place a copy' : 'Placed once per grid'}>Duplicate</button>
       {#if selSet.size > 1}
         <button type="button" class="og-btn sm" onclick={() => arrangeSel('left')}>Align left</button>
         <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
@@ -656,9 +673,9 @@
       </div>
     {/each}
     {#each ghosts as ghost (ghost.id || 'drop')}
-      <div class="drop-ghost" class:refused={pin?.refused} aria-hidden="true"
+      <div class="drop-ghost" class:refused={pin?.refused || pin?.blocked} aria-hidden="true"
            style={'grid-column:' + (ghost.x + 1) + ' / span ' + ghost.w + ';grid-row:' + (ghost.y + 1) + ' / span ' + ghost.h}>
-        <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.start
+        <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.blocked ? ' · blocked' : ''}{pin?.start
           && orientationOf(ghost.w, ghost.h) !== orientationOf(pin.start.w, pin.start.h) ? ' · ' + ORIENT[orientationOf(ghost.w, ghost.h)] : ''}</span>
       </div>
     {/each}
@@ -681,8 +698,8 @@
     gap: 6px;
   }
 
-  /* Wraps only below the width the whole bar needs (phone): the scale and the
-     picker keep the first row, the edit group and the toggle follow. */
+  /* Wraps only below the width the whole bar needs (phone): the picker keeps
+     the first row, the edit group and the toggle follow. */
   .dash-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -691,6 +708,7 @@
     gap: 6px;
   }
   .scale { display: flex; gap: 2px; }
+  .view-row { align-items: center; gap: 12px; }
   .scale button { min-width: 40px; font-variant-numeric: tabular-nums; }
   .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: 5px 28px 5px 10px; margin-right: auto; }
   .edit-ops { display: flex; gap: 6px; }
@@ -821,8 +839,7 @@
     white-space: nowrap;
   }
 
-  /* .og-panel's outline paints 4px outside each card's border box; 7px of
-     padding keeps neighboring outlines apart and off the grid's edge. */
+  /* The gutter between cards; a selected card's outline sits inside it. */
   .dash-cell {
     padding: var(--dash-cell-pad, 7px);
     min-width: 0;
@@ -833,7 +850,6 @@
      and every handle keeps its 40 px (law 12). */
   .dash-wrap[data-density='compact'] {
     --dash-cell-pad: 4px;
-    --dash-outline-offset: 2px;
     --dash-body-pad: 6px;
     --dash-title-size: .7rem;
   }

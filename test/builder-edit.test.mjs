@@ -6,28 +6,32 @@
  *
  *   resize   every edge and corner resizes with a live ghost showing the
  *            size; the minimum is refused visibly; an orientation flip is
- *            announced (ph-e82.20.1)
- *   drag     the dragged card lifts; siblings reflow into the predicted
- *            layout while dragging; the ghost is the committed rect; a card
- *            dropped on a nest lights the nest and joins it; a member dragged
- *            out of its nest lands at the top level (ph-e82.20.2)
+ *            announced (ph-e82.20.1); a resize stops at a neighbor, which
+ *            never moves (ph-e82.22)
+ *   drag     the dragged card lifts; no sibling moves while dragging or
+ *            after the drop (ph-e82.22, placements are absolute); the ghost
+ *            is the committed rect; a card dropped on a nest lights the nest
+ *            and joins it; a member dragged out of its nest lands at the top
+ *            level (ph-e82.20.2)
  *   select   grip click and Shift+click select; a marquee on empty grid
  *            selects what it crosses; a group moves as one; align left;
  *            duplicate a card (a second placement) and a nest (a copy);
  *            remove as a group, one undo step (ph-e82.20.3)
  *   nest     an empty nest says where controls go; the title edits in place
- *            (Enter commits, Escape restores); scroll/fixed in the bar; a
- *            collapsed nest packs two rows and keeps its height; a module's
- *            members are previewed, inert ones named, before Insert
- *            (ph-e82.20.4)
- *   keys     on a focused grip: Up/Down pass the card above or below in its
- *            columns, Left/Right nudge a cell, Shift+arrows resize, focus
- *            stays on the moved grip; Tab meets the grips in reading order;
+ *            (Enter commits, Escape restores); no scroll or fold switch
+ *            (ph-e82.22); a module's members are previewed, inert ones
+ *            named, before Insert (ph-e82.20.4)
+ *   keys     on a focused grip: arrows step one cell into free space, never
+ *            onto or past a neighbor that would have to move; Shift+arrows
+ *            resize; focus stays on the moved grip; Tab meets the grips in
+ *            reading order;
  *            Enter opens the look picker; Delete removes (Ctrl+Z restores);
  *            Escape cancels a pointer drag with nothing written (ph-e82.20.5)
  *   layouts  a switch with changes since editing began asks Keep, Discard
  *            or Stay; a switch runs no animation on the grid; a layout
- *            exports as JSON and imports under a free name (ph-e82.20.6)
+ *            exports as JSON and imports under a free name (ph-e82.20.6);
+ *            outside edit mode the toolbar is the picker and Edit layout,
+ *            the scale sits in the Layout menu beside density (ph-e82.22)
  *   density  Compact (per layout) shrinks the gutter, card padding and card
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
@@ -137,7 +141,7 @@ const ghost = (page) => page.$eval('.home .drop-ghost', (g) => ({ text: g.textCo
 // ---- resize from every edge (ph-e82.20.1) --------------------------------------
 console.log('resize');
 {
-  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 } });
+  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 }, [F1]: { x: 20, y: 0, w: 6, h: 2 } });
   const c = card(SLIDER);
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
@@ -160,6 +164,11 @@ console.log('resize');
   s = (await stored())[SLIDER];
   ok('the vertical size is committed', s.w === 2 && s.h >= minCells(WIDGET.slider, 'v')[1], s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
+  await drag(page, c.locator('.edge-e'), 30 * cell, 0);
+  s = await stored();
+  ok('a resize stops at a neighbor and says so', s[SLIDER].x + s[SLIDER].w <= 20 && s[SLIDER].w > 2 && /blocked by/.test(await said()),
+     [s[SLIDER], await said()]);
+  ok('the neighbor never moves', JSON.stringify(s[F1]) === '{"x":20,"y":0,"w":6,"h":2}', s[F1]);
   await ctx.close();
 }
 
@@ -171,14 +180,21 @@ console.log('drag');
     'nest:1': { x: 20, y: 0, w: 14, h: 6, nest: { title: 'Pump', scroll: false, map: { [F3]: { x: 0, y: 0, w: 6, h: 2 } } } },
   });
   const area = (key) => card(key).evaluate((el) => el.style.gridColumn + ' / ' + el.style.gridRow);
+  const areas = () => page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => Object.fromEntries(els
+    .map((el) => [el.dataset.id, (el.style.gridColumn + ' / ' + el.style.gridRow).replace(/\s+/g, ' ')])));
+  const siblingsMoved = (a, b, except) => Object.keys(a).filter((k) => k !== except && k in b && a[k] !== b[k]);
+  const before = await areas();
   const during = await drag(page, card(F1).locator('.handle.grab'), 10 * cell, 3 * cell, async () => ({
+    all: await areas(),
     lifted: await card(F1).locator('.dash-item').evaluate((el) => { const cs = getComputedStyle(el); return el.classList.contains('dragging') && cs.boxShadow !== 'none' && cs.transform !== 'none'; }),
     sibling: await area(F2),
     ghost: await page.$eval('.home .drop-ghost', (g) => g.style.gridColumn + ' / ' + g.style.gridRow),
     card: await area(F1),
   }));
   ok('the dragged card lifts with a shadow', during.lifted, during);
-  ok('a sibling reflows into the predicted layout while dragging', /^1 \/ span 10 \/ 1 \/ span 2$/.test(during.sibling.replace(/\s+/g, ' ')), during.sibling);
+  ok('no sibling moves while dragging', siblingsMoved(before, during.all, F1).length === 0 && /^1 \/ span 10 \/ 3 \/ span 2$/.test(during.sibling.replace(/\s+/g, ' ')),
+     [during.sibling, siblingsMoved(before, during.all, F1)]);
+  ok('no sibling moves after the drop', siblingsMoved(before, await areas(), F1).length === 0, siblingsMoved(before, await areas(), F1));
   ok('the ghost is the cell rect the release commits', during.ghost === during.card, during);
   const s = await stored();
   ok('the release commits what the ghost showed', during.card.replace(/\s+/g, ' ').startsWith((s[F1].x + 1) + ' / span 10 / ' + (s[F1].y + 1)), JSON.stringify(s[F1]));
@@ -300,23 +316,15 @@ console.log('nest');
   await name.press('Escape');
   await page.waitForTimeout(100);
   ok('Escape restores the title', (await stored())['nest:1'].nest.title === 'Pump' && await name.inputValue() === 'Pump');
-  await nest.locator('.nest-bar button', { hasText: 'Scrolling' }).click();
-  ok('scroll and fixed switch from the bar', (await stored())['nest:1'].nest.scroll === false
-     && await nest.locator('.nest-bar button', { hasText: 'Fixed' }).getAttribute('aria-pressed') === 'false');
-  await nest.locator('.nest-fold').click();
-  await page.waitForTimeout(100);
-  const folded = await nest.evaluate((el) => el.style.gridRow.replace(/\s+/g, ' '));
-  ok('a collapsed nest packs two rows and keeps its own height', /span 2$/.test(folded) && (await stored())['nest:1'].h === 6
-     && (await stored())['nest:1'].nest.collapsed === true, folded);
-  ok('the fold button says what it does', await nest.locator('.nest-fold').getAttribute('aria-expanded') === 'false');
-  await nest.locator('.nest-fold').click();
+  ok('the bar offers no scroll or fold switch (a nest is fixed and always open)',
+     await nest.locator('.nest-fold, .nest-bar button:has-text("Scrolling"), .nest-bar button:has-text("Fixed")').count() === 0);
 
   await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
   await page.locator('select[aria-label="Module"]').selectOption('Kit');
   const rows = await page.$$eval('.module-preview li', (els) => els.map((e) => [e.textContent.trim(), e.classList.contains('inert')]));
   const sum = (await page.locator('.module-sum').textContent()).replace(/\s+/g, ' ').trim();
   ok('the module preview lists every member before Insert', rows.length === 2 && rows.some(([t, i]) => i && t.includes(GHOST)) && rows.some(([, i]) => !i), rows);
-  ok('the preview counts what this view can draw', /^1 of 2 available here; the rest stay inert/.test(sum), sum);
+  ok('the preview counts what this view can draw', /^1 of 2 available here$/.test(sum), sum);
   ok('nothing is placed by previewing', !Object.keys(await stored()).includes('nest:2'));
   await page.locator('.dash-menu button', { hasText: 'Insert' }).click();
   await page.waitForTimeout(150);
@@ -338,14 +346,17 @@ console.log('keys');
   await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(100);
   let s = await stored();
-  ok('ArrowUp passes the card above in its columns', s[F2].y === 0 && s[F1].y === 2, JSON.stringify([s[F1], s[F2]]));
-  ok('focus stays on the moved grip', await focusedId() === F2 && await page.evaluate(() => document.activeElement.classList.contains('grab')));
-  await page.keyboard.press('ArrowUp');
-  ok('at the top it says so and moves nothing', /top of its columns/.test(await said()) && (await stored())[F2].y === 0, await said());
+  ok('ArrowUp onto a neighbor moves nothing and says so', s[F2].y === 2 && s[F1].y === 0 && /nothing free above/.test(await said()),
+     [s[F1], s[F2], await said()]);
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(100);
   s = await stored();
-  ok('ArrowDown passes the card below', s[F2].y === 2 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
+  ok('ArrowDown steps one cell into free space; the card above stays', s[F2].y === 3 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
+  ok('focus stays on the moved grip', await focusedId() === F2 && await page.evaluate(() => document.activeElement.classList.contains('grab')));
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(100);
+  s = await stored();
+  ok('ArrowUp steps back up one cell', s[F2].y === 2 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Shift+ArrowRight');
   await page.waitForTimeout(100);
@@ -430,7 +441,14 @@ console.log('layouts');
   await page.waitForTimeout(100);
   ok('a switch with no changes goes at once', (await all()).active === 'Default' && await bar.count() === 0);
 
+  await page.locator('.home .dash-toolbar .done-btn').click();
+  const plain = await page.$$eval('.home .dash-toolbar > *', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
+  ok('outside edit mode the toolbar is the layout picker and Edit layout only', JSON.stringify(plain) === '["Layout","Edit layout"]', plain);
+  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  ok('the scale is not on the toolbar in edit mode either', await page.locator('.home .dash-toolbar > .scale, .home .dash-toolbar > .edit-ops .scale').count() === 0);
   await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  ok('the scale sits in the Layout menu beside density', await page.locator('.dash-menu .view-row .scale [aria-label="Scale up"]').count() === 1
+     && await page.locator('.dash-menu .view-row .density').count() === 1);
   await page.locator('.dash-menu button', { hasText: 'Export' }).click();
   const text = await page.locator('.dash-menu textarea[aria-label="Layout JSON"]').inputValue();
   let parsed = null;
