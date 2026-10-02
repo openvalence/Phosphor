@@ -155,5 +155,6 @@ export async function loadPlugins() {
   pluginsUi.active = true;
   if (SHELL) await loadFromShell();
   if (dev) await loadFromQuery();
+  await import('./graph.js').then((m) => m.loadGraph(host)).catch((e) => logLine('graph', 'error', 'load: ' + (e && e.message)));
   pluginsUi.list = host.list();
 }
