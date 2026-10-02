@@ -139,7 +139,7 @@ const openTab = async (page, id) => {
   await page.waitForTimeout(250);
 };
 const facts = (page) => page.$$eval('.pane-facts dt', (dts) => Object.fromEntries(dts.map((dt) =>
-  [dt.textContent.trim(), dt.nextElementSibling.textContent.trim()])));
+  [dt.textContent.trim().toLowerCase(), dt.nextElementSibling.textContent.trim()])));
 
 for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
   console.log('\n--- console panes, ' + label + ' ---');
@@ -341,7 +341,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   // ---- About (while the hub is still connected) ----------------------------------
   await openTab(page, 'shell:about');
   const ab = await facts(page);
-  ok('about: UI build, protocol and the catalog etag', ab['UI build'] && ab['UI build'] !== '--' && ab.Protocol === 'v1 (valence.v1)' && ab['Catalog etag'] === ETAG.toLowerCase(), JSON.stringify(ab));
+  ok('about: UI build, protocol and the catalog etag', ab['ui build'] && ab['ui build'] !== '--' && ab.protocol === 'v1 (valence.v1)' && ab['catalog etag'] === ETAG.toLowerCase(), JSON.stringify(ab));
 
   // ---- Hubs ------------------------------------------------------------------------
   await openTab(page, 'shell:hubs');

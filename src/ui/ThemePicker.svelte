@@ -120,7 +120,7 @@
       <span class="track"></span>Autorange: 85 mV, not 0.085 V
     </label>
     <dl class="pane-facts">
-      <dt>system</dt><dd>{$prefs.units}{UNITS.length === 1 ? ', the only system today' : ''}</dd>
+      <dt>System</dt><dd>{$prefs.units}{UNITS.length === 1 ? ', the only system today' : ''}</dd>
     </dl>
     <p class="pane-note">Display only: what is sent to the machine never changes.</p>
   </section>
@@ -128,10 +128,10 @@
   <section class="pane-sec og-screen" aria-labelledby="tp-class">
     <div class="pane-head"><h2 id="tp-class">Renderer class</h2></div>
     <dl class="pane-facts">
-      <dt>class</dt><dd class="cls">{view.cls}</dd>
-      <dt>viewport</dt><dd class="mono">{vw} × {vh} CSS px, {dpr}× pixel ratio</dd>
-      <dt>pointer</dt><dd>{POINTER[view.pointer] || view.pointer}</dd>
-      <dt>boundaries</dt><dd class="mono">glance below {GLANCE_UP} px or no pointer, full from {FULL_UP} px</dd>
+      <dt>Class</dt><dd class="cls">{view.cls}</dd>
+      <dt>Viewport</dt><dd class="mono">{vw} × {vh} CSS px, {dpr}× pixel ratio</dd>
+      <dt>Pointer</dt><dd>{POINTER[view.pointer] || view.pointer}</dd>
+      <dt>Boundaries</dt><dd class="mono">glance below {GLANCE_UP} px or no pointer, full from {FULL_UP} px</dd>
     </dl>
     <p class="pane-note">Measured from this window, never set: resize it and the class follows.</p>
   </section>

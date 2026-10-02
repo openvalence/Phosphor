@@ -286,9 +286,9 @@
   <section class="pane-sec og-panel" aria-labelledby="pp-pairing">
     <div class="pane-head"><h2 id="pp-pairing">Pairing</h2></div>
     <dl class="pane-facts">
-      <dt>this session</dt><dd>{tierName}</dd>
-      <dt>modes offered</dt><dd>{machine.link.phase !== 'live' ? '--' : modesOffered.length ? modesOffered.join(', ') : 'none advertised'}</dd>
-      <dt>pairing window</dt><dd class="window" class:open={windowOpen}>{windowText}</dd>
+      <dt>This session</dt><dd>{tierName}</dd>
+      <dt>Modes offered</dt><dd>{machine.link.phase !== 'live' ? '--' : modesOffered.length ? modesOffered.join(', ') : 'none advertised'}</dd>
+      <dt>Pairing window</dt><dd class="window" class:open={windowOpen}>{windowText}</dd>
     </dl>
     <div class="row">
       <button type="button" class="og-btn" class:primary={!isConfigure} disabled={isConfigure || claiming || machine.link.phase !== 'live'}

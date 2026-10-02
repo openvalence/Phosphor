@@ -55,10 +55,10 @@
   <section class="pane-sec og-panel" aria-labelledby="hp-link">
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
-      <dt>hub</dt><dd class="mono">{link.dialed || '--'}</dd>
-      <dt>transport</dt><dd>{idle ? '--' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
-      <dt>link</dt><dd>{link.phase}</dd>
-      <dt>bluetooth wire</dt><dd class="mono">{hubs.stats || '--'}</dd>
+      <dt>Hub</dt><dd class="mono">{link.dialed || '--'}</dd>
+      <dt>Transport</dt><dd>{idle ? '--' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
+      <dt>Link</dt><dd>{link.phase}</dd>
+      <dt>Bluetooth wire</dt><dd class="mono">{hubs.stats || '--'}</dd>
     </dl>
     <div class="row">
       <button type="button" class="og-btn" disabled={idle} onclick={disconnect}>Disconnect</button>

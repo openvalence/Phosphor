@@ -83,11 +83,11 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-session">
     <div class="pane-head"><h2 id="vp-session">Session</h2></div>
     <dl class="pane-facts">
-      <dt>session id</dt><dd class="mono">{link.sessionId ?? '--'}</dd>
-      <dt>link phase</dt><dd>{link.phase}</dd>
-      <dt>access tier</dt><dd>{tierLabel}</dd>
-      <dt>deadman window</dt><dd class="mono">{link.deadmanMs ? link.deadmanMs + ' ms' : '--'}</dd>
-      <dt>config generation</dt><dd class="mono">{link.cfgGen ?? '--'}</dd>
+      <dt>Session id</dt><dd class="mono">{link.sessionId ?? '--'}</dd>
+      <dt>Link phase</dt><dd>{link.phase}</dd>
+      <dt>Access tier</dt><dd>{tierLabel}</dd>
+      <dt>Deadman window</dt><dd class="mono">{link.deadmanMs ? link.deadmanMs + ' ms' : '--'}</dd>
+      <dt>Config generation</dt><dd class="mono">{link.cfgGen ?? '--'}</dd>
     </dl>
   </section>
 
@@ -98,32 +98,32 @@
       <button type="button" class="og-btn sm" disabled={!identity} onclick={copyIdentity}>Copy</button>
     </div>
     <dl class="pane-facts">
-      <dt>hub name</dt><dd>{identity?.hub_name || '--'}</dd>
-      <dt>product</dt><dd>{identity?.product || '--'}</dd>
-      <dt>firmware</dt><dd class="mono">{identity?.fw_version || '--'}</dd>
-      <dt>instance id</dt><dd class="mono">{identity?.hub_instance_id ?? '--'}</dd>
-      <dt>e-stop cuts power</dt><dd>{estopText}</dd>
-      <dt>info</dt><dd class="mono">{infoText}</dd>
+      <dt>Hub name</dt><dd>{identity?.hub_name || '--'}</dd>
+      <dt>Product</dt><dd>{identity?.product || '--'}</dd>
+      <dt>Firmware</dt><dd class="mono">{identity?.fw_version || '--'}</dd>
+      <dt>Instance id</dt><dd class="mono">{identity?.hub_instance_id ?? '--'}</dd>
+      <dt>E-stop cuts power</dt><dd>{estopText}</dd>
+      <dt>Info</dt><dd class="mono">{infoText}</dd>
     </dl>
   </section>
 
   <section class="pane-sec og-screen" aria-labelledby="vp-limits">
     <div class="pane-head"><h2 id="vp-limits">Limits</h2></div>
     <dl class="pane-facts">
-      <dt>max frame</dt><dd class="mono">{lim.max_frame ? bytes(lim.max_frame) : '--'}</dd>
-      <dt>max subscriptions</dt><dd class="mono">{lim.max_subscriptions ?? '--'}</dd>
-      <dt>per frame</dt><dd class="mono">{lim.max_subscriptions_per_frame ?? '--'}</dd>
-      <dt>max sessions</dt><dd class="mono">{count(lim.max_sessions)}</dd>
-      <dt>sessions in use</dt><dd class="mono">{count(lim.sessions_in_use)}</dd>
-      <dt>channels shed</dt><dd class="mono">{link.subsDropped || 0}</dd>
+      <dt>Max frame</dt><dd class="mono">{lim.max_frame ? bytes(lim.max_frame) : '--'}</dd>
+      <dt>Max subscriptions</dt><dd class="mono">{lim.max_subscriptions ?? '--'}</dd>
+      <dt>Per frame</dt><dd class="mono">{lim.max_subscriptions_per_frame ?? '--'}</dd>
+      <dt>Max sessions</dt><dd class="mono">{count(lim.max_sessions)}</dd>
+      <dt>Sessions in use</dt><dd class="mono">{count(lim.sessions_in_use)}</dd>
+      <dt>Channels shed</dt><dd class="mono">{link.subsDropped || 0}</dd>
     </dl>
   </section>
 
   <section class="pane-sec og-screen" aria-labelledby="vp-grants">
     <div class="pane-head"><h2 id="vp-grants">Grants</h2></div>
     <dl class="pane-facts">
-      <dt>subscriptions</dt><dd>{subGrants} channel{subGrants === 1 ? '' : 's'}; rates in the channel table</dd>
-      <dt>publishes</dt><dd class="mono">{pubGrants.length}</dd>
+      <dt>Subscriptions</dt><dd>{subGrants} channel{subGrants === 1 ? '' : 's'}; rates in the channel table</dd>
+      <dt>Publishes</dt><dd class="mono">{pubGrants.length}</dd>
     </dl>
     {#if pubGrants.length}
       <div class="table-wrap">
@@ -151,24 +151,24 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-catalog">
     <div class="pane-head"><h2 id="vp-catalog">Catalog</h2></div>
     <dl class="pane-facts">
-      <dt>state</dt><dd>{machine.catalog.ready ? 'ready' : 'not loaded'}</dd>
-      <dt>etag</dt><dd class="mono">{etagHex}</dd>
-      <dt>size</dt><dd class="mono">{bytes(machine.catalog.bytes)}</dd>
-      <dt>source</dt><dd>{machine.catalog.ready ? (machine.catalog.cached ? 'cached' : 'fetched') : '--'}</dd>
-      <dt>entries</dt><dd class="mono">{machine.catalog.entries.length}</dd>
+      <dt>State</dt><dd>{machine.catalog.ready ? 'ready' : 'not loaded'}</dd>
+      <dt>Etag</dt><dd class="mono">{etagHex}</dd>
+      <dt>Size</dt><dd class="mono">{bytes(machine.catalog.bytes)}</dd>
+      <dt>Source</dt><dd>{machine.catalog.ready ? (machine.catalog.cached ? 'cached' : 'fetched') : '--'}</dd>
+      <dt>Entries</dt><dd class="mono">{machine.catalog.entries.length}</dd>
     </dl>
   </section>
 
   <section class="pane-sec og-screen" aria-labelledby="vp-counters">
     <div class="pane-head"><h2 id="vp-counters">Link counters</h2></div>
     <dl class="pane-facts">
-      <dt>raw frames</dt><dd class="mono">{machine.stats.framesIn} in, {machine.stats.framesOut} out</dd>
-      <dt>state pushes</dt><dd class="mono">{machine.stats.statePushes}</dd>
-      <dt>bytes in</dt><dd class="mono">{bytes(machine.stats.bytesIn)}</dd>
-      <dt>last rx</dt><dd class="mono">{ageLabel(machine.stats.lastRxMs, nowTick)}</dd>
-      <dt>clock offset</dt><dd class="mono">{machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--'}</dd>
-      <dt>clock rtt</dt><dd class="mono">{machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--'}</dd>
-      <dt>reconnects</dt><dd class="mono">{machine.stats.reconnects}</dd>
+      <dt>Raw frames</dt><dd class="mono">{machine.stats.framesIn} in, {machine.stats.framesOut} out</dd>
+      <dt>State pushes</dt><dd class="mono">{machine.stats.statePushes}</dd>
+      <dt>Bytes in</dt><dd class="mono">{bytes(machine.stats.bytesIn)}</dd>
+      <dt>Last rx</dt><dd class="mono">{ageLabel(machine.stats.lastRxMs, nowTick)}</dd>
+      <dt>Clock offset</dt><dd class="mono">{machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--'}</dd>
+      <dt>Clock rtt</dt><dd class="mono">{machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--'}</dd>
+      <dt>Reconnects</dt><dd class="mono">{machine.stats.reconnects}</dd>
     </dl>
   </section>
 

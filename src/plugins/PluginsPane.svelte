@@ -49,7 +49,7 @@
     <section class="pane-sec og-screen" aria-labelledby="pl-folder">
       <div class="pane-head"><h2 id="pl-folder">Installed</h2><span class="mono count">{pluginsUi.list.length}</span></div>
       <dl class="pane-facts">
-        <dt>plugins folder</dt><dd class="mono">{pluginsUi.dir || '--'}</dd>
+        <dt>Plugins folder</dt><dd class="mono">{pluginsUi.dir || '--'}</dd>
       </dl>
       <p class="pane-note">To add one, drop its folder into the plugins folder and restart Phosphor. Factory and built-in plugins ship inside Phosphor; a folder plugin with the same name replaces a factory one.</p>
     </section>
@@ -72,20 +72,20 @@
         </div>
         {#if p.description}<p class="pane-note">{p.description}</p>{/if}
         <dl class="pane-facts">
-          {#if p.kind}<dt>kind</dt><dd>{p.kind}</dd>{/if}
-          <dt>permissions</dt>
+          {#if p.kind}<dt>Kind</dt><dd>{p.kind}</dd>{/if}
+          <dt>Permissions</dt>
           <dd>
             {#if p.permissions.length}
               <ul class="perms">{#each p.permissions as perm}<li><code>{perm}</code> {permText(perm)}</li>{/each}</ul>
             {:else}read-only{/if}
           </dd>
-          {#if p.roles.length}<dt>roles</dt><dd>{p.roles.join(', ')}</dd>{/if}
-          {#if p.channels.length}<dt>channels</dt><dd class="mono">{p.channels.join(', ')}</dd>{/if}
+          {#if p.roles.length}<dt>Roles</dt><dd>{p.roles.join(', ')}</dd>{/if}
+          {#if p.channels.length}<dt>Channels</dt><dd class="mono">{p.channels.join(', ')}</dd>{/if}
           {#if p.heroes.length}
-            <dt>cards</dt>
+            <dt>Cards</dt>
             <dd>{#each p.heroes as h}<span class="chip" class:failed={h.failed}>{h.id}{h.failed ? ' (failed)' : ''}</span>{/each}</dd>
           {/if}
-          {#if !origin && p.source}<dt>source</dt><dd class="mono src">{p.source}</dd>{/if}
+          {#if !origin && p.source}<dt>Source</dt><dd class="mono src">{p.source}</dd>{/if}
         </dl>
         <div class="err-row">
           <p class="pane-status" role="status" data-phase={p.error ? 'fault' : null} title={p.error || ''}>
@@ -110,6 +110,8 @@
 <style>
   .count, .ver { font-size: .75rem; color: var(--tx-mut); }
   .chip { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--ink-dim); }
+  /* Fixed width: active, disabled and error swap in place. */
+  .chip.status { min-width: 10ch; text-align: center; }
   .chip.status[data-status='active'] { color: var(--reality); border-color: var(--reality); }
   .chip.failed, .chip.status[data-status='error'], .chip.status[data-status='invalid'] { color: var(--warn); border-color: var(--warn); }
   .og-switch { font-size: .78rem; min-height: 30px; }
