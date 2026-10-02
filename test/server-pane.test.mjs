@@ -158,4 +158,70 @@ function fakeShell(cmds) {
   bp.dispose();
 }
 
+// --- settings: shown as saved, the saved answer is the echo, refusals are text
+{
+  const DEFAULTS = { port: BP_PORT, start_on_launch: false, ble: true, serial: true, hid: true, machine: true, log_level: 'info' };
+  let saved = { ...DEFAULTS };
+  let running = false;
+  let gate = null;
+  const sh = fakeShell({
+    bp_status: () => ({ running, port: saved.port, clients: 0, scanning: false }),
+    bp_settings: () => ({ ...saved }),
+    bp_settings_set: async ({ settings }) => {
+      if (gate) await gate;
+      if (running && settings.ble !== saved.ble) throw 'stop the server to change the port or the hardware managers';
+      if (settings.log_level === 'loud') throw 'unknown log level "loud"';
+      saved = { ...settings };
+      return { ...saved };
+    },
+    bp_start: ({ port }) => { running = true; saved.port = port; },
+  });
+  const s = blank();
+  const bp = createBp(s, sh.api, { echoMs: 20 });
+  await bp.init();
+  assert.deepEqual(s.settings, DEFAULTS, 'read on init');
+
+  let open;
+  gate = new Promise((r) => { open = r; });
+  const p = bp.saveSettings({ port: 23456, ble: false });
+  assert.equal(s.set.phase, 'pending');
+  assert.match(s.set.reason, /saving port, ble/);
+  assert.equal(s.settings.port, BP_PORT, 'nothing shown before the answer');
+  await tick(40);
+  assert.equal(s.set.phase, 'overdue');
+  open();
+  await p;
+  gate = null;
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_settings_set')[1],
+    { settings: { ...DEFAULTS, port: 23456, ble: false } }, 'the whole record goes over');
+  assert.equal(s.settings.port, 23456);
+  assert.equal(s.set.phase, 'settled');
+
+  await bp.saveSettings({ log_level: 'loud' });
+  assert.equal(s.set.phase, 'fault');
+  assert.match(s.set.reason, /not saved: unknown log level/);
+  assert.equal(s.settings.log_level, 'info', 'a refusal leaves the saved value');
+
+  sh.calls.length = 0;
+  await bp.start();
+  assert.deepEqual(sh.calls[0], ['bp_start', { port: 23456 }], 'start uses the saved port');
+  await bp.saveSettings({ ble: true });
+  assert.match(s.set.reason, /stop the server/);
+  assert.equal(s.settings.ble, false);
+  bp.dispose();
+}
+// Settings missing from the Rust side: the pane still runs, settings say why.
+{
+  const sh = fakeShell({ bp_status: () => ({ running: false, port: BP_PORT, clients: 0, scanning: false }) });
+  const s = blank();
+  const bp = createBp(s, sh.api);
+  await bp.init();
+  assert.equal(s.ready, true);
+  assert.equal(s.settings, null);
+  assert.match(s.set.reason, /settings unavailable: command bp_settings not found/);
+  await bp.saveSettings({ ble: false });
+  assert.ok(!sh.calls.some((c) => c[0] === 'bp_settings_set'), 'nothing to save against');
+  bp.dispose();
+}
+
 console.log('server-pane: ok');

@@ -7,6 +7,8 @@
 // - Ground truth: `running` and `scanning` change ONLY from bp_status or a
 //   bp://status event. A request is pending until that echo agrees (RENDERING
 //   §8.1 ladder: pending, overdue, fault, settled, each with a text reason).
+// - A command with no status echo (stop all, settings) is confirmed by its own
+//   answer: settings show what bp_settings_set saved, never what was asked.
 // - A missing command (Rust side not built in, or no Tauri at all) degrades
 //   to `ready: false` with a reason. Nothing here throws to the caller.
 
@@ -26,6 +28,8 @@ export const blank = () => ({
   run: { want: null, phase: 'settled', reason: '' },
   scan: { want: null, phase: 'settled', reason: '' },
   stopAll: { phase: 'settled', reason: '' },
+  settings: null,
+  set: { phase: 'settled', reason: '' },
 });
 
 const msg = (e) => String(e?.message ?? e);
@@ -75,22 +79,34 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     try { applyStatus(await invoke('bp_status')); } catch (e) { /* the event may still confirm */ }
   }
 
-  // No status echo exists for a stop: the server's ack (every device's write
-  // acknowledged, bounded at 1 s server-side) is the confirmation.
-  async function stopAll() {
-    const w = s.stopAll;
-    if (!s.ready || !s.running || w.phase === 'pending') return;
-    Object.assign(w, { phase: 'pending', reason: 'stopping every toy' });
-    clearTimeout(timers.stopAll);
-    timers.stopAll = setTimeout(() => {
-      if (w.phase === 'pending') Object.assign(w, { phase: 'overdue', reason: 'no ack after ' + echoMs / 1000 + ' s' });
+  // A command whose own answer is the confirmation. A rejection, or a resolved
+  // string, is a fault with that text. Resolves to the answer, or undefined.
+  async function ack(w, key, pending, cmd, args, fail, done = '') {
+    if (!s.ready || w.phase === 'pending') return undefined;
+    Object.assign(w, { phase: 'pending', reason: pending });
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(() => {
+      if (w.phase === 'pending') Object.assign(w, { phase: 'overdue', reason: 'no answer after ' + echoMs / 1000 + ' s' });
     }, echoMs);
-    let err = null;
-    try { err = await invoke('bp_stop_all'); } catch (e) { err = msg(e); }
-    clearTimeout(timers.stopAll);
-    Object.assign(w, err == null
-      ? { phase: 'settled', reason: 'all toys stopped' }
-      : { phase: 'fault', reason: 'stop all failed: ' + err });
+    let r, err = null;
+    try { r = await invoke(cmd, args); if (typeof r === 'string') err = r; } catch (e) { err = msg(e); }
+    clearTimeout(timers[key]);
+    if (err != null) { Object.assign(w, { phase: 'fault', reason: fail + ': ' + err }); return undefined; }
+    Object.assign(w, { phase: 'settled', reason: done });
+    return r ?? null;
+  }
+
+  // The server's ack (every device's write acknowledged, bounded at 1 s
+  // server-side) is the confirmation.
+  const stopAll = () => s.running
+    ? ack(s.stopAll, 'stopAll', 'stopping every toy', 'bp_stop_all', undefined, 'stop all failed', 'all toys stopped')
+    : undefined;
+
+  async function saveSettings(patch) {
+    if (!s.settings) return;
+    const r = await ack(s.set, 'set', 'saving ' + Object.keys(patch).join(', ').replaceAll('_', ' '),
+      'bp_settings_set', { settings: { ...s.settings, ...patch } }, 'not saved');
+    if (r) s.settings = r;
   }
 
   async function init() {
@@ -104,6 +120,7 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     s.ready = true;
     s.reason = '';
     try { s.devices = await invoke('bp_devices'); } catch (e) { /* bp://devices fills it */ }
+    try { s.settings = await invoke('bp_settings'); } catch (e) { s.set.reason = 'settings unavailable: ' + msg(e); }
     const on = {
       'bp://status': applyStatus,
       'bp://devices': (d) => { s.devices = d || []; },
@@ -119,10 +136,11 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
 
   return {
     init,
-    start: (port) => request('run', true, 'bp_start', { port }),
+    start: (port = s.settings?.port ?? BP_PORT) => request('run', true, 'bp_start', { port }),
     stop: () => request('run', false, 'bp_stop'),
     scan: (on) => request('scan', on, on ? 'bp_scan_start' : 'bp_scan_stop'),
     stopAll,
+    saveSettings,
     dispose() {
       disposed = true;
       Object.values(timers).forEach(clearTimeout);

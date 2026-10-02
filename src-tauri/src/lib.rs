@@ -40,6 +40,10 @@ pub fn run() {
       buttplug::bp_toy_read,
       #[cfg(desktop)]
       buttplug::bp_stop_all,
+      #[cfg(desktop)]
+      buttplug::bp_settings,
+      #[cfg(desktop)]
+      buttplug::bp_settings_set,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

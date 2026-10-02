@@ -39,6 +39,8 @@ Commands (all async):
 | `bp_toy_stop(index)` | upstream StopCmd for that toy alone, outputs only (sensor subscriptions survive), write acknowledged (bounded at 1 s) |
 | `bp_toy_read(index, feature, input: string)` | one reading (`Battery`, `Rssi`, `Button`, `Pressure`) as an integer |
 | `bp_stop_all()` | upstream StopCmd for every device, each write acknowledged (bounded at 1 s) |
+| `bp_settings()` | the saved settings: `{port: u16, start_on_launch: bool, ble: bool, serial: bool, hid: bool, machine: bool, log_level: "error" | "warn" | "info" | "debug"}` |
+| `bp_settings_set(settings)` | saves the whole record and returns it as saved. Errors (nothing saved) on port 0, an unknown level, a failed write, or a changed port or manager while running |
 
 The `bp_toy_*` commands resolve on the server's answer: `null` (or the
 reading) on its Ok, its error message as a string otherwise (not running, no
@@ -69,8 +71,24 @@ Events:
 | `bp://motion` | `{position: f64 0..1, ms: u32}` or `{stop: true}` |
 | `bp://output` | `{index, feature, type, value}`: an output a toy applied, from any client (an app, a stop, a module); never the machine |
 
-The server does not start by itself; the shell calls `bp_start`. `port` in
-`bp_status` reads 12345 until a start says otherwise. `clients` is 0 or 1.
+The server starts with the shell only when `start_on_launch` is saved;
+otherwise the shell calls `bp_start`. `port` in `bp_status` reads the saved
+port until a start says otherwise. `clients` is 0 or 1.
+
+Settings live in `settings.json` under the app config dir (`buttplug/`); an
+unreadable or out-of-range file starts from the defaults (port 12345, every
+manager on, `info`, no start on launch) with a warning in the log. The
+managers (`ble`, `serial`, `hid`, `machine`) are the ones the next start
+builds; the port and the managers are refused while the server runs, so the
+saved settings always describe the running server. `log_level` and
+`start_on_launch` apply at once. `bp://log` carries the server's own lines
+and, where Phosphor owns the process logger (release builds; tauri-plugin-log
+owns it in debug builds), upstream's `buttplug*` log lines, both filtered at
+`log_level`.
+
+Not offered: Intiface's "allow raw messages". The server speaks buttplug
+spec v4, and neither it nor the fork implements raw read/write commands in
+any spec version, so the setting would drive nothing.
 
 ## Behavior notes
 
@@ -147,6 +165,10 @@ The server does not start by itself; the shell calls `bp_start`. `port` in
   each command lands as the device's applied output on `bp://output`,
   refusals resolve as errors, the machine is refused, a toy stop zeroes that
   toy and leaves a running rotator alone, stop-all zeroes every toy. No simulated device has a sensor; reads are covered on the JS side.
+- `cargo test` settings: `settings_persist_and_gate_the_managers` (saved to
+  and read back from the file, refusals change nothing, the machine manager
+  off leaves the machine out, port and managers refused while running, lines
+  below the level dropped).
 - `node test/buttplug-bridge.test.mjs`: the webview half through the real
   plugin host.
 - `node test/buttplug-toys.test.mjs`: module registration and withdrawal

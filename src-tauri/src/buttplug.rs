@@ -18,9 +18,13 @@
 // - Toy commands (bp_toy_*) enter through `Run::op`, an in-process server over
 //   the same device manager, so they get upstream's range checks. They refuse
 //   the machine: it moves only through the intent path.
+// - Settings persist as settings.json under the app config dir. The port and
+//   the hardware managers change only while the server is stopped, so the
+//   saved settings always describe the running server.
 // See: docs/BUTTPLUG.md
 
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -60,9 +64,9 @@ use buttplug_server_device_config::{
 use buttplug_transport_websocket_tungstenite::ButtplugWebsocketServerTransportBuilder;
 use futures::future::{self, BoxFuture, FutureExt};
 use futures::StreamExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
@@ -82,6 +86,61 @@ pub struct Status {
   port: u16,
   clients: u32,
   scanning: bool,
+}
+
+/// The operator's server settings (settings.json). A field missing from the
+/// file takes its default.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+  port: u16,
+  start_on_launch: bool,
+  /// Hardware managers the next start builds.
+  ble: bool,
+  serial: bool,
+  hid: bool,
+  machine: bool,
+  /// The lowest level bp://log carries: error, warn, info or debug.
+  log_level: String,
+}
+
+impl Default for Settings {
+  fn default() -> Self {
+    Self {
+      port: DEFAULT_PORT,
+      start_on_launch: false,
+      ble: true,
+      serial: true,
+      hid: true,
+      machine: true,
+      log_level: "info".into(),
+    }
+  }
+}
+
+impl Settings {
+  fn managers(&self) -> [bool; 4] {
+    [self.ble, self.serial, self.hid, self.machine]
+  }
+}
+
+fn parse_level(s: &str) -> Result<log::Level, String> {
+  match s {
+    "error" | "warn" | "info" | "debug" => Ok(s.parse().expect("a log::Level name")),
+    _ => Err(format!("unknown log level \"{s}\"; one of error, warn, info, debug")),
+  }
+}
+
+fn load_json<T: serde::de::DeserializeOwned>(dir: &Option<PathBuf>, file: &str) -> Option<Result<T, String>> {
+  let text = std::fs::read_to_string(dir.as_ref()?.join(file)).ok()?;
+  Some(serde_json::from_str(&text).map_err(|e| format!("{file}: {e}")))
+}
+
+fn save_text(dir: &Option<PathBuf>, file: &str, text: &str) -> Result<(), String> {
+  let Some(dir) = dir else { return Ok(()) };
+  std::fs::create_dir_all(dir)
+    .and_then(|_| std::fs::write(dir.join(file), text))
+    .map_err(|e| format!("saving {file}: {e}"))
 }
 
 #[derive(Clone, Serialize)]
@@ -185,6 +244,11 @@ struct Shared {
   found: Mutex<Option<mpsc::Sender<HardwareCommunicationManagerEvent>>>,
   /// The live machine's event channel, for a disconnect on hub loss.
   machine: Mutex<Option<broadcast::Sender<HardwareEvent>>>,
+  /// Where settings persist; None keeps them in memory (tests).
+  dir: Option<PathBuf>,
+  settings: Mutex<Settings>,
+  /// settings.log_level as a log::Level, read on every line.
+  level: AtomicUsize,
 }
 
 impl Shared {
@@ -201,8 +265,10 @@ impl Shared {
     (self.sink)("bp://status", json!(self.status()));
   }
 
-  fn log(&self, level: &str, msg: String) {
-    (self.sink)("bp://log", json!({ "level": level, "msg": msg }));
+  fn log(&self, level: log::Level, msg: String) {
+    if level as usize <= self.level.load(Ordering::Relaxed) {
+      (self.sink)("bp://log", json!({ "level": level.as_str().to_lowercase(), "msg": msg }));
+    }
   }
 
   fn stop_machine(&self) {
@@ -234,26 +300,71 @@ struct Run {
   tasks: Vec<JoinHandle<()>>,
 }
 
+#[derive(Clone)]
 pub struct Buttplug {
   sh: Arc<Shared>,
-  run: tokio::sync::Mutex<Option<Run>>,
+  run: Arc<tokio::sync::Mutex<Option<Run>>>,
 }
 
 impl Buttplug {
+  #[cfg(test)]
   pub fn new(sink: Sink) -> Self {
-    Self {
+    Self::new_in(sink, None)
+  }
+
+  /// `dir` holds settings.json; an unreadable file starts from the defaults,
+  /// with a warning in the log.
+  pub fn new_in(sink: Sink, dir: Option<PathBuf>) -> Self {
+    let loaded = load_json::<Settings>(&dir, "settings.json");
+    let settings = match &loaded {
+      Some(Ok(s)) if parse_level(&s.log_level).is_ok() && s.port != 0 => s.clone(),
+      _ => Settings::default(),
+    };
+    let level = parse_level(&settings.log_level).expect("checked above") as usize;
+    let bp = Self {
       sh: Arc::new(Shared {
         sink,
         running: AtomicBool::new(false),
-        port: AtomicU16::new(DEFAULT_PORT),
+        port: AtomicU16::new(settings.port),
         clients: AtomicU32::new(0),
         scanning: AtomicBool::new(false),
         present: AtomicBool::new(false),
         found: Mutex::new(None),
         machine: Mutex::new(None),
+        dir,
+        settings: Mutex::new(settings),
+        level: AtomicUsize::new(level),
       }),
-      run: tokio::sync::Mutex::new(None),
+      run: Arc::new(tokio::sync::Mutex::new(None)),
+    };
+    match loaded {
+      Some(Err(e)) => bp.sh.log(log::Level::Warn, format!("{e}; using the default settings")),
+      Some(Ok(s)) if bp.settings() != s => bp.sh.log(log::Level::Warn, "settings.json is out of range; using the default settings".into()),
+      _ => {}
     }
+    bp
+  }
+
+  pub fn settings(&self) -> Settings {
+    self.sh.settings.lock().unwrap().clone()
+  }
+
+  /// Save and apply. The port and the managers are refused while running;
+  /// the log level and start-on-launch apply at once.
+  pub fn set_settings(&self, new: Settings) -> Result<Settings, String> {
+    if new.port == 0 {
+      return Err("port 0 is not a listening port".into());
+    }
+    let level = parse_level(&new.log_level)?;
+    let mut cur = self.sh.settings.lock().unwrap();
+    if self.sh.running.load(Ordering::Relaxed) && (new.port != cur.port || new.managers() != cur.managers()) {
+      return Err("stop the server to change the port or the hardware managers".into());
+    }
+    let text = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
+    save_text(&self.sh.dir, "settings.json", &text)?;
+    self.sh.level.store(level as usize, Ordering::Relaxed);
+    *cur = new.clone();
+    Ok(new)
   }
 
   pub async fn start(&self, port: u16) -> Result<(), String> {
@@ -275,10 +386,13 @@ impl Buttplug {
     let dcm = load_protocol_configs(&None, &None, false)
       .and_then(|mut b| b.simulated_devices(sim).finish())
       .map_err(|e| e.to_string())?;
+    let st = self.settings();
     let mut b = ServerDeviceManagerBuilder::new(dcm);
-    b.comm_manager(MachineManagerBuilder(self.sh.clone()));
+    if st.machine {
+      b.comm_manager(MachineManagerBuilder(self.sh.clone()));
+    }
     if real {
-      toy_managers(&mut b);
+      toy_managers(&mut b, &st);
     } else {
       b.add_simulated_devices_if_configured();
     }
@@ -303,7 +417,7 @@ impl Buttplug {
     self.sh.port.store(port, Ordering::Relaxed);
     self.sh.running.store(true, Ordering::Relaxed);
     self.sh.emit_status();
-    self.sh.log("info", format!("buttplug server on 127.0.0.1:{}", port));
+    self.sh.log(log::Level::Info, format!("buttplug server on 127.0.0.1:{}", port));
     Ok(())
   }
 
@@ -465,13 +579,38 @@ impl Buttplug {
   }
 }
 
-fn toy_managers(b: &mut ServerDeviceManagerBuilder) {
+fn toy_managers(b: &mut ServerDeviceManagerBuilder, st: &Settings) {
   use buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder;
   use buttplug_server_hwmgr_hid::HidCommunicationManagerBuilder;
   use buttplug_server_hwmgr_serial::SerialPortCommunicationManagerBuilder;
-  b.comm_manager(BtlePlugCommunicationManagerBuilder::default());
-  b.comm_manager(SerialPortCommunicationManagerBuilder::default());
-  b.comm_manager(HidCommunicationManagerBuilder::default());
+  if st.ble {
+    b.comm_manager(BtlePlugCommunicationManagerBuilder::default());
+  }
+  if st.serial {
+    b.comm_manager(SerialPortCommunicationManagerBuilder::default());
+  }
+  if st.hid {
+    b.comm_manager(HidCommunicationManagerBuilder::default());
+  }
+}
+
+/// Upstream's own log lines (the `log` facade, targets `buttplug*`) into
+/// bp://log at the settings' level. Only one logger exists per process: where
+/// another owns it (tauri-plugin-log in debug builds) this one is not installed.
+struct BpLogger(Arc<Shared>);
+
+impl log::Log for BpLogger {
+  fn enabled(&self, m: &log::Metadata) -> bool {
+    m.target().starts_with("buttplug") && m.level() as usize <= self.0.level.load(Ordering::Relaxed)
+  }
+
+  fn log(&self, r: &log::Record) {
+    if self.enabled(r.metadata()) {
+      self.0.log(r.level(), r.args().to_string());
+    }
+  }
+
+  fn flush(&self) {}
 }
 
 fn device_list(dm: &ServerDeviceManager, dl: &DeviceListV4) -> Vec<Device> {
@@ -588,7 +727,7 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
     {
       Ok(s) => Arc::new(s),
       Err(e) => {
-        sh.log("error", format!("buttplug server: {}", e));
+        sh.log(log::Level::Error, format!("buttplug server: {}", e));
         break;
       }
     };
@@ -598,7 +737,7 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
       ButtplugRemoteServerConnector::<_, ButtplugServerJSONSerializer>::new(transport.finish());
     let (tx, mut rx) = mpsc::channel(256);
     if let Err(e) = connector.connect(tx).await {
-      sh.log("error", format!("buttplug listener 127.0.0.1:{}: {}", port, e));
+      sh.log(log::Level::Error, format!("buttplug listener 127.0.0.1:{}: {}", port, e));
       break;
     }
     sh.clients.store(1, Ordering::Relaxed);
@@ -629,7 +768,7 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
       }
     }
     if let Some(name) = server.client_name() {
-      sh.log("info", format!("buttplug client \"{}\" disconnected", name));
+      sh.log(log::Level::Info, format!("buttplug client \"{}\" disconnected", name));
     }
     let _ = server.disconnect().await;
     sh.stop_machine();
@@ -772,16 +911,47 @@ impl HardwareInternal for MachineHardware {
 
 // ---- Tauri IPC (contract: docs/BUTTPLUG.md) ---------------------------------
 
+/// Builds the server from the saved settings and starts it when they say
+/// start on launch; the webview reads the result through bp_status.
 pub fn init(app: &AppHandle) -> Buttplug {
+  let dir = app.path().app_config_dir().ok().map(|d| d.join("buttplug"));
   let app = app.clone();
-  Buttplug::new(Arc::new(move |ev, payload| {
-    let _ = app.emit(ev, payload);
-  }))
+  let bp = Buttplug::new_in(
+    Arc::new(move |ev, payload| {
+      let _ = app.emit(ev, payload);
+    }),
+    dir,
+  );
+  if log::set_boxed_logger(Box::new(BpLogger(bp.sh.clone()))).is_ok() {
+    log::set_max_level(log::LevelFilter::Debug);
+  } else {
+    bp.sh.log(log::Level::Info, "upstream buttplug log lines go to the dev console in this build".into());
+  }
+  let st = bp.settings();
+  if st.start_on_launch {
+    let b = bp.clone();
+    tauri::async_runtime::spawn(async move {
+      if let Err(e) = b.start(st.port).await {
+        b.sh.log(log::Level::Error, format!("start on launch: {e}"));
+      }
+    });
+  }
+  bp
 }
 
 #[tauri::command]
 pub async fn bp_status(bp: State<'_, Buttplug>) -> Result<Status, String> {
   Ok(bp.status())
+}
+
+#[tauri::command]
+pub async fn bp_settings(bp: State<'_, Buttplug>) -> Result<Settings, String> {
+  Ok(bp.settings())
+}
+
+#[tauri::command]
+pub async fn bp_settings_set(bp: State<'_, Buttplug>, settings: Settings) -> Result<Settings, String> {
+  bp.set_settings(settings)
 }
 
 #[tauri::command]
@@ -1121,5 +1291,58 @@ mod tests {
     assert_eq!(next_output(&mut rx).await, out(lin.index, 0, "HwPositionWithDuration", 500.0));
     assert!(bp.toy_scalar(lin.index, 0, 5).await.is_err(), "linear is not scalar");
     bp.stop().await;
+  }
+
+  fn temp_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("phosphor-bp-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn settings_persist_and_gate_the_managers() {
+    let dir = temp_dir("settings");
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let sink: Sink = Arc::new(move |ev, v| {
+      let _ = tx.send((ev, v));
+    });
+    let bp = Buttplug::new_in(sink.clone(), Some(dir.clone()));
+    assert_eq!(bp.settings(), Settings::default());
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let st = Settings { port, machine: false, log_level: "warn".into(), ..Settings::default() };
+    assert_eq!(bp.set_settings(st.clone()).unwrap(), st);
+    assert!(bp.set_settings(Settings { log_level: "loud".into(), ..st.clone() }).is_err());
+    assert!(bp.set_settings(Settings { port: 0, ..st.clone() }).is_err());
+    assert_eq!(bp.settings(), st, "a refused write changes nothing");
+    assert_eq!(Buttplug::new_in(sink.clone(), Some(dir.clone())).settings(), st, "read back from the file");
+
+    // The machine manager is off: a live hub adds no machine.
+    bp.start_with(port, vec![SimulatedDeviceConfigEntry::new("simulated-2vibe", None)]).await.unwrap();
+    bp.machine_present(true);
+    bp.scan(true).await.unwrap();
+    for _ in 0..200 {
+      if !bp.devices().await.is_empty() {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let devices = bp.devices().await;
+    assert_eq!(devices.len(), 1, "the simulated toy only");
+    assert!(devices.iter().all(|d| d.kind != "machine"));
+
+    let e = bp.set_settings(Settings { machine: true, ..st.clone() }).unwrap_err();
+    assert!(e.contains("stop the server"), "{e}");
+    assert!(bp.set_settings(Settings { port: port + 1, ..st.clone() }).is_err());
+    assert!(bp.set_settings(Settings { start_on_launch: true, ..st.clone() }).is_ok(), "start on launch applies while running");
+    bp.stop().await;
+    let mut levels = Vec::new();
+    while let Ok((ev, v)) = rx.try_recv() {
+      if ev == "bp://log" {
+        levels.push(v["level"].as_str().unwrap().to_string());
+      }
+    }
+    assert!(levels.iter().all(|l| l == "warn" || l == "error"), "below the level is dropped: {levels:?}");
+    std::fs::remove_dir_all(&dir).ok();
   }
 }
