@@ -4,11 +4,12 @@
    * SHELL ONLY. ShellStrip owns open/close; this owns the panes.
    *
    * Constraints:
-   * - In flow inside the top strip, above the LinkBar and the safety region:
-   *   it pushes the e-stop and pause pair down and never covers it
-   *   (RENDERING §9, law 11). The max-height keeps the pair on screen at
-   *   every size, so the drawer scrolls within itself. No overscroll
-   *   containment: at its end a wheel or swipe goes on to the page.
+   * - Never covers the e-stop and pause pair (RENDERING §9, law 11). Desktop:
+   *   in flow inside the top strip, above the LinkBar, so it pushes the pair
+   *   down and its max-height keeps the pair on screen. Phone: below the
+   *   whole strip, over the content. Either way it scrolls within itself,
+   *   with no overscroll containment: at its end a wheel or swipe goes on to
+   *   the page.
    * - About shows what the hub sent and `--` for anything it did not.
    * - Siblings add panes through drawer.js, never by editing this file.
    */
@@ -145,4 +146,20 @@
   }
   .dr-about dd { margin: 0; overflow-wrap: anywhere; }
   .dr-empty { color: var(--shell-fg); }
+  /* Phone: below the whole strip, over the content, so the safety pair never
+     moves; the sticky strip (the containing block) carries the drawer with
+     it. One tap band stays uncovered to tap out. Breakpoint matches
+     App.svelte's isDesktop. */
+  @media (max-width: 959px) {
+    .drawer {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      max-height: calc(100vh - var(--strip-h, 0px) - var(--tap));
+      max-height: calc(100dvh - var(--strip-h, 0px) - var(--tap));
+    }
+    .dr-tabs button { flex: 1 0 auto; }
+    .dr-panel { padding: 10px var(--gap); }
+  }
 </style>
