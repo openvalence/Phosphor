@@ -490,10 +490,10 @@ const motionDoor = createMotionDoor({
  * Submit a normalized motion input (0..1 across the stroke window) — the
  * model's motion-input door, used by tier-2 adapters (RFC-044 rung 1).
  *
- * Routed by motion.js createMotionDoor: the hub's samples-kind motion STREAM
- * when this session holds a publish grant for it (asked for on first use),
- * carrying `durationMs` in the sample's timestamp; otherwise entry point 3, a
- * `command.position` setpoint that drops `durationMs`. Which path is live, and
+ * Routed by motion.js createMotionDoor: a timed input to the hub's segments
+ * STREAM, an untimed one to its samples STREAM (grants asked for on first
+ * use); with neither, entry point 3, a `command.position` setpoint that drops
+ * `durationMs`. Which path is live, and
  * every stream refusal, lands in the log pane under the `motion` tag.
  *
  * @param {number} norm 0..1

@@ -129,8 +129,14 @@ at `max_future_schedule_ms`). A hub with no such stream, or one that grants
 nothing, gets the `command.position` setpoint instead, coalesced at the move
 channel's rate, with `durationMs` dropped. The live path and every stream
 refusal (with its `PublishError` code) land in the log pane under `motion`.
-Timed segments (`{target, duration, end_velocity}`, SPEC §9.6) are the closer
-fit and wait on RFC-058 ruling what an absent end velocity encodes.
+A call with `durationMs` > 0 prefers the hub's segments-kind STREAM (SPEC §9.6,
+RFC-087): one segment `{input.target, input.duration}` with the end velocity
+`unspecified`, started at hub now plus the grant's `schedule_latency_us`
+(RFC-059; no lead constant in Phosphor) and held inside the grant's schedule
+horizon. Each new bundle supersedes the not-yet-started tail, so a newer line
+or a seek needs no flush. `bundleHead` (src/model/motion.js) packs a timed
+list to the horizon, 32 records and one transport payload, for a lookahead
+source once the API carries one.
 
 ## Manifest (`manifest.json`, beside the module)
 

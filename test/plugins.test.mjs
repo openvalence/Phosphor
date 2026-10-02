@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes } from '../src/model/motion.js';
 import { createPluginHost, validateManifest } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
@@ -343,6 +343,49 @@ console.log('(e) motion door routing');
   ok('hub grants nothing: setpoint path, logged', d4(0.6).ok && eq(o4.set, [0.6]) && /publish refused/.test(o4.log[0].msg));
   d4(0.7);
   ok('a refusal is asked once per session', s4.asked.length === 1);
+
+  // ph-vdk.49 (RFC-087, RFC-059): timed input rides the segments STREAM,
+  // stamped at hub now + the grant's schedule_latency_us, inside its horizon.
+  const segLay = [lay('pos', { unitId: UNIT_ID.normalized, role: 'input.target' }),
+    lay('len', { unitId: UNIT_ID.ms, role: 'input.duration', scale: 1 }),
+    lay('ev', { type: 3, typeName: 'i16', scale: 1000, role: 'input.end_velocity' })];
+  const both = [stream([lay('a', { unitId: UNIT_ID.normalized, role: 'input.target' })]),
+    { ...stream(segLay, STREAM_KIND.segments), id: 0x7001 }];
+  const s6 = fakeSession();
+  s6.publish = (w) => {
+    s6.asked.push(w);
+    s6.state.grantedPublishes.set(w[0][0], { channel: w[0][0], rate: w[0][1], scheduleLatencyUs: 61000, scheduleHorizonMs: 500 });
+    return Promise.resolve([{ channel: w[0][0] }]);
+  };
+  s6.publishSegment = (ch, segs, o) => { s6.sent.push({ ch, segs, anchor: o.anchor }); return { seq: 0, n: segs.length }; };
+  const { d: d6, out: o6 } = door(both, s6);
+  d6(0.6, 120); await tick();
+  ok('a timed input asks for the segments STREAM', s6.asked[0][0][0] === 0x7001);
+  ok('it rides publishSegment', d6(0.6, 120).ok && s6.sent.length === 1 && s6.sent[0].ch === 0x7001);
+  ok('one segment: target, duration in the field unit, end velocity unspecified (RFC-058)',
+    eq(s6.sent[0].segs, [{ pos: 0.6, len: 120, ev: LIMITS.segment_end_vel_unspecified / 1000 }]));
+  ok('lead equals the grant\'s schedule_latency_us, no constant', s6.sent[0].anchor === 1_000_000 + 61000);
+  ok('the path names the horizon and lead once', o6.log.filter((l) => /segments STREAM.*500 ms.*61000 us/.test(l.msg)).length === 1);
+  d6(0.2); await tick();
+  ok('an untimed point rides the samples STREAM', d6(0.2).ok && s6.sent.at(-1).ch === 0x7000);
+
+  const recB = recordBytes(segLay);
+  const segs = Array.from({ length: 80 }, (_, i) => ({ atUs: 1_000_000 + i * 10_000 }));
+  let fine = true;
+  for (const hz of [250, 500, 1000]) {
+    let rest = segs, now = 1_000_000;
+    while (rest.length) {
+      const { head, rest: r } = bundleHead(rest, now, hz, recB);
+      if (!head.length) { now += 10_000; continue; }
+      if (head.length > LIMITS.bundle_max_samples || head.at(-1).atUs > now + hz * 1000
+        || 6 + head.length * (2 + recB) > LIMITS.min_transport_payload) fine = false;
+      rest = r;
+    }
+  }
+  ok('bundles never pass the horizon, 32 records or one transport payload', fine);
+  ok('a 1000 ms horizon fills a bundle to its payload cap',
+    bundleHead(segs, 1_000_000, 1000, recB).head.length === Math.min(32, Math.floor((LIMITS.min_transport_payload - 6) / (2 + recB))));
+  ok('a 250 ms horizon stops at the horizon', bundleHead(segs, 1_000_000, 250, recB).head.length === 26);
 
   // ph-vdk.42: the reported latch refuses every input and nothing leaves;
   // the door never resumes, so only the latch clearing lets input flow.
