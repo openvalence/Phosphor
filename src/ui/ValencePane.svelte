@@ -1,22 +1,22 @@
 <script>
   /**
-   * ValencePane.svelte — protocol observability.
+   * ValencePane.svelte -- protocol observability: the session's facts, the
+   * catalog, every channel's offered vs granted rate, link counters, NACKs.
    *
-   * This pane is deliberately ABOUT the protocol, so unlike every other
-   * component in this refactor it is allowed to show channel ids and names —
-   * that data comes off machine.catalog.entries at runtime, which is exactly
-   * the carve-out the task brief describes: reading catalog data is not the
-   * same thing as hardcoding a device fact in source.
+   * This pane is ABOUT the protocol, so it shows channel ids and names read
+   * off machine.catalog.entries at runtime; reading catalog data is not a
+   * device fact hardcoded in source.
    *
-   * The channel table's whole reason to exist is making two kinds of silent
-   * failure visible: a granted rate that does not match what the channel
-   * offers, and a channel that has simply stopped producing samples. Neither
-   * shows up any other way once the control that depends on it has already
-   * reverted.
+   * Constraints:
+   * - Every fact is a row that is always present; a value the hub did not
+   *   send reads `--` or says so in words, never a guess (RENDERING law 9).
+   * - Publish grants live on the session object, which is not reactive; the
+   *   pane's 1 Hz clock re-reads them.
    */
-  import { machine } from '../model/machine.svelte.js';
+  import { machine, getSession } from '../model/machine.svelte.js';
   import { ACCESS_NAME, toHex } from '../../../Valence/clients/js/index.js';
   import { bytes, since } from '../model/format.js';
+  import './pane.css';
 
   // A liveness pane full of "since" readouts needs its own clock, or every
   // age freezes the instant this component last happened to re-render.
@@ -30,6 +30,9 @@
   const link = $derived(machine.link);
   const tierLabel = $derived(link.sessionId != null ? (ACCESS_NAME[link.roles] || ('tier ' + link.roles)) : '--');
   const identity = $derived(link.hubIdentity);
+  const lim = $derived(link.limits || {});
+  // RFC-055: 0 means the hub does not know.
+  const count = (v) => (v ? String(v) : v === 0 ? 'not reported' : '--');
 
   const etagHex = $derived(machine.catalog.etag && machine.catalog.etag.length ? toHex(machine.catalog.etag) : '--');
 
@@ -49,47 +52,129 @@
     const ts = machine.sampleTs[id];
     return ts ? since(ts) : '--';
   }
+  const nameOf = (id) => machine.catalog.entries.find((e) => e.id === id)?.name || '--';
+
+  const subGrants = $derived(Object.keys(machine.grants).length);
+  const pubGrants = $derived((void nowTick, void link.sessionId,
+    [...(getSession()?.state?.grantedPublishes?.values() || [])]));
+
+  const estopText = $derived(!identity ? '--'
+    : identity.estop_cuts_power === true ? 'yes: the strip reads E-Stop'
+    : identity.estop_cuts_power === false ? 'no: the strip reads Halt'
+    : 'not declared: the strip reads Halt');
+  const infoText = $derived(identity && identity.info && typeof identity.info === 'object'
+    ? Object.entries(identity.info).map(([k, v]) => k + '=' + v).join(', ') || '--' : '--');
+
+  // The identity as sent, for a bug report. A u64 (BigInt) prints as decimal.
+  let copied = $state('');
+  let copyTimer = null;
+  async function copyIdentity() {
+    const text = JSON.stringify(identity, (k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
+    try { await navigator.clipboard.writeText(text); copied = 'copied'; } catch (e) { copied = 'copy failed'; }
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { copied = ''; }, 2000);
+  }
 
   const nacks = $derived([...machine.events.nacks].reverse());
 </script>
 
-<div class="pane-scroll">
-  <section class="block og-screen">
-    <h2>Session</h2>
-    <dl class="facts">
+<div class="pane">
+  <section class="pane-sec og-screen" aria-labelledby="vp-session">
+    <div class="pane-head"><h2 id="vp-session">Session</h2></div>
+    <dl class="pane-facts">
       <dt>session id</dt><dd class="mono">{link.sessionId ?? '--'}</dd>
       <dt>link phase</dt><dd>{link.phase}</dd>
       <dt>access tier</dt><dd>{tierLabel}</dd>
-      <dt>deadman window</dt><dd>{link.deadmanMs ? link.deadmanMs + ' ms' : '--'}</dd>
+      <dt>deadman window</dt><dd class="mono">{link.deadmanMs ? link.deadmanMs + ' ms' : '--'}</dd>
       <dt>config generation</dt><dd class="mono">{link.cfgGen ?? '--'}</dd>
-      <dt>hub identity</dt>
-      <dd>
-        {#if identity}
-          {identity.hub_name || identity.product || '--'}
-          {#if identity.fw_version}<span class="dim"> · fw {identity.fw_version}</span>{/if}
-          {#if identity.info}<span class="dim"> · {identity.info}</span>{/if}
-        {:else}
-          --
-        {/if}
-      </dd>
     </dl>
   </section>
 
-  <section class="block og-screen">
-    <h2>Catalog</h2>
-    <dl class="facts">
+  <section class="pane-sec og-screen" aria-labelledby="vp-identity">
+    <div class="pane-head">
+      <h2 id="vp-identity">Hub identity</h2>
+      <span class="flash" role="status">{copied}</span>
+      <button type="button" class="og-btn sm" disabled={!identity} onclick={copyIdentity}>Copy</button>
+    </div>
+    <dl class="pane-facts">
+      <dt>hub name</dt><dd>{identity?.hub_name || '--'}</dd>
+      <dt>product</dt><dd>{identity?.product || '--'}</dd>
+      <dt>firmware</dt><dd class="mono">{identity?.fw_version || '--'}</dd>
+      <dt>instance id</dt><dd class="mono">{identity?.hub_instance_id ?? '--'}</dd>
+      <dt>e-stop cuts power</dt><dd>{estopText}</dd>
+      <dt>info</dt><dd class="mono">{infoText}</dd>
+    </dl>
+  </section>
+
+  <section class="pane-sec og-screen" aria-labelledby="vp-limits">
+    <div class="pane-head"><h2 id="vp-limits">Limits</h2></div>
+    <dl class="pane-facts">
+      <dt>max frame</dt><dd class="mono">{lim.max_frame ? bytes(lim.max_frame) : '--'}</dd>
+      <dt>max subscriptions</dt><dd class="mono">{lim.max_subscriptions ?? '--'}</dd>
+      <dt>per frame</dt><dd class="mono">{lim.max_subscriptions_per_frame ?? '--'}</dd>
+      <dt>max sessions</dt><dd class="mono">{count(lim.max_sessions)}</dd>
+      <dt>sessions in use</dt><dd class="mono">{count(lim.sessions_in_use)}</dd>
+      <dt>channels shed</dt><dd class="mono">{link.subsDropped || 0}</dd>
+    </dl>
+  </section>
+
+  <section class="pane-sec og-screen" aria-labelledby="vp-grants">
+    <div class="pane-head"><h2 id="vp-grants">Grants</h2></div>
+    <dl class="pane-facts">
+      <dt>subscriptions</dt><dd>{subGrants} channel{subGrants === 1 ? '' : 's'}; rates in the channel table</dd>
+      <dt>publishes</dt><dd class="mono">{pubGrants.length}</dd>
+    </dl>
+    {#if pubGrants.length}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>id</th><th>name</th><th>rate</th><th>burst</th><th>schedule horizon</th><th>schedule latency</th></tr></thead>
+          <tbody>
+            {#each pubGrants as g (g.channel)}
+              <tr>
+                <td class="mono">{hexId(g.channel)}</td>
+                <td>{nameOf(g.channel)}</td>
+                <td class="mono">{g.rate != null ? g.rate + ' Hz' : '--'}</td>
+                <td class="mono">{g.burst ?? '--'}</td>
+                <td class="mono">{g.scheduleHorizonMs != null ? g.scheduleHorizonMs + ' ms' : '--'}</td>
+                <td class="mono">{g.scheduleLatencyUs != null ? g.scheduleLatencyUs + ' µs' : 'unspecified'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p class="pane-empty">No publish grants. One appears when this client starts sending stream input, such as a buttplug app driving the machine.</p>
+    {/if}
+  </section>
+
+  <section class="pane-sec og-screen" aria-labelledby="vp-catalog">
+    <div class="pane-head"><h2 id="vp-catalog">Catalog</h2></div>
+    <dl class="pane-facts">
       <dt>state</dt><dd>{machine.catalog.ready ? 'ready' : 'not loaded'}</dd>
       <dt>etag</dt><dd class="mono">{etagHex}</dd>
-      <dt>size</dt><dd>{bytes(machine.catalog.bytes)}</dd>
+      <dt>size</dt><dd class="mono">{bytes(machine.catalog.bytes)}</dd>
       <dt>source</dt><dd>{machine.catalog.ready ? (machine.catalog.cached ? 'cached' : 'fetched') : '--'}</dd>
-      <dt>entries</dt><dd>{machine.catalog.entries.length}</dd>
+      <dt>entries</dt><dd class="mono">{machine.catalog.entries.length}</dd>
     </dl>
   </section>
 
-  <section class="block og-screen">
-    <h2>Channels</h2>
+  <section class="pane-sec og-screen" aria-labelledby="vp-counters">
+    <div class="pane-head"><h2 id="vp-counters">Link counters</h2></div>
+    <dl class="pane-facts">
+      <dt>raw frames</dt><dd class="mono">{machine.stats.framesIn} in, {machine.stats.framesOut} out</dd>
+      <dt>state pushes</dt><dd class="mono">{machine.stats.statePushes}</dd>
+      <dt>bytes in</dt><dd class="mono">{bytes(machine.stats.bytesIn)}</dd>
+      <dt>last rx</dt><dd class="mono">{ageLabel(machine.stats.lastRxMs, nowTick)}</dd>
+      <dt>clock offset</dt><dd class="mono">{machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--'}</dd>
+      <dt>clock rtt</dt><dd class="mono">{machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--'}</dd>
+      <dt>reconnects</dt><dd class="mono">{machine.stats.reconnects}</dd>
+    </dl>
+  </section>
+
+  <section class="pane-sec og-screen" aria-labelledby="vp-channels">
+    <div class="pane-head"><h2 id="vp-channels">Channels</h2></div>
     {#if !machine.catalog.entries.length}
-      <p class="empty">No catalog yet.</p>
+      <p class="pane-empty">No catalog yet. Once a hub connects, its channels list here.</p>
     {:else}
       <div class="table-wrap">
         <table>
@@ -120,24 +205,10 @@
     {/if}
   </section>
 
-  <section class="block og-screen">
-    <h2>Link counters</h2>
-    <dl class="facts">
-      <dt>state pushes</dt><dd class="mono">{machine.stats.statePushes}</dd>
-      <dt>frames in</dt><dd class="mono">{machine.stats.framesIn}</dd>
-      <dt>frames out</dt><dd class="mono">{machine.stats.framesOut}</dd>
-      <dt>bytes in</dt><dd class="mono">{bytes(machine.stats.bytesIn)}</dd>
-      <dt>last rx</dt><dd class="mono">{ageLabel(machine.stats.lastRxMs, nowTick)}</dd>
-      <dt>clock offset</dt><dd class="mono">{machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--'}</dd>
-      <dt>clock rtt</dt><dd class="mono">{machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--'}</dd>
-      <dt>reconnects</dt><dd class="mono">{machine.stats.reconnects}</dd>
-    </dl>
-  </section>
-
-  <section class="block og-screen">
-    <h2>Recent NACKs</h2>
+  <section class="pane-sec og-screen" aria-labelledby="vp-nacks">
+    <div class="pane-head"><h2 id="vp-nacks">Recent NACKs</h2></div>
     {#if !nacks.length}
-      <p class="empty">None seen this session.</p>
+      <p class="pane-empty">None this session. A refused frame lists here with its code and reason.</p>
     {:else}
       <div class="table-wrap">
         <table>
@@ -145,8 +216,7 @@
             <tr><th>when</th><th>code</th><th>channel</th><th>detail</th></tr>
           </thead>
           <tbody>
-            <!-- Unkeyed: a roster read answers several empty slots in one ms. -->
-            {#each nacks as n}
+            {#each nacks as n (n.at + ':' + n.code + ':' + n.channel)}
               <tr>
                 <td class="mono">{ageLabel(n.at, nowTick)} ago</td>
                 <td class="mono">{n.name}</td>
@@ -162,39 +232,8 @@
 </div>
 
 <style>
-  .pane-scroll {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-  }
-  /* Recessed surface (background, inset shadow, border) is .og-screen — every
-     section here is a data readout, never a control group. */
-  .block {
-    padding: 10px 12px;
-  }
-  h2 {
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--ink-dim);
-    margin: 0 0 8px;
-  }
-  .empty {
-    color: var(--ink-faint);
-    font-size: 12.5px;
-    margin: 0;
-  }
-
-  .facts {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 4px 12px;
-    margin: 0;
-    font-size: 13px;
-  }
-  .facts dt { color: var(--ink-faint); }
-  .facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-  .dim { color: var(--ink-faint); }
+  /* Fixed width: "copied" appearing never moves the Copy button. */
+  .flash { min-width: 11ch; text-align: right; font-size: .75rem; color: var(--reality); }
 
   .table-wrap {
     overflow-x: auto;
@@ -204,7 +243,7 @@
     border-collapse: collapse;
     width: 100%;
     min-width: 620px;
-    font-size: 12.5px;
+    font-size: .78rem;
   }
   th, td {
     text-align: left;
@@ -213,10 +252,10 @@
     white-space: nowrap;
   }
   th {
-    color: var(--ink-faint);
+    color: var(--tx-mut);
     text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.03em;
+    font-size: .68rem;
+    letter-spacing: .06em;
     font-weight: 500;
   }
   td.mismatch { color: var(--warn); font-weight: 600; }
