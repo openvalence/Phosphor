@@ -10,7 +10,8 @@
  * answered per the test's chosen mode: echo, hold (echo on release), silent
  * (no answer) or nack. Asserts, per presentation (slider, knob, stepper):
  * pending then confirmed on an echo, overdue past 500 ms, fault on a NACK and
- * on silence, each with its text reason; display-only presentations write
+ * on silence, each with its text reason; a newer write survives the silent
+ * intent's late session timeout (ph-6i9); display-only presentations write
  * nothing; an aspect flip at w = h swaps orientation without dropping a write
  * in flight; a secret action payload masks and never reaches the status text
  * (ph-vic).
@@ -269,9 +270,16 @@ if (!LIVE) {
     ok(p + ': overdue names itself in words', (await ladderOf(p)).includes('still waiting'), await ladderOf(p));
     ok(p + ': fault when the echo never comes', await waitShadow(p, 'fault', 3000));
     ok(p + ': fault gives the reason', /refused: no echo/.test(await cell(p).locator('.field-error').textContent()));
-    // The unanswered intent's own session timeout (3 s) lands later on the same
-    // shadow record; let it drain so it cannot touch the next write (ph-6i9).
-    await sleep(1200);
+    // The unanswered intent's session timeout (3 s) lands about 1 s after the
+    // fault, on the same shadow record; a newer write must not feel it (ph-6i9).
+    hub.mode = 'hold';
+    const again = await drive(p);
+    await sleep(1300);
+    const mid = await shadowOf(p);
+    ok(p + ': a write in flight survives the silent intent timing out', mid === 'pending' || mid === 'overdue', mid);
+    await release();
+    ok(p + ': ...and confirms on its own echo', await waitShadow(p, 'confirmed'));
+    ok(p + ': ...with its own value', near(await current(), again), [await current(), again]);
 
     hub.mode = 'nack';
     await drive(p);
