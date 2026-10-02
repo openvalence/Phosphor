@@ -13,10 +13,21 @@
    * items; an item that is a member of a nest is drawn inside it, not at the
    * top level. With `layout` (a dashboardLayout().nest(id) controller) this
    * is a nest's own subgrid: no toolbar, no nests inside.
+   * Host hooks (the home passes them; a category page does not):
+   * `ondelete(ids)` removes from the surface, `onduplicate(id) -> id` places a
+   * second instance, `resolve(key) -> title|null` names a module member this
+   * view can draw. An item may carry `min(look, orientation)`, `selfLabeled`
+   * and, for a nest, `retitle(name)`. Internal: `ondragout` and `target` wire a
+   * nest's subgrid to its parent.
    *
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
-   *   writes the layout, so every intermediate frame is cancelable.
+   *   writes the layout, so every intermediate frame is cancelable (Escape).
+   *   The preview is the commit's own result (grid.js settle).
+   * - DOM order is reading order, frozen while a drag is in flight: moving the
+   *   node that holds pointer capture drops the capture.
+   * - Nothing on the grid transitions or animates: a layout switch or a
+   *   reflow lands at once, never as motion that could read as the machine.
    * - A resize never goes below the item's `min(look, orientation)` cells
    *   (grid.js resizeRect, RESIZE_FLOOR without one): the ghost shows the
    *   refusal and the live region says it, never a silent clamp.
