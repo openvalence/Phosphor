@@ -3,10 +3,12 @@
  * bundle (shell-build.mjs, stub Tauri runtime) against a fake hub serving the
  * recorded catalog (test/fixtures/advgen-roles-catalog.mjs). Asserts:
  *   load       the card substitutes both pattern built-ins; claimed fields
- *              leave the generic cards; advgen.mode stays generic (RFC-093)
+ *              leave the generic cards
  *   tabs       Advanced and Classic are views, each with its own Start; a
- *              switch writes nothing; without advgen.running the Advanced
- *              Start names what is missing
+ *              switch writes nothing
+ *   sources    Advanced starts on advgen.running, Classic on pattern.running;
+ *              each is refused while the other runs, the owner named from
+ *              control-owner's labels (stop Advanced first, and the reverse)
  *   handles    a held deep drag writes once on release, pending on the
  *              handle, then the echo; snapped and bounded; the numeric twin
  *              shows the same field; a refusal reads on the handle; speed
@@ -22,8 +24,9 @@
  *   gate       a watch-tier session disables every handle with the reason
  *   fallback   disabled, the plugin renders nothing
  *
- * Live mode (--live): drags the deep handle against valencesim and checks the
- * echo and the numeric twin; skips (exit 0) unless the sim carries advgen.*.
+ * Live mode (--live): against valencesim, the deep drag (echo and numeric
+ * twin), Advanced running with its playhead and told-wave, and both
+ * SOURCE_CONFLICT refusals; skips (exit 0) unless the sim carries advgen.*.
  * --shot <png> saves the card.
  *
  * Run: node test/advanced-penetration.test.mjs [--shot out.png]
@@ -57,6 +60,13 @@ const { bytes: CAT, etag: ETAG } = advgenCatalog();
 const ENTRIES = decodeCatalog(CAT);
 const byName = (n) => ENTRIES.find((e) => e.name === n);
 const ADV = byName('pattern-advanced');
+const runOf = (entryName) => {
+  const e = byName(entryName), f = e.layout.find((x) => x.role === (entryName === 'pattern-advanced' ? 'advgen.running' : 'pattern.running'));
+  return { ch: e.settingChannel, key: f.settingKey, uid: e.id + ':' + f.name };
+};
+const ADVRUN = runOf('pattern-advanced'), CLSRUN = runOf('pattern-state');
+// control-owner source ids, index-aligned to its option labels {Jog, Stream, Classic, Advanced}
+const SRC = { classic: 2, advanced: 3 };
 const uidOf = (e, name) => e.id + ':' + name;
 
 // ---- the fake hub -----------------------------------------------------------
@@ -126,6 +136,11 @@ function fakeHub(ws) {
         const ch = m.get(K.channel_id), id = m.get(K.intent_id);
         const val = [...m.get(K.value)].sort((a, b) => a[0] - b[0]);
         hub.intents.push({ ch, val: Object.fromEntries(val) });
+        const starts = (r) => ch === r.ch && val.some(([k, v]) => k === r.key && v);
+        if ((starts(ADVRUN) && hub.values[CLSRUN.uid]) || (starts(CLSRUN) && hub.values[ADVRUN.uid])) {
+          send(FRAME.NACK, ch, sorted([[K.code, cbUint(NACK.SOURCE_CONFLICT)], [K.intent_seq, cbUint(header.seq)]]));
+          continue;
+        }
         const answer = () => {
           const touched = new Set();
           for (const [k, v] of val) {
@@ -140,6 +155,10 @@ function fakeHub(ws) {
             if (op[1] === 3) hub.items.delete(op[2]);
             touched.add(byName('pattern-presets-roster').id);
           }
+          const a = !!hub.values[ADVRUN.uid], c = !!hub.values[CLSRUN.uid];
+          hub.values['4:src0'] = a ? SRC.advanced : c ? SRC.classic : 0;
+          hub.values['4:owner0'] = a || c ? 7 : 0;
+          touched.add(4);
           send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
             [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
           for (const t of touched) pushState(t);
@@ -257,6 +276,11 @@ async function toPatternPage(page, wantPlugin = true) {
   }
   return false;
 }
+const setRange = (loc, v) => loc.evaluate((el, v) => {
+  el.value = String(v);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}, v);
 const handle = (page, key) => page.locator('main.pane .ap .ap-h[data-key="' + key + '"]:visible').first();
 const numIn = (page, label) => page.locator('main.pane .ap .ap-num input[aria-label="' + label + '"]:visible').first();
 /** Drag a handle by (dx, dy) CSS px with the mouse; returns the intents it sent. */
@@ -297,14 +321,59 @@ if (LIVE) {
   }, null, { timeout: 5000 }).then(() => true).catch(() => false), await deep.getAttribute('data-status'));
   ok('live: the numeric twin followed the echoed value', Number(await numIn(page, 'Max depth').inputValue()) === want,
     await numIn(page, 'Max depth').inputValue());
-  const adv = page.locator('main.pane .ap .ap-run:visible').first();
-  const advNote = await page.locator('main.pane .ap .ap-run:visible').first().locator('xpath=../../p').textContent();
-  ok('live: Advanced Start binds advgen.running or names what is missing',
-    !(await adv.isDisabled()) || /needs advgen\.running/.test(advNote), advNote);
+  const runBtn = () => page.locator('main.pane .ap .ap-run:visible');
+  const runNote = async () => (await runBtn().locator('xpath=../../p').textContent()).trim();
+  const tab = (t) => page.click('main.pane .ap-tabs button:has-text("' + t + '")');
+  const speed = page.locator('main.pane .ap input[type=range][aria-label="Speed"]');
+  const m0 = Number(await speed.inputValue());
+  await setRange(speed, 40);
+  await page.waitForTimeout(400);
+  await runBtn().click();
+  ok('live: Advanced Start accepted with Classic stopped', await page.waitForFunction(() =>
+    /Stop pattern/.test(document.querySelector('main.pane .ap .ap-run').textContent), null, { timeout: 5000 }).then(() => true).catch(() => false),
+  await runNote());
+  await page.waitForTimeout(1500);
+  const p1 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.left + ',' + e.style.top);
+  await page.waitForTimeout(400);
+  const p2 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.left + ',' + e.style.top);
+  ok('live: a playhead rides the curve while Advanced runs', !!p1 && !!p2 && p1 !== p2, [p1, p2]);
+  const pts = (await page.locator('main.pane .ap .ap-wave polyline').getAttribute('points') || '').split(' ').filter(Boolean);
+  const ys = new Set(pts.map((x) => x.split(',')[1]));
+  // The told target is each segment's end, so a running stroke draws a stepped wave.
+  ok('live: the told-wave draws the commanded target while Advanced runs', pts.length > 20 && ys.size >= 2, { n: pts.length, levels: ys.size });
   if (SHOT) {
+    await page.waitForFunction(() => { const e = document.querySelector('main.pane .ap .ap-play'); const x = parseFloat(e.style.left); return !e.hidden && x > 25 && x < 75; },
+      null, { timeout: 5000, polling: 16 }).catch(() => {});
     await page.locator('main.pane .ap').first().screenshot({ path: SHOT });
     console.log('  screenshot: ' + SHOT);
   }
+  await tab('Classic');
+  await runBtn().click();
+  ok('live: Classic refused while Advanced runs: stop Advanced first', await page.waitForFunction(() => {
+    const b = document.querySelector('main.pane .ap .ap-run');
+    return b && /stop Advanced first/.test(b.parentElement.parentElement.querySelector('p').textContent);
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false), await runNote());
+  await tab('Advanced');
+  await runBtn().click();
+  ok('live: Advanced stops', await page.waitForFunction(() =>
+    /Start pattern/.test(document.querySelector('main.pane .ap .ap-run').textContent), null, { timeout: 5000 }).then(() => true).catch(() => false));
+  await tab('Classic');
+  await page.waitForTimeout(300);
+  await runBtn().click();
+  ok('live: Classic starts once Advanced stopped', await page.waitForFunction(() =>
+    /Stop pattern/.test(document.querySelector('main.pane .ap .ap-run').textContent), null, { timeout: 5000 }).then(() => true).catch(() => false),
+  await runNote());
+  await tab('Advanced');
+  await runBtn().click();
+  ok('live: Advanced refused while Classic runs: stop Classic first', await page.waitForFunction(() => {
+    const b = document.querySelector('main.pane .ap .ap-run');
+    return b && /stop Classic first/.test(b.parentElement.parentElement.querySelector('p').textContent);
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false), await runNote());
+  await tab('Classic');
+  await runBtn().click();
+  await page.waitForTimeout(800);
+  await tab('Advanced');
+  await setRange(speed, m0);
   await dragBy(page, deep, 0, before > 50 ? -30 : 30);   // put the sim's depth back near where it was
   await page.waitForTimeout(500);
   await ctx.close();
@@ -322,7 +391,6 @@ if (LIVE) {
     const claimedUids = [ADV, ...ENTRIES.filter((e) => e.modTarget)].flatMap((e) => e.layout
       .filter((f) => f.role && !['meta.enabled_mask', 'advgen.mode'].includes(f.role)).map((f) => uidOf(e, f.name)));
     ok('load: claimed fields leave the generic cards', claimedUids.every((u) => !generic.includes(u)), claimedUids.filter((u) => generic.includes(u)));
-    ok('load: advgen.mode stays generic (RFC-093)', generic.includes(uidOf(ADV, 'ap_mode')));
 
     // ---- tabs: a view switch that writes nothing
     const n0 = hub.intents.length;
@@ -344,9 +412,7 @@ if (LIVE) {
     ok('map: one rhythm tab per driven control, in base order', mtabs.join() === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel', mtabs);
     ok('map: Advanced has its own Start, background_run beside it', /Start pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent())
       && await page.locator('main.pane .ap .ap-sw:visible', { hasText: 'Run in background' }).isVisible());
-    const advNote = await page.locator('main.pane .ap .ap-run:visible').locator('xpath=../../p').textContent();
-    ok('map: without advgen.running the Advanced Start says what is missing', await page.locator('main.pane .ap .ap-run:visible').isDisabled()
-      && /needs advgen\.running/.test(advNote), advNote);
+    ok('map: the Advanced Start binds advgen.running', !(await page.locator('main.pane .ap .ap-run:visible').isDisabled()));
 
     // ---- a held deep drag: one write, pending on the handle, then the echo
     const deep = handle(page, 'deep');
@@ -450,12 +516,34 @@ if (LIVE) {
     await dlg.locator('button', { hasText: 'Cancel' }).click();
     await page.waitForTimeout(200);
     ok('confirm: a cancel sends nothing', hub.intents.length === n5);
-    await page.click('main.pane .ap-tabs button:has-text("Classic")');
-    await page.locator('main.pane .ap .ap-run:visible').click();
+    const runBtn = () => page.locator('main.pane .ap .ap-run:visible');
+    const runNote = async () => (await runBtn().locator('xpath=../../p').textContent()).trim();
+    const tab = (t) => page.click('main.pane .ap-tabs button:has-text("' + t + '")');
+    await toAdvanced(page);
+    let n6 = hub.intents.length;
+    await runBtn().click();
     await page.waitForTimeout(300);
-    ok('run: Classic starts on pattern.running', /Stop pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent()));
-    await page.locator('main.pane .ap .ap-run:visible').click();
+    ok('sources: Advanced starts on advgen.running', /Stop pattern/.test(await runBtn().textContent())
+      && hub.intents.slice(n6).some((i) => i.ch === ADVRUN.ch && i.val[ADVRUN.key]));
+    await tab('Classic');
+    await runBtn().click();
     await page.waitForTimeout(300);
+    ok('sources: Classic refused while Advanced runs, the owner named from the labels', (await runNote()) === 'stop Advanced first', await runNote());
+    await tab('Advanced');
+    await runBtn().click();
+    await page.waitForTimeout(300);
+    await tab('Classic');
+    await runBtn().click();
+    await page.waitForTimeout(300);
+    ok('sources: Classic starts on pattern.running once Advanced stopped', /Stop pattern/.test(await runBtn().textContent()));
+    await tab('Advanced');
+    await runBtn().click();
+    await page.waitForTimeout(300);
+    ok('sources: and the reverse reads stop Classic first', (await runNote()) === 'stop Classic first', await runNote());
+    await tab('Classic');
+    await runBtn().click();
+    await page.waitForTimeout(300);
+    ok('sources: Classic stops', /Start pattern/.test(await runBtn().textContent()));
 
     const red = await page.evaluate(() => {
       const bad = getComputedStyle(document.documentElement).getPropertyValue('--bad').trim();

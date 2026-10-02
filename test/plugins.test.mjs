@@ -16,7 +16,7 @@
  *   (g) every factory plugin validates and activates; Advanced Penetration
  *       substitutes both pattern built-ins on the recorded catalog
  *       (RENDERING §10.2) and every way it can fail (a missing essential
- *       role, no run role, a mount that throws, disabled) leaves the
+ *       role, advgen.running included, a mount that throws, disabled) leaves the
  *       built-ins to claim; advgen.mode stays generic (RFC-093);
  *   (h) the editor geometry: speed and accel to half width and curvature and
  *       back, handle position to field value on the step grid and bounds.
@@ -503,16 +503,15 @@ console.log('(g) factory plugins: Advanced Penetration substitutes the pattern c
   ok('it binds every generator-advanced essential, base roles required (RENDERING §10, RFC-081)', !!spec
     && Object.values(ADVGEN_SPEC.require).every((r) => bound.includes(r))
     && ['advgen.master', 'advgen.depth_max', 'advgen.accel_out'].every((r) => Object.values(spec.spec.require).includes(r)));
-  ok('a run role is required: pattern.running or RFC-093 advgen.running',
-    !!spec && spec.spec.requireOne.some((ks) => ks.includes('running') && ks.includes('advRun')) && spec.spec.optional.advRun === 'advgen.running');
-  ok('no run role at all: declines', !load({ drop: ['pattern.running'] }).widgets.some(isAp));
+  ok('advgen.running is required (RFC-093), pattern.running optional',
+    !!spec && spec.spec.require.advRun === 'advgen.running' && spec.spec.optional.running === 'pattern.running');
   const w = a.widgets.find(isAp);
   ok('claims on the recorded catalog', !!w);
   ok('neither built-in renders beside it', !a.widgets.some((x) => BUILTINS.some((b) => b.id === x.id)));
   ok('pattern-panel essentials ride along (select claimed)', !!w && !!w.fields.select && a.claimed.has(w.fields.select.uid));
   ok('all six modulators claimed, ascending by channel id', !!w && w.fields.mods.length === 6
     && w.fields.mods.every((x, i, l) => !i || l[i - 1].channelId < x.channelId));
-  for (const r of ['advgen.master', 'advgen.depth_max', 'advgen.depth_min', 'advgen.speed_in',
+  for (const r of ['advgen.running', 'advgen.master', 'advgen.depth_max', 'advgen.depth_min', 'advgen.speed_in',
     'advgen.speed_out', 'advgen.accel_in', 'advgen.accel_out']) {
     const b = load({ drop: [r] });
     ok('missing ' + r + ': declines, the built-ins claim', !b.widgets.some(isAp) && builtins(b));
