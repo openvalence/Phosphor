@@ -11,8 +11,8 @@
 
 import { BLE_ADV_FLAG } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
-// TODO(RFC-072): the registry pins no company id for the flags record;
-// 0xFFFF (the SIG testing id) is what the S3 reference hub sent.
+// Registry ble_identity.msd_company_id (RFC-072): the flags record is
+// company_id:u16le + flags:u8 (SPEC 13.4). Hand-copied: codegen omits it.
 export const ADV_COMPANY_ID = 0xffff;
 
 /**
