@@ -297,7 +297,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(300);
   const sel = await page.locator('.logpane [role=tab][aria-selected=true]').textContent().catch(() => '');
   ok(tag + ': the edge opens the Safety feed', /Safety/.test(sel), JSON.stringify(sel.trim()));
-  const rows = await page.locator('.logpane .feed .line').count();
+  const rows = await page.locator('.logpane .feed.active .line').count();
   ok(tag + ': the feed holds both edges', rows === 2, rows + ' row(s)');
   const after = await line.textContent();
   ok(tag + ': viewing the feed clears the unread count', !/new/.test(after), JSON.stringify(after.trim()));
@@ -339,9 +339,9 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(150);
   await page.click('.topstrip .evline');
   await page.waitForTimeout(150);
-  const rows = page.locator('.logpane .feed .line');
+  const rows = page.locator('.logpane .feed.active .line');
   ok('reconciliation: the feed holds both edges', await rows.count() === 2, String(await rows.count()));
-  const supersededRows = page.locator('.logpane .feed .line.superseded');
+  const supersededRows = page.locator('.logpane .feed.active .line.superseded');
   ok('reconciliation: the older-seq edge is marked superseded', await supersededRows.count() === 1, String(await supersededRows.count()));
   const acceptedText = await rows.nth(0).textContent();
   ok('reconciliation: the higher-seq edge (received first) is not superseded',
@@ -358,7 +358,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(100);
   send(FRAME.STATE, CORE_CHANNEL.safety, new Uint8Array(9).fill(1));
   await page.waitForTimeout(600);
-  const diagLine = page.locator('.logpane .feed .line.diag');
+  const diagLine = page.locator('.logpane .feed.active .line.diag');
   const diagText = await diagLine.textContent().catch(() => '');
   ok('reconciliation: a latch change with no edge shows the diagnostic line',
     /latch changed, no event received/.test(diagText), JSON.stringify(diagText.trim()));
@@ -378,7 +378,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(150);
   await page.click('.topstrip .evline');
   await page.waitForTimeout(150);
-  const flags = await page.locator('.logpane .feed .line')
+  const flags = await page.locator('.logpane .feed.active .line')
     .evaluateAll((els) => els.map((el) => el.classList.contains('superseded')));
   ok('wrap: only the edge behind the wrapped seq is superseded',
     JSON.stringify(flags) === '[false,false,true]', JSON.stringify(flags));

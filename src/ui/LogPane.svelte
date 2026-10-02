@@ -1,18 +1,24 @@
 <script>
   /**
-   * LogPane.svelte — device log, device-defined events, safety edges, session events.
+   * LogPane.svelte -- device log, device-defined events (Anomalies), safety
+   * edges, session events.
    *
-   * All three rings are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
-   * unknown things render generically rather than being dropped, so this
-   * component treats an event's `body` as an open bag of fields: it looks up
-   * each key against the CHANNEL'S OWN catalog schema at render time (for an
-   * `options`-typed field that turns a raw number into the label the device
-   * chose) and falls through to a plain "key = value" chip for anything it
-   * does not recognize. Nothing here assumes a device-specific field name —
-   * the one exception is the spec-core log channel's `level`/`tag`/`message`
-   * fields, which are fixed by the Valence *library* (lib/valence/), not by
-   * this device's own catalog, the same way every conforming hub's session
-   * and safety event channels share their kind vocabulary.
+   * All four rings are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
+   * unknown things render generically rather than being dropped: an event's
+   * `body` is an open bag of fields, each looked up against the CHANNEL'S OWN
+   * catalog schema at render time (an `options` field shows the device's
+   * label), anything unrecognized as a plain "key=value". The one exception
+   * is the spec-core log channel's `level`/`tag`/`message`, fixed by the
+   * Valence library, not by one device's catalog.
+   *
+   * Constraints:
+   * - Each feed is its own scroller, stacked in one grid cell and hidden by
+   *   visibility, so a tab switch keeps every feed's scroll position natively.
+   * - The toolbar and the status slot are always rendered: filters that do
+   *   not apply to a feed are disabled with the reason, never removed.
+   * - Scrolling away from the newest line pauses that feed on a snapshot;
+   *   Follow resumes it. Rows have no hover styling that changes geometry.
+   * - Warn and error read amber, never red: red is the hazard color.
    */
   import { machine } from '../model/machine.svelte.js';
   import {
@@ -20,8 +26,15 @@
   } from '../../../Valence/clients/js/index.js';
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
   import { logView } from './logview.svelte.js';
+  import './pane.css';
 
-  // log | anomaly | safety | session; shared so the top strip can open a feed.
+  const TABS = [
+    { id: 'log', label: 'Log' },
+    { id: 'anomaly', label: 'Anomalies' },
+    { id: 'safety', label: 'Safety' },
+    { id: 'session', label: 'Session' },
+  ];
+  // Shared so the top strip can open a feed.
   const tab = $derived(logView.tab);
 
   // Everything in the Safety feed counts as read while it is on screen.
@@ -37,14 +50,12 @@
     safety: machine.events.safety,
     session: machine.events.session,
   });
-  const currentList = $derived(lists[tab] || []);
 
-  // ph-vdk.37: per-tab empty copy, not one generic placeholder for all four.
   const EMPTY_TEXT = {
-    log: 'No log lines yet.',
-    anomaly: 'No device events yet.',
-    safety: 'No safety events yet -- the latch has not changed this session.',
-    session: 'No session events yet.',
+    log: 'No log lines yet. The hub\'s log and plugin messages arrive here while a session is live.',
+    anomaly: 'No device events yet. Events the hub defines for itself (motion anomalies, faults) list here.',
+    safety: 'No safety events yet: the latch has not changed this session. E-stop, halt and pause edges list here.',
+    session: 'No session events yet. Joins, leaves and evictions list here.',
   };
 
   // ---- generic body decoding -----------------------------------------------
@@ -81,10 +92,10 @@
     return (typeof raw === 'number' && LOG_LEVEL_NAME[raw]) ? LOG_LEVEL_NAME[raw] : null;
   }
 
-  /** Every top-level field of an event object, generically, for the session tab. */
+  /** Every top-level field of an event object, generically. */
   function topFields(evt) {
     // `superseded` is a locally-derived reconciliation flag (ph-vdk.14), not
-    // a wire field; the safety tab renders it as its own dedicated chip.
+    // a wire field; the safety feed renders it as its own chip.
     const skip = new Set(['at', 'channelName', 'channel', 'body', 'superseded']);
     const kindMap = evt.channel != null ? KIND_NAMES[evt.channel] : null;
     const out = [];
@@ -105,223 +116,237 @@
   function timeOf(evt) {
     try { return new Date(evt.at).toLocaleTimeString(); } catch (e) { return '--'; }
   }
+  const chan = (evt, none) => evt.channelName || (evt.channel != null ? 'channel ' + evt.channel : none);
 
-  // ---- auto-scroll-if-at-bottom --------------------------------------------
-
-  let containerEl = $state(null);
-  let atBottom = $state(true);
-
-  function onScroll() {
-    if (!containerEl) return;
-    atBottom = (containerEl.scrollHeight - containerEl.scrollTop - containerEl.clientHeight) < 32;
+  /** One row's parts; the row snippet and Copy both read this. */
+  function parts(t, evt) {
+    const p = { time: timeOf(evt), lvl: null, tag: null, text: '', kv: [], diag: false, superseded: false };
+    if (t === 'log') {
+      const fields = bodyFields(evt);
+      const get = (k) => fields.find((f) => f.key === k);
+      p.lvl = get('level') ? levelName(get('level').raw) : null;
+      p.tag = get('tag') ? get('tag').display : null;
+      p.text = get('message') ? get('message').display : chan(evt, 'log');
+      p.kv = fields.filter((f) => f.key !== 'level' && f.key !== 'message' && f.key !== 'tag');
+    } else if (t === 'anomaly') {
+      p.text = chan(evt, 'device');
+      p.kv = bodyFields(evt);
+    } else if (t === 'safety' && evt.diagnostic) {
+      // ph-vdk.14: synthesized locally when the latch changed with no
+      // matching edge; it states the gap, never a value the device did not send.
+      p.text = 'latch changed, no event received';
+      p.diag = true;
+    } else {
+      p.text = chan(evt, 'session');
+      p.kv = topFields(evt);
+      p.superseded = !!evt.superseded;
+    }
+    return p;
   }
 
-  $effect(() => {
-    // Reactive deps: list contents changing, and which tab is showing.
-    const n = currentList.length;
-    void tab;
-    if (containerEl && atBottom) {
-      const el = containerEl;
-      queueMicrotask(() => { el.scrollTop = el.scrollHeight; });
+  // ---- filters (Log feed only) -----------------------------------------------
+
+  const LEVELS = Object.entries(LOG_LEVEL_NAME).map(([n, name]) => ({ n: Number(n), name }));
+  let minLevel = $state(-1);
+  let tagFilter = $state('');
+  const tagOf = (evt) => (evt.body && evt.body.tag != null ? String(evt.body.tag) : '');
+  const tags = $derived([...new Set(machine.events.log.map(tagOf).filter(Boolean))].sort());
+  // A line with no level is kept: it is not below any threshold.
+  function passes(evt) {
+    const lv = evt.body && typeof evt.body.level === 'number' ? evt.body.level : null;
+    if (minLevel >= 0 && lv != null && lv < minLevel) return false;
+    return !tagFilter || tagOf(evt) === tagFilter;
+  }
+
+  // ---- follow / pause, per feed -----------------------------------------------
+
+  const feeds = $state(Object.fromEntries(TABS.map((t) => [t.id, { follow: true, snap: null }])));
+  const shown = $derived(Object.fromEntries(TABS.map(({ id }) => {
+    const base = feeds[id].snap || lists[id] || [];
+    return [id, id === 'log' ? base.filter(passes) : base];
+  })));
+
+  function newSince(live, snap) {
+    if (!snap.length) return live.length;
+    const i = live.lastIndexOf(snap[snap.length - 1]);
+    return i < 0 ? live.length : live.length - 1 - i;
+  }
+
+  function onScroll(id, el) {
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    if (!atBottom && feeds[id].follow) { feeds[id].follow = false; feeds[id].snap = lists[id].slice(); }
+  }
+  function toggleFollow() {
+    const f = feeds[tab];
+    f.follow = !f.follow;
+    f.snap = f.follow ? null : lists[tab].slice();
+  }
+  // Re-runs when the feed's rows or its follow flag change.
+  const stick = (id) => (el) => {
+    void shown[id].length;
+    if (feeds[id].follow) el.scrollTop = el.scrollHeight;
+  };
+
+  // ---- copy and the status slot --------------------------------------------------
+
+  let flash = $state('');
+  let flashTimer = null;
+  async function copyFeed() {
+    const rows = shown[tab].map((evt) => {
+      const p = parts(tab, evt);
+      return [p.time, p.lvl && '[' + p.lvl + ']', p.tag && '[' + p.tag + ']', p.text,
+        ...p.kv.map((f) => f.key + '=' + f.display), p.superseded && '(superseded)'].filter(Boolean).join(' ');
+    });
+    try {
+      await navigator.clipboard.writeText(rows.join('\n'));
+      flash = 'Copied ' + rows.length + ' line' + (rows.length === 1 ? '' : 's') + ' to the clipboard.';
+    } catch (e) {
+      flash = 'Copy failed: ' + ((e && e.message) || 'clipboard refused');
     }
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flash = ''; }, 2500);
+  }
+
+  const status = $derived.by(() => {
+    if (flash) return flash;
+    const f = feeds[tab];
+    const live = lists[tab] || [];
+    const filtered = tab === 'log' && (minLevel >= 0 || tagFilter)
+      ? ' Showing ' + shown.log.length + ' of ' + (f.snap || live).length + ' lines.' : '';
+    if (!f.follow) {
+      const n = newSince(live, f.snap || []);
+      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + ' since. Follow to catch up.' + filtered;
+    }
+    return 'Following the newest line.' + filtered;
   });
 
-  function selectTab(t) {
-    logView.tab = t;
-    atBottom = true;
+  function onTabKey(e) {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = TABS[(i + step + TABS.length) % TABS.length].id;
+    logView.tab = next;
+    e.currentTarget.querySelector('[data-feed="' + next + '"]')?.focus();
   }
 </script>
 
-<div class="logpane">
-  <div class="tabs" role="tablist" aria-label="Event feed">
-    <button role="tab" class="og-btn sm" aria-selected={tab === 'log'} class:on={tab === 'log'} onclick={() => selectTab('log')}>
-      Log <span class="count">{machine.events.log.length}</span>
-    </button>
-    <button role="tab" class="og-btn sm" aria-selected={tab === 'anomaly'} class:on={tab === 'anomaly'} onclick={() => selectTab('anomaly')}>
-      Device <span class="count">{machine.events.anomaly.length}</span>
-    </button>
-    <button role="tab" class="og-btn sm" aria-selected={tab === 'safety'} class:on={tab === 'safety'} onclick={() => selectTab('safety')}>
-      Safety <span class="count">{machine.events.safety.length}</span>
-    </button>
-    <button role="tab" class="og-btn sm" aria-selected={tab === 'session'} class:on={tab === 'session'} onclick={() => selectTab('session')}>
-      Session <span class="count">{machine.events.session.length}</span>
-    </button>
+<div class="pane logpane">
+  <div class="og-seg tabs" role="tablist" aria-label="Event feed" tabindex="-1" onkeydown={onTabKey}>
+    {#each TABS as t (t.id)}
+      <button type="button" role="tab" data-feed={t.id} id={'lp-tab-' + t.id} aria-controls={'lp-feed-' + t.id}
+              aria-selected={tab === t.id} tabindex={tab === t.id ? 0 : -1} class:active={tab === t.id}
+              onclick={() => (logView.tab = t.id)}>
+        {t.label} <span class="count mono">{lists[t.id].length}</span>
+      </button>
+    {/each}
   </div>
 
-  <div class="feed og-screen" bind:this={containerEl} onscroll={onScroll} role="log" aria-live="polite">
-    {#if !currentList.length}
-      <p class="empty">{EMPTY_TEXT[tab] || 'Nothing yet.'}</p>
-    {:else if tab === 'log'}
-      {#each currentList as evt, i (i + '-' + evt.at)}
-        {@const fields = bodyFields(evt)}
-        {@const lvlField = fields.find((f) => f.key === 'level')}
-        {@const lvl = lvlField ? levelName(lvlField.raw) : null}
-        {@const msgField = fields.find((f) => f.key === 'message')}
-        {@const tagField = fields.find((f) => f.key === 'tag')}
-        {@const rest = fields.filter((f) => f.key !== 'level' && f.key !== 'message' && f.key !== 'tag')}
-        <div class="line" class:lvl-warn={lvl === 'warn'} class:lvl-error={lvl === 'error' || lvl === 'fatal'}>
-          <time class="mono">{timeOf(evt)}</time>
-          {#if lvl}<span class="chip lvl-{lvl}">{lvl}</span>{/if}
-          {#if tagField}<span class="chip tag">{tagField.display}</span>{/if}
-          <span class="text">{msgField ? msgField.display : (evt.channelName || 'channel ' + evt.channel)}</span>
-          {#each rest as f}<span class="kv">{f.key}={f.display}</span>{/each}
-        </div>
-      {/each}
-    {:else if tab === 'anomaly'}
-      {#each currentList as evt, i (i + '-' + evt.at)}
-        {@const fields = bodyFields(evt)}
-        <div class="line">
-          <time class="mono">{timeOf(evt)}</time>
-          <span class="text">{evt.channelName || ('channel ' + evt.channel)}</span>
-          {#each fields as f}<span class="kv">{f.key}={f.display}</span>{/each}
-        </div>
-      {/each}
-    {:else if tab === 'safety'}
-      <!-- ph-vdk.14: reconciled against the 0x0003 latch via seq_of_state
-           (machine.svelte.js). A `diagnostic` record is synthesized locally
-           (Ground Truth: it states that the client noticed a gap, never a
-           value the device did not send) when the latch changed with no
-           matching edge; a `superseded` edge is a real device record that
-           arrived out of order. -->
-      {#each currentList as evt, i (i + '-' + evt.at)}
-        {#if evt.diagnostic}
-          <div class="line diag">
-            <time class="mono">{timeOf(evt)}</time>
-            <span class="text">latch changed, no event received</span>
-          </div>
+  <div class="tools">
+    <label class="tool">
+      <span>Level</span>
+      <select bind:value={minLevel} disabled={tab !== 'log'} title={tab !== 'log' ? 'Filters apply to the Log feed' : ''}>
+        <option value={-1}>all levels</option>
+        {#each LEVELS as l (l.n)}<option value={l.n}>{l.name} and above</option>{/each}
+      </select>
+    </label>
+    <label class="tool">
+      <span>Tag</span>
+      <select bind:value={tagFilter} disabled={tab !== 'log'} title={tab !== 'log' ? 'Filters apply to the Log feed' : ''}>
+        <option value="">all tags</option>
+        {#each tags as t (t)}<option value={t}>{t}</option>{/each}
+      </select>
+    </label>
+    <button type="button" class="og-btn sm" class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
+      {feeds[tab].follow ? 'Following' : 'Follow'}
+    </button>
+    <button type="button" class="og-btn sm" disabled={!shown[tab].length} onclick={copyFeed}>Copy</button>
+  </div>
+  <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} title={status}>{status}</p>
+
+  <div class="stack">
+    {#each TABS as t (t.id)}
+      <div class="feed og-screen" id={'lp-feed-' + t.id} role="tabpanel" aria-labelledby={'lp-tab-' + t.id}
+           class:active={tab === t.id} inert={tab !== t.id} tabindex={tab === t.id ? 0 : -1}
+           onscroll={(e) => onScroll(t.id, e.currentTarget)} {@attach stick(t.id)}>
+        {#if !shown[t.id].length}
+          <p class="pane-empty">{(t.id === 'log' && lists.log.length) ? 'No line matches the level and tag filters.' : EMPTY_TEXT[t.id]}</p>
         {:else}
-          {@const fields = topFields(evt)}
-          <div class="line" class:superseded={evt.superseded}>
-            <time class="mono">{timeOf(evt)}</time>
-            <span class="text">{evt.channelName || ('channel ' + evt.channel)}</span>
-            {#each fields as f}<span class="kv">{f.key}={f.display}</span>{/each}
-            {#if evt.superseded}<span class="chip">superseded</span>{/if}
-          </div>
+          {#each shown[t.id] as evt (evt)}
+            {@const p = parts(t.id, evt)}
+            <div class="line" class:lvl-warn={p.lvl === 'warn' || p.lvl === 'error' || p.lvl === 'fatal'}
+                 class:superseded={p.superseded} class:diag={p.diag}>
+              <time class="mono">{p.time}</time>
+              {#if p.lvl}<span class="chip lvl-{p.lvl}">{p.lvl}</span>{/if}
+              {#if p.tag}<span class="chip tag">{p.tag}</span>{/if}
+              <span class="text">{p.text}</span>
+              {#each p.kv as f}<span class="kv">{f.key}={f.display}</span>{/each}
+              {#if p.superseded}<span class="chip">superseded</span>{/if}
+            </div>
+          {/each}
         {/if}
-      {/each}
-    {:else}
-      {#each currentList as evt, i (i + '-' + evt.at)}
-        {@const fields = topFields(evt)}
-        <div class="line">
-          <time class="mono">{timeOf(evt)}</time>
-          <span class="text">{evt.channelName || (evt.channel != null ? ('channel ' + evt.channel) : 'session')}</span>
-          {#each fields as f}<span class="kv">{f.key}={f.display}</span>{/each}
-        </div>
-      {/each}
-    {/if}
+      </div>
+    {/each}
   </div>
-
-  {#if !atBottom && currentList.length}
-    <button type="button" class="jump og-btn sm" onclick={() => { atBottom = true; if (containerEl) containerEl.scrollTop = containerEl.scrollHeight; }}>
-      jump to latest
-    </button>
-  {/if}
 </div>
 
 <style>
-  .logpane {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    height: 100%;
-    min-height: 0;
-    position: relative;
-  }
+  .logpane { gap: 8px; }
+  .tabs button { min-width: 0; }
+  .count { color: var(--ink-faint); font-size: .68rem; margin-left: 4px; }
 
-  .tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  /* Base chrome is .og-btn.sm — only the selected-tab accent is added here. */
-  .tabs button.on {
-    color: var(--ink);
-    border-color: var(--reality);
-    background: color-mix(in srgb, var(--reality) 10%, var(--bg-card));
-  }
-  .count {
-    color: var(--ink-faint);
-    font-family: var(--mono);
-    font-size: 11px;
-    margin-left: 4px;
-  }
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .tool { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--tx-mut); }
+  /* Fixed width: a new tag arriving never resizes the toolbar. */
+  .tool select { width: 16ch; padding-top: 4px; padding-bottom: 4px; min-height: 30px; }
 
-  /* Recessed surface (background, inset shadow, border) is .og-screen —
-     only layout properties stay here. */
+  /* All feeds share one cell; only the active one is visible. */
+  .stack { display: grid; }
   .feed {
+    grid-area: 1 / 1;
+    visibility: hidden;
+    height: 52vh;
+    min-height: 240px;
     padding: 8px 10px;
     overflow-y: auto;
-    max-height: 52vh;
     display: flex;
     flex-direction: column;
     gap: 3px;
   }
-
-  .empty {
-    color: var(--ink-faint);
-    font-size: 12.5px;
-    margin: 0;
-  }
+  .feed.active { visibility: visible; }
 
   .line {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 6px;
-    font-size: 12.5px;
+    font-size: .78rem;
     line-height: 1.5;
     padding: 2px 0;
     border-bottom: 1px solid var(--line-soft);
-  }
-  .line time {
-    color: var(--ink-faint);
-    font-size: 11px;
     flex: 0 0 auto;
   }
-  .line .text {
-    color: var(--ink);
-    overflow-wrap: anywhere;
-  }
+  .line time { color: var(--ink-faint); font-size: .68rem; flex: 0 0 auto; }
+  .line .text { color: var(--ink); overflow-wrap: anywhere; }
   .line.lvl-warn .text { color: var(--warn); }
-  .line.lvl-error .text { color: var(--bad); }
   /* Reconciliation states (ph-vdk.14), neither a hazard: an out-of-order
-     edge dims like TopStrip's own .stale; a synthesized diagnostic (no
-     device data, just a gap the client noticed) reads as muted italic. */
+     edge dims; a synthesized diagnostic reads as muted italic. */
   .line.superseded { opacity: .55; }
   .line.diag .text { color: var(--ink-faint); font-style: italic; }
 
   .chip {
-    font-size: 11px;
+    font-size: .68rem;
     padding: 1px 6px;
-    border-radius: 999px;
+    border-radius: var(--r-s);
     background: var(--bg-card);
     border: 1px solid var(--line);
     color: var(--ink-dim);
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: .03em;
     flex: 0 0 auto;
   }
-  .chip.lvl-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
-  .chip.lvl-error, .chip.lvl-fatal { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+  .chip.lvl-warn, .chip.lvl-error, .chip.lvl-fatal { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
   .chip.tag { text-transform: none; }
 
-  .kv {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-faint);
-    flex: 0 0 auto;
-  }
-
-  /* Base chrome is .og-btn.sm — pill shape + reality accent distinguish
-     this specific action from a plain button. */
-  .jump {
-    align-self: center;
-    border-radius: 999px;
-    border-color: var(--reality);
-    color: var(--reality);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .feed { scroll-behavior: auto; }
-  }
+  .kv { font-family: var(--mono); font-size: .68rem; color: var(--ink-faint); flex: 0 0 auto; }
 </style>

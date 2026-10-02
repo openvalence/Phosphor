@@ -21,7 +21,7 @@ import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '..
 import {
   encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS,
 } from '../../Valence/clients/js/frames.js';
-import { CORE_CHANNEL } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, LOG_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -99,6 +99,13 @@ function fakeHub(ws) {
   });
 }
 
+const LOG = entry(CORE_CHANNEL.log);
+const logKey = (name) => LOG.schema.find((f) => f.name === name).key;
+function logLine(level, tag, message) {
+  wire.send(FRAME.EVENT, CORE_CHANNEL.log, cbMap([[K.event_kind, cbUint(LOG_EVENT_KIND.entry)],
+    [K.body, cbMap([[logKey('level'), cbUint(level)], [logKey('tag'), cbTstr(tag)], [logKey('message'), cbTstr(message)]])]]));
+}
+
 const browser = await chromium.launch();
 
 async function boot(viewport, path = '/', shell = false) {
@@ -148,6 +155,56 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
     const sw = await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1);
     ok('valence: no horizontal page scroll at phone width', sw);
   }
+
+  // ---- Log -------------------------------------------------------------------
+  await openTab(page, 'log');
+  const slotH = () => page.$eval('.logpane .pane-status', (el) => el.getBoundingClientRect().height);
+  const h0 = await slotH();
+  ok('log: the empty feed says what will arrive', /arrive here/.test(await page.textContent('#lp-feed-log')));
+  for (let i = 0; i < 40; i++) logLine(i % 4 === 0 ? 3 : 2, i % 4 === 0 ? 'motor' : 'net', 'line ' + i);
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log .line').length === 40, null, { timeout: 5000 });
+  await page.waitForTimeout(100);
+  const atEnd = await page.$eval('#lp-feed-log', (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+  ok('log: following keeps the newest line in view', atEnd);
+
+  await page.selectOption('.logpane select >> nth=0', { label: 'warn and above' });
+  await page.waitForTimeout(100);
+  ok('log: level filter keeps warn and above', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 10);
+  await page.selectOption('.logpane select >> nth=0', { label: 'all levels' });
+  await page.selectOption('.logpane select >> nth=1', { label: 'net' });
+  await page.waitForTimeout(100);
+  ok('log: tag filter keeps one tag', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 30);
+  ok('log: the status says how much is shown', /Showing 30 of 40/.test(await page.textContent('.logpane .pane-status')));
+  await page.selectOption('.logpane select >> nth=1', { label: 'all tags' });
+  await page.waitForTimeout(100);
+
+  await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 0; el.dispatchEvent(new Event('scroll')); });
+  await page.waitForTimeout(100);
+  for (let i = 0; i < 5; i++) logLine(2, 'net', 'late ' + i);
+  await page.waitForTimeout(200);
+  const st = await page.textContent('.logpane .pane-status');
+  ok('log: scrolling up pauses the feed and counts what arrived', /Paused: 5 new lines/.test(st), st);
+  ok('log: a paused feed holds its rows', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 40);
+  const rowH = await page.$eval('#lp-feed-log .line', (el) => el.getBoundingClientRect().height);
+  await page.hover('#lp-feed-log .line >> nth=0');
+  ok('log: hovering a row does not change its height', rowH === await page.$eval('#lp-feed-log .line', (el) => el.getBoundingClientRect().height));
+
+  await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 120; el.dispatchEvent(new Event('scroll')); });
+  await page.click('[data-feed="safety"]');
+  await page.waitForTimeout(100);
+  ok('log: the Safety feed has its own empty state', /latch has not changed/.test(await page.textContent('#lp-feed-safety')));
+  await page.click('[data-feed="log"]');
+  await page.waitForTimeout(100);
+  ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === 120);
+
+  await page.click('.logpane .tools button:has-text("Copy")');
+  await page.waitForTimeout(150);
+  const logClip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok('log: Copy puts the shown lines on the clipboard', logClip.split('\n').length === 40 && /\[warn\] \[motor\] line 0/.test(logClip), logClip.split('\n')[0]);
+  await page.click('.logpane .tools button:has-text("Follow")');
+  await page.waitForTimeout(150);
+  ok('log: Follow resumes with the new lines', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 45);
+  ok('log: the status slot never changes height', h0 > 0 && h0 === await slotH(), h0 + 'px');
 
   ok('no page errors (' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
