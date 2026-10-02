@@ -619,6 +619,30 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('a hub without the role never shows the chip', !isUnattended(model.byRole, {}, undefined));
 }
 
+// ---- ph-vdk.60.8: RENDERING §5.4 reset linkage ------------------------------
+// A counter group's reset verb sits in that group's card (SPEC §8.8: a group
+// spans channels by category and name) and confirms first (§8.4 trigger).
+{
+  const m = buildSettingsModel([{
+    id: 0x0230, name: 'tally', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 1,
+    priority: 3, category: 201, categoryKnown: false, categoryName: 'odometer', settingChannel: null,
+    layout: [
+      lf('strokes', PACKED.u32, { group: 'Counts', aspect: VALUE_ASPECT.total }),
+      lf('gen', PACKED.u16, { group: 'Counts', role: ROLE.resetGen }),
+    ],
+    schema: null,
+  }, {
+    id: 0x0231, name: 'tally-clear', cls: CHANNEL_CLASS.INTENT, dir: 1, access: 1, maxRateHz: 1,
+    priority: 3, category: 201, categoryKnown: false, categoryName: 'odometer', settingChannel: null, layout: null,
+    schema: [{ key: 1, name: 'op', type: CBOR_FIELD.uint_t, role: 'action.reset', group: 'Counts', options: ['', 'clear'] }],
+  }]);
+  const card = m.categories.flatMap((c) => c.groups).find((g) => g.fields.some((f) => f.role === ROLE.resetGen));
+  const verb = card && card.fields.find((f) => f.role === 'action.reset');
+  ok('reset linkage: the reset verb sits in its counter group\'s card', !!verb,
+     card && card.fields.map((f) => f.name).join(','));
+  ok('reset linkage: it confirms first', !!verb && needsConfirm(verb, 1));
+}
+
 // ---- ph-2hw: Page Reset never writes a motion-starting field ---------------
 {
   const gen = buildSettingsModel([{
