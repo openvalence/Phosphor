@@ -6,6 +6,7 @@
  * sensibly on a machine we have never met.
  */
 
+import { createSubscriber } from 'svelte/reactivity';
 import { ROLE_LABEL } from './roles.js';
 import { UNIT_ID, VALUE_ASPECT, VALUE_SCOPE_NAME } from '../../../Valence/clients/js/index.js';
 
@@ -233,12 +234,24 @@ const SI_RANGE = { V: [-6, 3], A: [-6, 3], W: [-3, 6], Wh: [0, 6], s: [-6, 0], H
 const SI_PREFIX = { '-6': 'µ', '-3': 'm', 0: '', 3: 'k', 6: 'M' };
 const SI_EXP = { µ: -6, m: -3, k: 3, M: 6 };
 let autorangeOn = true;
+// autorange() must call trackAutorange() before reading the switch: that
+// subscription is what re-renders a shown value the moment it flips.
+let autorangeChanged = () => {};
+const trackAutorange = createSubscriber((update) => {
+  autorangeChanged = update;
+  return () => { autorangeChanged = () => {}; };
+});
 
 /** The Settings pane's switch (prefs.js `autorange`). */
-export function setAutorange(on) { autorangeOn = !!on; }
+export function setAutorange(on) {
+  if (autorangeOn === !!on) return;
+  autorangeOn = !!on;
+  autorangeChanged();
+}
 
 /** [text, unit] rescaled to the prefix that fits `value`, or null to leave it. */
 export function autorange(field, value, unit) {
+  trackAutorange();
   const m = autorangeOn && typeof value === 'number' && value && isFinite(value)
     && /^(µ|m|k|M)?(V|A|Wh|W|s|Hz|N)$/.exec(unit);
   if (!m) return null;

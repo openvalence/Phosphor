@@ -1,5 +1,6 @@
 // prefs.test.mjs — app preferences and the autorange gate, no browser.
-// Run: node test/prefs.test.mjs
+// Run: node --conditions=browser test/prefs.test.mjs (the client svelte build,
+// so the autorange switch's re-render can be observed)
 
 import assert from 'node:assert/strict';
 
@@ -19,7 +20,8 @@ const {
   savedHubs, rememberHub, renameHub, forgetHub, hubKey, hubLabel, launchTarget, HUBS_KEY,
   exportBackup, importBackup,
 } = await import('../src/model/prefs.js');
-const { get } = await import('svelte/store');
+const { get, toStore } = await import('svelte/store');
+const { flushSync } = await import('svelte');
 const { formatWithUnit, setAutorange, autorange } = await import('../src/model/format.js');
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
 
@@ -54,6 +56,15 @@ assert.equal(autorange(V, 0, 'V'), null, 'zero keeps its unit');
 setAutorange(false);
 assert.equal(formatWithUnit(V, 0.085), '0.085' + NB + 'V', 'off: the declared unit');
 setAutorange(true);
+// A shown value re-renders the moment the switch flips, not on its next update.
+const shown = [];
+const stopShown = toStore(() => formatWithUnit(V, 0.085)).subscribe((t) => shown.push(t));
+setAutorange(false);
+flushSync();
+setAutorange(true);
+flushSync();
+stopShown();
+assert.deepEqual(shown, ['85' + NB + 'mV', '0.085' + NB + 'V', '85' + NB + 'mV'], 'the toggle re-renders at once');
 
 // Saved hubs: keyed on hub_instance_id, else the dialed endpoint; port kept.
 const ID = '00a1b2c3d4e5f607';
