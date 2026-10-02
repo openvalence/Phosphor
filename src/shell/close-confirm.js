@@ -7,6 +7,8 @@
 // - Every close request is prevented until the hold completes; the hold then
 //   destroys the window (close() would only raise the request again).
 // - A hold shorter than HOLD_MS closes nothing, so a stray click never quits.
+// - A close request raises the window first (unminimize, focus): a taskbar
+//   close must show the popover, not leave it behind another window.
 
 export const HOLD_MS = 1000;
 
@@ -22,11 +24,18 @@ export function createCloseGate(win, ask, { holdMs = HOLD_MS, timers = globalThi
       if (closing) return;
       e.preventDefault();
       ask();
+      raise_(win);
     }))
     // No event permission (a degraded shell): the OS close goes through
     // unconfirmed, the X still asks.
     .catch(() => null);
 
+  function raise_(w) {
+    Promise.resolve()
+      .then(() => w.unminimize && w.unminimize())
+      .then(() => w.setFocus && w.setFocus())
+      .catch(() => null);   // no window permission: the popover still opens
+  }
   function release() {
     if (timer != null) timers.clearTimeout(timer);
     timer = null;

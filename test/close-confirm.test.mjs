@@ -25,7 +25,9 @@ function fakeClock() {
   };
 }
 function fakeWindow() {
-  const w = { handler: null, destroyed: 0, unlistened: 0 };
+  const w = { handler: null, destroyed: 0, unlistened: 0, raised: 0, focused: 0 };
+  w.unminimize = async () => { w.raised++; };
+  w.setFocus = async () => { w.focused++; };
   w.onCloseRequested = async (h) => { w.handler = h; return () => { w.unlistened++; }; };
   w.destroy = () => { w.destroyed++; };
   w.request = () => { let prevented = false; w.handler({ preventDefault: () => { prevented = true; } }); return prevented; };
@@ -41,6 +43,8 @@ ok('HOLD_MS is about a second', HOLD_MS >= 800 && HOLD_MS <= 1500, String(HOLD_M
   const gate = createCloseGate(win, () => asked++, { timers: clock });
   await settle();
   ok('an OS close request is prevented and asks', win.request() === true && asked === 1);
+  await settle();
+  ok('the request raises the window so the popover is seen (taskbar close)', win.raised === 1 && win.focused === 1);
   gate.hold(); clock.advance(HOLD_MS - 1); gate.release(); clock.advance(5000);
   ok('a hold one ms short destroys nothing', win.destroyed === 0);
   gate.hold(); clock.advance(HOLD_MS / 2); gate.hold(); clock.advance(HOLD_MS / 2);
