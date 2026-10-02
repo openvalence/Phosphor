@@ -170,6 +170,12 @@
     if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'not writable now';
     return flipped ? 'on: home at the far end' : 'off';
   });
+  // The tape's tooltip carries what the rail's help line used to say (ph-i0y).
+  const HINT = 'tap or scrub to jog; the window band below: drag it, drag its edges, arrow keys nudge';
+  const windowDesc = $derived(min.desc || max.desc || '');
+  let descOpen = $state(false);
+  const descId = 'rail-desc-' + Math.random().toString(36).slice(2, 8);
+
   async function toggleFlip() {
     if (!flipEnabled) return;
     const on = !flipped;
@@ -882,7 +888,7 @@
        strip in its place while a source owns the rail (planShown). Flip rides
        its end. A reason renders inside the row, never as a line under it. -->
   <div class="rail-row">
-    <div class="rail-swap">
+    <div class="rail-swap" class:has-info={!!windowDesc}>
     {#if planShown}
       <PlanStrip />
     {:else if move}
@@ -897,7 +903,8 @@
            the drag ends — never an optimistic local guess. -->
       <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
            data-shadow={statusOf(move)}>
-        <div class="rail-tape-labels">
+        <div class="rail-tape-labels"
+             title={'jog · ' + (override ? 'travel' : 'window') + (!moveEnabled && moveReason ? ' · ' + moveReason : '')}>
           <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}{#if !moveEnabled && moveReason}<span
             class="rail-reason"> &middot; {moveReason}</span>{/if}</span>
           <span class="rail-tape-extent mono">{formatValue(move, tapeLo)}&ndash;{formatValue(move, tapeHi)}</span>
@@ -909,7 +916,7 @@
              where the window sits, still carries the pip, but no longer owns
              any listeners of its own (pointer events on it bubble to the
              track same as anywhere else). -->
-        <div class="rail-tape-track" bind:this={tapeTrackEl}
+        <div class="rail-tape-track" bind:this={tapeTrackEl} title={HINT}
              role="slider" tabindex={moveEnabled ? 0 : -1}
              aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
@@ -934,15 +941,27 @@
            the rhythm, commands nothing, and says why. -->
       <div class="rail-tape-assembly disabled" aria-disabled="true"
            title="This catalog does not tag a move INTENT by role, so a generic client cannot find it safely.">
-        <div class="rail-tape-labels">
+        <div class="rail-tape-labels" title="jog · window · no move intent on this catalog">
           <span class="rail-tape-mode">jog &middot; window<span class="rail-reason"> &middot; no move intent on this catalog</span></span>
           <span class="rail-tape-extent mono">{haveWindow ? formatValue(min, minVal) + '–' + formatValue(max, maxVal) : '--'}</span>
         </div>
-        <div class="rail-tape-track">
+        <div class="rail-tape-track" title={HINT}>
           <div class="rail-tape"
                style="left:{haveWindow ? minPct * 100 : 0}%; width:{haveWindow ? Math.max(0, (maxPct - minPct) * 100) : 100}%"></div>
         </div>
       </div>
+    {/if}
+    {#if windowDesc}
+      <!-- The window's catalog description, behind the same info affordance
+           Field.svelte uses; it never takes a line of its own (ph-i0y). -->
+      <span class="info-wrap">
+        <button type="button" class="info" aria-expanded={descOpen} aria-controls={descId}
+                onclick={() => (descOpen = !descOpen)}>
+          <span class="glyph" aria-hidden="true">i</span>
+          <span class="sr-only">{descOpen ? 'Hide' : 'Show'} the stroke window description</span>
+        </button>
+        <span class="tip" id={descId} role="tooltip">{windowDesc}</span>
+      </span>
     {/if}
     </div>
     {#if flip}
@@ -1036,14 +1055,6 @@
     {/if}
   </div>
 
-  <div class="rail-hint explain">
-    <span>drag band &middot; drag edges &middot; arrow keys to nudge</span>
-    <span class="rail-trk">trk 00</span>
-  </div>
-
-  {#if min.desc || max.desc}
-    <p class="rail-desc explain">{min.desc || max.desc}</p>
-  {/if}
   </div>
 </div>
 
@@ -1069,7 +1080,9 @@
   @media (pointer: coarse) {
     .rail-row { --rail-row-h: max(var(--tap), 58px); }
   }
-  .rail-swap { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+  .rail-swap { position: relative; flex: 1 1 auto; min-width: 0; }
+  /* The info box rides the labels line's right end; the labels make room. */
+  .has-info .rail-tape-labels, .has-info :global(.plan-labels) { padding-right: 24px; }
   /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
   .rw-flip {
     display: flex;
@@ -1370,16 +1383,56 @@
     margin: 0;
   }
 
-  .rail-hint {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 4px;
-    font-family: var(--mono);
-    font-size: max(11px, 0.58rem);
-    color: var(--tx-ghost);
+  /* The info affordance: Field.svelte's .info box and .tip, always shown
+     here since the description has no inline line to fall back on. */
+  .info-wrap { position: absolute; top: -2px; right: 0; z-index: 2; }
+  .info {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    display: grid;
+    padding: 0;
+    place-items: center;
+    border-radius: var(--r-s);
+    border: 1px solid var(--line-2);
+    color: var(--tx-mut);
+    line-height: 1;
   }
-  .rail-trk { color: var(--tx-ghost); }
-
-  .rail-desc { margin: 0; color: var(--tx-mut); font-size: 0.78rem; }
+  .info:hover { border-color: var(--line-4); color: var(--tx); }
+  .info[aria-expanded='true'] { border-color: var(--reality); color: var(--reality); }
+  .info .glyph { font-family: var(--mono); font-size: 11px; line-height: 1; }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  @media (pointer: coarse) {
+    .info::before { content: ''; position: absolute; inset: -12px; }
+  }
+  .tip {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 30;
+    width: max-content;
+    max-width: 280px;
+    padding: 8px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-s);
+    font-size: .72rem;
+    line-height: 1.5;
+    color: var(--tx);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .info-wrap:hover .tip, .info:focus-visible ~ .tip, .info[aria-expanded='true'] ~ .tip {
+    opacity: 1;
+    visibility: visible;
+  }
 </style>
