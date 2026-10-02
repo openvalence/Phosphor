@@ -9,11 +9,15 @@
 //   §8.1 ladder: pending, overdue, fault, settled, each with a text reason).
 // - A command with no status echo (stop all, settings) is confirmed by its own
 //   answer: settings show what bp_settings_set saved, never what was asked.
+// - A device-config command (rename, disconnect, forget) is pending until the
+//   device list agrees with it, whoever's list (event or re-read) arrives.
 // - A missing command (Rust side not built in, or no Tauri at all) degrades
 //   to `ready: false` with a reason. Nothing here throws to the caller.
 
 export const BP_PORT = 12345;
 export const ECHO_MS = 4000;
+/** A scan the pane starts stops itself after this long. */
+export const SCAN_S = 30;
 const LOG_KEEP = 50;
 
 export const blank = () => ({
@@ -30,6 +34,9 @@ export const blank = () => ({
   stopAll: { phase: 'settled', reason: '' },
   settings: null,
   set: { phase: 'settled', reason: '' },
+  // Per-device ladders and sensor readings, keyed by op id.
+  ops: {},
+  reads: {},
 });
 
 const msg = (e) => String(e?.message ?? e);
@@ -39,7 +46,49 @@ const msg = (e) => String(e?.message ?? e);
 export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
   const timers = {};
   const unlisten = [];
+  const waits = new Map();   // op id -> (devices) => agrees
   let disposed = false;
+
+  function ladder(map, id) {
+    if (!map[id]) map[id] = { phase: 'settled', reason: '' };
+    return map[id];
+  }
+
+  function overdue(w, key, what) {
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(() => {
+      if (w.phase === 'pending') Object.assign(w, { phase: 'overdue', reason: 'no ' + what + ' after ' + echoMs / 1000 + ' s' });
+    }, echoMs);
+  }
+
+  function setDevices(d) {
+    s.devices = d || [];
+    for (const [id, agrees] of waits) {
+      if (!agrees(s.devices)) continue;
+      waits.delete(id);
+      clearTimeout(timers['op:' + id]);
+      Object.assign(s.ops[id], { phase: 'settled', reason: '' });
+    }
+  }
+
+  async function devOp(id, pending, cmd, args, fail, agrees) {
+    const w = ladder(s.ops, id);
+    if (!s.ready || !s.running || w.phase === 'pending') return;
+    Object.assign(w, { phase: 'pending', reason: pending });
+    overdue(w, 'op:' + id, 'confirmation');
+    waits.set(id, agrees);
+    try {
+      await invoke(cmd, args);
+    } catch (e) {
+      waits.delete(id);
+      clearTimeout(timers['op:' + id]);
+      Object.assign(w, { phase: 'fault', reason: fail + ': ' + msg(e) });
+      return;
+    }
+    try { setDevices(await invoke('bp_devices')); } catch (e) { /* bp://devices may still confirm */ }
+  }
+
+  const find = (d, key) => d.find((x) => x.key === key);
 
   function settle(k, actual) {
     const w = s[k];
@@ -84,10 +133,7 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
   async function ack(w, key, pending, cmd, args, fail, done = '') {
     if (!s.ready || w.phase === 'pending') return undefined;
     Object.assign(w, { phase: 'pending', reason: pending });
-    clearTimeout(timers[key]);
-    timers[key] = setTimeout(() => {
-      if (w.phase === 'pending') Object.assign(w, { phase: 'overdue', reason: 'no answer after ' + echoMs / 1000 + ' s' });
-    }, echoMs);
+    overdue(w, key, 'answer');
     let r, err = null;
     try { r = await invoke(cmd, args); if (typeof r === 'string') err = r; } catch (e) { err = msg(e); }
     clearTimeout(timers[key]);
@@ -101,6 +147,17 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
   const stopAll = () => s.running
     ? ack(s.stopAll, 'stopAll', 'stopping every toy', 'bp_stop_all', undefined, 'stop all failed', 'all toys stopped')
     : undefined;
+
+  // A reading is a fresh answer each time; a failed one keeps the last value
+  // with the reason (law 8).
+  async function read(dev, c) {
+    const id = dev.key + ':' + c.feature + ':' + c.type;
+    const w = ladder(s.reads, id);
+    if (!s.running) return;
+    const v = await ack(w, 'read:' + id, 'reading ' + c.type.toLowerCase(), 'bp_toy_read',
+      { index: dev.index, feature: c.feature, input: c.type }, 'read failed');
+    if (typeof v === 'number') w.value = v;
+  }
 
   async function saveSettings(patch) {
     if (!s.settings) return;
@@ -119,11 +176,11 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     }
     s.ready = true;
     s.reason = '';
-    try { s.devices = await invoke('bp_devices'); } catch (e) { /* bp://devices fills it */ }
+    try { setDevices(await invoke('bp_devices')); } catch (e) { /* bp://devices fills it */ }
     try { s.settings = await invoke('bp_settings'); } catch (e) { s.set.reason = 'settings unavailable: ' + msg(e); }
     const on = {
       'bp://status': applyStatus,
-      'bp://devices': (d) => { s.devices = d || []; },
+      'bp://devices': setDevices,
       'bp://log': (l) => { s.log = [...s.log, l].slice(-LOG_KEEP); },
     };
     for (const [ev, fn] of Object.entries(on)) {
@@ -138,7 +195,16 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     init,
     start: (port = s.settings?.port ?? BP_PORT) => request('run', true, 'bp_start', { port }),
     stop: () => request('run', false, 'bp_stop'),
-    scan: (on) => request('scan', on, on ? 'bp_scan_start' : 'bp_scan_stop'),
+    scan: (on) => (on ? request('scan', true, 'bp_scan_start', { seconds: SCAN_S }) : request('scan', false, 'bp_scan_stop')),
+    rename(key, name) {
+      const want = String(name ?? '').trim() || null;
+      return devOp('rename:' + key, want ? 'saving the name ' + want : 'going back to the protocol name',
+        'bp_device_rename', { key, name: want }, 'rename failed', (d) => (find(d, key)?.display_name ?? null) === want);
+    },
+    disconnect: (dev) => devOp('disconnect:' + dev.key, 'disconnecting', 'bp_device_disconnect', { index: dev.index },
+      'disconnect failed', (d) => !find(d, dev.key)?.connected),
+    forget: (key) => devOp('forget:' + key, 'forgetting', 'bp_device_forget', { key }, 'forget failed', (d) => !find(d, key)),
+    read,
     stopAll,
     saveSettings,
     dispose() {

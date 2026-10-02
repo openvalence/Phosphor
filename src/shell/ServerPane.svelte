@@ -20,6 +20,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { blank, createBp } from './bp-server.js';
+  import Devices from './server/Devices.svelte';
   import Settings from './server/Settings.svelte';
 
   const s = $state(blank());
@@ -29,7 +30,6 @@
   const TABS = ['devices', 'log', 'settings'];
   let open = $state(false);
   let tab = $state('devices');
-  const devices = $derived([...s.devices].sort((a, b) => (a.kind === 'machine' ? -1 : 0) - (b.kind === 'machine' ? -1 : 0)));
   const summary = $derived(!s.ready ? 'unavailable'
     : s.running ? 'on :' + s.port + ' · ' + s.clients + (s.clients === 1 ? ' client' : ' clients')
     : 'off');
@@ -73,24 +73,7 @@
 
       <div role="tabpanel" aria-label={tab}>
         {#if tab === 'devices'}
-          <div class="sp-row">
-            <button class="sp-btn" disabled={s.scan.phase === 'pending'}
-                    onclick={() => bp.scan(!s.scanning)}>{s.scanning ? 'stop scan' : 'scan for toys'}</button>
-            {#if s.scanning}<span class="sp-note">scanning…</span>{/if}
-            {#if s.scan.reason}<span class="sp-ladder" data-phase={s.scan.phase}>{s.scan.reason}</span>{/if}
-          </div>
-          <ul class="sp-devs">
-            {#each devices as d (d.index)}
-              <li class="sp-dev" data-kind={d.kind}>
-                <span class="sp-kind mono">{d.kind}</span>
-                <span class="sp-name">{d.name}</span>
-                <span class="sp-conn" data-on={d.connected}>{d.connected ? 'connected' : 'disconnected'}</span>
-                {#each d.features as f}<span class="sp-chip mono">{f}</span>{/each}
-              </li>
-            {:else}
-              <li class="sp-note">no devices</li>
-            {/each}
-          </ul>
+          <Devices {s} {bp} />
         {:else if tab === 'log'}
           {#if s.log.length}
             <ol class="sp-log mono">
@@ -151,12 +134,6 @@
   .sp-pane :global(.sp-ladder) { font-size: 11px; color: var(--ink-dim); }
   .sp-pane :global(.sp-ladder[data-phase='pending']) { color: var(--intent); }
   .sp-pane :global(.sp-ladder[data-phase='overdue']), .sp-pane :global(.sp-ladder[data-phase='fault']) { color: var(--warn); }
-  .sp-pane :global(.sp-chip) {
-    padding: 1px 6px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    font-size: 10.5px;
-  }
   .sp-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
   .sp-tab {
     min-height: 40px;
@@ -168,13 +145,7 @@
     font-size: 12.5px;
   }
   .sp-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--intent); }
-  .sp-devs, .sp-log { list-style: none; margin: 0; padding: 0; }
-  .sp-dev { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 3px 0; }
-  .sp-kind { color: var(--ink-faint); text-transform: uppercase; font-size: 10px; min-width: 7ch; }
-  .sp-dev[data-kind='machine'] .sp-kind { color: var(--reality); }
-  .sp-name { color: var(--ink); font-weight: 600; }
-  .sp-conn { color: var(--ink-faint); }
-  .sp-conn[data-on='true'] { color: var(--reality); }
+  .sp-log { list-style: none; margin: 0; padding: 0; }
   .sp-log {
     max-height: 16em;
     overflow-y: auto;

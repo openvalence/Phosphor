@@ -44,6 +44,12 @@ pub fn run() {
       buttplug::bp_settings,
       #[cfg(desktop)]
       buttplug::bp_settings_set,
+      #[cfg(desktop)]
+      buttplug::bp_device_rename,
+      #[cfg(desktop)]
+      buttplug::bp_device_forget,
+      #[cfg(desktop)]
+      buttplug::bp_device_disconnect,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

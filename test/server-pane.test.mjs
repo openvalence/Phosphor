@@ -3,7 +3,7 @@
 // Run: node test/server-pane.test.mjs
 
 import assert from 'node:assert/strict';
-import { blank, createBp, BP_PORT } from '../src/shell/bp-server.js';
+import { blank, createBp, BP_PORT, SCAN_S } from '../src/shell/bp-server.js';
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
@@ -221,6 +221,95 @@ function fakeShell(cmds) {
   assert.match(s.set.reason, /settings unavailable: command bp_settings not found/);
   await bp.saveSettings({ ble: false });
   assert.ok(!sh.calls.some((c) => c[0] === 'bp_settings_set'), 'nothing to save against');
+  bp.dispose();
+}
+
+// --- devices: timed scan, rename / disconnect / forget settle on the list, reads
+{
+  const vib = { index: 1, key: 'lovense-aa', name: 'Lush', device_name: 'Lush', display_name: null, kind: 'toy', connected: true,
+    protocol: 'lovense', address: 'AA', features: ['Battery', 'Vibrate'],
+    controls: [{ feature: 0, kind: 'scalar', type: 'Vibrate', range: [0, 20] }, { feature: 1, kind: 'sensor', type: 'Battery' }] };
+  const machine = { index: 0, key: 'valence-phosphor-machine', name: 'Valence Machine', kind: 'machine', connected: true, controls: [] };
+  let list = [machine, { ...vib }];
+  let battery = 80;
+  let quiet = false;   // the Rust side answers Ok but the list never changes
+  const sh = fakeShell({
+    bp_status: () => ({ running: true, port: BP_PORT, clients: 0, scanning: false }),
+    bp_devices: () => list.map((d) => ({ ...d })),
+    bp_scan_start: () => {},
+    bp_device_rename: ({ key, name }) => {
+      if (quiet) return;
+      list = list.map((d) => (d.key === key ? { ...d, display_name: name, name: name ?? d.device_name } : d));
+    },
+    bp_device_disconnect: ({ index }) => {
+      if (index === 0) throw "device 0 is the machine; it leaves with the hub";
+      list = list.map((d) => (d.index === index ? { ...d, connected: false, controls: [] } : d));
+    },
+    bp_device_forget: ({ key }) => {
+      if (list.find((d) => d.key === key)?.connected) throw key + ' is connected; disconnect it first';
+      list = list.filter((d) => d.key !== key);
+    },
+    bp_toy_read: ({ input }) => { if (battery == null) throw 'device 1 is gone'; return battery; },
+  });
+  const s = blank();
+  const bp = createBp(s, sh.api, { echoMs: 20 });
+  await bp.init();
+
+  await bp.scan(true);
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_scan_start')[1], { seconds: SCAN_S }, 'the pane scan is timed');
+
+  // Rename: pending until the list carries the name, then settled; blank resets.
+  const p = bp.rename('lovense-aa', '  Bedside ');
+  assert.equal(s.ops['rename:lovense-aa'].phase, 'pending');
+  assert.match(s.ops['rename:lovense-aa'].reason, /saving the name Bedside/);
+  await p;
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_device_rename')[1], { key: 'lovense-aa', name: 'Bedside' });
+  assert.equal(s.ops['rename:lovense-aa'].phase, 'settled');
+  assert.equal(s.devices.find((d) => d.key === 'lovense-aa').name, 'Bedside');
+  await bp.rename('lovense-aa', ' ');
+  assert.equal(sh.calls.filter((c) => c[0] === 'bp_device_rename').at(-1)[1].name, null, 'blank sends null');
+  assert.equal(s.devices.find((d) => d.key === 'lovense-aa').display_name, null);
+
+  // An Ok with no list change stays pending, goes overdue, and a late event settles it.
+  quiet = true;
+  await bp.rename('lovense-aa', 'Late');
+  assert.equal(s.ops['rename:lovense-aa'].phase, 'pending', 'Ok alone is not the echo');
+  await tick(40);
+  assert.equal(s.ops['rename:lovense-aa'].phase, 'overdue');
+  sh.emit('bp://devices', list.map((d) => (d.key === 'lovense-aa' ? { ...d, display_name: 'Late' } : d)));
+  assert.equal(s.ops['rename:lovense-aa'].phase, 'settled', 'the event confirms');
+  quiet = false;
+
+  // Reads: the answer is the value; a failure keeps it, with the reason.
+  const bat = vib.controls[1];
+  await bp.read(vib, bat);
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_toy_read')[1], { index: 1, feature: 1, input: 'Battery' });
+  assert.equal(s.reads['lovense-aa:1:Battery'].value, 80);
+  battery = null;
+  await bp.read(vib, bat);
+  assert.equal(s.reads['lovense-aa:1:Battery'].phase, 'fault');
+  assert.match(s.reads['lovense-aa:1:Battery'].reason, /read failed: device 1 is gone/);
+  assert.equal(s.reads['lovense-aa:1:Battery'].value, 80, 'the last value stays');
+
+  // Forget refuses a connected toy; disconnect, then forget.
+  await bp.forget('lovense-aa');
+  assert.equal(s.ops['forget:lovense-aa'].phase, 'fault');
+  assert.match(s.ops['forget:lovense-aa'].reason, /disconnect it first/);
+  await bp.disconnect(machine);
+  assert.match(s.ops['disconnect:valence-phosphor-machine'].reason, /disconnect failed: .*machine/);
+  await bp.disconnect(s.devices.find((d) => d.key === 'lovense-aa'));
+  assert.equal(s.ops['disconnect:lovense-aa'].phase, 'settled');
+  assert.equal(s.devices.find((d) => d.key === 'lovense-aa').connected, false);
+  await bp.forget('lovense-aa');
+  assert.equal(s.ops['forget:lovense-aa'].phase, 'settled');
+  assert.ok(!s.devices.some((d) => d.key === 'lovense-aa'), 'gone from the list');
+
+  // Nothing is sent while the server is off.
+  sh.emit('bp://status', { running: false, port: BP_PORT, clients: 0, scanning: false });
+  sh.calls.length = 0;
+  await bp.rename('x', 'y');
+  await bp.read(vib, bat);
+  assert.deepEqual(sh.calls, [], 'device commands need a running server');
   bp.dispose();
 }
 

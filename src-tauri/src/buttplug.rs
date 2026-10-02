@@ -58,8 +58,9 @@ use buttplug_server::message::{
 };
 use buttplug_server::{ButtplugServer, ButtplugServerBuilder};
 use buttplug_server_device_config::{
-  load_protocol_configs, Endpoint, ProtocolCommunicationSpecifier, SimulatedDeviceConfigEntry,
-  WebsocketSpecifier,
+  load_protocol_configs, save_user_config, Endpoint, ProtocolCommunicationSpecifier,
+  ServerDeviceDefinition, ServerDeviceDefinitionBuilder, SimulatedDeviceConfigEntry,
+  UserDeviceIdentifier, WebsocketSpecifier,
 };
 use buttplug_transport_websocket_tungstenite::ButtplugWebsocketServerTransportBuilder;
 use futures::future::{self, BoxFuture, FutureExt};
@@ -136,10 +137,16 @@ fn load_json<T: serde::de::DeserializeOwned>(dir: &Option<PathBuf>, file: &str) 
   Some(serde_json::from_str(&text).map_err(|e| format!("{file}: {e}")))
 }
 
+/// Write-then-rename under one lock: device-list saves run on the watch task
+/// while a command saves too, and a reader must never see a truncated file.
 fn save_text(dir: &Option<PathBuf>, file: &str, text: &str) -> Result<(), String> {
+  static SAVE: Mutex<()> = Mutex::new(());
   let Some(dir) = dir else { return Ok(()) };
+  let _held = SAVE.lock().unwrap_or_else(|e| e.into_inner());
+  let tmp = dir.join(format!("{file}.tmp"));
   std::fs::create_dir_all(dir)
-    .and_then(|_| std::fs::write(dir.join(file), text))
+    .and_then(|_| std::fs::write(&tmp, text))
+    .and_then(|_| std::fs::rename(&tmp, dir.join(file)))
     .map_err(|e| format!("saving {file}: {e}"))
 }
 
@@ -148,11 +155,21 @@ pub struct Device {
   index: u32,
   /// Stable across sessions (protocol plus address), for layout keys (law 10).
   key: String,
+  /// The saved display name when there is one, else `device_name`.
   name: String,
   kind: &'static str,
+  /// False for a device the saved device config remembers but that is not
+  /// connected now; such an entry has no features or controls.
   connected: bool,
   features: Vec<String>,
   controls: Vec<ToyControl>,
+  protocol: String,
+  address: String,
+  /// The protocol's own name for the device.
+  device_name: String,
+  /// The saved name override (devices.json); apps see it from the device's
+  /// next connection.
+  display_name: Option<String>,
 }
 
 /// One feature as a module control. `range` is in the steps the bp_toy_*
@@ -249,6 +266,8 @@ struct Shared {
   settings: Mutex<Settings>,
   /// settings.log_level as a log::Level, read on every line.
   level: AtomicUsize,
+  /// Bumped by every scan request; a timed stop fires only if unchanged.
+  scan_gen: AtomicU32,
 }
 
 impl Shared {
@@ -334,6 +353,7 @@ impl Buttplug {
         dir,
         settings: Mutex::new(settings),
         level: AtomicUsize::new(level),
+        scan_gen: AtomicU32::new(0),
       }),
       run: Arc::new(tokio::sync::Mutex::new(None)),
     };
@@ -383,9 +403,15 @@ impl Buttplug {
     std::net::TcpListener::bind(("127.0.0.1", port))
       .map_err(|e| format!("127.0.0.1:{}: {}", port, e))?;
     let real = sim.is_empty();
-    let dcm = load_protocol_configs(&None, &None, false)
-      .and_then(|mut b| b.simulated_devices(sim).finish())
-      .map_err(|e| e.to_string())?;
+    let user = self.sh.dir.as_ref().and_then(|d| std::fs::read_to_string(d.join("devices.json")).ok());
+    let base = match load_protocol_configs(&None, &user, false) {
+      Err(e) if user.is_some() => {
+        self.sh.log(log::Level::Warn, format!("devices.json: {e}; starting without the saved device config"));
+        load_protocol_configs(&None, &None, false)
+      }
+      r => r,
+    };
+    let dcm = base.and_then(|mut b| b.simulated_devices(sim).finish()).map_err(|e| e.to_string())?;
     let st = self.settings();
     let mut b = ServerDeviceManagerBuilder::new(dcm);
     if st.machine {
@@ -461,7 +487,88 @@ impl Buttplug {
     } else {
       ButtplugCheckedClientMessageV4::StopScanning(StopScanningV0::default())
     };
-    self.dm().await?.parse_message(msg).await.map(|_| ()).map_err(|e| format!("{:?}", e))
+    let dm = self.dm().await?;
+    // Any scan request outdates a pending timed stop.
+    self.sh.scan_gen.fetch_add(1, Ordering::Relaxed);
+    // Set before the request: the device manager runs it later, and a manager
+    // that finishes at once reports ScanningFinished (watch_devices) after it.
+    // Upstream sends no ScanningFinished after a stop request.
+    self.sh.scanning.store(on, Ordering::Relaxed);
+    self.sh.emit_status();
+    dm.parse_message(msg).await.map(|_| ()).map_err(|e| format!("{:?}", e))
+  }
+
+  /// A scan that stops itself after `seconds` unless another scan request
+  /// comes first; None or 0 scans until stopped.
+  pub async fn scan_for(&self, seconds: Option<u32>) -> Result<(), String> {
+    self.scan(true).await?;
+    let Some(secs) = seconds.filter(|s| *s > 0) else {
+      return Ok(());
+    };
+    let gen = self.sh.scan_gen.load(Ordering::Relaxed);
+    let me = self.clone();
+    let timer = tokio::spawn(async move {
+      tokio::time::sleep(std::time::Duration::from_secs(secs.into())).await;
+      if me.sh.scan_gen.load(Ordering::Relaxed) == gen && me.sh.scanning.load(Ordering::Relaxed) {
+        if me.scan(false).await.is_ok() {
+          me.sh.log(log::Level::Info, format!("scan stopped after {secs} s"));
+        }
+      }
+    });
+    if let Some(r) = self.run.lock().await.as_mut() {
+      r.tasks.push(timer);
+    }
+    Ok(())
+  }
+
+  /// The saved device config entry under `key`, refusing the machine.
+  async fn device_entry(&self, key: &str) -> Result<(Arc<ServerDeviceManager>, UserDeviceIdentifier, ServerDeviceDefinition), String> {
+    let dm = self.dm().await?;
+    let found = dm
+      .device_configuration_manager()
+      .user_device_definitions()
+      .iter()
+      .find(|kv| device_key(kv.key().protocol(), kv.key().address()) == key)
+      .map(|kv| (kv.key().clone(), kv.value().clone()));
+    let (id, def) = found.ok_or(format!("no device {key} in the device config"))?;
+    if id.protocol() == MACHINE_PROTOCOL {
+      return Err("the machine's identity is fixed (docs/BUTTPLUG.md)".into());
+    }
+    Ok((dm, id, def))
+  }
+
+  /// Save the name a device shows to apps from its next connection; None or
+  /// blank goes back to the protocol's name.
+  pub async fn rename(&self, key: &str, name: Option<String>) -> Result<(), String> {
+    let (dm, id, def) = self.device_entry(key).await?;
+    let name = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let def = ServerDeviceDefinitionBuilder::from_user(&def).display_name(&name).finish();
+    dm.device_configuration_manager().add_user_device_definition(&id, &def);
+    self.devices_changed(&dm).await
+  }
+
+  /// Drop a device's saved config (name, index). Refused while it is connected.
+  pub async fn forget(&self, key: &str) -> Result<(), String> {
+    let (dm, id, _) = self.device_entry(key).await?;
+    if connected(&dm).await.iter().any(|(_, i)| *i == id) {
+      return Err(format!("{key} is connected; disconnect it first"));
+    }
+    dm.device_configuration_manager().remove_user_device_definition(&id);
+    self.devices_changed(&dm).await
+  }
+
+  /// Disconnect one toy; it returns when a scan finds it again.
+  pub async fn disconnect_device(&self, index: u32) -> Result<(), String> {
+    let dm = self.dm().await?;
+    if is_machine(&dm, index) {
+      return Err(format!("device {index} is the machine; it leaves with the hub"));
+    }
+    dm.disconnect_device(index).await.map_err(|e| format!("{e:?}"))
+  }
+
+  async fn devices_changed(&self, dm: &ServerDeviceManager) -> Result<(), String> {
+    (self.sh.sink)("bp://devices", json!(self.devices().await));
+    save_devices(&self.sh, dm)
   }
 
   pub async fn devices(&self) -> Vec<Device> {
@@ -613,37 +720,72 @@ impl log::Log for BpLogger {
   fn flush(&self) {}
 }
 
+/// Connected devices first, then the ones the saved device config remembers.
 fn device_list(dm: &ServerDeviceManager, dl: &DeviceListV4) -> Vec<Device> {
-  let mut out: Vec<Device> = dl
-    .devices()
-    .values()
-    .map(|d| {
-      let mut features: Vec<String> = Vec::new();
-      for f in d.device_features().values() {
-        if let Ok(Value::Object(m)) = serde_json::to_value(f) {
-          for k in ["Output", "Input"] {
-            if let Some(Value::Object(o)) = m.get(k) {
-              features.extend(o.keys().cloned());
-            }
+  let defs = dm.device_configuration_manager().user_device_definitions();
+  let entry = |index, id: &UserDeviceIdentifier, device_name: String, connected| {
+    let display_name = defs.get(id).and_then(|d| d.display_name().clone());
+    Device {
+      index,
+      key: device_key(id.protocol(), id.address()),
+      name: display_name.clone().unwrap_or_else(|| device_name.clone()),
+      kind: if id.protocol() == MACHINE_PROTOCOL { "machine" } else { "toy" },
+      connected,
+      features: vec![],
+      controls: vec![],
+      protocol: id.protocol().clone(),
+      address: id.address().clone(),
+      device_name,
+      display_name,
+    }
+  };
+  let mut out = Vec::new();
+  let mut seen = Vec::new();
+  for d in dl.devices().values() {
+    let Some(info) = dm.device_info(d.device_index()) else { continue };
+    let mut features: Vec<String> = Vec::new();
+    for f in d.device_features().values() {
+      if let Ok(Value::Object(m)) = serde_json::to_value(f) {
+        for k in ["Output", "Input"] {
+          if let Some(Value::Object(o)) = m.get(k) {
+            features.extend(o.keys().cloned());
           }
         }
       }
-      features.sort();
-      features.dedup();
-      let id = dm.device_info(d.device_index()).map(|i| i.identifier().clone());
-      Device {
-        index: d.device_index(),
-        key: id.map_or_else(String::new, |i| device_key(i.protocol(), i.address())),
-        name: d.device_display_name().clone().unwrap_or_else(|| d.device_name().clone()),
-        kind: if is_machine(dm, d.device_index()) { "machine" } else { "toy" },
-        connected: true,
-        features,
-        controls: d.device_features().values().flat_map(controls_of).collect(),
-      }
-    })
-    .collect();
-  out.sort_by_key(|d| d.index);
+    }
+    features.sort();
+    features.dedup();
+    let mut dev = entry(d.device_index(), info.identifier(), d.device_name().clone(), true);
+    dev.features = features;
+    dev.controls = d.device_features().values().flat_map(controls_of).collect();
+    seen.push(info.identifier().clone());
+    out.push(dev);
+  }
+  for kv in defs.iter().filter(|kv| !seen.contains(kv.key())) {
+    out.push(entry(kv.value().index(), kv.key(), kv.value().name().clone(), false));
+  }
+  out.sort_by_key(|d| (!d.connected, d.index));
   out
+}
+
+/// Connected devices' indices and config identities.
+async fn connected(dm: &ServerDeviceManager) -> Vec<(u32, UserDeviceIdentifier)> {
+  let msg = ButtplugCheckedClientMessageV4::RequestDeviceList(RequestDeviceListV0::default());
+  match dm.parse_message(msg).await {
+    Ok(ButtplugServerMessageV4::DeviceList(dl)) => dl
+      .devices()
+      .keys()
+      .filter_map(|i| dm.device_info(*i).map(|d| (*i, d.identifier().clone())))
+      .collect(),
+    _ => vec![],
+  }
+}
+
+/// The device config (names, reserved indices) to devices.json, as upstream's
+/// user config file, which load_protocol_configs reads back at start.
+fn save_devices(sh: &Shared, dm: &ServerDeviceManager) -> Result<(), String> {
+  let text = save_user_config(dm.device_configuration_manager()).map_err(|e| format!("{e:?}"))?;
+  save_text(&sh.dir, "devices.json", &text)
 }
 
 fn is_machine(dm: &ServerDeviceManager, index: u32) -> bool {
@@ -707,6 +849,10 @@ async fn watch_devices(dm: Arc<ServerDeviceManager>, sh: Arc<Shared>) {
     match ev {
       ButtplugServerMessageV4::DeviceList(dl) => {
         (sh.sink)("bp://devices", json!(device_list(&dm, &dl)));
+        // A new device's config entry (its reserved index) persists at once.
+        if let Err(e) = save_devices(&sh, &dm) {
+          sh.log(log::Level::Warn, e);
+        }
       }
       ButtplugServerMessageV4::ScanningFinished(_) => {
         sh.scanning.store(false, Ordering::Relaxed);
@@ -801,17 +947,12 @@ impl HardwareCommunicationManager for MachineManager {
     "PhosphorMachineCommunicationManager"
   }
 
-  // Every scan reaches every manager, so this is the scan state for all.
   fn start_scanning(&mut self) -> ButtplugResultFuture {
-    self.0.scanning.store(true, Ordering::Relaxed);
-    self.0.emit_status();
     self.0.announce();
     future::ready(Ok(())).boxed()
   }
 
   fn stop_scanning(&mut self) -> ButtplugResultFuture {
-    self.0.scanning.store(false, Ordering::Relaxed);
-    self.0.emit_status();
     future::ready(Ok(())).boxed()
   }
 
@@ -945,6 +1086,21 @@ pub async fn bp_status(bp: State<'_, Buttplug>) -> Result<Status, String> {
 }
 
 #[tauri::command]
+pub async fn bp_device_rename(bp: State<'_, Buttplug>, key: String, name: Option<String>) -> Result<(), String> {
+  bp.rename(&key, name).await
+}
+
+#[tauri::command]
+pub async fn bp_device_forget(bp: State<'_, Buttplug>, key: String) -> Result<(), String> {
+  bp.forget(&key).await
+}
+
+#[tauri::command]
+pub async fn bp_device_disconnect(bp: State<'_, Buttplug>, index: u32) -> Result<(), String> {
+  bp.disconnect_device(index).await
+}
+
+#[tauri::command]
 pub async fn bp_settings(bp: State<'_, Buttplug>) -> Result<Settings, String> {
   Ok(bp.settings())
 }
@@ -966,8 +1122,8 @@ pub async fn bp_stop(bp: State<'_, Buttplug>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn bp_scan_start(bp: State<'_, Buttplug>) -> Result<(), String> {
-  bp.scan(true).await
+pub async fn bp_scan_start(bp: State<'_, Buttplug>, seconds: Option<u32>) -> Result<(), String> {
+  bp.scan_for(seconds).await
 }
 
 #[tauri::command]
@@ -1158,13 +1314,16 @@ mod tests {
 
     assert_eq!(bp.status().clients, 1);
     bp.machine_present(false);
+    let live_machine = |d: &Device| d.kind == "machine" && d.connected;
     for _ in 0..50 {
-      if bp.devices().await.iter().all(|d| d.kind != "machine") {
+      if !bp.devices().await.iter().any(live_machine) {
         break;
       }
       tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    assert!(bp.devices().await.iter().all(|d| d.kind != "machine"), "hub loss removes the machine");
+    let devices = bp.devices().await;
+    assert!(!devices.iter().any(live_machine), "hub loss disconnects the machine");
+    assert!(devices.iter().any(|d| d.kind == "machine" && d.controls.is_empty()), "the config remembers it");
     bp.stop().await;
     assert!(!bp.status().running);
   }
@@ -1182,10 +1341,17 @@ mod tests {
   }
 
   async fn toys() -> Toys {
+    toys_in(None).await
+  }
+
+  async fn toys_in(dir: Option<PathBuf>) -> Toys {
     let (tx, rx) = mpsc::unbounded_channel();
-    let bp = Buttplug::new(Arc::new(move |ev, v| {
-      let _ = tx.send((ev, v));
-    }));
+    let bp = Buttplug::new_in(
+      Arc::new(move |ev, v| {
+        let _ = tx.send((ev, v));
+      }),
+      dir,
+    );
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let sim = ["simulated-2vibe", "simulated-rotator", "simulated-stroker"]
       .map(|a| SimulatedDeviceConfigEntry::new(a, None))
@@ -1194,12 +1360,12 @@ mod tests {
     bp.machine_present(true);
     bp.scan(true).await.unwrap();
     for _ in 0..200 {
-      if bp.devices().await.len() == 4 {
+      if bp.devices().await.iter().filter(|d| d.connected).count() == 4 {
         break;
       }
       tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    let devices = bp.devices().await;
+    let devices: Vec<Device> = bp.devices().await.into_iter().filter(|d| d.connected).collect();
     assert_eq!(devices.len(), 4, "three toys and the machine, distinct indices: {:?}",
       devices.iter().map(|d| (d.index, &d.name)).collect::<Vec<_>>());
     for d in &devices {
@@ -1344,5 +1510,90 @@ mod tests {
     }
     assert!(levels.iter().all(|l| l == "warn" || l == "error"), "below the level is dropped: {levels:?}");
     std::fs::remove_dir_all(&dir).ok();
+  }
+
+  async fn device(bp: &Buttplug, key: &str) -> Option<Device> {
+    bp.devices().await.into_iter().find(|d| d.key == key)
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn device_config_rename_disconnect_forget() {
+    let dir = temp_dir("devices");
+    let Toys { bp, vib, rot, machine, .. } = toys_in(Some(dir.clone())).await;
+    assert_eq!((vib.connected, vib.display_name.as_deref()), (true, None));
+    assert!(!vib.protocol.is_empty() && !vib.address.is_empty() && vib.name == vib.device_name);
+
+    bp.rename(&vib.key, Some("  Bedside  ".into())).await.unwrap();
+    let d = device(&bp, &vib.key).await.unwrap();
+    assert_eq!((d.name.as_str(), d.display_name.as_deref(), d.connected), ("Bedside", Some("Bedside"), true));
+    assert!(bp.rename(&machine.key, Some("x".into())).await.is_err(), "the machine keeps its identity");
+    assert!(bp.rename("no-such-key", None).await.is_err());
+    let e = bp.forget(&vib.key).await.unwrap_err();
+    assert!(e.contains("disconnect it first"), "{e}");
+    assert!(bp.disconnect_device(machine.index).await.is_err(), "the machine leaves with the hub");
+
+    bp.disconnect_device(vib.index).await.unwrap();
+    for _ in 0..100 {
+      if !device(&bp, &vib.key).await.unwrap().connected {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let d = device(&bp, &vib.key).await.unwrap();
+    assert!(!d.connected && d.controls.is_empty(), "remembered, not connected");
+    assert_eq!(d.name, "Bedside", "the saved name stays");
+    assert!(device(&bp, &rot.key).await.unwrap().connected, "only that toy");
+
+    // The name survives a restart through devices.json.
+    bp.stop().await;
+    let text = std::fs::read_to_string(dir.join("devices.json")).unwrap();
+    assert!(text.contains("Bedside"), "devices.json: {text}");
+    let again = toys_in(Some(dir.clone())).await;
+    assert_eq!(device(&again.bp, &vib.key).await.unwrap().name, "Bedside");
+    again.bp.rename(&vib.key, Some(" ".into())).await.unwrap();
+    assert_eq!(device(&again.bp, &vib.key).await.unwrap().display_name, None, "blank resets");
+
+    again.bp.disconnect_device(again.vib.index).await.unwrap();
+    for _ in 0..100 {
+      if !device(&again.bp, &vib.key).await.unwrap().connected {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    again.bp.forget(&vib.key).await.unwrap();
+    assert!(device(&again.bp, &vib.key).await.is_none(), "forgotten");
+    again.bp.stop().await;
+    std::fs::remove_dir_all(&dir).ok();
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn timed_scan_stops_itself() {
+    // The machine manager alone: simulated toys finish scanning at once, and
+    // the machine never does, so only the timer can end this scan.
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let bp = Buttplug::new(Arc::new(move |ev, v| {
+      let _ = tx.send((ev, v));
+    }));
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    bp.set_settings(Settings { port, ble: false, serial: false, hid: false, ..Settings::default() }).unwrap();
+    bp.start(port).await.unwrap();
+    bp.scan_for(Some(1)).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(bp.status().scanning, "the machine manager alone keeps scanning");
+    let stopped = tokio::time::timeout(Duration::from_secs(3), async {
+      while let Some((ev, v)) = rx.recv().await {
+        if ev == "bp://log" && v["msg"] == "scan stopped after 1 s" {
+          return;
+        }
+      }
+    });
+    stopped.await.expect("the timer stops the scan");
+    assert!(!bp.status().scanning);
+    // A later scan request outdates the timer.
+    bp.scan_for(Some(1)).await.unwrap();
+    bp.scan(true).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(bp.status().scanning, "an outdated timer leaves a newer scan alone");
+    bp.stop().await;
   }
 }

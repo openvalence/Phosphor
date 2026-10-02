@@ -28,8 +28,9 @@ tauri-plugin-http = "2"
 # BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android
 tauri-plugin-blec = "0.12"
 # Plugin TCP line service (src/plugins.rs). Already in the tree via tauri;
-# named here only to enable net + io-util.
-tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros"] }
+# named here only to enable net + io-util, and time for the buttplug
+# server's timed scan and client rate (src/buttplug.rs).
+tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "time"] }
 
 # Embedded buttplug server (src/buttplug.rs, docs/BUTTPLUG.md): path deps on the
 # fork beside this repo, branch `valence`. Desktop only; Android is its own

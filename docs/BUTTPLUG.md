@@ -30,8 +30,11 @@ Commands (all async):
 | `bp_status()` | `{running: bool, port: u16, clients: u32, scanning: bool}` |
 | `bp_start(port: u16)` | binds `127.0.0.1:port` (12345, Intiface Central's default, is the expected value); errors if the port is taken or 0. Restarts if already running |
 | `bp_stop()` | closes the listener, disconnects every device |
-| `bp_scan_start()`, `bp_scan_stop()` | toy scanning; errors if the server is not running |
-| `bp_devices()` | `[{index, key, name, kind: "machine" \| "toy", connected: bool, features: [string], controls: [control]}]`, `[]` when stopped. `features` are buttplug output/input type names, e.g. `HwPositionWithDuration`. `key` is protocol plus address in `[a-z0-9-]`, stable across sessions on one host (BLE addresses differ per platform) |
+| `bp_scan_start(seconds?: u32)`, `bp_scan_stop()` | toy scanning; errors if the server is not running. With `seconds` the scan stops itself after that long unless another scan request comes first (the pane asks for 30 s) |
+| `bp_devices()` | `[{index, key, name, kind: "machine" \| "toy", connected: bool, features: [string], controls: [control], protocol, address, device_name, display_name}]`, `[]` when stopped: connected devices, then the ones the saved device config remembers (`connected: false`, no features or controls, `index` the one reserved for it). `features` are buttplug output/input type names, e.g. `HwPositionWithDuration`. `key` is protocol plus address in `[a-z0-9-]`, stable across sessions on one host (BLE addresses differ per platform). `name` is `display_name` (the saved override, or null) when set, else `device_name` (the protocol's name) |
+| `bp_device_rename(key, name: string \| null)` | saves `name` (trimmed; blank or null clears it) as the device's display name; errors for the machine or an unknown key |
+| `bp_device_disconnect(index)` | disconnects one toy (fork `ServerDeviceManager::disconnect_device`); it returns on a scan. Errors for the machine |
+| `bp_device_forget(key)` | drops a remembered device's saved config (name, reserved index). Errors while it is connected, and for the machine |
 | `bp_machine_present(present: bool)` | the webview's hub link went live (true) or away (false) |
 | `bp_toy_scalar(index, feature, value: i32)` | the feature's scalar output (vibrate, oscillate, constrict, spray, temperature, led, position) to `value` steps |
 | `bp_toy_rotate(index, feature, speed: i32)` | rotate at `speed` steps; the sign is the direction |
@@ -85,6 +88,14 @@ saved settings always describe the running server. `log_level` and
 and, where Phosphor owns the process logger (release builds; tauri-plugin-log
 owns it in debug builds), upstream's `buttplug*` log lines, both filtered at
 `log_level`.
+
+The device config (display names, reserved indices) is upstream's user
+device config, saved as `devices.json` beside `settings.json` on every
+device-list change and every rename or forget, and read back at start; an
+unreadable file starts without it, with a warning. A rename applies to
+`bp_devices` at once; apps see it from the device's next connection, since
+upstream copies the name into a device when it connects. Saves are
+write-then-rename, so a reader never sees a half-written file.
 
 Not offered: Intiface's "allow raw messages". The server speaks buttplug
 spec v4, and neither it nor the fork implements raw read/write commands in
@@ -162,7 +173,8 @@ any spec version, so the setting would drive nothing.
   (LinearCmd over loopback lands as the TCode adapter's mapping of the same
   L0/I input), `loopback_client_reaches_the_fake_kernel` (JSON v3 client:
   handshake, RequestDeviceList returns the machine, LinearCmd and
-  StopDeviceCmd reach the event sink, hub loss removes the machine).
+  StopDeviceCmd reach the event sink, hub loss disconnects the machine and the
+  device config keeps it as remembered).
 - `cargo test` toys: upstream simulated devices (2-motor vibrator, rotator,
   stroker) stand in for BLE hardware, all three and the machine connecting
   in one scan (distinct indices, fork b898a4d1). `scalar_toy_commands_and_stops`,
@@ -170,12 +182,22 @@ any spec version, so the setting would drive nothing.
   each command lands as the device's applied output on `bp://output`,
   refusals resolve as errors, the machine is refused, a toy stop zeroes that
   toy and leaves a running rotator alone, stop-all zeroes every toy. No simulated device has a sensor; reads are covered on the JS side.
+- `cargo test` devices: `device_config_rename_disconnect_forget` (a rename
+  shows at once and survives a restart through devices.json, blank resets,
+  forget refused while connected, a disconnected toy stays listed with its
+  name, the machine refused throughout), `timed_scan_stops_itself` (with the
+  machine manager alone, which never finishes a scan, the timer ends it; a
+  later request outdates the timer).
 - `cargo test` settings: `settings_persist_and_gate_the_managers` (saved to
   and read back from the file, refusals change nothing, the machine manager
   off leaves the machine out, port and managers refused while running, lines
   below the level dropped).
 - `node test/buttplug-bridge.test.mjs`: the webview half through the real
   plugin host.
+- `node test/server-pane.test.mjs`: the pane controller (`src/shell/bp-server.js`)
+  with a fake invoke/listen: every command path, its ladder (pending, overdue,
+  fault, settled with text), settings as saved, device-config ops settling on
+  the device list, sensor reads.
 - `node test/buttplug-toys.test.mjs`: module registration and withdrawal
   through the real plugin host, the command mapping and ladder, echoes,
   stop and sensors, with a fake invoke/listen.
