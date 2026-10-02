@@ -104,18 +104,8 @@ export const ROLE = {
 
   // RFC-088 (SPEC §9.6): the rail's direction flip, a stored setting
   axisFlipped: 'axis.flipped',
-};
 
-/**
- * DRAFT vocabulary for RENDERING §10 `generator-advanced`: no hub may emit
- * these until the RFCs are accepted, so a widget binding them declines on
- * every catalog today and its fields stay Tier 0. Never fall back to field
- * names (law 6). Move each into ROLE when the registry carries it.
- */
-// TODO(rfc-bf4): RFC-081 master roles; run/stop is ROLE.patternRunning.
-// TODO(rfc-0sm): RFC-066 lane roles, one complete set per STATE channel.
-// TODO(rfc-2n5): RFC-067 store op select.
-export const DRAFT_ROLE = {
+  // RFC-081: generator-advanced master controls; run/stop is patternRunning
   advgenMode: 'advgen.mode',
   advgenMaster: 'advgen.master',
   advgenDepthMax: 'advgen.depth_max',
@@ -124,12 +114,16 @@ export const DRAFT_ROLE = {
   advgenSpeedOut: 'advgen.speed_out',
   advgenAccelIn: 'advgen.accel_in',
   advgenAccelOut: 'advgen.accel_out',
-  laneAmplitude: 'lane.amplitude',
-  laneInStep: 'lane.in_step',
-  laneInWait: 'lane.in_wait',
-  laneOutStep: 'lane.out_step',
-  laneOutWait: 'lane.out_wait',
-  laneOffset: 'lane.offset',
+
+  // RFC-066: one modulator per entry, attached by its entry's mod_target
+  modAmount: 'mod.amount',
+  modRise: 'mod.rise',
+  modHold: 'mod.hold',
+  modFall: 'mod.fall',
+  modRest: 'mod.rest',
+  modPhase: 'mod.phase',
+
+  // RFC-067: the store CRUD op select (an action tag, options = store_ops)
   actionStore: 'action.store',
 };
 
@@ -207,6 +201,22 @@ export const ROLE_LABEL = {
   [ROLE.sourceBackgroundRun]: 'Run in background',
 
   [ROLE.axisFlipped]: 'Flip',
+
+  [ROLE.advgenMode]: 'Advanced program',
+  [ROLE.advgenMaster]: 'Master speed',
+  [ROLE.advgenDepthMax]: 'Max depth',
+  [ROLE.advgenDepthMin]: 'Min depth',
+  [ROLE.advgenSpeedIn]: 'In speed',
+  [ROLE.advgenSpeedOut]: 'Out speed',
+  [ROLE.advgenAccelIn]: 'In accel',
+  [ROLE.advgenAccelOut]: 'Out accel',
+
+  [ROLE.modAmount]: 'Amount',
+  [ROLE.modRise]: 'Rise',
+  [ROLE.modHold]: 'Hold',
+  [ROLE.modFall]: 'Fall',
+  [ROLE.modRest]: 'Rest',
+  [ROLE.modPhase]: 'Phase',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */
@@ -271,8 +281,13 @@ export function claimRoles(byRole, spec) {
   for (const keys of spec.requireOne || []) {
     if (!keys.some((k) => out[k])) return null;
   }
+  // `requireIf: { key: role }`: optional `key` turns essential whenever any
+  // field carries `role` (RENDERING §10: advgen.mode beside pattern.select).
+  for (const [k, role] of Object.entries(spec.requireIf || {})) {
+    if (!out[k] && (byRole.get(role) || []).length) return null;
+  }
   // `instances: { key: { roles: {k: role}, min } }`: a role set repeated once
-  // per channel (RFC-066 lanes). An instance is a channel carrying EVERY role
+  // per channel (RFC-066 modulators). An instance is a channel carrying EVERY role
   // in the set; partial channels are left to Tier 0. The count is whatever
   // the catalog declares, in ascending channel id; fewer than `min` declines.
   for (const [name, inst] of Object.entries(spec.instances || {})) {
@@ -316,37 +331,39 @@ export const AXIS_HERO_SPEC = {
 };
 
 /**
- * RENDERING §10 `generator-advanced`, on DRAFT_ROLE only: declines on every
- * catalog until RFC-081/066 are ruled and a hub adopts them (law 7).
+ * RENDERING §10 `generator-advanced` (RFC-081, RFC-066): the master run/stop
+ * and the seven base controls are essential; every complete modulator rides
+ * along, no minimum. The same bindings as the factory substitute
+ * (plugins/factory/advanced-penetration), so the fallback never claims what
+ * the substitute would decline.
  */
 export const ADVGEN_SPEC = {
   require: {
     running: ROLE.patternRunning,
-    master: DRAFT_ROLE.advgenMaster,
-    depthMax: DRAFT_ROLE.advgenDepthMax,
-    depthMin: DRAFT_ROLE.advgenDepthMin,
-    speedIn: DRAFT_ROLE.advgenSpeedIn,
-    speedOut: DRAFT_ROLE.advgenSpeedOut,
-    accelIn: DRAFT_ROLE.advgenAccelIn,
-    accelOut: DRAFT_ROLE.advgenAccelOut,
+    master: ROLE.advgenMaster,
+    depthMax: ROLE.advgenDepthMax,
+    depthMin: ROLE.advgenDepthMin,
+    speedIn: ROLE.advgenSpeedIn,
+    speedOut: ROLE.advgenSpeedOut,
+    accelIn: ROLE.advgenAccelIn,
+    accelOut: ROLE.advgenAccelOut,
   },
   optional: {
     bgRun: ROLE.sourceBackgroundRun,
-    mode: DRAFT_ROLE.advgenMode,
-    presetOp: DRAFT_ROLE.actionStore,
+    mode: ROLE.advgenMode,
+    presetOp: ROLE.actionStore,
   },
-  // At least one lane, not RFC-066's four nor the reference hub's six:
-  // the count is an open ruling (rfc-0sm).
+  requireIf: { mode: ROLE.patternSelect },
   instances: {
-    lanes: {
-      min: 1,
+    mods: {
+      min: 0,
       roles: {
-        amplitude: DRAFT_ROLE.laneAmplitude,
-        inStep: DRAFT_ROLE.laneInStep,
-        inWait: DRAFT_ROLE.laneInWait,
-        outStep: DRAFT_ROLE.laneOutStep,
-        outWait: DRAFT_ROLE.laneOutWait,
-        offset: DRAFT_ROLE.laneOffset,
+        amount: ROLE.modAmount,
+        rise: ROLE.modRise,
+        hold: ROLE.modHold,
+        fall: ROLE.modFall,
+        rest: ROLE.modRest,
+        phase: ROLE.modPhase,
       },
     },
   },

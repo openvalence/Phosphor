@@ -848,3 +848,18 @@ export function reportedValue(field, sample) {
   if (!sample) return undefined;
   return sample[field.name];
 }
+
+/**
+ * RFC-066: the uid of the field a modulator entry rides, from its entry-level
+ * mod_target (SPEC §8.1: a layout index on STATE/STREAM, a schema key on
+ * INTENT), in buildSettingsModel's uid form. Null when the entry has none or
+ * it names no field in this catalog.
+ */
+export function modTargetUid(entries, channelId) {
+  const byId = (id) => entries.find((e) => e.id === id);
+  const mt = (byId(channelId) || {}).modTarget;
+  const t = mt && byId(mt.channel);
+  if (!t) return null;
+  if (t.layout) return t.layout[mt.field] ? t.id + ':' + t.layout[mt.field].name : null;
+  return (t.schema || []).some((f) => f.key === mt.field) ? t.id + ':' + mt.field : null;
+}

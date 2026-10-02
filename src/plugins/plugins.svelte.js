@@ -19,8 +19,8 @@ import { machine, getSession, freshness, staleReason } from '../model/machine.sv
 import {
   writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf,
 } from '../model/shadow.svelte.js';
-import { WIDGET, isFieldEnabled } from '../model/settings.js';
-import { DRAFT_ROLE } from '../model/roles.js';
+import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
+import { ROLE } from '../model/roles.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore } from '../ui/widgets/roster.js';
@@ -61,7 +61,7 @@ async function write(field, value, payload) {
   if (!field) return { ok: false, error: 'no field' };
   if (field.widget === WIDGET.action) {
     const confirm = needsConfirm(field, value)
-      || (field.role === DRAFT_ROLE.actionStore && value === STORE_OP.delete_item);
+      || (field.role === ROLE.actionStore && value === STORE_OP.delete_item);
     if (confirm && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
     return runAction(field, value, payload || null);
   }
@@ -89,16 +89,8 @@ function gate(field) {
 
 const entryOf = (id) => (machine.catalog.entries || []).find((e) => e.id === id) || null;
 
-// RFC-066: the modulator entry's mod_target, as the uid buildSettingsModel
-// gives the target (SPEC §8.1: a layout index on STATE/STREAM, a schema key on
-// INTENT). Null when the entry has none or it names no field.
-function modTarget(field) {
-  const mt = (entryOf(field.channelId) || {}).modTarget;
-  const t = mt && entryOf(mt.channel);
-  if (!t) return null;
-  if (t.layout) return t.layout[mt.field] ? t.id + ':' + t.layout[mt.field].name : null;
-  return (t.schema || []).some((f) => f.key === mt.field) ? t.id + ':' + mt.field : null;
-}
+// RFC-066: the modulator entry's mod_target, as a uid (settings.js).
+const modTarget = (field) => modTargetUid(machine.catalog.entries || [], field.channelId);
 
 // RFC-070: the writer's store_id names the STORE; slots read as roster.js
 // reads them (pending, locked and empty stay distinct). Null when unlinked.
