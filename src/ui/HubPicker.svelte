@@ -47,8 +47,8 @@
       case 'live': return 'Receiving catalog from ' + hub + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
       case 'handshaking': return 'Handshaking with ' + hub + '…';
       case 'retrying':
-        return 'No link to ' + hub + (link.closeReason ? ' (' + link.closeReason + ')' : '')
-          + (waitS != null ? ', retrying in ' + waitS + ' s' : ', retrying')
+        return 'Retrying ' + hub + (waitS != null ? ' in ' + waitS + ' s' : '')
+          + (link.closeReason ? ': ' + link.closeReason : '')
           + (link.attempts > 1 ? ', attempt ' + link.attempts : '');
       case 'failed': return 'Link to ' + hub + ' closed' + (link.closeReason ? ': ' + link.closeReason : '');
       case 'idle': return 'Paused while hidden';

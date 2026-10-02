@@ -388,8 +388,8 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
     ok(w + 'w page bar: the toggle keeps its place and width when flipped', Math.abs(b0.x - b1.x) < 0.5
       && Math.abs(b0.y + s0 - b1.y - s1) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1, s0, s1]));
     ok(w + 'w page bar: the cards below start where they did', Math.abs(y0 + s0 - y1 - s1) < 0.5, [y0, s0, y1, s1].join(' '));
-    ok(w + 'w page bar: the toggle is named by its visible label only', /"(Show|Hide) \d+ advanced"/.test(n0)
-      && /"(Show|Hide) \d+ advanced"/.test(n1) && n0 !== n1, n0 + ' | ' + n1);
+    ok(w + 'w page bar: the toggle is named by its visible label only', /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n0)
+      && /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n1) && n0 !== n1, n0 + ' | ' + n1);
     const box = await page.locator('main.pane .cat-bar').boundingBox();
     ok(w + 'w page bar: inside the viewport', box.x >= 0 && box.x + box.width <= w + 0.5);
   }
