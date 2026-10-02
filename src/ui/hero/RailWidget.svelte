@@ -50,9 +50,10 @@
    * marker; none is claimed today, so the rail draws one trace and says
    * nothing about a second.
    *
-   * 3. Manual mode (tape spans full travel, Set-Min/Max-here buttons with
-   *    yielding-bounds) depended on a client-side "bypass limits" toggle that
-   *    has no role either. Dropped rather than half-built.
+   * 3. Manual mode is OVERRIDE now (SPEC §11.1, RFC-085): the hero row's
+   *    override/return control latches it on the hub, and only then does the
+   *    tape span the full travel as a jog. The Set-Min/Max-here buttons are
+   *    not ported.
    *
    * Everything else is a real port: the ruler, the hazard keep-out ribbons,
    * the draggable/resizable band, the tapered-gradient comet trail, and the
@@ -61,7 +62,9 @@
    * work off whatever `[lo, hi]` and unit the catalog reports instead of an
    * assumed 0-999mm rail.
    */
-  import { machine, getSession, freshness } from '../../model/machine.svelte.js';
+  import { machine, getSession, freshness, specSafetyAction } from '../../model/machine.svelte.js';
+  import { SAFETY_OP } from '../../../../Valence/clients/js/index.js';
+  import SafetyOp from '../widgets/SafetyOp.svelte';
   import { isFieldEnabled } from '../../model/settings.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
@@ -118,18 +121,33 @@
    * hub will actually accept. Reads machine.link.roles/phase explicitly
    * because the session object lives outside Svelte's reactivity.
    */
-  const moveEnabled = $derived.by(() => {
+  const moveAllowed = $derived.by(() => {
     void machine.link.roles; void machine.link.phase;
     if (!move) return false;
     if (machine.link.phase !== 'live') return false;
     const session = getSession();
     return !!session && session.isLive && session.canUse(move.channelId, move.key, 0);
   });
+
+  // Override/return: an essential binding of the axis archetype (SPEC §11.1,
+  // RENDERING §8.4 `axis`). A hub whose op table lacks override gets no
+  // control at all (law 7), never a dead one.
+  const safety = $derived.by(specSafetyAction);
+  const hasOverride = $derived(!!(safety && (safety.options || [])[SAFETY_OP.override]));
+  const latch = $derived(machine.safety);
+  const override = $derived(!!latch && latch.override);
+  // The hub's jog gate, mirrored (SPEC §11.1, §11.4): an e-stop refuses all
+  // motion, a pause without override refuses it INTERLOCK, override makes the
+  // tape a jog over the whole travel. An idle, unpaused rail takes a plain
+  // point move; a source owning the rail is the hub's SOURCE_CONFLICT to say.
+  const jogBlock = $derived(!latch ? '' : latch.estopLatched ? 'e-stop latched: no motion until release'
+    : latch.paused && !latch.override ? 'paused: press Override to jog' : '');
+  const moveEnabled = $derived(moveAllowed && !jogBlock);
   const moveReason = $derived.by(() => {
     if (!move) return '';
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!moveEnabled) return 'this session is not authorized to command motion';
-    return '';
+    if (!moveAllowed) return 'this session is not authorized to command motion';
+    return jogBlock;
   });
 
   function worstStatus(a, b) {
@@ -728,16 +746,17 @@
   // than escaping the window" requires of a tap outside the window's span.
   let tapeTrackEl = $state(null);
 
-  const tapeLo = $derived(haveWindow ? (minVal ?? lo) : lo);
-  const tapeHi = $derived(haveWindow ? (maxVal ?? hi) : hi);
+  // Under override the jog may leave the window (SPEC §11.1): full travel.
+  const tapeLo = $derived(haveWindow && !override ? (minVal ?? lo) : lo);
+  const tapeHi = $derived(haveWindow && !override ? (maxVal ?? hi) : hi);
   const tapeSpan = $derived(Math.max(tapeHi - tapeLo, 1e-9));
   // Where the tape's own highlighted/draggable strip sits ON THE RAIL — the
   // SAME fraction-of-full-extent the window band below uses, so the strip you
   // touch is drawn directly above the window it commands (the visual half of
   // "geometrically impossible to command outside the window"; the original's
   // `positionTape()` did the identical alignment).
-  const tapeStripLoPct = $derived(haveWindow ? minPct : 0);
-  const tapeStripHiPct = $derived(haveWindow ? maxPct : 1);
+  const tapeStripLoPct = $derived(haveWindow && !override ? minPct : 0);
+  const tapeStripHiPct = $derived(haveWindow && !override ? maxPct : 1);
 
   /** clientX -> commandable value, mapped against the STRIP's own width (not the whole assembly) so a short window strip still reads its full drag travel as [tapeLo,tapeHi]. */
   function moveValueFromClientX(clientX) {
@@ -824,9 +843,12 @@
     {:else}
       <span aria-hidden="true"></span>
     {/if}
-    {#if accessory}
-      <div class="rw-hero-accessory">{@render accessory()}</div>
-    {/if}
+    <div class="rw-hero-accessory">
+      {#if hasOverride}
+        <SafetyOp action={safety} op={SAFETY_OP.override} />
+      {/if}
+      {#if accessory}{@render accessory()}{/if}
+    </div>
   </div>
 
   <!-- OG information architecture: the window readout is NOT a separate hero
@@ -851,7 +873,7 @@
     <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
          data-shadow={statusOf(move)}>
       <div class="rail-tape-labels">
-        <span class="rail-tape-mode">input &middot; window</span>
+        <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}</span>
         <span class="rail-tape-extent mono">{formatValue(move, tapeLo)}&ndash;{formatValue(move, tapeHi)}</span>
       </div>
       <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
@@ -863,7 +885,7 @@
            track same as anywhere else). -->
       <div class="rail-tape-track" bind:this={tapeTrackEl}
            role="slider" tabindex={moveEnabled ? 0 : -1}
-           aria-label={labelFor(move)} aria-orientation="horizontal"
+           aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
            aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
            aria-disabled={!moveEnabled}
            class:live={moveEnabled}
@@ -885,7 +907,8 @@
            (shadow.svelte.js's `lastRefusal`) — this is the local, inline echo
            of the exact same fault, not a second source of truth. -->
       {#if moveShadow && moveShadow.status === STATUS.fault && moveShadow.error}
-        <p class="rail-reason err">move refused: {moveShadow.error}</p>
+        <p class="rail-reason err">jog refused: {moveShadow.error}{moveShadow.error === 'SOURCE_CONFLICT'
+          ? ' (a source owns the rail: press Override to jog)' : ''}</p>
       {:else if !moveEnabled}
         <p class="rail-reason">{moveReason}</p>
       {/if}
@@ -896,7 +919,7 @@
          nothing, and says exactly why. -->
     <div class="rail-tape-assembly disabled" aria-disabled="true">
       <div class="rail-tape-labels">
-        <span class="rail-tape-mode">input &middot; window</span>
+        <span class="rail-tape-mode">jog &middot; window</span>
         <span class="rail-tape-extent mono">{haveWindow ? formatValue(min, minVal) + '–' + formatValue(max, maxVal) : '--'}</span>
       </div>
       <div class="rail-tape-track">
@@ -1028,7 +1051,8 @@
     gap: 12px;
     padding: 10px 0 8px;
   }
-  .rw-hero-accessory { flex: 0 0 auto; }
+  /* The rail's control row: override/return (and Flip) beside Home. */
+  .rw-hero-accessory { flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px; }
 
   /* OG .rail-panel spacing: 10px vertical margin so the og-panel's 4px
      outline-offset frame never collides with the row above or the content

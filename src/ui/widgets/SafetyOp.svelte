@@ -1,12 +1,16 @@
 <script>
   /**
    * SafetyOp.svelte: one safety pair as ONE two-state control (RENDERING
-   * law 14), the top strip's fixed pair and every placed copy (DESIGN §10.3).
+   * law 14): the top strip's fixed pair and every placed copy (DESIGN §10.3),
+   * and the rail row's override/return (RailWidget).
    *
    * Constraints:
-   * - `op` is SAFETY_OP.estop (estop/release) or SAFETY_OP.pause
-   *   (pause/resume). The state is the hub's latched snapshot, never this
-   *   press: a control that flipped on its own press would lie (law 4).
+   * - `op` is the pair's first op: SAFETY_OP.estop (estop/release),
+   *   SAFETY_OP.pause (pause/resume) or SAFETY_OP.override (override/return).
+   *   The state is the hub's latched snapshot, never this press: a control
+   *   that flipped on its own press would lie (law 4).
+   * - Override confirms first (actions.js HAZARD_SAFETY_OPS: it lifts the
+   *   window and soft limits); return takes no gate.
    * - Bound by safety-intents identity (machine.svelte.js specSafetyAction,
    *   law 2). `action` may be null (no link, no catalog): the control still
    *   renders, disabled with the reason, so the stop never appears later.
@@ -20,6 +24,8 @@
    */
   import { machine, getSession, estopLabel } from '../../model/machine.svelte.js';
   import { runAction } from '../../model/shadow.svelte.js';
+  import { needsConfirm } from '../../model/actions.js';
+  import { askConfirm } from '../confirm.svelte.js';
   import { SAFETY_OP } from '../../../../Valence/clients/js/index.js';
   import { SAFETY_OP_NAME } from '../../../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -33,18 +39,38 @@
     estop: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     resume: '<polygon points="6 4 20 12 6 20 6 4"/>',
+    override: '<path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/>',
+    return: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
+  };
+  // Per pair: the snapshot bit that is its second state, and its second op.
+  const PAIR = {
+    [SAFETY_OP.estop]: { bit: 'estopLatched', second: SAFETY_OP.release, cls: 'btn-estop' },
+    [SAFETY_OP.pause]: { bit: 'paused', second: SAFETY_OP.resume, cls: 'btn-pause' },
+    [SAFETY_OP.override]: { bit: 'override', second: SAFETY_OP.return_op, cls: 'btn-override' },
+  };
+  const OVERRIDE_COPY = {
+    title: 'Override',
+    body: 'Pause the machine and take the rail by hand: the travel window and soft limits are lifted and jog is '
+      + 'enabled until you press Return. Hardware protection stays.',
+    confirmLabel: 'Override',
   };
 
+  const pair = $derived(PAIR[op]);
   const isEstop = $derived(op === SAFETY_OP.estop);
   const latch = $derived(machine.safety);
-  const latched = $derived(!!latch && (isEstop ? latch.estopLatched : latch.paused));
+  const latched = $derived(!!latch && latch[pair.bit]);
   // The op a press (or a full hold) sends right now.
-  const send = $derived(isEstop ? (latched ? SAFETY_OP.release : SAFETY_OP.estop)
-    : (latched ? SAFETY_OP.resume : SAFETY_OP.pause));
-  const label = $derived(isEstop ? (latched ? 'Halted' : estopLabel()) : (latched ? 'Resume' : 'Pause'));
-  const hint = $derived(isEstop
-    ? (latched ? 'hold 3 s to release' : estopLabel() === 'E-Stop' ? 'cut power' : 'stop motion')
+  const send = $derived(latched ? pair.second : op);
+  const label = $derived(
+    isEstop ? (latched ? 'Halted' : estopLabel())
+    : op === SAFETY_OP.override ? (latched ? 'Return' : 'Override')
+    : (latched ? 'Resume' : 'Pause'));
+  const hint = $derived(
+    isEstop ? (latched ? 'hold 3 s to release' : estopLabel() === 'E-Stop' ? 'cut power' : 'stop motion')
+    : op === SAFETY_OP.override ? (latched ? 'back to the paused position' : 'take the rail, jog')
     : (latched ? (latch.homeRequired ? 'home required' : 'paused') : 'hold position'));
+  const icon = $derived(isEstop ? 'estop' : op === SAFETY_OP.override ? (latched ? 'return' : 'override')
+    : latched ? 'resume' : 'pause');
 
   const why = $derived.by(() => {
     void machine.link.roles; void machine.catalog.ready;
@@ -59,6 +85,7 @@
   let error = $state('');
   async function fire(value) {
     if (why || phase === 'pending' || phase === 'overdue') return;
+    if (needsConfirm(action, value) && !(await askConfirm(OVERRIDE_COPY))) return;
     phase = 'pending';
     const t = setTimeout(() => { if (phase === 'pending') phase = 'overdue'; }, OVERDUE_MS);
     const r = await runAction(action, value);
@@ -114,14 +141,14 @@
 </script>
 
 <div class="safety-op" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase}>
-  <button type="button" class="btn {isEstop ? 'btn-estop' : 'btn-pause'}" class:latched class:holding
+  <button type="button" class="btn {pair.cls}" class:latched class:holding
           disabled={!!why} title={why || label} aria-pressed={latched}
           {onclick} {onkeydown} {onkeyup}
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
           oncontextmenu={(e) => { if (isEstop && latched) e.preventDefault(); }}>
     <span class="row">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-           stroke-linejoin="round" aria-hidden="true">{@html ICON[isEstop ? 'estop' : latched ? 'resume' : 'pause']}</svg>
+           stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
       <span class="lbl">{label}</span>
     </span>
     <small class="state" role="status">{status}</small>
@@ -169,7 +196,7 @@
   }
   .btn-estop:not(:disabled):hover, .btn-estop:not(:disabled):active, .btn-estop.latched { border-color: var(--bad); }
   .btn-estop.latched .lbl { color: var(--bad); }
-  .btn-pause.latched { border-color: var(--warn); }
+  .btn-pause.latched, .btn-override.latched { border-color: var(--warn); }
 
   .hold {
     position: absolute;

@@ -28,6 +28,12 @@
  *   pair     pause sends pause, reads Resume, sends resume; the e-stop latches,
  *            reads Halted, two quick taps and a 1 s hold send nothing, a press
  *            held past 3 s sends release, which lands in pause
+ * ph-vdk.41 (RFC-085), at 1280x720:
+ *   override the rail row carries one Override/Return control, absent with no
+ *            rail and on a hub whose op table lacks override (law 7); paused
+ *            without override the jog tape is disabled with its reason;
+ *            Override confirms, sends override, reads Return, and the tape
+ *            jogs over the whole travel; Return sends return_op, no gate
  * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
  * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
@@ -89,15 +95,19 @@ function safetyEdge(kind, word, seq) {
   top.push([K.body, cbMap([[1, cbUint(word)], [2, cbUint(1)], [3, cbUint(7)], [4, cbUint(1)]])]);
   return cbMap(top);
 }
-// SPEC §11.1 snapshot: word (bit0 ESTOP, bit3 PAUSE) at byte 0, modes at 8.
+// SPEC §11.1 snapshot: word (bit0 ESTOP, bit3 PAUSE) at byte 0, modes (bit0
+// override) at 8. Override carries pause; an e-stop drops override; return
+// lands in plain pause.
 const PAUSE_BIT = 0x08;
 const LATCH = {
-  [SAFETY_OP.estop]: (w) => w | 1,
-  [SAFETY_OP.release]: (w) => (w & ~1) | PAUSE_BIT,
-  [SAFETY_OP.pause]: (w) => w | PAUSE_BIT,
-  [SAFETY_OP.resume]: (w) => w & ~PAUSE_BIT,
+  [SAFETY_OP.estop]: (s) => { s.word |= 1; s.modes &= ~1; },
+  [SAFETY_OP.release]: (s) => { s.word = (s.word & ~1) | PAUSE_BIT; },
+  [SAFETY_OP.pause]: (s) => { s.word |= PAUSE_BIT; },
+  [SAFETY_OP.resume]: (s) => { s.word &= ~PAUSE_BIT; },
+  [SAFETY_OP.override]: (s) => { s.word |= PAUSE_BIT; s.modes |= 1; },
+  [SAFETY_OP.return_op]: (s) => { s.modes &= ~1; },
 };
-const snapshot = (word) => Uint8Array.of(word, 0, 0, 0, 0, 0, 0, 0, 0);
+const snapshot = (s) => Uint8Array.of(s.word, 0, 0, 0, 0, 0, 0, 0, s.modes);
 function hubFor(cat, wire) {
   return (ws) => {
     wire.socket = ws;
@@ -138,8 +148,8 @@ function hubFor(cat, wire) {
           send(FRAME.ECHO, header.channel, cbMap([[K.cfg_gen, cbUint(1)], [K.intent_id, cbUint(m.get(K.intent_id))],
             [K.applied, cbMap([[1, cbUint(op)]])]]));
           if (LATCH[op]) {
-            wire.word = LATCH[op](wire.word);
-            send(FRAME.STATE, CORE_CHANNEL.safety, snapshot(wire.word));
+            LATCH[op](wire.latch);
+            send(FRAME.STATE, CORE_CHANNEL.safety, snapshot(wire.latch));
           }
         } else if (header.type === FRAME.PING) {
           send(FRAME.PONG, header.channel, payload);
@@ -151,7 +161,7 @@ function hubFor(cat, wire) {
 
 async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false, cutsPower = null }) {
   const cat = CATALOGS[catalog];
-  const wire = { seen: [], ops: [], word: 0, socket: null, edges, cutsPower };
+  const wire = { seen: [], ops: [], latch: { word: 0, modes: 0 }, socket: null, edges, cutsPower };
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: false, reducedMotion });
   await ctx.addInitScript(([etag, bytes]) => {
     try {
@@ -407,6 +417,55 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     wire.ops.slice(n).join() === String(SAFETY_OP.release), wire.ops.slice(n).join());
   ok(tag + ': release lands in pause (E-Stop, Resume)', await lbl(estop) === 'E-Stop' && await lbl(pause) === 'Resume',
     await lbl(estop) + ' / ' + await lbl(pause));
+  await ctx.close();
+}
+
+// ---- ph-vdk.41: override/return on the rail row; jog only where the hub takes it --
+{
+  // A hub whose op table stops before override (no rail control, SPEC §11.1).
+  const SHORT_OPS = (() => {
+    const m = cbDecodeFull(FIXTURE);
+    const op = m.find((e) => e.get(1) === CORE_CHANNEL.safety_intents).get(9).get(1);
+    op.set(10, op.get(10).slice(0, SAFETY_OP.override));
+    op.set(17, op.get(17).slice(0, SAFETY_OP.override));
+    return enc(m);
+  })();
+  CATALOGS.short = { bytes: SHORT_OPS, etag: catalogEtag(SHORT_OPS, LIMITS.etag_bytes) };
+  for (const [catalog, why] of [['none', 'no rail'], ['short', 'no override op']]) {
+    const { ctx, page, up } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
+    ok('override: declines with ' + why, up && await page.locator('.btn-override').count() === 0);
+    await ctx.close();
+  }
+
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero' });
+  const ovr = page.locator('.rail-hero .rw-hero-accessory .btn-override');
+  const tape = page.locator('.rail-hero .rail-tape-track');
+  const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
+  ok('override: one control on the rail row, beside Home', await ovr.count() === 1
+    && await page.locator('.rail-hero .rw-hero-accessory .transportbar').count() === 1);
+  ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
+  await page.locator('.topstrip .btn-pause').click();
+  await page.waitForTimeout(300);
+  const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
+  ok('override: paused without override, the jog is disabled with its reason',
+    await tape.getAttribute('aria-disabled') === 'true' && /Override to jog/.test(reason), reason);
+  const n = wire.ops.length;
+  await ovr.click();
+  await page.waitForTimeout(200);
+  ok('override: confirm-gated, nothing sent before the confirm', wire.ops.length === n
+    && await page.locator('.overlay.hazard[role=alertdialog]').count() === 1);
+  await page.locator('.overlay.hazard .og-btn.danger').click();
+  await page.waitForTimeout(300);
+  ok('override: sends override and reads Return', wire.ops.at(-1) === SAFETY_OP.override && await lbl() === 'Return',
+    wire.ops.slice(n).join() + ' / ' + await lbl());
+  ok('override: the tape is a jog over the whole travel',
+    await tape.getAttribute('aria-disabled') === 'false'
+    && /jog . travel/.test(await page.locator('.rail-hero .rail-tape-mode').textContent()));
+  await ovr.click();
+  await page.waitForTimeout(300);
+  ok('override: Return sends return_op with no gate and lands in plain pause',
+    wire.ops.at(-1) === SAFETY_OP.return_op && await lbl() === 'Override'
+    && await tape.getAttribute('aria-disabled') === 'true', wire.ops.slice(n).join());
   await ctx.close();
 }
 
