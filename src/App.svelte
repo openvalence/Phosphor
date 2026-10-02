@@ -549,7 +549,10 @@
     min-height: 0;
     overflow: hidden;
   }
+  /* position: a pane's absolutely positioned descendants (sr-only labels)
+     must scroll with it, never overflow the non-scrolling column. */
   .content {
+    position: relative;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
