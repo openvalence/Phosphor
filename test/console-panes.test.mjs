@@ -21,7 +21,7 @@ import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '..
 import {
   encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS,
 } from '../../Valence/clients/js/frames.js';
-import { CORE_CHANNEL, LOG_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -65,7 +65,7 @@ function encodePacked(e, values) {
 const entry = (id) => ENTRIES.find((e) => e.id === id);
 
 // ---- the fake hub ------------------------------------------------------------
-const wire = { socket: null, roles: 2 };
+const wire = { socket: null, roles: 2, intents: [], hold: false, answer: null };
 function fakeHub(ws) {
   wire.socket = ws;
   const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
@@ -92,6 +92,14 @@ function fakeHub(ws) {
             [K.channel_id, cbUint(w.get(K.channel_id))]]));
         }
         send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+      } else if (header.type === FRAME.INTENT) {
+        const m = cbDecodeFull(payload);
+        const ch = m.get(K.channel_id), id = m.get(K.intent_id), val = m.get(K.value);
+        wire.intents.push({ ch, val });
+        const op = [...val].find(([, v]) => typeof v === 'number');
+        wire.answer = () => send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
+          [K.applied, cbMap(op ? [[op[0], cbUint(op[1])]] : [])]]));
+        if (!wire.hold) wire.answer();
       } else if (header.type === FRAME.PING) {
         send(FRAME.PONG, header.channel, payload);
       }
@@ -135,6 +143,50 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   console.log('\n--- console panes, ' + label + ' ---');
   const { ctx, page, errors } = await boot(viewport);
 
+  // ---- Pairing -------------------------------------------------------------
+  await openTab(page, 'pairing');
+  await page.waitForFunction(() => /configure/.test(document.querySelector('.pane-facts dd')?.textContent || ''), null, { timeout: 15000 });
+  const knockRows = () => page.$$eval('.knocks > li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
+  const knocksBox = () => page.$eval('.knocks', (el) => el.getBoundingClientRect().height);
+  const k0 = await knockRows();
+  ok('pairing: the pending list holds pairing_pending_max rows while empty', k0.length === LIMITS.pairing_pending_max && k0.every((t) => /free/.test(t)), k0.join(' | '));
+  const listH = await knocksBox();
+  const statusTop = await page.$eval('section[aria-labelledby="pp-knocks"] .pane-status', (el) => el.getBoundingClientRect().top);
+  const PEND = entry(CORE_CHANNEL.pending_pairing);
+  wire.send(FRAME.STATE, PEND.id, encodePacked(PEND, { generation: 1, count: 1, inst_lo0: 0x11223344, inst_hi0: 0x55667788,
+    kind0: 1, expires_s0: 90, name0: 'tablet' }));
+  await page.waitForFunction(() => /tablet/.test(document.querySelector('.knocks')?.textContent || ''), null, { timeout: 5000 });
+  const k1 = await knockRows();
+  ok('pairing: a knock fills the first row, the rest stay', k1.length === LIMITS.pairing_pending_max && /tablet/.test(k1[0]) && /expires in \d+ s/.test(k1[0]), k1[0]);
+  ok('pairing: the list does not grow or shift when a knock arrives',
+    Math.abs(await knocksBox() - listH) < 1.5 && statusTop === await page.$eval('section[aria-labelledby="pp-knocks"] .pane-status', (el) => el.getBoundingClientRect().top),
+    listH + ' -> ' + await knocksBox());
+  wire.hold = true;
+  wire.intents.length = 0;
+  await page.click('.knocks > li >> nth=0 >> button:has-text("Approve")');
+  await page.waitForTimeout(150);
+  const pend = await page.textContent('section[aria-labelledby="pp-knocks"] .pane-status');
+  ok('pairing: approve shows the pending rung with its reason', /Approving tablet: waiting for the hub/.test(pend), pend);
+  const sent = wire.intents[0];
+  ok('pairing: approve sends one admin intent on session-admin', sent && sent.ch === CORE_CHANNEL.session_admin && [...sent.val.values()].some((v) => v instanceof Uint8Array && v.length === 8));
+  await page.waitForTimeout(700);
+  const od = await page.$eval('section[aria-labelledby="pp-knocks"] .pane-status', (el) => [el.dataset.phase, el.textContent]);
+  ok('pairing: a slow hub escalates to overdue', od[0] === 'overdue' && /still waiting/.test(od[1]), od.join(': '));
+  wire.hold = false;
+  wire.answer();
+  await page.waitForTimeout(200);
+  const done = await page.$eval('section[aria-labelledby="pp-knocks"] .pane-status', (el) => [el.dataset.phase, el.textContent]);
+  ok('pairing: the echo settles the ladder', done[0] === 'settled' && /Approved tablet/.test(done[1]), done.join(': '));
+  wire.send(FRAME.STATE, PEND.id, encodePacked(PEND, { generation: 2, count: 0 }));
+  await page.waitForFunction(() => !/tablet/.test(document.querySelector('.knocks')?.textContent || ''), null, { timeout: 5000 });
+  ok('pairing: the hub clearing the knock frees its row in place', (await knockRows()).length === LIMITS.pairing_pending_max && Math.abs(await knocksBox() - listH) < 1.5);
+  wire.send(FRAME.EVENT, CORE_CHANNEL.pairing_events, cbMap([[K.event_kind, cbUint(PAIRING_EVENT_KIND.window_opened)]]));
+  await page.waitForTimeout(1200);
+  const pw = (await facts(page))['pairing window'];
+  ok('pairing: the window state and countdown sit in their row', /open, about 1(19|20) s left/.test(pw), pw);
+  const ledger = await page.$$eval('section[aria-labelledby="pp-ledger"] li', (ls) => ls.length);
+  ok('pairing: the trust ledger lists every slot through Roster', ledger === entry(CORE_CHANNEL.paired_devices).store.capacity, String(ledger));
+
   // ---- Valence -------------------------------------------------------------
   await openTab(page, 'valence');
   await page.waitForFunction(() => [...document.querySelectorAll('.pane-facts dd')].some((d) => d.textContent.includes('panes fixture')), null, { timeout: 15000 });
@@ -152,8 +204,10 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('valence: Copy puts the identity on the clipboard', clip.includes('panes fixture') && clip.includes('estop_cuts_power'), clip.slice(0, 60));
   ok('valence: the copy flash does not move the button', before && after && before.x === after.x && before.y === after.y);
   if (label === 'phone') {
-    const sw = await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1);
-    ok('valence: no horizontal page scroll at phone width', sw);
+    const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => {
+      const r = el.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1 && !el.closest('.table-wrap');
+    }).map((el) => el.tagName + '.' + el.className));
+    ok('valence: no horizontal page scroll at phone width', await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1), wide.slice(0, 4).join(' | '));
   }
 
   // ---- Log -------------------------------------------------------------------
