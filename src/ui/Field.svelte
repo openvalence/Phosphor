@@ -53,9 +53,9 @@
   const sample = $derived(machine.samples[field.channelId]);
   const value = $derived(displayValue(field, sample));
   // A range field has no shadow key of its own (settings.js's merge invents
-  // no writeChannel/settingKey) — the echo overlay reads the WORSE of its two
+  // no writeChannel/settingKey) — the ladder reads the WORSE of its two
   // real fields' statuses, so a write still in flight on either thumb keeps
-  // the whole control's intent echo alive (Ground Truth: never show settled
+  // the whole control's ladder alive (Ground Truth: never show settled
   // while a request is outstanding).
   const STATUS_RANK = { fault: 3, overdue: 2, pending: 1, confirmed: 0 };
   const worstStatus = (a, b) => (STATUS_RANK[a] >= STATUS_RANK[b] ? a : b);
@@ -286,45 +286,25 @@
     || (pres === WIDGET.stepper && unitOf(field) !== '')
   );
 
-  // ---- intent echo origin ---------------------------------------------------
-  // Where the pulse is born. X is exact: a slider handle sits at its value's
-  // own fraction of the published range, so the echo leaves from under the
-  // operator's thumb. Anything without a handle pulses from its center.
-  const pulseX = $derived.by(() => {
-    if (pres !== WIDGET.slider) return 50;
+  // ---- the ladder's line (style.css GROUND TRUTH) ---------------------------
+  // Where the handle sits, as a fraction of the published range: the track's
+  // state and afterglow center on it. Anything without a handle uses its middle.
+  const fxF = $derived.by(() => {
+    if (pres !== WIDGET.slider && pres !== WIDGET.knob) return 0.5;
     const n = Number(value);
-    if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 50;
-    return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min))) * 100;
+    if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 0.5;
+    return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
 
-  // The echo hugs the CONTROL, not the whole field. An outline thrown around
-  // the label, the value chip and the description reads as "this whole card is
-  // busy" when what actually fired is one slider. These insets crop the echo
-  // box down to the control's own band, and they are MEASURED, not assumed:
-  // the control's offset inside its field moves the moment the description
-  // prints inline, which is the default mode.
-  //
-  // Both default to 0, so a widget that binds no control keeps the full-field
-  // echo rather than losing its feedback.
-  //
-  // ResizeObserver's callback is async, so it never becomes a dependency of the
-  // effect that installs it — the trap that ate the activity heatmap.
-  let fieldEl = $state(null);
-  let ctrlEl = $state(null);
-  let echoTop = $state(0);
-  let echoBottom = $state(0);
+  // The afterglow: lit by each echo (1 and 2 alternate, so the CSS animation
+  // restarts even inside one frame), put out by the next write, and ended by
+  // its own animationend, which also ends the word. The decay is style.css's.
+  let glow = $state(0);
   $effect(() => {
-    const f = fieldEl, c = ctrlEl;
-    if (!f || !c) return;
-    const ro = new ResizeObserver(() => {
-      const fr = f.getBoundingClientRect(), cr = c.getBoundingClientRect();
-      if (fr.height <= 0) return;
-      echoTop = Math.max(0, cr.top - fr.top);
-      echoBottom = Math.max(0, fr.bottom - cr.bottom);
-    });
-    ro.observe(f);
-    return () => ro.disconnect();
+    if (status !== 'confirmed') glow = 0;
+    else if (sh && sh.settled) glow = untrack(() => glow) === 1 ? 2 : 1;
   });
+  const glowEnd = (e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) glow = 0; };
 
   // The slider is the one writable numeric with no numerals of its own, so its
   // chip carries the typing. A readout must never become typeable (no
@@ -376,7 +356,7 @@
     : outOfRange ? { kind: 'range', text: 'out of range ('
         + formatWithUnit(field, field.min) + ' to ' + formatWithUnit(field, field.max) + ')' }
     : reason ? { kind: 'gate', text: reason }
-    : sh && sh.settled ? { kind: 'confirmed', text: 'confirmed' }
+    : glow ? { kind: 'confirmed', text: 'confirmed' }
     : { kind: '', text: '' }
   );
 
@@ -413,6 +393,7 @@
   // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range,
   // ten times that with Shift held (fine). Every change snaps to the step and
   // is an ordinary echo-confirmed write through commitNumber().
+  let knobEl = $state(null);
   const KNOB_DRAG_PX = 160;
   const KNOB_CIRC = 2 * Math.PI * 40;
   const KNOB_ARC = 0.75 * KNOB_CIRC;
@@ -449,7 +430,7 @@
   // is a page/10 of the range, one step with Shift. Non-passive, to keep the
   // page from scrolling under a focused knob.
   $effect(() => {
-    const el = ctrlEl;
+    const el = knobEl;
     if (pres !== WIDGET.knob || !el) return;
     const onWheel = (e) => {
       if (!enabled || document.activeElement !== el) return;
@@ -519,12 +500,11 @@
 {#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
 
 <div class="field" data-uid={field.uid} data-shadow={status} data-widget={pres} data-orient={orientation}
-     bind:this={fieldEl}
-     style="--pulse-x: {pulseX}%; --echo-top: {echoTop}px; --echo-bottom: {echoBottom}px"
+     data-glow={glow || undefined} onanimationend={glowEnd}
+     style="--fx-f: {fxF}"
      class:disabled={!enabled && !field.readOnly}
      class:readonly={field.readOnly || displayOnly}
-     class:stale={!!(fresh && fresh.stale)}
-     class:settled={sh && sh.settled}>
+     class:stale={!!(fresh && fresh.stale)}>
 
   <div class="field-head">
     <span class="field-label-group">
@@ -671,7 +651,7 @@
     </div>
 
   {:else if pres === WIDGET.slider}
-    <input id={domId} type="range" bind:this={ctrlEl}
+    <input id={domId} type="range"
            min={field.min} max={field.max} step={step}
            value={value ?? field.min} disabled={!enabled}
            oninput={(e) => commit(Number(e.currentTarget.value))} />
@@ -686,7 +666,7 @@
          live on the thumb only (style.css's pseudo-elements) so either thumb
          is grabbable without the other's invisible track stealing the hit.
          Both keep the global 40px touch box (T24: --range-hit). -->
-    <div class="range-dual" bind:this={ctrlEl}>
+    <div class="range-dual">
       <div class="range-track" aria-hidden="true"></div>
       <div class="range-fill" aria-hidden="true"
            style="left: {loFrac * 100}%; right: {(1 - hiFrac) * 100}%"></div>
@@ -706,7 +686,7 @@
     </output>
 
   {:else if pres === WIDGET.color}
-    <div class="color-row" bind:this={ctrlEl}>
+    <div class="color-row">
       <!-- A native color input always holds some color; with no reported
            value it is disabled and blanked, never a black the wire never sent. -->
       <input id={domId} type="color" value={colorHex || '#000000'} disabled={!colorEnabled || !colorHex}
@@ -716,7 +696,7 @@
     </div>
 
   {:else if pres === WIDGET.datetime}
-    <input id={domId} type="datetime-local" step="1" class="value-input" bind:this={ctrlEl}
+    <input id={domId} type="datetime-local" step="1" class="value-input"
            value={datetimeLocal} disabled={!enabled || !clockRef}
            onchange={(e) => commitWall(new Date(e.currentTarget.value).getTime())} />
     {#if !clockRef}
@@ -758,7 +738,7 @@
   {:else if pres === WIDGET.knob}
     <!-- Drag up or down, or use the keys; every change is an ordinary
          echo-confirmed write through commitNumber(). -->
-    <div class="knob" id={domId} bind:this={ctrlEl} role="slider" tabindex={enabled ? 0 : -1}
+    <div class="knob" id={domId} bind:this={knobEl} role="slider" style="--kl: {KNOB_ARC * knobFrac}" tabindex={enabled ? 0 : -1}
          aria-labelledby={labelId} aria-valuemin={field.min} aria-valuemax={field.max}
          aria-valuenow={Number(value)} aria-valuetext={formatWithUnit(field, value)} aria-disabled={!enabled}
          class:is-disabled={!enabled}
@@ -768,8 +748,11 @@
       <svg viewBox="0 0 100 100" aria-hidden="true">
         <circle class="knob-track" cx="50" cy="50" r="40"
                 stroke-dasharray="{KNOB_ARC} {KNOB_CIRC}" transform="rotate(135 50 50)" />
+        <circle class="knob-glow" cx="50" cy="50" r="40"
+                stroke-dasharray="{KNOB_ARC * knobFrac} {KNOB_CIRC}" transform="rotate(135 50 50)" />
         <circle class="knob-fill" cx="50" cy="50" r="40"
                 stroke-dasharray="{KNOB_ARC * knobFrac} {KNOB_CIRC}" transform="rotate(135 50 50)" />
+        <circle class="knob-run" cx="50" cy="50" r="40" transform="rotate(135 50 50)" />
         <line class="knob-hand" x1="50" y1="50" x2="50" y2="18"
               transform="rotate({-135 + 270 * knobFrac} 50 50)" />
       </svg>
@@ -777,20 +760,20 @@
     </div>
 
   {:else if pres === WIDGET.bar}
-    <div class="meter" bind:this={ctrlEl} aria-hidden="true">
+    <div class="meter" aria-hidden="true">
       <div class="meter-fill" style="--f: {boundedFrac}"></div>
       {#if peakFrac != null}<div class="meter-peak" style="--f: {peakFrac}"></div>{/if}
     </div>
 
   {:else if pres === WIDGET.numeral}
-    <output class="numeral" id={domId} bind:this={ctrlEl} title={staleReason(fresh)}>
+    <output class="numeral" id={domId} title={staleReason(fresh)}>
       {#if numeral}<span class="numeral-digits" style="min-width: {numeral.ch}ch">{numeral.text}</span><span class="unit">{numeral.unit}</span>
       {:else}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{/if}
       {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}
     </output>
 
   {:else if pres === WIDGET.graph}
-    <svg class="graph" bind:this={ctrlEl} viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+    <svg class="graph" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
       <path d={graphD} />
     </svg>
   {/if}
@@ -810,102 +793,9 @@
      from .5rem so the control sits close under its head instead of floating
      in its own paragraph-sized band. */
   .field {
-    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
-  }
-
-  /* ---- intent echo ---------------------------------------------------------
-     The write's lifecycle, drawn as a wave leaving the control the operator
-     just touched. Two phases, and they mean different things:
-
-       pending/overdue  a wavefront leaves the handle every 500ms and dies at
-                        the field's edge — the question is still outstanding,
-                        and it keeps being asked. The mask is an ANNULUS, so
-                        what travels is an edge, not a growing blob.
-       settled          one reality-blue disc expands until the whole outline
-                        is lit, holds, then fades out uniformly. The mask is
-                        FILLED, which is what makes it read as an answer
-                        arriving rather than another question leaving.
-
-     500ms is not a taste number: it is shadow.svelte.js's OVERDUE_MS, so the
-     second wavefront and the escalation to amber land together. The fade is
-     900ms = SETTLE_MS, the window the model keeps `settled` true for.
-
-     This draws an OUTLINE where style.css's state rule says inset-only. That
-     rule exists so state changes cannot shift layout; this element is
-     absolutely positioned and shifts nothing. The inset box-shadow states
-     still do the actual state-telling underneath, and the textual reason
-     still renders, so color remains not-the-only-channel.
-
-     `fault` is deliberately absent: a refused write has finished failing, and
-     a pulsing failure reads as "still trying". */
-  .field::after {
-    content: '';
-    position: absolute;
-    /* Cropped to the control's own band (see the measured insets in the
-       script). Left/right still overhang so the outline clears the track. */
-    inset: calc(var(--echo-top, 0px) - var(--echo-pad, 4px))
-           -5px
-           calc(var(--echo-bottom, 0px) - var(--echo-pad, 4px))
-           -5px;
-    border: 1.5px solid transparent;
-    border-radius: 4px;
-    pointer-events: none;
-    opacity: 0;
-  }
-
-  /* A range input's own box is JUST the 2px hairline track — the thumb is a
-     pseudo-element that overflows it, so cropping to the input's rect would
-     leave the handle outside the very outline it is supposed to be inside.
-     Expand to the thumb's band; --slider-thumb-h is style.css's single source
-     for that height, shared with the thumb rules themselves. */
-  .field[data-widget='slider']::after,
-  .field[data-widget='range']::after {
-    --echo-pad: calc(var(--slider-thumb-h) / 2 + 2px - var(--range-hit));
-  }
-
-  .field[data-shadow='pending']::after,
-  .field[data-shadow='overdue']::after {
-    border-color: rgb(var(--intent-rgb));
-    box-shadow: 0 0 12px rgba(var(--intent-rgb), .45);
-    -webkit-mask-image: radial-gradient(circle at var(--pulse-x, 50%) 50%,
-      transparent calc(var(--pr) - 34%), #000 var(--pr), transparent calc(var(--pr) + 4%));
-    mask-image: radial-gradient(circle at var(--pulse-x, 50%) 50%,
-      transparent calc(var(--pr) - 34%), #000 var(--pr), transparent calc(var(--pr) + 4%));
-    animation: intent-echo 500ms ease-out infinite;
-  }
-  /* Escalation keeps the existing safety ramp — same wave, amber. */
-  .field[data-shadow='overdue']::after {
-    border-color: var(--warn);
-    box-shadow: 0 0 12px rgba(var(--warn-rgb), .45);
-  }
-
-  .field.settled::after {
-    border-color: rgb(var(--reality-rgb));
-    box-shadow: 0 0 14px rgba(var(--reality-rgb), .5);
-    -webkit-mask-image: radial-gradient(circle at var(--pulse-x, 50%) 50%,
-      #000 0, #000 var(--pr), transparent calc(var(--pr) + 4%));
-    mask-image: radial-gradient(circle at var(--pulse-x, 50%) 50%,
-      #000 0, #000 var(--pr), transparent calc(var(--pr) + 4%));
-    animation: confirm-echo 900ms cubic-bezier(.22, .7, .3, 1) 1;
-  }
-
-  @keyframes intent-echo {
-    0%   { --pr: 0%;   opacity: 0; }
-    15%  { opacity: 1; }
-    100% { --pr: 150%; opacity: 0; }
-  }
-  @keyframes confirm-echo {
-    0%   { --pr: 0%;   opacity: 1; }
-    45%  { --pr: 165%; opacity: 1; }
-    60%  { --pr: 165%; opacity: 1; }
-    100% { --pr: 165%; opacity: 0; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .field::after { animation: none; }
   }
 
   .field-head {
@@ -1404,12 +1294,19 @@
     white-space: nowrap;
     text-align: right;
     font-size: 11px;
+    /* Its own fixed line, centered rather than baseline-aligned, so the
+       words can never move the head row or the control under it. */
+    line-height: 14px;
+    height: 14px;
+    align-self: center;
     color: var(--tx-mut);
   }
   .ladder[data-slot='pending'] { color: var(--intent); }
   .ladder[data-slot='overdue'] { color: var(--warn); }
   .ladder[data-slot='fault'] { color: var(--warn); }
   .ladder[data-slot='gate'] { color: var(--tx-ghost); }
+  /* The word fades with the afterglow (style.css --ga). */
+  .ladder[data-slot='confirmed'] { color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-mut)); }
 
   /* ---- builder presentations (DESIGN §10.2) -------------------------------- */
   .knob {

@@ -8,10 +8,12 @@
    * - Gated ops gray with their reason in words (law 3), never hidden.
    * - Confirm posture is actions.js's, routed through the overlay layer.
    * - The press shows the shadow ladder (pending/overdue/fault/confirmed) in
-   *   words; "confirmed" means the hub's ECHO, never the tap.
+   *   words and on the ring (style.css GROUND TRUTH); "confirmed" means the
+   *   hub's ECHO, never the tap, and lasts as long as its afterglow.
    * - Payload inputs are the operator's draft for the NEXT press, not device
    *   state; an empty input omits its key and the hub decides.
    */
+  import { untrack } from 'svelte';
   import { machine, getSession } from '../model/machine.svelte.js';
   import { runAction, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { labelFor, optionLabel } from '../model/format.js';
@@ -30,6 +32,15 @@
   const sh = $derived(shadowOf(action));
 
   let draft = $state({});
+
+  // The afterglow, as Field.svelte lights it: alternating per echo, out on the
+  // next press, ended (with the word) by its own animationend.
+  let glow = $state(0);
+  $effect(() => {
+    if (status !== 'confirmed') glow = 0;
+    else if (sh && sh.settled) glow = untrack(() => glow) === 1 ? 2 : 1;
+  });
+  const glowEnd = (e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) glow = 0; };
 
   function reasonFor(v) {
     void machine.link.roles; void machine.catalog.ready;
@@ -64,12 +75,12 @@
     status === 'pending' ? 'waiting for the machine'
     : status === 'overdue' ? 'still waiting for the machine'
     : status === 'fault' ? sh && sh.error
-    : sh && sh.settled ? 'confirmed' + (action.options && sh.applied != null ? ': ' + opLabel(sh.applied) : '')
+    : glow ? 'confirmed' + (action.options && sh.applied != null ? ': ' + opLabel(sh.applied) : '')
     : ''
   );
 </script>
 
-<div class="field action" data-shadow={status}>
+<div class="field action" data-shadow={status} data-glow={glow || undefined} onanimationend={glowEnd}>
   <span class="field-label">{labelFor(action)}</span>
   {#if action.desc}<p class="hint">{action.desc}</p>{/if}
 

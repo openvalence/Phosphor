@@ -99,8 +99,10 @@ const ACTION = MODEL.actions.find((a) => a.payload && a.payload.some((p) => p.ty
  * dimmed on purpose (law 8). Returns the failures in words.
  */
 const lowContrast = (sel) => {
-  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+  // A color-mix() computes to color(srgb r g b / a) with channels in 0..1.
+  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c), k = /color\(srgb ([^)]+)\)/.exec(c); if (!m && !k) return null;
+    const p = (m || k)[1].split(/[\s,/]+/).filter(Boolean).map(Number), u = m ? 1 : 255;
+    return [p[0] * u, p[1] * u, p[2] * u, p.length > 3 ? p[3] : 1]; };
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
@@ -336,6 +338,15 @@ async function drive(p) {
   return up ? before + step : before - step;
 }
 const near = (a, b) => Math.abs(a - b) <= FIELD.step / 1000;
+/** A field's box and its control's box (offset inside the field, size): no
+ *  ladder state may move either (law 5, ph-vdk.62). */
+const CTL = 'input[type=range], .knob, .stepper, .og-seg, .og-switch, select, input[type=text], .bitfield, .numeral, .meter, .graph';
+const geoOf = (cellSel) => page.evaluate(([sel, ctl]) => {
+  const f = document.querySelector(sel + ' .field'), c = f.querySelector(ctl);
+  const r = f.getBoundingClientRect(), b = c ? c.getBoundingClientRect() : r;
+  return [r.width, r.height, b.left - r.left, b.top - r.top, b.width, b.height].map((v) => Math.round(v * 2) / 2);
+}, [cellSel, CTL]);
+const sameGeo = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 0.5);
 const NO_ANSWER = 'no answer from the hub';
 /** Does anything at `sel` (box, border or text) paint in --bad? Red is the e-stop's alone (law 13). */
 const wearsBad = (sel) => page.evaluate((sel) => {
@@ -401,7 +412,7 @@ if (!LIVE) {
   const xcell = (p) => page.locator('.cell[data-pres="' + p + '@' + LADDER[p].uid + '"] .field');
   const xshadow = (p) => xcell(p).getAttribute('data-shadow');
   const xladder = (p) => xcell(p).locator('.ladder').textContent();
-  const xheight = async (p) => (await xcell(p).boundingBox()).height;
+  const xgeo = (p) => geoOf('.cell[data-pres="' + p + '@' + LADDER[p].uid + '"]');
   async function xwait(p, want, ms = 3000) {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) { if (await xshadow(p) === want) return true; await sleep(20); }
@@ -442,8 +453,8 @@ if (!LIVE) {
   for (const p of Object.keys(LADDER)) {
     console.log('\n[' + p + ']');
     if (!LADDER[p]) { ok(p + ': the fixture has a writable field for it', false); continue; }
-    const h0 = await xheight(p);
-    const sameH = async (st) => ok(p + ': the same height ' + st, Math.abs(await xheight(p) - h0) < 0.5, [h0, await xheight(p)]);
+    const g0 = await xgeo(p);
+    const sameH = async (st) => { const g = await xgeo(p); ok(p + ': the same boxes ' + st, sameGeo(g, g0), [g0, g]); };
     hub.mode = 'hold';
     const [read, want] = await xdrive(p);
     ok(p + ': pending while the hub holds the echo', await xwait(p, 'pending', 1000));
@@ -517,15 +528,15 @@ if (!LIVE) {
     ok(p + ': ...and no gate reason, because nothing is gated', await cell(p).locator('.ladder[data-slot=gate]').count() === 0);
   }
 
-  // Every transient has one fixed home (laws 3, 5, 8): the field's height is
-  // the same idle, pending, overdue, fault, grayed and stale.
+  // Every transient has one fixed home (laws 3, 5, 8): the field's box and
+  // its control's box are the same idle, pending, overdue, confirmed, fault,
+  // grayed and stale.
   console.log('\n[anatomy]');
-  const heights = () => page.evaluate((ps) => Object.fromEntries(ps.map((p) =>
-    [p, document.querySelector('.cell[data-pres=' + p + '] .field').getBoundingClientRect().height])), PRES);
+  const heights = async () => Object.fromEntries(await Promise.all(PRES.map(async (p) => [p, await geoOf('.cell[data-pres=' + p + ']')])));
   const idle = await heights();
   const same = async (state) => {
     const h = await heights();
-    for (const p of PRES) ok(p + ': the same height ' + state, Math.abs(h[p] - idle[p]) < 0.5, [idle[p], h[p]]);
+    for (const p of PRES) ok(p + ': the same boxes ' + state, sameGeo(h[p], idle[p]), [idle[p], h[p]]);
   };
   hub.mode = 'hold';
   await drive('slider');
@@ -557,6 +568,100 @@ if (!LIVE) {
   await drive('slider');
   ok('a refused write faults', await waitShadow('slider', 'fault', 1500));
   await same('at fault, its reason in the slot');
+  hub.mode = 'echo';
+
+  // The write-feedback effect (docs/EFFECTS.md, ph-vdk.62): the ring and the
+  // line carry the ladder, the echo's afterglow decays, reduced motion holds
+  // it still. The decay is sampled by seeking the glow's own animation.
+  console.log('\n[effect] the phosphor ring and the line (ph-vdk.62)');
+  const SL = '.cell[data-pres=slider] .field';
+  const alphas = (bs) => [...bs.matchAll(/rgba?\(([^)]+)\)/g)].map((m) => {
+    const v = m[1].split(/[\s,/]+/).map(Number);
+    return v.length > 3 ? v[3] : 1;
+  });
+  // Ring layers in style.css order: amber line, intent line, afterglow line, ...
+  const [AMBER, INTENT] = [0, 1];
+  const ring = async () => alphas(await page.evaluate((sel) => getComputedStyle(document.querySelector(sel), '::after').boxShadow, SL));
+  /** Highest alpha the slider's track paints in one accent (an rgb triple token). */
+  const trackAlpha = (tok) => page.evaluate(([sel, tok]) => {
+    const rgb = getComputedStyle(document.documentElement).getPropertyValue(tok).trim().split(/\s*,\s*/).join(', ');
+    const bg = getComputedStyle(document.querySelector(sel + ' input[type=range]')).backgroundImage;
+    return Math.max(0, ...[...bg.matchAll(new RegExp('rgba?\\(' + rgb + '(?:, ([\\d.]+))?\\)', 'g'))]
+      .map((m) => (m[1] == null ? 1 : Number(m[1]))));
+  }, [SL, tok]);
+  const paintOf = () => page.evaluate(() => ({
+    knob: getComputedStyle(document.querySelector('.cell[data-pres=knob] .knob-track')).stroke,
+    stepper: getComputedStyle(document.querySelector('.cell[data-pres=stepper] .og-num')).borderTopColor,
+  }));
+  /** Pause the slider field's afterglow at `ms` and read the ring's glow line and the level. */
+  const glowAt = (ms) => page.evaluate(([sel, ms]) => {
+    const f = document.querySelector(sel);
+    const a = f.getAnimations().find((x) => (x.animationName || '').startsWith('fx-glow'));
+    if (!a) return null;
+    a.pause();
+    a.currentTime = ms;
+    const v = [...getComputedStyle(f, '::after').boxShadow.matchAll(/rgba?\(([^)]+)\)/g)][2][1].split(/[\s,/]+/).map(Number);
+    return { ring: v.length > 3 ? v[3] : 1, g: Number(getComputedStyle(f).getPropertyValue('--fx-g')) };
+  }, [SL, ms]);
+  const endGlow = () => page.evaluate((sel) => {
+    for (const a of document.querySelectorAll('.cell .field')) {
+      const x = a.getAnimations().find((y) => (y.animationName || '').startsWith('fx-glow'));
+      if (x) x.finish();
+    }
+  }, SL);
+  const cssAnims = () => page.evaluate((sel) => document.querySelector(sel).getAnimations()
+    .filter((a) => a instanceof CSSAnimation).map((a) => a.animationName).sort(), SL);
+  const glowLit = () => page.waitForFunction((sel) => !!document.querySelector(sel).dataset.glow, SL, { timeout: 3000 })
+    .then(() => true).catch(() => false);
+
+  hub.mode = 'echo';
+  await waitShadow('slider', 'confirmed', 6000);
+  await endGlow();
+  await sleep(250);
+  const rest = await paintOf();
+  ok('at rest the ring is dark and the track carries nothing', (await ring()).every((a) => a < 0.01)
+    && await trackAlpha('--intent-rgb') < 0.01 && await trackAlpha('--reality-rgb') < 0.01, await ring());
+  hub.mode = 'hold';
+  await drive('slider');
+  await sleep(420);
+  ok('pending: the ring wears intent', (await ring())[INTENT] > 0.2, await ring());
+  ok('pending: the track carries intent at the handle', await trackAlpha('--intent-rgb') > 0.5, await trackAlpha('--intent-rgb'));
+  const busy = await paintOf();
+  ok('pending: the knob\'s arc and the stepper\'s box carry it too', busy.knob !== rest.knob && busy.stepper !== rest.stepper,
+    [rest, busy]);
+  ok('pending is alive: it breathes and its pulses travel', JSON.stringify(await cssAnims()) === '["fx-breath","fx-run"]',
+    await cssAnims());
+  await waitShadow('slider', 'overdue', 1500);
+  await sleep(250);
+  ok('overdue: the ring and the track turn amber', (await ring())[AMBER] > 0.3 && await trackAlpha('--warn-rgb') > 0.5,
+    [await ring(), await trackAlpha('--warn-rgb')]);
+  await release();
+  ok('the echo lights the afterglow', await glowLit());
+  await sleep(200);
+  ok('confirmed: the track carries the afterglow', await trackAlpha('--reality-rgb') > 0.3, await trackAlpha('--reality-rgb'));
+  const g05 = await glowAt(500), g3 = await glowAt(3000), g5 = await glowAt(5000);
+  ok('the afterglow decays: ring at 0.5 s > at 3 s > at 5 s, and dark at 5 s',
+    !!(g05 && g3 && g5) && g05.ring > g3.ring && g3.ring > g5.ring && g3.ring > 0.05 && g5.ring < 0.02, [g05, g3, g5]);
+  ok('T25: the glow level is registered and interpolates (a real mid-flight number)', !!g3 && g3.g > 0.05 && g3.g < 0.95, g3);
+  await endGlow();
+  ok('...and when it has faded the word goes with it', await page.waitForFunction((sel) => {
+    const f = document.querySelector(sel);
+    return !f.dataset.glow && f.querySelector('.ladder').textContent === '';
+  }, SL, { timeout: 2000 }).then(() => true).catch(() => false), await ladderOf('slider'));
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await drive('slider');
+  await sleep(300);
+  ok('reduced motion: pending holds still (no animation) and still shows', (await cssAnims()).length === 0
+    && (await ring())[INTENT] > 0.2, [await cssAnims(), await ring()]);
+  await release();
+  await glowLit();
+  await sleep(250);
+  const r05 = await glowAt(500), r3 = await glowAt(3000), r5 = await glowAt(5000);
+  ok('reduced motion: the afterglow is a steady glow that clears at the end', !!(r05 && r3 && r5)
+    && Math.abs(r05.ring - r3.ring) < 0.01 && r05.ring > 0.3 && r5.ring < 0.02, [r05, r3, r5]);
+  await endGlow();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   hub.mode = 'echo';
 
   console.log('\n[presentations]');
