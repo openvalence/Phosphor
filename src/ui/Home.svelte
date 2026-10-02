@@ -172,6 +172,7 @@
     <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
   {/if}
   <DashGrid viewId={VIEW} {items} bind:editing ondelete={builder ? removeIds : null} onduplicate={builder ? duplicateId : null}
+            resolve={(k) => modules.get(canon(k))?.title}
             ondropkey={builder ? (key, at, nest) => add(key, nest || '', null, at) : null} />
 </div>
 

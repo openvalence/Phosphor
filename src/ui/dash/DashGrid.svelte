@@ -41,7 +41,7 @@
   import { view } from '../../model/viewport.svelte.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, onduplicate = null } = $props();
+    ondragout = null, target = false, ondelete = null, onduplicate = null, resolve = null } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -52,7 +52,7 @@
     const inNest = new Set(nests.flatMap((n) => n.keys));
     return [
       ...items.filter((it) => !inNest.has(it.id)),
-      ...nests.map((n) => ({ id: n.id, title: n.title, kind: 'nest', snippet: nestCard, nest: n,
+      ...nests.map((n) => ({ id: n.id, title: n.title, kind: 'nest', snippet: nestCard, nest: n, retitle: retitle(n.id),
         members: n.keys.map((k) => byId.get(k)).filter(Boolean) })),
     ];
   });
@@ -122,6 +122,13 @@
   const minOf = (p) => p && p.min ? (w, h) => p.min(p.look, orientationOf(w, h)) : null;
   const ORIENT = { h: 'horizontal', v: 'vertical' };
   const announce = (msg) => { announceMsg = msg; };
+  const retitle = (id) => (name) => { if (layout.setNest(id, { title: name })) announce('Nest renamed to ' + name.trim()); };
+  // A module's members before Insert: titled when this view can draw them, else inert here.
+  const titleHere = (k) => (resolve ? resolve(k) : (items.find((it) => it.id === k) || {}).title) || null;
+  const preview = $derived.by(() => {
+    const m = moduleDraft && layouts.modules && layouts.modules[moduleDraft];
+    return m && m.members && typeof m.members === 'object' ? Object.keys(m.members).map((key) => ({ key, title: titleHere(key) })) : null;
+  });
   const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
 
@@ -387,7 +394,10 @@
     if (id) announce('Added an empty nest');
   }
   function insertModule() {
-    if (moduleDraft && layout.insertModule(moduleDraft)) announce('Placed module ' + moduleDraft);
+    const here = preview ? preview.filter((m) => m.title).length : 0;
+    if (moduleDraft && layout.insertModule(moduleDraft)) {
+      announce('Placed module ' + moduleDraft + ', ' + here + ' of ' + (preview ? preview.length : 0) + ' members available here');
+    }
   }
   function undoOnce() {
     if (undoLast()) { pin = null; stackOrder = null; announce('Undid the last layout change'); }
@@ -454,6 +464,15 @@
             <button type="button" class="og-btn sm" disabled={!moduleDraft}
                     onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
           </div>
+          {#if preview}
+            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here{preview.some((m) => !m.title)
+              ? '; the rest stay inert until a catalog has them' : ''}</p>
+            <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
+              {#each preview as m (m.key)}
+                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not available here)'}</li>
+              {/each}
+            </ul>
+          {/if}
         {/if}
       </div>
     {/if}
@@ -586,6 +605,16 @@
   }
   .dash-menu .layout-pick { margin-right: 0; }
   .menu-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .module-sum { margin: 0; font-size: .75rem; color: var(--ink-dim); }
+  .module-preview {
+    margin: 0;
+    padding: 0 0 0 1.2em;
+    max-height: 12em;
+    overflow-y: auto;
+    font-size: .8rem;
+    overflow-wrap: anywhere;
+  }
+  .module-preview .inert { color: var(--ink-faint); font-style: italic; }
   .layout-name {
     width: 100%;
     padding: 6px 8px;

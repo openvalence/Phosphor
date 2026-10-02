@@ -212,10 +212,18 @@ const shown = await busy.waitFor({ state: 'visible', timeout: 2000 }).then(() =>
 const text = shown ? (await busy.textContent()).trim() : '';
 ok('the nest frame shows the in-flight count', shown && /^1 in flight$/.test(text), text);
 ok('the count sits outside the scroll region', shown && await busy.evaluate((el) => !el.closest('.nest-body')));
+// ph-e82.20.4: collapsing hides the members, never the count (RENDERING §9 invariant).
+await nest.locator('.nest-fold').click();
+await page.waitForTimeout(100);
+ok('collapsed: the members are hidden', await nest.locator('.nest-body').count() === 0);
+ok('collapsed: the in-flight count stays visible', await busy.isVisible() && /^1 in flight$/.test((await busy.textContent()).trim()));
 
 await release();
 const cleared = await busy.waitFor({ state: 'detached', timeout: 3000 }).then(() => true).catch(() => false);
 ok('the count clears on echo', cleared);
+await nest.locator('.nest-fold').click();
+await page.waitForTimeout(100);
+ok('expanding draws the members again', await nest.locator('.nest-body .dash-cell').count() === cards.length);
 
 // ---- edit flow: new nest, add, save, insert, out, ungroup --------------------
 const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));

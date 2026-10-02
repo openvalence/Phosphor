@@ -16,7 +16,7 @@ import {
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
-  arrangePins, instanceKey, baseKey, duplicate,
+  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -210,7 +210,7 @@ console.log('nests');
   commitOrder(top, topItems, 40, ['d', id]);
   ok('reordering keeps its contents', isNest(top[id]) && top[id].nest.map.c.h === 3);
   ok('nestsIn lists members, present or not',
-     JSON.stringify(nestsIn(top)) === JSON.stringify([{ id, title: 'Pump', scroll: true, keys: ['a', 'b', 'c'] }]));
+     JSON.stringify(nestsIn(top)) === JSON.stringify([{ id, title: 'Pump', scroll: true, collapsed: false, keys: ['a', 'b', 'c'] }]));
   ok('setNest renames and flips scroll', setNest(top, id, { title: ' Pump 2 ', scroll: false })
      && nestsIn(top)[0].title === 'Pump 2' && !nestsIn(top)[0].scroll && setNest(top, id, { title: 'Pump', scroll: true }));
 
@@ -390,6 +390,23 @@ console.log('selection');
   ok('a nest duplicates whole under the next nest id, titled as a copy', cid === 'nest:2' && isNest(dm[cid]) && dm[cid].nest.title === 'Pump copy'
      && dm[cid].nest.map.a.look.pres === 'numeral' && dm[cid].w === dm[nid].w && dm[cid].x === undefined);
   ok('a plain entry needs an explicit id', duplicate(dm, 'a') === null);
+}
+
+// ---- a collapsed nest (ph-e82.20.4) ------------------------------------------------
+console.log('fold');
+{
+  const map = { a: { x: 0, y: 0, w: 10, h: 1 } };
+  const nid = addNest(map, { title: 'Pump', h: 8 });
+  map.b = { x: 0, y: 9, w: 10, h: 1 };
+  const its = [...items('a', 'b'), { id: nid }];
+  ok('fold: setNest collapses and nestsIn reports it', setNest(map, nid, { collapsed: true }) && nestsIn(map)[0].collapsed === true);
+  const p = pack(its, map, 40);
+  ok('fold: a collapsed nest packs ' + NEST_FOLD_H + ' rows tall and what sat below rises',
+     p.find((q) => q.id === nid).h === NEST_FOLD_H && p.find((q) => q.id === 'b').y === 1 + NEST_FOLD_H, JSON.stringify(p.map(({ id, y, h }) => [id, y, h])));
+  commitPin(map, its, 40, { id: 'a', x: 20, y: 0, w: 10, h: 1 });
+  ok('fold: a commit keeps the nest\u2019s own height for the unfold', map[nid].h === 8 && map[nid].nest.collapsed === true);
+  ok('fold: unfolding restores the height', setNest(map, nid, { collapsed: false }) && !('collapsed' in map[nid].nest)
+     && pack(its, map, 40).find((q) => q.id === nid).h === 8);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

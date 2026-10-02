@@ -2,13 +2,15 @@
   /**
    * Nest.svelte -- a control holding a subgrid, scrolling or fixed (DESIGN
    * §10.6). Rendered by DashGrid as a nest item's body; its members are a
-   * nested DashGrid over the nest's own placement map.
+   * nested DashGrid over the nest's own placement map. The nest's title is
+   * edited inline in its card head (DashItem `retitle`).
    *
    * Constraints:
    * - The bar sits outside the scroll region and always carries the in-flight
-   *   count of every present member, the way drillCard does: a scrolling nest
-   *   never hides pending or degraded state (RENDERING §9). The bar is always
-   *   drawn, so the count appearing never shifts the layout (law 5).
+   *   count of every present member, the way drillCard does: a scrolling or
+   *   collapsed nest never hides pending or degraded state (RENDERING §9). The
+   *   bar is always drawn, so the count appearing never shifts the layout
+   *   (law 5). Collapsing hides the members, never the bar.
    * - A member's fields for the count: `fields`, else `group.fields`.
    * - Stacked (phone width) a nest never scrolls by itself, so it can never
    *   trap the page scroll (test/responsive-matrix.mjs).
@@ -26,7 +28,6 @@
   const inert = $derived(n.keys.length - item.members.length);
   const busy = $derived(item.members.reduce((c, m) =>
     c + (m.fields || (m.group && m.group.fields) || []).filter((f) => statusOf(f) !== STATUS.confirmed).length, 0));
-  let titleDraft = $state('');
 
   function add(e) {
     const key = e.currentTarget.value;
@@ -38,14 +39,17 @@
     const on = !n.scroll;
     if (parent.setNest(item.id, { scroll: on })) announce(n.title + (on ? ' scrolls' : ' is fixed'));
   }
-  function rename() {
-    if (titleDraft.trim() && parent.setNest(item.id, { title: titleDraft })) announce('Nest renamed to ' + titleDraft.trim());
-    titleDraft = '';
+  function fold() {
+    const on = !n.collapsed;
+    if (parent.setNest(item.id, { collapsed: on })) announce(n.title + (on ? ' collapsed' : ' expanded'));
   }
 </script>
 
-<div class="nest" class:scrolls={n.scroll && !stack}>
+<div class="nest" class:scrolls={n.scroll && !stack} class:collapsed={n.collapsed}>
   <div class="nest-bar">
+    <button type="button" class="og-btn sm nest-fold" aria-expanded={!n.collapsed}
+            aria-label={(n.collapsed ? 'Expand ' : 'Collapse ') + n.title} title={n.collapsed ? 'Expand' : 'Collapse'}
+            onclick={fold}><span aria-hidden="true">{n.collapsed ? '▸' : '▾'}</span></button>
     <span>{item.members.length} control{item.members.length === 1 ? '' : 's'}</span>
     {#if busy}<span class="nest-busy" data-shadow="pending">{busy} in flight</span>{/if}
     {#if editing}
@@ -54,20 +58,23 @@
         <option value="">Add…</option>
         {#each candidates as c (c.id)}<option value={c.id}>{c.title}</option>{/each}
       </select>
-      <button type="button" class="og-btn sm" title="Switch between scrolling and fixed"
+      <button type="button" class="og-btn sm" aria-pressed={n.scroll} title="Switch between scrolling and fixed"
               onclick={toggleScroll}>{n.scroll ? 'Scrolling' : 'Fixed'}</button>
-      <input class="nest-name" type="text" aria-label="Nest name" placeholder={n.title}
-             bind:value={titleDraft} onchange={rename} />
       <button type="button" class="og-btn sm"
-              onclick={() => announce(parent.saveModule(item.id, n.title) ? 'Saved module ' + n.title : 'A module named ' + n.title + ' exists')}>Save module</button>
+              onclick={() => announce(parent.saveModule(item.id, n.title) ? 'Saved module ' + n.title : 'A module named ' + n.title + ' exists; rename the nest first')}>Save module</button>
       <button type="button" class="og-btn sm"
               onclick={() => parent.removeNest(item.id) && announce('Ungrouped ' + n.title)}>Ungroup</button>
     {/if}
   </div>
-  <div class="nest-body">
-    <DashGrid items={item.members} layout={sub} {editing} {ondropkey} {ondragout} {target}
-              onremove={(id) => parent.nestOut(item.id, id) && announce('Moved out of ' + n.title)} />
-  </div>
+  {#if !n.collapsed}
+    <div class="nest-body">
+      {#if !item.members.length}
+        <p class="nest-empty">{editing ? 'Drop controls here' : 'Empty nest'}</p>
+      {/if}
+      <DashGrid items={item.members} layout={sub} {editing} {ondropkey} {ondragout} {target}
+                onremove={(id) => parent.nestOut(item.id, id) && announce('Moved out of ' + n.title)} />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -86,15 +93,19 @@
     font-size: .8rem;
     color: var(--ink-dim);
   }
+  .nest-fold { min-width: 40px; min-height: 40px; padding: 0; font-size: .9rem; }
   .nest-busy { color: var(--intent); }
-  .nest-name {
-    width: 9em;
-    padding: 6px 8px;
-    border: 1px solid var(--line-2);
-    border-radius: var(--radius);
-    background: var(--bg);
-    color: var(--tx);
-    font: inherit;
+  .nest-body { position: relative; }
+  /* Over the subgrid, never in its way: a drop still lands on the grid below. */
+  .nest-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    font-size: .8rem;
+    color: var(--ink-faint);
+    pointer-events: none;
   }
   /* contain: size zeroes the region's intrinsic height, so the nest fills the
      cells it was given instead of growing its rows to fit every member. */

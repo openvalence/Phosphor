@@ -15,6 +15,11 @@
  *            selects what it crosses; a group moves as one; align left;
  *            duplicate a card (a second placement) and a nest (a copy);
  *            remove as a group, one undo step (ph-e82.20.3)
+ *   nest     an empty nest says where controls go; the title edits in place
+ *            (Enter commits, Escape restores); scroll/fixed in the bar; a
+ *            collapsed nest packs two rows and keeps its height; a module's
+ *            members are previewed, inert ones named, before Insert
+ *            (ph-e82.20.4)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -260,6 +265,52 @@ console.log('select');
   ok('one undo restores the whole group remove', !!s[F1 + '#2'] && !!s['nest:2'], Object.keys(s));
   await page.locator('.home .dash-toolbar .done-btn').click();
   ok('leaving edit mode clears the selection', await page.locator('.home .dash-selbar').count() === 0);
+  await ctx.close();
+}
+
+// ---- nest header and module preview (ph-e82.20.4) ----------------------------------
+console.log('nest');
+{
+  const GHOST = 'uid:999:not-on-this-machine';
+  const store = { active: 'Default', layouts: { Default: { 'full.machine': {
+    [F1]: { x: 0, y: 0, w: 8, h: 2 }, 'home:built': { x: 0, y: 40, w: 1, h: 1 },
+    'nest:1': { x: 10, y: 0, w: 12, h: 6, nest: { title: 'Empty', scroll: true, map: {} } },
+  } } }, modules: { Kit: { title: 'Kit', scroll: false, w: 12, h: 4, members: { [F2]: null, [GHOST]: null } } } };
+  const { ctx, page, stored, said, card } = await open(null, { store });
+  const nest = card('nest:1');
+  ok('an empty nest says where controls go', (await nest.locator('.nest-empty').textContent()).trim() === 'Drop controls here');
+  const name = nest.locator('input.dash-title-edit');
+  await name.fill('Pump');
+  await name.press('Enter');
+  await page.waitForTimeout(100);
+  ok('the nest title edits in place; Enter commits', (await stored())['nest:1'].nest.title === 'Pump' && /renamed to Pump/.test(await said()));
+  await name.fill('Oops');
+  await name.press('Escape');
+  await page.waitForTimeout(100);
+  ok('Escape restores the title', (await stored())['nest:1'].nest.title === 'Pump' && await name.inputValue() === 'Pump');
+  await nest.locator('.nest-bar button', { hasText: 'Scrolling' }).click();
+  ok('scroll and fixed switch from the bar', (await stored())['nest:1'].nest.scroll === false
+     && await nest.locator('.nest-bar button', { hasText: 'Fixed' }).getAttribute('aria-pressed') === 'false');
+  await nest.locator('.nest-fold').click();
+  await page.waitForTimeout(100);
+  const folded = await nest.evaluate((el) => el.style.gridRow.replace(/\s+/g, ' '));
+  ok('a collapsed nest packs two rows and keeps its own height', /span 2$/.test(folded) && (await stored())['nest:1'].h === 6
+     && (await stored())['nest:1'].nest.collapsed === true, folded);
+  ok('the fold button says what it does', await nest.locator('.nest-fold').getAttribute('aria-expanded') === 'false');
+  await nest.locator('.nest-fold').click();
+
+  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  await page.locator('select[aria-label="Module"]').selectOption('Kit');
+  const rows = await page.$$eval('.module-preview li', (els) => els.map((e) => [e.textContent.trim(), e.classList.contains('inert')]));
+  const sum = (await page.locator('.module-sum').textContent()).replace(/\s+/g, ' ').trim();
+  ok('the module preview lists every member before Insert', rows.length === 2 && rows.some(([t, i]) => i && t.includes(GHOST)) && rows.some(([, i]) => !i), rows);
+  ok('the preview counts what this view can draw', /^1 of 2 available here; the rest stay inert/.test(sum), sum);
+  ok('nothing is placed by previewing', !Object.keys(await stored()).includes('nest:2'));
+  await page.locator('.dash-menu button', { hasText: 'Insert' }).click();
+  await page.waitForTimeout(150);
+  ok('Insert places it with the live member drawn and the inert one kept', await card('nest:2').locator('.nest-body .dash-cell').count() === 1
+     && Object.keys((await stored())['nest:2'].nest.map).includes(GHOST) && /1 of 2 members/.test(await said()), await said());
+  await page.keyboard.press('Escape');
   await ctx.close();
 }
 

@@ -122,7 +122,16 @@
         </svg>
       </button>
     {/if}
-    <h3 class="dash-title" data-pidx={pidx}>{item.title}</h3>
+    {#if editing && item.retitle}
+      <input class="dash-title dash-title-edit" type="text" value={item.title} aria-label={'Name of ' + item.title}
+             onchange={(e) => (e.currentTarget.value.trim() ? item.retitle(e.currentTarget.value) : (e.currentTarget.value = item.title))}
+             onkeydown={(e) => {
+               if (e.key === 'Enter') e.currentTarget.blur();
+               else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
+             }} />
+    {:else}
+      <h3 class="dash-title" data-pidx={pidx}>{item.title}</h3>
+    {/if}
     {#if editing && onremove}
       <button type="button" class="og-btn sm out" aria-label={'Move ' + item.title + ' out of the nest'}
               onclick={onremove}>Out</button>
@@ -184,6 +193,18 @@
   }
 
   .dash-item.selected { outline: 2px solid var(--intent); }
+  /* An item with `retitle` (a nest) names itself in place, in edit mode. */
+  .dash-title-edit {
+    flex: 1 1 auto;
+    width: 0;
+    min-height: 30px;
+    padding: 2px 6px;
+    border: 1px dashed var(--line-3);
+    border-radius: var(--radius);
+    background: transparent;
+    font: inherit;
+  }
+  @media (pointer: coarse) { .dash-title-edit { min-height: 40px; } }
 
   .dash-head {
     display: flex;

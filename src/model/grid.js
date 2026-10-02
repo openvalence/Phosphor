@@ -108,7 +108,7 @@ export function pack(items, map, cols, pin = null) {
   const fits = (r) => !placed.some((p) => overlaps(r, p));
   const size = (e) => {
     const w = int(e && e.w, 1, cols, cols);
-    return { w, h: int(e && e.h, 1, MAX_H, DEFAULT_H) };
+    return { w, h: folded(e) ? NEST_FOLD_H : int(e && e.h, 1, MAX_H, DEFAULT_H) };
   };
   const byId = new Map(items.map((it) => [it.id, it]));
 
@@ -192,7 +192,8 @@ export function resizeRect(start, edge, c, cols, min = null) {
 function write(map, placed) {
   for (const p of placed) {
     const prev = map[p.id];
-    const e = { x: p.x, y: p.y, w: p.w, h: p.h };
+    // A folded nest is drawn NEST_FOLD_H tall; its own height waits for the unfold.
+    const e = { x: p.x, y: p.y, w: p.w, h: folded(prev) ? prev.h : p.h };
     if (isNest(prev)) e.nest = prev.nest;
     if (prev && typeof prev === 'object' && prev.look) e.look = prev.look;
     map[p.id] = e;
@@ -441,6 +442,9 @@ export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
 
 export const NEST_W = 16;
 export const NEST_H = 6;
+/** Rows a collapsed nest occupies: its header and the bar with the in-flight count (law 9: never hidden). */
+export const NEST_FOLD_H = 2;
+const folded = (e) => isNest(e) && e.nest.collapsed === true;
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -453,7 +457,8 @@ export function isNest(e) {
 export function nestsIn(map) {
   return Object.keys(map).filter((id) => isNest(map[id])).map((id) => {
     const n = map[id].nest;
-    return { id, title: typeof n.title === 'string' && n.title.trim() ? n.title : 'Nest', scroll: n.scroll !== false, keys: Object.keys(n.map) };
+    return { id, title: typeof n.title === 'string' && n.title.trim() ? n.title : 'Nest', scroll: n.scroll !== false,
+      collapsed: n.collapsed === true, keys: Object.keys(n.map) };
   });
 }
 
@@ -499,10 +504,12 @@ export function nestOut(map, id, key) {
   return true;
 }
 
-export function setNest(map, id, { title, scroll } = {}) {
+export function setNest(map, id, { title, scroll, collapsed } = {}) {
   if (!isNest(map[id])) return false;
   if (typeof title === 'string' && title.trim()) map[id].nest.title = title.trim();
   if (typeof scroll === 'boolean') map[id].nest.scroll = scroll;
+  if (collapsed === true) map[id].nest.collapsed = true;
+  else if (collapsed === false) delete map[id].nest.collapsed;
   return true;
 }
 
