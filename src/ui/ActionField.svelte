@@ -98,8 +98,10 @@
               title={reasonFor(op.value) || op.label} onclick={() => press(op.value)}>{op.label}</button>
     {/each}
   </div>
-  {#if reasons.length}<p class="hint why">{reasons.join('; ')}</p>{/if}
-  {#if statusText}<p class="hint state" role="status">{statusText}</p>{/if}
+  <!-- One fixed line for the ladder, else the gate (laws 3, 5): no state
+       changes the card's height. -->
+  <p class="hint state" class:why={!statusText} role="status"
+     title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</p>
 </div>
 
 <style>
@@ -110,6 +112,7 @@
   .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
   .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
+  .state { min-height: 1.45em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .why { color: var(--ink-faint); }
   .action[data-shadow='fault'] .state { color: var(--bad); }
   .action[data-shadow='overdue'] .state { color: var(--warn); }

@@ -64,13 +64,17 @@
   const tierOk = $derived(canWrite(field));
   const enabled = $derived(!field.readOnly && !displayOnly && maskOn && linkUp && tierOk);
 
+  // The gate in words (law 3). A composite (range, color) names the first
+  // closed gate among its own fields.
+  const gateOf = (f) => (!linkUp ? 'no hub link'
+    : !canWrite(f) ? 'this session is not authorized to change settings'
+    : !isFieldEnabled(f, machine.samples[f.channelId]) ? 'the machine is refusing this setting right now'
+    : '');
   const reason = $derived(
-    displayOnly ? ''
-    : field.readOnly ? 'read-only — the machine reports this, it is not a setting'
-    : !linkUp ? 'no hub link'
-    : !tierOk ? 'this session is not authorized to change settings'
-    : !maskOn ? 'the machine is refusing this setting right now'
-    : ''
+    displayOnly || field.readOnly ? ''
+    : field.widget === WIDGET.range ? [field.lo, field.hi].map(gateOf).find(Boolean) || ''
+    : field.widget === WIDGET.color ? [field.r, field.g, field.b].map(gateOf).find(Boolean) || ''
+    : gateOf(field)
   );
 
   /**
@@ -327,14 +331,19 @@
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
 
-  // ---- the four-state ladder in words (law 5) --------------------------------
-  // Fault keeps its own line below (`refused: <why>`); this names the rest.
-  const ladder = $derived(
-    status === 'pending' ? 'sent, waiting for the machine'
-    : status === 'overdue' ? 'still waiting for the machine'
-    : status === 'fault' && !(sh && sh.error) ? 'refused'
-    : sh && sh.settled ? 'confirmed'
-    : ''
+  // ---- the status slot: one fixed home for every transient (laws 3, 5) -------
+  // The ladder in words, then a ground-truth mark, then the gate. One line in
+  // the head row, clipped, so no state can change the field's height; the
+  // full text rides in the title.
+  const slot = $derived(
+    status === 'fault' ? { kind: 'fault', text: 'refused' + (sh && sh.error ? ': ' + sh.error : '') }
+    : status === 'pending' ? { kind: 'pending', text: 'waiting for the machine' }
+    : status === 'overdue' ? { kind: 'overdue', text: 'still waiting for the machine' }
+    : outOfRange ? { kind: 'range', text: 'outside this control\'s range ('
+        + formatWithUnit(field, field.min) + ' to ' + formatWithUnit(field, field.max) + ')' }
+    : reason ? { kind: 'gate', text: reason }
+    : sh && sh.settled ? { kind: 'confirmed', text: 'confirmed' }
+    : { kind: '', text: '' }
   );
 
   // ---- knob: a bounded numeric as a rotary control ---------------------------
@@ -447,7 +456,8 @@
         </button>
       {/if}
     </span>
-    <span class="ladder" role="status">{ladder}</span>
+    <span class="ladder" class:out-of-range={slot.kind === 'range'} data-slot={slot.kind}
+          role="status" title={slot.text || undefined}>{slot.text}</span>
     {#if typeableChip}
       <!-- A slider publishes no numerals of its own, so this chip is the only
            place an exact value can be entered. Editable values must LOOK
@@ -670,18 +680,7 @@
     </svg>
   {/if}
 
-  {#if outOfRange}
-    <p class="field-reason out-of-range" role="status">outside this control's range
-      ({formatWithUnit(field, field.min)} to {formatWithUnit(field, field.max)})</p>
-  {/if}
-
   {#if field.desc}<p class="field-desc" id={descId + '-inline'}>{field.desc}</p>{/if}
-
-  {#if sh && sh.status === 'fault' && sh.error}
-    <p class="field-error" role="status">refused: {sh.error}</p>
-  {:else if reason && !field.readOnly && !displayOnly && !isRange}
-    <p class="field-reason">{reason}</p>
-  {/if}
 </div>
 
 <style>
@@ -1274,15 +1273,23 @@
     accent-color: var(--reality);
   }
 
-  /* ---- the ladder's words (law 5): in the head row, so it shifts nothing --- */
+  /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------
+     Basis 0, so its text never takes width from the label or the value chip
+     and never wraps the head: the field's height is the same in every state. */
   .ladder {
-    margin-left: auto;
-    font-size: 11px;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    text-align: right;
+    font-size: 11px;
     color: var(--tx-mut);
   }
-  .field[data-shadow='overdue'] .ladder { color: var(--warn); }
-  .field[data-shadow='fault'] .ladder { color: var(--bad); }
+  .ladder[data-slot='pending'] { color: var(--intent); }
+  .ladder[data-slot='overdue'] { color: var(--warn); }
+  .ladder[data-slot='fault'] { color: var(--bad); }
+  .ladder[data-slot='gate'] { color: var(--tx-ghost); }
 
   /* ---- builder presentations (DESIGN §10.2) -------------------------------- */
   .knob {
@@ -1361,9 +1368,11 @@
     vector-effect: non-scaling-stroke;
   }
 
-  /* Stale (law 8): every value surface dims, not only the chip. */
-  .field.stale :is(.numeral, .meter-fill, .graph path, .knob-fill, .lamp.lit i) {
-    opacity: .45;
+  /* Stale (law 8): every value surface dims, the control and its chip; the
+     label and the status slot stay legible. */
+  .field.stale > :not(.field-head, .field-desc),
+  .field.stale .field-value {
+    opacity: .5;
   }
   .field.stale .numeral { color: var(--tx-ghost); }
 

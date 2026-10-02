@@ -233,8 +233,8 @@ p { max-width: 75ch; }
      Anything that occupies space still obeys the rule above.
    - `fault` does NOT pulse. A pulsing failure reads as "still trying"; a
      refused write has already finished failing and should sit still to be read.
-   - Color is never the only channel — every unconfirmed control also renders
-     a textual reason beneath it (Field.svelte's .field-reason/.field-error).
+   - Color is never the only channel — every unconfirmed control also names
+     its state in words, in a fixed slot (Field.svelte's head-row .ladder).
 */
 [data-shadow='pending'] {
   box-shadow: inset 0 0 0 1.5px rgba(var(--intent-rgb), .65);

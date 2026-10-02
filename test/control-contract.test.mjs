@@ -12,7 +12,10 @@
  * pending then confirmed on an echo, overdue past 500 ms, fault on a NACK and
  * on silence, each with its text reason; a newer write survives the silent
  * intent's late session timeout (ph-6i9); display-only presentations write
- * nothing; an aspect flip at w = h swaps orientation without dropping a write
+ * nothing; every presentation keeps one height idle, pending, overdue,
+ * confirmed, grayed (enabled_mask), stale (hub silence) and at fault, the
+ * words in the head-row slot (ph-vdk.60.1); an aspect flip at w = h swaps
+ * orientation without dropping a write
  * in flight; a secret action payload masks and never reaches the status text
  * (ph-vic).
  *
@@ -102,7 +105,7 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 // ---- the fake hub -----------------------------------------------------------
-const hub = { mode: 'echo', held: [], values: {} };
+const hub = { mode: 'echo', held: [], values: {}, mute: false, push: null };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -143,6 +146,7 @@ function fakeHub(ws) {
     const e = ENTRIES.find((x) => x.id === id);
     if (e && e.layout) send(FRAME.STATE, id, encodePacked(e));
   };
+  hub.push = pushState;
   ws.onMessage((msg) => {
     if (typeof msg === 'string') return;
     for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
@@ -152,7 +156,7 @@ function fakeHub(ws) {
           [K.catalog_etag, cbBstr(Uint8Array.from(Buffer.from(ETAG, 'hex')))], [K.cfg_gen, cbUint(1)],
           [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
             [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
-          [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
+          [K.roles, cbUint(2)], [K.deadman_ms, cbUint(2000)],
           [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
             [IDENTITY_K.hub_name, cbTstr('Control contract fixture')]])],
         ]));
@@ -186,7 +190,7 @@ function fakeHub(ws) {
             [K.intent_id, cbUint(id)]]));
         }
       } else if (header.type === FRAME.PING) {
-        send(FRAME.PONG, header.channel, payload);
+        if (!hub.mute) send(FRAME.PONG, header.channel, payload);
       }
     }
   });
@@ -269,7 +273,7 @@ if (!LIVE) {
     ok(p + ': overdue past 500 ms with no echo', await waitShadow(p, 'overdue', 1500));
     ok(p + ': overdue names itself in words', (await ladderOf(p)).includes('still waiting'), await ladderOf(p));
     ok(p + ': fault when the echo never comes', await waitShadow(p, 'fault', 3000));
-    ok(p + ': fault gives the reason', /refused: no echo/.test(await cell(p).locator('.field-error').textContent()));
+    ok(p + ': fault gives the reason', /refused: no echo/.test(await ladderOf(p)), await ladderOf(p));
     // The unanswered intent's session timeout (3 s) lands about 1 s after the
     // fault, on the same shadow record; a newer write must not feel it (ph-6i9).
     hub.mode = 'hold';
@@ -284,8 +288,7 @@ if (!LIVE) {
     hub.mode = 'nack';
     await drive(p);
     ok(p + ': fault on a NACK', await waitShadow(p, 'fault', 1500));
-    ok(p + ': the NACK code is the reason', /INVALID_VALUE/.test(await cell(p).locator('.field-error').textContent()),
-      await cell(p).locator('.field-error').textContent());
+    ok(p + ': the NACK code is the reason', /INVALID_VALUE/.test(await ladderOf(p)), await ladderOf(p));
     hub.mode = 'echo';
     await sleep(100);
   }
@@ -294,8 +297,50 @@ if (!LIVE) {
   for (const p of ['numeral', 'bar']) {
     ok(p + ': a read-only presentation of a writable field has no control',
       await page.locator('.cell[data-pres=' + p + '] :is(input, button.info.reset, [role=slider])').count() === 0);
-    ok(p + ': ...and no gate reason, because nothing is gated', await cell(p).locator('.field-reason').count() === 0);
+    ok(p + ': ...and no gate reason, because nothing is gated', await cell(p).locator('.ladder[data-slot=gate]').count() === 0);
   }
+
+  // Every transient has one fixed home (laws 3, 5, 8): the field's height is
+  // the same idle, pending, overdue, fault, grayed and stale.
+  console.log('\n[anatomy]');
+  const heights = () => page.evaluate((ps) => Object.fromEntries(ps.map((p) =>
+    [p, document.querySelector('.cell[data-pres=' + p + '] .field').getBoundingClientRect().height])), PRES);
+  const idle = await heights();
+  const same = async (state) => {
+    const h = await heights();
+    for (const p of PRES) ok(p + ': the same height ' + state, Math.abs(h[p] - idle[p]) < 0.5, [idle[p], h[p]]);
+  };
+  hub.mode = 'hold';
+  await drive('slider');
+  ok('a write is pending', await waitShadow('slider', 'pending', 1000));
+  await same('pending');
+  ok('...then overdue', await waitShadow('slider', 'overdue', 1500));
+  await same('overdue');
+  await release();
+  ok('...then confirmed', await waitShadow('slider', 'confirmed'));
+  await same('confirmed');
+  hub.mode = 'echo';
+  const MASK = STATE_CH + ':' + FIELD.maskFieldName;
+  hub.values[MASK] = 0;
+  hub.push(STATE_CH);
+  ok('the machine closes the field (enabled_mask)', await page.locator('.cell[data-pres=slider] input[type=range][disabled]')
+    .waitFor({ timeout: 2000 }).then(() => true).catch(() => false));
+  ok('...and the gate is named in the slot', /refusing/.test(await ladderOf('slider')), await ladderOf('slider'));
+  await same('grayed');
+  hub.values[MASK] = 0xff;
+  hub.push(STATE_CH);
+  await page.locator('.cell[data-pres=slider] input[type=range]:not([disabled])').waitFor({ timeout: 2000 });
+  hub.mute = true;
+  ok('silence dims the field as stale (law 8)', await page.locator('.cell[data-pres=slider] .field.stale')
+    .waitFor({ timeout: 5000 }).then(() => true).catch(() => false));
+  await same('stale');
+  hub.mute = false;
+  await page.locator('.cell[data-pres=slider] .field:not(.stale)').waitFor({ timeout: 3000 });
+  hub.mode = 'nack';
+  await drive('slider');
+  ok('a refused write faults', await waitShadow('slider', 'fault', 1500));
+  await same('at fault, its reason in the slot');
+  hub.mode = 'echo';
 
   console.log('\n[aspect]');
   const ctl = page.locator('.cell[data-pres=control] .field');
