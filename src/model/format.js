@@ -207,11 +207,12 @@ export function bytes(n) {
 }
 
 /**
- * The machine header: WELCOME identity hub_name (SPEC §6.3, RFC-016), then
- * the live identity.name setting, then product. Never a client-side name.
+ * The machine header: the live identity.name setting (ground truth after a
+ * rename, RENDERING law 4), then WELCOME identity hub_name (SPEC §6.3,
+ * RFC-016, sent once), then product. Never a client-side name.
  */
 export function hubTitle(identity, liveName) {
-  return (identity && identity.hub_name) || liveName || (identity && identity.product) || '--';
+  return liveName || (identity && identity.hub_name) || (identity && identity.product) || '--';
 }
 
 /**

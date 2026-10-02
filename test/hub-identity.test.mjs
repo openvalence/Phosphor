@@ -36,7 +36,7 @@ async function welcomeIdentity(identity) {
 
 const named = await welcomeIdentity([[IDENTITY_K.product, cbTstr('Nucleus')], [IDENTITY_K.hub_name, cbTstr('bench-rig')]]);
 assert.equal(hubTitle(named, ''), 'bench-rig', 'hub_name leads');
-assert.equal(hubTitle(named, 'renamed'), 'bench-rig', 'hub_name outranks the identity.name setting');
+assert.equal(hubTitle(named, 'renamed'), 'renamed', 'the live identity.name setting outranks WELCOME hub_name: ground truth after a rename');
 
 const unnamed = await welcomeIdentity([[IDENTITY_K.product, cbTstr('Nucleus')]]);
 assert.equal(hubTitle(unnamed, 'rig-from-setting'), 'rig-from-setting', 'identity.name setting before product');
