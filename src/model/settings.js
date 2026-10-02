@@ -489,6 +489,9 @@ export function buildSettingsModel(entries) {
         role: f.role,
         options: f.options || null,
         optionAccess: f.optionAccess || null,
+        // RFC-063: actions.js isDestructive reads these two.
+        flagBits: f.flagBits || null,
+        destructiveOptions: f.destructiveOptions || null,
         access: f.access != null ? f.access : entry.access,
         group: f.group || '',
         type: f.type,

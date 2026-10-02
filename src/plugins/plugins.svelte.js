@@ -20,14 +20,12 @@ import {
   writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf,
 } from '../model/shadow.svelte.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
-import { ROLE } from '../model/roles.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import { LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
-import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -53,16 +51,12 @@ function logLine(name, level, msg) {
   (level === 'error' ? console.error : console.log)('[plugin:' + name + '] ' + msg);
 }
 
-// RENDERING §10.2 items 2 and 4: a plugin requests, the host confirms. RFC-067
-// makes an action.store delete destructive by registration.
-// TODO(ph-vdk.31): fold the store-delete rule into actions.js isDestructive.
+// RENDERING §10.2 items 2 and 4: a plugin requests, the host confirms.
 const CANCELED = { ok: false, error: 'canceled' };
 async function write(field, value, payload) {
   if (!field) return { ok: false, error: 'no field' };
   if (field.widget === WIDGET.action) {
-    const confirm = needsConfirm(field, value)
-      || (field.role === ROLE.actionStore && value === STORE_OP.delete_item);
-    if (confirm && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
+    if (needsConfirm(field, value) && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
     return runAction(field, value, payload || null);
   }
   if (field.isIntentField) return sendCommand(field, value);

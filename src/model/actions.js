@@ -9,6 +9,7 @@
  */
 
 import { ACTION_TAG, SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS } from '../../../Valence/clients/js/index.js';
+import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { ACTION_PREFIX, isActionRole } from './roles.js';
 import { labelFor, optionLabel } from './format.js';
 
@@ -28,13 +29,16 @@ const CONFIRM_TAGS = new Set([ACTION_TAG.reboot, ACTION_TAG.reset]);
 const HAZARD_SAFETY_OPS = new Set([SAFETY_OP.override]);
 
 /**
- * The catalog's own destructive bit (§8.2 row 6, §8.4 trigger row). SPEC §8.8
- * does not define it yet, so nothing on the wire can set it.
+ * SPEC §8.8 (RFC-063): an invocation is destructive iff the field carries the
+ * `destructive` flag, the invoked op's `destructive_options` bit is set, or it
+ * is an `action.store` delete. action.reboot/action.reset confirm through
+ * CONFIRM_TAGS. Never inferred from labels, names or desc.
  */
-// TODO(ph-vdk.31): read the destructive flag here once its RFC lands.
 export function isDestructive(action, value) {
-  void action; void value;
-  return false;
+  if (!action) return false;
+  if (action.flagBits && action.flagBits.destructive) return true;
+  if (action.destructiveOptions && action.destructiveOptions[value]) return true;
+  return actionTag(action) === ACTION_TAG.store && value === STORE_OP.delete_item;
 }
 
 // Verbs the persistent region draws by identity and tag (TopStrip's strip);
@@ -48,17 +52,22 @@ export function isPersistentAction(action) {
 /** Must pressing this op go through the confirm layer first? */
 export function needsConfirm(action, value) {
   if (!action) return false;
+  // Law 14 outranks any catalog flag: on the safety-intents channel only the
+  // hazard op waits on a dialog, never estop, pause or their releases.
+  if (action.channelId === CH_SAFETY_INTENTS) return HAZARD_SAFETY_OPS.has(value);
   if (CONFIRM_TAGS.has(actionTag(action))) return true;
-  if (action.channelId === CH_SAFETY_INTENTS && HAZARD_SAFETY_OPS.has(value)) return true;
   return isDestructive(action, value);
 }
 
 /**
- * Must this SETTING write confirm first? Only `source.background_run` going
- * false -> true (§10.1 rule 2): "this may keep moving after you leave".
+ * Must this SETTING write confirm first? A `destructive`-flagged setting on
+ * every write (SPEC §8.8), and `source.background_run` going false -> true
+ * (§10.1 rule 2): "this may keep moving after you leave".
  */
 export function settingNeedsConfirm(field, from, to) {
-  return !!field && field.role === FIELD_ROLE.source_background_run && !from && !!to;
+  if (!field) return false;
+  if (field.flagBits && field.flagBits.destructive) return true;
+  return field.role === FIELD_ROLE.source_background_run && !from && !!to;
 }
 
 const firstOf = (byRole, r) => ((byRole && byRole.get(r)) || [])[0];

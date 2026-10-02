@@ -29,6 +29,7 @@ import {
   SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS, decodeCatalog,
   VALUE_ASPECT, VALUE_SCOPE, UNIT_ID, CBOR_FIELD,
 } from '../../Valence/clients/js/index.js';
+import { STORE_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -476,6 +477,19 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
        .every((op) => !needsConfirm(safety, op)));
   ok('the same op number on a device channel is another verb: no confirm',
      !needsConfirm(act('action.safety'), SAFETY_OP.override));
+  // RFC-063 (SPEC §8.8): the flag, the per-op mask, and the store delete.
+  ok('a destructive-flagged verb confirms', needsConfirm(act('action.admin', { flagBits: { destructive: true } }), 1));
+  const ops = act('action.admin', { options: ['reserved', 'clear_fault', 'factory_reset'], destructiveOptions: [false, false, true] });
+  ok('destructive_options confirms only its marked op', needsConfirm(ops, 2) && !needsConfirm(ops, 1));
+  const store = act('action.store', { options: ['reserved', 'save', 'load', 'delete', 'rename'] });
+  ok('an action.store delete confirms by registration', needsConfirm(store, STORE_OP.delete_item));
+  ok('...and its save, load and rename do not', [STORE_OP.save, STORE_OP.load, STORE_OP.rename].every((v) => !needsConfirm(store, v)));
+  ok('a destructive mark on estop is ignored (law 14)',
+     !needsConfirm({ ...safety, flagBits: { destructive: true }, destructiveOptions: [true, true, true, true, true, true, true, true] }, SAFETY_OP.estop));
+  const built = buildSettingsModel([{ id: 0x0300, name: 'x', cls: CHANNEL_CLASS.INTENT, dir: 1, access: 1, schema: [
+    { key: 1, name: 'op', type: 0, role: 'action.admin', options: ['reserved', 'a', 'b'], destructiveOptions: [false, false, true] }] }]);
+  ok('the settings model carries destructive_options onto the action', needsConfirm(built.actions[0], 2) && !needsConfirm(built.actions[0], 1));
+  ok('a destructive-flagged setting confirms every write', settingNeedsConfirm({ role: '', flagBits: { destructive: true } }, 1, 0));
   const bg = { role: FIELD_ROLE.source_background_run };
   ok('background_run false->true confirms', settingNeedsConfirm(bg, 0, 1));
   ok('background_run true->false does not', !settingNeedsConfirm(bg, 1, 0));
