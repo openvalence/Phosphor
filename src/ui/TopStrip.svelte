@@ -31,7 +31,8 @@
    * - The numeral's glow paints to the strip's edges, never past them: the
    *   numerals cell clips at the strip box, not at its own.
    * - The status slot shows ONE thing, by priority: link fault, unattended
-   *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge.
+   *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge,
+   *   virtual hub.
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
    *   off or unmounted.
@@ -138,6 +139,7 @@
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
     if (latestSafety) return { kind: 'edge' };
+    if (link.virtual) return { kind: 'notice', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
   });
   // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.
