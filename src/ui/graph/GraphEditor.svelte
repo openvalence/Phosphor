@@ -597,7 +597,7 @@
                   data-off={a && a.on === false ? '' : null} data-live={a && a.on && typeof v === 'number' ? '' : null}
                   data-sel={selWire === w.id ? '' : null} />
             <path class="gwire-hit" {d} role="presentation"
-                  onpointerdown={(e) => { e.stopPropagation(); selWire = w.id; sel = new Set(); }} />
+                  onpointerdown={(e) => { e.stopPropagation(); selWire = w.id; sel = new Set(); vp.focus({ preventScroll: true }); }} />
             {#if typeof v === 'number'}
               <text class="gval" x={(p1[0] + p2[0]) / 2} y={(p1[1] + p2[1]) / 2 - 6} text-anchor="middle">{fmt(v)}</text>
             {/if}

@@ -8,13 +8,16 @@
  *             socket makes a client edge with its map node and two wires,
  *             and the source's live value rides the wire
  *   refuse    the toy driving itself through a map shows the loop refusal
- *             at the cursor while hovering and again on the drop; nothing
- *             is wired
- *   delete    a selected map node goes with Delete; Ctrl+Z brings it back
+ *             at the cursor while hovering and again on the drop, in amber,
+ *             never --bad (law 13); nothing is wired
+ *   delete    a selected map node goes with Delete; Ctrl+Z brings it back;
+ *             a clicked wire is selected and Delete cuts it, leaving a draft
  *   view      wheel zoom and a drag pan keep every wire end on its socket
  *   keyboard  Enter on two sockets wires them with no mouse
- *   targets   law 12 (40 px sockets) under a touch pointer; nothing wears
- *             --bad (law 13)
+ *   select    Shift+drag box-selects; Duplicate copies a map, unwired
+ *   full      full size fills the window below the top strip
+ *   touch     the stored graph comes back; law 12 (40 px sockets) under a
+ *             touch pointer; two fingers pinch-zoom
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Run: node test/graph-editor.test.mjs [--shot <png>]
@@ -274,6 +277,27 @@ let saved = null;
   await page.waitForTimeout(150);
   ok('Ctrl+Shift+Z deletes it again', await rels.count() === 0);
 
+  // a wire: click selects it, Delete cuts it, Ctrl+Z restores it.
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  const hit = await page.evaluate(() => { const p = document.querySelector('.gwire[data-wire$=":out"]'); const q = p.getPointAtLength(p.getTotalLength() / 2);
+    const m = p.getScreenCTM(); const o = new DOMPoint(q.x, q.y).matrixTransform(m); return [o.x, o.y]; });
+  await page.mouse.click(hit[0], hit[1]);
+  ok('clicking a wire selects it', await page.locator('.gwire[data-sel]').count() === 1);
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(150);
+  ok('Delete cuts the selected wire; its map stays as a draft', await rels.count() === 0 && await page.locator('.gnode[data-kind=draft]').count() === 2);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(150);
+  ok('redo replays the cut', await rels.count() === 0 && await page.locator('.gnode[data-kind=draft]').count() === 2);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  await rels.first().locator('.ghead').click();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(150);
+
   // keyboard: Enter on the source output, Enter on the draft input.
   await sock(S, 'out').focus();
   await page.keyboard.press('Enter');
@@ -338,6 +362,18 @@ let saved = null;
   const sizes = await page.$$eval('[data-sock]', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height); }));
   ok('the stored graph comes back in a new session', sizes.length >= 4, sizes.length);
   ok('every socket is at least 40 px under a touch pointer (law 12)', sizes.length > 0 && sizes.every((s) => s >= 39.5), sizes);
+  const scale = () => page.locator('.glayer').evaluate((el) => Number((/scale\(([\d.]+)\)/.exec(el.style.transform) || [])[1]));
+  const k0 = await scale();
+  const cdp = await ctx.newCDPSession(page);
+  const vb = await page.locator('.graph .gview').boundingBox();
+  const cx = vb.x + vb.width / 2;
+  const cy = vb.y + vb.height - 24;
+  const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }] });
+  await touch('touchStart', 20);
+  for (const d of [30, 45, 60, 80]) await touch('touchMove', d);
+  await touch('touchEnd', 0);
+  await page.waitForTimeout(100);
+  ok('two fingers spreading on the canvas zoom in', await scale() > k0, [k0, await scale()]);
   ok('no page errors (touch)', errors.length === 0, errors);
   await ctx.close();
 }
