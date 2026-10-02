@@ -1083,16 +1083,24 @@
      baseline. */
   .rw-hero-row {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: flex-end;
     gap: 12px;
     padding: 10px 0 8px;
   }
-  /* The rail's control row: override/return (and Flip) beside Home. */
-  .rw-hero-accessory { flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px; }
-  /* Below a phone: the controls wrap under each other instead of overflowing. */
-  @media (max-width: 319px) {
-    .rw-hero-accessory { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  /* The rail's control row: override/return (and Flip) beside Home. Short of
+     width it drops under the numerals, then wraps itself; never overlaps them
+     or overflows the page. */
+  .rw-hero-accessory {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: 4px;
   }
   /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
   .rw-flip {
