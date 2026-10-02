@@ -729,6 +729,48 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      safety.join() === 'safety:estop,safety:pause', safety.join(','));
 }
 
+// ---- ph-vdk.60: presentation cases the Field anatomy relies on ----------------
+{
+  const sf = (name, type, key, extra = {}) => lf(name, type, { settingKey: key, group: 'Kit', ...extra });
+  const kit = buildSettingsModel([
+    { id: 0x0d10, name: 'kit', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 1,
+      category: UI_CATEGORY.tuning, categoryKnown: true, categoryName: 'tuning', settingChannel: 0x0d90,
+      layout: [
+        sf('mode', PACKED.u8, 1, { options: ['none', 'low', 'high'] }),
+        sf('preset', PACKED.u8, 2, { options: ['a', 'b', 'c', 'd', 'e', 'f'] }),
+        sf('word', PACKED.str16, 3),
+        sf('key', PACKED.str16, 4, { flags: 4, flagBits: { secret: true } }),
+        sf('lamps', PACKED.bitfield8, 5, { bits: ['x', 'y', '', '', '', '', '', ''] }),
+        sf('tick', PACKED.u8, 6, { min: 0, max: 9, step: 1 }),
+        sf('spin', PACKED.f32, 7, { min: 0, max: 1, step: 0.01 }),
+      ] },
+    { id: 0x0d90, name: 'kit-set', cls: CHANNEL_CLASS.INTENT, dir: 1, access: 1, maxRateHz: 5, priority: 1,
+      layout: null, schema: ['mode', 'preset', 'word', 'key', 'lamps', 'tick', 'spin'].map((name, i) =>
+        ({ key: i + 1, name, type: CBOR_FIELD.uint_t, unit: '', rank: UI_RANK.detail })) },
+  ]);
+  const by = (n) => kit.fields.find((f) => f.name === n);
+  const offered = (n) => offeredPresentations(by(n));
+  ok('RFC-064: a settings select keeps index 0 as a real option, in both choice presentations',
+     by('mode').options.length === 3 && by('mode').options[0] === 'none' && by('mode').widget === WIDGET.segmented
+       && offered('mode').includes(WIDGET.select) && by('preset').widget === WIDGET.select && offered('preset').includes(WIDGET.segmented),
+     offered('mode').join());
+  ok('a plain string offers text and never secret; a secret offers secret and never text',
+     offered('word').includes(WIDGET.text) && !offered('word').includes(WIDGET.secret)
+       && by('key').widget === WIDGET.secret && !offered('key').includes(WIDGET.text), offered('key').join());
+  ok('a secret never offers a numeral, which would print what the wire withholds', !offered('key').includes(WIDGET.numeral));
+  ok('a named-bit bitfield is the bitfield presentation and may show as lamps',
+     by('lamps').widget === WIDGET.bitfield && offered('lamps').includes(WIDGET.indicator), offered('lamps').join());
+  ok('a nine-position integer is a stepper that may also turn as a knob or show as a bar',
+     by('tick').widget === WIDGET.stepper && [WIDGET.knob, WIDGET.slider, WIDGET.bar].every((p) => offered('tick').includes(p)),
+     offered('tick').join());
+  ok('a bounded float offers the graph (a client history ring) and the numeral',
+     [WIDGET.graph, WIDGET.numeral].every((p) => offered('spin').includes(p)), offered('spin').join());
+  ok('no choice field offers a graph or a knob (no ordered numeric scale to draw)',
+     ['mode', 'preset'].every((n) => !offered(n).includes(WIDGET.graph) && !offered(n).includes(WIDGET.knob)));
+  ok('every offered presentation of every kit field has a minimum footprint',
+     kit.fields.every((f) => offeredPresentations(f).every((p) => minCells(p, 'h').length === 2)));
+}
+
 // ---- ph-vic: a secret action payload is flagged so ActionField masks it -----
 {
   const m = buildSettingsModel([{
