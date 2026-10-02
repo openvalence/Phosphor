@@ -27,52 +27,22 @@
  * SUBSCRIBE rate — how often the DEVICE sends a STATE push for a channel.
  * This one is emphatically not free: ESP32 airtime, heap, WS frame count, and
  * the ValenceHubService task's own 5 ms tick budget, shared across every
- * channel ~30 of them subscribed at once. This is the rate `MAX_SUBSCRIBE_HZ`
- * and `TELEMETRY_HZ` below actually govern. A higher DRAW rate cannot make a
+ * channel ~30 of them subscribed at once. This is the rate wishes.js's `MAX_SUBSCRIBE_HZ`
+ * and `TELEMETRY_HZ` actually govern. A higher DRAW rate cannot make a
  * ragged SUBSCRIBE rate look better — more frames just render the same uneven
  * samples more finely (see telebuf.js's interpolation, which is where
  * smoothness is actually won). Subscribe rate DOES set display latency,
- * though: see TELEMETRY_HZ below.
+ * though: see TELEMETRY_HZ in wishes.js.
  */
 
 import {
-  createSession, CHANNEL_CLASS, PRIORITY, NACK, LIMITS, acquireToken, getInstanceId, toHex,
+  createSession, PRIORITY, NACK, LIMITS, acquireToken, getInstanceId, toHex,
 } from '../../../Valence/clients/js/index.js';
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
+import { MAX_SUBSCRIBE_HZ, subscriptionWishes, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
-
-/**
- * Default ceiling for ordinary channels (settings, diagnostics, tuning) —
- * nobody's eye tracks these in real time frame-to-frame, so a modest,
- * unmeasured-but-safe rate is fine. NOT a draw rate; see this file's header.
- * TELEMETRY_HZ below overrides this for the three roles that actually need
- * to be paced well. This is a two-tier policy (telemetry vs everything else),
- * not full per-priority stratification — nothing measured here showed
- * background/diagnostic channels need their own tier, and the override
- * mechanism (telemetryChannelIds()) generalizes to adding one if that changes.
- */
-const MAX_SUBSCRIBE_HZ = 30;
-
-/**
- * Subscribe rate for the roles the rail's comet and hero numerals read
- * (TELEMETRY_ROLES); every other channel keeps MAX_SUBSCRIBE_HZ. This is a
- * LATENCY knob: telebuf.js's render delay is sized from the p95 arrival gap,
- * so a shorter period is a shorter display lag.
- *
- * The hub paces a subscription on its 5 ms tick, pushing at the first tick at
- * least 1000/rate ms (truncated to whole ms) after the last push (Valence
- * subscription.hpp dueForPush). 50 Hz is four whole ticks. 60 Hz truncates to
- * 16 ms, which the tick rounds up to 20: 50 Hz delivered under a 60 Hz grant.
- *
- * Never a rate the hub refuses: SUBSCRIBE refuses per wish only on channel,
- * access or subscription count (SPEC §6.7), and a wish above the channel's
- * max_rate_hz is clamped to it, by subscriptionWishes() here and by the hub
- * (SPEC §10.2).
- */
-const TELEMETRY_HZ = 50;
-const TELEMETRY_ROLES = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, ROLE.telemetryVelocity]);
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -356,64 +326,6 @@ export function estopLabel() {
 // ---------------------------------------------------------------------------
 
 /**
- * Build SUBSCRIBE wishes from the catalog itself — every hub-to-client channel
- * it advertises, at a rate the DEVICE can pace, not a rate the browser draws.
- *
- * Generic on purpose: a machine with channels we have never heard of gets
- * subscribed to anyway, and its data shows up in the diagnostics surface even
- * though no bespoke widget knows what it means. That is the difference between
- * a client and OUR client.
- *
- * ONE combined wish list — STATE and EVENT wishes mixed in the same frame.
- * RFC-033 settled this: mixing classes in one SUBSCRIBE is, and always was,
- * legal. See subscribeInBatches() for the field bug this used to be blamed on.
- *
- * `telemetryChanIds` (from the telemetryChannelIds() helper below) gets
- * TELEMETRY_HZ instead of MAX_SUBSCRIBE_HZ — see that constant's header for why.
- */
-function subscriptionWishes(entries, maxSubs, telemetryChanIds) {
-  const wishes = [];
-  for (const e of entries) {
-    if (e.dir !== 0) continue;                       // h2c only; we do not publish
-    if (HELLO_IDS.has(e.id)) continue;               // wished in HELLO
-    if (e.cls !== CHANNEL_CLASS.STATE && e.cls !== CHANNEL_CLASS.EVENT) continue;
-    // EVENTs are edge-driven; a rate on them is meaningless. On-change STATE
-    // channels advertise 0 and mean it.
-    let rate = (e.cls === CHANNEL_CLASS.EVENT || !e.maxRateHz)
-      ? 0
-      : Math.min(e.maxRateHz, MAX_SUBSCRIBE_HZ);
-    if (telemetryChanIds && telemetryChanIds.has(e.id) && e.maxRateHz) {
-      rate = Math.min(e.maxRateHz, TELEMETRY_HZ);
-    }
-    wishes.push([e.id, rate, e.priority != null ? e.priority : PRIORITY.background]);
-  }
-
-  // ---- RESPECT THE HUB'S SUBSCRIPTION CAP --------------------------------
-  //
-  // FIELD BUG, found by pointing this client at the real machine: it advertises
-  // 33 channels, this wanted 21 of them, and the hub's per-session cap is
-  // smaller than that. Over-subscribing did NOT earn a NACK — the SUBSCRIBE was
-  // dropped WHOLESALE, so the session went LIVE with zero grants and zero STATE,
-  // and every readout on every tab rendered `--`. It looked like a rendering
-  // bug and was a protocol-etiquette bug. The simulator hid it by advertising
-  // fewer channels.
-  //
-  // The cap is whatever the hub declared in WELCOME, so this adapts to any
-  // machine rather than hardcoding a number. When we have to drop some, drop
-  // the LEAST important: sorting by priority descending keeps safety and motion
-  // and sheds background diagnostics, which is the same ordering the hub itself
-  // uses when it sheds under congestion (SPEC 10.4).
-  // The HELLO wishes hold their own slots of the session cap.
-  const cap = (typeof maxSubs === 'number' && maxSubs > 0) ? Math.max(0, maxSubs - HELLO_WISHES.length) : wishes.length;
-  if (wishes.length <= cap) return wishes;
-  const ranked = wishes.slice().sort((a, b) => b[2] - a[2]);
-  const kept = ranked.slice(0, cap);
-  machine.link.subsDropped = wishes.length - cap;
-  return kept;
-}
-
-
-/**
  * Send SUBSCRIBE in batches that fit the hub's declared per-frame wish cap.
  *
  * ── Two field bugs, and the corrected diagnosis (RFC-033) ──────────────────
@@ -448,17 +360,6 @@ function subscribeInBatches(wishes) {
   for (let i = 0; i < wishes.length; i += budget) {
     session.subscribe(wishes.slice(i, i + budget));
   }
-}
-
-/** Channel ids carrying any of TELEMETRY_ROLES on this machine, by role — never a hardcoded id. */
-function telemetryChannelIds(model) {
-  const ids = new Set();
-  if (!model || !model.byRole) return ids;
-  for (const role of TELEMETRY_ROLES) {
-    const list = model.byRole.get(role);
-    if (list) for (const f of list) ids.add(f.channelId);
-  }
-  return ids;
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +474,11 @@ export function connect(opts = {}) {
     // per-frame wish count, which subscribeInBatches() sizes from the hub's
     // own advertised cap. See that function's header for the corrected story.
     const lim = machine.link.limits.max_subscriptions;
-    subscribeInBatches(subscriptionWishes(entries, lim, telemetryChannelIds(machine.catalog.model)));
+    const { wishes, dropped } = subscriptionWishes(entries, {
+      maxSubs: lim, telemetryIds: telemetryChannelIds(machine.catalog.model), skip: HELLO_IDS, reserved: HELLO_WISHES.length,
+    });
+    machine.link.subsDropped = dropped;
+    subscribeInBatches(wishes);
   });
 
   session.on('grant', (grants) => {
