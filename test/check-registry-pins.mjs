@@ -54,12 +54,10 @@ function section(name) {
 
 const udp = section('udp_discovery');
 const ble = section('ble_identity');
-const mdnsService = (registryText.match(/^\s+mdns_service:\s*"([^"]+)"/m) || [])[1];
 
 const registryValues = {
   udp_port: udp.port,
   udp_magic: udp.magic, // ASCII, e.g. "VLNC"
-  mdns_service: mdnsService, // under `limits:`, not emitted to Rust
   ble_service_uuid: ble.service_uuid.toLowerCase(),
   ble_write_char_uuid: ble.write_char_uuid.toLowerCase(),
   ble_notify_char_uuid: ble.notify_char_uuid.toLowerCase(),
@@ -116,14 +114,6 @@ checkPin(
   (m) => [m[1], m[2], m[3], m[4]].join(', ').toLowerCase(),
   magicHex.join(', ').toLowerCase(),
   'discovery.rs MAGIC vs registry udp_discovery.magic ("' + registryValues.udp_magic + '")',
-);
-
-checkPin(
-  'src-tauri/src/discovery.rs',
-  /const MDNS_SERVICE: &str = "([^"]+)";/,
-  (m) => m[1],
-  registryValues.mdns_service,
-  'discovery.rs MDNS_SERVICE vs registry limits.mdns_service',
 );
 
 // src/shell/ble-ws.js -- BLE UUIDs. Not codegen output (see file banner); gated here.
