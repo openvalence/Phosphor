@@ -1,31 +1,33 @@
 /**
- * advanced-penetration.test.mjs -- the factory plugin in the real shell
+ * advanced-penetration.test.mjs -- the factory pattern card in the real shell
  * bundle (shell-build.mjs, stub Tauri runtime) against a fake hub serving the
- * role-carrying fixture (test/fixtures/advgen-roles-catalog.mjs). Asserts:
- *   load       the factory plugin loads by default and substitutes the
- *              pattern: its card renders and the claimed fields leave the
- *              generic settings cards
- *   map        run/stop beside background_run, the stroke picture, the seven
- *              base controls, each modulator under the control its
- *              mod_target names
- *   ladder     a held write reads pending in words on the same control, then
- *              confirms with the echoed value; a modulator write round-trips
- *              and its cycle preview follows the reported values
- *   confirm    background_run enable and a preset delete go through the
- *              host's confirm; a cancel sends nothing
- *   presets    the store's slots read over the blob verb; save carries the
- *              slot and name and the list re-reads
- *   gate       a watch-tier session grays every control with the reason
- *   targets    law 12 (40 px) on every control under a touch pointer;
- *              nothing wears --bad
- *   fallback   disabled, the plugin renders nothing and the fields are
- *              generic again
+ * recorded catalog (test/fixtures/advgen-roles-catalog.mjs). Asserts:
+ *   load       the card substitutes both pattern built-ins; claimed fields
+ *              leave the generic cards; advgen.mode stays generic (RFC-093)
+ *   tabs       Advanced and Classic are views, each with its own Start; a
+ *              switch writes nothing; without advgen.running the Advanced
+ *              Start names what is missing
+ *   handles    a held deep drag writes once on release, pending on the
+ *              handle, then the echo; snapped and bounded; the numeric twin
+ *              shows the same field; a refusal reads on the handle; speed
+ *              and accel handles write the right direction; shift+arrow
+ *              nudges ten steps in one write
+ *   rhythm     the amp fader and a step handle write their fields in whole
+ *              strokes; the staircase follows the echo
+ *   presets    a dropdown of named slots; choose loads, Save prompts a name
+ *              into the first empty slot, Delete confirms, Reset restores
+ *              defaults
+ *   confirm    background_run enable asks the host; a cancel sends nothing
+ *   targets    40 px on a touch pointer (law 12); nothing wears --bad
+ *   gate       a watch-tier session disables every handle with the reason
+ *   fallback   disabled, the plugin renders nothing
  *
- * Live mode (--live): against a running valencesim, skips (exit 0) unless the
- * sim's catalog carries advgen.* roles.
+ * Live mode (--live): drags the deep handle against valencesim and checks the
+ * echo and the numeric twin; skips (exit 0) unless the sim carries advgen.*.
+ * --shot <png> saves the card.
  *
- * Run: node test/advanced-penetration.test.mjs
- *      node test/advanced-penetration.test.mjs --live [--port 8882] [--http 8880]
+ * Run: node test/advanced-penetration.test.mjs [--shot out.png]
+ *      node test/advanced-penetration.test.mjs --live [--port 8882] [--http 8880] [--shot out.png]
  *        (valencesim --homed --headless --port 8882 --http 8880)
  */
 import { chromium } from 'playwright';
@@ -222,7 +224,7 @@ const browser = await chromium.launch();
 
 async function open({ disabled = false, roles = 2, coarse = false } = {}) {
   hub.roles = roles;
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, hasTouch: coarse });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: SHOT ? 2400 : 1000 }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   if (LIVE) await ctx.addInitScript(HTTP_STUB);
   await ctx.addInitScript(([etag, bytes, live, disabled, port]) => {
@@ -255,222 +257,249 @@ async function toPatternPage(page, wantPlugin = true) {
   }
   return false;
 }
-const setRange = (loc, v) => loc.evaluate((el, v) => {
-  el.value = String(v);
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-}, v);
-const ctlByLabel = (page, text) => page.locator('main.pane .ap .ap-ctl', { has: page.locator('label', { hasText: new RegExp('^' + text) }) }).first();
+const handle = (page, key) => page.locator('main.pane .ap .ap-h[data-key="' + key + '"]:visible').first();
+const numIn = (page, label) => page.locator('main.pane .ap .ap-num input[aria-label="' + label + '"]:visible').first();
+/** Drag a handle by (dx, dy) CSS px with the mouse; returns the intents it sent. */
+async function dragBy(page, loc, dx, dy) {
+  const b = await loc.boundingBox();
+  const x = b.x + b.width / 2, y = b.y + b.height / 2;
+  const n0 = hub.intents.length;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 5; i++) await page.mouse.move(x + dx * i / 5, y + dy * i / 5);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  return hub.intents.slice(n0);
+}
+const settingOf = (entryName, field) => {
+  const e = byName(entryName);
+  return { ch: e.settingChannel, key: e.layout.find((f) => f.name === field).settingKey, uid: uidOf(e, field) };
+};
+const tagOf = async (loc) => (await loc.locator('.ap-tag').textContent()).trim();
+const toAdvanced = async (page) => { const t = page.locator('main.pane .ap-tabs button', { hasText: 'Advanced' }); if (await t.count()) await t.click(); };
 
 if (LIVE) {
   console.log('Advanced Penetration, live (valencesim on ' + SIM_PORT + ')');
   const { ctx, page, up } = await open();
   ok('live: the shell adopted the sim catalog', up);
-  ok('live: the plugin card renders on the sim', await toPatternPage(page));
-  const seq = await page.$$eval('main.pane .ap section', (ss) => ss.map((s) => s.querySelector('h4').textContent + ': '
-    + [...s.querySelectorAll(':scope > .ap-ctl label > span:first-child, :scope > details > summary > span:first-child')].map((x) => x.textContent).join(' | ')));
-  ok('live: every modulator sits under the control it rides, none loose',
-    seq.join('\n').split('modifier').length - 1 === 6 && seq.every((x) => !/^Other modulators/.test(x)), seq);
-  const master = ctlByLabel(page, 'Master speed');
-  const before = Number(await master.locator('input[type=range]').inputValue());
-  const to = before === 23 ? 24 : 23;
-  await setRange(master.locator('input[type=range]'), to);
-  ok('live: a master write confirms with the echoed value', await page.waitForFunction((t) => {
-    const c = [...document.querySelectorAll('main.pane .ap .ap-ctl')].find((e) => /^Master speed/.test((e.querySelector('label') || {}).textContent));
-    return c && c.dataset.status === 'confirmed' && c.querySelector('output').textContent.startsWith(String(t));
-  }, to, { timeout: 5000 }).then(() => true).catch(() => false));
-  await setRange(master.locator('input[type=range]'), before);
-  const det = page.locator('main.pane .ap details.ap-mod').first();
-  await det.locator('summary').click();
-  const rise = det.locator('.ap-ctl', { has: page.locator('label', { hasText: /^Rise/ }) });
-  const r0 = Number(await rise.locator('input[type=range]').inputValue());
-  const r1 = r0 === 3 ? 4 : 3;
-  await setRange(rise.locator('input[type=range]'), r1);
-  await page.waitForTimeout(800);
-  ok('live: a modulator write confirms on its own channel', (await rise.getAttribute('data-status')) === 'confirmed'
-    && (await rise.locator('output').textContent()).startsWith(String(r1)), await rise.locator('.ap-note').textContent());
-  await setRange(rise.locator('input[type=range]'), r0);
-  ok('live: the preset store reads every slot (none left pending)', await page.waitForFunction(() =>
-    document.querySelectorAll('.ap-slots button').length > 0 && !document.querySelector('.ap-slots button[data-state=pending]'),
-  null, { timeout: 15000 }).then(() => true).catch(() => false));
-  // Run/stop: the pattern starts on the sim (no hardware); a commissioning
-  // gate refusal (RFC-079 first run) must read as a fault in words instead.
-  const run = page.locator('main.pane .ap .ap-head .ap-ctl').first();
-  await run.locator('button').click();
-  await page.waitForTimeout(1200);
-  const runNote = await run.locator('.ap-note').textContent();
-  const started = (await run.locator('button').textContent()) === 'Stop';
-  ok('live: Start confirms running, or a refusal reads as a fault in words', started || /refused/.test(runNote), runNote);
-  if (started) {
-    await run.locator('button').click();
-    ok('live: Stop confirms stopped', await page.waitForFunction(() =>
-      document.querySelector('main.pane .ap .ap-head button').textContent === 'Start', null, { timeout: 5000 }).then(() => true).catch(() => false));
+  ok('live: the pattern card renders on the sim', await toPatternPage(page));
+  await toAdvanced(page);
+  await page.waitForTimeout(500);
+  const deep = handle(page, 'deep');
+  const before = Number(await numIn(page, 'Max depth').inputValue());
+  const intents = await dragBy(page, deep, 0, before > 50 ? 30 : -30);
+  const want = Number((await tagOf(deep)).replace(/^deep\s+/, '').split(' ')[0]);
+  void intents;
+  ok('live: a deep drag moves the value', Number.isFinite(want) && want !== before, { before, want });
+  ok('live: the echo confirms on the handle', await page.waitForFunction(() => {
+    const e = document.querySelector('main.pane .ap .ap-h[data-key="deep"]');
+    return e && e.dataset.status === 'confirmed';
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false), await deep.getAttribute('data-status'));
+  ok('live: the numeric twin followed the echoed value', Number(await numIn(page, 'Max depth').inputValue()) === want,
+    await numIn(page, 'Max depth').inputValue());
+  const adv = page.locator('main.pane .ap .ap-run:visible').first();
+  const advNote = await page.locator('main.pane .ap .ap-run:visible').first().locator('xpath=../../p').textContent();
+  ok('live: Advanced Start binds advgen.running or names what is missing',
+    !(await adv.isDisabled()) || /needs advgen\.running/.test(advNote), advNote);
+  if (SHOT) {
+    await page.locator('main.pane .ap').first().screenshot({ path: SHOT });
+    console.log('  screenshot: ' + SHOT);
   }
-  // Save into the first empty slot, load it, then delete it: the sim's store ends as it began.
-  const rows = page.locator('main.pane .ap .ap-slots button');
-  const empty = await rows.evaluateAll((bs) => bs.findIndex((b) => b.dataset.state === 'empty'));
-  ok('live: the store has an empty slot to save into', empty >= 0);
-  if (empty >= 0) {
-    await rows.nth(empty).click();
-    await page.locator('main.pane .ap input[aria-label="Preset name"]').fill('AP live');
-    await page.locator('main.pane .ap .og-btn', { hasText: 'Save' }).click();
-    ok('live: save through action.store lands in the slot and the list re-reads', await page.waitForFunction((i) =>
-      /AP live/.test(document.querySelectorAll('.ap-slots button')[i].textContent), empty, { timeout: 10000 }).then(() => true).catch(() => false));
-    await rows.nth(empty).click();
-    await page.locator('main.pane .ap .og-btn', { hasText: 'Load' }).click();
-    const presets = page.locator('main.pane .ap section', { has: page.locator('h4', { hasText: 'Presets' }) });
-    ok('live: load through action.store is confirmed by the hub', await page.waitForFunction(() => {
-      const s = [...document.querySelectorAll('main.pane .ap section')].find((x) => x.querySelector('h4').textContent === 'Presets');
-      return s && s.dataset.status === 'confirmed';
-    }, null, { timeout: 5000 }).then(() => true).catch(() => false), await presets.locator('.ap-note').textContent());
-    await page.locator('main.pane .ap .og-btn', { hasText: 'Delete' }).click();
-    await page.locator('[role=alertdialog] button.danger').click();
-    ok('live: delete (after the host confirm) empties the slot again', await page.waitForFunction((i) =>
-      document.querySelectorAll('.ap-slots button')[i].dataset.state === 'empty', empty, { timeout: 10000 }).then(() => true).catch(() => false),
-      await presets.locator('.ap-note').textContent());
-  }
+  await dragBy(page, deep, 0, before > 50 ? -30 : 30);   // put the sim's depth back near where it was
+  await page.waitForTimeout(500);
   await ctx.close();
 } else {
-console.log('Advanced Penetration (shell bundle, role fixture ' + ETAG + ')');
-{
-  const { ctx, page, up } = await open();
-  ok('boot: the shell adopted the fixture catalog', up);
-  ok('load: the plugin card is on the pattern page', await toPatternPage(page) && !!(await page.$('main.pane .ap')));
-  const generic = await page.$$eval('main.pane label.field-label[data-uid]', (els) => els.map((e) => e.dataset.uid));
-  const claimedUids = [ADV, ...ENTRIES.filter((e) => e.modTarget)].flatMap((e) => e.layout.filter((f) => f.role && f.role !== 'meta.enabled_mask').map((f) => uidOf(e, f.name)));
-  ok('load: claimed fields leave the generic cards', claimedUids.every((u) => !generic.includes(u)), claimedUids.filter((u) => generic.includes(u)));
+  console.log('Advanced Penetration (shell bundle, recorded catalog ' + ETAG + ')');
+  const MAXD = settingOf('pattern-advanced', 'max_depth');
+  const MIND = settingOf('pattern-advanced', 'min_depth');
+  const SPIN = settingOf('pattern-advanced', 'in_speed');
+  const ACIN = settingOf('pattern-advanced', 'in_accel');
+  {
+    const { ctx, page, up } = await open();
+    ok('boot: the shell adopted the fixture catalog', up);
+    ok('load: the pattern card is on the pattern page', await toPatternPage(page));
+    const generic = await page.$$eval('main.pane label.field-label[data-uid]', (els) => els.map((e) => e.dataset.uid));
+    const claimedUids = [ADV, ...ENTRIES.filter((e) => e.modTarget)].flatMap((e) => e.layout
+      .filter((f) => f.role && !['meta.enabled_mask', 'advgen.mode'].includes(f.role)).map((f) => uidOf(e, f.name)));
+    ok('load: claimed fields leave the generic cards', claimedUids.every((u) => !generic.includes(u)), claimedUids.filter((u) => generic.includes(u)));
+    ok('load: advgen.mode stays generic (RFC-093)', generic.includes(uidOf(ADV, 'ap_mode')));
 
-  // ---- map
-  const head = await page.$$eval('main.pane .ap .ap-head > *', (els) => els.map((e) => e.textContent.trim()));
-  ok('map: run/stop first, background_run beside it, then the mode', /^(Start|Stop)/.test(head[0]) && /Run in background/.test(head[1])
-    && /Advanced program/.test(head[2]), head);
-  ok('map: the stroke picture draws both halves', await page.$$eval('main.pane .ap .ap-pic path', (ps) => ps.filter((p) => p.style.display !== 'none' && p.getAttribute('d')).length) === 2);
-  const sections = await page.$$eval('main.pane .ap section', (ss) => ss.map((s) => ({
-    title: s.querySelector('h4').textContent,
-    seq: [...s.querySelectorAll(':scope > .ap-ctl label > span:first-child, :scope > details > summary > span:first-child')].map((x) => x.textContent),
-  })));
-  const seqOf = (t) => (sections.find((s) => s.title === t) || { seq: [] }).seq.join(' | ');
-  ok('map: master alone', seqOf('Master') === 'Master speed', seqOf('Master'));
-  ok('map: depth window, each depth with its own modulator under it',
-    seqOf('Depth window') === 'Max depth | Depth 1 modifier | Min depth | Depth 2 modifier', seqOf('Depth window'));
-  ok('map: in stroke half', seqOf('In stroke') === 'In speed | Speed in modifier | In accel | Accel in modifier', seqOf('In stroke'));
-  ok('map: out stroke half', seqOf('Out stroke') === 'Out speed | Speed out modifier | Out accel | Accel out modifier', seqOf('Out stroke'));
-  ok('map: presets section present', sections.some((s) => s.title === 'Presets'));
+    // ---- tabs: a view switch that writes nothing
+    const n0 = hub.intents.length;
+    const tabs = await page.$$eval('main.pane .ap-tabs button', (bs) => bs.map((b) => b.textContent + ':' + b.getAttribute('aria-selected')));
+    ok('tabs: Advanced and Classic, Advanced open', tabs.join() === 'Advanced:true,Classic:false', tabs);
+    await page.click('main.pane .ap-tabs button:has-text("Classic")');
+    ok('tabs: Classic shows the pattern select and its own Start', await page.locator('main.pane .ap select[aria-label="Pattern"]').isVisible()
+      && (await page.locator('main.pane .ap .ap-run:visible').count()) === 1);
+    await toAdvanced(page);
+    ok('tabs: switching writes nothing', hub.intents.length === n0);
 
-  // ---- ladder: a held master write
-  const master = ctlByLabel(page, 'Master speed');
-  hub.mode = 'hold';
-  await setRange(master.locator('input[type=range]'), 37);
-  await page.waitForTimeout(150);
-  ok('ladder: held write reads pending in words', (await master.getAttribute('data-status')) === 'pending'
-    && /waiting for the machine/.test(await master.locator('.ap-note').textContent()));
-  await release();
-  await page.waitForTimeout(300);
-  ok('ladder: the echo confirms on the same control', (await master.getAttribute('data-status')) === 'confirmed'
-    && (await master.locator('output').textContent()).startsWith('37'), await master.locator('output').textContent());
-  ok('ladder: the hub holds the value', hub.values[uidOf(ADV, 'master')] === 37);
-  hub.mode = 'nack';
-  await setRange(master.locator('input[type=range]'), 80);
-  await page.waitForTimeout(400);
-  hub.mode = 'echo';
-  ok('ladder: a refusal reads as a fault in words and shows the reported value',
-    (await master.getAttribute('data-status')) === 'fault' && /refused/.test(await master.locator('.ap-note').textContent())
-    && (await master.locator('output').textContent()).startsWith('37'), await master.locator('.ap-note').textContent());
-  if (SHOT) {
-    console.log('    cell', JSON.stringify(await page.evaluate(() => { const a = document.querySelector('main.pane .ap'); const c = a.closest('.dash-cell'); return { ap: a.scrollHeight, cell: c && c.getBoundingClientRect().height, ov: c && getComputedStyle(c).overflow }; })));
-    await page.screenshot({ path: SHOT, fullPage: true });
+    // ---- map
+    const keys = await page.$$eval('main.pane .ap .ap-stroke .ap-h:not([hidden])', (hs) => hs.map((e) => e.dataset.key));
+    ok('map: the stroke editor carries deep, shallow, in v, out v and both accel diamonds',
+      ['deep', 'shallow', 'vin', 'vout', 'ain', 'aout'].every((k) => keys.includes(k)), keys);
+    ok('map: handles are labeled by value', /^deep \d/.test(await tagOf(handle(page, 'deep'))) && /^in v\d/.test(await tagOf(handle(page, 'vin')))
+      && /^a\d/.test(await tagOf(handle(page, 'ain'))));
+    const mtabs = await page.$$eval('main.pane .ap .ap-mtabs button', (bs) => bs.map((b) => b.textContent));
+    ok('map: one rhythm tab per driven control, in base order', mtabs.join() === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel', mtabs);
+    ok('map: Advanced has its own Start, background_run beside it', /Start pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent())
+      && await page.locator('main.pane .ap .ap-sw:visible', { hasText: 'Run in background' }).isVisible());
+    const advNote = await page.locator('main.pane .ap .ap-run:visible').locator('xpath=../../p').textContent();
+    ok('map: without advgen.running the Advanced Start says what is missing', await page.locator('main.pane .ap .ap-run:visible').isDisabled()
+      && /needs advgen\.running/.test(advNote), advNote);
+
+    // ---- a held deep drag: one write, pending on the handle, then the echo
+    const deep = handle(page, 'deep');
+    const y0 = (await deep.boundingBox()).y;
+    hub.mode = 'hold';
+    const sent = await dragBy(page, deep, 0, -60);
+    const wrote = sent.filter((i) => i.ch === MAXD.ch && MAXD.key in i.val);
+    ok('drag: one write per release, never one per move', sent.length === 1 && wrote.length === 1, sent);
+    ok('drag: snapped to the step, inside the bounds', wrote.length === 1 && Number.isInteger(wrote[0].val[MAXD.key])
+      && wrote[0].val[MAXD.key] > 10 && wrote[0].val[MAXD.key] <= 100, wrote[0] && wrote[0].val);
+    ok('drag: pending on the handle, in words', (await deep.getAttribute('data-status')) === 'pending' && /waiting/.test(await tagOf(deep)), await tagOf(deep));
+    await release();
+    await page.waitForTimeout(250);
+    const v = wrote[0] && wrote[0].val[MAXD.key];
+    ok('drag: the echo confirms on the handle', (await deep.getAttribute('data-status')) === 'confirmed' && (await tagOf(deep)) === 'deep ' + v, await tagOf(deep));
+    ok('unify: the numeric twin shows the same field', Number(await numIn(page, 'Max depth').inputValue()) === v);
+    ok('drag: the handle moved up with the value', (await deep.boundingBox()).y < y0 - 20);
+
+    // ---- a refused drag
+    hub.mode = 'nack';
+    await dragBy(page, deep, 0, 30);
+    await page.waitForTimeout(250);
+    hub.mode = 'echo';
+    ok('refusal: amber ladder and the word on the handle', (await deep.getAttribute('data-status')) === 'fault' && /refused/.test(await tagOf(deep))
+      && (await tagOf(deep)).startsWith('deep ' + v), await tagOf(deep));
+
+    // ---- speed and accel handles
+    const vin = handle(page, 'vin');
+    const s0 = Number(await numIn(page, 'In speed').inputValue());
+    const sv = (await dragBy(page, vin, 40, 0)).filter((i) => i.ch === SPIN.ch && SPIN.key in i.val);
+    ok('speed: a longer in half writes a slower in speed', sv.length === 1 && sv[0].val[SPIN.key] < s0
+      && sv[0].val[SPIN.key] <= 100, sv[0] && sv[0].val);
+    const ain = handle(page, 'ain');
+    const a0 = Number(await numIn(page, 'In accel').inputValue());
+    const av = (await dragBy(page, ain, -25, 0)).filter((i) => i.ch === ACIN.ch && ACIN.key in i.val);
+    ok('accel: pulling the diamond to the foot writes a harder in accel', av.length === 1 && av[0].val[ACIN.key] > a0, av[0] && av[0].val);
+
+    // ---- keyboard
+    const sh = handle(page, 'shallow');
+    const m0 = Number(await numIn(page, 'Min depth').inputValue());
+    const n1 = hub.intents.length;
+    await sh.focus();
+    await page.keyboard.press('Shift+ArrowUp');
+    await page.waitForTimeout(200);
+    const kv = hub.intents.slice(n1);
+    ok('keys: shift+arrow nudges ten steps, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 10, kv);
+
+    // ---- rhythm: In speed's staircase
+    await page.click('main.pane .ap .ap-mtabs button:has-text("In speed")');
+    const AMT = settingOf('pattern-adv-mod-speedin', 'amount');
+    const RISE = settingOf('pattern-adv-mod-speedin', 'in_step');
+    const flat = await page.locator('main.pane .ap .ap-stair path.curve').getAttribute('d');
+    const amp = handle(page, 'amp');
+    const aw = (await dragBy(page, amp, 0, 50)).filter((i) => i.ch === AMT.ch && AMT.key in i.val);
+    ok('rhythm: the amp fader writes amount', aw.length === 1 && aw[0].val[AMT.key] > 0, aw[0] && aw[0].val);
+    await page.waitForTimeout(200);
+    ok('rhythm: the staircase follows the echoed amount', (await page.locator('main.pane .ap .ap-stair path.curve').getAttribute('d')) !== flat
+      && /^amp \d/.test(await tagOf(amp)));
+    const rsent = await dragBy(page, handle(page, 'rise'), 120, 0);
+    const rw = rsent.filter((i) => i.ch === RISE.ch && RISE.key in i.val);
+    ok('rhythm: a step handle writes whole strokes', rw.length === 1 && Number.isInteger(rw[0].val[RISE.key]) && rw[0].val[RISE.key] > 1, rw[0] && rw[0].val);
+    ok('rhythm: segments are labeled with their strokes', /to min \d+/.test(await page.locator('main.pane .ap .ap-seg').first().textContent()));
+
+    // ---- presets: a dropdown over the store
+    const cmd = byName('pattern-presets-cmd').id;
+    const sel = page.locator('main.pane .ap select[aria-label="Preset"]');
+    await page.waitForFunction(() => [...document.querySelectorAll('main.pane .ap select[aria-label="Preset"] option')].some((o) => o.textContent === 'Tease'),
+      null, { timeout: 5000 }).catch(() => {});
+    const opts = await sel.locator('option').allTextContents();
+    ok('presets: named slots only, empty ones unlisted', opts.join() === 'Apply a preset,Tease', opts);
+    const n2 = hub.intents.length;
+    await sel.selectOption({ label: 'Tease' });
+    await page.waitForTimeout(200);
+    ok('presets: choosing one loads it through action.store', hub.intents.slice(n2).some((i) => i.ch === cmd && i.val[1] === 2 && i.val[2] === 0));
+    await sel.selectOption({ value: '' });
+    await page.click('main.pane .ap .og-btn:has-text("Save")');
+    await page.fill('main.pane .ap input[aria-label="Preset name"]', 'Mine');
+    await page.click('main.pane .ap .og-btn:has-text("Save as")');
+    await page.waitForTimeout(500);
+    const saved = hub.intents.filter((i) => i.ch === cmd && i.val[1] === 1).pop();
+    ok('presets: Save with nothing chosen prompts a name, saves to the first empty slot', saved && saved.val[2] === 1 && saved.val[3] === 'Mine', saved);
+    ok('presets: the list re-reads', (await sel.locator('option').allTextContents()).includes('Mine'));
+    await sel.selectOption({ label: 'Mine' });
+    const n3 = hub.intents.length;
+    await page.click('main.pane .ap .og-btn:has-text("Delete")');
+    const dlg = page.locator('[role=alertdialog]');
+    ok('presets: delete asks the host confirm first', await dlg.isVisible().catch(() => false) && hub.intents.length === n3);
+    await dlg.locator('button.danger').click();
+    await page.waitForTimeout(400);
+    ok('presets: delete sent after the confirm', hub.intents.slice(n3).some((i) => i.ch === cmd && i.val[1] === 3 && i.val[2] === 1));
+    const n4 = hub.intents.length;
+    await page.click('main.pane .ap .og-btn:has-text("Reset")');
+    await page.waitForTimeout(300);
+    ok('presets: Reset writes the moved controls back to their defaults',
+      hub.intents.slice(n4).some((i) => i.ch === MAXD.ch && i.val[MAXD.key] === 10));
+
+    // ---- confirm and run
+    const n5 = hub.intents.length;
+    await page.locator('main.pane .ap .ap-sw:visible').click();
+    ok('confirm: background_run enable asks the host confirm', await dlg.locator('button', { hasText: 'Cancel' }).isVisible().catch(() => false));
+    await dlg.locator('button', { hasText: 'Cancel' }).click();
+    await page.waitForTimeout(200);
+    ok('confirm: a cancel sends nothing', hub.intents.length === n5);
+    await page.click('main.pane .ap-tabs button:has-text("Classic")');
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(300);
+    ok('run: Classic starts on pattern.running', /Stop pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent()));
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(300);
+
+    const red = await page.evaluate(() => {
+      const bad = getComputedStyle(document.documentElement).getPropertyValue('--bad').trim();
+      const probe = document.createElement('i'); probe.style.color = bad; document.body.append(probe);
+      const rgb = getComputedStyle(probe).color; probe.remove();
+      return [...document.querySelectorAll('main.pane .ap *')].filter((e) => {
+        const cs = getComputedStyle(e);
+        return [cs.color, cs.borderTopColor, cs.backgroundColor, cs.fill, cs.stroke].includes(rgb);
+      }).length;
+    });
+    ok('colors: nothing in the card wears --bad', red === 0, red);
+    if (SHOT) { await toAdvanced(page); await page.locator('main.pane .ap').first().screenshot({ path: SHOT }); }
+    await ctx.close();
   }
 
-  // ---- modulator write and its preview
-  const det = page.locator('main.pane .ap details.ap-mod', { hasText: 'Depth 1 modifier' });
-  const flat = await det.locator('polyline').getAttribute('points');
-  await det.locator('summary').click();
-  const amt = det.locator('.ap-ctl', { has: page.locator('label', { hasText: /^Amount/ }) });
-  await setRange(amt.locator('input[type=range]'), 60);
-  await setRange(det.locator('.ap-ctl', { has: page.locator('label', { hasText: /^Rise/ }) }).locator('input[type=range]'), 4);
-  await page.waitForTimeout(300);
-  const depth1 = byName('pattern-adv-mod-depth1');
-  ok('modulator: amount round-trips to its own channel', hub.values[uidOf(depth1, 'amount')] === 60);
-  ok('modulator: the summary and preview follow the reported values',
-    /amount 60/.test(await det.locator('summary').textContent()) && (await det.locator('polyline').getAttribute('points')) !== flat);
+  {
+    // The house floor applies on a touch pointer (style.css, pointer: coarse).
+    const { ctx, page } = await open({ coarse: true });
+    const shown = await toPatternPage(page);
+    const small = await page.$$eval('main.pane .ap .ap-h:not([hidden]), main.pane .ap button, main.pane .ap select, main.pane .ap input:not([type=checkbox])', (els) => els
+      .filter((e) => e.offsetParent !== null).map((e) => ({ t: e.className || e.tagName, w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height }))
+      .filter((r) => r.h < 40 || (r.t.includes('ap-h') && r.w < 40)));
+    ok('targets: every handle and control at least 40 px on a touch pointer (law 12)', shown && small.length === 0, small.slice(0, 5));
+    await ctx.close();
+  }
 
-  // ---- confirm: background_run enable, cancel sends nothing
-  const n0 = hub.intents.length;
-  await page.locator('main.pane .ap .ap-head label.og-switch', { hasText: 'Run in background' }).click();
-  const dlg = page.locator('[role=alertdialog]');
-  ok('confirm: background_run enable asks the host confirm', await dlg.locator('button', { hasText: 'Cancel' }).isVisible().catch(() => false));
-  await dlg.locator('button', { hasText: 'Cancel' }).click();
-  await page.waitForTimeout(200);
-  ok('confirm: a cancel sends nothing and the switch shows the machine', hub.intents.length === n0
-    && !(await page.locator('main.pane .ap .ap-head input[type=checkbox]').first().isChecked()));
+  {
+    const { ctx, page } = await open({ roles: 0 });
+    await toPatternPage(page);
+    const hs = await page.$$eval('main.pane .ap .ap-stroke .ap-h:not([hidden])', (els) => els.map((e) => e.getAttribute('aria-disabled')));
+    const note = await page.locator('main.pane .ap .ap-stroke + .ap-note').textContent();
+    ok('gate: a watch-tier session disables every handle and names why', hs.length > 0 && hs.every((x) => x === 'true')
+      && /not authorized/.test(note), { hs, note });
+    await ctx.close();
+  }
 
-  // ---- presets
-  const rows = page.locator('main.pane .ap .ap-slots button');
-  await page.waitForFunction(() => document.querySelectorAll('.ap-slots button[data-state=empty]').length > 0, null, { timeout: 5000 }).catch(() => {});
-  ok('presets: slots read over the blob verb (item named, empties distinct)',
-    (await rows.count()) === hub.store.capacity && /Tease/.test(await rows.nth(0).textContent())
-    && (await rows.nth(1).getAttribute('data-state')) === 'empty');
-  await rows.nth(3).click();
-  await page.locator('main.pane .ap input[aria-label="Preset name"]').fill('Mine');
-  await page.locator('main.pane .ap .og-btn', { hasText: 'Save' }).click();
-  await page.waitForTimeout(500);
-  const last = hub.intents[hub.intents.length - 1];
-  ok('presets: save carries op, slot and name', last && last.val[1] === 1 && last.val[2] === 3 && last.val[3] === 'Mine', last);
-  ok('presets: the list re-reads after the echo', /Mine/.test(await rows.nth(3).textContent()));
-  await rows.nth(0).click();
-  const n1 = hub.intents.length;
-  await page.locator('main.pane .ap .og-btn', { hasText: 'Delete' }).click();
-  ok('confirm: a preset delete asks the host confirm first', await dlg.isVisible().catch(() => false) && hub.intents.length === n1);
-  await dlg.locator('button.danger').click();
-  await page.waitForTimeout(500);
-  ok('presets: delete sent after the confirm', hub.intents.length === n1 + 1 && hub.intents[n1].val[1] === 3
-    && (await rows.nth(0).getAttribute('data-state')) === 'empty');
-
-  // ---- targets and colors
-  const red = await page.evaluate(() => {
-    const bad = getComputedStyle(document.documentElement).getPropertyValue('--bad').trim();
-    const probe = document.createElement('i'); probe.style.color = bad; document.body.append(probe);
-    const rgb = getComputedStyle(probe).color; probe.remove();
-    return [...document.querySelectorAll('main.pane .ap *')].filter((e) => {
-      const cs = getComputedStyle(e);
-      return [cs.color, cs.borderTopColor, cs.backgroundColor, cs.fill, cs.stroke].includes(rgb);
-    }).length;
-  });
-  ok('colors: nothing in the widget wears --bad', red === 0, red);
-  await ctx.close();
-}
-
-{
-  // The house floor applies on a touch pointer (style.css, pointer: coarse).
-  const { ctx, page } = await open({ coarse: true });
-  const shown = await toPatternPage(page);
-  await page.$$eval('main.pane .ap details', (ds) => ds.forEach((d) => { d.open = true; }));
-  const small = await page.$$eval('main.pane .ap button, main.pane .ap .ap-sw, main.pane .ap input:not([type=checkbox]), main.pane .ap summary', (els) => els
-    .filter((e) => e.offsetParent !== null).map((e) => ({ t: e.tagName + (e.type ? ':' + e.type : ''), h: e.getBoundingClientRect().height }))
-    .filter((r) => r.h < 40));
-  ok('targets: every visible control is at least 40 px tall on a touch pointer (law 12)', shown && small.length === 0, small.slice(0, 5));
-  await ctx.close();
-}
-
-{
-  const { ctx, page } = await open({ roles: 0 });
-  await toPatternPage(page);
-  const notes = await page.$$eval('main.pane .ap .ap-ctl', (els) => els.filter((e) => e.offsetParent !== null).map((e) => ({
-    dis: !!e.querySelector('input:disabled, button:disabled'), note: e.querySelector('.ap-note').textContent })));
-  ok('gate: a watch-tier session grays every control, with the reason in words',
-    notes.length > 0 && notes.every((n) => n.dis && /not authorized/.test(n.note)), notes.slice(0, 3));
-  await ctx.close();
-}
-
-{
-  const { ctx, page } = await open({ disabled: true });
-  const found = await toPatternPage(page, false);
-  ok('fallback: disabled, nothing of the plugin renders', found && !(await page.$('main.pane .ap')));
-  ok('fallback: the base fields render as generic settings again',
-    !!(await page.$('main.pane label.field-label[data-uid="' + uidOf(ADV, 'master') + '"]')));
-  await ctx.close();
-}
-
+  {
+    const { ctx, page } = await open({ disabled: true });
+    const found = await toPatternPage(page, false);
+    ok('fallback: disabled, nothing of the plugin renders', found && !(await page.$('main.pane .ap')));
+    ok('fallback: the base fields render as generic settings again',
+      !!(await page.$('main.pane label.field-label[data-uid="' + uidOf(ADV, 'master') + '"]')));
+    await ctx.close();
+  }
 }
 
 await browser.close();

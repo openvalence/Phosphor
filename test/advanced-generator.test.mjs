@@ -106,8 +106,13 @@ ok('no pattern.select: advgen.mode is optional', !!claim(catalog(1)));
   let spec = null;
   advPen.activate({ registerHero: (h) => { spec = h.spec; } });
   const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
-  ok('binds exactly what the factory substitute binds', !!spec && same(spec.require, ADVGEN_SPEC.require)
-    && same(spec.optional, ADVGEN_SPEC.optional) && same(spec.instances.mods.roles, ADVGEN_SPEC.instances.mods.roles));
+  // RENDERING §10.2 item 1: the substitute covers every binding; advgen.mode is
+  // retired by RFC-093 (operator ruling 2026-10-02), so it is the one exception.
+  const bound = spec ? [...Object.values(spec.require), ...Object.values(spec.optional)] : [];
+  ok('the factory substitute binds every role this widget binds', !!spec
+    && [...Object.values(ADVGEN_SPEC.require), ...Object.values(ADVGEN_SPEC.optional)]
+      .filter((r) => r !== ROLE.advgenMode).every((r) => bound.includes(r))
+    && same(spec.instances.mods.roles, ADVGEN_SPEC.instances.mods.roles));
 }
 {
   const entries = decodeCatalog(advgenCatalog().bytes);

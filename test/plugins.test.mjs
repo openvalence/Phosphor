@@ -14,10 +14,12 @@
  *   (e) submitMotion's router sends a samples STREAM when the catalog has one
  *       and the hub grants it, and the command.position setpoint otherwise;
  *   (g) every factory plugin validates and activates; Advanced Penetration
- *       substitutes generator-advanced on the role-carrying fixture
+ *       substitutes both pattern built-ins on the recorded catalog
  *       (RENDERING §10.2) and every way it can fail (a missing essential
- *       role, the advgen.mode conditional thrown from mount, disabled) leaves
- *       the built-in to claim.
+ *       role, no run role, a mount that throws, disabled) leaves the
+ *       built-ins to claim; advgen.mode stays generic (RFC-093);
+ *   (h) the editor geometry: speed and accel to half width and curvature and
+ *       back, handle position to field value on the step grid and bounds.
  *
  * Run: node test/plugins.test.mjs
  */
@@ -31,7 +33,9 @@ import { createPluginHost, validateManifest } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
-import { strokeTime, cycleLevel } from '../plugins/factory/advanced-penetration/index.js';
+import {
+  snap, halfTime, speedForTime, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
+} from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
 
 let fails = 0;
@@ -473,64 +477,95 @@ console.log('(f) tier-2 replace mode');
      && claimD.widgets.some((w) => w.id === 'gauge-builtin'));
 }
 
-// ---- (g) factory plugins; the generator-advanced substitute -----------------
-console.log('(g) factory plugins: Advanced Penetration substitutes generator-advanced');
+// ---- (g) factory plugins; the pattern-card substitute ----------------------
+console.log('(g) factory plugins: Advanced Penetration substitutes the pattern card');
 {
   ok('every factory manifest validates', FACTORY.length > 0
     && FACTORY.every((f) => validateManifest(f.manifest).length === 0 && typeof f.module.activate === 'function'));
   const ap = FACTORY.find((f) => f.manifest.name === 'advanced-penetration');
-  // Stand-in for the built-in widget: it claims wherever the run role exists,
-  // so "the built-in renders" is observable on every catalog below.
-  const BUILTIN = { id: 'advanced-generator', spec: { require: { running: ROLE.patternRunning } } };
+  // Stand-ins for the two built-ins it substitutes: each claims wherever the
+  // run role exists, so "the built-in renders" is observable on every catalog.
+  const BUILTINS = ['advanced-generator', 'pattern'].map((id) => ({ id, spec: { require: { running: ROLE.patternRunning } } }));
   const isAp = (w) => w.plugin === 'advanced-penetration';
-  const isBuiltin = (w) => w.id === 'advanced-generator';
-  const pass = (m, host) => claimAll(m.byRole, [BUILTIN, ...host.heroes()]);
+  const builtins = (r) => BUILTINS.every((b) => r.widgets.some((w) => w.id === b.id));
+  const pass = (m, host) => claimAll(m.byRole, [...BUILTINS, ...host.heroes()]);
   function load(opts) {
-    const m = opts === 'recorded' ? model : buildSettingsModel(decodeCatalog(advgenCatalog(opts).bytes));
+    const m = buildSettingsModel(decodeCatalog(advgenCatalog(opts).bytes));
     const { host } = makeHost({ model: () => m });
     host.add(ap.manifest, ap.module, { source: 'factory' });
     return { m, host, ...pass(m, host) };
   }
 
-  const spec = ap && load().host.heroes()[0];
-  ok('it registers as a substitute for the built-in id', spec && spec.replaces === 'advanced-generator');
-  ok('its require covers the pattern essential bindings (RENDERING §10, RFC-081)',
-    spec && Object.values(ADVGEN_SPEC.require).every((r) => Object.values(spec.spec.require).includes(r)));
-
   const a = load();
+  const spec = a.host.heroes()[0];
+  ok('it substitutes both pattern built-ins', !!spec && ['advanced-generator', 'pattern'].every((id) => spec.replaces.includes(id)));
+  const bound = spec ? [...Object.values(spec.spec.require), ...Object.values(spec.spec.optional)] : [];
+  ok('it binds every generator-advanced essential, base roles required (RENDERING §10, RFC-081)', !!spec
+    && Object.values(ADVGEN_SPEC.require).every((r) => bound.includes(r))
+    && ['advgen.master', 'advgen.depth_max', 'advgen.accel_out'].every((r) => Object.values(spec.spec.require).includes(r)));
+  ok('a run role is required: pattern.running or RFC-093 advgen.running',
+    !!spec && spec.spec.requireOne.some((ks) => ks.includes('running') && ks.includes('advRun')) && spec.spec.optional.advRun === 'advgen.running');
+  ok('no run role at all: declines', !load({ drop: ['pattern.running'] }).widgets.some(isAp));
   const w = a.widgets.find(isAp);
-  ok('claims on the role-carrying fixture', !!w);
-  ok('the built-in it substitutes is not rendered beside it', !a.widgets.some(isBuiltin));
-  ok('all six modulators claimed, ascending by channel id', w && w.fields.mods.length === 6
+  ok('claims on the recorded catalog', !!w);
+  ok('neither built-in renders beside it', !a.widgets.some((x) => BUILTINS.some((b) => b.id === x.id)));
+  ok('pattern-panel essentials ride along (select claimed)', !!w && !!w.fields.select && a.claimed.has(w.fields.select.uid));
+  ok('all six modulators claimed, ascending by channel id', !!w && w.fields.mods.length === 6
     && w.fields.mods.every((x, i, l) => !i || l[i - 1].channelId < x.channelId));
-  ok('modulator and preset fields leave the generic tree', w && w.fields.presetOp && a.claimed.has(w.fields.presetOp.uid)
-    && w.fields.mods.every((x) => ['amount', 'rise', 'hold', 'fall', 'rest', 'phase'].every((k) => a.claimed.has(x[k].uid))));
-
   for (const r of ['advgen.master', 'advgen.depth_max', 'advgen.depth_min', 'advgen.speed_in',
     'advgen.speed_out', 'advgen.accel_in', 'advgen.accel_out']) {
     const b = load({ drop: [r] });
-    ok('missing ' + r + ': declines, the built-in claims', !b.widgets.some(isAp) && b.widgets.some(isBuiltin));
+    ok('missing ' + r + ': declines, the built-ins claim', !b.widgets.some(isAp) && builtins(b));
   }
-  const noRun = load('recorded');
-  ok('the recorded catalog (hub emits the advgen roles): claims', noRun.widgets.some(isAp) && !noRun.widgets.some(isBuiltin));
-
-  const c = load({ drop: ['advgen.mode'] });
+  const c = load();
   const wc = c.widgets.find(isAp);
-  ok('advgen.mode absent beside pattern.select: the claim alone cannot see it', !!wc);
-  ok('... mount throws, so the host drops the hero', wc && c.host.mountHero(wc, {}, wc.fields) === null);
-  ok('... and the next pass renders the built-in', pass(c.m, c.host).widgets.some(isBuiltin)
-    && !pass(c.m, c.host).widgets.some(isAp));
-
+  ok('advgen.mode is not bound (RFC-093 retires it): it stays a generic field', !!wc && !('mode' in wc.fields)
+    && !c.claimed.has((c.m.byRole.get('advgen.mode') || [{}])[0].uid));
+  wc.slot.def.mount = () => { throw new Error('boom'); };   // this load's copy of the plugin only
+  ok('a mount that throws is dropped (RENDERING §10.2 item 5)', c.host.mountHero(wc, {}, wc.fields) === null);
+  ok('... and the next pass renders the built-ins', builtins(pass(c.m, c.host)) && !pass(c.m, c.host).widgets.some(isAp));
   a.host.setEnabled('advanced-penetration', false);
-  ok('disabled: the built-in claims', pass(a.m, a.host).widgets.some(isBuiltin) && !pass(a.m, a.host).widgets.some(isAp));
+  ok('disabled: the built-ins claim', builtins(pass(a.m, a.host)) && !pass(a.m, a.host).widgets.some(isAp));
+}
 
-  const st = strokeTime(0.5, 0.5, 0);
-  ok('stroke sketch: accel 0 eases the whole half (fray-d calculateStroke)', st && Math.abs(st.ease - 0.5) < 1e-9);
-  ok('stroke sketch: no window or no speed draws nothing', strokeTime(0, 0.5, 0) === null && strokeTime(0.5, 0, 0) === null);
-  const c4 = { rise: 2, hold: 1, fall: 2, rest: 1, phase: 0 };
-  ok('cycle: rise, hold, fall, rest', cycleLevel(1, c4) === 0.5 && cycleLevel(2.5, c4) === 1
-    && cycleLevel(4, c4) === 0.5 && cycleLevel(5.5, c4) === 0);
-  ok('cycle: phase shifts the start', cycleLevel(0, { ...c4, phase: 2 }) === 1);
+// ---- (h) the editor geometry: field values to handles and back ------------
+console.log('(h) editor geometry');
+{
+  const near = (x, y, e = 1e-6) => Math.abs(x - y) <= e;
+  const pct = { min: 0, max: 100, step: 1 }, spd = { min: 1, max: 100, step: 1 };
+  ok('snap: step grid and bounds', snap(spd, 37.6) === 38 && snap(spd, 150) === 100 && snap(spd, -4) === 1
+    && snap({ min: 0, max: 1, step: 0.1 }, 0.26) === 0.3);
+  const t = halfTime(0.5, 0.4, 0.3);
+  ok('speed to half time and back', near(speedForTime(0.5, 0.3, t), 0.4));
+  ok('accel to control offset share and back', [0, 0.25, 1].every((A) => near(accelForEase(1 / (2 + 9 * A)), A)));
+  ok('no window or no speed: no stroke', halfTime(0, 0.5, 0) === null && halfTime(0.5, 0, 0) === null);
+  const L = { X0: 70, XR: 960, YT: 30, YB: 210 };
+  const p = { lo: 0.1, hi: 0.8, sIn: 0.5, sOut: 0.25, aIn: 0.4, aOut: 0.6 };
+  const g = strokeGeom(p, L);
+  ok('the halves span the plot, each as wide as its stroke time', near(g.x2, L.XR)
+    && near((g.x1 - g.x0) / (g.x2 - g.x1), halfTime(0.7, 0.5, 0.4) / halfTime(0.7, 0.25, 0.6)));
+  ok('deep and shallow handles sit at the window', near(g.deep.y, L.YB - 0.8 * 180) && near(g.shallow.y, L.YB - 0.1 * 180));
+  ok('depth handle to value', snap(pct, strokeValue.depth(pct, g, 0, g.deep.y)) === 80
+    && snap(pct, strokeValue.depth(pct, g, 0, g.shallow.y)) === 10);
+  ok('in and out speed handles to value', snap(spd, strokeValue.speedIn(spd, g, g.vIn.x)) === 50
+    && snap(spd, strokeValue.speedOut(spd, g, g.vOut.x)) === 25);
+  ok('accel diamonds to value', snap(pct, strokeValue.accelIn(pct, g, g.aIn.x)) === 40
+    && snap(pct, strokeValue.accelOut(pct, g, g.aOut.x)) === 60);
+  ok('a diamond rides its curve', near(onCurve(g.inC, g.aIn.x).y, g.aIn.y, 1e-3));
+  ok('a wider in half is a slower in speed', strokeValue.speedIn(spd, g, g.vIn.x + 40) < 50);
+  ok('frozen scale: same k, same handle', near(strokeGeom(p, L, g.k).vIn.x, g.vIn.x));
+  ok('playhead: a depth share maps onto the half', near(atDepth(g.inC, 0.5).y, (g.ylo + g.yhi) / 2, 1e-6));
+
+  const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152 };
+  const c = { amount: 50, rise: 3, hold: 2, fall: 4, rest: 1, phase: 12 };
+  const st = stairGeom(c, 100, ML);
+  ok('staircase: one bar per stroke of the cycle', st.bars.length === 10 && near(st.rest.x, ML.XR));
+  ok('staircase: rise steps down, hold sits low, fall climbs, rest at base',
+    near(st.bars[0], ML.YT + 46 / 3) && near(st.bars[3], ML.YT + 46) && near(st.bars[8], ML.YT) && near(st.bars[9], ML.YT));
+  ok('staircase: corner handles to whole strokes', ['rise', 'hold', 'fall', 'rest'].every((k) => near(stairValue[k](pct, st, st[k].x), c[k])));
+  ok('staircase: amp fader to amount', near(stairValue.amount(pct, st, 0, st.amp.y), 50));
+  ok('staircase: phase marker wraps the cycle', near(stairValue.phase(pct, st, st.phase.x), 2));
+  ok('staircase: amount 0 is flat', stairGeom({ ...c, amount: 0 }, 100, ML).bars.every((y) => y === ML.YT));
 }
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');
