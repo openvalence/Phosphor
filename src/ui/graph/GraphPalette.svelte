@@ -1,76 +1,137 @@
 <script>
   /**
-   * GraphPalette.svelte: the node graph's add menu. A search box over
-   * grouped items; picking one places it where the menu was opened.
+   * GraphPalette.svelte: the node graph's add menu, Blender's Shift+A.
+   * Categories listed collapsed under a header each; typing searches every
+   * category and flattens the results; picking an item places it where the
+   * menu was opened. See docs/GRAPH.md.
    *
    * Constraints:
-   * - Lives inside the editor's own box (RENDERING section 9: never over the
-   *   persistent region, never on the overlay layer).
-   * - Keyboard complete: typing filters, Enter takes the first match, the
-   *   arrow keys walk the list, Escape closes.
+   * - Lives inside the editor's own box (RENDERING section 9) and is clamped
+   *   into it by its MEASURED size, re-clamped whenever its content resizes;
+   *   never by an assumed size.
+   * - Keyboard complete: focus stays in the search box; the arrow keys walk
+   *   headers and items, Right and Left open and close a header, Enter
+   *   places an item or toggles a header, Escape closes.
    */
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
-  /** groups: [{name, items: [{key, label, value}]}]; onpick(value); onclose(). */
-  let { groups, x, y, onpick, onclose } = $props();
+  /**
+   * groups: [{name, items: [{key, label, value}]}]; x, y: the anchor in the
+   * editor box; vw, vh: that box's size; flat: every item listed at once
+   * (link-drag-search); onpick(value); onclose().
+   */
+  let { groups, x, y, vw, vh, flat = false, onpick, onclose } = $props();
   let q = $state('');
+  let open = $state(new Set());
   let box = $state(null);
   let input = $state(null);
+  let w = $state(0);
+  let h = $state(0);
+  let cur = $state(0);
 
-  const shown = $derived.by(() => {
+  const rows = $derived.by(() => {
     const s = q.trim().toLowerCase();
-    return groups
-      .map((g) => ({ ...g, items: s ? g.items.filter((it) => (g.name + ' ' + it.label).toLowerCase().includes(s)) : g.items }))
-      .filter((g) => g.items.length);
+    const out = [];
+    if (s || flat) {
+      for (const g of groups) {
+        for (const it of g.items) {
+          if (!s || (g.name + ' ' + it.label).toLowerCase().includes(s)) out.push({ head: false, key: g.name + '/' + it.key, it, group: g.name });
+        }
+      }
+      return out;
+    }
+    for (const g of groups) {
+      out.push({ head: true, key: 'h/' + g.name, g });
+      if (open.has(g.name)) for (const it of g.items) out.push({ head: false, key: g.name + '/' + it.key, it, group: g.name, nested: true });
+    }
+    return out;
   });
 
-  onMount(() => input && input.focus());
+  const left = $derived(Math.max(8, Math.min(x, vw - w - 8)));
+  const top = $derived(Math.max(8, Math.min(y, vh - h - 8)));
+
+  onMount(() => {
+    w = box.offsetWidth;
+    h = box.offsetHeight;
+    input.focus({ preventScroll: true });
+  });
+
+  function toggle(name, on = !open.has(name)) {
+    const next = new Set(open);
+    if (on) next.add(name); else next.delete(name);
+    open = next;
+  }
+
+  async function show() {
+    await tick();
+    box?.querySelector('[data-cur]')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function act(r) {
+    if (!r) return;
+    if (r.head) toggle(r.g.name);
+    else onpick(r.it.value);
+  }
 
   function key(e) {
+    const r = rows[cur];
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onclose(); return; }
-    if (e.key === 'Enter' && e.target === input) {
+    if (e.key === 'Enter') { e.preventDefault(); act(r); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      const first = shown[0] && shown[0].items[0];
-      if (first) onpick(first.value);
+      cur = Math.max(0, Math.min(rows.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1)));
+      show();
       return;
     }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const list = [...box.querySelectorAll('input, button')];
-    const i = list.indexOf(document.activeElement);
-    const next = list[Math.max(0, Math.min(list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
-    if (next) next.focus();
+    if (q || !r) return;
+    if (e.key === 'ArrowRight' && r.head) { e.preventDefault(); toggle(r.g.name, true); }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      toggle(r.group || r.g.name, false);
+      cur = rows.findIndex((x) => x.head && x.g.name === (r.group || r.g.name));
+    }
   }
 </script>
 
-<div class="gpal" role="dialog" tabindex="-1" aria-label="Add a node" bind:this={box} style:left={x + 'px'} style:top={y + 'px'}
-     onkeydown={key}>
-  <input bind:this={input} bind:value={q} type="search" placeholder="Search sources, maps, targets" aria-label="Search" />
-  <div class="gpal-list">
-    {#each shown as g (g.name)}
-      <div class="gpal-group" role="group" aria-label={g.name}>
-        <p class="gpal-name">{g.name}</p>
-        {#each g.items as it (it.key)}
-          <button type="button" class="gpal-item" onclick={() => onpick(it.value)}>{it.label}</button>
-        {/each}
-      </div>
+<div class="gpal" role="dialog" tabindex="-1" aria-label="Add a node" bind:this={box}
+     bind:offsetWidth={w} bind:offsetHeight={h} style:left={left + 'px'} style:top={top + 'px'} onkeydown={key}>
+  <input bind:this={input} bind:value={q} oninput={() => { cur = 0; }} type="search" placeholder="Search nodes" aria-label="Search"
+         aria-controls="gpal-list" aria-activedescendant={rows[cur] ? 'gpal-r' + cur : null} />
+  <div class="gpal-list" id="gpal-list" role="tree" aria-label="Nodes">
+    {#each rows as r, i (r.key)}
+      {#if r.head}
+        <button type="button" id={'gpal-r' + i} class="gpal-head" role="treeitem" aria-level="1" aria-selected={i === cur} aria-expanded={open.has(r.g.name)}
+                data-cur={i === cur ? '' : null} onclick={() => { cur = i; toggle(r.g.name); }}>
+          <span class="gpal-caret" aria-hidden="true">{open.has(r.g.name) ? '▾' : '▸'}</span>{r.g.name}
+          <span class="gpal-count">{r.g.items.length}</span>
+        </button>
+      {:else}
+        <button type="button" id={'gpal-r' + i} class="gpal-item" role="treeitem" aria-level={r.nested ? 2 : 1} aria-selected={i === cur} data-nested={r.nested ? '' : null}
+                data-cur={i === cur ? '' : null} onclick={() => onpick(r.it.value)}>
+          {r.it.label}{#if !r.nested}<span class="gpal-count">{r.group}</span>{/if}
+        </button>
+      {/if}
     {:else}
-      <p class="gpal-name">Nothing matches</p>
+      <p class="gpal-none">Nothing matches</p>
     {/each}
   </div>
 </div>
 
 <style>
-  .gpal { position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 16px); max-height: min(420px, calc(100% - 16px));
-    display: flex; flex-direction: column; gap: 6px; padding: 6px;
+  .gpal { position: absolute; z-index: 5; width: 280px; max-width: calc(100% - 16px); max-height: min(420px, calc(100% - 16px));
+    box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 6px;
     background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
   .gpal input { min-height: 32px; }
   .gpal-list { overflow-y: auto; min-height: 0; }
-  .gpal-name { margin: 6px 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); }
-  .gpal-item { display: block; width: 100%; min-height: 30px; padding: 4px 8px; text-align: left;
+  .gpal-head, .gpal-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 3px 8px; text-align: left;
     background: none; border: 0; border-radius: var(--radius); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
-  .gpal-item:hover, .gpal-item:focus-visible { background: var(--bg-card); color: var(--ink-hi); }
+  .gpal-head { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); }
+  .gpal-item[data-nested] { padding-left: 24px; }
+  .gpal-caret { width: 10px; }
+  .gpal-count { margin-left: auto; font-size: 10px; color: var(--ink-dim); text-transform: none; letter-spacing: 0; }
+  .gpal-head:hover, .gpal-item:hover, [data-cur] { background: var(--bg-card); color: var(--ink-hi); }
+  .gpal-none { margin: 6px 8px; font-size: .8rem; color: var(--ink-dim); }
   @media (pointer: coarse) {
-    .gpal input, .gpal-item { min-height: var(--tap); }
+    .gpal input, .gpal-head, .gpal-item { min-height: var(--tap); }
   }
 </style>

@@ -21,7 +21,8 @@ import {
   MAP, MAPS, evalMap, SAFE, checkRel, homeOf, interlock, emptyGraph, addNode, connect,
   removeRel, freeRelId, encodeItem, decodeItem, storeItem, readStoreItem, saveLocal, loadLocal,
   createRunner, findHub, storeVerb, rosterBits, isUserSpace, addDraft, removeNode, planWire, snap,
-  createHistory, preview, endRange,
+  createHistory, preview, endRange, refuseConnect,
+  OPS, MATH, COMPARE, LOGIC, evalOp, insOf, outOf, conv, valueOf, addOp, planLink, addLink, topo,
 } from '../src/model/graph.js';
 import { ROLE } from '../src/model/roles.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
@@ -322,6 +323,151 @@ console.log('(h) a new map\'s ranges come from its ends (ph-9m9)');
   ok('position 250 of a 0..500 window drives a 0..20 motor to 10, not a saturated 20', near(evalMap(r, {}, 250, 0), 10));
   r.in_max = 400;
   ok('the seeded bounds stay editable', checkRel(r) === '' && near(evalMap(r, {}, 200, 0), 10));
+}
+
+console.log('(i) typed nodes: every op, every conversion, order, loops, missing inputs (docs/GRAPH.md)');
+{
+  const is = (got, want) => JSON.stringify(got) === JSON.stringify(want);
+  const run = (kind, x, o = {}) => evalOp({ kind, ...o }, x, o.s || {}, o.dt || 0);
+  const math = (fn, a, b) => run('math', { a, b }, { fn });
+  const M2 = { add: [3, 2, 5], subtract: [3, 2, 1], multiply: [3, 2, 6], divide: [3, 2, 1.5], power: [3, 2, 9],
+    minimum: [3, 2, 2], maximum: [3, 2, 3], modulo: [7, 3, 1] };
+  for (const [fn, [a, b, want]] of Object.entries(M2)) ok('Math ' + MATH[fn].label + ': ' + a + ', ' + b + ' -> ' + want, near(math(fn, a, b), want));
+  const M1 = { absolute: [-2.5, 2.5], round: [2.5, 3], floor: [-1.5, -2], ceil: [1.2, 2], sqrt: [9, 3], sine: [Math.PI / 2, 1], cosine: [0, 1] };
+  for (const [fn, [a, want]] of Object.entries(M1)) ok('Math ' + MATH[fn].label + ': ' + a + ' -> ' + want, near(math(fn, a, 0), want));
+  ok('every Math op is tested', Object.keys(MATH).every((k) => k in M2 || k in M1) && Object.keys(MATH).length === 15);
+  ok('divide by zero yields 0 (Blender)', math('divide', 5, 0) === 0);
+  ok('modulo by zero yields 0; modulo keeps the sign of A', math('modulo', 5, 0) === 0 && near(math('modulo', -7, 3), -1));
+  ok('square root of a negative yields 0', math('sqrt', -4, 0) === 0);
+  ok('an undefined power yields 0', math('power', -8, 1 / 3) === 0);
+  ok('round halves up, as Blender', math('round', -2.5, 0) === -2 && math('round', 0.49, 0) === 0);
+  ok('unary ops take one input, binary two', insOf({ kind: 'math', fn: 'sine' }).length === 1 && insOf({ kind: 'math', fn: 'add' }).length === 2);
+
+  const C = { lt: [[1, 2, 1], [2, 2, 0]], le: [[2, 2, 1], [3, 2, 0]], eq: [[1, 1.0005, 1], [1, 1.01, 0]],
+    ne: [[1, 1.01, 1], [1, 1.0005, 0]], ge: [[2, 2, 1], [1, 2, 0]], gt: [[3, 2, 1], [2, 2, 0]] };
+  for (const [fn, cases] of Object.entries(C)) {
+    ok('Compare ' + COMPARE[fn].label + ' outputs bool', cases.every(([a, b, want]) => run('compare', { a, b, eps: 0.001 }, { fn }) === want));
+  }
+  ok('equal and not equal show the epsilon input; the rest do not', insOf({ kind: 'compare', fn: 'eq' }).length === 3 && insOf({ kind: 'compare', fn: 'lt' }).length === 2);
+
+  const truth = (fn) => [[0, 0], [0, 1], [1, 0], [1, 1]].map(([a, b]) => run('bool_math', { a, b }, { fn }));
+  const T = { and: [0, 0, 0, 1], or: [0, 1, 1, 1], not: [1, 1, 0, 0], xor: [0, 1, 1, 0], nand: [1, 1, 1, 0], nor: [1, 0, 0, 0] };
+  for (const [fn, want] of Object.entries(T)) ok('Boolean Math ' + LOGIC[fn].label + ': truth table', is(truth(fn), want), JSON.stringify(truth(fn)));
+
+  ok('Clamp: min and max', run('clamp', { v: 5, min: 0, max: 2 }) === 2 && run('clamp', { v: -1, min: 0, max: 2 }) === 0);
+  const mr = { v: 15, from_min: 0, from_max: 10, to_min: 0, to_max: 100 };
+  ok('Map Range: clamped by default', run('map_range', mr, { clamp: true }) === 100 && run('map_range', { ...mr, v: 2.5 }, { clamp: true }) === 25);
+  ok('Map Range: clamp off extrapolates', run('map_range', mr, { clamp: false }) === 150);
+  ok('Map Range: a zero-width from range yields to min', run('map_range', { ...mr, from_max: 0 }, { clamp: true }) === 0);
+  ok('Switch: picks True or False', run('switch', { s: 1, f: 2, t: 7 }) === 7 && run('switch', { s: 0, f: 2, t: 7 }) === 2);
+  ok('Switch: its type types both arms and the output', outOf({ kind: 'switch', type: 'bool' }) === 'bool'
+    && insOf({ kind: 'switch', type: 'int' }).map((p) => p.type).join() === 'bool,int,int');
+  ok('Gate: passes while open, asks for the safe value while shut', run('gate', { v: 4, open: 1 }) === 4 && run('gate', { v: 4, open: 0 }) === SAFE);
+  const hs = {};
+  const hy = [0.5, 0.7, 0.5, 0.41, 0.4, 0.5].map((v) => run('threshold', { v, on: 0.6, off: 0.4 }, { s: hs }));
+  ok('Threshold: on above, held between, off below (hysteresis, outputs bool)', is(hy, [0, 1, 1, 1, 0, 0]), JSON.stringify(hy));
+  const ss = {};
+  run('slew', { v: 0, rise: 10, fall: 20 }, { s: ss });
+  const sl = [[10, 0.5], [10, 0.5], [0, 0.25]].map(([v, dt]) => run('slew', { v, rise: 10, fall: 20 }, { s: ss, dt }));
+  ok('Slew: rises at rise per s, falls at fall per s', is(sl, [5, 10, 5]), JSON.stringify(sl));
+  const ls = {};
+  run('lowpass', { v: 0, tau: 1 }, { s: ls });
+  ok('Low-pass: one tau later is 63.2 %', near(run('lowpass', { v: 10, tau: 1 }, { s: ls, dt: 1 }), 10 * (1 - Math.exp(-1))));
+  ok('Input nodes output their own value', run('value', { v: 0.25 }) === 0.25 && run('integer', { v: 3 }) === 3 && run('boolean', { v: 1 }) === 1);
+  ok('every node kind evaluates', Object.keys(OPS).every((k) => evalOp(addOp(emptyGraph(), k), Object.fromEntries(insOf(addOp(emptyGraph(), k)).map((p) => [p.name, p.def])), {}, 0) !== undefined));
+
+  ok('int to float is exact', conv(3, 'int', 'float') === 3);
+  ok('float to int rounds', conv(2.6, 'float', 'int') === 3 && conv(2.4, 'float', 'int') === 2);
+  ok('bool to number is 0 or 1', conv(1, 'bool', 'float') === 1 && conv(0, 'bool', 'int') === 0);
+  ok('number to bool is nonzero', conv(0.01, 'float', 'bool') === 1 && conv(0, 'float', 'bool') === 0 && conv(-3, 'int', 'bool') === 1);
+  ok('a Gate\'s safe request passes conversion untouched', conv(SAFE, 'float', 'bool') === SAFE);
+  ok('an unlinked input is the node\'s own value as its type', valueOf({ vals: { v: 2.7 } }, { name: 'v', type: 'int', def: 0 }) === 3
+    && valueOf({ vals: {} }, { name: 'v', type: 'bool', def: 0.2 }) === 1);
+
+  // A chain: field -> Math (multiply) -> Compare (> 1) -> Switch (bool) -> toy, ops added downstream first.
+  const g = emptyGraph();
+  const src = addNode(g, { kind: 'field', key: 'src' });
+  const dst = addNode(g, { kind: 'bp', device: 'toy', feature: 0, type: 'Vibrate', ctl: 'scalar' });
+  const sw = addOp(g, 'switch');
+  sw.vals = { f: 2, t: 9 };
+  const cmp = addOp(g, 'compare');
+  cmp.vals = { b: 1 };
+  const mul = addOp(g, 'math');
+  mul.fn = 'multiply';
+  mul.vals = { b: 2 };
+  ok('topological order runs upstream first, whatever the add order', is(topo(g).map((o) => o.kind), ['switch', 'compare', 'math']));
+  const link = (from, to, port) => { const p = planLink(g, from, to, port); return p.reason || addLink(g, p); };
+  link(src.id, mul.id, 'a');
+  link(mul.id, cmp.id, 'a');
+  link(cmp.id, sw.id, 's');
+  link(sw.id, dst.id);
+  ok('after linking, upstream evaluates first', is(topo(g).map((o) => o.kind), ['math', 'compare', 'switch']));
+  ok('a link closing a cycle is refused in words', /would loop/.test(planLink(g, sw.id, mul.id, 'b').reason || ''));
+  ok('a target cannot drive its own source through a chain', /would loop/.test(planLink(g, mul.id, src.id).reason || ''));
+  ok('a node chain\'s target refuses a second driver from a map', /already driven/.test(refuseConnect(g, src.id, dst.id)));
+  ok('a map cannot sit in a chain', /maps join two fields/.test(planLink(g, addDraft(g, MAP.invert, 0, 0).id, mul.id, 'a').reason || ''));
+  const before = g.links.length;
+  link(src.id, mul.id, 'a');
+  ok('a second link into one input replaces the first', g.links.length === before);
+
+  let x = 0.7;
+  let safety = { estopLatched: false, paused: false };
+  const wrote = [];
+  const io = {
+    read: (ref) => (ref.key === 'src' ? x : undefined), type: () => 'float',
+    target: () => ({ min: 0, max: 20, step: 1, integer: true, safe: 0 }), write: (ref, v) => wrote.push(v),
+    armed: () => interlock(true, safety),
+  };
+  const r = createRunner(io);
+  r.step(g, 0);
+  x = 0.4; r.step(g, 50);
+  ok('the chain drives its target each tick: 0.7*2 > 1 picks 9, 0.4*2 picks 2', is(wrote, [9, 2]), JSON.stringify(wrote));
+  ok('every op\'s value is readable while armed', r.val(mul.id) === 0.8 && r.val(cmp.id) === 0 && r.out(dst.id) === 2);
+  x = undefined; r.step(g, 100);
+  ok('a missing input outputs nothing downstream: the target gets its safe value once, with the reason',
+    is(wrote, [9, 2, 0]) && /Add has no a|Multiply has no a/.test(r.why(dst.id)), r.why(dst.id));
+  r.step(g, 150);
+  ok('...and nothing more while the input stays missing', wrote.length === 3);
+  x = 0.7; r.step(g, 200);
+  ok('the value back re-drives it', is(wrote, [9, 2, 0, 9]) && r.why(dst.id) === '');
+  safety = { estopLatched: false, paused: true };
+  r.step(g, 250); r.step(g, 300);
+  ok('pause disarms the chain: the safe value once (SPEC 11.6 mirrored)', is(wrote, [9, 2, 0, 9, 0]) && r.val(mul.id) === undefined);
+
+  const gate = addOp(g, 'gate');
+  const gx = emptyGraph();
+  gx.nodes = g.nodes; gx.ops = [mul, gate]; gx.links = [];
+  const lg = (from, to, port) => addLink(gx, planLink(gx, from, to, port));
+  lg(src.id, mul.id, 'a');
+  lg(mul.id, gate.id, 'v');
+  lg(gate.id, dst.id);
+  gate.vals = { open: 0 };
+  const w2 = [];
+  const r2 = createRunner({ ...io, armed: () => ({ ok: true }), write: (ref, v) => w2.push(v), target: () => ({ min: 0, max: 20, safe: 0.5 }) });
+  r2.step(gx, 0);
+  ok('a shut Gate drives its target to the safe value', is(w2, [0.5]), JSON.stringify(w2));
+
+  const ib = emptyGraph();
+  const bt = addNode(ib, { kind: 'field', key: 'flag' });
+  const iv = addOp(ib, 'value');
+  iv.vals = { v: 0.4 };
+  addLink(ib, planLink(ib, iv.id, bt.id));
+  const w3 = [];
+  createRunner({ read: () => 0, type: () => 'bool', target: () => ({}), write: (ref, v) => w3.push(v), armed: () => ({ ok: true }) }).step(ib, 0);
+  ok('a float into a bool target is converted on the link: 0.4 writes 1', is(w3, [1]), JSON.stringify(w3));
+
+  // Old graphs.
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  mem.set('phosphor.graph', JSON.stringify({ v: 1, nodes: [{ id: 'n1', ref: { kind: 'field', key: 'a' }, x: 0, y: 0 }],
+    rels: [{ id: 'r1', name: 'x', from: 'n1', to: 'n1', map: MAP.invert, in_min: 0, in_max: 1, out_min: 0, out_max: 1, params: [], enabled: true, home: 'client' }],
+    drafts: [], hubPos: {}, view: null }));
+  const old = loadLocal(storage);
+  ok('a version 1 graph loads unchanged, with no ops and no links', old.nodes.length === 1 && old.rels.length === 1 && is(old.ops, []) && is(old.links, []));
+  saveLocal(storage, g);
+  const back = loadLocal(storage);
+  ok('ops and links round-trip at version 2', JSON.parse(mem.get('phosphor.graph')).v === 2 && back.ops.length === g.ops.length
+    && back.links.length === g.links.length && back.ops.find((o) => o.id === mul.id).fn === 'multiply');
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

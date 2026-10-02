@@ -32,6 +32,7 @@ import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { STORAGE_KEY } from '../src/model/graph.js';
 
 const SHOT = process.argv.includes('--shot') ? process.argv[process.argv.indexOf('--shot') + 1] : null;
+const SHOTS = process.argv.includes('--shots') ? process.argv[process.argv.indexOf('--shots') + 1] : null;
 let fails = 0;
 const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
@@ -128,7 +129,7 @@ const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/ht
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const browser = await chromium.launch();
 
-async function open({ coarse = false, seed = null } = {}) {
+async function open({ coarse = false, seed = null, before = null } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(BP_STUB);
@@ -157,6 +158,7 @@ async function open({ coarse = false, seed = null } = {}) {
   // In a grid the editor is a still preview (ph-e82.22); Open gives it the window below the strip.
   const still = await page.$eval('.graph', (g) => ({ inert: g.inert, open: !!g.closest('.dash-item')?.querySelector('.dash-open') })).catch(() => null);
   ok('in the grid the editor is an inert preview with Open (no scroll or zoom of its own)', !!still && still.inert && still.open, still);
+  if (before) await before(page);
   await page.locator('.dash-item:has(.graph) .dash-open').click();
   ok('Open makes it live, full window below the strip', await page.$eval('.graph', (g) => !g.inert && getComputedStyle(g.closest('.dash-item')).position === 'fixed'));
   await page.waitForTimeout(100);
@@ -175,13 +177,23 @@ async function dragTo(page, from, to, hover) {
   await page.mouse.up();
   return seen;
 }
-/** Right-click the canvas at a viewport fraction, search, and pick the first match in a group. */
+/**
+ * Right-click the canvas at a viewport fraction and pick the first item of a
+ * category: by opening its header when `search` is empty, else from the
+ * flattened search results.
+ */
 async function place(page, fx, fy, search, group) {
   const vp = await page.locator('.graph .gview').boundingBox();
   await page.mouse.click(vp.x + vp.width * fx, vp.y + vp.height * fy, { button: 'right' });
-  await page.locator('.gpal input').fill(search);
-  const btn = page.locator('.gpal .gpal-group', { has: page.locator('.gpal-name', { hasText: group }) }).locator('.gpal-item').first();
-  const label = (await btn.textContent()).trim();
+  let btn;
+  if (search) {
+    await page.locator('.gpal input').fill(search);
+    btn = page.locator('.gpal .gpal-item', { has: page.locator('.gpal-count', { hasText: group }) }).first();
+  } else {
+    await page.locator('.gpal .gpal-head', { hasText: group }).first().click();
+    btn = page.locator('.gpal .gpal-item[data-nested]').first();
+  }
+  const label = (await btn.evaluate((el) => el.firstChild.textContent)).trim();
   await btn.click();
   await page.waitForTimeout(100);
   return label;
@@ -358,6 +370,183 @@ let saved = null;
   ok('Escape leaves full size', !(await page.$('.graph.full')));
   ok('no page errors', errors.length === 0, errors);
   saved = JSON.stringify(await stored(page));
+  await ctx.close();
+}
+
+// ---- typed nodes and the add menu (docs/GRAPH.md) -------------------------------
+{
+  const shot = (name) => (SHOTS ? page.screenshot({ path: SHOTS + '/' + name + '.png' }) : null);
+  const noSel = (page) => page.evaluate(() => (window.getSelection() || '').toString() === '');
+  const sweep = async (page, x1, y1, x2, y2) => {
+    await page.mouse.move(x1, y1);
+    await page.mouse.down();
+    await page.mouse.move(x2, y2, { steps: 8 });
+    await page.mouse.up();
+  };
+  let gridClean = null;
+  const { ctx, page, errors } = await open({
+    before: async (p) => {
+      const vb = p.viewportSize();
+      await sweep(p, 40, vb.height * 0.3, vb.width - 40, vb.height * 0.8);
+      gridClean = await noSel(p);
+    },
+  });
+  ok('a drag across the grid selects no text', gridClean === true);
+  const us = await page.evaluate(() => [getComputedStyle(document.body).userSelect, getComputedStyle(document.querySelector('input') || document.createElement('input')).userSelect]);
+  ok('text selection is off app-wide and on in fields', us[0] === 'none' && us[1] === 'text', us);
+  // Zoomed out so a five-node chain fits the card's canvas.
+  await page.click('.gtool button[aria-label="Zoom out"]');
+  await page.click('.gtool button[aria-label="Zoom out"]');
+  const vp = await page.locator('.graph .gview').boundingBox();
+  const inside = async () => {
+    const m = await page.locator('.gpal').boundingBox({ timeout: 2000 }).catch(() => null);
+    if (!m && SHOTS) await page.screenshot({ path: SHOTS + '/debug-menu.png' });
+    return !!m && m.x >= vp.x - 0.5 && m.y >= vp.y - 0.5 && m.x + m.width <= vp.x + vp.width + 0.5 && m.y + m.height <= vp.y + vp.height + 0.5;
+  };
+
+  // Categories, collapsed; keyboard places a Value node.
+  await page.mouse.click(vp.x + vp.width * 0.55, vp.y + vp.height * 0.8, { button: 'right' });
+  const heads = await page.locator('.gpal .gpal-head').allTextContents();
+  ok('the add menu lists categories collapsed, one header each', heads.length >= 7 && await page.locator('.gpal .gpal-item').count() === 0
+    && ['Input', 'Math', 'Logic', 'Converter', 'Maps'].every((c) => heads.some((h) => h.includes(c))) && heads.some((h) => /Sources: /.test(h))
+    && heads.some((h) => /Targets: Toy outputs/.test(h)), heads.map((h) => h.trim()));
+  await shot('menu-categories');
+  await page.keyboard.press('ArrowRight');
+  ok('Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 3);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  const V = page.locator('.gnode[data-kind=op]', { has: page.locator('.gname', { hasText: 'Value' }) });
+  ok('Down and Enter place the item: a Value node', await V.count() === 1);
+  const vin = V.locator('input[type=number]');
+  await vin.fill('0.8');
+  await vin.press('Enter');
+  await page.waitForTimeout(50);
+  await page.locator('.graph .gview').click({ position: { x: vp.width - 30, y: vp.height / 2 } });
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(100);
+  ok('editing a node value is one undo step', await vin.inputValue() === '0.5', await vin.inputValue());
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(100);
+  ok('...and redo puts it back', await vin.inputValue() === '0.8');
+  await V.locator('.ghead').click();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(80);
+  ok('Delete removes an op node', await V.count() === 0);
+
+  // Search flattens across categories.
+  await page.mouse.click(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5, { button: 'right' });
+  await page.locator('.gpal input').fill('cl');
+  const found = await page.locator('.gpal .gpal-item').allTextContents();
+  ok('typing searches every category and flattens the results', await page.locator('.gpal .gpal-head').count() === 0
+    && found.some((t) => /^Clamp\s*Math/.test(t.trim())) && found.some((t) => /linear clamp\s*Maps/.test(t.trim())), found);
+  await shot('menu-search');
+  await page.keyboard.press('Escape');
+
+  // Clamped by measured size at all four corners, and again after its content grows.
+  const corners = [[4, 4], [vp.width - 4, 4], [4, vp.height - 4], [vp.width - 4, vp.height - 4]];
+  const clamped = [];
+  for (const [cx, cy] of corners) {
+    await page.mouse.click(vp.x + cx, vp.y + cy, { button: 'right' });
+    await page.waitForTimeout(80);
+    clamped.push(await inside());
+    await page.keyboard.press('Escape');
+  }
+  ok('the add menu stays inside the editor at all four corners', clamped.every(Boolean), clamped);
+  await page.mouse.click(vp.x + vp.width - 4, vp.y + vp.height - 4, { button: 'right' });
+  for (const h of ['Math', 'Logic', 'Converter', 'Maps']) await page.locator('.gpal .gpal-head', { hasText: h }).first().click();
+  await page.waitForTimeout(80);
+  ok('...and re-clamps when opened categories grow it', await inside());
+  await page.keyboard.press('Escape');
+  await page.mouse.move(vp.x + vp.width * 0.6, vp.y + vp.height * 0.15);
+  await page.keyboard.press('Shift+A');
+  await page.waitForTimeout(80);
+  const sa = await page.locator('.gpal').boundingBox();
+  ok('Shift+A opens the menu at the pointer', !!sa && Math.abs(sa.x - (vp.x + vp.width * 0.6)) < 2 && sa.y <= vp.y + vp.height * 0.15 + 2, sa);
+  await page.keyboard.press('Escape');
+
+  // Link-drag-search: a source's wire dropped on empty canvas near a corner.
+  const src = await place(page, 0.05, 0.3, '', 'Sources: Motion');
+  const S = nodeBy(page, src);
+  const so = await center(sock(S, 'out'));
+  await sweep(page, so[0], so[1], vp.x + vp.width - 6, vp.y + vp.height - 6);
+  await page.waitForTimeout(80);
+  const offered = await page.locator('.gpal .gpal-item').allTextContents();
+  const groupsOf = new Set(offered.map((t) => t.trim().split(/\s{0,}(?=Input$|Math$|Logic$|Converter$|Maps$|Targets: |Sources: )/).pop()));
+  ok('a wire dropped on empty canvas opens the menu there, flat and filtered to inputs', await page.locator('.gpal .gpal-head').count() === 0
+    && offered.length > 0 && !offered.some((t) => /^(Value|Integer|Boolean)Input$/.test(t.trim())) && !offered.some((t) => /Sources: /.test(t))
+    && offered.some((t) => /^Math/.test(t.trim())) && offered.some((t) => /Targets: /.test(t)), [...groupsOf]);
+  ok('...clamped inside the editor at the corner', await inside());
+  await shot('menu-link-drag-search');
+  await page.locator('.gpal input').fill('thresh');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(120);
+  const Th = page.locator('.gnode[data-kind=op]', { has: page.locator('.gname', { hasText: 'Threshold' }) });
+  ok('placing from it wires the new node to the dragged socket', await Th.count() === 1
+    && await page.locator('.gwire[data-link]').count() === 1 && await sock(Th, 'in').first().getAttribute('data-port') === 'v');
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(100);
+  ok('place and wire undo as one step', await Th.count() === 0 && await page.locator('.gwire[data-link]').count() === 0);
+
+  // A small graph: source -> Math -> Compare, source -> Threshold -> Switch, Compare -> Switch's True arm, Switch -> toy.
+  const dropFrom = async (node, port, fx, fy, search) => {
+    const s0 = await center(port ? node.locator(':scope > [data-sock][data-side=out]') : sock(node, 'out'));
+    await sweep(page, s0[0], s0[1], vp.x + vp.width * fx, vp.y + vp.height * fy);
+    await page.waitForTimeout(80);
+    await page.locator('.gpal input').fill(search);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(120);
+  };
+  const op = (name) => page.locator('.gnode[data-kind=op]', { has: page.locator('.gname', { hasText: name }) }).first();
+  await dropFrom(S, false, 0.25, 0.05, 'math');
+  await op('Add').locator('select').selectOption('multiply');
+  await page.waitForTimeout(80);
+  await op('Multiply').locator('.grow[data-port=b] input').fill('0.02');
+  await op('Multiply').locator('.grow[data-port=b] input').press('Enter');
+  await dropFrom(op('Multiply'), true, 0.42, 0.05, 'compare');
+  await dropFrom(S, false, 0.25, 0.55, 'threshold');
+  await dropFrom(op('Threshold'), true, 0.42, 0.55, 'switch');
+  const toyLabel = await place(page, 0.62, 0.35, 'Lush', 'Targets: Toy outputs');
+  const Toy = nodeBy(page, toyLabel);
+  await dragTo(page, op('Switch').locator(':scope > [data-sock][data-side=out]'), sock(Toy, 'in'));
+  await dragTo(page, op('Greater than').locator(':scope > [data-sock][data-side=out]'), op('Switch').locator('[data-sock][data-port=t]'));
+  await page.waitForTimeout(150);
+  ok('the graph has Math, Compare, Threshold and Switch nodes', await page.locator('.gnode[data-kind=op]').count() === 4);
+  ok('six links join them', await page.locator('.gwire[data-link]').count() === 6, await page.locator('.gwire[data-link]').count());
+  ok('a bool into a float arm shows a conversion mark on its wire', await page.locator('.gconv').count() >= 1);
+  const sw = await op('Switch').locator('[data-sock][data-port=s]').getAttribute('data-vt');
+  ok('the Threshold wired to the Switch\'s bool input (the matching type)', sw === 'bool' && await page.locator('.gwire[data-link]').count() === 6);
+  ok('the toy says where its chain runs, in one word', (await Toy.locator('.gbadge').textContent()).trim() === 'client');
+  const loop = await dragTo(page, op('Switch').locator(':scope > [data-sock][data-side=out]'), op('Multiply').locator('[data-sock][data-port=b]'),
+    () => page.locator('.gcursor').textContent().catch(() => ''));
+  ok('a link closing a loop is refused in words', /would loop/.test(loop || ''), loop);
+  const onSock = await page.evaluate(() => {
+    const socks = [...document.querySelectorAll('[data-sock]')].map((s) => { const r = s.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+    return [...document.querySelectorAll('.gwire[data-link]')].every((p) => {
+      const m = p.getScreenCTM();
+      return [0, p.getTotalLength()].map((t) => { const q = p.getPointAtLength(t); return new DOMPoint(q.x, q.y).matrixTransform(m); })
+        .every((q) => socks.some(([x, y]) => Math.hypot(x - q.x, y - q.y) < 2));
+    });
+  });
+  ok('every link ends on its socket, op input rows included', onSock);
+  if (SHOTS) {
+    // Screenshot only: a taller canvas than the card gives, then Fit.
+    await page.addStyleTag({ content: '.gview { min-height: 640px !important; }' });
+    await page.click('.gtool button:has-text("Fit")');
+    await page.waitForTimeout(400);
+    await page.locator('.graph').screenshot({ path: SHOTS + '/graph-math-compare-switch-threshold.png' });
+  }
+
+  // No text selection on a canvas drag through nodes, nor on the strip.
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await sweep(page, vp.x + 6, vp.y + vp.height * 0.5, vp.x + vp.width - 6, vp.y + vp.height * 0.52);
+  ok('a drag across the canvas and its nodes selects no text', await noSel(page));
+  const stripH = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--strip-h')) || 0);
+  if (stripH) {
+    await sweep(page, 10, stripH / 2, 1400, stripH / 2);
+    ok('a drag across the top strip selects no text', await noSel(page));
+  }
+  ok('no page errors (typed nodes)', errors.length === 0, errors);
   await ctx.close();
 }
 

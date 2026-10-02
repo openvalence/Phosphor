@@ -42,6 +42,7 @@
   import PluginsPane from './plugins/PluginsPane.svelte';
   import { pluginsUi, pluginHeroes } from './plugins/plugins.svelte.js';
   import { panes as shellPanes } from './shell/panes.js';
+  import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
   let { shell = null } = $props();

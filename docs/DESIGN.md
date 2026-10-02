@@ -531,6 +531,7 @@ half.
   wheel (the node editor) is a still preview in the grid with Open (operator
   ruling 2026-10-02, `ph-e82.22`). A nest with its contents is saveable as a
   reusable module; members the current catalog lacks stay inert.
+- The node editor's typed nodes, chains and add menu: [GRAPH.md](GRAPH.md).
 - A nest's frame carries the in-flight count, as `drillCard` does in
   `App.svelte` (RENDERING §9, law 9), though every member is in view.
 - Placements are absolute (same ruling): a card keeps the rect the user gave

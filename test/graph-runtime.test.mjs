@@ -20,7 +20,7 @@
 
 import { createPluginHost } from '../src/plugins/host.js';
 import { manifest, graphRuntime, HERO } from '../src/plugins/graph.js';
-import { MAP } from '../src/model/graph.js';
+import { MAP, readStoreItem } from '../src/model/graph.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL, STORE_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -253,8 +253,8 @@ console.log('(f) the canvas: place, wire through drafts, refuse, undo and redo')
     const n = rt.graph.nodes.find((x) => x.id === A.id);
     return n.x === 620 && n.y === 200 && n.pinned;
   })());
-  ok('an accessory field offers an input and an output socket', JSON.stringify(rt.ports(acc)) === '{"out":"field","in":"field"}');
-  ok('a toy control is an app command out and a toy control in', JSON.stringify(rt.ports(toy)) === '{"out":"app","in":"toy"}');
+  ok('an accessory field offers an input and an output socket', JSON.stringify(rt.ports(acc)) === '{"out":"field","in":"field","vt":"int"}');
+  ok('a toy control is an app command out and a toy control in', JSON.stringify(rt.ports(toy)) === '{"out":"app","in":"toy","vt":"float"}');
 
   const d = rt.placeMap(MAP.invert, 300, 200);
   ok('a placed map is a draft until both ends are wired', rt.graph.drafts.some((x) => x.id === d));
@@ -340,6 +340,86 @@ console.log('(f) the canvas: place, wire through drafts, refuse, undo and redo')
   const r2 = graphRuntime(fakeApi, null, { ...env, storage });
   ok('the view and the drafts persist in the local graph store', JSON.stringify(r2.view) === '{"x":12,"y":-8,"k":0.75}' && r2.graph.drafts.length === 1);
   r2.dispose();
+}
+
+console.log('(g) typed node chains: place, wire by port, evaluate, undo; the hub lowering stays');
+{
+  const pos = src((r) => r.kind === 'field' && r.key === 'role:telemetry.position').ref;
+  const acc = dst((r) => r.kind === 'field' && r.key === 'uid:' + ACC.uid).ref;
+  const toy = dst((r) => r.kind === 'bp' && r.device === TOY.key).ref;
+  const P = rt.place(pos, 0, 0);
+  const T = rt.place(toy, 0, 400);
+  // The toy's existing driver (section c) goes, so the chain can drive it.
+  rt.unwire(T.id, 'in');
+  ok('field sockets are typed from the field: an integer setting is int, a toy float',
+    rt.ports(acc).vt === 'int' && rt.ports(toy).vt === 'float' && rt.ports(pos).vt === 'int');
+  const m = rt.placeOp('math', 200, 600);
+  const th = rt.placeOp('threshold', 400, 600);
+  const sw = rt.placeOp('switch', 600, 600);
+  ok('op nodes are placed, snapped, one undo step each', rt.graph.ops.length === 3 && rt.graph.ops[0].x === 200 && rt.canUndo);
+  ok('a field output wires to an op input by port', rt.wire(P.id, m, 'a') === '' && rt.graph.links.some((l) => l.from === P.id && l.to === m && l.port === 'a'));
+  rt.editOp(m, { fn: 'multiply', vals: { b: 0.01 } });
+  ok('the op\'s operation and values edit', rt.graph.ops.find((o) => o.id === m).fn === 'multiply');
+  rt.wire(m, th, 'v');
+  rt.editOp(th, { vals: { on: 0.5, off: 0.3 } });
+  rt.wire(th, sw, 's');
+  rt.editOp(sw, { vals: { f: 2, t: 18 } });
+  ok('an op output wires to a toy target', rt.wire(sw, T.id) === '');
+  ok('the target says its chain runs in Phosphor, in one word', rt.runs(T.id).home === 'client' && /Phosphor/.test(rt.runs(T.id).why));
+  ok('a link closing a loop is refused in words', /would loop/.test(rt.why(sw, m, 'b')));
+  ok('a map cannot join a chain', /maps join two fields/.test(rt.why(m, rt.placeMap(MAP.gate, 0, 800))));
+  calls.length = 0;
+  samples[129].pos = 60;   // 60 * 0.01 = 0.6, above 0.5: the switch picks True
+  rt.tick();
+  await delay(0);
+  const sent = () => calls.filter((c) => c[0] === 'bp_toy_scalar').map((c) => c[1].value);
+  ok('the chain evaluates per tick and drives the toy through bp_toy_scalar', JSON.stringify(sent()) === '[18]', JSON.stringify(sent()));
+  ok('each op\'s value is readable for the canvas', rt.val(m) === 0.6 && rt.val(th) === 1 && rt.val(sw) === 18);
+  samples[129].pos = 40;   // 0.4: held on (hysteresis)
+  rt.tick();
+  samples[129].pos = 20;   // 0.2: off, the switch picks False
+  rt.tick();
+  await delay(0);
+  ok('threshold holds between its edges, then drops', JSON.stringify(sent()) === '[18,2]', JSON.stringify(sent()));
+
+  rt.editOp(m, { fn: 'sine' });
+  ok('an operation with fewer inputs cuts the links into the ones it lost', !rt.graph.links.some((l) => l.to === m && l.port === 'b')
+    && rt.graph.links.some((l) => l.to === m && l.port === 'a'));
+  rt.undo();
+  ok('undo restores the operation', rt.graph.ops.find((o) => o.id === m).fn === 'multiply');
+  rt.unwire(th, 'in', 'v');
+  ok('cutting one op input leaves its other links', !rt.graph.links.some((l) => l.to === th) && rt.graph.links.some((l) => l.to === sw));
+  rt.undo();
+  ok('undo rewires it', rt.graph.links.some((l) => l.to === th && l.port === 'v'));
+  const dup = rt.duplicate([sw]);
+  ok('duplicate copies an op with its values, unwired', dup.length === 1 && rt.graph.ops.find((o) => o.id === dup[0]).vals.t === 18
+    && !rt.graph.links.some((l) => l.from === dup[0] || l.to === dup[0]));
+  rt.undo();
+  rt.removeMany([th]);
+  ok('deleting an op takes its links', !rt.graph.ops.some((o) => o.id === th) && !rt.graph.links.some((l) => l.from === th || l.to === th));
+  rt.undo();
+  ok('undo brings the op and its links back', rt.graph.ops.some((o) => o.id === th) && rt.graph.links.filter((l) => l.from === th || l.to === th).length === 2);
+
+  const n0 = rt.graph.ops.length;
+  let wired = '';
+  rt.batch(() => { const id = rt.placeOp('clamp', 0, 1000); wired = rt.wire(P.id, id, 'v'); });
+  ok('a place and its wire can be one step (link-drag-search)', wired === '' && rt.graph.ops.length === n0 + 1);
+  rt.undo();
+  ok('...which one undo takes back whole', rt.graph.ops.length === n0 && !rt.graph.links.some((l) => l.port === 'v' && l.from === P.id && !rt.graph.ops.some((o) => o.id === l.to)));
+
+  // With chains on the canvas, a plain source-map-target to an accessory field still goes to the hub's STORE.
+  const A = rt.place(acc, 800, 0);
+  rt.unwire(A.id, 'in');
+  await delay(10);
+  const before = slots.size;
+  const d = rt.placeMap(MAP.linear_clamp, 400, 0);
+  rt.wire(P.id, d);
+  ok('field, one map, accessory field: still a hub edge', rt.wire(d, A.id) === '' && rt.graph.rels.some((r) => r.home === 'hub' && r.to === A.id));
+  await delay(10);
+  ok('...saved through the relationships STORE and confirmed', slots.size === before + 1);
+  ok('...and that target says hub', rt.runs(A.id).home === 'hub');
+  ok('a chain cannot drive a hub-driven target', /already driven/.test(rt.why(sw, A.id)));
+  ok('no chain value ever rides to the hub: the store holds only relationship items', [...slots.values()].every((b) => readStoreItem(b)));
 }
 
 host.setEnabled('graph', false);

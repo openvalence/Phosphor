@@ -19,10 +19,13 @@
    *   never goes below 1 (DESIGN 10.5), so no target shrinks under the floor.
    * - The add menu and refusals live inside this box; full size stays below
    *   the top strip (RENDERING section 9).
+   * - Op nodes (typed math and logic, docs/GRAPH.md) run in Phosphor only;
+   *   their input rows are ROW_H tall, which the CSS --grow must match, so
+   *   wire ends land on their sockets without measuring.
    */
   import { onMount, untrack, tick } from 'svelte';
   import { machine } from '../../model/machine.svelte.js';
-  import { refKey, preview, snap, GRID, MAPS } from '../../model/graph.js';
+  import { refKey, preview, snap, GRID, MAPS, OPS, SAFE, valueOf, TYPES } from '../../model/graph.js';
   import GraphPalette from './GraphPalette.svelte';
 
   let { rt } = $props();
@@ -30,8 +33,12 @@
 
   const NODE_W = 200;
   const MAP_W = 220;
+  const OP_W = 180;
   const SOCK_Y = 20;   // socket centers sit on the header's midline
+  const HEAD = 40;
   const K_MAX = 2;
+  const CATS = ['Input', 'Math', 'Logic', 'Converter'];
+  const ICON = { Input: '#', Math: '∑', Logic: '?', Converter: '≈' };
 
   // ---- runtime state ---------------------------------------------------------
   let gen = $state(0);
@@ -57,11 +64,27 @@
     ...g.nodes.map((o) => ({ kind: 'node', id: o.id, o, w: NODE_W })),
     ...g.rels.map((o) => ({ kind: 'rel', id: o.id, o, w: MAP_W })),
     ...g.drafts.map((o) => ({ kind: 'draft', id: o.id, o, w: MAP_W })),
+    ...g.ops.map((o) => ({ kind: 'op', id: o.id, o, w: OP_W })),
   ].sort((a, b) => a.o.y - b.o.y || a.o.x - b.o.x));
   const byId = $derived(new Map(boxes.map((b) => [b.id, b])));
 
+  /** An op node has an option row: an operation, a Switch's type, a Map Range's clamp. */
+  const hasOpt = (o) => !!OPS[o.kind].fns || o.kind === 'switch' || o.kind === 'map_range';
+  /** The value type at an output, and at an input (port on an op). */
+  function typeAt(id, side, port) {
+    const b = byId.get(id);
+    if (!b) return 'float';
+    if (b.kind === 'op') return side === 'out' ? R.outOf(b.o) : (R.insOf(b.o).find((p) => p.name === port) || {}).type || 'float';
+    if (b.kind === 'node') return info.get(id)?.ports.vt || 'float';
+    return 'float';
+  }
+
   const wires = $derived.by(() => {
     const out = [];
+    for (const l of g.links) {
+      const conv = typeAt(l.from, 'out') !== typeAt(l.to, 'in', l.port);
+      out.push({ id: l.id, link: l, a: l.from, b: l.to, port: l.port, home: 'client', conv });
+    }
     for (const r of g.rels) {
       out.push({ id: r.id + ':in', map: r.id, side: 'in', a: r.from, b: r.id, home: r.home, rel: r });
       out.push({ id: r.id + ':out', map: r.id, side: 'out', a: r.id, b: r.to, home: r.home, rel: r });
@@ -86,6 +109,15 @@
   const note = $derived.by(() => { void gen; return { ok: R.armed.ok, why: R.armed.why, hub: R.hub.reason }; });
   const refOf = (id) => byId.get(id)?.o.ref;
   const fmt = (v) => (typeof v !== 'number' || !Number.isFinite(v) ? '' : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+  /** A typed value as text: a bool as true or false, a Gate's closed output as safe. */
+  const fmtT = (v, t) => (v === SAFE ? 'safe' : typeof v !== 'number' ? '' : t === 'bool' ? (v ? 'true' : 'false') : t === 'int' ? String(Math.round(v)) : fmt(v));
+  /** The value leaving an output: an op's this tick, a field's or toy's live value. */
+  function liveAt(id) {
+    void beat;
+    const b = byId.get(id);
+    if (!b) return undefined;
+    return b.kind === 'op' ? R.val(id) : b.kind === 'node' ? R.value(b.o.ref) : undefined;
+  }
   function liveIn(r) { void beat; const ref = refOf(r.from); return ref ? R.value(ref) : undefined; }
   function liveOut(r) {
     void beat;
@@ -186,17 +218,27 @@
   let kwire = $state(null);     // {id, side}: a wire started by Enter or a tap, waiting for its other end
   let box = $state(null);       // {x0, y0, x1, y1} viewport px: the marquee
   let boxMode = $state(false);
-  let pal = $state(null);       // {x, y, wx, wy}: the add menu
+  let pal = $state(null);       // {x, y, wx, wy, from?}: the add menu; `from` is a link-drag-search's socket
   let full = $state(false);
+  let vpW = $state(0);
+  let vpH = $state(0);
+  let lastPt = null;            // the pointer's last client position over the canvas, for Shift+A
   let gest = null;
   const touches = new Map();
+  const ROW_H = coarse ? 40 : 28;
 
   const at = (b) => drag[b.id] || [b.o.x, b.o.y];
-  function sockXY(id, side) {
+  /** A socket's center below its node's top: the header midline, or an op input's row. */
+  function sockY(b, side, port) {
+    if (b.kind !== 'op' || side === 'out' || port == null) return SOCK_Y;
+    const i = R.insOf(b.o).findIndex((p) => p.name === port);
+    return HEAD + (hasOpt(b.o) ? ROW_H : 0) + Math.max(0, i) * ROW_H + ROW_H / 2;
+  }
+  function sockXY(id, side, port) {
     const b = byId.get(id);
     if (!b) return null;
     const [x, y] = at(b);
-    return [side === 'out' ? x + b.w : x, y + SOCK_Y];
+    return [side === 'out' ? x + b.w : x, y + sockY(b, side, port)];
   }
   function curve([x1, y1], [x2, y2]) {
     const c = Math.max(40, Math.abs(x2 - x1) / 2);
@@ -210,7 +252,7 @@
     if (pal) pal = null;
     const sock = t.closest('[data-sock]');
     if (sock) {
-      gest = { kind: 'wire', id: sock.dataset.owner, side: sock.dataset.side, px: e.clientX, py: e.clientY, moved: false, pid: e.pointerId };
+      gest = { kind: 'wire', id: sock.dataset.owner, side: sock.dataset.side, port: sock.dataset.port, px: e.clientX, py: e.clientY, moved: false, pid: e.pointerId };
       return;
     }
     if (t.closest('.gwire-hit')) return;
@@ -246,6 +288,7 @@
   }
 
   function move(e) {
+    lastPt = [e.clientX, e.clientY];
     if (!gest) return;
     const dx = e.clientX - (gest.px ?? 0);
     const dy = e.clientY - (gest.py ?? 0);
@@ -280,10 +323,10 @@
       let over = null;
       let why = '';
       if (hit && hit.dataset.side !== gest.side && hit.dataset.owner !== gest.id) {
-        over = { id: hit.dataset.owner, side: hit.dataset.side };
-        why = gest.side === 'out' ? R.why(gest.id, over.id) : R.why(over.id, gest.id);
+        over = { id: hit.dataset.owner, side: hit.dataset.side, port: hit.dataset.port };
+        why = gest.side === 'out' ? R.why(gest.id, over.id, over.port) : R.why(over.id, gest.id, gest.port);
       }
-      wiring = { id: gest.id, side: gest.side, x, y, over, why };
+      wiring = { id: gest.id, side: gest.side, port: gest.port, x, y, over, why };
     }
   }
 
@@ -323,9 +366,12 @@
       const w = wiring;
       wiring = null;
       if (w && w.over) {
-        const why = w.side === 'out' ? R.wire(w.id, w.over.id) : R.wire(w.over.id, w.id);
+        const why = w.side === 'out' ? R.wire(w.id, w.over.id, w.over.port) : R.wire(w.over.id, w.id, w.port);
         if (why) refuse(why, e.clientX, e.clientY);
         else said = 'connected';
+      } else if (w && !document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-gid], .gtool')) {
+        // Blender's link-drag-search: released over empty canvas.
+        openPalette(e.clientX, e.clientY, { id: w.id, side: w.side, port: w.port, vt: typeAt(w.id, w.side, w.port) });
       }
     }
   }
@@ -335,44 +381,46 @@
     e.preventDefault();
     openPalette(e.clientX, e.clientY);
   }
-  function openPalette(cx, cy) {
+  /** Open the add menu at a client point (the canvas' upper third when none); `from` filters it to that socket's partners. */
+  function openPalette(cx, cy, from = null) {
     const r = vp.getBoundingClientRect();
     if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 3; }
     const [wx, wy] = toWorld(cx, cy);
-    pal = { x: Math.max(8, Math.min(cx - r.left, r.width - 308)), y: Math.max(8, Math.min(cy - r.top, r.height - 200)), wx, wy };
+    pal = { x: cx - r.left, y: cy - r.top, wx, wy, from };
   }
 
   // ---- sockets: tap or Enter to wire ---------------------------------------------
-  function sockName(id, side) {
+  function sockName(id, side, port) {
     const b = byId.get(id);
-    const name = b ? (b.kind === 'node' ? info.get(id)?.label : b.o.name) : id;
-    return (side === 'out' ? 'output of ' : 'input of ') + name;
+    const name = !b ? id : b.kind === 'node' ? info.get(id)?.label : b.kind === 'op' ? R.opLabel(b.o) : b.o.name;
+    const p = b && b.kind === 'op' && port ? (R.insOf(b.o).find((x) => x.name === port) || {}).label : '';
+    return (side === 'out' ? 'output of ' : (p ? p + ' input of ' : 'input of ')) + name;
   }
-  function sockClick(e, id, side) {
+  function sockClick(e, id, side, port) {
     if (kwire && kwire.side !== side && kwire.id !== id) {
-      const why = side === 'in' ? R.wire(kwire.id, id) : R.wire(id, kwire.id);
+      const why = side === 'in' ? R.wire(kwire.id, id, port) : R.wire(id, kwire.id, kwire.port);
       kwire = null;
       if (why) refuseAt(why, e.currentTarget);
       else said = 'connected';
       return;
     }
-    kwire = kwire && kwire.id === id && kwire.side === side ? null : { id, side };
-    said = kwire ? 'Wiring from the ' + sockName(id, side) + ', Escape cancels' : 'wiring cancelled';
+    kwire = kwire && kwire.id === id && kwire.side === side && kwire.port === port ? null : { id, side, port };
+    said = kwire ? 'Wiring from the ' + sockName(id, side, port) + ', Escape cancels' : 'wiring cancelled';
   }
-  function sockFocus(id, side) {
+  function sockFocus(id, side, port) {
     if (!kwire || kwire.side === side) return;
-    const why = side === 'in' ? R.why(kwire.id, id) : R.why(id, kwire.id);
-    said = why || 'Enter connects the ' + sockName(kwire.id, kwire.side) + ' to the ' + sockName(id, side);
+    const why = side === 'in' ? R.why(kwire.id, id, port) : R.why(id, kwire.id, kwire.port);
+    said = why || 'Enter connects the ' + sockName(kwire.id, kwire.side, kwire.port) + ' to the ' + sockName(id, side, port);
   }
 
   // ---- keyboard and toolbar --------------------------------------------------------
   function del(e) {
     const sock = e && e.target.closest && e.target.closest('[data-sock]');
-    if (sock) { R.unwire(sock.dataset.owner, sock.dataset.side); said = 'wire removed'; return; }
+    if (sock) { R.unwire(sock.dataset.owner, sock.dataset.side, sock.dataset.port); said = 'wire removed'; return; }
     if (selWire) {
       const w = wires.find((x) => x.id === selWire);
       selWire = null;
-      if (w) { R.unwire(w.map, w.side); said = 'wire removed'; }
+      if (w) { if (w.link) R.unwire(w.b, 'in', w.port); else R.unwire(w.map, w.side); said = 'wire removed'; }
       return;
     }
     if (!sel.size) return;
@@ -408,6 +456,13 @@
     if (mod && k === 'a') { e.preventDefault(); sel = new Set(boxes.map((b) => b.id)); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); del(e); return; }
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); openPalette(); return; }
+    if (e.shiftKey && !mod && !e.altKey && k === 'a') {
+      e.preventDefault();
+      const r = vp.getBoundingClientRect();
+      const inside = lastPt && lastPt[0] >= r.left && lastPt[0] <= r.right && lastPt[1] >= r.top && lastPt[1] <= r.bottom;
+      if (inside) openPalette(lastPt[0], lastPt[1]); else openPalette();
+      return;
+    }
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (d && sel.size && e.target.closest('[data-gid]') && !e.target.closest('[data-sock]')) {
       e.preventDefault();
@@ -417,37 +472,73 @@
   }
 
   // ---- the add menu ------------------------------------------------------------------
+  /**
+   * The menu's categories (Blender's Shift+A): node families, the hub maps,
+   * then sources and targets by group. A link-drag-search (`pal.from`) keeps
+   * only what has a socket on the other side that the dragged one can join.
+   */
   const groups = $derived.by(() => {
     void gen; void machine.catalog.etag;
     if (!pal) return [];
+    const f = pal.from;
+    const fb = f && byId.get(f.id);
+    const fromKind = fb ? fb.kind : null;
+    const fromMap = fromKind === 'rel' || fromKind === 'draft';
     const p = R.palette();
     const by = (list, head) => {
       const m = new Map();
       for (const it of list) {
         const name = head + ': ' + it.group;
         if (!m.has(name)) m.set(name, { name, items: [] });
-        m.get(name).items.push({ key: refKey(it.ref), label: it.label, value: { ref: it.ref } });
+        m.get(name).items.push({ key: refKey(it.ref), label: it.label, value: { ref: it.ref, w: NODE_W } });
       }
       return [...m.values()];
     };
-    return [
-      ...by(p.sources, 'Sources'),
-      { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => ({ key: 'map' + id, label: m.label, value: { map: Number(id) } })) },
-      ...by(p.targets, 'Targets'),
-    ];
+    const ops = CATS.map((cat) => ({
+      name: cat,
+      items: Object.entries(OPS).filter(([, o]) => o.cat === cat && !(f && f.side === 'out' && o.ins.every((q) => q.fixed)))
+        .map(([kind, o]) => ({ key: 'op:' + kind, label: o.label, value: { op: kind, w: OP_W } })),
+    }));
+    const maps = { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => ({ key: 'map' + id, label: m.label, value: { map: Number(id), w: MAP_W } })) };
+    let out;
+    if (!f) out = [...ops, maps, ...by(p.sources, 'Sources'), ...by(p.targets, 'Targets')];
+    else if (fromMap) out = f.side === 'out' ? by(p.targets, 'Targets') : by(p.sources, 'Sources');
+    else if (f.side === 'out') out = [...ops, ...(fromKind === 'node' ? [maps] : []), ...by(p.targets, 'Targets')];
+    else out = [...ops, ...(fromKind === 'node' ? [maps] : []), ...by(p.sources, 'Sources')];
+    return out.filter((x) => x.items.length);
   });
+
+  /** Place what the menu picked; after a link-drag-search, wire it to the dragged socket (one undo step). */
   function pick(v) {
-    const { wx, wy } = pal;
+    const { wx, wy, from } = pal;
     pal = null;
+    const x = from && from.side === 'in' ? wx - v.w : wx;
     let id;
-    if (v.map != null) {
-      id = R.placeMap(v.map, wx, wy);
-      said = MAPS[v.map].label + ' placed';
-    } else {
-      const r = R.place(v.ref, wx, wy);
-      id = r.id;
-      said = r.already ? 'already on the canvas: selected' : 'placed';
-    }
+    let why = '';
+    R.batch(() => {
+      if (v.op) {
+        id = R.placeOp(v.op, x, wy);
+        said = OPS[v.op].label + ' placed';
+      } else if (v.map != null) {
+        id = R.placeMap(v.map, x, wy);
+        said = MAPS[v.map].label + ' placed';
+      } else {
+        const r = R.place(v.ref, x, wy);
+        id = r.id;
+        said = r.already ? 'already on the canvas: selected' : 'placed';
+      }
+      if (!from) return;
+      if (from.side === 'out') {
+        const op = v.op && R.graph.ops.find((o) => o.id === id);
+        const ins = op ? R.insOf(op).filter((q) => !q.fixed) : [];
+        const port = (ins.find((q) => q.type === from.vt) || ins[0] || {}).name;
+        why = R.wire(from.id, id, port);
+      } else {
+        why = R.wire(id, from.id, from.port);
+      }
+      if (!why) said += ', connected';
+    });
+    if (why) refuseAt(why, null);
     sel = new Set([id]);
     focusBox(id);
   }
@@ -457,6 +548,11 @@
   const parse = (s) => s.split(/[\s,]+/).filter(Boolean).map(Number);
   function set(e, r, patch) {
     const why = R.edit(r.id, patch);
+    if (why) refuseAt(why, e.currentTarget);
+  }
+  function setOp(e, o, patch) {
+    if (patch.vals && Object.values(patch.vals).some((v) => !Number.isFinite(v))) { refuseAt('refused: not a number', e.currentTarget); return; }
+    const why = R.editOp(o.id, patch);
     if (why) refuseAt(why, e.currentTarget);
   }
   function pathOf(pv, w, h) {
@@ -473,12 +569,13 @@
   }
 </script>
 
-{#snippet socket(id, side, type, title)}
-  <button type="button" class="gsock" data-sock data-owner={id} data-side={side} data-type={type}
-          data-armed={kwire && kwire.id === id && kwire.side === side ? '' : null}
-          aria-label={(side === 'in' ? 'Input' : 'Output') + ' socket, ' + title}
-          title={(side === 'in' ? 'Input: ' : 'Output: ') + title}
-          onclick={(e) => sockClick(e, id, side)} onfocus={() => sockFocus(id, side)}></button>
+{#snippet socket(id, side, type, title, vt = 'float', port = undefined, sy = SOCK_Y)}
+  <button type="button" class="gsock" data-sock data-owner={id} data-side={side} data-type={type} data-vt={vt} data-port={port}
+          data-armed={kwire && kwire.id === id && kwire.side === side && kwire.port === port ? '' : null}
+          style:--sy={sy + 'px'}
+          aria-label={(side === 'in' ? 'Input' : 'Output') + ' socket, ' + title + ', ' + vt}
+          title={(side === 'in' ? 'Input: ' : 'Output: ') + title + ' (' + vt + ')'}
+          onclick={(e) => sockClick(e, id, side, port)} onfocus={() => sockFocus(id, side, port)}></button>
 {/snippet}
 
 {#snippet fieldNode(b)}
@@ -486,12 +583,18 @@
   {@const nf = info.get(n.id) || { label: n.id, ports: {}, unit: '' }}
   {@const bp = n.ref.kind === 'bp'}
   {@const drivers = g.rels.filter((r) => r.to === n.id)}
+  {@const chain = g.links.some((l) => l.to === n.id)}
+  {@const run = (void gen, R.runs(n.id))}
   {@const stale = !bp && nf.ports.out ? (void beat, R.stale(n.ref)) : ''}
   <span class="ghead">
     <span class="gicon" aria-hidden="true">{bp ? '◎' : '◆'}</span>
     <span class="gname">{nf.label}</span>
-    <span class="gbadge" data-home={bp ? 'client' : 'hub'}
-          title={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
+    {#if run}
+      <span class="gbadge" data-home={run.home} data-runs title={run.why}>{run.home}</span>
+    {:else}
+      <span class="gbadge" data-home={bp ? 'client' : 'hub'}
+            title={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
+    {/if}
   </span>
   {#if nf.ports.out}
     {@const v = (void beat, R.value(n.ref))}
@@ -499,16 +602,62 @@
       <span class="gnum">{fmt(v) || 'no value yet'}</span> {fmt(v) ? nf.unit : ''}{stale ? ' (' + stale + ')' : ''}
     </p>
   {/if}
-  {#if nf.ports.in && drivers.length}
+  {#if nf.ports.in && (drivers.length || chain)}
     {@const ec = (void beat, R.echo(n.ref))}
     {@const d = drivers.find((r) => r.enabled) || drivers[0]}
-    {#if d.home === 'client'}<p class="gline">mapped <span class="gnum">{fmt((void beat, R.out(d.id))) || 'nothing yet'}</span></p>{/if}
+    {@const cw = chain ? (void beat, R.chainWhy(n.id)) : ''}
+    {#if chain || d.home === 'client'}<p class="gline">mapped <span class="gnum">{fmtT((void beat, R.out(chain ? n.id : d.id)), nf.ports.vt) || 'nothing yet'}</span></p>{/if}
+    {#if cw}<p class="gline" data-phase="disarmed" role="status">{cw}</p>{/if}
     <p class="gline">reads <span class="gnum">{fmt(ec.value) || 'no value yet'}</span> {fmt(ec.value) ? nf.unit : ''}</p>
     {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">{ec.reason || 'no answer from the hub'}</p>
     {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub</p>{/if}
   {/if}
-  {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.label)}{/if}
-  {#if nf.ports.out}{@render socket(n.id, 'out', nf.ports.out, nf.label)}{/if}
+  {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.label, nf.ports.vt)}{/if}
+  {#if nf.ports.out}{@render socket(n.id, 'out', nf.ports.out, nf.label, nf.ports.vt)}{/if}
+{/snippet}
+
+{#snippet opNode(b)}
+  {@const o = b.o}
+  {@const spec = OPS[o.kind]}
+  {@const ins = R.insOf(o)}
+  {@const ot = R.outOf(o)}
+  {@const v = liveAt(o.id)}
+  <span class="ghead">
+    <span class="gicon" aria-hidden="true">{ICON[spec.cat]}</span>
+    <span class="gname">{R.opLabel(o)}</span>
+    <span class="gnum gout" title="Output this tick">{fmtT(v, ot)}</span>
+  </span>
+  {#if hasOpt(o)}
+    <div class="grow">
+      {#if spec.fns}
+        <select aria-label="Operation" value={o.fn} onchange={(e) => setOp(e, o, { fn: e.currentTarget.value })}>
+          {#each Object.entries(spec.fns) as [k, f] (k)}<option value={k}>{f.label}</option>{/each}
+        </select>
+      {:else if o.kind === 'switch'}
+        <select aria-label="Type" value={o.type} onchange={(e) => setOp(e, o, { type: e.currentTarget.value })}>
+          {#each TYPES as t (t)}<option value={t}>{t}</option>{/each}
+        </select>
+      {:else}
+        <label class="check"><input type="checkbox" checked={o.clamp !== false} onchange={(e) => setOp(e, o, { clamp: e.currentTarget.checked })} /> Clamp</label>
+      {/if}
+    </div>
+  {/if}
+  {#each ins as p, i (p.name)}
+    {@const linked = g.links.some((l) => l.to === o.id && l.port === p.name)}
+    <div class="grow" data-port={p.name}>
+      {#if linked}
+        <span class="glabel">{p.label}</span>
+      {:else if p.type === 'bool'}
+        <label class="check"><input type="checkbox" checked={valueOf(o, p) !== 0}
+               onchange={(e) => setOp(e, o, { vals: { [p.name]: e.currentTarget.checked ? 1 : 0 } })} /> {p.label}</label>
+      {:else}
+        <label class="gfield"><span>{p.label}</span><input type="number" step={p.type === 'int' ? 1 : 'any'} value={valueOf(o, p)}
+               onchange={(e) => setOp(e, o, { vals: { [p.name]: Number(e.currentTarget.value) } })} /></label>
+      {/if}
+    </div>
+    {#if !p.fixed}{@render socket(o.id, 'in', 'op', p.label, p.type, p.name, HEAD + (hasOpt(o) ? ROW_H : 0) + i * ROW_H + ROW_H / 2)}{/if}
+  {/each}
+  {@render socket(o.id, 'out', 'op', R.opLabel(o), ot)}
 {/snippet}
 
 {#snippet mapNode(b)}
@@ -561,7 +710,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
-    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+F10)">+ Add</button>
+    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+A)">+ Add</button>
     <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} title="Undo (Ctrl+Z)">Undo</button>
     <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} title="Redo (Ctrl+Shift+Z)">Redo</button>
     <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate selected maps (Ctrl+D)">Duplicate</button>
@@ -578,7 +727,7 @@
     {#if note.hub}Hub edges: {note.hub}.{/if}
   </p>
 
-  <div class="gview" bind:this={vp} role="group" aria-label="Canvas" tabindex="-1"
+  <div class="gview" bind:this={vp} bind:clientWidth={vpW} bind:clientHeight={vpH} role="group" aria-label="Canvas" tabindex="-1"
        style:background-size={Array(2).fill((GRID * view.k < 10 ? GRID * 5 : GRID) * view.k + 'px').join(' ')}
        style:background-position={view.x + 'px ' + view.y + 'px'}
        data-mode={boxMode ? 'box' : 'pan'}
@@ -588,23 +737,34 @@
       <svg class="gwires" aria-hidden="true">
         {#each wires as w (w.id)}
           {@const p1 = sockXY(w.a, 'out')}
-          {@const p2 = sockXY(w.b, 'in')}
+          {@const p2 = sockXY(w.b, 'in', w.port)}
           {#if p1 && p2}
             {@const d = curve(p1, p2)}
-            {@const a = w.rel ? armed.get(w.rel.id) : null}
-            {@const v = w.rel ? (w.side === 'in' ? liveIn(w.rel) : liveOut(w.rel)) : undefined}
-            <path class="gwire" {d} data-home={w.home} data-wire={w.id}
+            {@const a = w.rel ? armed.get(w.rel.id) : w.link ? { on: (void gen, R.armed.ok) } : null}
+            {@const v = w.rel ? (w.side === 'in' ? liveIn(w.rel) : liveOut(w.rel)) : w.link ? liveAt(w.a) : undefined}
+            <path class="gwire" {d} data-home={w.home} data-wire={w.id} data-link={w.link ? '' : null}
                   data-off={a && a.on === false ? '' : null} data-live={a && a.on && typeof v === 'number' ? '' : null}
                   data-sel={selWire === w.id ? '' : null} />
             <path class="gwire-hit" {d} role="presentation"
                   onpointerdown={(e) => { e.stopPropagation(); selWire = w.id; sel = new Set(); vp.focus({ preventScroll: true }); }} />
-            {#if typeof v === 'number'}
-              <text class="gval" x={(p1[0] + p2[0]) / 2} y={(p1[1] + p2[1]) / 2 - 6} text-anchor="middle">{fmt(v)}</text>
+            {#if w.conv}
+              <circle class="gconv" data-conv={w.id} r="3.5" cx={(p1[0] + p2[0]) / 2} cy={(p1[1] + p2[1]) / 2}>
+                <title>{typeAt(w.a, 'out') + ' to ' + typeAt(w.b, 'in', w.port)}</title>
+              </circle>
+            {/if}
+            {#if typeof v === 'number' || v === SAFE}
+              <text class="gval" x={(p1[0] + p2[0]) / 2} y={(p1[1] + p2[1]) / 2 - 6} text-anchor="middle">{w.link ? fmtT(v, typeAt(w.a, 'out')) : fmt(v)}</text>
             {/if}
           {/if}
         {/each}
+        {#if pal && pal.from}
+          {@const p = sockXY(pal.from.id, pal.from.side, pal.from.port)}
+          {#if p}
+            <path class="gwire" data-home="pending" d={pal.from.side === 'out' ? curve(p, [pal.wx, pal.wy]) : curve([pal.wx, pal.wy], p)} />
+          {/if}
+        {/if}
         {#if wiring}
-          {@const p = sockXY(wiring.id, wiring.side)}
+          {@const p = sockXY(wiring.id, wiring.side, wiring.port)}
           {#if p}
             <path class="gwire" data-home="pending" data-refused={wiring.why ? '' : null}
                   d={wiring.side === 'out' ? curve(p, [wiring.x, wiring.y]) : curve([wiring.x, wiring.y], p)} />
@@ -622,15 +782,15 @@
              data-shadow={st && st.phase === 'pending' ? 'pending' : null}
              style:left={x + 'px'} style:top={y + 'px'} style:width={b.w + 'px'}
              tabindex="0" role="group"
-             aria-label={(b.kind === 'node' ? (info.get(b.id)?.label || '') : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
+             aria-label={(b.kind === 'node' ? (info.get(b.id)?.label || '') : b.kind === 'op' ? R.opLabel(b.o) + ' node' : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
              onfocus={(e) => { if (e.target === e.currentTarget && !sel.has(b.id)) { sel = new Set([b.id]); selWire = null; } }}>
-          {#if b.kind === 'node'}{@render fieldNode(b)}{:else}{@render mapNode(b)}{/if}
+          {#if b.kind === 'node'}{@render fieldNode(b)}{:else if b.kind === 'op'}{@render opNode(b)}{:else}{@render mapNode(b)}{/if}
         </div>
       {/each}
     </div>
 
     {#if !boxes.length}
-      <p class="gempty">Right-click or + Add to place nodes</p>
+      <p class="gempty">Right-click or Shift+A to add nodes</p>
     {/if}
     {#if box}
       <div class="gbox" style:left={Math.min(box.x0, box.x1) + 'px'} style:top={Math.min(box.y0, box.y1) + 'px'}
@@ -644,7 +804,7 @@
       <p class="gcursor gflash" data-phase="fault" style:left={Math.max(4, flash.x) + 'px'} style:top={flash.y + 'px'}>{flash.text}</p>
     {/if}
     {#if pal}
-      <GraphPalette {groups} x={pal.x} y={pal.y} onpick={pick} onclose={() => { pal = null; vp.focus(); }} />
+      <GraphPalette {groups} x={pal.x} y={pal.y} vw={vpW} vh={vpH} flat={!!pal.from} onpick={pick} onclose={() => { pal = null; vp.focus(); }} />
     {/if}
   </div>
   <p class="gsr" role="status" aria-live="polite">{said}</p>
@@ -708,17 +868,32 @@
   .gparams .check { flex-direction: row; align-items: center; gap: 4px; }
   .gparams input:not([type='checkbox']) { min-height: 24px; min-width: 0; width: 100%; font-size: .75rem; }
 
-  /* Offsets are from the padding box: the node's 1px border is subtracted so the center sits on SOCK_Y and the edge. */
-  .gsock { --hit: 22px; position: absolute; top: calc(19px - var(--hit) / 2); width: var(--hit); height: var(--hit); padding: 0;
+  /* Op input rows: ROW_H in the script must equal --grow. */
+  .graph { --grow: 28px; --vt-float: var(--reality); --vt-bool: var(--intent);
+    --vt-int: color-mix(in srgb, var(--reality) 50%, var(--intent)); }
+  .grow { display: flex; align-items: center; gap: 6px; height: var(--grow); font-size: 10px; color: var(--ink-dim); }
+  .grow select { flex: 1 1 auto; min-width: 0; min-height: 22px; font-size: .75rem; }
+  .grow .check { display: flex; align-items: center; gap: 4px; }
+  .gfield { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+  .gfield span { flex: 0 0 auto; }
+  .gfield input { flex: 1 1 auto; min-width: 0; width: 100%; min-height: 22px; font-size: .75rem; }
+  .glabel { padding-left: 2px; }
+  .gout { margin-left: auto; }
+  .gnode[data-kind='op'] { border-color: color-mix(in srgb, var(--intent) 60%, var(--line-3)); }
+
+  /* Offsets are from the padding box: the node's 1px border is subtracted so the center sits on --sy and the edge. */
+  .gsock { --hit: 22px; position: absolute; top: calc(var(--sy, 20px) - 1px - var(--hit) / 2); width: var(--hit); height: var(--hit); padding: 0;
     background: none; border: 0; cursor: crosshair; touch-action: none; display: grid; place-items: center; }
   .gsock[data-side='in'] { left: calc(var(--hit) / -2 - 1px); }
   .gsock[data-side='out'] { right: calc(var(--hit) / -2 - 1px); }
   .gsock::before { content: ''; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%;
-    background: var(--bg-card); border: 2px solid var(--ink-dim); }
-  .gsock[data-type='app']::before, .gsock[data-type='toy']::before { border-radius: 2px; border-color: var(--intent); }
-  .gsock[data-type='sensor']::before { border-radius: 2px; transform: rotate(45deg); border-color: var(--intent); }
-  .gsock[data-type='field']::before { border-color: var(--reality); }
+    background: var(--bg-card); border: 2px solid var(--vt-float); }
+  .gsock[data-vt='int']::before { border-color: var(--vt-int); }
+  .gsock[data-vt='bool']::before { border-color: var(--vt-bool); }
+  .gsock[data-type='app']::before, .gsock[data-type='toy']::before { border-radius: 2px; }
+  .gsock[data-type='sensor']::before { border-radius: 2px; transform: rotate(45deg); }
   .gsock[data-armed]::before { background: var(--intent); }
+  .gconv { fill: var(--bg-sunken); stroke: var(--ink-hi); stroke-width: 1.5; }
   .gsock:hover::before, .gsock:focus-visible::before { background: var(--ink-hi); }
   .gsock:focus-visible { outline: 2px solid var(--intent); border-radius: 50%; }
 
@@ -729,6 +904,8 @@
   .gcursor[data-phase='fault'] { color: var(--warn); border-color: var(--warn); }
 
   @media (pointer: coarse) {
+    .graph { --grow: 40px; }
+    .grow select, .gfield input { min-height: 36px; }
     .gsock { --hit: 40px; }
     .gtool .og-btn, .gparams input:not([type='checkbox']) { min-height: var(--tap); }
   }

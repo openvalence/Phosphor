@@ -1,0 +1,14 @@
+/*
+ * select.css -- text selection is off app-wide, as in a native app: a drag
+ * on the canvas, the grid or the strip selects nothing. Text a user types
+ * or copies stays selectable: fields, code, the log feed, import and export
+ * boxes, and anything marked .selectable.
+ * Imported by App.svelte; kept out of style.css (theme-owned).
+ */
+body { -webkit-user-select: none; user-select: none; }
+
+input, textarea, select, [contenteditable]:not([contenteditable='false']),
+pre, code, dd.mono, .logpane .feed, .selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}

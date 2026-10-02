@@ -20,6 +20,7 @@ import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
+  OPS, addOp, planLink, addLink, insOf, outOf, opLabel,
 } from '../model/graph.js';
 import { ROLE } from '../model/roles.js';
 import { controlKey, WIDGET } from '../model/settings.js';
@@ -48,6 +49,12 @@ const numeric = (f) => (f.isIntentField
   ? typeof f.min === 'number' && typeof f.max === 'number'
   : f.type <= PACKED.f32 && !f.options);
 
+/** A field's socket type: an unscaled integer bounded to exactly 0..1 is bool, any other unscaled integer int, the rest float. */
+export const fieldType = (f) => {
+  if (!f || f.isIntentField || f.type === PACKED.f32 || (f.scale || 1) !== 1) return 'float';
+  return f.min === 0 && f.max === 1 ? 'bool' : 'int';
+};
+
 /**
  * @param {Object} api the plugin API
  * @param {{invoke: Function, listen: Function}|null} shell the Tauri bridge; null leaves buttplug refs absent
@@ -57,7 +64,7 @@ export function graphRuntime(api, shell, env) {
   const local = loadLocal(env.storage);
   const hubPos = local.hubPos;
   let view = local.view;
-  let g = { v: 1, nodes: local.nodes, rels: local.rels, drafts: local.drafts };
+  let g = { v: 2, nodes: local.nodes, rels: local.rels, drafts: local.drafts, ops: local.ops, links: local.links };
   const history = createHistory();
   const devices = new Map();          // device key -> bp_devices record
   const outputs = new Map();          // refKey -> last applied output or reading
@@ -143,7 +150,7 @@ export function graphRuntime(api, shell, env) {
 
   function readSensors() {
     if (!shell) return;
-    for (const r of g.rels) {
+    for (const r of [...g.rels, ...g.links]) {
       const n = g.nodes.find((m) => m.id === r.from);
       if (!n || n.ref.kind !== 'bp' || n.ref.ctl !== 'sensor') continue;
       const d = devices.get(n.ref.device);
@@ -160,6 +167,7 @@ export function graphRuntime(api, shell, env) {
       const f = fieldFor(ref.key);
       return f ? api.value(f) : undefined;
     },
+    type: (ref) => (ref.kind === 'field' ? fieldType(fieldFor(ref.key)) : 'float'),
     target(ref) {
       if (ref.kind === 'bp') {
         const c = ctlOf(ref);
@@ -387,8 +395,9 @@ export function graphRuntime(api, shell, env) {
   // ---- the canvas: nodes, drafts, wires, undo ----------------------------------
   const nodeOf = (id) => g.nodes.find((n) => n.id === id);
   const draftOf = (id) => g.drafts.find((d) => d.id === id);
+  const opOf = (id) => g.ops.find((o) => o.id === id);
   const homeNodes = (a, b) => home(a.ref, b.ref);
-  const snapshot = () => JSON.parse(JSON.stringify({ nodes: g.nodes, rels: g.rels, drafts: g.drafts }));
+  const snapshot = () => JSON.parse(JSON.stringify({ nodes: g.nodes, rels: g.rels, drafts: g.drafts, ops: g.ops, links: g.links }));
   // What a hub slot holds, positions aside: a change here is a store write.
   const hubKey = (r, nodes) => {
     if (!r) return '';
@@ -401,10 +410,15 @@ export function graphRuntime(api, shell, env) {
    * One user edit as one undo step: `fn` mutates g and returns '' or a refusal
    * in words; a refusal leaves no step. The step remembers which hub slots the
    * edit touched, so undo writes those and leaves every other slot as it is.
+   * A step inside a step joins the outer one.
    */
+  let depth = 0;
   function step(fn) {
+    if (depth) return fn();
     const before = snapshot();
-    const why = fn();
+    depth++;
+    let why;
+    try { why = fn(); } finally { depth--; }
     if (why) return why;
     const a = hubSlots(before);
     const b = hubSlots(g);
@@ -448,7 +462,7 @@ export function graphRuntime(api, shell, env) {
         if (!nodes.some((n) => n.id === id)) { const n = nodeOf(id); if (n) nodes.push(n); }
       }
     }
-    g = { v: 1, nodes, rels, drafts: want.drafts };
+    g = { v: 2, nodes, rels, drafts: want.drafts, ops: want.ops, links: want.links };
     for (const r of rels) if (r.home === 'hub') hubPos[r.rel_id] = [r.x, r.y];
     for (const r of saves) saveHub(r);
     for (const r of deletes) saveHub(r, STORE_OP.delete_item);
@@ -489,17 +503,37 @@ export function graphRuntime(api, shell, env) {
     return d;
   }
 
-  /** Why output socket a cannot be wired to input socket b, in words; '' when it can. Changes nothing. */
-  function why(a, b) {
+  /** Is this a node chain's wire: an op at either end. */
+  const isLink = (a, b) => !!(opOf(a) || opOf(b));
+
+  /** A link plan from output a to input b (port on an op), with the node ends checked. */
+  function linkPlan(a, b, port) {
+    const A = nodeOf(a);
+    const B = nodeOf(b);
+    if (A && !ports(A.ref).out) return { reason: 'refused: not a source' };
+    if (B && !ports(B.ref).in) return { reason: 'refused: not a target' };
+    return planLink(g, a, b, port);
+  }
+
+  /** Why output socket a cannot be wired to input socket b (port on an op), in words; '' when it can. Changes nothing. */
+  function why(a, b, port) {
+    if (isLink(a, b)) return linkPlan(a, b, port).reason || '';
     const p = planWire(g, a, b, homeNodes);
     if (p.reason || p.partial) return p.reason || '';
     const h = homeNodes(nodeOf(p.from), nodeOf(p.to));
     return h.home === 'hub' ? hubRefusal(nodeOf(p.from).ref) : '';
   }
 
-  /** Wire output socket a to input socket b (node, draft or rel ids). '' or the refusal in words. */
-  function wire(a, b) {
+  /** Wire output socket a to input socket b (node, draft, rel or op ids; port on an op). '' or the refusal in words. */
+  function wire(a, b, port) {
     return step(() => {
+      if (isLink(a, b)) {
+        const p = linkPlan(a, b, port);
+        if (p.reason) return p.reason;
+        addLink(g, p);
+        for (const id of [a, b]) { const n = nodeOf(id); if (n) n.pinned = true; }
+        return '';
+      }
       const p = planWire(g, a, b, homeNodes);
       if (p.reason) return p.reason;
       if (p.partial) {
@@ -521,15 +555,17 @@ export function graphRuntime(api, shell, env) {
     });
   }
 
-  /** Cut the wire at one socket: a map's in or out, or every wire at a field node's in or out. */
-  function unwire(id, side) {
+  /** Cut the wire at one socket: a map's in or out, an op's input `port` or output, or every wire at a field node's in or out. */
+  function unwire(id, side, port) {
     return step(() => {
+      const at = side === 'in' ? 'to' : 'from';
+      g.links = g.links.filter((l) => !(l[at] === id && (side === 'out' || !opOf(id) || l.port === port)));
+      if (opOf(id)) return '';
       const end = side === 'in' ? 'from' : 'to';
       const d = draftOf(id);
       if (d) { d[end] = null; return ''; }
       const r = g.rels.find((x) => x.id === id);
       if (r) { toDraft(r, side === 'in' ? 'to' : 'from'); return ''; }
-      const at = side === 'in' ? 'to' : 'from';
       for (const x of g.drafts) if (x[at] === id) x[at] = null;
       for (const x of g.rels.filter((q) => q[at] === id)) toDraft(x, side === 'in' ? 'from' : 'to');
       return '';
@@ -552,6 +588,33 @@ export function graphRuntime(api, shell, env) {
     return id;
   }
 
+  /** Put an op node of `kind` (graph.js OPS) at (x, y). */
+  function placeOp(kind, x, y) {
+    let id = null;
+    step(() => { id = addOp(g, kind, snap(x), snap(y)).id; return ''; });
+    return id;
+  }
+
+  /**
+   * Change an op node: {fn?, clamp?, type?, vals?} (vals merge by input name).
+   * Links into inputs its new operation no longer has are cut.
+   */
+  function editOp(id, patch) {
+    return step(() => {
+      const o = opOf(id);
+      if (!o) return 'that node is gone';
+      const { vals, ...rest } = patch;
+      Object.assign(o, rest);
+      if (vals) o.vals = { ...o.vals, ...vals };
+      const live = new Set(insOf(o).filter((p) => !p.fixed).map((p) => p.name));
+      g.links = g.links.filter((l) => l.to !== id || live.has(l.port));
+      return '';
+    });
+  }
+
+  /** Several edits as one undo step. */
+  const batch = (fn) => step(() => { fn(); return ''; });
+
   /** Delete nodes, drafts and map nodes by id as one step. A field node's maps stay, unwired at that end. */
   function removeMany(ids) {
     return step(() => {
@@ -559,6 +622,7 @@ export function graphRuntime(api, shell, env) {
         const r = g.rels.find((x) => x.id === id);
         if (r) { dropRel(r); continue; }
         if (draftOf(id)) { g.drafts = g.drafts.filter((x) => x.id !== id); continue; }
+        if (opOf(id)) { removeNode(g, id); continue; }
         if (!nodeOf(id)) continue;
         for (const x of g.rels.filter((q) => q.from === id || q.to === id)) toDraft(x, x.from === id ? 'to' : 'from');
         removeNode(g, id);
@@ -572,6 +636,13 @@ export function graphRuntime(api, shell, env) {
     const made = [];
     step(() => {
       for (const id of ids) {
+        const o = opOf(id);
+        if (o) {
+          const c = addOp(g, o.kind, o.x + 40, o.y + 40);
+          Object.assign(c, JSON.parse(JSON.stringify({ ...o, id: c.id, x: c.x, y: c.y })));
+          made.push(c.id);
+          continue;
+        }
         const m = g.rels.find((x) => x.id === id) || draftOf(id);
         if (!m) continue;
         const d = addDraft(g, m.map, m.x + 40, m.y + 40, { name: m.name });
@@ -588,7 +659,7 @@ export function graphRuntime(api, shell, env) {
   function moveMany(list) {
     return step(() => {
       for (const { id, x, y } of list) {
-        const n = nodeOf(id) || g.rels.find((r) => r.id === id) || draftOf(id);
+        const n = nodeOf(id) || g.rels.find((r) => r.id === id) || draftOf(id) || opOf(id);
         if (!n) continue;
         n.x = x;
         n.y = y;
@@ -610,7 +681,20 @@ export function graphRuntime(api, shell, env) {
     return {
       out: asSrc ? (bp ? (ref.ctl === 'sensor' ? 'sensor' : 'app') : 'field') : null,
       in: asDst ? (bp ? 'toy' : 'field') : null,
+      vt: io.type(ref),
     };
+  }
+
+  /** Where the chain driving target node `id` runs, in one word, and why; null when nothing drives it. */
+  function runs(id) {
+    const r = g.rels.find((x) => x.to === id && x.enabled) || g.rels.find((x) => x.to === id);
+    if (r) {
+      const a = nodeOf(r.from);
+      const b = nodeOf(r.to);
+      return { home: r.home, why: a && b ? home(a.ref, b.ref).why : '' };
+    }
+    const l = g.links.find((x) => x.to === id);
+    return l ? { home: 'client', why: 'runs in Phosphor (node chain)' } : null;
   }
 
   /** A target's own answer: a field's write status and NACK reason, a toy's last applied output. */
@@ -663,7 +747,7 @@ export function graphRuntime(api, shell, env) {
     get armed() { return armedNow; },
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
     hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
-    why, wire, unwire, place, placeMap, removeMany, duplicate, moveMany, ports, echo, palette,
+    why, wire, unwire, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs,
     undo: () => travel((swap) => history.undo(swap)),
     redo: () => travel((swap) => history.redo(swap)),
     get canUndo() { return history.canUndo; },
@@ -674,7 +758,11 @@ export function graphRuntime(api, shell, env) {
     unit: (ref) => (ref.kind === 'field' && fieldFor(ref.key)?.unit) || '',
     stale: (ref) => (ref.kind === 'field' && fieldFor(ref.key) ? api.stale(fieldFor(ref.key)) : ''),
     out: (id) => runner.out(id),
-    maps: MAPS, MAP,
+    /** An op's output this tick, while armed. */
+    val: (id) => runner.val(id),
+    /** Why a chain's target node is not driven, in words. */
+    chainWhy: (id) => runner.why(id),
+    maps: MAPS, MAP, OPS, insOf, outOf, opLabel,
     label(ref) {
       // A toy control is both; its target label names it without the app's role.
       const all = ref.kind === 'bp' ? [...targets(), ...sources()] : [...sources(), ...targets()];
