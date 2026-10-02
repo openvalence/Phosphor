@@ -322,6 +322,9 @@
      Petch label + mono value, both .68rem, neither tinted by series. */
   .leg {
     display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    text-align: left;
     align-items: center;
     gap: 6px;
     font-family: var(--font);
@@ -345,7 +348,7 @@
     flex: 0 0 auto;
   }
 
-  .leg-label { white-space: nowrap; }
+  .leg-label { overflow-wrap: anywhere; }
 
   .leg-val {
     font-weight: var(--num-wght);
