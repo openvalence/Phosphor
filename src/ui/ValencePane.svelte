@@ -216,7 +216,8 @@
             <tr><th>when</th><th>code</th><th>channel</th><th>detail</th></tr>
           </thead>
           <tbody>
-            {#each nacks as n (n.at + ':' + n.code + ':' + n.channel)}
+            <!-- Unkeyed: a roster read answers several empty slots in one ms. -->
+            {#each nacks as n}
               <tr>
                 <td class="mono">{ageLabel(n.at, nowTick)} ago</td>
                 <td class="mono">{n.name}</td>
