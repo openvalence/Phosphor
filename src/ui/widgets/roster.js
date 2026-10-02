@@ -74,13 +74,17 @@ export async function enumerateStore(fetchBlob, storeEntry, { role, signal, onSl
 }
 
 /**
- * The STORE entry a roster STATE entry enumerates, by RFC-070's `store_id`
- * entry key. Null when absent or naming no store: never guessed by name or id
- * adjacency (law 6).
+ * The STORE entry a roster STATE entry or an `action.store` writer belongs to,
+ * by RFC-070's `store_id` entry key. Null when absent or naming no store:
+ * never guessed by name or id adjacency (law 6).
  */
-// TODO(rfc-ind): RFC-070 is a draft and the JS catalog decoder does not read
-// entry key 17 yet, so this resolves nothing on a live hub today.
-export function storeOfRoster(entries, rosterEntry) {
-  if (!rosterEntry || rosterEntry.storeId == null) return null;
-  return entries.find((e) => e.store && e.store.storeId === rosterEntry.storeId) || null;
+export function storeOfRoster(entries, entry) {
+  if (!entry || entry.storeId == null) return null;
+  return entries.find((e) => e.store && e.store.storeId === entry.storeId) || null;
+}
+
+/** The roster STATE entry naming this STORE by `store_id`, or null. */
+export function rosterOfStore(entries, storeEntry) {
+  if (!storeEntry || !storeEntry.store) return null;
+  return entries.find((e) => e.storeId === storeEntry.store.storeId && e.layout) || null;
 }

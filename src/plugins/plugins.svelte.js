@@ -22,7 +22,7 @@ import {
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
-import { pendingSlots, enumerateStore } from '../ui/widgets/roster.js';
+import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import { LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
@@ -89,8 +89,7 @@ const modTarget = (field) => modTargetUid(machine.catalog.entries || [], field.c
 // RFC-070: the writer's store_id names the STORE; slots read as roster.js
 // reads them (pending, locked and empty stay distinct). Null when unlinked.
 async function storeSlots(field) {
-  const sid = (entryOf(field.channelId) || {}).storeId;
-  const store = sid == null ? null : (machine.catalog.entries || []).find((e) => e.store && e.store.storeId === sid);
+  const store = storeOfRoster(machine.catalog.entries || [], entryOf(field.channelId));
   if (!store) return null;
   const slots = pendingSlots(store);
   const s = getSession();

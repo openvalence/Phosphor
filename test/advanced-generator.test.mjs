@@ -14,7 +14,7 @@
 
 import { buildSettingsModel, modTargetUid } from '../src/model/settings.js';
 import { claimRoles, ROLE, ADVGEN_SPEC } from '../src/model/roles.js';
-import { SLOT, pendingSlots, enumerateStore, storeOfRoster } from '../src/ui/widgets/roster.js';
+import { SLOT, pendingSlots, enumerateStore, storeOfRoster, rosterOfStore } from '../src/ui/widgets/roster.js';
 import {
   PACKED, CHANNEL_CLASS, UI_RANK, VALUE_ASPECT, VALUE_SCOPE, ACCESS, NACK,
   BLOB_K, BlobError, BLOB_ERROR, cbMap, cbTstr, cbUint, decodeCatalog,
@@ -160,6 +160,20 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   ok('a roster naming store_id finds its store', storeOfRoster([STORE, roster], roster) === STORE);
   ok('a roster without store_id links nothing (no adjacency guess)',
      storeOfRoster([STORE, { ...roster, storeId: undefined }], { ...roster, storeId: undefined }) === null);
+}
+
+{
+  // RFC-070 on the reference catalog: writer, roster and STORE share store_id.
+  const ent = decodeCatalog(advgenCatalog().bytes);
+  const opEntry = ent.find((e) => e.schema && e.schema.some((f) => f.role === ROLE.actionStore));
+  const store = storeOfRoster(ent, opEntry);
+  const roster = rosterOfStore(ent, store);
+  ok('the action.store writer finds its STORE by store_id', !!store && store.store.storeId === opEntry.storeId);
+  ok('the STORE finds its roster by store_id', !!roster && roster.storeId === store.store.storeId && roster !== opEntry);
+  ok('the roster finds the same STORE', storeOfRoster(ent, roster) === store);
+  const bare = decodeCatalog(advgenCatalog({ noStoreId: true }).bytes);
+  ok('no store_id on the wire: the writer resolves nothing (no setting_channel guess)',
+     storeOfRoster(bare, bare.find((e) => e.schema && e.schema.some((f) => f.role === ROLE.actionStore))) === null);
 }
 
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS');

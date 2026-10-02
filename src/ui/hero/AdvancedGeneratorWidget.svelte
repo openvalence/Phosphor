@@ -12,7 +12,7 @@
    *   "Other modulators" naming what it rides; one whose target this catalog
    *   lacks says so instead of guessing a home.
    * - A claimed preset op is always drawn here (claimed fields leave Tier 0);
-   *   its slot list only when a roster linked to a store resolves.
+   *   its slot list only when the op's store_id names a STORE (RFC-070).
    */
   import { machine } from '../../model/machine.svelte.js';
   import { modTargetUid, reportedValue } from '../../model/settings.js';
@@ -20,7 +20,7 @@
   import Field from '../Field.svelte';
   import ActionField from '../ActionField.svelte';
   import Roster from '../widgets/Roster.svelte';
-  import { storeOfRoster } from '../widgets/roster.js';
+  import { storeOfRoster, rosterOfStore } from '../widgets/roster.js';
 
   let { fields } = $props();
 
@@ -46,18 +46,13 @@
   // mod.amount 0 = no modulation (SPEC §8.8).
   const isOff = (m) => reportedValue(m.amount, machine.samples[m.amount.channelId]) === 0;
 
-  // The CRUD op's channel is the roster's setting_channel (RFC-067 open
-  // question 2); the roster names its store by RFC-070's store_id.
+  // RFC-070: the writer, its STORE and the roster join by store_id only.
   const presets = $derived.by(() => {
     const op = fields.presetOp;
     if (!op) return null;
     const entries = machine.catalog.entries || [];
-    for (const roster of entries) {
-      if (roster.settingChannel !== op.channelId) continue;
-      const store = storeOfRoster(entries, roster);
-      if (store) return { roster, store };
-    }
-    return null;
+    const store = storeOfRoster(entries, entries.find((e) => e.id === op.channelId));
+    return store ? { store, roster: rosterOfStore(entries, store) } : null;
   });
 </script>
 
