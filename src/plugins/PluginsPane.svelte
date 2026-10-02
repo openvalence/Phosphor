@@ -18,13 +18,13 @@
   import '../ui/pane.css';
 
   const PERM_TEXT = {
-    intent: 'write settings, actions and commands through the shadow',
-    motion: 'submit motion input (drives the carriage)',
+    intent: 'write settings, actions and commands',
+    motion: 'submit motion input',
   };
   function permText(p) {
     if (PERM_TEXT[p]) return PERM_TEXT[p];
     const m = /^net\.listen:(\d+)$/.exec(p);
-    return m ? 'listen for TCP connections on 127.0.0.1:' + m[1] : p;
+    return m ? 'listen on TCP 127.0.0.1:' + m[1] : p;
   }
   // Where a plugin came from: bundled with Phosphor, or a folder on disk.
   const ORIGIN = { factory: 'factory', 'built-in': 'built-in' };
@@ -44,14 +44,14 @@
 
 <div class="pane-stack plugins">
   {#if !pluginsUi.active}
-    <p class="pane-empty">Plugins load in the Phosphor app (or a dev build with <code>?plugin=</code>). This page came from a hub, which serves one file.</p>
+    <p class="pane-empty">Plugins load in the Phosphor app</p>
   {:else}
     <section class="pane-sec og-screen" aria-labelledby="pl-folder">
       <div class="pane-head"><h2 id="pl-folder">Installed</h2><span class="mono count">{pluginsUi.list.length}</span></div>
       <dl class="pane-facts">
         <dt>Plugins folder</dt><dd class="mono">{pluginsUi.dir || '--'}</dd>
       </dl>
-      <p class="pane-note">To add one, drop its folder into the plugins folder and restart Phosphor. Factory and built-in plugins ship inside Phosphor; a folder plugin with the same name replaces a factory one.</p>
+      <p class="pane-note">Drop a plugin folder here and restart</p>
     </section>
 
     {#each pluginsUi.list as p (p.key)}
@@ -89,10 +89,10 @@
         </dl>
         <div class="err-row">
           <p class="pane-status" role="status" data-phase={p.error ? 'fault' : null} title={p.error || ''}>
-            {p.error ? 'Last error: ' + p.error : 'No error since it was loaded.'}
+            {p.error ? 'Last error: ' + p.error : 'No errors'}
           </p>
           <button type="button" class="og-btn sm" disabled={p.status === 'invalid' || !enabled(p.name, pluginsUi.gen)}
-                  title={p.status === 'invalid' ? 'Its manifest is invalid' : !enabled(p.name, pluginsUi.gen) ? 'Enable it first' : ''}
+                  title={p.status === 'invalid' ? 'Invalid manifest' : !enabled(p.name, pluginsUi.gen) ? 'Plugin disabled' : ''}
                   onclick={() => reload(p.name)}>Reload</button>
         </div>
         {#if p.status === 'active' && p.hasSettings}
@@ -102,7 +102,7 @@
         {/if}
       </section>
     {:else}
-      <p class="pane-empty">No plugins installed. Drop a plugin folder into the plugins folder above and restart Phosphor.</p>
+      <p class="pane-empty">No plugins installed</p>
     {/each}
   {/if}
 </div>

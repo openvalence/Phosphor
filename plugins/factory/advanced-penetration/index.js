@@ -24,7 +24,7 @@ const MOD_LABEL = { amount: 'Amount', rise: 'Rise', hold: 'Hold', fall: 'Fall', 
 const LADDER = {
   pending: 'waiting for the machine',
   overdue: 'still waiting for the machine',
-  fault: 'refused by the machine; showing what it reports',
+  fault: 'refused by the machine',
 };
 const SLOT_TEXT = { pending: 'reading', empty: 'empty', locked: 'locked', error: 'read failed' };
 
@@ -135,7 +135,7 @@ export function activate(api) {
     },
     mount(el, fields) {
       if (!fields.mode && api.field('pattern.select')) {
-        throw new Error('advgen.mode is essential beside pattern.select (RENDERING §10); the host renders the pattern instead');
+        throw new Error('advgen.mode missing beside pattern.select (RENDERING §10)');
       }
       return mountWidget(api, el, fields);
     },
@@ -248,9 +248,9 @@ function mountWidget(api, el, fields) {
       const stale = [fields.depthMin, fields.depthMax, fields.speedIn, fields.speedOut].some((f) => api.stale(f));
       svg.classList.toggle('ap-stale', stale);
       title.textContent = ok
-        ? 'Stroke between ' + Math.round(lo * 100) + '% and ' + Math.round(hi * 100) + '% of the depth range; the in half takes '
-          + Math.round(100 * tIn.total / (tIn.total + tOut.total)) + '% of each stroke'
-        : 'No stroke: the depth window or a speed is zero';
+        ? 'Stroke ' + Math.round(lo * 100) + '% to ' + Math.round(hi * 100) + '% of depth, in half '
+          + Math.round(100 * tIn.total / (tIn.total + tOut.total)) + '%'
+        : 'No stroke: depth window or a speed is zero';
     });
     return svg;
   }
@@ -303,7 +303,7 @@ function mountWidget(api, el, fields) {
       section('Out stroke', ...withMods('speedOut'), ...withMods('accelOut'))),
   );
   if (loose.length) {
-    const label = (uid) => (api.catalog().fields.find((f) => f.uid === uid) || {}).label || 'a field this catalog does not have';
+    const label = (uid) => (api.catalog().fields.find((f) => f.uid === uid) || {}).label || 'missing field';
     root.append(section('Other modulators', ...loose.map(({ m, t }) => modulator(m, label(t)))));
   }
   if (fields.presetOp) root.append(presets(api, fields.presetOp, updaters));
@@ -393,8 +393,8 @@ function presets(api, op, updaters) {
     const st = api.status(op);
     box.dataset.status = st;
     note.textContent = gate || LADDER[st]
-      || (slot == null ? 'pick a slot' : !filled ? 'this slot is empty: save into it' : '')
-      || (linked ? '' : 'this store lists no slots (no store_id): enter the slot number');
+      || (slot == null ? 'pick a slot' : !filled ? 'empty slot' : '')
+      || (linked ? '' : 'no store_id: enter a slot number');
   }
   name.addEventListener('input', gateButtons);
   slotNum.addEventListener('input', gateButtons);

@@ -4,7 +4,7 @@
   "api": 1,
   "kind": "widget",
   "entry": "index.js",
-  "description": "A vertical gauge: the stroke window as a band, the live position as a tick. Read-only.",
+  "description": "Stroke window and live position as a vertical gauge",
   "roles": [
     "telemetry.position",
     "window.min",

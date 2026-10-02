@@ -161,6 +161,7 @@ source once the API carries one.
 | `api` | must equal the host's `API_VERSION` (1) |
 | `kind` | `widget`, `adapter` or `theme` |
 | `entry` | a plain `.js`/`.mjs` file name in the plugin folder (default `index.js`); a path is refused |
+| `description` | shown in the Plugins pane; one fragment per `docs/COPY.md` |
 | `roles`, `channels` | what it binds, displayed in the pane. Informational: the claim spec is what binds |
 | `permissions` | `intent`, `motion`, `net.listen:<port>`; anything else makes the manifest invalid |
 

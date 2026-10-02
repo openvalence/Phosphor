@@ -31,7 +31,7 @@ export const manifest = {
   version: '0.1.0',
   api: 1,
   kind: 'adapter',
-  description: 'Node graph: hub relationships and client-side mappings, one map vocabulary',
+  description: 'Hub relationships and client mappings as nodes',
   roles: [],
   channels: [],
   permissions: ['intent'],

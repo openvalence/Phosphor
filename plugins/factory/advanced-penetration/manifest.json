@@ -4,7 +4,7 @@
   "api": 1,
   "kind": "widget",
   "entry": "index.js",
-  "description": "The fray-d advanced generator as one surface: a stroke picture, the depth window, in and out halves, each modulator under the control it rides, and presets. Substitutes the built-in generator-advanced widget.",
+  "description": "Advanced generator with modulators and presets",
   "roles": [
     "pattern.running", "source.background_run",
     "advgen.mode", "advgen.master", "advgen.depth_max", "advgen.depth_min",

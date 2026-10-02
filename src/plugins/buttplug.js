@@ -23,7 +23,7 @@ export const manifest = {
   version: '0.1.0',
   api: 1,
   kind: 'adapter',
-  description: 'Embedded buttplug server: Intiface apps drive the machine on 127.0.0.1',
+  description: 'Buttplug server for Intiface apps on 127.0.0.1',
   roles: [],
   channels: [],
   permissions: ['motion'],
