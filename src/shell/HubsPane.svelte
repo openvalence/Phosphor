@@ -41,14 +41,14 @@
         + (link.closeReason ? ': ' + link.closeReason : '') };
       case 'failed': return { phase: 'fault', text: 'Failed: ' + (link.error || link.closeReason || 'the hub closed the link') };
       case 'live': return { phase: 'settled', text: 'Live on ' + who
-        + (hubs.mode === 'ble' ? ' over Bluetooth: watch tier until the WiFi upgrade' : '') };
-      default: return { phase: null, text: 'Not connected. Connect a saved hub, find one, or type its address.' };
+        + (hubs.mode === 'ble' ? ' over Bluetooth (watch tier)' : '') };
+      default: return { phase: null, text: 'Not connected' };
     }
   });
   const dialedWs = (host, port) => link.phase !== 'idle' && link.dialed === endpointLabel(host, port, null);
-  const discoveryText = $derived(hubs.finding ? 'Asking the network for hubs'
-    : hubs.scanning ? 'Scanning Bluetooth for hubs nearby'
-      : hubs.note || 'Find asks the WiFi network; Scan listens for Bluetooth hubs, including ones that need setup.');
+  const discoveryText = $derived(hubs.finding ? 'Searching WiFi'
+    : hubs.scanning ? 'Scanning Bluetooth'
+      : hubs.note);
 </script>
 
 <div class="pane-stack hp">
@@ -64,7 +64,7 @@
       <button type="button" class="og-btn" disabled={idle} onclick={disconnect}>Disconnect</button>
       <button type="button" class="og-btn" disabled={link.phase !== 'retrying' && link.phase !== 'failed'} onclick={retryNow}>Retry now</button>
       <button type="button" class="og-btn" disabled={!hubs.target}
-              title={hubs.target ? '' : 'Offered once a Bluetooth session learns the hub\'s WiFi endpoint'}
+              title={hubs.target ? '' : 'No WiFi endpoint known'}
               onclick={upgrade}>Upgrade to WiFi{hubs.target ? ' (' + hubs.target.host + ':' + hubs.target.port + ')' : ''}</button>
     </div>
     <p class="pane-status" role="status" data-phase={ladder.phase} title={ladder.text}>{ladder.text}</p>
@@ -73,7 +73,7 @@
   <section class="pane-sec og-panel" aria-labelledby="hp-saved">
     <div class="pane-head"><h2 id="hp-saved">Saved hubs</h2><span class="mono count">{$savedHubs.length}</span></div>
     {#if !$savedHubs.length}
-      <p class="pane-empty">No saved hubs yet. A hub is saved here once it connects over WiFi.</p>
+      <p class="pane-empty">No saved hubs yet</p>
     {:else}
       <ul class="pane-list rows">
         {#each $savedHubs as h (h.id)}
@@ -110,7 +110,7 @@
 
     <h3 class="sub">On WiFi</h3>
     {#if !hubs.found.length}
-      <p class="pane-empty">None found yet. Find asks every hub on this network to answer.</p>
+      <p class="pane-empty">None found yet</p>
     {:else}
       <ul class="pane-list rows">
         {#each hubs.found as f (f.hub_instance_id || f.ip + ':' + f.ws_port)}
@@ -130,7 +130,7 @@
 
     <h3 class="sub">On Bluetooth</h3>
     {#if !hubs.ble.length}
-      <p class="pane-empty">None found yet. Scan listens for hubs nearby for six seconds; a hub booted into setup shows as needs setup.</p>
+      <p class="pane-empty">None found yet</p>
     {:else}
       <ul class="pane-list rows">
         {#each hubs.ble as h (h.address)}

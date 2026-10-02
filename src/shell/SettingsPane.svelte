@@ -26,14 +26,14 @@
   function doExport() {
     backup = exportBackup();
     confirming = false;
-    note = 'Copy this text somewhere safe.';
+    note = 'Backup ready';
     phase = null;
-    navigator.clipboard?.writeText(backup).then(() => { note = 'Copied to the clipboard.'; phase = 'settled'; }, () => {});
+    navigator.clipboard?.writeText(backup).then(() => { note = 'Backup copied'; phase = 'settled'; }, () => {});
   }
   function doImport() {
-    if (!confirming) { confirming = true; note = 'Import replaces every preference, saved hub and layout, then reloads. Press again to confirm.'; phase = 'pending'; return; }
+    if (!confirming) { confirming = true; note = 'Replaces preferences, hubs and layouts, then reloads'; phase = 'pending'; return; }
     try {
-      note = 'Restored ' + importBackup(backup) + ' entries; reloading.';
+      note = 'Restored ' + importBackup(backup) + ' entries, reloading';
       phase = 'settled';
       location.reload();
     } catch (e) {
@@ -47,7 +47,7 @@
     note = '';
     phase = null;
   }
-  const status = $derived(note || 'Export copies a backup to the clipboard; paste one above and Import to restore it.');
+  const status = $derived(note);
 </script>
 
 <div class="pane-stack set">
@@ -64,13 +64,12 @@
       <input type="number" class="og-num" min="1" step="1" placeholder="auto" value={$prefs.telemetryHz ?? ''}
              onchange={(e) => setPref('telemetryHz', e.currentTarget.value === '' ? null : Number(e.currentTarget.value))} />
     </label>
-    <p class="pane-note">Position and speed subscriptions; empty is the client default. Never above what each channel advertises. Applies on the next connect.</p>
-    <p class="pane-note">Saved hubs, their nicknames and forgetting one live in Phosphor, Hubs.</p>
+    <p class="pane-note">Applies on next connect, capped per channel</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="set-adv">
     <div class="pane-head"><h2 id="set-adv">Backup</h2></div>
-    <p class="pane-note">Preferences, saved hubs and layouts as text. Restoring replaces them and reloads.</p>
+    <p class="pane-note">Preferences, saved hubs and layouts as text</p>
     <label class="sr-only" for="set-backup">Backup text</label>
     <textarea id="set-backup" class="mono" rows="4" bind:value={backup} spellcheck="false"></textarea>
     <div class="row">

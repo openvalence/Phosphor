@@ -225,7 +225,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await openTab(page, 'log');
   const slotH = () => page.$eval('.logpane .pane-status', (el) => el.getBoundingClientRect().height);
   const h0 = await slotH();
-  ok('log: the empty feed says what will arrive', /arrive here/.test(await page.textContent('#lp-feed-log')));
+  ok('log: the empty feed has its empty state', /No log lines yet/.test(await page.textContent('#lp-feed-log')));
   for (let i = 0; i < 40; i++) logLine(i % 4 === 0 ? 3 : 2, i % 4 === 0 ? 'motor' : 'net', 'line ' + i);
   await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log .line').length === 40, null, { timeout: 5000 });
   await page.waitForTimeout(100);
@@ -239,7 +239,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.selectOption('.logpane select >> nth=1', { label: 'net' });
   await page.waitForTimeout(100);
   ok('log: tag filter keeps one tag', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 30);
-  ok('log: the status says how much is shown', /Showing 30 of 40/.test(await page.textContent('.logpane .pane-status')));
+  ok('log: the status says how much is shown', /30 of 40 shown/.test(await page.textContent('.logpane .pane-status')));
   await page.selectOption('.logpane select >> nth=1', { label: 'all tags' });
   await page.waitForTimeout(100);
 
@@ -257,7 +257,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 120; el.dispatchEvent(new Event('scroll')); });
   await page.click('[data-feed="safety"]');
   await page.waitForTimeout(100);
-  ok('log: the Safety feed has its own empty state', /latch has not changed/.test(await page.textContent('#lp-feed-safety')));
+  ok('log: the Safety feed has its own empty state', /No safety events/.test(await page.textContent('#lp-feed-safety')));
   await page.click('[data-feed="log"]');
   await page.waitForTimeout(100);
   ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === 120);

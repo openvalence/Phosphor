@@ -60,9 +60,9 @@
     [...(getSession()?.state?.grantedPublishes?.values() || [])]));
 
   const estopText = $derived(!identity ? '--'
-    : identity.estop_cuts_power === true ? 'yes: the strip reads E-Stop'
-    : identity.estop_cuts_power === false ? 'no: the strip reads Halt'
-    : 'not declared: the strip reads Halt');
+    : identity.estop_cuts_power === true ? 'yes (E-Stop)'
+    : identity.estop_cuts_power === false ? 'no (Halt)'
+    : 'not declared (Halt)');
   const infoText = $derived(identity && identity.info && typeof identity.info === 'object'
     ? Object.entries(identity.info).map(([k, v]) => k + '=' + v).join(', ') || '--' : '--');
 
@@ -122,7 +122,7 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-grants">
     <div class="pane-head"><h2 id="vp-grants">Grants</h2></div>
     <dl class="pane-facts">
-      <dt>Subscriptions</dt><dd>{subGrants} channel{subGrants === 1 ? '' : 's'}; rates in the channel table</dd>
+      <dt>Subscriptions</dt><dd>{subGrants} channel{subGrants === 1 ? '' : 's'}</dd>
       <dt>Publishes</dt><dd class="mono">{pubGrants.length}</dd>
     </dl>
     {#if pubGrants.length}
@@ -144,7 +144,7 @@
         </table>
       </div>
     {:else}
-      <p class="pane-empty">No publish grants. One appears when this client starts sending stream input, such as a buttplug app driving the machine.</p>
+      <p class="pane-empty">No publish grants</p>
     {/if}
   </section>
 
@@ -175,7 +175,7 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-channels">
     <div class="pane-head"><h2 id="vp-channels">Channels</h2></div>
     {#if !machine.catalog.entries.length}
-      <p class="pane-empty">No catalog yet. Once a hub connects, its channels list here.</p>
+      <p class="pane-empty">No catalog yet</p>
     {:else}
       <div class="table-wrap">
         <table>
@@ -209,7 +209,7 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-nacks">
     <div class="pane-head"><h2 id="vp-nacks">Recent NACKs</h2></div>
     {#if !nacks.length}
-      <p class="pane-empty">None this session. A refused frame lists here with its code and reason.</p>
+      <p class="pane-empty">None this session</p>
     {:else}
       <div class="table-wrap">
         <table>

@@ -52,10 +52,10 @@
   });
 
   const EMPTY_TEXT = {
-    log: 'No log lines yet. The hub\'s log and plugin messages arrive here while a session is live.',
-    anomaly: 'No device events yet. Events the hub defines for itself (motion anomalies, faults) list here.',
-    safety: 'No safety events yet: the latch has not changed this session. E-stop, halt and pause edges list here.',
-    session: 'No session events yet. Joins, leaves and evictions list here.',
+    log: 'No log lines yet',
+    anomaly: 'No device events yet',
+    safety: 'No safety events this session',
+    session: 'No session events yet',
   };
 
   // ---- generic body decoding -----------------------------------------------
@@ -199,7 +199,7 @@
     });
     try {
       await navigator.clipboard.writeText(rows.join('\n'));
-      flash = 'Copied ' + rows.length + ' line' + (rows.length === 1 ? '' : 's') + ' to the clipboard.';
+      flash = 'Copied ' + rows.length + ' line' + (rows.length === 1 ? '' : 's');
     } catch (e) {
       flash = 'Copy failed: ' + ((e && e.message) || 'clipboard refused');
     }
@@ -212,12 +212,12 @@
     const f = feeds[tab];
     const live = lists[tab] || [];
     const filtered = tab === 'log' && (minLevel >= 0 || tagFilter)
-      ? ' Showing ' + shown.log.length + ' of ' + (f.snap || live).length + ' lines.' : '';
+      ? ' · ' + shown.log.length + ' of ' + (f.snap || live).length + ' shown' : '';
     if (!f.follow) {
       const n = newSince(live, f.snap || []);
-      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + ' since. Follow to catch up.' + filtered;
+      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + filtered;
     }
-    return 'Following the newest line.' + filtered;
+    return 'Following' + filtered;
   });
 
   function onTabKey(e) {
@@ -245,14 +245,14 @@
   <div class="tools">
     <label class="tool">
       <span>Level</span>
-      <select bind:value={minLevel} disabled={tab !== 'log'} title={tab !== 'log' ? 'Filters apply to the Log feed' : ''}>
+      <select bind:value={minLevel} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
         <option value={-1}>all levels</option>
         {#each LEVELS as l (l.n)}<option value={l.n}>{l.name} and above</option>{/each}
       </select>
     </label>
     <label class="tool">
       <span>Tag</span>
-      <select bind:value={tagFilter} disabled={tab !== 'log'} title={tab !== 'log' ? 'Filters apply to the Log feed' : ''}>
+      <select bind:value={tagFilter} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
         <option value="">all tags</option>
         {#each tags as t (t)}<option value={t}>{t}</option>{/each}
       </select>
@@ -270,7 +270,7 @@
            class:active={tab === t.id} inert={tab !== t.id} tabindex={tab === t.id ? 0 : -1}
            onscroll={(e) => onScroll(t.id, e.currentTarget)} {@attach stick(t.id)}>
         {#if !shown[t.id].length}
-          <p class="pane-empty">{(t.id === 'log' && lists.log.length) ? 'No line matches the level and tag filters.' : EMPTY_TEXT[t.id]}</p>
+          <p class="pane-empty">{(t.id === 'log' && lists.log.length) ? 'No line matches the filters' : EMPTY_TEXT[t.id]}</p>
         {:else}
           {#each shown[t.id] as evt (evt)}
             {@const p = parts(t.id, evt)}

@@ -101,10 +101,10 @@
   const windowText = $derived.by(() => {
     if (machine.link.phase !== 'live') return '--';
     if (!windowOpen) return 'closed';
-    if (!windowOpenedAt) return 'open; the hub does not report when it closes';
+    if (!windowOpenedAt) return 'open, close time unknown';
     const left = LIMITS.pairing_window_default_s - Math.floor((now - windowOpenedAt) / 1000);
-    return left > 0 ? 'open, about ' + left + ' s left (the ' + LIMITS.pairing_window_default_s + ' s default)'
-      : 'open past the ' + LIMITS.pairing_window_default_s + ' s default; the hub closes it';
+    return left > 0 ? 'open, about ' + left + ' s left'
+      : 'open, past the ' + LIMITS.pairing_window_default_s + ' s default';
   });
 
   // push_to_pair is a WINDOW, so its bit follows `windowOpen`; the other two
@@ -161,7 +161,7 @@
     if (adminStatus === 'pending') return { phase: 'pending', text: lastOp.verb + ' ' + lastOp.who + ': waiting for the hub' };
     if (adminStatus === 'overdue') return { phase: 'overdue', text: lastOp.verb + ' ' + lastOp.who + ': still waiting for the hub' };
     if (adminStatus === 'fault') return { phase: 'fault', text: (adminShadow && adminShadow.error) || 'refused' };
-    return { phase: 'settled', text: lastOp.done + ' ' + lastOp.who + '.' };
+    return { phase: 'settled', text: lastOp.done + ' ' + lastOp.who };
   }
 
   /** instance_id travels as an 8-byte bstr; the layout splits it into two u32s. */
@@ -176,7 +176,7 @@
     if (!getSession() || !adminAction) return;
     const op = opIndex(approve ? 'pair_approve' : 'pair_deny');
     const verb = approve ? 'Approving' : 'Denying';
-    if (op < 0) { lastOp = { where: 'knock', local: 'This hub does not offer that operation.' }; return; }
+    if (op < 0) { lastOp = { where: 'knock', local: 'Not offered by this hub' }; return; }
     lastOp = { where: 'knock', verb, done: approve ? 'Approved' : 'Denied', who: k.name };
     // Approving at `control` lets a client drive the machine without letting
     // it hand out credentials. instance_id and role ride the op's own intent.
@@ -188,15 +188,15 @@
   async function evict(sessionId) {
     if (!getSession() || !adminAction) return;
     const op = opIndex('evict');
-    if (op < 0) { lastOp = { where: 'evict', local: 'This hub does not offer eviction.' }; return; }
+    if (op < 0) { lastOp = { where: 'evict', local: 'Eviction not offered by this hub' }; return; }
     lastOp = { where: 'evict', verb: 'Evicting', done: 'Evicted', who: 'session ' + sessionId };
     await runAction(adminAction, op, { [keyOf('session_id')]: sessionId });
   }
 
-  const knockLadder = $derived(ladder('knock', !pendingEntry || !adminEntry ? 'This hub does not advertise a pairing surface.'
-    : !canAdminister ? 'Approving other clients needs configure; this session is at ' + tierName + '.'
-    : waiting ? 'Approve grants control; Deny drops the knock.'
-    : 'Nobody is waiting. A knock appears in the first free row and stays for its window.'));
+  const knockLadder = $derived(ladder('knock', !pendingEntry || !adminEntry ? 'No pairing surface on this hub'
+    : !canAdminister ? 'Needs configure (this session: ' + tierName + ')'
+    : waiting ? 'Approve grants control'
+    : ''));
 
   // ---- this client's OWN knock ------------------------------------------------
   const CLAIM_MS = (LIMITS.pairing_window_default_s + 5) * 1000;
@@ -217,40 +217,40 @@
   }
   function onPairingEvent(evt) {
     if (!claiming || !ownKnockEvent(evt)) return;
-    if (evt.kind === PAIRING_EVENT_KIND.knocked) claimResult = { phase: 'pending', msg: 'Knock delivered: waiting for an operator to approve it' };
-    else if (evt.kind === PAIRING_EVENT_KIND.denied) finishClaim('fault', 'Denied by an operator.');
-    else if (evt.kind === PAIRING_EVENT_KIND.expired) finishClaim('fault', 'The knock expired unanswered.');
+    if (evt.kind === PAIRING_EVENT_KIND.knocked) claimResult = { phase: 'pending', msg: 'Knock delivered: waiting for approval' };
+    else if (evt.kind === PAIRING_EVENT_KIND.denied) finishClaim('fault', 'Denied');
+    else if (evt.kind === PAIRING_EVENT_KIND.expired) finishClaim('fault', 'Knock expired');
   }
   function onPairingNack(n) {
     if (!claiming) return;
     finishClaim('fault', n.code === NACK.PAIRING_REQUIRED
-      ? 'Refused: knock-and-approve is off on this hub and no pairing window is open.'
-      : n.code === NACK.BUSY ? 'Refused: the pending list is full. Try again shortly.'
+      ? 'Refused: knock is off and no window is open'
+      : n.code === NACK.BUSY ? 'Refused: pending list full'
         : 'Refused: ' + n.name + (n.detail ? ', ' + n.detail : ''));
   }
   function onPairGrant(g) {
     if (g.token) setPairedToken(getSession().host, g.token);
     const roleName = g.role != null ? (ACCESS_NAME[g.role] || String(g.role)) : 'a higher tier';
-    finishClaim('settled', 'Paired at ' + roleName + '. This browser uses it from now on, reloads included.');
+    finishClaim('settled', 'Paired at ' + roleName);
   }
   function startClaim() {
     const s = getSession();
     if (!s) return;
-    if (!s.sendPairReq()) { finishClaim('fault', 'Not connected yet. Try again once the link is live.'); return; }
+    if (!s.sendPairReq()) { finishClaim('fault', 'Not connected'); return; }
     claiming = true;
     claimDeadline = Date.now() + CLAIM_MS;
     claimResult = { phase: 'pending', msg: 'Knock sent: waiting for the hub' };
     clearTimeout(claimTimer);
     claimTimer = setTimeout(() => {
-      if (claiming) finishClaim('fault', 'No answer within the pairing window: nobody approved it, or no window was open.');
+      if (claiming) finishClaim('fault', 'No answer within the pairing window');
     }, CLAIM_MS);
   }
   const claimLadder = $derived.by(() => {
-    if (isConfigure) return { phase: null, text: 'This session holds configure: nothing to claim.' };
-    if (machine.link.phase !== 'live') return { phase: null, text: 'Connect to a hub to pair with it.' };
-    if (!claimResult) return { phase: null, text: 'Knocks once. An operator with configure approves it, or an open window grants it at once.' };
+    if (isConfigure) return { phase: null, text: 'Already at configure' };
+    if (machine.link.phase !== 'live') return { phase: null, text: 'Not connected' };
+    if (!claimResult) return { phase: null, text: '' };
     const left = Math.max(0, Math.ceil((claimDeadline - now) / 1000));
-    return { phase: claimResult.phase, text: claimResult.msg + (claiming ? ', ' + left + ' s left.' : '') };
+    return { phase: claimResult.phase, text: claimResult.msg + (claiming ? ', ' + left + ' s left' : '') };
   });
 
   // ---- control ownership ----------------------------------------------------------
@@ -269,7 +269,7 @@
     return out;
   });
   const evictLadder = $derived(ladder('evict', canAdminister
-    ? 'Evicting ends that session; its client may reconnect.' : 'Evicting needs configure.'));
+    ? '' : 'Needs configure'));
 </script>
 
 <div class="pane-stack">
@@ -283,18 +283,18 @@
     <div class="row">
       <button type="button" class="og-btn" class:primary={!isConfigure} disabled={isConfigure || claiming || machine.link.phase !== 'live'}
               onclick={startClaim}>{claiming ? 'Waiting for an answer' : 'Pair this client'}</button>
-      <button type="button" class="og-btn" disabled={!setupCat} title={setupCat ? '' : 'This hub advertises no setup settings'}
+      <button type="button" class="og-btn" disabled={!setupCat} title={setupCat ? '' : 'No setup settings on this hub'}
               onclick={() => (setupOpen = true)}>Set up this machine</button>
     </div>
     <p class="pane-status" role="status" data-phase={claimLadder.phase} title={claimLadder.text}>{claimLadder.text}</p>
     <details class="howto">
       <summary>Open a pairing window at the machine</summary>
       <ol>
-        <li>Power the machine off and on three times in a row, each cycle within about 10 s of the previous boot.</li>
-        <li>The third quick cycle opens a {LIMITS.pairing_window_default_s} s window and lights the pairing indicator.</li>
-        <li>Once this page reconnects, press Pair this client inside the window.</li>
+        <li>Power-cycle three times, each within about 10 s of boot</li>
+        <li>The third cycle opens a {LIMITS.pairing_window_default_s} s window</li>
+        <li>Press Pair this client after reconnect</li>
       </ol>
-      <p class="pane-note">On a machine nobody has claimed, that knock becomes configure: holding the power cord is ownership. On a claimed machine it grants control, and configure needs an existing configure session to approve the knock.</p>
+      <p class="pane-note">Unclaimed machine: grants configure. Claimed: grants control.</p>
     </details>
   </section>
   {#if setupOpen && setupCat}<ProvisionWizard category={setupCat} onclose={() => (setupOpen = false)} />{/if}
@@ -327,9 +327,8 @@
     <div class="pane-head"><h2 id="pp-ledger">Trust ledger</h2></div>
     {#if ledgerEntry}
       <Roster store={ledgerEntry} roster={ledgerRoster} />
-      <p class="pane-note">Clients this hub has paired, one per slot. Revoking one is not offered here yet.</p>
     {:else}
-      <p class="pane-empty">This hub does not publish a trust ledger, so its paired clients cannot be listed.</p>
+      <p class="pane-empty">No trust ledger on this hub</p>
     {/if}
   </section>
 
@@ -337,7 +336,7 @@
     <section class="pane-sec og-panel" aria-labelledby="pp-owners">
       <div class="pane-head"><h2 id="pp-owners">Control ownership</h2></div>
       {#if !owners.length}
-        <p class="pane-empty">No motion source has reported an owner yet. Sources list here once the hub publishes them.</p>
+        <p class="pane-empty">No owners reported</p>
       {:else}
         <ul class="pane-list">
           {#each owners as o (o.i)}
@@ -353,7 +352,7 @@
               </span>
               <span class="acts">
                 <button type="button" class="og-btn sm" disabled={!o.owner || !canAdminister || adminBusy}
-                        title={!canAdminister ? 'Evicting needs configure' : ''} onclick={() => evict(o.owner)}>Evict</button>
+                        title={!canAdminister ? 'Needs configure' : ''} onclick={() => evict(o.owner)}>Evict</button>
               </span>
             </li>
           {/each}

@@ -89,9 +89,9 @@ export async function findHubs() {
   try {
     const got = await invoke('discover_hubs', { timeoutMs: 2500 });
     hubs.found = upsert(hubs.found, got, foundKey);
-    hubs.note = got.length ? got.length + ' hub' + (got.length === 1 ? '' : 's') + ' answered' : 'no hubs answered on UDP ' + DISCOVERY_PORT;
+    hubs.note = got.length ? got.length + ' hub' + (got.length === 1 ? '' : 's') + ' answered' : 'No hubs answered on UDP ' + DISCOVERY_PORT;
   } catch (e) {
-    hubs.note = 'discovery failed: ' + e;
+    hubs.note = 'Discovery failed: ' + e;
   } finally {
     hubs.finding = false;
   }
@@ -114,7 +114,7 @@ export async function scan() {
     setTimeout(() => { hubs.scanning = false; }, 6100);
   } catch (e) {
     hubs.scanning = false;
-    hubs.note = 'scan failed: ' + e;
+    hubs.note = 'Scan failed: ' + e;
   }
 }
 
@@ -131,12 +131,12 @@ async function connectBle(dev) {
   hubs.bleDev = dev;
   hubs.mode = 'ble';
   store('shell_mode', 'ble');
-  hubs.note = 'BLE → ' + (dev.name || dev.address) + ' (watch tier until WS upgrade)';
+  hubs.note = 'Bluetooth: ' + (dev.name || dev.address) + ' (watch tier)';
   connect({ host: dev.address, bleName: dev.name, WebSocketImpl: makeBleWebSocket(dev.address) });
 }
 
 export function connectWs(host, port) {
-  if (!host || !host.trim()) { hubs.note = 'enter a hub address or scan'; return; }
+  if (!host || !host.trim()) { hubs.note = 'Enter a hub address'; return; }
   host = host.trim();
   disconnect();
   hubs.mode = 'ws';
@@ -184,13 +184,13 @@ export async function upgrade() {
 
 async function hop(t, dev) {
   const url = 'ws://' + t.host + ':' + t.port;
-  hubs.note = 'probing ' + url;
-  if (!(await wsReachable(t.host, t.port))) { hubs.note = url + ' unreachable, staying on BLE'; return; }
+  hubs.note = 'Probing ' + url;
+  if (!(await wsReachable(t.host, t.port))) { hubs.note = url + ' unreachable, staying on Bluetooth'; return; }
   holdForMigration();
   connectWs(t.host, t.port);
   const live = await untilLive(WS_LIVE_MS);
   await releaseHeld();
-  if (live) { hubs.note = 'upgraded → ' + url; return; }
-  hubs.note = 'WS upgrade failed, back on BLE';
+  if (live) { hubs.note = 'Upgraded to ' + url; return; }
+  hubs.note = 'WiFi upgrade failed, back on Bluetooth';
   connectBle(dev);
 }
