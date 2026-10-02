@@ -696,7 +696,7 @@ if (!LIVE) {
   ok('a safety pair places as a module bound by identity', await so.locator('.lbl').textContent() === 'Pause');
   hub.mode = 'hold';
   await so.locator('button').click();
-  ok('its press shows pending, in words', await so.locator('.state', { hasText: 'waiting for the machine' })
+  ok('its press shows pending, in words', await so.locator('.state', { hasText: 'Waiting' })
     .waitFor({ timeout: 3000 }).then(() => true).catch(() => false));
   await release();
   ok('...and settles once the hub echoes', await page.waitForFunction(() => {

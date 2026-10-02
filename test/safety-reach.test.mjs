@@ -38,10 +38,23 @@
  *            Override confirms, sends override, reads Return, and the tape
  *            jogs over the whole travel; Return sends return_op, no gate
  * ph-vdk.43 (RFC-088), on glance, handheld and full:
- *   flip     a catalog tagging axis.flipped gets one Flip toggle on the rail
- *            row; every press confirms first, Cancel sends nothing, and the
- *            hub's NACK reason (SOURCE_CONFLICT) is shown on the toggle and in
- *            the strip's refusal surface
+ *   flip     a catalog tagging axis.flipped gets one Flip toggle in the top
+ *            strip beside Override (ph-e82.21; in the Home popover where the
+ *            strip is short); every press confirms first, Cancel sends
+ *            nothing, and the hub's NACK reason (SOURCE_CONFLICT) is shown on
+ *            the toggle and in the strip's refusal surface
+ * ph-e82.21, at 1280x720 and 360x800:
+ *   home     the snapshot's home_required pulses a red hazard border on the
+ *            one Home control (static under reduced motion) until it
+ *            clears; no Fix button in the status slot; Force Home is never
+ *            inline, only in the Home popover
+ * ph-e82.21, at 1280x720:
+ *   owner    a foreign-owned control-owner pair: with the hub's source
+ *            labels the plan strip reads the owner and a SOURCE_CONFLICT
+ *            reads "rail owned by" it; without labels, "plan" and the code
+ *   axis     axis.flipped draws the rail reversed: the carriage marker for
+ *            travel minus p sits where p sat unflipped, the endcaps swap,
+ *            and a tape tap writes the value the reversed axis gives
  * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
  * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
@@ -51,6 +64,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { cbMap, cbArray, cbInt, cbF32, cbTstr, cbBstr, cbBool, cbNull, cbUint, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
+import { decodeCatalog, encodePacked } from '../../Valence/clients/js/catalog.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
 import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
 import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
@@ -163,6 +177,7 @@ function hubFor(cat, wire) {
         } else if (header.type === FRAME.INTENT) {
           // Any other write: the hub refuses it as a busy rail would (SPEC §9.6).
           wire.writes.push(header.channel);
+          wire.values.push([...cbDecodeFull(payload).get(K.value).values()][0]);
           send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(NACK.SOURCE_CONFLICT)],
             [K.detail, cbTstr('a source owns the rail')], [K.intent_id, cbUint(cbDecodeFull(payload).get(K.intent_id))]]));
         } else if (header.type === FRAME.PING) {
@@ -176,7 +191,7 @@ function hubFor(cat, wire) {
 async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false, cutsPower = null,
   states = null }) {
   const cat = CATALOGS[catalog];
-  const wire = { seen: [], ops: [], writes: [], latch: { word: 0, modes: 0 }, socket: null, edges, cutsPower, states };
+  const wire = { seen: [], ops: [], writes: [], values: [], latch: { word: 0, modes: 0 }, socket: null, edges, cutsPower, states };
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: false, reducedMotion });
   await ctx.addInitScript(([etag, bytes]) => {
     try {
@@ -475,7 +490,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
   ok('override: one control in the strip, beside Home', await ovr.count() === 1
-    && await page.locator('.topstrip .dock button', { hasText: /^home$/i }).count() === 1);
+    && await page.locator('.topstrip .dock button.home-btn', { hasText: /home/i }).count() === 1);
   ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
   await page.locator('.topstrip .btn-pause').click();
   await page.waitForTimeout(300);
@@ -510,11 +525,16 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const states = { [flipCh.get(1)]: Uint8Array.from(flipCh.get(8), (f) => (f.get(13) === 'meta.enabled_mask' ? 0xff : 0)) };
   for (const [w, h, touch, cls] of [[1280, 720, false, 'full'], [360, 800, true, 'handheld'], [220, 480, true, 'glance']]) {
     const { ctx, page, wire, up } = await open(browser, { w, h, touch, catalog: 'hero', states });
-    const flip = page.locator('.rail-hero .rw-flip');
-    const n = up ? await flip.count() : 0;
-    ok(cls + ': one Flip toggle on the rail row', n === 1, n + ' found');
+    const flip = page.locator('.topstrip .rw-flip');
+    // Short of width, Flip rides the Home popover: open it first.
+    const reach = async () => {
+      if (!await flip.count() && await page.locator('.topstrip button.home-btn').count()) await page.locator('.topstrip button.home-btn').click();
+      return flip;
+    };
+    const n = up ? await (await reach()).count() : 0;
+    ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
-    ok(cls + ': Flip reads off from the reported value', /off/.test(await flip.locator('small').textContent())
+    ok(cls + ': Flip reads Off from the reported value', /Off/.test(await flip.locator('small').first().textContent())
       && await flip.getAttribute('aria-pressed') === 'false');
     await flip.click();
     await page.waitForTimeout(200);
@@ -522,11 +542,11 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     await page.locator('.overlay.hazard .og-btn').first().click();
     await page.waitForTimeout(300);
     ok(cls + ': a press asks first; Cancel sends nothing', asked && wire.writes.length === 0, wire.writes.join());
-    await flip.click();
+    await (await reach()).click();
     await page.waitForTimeout(200);
     await page.locator('.overlay.hazard .og-btn.danger').click();
     await page.waitForTimeout(600);
-    const text = (await flip.locator('small').textContent()).trim();
+    const text = (await (await reach()).locator('small').first().textContent()).trim();
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok(cls + ': confirmed, the write goes out and the hub refusal is shown in its words',
       wire.writes.length === 1 && /SOURCE_CONFLICT/.test(text) && /SOURCE_CONFLICT/.test(banner),
@@ -534,6 +554,108 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     ok(cls + ': a refused flip still reads off', await flip.getAttribute('aria-pressed') === 'false');
     await ctx.close();
   }
+}
+
+// ---- ph-e82.21: home required pulses the one Home control ---------------------
+for (const [w, h, touch, motion] of [[1280, 720, false, 'no-preference'], [360, 800, true, 'reduce']]) {
+  const tag = w + 'x' + h + (motion === 'reduce' ? ' reduced motion' : '');
+  const { ctx, page, wire } = await open(browser, { w, h, touch, catalog: 'hero', reducedMotion: motion });
+  const home = page.locator('.topstrip .dock button.home-btn, .topstrip .dock .ops button').first();
+  const look = () => home.evaluate((el) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--bad)';
+    document.body.append(probe);
+    const bad = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = getComputedStyle(el);
+    return { hazard: el.classList.contains('hazard'), red: cs.borderTopColor === bad, anim: cs.animationName };
+  });
+  const latch = (modes) => wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, CORE_CHANNEL.safety, Uint8Array.of(0x08, 0, 0, 0, 0, 0, 0, 0, modes))));
+  ok(tag + ': at rest the Home control is not a hazard', !(await look()).hazard);
+  latch(0x02);
+  await page.waitForTimeout(300);
+  const on = await look();
+  ok(tag + ': home_required pulses a red border on Home' + (motion === 'reduce' ? ' (static)' : ''),
+    on.hazard && on.red && (motion === 'reduce' ? on.anim === 'none' : on.anim !== 'none'), JSON.stringify(on));
+  ok(tag + ': no Fix button, Force Home never inline', await page.locator('.topstrip .status button', { hasText: /fix/i }).count() === 0
+    && await page.locator('.topstrip .dock > .ops button', { hasText: /force/i }).count() === 0);
+  latch(0);
+  await page.waitForTimeout(300);
+  ok(tag + ': a completed home clears the pulse', !(await look()).hazard);
+  await ctx.close();
+}
+
+// ---- ph-e82.21: the rail's owner by the hub's own source labels -------------
+// A snapshot of one channel, by role: every other field 0 (the enabled mask
+// 0xff, so a setting is writable).
+const ENTRIES = decodeCatalog(FIXTURE);
+const byRole = (role) => ENTRIES.find((e) => (e.layout || []).some((f) => f.role === role));
+function stateOf(e, roles) {
+  const v = {};
+  for (const f of e.layout) v[f.name] = f.role === 'meta.enabled_mask' ? 0xff : (roles[f.role] ?? 0);
+  return encodePacked(v, e.layout);
+}
+const OWNER = Uint8Array.of(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 99, 0, 0, 0, 3, 0, 0, 0, 0);   // pair 2 owned by session 99
+const SOURCES = ['Manual', 'Stream', 'Pattern', 'Other'];
+// Both cases built from the fixture, whichever the recording carries: the
+// source fields' options (key 10) set, or dropped.
+const withSources = (labels) => {
+  const m = cbDecodeFull(FIXTURE);
+  for (const f of m.find((e) => e.get(1) === CORE_CHANNEL.control_owner).get(8)) {
+    if (!/^src/.test(f.get(1))) continue;
+    if (labels) f.set(10, labels); else f.delete(10);
+  }
+  return enc(m);
+};
+for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withSources(null)]]) {
+  CATALOGS[k] = { bytes, etag: catalogEtag(bytes, LIMITS.etag_bytes) };
+}
+{
+  const flipE = byRole('axis.flipped'), planE = byRole('plan.current');
+  const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER };
+  for (const [catalog, plan, refusal] of [['unlabeled', /^plan/, /SOURCE_CONFLICT/], ['labeled', /^Pattern/, /rail owned by Pattern/]]) {
+    const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
+    const mode = (await page.locator('.rail-swap .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
+    ok('owner (' + catalog + '): the plan strip names the owner from the labels, else "plan"', plan.test(mode), JSON.stringify(mode));
+    await page.locator('.topstrip .rw-flip').click();
+    await page.locator('.overlay.hazard .og-btn.danger').click();
+    await page.waitForTimeout(600);
+    const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
+    ok('owner (' + catalog + '): a SOURCE_CONFLICT names the owner from the labels, else the code', refusal.test(banner), JSON.stringify(banner));
+    await ctx.close();
+  }
+}
+
+// ---- ph-e82.21: a flipped axis draws reversed --------------------------------
+{
+  const flipE = byRole('axis.flipped'), posE = byRole('telemetry.position'), cfgE = byRole('window.min');
+  const T = 500, P = 150;
+  const cfg = stateOf(cfgE, { 'window.min': 0, 'window.max': T, 'geometry.max_travel': T, 'geometry.measured_travel': T });
+  const seen = {};
+  for (const flipped of [0, 1]) {
+    const states = { [flipE.id]: stateOf(flipE, { 'axis.flipped': flipped }), [cfgE.id]: cfg };
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', states });
+    // The hub reports travel minus position while flipped (RFC-088).
+    const pos = stateOf(posE, { 'telemetry.position': flipped ? T - P : P });
+    const tick = setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, posE.id, pos))); } catch (e) { /* closed */ } }, 30);
+    await page.evaluate(() => { window.__railProbe = []; });
+    await page.waitForTimeout(800);
+    const x = await page.evaluate(() => { const p = window.__railProbe.filter((f) => f[4] && f[5] != null); return p.length ? p.at(-1)[5] : null; });
+    clearInterval(tick);
+    const caps = await page.locator('.rail-endcap').allTextContents();
+    const strip = await page.locator('.rail-hero .rail-tape').boundingBox();
+    await page.mouse.click(strip.x + strip.width * 0.25, strip.y + strip.height / 2);
+    await page.waitForTimeout(400);
+    seen[flipped] = { x, caps: caps.map((c) => c.trim()), sent: wire.values.at(-1) };
+    await ctx.close();
+  }
+  ok('axis: the marker for travel minus p sits where p sat unflipped', seen[0].x != null && Math.abs(seen[1].x - seen[0].x) < 1,
+    JSON.stringify(seen));
+  ok('axis: flipped, the endcaps read travel then 0', seen[0].caps.join() === [...seen[1].caps].reverse().join()
+    && parseFloat(seen[1].caps[0]) > parseFloat(seen[1].caps[1]), JSON.stringify([seen[0].caps, seen[1].caps]));
+  // Wire units are the move field's own scale: compare the two taps' ratio.
+  ok('axis: a tap a quarter in writes the reversed axis value (3x the unflipped)', seen[0].sent > 0 && Math.abs(seen[1].sent / seen[0].sent - 3) < 0.02,
+    JSON.stringify([seen[0].sent, seen[1].sent]));
 }
 
 await browser.close();

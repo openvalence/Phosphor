@@ -10,10 +10,18 @@
  * with a long hub name, with a refusal in the status slot and with a long
  * fault reason; the rail row and the rail below it hold across the swap to
  * the plan strip while a pattern runs, and back; the rail panel is the rail
- * row plus the rail, no help lines (ph-i0y). At 1920, 1440, 1280, 1024, 800
+ * row plus the rail, no help lines (ph-i0y). ph-e82.21, same two sizes: the
+ * rail row's and the strip's boxes hold still in every one of 30 frames
+ * across pause, resume, pattern start and pattern stop, and the swap only
+ * flips visibility (both faces stay mounted). At 1920, 1440, 1280, 1024, 800
  * and 390 every strip control's right edge is inside the viewport, nothing
  * in the strip scrolls sideways, and a collapsed Home control opens its
- * popover on screen without moving the strip (ph-b5d). In the shell bundle the X
+ * popover on screen without moving the strip (ph-b5d); the e-stop is
+ * outermost, then Pause, Override, Flip and Home inward; the numeral's glow
+ * box (its ink box grown by one standard deviation of the strong glow
+ * layer, half its blur radius) is inside the strip and inside its clip; the
+ * jog tape and the ruler share left and right edges, border and inner box
+ * (ph-e82.21). In the shell bundle the X
  * opens the close popover anchored under it, the bar keeps its height, and
  * Escape or a click outside cancels.
  *
@@ -38,6 +46,7 @@ import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
+import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -235,8 +244,17 @@ function hub(wire) {
           wire.send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
           wire.send(FRAME.STATE, RUN.id, patternState(false));
           wire.send(FRAME.STATE, PLAN.id, patternState(false, PLAN));
+        } else if (header.type === FRAME.INTENT && header.channel === CORE_CHANNEL.safety_intents) {
+          // Pause and resume land as the hub's latch (SPEC §11.1 snapshot,
+          // bit3 PAUSE at byte 0), so the pair really changes state.
+          const m = cbDecodeFull(payload);
+          const op = m.get(K.value).get(1);
+          wire.send(FRAME.ECHO, header.channel, cbMap([[K.cfg_gen, cbUint(1)], [K.intent_id, cbUint(m.get(K.intent_id))],
+            [K.applied, cbMap([[1, cbUint(op)]])]]));
+          const paused = op === SAFETY_OP.pause ? 0x08 : 0;
+          wire.send(FRAME.STATE, CORE_CHANNEL.safety, Uint8Array.of(paused, 0, 0, 0, 0, 0, 0, 0, 0));
         } else if (header.type === FRAME.INTENT) {
-          // Every write is refused, with a reason long enough to wrap.
+          // Every other write is refused, with a reason long enough to wrap.
           wire.send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(NACK.SOURCE_CONFLICT)],
             [K.detail, cbTstr('a source owns the rail and this reason is long on purpose, to wrap any line that let it')],
             [K.intent_id, cbUint(cbDecodeFull(payload).get(K.intent_id))]]));
@@ -271,7 +289,40 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await hp.waitForTimeout(300);
   const idle = await heights(hp);
   ok(tag + ': a long hub name ellipsizes in one bar row', idle.nameClipped, JSON.stringify(idle));
-  ok(tag + ': the tape carries the rail hint as its tooltip', await hp.locator('.rail-tape-track[title*="drag its edges"]').count() === 1);
+  ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[title*="scrub"]').count() === 1);
+
+  // ph-e82.21: nothing moves for 30 frames across each safety and pattern
+  // edge. The sampler starts first, then the edge fires, so the press, its
+  // pending frame and the echo all land inside the window.
+  const still = async (what, act) => {
+    await hp.evaluate(() => {
+      window.__frames = [];
+      const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(','); };
+      const tick = () => {
+        window.__frames.push(['.rail-row', '.spine-rail-host', '.strip', '.strip .status', '.topstrip .btn-pause',
+          '.topstrip .btn-estop'].map(box).join(' | '));
+        if (window.__frames.length < 30) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await act();
+    await hp.waitForFunction(() => window.__frames.length >= 30, null, { timeout: 5000 }).catch(() => {});
+    const f = await hp.evaluate(() => window.__frames);
+    const moved = f.filter((x) => x !== f[0]);
+    ok(tag + ': ' + what + ': rail row, strip, status slot and pair hold still for 30 frames', f.length >= 30 && moved.length === 0,
+      f.length + ' frames, ' + moved.length + ' moved' + (moved.length ? ': ' + f[0] + ' -> ' + moved[0] : ''));
+  };
+  const faces = () => hp.evaluate(() => [...document.querySelectorAll('.rail-swap .swap-face')]
+    .map((el) => getComputedStyle(el).visibility + ':' + (el.querySelector('.plan-strip') ? 'plan' : 'tape')).join(' '));
+  const pauseLbl = () => hp.locator('.topstrip .btn-pause .lbl').textContent();
+  await still('pause', () => hp.locator('.topstrip .btn-pause').click());
+  ok(tag + ': the hub latched pause (reads Resume)', (await pauseLbl()).trim() === 'Resume');
+  await still('resume', () => hp.locator('.topstrip .btn-pause').click());
+  ok(tag + ': the hub released pause (reads Pause)', (await pauseLbl()).trim() === 'Pause');
+  await still('pattern start', () => wire.send(FRAME.STATE, RUN.id, patternState(true)));
+  ok(tag + ': pattern start flips visibility, both faces stay mounted', await faces() === 'visible:plan hidden:tape', await faces());
+  await still('pattern stop', () => wire.send(FRAME.STATE, RUN.id, patternState(false)));
+  ok(tag + ': pattern stop flips it back', await faces() === 'hidden:plan visible:tape', await faces());
 
   await hp.locator('.rail-tape-track').click();
   await hp.waitForSelector('.strip .status[data-kind=refusal]', { timeout: 3000 }).catch(() => {});
@@ -281,10 +332,10 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     JSON.stringify([idle, refused]));
 
   wire.send(FRAME.STATE, RUN.id, patternState(true));
-  await hp.waitForSelector('.rail-swap .plan-strip', { timeout: 3000 }).catch(() => {});
+  await hp.waitForSelector('.rail-swap .plan-strip', { state: 'visible', timeout: 3000 }).catch(() => {});
   const plan = await heights(hp);
   ok(tag + ': a running pattern swaps the plan strip into the rail row',
-    await hp.locator('.rail-swap .plan-strip').count() === 1 && await hp.locator('.rail-swap .rail-tape-track').count() === 0);
+    await hp.locator('.rail-swap .plan-strip').isVisible() && !await hp.locator('.rail-swap .rail-tape-track').isVisible());
   ok(tag + ': the rail panel is the rail row and the rail, no help lines', await hp.evaluate(() =>
     [...document.querySelector('.rail-panel').children].every((c) => c.matches('.rail-row, .spine-rail-host'))
 ));
@@ -292,10 +343,10 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     && plan.panel === idle.panel,
     JSON.stringify([idle, plan]));
   wire.send(FRAME.STATE, RUN.id, patternState(false));
-  await hp.waitForSelector('.rail-swap .rail-tape-track', { timeout: 3000 }).catch(() => {});
+  await hp.waitForSelector('.rail-swap .rail-tape-track', { state: 'visible', timeout: 3000 }).catch(() => {});
   const back = await heights(hp);
   ok(tag + ': the tape swaps back when the source releases', back.row === idle.row && back.railTop === idle.railTop
-    && await hp.locator('.rail-swap .rail-tape-track').count() === 1, JSON.stringify(back));
+    && await hp.locator('.rail-swap .rail-tape-track').isVisible(), JSON.stringify(back));
 
   await wire.ws.close({ code: 4000, reason: 'r'.repeat(100) });
   await hp.waitForSelector('.strip .status[data-kind=fault]', { timeout: 3000 }).catch(() => {});
@@ -329,6 +380,65 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
   });
   ok(tag + ': every strip control ends inside the viewport', g2.n >= 3 && g2.pair === 2 && g2.out.length === 0, JSON.stringify(g2));
   ok(tag + ': nothing in the strip scrolls sideways', g2.scrollers.length === 0, JSON.stringify(g2.scrollers));
+
+  // ph-e82.21: mirrored, the e-stop outermost; inward Pause, Override,
+  // Flip, Home (each only where it is inline at this width).
+  const order = await bp.evaluate(() => {
+    const x = (s) => { const e = document.querySelector('.strip .dock ' + s); const r = e && e.getBoundingClientRect(); return r && r.width ? r.left : null; };
+    return ['.home-btn, .ops button', '.rw-flip', '.btn-override', '.btn-pause', '.btn-estop'].map(x);
+  });
+  const inline = order.filter((v) => v != null);
+  ok(tag + ': the e-stop is outermost, then Pause, Override, Flip, Home inward',
+    order[3] != null && order[4] != null && inline.every((v, i) => i === 0 || v > inline[i - 1]), JSON.stringify(order));
+
+  // ph-e82.21: the numeral's glow paints inside the strip and is never cut
+  // short of it. CSS blurs a shadow with a standard deviation of half its
+  // blur radius; the box is the ink grown by that, for the strong layer.
+  const glow = await bp.evaluate(() => {
+    const v = document.querySelector('.strip .hn-primary .hn-val');
+    if (!v) return null;
+    // This hub streams no position, so the numeral reads stale ('--', no
+    // glow). Light it the way a fresh sample does, at the padded width.
+    v.closest('.hero-numerals').classList.remove('stale');
+    v.textContent = '000.0';
+    const nums = document.querySelector('.strip .nums');
+    const strip = document.querySelector('.strip').getBoundingClientRect();
+    const r = v.getBoundingClientRect(), n = nums.getBoundingClientRect();
+    const cs = getComputedStyle(v);
+    const c = document.createElement('canvas').getContext('2d');
+    c.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    const m = c.measureText(v.textContent);
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    v.appendChild(probe);
+    const base = probe.getBoundingClientRect().top;
+    probe.remove();
+    const blur = parseFloat((cs.textShadow.match(/(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/) || [])[3] || 0);
+    const sd = blur / 2;
+    const box = { l: r.left - m.actualBoundingBoxLeft - sd, r: r.left + m.actualBoundingBoxRight + sd,
+      t: base - m.actualBoundingBoxAscent - sd, b: base + m.actualBoundingBoxDescent + sd };
+    const ins = (getComputedStyle(nums).clipPath.match(/inset\(([^)]*)\)/) || [, '0px'])[1].split(/\s+/).map(parseFloat);
+    const [it, ir = it, ib = it, il = ir] = ins;
+    const clip = { l: n.left + il, r: n.right - ir, t: n.top + it, b: n.bottom - ib };
+    const inStrip = box.l >= strip.left - 0.5 && box.r <= strip.right + 0.5 && box.t >= strip.top - 0.5 && box.b <= strip.bottom + 0.5;
+    const inClip = box.l >= clip.l - 0.5 && box.r <= clip.r + 0.5 && box.t >= clip.t - 0.5 && box.b <= clip.b + 0.5;
+    const rnd = (o) => Object.fromEntries(Object.entries(o).map(([k, x]) => [k, Math.round(x)]));
+    return { blur, inStrip, inClip, box: rnd(box), clip: rnd(clip), strip: rnd({ l: strip.left, r: strip.right, t: strip.top, b: strip.bottom }) };
+  });
+  ok(tag + ': the numeral glow box is inside the strip and inside its clip', !!glow && glow.blur > 0 && glow.inStrip && glow.inClip,
+    JSON.stringify(glow));
+
+  // ph-e82.21: the tape spans the rail, edge for edge, so its pixels are the
+  // ruler's: border boxes and the inner boxes its percentages resolve in.
+  const edges = await bp.evaluate(() => {
+    const t = document.querySelector('.rail-tape-track'), h = document.querySelector('.spine-rail-host');
+    if (!t || !h) return null;
+    const a = t.getBoundingClientRect(), b = h.getBoundingClientRect();
+    return { tape: [a.left, a.right, a.left + t.clientLeft, a.left + t.clientLeft + t.clientWidth],
+      ruler: [b.left, b.right, b.left + h.clientLeft, b.left + h.clientLeft + h.clientWidth] };
+  });
+  ok(tag + ': the tape and the ruler share left and right edges', !!edges
+    && edges.tape.every((v, i) => Math.abs(v - edges.ruler[i]) < 0.5), JSON.stringify(edges));
   if (g2.menu) {
     await bp.click('.strip .dock button.home-btn');
     const m = await bp.evaluate(() => {

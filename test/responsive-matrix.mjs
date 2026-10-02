@@ -345,6 +345,11 @@ function stripCheck() {
   if (r && !(r.width > 0 && r.top >= -0.5 && r.left >= -0.5 && r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5)) {
     out.push(['strip', 'e-stop off screen when scrolled to the end: ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',')]);
   }
+  // ph-e82.21: the e-stop is the outermost strip control, Pause beside it.
+  const ctl = [...document.querySelectorAll('.strip button')].filter((b) => b.getBoundingClientRect().width > 0 && !b.closest('.status, .menu-pop'));
+  const pause = document.querySelector('.topstrip .btn-pause');
+  if (r && (ctl.some((b) => b.getBoundingClientRect().right > r.right + 0.5)
+    || !pause || pause.getBoundingClientRect().right > r.left + 0.5)) out.push(['strip', 'the e-stop is not the outermost control']);
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none') continue;
@@ -507,8 +512,8 @@ if (!ONLY || ONLY === 'picker') {
       if (n === 1) setTimeout(() => ws.close({ code: 1011, reason: 'reboot' }), 1500);
     });
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    // The strip's status slot carries the drop and Retry now (ph-e82.17).
-    const DROP = '.topstrip .status[data-kind=fault] button:has-text("Retry now")';
+    // The strip's status slot carries the drop and Retry (ph-e82.17).
+    const DROP = '.topstrip .status[data-kind=fault] button:has-text("Retry")';
     const line = await page.waitForSelector(DROP, { timeout: 8000 }).catch(() => null);
     const railKept = !!(await page.$('nav.rail'));
     scen('a dropped link is announced, and the page stays', !!line && railKept);
