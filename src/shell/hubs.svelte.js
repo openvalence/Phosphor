@@ -66,6 +66,19 @@ $effect.root(() => {
   });
 });
 
+// Upsert by key in first-seen order, stamping seenAt: a row never moves or
+// vanishes while the pane is open (a hub that stops answering keeps its last
+// seen time).
+function upsert(list, items, key, now = Date.now()) {
+  const out = list.slice();
+  for (const it of items) {
+    const i = out.findIndex((x) => key(x) === key(it));
+    if (i < 0) out.push({ ...it, seenAt: now }); else out[i] = { ...it, seenAt: now };
+  }
+  return out;
+}
+const foundKey = (f) => f.hub_instance_id || f.ip + ':' + f.ws_port;
+
 // SPEC 13.8 UDP discovery, the WS-side front door (operator ruling
 // 2026-07-28). The Rust command owns the socket and the dedupe.
 const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
@@ -73,10 +86,10 @@ export async function findHubs() {
   if (hubs.finding) return;
   hubs.finding = true;
   hubs.note = '';
-  hubs.found = [];
   try {
-    hubs.found = await invoke('discover_hubs', { timeoutMs: 2500 });
-    if (hubs.found.length === 0) hubs.note = 'no hubs answered on UDP ' + DISCOVERY_PORT;
+    const got = await invoke('discover_hubs', { timeoutMs: 2500 });
+    hubs.found = upsert(hubs.found, got, foundKey);
+    hubs.note = got.length ? got.length + ' hub' + (got.length === 1 ? '' : 's') + ' answered' : 'no hubs answered on UDP ' + DISCOVERY_PORT;
   } catch (e) {
     hubs.note = 'discovery failed: ' + e;
   } finally {
@@ -89,15 +102,14 @@ if (!hubs.manualHost) findHubs();
 export async function scan() {
   if (hubs.scanning) { await stopScan().catch(() => {}); hubs.scanning = false; return; }
   hubs.note = '';
-  hubs.ble = [];
   try {
     await checkPermissions(true);
     hubs.scanning = true;
     await startScan((devices) => {
       // A Valence hub advertises the service UUID in its primary payload
       // (fw: ValenceBlePort). Match on that, never on the name.
-      hubs.ble = devices.filter((d) =>
-        (d.services || []).some((s) => String(s).toLowerCase() === BLE_SERVICE));
+      hubs.ble = upsert(hubs.ble, devices.filter((d) =>
+        (d.services || []).some((s) => String(s).toLowerCase() === BLE_SERVICE)), (d) => d.address);
     }, 6000);
     setTimeout(() => { hubs.scanning = false; }, 6100);
   } catch (e) {

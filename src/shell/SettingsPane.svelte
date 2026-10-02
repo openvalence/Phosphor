@@ -13,9 +13,8 @@
    * - Every target is at least --tap (RENDERING law 12).
    */
   import ThemePicker from '../ui/ThemePicker.svelte';
-  import { since } from '../model/format.js';
   import {
-    prefs, setPref, savedHubs, renameHub, forgetHub, hubLabel, exportBackup, importBackup,
+    prefs, setPref, exportBackup, importBackup,
   } from '../model/prefs.js';
 
   let backup = $state('');
@@ -55,23 +54,7 @@
              onchange={(e) => setPref('telemetryHz', e.currentTarget.value === '' ? null : Number(e.currentTarget.value))} />
     </label>
     <p class="hint">Position and speed subscriptions; empty is the client default. Never above what each channel advertises. Applies on the next connect.</p>
-    {#if $savedHubs.length === 0}
-      <p class="hint">No saved hubs yet. A hub is saved once it connects over WiFi.</p>
-    {:else}
-      <ul class="hubs">
-        {#each $savedHubs as h (h.id)}
-          <li>
-            <label class="nick">
-              <span class="sr-only">Nickname for {hubLabel(h)}</span>
-              <input type="text" value={h.nickname} placeholder={h.name || 'Nickname'} maxlength="40"
-                     onchange={(e) => renameHub(h.id, e.currentTarget.value)} />
-            </label>
-            <span class="meta mono">{h.host}:{h.port} · {since(h.lastSeen)} ago</span>
-            <button type="button" class="og-btn" onclick={() => forgetHub(h.id)} aria-label={'Forget ' + hubLabel(h)}>Forget</button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <p class="hint">Saved hubs, their nicknames and forgetting one: Phosphor, Hubs.</p>
   </section>
 
   <section aria-labelledby="set-adv">

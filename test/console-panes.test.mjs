@@ -290,6 +290,12 @@ async function bootShell(viewport, extra) {
       }
       for (const [k, v] of Object.entries(x || {})) localStorage.setItem(k, v);
     } catch (e) { /* no storage */ }
+    // The one Rust command these panes need answered: discovery.
+    const stub = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = (cmd, args) => (cmd === 'discover_hubs'
+      ? Promise.resolve([{ hub_name: 'bench hub', ip: '10.0.0.5', ws_port: 82, fw_version: '1.2.3',
+        hub_instance_id: '00112233aabbccdd', pairing_window_open: true }])
+      : stub(cmd, args));
   }, extra));
 }
 
@@ -320,6 +326,33 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('plugins: the buttplug adapter stays disabled across a launch', bp2 && bp2.on === false && bp2.chips.includes('disabled'), JSON.stringify(bp2));
   await page.click('.plugins .plugin[aria-label="buttplug"] label.og-switch');
   await page.waitForTimeout(200);
+
+  // ---- Hubs ------------------------------------------------------------------------
+  await openTab(page, 'shell:hubs');
+  const hubStatus = () => page.$eval('section[aria-labelledby="hp-link"] .pane-status', (el) => [el.dataset.phase, el.textContent.trim(), el.getBoundingClientRect().height]);
+  const live = await hubStatus();
+  ok('hubs: the link ladder settles on live', live[0] === 'settled' && /Live on 127\.0\.0\.1:82/.test(live[1]), live.join(' / '));
+  const saved = await page.$$eval('section[aria-labelledby="hp-saved"] li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ')));
+  ok('hubs: saved hubs list here with the connected one marked', saved.length === 1 && /connected/.test(saved[0]), saved.join(' | '));
+  await page.fill('section[aria-labelledby="hp-saved"] .nick input', 'bench');
+  await page.press('section[aria-labelledby="hp-saved"] .nick input', 'Enter');
+  await page.$eval('section[aria-labelledby="hp-saved"] .nick input', (el) => el.dispatchEvent(new Event('change')));
+  ok('hubs: a nickname saves to prefs.js', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.hubs'))[0].nickname === 'bench'));
+  await page.click('button:has-text("Find on WiFi")');
+  await page.waitForSelector('section[aria-labelledby="hp-find"] .rows li', { timeout: 5000 });
+  const found = await page.$eval('section[aria-labelledby="hp-find"] .rows li', (l) => l.textContent.replace(/\s+/g, ' '));
+  ok('hubs: a discovery row carries name, endpoint, identity, pairing mark and last seen',
+    /bench hub/.test(found) && /10\.0\.0\.5:82/.test(found) && /fw 1\.2\.3/.test(found) && /id 00112233aabbccdd/.test(found) && /pairing open/.test(found) && /seen \d+s ago/.test(found), found);
+  const findBox = await page.$eval('section[aria-labelledby="hp-find"]', (el) => el.getBoundingClientRect().height);
+  await page.click('button:has-text("Find on WiFi")');
+  await page.waitForTimeout(300);
+  ok('hubs: finding again keeps the row in place', await page.$$eval('section[aria-labelledby="hp-find"] .rows li', (ls) => ls.length) === 1
+    && findBox === await page.$eval('section[aria-labelledby="hp-find"]', (el) => el.getBoundingClientRect().height));
+  await page.click('section[aria-labelledby="hp-link"] button:has-text("Disconnect")');
+  await page.waitForTimeout(200);
+  const off = await hubStatus();
+  ok('hubs: disconnect reads as not connected in the same slot', off[0] === undefined && /Not connected/.test(off[1]) && off[2] === live[2], off.join(' / '));
+  if (label === 'phone') ok('hubs: no horizontal page scroll at phone width', await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1));
 
   ok('no page errors (shell ' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
