@@ -296,7 +296,7 @@ export function graphRuntime(api, shell, env) {
     delete extra[h.op.key];
     const res = await env.runAction(act, op, extra);
     if (!res || !res.ok) {
-      hubState.set(r.rel_id, { phase: 'fault', reason: 'refused: ' + ((res && res.error) || 'no answer') });
+      hubState.set(r.rel_id, { phase: 'fault', reason: (res && res.error) || 'no answer from the hub' });
       await refreshHub();   // back to what the hub holds (law 4)
       return;
     }

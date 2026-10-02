@@ -130,14 +130,17 @@ function keyOf(kind, channelId, key) {
  * never heard back" are both refusals a control must not swallow silently).
  */
 export const lastRefusal = $state({
-  code: null, codeName: null, detail: null, channelId: null, label: null, at: 0,
+  code: null, text: null, detail: null, channelId: null, label: null, at: 0,
 });
 
-function noteRefusal(err, channelId, label) {
-  const code = (err && err.code != null) ? err.code : null;
-  lastRefusal.code = code;
-  lastRefusal.codeName = (err && err.name) || (code != null ? NACK_NAME[code] : null) || 'refused';
-  lastRefusal.detail = (err && (err.detail || err.message)) || null;
+const NO_ANSWER = 'no answer from the hub';
+/** A fault's words: only a NACK reads as the hub refusing (ph-xec). */
+const whyOf = (err) => (err && err.code != null ? 'refused: ' + (err.name || NACK_NAME[err.code]) : NO_ANSWER);
+
+function noteRefusal(err, why, channelId, label) {
+  lastRefusal.code = (err && err.code != null) ? err.code : null;
+  lastRefusal.text = why;
+  lastRefusal.detail = (err && err.detail) || null;
   lastRefusal.channelId = channelId != null ? channelId : null;
   lastRefusal.label = label || null;
   lastRefusal.at = Date.now();
@@ -146,7 +149,7 @@ function noteRefusal(err, channelId, label) {
 /** Clear the global banner — called once the operator's remedy tap is ECHO-confirmed. */
 export function clearLastRefusal() {
   lastRefusal.code = null;
-  lastRefusal.codeName = null;
+  lastRefusal.text = null;
   lastRefusal.detail = null;
   lastRefusal.channelId = null;
   lastRefusal.label = null;
@@ -256,7 +259,7 @@ async function flush(channelId) {
     }
     if (echo && echo.cfgGen != null) machine.link.cfgGen = echo.cfgGen;
   } catch (err) {
-    const msg = (err && (err.name || err.message)) || 'rejected';
+    const msg = whyOf(err);
     for (const [, rec] of entries) {
       const sh = mine(rec);
       if (sh) fail(sh, msg, err);
@@ -319,13 +322,16 @@ function settle(sh) {
  * failure. Both are refusals a control must not swallow, so both land here.
  */
 function fail(sh, why, err) {
+  // A rejection with no NACK code (the session's own timeout) after the
+  // ladder already faulted or settled this write changes nothing (ph-xec).
+  if (err && err.code == null && sh.status !== STATUS.pending && sh.status !== STATUS.overdue) return;
   clearTimers(sh);
   sh.status = STATUS.fault;
   sh.error = why;
   // Discard the request. The control snaps back to what the machine reports,
   // because that is what is true.
   sh.requested = undefined;
-  noteRefusal(err || { message: why }, sh.channelId, sh.label);
+  noteRefusal(err, why, sh.channelId, sh.label);
   sh._t3 = setTimeout(() => {
     if (sh.status === STATUS.fault) { sh.status = STATUS.confirmed; sh.error = null; }
   }, FAULT_MS * 2);
@@ -348,7 +354,7 @@ function begin(sh, value) {
     if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
   }, OVERDUE_MS);
   sh._t2 = setTimeout(() => {
-    if (sh.status === STATUS.pending || sh.status === STATUS.overdue) fail(sh, 'no echo');
+    if (sh.status === STATUS.pending || sh.status === STATUS.overdue) fail(sh, NO_ANSWER);
   }, FAULT_MS);
   return sh.seq;
 }
@@ -414,7 +420,7 @@ export async function runAction(action, value = 1, extraFields = null) {
     }
     return { ok: true, applied };
   } catch (err) {
-    const msg = (err && (err.name || err.message)) || 'rejected';
+    const msg = whyOf(err);
     if (sh.seq === seq) fail(sh, msg, err);
     return { ok: false, error: msg };
   }

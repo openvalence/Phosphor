@@ -132,7 +132,7 @@
     if (latestSafety) return { kind: 'edge' };
     return { kind: 'idle' };
   });
-  const refusalText = $derived('refused: ' + lastRefusal.codeName + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
+  const refusalText = $derived(lastRefusal.text + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
   const refusalTitle = $derived(refusalText + (lastRefusal.detail ? ' · ' + lastRefusal.detail : ''));
   const edgeText = $derived(latestSafety
     ? displayLabel(SAFETY_EVENT_KIND_NAME[latestSafety.kind] || ('kind ' + latestSafety.kind)) : '');
@@ -448,7 +448,7 @@
     line-height: 1.3;
     color: var(--ink-dim);
   }
-  [data-kind='fault'] .st-text, .recovery .st-text { color: var(--bad); }
+  [data-kind='fault'] .st-text, .recovery .st-text,
   [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn); }
 
   .recovery {

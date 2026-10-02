@@ -336,6 +336,19 @@ async function drive(p) {
   return up ? before + step : before - step;
 }
 const near = (a, b) => Math.abs(a - b) <= FIELD.step / 1000;
+const NO_ANSWER = 'no answer from the hub';
+/** Does anything at `sel` (box, border or text) paint in --bad? Red is the e-stop's alone (law 13). */
+const wearsBad = (sel) => page.evaluate((sel) => {
+  const probe = document.createElement('i');
+  probe.style.color = 'var(--bad)';
+  document.body.append(probe);
+  const bad = getComputedStyle(probe).color;
+  probe.remove();
+  return [...document.querySelectorAll(sel)].flatMap((el) => [el, ...el.querySelectorAll('*')]).some((el) => {
+    const s = getComputedStyle(el);
+    return [s.boxShadow, s.color, s.borderTopColor].some((v) => v.includes(bad));
+  });
+}, sel);
 
 if (!LIVE) {
   for (const p of WRITERS) {
@@ -354,7 +367,7 @@ if (!LIVE) {
     ok(p + ': overdue past 500 ms with no echo', await waitShadow(p, 'overdue', 1500));
     ok(p + ': overdue names itself in words', (await ladderOf(p)).includes('still waiting'), await ladderOf(p));
     ok(p + ': fault when the echo never comes', await waitShadow(p, 'fault', 3000));
-    ok(p + ': fault gives the reason', /refused: no echo/.test(await ladderOf(p)), await ladderOf(p));
+    ok(p + ': fault gives the reason', (await ladderOf(p)).includes(NO_ANSWER), await ladderOf(p));
     // The unanswered intent's session timeout (3 s) lands about 1 s after the
     // fault, on the same shadow record; a newer write must not feel it (ph-6i9).
     hub.mode = 'hold';
@@ -370,6 +383,16 @@ if (!LIVE) {
     await drive(p);
     ok(p + ': fault on a NACK', await waitShadow(p, 'fault', 1500));
     ok(p + ': the NACK code is the reason', /INVALID_VALUE/.test(await ladderOf(p)), await ladderOf(p));
+    ok(p + ': a fault wears amber, never the e-stop red', !(await wearsBad('.cell[data-pres=' + p + '] .field')));
+    if (p === WRITERS[0]) {
+      // ph-xec: the session's own 3 s timeout lands after the 2 s fault and must not rewrite it.
+      hub.mode = 'silent';
+      await drive(p);
+      await waitShadow(p, 'fault', 3000);
+      await sleep(1300);
+      ok(p + ': after a silent hub the final words are the no-answer wording', await shadowOf(p) === 'fault'
+        && (await ladderOf(p)).trim() === NO_ANSWER, await ladderOf(p));
+    }
     hub.mode = 'echo';
     await sleep(100);
   }
@@ -434,7 +457,7 @@ if (!LIVE) {
     hub.mode = 'silent';
     await xdrive(p);
     ok(p + ': fault when the echo never comes', await xwait(p, 'fault', 4000));
-    ok(p + ': ...with its reason in the slot', /refused: no echo/.test(await xladder(p)), await xladder(p));
+    ok(p + ': ...with its reason in the slot', (await xladder(p)).includes(NO_ANSWER), await xladder(p));
     await sameH('at fault');
     hub.mode = 'nack';
     const before = await read();
@@ -697,7 +720,8 @@ if (!LIVE) {
     ok('action: overdue past 500 ms with no echo', await actWait('overdue', 1500));
     ok('action: overdue names itself in words', /still waiting/.test(await act.locator('.hint.state').textContent()));
     ok('action: fault when the echo never comes', await actWait('fault', 3000));
-    ok('action: fault gives the reason', /refused: no echo/.test(await act.locator('.hint.state').textContent()));
+    ok('action: fault gives the reason', (await act.locator('.hint.state').textContent()).includes(NO_ANSWER));
+    ok('action: the fault wears amber, never the e-stop red', !(await wearsBad('.cell .field.action')));
     // The silent intent's session timeout lands about 1 s after the fault; a newer press must not feel it.
     hub.mode = 'hold';
     await act.locator('.ops button').first().click();

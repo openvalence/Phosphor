@@ -135,7 +135,7 @@
     holding ? 'keep holding to release'
     : phase === 'pending' ? 'waiting for the machine'
     : phase === 'overdue' ? 'still waiting for the machine'
-    : phase === 'fault' ? 'refused: ' + error
+    : phase === 'fault' ? error
     : why || hint
   );
 </script>
@@ -192,7 +192,7 @@
   .ico { width: 14px; height: 14px; }
   .state { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   [data-shadow='overdue'] .state { color: var(--warn); }
-  [data-shadow='fault'] .state { color: var(--bad); }
+  [data-shadow='fault'] .state { color: var(--warn); }
 
   /* The e-stop's only hazard cue at rest is the stripe wash in the safety red
      (law 13: never themeable); latched it reads Halted on a solid border. */

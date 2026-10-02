@@ -234,7 +234,8 @@ p { max-width: 75ch; }
 
      pending   intent purple   — sent, awaiting the machine's echo
      overdue   warn amber      — same meaning, escalating (>500 ms)
-     fault     bad red         — refused or timed out; value has snapped back
+     fault     warn amber      — refused or unanswered; value has snapped back.
+                                 Steady where overdue breathes; red is the e-stop's alone
      settled   reality blue    — the one moment the page says yes
 
    Deliberate details:
@@ -258,7 +259,7 @@ p { max-width: 75ch; }
   animation: unconfirmed-breathe 1.4s ease-in-out infinite;
 }
 [data-shadow='fault'] {
-  box-shadow: inset 0 0 0 2px var(--bad);
+  box-shadow: inset 0 0 0 2px var(--warn);
 }
 .settled { animation: confirm-flash 0.9s ease-out 1; }
 

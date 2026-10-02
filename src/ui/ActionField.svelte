@@ -63,7 +63,7 @@
   const statusText = $derived(
     status === 'pending' ? 'waiting for the machine'
     : status === 'overdue' ? 'still waiting for the machine'
-    : status === 'fault' ? 'refused: ' + (sh && sh.error)
+    : status === 'fault' ? sh && sh.error
     : sh && sh.settled ? 'confirmed' + (action.options && sh.applied != null ? ': ' + opLabel(sh.applied) : '')
     : ''
   );
@@ -114,6 +114,6 @@
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   .state { min-height: 1.45em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .why { color: var(--ink-faint); }
-  .action[data-shadow='fault'] .state { color: var(--bad); }
+  .action[data-shadow='fault'] .state { color: var(--warn); }
   .action[data-shadow='overdue'] .state { color: var(--warn); }
 </style>

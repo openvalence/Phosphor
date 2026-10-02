@@ -429,6 +429,16 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await estop.click(); await settle();
   ok(tag + ': the e-stop latches and reads Halted', wire.ops.at(-1) === SAFETY_OP.estop && await lbl(estop) === 'Halted',
     wire.ops.join() + ' / ' + await lbl(estop));
+  // Law 13: red is the e-stop's alone; the write ladder's faults moved to amber (ph-xec).
+  const red = await estop.evaluate((el) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--bad)';
+    document.body.append(probe);
+    const bad = getComputedStyle(probe).color;
+    probe.remove();
+    return getComputedStyle(el).borderTopColor === bad && getComputedStyle(el.querySelector('.lbl')).color === bad;
+  });
+  ok(tag + ': the latched e-stop still wears --bad red', red);
   const n = wire.ops.length;
   await estop.click(); await estop.click(); await settle();
   ok(tag + ': two quick taps on Halted send nothing', wire.ops.length === n, wire.ops.slice(n).join());

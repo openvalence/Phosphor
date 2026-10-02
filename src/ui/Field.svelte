@@ -370,7 +370,7 @@
   // the head row, clipped, so no state can change the field's height; the
   // full text rides in the title.
   const slot = $derived(
-    status === 'fault' ? { kind: 'fault', text: 'refused' + (sh && sh.error ? ': ' + sh.error : '') }
+    status === 'fault' ? { kind: 'fault', text: (sh && sh.error) || 'refused' }
     : status === 'pending' ? { kind: 'pending', text: 'waiting for the machine' }
     : status === 'overdue' ? { kind: 'overdue', text: 'still waiting for the machine' }
     : outOfRange ? { kind: 'range', text: 'outside this control\'s range ('
@@ -1408,7 +1408,7 @@
   }
   .ladder[data-slot='pending'] { color: var(--intent); }
   .ladder[data-slot='overdue'] { color: var(--warn); }
-  .ladder[data-slot='fault'] { color: var(--bad); }
+  .ladder[data-slot='fault'] { color: var(--warn); }
   .ladder[data-slot='gate'] { color: var(--tx-ghost); }
 
   /* ---- builder presentations (DESIGN §10.2) -------------------------------- */

@@ -165,7 +165,7 @@
   const flipStatus = $derived(statusOf(flip));
   const flipText = $derived.by(() => {
     const sh = shadowOf(flip);
-    if (flipStatus === STATUS.fault) return 'refused: ' + ((sh && sh.error) || 'no reason given');
+    if (flipStatus === STATUS.fault) return (sh && sh.error) || 'refused';
     if (flipStatus === STATUS.pending || flipStatus === STATUS.overdue) return 'waiting for the machine';
     if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'not writable now';
     return flipped ? 'on: home at the far end' : 'off';
@@ -1104,7 +1104,7 @@
   .rw-flip:disabled { opacity: .4; }
   .rw-flip small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   .rw-flip[data-shadow='overdue'] small { color: var(--warn); }
-  .rw-flip[data-shadow='fault'] small { color: var(--bad); }
+  .rw-flip[data-shadow='fault'] small { color: var(--warn); }
 
   /* OG .rail-panel spacing: 10px vertical margin so the og-panel's 4px
      outline-offset frame never collides with the row above or the content

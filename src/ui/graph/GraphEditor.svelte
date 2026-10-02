@@ -504,7 +504,7 @@
     {@const d = drivers.find((r) => r.enabled) || drivers[0]}
     {#if d.home === 'client'}<p class="gline">mapped <span class="gnum">{fmt((void beat, R.out(d.id))) || 'nothing yet'}</span></p>{/if}
     <p class="gline">reads <span class="gnum">{fmt(ec.value) || 'no value yet'}</span> {fmt(ec.value) ? nf.unit : ''}</p>
-    {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">refused: {ec.reason || 'no echo'}</p>
+    {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">{ec.reason || 'no answer from the hub'}</p>
     {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub's echo</p>{/if}
   {/if}
   {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.label)}{/if}

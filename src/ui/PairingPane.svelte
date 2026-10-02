@@ -160,7 +160,7 @@
     if (lastOp.local) return { phase: 'fault', text: lastOp.local };
     if (adminStatus === 'pending') return { phase: 'pending', text: lastOp.verb + ' ' + lastOp.who + ': waiting for the hub' };
     if (adminStatus === 'overdue') return { phase: 'overdue', text: lastOp.verb + ' ' + lastOp.who + ': still waiting for the hub' };
-    if (adminStatus === 'fault') return { phase: 'fault', text: 'Refused: ' + ((adminShadow && adminShadow.error) || 'no reason given') };
+    if (adminStatus === 'fault') return { phase: 'fault', text: (adminShadow && adminShadow.error) || 'refused' };
     return { phase: 'settled', text: lastOp.done + ' ' + lastOp.who + '.' };
   }
 
