@@ -1,8 +1,10 @@
 <script>
   /**
-   * ShellStrip.svelte -- the Tauri shell's row of the top strip: window
-   * controls, hub discovery, transport control. SHELL ONLY (main.js hands it
-   * to App, which hands it to TopStrip; never in the embedded bundle).
+   * ShellStrip.svelte -- the Tauri shell's row of the top strip: the drawer
+   * handle, the link state, the window controls, and the drawer
+   * (Drawer.svelte) whose Hubs pane carries discovery and transport. SHELL
+   * ONLY (main.js hands it to App, which hands it to TopStrip; never in the
+   * embedded bundle).
    *
    * Constraints:
    * - This is SHELL chrome, not kernel UI: it may know about transports and
@@ -14,6 +16,9 @@
    * - A live BLE session hops to WS once, automatically, when WELCOME offers
    *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
    *   opens, and falls back to BLE if the WS session is not live in time.
+   * - The drawer closes on click, never on pointerdown: closing moves the
+   *   safety pair up, and a control that moves between press and release
+   *   loses the click, or the e-stop's release hold.
    */
   import { untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -22,7 +27,7 @@
   import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { machine, connect, disconnect } from '../model/machine.svelte.js';
   import HostEntry from '../ui/HostEntry.svelte';
-  import ServerPane from './ServerPane.svelte';
+  import Drawer from './Drawer.svelte';
   import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
   import { advFlags, upgradeTarget } from './ble-adv.js';
 
@@ -45,7 +50,31 @@
   const manualHost = localStorage.getItem('shell_host') || '';
   let mode = $state(localStorage.getItem('shell_mode') || 'ws');
   let note = $state('');
-  let expanded = $state(true);
+
+  // First run (no remembered hub) opens on the Hubs pane: discovery is the
+  // front door. After that the operator's last choice wins.
+  const DRAWER_KEY = 'shell_drawer';
+  let open = $state(storedOpen());
+  function storedOpen() {
+    try { const v = localStorage.getItem(DRAWER_KEY); return v == null ? !manualHost : v === '1'; } catch (e) { return false; }
+  }
+  function setOpen(v) {
+    open = v;
+    try { localStorage.setItem(DRAWER_KEY, v ? '1' : '0'); } catch (e) { /* private mode: a convenience */ }
+  }
+  let shellEl = $state(null);
+  let handleEl = $state(null);
+  function onWindowKey(e) {
+    if (e.key !== 'Escape' || !open) return;
+    const had = shellEl.contains(document.activeElement);
+    setOpen(false);
+    if (had) handleEl.focus();
+  }
+  // composedPath, not contains(): a click that re-renders its own target
+  // (a picked hub leaves the list) has detached it by the time this runs.
+  function onDocClick(e) {
+    if (open && !e.composedPath().includes(shellEl)) setOpen(false);
+  }
 
   const phase = $derived(machine.link.phase);
   const endpoint = $derived(machine.link.endpoint || null);
@@ -199,70 +228,80 @@
   }
 </script>
 
-<div class="shellrow" class:collapsed={!expanded}>
-  <div class="sb-left">
-    <!-- The glyph points toward where tapping moves the row's free edge:
-         down (▾) to expand, up (▴) to collapse. -->
-    <button class="sb-toggle mono" onclick={() => (expanded = !expanded)}
-            aria-label="toggle shell bar">{expanded ? '▴' : '▾'} shell</button>
-    {#if expanded}
-      <span class="sb-mode mono" data-mode={mode}>{mode.toUpperCase()}</span>
-      <span class="sb-phase mono">{phase}</span>
+<svelte:window onkeydown={onWindowKey} />
+<svelte:document onclick={onDocClick} />
 
+{#snippet hubsPane()}
+  <div class="hp">
+    <div class="hp-row">
       <button class="sb-btn" onclick={findHubs} disabled={finding}>
         {finding ? 'finding…' : 'find hubs'}
       </button>
       {#each found as f (f.hub_instance_id)}
         <button class="sb-hub ws mono" onclick={() => connectWs(f.ip, f.ws_port)}>
           <span class="hub-name">{f.hub_name || 'hub'}</span>
-          <span class="hub-addr">{f.ip}:{f.ws_port}</span>
-          <span class="hub-fw">{f.fw_version || '?'}</span>
+          <span>{f.ip}:{f.ws_port}</span>
+          <span>{f.fw_version || '?'}</span>
           {#if f.pairing_window_open}<span class="hub-pair">pairing</span>{/if}
         </button>
       {/each}
-
+    </div>
+    <div class="hp-row">
       <button class="sb-btn" onclick={scan}>{scanning ? 'stop' : 'scan BLE'}</button>
       {#each hubs as h (h.address)}
         {@const adv = advFlags(h)}
         <button class="sb-hub mono" onclick={() => pickBle(h)}>
           <span class="hub-name">{h.name || 'hub'}</span>
-          <span class="hub-addr">{h.address}</span>
-          {#if h.rssi}<span class="hub-rssi">{h.rssi} dBm</span>{/if}
+          <span>{h.address}</span>
+          {#if h.rssi}<span>{h.rssi} dBm</span>{/if}
           {#if adv?.pairing}<span class="hub-pair">pairing</span>{/if}
           {#if adv?.ws}<span class="hub-pair">WS</span>{/if}
         </button>
       {/each}
       {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
+    </div>
+    <HostEntry value={manualHost} onpick={connectWs} />
+    {#if target}
+      <button class="sb-btn sb-upgrade" onclick={upgrade}>↑ WS {target.host}:{target.port}</button>
+    {/if}
+    {#if note}<p class="sb-note">{note}</p>{/if}
+    {#if stats}<p class="sb-note mono">{stats}</p>{/if}
+  </div>
+{/snippet}
 
-      <span class="sb-sep"></span>
-      <HostEntry dense recent={false} label="WS" value={manualHost} onpick={connectWs} />
-      <ServerPane />
-
-      {#if target}
-        <button class="sb-btn sb-upgrade" onclick={upgrade}>
-          ↑ WS {target.host}:{target.port}
+<div class="shell" bind:this={shellEl}>
+  <div class="shellrow">
+    <div class="sb-left">
+      <button class="sb-handle" bind:this={handleEl} onclick={() => setOpen(!open)}
+              aria-expanded={open} aria-controls="shell-drawer">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d={open ? 'M2 8l4-4 4 4' : 'M2 4l4 4 4-4'}/></svg>
+        Menu
+      </button>
+      <span class="sb-mode mono" data-mode={mode}>{mode.toUpperCase()}</span>
+      <span class="sb-phase mono">{phase}</span>
+    </div>
+    {#if win}
+      <span class="sb-win">
+        <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
         </button>
-      {/if}
-      {#if note}<span class="sb-note">{note}</span>{/if}
-      {#if stats}<span class="sb-note mono">{stats}</span>{/if}
+        <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
+          <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
+        </button>
+        <button class="sb-wbtn" aria-label="Close" title="Close" onclick={() => win.close()}>
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+        </button>
+      </span>
     {/if}
   </div>
-  {#if win}
-    <span class="sb-win">
-      <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
-        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
-      </button>
-      <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
-        <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
-      </button>
-      <button class="sb-wbtn" aria-label="Close" title="Close" onclick={() => win.close()}>
-        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
-      </button>
-    </span>
-  {/if}
+  {#if open}<Drawer hubs={hubsPane} />{/if}
 </div>
 
 <style>
+  .shell {
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+  }
   .shellrow {
     display: flex;
     align-items: flex-start;
@@ -270,9 +309,7 @@
        $effect above zeroes the LinkBar's share (style.css --chrome-inset-top). */
     padding-top: env(safe-area-inset-top, 0px);
     border-bottom: 1px solid var(--shell-border);
-    background: var(--shell-bg);
     font-size: 0.72rem;
-    color: var(--shell-fg);
   }
   .sb-left {
     flex: 1 1 auto;
@@ -280,19 +317,21 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-    padding: 4px 10px;
+    min-height: 32px;
+    padding: 0 10px 0 4px;
   }
-  .collapsed { border-bottom: none; }
-  .collapsed .sb-left { padding-block: 0; }
-  .sb-toggle {
+  .sb-handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 8px;
     color: var(--shell-fg);
-    font-size: 0.68rem;
-    padding: 3px 4px;
     text-transform: uppercase;
     letter-spacing: .04em;
   }
-  .sb-toggle:hover { color: var(--ink); }
+  .sb-handle:hover, .sb-handle[aria-expanded='true'] { color: var(--ink-hi); }
+  .sb-handle svg, .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
   .sb-mode {
     padding: 4px 7px;
     border-radius: var(--radius);
@@ -308,12 +347,14 @@
     border-color: color-mix(in srgb, var(--intent) 45%, var(--line));
     color: var(--intent);
   }
-  .sb-phase { color: var(--shell-fg); }
-  .sb-btn {
+  .hp { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+  .hp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .sb-btn, .sb-hub {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 36px;
+    gap: 7px;
+    min-height: 40px;
     padding: 0 12px;
     background: var(--bg-card);
     border: 1px solid var(--line);
@@ -323,32 +364,19 @@
   }
   .sb-btn:hover { border-color: var(--line-4); }
   .sb-upgrade {
+    align-self: flex-start;
     border-color: color-mix(in srgb, var(--reality) 45%, var(--line));
     background: color-mix(in srgb, var(--reality) 12%, var(--bg-card));
     color: var(--reality);
   }
-  .sb-hub {
-    display: inline-flex;
-    align-items: center;
-    min-height: 36px;
-    padding: 0 12px;
-    gap: 7px;
-    background: var(--bg-card);
-    border: 1px dashed color-mix(in srgb, var(--intent) 55%, var(--line));
-    border-radius: var(--radius);
-    color: var(--intent);
-  }
-  .sb-hub .hub-name { font-weight: 600; }
-  .sb-hub .hub-addr { color: var(--ink-dim); }
-  .sb-hub .hub-rssi { color: var(--ink-faint); }
-  .sb-hub .hub-fw { color: var(--ink-faint); }
+  .sb-hub { border: 1px dashed color-mix(in srgb, var(--intent) 55%, var(--line)); }
+  .sb-hub .hub-name { font-weight: 600; color: var(--intent); }
   .sb-hub .hub-pair { color: var(--reality); font-weight: 600; }
   /* Solid border: a WS candidate from UDP discovery, not a BLE scan hit. */
   .sb-hub.ws { border-style: solid; }
-  .sb-sep { flex: 0 0 8px; }
-  .sb-note { color: var(--ink-faint); font-style: italic; font-size: 11px; }
-  /* Pinned top-right however .sb-left wraps. Empty row space is the window
-     drag region (TopStrip's data-tauri-drag-region). */
+  .sb-note { color: var(--shell-fg); font-style: italic; font-size: 11px; }
+  /* Pinned top-right. Empty row space is the window drag region
+     (TopStrip's data-tauri-drag-region). */
   .sb-win { flex: 0 0 auto; display: flex; }
   .sb-wbtn {
     display: grid;
@@ -356,8 +384,11 @@
     width: 46px;
     height: 32px;
     padding: 0;
-    color: var(--ink-dim);
+    color: var(--shell-fg);
   }
-  .sb-wbtn:hover { color: var(--ink); background: var(--line-soft); }
-  .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+  .sb-wbtn:hover { color: var(--ink-hi); background: var(--line-soft); }
+  @media (pointer: coarse) {
+    .sb-left, .sb-handle { min-height: 40px; }
+    .sb-wbtn { height: 40px; }
+  }
 </style>
