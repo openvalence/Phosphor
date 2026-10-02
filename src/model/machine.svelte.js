@@ -162,6 +162,7 @@ export const machine = $state({
     closeReason: '',
     deadmanMs: 0,
     cfgGen: 0,
+    bootId: null,           // WELCOME boot_id: hub time is valid within one boot
     hubIdentity: null,      // RFC-016 in-band identity, when the hub sends it
     limits: {},             // the hub's declared ceilings, from WELCOME
     subsDropped: 0,         // channels we had to shed to fit max_subscriptions
@@ -533,6 +534,8 @@ export function connect(opts = {}) {
     machine.link.roles = w.roles || 0;
     machine.link.deadmanMs = w.deadmanMs || 0;
     machine.link.cfgGen = w.cfgGen || 0;
+    // SPEC §7.2: a new boot voids every hub timestamp (format.js staleMoment).
+    machine.link.bootId = w.bootId ?? null;
     machine.link.hubIdentity = w.identity || null;
     // RFC-046: where the WS upgrade lives, for a session that arrived over
     // BLE. null on hubs that advertise none.

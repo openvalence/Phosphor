@@ -21,7 +21,7 @@ import {
   CROSS_ARCHETYPE, placementLook,
 } from '../src/model/settings.js';
 import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
-import { labelFor, unitOf, precisionFor, statTag } from '../src/model/format.js';
+import { labelFor, unitOf, precisionFor, statTag, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment } from '../src/model/format.js';
 import { readFileSync } from 'node:fs';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended } from '../src/model/actions.js';
 import {
@@ -272,8 +272,8 @@ ok('an unstepped integer scaled x1000 is finely quantized -> slider',
    num({ type: PACKED.u32, scale: 1000, min: 10, max: 500 }) === WIDGET.slider);
 ok('a writable numeric with no bounds cannot be dragged -> stepper',
    num({ type: PACKED.u16 }) === WIDGET.stepper);
-ok('an explicit archetype hint beats the whole table (§8.2 row 1)',
-   num({ min: 0, max: 100, step: 1, archetypeHint: UI_ARCHETYPE.stepper }) === WIDGET.stepper);
+ok('an archetype hint is ignored: RFC-083 struck it (§8.2 row 1)',
+   num({ min: 0, max: 100, step: 1, archetypeHint: UI_ARCHETYPE.stepper }) === WIDGET.slider);
 
 // ---- claim: read-only status bits are lamps, not numerals (§8.2 row 14) ----
 const ro = (extra) => resolveWidget({ readOnly: true, scale: 1, flagBits: {}, ...extra });
@@ -497,6 +497,39 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const copy = confirmCopy(act('action.reboot', { options: ['reserved', 'warm_reboot'], desc: 'Restart the hub.' }), 1);
   ok('confirm copy is the catalog\'s own option label and desc',
      copy.title === 'warm reboot' && copy.body === 'Restart the hub.', JSON.stringify(copy));
+}
+
+// ---- RFC-083: color and datetime bind by role, never by an archetype hint --
+{
+  const lf = (name, role, settingKey, extra = {}) => ({ name, role, settingKey, type: PACKED.u8, typeName: 'u8',
+    unit: '', scale: 1, min: 0, max: 255, rank: UI_RANK.control, group: 'Glow', ...extra });
+  const ch = (layout) => ({ id: 0x7a00, name: 'lamp', cls: CHANNEL_CLASS.STATE, dir: 0, access: 1, maxRateHz: 0,
+    priority: 2, category: UI_CATEGORY.hardware, categoryKnown: true, categoryName: 'hardware', settingChannel: 0x7a01, layout });
+  const rgb = [lf('r', FIELD_ROLE.color_red, 1), lf('g', FIELD_ROLE.color_green, 2), lf('b', FIELD_ROLE.color_blue, 3)];
+  const m = buildSettingsModel([ch([...rgb, lf('at', FIELD_ROLE.datetime_moment, 4, { type: PACKED.u32, typeName: 'u32',
+    unitId: UNIT_ID.hub_s, max: 4e9 }), lf('plain', '', 5, { archetype: UI_ARCHETYPE.color })])]);
+  const fields = m.categories.flatMap((c) => c.groups.flatMap((g) => g.fields));
+  const color = fields.find((f) => f.widget === WIDGET.color);
+  ok('color.red/green/blue in one group project to one color control', !!color && color.r && color.g && color.b
+    && !fields.some((f) => f.role === FIELD_ROLE.color_red));
+  ok('datetime.moment projects to the datetime archetype', fields.some((f) => f.role === FIELD_ROLE.datetime_moment
+    && f.archetype === UI_ARCHETYPE.datetime && f.widget === WIDGET.datetime));
+  ok('an archetype hint is never read (RFC-083 struck it)', fields.find((f) => f.name === 'plain').widget !== WIDGET.color);
+  const two = buildSettingsModel([ch(rgb.slice(0, 2))]).categories[0].groups[0].fields;
+  ok('two of three color roles stay ordinary controls', two.length === 2 && two.every((f) => f.widget === WIDGET.slider));
+  const ro = buildSettingsModel([{ ...ch(rgb), settingChannel: null }]).categories[0].groups[0].fields;
+  ok('a read-only triple is not a picker', !ro.some((f) => f.widget === WIDGET.color));
+
+  // A fixed CLOCK reference: hub up 5000.5 s, the CLOCK hub-us wrapped once.
+  const ref = { hubUs: Math.round(5000.5e6) % 2 ** 32, wallMs: 1_900_000_000_000, uptimeS: 5000 };
+  const wall = hubSecToWallMs(12345, ref);
+  ok('datetime round trip through a fixed CLOCK offset is exact', wallMsToHubSec(wall, ref) === 12345
+    && wall === ref.wallMs + (12345 - 5000.5) * 1000);
+  armMoment('0x7a00:at', 111, 12345, wall);
+  ok('same boot_id: the armed moment holds', staleMoment('0x7a00:at', 111, 12345) === null);
+  ok('boot_id change: the armed moment is stale, with the wall time to re-arm',
+     staleMoment('0x7a00:at', 222, 12345)?.wallMs === wall);
+  ok('a moment the hub already changed is not flagged', staleMoment('0x7a00:at', 222, 999) === null);
 }
 
 // ---- generic triggers (§8.2 row 6): every non-persistent verb is reachable --

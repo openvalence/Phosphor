@@ -19,7 +19,7 @@
  */
 
 import {
-  PACKED, UI_RANK, UI_ARCHETYPE, UI_ARCHETYPE_NAME, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP,
+  PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE,
 } from '../../../Valence/clients/js/index.js';
 import { ROLE, ROLE_LABEL, isActionRole } from './roles.js';
 import { isPersistentAction } from './actions.js';
@@ -52,6 +52,8 @@ export const WIDGET = {
   secret: 'secret',       // row 11 + flags.secret: value never on the wire
   action: 'action',       // row 6 (`trigger`), discovered by role in pass 2
   range: 'range',         // RENDERING §11: a tagged min/max pair, one dual-thumb control
+  color: 'color',         // row 16: a group's color.red/green/blue, one picker
+  datetime: 'datetime',   // row 17: a datetime.* field, hub time shown as wall time
   // Builder presentations (DESIGN §10.2): never derived, only chosen by a user.
   knob: 'knob',           // a bounded numeric as a rotary control
   bar: 'bar',             // a bounded value as a meter
@@ -76,6 +78,10 @@ const STRING_TYPES = new Set([PACKED.str16, PACKED.str32, PACKED.str64]);
  * lets a 9-position control pretend a drag can hit its middle value.
  */
 export const DRAG_TICKS_MIN = 20;
+
+/** RFC-083: the roles that carry a hub-time moment (unit hub_s). */
+export const DATETIME_ROLES = new Set([FIELD_ROLE.datetime_moment, FIELD_ROLE.datetime_start, FIELD_ROLE.datetime_end]);
+const COLOR_ROLES = [FIELD_ROLE.color_red, FIELD_ROLE.color_green, FIELD_ROLE.color_blue];
 
 /**
  * How many distinct values the range holds, or null when it has no bounds.
@@ -121,18 +127,15 @@ function looksBooleanField(f) {
  * RENDERING.md §8.2's decision table, evaluated top to bottom, first match
  * wins. Returns a `UI_ARCHETYPE` code.
  *
- * Rows 2-5 and 16-17 are absent BY DESIGN, not by omission: `stop` is bound to
+ * Rows 2-5 are absent BY DESIGN, not by omission: `stop` is bound to
  * safety-op identity (row 2) and lives in the safety UI; `axis`, `pad2d` and
  * `list` are claimed by hero widgets from roles before a field reaches here
- * (roles.js); `color`/`datetime` need an explicit hint no catalog key carries
- * yet. Row 6 is the action pass at the bottom of this file.
+ * (roles.js). Row 16 (`color`) is a group of three fields, merged per card
+ * group by mergeComposites below; row 17 (`datetime`) binds by role here
+ * (RFC-083: no archetype hint exists). Row 6 is the action pass at the bottom
+ * of this file.
  */
 export function resolveArchetype(f) {
-  // Row 1. No catalog key carries an archetype override today, so this is
-  // dormant — one line to honor the day a hub ships one, per §14d's rule that
-  // an unrecognized annotation must never break a client that ignores it.
-  if (f.archetypeHint != null && UI_ARCHETYPE_NAME[f.archetypeHint] != null) return f.archetypeHint;
-
   // Read-only wins over everything below it: a field with no setting_key is
   // effective truth and must never render as something you can push, no matter
   // how invitingly typed it is.
@@ -142,6 +145,7 @@ export function resolveArchetype(f) {
     return UI_ARCHETYPE.readout;                                           // rows 12/13
   }
 
+  if (DATETIME_ROLES.has(f.role)) return UI_ARCHETYPE.datetime;           // row 17
   if (looksBooleanField(f)) return UI_ARCHETYPE.toggle;                    // row 7
   if (f.options && f.options.length) return UI_ARCHETYPE.select;           // row 8
   // A writable named-bit bitfield8 is a SET of booleans — row 7 composed the
@@ -189,6 +193,8 @@ export function resolveWidget(f) {
       return (f.flagBits && f.flagBits.secret) ? WIDGET.secret : WIDGET.text;
     case UI_ARCHETYPE.trigger:
       return WIDGET.action;
+    case UI_ARCHETYPE.datetime:
+      return WIDGET.datetime;
     default:
       return WIDGET.readout;
   }
@@ -288,8 +294,6 @@ function makeField(entry, f, settingIndex, maskField) {
     // measurement nobody made.
     provenance: f.provenance,
     provenanceName: f.provenanceName,
-    // §8.2 row 1's override; see resolveArchetype().
-    archetypeHint: f.archetype,
     // ONE truth for the disclosure affordance. RENDERING.md §4 calls ui_ranks
     // `advanced` the migration of the setting_flags.advanced BIT into the rank
     // ladder, so both spellings mean the same thing and a machine may ship
@@ -364,6 +368,35 @@ function mergeRangePairs(fields) {
   }
   return out;
 }
+
+/**
+ * RENDERING §8.2 row 16 (RFC-083): a group's writable numeric color.red,
+ * color.green and color.blue become one `color` field carrying `r`/`g`/`b`.
+ * A missing, read-only or unbounded channel leaves the three as they are.
+ * The roles repeat once per group (SPEC §8.8), so callers pass one group.
+ */
+function mergeColor(fields) {
+  const [r, g, b] = COLOR_ROLES.map((role) => fields.find((f) => f.role === role && !f.readOnly
+    && f.min != null && f.max != null && f.max > f.min && NUMERIC_TYPES.has(f.type)));
+  if (!r || !g || !b) return fields;
+  const color = {
+    uid: r.uid + '+' + g.uid + '+' + b.uid,
+    widget: WIDGET.color,
+    archetype: UI_ARCHETYPE.color,
+    label: r.group || 'Color',
+    group: r.group,
+    channelId: r.channelId,
+    writeChannel: r.writeChannel,
+    readOnly: false,
+    advanced: r.advanced || g.advanced || b.advanced,
+    flagBits: { restart_required: [r, g, b].some((f) => f.flagBits && f.flagBits.restart_required) },
+    r, g, b,
+  };
+  return [color, ...fields.filter((f) => f !== r && f !== g && f !== b)];
+}
+
+/** Every composite one card group draws as a single control: §11 ranges, §8.2 row 16 colors. */
+const mergeComposites = (fields) => mergeColor(mergeRangePairs(fields));
 
 // ---------------------------------------------------------------------------
 // The model
@@ -565,7 +598,7 @@ export function buildSettingsModel(entries) {
       ...c,
       // A peak drawn on its live twin leaves its group.
       groups: [...c.groups.values(), ...diagGroups.values()]
-        .map((g) => ({ ...g, fields: mergeRangePairs(g.fields.filter((f) => !f.companionOf)) }))
+        .map((g) => ({ ...g, fields: mergeComposites(g.fields.filter((f) => !f.companionOf)) }))
         .filter((g) => g.fields.length),
     }));
 
@@ -582,7 +615,7 @@ export function buildSettingsModel(entries) {
  */
 export function surfacedFields(fields, claimed, cls) {
   const max = cls === 'glance' ? UI_RANK.hero : UI_RANK.control;
-  return mergeRangePairs(fields.filter((f) =>
+  return mergeComposites(fields.filter((f) =>
     f.rank <= max && !f.advanced && !f.companionOf && !claimed.has(f.uid)));
 }
 
@@ -611,6 +644,8 @@ export const PRESENTATIONS = {
   [UI_ARCHETYPE.stepper]: [WIDGET.stepper, WIDGET.knob],
   [UI_ARCHETYPE.text]: [WIDGET.text, WIDGET.secret],
   [UI_ARCHETYPE.trigger]: [WIDGET.action],
+  [UI_ARCHETYPE.color]: [WIDGET.color],
+  [UI_ARCHETYPE.datetime]: [WIDGET.datetime, WIDGET.readout],
 };
 
 /** Presentations that write nothing: on a writable field, a display-only instance. */
@@ -652,7 +687,8 @@ const twoValued = (f) => NEEDS[WIDGET.toggle](f) || (bounded(f) && plainNumber(f
  * The user chooses how a field looks, never what it binds (laws 6, 7).
  */
 export function offeredPresentations(f, crossArchetype = CROSS_ARCHETYPE) {
-  if (f.widget === WIDGET.range || f.widget === WIDGET.action) return [f.widget];
+  if (f.widget === WIDGET.range || f.widget === WIDGET.action || f.widget === WIDGET.color) return [f.widget];
+  if (f.widget === WIDGET.datetime) return [f.widget, WIDGET.readout];
   const pool = !crossArchetype ? (PRESENTATIONS[f.archetype] || [])
     : f.readOnly ? [...READ_ONLY_PRESENTATIONS]
     : [...WRITABLE_PRESENTATIONS, ...READ_ONLY_PRESENTATIONS];
@@ -751,6 +787,8 @@ const MIN_CELLS = {
   [WIDGET.bar]: { h: [4, 1], v: [1, 4] },
   [WIDGET.numeral]: { h: [4, 2], v: [3, 3] },
   [WIDGET.graph]: { h: [6, 3], v: [4, 4] },
+  [WIDGET.color]: { h: [4, 2], v: [3, 3] },
+  [WIDGET.datetime]: { h: [6, 1], v: [4, 2] },
 };
 const COMPOSITE_CELLS = { h: [8, 4], v: [4, 8] };
 const SAFETY_CELLS = { h: [3, 2], v: [2, 3] };
@@ -801,7 +839,7 @@ const uidKey = (f) => (f.lo && f.hi ? uidKey(f.lo) + '+' + uidKey(f.hi) : 'uid:'
 export function placeableControls(model, { heroes = [], safety = null } = {}) {
   if (!model) return [];
   const out = [];
-  const singles = mergeRangePairs(model.fields.filter((f) => !f.companionOf));
+  const singles = mergeComposites(model.fields.filter((f) => !f.companionOf));
   for (const f of [...singles, ...model.actions]) {
     const key = controlKey(f, model.byRole);
     out.push({ key, alias: key === uidKey(f) ? null : uidKey(f), kind: 'field', field: f,

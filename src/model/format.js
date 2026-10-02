@@ -151,7 +151,7 @@ export function unitOf(field) {
  * time, else autoranged when enabled, else the plain value and suffix.
  */
 export function formatParts(field, value) {
-  if (field && field.unitId === UNIT_ID.hub_s && typeof value === 'number') {
+  if (isHubTime(field) && typeof value === 'number') {
     const ms = hubSecToWallMs(value, hubClock && hubClock());
     if (ms != null) return [new Date(ms).toLocaleString(), ''];
   }
@@ -172,6 +172,31 @@ let hubClock = null;
 
 /** machine.svelte.js installs its hub-clock reference here (format.js stays pure). */
 export function setHubClock(fn) { hubClock = fn; }
+
+/** The current reference, or null (no uptime yet). */
+export const hubClockNow = () => (hubClock ? hubClock() : null);
+
+/** A hub-time stamp: unit hub_s, or a datetime.* role, which carries it by definition (RFC-083). */
+export function isHubTime(field) {
+  return !!field && (field.unitId === UNIT_ID.hub_s || /^datetime\./.test(field.role || ''));
+}
+
+// ponytail: only moments THIS page armed are tracked, in memory; persist per
+// hub instance if a reload across a hub reboot must still flag them.
+const armed = new Map();   // field uid -> {bootId, hubSec, wallMs}
+
+/** Record a moment this client wrote, under the hub boot it was written in. */
+export function armMoment(uid, bootId, hubSec, wallMs) { armed.set(uid, { bootId, hubSec, wallMs }); }
+
+/**
+ * SPEC §7.2: a moment armed under another boot_id is void. Returns the armed
+ * record (its wall time is what a re-arm writes) when the hub still reports
+ * that stale value, else null. Never shifted silently: the caller re-arms.
+ */
+export function staleMoment(uid, bootId, value) {
+  const a = armed.get(uid);
+  return a && bootId != null && a.bootId !== bootId && a.hubSec === value ? a : null;
+}
 
 /**
  * Hub seconds since boot, now, from a reference {hubUs, wallMs, uptimeS}:

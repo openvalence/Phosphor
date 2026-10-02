@@ -20,7 +20,11 @@
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
-  import { formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
+  import { PACKED } from '../../../Valence/clients/js/index.js';
+  import {
+    formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag,
+    hubClockNow, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment,
+  } from '../model/format.js';
 
   // `presentation`: one of settings.js offeredPresentations(field), chosen by
   // the user (DESIGN §10.2); absent means the derived widget. `orientation`
@@ -46,7 +50,9 @@
   const STATUS_RANK = { fault: 3, overdue: 2, pending: 1, confirmed: 0 };
   const worstStatus = (a, b) => (STATUS_RANK[a] >= STATUS_RANK[b] ? a : b);
   const status = $derived(
-    field.widget === WIDGET.range ? worstStatus(statusOf(field.lo), statusOf(field.hi)) : statusOf(field)
+    field.widget === WIDGET.range ? worstStatus(statusOf(field.lo), statusOf(field.hi))
+    : field.widget === WIDGET.color ? [field.r, field.g, field.b].map(statusOf).reduce(worstStatus)
+    : statusOf(field)
   );
   const fresh = $derived(freshness(field.channelId));
   const sh = $derived(shadowOf(field));
@@ -170,6 +176,51 @@
     writeSetting(field.hi, clampField(field.hi, Math.max(n, floor)));
   }
   const rangeStep = (f) => f.step || 1;
+
+  // ---- RENDERING §8.2 row 16 (RFC-083): one picker over a group's RGB -------
+  // Each channel maps its own published [min, max] onto 0..255. The three
+  // writes leave in one tick, so on a shared write channel they coalesce into
+  // one intent (shadow.svelte.js flush).
+  const isColor = $derived(field.widget === WIDGET.color);
+  const rgbFields = $derived(isColor ? [field.r, field.g, field.b] : []);
+  const colorEnabled = $derived(isColor && machine.link.phase === 'live' && rgbFields.every((f) =>
+    isFieldEnabled(f, machine.samples[f.channelId]) && canWrite(f)));
+  const colorHex = $derived.by(() => {
+    const v = rgbFields.map((f) => Number(displayValue(f, machine.samples[f.channelId])));
+    if (!isColor || !v.every(isFinite)) return null;
+    return '#' + v.map((x, i) => {
+      const f = rgbFields[i];
+      return Math.round(Math.max(0, Math.min(255, 255 * (x - f.min) / (f.max - f.min)))).toString(16).padStart(2, '0');
+    }).join('');
+  });
+  function commitColor(hex) {
+    if (!colorEnabled) return;
+    rgbFields.forEach((f, i) => {
+      const v = f.min + (parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16) / 255) * (f.max - f.min);
+      writeSetting(f, clampField(f, f.type === PACKED.f32 ? v : Math.round(v)));
+    });
+  }
+
+  // ---- RENDERING §8.2 row 17 (RFC-083): a hub-time moment as wall time ------
+  // The wire carries whole hub seconds; the input shows local wall time and
+  // converts back on commit. No hub clock (no uptime yet) means no input.
+  const isDatetime = $derived(pres === WIDGET.datetime);
+  const clockRef = $derived(isDatetime ? hubClockNow() : null);
+  const localIso = (ms) => {
+    const d = new Date(ms);
+    return new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+  };
+  const datetimeLocal = $derived.by(() => {
+    const ms = isDatetime && typeof value === 'number' ? hubSecToWallMs(value, clockRef) : null;
+    return ms == null ? '' : localIso(ms);
+  });
+  const stale = $derived(isDatetime ? staleMoment(field.uid, machine.link.bootId, value) : null);
+  function commitWall(wallMs) {
+    const sec = wallMsToHubSec(wallMs, hubClockNow());
+    if (sec == null || !enabled) return;
+    armMoment(field.uid, machine.link.bootId, sec, wallMs);
+    commitNumber(sec);
+  }
 
   /** Move one step-sized tick from wherever the value currently sits. */
   function nudge(dir) {
@@ -534,6 +585,24 @@
     <output class="field-value range-readout mono">
       {formatWithUnit(field.lo, loValue)} &ndash; {formatWithUnit(field.hi, hiValue)}
     </output>
+
+  {:else if pres === WIDGET.color}
+    <div class="color-row" bind:this={ctrlEl}>
+      <input id={field.uid} type="color" value={colorHex || '#000000'} disabled={!colorEnabled}
+             onchange={(e) => commitColor(e.currentTarget.value)} />
+      <output class="field-value mono">{colorHex || '--'}</output>
+    </div>
+
+  {:else if pres === WIDGET.datetime}
+    <input id={field.uid} type="datetime-local" step="1" class="value-input" bind:this={ctrlEl}
+           value={datetimeLocal} disabled={!enabled || !clockRef}
+           onchange={(e) => commitWall(new Date(e.currentTarget.value).getTime())} />
+    {#if !clockRef}
+      <p class="field-reason">the hub clock is not known yet: no uptime reported</p>
+    {:else if stale}
+      <p class="field-reason" role="status">set before the hub restarted, so it no longer holds
+        <button type="button" class="og-btn" disabled={!enabled} onclick={() => commitWall(stale.wallMs)}>Re-arm</button></p>
+    {/if}
 
   {:else if pres === WIDGET.stepper}
     <!-- §8.4 stepper: typeable, and increments in step-sized ticks. The typing
@@ -1322,4 +1391,6 @@
   .field[data-orient='v'] .stepper { flex-direction: column-reverse; }
   .field[data-orient='v'] .og-seg { flex-direction: column; }
 
+  .color-row { display: flex; align-items: center; gap: 10px; }
+  .color-row input[type='color'] { width: var(--tap); height: var(--tap); padding: 0; border: 1px solid var(--line); border-radius: var(--r-s); background: none; }
 </style>
