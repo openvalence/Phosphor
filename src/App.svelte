@@ -36,7 +36,7 @@
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
-  import { isFieldEnabled, WIDGET } from './model/settings.js';
+  import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY } from '../../Valence/clients/js/index.js';
   import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
@@ -290,8 +290,8 @@
   const onScreen = $derived(drillItem ? drillItem.group.fields
     : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields]);
   const hasDefaults = $derived([...(current?.cat?.groups || []).flatMap((g) => g.fields), ...heroFields]
-    .some((f) => !f.readOnly && f.dflt != null));
-  const resettable = $derived(onScreen.filter((f) => !f.readOnly && f.dflt != null
+    .some(resetsToDefault));
+  const resettable = $derived(onScreen.filter((f) => resetsToDefault(f)
     && isFieldEnabled(f, machine.samples[f.channelId])));
   const resetWhy = $derived(machine.link.phase !== 'live' ? 'no hub link'
     : !resettable.length ? 'nothing to reset' : '');

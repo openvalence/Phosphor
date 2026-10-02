@@ -883,6 +883,18 @@ export function isFieldEnabled(field, sample) {
   return (mask & (1 << field.maskBit)) !== 0;
 }
 
+/** Roles whose write starts motion; a run flag is not a value to reset. */
+const MOTION_ROLES = new Set([ROLE.patternRunning, ROLE.advgenRunning, ROLE.sourceBackgroundRun,
+  ROLE.commandPosition]);
+
+/**
+ * May Page Reset write this field's catalog default? Never a verb or a
+ * motion-starting role, whatever the hub declared as its default (ph-2hw).
+ */
+export function resetsToDefault(field) {
+  return !field.readOnly && field.dflt != null && !isActionRole(field.role) && !MOTION_ROLES.has(field.role);
+}
+
 /**
  * The device's reported value for a field, straight from its channel's
  * retained STATE. This is the ONLY source a control may display — never a

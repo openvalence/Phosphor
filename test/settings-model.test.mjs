@@ -18,7 +18,7 @@
 import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, surfacedFields,
   placeableControls, offeredPresentations, minCells, orientationOf, READ_ONLY_PRESENTATIONS,
-  CROSS_ARCHETYPE, placementLook,
+  CROSS_ARCHETYPE, placementLook, resetsToDefault,
 } from '../src/model/settings.js';
 import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment } from '../src/model/format.js';
@@ -617,6 +617,27 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('no control-owner report yet reads as unattended (the safe side)',
      isUnattended(gen.byRole, s(1, 1), undefined));
   ok('a hub without the role never shows the chip', !isUnattended(model.byRole, {}, undefined));
+}
+
+// ---- ph-2hw: Page Reset never writes a motion-starting field ---------------
+{
+  const gen = buildSettingsModel([{
+    id: 0x0221, name: 'gen', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0,
+    priority: 1, category: 200, categoryKnown: false, categoryName: 'mill',
+    settingChannel: 0x0293,
+    layout: [
+      lf('go', PACKED.u8, { min: 0, max: 1, settingKey: 1, role: ROLE.patternRunning, default: 1 }),
+      lf('adv', PACKED.u8, { min: 0, max: 1, settingKey: 2, role: ROLE.advgenRunning, default: 1 }),
+      lf('linger', PACKED.u8, { min: 0, max: 1, settingKey: 3, role: ROLE.sourceBackgroundRun, default: 1 }),
+      lf('grit', PACKED.u8, { min: 0, max: 9, settingKey: 4, default: 3 }),
+    ],
+    schema: [{ key: 1, name: 'op', type: CBOR_FIELD.uint_t, role: 'action.start', options: ['', 'go'], default: 1 }],
+  }]);
+  const all = [...gen.fields, ...gen.actions];
+  const reset = all.filter(resetsToDefault).map((f) => f.name);
+  ok('reset: a running default of true is never written', !reset.includes('go') && !reset.includes('adv'), reset.join(','));
+  ok('reset: background_run and verbs are never written', !reset.includes('linger') && !reset.includes('op'), reset.join(','));
+  ok('reset: a plain value still resets', reset.join(',') === 'grit', reset.join(','));
 }
 
 // ---- ph-e82.4: the control contract (DESIGN §10.2) -------------------------
