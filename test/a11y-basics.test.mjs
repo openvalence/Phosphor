@@ -273,11 +273,11 @@ const browser = await chromium.launch();
   const after = await page.evaluate(() => getComputedStyle(document.getElementById('a11y-probe')).animationName);
   ok('reduced motion applies LIVE (no reload): the animation stops', after === 'none', after);
 
-  // T25 registered custom property (style.css's --pr, the intent-echo
-  // wavefront) must still resolve to a real percentage under reduced motion,
-  // never fall back to an unregistered raw token.
-  const prType = await page.evaluate(() => CSS.supports('(--pr: 10%)') && getComputedStyle(document.documentElement).getPropertyValue('--pr'));
-  ok('T25: --pr stays a registered <percentage>, not a raw token', prType !== false);
+  // T25: the effect variables stay registered under reduced motion. An
+  // unregistered property computes to '' where a registered one has its
+  // initial value.
+  const fxG = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--fx-g').trim());
+  ok('T25: --fx-g stays a registered <number>, not a raw token', fxG === '0', fxG);
 
   // The mechanism RailWidget.svelte and LinkBar.svelte subscribe to
   // (mq.addEventListener('change', ...)) for their canvas-driven motion:

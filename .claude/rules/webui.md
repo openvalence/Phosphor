@@ -150,16 +150,17 @@ rect, which had made the centering assertion pass while measuring nothing.
 **Rule:** a custom property driving an animation or transition must be
 declared with `@property` and a real `syntax`, never `*`.
 **Mechanism:** CSS custom properties are substituted as raw token streams.
-With no registered `syntax` the engine cannot know `0%` and `150%` are
-lengths, so it falls back to discrete interpolation: the value flips at the
-keyframe boundary instead of sweeping. Registration gives it a type, an
-initial value, and `inherits: false`, after which it interpolates like any
-other animatable length.
-**Bit us:** the intent echo's wavefront radius. The failure mode is the
+With no registered `syntax` the engine cannot know `0` and `1` are
+numbers, so it falls back to discrete interpolation: the value flips at the
+keyframe boundary instead of sweeping. Registration gives it a type and an
+initial value, after which it interpolates like any other number.
+**Bit us:** a write echo's expanding radius. The failure mode is the
 dangerous kind: the animation still plays, the timing is right, and the shape
 jumps from nothing to fully expanded, which at 500 ms reads as a slightly
 janky pulse rather than as a bug with a name.
-**Fix:** `@property --pr { syntax: '<percentage>'; inherits: false;
-initial-value: 0% }` in style.css. The guard samples the property MID-FLIGHT
-and requires a real intermediate radius; asserting only that the animation is
+**Fix:** every effect variable is registered in style.css (`@property --fx-g
+{ syntax: '<number>'; inherits: true; initial-value: 0 }` and its siblings
+`--fx-p`, `--fx-w`, `--fx-b`, `--fx-run`). The guard (control-contract
+`[effect]`) seeks the afterglow MID-FLIGHT and requires an intermediate
+`--fx-g`; asserting only that the animation is
 running would have passed the broken version.
