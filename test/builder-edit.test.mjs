@@ -7,6 +7,10 @@
  *   resize   every edge and corner resizes with a live ghost showing the
  *            size; the minimum is refused visibly; an orientation flip is
  *            announced (ph-e82.20.1)
+ *   drag     the dragged card lifts; siblings reflow into the predicted
+ *            layout while dragging; the ghost is the committed rect; a card
+ *            dropped on a nest lights the nest and joins it; a member dragged
+ *            out of its nest lands at the top level (ph-e82.20.2)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -30,6 +34,7 @@ const CAT = readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.met
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
 const CONTROLS = placeableControls(buildSettingsModel(decodeCatalog(new Uint8Array(CAT))));
 const SLIDER = CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.slider && !c.field.readOnly).key;
+const [F1, F2, F3] = CONTROLS.filter((c) => c.kind === 'field' && c.key !== SLIDER && c.field.widget !== WIDGET.action).map((c) => c.key);
 
 function fakeHub(ws) {
   const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
@@ -134,6 +139,52 @@ console.log('resize');
   s = (await stored())[SLIDER];
   ok('the vertical size is committed', s.w === 2 && s.h >= minCells(WIDGET.slider, 'v')[1], s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
+  await ctx.close();
+}
+
+// ---- drag feedback, into and out of a nest (ph-e82.20.2) ----------------------------
+console.log('drag');
+{
+  const { ctx, page, cell, stored, said, card } = await open({
+    [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 0, y: 2, w: 10, h: 2 },
+    'nest:1': { x: 20, y: 0, w: 14, h: 6, nest: { title: 'Pump', scroll: false, map: { [F3]: { x: 0, y: 0, w: 6, h: 2 } } } },
+  });
+  const area = (key) => card(key).evaluate((el) => el.style.gridColumn + ' / ' + el.style.gridRow);
+  const during = await drag(page, card(F1).locator('.handle.grab'), 10 * cell, 3 * cell, async () => ({
+    lifted: await card(F1).locator('.dash-item').evaluate((el) => { const cs = getComputedStyle(el); return el.classList.contains('dragging') && cs.boxShadow !== 'none' && cs.transform !== 'none'; }),
+    sibling: await area(F2),
+    ghost: await page.$eval('.home .drop-ghost', (g) => g.style.gridColumn + ' / ' + g.style.gridRow),
+    card: await area(F1),
+  }));
+  ok('the dragged card lifts with a shadow', during.lifted, during);
+  ok('a sibling reflows into the predicted layout while dragging', /^1 \/ span 10 \/ 1 \/ span 2$/.test(during.sibling.replace(/\s+/g, ' ')), during.sibling);
+  ok('the ghost is the cell rect the release commits', during.ghost === during.card, during);
+  const s = await stored();
+  ok('the release commits what the ghost showed', during.card.replace(/\s+/g, ' ').startsWith((s[F1].x + 1) + ' / span 10 / ' + (s[F1].y + 1)), JSON.stringify(s[F1]));
+
+  const nestBody = card('nest:1').locator('.nest-body');
+  const nb = await nestBody.boundingBox();
+  const grab = await card(F1).locator('.handle.grab').boundingBox();
+  const lit = await drag(page, card(F1).locator('.handle.grab'), nb.x + nb.width / 2 - (grab.x + grab.width / 2), nb.y + nb.height - 10 - (grab.y + grab.height / 2),
+    () => page.$eval('.home .dash-cell[data-id="nest:1"] .nest-body .dash-grid', (g) => g.classList.contains('into')));
+  ok('a card over a nest lights the nest', lit);
+  ok('released there, it joins the nest', await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F1 + '"]').count() === 1
+     && /into Pump/.test(await said()), await said());
+
+  const m = card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"] .handle.grab');
+  const mb = await m.boundingBox();
+  const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
+  const out = await drag(page, m, gb.x + 2.5 * cell - (mb.x + mb.width / 2), 0,
+    () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
+  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 6/.test(out.replace(/\s+/g, ' ')), out);
+  const after = await stored();
+  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === 6
+     && !Object.prototype.hasOwnProperty.call(after['nest:1'].nest.map, F3), JSON.stringify(after[F3]));
+  ok('and is drawn at the top level only', await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell[data-id="' + F3 + '"]').count() === 1
+     && await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 0);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  ok('one undo puts the member back in its nest', await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 1);
   await ctx.close();
 }
 

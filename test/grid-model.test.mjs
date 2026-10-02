@@ -15,7 +15,7 @@ import {
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
-  saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR,
+  saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -320,6 +320,36 @@ console.log('resize');
      && r('se', { x: 11, y: 8 }, slider) === '10,4,2,6,true', r('se', { x: 11, y: 8 }, slider));
   ok('a flip is visible in the result', orientationOf(8, 4) === 'h' && orientationOf(2, 6) === 'v');
   ok('the keyboard step is a south-east resize', JSON.stringify(resizeRect(s, 'se', { x: 18, y: 7 }, 40)) === '{"x":10,"y":4,"w":9,"h":4,"refused":false}');
+}
+
+// ---- drag preview and drag-out (ph-e82.20.2) ------------------------------------
+console.log('drag');
+{
+  const its = items('a', 'b', 'c');
+  const map = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 2, look: { pres: 'knob' } }, c: { x: 10, y: 0, w: 6, h: 1 } };
+  const pin = { id: 'a', x: 20, y: 5, w: 10, h: 2 };
+  const pre = settle(its, map, 40, pin);
+  const m2 = JSON.parse(JSON.stringify(map));
+  commitPin(m2, its, 40, pin);
+  ok('the preview is exactly what the commit writes', pre.every((p) => p.x === m2[p.id].x && p.y === m2[p.id].y && p.w === m2[p.id].w && p.h === m2[p.id].h),
+     JSON.stringify(pre.map(({ id, x, y, w, h }) => [id, x, y, w, h])));
+  ok('the preview compacts: a pin dropped low rises, a sibling below the old spot rises', pre.find((p) => p.id === 'a').y === 0 && pre.find((p) => p.id === 'b').y === 0);
+  ok('the preview keeps looks', pre.find((p) => p.id === 'b').look.pres === 'knob');
+  ok('the preview writes nothing', JSON.stringify(map.a) === '{"x":0,"y":0,"w":10,"h":2}');
+
+  const top = { k: { x: 3, y: 9, w: 5, h: 2 } };
+  const nid = addNest(top);
+  nestAdd(top, nid, 'm');
+  nestAdd(top, nid, 'k');
+  top[nid].nest.map.m = { x: 0, y: 0, w: 4, h: 3, look: { pres: 'bar' } };
+  top[nid].nest.map.k = { x: 4, y: 0, w: 4, h: 1, look: { pres: 'numeral' } };
+  ok('nestOut: a member with no top-level entry flows unplaced at its size, look kept',
+     nestOut(top, nid, 'm') && JSON.stringify(top.m) === '{"w":4,"h":3,"look":{"pres":"bar"}}' && !own(top[nid].nest.map, 'm'));
+  ok('nestOut: a top-level entry keeps its place and takes the member look',
+     nestOut(top, nid, 'k') && top.k.x === 3 && top.k.y === 9 && top.k.look.pres === 'numeral');
+  ok('nestOut: a non-member is refused', !nestOut(top, nid, 'm') && !nestOut(top, 'nest:9', 'k'));
+  ok('nestOut: an unplaced member leaves an unplaced entry', nestAdd(top, nid, 'q') && nestOut(top, nid, 'q') && JSON.stringify(top.q) === '{}'
+     && pack(items('q'), top, 40)[0].w === 40);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

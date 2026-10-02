@@ -108,6 +108,7 @@
               onpointermove={onGrabPointerMove}
               onpointerup={onGrabPointerUp}
               onpointercancel={onGrabPointerUp}
+              onlostpointercapture={() => ongrabend && ongrabend()}
               onkeydown={onGrabKeyDown}>
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <circle cx="4" cy="4" r="1.3" /><circle cx="10" cy="4" r="1.3" />
@@ -139,7 +140,8 @@
            onpointerdown={(e) => onResizePointerDown(e, edge)}
            onpointermove={onResizePointerMove}
            onpointerup={onResizePointerUp}
-           onpointercancel={onResizePointerUp}></div>
+           onpointercancel={onResizePointerUp}
+           onlostpointercapture={() => onresizeend && onresizeend()}></div>
     {/each}
     <button type="button" class="handle resize"
             aria-label={'Resize ' + item.title + ', currently ' + w + ' by ' + h + ' cells. Arrow keys shrink or grow it.'}
@@ -148,6 +150,7 @@
             onpointermove={onResizePointerMove}
             onpointerup={onResizePointerUp}
             onpointercancel={onResizePointerUp}
+            onlostpointercapture={() => onresizeend && onresizeend()}
             onkeydown={onResizeKeyDown}>
       <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
         <path d="M9 1 L1 9 M9 5 L5 9 M9 9 L9 9" />
@@ -168,9 +171,11 @@
   }
   .dash-item.dragging {
     /* intent purple already means "commanded, not yet settled" everywhere
-       else in this instrument — a card mid-move is exactly that. */
-    box-shadow: inset 0 0 0 1.5px var(--intent);
-    opacity: 0.9;
+       else in this instrument — a card mid-move is exactly that. Lifted by a
+       shadow and a static offset, never a transition (reduced motion). */
+    box-shadow: inset 0 0 0 1.5px var(--intent), 0 10px 28px rgba(0, 0, 0, .6);
+    transform: translateY(-3px);
+    opacity: 0.92;
   }
 
   .dash-head {

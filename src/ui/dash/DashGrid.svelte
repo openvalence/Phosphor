@@ -40,7 +40,8 @@
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
-  let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null } = $props();
+  let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
+    ondragout = null, target = false } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -61,19 +62,27 @@
   const stack = $derived(winW <= 640);
   const cols = $derived(cellCount(width, grid.cell));
 
-  let pin = $state(null);        // {id, x, y, w, h, mode} while a pointer drag is in flight
-  let dropRect = $state(null);   // {x, y, w, h} while a palette entry is dragged over the grid
-  let stackOrder = $state(null); // ids while a stacked drag is in flight
+  // {id, x, y, w, h, mode} while a pointer drag is in flight; `into` a nest id
+  // while a move would join that nest, `out` while a member is dragged out of
+  // this (nested) grid, `cx, cy` the last pointer position.
+  let pin = $state(null);
+  let dropRect = $state(null);   // {x, y, w, h} while a palette entry, or a member leaving a nest, is over the grid
+  let paletteOver = $state(false); // a palette entry over a nest's grid: it joins the nest, so the whole nest lights
+  // DOM order while any drag is in flight: live when stacked, frozen on the
+  // grid, because a keyed #each that moves the node holding pointer capture
+  // drops the capture and strands the drag.
+  let stackOrder = $state(null);
   let announceMsg = $state('');
   let nameDraft = $state('');
   let moduleDraft = $state('');
 
   // Each placed item carries its entry's `look` (grid.js pack) and a setter
   // bound to THIS grid's map, so one control in two nests keeps two looks.
-  const placed = $derived(layout.arrange(all, cols, pin && pin.mode !== 'stack' ? pin : null)
+  const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? pin : null);
+  const placed = $derived(layout.arrange(all, cols, live)
     .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
   // The drop target: where the dragged card or palette entry lands on release.
-  const ghost = $derived(stack ? null : pin && pin.mode !== 'stack' ? placed.find((p) => p.id === pin.id) : dropRect);
+  const ghost = $derived(stack ? null : live ? placed.find((p) => p.id === pin.id) : dropRect);
   const displayList = $derived.by(() => {
     if (!stackOrder) return placed;
     const byId = new Map(placed.map((p) => [p.id, p]));
@@ -110,11 +119,15 @@
   function grabStart(id) {
     if (stack) { stackOrder = placed.map((p) => p.id); pin = { id, mode: 'stack' }; return; }
     const p = placed.find((q) => q.id === id);
-    if (p) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move' };
+    if (!p) return;
+    stackOrder = displayList.map((q) => q.id);
+    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move' };
   }
   function resizeStart(id, edge = 'se') {
     const p = placed.find((q) => q.id === id);
-    if (p && !stack) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize', edge, start: { x: p.x, y: p.y, w: p.w, h: p.h }, refused: false };
+    if (!p || stack) return;
+    stackOrder = displayList.map((q) => q.id);
+    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize', edge, start: { x: p.x, y: p.y, w: p.w, h: p.h }, refused: false };
   }
   /** Resize `id` to `r` (resizeRect), announcing a refusal at the minimum and an orientation flip. */
   function resizeNote(id, from, r, wasRefused) {
@@ -137,15 +150,64 @@
       return;
     }
     const c = cellAt(clientX, clientY);
-    if (pin.mode === 'move') { pin = { ...pin, x: c.x, y: c.y }; return; }
+    if (pin.mode === 'move') { moveTo(id, c, clientX, clientY); return; }
     const r = resizeRect(pin.start, pin.edge, c, cols, minOf(placed.find((q) => q.id === id)));
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
     resizeNote(id, pin, r, pin.refused);
     pin = { ...pin, ...r };
   }
+  const inside = (p, c) => c.x >= p.x && c.x < p.x + p.w && c.y >= p.y && c.y < p.y + p.h;
+  /**
+   * A move to cell `c`. Over a nest (in the committed layout, so the nest does
+   * not flee the pin) a placeable card is offered to the nest; a nest member
+   * leaving its nest's visible region is handed to the parent grid.
+   */
+  function moveTo(id, c, cx, cy) {
+    const it = placed.find((q) => q.id === id);
+    if (given && ondragout) {
+      const r = (gridEl.closest('.nest-body') || gridEl).getBoundingClientRect();
+      if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) {
+        if (!pin.out) announce('Release to move ' + titleOf(id) + ' out of the nest');
+        pin = { ...pin, out: true, cx, cy };
+        ondragout(it, cx, cy, 'move');
+        return;
+      }
+      if (pin.out) ondragout(it, cx, cy, 'cancel');
+    }
+    const nest = !given && it && placeable(it.kind, true)
+      && layout.arrange(all, cols).find((p) => p.kind === 'nest' && p.id !== id && inside(p, c));
+    if (nest) {
+      if (pin.into !== nest.id) announce('Release to move ' + titleOf(id) + ' into ' + nest.title);
+      pin = { ...pin, into: nest.id, cx, cy };
+      return;
+    }
+    pin = { ...pin, x: c.x, y: c.y, into: null, out: false, cx, cy };
+  }
+  /** A member dragged out of nest `nestId` (its grid's ondragout): ghost while moving, top level on release. */
+  function childOut(nestId, it, cx, cy, phase) {
+    if (phase === 'cancel' || !it) { dropRect = null; return; }
+    const c = cellAt(cx, cy);
+    const w = Math.min(cols, it.w);
+    const r = { x: Math.min(c.x, cols - w), y: c.y, w, h: it.h };
+    if (phase === 'move') {
+      if (!dropRect || r.x !== dropRect.x || r.y !== dropRect.y) dropRect = r;
+      return;
+    }
+    dropRect = null;
+    // Positions first, membership second: the top-level entry exists before the
+    // member leaves, so a home showing its seed keeps it (one undo step).
+    layout.move([...all, { id: it.id }], cols, { id: it.id, ...r });
+    layout.nestOut(nestId, it.id);
+    const p = layout.arrange(all, cols).find((q) => q.id === it.id);
+    announce(it.title + ' moved out of ' + titleOf(nestId) + (p ? ' to ' + where(p) : ''));
+  }
   function pointerEnd(id) {
     if (!pin || pin.id !== id) return;
-    if (pin.mode === 'stack') {
+    if (pin.out) {
+      ondragout(placed.find((q) => q.id === id), pin.cx, pin.cy, 'end');
+    } else if (pin.into) {
+      if (layout.nestAdd(pin.into, id)) announce(titleOf(id) + ' moved into ' + titleOf(pin.into));
+    } else if (pin.mode === 'stack') {
       layout.order(all, cols, stackOrder);
       announce(titleOf(id) + ' moved to position ' + (stackOrder.indexOf(id) + 1) + ' of ' + stackOrder.length);
     } else {
@@ -200,6 +262,7 @@
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'copy';
+    if (given) { paletteOver = true; return; }
     if (stack) return;
     const c = cellAt(e.clientX, e.clientY);
     const w = Math.max(cols - c.x, Math.min(cols, MIN_DROP_W));
@@ -207,7 +270,7 @@
     if (!dropRect || r.x !== dropRect.x || r.y !== dropRect.y) dropRect = r;
   }
   function dragLeave(e) {
-    if (!gridEl.contains(e.relatedTarget)) dropRect = null;
+    if (!gridEl.contains(e.relatedTarget)) { dropRect = null; paletteOver = false; }
   }
   function drop(e) {
     if (!accepts(e)) return;
@@ -216,6 +279,7 @@
     const key = e.dataTransfer.getData(MODULE_MIME);
     const r = dropRect;
     dropRect = null;
+    paletteOver = false;
     if (key) ondropkey(key, r);
   }
 
@@ -255,7 +319,8 @@
 </script>
 
 {#snippet nestCard(item)}
-  <Nest {item} parent={layout} {editing} {stack} {announce}
+  <Nest {item} parent={layout} {editing} {stack} {announce} target={pin?.into === item.id}
+        ondragout={(it, x, y, phase) => childOut(item.id, it, x, y, phase)}
         ondropkey={ondropkey && ((key) => ondropkey(key, null, item.id))}
         candidates={all.filter((it) => it.kind !== 'nest' && placeable(it.kind, true))} />
 {/snippet}
@@ -318,7 +383,7 @@
   {/if}
   {/if}
 
-  <div class="dash-grid" class:stack class:editing bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
+  <div class="dash-grid" class:stack class:editing class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}>
     {#each displayList as item, i (item.id)}
@@ -434,6 +499,13 @@
       linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
       linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
     background-size: var(--cell) var(--cell);
+  }
+  /* A nest about to take a drop: the whole subgrid lights, since a joining
+     member flows at the nest's end rather than at a cell. */
+  .dash-grid.into {
+    outline: 2px dashed var(--intent);
+    outline-offset: -2px;
+    background-color: color-mix(in srgb, var(--intent) 10%, transparent);
   }
   .drop-ghost {
     z-index: 1;

@@ -18,7 +18,8 @@
   import DashGrid from './DashGrid.svelte';
   import { statusOf, STATUS } from '../../model/shadow.svelte.js';
 
-  let { item, parent, editing = false, stack = false, candidates = [], announce = () => {}, ondropkey = null } = $props();
+  let { item, parent, editing = false, stack = false, candidates = [], announce = () => {}, ondropkey = null,
+    ondragout = null, target = false } = $props();
 
   const n = $derived(item.nest);
   const sub = $derived(parent.nest(item.id));
@@ -64,8 +65,8 @@
     {/if}
   </div>
   <div class="nest-body">
-    <DashGrid items={item.members} layout={sub} {editing} {ondropkey}
-              onremove={(id) => parent.nestRemove(item.id, id) && announce('Moved out of ' + n.title)} />
+    <DashGrid items={item.members} layout={sub} {editing} {ondropkey} {ondragout} {target}
+              onremove={(id) => parent.nestOut(item.id, id) && announce('Moved out of ' + n.title)} />
   </div>
 </div>
 

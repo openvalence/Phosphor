@@ -72,7 +72,7 @@ export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
 function controller(read, write, members) {
   return {
-    arrange: (items, cols, pin = null) => G.pack(items, read(), cols, pin),
+    arrange: (items, cols, pin = null) => (pin ? G.settle(items, read(), cols, pin) : G.pack(items, read(), cols)),
     move: edit((items, cols, pin) => (G.commitPin(write(), items, cols, pin), true)),
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
     setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
@@ -84,7 +84,8 @@ function controller(read, write, members) {
 /**
  * Placement controller for one view under one renderer class, always reading
  * the ACTIVE layout, so a switch re-places every mounted grid.
- *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order
+ *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order; with
+ *                                 `pin`, the layout its commit would write
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
  *   order(items, cols, ids)    -> commit a reading order
  *   setLook(id, look, at?)     -> a placement's presentation and config (grid.js setLook)
@@ -94,6 +95,7 @@ function controller(read, write, members) {
  *   nest(id)                   -> the same controller over nest `id`'s subgrid
  *   addNest({title, scroll, w, h}?) -> new nest id
  *   nestAdd(id, key) / nestRemove(id, key) / setNest(id, {title, scroll}) / removeNest(id)
+ *   nestOut(id, key)           -> member `key` to the top level, look and size kept
  *   saveModule(id, name)       -> save nest `id` as a module; a taken name is refused
  *   insertModule(name)         -> place a module as a new nest; returns its id or null
  */
@@ -109,6 +111,7 @@ export function dashboardLayout(viewId, cls = 'full') {
     addNest: inMap(G.addNest),
     nestAdd: inMap(G.nestAdd),
     nestRemove: inMap(G.nestRemove),
+    nestOut: inMap(G.nestOut),
     setNest: inMap(G.setNest),
     removeNest: inMap(G.removeNest),
     saveModule: edit((id, name) => G.saveModule(layouts, read(), id, name)),

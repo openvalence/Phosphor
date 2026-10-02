@@ -209,12 +209,20 @@ export function setLook(map, id, look, at = null) {
   return true;
 }
 
+/**
+ * The layout a commit of `pin` writes: placed with the pin, then compacted.
+ * A drag previews this, so the pinned item and its siblings are drawn where
+ * the release will leave them, never only where the pointer is.
+ */
+export function settle(items, map, cols, pin) {
+  const tmp = {};
+  for (const p of pack(items, map, cols, pin)) tmp[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h, ...(p.look ? { look: p.look } : {}) };
+  return pack(items, tmp, cols);
+}
+
 /** Commit a drag or resize: place with `pin`, compact, write every present item. */
 export function commitPin(map, items, cols, pin) {
-  const placed = pack(items, map, cols, pin);
-  const tmp = {};
-  write(tmp, placed);
-  write(map, pack(items, tmp, cols));
+  write(map, settle(items, map, cols, pin));
 }
 
 /**
@@ -421,6 +429,23 @@ export function nestAdd(map, id, key) {
 /** Drop `key` from nest `id`; a present item returns to the top level. */
 export function nestRemove(map, id, key) {
   if (!isNest(map[id]) || !own(map[id].nest.map, key)) return false;
+  delete map[id].nest.map[key];
+  return true;
+}
+
+/**
+ * Move member `key` of nest `id` to the top level of `map`, keeping its look
+ * and size. A top-level entry it already has keeps its place (a drag-out
+ * writes it first); otherwise it flows as unplaced. Returns false when `key`
+ * is not a member.
+ */
+export function nestOut(map, id, key) {
+  if (!isNest(map[id]) || !own(map[id].nest.map, key)) return false;
+  const m = map[id].nest.map[key];
+  const prev = own(map, key) && map[key] && typeof map[key] === 'object' ? map[key] : null;
+  const e = prev ? { ...prev } : m && typeof m === 'object' && m.w ? { w: m.w, h: m.h } : {};
+  if (m && typeof m === 'object' && m.look) e.look = m.look;
+  map[key] = e;
   delete map[id].nest.map[key];
   return true;
 }
