@@ -65,6 +65,38 @@ function fakeHub(ws) {
   });
 }
 
+/**
+ * In-page WCAG audit: every element with its own text under `sel`, its color
+ * blended by its ancestors' opacity over the first opaque background behind
+ * it. Inactive controls are exempt (WCAG 1.4.3), and so is a stale value,
+ * dimmed on purpose (law 8). Returns the failures in words.
+ */
+const lowContrast = (sel) => {
+  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
+    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
+    if (c && c[3] > 0.5) return c; } return parse(getComputedStyle(document.documentElement).backgroundColor) || [0, 0, 0, 1]; };
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+    if (el.closest('[disabled], .is-disabled, [aria-disabled="true"], .typeable.disabled, .sr-only, .stale')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility !== 'visible' || !el.getClientRects().length) continue;
+    let o = 1;
+    for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+    if (o < 0.05) continue;
+    const fg = parse(cs.color), bg = bgOf(el), a = fg[3] * o;
+    const l1 = lum([0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a))), l2 = lum(bg);
+    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    const px = parseFloat(cs.fontSize);
+    const need = px >= 24 || (Number(cs.fontWeight) >= 700 && px >= 18.66) ? 3 : 4.5;
+    if (ratio < need) out.push((el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 24) + '" ' + ratio.toFixed(2));
+  }
+  return out;
+};
+
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
 
@@ -362,6 +394,27 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
     ok(w + 'w page bar: inside the viewport', box.x >= 0 && box.x + box.width <= w + 0.5);
   }
   if (pageErrors.length) ok(w + 'w page bar: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
+
+// ---- 9. hi-vis: every category page's fields clear WCAG AA (ph-vdk.60.4) --
+for (const [w, h] of [[1440, 900], [360, 800]]) {
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h },
+    (c) => c.addInitScript(() => { try { localStorage.setItem('ui_hivis', '1'); } catch (e) { /* none */ } }));
+  const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
+  await page.waitForSelector(tabSel, { timeout: 15000 });
+  ok(w + 'w hi-vis: the preference is on before first paint', await page.evaluate(() => document.documentElement.classList.contains('hivis')));
+  const tabs = page.locator(tabSel);
+  const bad = [];
+  for (let i = 0; i < await tabs.count(); i++) {
+    await tabs.nth(i).click();
+    await page.waitForTimeout(150);
+    for (const t of await page.locator('main.pane .cat-bar .adv-toggle[aria-expanded="false"]').all()) await t.click();
+    await page.waitForTimeout(150);
+    bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .cat-bar, .cat-empty) *'));
+  }
+  ok(w + 'w hi-vis: every category page\'s text clears WCAG AA', bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | '));
+  if (pageErrors.length) ok(w + 'w hi-vis: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
 }
 

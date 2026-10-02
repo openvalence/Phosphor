@@ -94,6 +94,11 @@
   --intent:  #A78BFA;
   --warn:    #F5B94D;   /* never themed: safety */
   --bad:     #FF4757;   /* never themed: safety */
+  /* The same two safety colors as rgb triples, for tints and glows; never
+     themed either. --shade-rgb is the recess shadow's ink. */
+  --warn-rgb: 245,185,77;
+  --bad-rgb:  255,71,87;
+  --shade-rgb: 0,0,0;
   --estop:   var(--bad);
   --good:    var(--reality);
 
@@ -102,7 +107,7 @@
   --intent-deep-rgb: 139,92,246;
   --glow-reality: 0 0 18px rgba(var(--reality-rgb),.5), 0 0 42px rgba(var(--reality-rgb),.16);
   --glow-intent:  0 0 14px rgba(var(--intent-deep-rgb),.16);
-  --glow-warn:    0 0 18px rgba(245,185,77,.5), 0 0 42px rgba(245,185,77,.16);
+  --glow-warn:    0 0 18px rgba(var(--warn-rgb),.5), 0 0 42px rgba(var(--warn-rgb),.16);
 
   /* ---- metrics ----
      --radius is 2px, not a soft corner. The instrument look is square; this is
@@ -152,16 +157,25 @@
    not. Browser preference (ui_terse), twin of hivis below. */
 html.terse .explain { display: none; }
 
-/* High legibility — brighter text, heavier numerals, hierarchy preserved. */
+/* High legibility — brighter text, heavier numerals, hierarchy preserved.
+   Every text token clears 4.5:1 on --bg-card (test/a11y-basics.test.mjs).
+   The OS asking for more contrast gets the same set, plus a firmer frame. */
 html.hivis {
   --tx:       #E4E8EF;
   --tx-val:   #C9CFD9;
   --tx-mut:   #8A919D;
-  --tx-ghost: #6B7280;
+  --tx-ghost: #7A808C;
   --num-wght: 480;
 }
 @media (prefers-contrast: more) {
-  :root { --tx: #E4E8EF; --tx-mut: #8A919D; --tx-ghost: #6B7280; --line-1: #2A2F36; }
+  :root {
+    --tx:       #E4E8EF;
+    --tx-val:   #C9CFD9;
+    --tx-mut:   #8A919D;
+    --tx-ghost: #7A808C;
+    --num-wght: 480;
+    --line-1:   #2A2F36;
+  }
 }
 
 /* ---- reset ------------------------------------------------------------- */
@@ -259,7 +273,7 @@ p { max-width: 75ch; }
 
 @keyframes unconfirmed-breathe {
   0%, 100% { box-shadow: inset 0 0 0 2px var(--warn); }
-  50%      { box-shadow: inset 0 0 0 2px rgba(245,185,77,.45); }
+  50%      { box-shadow: inset 0 0 0 2px rgba(var(--warn-rgb),.45); }
 }
 @keyframes confirm-flash {
   0%   { box-shadow: inset 0 0 0 2px var(--reality); }
@@ -390,7 +404,7 @@ select:focus { outline: none; border-color: var(--reality); }
 /* Recessed display surface: scopes, readouts, the log. */
 .og-screen {
   background: var(--screen);
-  box-shadow: inset 0 2px 8px rgba(0,0,0,.7);
+  box-shadow: inset 0 2px 8px rgba(var(--shade-rgb),.7);
   border: 1px solid var(--line-1);
   border-radius: var(--radius);
 }
@@ -402,7 +416,7 @@ select:focus { outline: none; border-color: var(--reality); }
   border-radius: var(--radius);
   border: 1px solid var(--line-1);
   background: var(--screen);
-  box-shadow: inset 0 2px 5px rgba(0,0,0,.6);
+  box-shadow: inset 0 2px 5px rgba(var(--shade-rgb),.6);
   color: var(--tx-val);
   font-size: .9rem;
   font-family: 'Martian Mono', monospace;
@@ -490,7 +504,7 @@ select:focus { outline: none; border-color: var(--reality); }
 .og-btn.primary { border-color: var(--reality); color: var(--reality); }
 .og-btn.primary:hover { box-shadow: var(--glow-reality); }
 .og-btn.danger { border-color: var(--bad); color: var(--bad); }
-.og-btn.danger:hover { box-shadow: 0 0 10px rgba(255,71,87,.2); }
+.og-btn.danger:hover { box-shadow: 0 0 10px rgba(var(--bad-rgb),.2); }
 /* Running is AMBER, never red — --bad is reserved for hazard/e-stop. */
 .og-btn.running {
   border-color: var(--warn);

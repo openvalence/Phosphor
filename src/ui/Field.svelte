@@ -707,7 +707,10 @@
 
   {:else if pres === WIDGET.color}
     <div class="color-row" bind:this={ctrlEl}>
-      <input id={domId} type="color" value={colorHex || '#000000'} disabled={!colorEnabled}
+      <!-- A native color input always holds some color; with no reported
+           value it is disabled and blanked, never a black the wire never sent. -->
+      <input id={domId} type="color" value={colorHex || '#000000'} disabled={!colorEnabled || !colorHex}
+             class:unknown={!colorHex}
              onchange={(e) => commitColor(e.currentTarget.value)} />
       <output class="field-value mono">{colorHex || '--'}</output>
     </div>
@@ -876,7 +879,7 @@
   /* Escalation keeps the existing safety ramp — same wave, amber. */
   .field[data-shadow='overdue']::after {
     border-color: var(--warn);
-    box-shadow: 0 0 12px rgba(245, 185, 77, .45);
+    box-shadow: 0 0 12px rgba(var(--warn-rgb), .45);
   }
 
   .field.settled::after {
@@ -1002,8 +1005,8 @@
   }
   .tag.warn {
     color: var(--warn);
-    background: rgba(245, 185, 77, .12);
-    box-shadow: inset 0 0 0 1px rgba(245, 185, 77, .4);
+    background: rgba(var(--warn-rgb), .12);
+    box-shadow: inset 0 0 0 1px rgba(var(--warn-rgb), .4);
   }
 
   /* ⓘ description affordance — the OG .info box at its .label-row in-field
@@ -1152,7 +1155,7 @@
     font-size: .76rem;
     color: var(--tx-val);
     background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .6);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
     border: 1px solid var(--line-1);
     border-radius: var(--r-s);
     padding: 1px 6px;
@@ -1262,7 +1265,7 @@
      strings, passphrases). */
   .value-input {
     background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .6);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
     border: 1px solid var(--line-1);
     color: var(--tx-val);
     font-family: var(--mono);
@@ -1362,7 +1365,7 @@
     height: 7px;
     border-radius: 50%;
     background: var(--line-2);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6);
+    box-shadow: inset 0 1px 2px rgba(var(--shade-rgb), .6);
   }
   .lamp.lit {
     color: var(--tx-val);
@@ -1523,5 +1526,13 @@
   .field[data-orient='v'] .og-seg { flex-direction: column; }
 
   .color-row { display: flex; align-items: center; gap: 10px; }
+  .color-row input.unknown { opacity: 0; }
+
+  /* Forced colors (Windows high contrast) repaint backgrounds as Canvas,
+     which would erase a meter's fill: value marks take the system highlight. */
+  @media (forced-colors: active) {
+    .meter-fill, .readout-bar-fill, .range-fill, .lamp.lit i { forced-color-adjust: none; background: Highlight; }
+    .knob-fill, .graph path { stroke: Highlight; }
+  }
   .color-row input[type='color'] { width: var(--tap); height: var(--tap); padding: 0; border: 1px solid var(--line); border-radius: var(--r-s); background: none; }
 </style>

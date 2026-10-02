@@ -15,7 +15,7 @@
  * ACCENT/ac() so painted pixels always match the CSS.
  *
  * CUSTOM theme: two operator-picked hexes (reality + intent) via native
- * color inputs in the Settings Theme card; the deep-intent and core-dot
+ * color inputs in the Display pane (ThemePicker.svelte); the deep-intent and core-dot
  * derivatives are computed (darken / lighten toward white). Stored as JSON
  * in localStorage alongside the selected-theme key.
  *
@@ -160,9 +160,6 @@ export function applyTheme(id) {
   Object.assign(ACCENT, p);
   _cache = {};
 
-  document.querySelectorAll('#themeRow .theme-chip').forEach(b => {
-    b.classList.toggle('active', b.dataset.theme === id);
-  });
   return p;
 }
 
@@ -181,47 +178,4 @@ export function registerTheme(t) {
 export function setCustomColors(realityHex, intentHex) {
   try { localStorage.setItem(CUSTOM_KEY, JSON.stringify({ reality: realityHex, intent: intentHex })); } catch (e) {}
   applyTheme('custom');
-}
-
-/** Build the swatch row + custom picker inside the Settings Theme card.
- *  Call once at init, after applyTheme(currentThemeId()). */
-export function initThemeUI() {
-  const host = document.getElementById('themeRow');
-  if (!host) return;
-  const cur = currentThemeId();
-  host.innerHTML = '';
-  THEMES.forEach(t => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'theme-chip' + (t.id === cur ? ' active' : '');
-    b.dataset.theme = t.id;
-    b.setAttribute('data-tip', t.name + ' · reality ' + t.reality + ' / intent ' + t.intent);
-    b.innerHTML =
-      '<span class="tdot" style="background:' + t.reality + ';box-shadow:0 0 6px ' + t.reality + '"></span>' +
-      '<span class="tdot" style="background:' + t.intent + '"></span>' +
-      t.name.toUpperCase();
-    b.addEventListener('click', () => applyTheme(t.id));
-    host.appendChild(b);
-  });
-
-  // Custom chip + the two native color pickers (reality, intent). Picking a
-  // color live-applies — the native input fires `input` continuously while
-  // dragging inside the picker, so the whole page previews in real time.
-  const c = customColors();
-  const wrap = document.createElement('div');
-  wrap.className = 'theme-custom';
-  wrap.innerHTML =
-    '<button type="button" class="theme-chip' + (cur === 'custom' ? ' active' : '') + '" data-theme="custom" ' +
-    'data-tip="Your own accent pair — left picker = reality (what the machine reports), right = intent (what it was asked for)">CUSTOM</button>' +
-    '<input type="color" id="themeCustReality" value="' + c.reality + '" data-tip="Reality accent — live position, active controls">' +
-    '<input type="color" id="themeCustIntent" value="' + c.intent + '" data-tip="Intent accent — commanded / window band">';
-  host.appendChild(wrap);
-
-  const chipBtn = wrap.querySelector('.theme-chip');
-  const rIn = wrap.querySelector('#themeCustReality');
-  const iIn = wrap.querySelector('#themeCustIntent');
-  const commit = () => setCustomColors(rIn.value, iIn.value);
-  chipBtn.addEventListener('click', commit);
-  rIn.addEventListener('input', commit);
-  iIn.addEventListener('input', commit);
 }

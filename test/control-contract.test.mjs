@@ -91,6 +91,38 @@ const FIELD = MODEL.fields.find((f) => !f.readOnly && !f.role && f.widget === WI
 const STATE_CH = FIELD.channelId;
 const ACTION = MODEL.actions.find((a) => a.payload && a.payload.some((p) => p.type === CBOR_FIELD.tstr_t));
 
+/**
+ * In-page WCAG audit: every element with its own text under `sel`, its color
+ * blended by its ancestors' opacity over the first opaque background behind
+ * it. Inactive controls are exempt (WCAG 1.4.3), and so is a stale value,
+ * dimmed on purpose (law 8). Returns the failures in words.
+ */
+const lowContrast = (sel) => {
+  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
+    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
+    if (c && c[3] > 0.5) return c; } return parse(getComputedStyle(document.documentElement).backgroundColor) || [0, 0, 0, 1]; };
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+    if (el.closest('[disabled], .is-disabled, [aria-disabled="true"], .typeable.disabled, .sr-only, .stale')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility !== 'visible' || !el.getClientRects().length) continue;
+    let o = 1;
+    for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+    if (o < 0.05) continue;
+    const fg = parse(cs.color), bg = bgOf(el), a = fg[3] * o;
+    const l1 = lum([0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a))), l2 = lum(bg);
+    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    const px = parseFloat(cs.fontSize);
+    const need = px >= 24 || (Number(cs.fontWeight) >= 700 && px >= 18.66) ? 3 : 4.5;
+    if (ratio < need) out.push((el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 24) + '" ' + ratio.toFixed(2));
+  }
+  return out;
+};
+
 async function probe(host, port) {
   return new Promise((resolve) => {
     let ws;
@@ -591,6 +623,27 @@ if (!LIVE) {
     ok('numeral: zero-padded to the bound\'s digits', t5 === '5'.padStart(digits, '0') && tm === String(SMALL.max), [t5, tm]);
     ok('numeral: the column keeps its width as the value changes', Math.abs(w5 - wm) < 0.5, [w5, wm]);
   } else ok('the fixture has a small bounded field for the numeral', false);
+
+  console.log('\n[hi-vis and tokens]');
+  await page.evaluate(() => document.documentElement.classList.add('hivis'));
+  for (const width of [360, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await sleep(150);
+    const bad = await page.evaluate(lowContrast, '.cell .field *');
+    ok(width + 'w hi-vis: every presentation\'s text clears WCAG AA', bad.length === 0, bad.slice(0, 6));
+  }
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.evaluate(() => document.documentElement.classList.remove('hivis'));
+  // Value marks read the accent token, so a theme reaches every presentation.
+  const marks = { '.knob-fill': 'stroke', '.graph path': 'stroke', '.meter-fill': 'background-color' };
+  const paint = () => page.evaluate((m) => Object.fromEntries(Object.entries(m).map(([sel, prop]) => {
+    const el = document.querySelector('.cell ' + sel);
+    return [sel, el ? getComputedStyle(el).getPropertyValue(prop) : null];
+  })), marks);
+  await page.evaluate(() => document.documentElement.style.setProperty('--reality', 'rgb(1, 2, 3)'));
+  const themed = await paint();
+  await page.evaluate(() => document.documentElement.style.removeProperty('--reality'));
+  ok('tokens: every value mark follows the reality accent', Object.values(themed).every((v) => v === 'rgb(1, 2, 3)'), themed);
 
   console.log('\n[aspect]');
   const ctl = page.locator('.cell[data-pres=control] .field');
