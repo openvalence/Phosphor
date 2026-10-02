@@ -70,7 +70,7 @@
   const POINTER = { fine: 'fine (mouse or pen)', coarse: 'coarse (touch)', none: 'none (no pointer)' };
 </script>
 
-<div class="pane theme-picker">
+<div class="pane-stack theme-picker">
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
     <div class="pane-head"><h2 id="tp-theme">Theme</h2></div>
     <div class="swatches" role="group" aria-label="Accent theme">
@@ -167,9 +167,9 @@
     justify-content: center;
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
-    padding: 4px;
   }
-  .color-input input { width: 100%; height: 100%; border: none; background: none; padding: 0; cursor: pointer; }
+  /* The input IS the hit box (law 12): it fills the 40 px+ label. */
+  .color-input input { width: 100%; height: 100%; border: none; background: none; padding: 2px; cursor: pointer; }
 
   .og-switch { min-height: var(--tap); font-size: .8rem; align-self: flex-start; }
   .cls { color: var(--reality); text-transform: uppercase; letter-spacing: .06em; }

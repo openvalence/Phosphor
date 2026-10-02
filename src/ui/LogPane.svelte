@@ -231,7 +231,7 @@
   }
 </script>
 
-<div class="pane logpane">
+<div class="pane-stack logpane">
   <div class="og-seg tabs" role="tablist" aria-label="Event feed" tabindex="-1" onkeydown={onTabKey}>
     {#each TABS as t (t.id)}
       <button type="button" role="tab" data-feed={t.id} id={'lp-tab-' + t.id} aria-controls={'lp-feed-' + t.id}
@@ -298,7 +298,7 @@
   .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .tool { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--tx-mut); }
   /* Fixed width: a new tag arriving never resizes the toolbar. */
-  .tool select { width: 16ch; padding-top: 4px; padding-bottom: 4px; min-height: 30px; }
+  .tool select { width: 16ch; }
 
   /* All feeds share one cell; only the active one is visible. */
   .stack { display: grid; }

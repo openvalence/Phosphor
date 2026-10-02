@@ -78,7 +78,7 @@
   const nacks = $derived([...machine.events.nacks].reverse());
 </script>
 
-<div class="pane">
+<div class="pane-stack">
   <section class="pane-sec og-screen" aria-labelledby="vp-session">
     <div class="pane-head"><h2 id="vp-session">Session</h2></div>
     <dl class="pane-facts">

@@ -4,6 +4,8 @@
  * empty line. Panes import it; scoped styles add only what is theirs.
  *
  * Constraints:
+ * - Every class is `pane-` prefixed: this sheet is global, and App.svelte
+ *   already owns a bare `.pane` (its <main>).
  * - Tokens only (style.css): no color of its own. A section's surface stays
  *   .og-panel (a control group) or .og-screen (a readout) on the same element.
  * - .pane-status is ALWAYS rendered and is two lines tall, so a reason that
@@ -13,7 +15,7 @@
  * - Rows and header controls meet the 40 px floor under a coarse pointer
  *   (law 12); .og-btn.sm already does.
  */
-.pane { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.pane-stack { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .pane-sec { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; min-width: 0; }
 
 .pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 30px; }
