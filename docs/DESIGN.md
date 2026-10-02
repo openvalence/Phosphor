@@ -481,6 +481,16 @@ question in §10.8).
   `safety:pause`). A second e-stop on the grid is fine; the strip's copy is
   the one that cannot go. Override/return is not a module: it is the rail's
   (SPEC §11.1).
+- Order, operator ruling 2026-10-02 (`ph-e82.21`): the e-stop is outermost
+  at the far right, then Pause, Override, Flip and Home inward. Flip (SPEC
+  §9.6) rides the strip beside Override, not the rail row, so the jog tape
+  spans the rail edge for edge.
+- Home is one control; any other home op (Force Home, where the hub offers
+  it) lives in its popover, and the status slot carries no remedy button.
+  While home is required (the snapshot's `home_required`, or a `NOT_HOMED`
+  refusal until a home op echoes) Home pulses a `--bad` border. AMENDMENT to
+  law 13's reading here, same ruling: red marks the e-stop AND this one
+  safety-adjacent required act, nothing else; static under reduced motion.
 - The global refusal surface and the unattended chip (RENDERING §10.1 rule 3)
   stay in the strip, because it is the one surface always on screen.
 - Phosphor replaces the OS title bar with its own decorations, and the shell
