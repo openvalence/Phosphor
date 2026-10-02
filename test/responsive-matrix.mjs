@@ -44,15 +44,14 @@
  *   nest     phone: a scrolling nest is not a scroll region of its own, a
  *            wheel over it scrolls the page, the page passes the layout
  *            checks (ph-e82.6)
- *   drawer   the shell bundle (shell-build.mjs) with its drawer open passes
- *            the layout and strip checks and sits above the e-stop; phone:
- *            the drawer spans the window and a wheel at its end scrolls the
- *            page; a click on the e-stop reaches it and closes the drawer
- *            (ph-e82.14)
+ *   phosphor the served page with a hub has no Phosphor group; the shell
+ *            bundle (shell-build.mjs) carries it, and every Phosphor pane
+ *            passes the layout and strip checks at desktop, landscape phone
+ *            and phone (ph-e82.16)
  *
- * Build first (`npm run build:only`); this builds nothing but the drawer
+ * Build first (`npm run build:only`); this builds nothing but the phosphor
  * scenario's shell bundle.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest|drawer] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest|phosphor] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -782,79 +781,46 @@ if (!ONLY || ONLY === 'nest') {
   }
 }
 
-if (!ONLY || ONLY === 'drawer') {
-  console.log('\ndrawer scenarios');
+if (!ONLY || ONLY === 'phosphor') {
+  console.log('\nphosphor scenarios');
   const SHELL = await buildShellPage();
   const sh = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
   await new Promise((r) => sh.listen(0, '127.0.0.1', r));
-  for (const [w, h] of [[1440, 900], [1280, 720], [844, 390], [360, 800], [320, 568]]) {
+  for (const [w, h] of [[1440, 900], [844, 390], [360, 800]]) {
     const phone = Math.min(w, h) < 600, tag = w + 'x' + h;
+    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
+    // The served page with a hub: no Phosphor group.
+    {
+      const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+      await page.goto('http://127.0.0.1:' + PORT + '/');
+      const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+      scen(tag + ': the served page has no Phosphor group', up && !(await page.$('[data-tab-id^="shell:"], .rail-sec.shell')));
+      await ctx.close();
+    }
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: phone });
     await ctx.addInitScript(TAURI_STUB);
     await ctx.addInitScript(([etag, bytes]) => {
       try {
         localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
         localStorage.setItem('shell_host', '127.0.0.1');
-        localStorage.setItem('shell_drawer', '1');
-        localStorage.setItem('shell_drawer_pane', 'hubs');
       } catch (e) { /* none */ }
     }, [ETAG, toHex(CAT)]);
     await ctx.routeWebSocket(/:82\//, (ws) => fakeHub(ws));
     const page = await ctx.newPage();
     // The stub rejects every command; an unhandled one is the degraded shell, not this layout.
-    page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('drawer: ' + e); });
+    page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('phosphor: ' + e); });
     await page.goto('http://127.0.0.1:' + sh.address().port + '/');
-    const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]', { timeout: 15000 }).then(() => true).catch(() => false);
-    await page.waitForTimeout(400);
-    scen(tag + ': the shell bundle adopts the hub with its drawer open', up && !!(await page.$('#shell-drawer')));
-    if (!up) { await ctx.close(); continue; }
-    if (SHOTS) await page.screenshot({ path: join(OUT, 'drawer-' + tag + '.png') });
-    // Content under an open phone drawer is covered by design, so reach and
-    // the content targets are the closed-drawer matrix's job; the shell's
-    // own controls hold the floor here.
-    const f = [...await page.evaluate(measure, { phone, coarse: false }), ...await page.evaluate(stripCheck)];
-    if (phone) {
-      f.push(...await page.$$eval('.shell button, .shell input, .shell [role=tab]', (els) => els
-        .map((el) => [el, el.getBoundingClientRect()]).filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5))
-        .map(([el, r]) => ['target', el.tagName.toLowerCase() + ' "' + el.textContent.trim().slice(0, 20) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height)])));
-    }
-    scen(tag + ': the open drawer passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
-    const g = await page.evaluate(() => {
-      const d = document.querySelector('#shell-drawer').getBoundingClientRect();
-      const e = document.querySelector('.topstrip .btn-estop').getBoundingClientRect();
-      const p = document.querySelector('#dr-panel');
-      return { dTop: d.top, dBottom: d.bottom, dW: d.width, vw: document.documentElement.clientWidth, eTop: e.top, eBottom: e.bottom,
-        stripBottom: document.querySelector('.topstrip').getBoundingClientRect().bottom,
-        scrolls: p.scrollHeight > p.clientHeight + 1, oy: getComputedStyle(p).overflowY };
-    });
-    if (w >= 960) scen(tag + ': the drawer pushes the safety pair down, never covers it', g.dBottom <= g.eTop + 0.5 && g.eBottom <= h, JSON.stringify(g));
-    else scen(tag + ': the drawer opens below the whole strip', Math.abs(g.dTop - g.stripBottom) < 1.5 && g.dTop >= g.eBottom, JSON.stringify(g));
-    if (w < 960) {
-      scen(tag + ': the drawer spans the window', Math.abs(g.dW - g.vw) < 1, g.dW + ' vs ' + g.vw);
-      scen(tag + ': the drawer scrolls within itself', g.oy === 'auto', g.oy + (g.scrolls ? ', overflowing' : ''));
-      const box = await page.locator('#dr-panel').boundingBox();
-      await page.locator('#dr-panel').evaluate((el) => { el.scrollTop = el.scrollHeight; });
-      const before = await page.evaluate(() => document.scrollingElement.scrollTop);
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.wheel(0, 240);
+    // The legacy saved host redials the fixture hub at launch.
+    const ids = await page.waitForSelector('[data-tab-id="shell:about"]', { timeout: 15000 })
+      .then(() => page.$$eval('[data-tab-id^="shell:"]', (els) => els.map((e) => e.dataset.tabId))).catch(() => []);
+    scen(tag + ': the shell bundle carries the Phosphor tabs', ['hubs', 'server', 'settings', 'about'].every((p) => ids.includes('shell:' + p)), JSON.stringify(ids));
+    for (const id of ids) {
+      await page.click('[data-tab-id="' + id + '"]');
       await page.waitForTimeout(250);
-      const after = await page.evaluate(() => document.scrollingElement.scrollTop);
-      scen(tag + ': a wheel over the drawer at its end scrolls the page', after > before, before + ' -> ' + after);
-      await page.evaluate(() => window.scrollTo(0, 0));
+      const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)];
+      scen(tag + ': Phosphor > ' + id.slice(6) + ' passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+      if (SHOTS) await page.screenshot({ path: join(OUT, 'phosphor-' + id.slice(6) + '-' + tag + '.png') });
     }
-    // Closing must not move the e-stop under the press: the click lands, then the drawer closes.
-    await page.evaluate(() => {
-      window.__estopClicks = 0;
-      document.querySelector('.topstrip .btn-estop').addEventListener('click', () => window.__estopClicks++);
-    });
-    const enabled = await page.isEnabled('.topstrip .btn-estop');
-    if (enabled) await page.click('.topstrip .btn-estop');
-    await page.waitForTimeout(200);
-    const after = await page.evaluate(() => ({ clicks: window.__estopClicks, open: !!document.querySelector('#shell-drawer'),
-      eTop: document.querySelector('.topstrip .btn-estop').getBoundingClientRect().top }));
-    scen(tag + ': an e-stop click with the drawer open reaches the e-stop and closes the drawer',
-      enabled && after.clicks === 1 && !after.open, JSON.stringify({ enabled, ...after }));
-    if (w < 960) scen(tag + ': the phone drawer never moves the e-stop', Math.abs(after.eTop - g.eTop) < 1, g.eTop + ' -> ' + after.eTop);
     await ctx.close();
   }
   sh.close();

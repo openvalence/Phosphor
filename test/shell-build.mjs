@@ -1,9 +1,9 @@
 /**
  * shell-build.mjs -- the Tauri shell's bundle for browser tests: main.js's
- * SHELL branch with the real ShellStrip and Drawer, built as the Tauri CLI
- * would (TAURI_ENV_PLATFORM set). TAURI_STUB stands in for the Rust half:
- * every command rejects, so the shell runs degraded, exactly as it does with
- * a command missing. Test-only; nothing here ships.
+ * SHELL branch with the real ShellStrip and Phosphor panes, built as the
+ * Tauri CLI would (TAURI_ENV_PLATFORM set). TAURI_STUB stands in for the Rust
+ * half: every command rejects, so the shell runs degraded, exactly as it does
+ * with a command missing. Test-only; nothing here ships.
  */
 import { build } from 'vite';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
