@@ -16,7 +16,7 @@ import {
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
-  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H,
+  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H, nudgePin,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -407,6 +407,20 @@ console.log('fold');
   ok('fold: a commit keeps the nest\u2019s own height for the unfold', map[nid].h === 8 && map[nid].nest.collapsed === true);
   ok('fold: unfolding restores the height', setNest(map, nid, { collapsed: false }) && !('collapsed' in map[nid].nest)
      && pack(its, map, 40).find((q) => q.id === nid).h === 8);
+}
+
+// ---- keyboard nudge (ph-e82.20.5) ---------------------------------------------------
+console.log('nudge');
+{
+  const its = items('a', 'b', 'c');
+  const map = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 1 }, c: { x: 20, y: 0, w: 6, h: 1 } };
+  const step = (id, dx, dy) => { const p = nudgePin(pack(its, map, 40), id, dx, dy, 40); if (p) commitPin(map, its, 40, p); return !!p; };
+  ok('up passes the card above in its columns', step('b', 0, -1) && map.b.y === 0 && map.a.y === 1, JSON.stringify(map));
+  ok('down passes the card below', step('b', 0, 1) && map.b.y === 2 && map.a.y === 0, JSON.stringify(map));
+  ok('a card alone in its columns has nowhere to go vertically', !step('c', 0, -1) && !step('c', 0, 1));
+  ok('sideways is one cell, clamped at the edges', step('c', 1, 0) && map.c.x === 21 && !nudgePin(pack(its, { ...map, c: { x: 34, y: 0, w: 6, h: 1 } }, 40), 'c', 1, 0, 40)
+     && !nudgePin(pack(its, map, 40), 'a', -1, 0, 40));
+  ok('an unknown id gives no pin', nudgePin(pack(its, map, 40), 'zz', 1, 0, 40) === null);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

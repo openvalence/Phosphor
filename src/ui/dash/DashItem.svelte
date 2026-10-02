@@ -37,6 +37,8 @@
     onresizeend,
     onkeymove,
     onkeyresize,
+    onkeylook = null,
+    onkeydelete = null,
     // Set on a nest member: edit mode offers "Out" (back to the top level).
     onremove = null,
     // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
@@ -62,6 +64,9 @@
   }
   function onGrabKeyDown(e) {
     const key = e.key;
+    // Enter would also click (select); it opens the look picker instead.
+    if (key === 'Enter') { e.preventDefault(); onkeylook && onkeylook(); return; }
+    if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); onkeydelete && onkeydelete(); return; }
     if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
     e.preventDefault();
     const d = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
@@ -105,7 +110,7 @@
          card's own controls never compete with layout chrome. -->
     {#if editing}
       <button type="button" class="handle grab"
-              aria-label={'Drag to move ' + item.title + '. Arrow keys move it; shift plus arrow keys resize it.'}
+              aria-label={'Drag to move ' + item.title + '. Arrow keys move it, shift plus arrow keys resize it, Enter picks its look, Delete removes it.'}
               title="Drag to move, click to select. Arrow keys move, Shift+arrows resize."
               aria-pressed={selected}
               onclick={(e) => onselect && onselect(e.shiftKey || e.ctrlKey || e.metaKey)}

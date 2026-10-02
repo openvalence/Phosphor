@@ -36,7 +36,8 @@
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
   } from '../../model/dashboard.svelte.js';
-  import { cellCount, placeable, resizeRect, arrangePins, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { tick } from 'svelte';
+  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
@@ -301,34 +302,62 @@
     announce(made.length ? 'Duplicated ' + made.length + ', placed below' : 'Nothing here can be duplicated');
   }
   // Home deletes from the home; a nest member steps out of its nest; elsewhere a nest ungroups.
-  function deleteSel() {
-    const ids = selItems.filter(canDrop).map((p) => p.id);
-    if (ondelete) ondelete(ids);
-    else for (const p of selItems.filter(canDrop)) (p.kind === 'nest' ? layout.removeNest(p.id) : onremove(p.id));
+  function deleteSel(list = selItems) {
+    const drop = list.filter(canDrop);
+    if (!drop.length) { announce('Nothing here can be removed'); return; }
+    if (ondelete) ondelete(drop.map((p) => p.id));
+    else for (const p of drop) (p.kind === 'nest' ? layout.removeNest(p.id) : onremove(p.id));
     sel = [];
-    announce(ids.length + ' removed');
+    announce(drop.length === 1 ? titleOf(drop[0].id) + ' removed' : drop.length + ' removed');
+  }
+  /** Escape: the drag in flight (pointer, marquee, or a member leaving its nest) is dropped, nothing written. */
+  function cancelDrag() {
+    if (pin && pin.out && ondragout) ondragout(null, 0, 0, 'cancel');
+    pin = null;
+    stackOrder = null;
+    marquee = null;
+    dropRect = null;
+    announce('Drag canceled');
   }
 
   // ---- keyboard ------------------------------------------------------------------
   // Up/Down walk the reading order (parity with the old reorder); Left/Right
   // step one cell; shift + arrows resize.
+  // A keyed #each that reorders the focused grip's node drops its focus; put it back.
+  const refocus = (id) => tick().then(() => {
+    const g = cellEls.get(id)?.querySelector('.handle.grab');
+    if (g && document.activeElement !== g) g.focus();
+  });
   function keyMove(id, dx, dy) {
-    const ids = placed.map((p) => p.id);
-    const i = ids.indexOf(id);
-    if (i < 0) return;
-    if (dy) {
-      const to = i + dy;
-      if (to < 0 || to >= ids.length) return;
+    if (stack) {
+      const ids = placed.map((p) => p.id);
+      const i = ids.indexOf(id), to = i + dy;
+      if (!dy || i < 0 || to < 0 || to >= ids.length) return;
       [ids[i], ids[to]] = [ids[to], ids[i]];
       layout.order(all, cols, ids);
       announce(titleOf(id) + ' moved to position ' + (to + 1) + ' of ' + ids.length);
-    } else if (!stack) {
-      const p = placed[i];
-      layout.move(all, cols, { id, x: p.x + dx, y: p.y, w: p.w, h: p.h });
-      const q = layout.arrange(all, cols).find((r) => r.id === id);
-      if (q) announce(titleOf(id) + ' at ' + where(q));
+      refocus(id);
+      return;
     }
+    const p = nudgePin(placed, id, dx, dy, cols);
+    if (!p) {
+      announce(titleOf(id) + (dx ? ' is at the edge' : dy < 0 ? ' is at the top of its columns' : ' is at the bottom of its columns'));
+      return;
+    }
+    layout.move(all, cols, p);
+    const q = layout.arrange(all, cols).find((r) => r.id === id);
+    if (q) announce(titleOf(id) + ' at ' + where(q));
+    refocus(id);
   }
+  /** Enter on a grip: the card's presentation picker (a [data-look] select its body draws), else say there is none. */
+  function keyLook(id) {
+    const s = cellEls.get(id)?.querySelector('[data-look] select');
+    if (!s) { announce(titleOf(id) + ' has no presentation choices'); return; }
+    s.focus();
+    try { s.showPicker(); } catch (e) { /* focused is enough where showPicker is missing */ }
+  }
+  /** Delete on a grip: the selection when the card is in it, else the card. */
+  const keyDelete = (id) => deleteSel(selSet.has(id) ? selItems : placed.filter((p) => p.id === id));
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
@@ -404,6 +433,14 @@
   }
   // Ctrl+Z (Cmd+Z) in edit mode, unless a text control owns the keystroke.
   function onKey(e) {
+    if (e.key === 'Escape') {
+      if (pin || marquee) { e.preventDefault(); cancelDrag(); }
+      else if (editing && selSet.size && !(e.target.closest && e.target.closest('input, textarea, select, [popover]'))) {
+        sel = [];
+        announce('Selection cleared');
+      }
+      return;
+    }
     if (given || !editing || e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
     e.preventDefault();
@@ -482,7 +519,7 @@
   {#if editing && !selSet.size}
     <p class="dash-hint">Drag a card by its grip, resize it by any edge or corner, or drag a palette entry onto the grid.
       Click grips to select (Shift adds) or drag across empty grid. Keyboard: focus a grip; arrows move, Shift+arrows
-      resize. Ctrl+Z undoes the last change.</p>
+      resize, Space selects, Enter picks a look, Delete removes, Esc cancels a drag. Ctrl+Z undoes the last change.</p>
   {/if}
   {/if}
   {#if editing && selSet.size}
@@ -495,7 +532,7 @@
         <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
         {#if selSet.size > 2}<button type="button" class="og-btn sm" onclick={() => arrangeSel('spread')}>Spread</button>{/if}
       {/if}
-      <button type="button" class="og-btn sm" disabled={!selItems.some(canDrop)} onclick={deleteSel}>Remove</button>
+      <button type="button" class="og-btn sm" disabled={!selItems.some(canDrop)} onclick={() => deleteSel()}>Remove</button>
       <button type="button" class="og-btn sm" onclick={() => { sel = []; announce('Selection cleared'); }}>Clear</button>
     </div>
   {/if}
@@ -525,6 +562,8 @@
           onresizeend={() => pointerEnd(item.id)}
           onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
           onkeyresize={(dw, dh) => keyResize(item.id, dw, dh)}
+          onkeylook={() => keyLook(item.id)}
+          onkeydelete={() => keyDelete(item.id)}
           onremove={onremove && placeable(item.kind, false) ? () => onremove(item.id) : null}
         />
       </div>

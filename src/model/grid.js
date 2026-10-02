@@ -270,6 +270,29 @@ export function duplicate(map, from, to = null) {
   return to;
 }
 
+/**
+ * The pin for a keyboard nudge of `id` within `placed` (a pack result): one
+ * cell sideways, or past the nearest card above or below in its own columns,
+ * since a one-cell vertical step would be undone by compaction. Null when
+ * there is nowhere to go.
+ */
+export function nudgePin(placed, id, dx, dy, cols) {
+  const p = placed.find((q) => q.id === id);
+  if (!p) return null;
+  const at = (x, y) => ({ id, x, y, w: p.w, h: p.h });
+  if (dx) {
+    const x = Math.min(cols - p.w, Math.max(0, p.x + dx));
+    return x === p.x ? null : at(x, p.y);
+  }
+  const cross = placed.filter((q) => q.id !== id && q.x < p.x + p.w && p.x < q.x + q.w);
+  if (dy < 0) {
+    const above = cross.filter((q) => q.y + q.h <= p.y).sort((a, b) => b.y + b.h - (a.y + a.h))[0];
+    return above ? at(p.x, above.y) : null;
+  }
+  const below = cross.filter((q) => q.y >= p.y + p.h).sort((a, b) => a.y - b.y)[0];
+  return below ? at(p.x, below.y + below.h) : null;
+}
+
 /** Commit a drag or resize: place with `pin`, compact, write every present item. */
 export function commitPin(map, items, cols, pin) {
   write(map, settle(items, map, cols, pin));

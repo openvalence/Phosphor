@@ -153,7 +153,7 @@
   {/if}
   {#if item.control}
     {#if editing && builder && item.kind === 'field' && item.setLook}
-      <LookEditor control={item.control} look={item.look} onchange={item.setLook} />
+      <div data-look><LookEditor control={item.control} look={item.look} onchange={item.setLook} /></div>
     {/if}
     <Control control={item.control} look={item.look} w={item.w} h={item.h} />
   {:else if item.telemetry}

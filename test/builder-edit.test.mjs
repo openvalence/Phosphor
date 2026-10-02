@@ -20,6 +20,11 @@
  *            collapsed nest packs two rows and keeps its height; a module's
  *            members are previewed, inert ones named, before Insert
  *            (ph-e82.20.4)
+ *   keys     on a focused grip: Up/Down pass the card above or below in its
+ *            columns, Left/Right nudge a cell, Shift+arrows resize, focus
+ *            stays on the moved grip; Tab meets the grips in reading order;
+ *            Enter opens the look picker; Delete removes (Ctrl+Z restores);
+ *            Escape cancels a pointer drag with nothing written (ph-e82.20.5)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -311,6 +316,74 @@ console.log('nest');
   ok('Insert places it with the live member drawn and the inert one kept', await card('nest:2').locator('.nest-body .dash-cell').count() === 1
      && Object.keys((await stored())['nest:2'].nest.map).includes(GHOST) && /1 of 2 members/.test(await said()), await said());
   await page.keyboard.press('Escape');
+  await ctx.close();
+}
+
+// ---- keyboard (ph-e82.20.5) ----------------------------------------------------------
+console.log('keys');
+{
+  const { ctx, page, cell, stored, said, card } = await open({
+    [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 0, y: 2, w: 10, h: 2 }, [SLIDER]: { x: 12, y: 0, w: 10, h: 3 },
+  });
+  const grip = (key) => card(key).locator('.handle.grab');
+  const focusedId = () => page.evaluate(() => document.activeElement?.closest('.dash-cell')?.dataset.id || null);
+  await grip(F2).focus();
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(100);
+  let s = await stored();
+  ok('ArrowUp passes the card above in its columns', s[F2].y === 0 && s[F1].y === 2, JSON.stringify([s[F1], s[F2]]));
+  ok('focus stays on the moved grip', await focusedId() === F2 && await page.evaluate(() => document.activeElement.classList.contains('grab')));
+  await page.keyboard.press('ArrowUp');
+  ok('at the top it says so and moves nothing', /top of its columns/.test(await said()) && (await stored())[F2].y === 0, await said());
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(100);
+  s = await stored();
+  ok('ArrowDown passes the card below', s[F2].y === 2 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.waitForTimeout(100);
+  s = await stored();
+  ok('ArrowRight nudges a cell, Shift+ArrowRight grows a cell', s[F2].x === 1 && s[F2].w === 11, JSON.stringify(s[F2]));
+
+  const reading = Object.entries(await stored()).filter(([k, e]) => e && e.y != null && k !== 'home:built')
+    .sort(([, a], [, b]) => a.y - b.y || a.x - b.x).map(([k]) => k);
+  await page.locator('.home .dash-toolbar .done-btn').focus();
+  const seen = [];
+  for (let i = 0; i < 120 && seen.length < reading.length; i++) {
+    await page.keyboard.press('Tab');
+    const id = await page.evaluate(() => (document.activeElement?.classList.contains('grab') ? document.activeElement.closest('.dash-cell').dataset.id : null));
+    if (id && !seen.includes(id)) seen.push(id);
+  }
+  ok('Tab meets the grips in reading order', JSON.stringify(seen) === JSON.stringify(reading), seen);
+
+  await grip(SLIDER).focus();
+  await page.keyboard.press('Enter');
+  ok('Enter on a grip opens its look picker', await page.evaluate(() => !!document.activeElement?.matches('[data-look] select'))
+     && await focusedId() === SLIDER);
+  await page.keyboard.press('Escape');
+
+  const before = JSON.stringify((await stored())[F1]);
+  await grip(F1).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const b = await grip(F1).boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 + 6 * cell, b.y + b.height / 2 + 2 * cell, { steps: 6 });
+  const mid = await page.locator('.home .drop-ghost').count();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  const gone = await page.locator('.home .drop-ghost').count();
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  ok('Escape cancels a pointer drag: the ghost goes, nothing is written', mid === 1 && gone === 0
+     && JSON.stringify((await stored())[F1]) === before && /canceled/.test(await said()), await said());
+
+  await grip(F1).focus();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(100);
+  ok('Delete on a grip removes the card', !(await stored())[F1] && await card(F1).count() === 0);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(100);
+  ok('Ctrl+Z brings it back', JSON.stringify((await stored())[F1]) === before);
   await ctx.close();
 }
 
