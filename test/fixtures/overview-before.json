@@ -29,7 +29,7 @@
   {
    "title": "Advanced-generator",
    "uids": [
-    "4624:ap_mode",
+    "4624:running",
     "4624:master",
     "4624:max_depth",
     "4624:min_depth",
@@ -71,7 +71,7 @@
   {
    "title": "Advanced-generator",
    "uids": [
-    "4624:ap_mode",
+    "4624:running",
     "4624:master",
     "4624:max_depth",
     "4624:min_depth",
