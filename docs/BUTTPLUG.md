@@ -44,7 +44,7 @@ Commands (all async):
 | `bp_stop_all()` | upstream StopCmd for every device, each write acknowledged (bounded at 1 s) |
 | `bp_clients()` | `[{id, name, address, since, messages, rate}]`: the connected app (0 or 1 entries). `id` is per connection; `name` is the handshake's ClientName (null until RequestServerInfo); `address` is the peer's `ip:port` (fork `on_client_accepted`); `since` is unix ms at accept on this host's clock; `messages` and `rate` (messages in the last whole second) update once a second |
 | `bp_client_disconnect(id)` | closes that connection; errors when `id` is not the connected client. The listener then takes the next app |
-| `bp_settings()` | the saved settings: `{port: u16, start_on_launch: bool, ble: bool, serial: bool, hid: bool, machine: bool, log_level: "error" | "warn" | "info" | "debug"}` |
+| `bp_settings()` | the saved settings: `{port: u16, start_on_launch: bool, ble: bool, serial: bool, hid: bool, machine: bool, log_level: "error" \| "warn" \| "info" \| "debug"}` |
 | `bp_settings_set(settings)` | saves the whole record and returns it as saved. Errors (nothing saved) on port 0, an unknown level, a failed write, or a changed port or manager while running |
 
 The `bp_toy_*` commands resolve on the server's answer: `null` (or the
@@ -73,7 +73,7 @@ Events:
 | `bp://status` | same as `bp_status` |
 | `bp://clients` | same as `bp_clients`: on connect, on disconnect, and at most once a second while the name or rate changes |
 | `bp://devices` | same as `bp_devices` |
-| `bp://log` | `{level, msg}` |
+| `bp://log` | `{level: "error" \| "warn" \| "info" \| "debug", msg, time}`; `time` is unix ms on this host's clock, stamped where the line is made |
 | `bp://motion` | `{position: f64 0..1, ms: u32}` or `{stop: true}` |
 | `bp://output` | `{index, feature, type, value}`: an output a device applied, from any client (an app, a stop, a module). For the machine only its Vibrate: its position is `bp://motion` |
 
@@ -90,7 +90,9 @@ saved settings always describe the running server. `log_level` and
 `start_on_launch` apply at once. `bp://log` carries the server's own lines
 and, where Phosphor owns the process logger (release builds; tauri-plugin-log
 owns it in debug builds), upstream's `buttplug*` log lines, both filtered at
-`log_level`.
+`log_level`. The pane keeps the last 500 lines, filters them by level for
+viewing only, copies the shown lines as text, and shows the latest error
+line as its reason until the next start request.
 
 The device config (display names, reserved indices) is upstream's user
 device config, saved as `devices.json` beside `settings.json` on every

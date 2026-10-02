@@ -3,7 +3,7 @@
 // Run: node test/server-pane.test.mjs
 
 import assert from 'node:assert/strict';
-import { blank, createBp, BP_PORT, SCAN_S } from '../src/shell/bp-server.js';
+import { blank, createBp, BP_PORT, SCAN_S, logAt, logText } from '../src/shell/bp-server.js';
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
@@ -82,9 +82,9 @@ function fakeShell(cmds) {
   const toy = { index: 1, name: 'Lovense Lush', kind: 'toy', connected: true, features: ['Vibrate'] };
   sh.emit('bp://devices', [machine, toy]);
   assert.equal(s.devices.length, 2);
-  for (let i = 0; i < 60; i++) sh.emit('bp://log', { level: 'info', msg: 'line ' + i });
-  assert.equal(s.log.length, 50, 'log tail is bounded');
-  assert.equal(s.log.at(-1).msg, 'line 59');
+  for (let i = 0; i < 510; i++) sh.emit('bp://log', { level: 'info', msg: 'line ' + i });
+  assert.equal(s.log.length, 500, 'log tail is bounded');
+  assert.equal(s.log.at(-1).msg, 'line 509');
 
   sh.calls.length = 0;
   await bp.scan(true);
@@ -347,6 +347,46 @@ function fakeShell(cmds) {
   await bp.kick(app);
   assert.equal(s.ops['kick:3'].phase, 'fault');
   assert.match(s.ops['kick:3'].reason, /disconnect failed: client 3 is not connected/);
+  bp.dispose();
+}
+
+// --- log: level filter, copy as text, the latest error as the pane's reason
+{
+  const lines = [
+    { level: 'debug', msg: 'd', time: 0 },
+    { level: 'info', msg: 'i' },
+    { level: 'warn', msg: 'w' },
+    { level: 'error', msg: 'e' },
+  ];
+  assert.deepEqual(logAt(lines, 'warn').map((l) => l.msg), ['w', 'e'], 'at warn: warn and error');
+  assert.deepEqual(logAt(lines, 'debug').length, 4);
+  assert.equal(logText(lines.slice(0, 2)), '1970-01-01T00:00:00.000Z DEBUG d\nINFO i');
+
+  const sh = fakeShell({
+    bp_status: () => ({ running: false, port: BP_PORT, clients: 0, scanning: false }),
+    bp_start: () => {},
+  });
+  const s = blank();
+  const bp = createBp(s, sh.api);
+  await bp.init();
+  for (const l of lines) sh.emit('bp://log', l);
+  assert.equal(s.fault, 'e', 'an error line becomes the pane reason');
+  sh.emit('bp://log', { level: 'warn', msg: 'later warning' });
+  assert.equal(s.fault, 'e', 'only errors replace it');
+
+  let copied = null;
+  await bp.copyLog('warn', { writeText: async (x) => { copied = x; } });
+  assert.equal(copied, 'WARN w\nERROR e\nWARN later warning');
+  assert.equal(s.copy.phase, 'settled');
+  assert.match(s.copy.reason, /copied 3 lines/);
+  await bp.copyLog('warn', { writeText: async () => { throw new Error('denied'); } });
+  assert.equal(s.copy.phase, 'fault');
+  assert.match(s.copy.reason, /copy failed: denied/);
+  await bp.copyLog('warn', null);
+  assert.match(s.copy.reason, /no clipboard/);
+
+  await bp.start();
+  assert.equal(s.fault, '', 'a start request clears it');
   bp.dispose();
 }
 

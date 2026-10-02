@@ -125,6 +125,13 @@ impl Settings {
   }
 }
 
+/// Unix ms on this host's clock.
+fn now_ms() -> u64 {
+  std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_or(0, |d| d.as_millis() as u64)
+}
+
 fn parse_level(s: &str) -> Result<log::Level, String> {
   match s {
     "error" | "warn" | "info" | "debug" => Ok(s.parse().expect("a log::Level name")),
@@ -316,7 +323,7 @@ impl Shared {
 
   fn log(&self, level: log::Level, msg: String) {
     if level as usize <= self.level.load(Ordering::Relaxed) {
-      (self.sink)("bp://log", json!({ "level": level.as_str().to_lowercase(), "msg": msg }));
+      (self.sink)("bp://log", json!({ "level": level.as_str().to_lowercase(), "msg": msg, "time": now_ms() }));
     }
   }
 
@@ -944,9 +951,7 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
     }
     let address = peer.lock().unwrap().map_or_else(String::new, |a| a.to_string());
     let kick = Arc::new(tokio::sync::Notify::new());
-    let since = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .map_or(0, |d| d.as_millis() as u64);
+    let since = now_ms();
     *sh.client.lock().unwrap() = Some(Client {
       id: sh.next_client.fetch_add(1, Ordering::Relaxed) + 1,
       name: None,

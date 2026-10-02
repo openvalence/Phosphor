@@ -22,6 +22,7 @@
   import { blank, createBp } from './bp-server.js';
   import Clients from './server/Clients.svelte';
   import Devices from './server/Devices.svelte';
+  import Log from './server/Log.svelte';
   import Settings from './server/Settings.svelte';
 
   const s = $state(blank());
@@ -57,6 +58,9 @@
       {#if s.running}<span class="sp-note mono">{s.clients} {s.clients === 1 ? 'client' : 'clients'}</span>{/if}
       {#if s.run.reason}<span class="sp-ladder" data-phase={s.run.phase}>{s.run.reason}</span>{/if}
     </div>
+    {#if s.fault}
+      <p class="sp-ladder" data-phase="fault">server error: {s.fault} <button class="sp-link" onclick={() => (tab = 'log')}>see the log</button></p>
+    {/if}
 
     <div class="sp-row">
       <button class="sp-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
@@ -78,13 +82,7 @@
         {:else if tab === 'clients'}
           <Clients {s} {bp} />
         {:else if tab === 'log'}
-          {#if s.log.length}
-            <ol class="sp-log mono">
-              {#each s.log as l}<li><span class="sp-lvl">{l.level}</span> {l.msg}</li>{/each}
-            </ol>
-          {:else}
-            <p class="sp-note">nothing logged yet</p>
-          {/if}
+          <Log {s} {bp} />
         {:else}
           <Settings {s} {bp} />
         {/if}
@@ -134,9 +132,18 @@
   .sp-pane :global(.sp-check input) { width: 18px; height: 18px; margin: 0; }
   .sp-pane :global(.sp-note) { margin: 0; color: var(--ink-faint); font-style: italic; font-size: 11px; }
   .sp-reason { margin: 0; color: var(--ink-dim); }
-  .sp-pane :global(.sp-ladder) { font-size: 11px; color: var(--ink-dim); }
+  .sp-pane :global(.sp-ladder) { margin: 0; font-size: 11px; color: var(--ink-dim); }
   .sp-pane :global(.sp-ladder[data-phase='pending']) { color: var(--intent); }
   .sp-pane :global(.sp-ladder[data-phase='overdue']), .sp-pane :global(.sp-ladder[data-phase='fault']) { color: var(--warn); }
+  .sp-link {
+    min-height: 40px;
+    padding: 0 6px;
+    background: none;
+    border: 0;
+    color: inherit;
+    text-decoration: underline;
+    font-size: inherit;
+  }
   .sp-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
   .sp-tab {
     min-height: 40px;
@@ -148,12 +155,4 @@
     font-size: 12.5px;
   }
   .sp-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--intent); }
-  .sp-log { list-style: none; margin: 0; padding: 0; }
-  .sp-log {
-    max-height: 16em;
-    overflow-y: auto;
-    font-size: 10.5px;
-    color: var(--ink-dim);
-  }
-  .sp-lvl { color: var(--ink-faint); text-transform: uppercase; }
 </style>

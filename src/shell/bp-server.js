@@ -19,7 +19,14 @@ export const BP_PORT = 12345;
 export const ECHO_MS = 4000;
 /** A scan the pane starts stops itself after this long. */
 export const SCAN_S = 30;
-const LOG_KEEP = 50;
+const LOG_KEEP = 500;
+
+export const LEVELS = ['error', 'warn', 'info', 'debug'];
+/** The lines at `level` or more severe. */
+export const logAt = (log, level) => log.filter((l) => LEVELS.indexOf(l.level) <= LEVELS.indexOf(level));
+/** Plain text for the clipboard: ISO time (when the line has one), level, message. */
+export const logText = (lines) =>
+  lines.map((l) => (l.time != null ? new Date(l.time).toISOString() + ' ' : '') + l.level.toUpperCase() + ' ' + l.msg).join('\n');
 
 export const blank = () => ({
   ready: false,
@@ -31,6 +38,9 @@ export const blank = () => ({
   devices: [],
   conns: [],
   log: [],
+  // The latest error-level log line since the last start request.
+  fault: '',
+  copy: { phase: 'settled', reason: '' },
   run: { want: null, phase: 'settled', reason: '' },
   scan: { want: null, phase: 'settled', reason: '' },
   stopAll: { phase: 'settled', reason: '' },
@@ -162,6 +172,19 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     if (typeof v === 'number') w.value = v;
   }
 
+  async function copyLog(level, clip = globalThis.navigator?.clipboard) {
+    const w = s.copy;
+    const lines = logAt(s.log, level);
+    if (!clip?.writeText) { Object.assign(w, { phase: 'fault', reason: 'copy failed: no clipboard here' }); return; }
+    Object.assign(w, { phase: 'pending', reason: 'copying' });
+    try {
+      await clip.writeText(logText(lines));
+      Object.assign(w, { phase: 'settled', reason: 'copied ' + lines.length + (lines.length === 1 ? ' line' : ' lines') });
+    } catch (e) {
+      Object.assign(w, { phase: 'fault', reason: 'copy failed: ' + msg(e) });
+    }
+  }
+
   async function saveSettings(patch) {
     if (!s.settings) return;
     const r = await ack(s.set, 'set', 'saving ' + Object.keys(patch).join(', ').replaceAll('_', ' '),
@@ -186,7 +209,10 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
       'bp://status': applyStatus,
       'bp://devices': setDevices,
       'bp://clients': setConns,
-      'bp://log': (l) => { s.log = [...s.log, l].slice(-LOG_KEEP); },
+      'bp://log': (l) => {
+        s.log = [...s.log, l].slice(-LOG_KEEP);
+        if (l?.level === 'error') s.fault = l.msg;
+      },
     };
     for (const [ev, fn] of Object.entries(on)) {
       try {
@@ -198,7 +224,10 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
 
   return {
     init,
-    start: (port = s.settings?.port ?? BP_PORT) => request('run', true, 'bp_start', { port }),
+    start(port = s.settings?.port ?? BP_PORT) {
+      s.fault = '';
+      return request('run', true, 'bp_start', { port });
+    },
     stop: () => request('run', false, 'bp_stop'),
     scan: (on) => (on ? request('scan', true, 'bp_scan_start', { seconds: SCAN_S }) : request('scan', false, 'bp_scan_stop')),
     rename(key, name) {
@@ -214,6 +243,7 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     read,
     stopAll,
     saveSettings,
+    copyLog,
     dispose() {
       disposed = true;
       Object.values(timers).forEach(clearTimeout);
