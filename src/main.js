@@ -62,12 +62,9 @@ async function boot() {
       return r.ok ? await r.text() : null;
     });
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
-    // 2026-07-28). Auto-connect only re-joins a hub the operator explicitly
-    // chose before (saved by ShellStrip on a successful WS connect).
-    const saved = localStorage.getItem('shell_host');
-    if (saved && (localStorage.getItem('shell_mode') || 'ws') === 'ws') {
-      connect({ host: saved });
-    }
+    // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
+    // host:port, when the reconnect preference is on (shell/settings-pane.js).
+    await import('./shell/settings-pane.js').catch((e) => console.error('saved hubs failed to load', e));
     // Shell chrome (window controls, discovery, transport) is a row of the
     // kernel's top strip, handed in from here so the served bundle never
     // carries it.

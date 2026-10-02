@@ -14,7 +14,10 @@ const storage = {
 };
 Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
 
-const { prefs, setPref, loadPrefs, telemetryRate, DEFAULTS, PREFS_KEY } = await import('../src/model/prefs.js');
+const {
+  prefs, setPref, loadPrefs, telemetryRate, DEFAULTS, PREFS_KEY,
+  savedHubs, rememberHub, renameHub, forgetHub, hubKey, hubLabel, launchTarget, HUBS_KEY,
+} = await import('../src/model/prefs.js');
 const { get } = await import('svelte/store');
 const { formatWithUnit, setAutorange, autorange } = await import('../src/model/format.js');
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
@@ -51,4 +54,31 @@ setAutorange(false);
 assert.equal(formatWithUnit(V, 0.085), '0.085' + NB + 'V', 'off: the declared unit');
 setAutorange(true);
 
-console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate');
+// Saved hubs: keyed on hub_instance_id, else the dialed endpoint; port kept.
+const ID = '00a1b2c3d4e5f607';
+assert.equal(hubKey({ hub_instance_id: ID.toUpperCase() }, 'h', 82), ID);
+assert.equal(hubKey(null, '10.0.0.5', 8282), '10.0.0.5:8282');
+assert.equal(hubKey({ hub_instance_id: 'nothex' }, 'h', 82), 'h:82', 'a malformed id is no id');
+rememberHub({ identity: null, host: '10.0.0.5', port: 8282, now: 1 });
+renameHub('10.0.0.5:8282', '  Bench sim ');
+rememberHub({ identity: { hub_instance_id: ID, hub_name: 'Nucleus' }, host: '10.0.0.5', port: 8282, now: 2 });
+assert.deepEqual(get(savedHubs), [{ id: ID, host: '10.0.0.5', port: 8282, name: 'Nucleus', nickname: 'Bench sim', lastSeen: 2 }],
+  'the id replaces the endpoint entry and keeps its nickname');
+rememberHub({ identity: { hub_instance_id: ID }, host: '10.0.0.9', port: 82, now: 3 });
+assert.equal(get(savedHubs).length, 1, 'same hub at a new address is one entry');
+assert.equal(get(savedHubs)[0].host, '10.0.0.9');
+rememberHub({ identity: null, host: 'sim.local', port: 8282, now: 4 });
+assert.deepEqual(get(savedHubs).map(hubLabel), ['sim.local:8282', 'Bench sim'], 'most recent first');
+assert.deepEqual(JSON.parse(mem.get(HUBS_KEY)), get(savedHubs), 'persisted');
+
+// ph-dwy: the launch redial dials the saved host AND port.
+const hubs = get(savedHubs);
+assert.deepEqual(launchTarget({ reconnect: true, mode: 'ws', hubs }), { host: 'sim.local', port: 8282 });
+assert.deepEqual(launchTarget({ reconnect: true, mode: null, hubs }), { host: 'sim.local', port: 8282 });
+assert.equal(launchTarget({ reconnect: false, mode: 'ws', hubs }), null, 'preference off');
+assert.equal(launchTarget({ reconnect: true, mode: 'ble', hubs }), null, 'last session was BLE');
+assert.deepEqual(launchTarget({ reconnect: true, mode: 'ws', hubs: [], legacyHost: 'old' }), { host: 'old' });
+forgetHub('sim.local:8282');
+assert.deepEqual(get(savedHubs).map((h) => h.id), [ID]);
+
+console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs and the launch redial');
