@@ -145,11 +145,40 @@ export function unitOf(field) {
   return u;
 }
 
-/** Full "value unit" string. */
+/** Full "value unit" string, autoranged when enabled. */
 export function formatWithUnit(field, value) {
-  const v = formatValue(field, value);
   const u = unitOf(field);
+  const r = autorange(field, value, u);
+  if (r) return r[0] + ' ' + r[1];
+  const v = formatValue(field, value);
   return u ? v + ' ' + u : v;
+}
+
+/**
+ * RFC-086 (RENDERING §6): SI prefixes for DISPLAY only; the wire unit and
+ * scale never change. Exponent bounds per base unit, where a prefix reads
+ * naturally (no kiloseconds). Only formatWithUnit autoranges: callers that
+ * render value and unit separately need ph-vdk.51's migration first.
+ */
+const SI_RANGE = { V: [-6, 3], A: [-6, 3], W: [-3, 6], Wh: [0, 6], s: [-6, 0], Hz: [0, 6], N: [-3, 3] };
+const SI_PREFIX = { '-6': 'µ', '-3': 'm', 0: '', 3: 'k', 6: 'M' };
+const SI_EXP = { µ: -6, m: -3, k: 3, M: 6 };
+let autorangeOn = true;
+
+/** The Settings pane's switch (prefs.js `autorange`). */
+export function setAutorange(on) { autorangeOn = !!on; }
+
+/** [text, unit] rescaled to the prefix that fits `value`, or null to leave it. */
+export function autorange(field, value, unit) {
+  const m = autorangeOn && typeof value === 'number' && value && isFinite(value)
+    && /^(µ|m|k|M)?(V|A|Wh|W|s|Hz|N)$/.exec(unit);
+  if (!m) return null;
+  const e0 = SI_EXP[m[1]] || 0;
+  const [lo, hi] = SI_RANGE[m[2]];
+  const e = Math.min(hi, Math.max(lo, Math.floor((Math.floor(Math.log10(Math.abs(value))) + e0) / 3) * 3));
+  if (e === e0) return null;
+  const p = Math.min(4, Math.max(0, precisionFor(field) + e - e0));
+  return [(value * 10 ** (e0 - e)).toFixed(p), SI_PREFIX[e] + m[2]];
 }
 
 /**
