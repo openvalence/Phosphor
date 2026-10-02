@@ -99,8 +99,8 @@
          card's own controls never compete with layout chrome. -->
     {#if editing}
       <button type="button" class="handle grab"
-              aria-label={'Drag to reorder ' + item.title + '. Arrow keys move it; shift plus arrow keys resize it.'}
-              title="Drag to reorder — arrow keys move, shift+arrow resizes"
+              aria-label={'Drag to move ' + item.title + '. Arrow keys move it; shift plus arrow keys resize it.'}
+              title="Drag to move. Arrow keys move, Shift+arrows resize."
               onpointerdown={onGrabPointerDown}
               onpointermove={onGrabPointerMove}
               onpointerup={onGrabPointerUp}
@@ -133,7 +133,7 @@
   {#if editing && !stack}
     <button type="button" class="handle resize"
             aria-label={'Resize ' + item.title + ', currently ' + w + ' by ' + h + ' cells. Arrow keys shrink or grow it.'}
-            title="Drag to resize — arrow keys shrink/grow"
+            title="Drag to resize. Arrow keys shrink or grow."
             onpointerdown={onResizePointerDown}
             onpointermove={onResizePointerMove}
             onpointerup={onResizePointerUp}
@@ -183,9 +183,7 @@
     text-transform: uppercase;
     letter-spacing: .12em;
     color: var(--tx-val);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
     min-width: 0;
   }
   /* Runtime index, not a CSS counter: mirrors the OG's renumberPanels() —
@@ -219,13 +217,15 @@
   }
   /* The resize handle sits over the body's bottom-right corner: reserve its
      height so it never covers a short module's own Remove or control. */
-  .editing .dash-body { padding-bottom: var(--tap); }
+  .editing .dash-body { padding-bottom: var(--handle); }
   .out { margin-left: auto; }
 
   /* ---- handles ----
      Near-invisible until hover/focus — the frame should read as quiet
-     instrument chassis, not a toy with visible chrome everywhere. Both meet
-     --tap as a hit target even though the glyph inside is small. */
+     instrument chassis, not a toy with visible chrome everywhere. Both are
+     at least 40 CSS px (law 12) at every scale step, however small the glyph
+     or a scaled-down --tap. */
+  .dash-item { --handle: max(40px, var(--tap)); }
   .handle {
     display: grid;
     place-items: center;
@@ -251,8 +251,9 @@
 
   .handle.grab {
     flex: 0 0 auto;
-    width: var(--tap);
-    height: var(--tap);
+    width: var(--handle);
+    height: var(--handle);
+    padding: 0;
     margin: -4px 0 -4px -4px;
     cursor: grab;
   }
@@ -262,8 +263,9 @@
     position: absolute;
     right: 0;
     bottom: 0;
-    width: var(--tap);
-    height: var(--tap);
+    width: var(--handle);
+    height: var(--handle);
+    padding: 0;
     background: transparent;
     cursor: nwse-resize;
   }

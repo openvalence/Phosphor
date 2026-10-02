@@ -28,15 +28,17 @@ export const SCALE_STEPS = [0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 /** Narrowest viewport the app is laid out for (test/responsive-matrix.mjs). */
 export const MIN_VIEWPORT_PX = 320;
 
-/** One old 12-column span in cells: 12 spans = 48 cells, a 1920 px DPR 1 pane. */
+/** One old 12-column span in cells, for the migration only: a full 12-span card fills the row. */
 export const SPAN_CELLS = 4;
-export const DEFAULT_W = 12 * SPAN_CELLS;
+const SPAN_ROW = 12 * SPAN_CELLS;
 export const DEFAULT_H = 1;
 const MAX_H = 100;
 
 export const STORE_KEY = 'phosphor.layouts';
 export const SCALE_KEY = 'phosphor.scale';
 export const DEFAULT_NAME = 'Default';
+/** The drag type a palette entry carries onto a grid; its data is the module's stable key. */
+export const MODULE_MIME = 'application/x-phosphor-module';
 
 // ---- cells and scale ---------------------------------------------------------
 
@@ -93,8 +95,9 @@ const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
  *   the item under a drag. Everything else yields to it.
  * - Saved items keep their column (clamped to fit), are pushed down past any
  *   collision, then rise while the cell above is free (vertical compaction).
- * - Unsaved items get DEFAULT_W x DEFAULT_H and flow left to right, top to
- *   bottom, below every saved item.
+ * - Unsaved items, and entries with no position yet (a reset nest, a look set
+ *   before the item was placed), flow below every saved item at their own size;
+ *   an entry with no `w` (or no entry) fills the row, `h` defaults to DEFAULT_H.
  * Returns [{...item, x, y, w, h}] in reading order (y, then x).
  */
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
@@ -103,7 +106,7 @@ export function pack(items, map, cols, pin = null) {
   const placed = [];
   const fits = (r) => !placed.some((p) => overlaps(r, p));
   const size = (e) => {
-    const w = int(e && e.w, 1, cols, Math.min(DEFAULT_W, cols));
+    const w = int(e && e.w, 1, cols, cols);
     return { w, h: int(e && e.h, 1, MAX_H, DEFAULT_H) };
   };
   const byId = new Map(items.map((it) => [it.id, it]));
@@ -118,7 +121,7 @@ export function pack(items, map, cols, pin = null) {
   for (const it of items) {
     if (pin && it.id === pin.id) continue;
     const e = map[it.id];
-    if (e && typeof e === 'object') saved.push({ it, e, y: int(e.y, 0, Infinity, 0), x: int(e.x, 0, Infinity, 0) });
+    if (e && typeof e === 'object' && e.y != null) saved.push({ it, e, y: int(e.y, 0, Infinity, 0), x: int(e.x, 0, Infinity, 0) });
     else fresh.push(it);
   }
   saved.sort((a, b) => a.y - b.y || a.x - b.x || (a.it.id < b.it.id ? -1 : 1));
@@ -132,11 +135,11 @@ export function pack(items, map, cols, pin = null) {
 
   const floor = placed.reduce((m, p) => Math.max(m, p.y + p.h), 0);
   for (const it of fresh) {
-    const { w, h } = size(null);
+    const { w, h } = size(map[it.id]);
     let r = null;
     for (let y = floor; !r; y++) {
       for (let x = 0; x + w <= cols; x++) {
-        if (fits({ x, y, w, h })) { r = { ...it, x, y, w, h }; break; }
+        if (fits({ x, y, w, h })) { r = { ...it, x, y, w, h, ...lookOf(map[it.id]) }; break; }
       }
     }
     placed.push(r);
@@ -214,7 +217,7 @@ const modulesOf = (s) => (s && s.modules && typeof s.modules === 'object' && !Ar
 const own = (o, k) => o[k] !== undefined && Object.prototype.hasOwnProperty.call(o, k);
 const validName = (n) => typeof n === 'string' && n.trim() !== '' && !(n.trim() in Object.prototype);
 
-/** Old {[id]: {span, order}} map -> placements, reading order kept. */
+/** Old {[id]: {span, order}} map -> placements, reading order kept; a full-span card gets no `w`, so it fills the row at any DPR. */
 export function migrateSpans(old) {
   const rows = Object.entries(old && typeof old === 'object' ? old : {})
     .filter(([, e]) => e && typeof e === 'object')
@@ -223,8 +226,8 @@ export function migrateSpans(old) {
   const out = {};
   let x = 0, y = 0;
   for (const r of rows) {
-    if (x + r.w > DEFAULT_W) { x = 0; y++; }
-    out[r.id] = { x, y, w: r.w, h: DEFAULT_H };
+    if (x + r.w > SPAN_ROW) { x = 0; y++; }
+    out[r.id] = r.w === SPAN_ROW ? { x, y, h: DEFAULT_H } : { x, y, w: r.w, h: DEFAULT_H };
     x += r.w;
   }
   return out;
@@ -333,9 +336,13 @@ export function deleteLayout(store, name) {
  */
 export const FIELDS_NESTS_ONLY = false;
 
-/** May a control of `kind` sit at the top level or in a nest? A nest never nests. */
+/**
+ * May a control of `kind` sit at the top level or in a nest? A nest never
+ * nests. A safety op is top level only: a scrolling nest could carry it out of
+ * view (law 11), and the strip's own copy is the one that cannot go.
+ */
 export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
-  if (kind === 'nest') return !inNest;
+  if (kind === 'nest' || kind === 'safety') return !inNest;
   return inNest || !nestsOnly || kind !== 'field';
 }
 

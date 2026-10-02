@@ -19,6 +19,9 @@
  *   build      deleting every module leaves an empty home (never reseeded)
  *              and the strip e-stop; a home built from the palette survives
  *              a reload
+ *   drag       a palette entry dragged onto the grid lands at the drop
+ *              column, onto a nest joins it; a look chip adds that look;
+ *              Ctrl+Z undoes the last change, one level (ph-e82.15)
  *
  * Live mode (--live): the build-and-reload check against a running valencesim
  * (catalog fetched, not seeded). Skips (exit 0) when no sim answers.
@@ -406,6 +409,63 @@ if (!LIVE) {
   await old.page.waitForTimeout(150);
   ok('alias: Remove by the role key drops the uid-form entry', (await topIds(old.page)).length === 0, await topIds(old.page));
   await old.ctx.close();
+
+  // ---- palette drag-to-place, looks, undo (ph-e82.15) ---------------------------
+  console.log('\n[full 1280x1400, palette drag and undo]');
+  // Tall, so the palette entry and its drop target are on screen below the pinned rail hero.
+  const ux = await open(1280, 1400, { active: 'Default', modules: {},
+    layouts: { Default: { 'full.machine': { 'home:built': { x: 0, y: 9, w: 1, h: 1 } } } } });
+  const stored = () => ux.page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.layouts')).layouts.Default['full.machine']);
+  await editBtn(ux.page).click();
+  await ux.page.waitForTimeout(150);
+  const looks = await ux.page.$$eval('.palette li[data-key]:has(.palette-looks)', (els) => els.map((e) => e.dataset.key));
+  ok('palette: field entries list their presentations', looks.length > 1, looks.length);
+  ok('palette: a safety op is marked as strip-bound', await ux.page.locator('.palette li[data-key^="safety:"] .palette-tag').count() > 0);
+  const [dragKey, lookKey] = looks;
+  const grid = ux.page.locator('.home > .dash-wrap > .dash-grid');
+  const cellPx = await grid.evaluate((el) => parseFloat(el.style.getPropertyValue('--cell')));
+  // A real HTML5 drag from the entry's title (searched to the top, centered),
+  // released only after the target has seen a dragover: Chromium paces them.
+  async function dragEntry(page, key, target, dx, dy) {
+    const entry = page.locator('.palette li[data-key="' + key + '"]');
+    await page.fill('.palette-filter', await entry.locator('.palette-title').textContent());
+    await entry.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    const src = await entry.locator('.palette-title').boundingBox();
+    const dst = await target.boundingBox();
+    await page.mouse.move(src.x + 5, src.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(dst.x + dx, dst.y + dy, { steps: 10 });
+    await page.waitForTimeout(100);
+    await page.mouse.move(dst.x + dx + 2, dst.y + dy);
+    await page.waitForTimeout(100);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    await page.fill('.palette-filter', '');
+  }
+  await dragEntry(ux.page, dragKey, grid, cellPx * 5.5, cellPx * 1.5);
+  ok('drag: a palette entry dropped on the grid is placed', (await topIds(ux.page)).includes(dragKey), await topIds(ux.page));
+  ok('drag: it lands at the drop column', (await stored())[dragKey]?.x === 5, JSON.stringify((await stored())[dragKey]));
+  ok('drag: no drop target is left behind', await ux.page.locator('.drop-ghost').count() === 0);
+  await ux.page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
+  const lookPres = (await ux.page.$$eval('.palette li[data-key="' + lookKey + '"] .look-chip', (els) => els.map((e) => e.textContent.trim())))[1];
+  await ux.page.locator('.palette li[data-key="' + lookKey + '"] .look-chip', { hasText: lookPres }).click();
+  await ux.page.waitForTimeout(150);
+  ok('looks: a look chip adds the field with that presentation', (await stored())[lookKey]?.look?.pres === lookPres,
+    JSON.stringify((await stored())[lookKey]));
+  ok('undo: offered after a change', await ux.page.locator('.home .dash-toolbar button', { hasText: 'Undo' }).isEnabled());
+  await ux.page.keyboard.press('Control+z');
+  await ux.page.waitForTimeout(150);
+  ok('undo: Ctrl+Z takes back the last add only', !(await topIds(ux.page)).includes(lookKey) && (await topIds(ux.page)).includes(dragKey),
+    await topIds(ux.page));
+  ok('undo: one level, then disabled', await ux.page.locator('.home .dash-toolbar button', { hasText: 'Undo' }).isDisabled());
+  await ux.page.locator('.home .dash-toolbar button', { hasText: 'New nest' }).click();
+  await ux.page.waitForTimeout(150);
+  const uxNest = (await topIds(ux.page)).find((id) => id.startsWith('nest:'));
+  await dragEntry(ux.page, lookKey, ux.page.locator('.dash-cell[data-id="' + uxNest + '"] .nest-body .dash-grid'), 20, 20);
+  ok('drag: a drop on a nest joins the nest', await ux.page.locator('.dash-cell[data-id="' + uxNest + '"] .nest-body .dash-cell[data-id="' + lookKey + '"]').count() === 1);
+  ok('drag: a safety op cannot be dragged into a nest', await ux.page.selectOption('.palette select[aria-label="Place into"]', uxNest)
+    .then(() => ux.page.locator('.palette li[data-key^="safety:"]').first().getAttribute('draggable')) === 'false');
+  await ux.ctx.close();
 
   // ---- handheld ---------------------------------------------------------------
   console.log('\n[handheld 390x844]');

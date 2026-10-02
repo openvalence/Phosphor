@@ -23,8 +23,8 @@
   import Control from './widgets/Control.svelte';
   import LookEditor from './LookEditor.svelte';
   import TelemetryChart from './widgets/TelemetryChart.svelte';
-  import { dashboardLayout, layouts, grid } from '../model/dashboard.svelte.js';
-  import { viewMap, cellCount, isNest } from '../model/grid.js';
+  import { dashboardLayout, layouts, grid, checkpoint } from '../model/dashboard.svelte.js';
+  import { viewMap, cellCount, isNest, placeable } from '../model/grid.js';
   import { view } from '../model/viewport.svelte.js';
   import { specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { SAFETY_OP } from '../../../Valence/clients/js/index.js';
@@ -98,18 +98,24 @@
   const placed = $derived(new Set(keys.map(canon)));
 
   // Writes the top level only: nest members stay in their nests, nests keep their contents.
-  function commit(next) {
+  function commit(next, pin = null) {
     viewMap(layouts, view.cls, VIEW)[BUILT] = { x: 0, y: 0, w: 1, h: 1 };
     const nests = layout.nests();
     const inNest = new Set(nests.flatMap((n) => n.keys));
-    layout.move([...next.filter((it) => !inNest.has(it.id)), ...nests.map((n) => ({ id: n.id }))], cols, null);
+    layout.move([...next.filter((it) => !inNest.has(it.id)), ...nests.map((n) => ({ id: n.id }))], cols, pin);
   }
-  function add(key, nest = '') {
-    if (!modules.has(key) || placed.has(key)) return;
+  // `pres` is a look picked in the palette; `at` the cell area a palette drop
+  // showed (a drop into a nest joins it unplaced). One undo step each.
+  function add(key, nest = '', pres = null, at = null) {
+    const m = modules.get(key);
+    if (!m || placed.has(key) || !placeable(m.kind, !!nest)) return;
+    checkpoint();
     if (nest) layout.nestAdd(nest, key);
-    else commit([...items, modules.get(key)]);
+    else commit([...items, m], at && { id: key, ...at });
+    if (pres && pres !== m.control?.presentations?.[0]) (nest ? layout.nest(nest) : layout).setLook(key, { pres });
   }
   function remove(key) {
+    checkpoint();
     const gone = keys.filter((k) => canon(k) === canon(key));
     const next = items.filter((it) => !gone.includes(it.id));
     for (const n of layout.nests()) for (const k of gone) if (n.keys.includes(k)) layout.nestRemove(n.id, k);
@@ -143,7 +149,8 @@
   {#if editing && builder}
     <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
   {/if}
-  <DashGrid viewId={VIEW} {items} bind:editing />
+  <DashGrid viewId={VIEW} {items} bind:editing
+            ondropkey={builder ? (key, at, nest) => add(key, nest || '', null, at) : null} />
 </div>
 
 <style>

@@ -10,7 +10,7 @@
  * Run: node test/grid-model.test.mjs
  */
 import {
-  CELL_DEVICE_PX, SCALE_STEPS, DEFAULT_W, STORE_KEY,
+  CELL_DEVICE_PX, SCALE_STEPS, STORE_KEY,
   cellCssPx, cellCount, allowedSteps, clampScale, stepScale, pack, commitPin, commitOrder,
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
@@ -81,7 +81,10 @@ ok('garbage scale reads as 1', clampScale('x', fine) === 1);
 console.log('placement');
 {
   const fresh = pack(items('a', 'b', 'c'), {}, 104);
-  ok('unsaved items flow left to right at DEFAULT_W', fresh[0].x === 0 && fresh[1].x === DEFAULT_W && fresh[2].y === 1, JSON.stringify(fresh.map((p) => [p.x, p.y])));
+  ok('unsaved items fill the row at any width (ph-e82.15)', fresh.every((p, i) => p.x === 0 && p.y === i && p.w === 104), JSON.stringify(fresh.map((p) => [p.x, p.y, p.w])));
+  const early = pack(items('a', 'b'), { a: { x: 0, y: 0, w: 8, h: 1 }, b: { look: { pres: 'knob' } } }, 40);
+  ok('an entry with a look but no place yet flows as unsaved and keeps its look',
+     early[1].id === 'b' && early[1].y === 1 && early[1].w === 40 && early[1].look.pres === 'knob', JSON.stringify(early));
   const narrow = pack(items('a', 'b'), {}, 30);
   ok('a narrow window clamps width and stacks', narrow[0].w === 30 && narrow[1].y === 1);
   const saved = { a: { x: 0, y: 5, w: 10, h: 2 }, b: { x: 4, y: 0, w: 10, h: 1 } };
@@ -156,6 +159,8 @@ console.log('migration');
   const order = ids(pack(items('a', 'b', 'c'), m, 48));
   ok('a seeded 12-span map keeps visual order', order === 'c,a,b', order);
   ok('two half spans share a row', m.a.y === m.b.y && m.a.x < m.b.x);
+  ok('a full-span card migrates with no w, so it fills the row at DPR 2 (80 cells) too',
+     !('w' in m.c) && pack(items('a', 'b', 'c'), m, 80).find((p) => p.id === 'c').w === 80);
   ok('an id this catalog lacks migrates and stays inert', !!m.gone && !pack(items('a', 'b', 'c'), m, 48).some((p) => p.id === 'gone'));
   ok('migration writes nothing by itself', st.writes.length === 0);
 
@@ -183,6 +188,7 @@ console.log('nests');
   ok('nests-only: a field is refused at the top level, welcome in a nest, other kinds unaffected',
      !placeable('field', false, true) && placeable('field', true, true) && placeable('composite', false, true) && placeable(undefined, false, true));
   ok('a nest never nests, either way', placeable('nest', false) && !placeable('nest', true) && !placeable('nest', true, true));
+  ok('a safety op is top level only (law 11; ph-e82.15)', placeable('safety', false) && !placeable('safety', true) && placeable('safety', false, true));
 
   const st = memStorage();
   const s = loadStore(st);
@@ -238,6 +244,7 @@ console.log('nests');
   const r = again.layouts.Default['full.home'];
   resetMap(r);
   ok('reset keeps the nest, its size and members', isNest(r[id]) && r[id].w === 20 && r[id].x === undefined && !r.d && nestsIn(r)[0].keys.length === 3);
+  ok('a reset nest reflows at its own size', JSON.stringify(pack([{ id }], r, 40).map((p) => [p.w, p.h])) === '[[20,6]]');
   resetMap(r[id].nest.map, true);
   ok('a nest reset keeps every member, unplaced', Object.keys(r[id].nest.map).length === 3 && Object.values(r[id].nest.map).every((v) => v === null));
   ok('nestRemove drops one member', nestRemove(r, id, 'b') && !own(r[id].nest.map, 'b') && !nestRemove(r, id, 'b'));

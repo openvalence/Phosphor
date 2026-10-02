@@ -2,7 +2,7 @@
  * dash-measure.test.mjs -- is a dashboard card's content column readable?
  *
  * The operator's report: "cards too wide to track left-to-right at 1440px."
- * A settings card is DEFAULT_W cells wide (model/grid.js), the full pane at
+ * An unsized settings card fills the row (model/grid.js pack), the full pane at
  * these widths, so its `.card-body` column is whatever the pane happens to be.
  *
  * Second half (ph-e82.3): the grid's cell edge, measured from the rendered

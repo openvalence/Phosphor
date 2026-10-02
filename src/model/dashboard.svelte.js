@@ -24,27 +24,60 @@ const ls = storage || mem;
 /** The named layouts store: { active, layouts, modules } (grid.js). */
 export const layouts = $state(G.loadStore(ls));
 const persist = () => G.saveStore(ls, $state.snapshot(layouts));
-const saved = (r) => (r && persist(), r);
+
+// One level of undo over the whole store. Every edit in one synchronous burst
+// (Home's remove is a delete plus a commit) is one step: the snapshot is taken
+// at the burst's first edit and kept only if the burst changed the store, so a
+// click on a grip that moves nothing never costs the real last change.
+let burst = null;
+let last = null;
+/** `can` is true while there is a change to undo. */
+export const undo = $state({ can: false });
+/** Call before writing the store directly; the edit helpers below call it themselves. */
+export function checkpoint() {
+  if (burst) return;
+  burst = JSON.stringify($state.snapshot(layouts));
+  queueMicrotask(() => { burst = null; });
+}
+const saved = (r) => {
+  if (!r) return r;
+  if (burst && JSON.stringify($state.snapshot(layouts)) !== burst) { last = burst; undo.can = true; }
+  persist();
+  return r;
+};
+const edit = (fn) => (...a) => { checkpoint(); return saved(fn(...a)); };
+/** Restore the store as it was before the last change; one level. */
+export function undoLast() {
+  if (!last) return false;
+  const s = JSON.parse(last);
+  layouts.active = s.active;
+  layouts.layouts = s.layouts;
+  layouts.modules = s.modules;
+  last = null;
+  undo.can = false;
+  persist();
+  return true;
+}
 
 export const layoutNames = () => Object.keys(layouts.layouts);
 export const switchLayout = (n) => saved(G.switchLayout(layouts, n));
-export const saveLayoutAs = (n) => saved(G.saveLayoutAs(layouts, n));
-export const renameLayout = (a, b) => saved(G.renameLayout(layouts, a, b));
-export const deleteLayout = (n) => saved(G.deleteLayout(layouts, n));
+export const saveLayoutAs = edit((n) => G.saveLayoutAs(layouts, n));
+export const renameLayout = edit((a, b) => G.renameLayout(layouts, a, b));
+export const deleteLayout = edit((n) => G.deleteLayout(layouts, n));
 
 /** Saved nests (modules), shared by every layout and view. */
 export const moduleNames = () => Object.keys(layouts.modules || {});
-export const deleteModule = (n) => saved(G.deleteModule(layouts, n));
+export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
 function controller(read, write, members) {
   return {
     arrange: (items, cols, pin = null) => G.pack(items, read(), cols, pin),
-    move(items, cols, pin) { G.commitPin(write(), items, cols, pin); persist(); },
-    order(items, cols, ids) { G.commitOrder(write(), items, cols, ids); persist(); },
-    setLook(id, look, at) { G.setLook(write(), id, look, at); persist(); },
+    move: edit((items, cols, pin) => (G.commitPin(write(), items, cols, pin), true)),
+    order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
+    setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
     // An emptied map, not a deleted key: the migration can never resurrect it.
-    reset() { G.resetMap(write(), members); persist(); },
+    reset: edit(() => (G.resetMap(write(), members), true)),
   };
 }
 
@@ -68,18 +101,18 @@ export function dashboardLayout(viewId, cls = 'full') {
   const read = () => G.viewMap(layouts, cls, viewId, false);
   const map = () => G.viewMap(layouts, cls, viewId);
   const sub = (id) => () => (G.isNest(read()[id]) ? read()[id].nest.map : {});
-  const edit = (fn) => (...a) => saved(fn(map(), ...a));
+  const inMap = (fn) => edit((...a) => fn(map(), ...a));
   return {
     ...controller(read, map, false),
     nests: () => G.nestsIn(read()),
     nest: (id) => controller(sub(id), sub(id), true),
-    addNest: edit(G.addNest),
-    nestAdd: edit(G.nestAdd),
-    nestRemove: edit(G.nestRemove),
-    setNest: edit(G.setNest),
-    removeNest: edit(G.removeNest),
-    saveModule: (id, name) => saved(G.saveModule(layouts, read(), id, name)),
-    insertModule: (name) => saved(G.insertModule(layouts, map(), name)),
+    addNest: inMap(G.addNest),
+    nestAdd: inMap(G.nestAdd),
+    nestRemove: inMap(G.nestRemove),
+    setNest: inMap(G.setNest),
+    removeNest: inMap(G.removeNest),
+    saveModule: edit((id, name) => G.saveModule(layouts, read(), id, name)),
+    insertModule: inMap((m, name) => G.insertModule(layouts, m, name)),
   };
 }
 

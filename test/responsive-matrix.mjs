@@ -37,7 +37,10 @@
  *   scale    no horizontal page scroll at any scale step; the target floor
  *            holds at the smallest scale on phones (ph-e82.3, law 12)
  *   home     full: the home in edit mode with every palette section open
- *            passes the layout and strip checks (ph-e82.5)
+ *            passes the layout and strip checks (ph-e82.5); the grid toolbar
+ *            holds one row at 1280, its menu opens on screen, and a phone in
+ *            edit mode has no horizontal scroll; layout handles stay 40 CSS
+ *            px at the smallest scale (ph-e82.15)
  *   nest     phone: a scrolling nest is not a scroll region of its own, a
  *            wheel over it scrolls the page, the page passes the layout
  *            checks (ph-e82.6)
@@ -632,6 +635,52 @@ if (!ONLY || ONLY === 'home') {
       f.map((x) => x.join(' ')).join('; '));
     scen(w + 'x' + h + ': each grid contains its own announce region (ph-e82.10)', await page.$$eval('.dash-wrap > [aria-live]',
       (els) => els.length > 0 && els.every((el) => el.offsetParent === el.parentElement)));
+    const rows = await page.$eval('.home .dash-toolbar', (bar) => new Set([...bar.children]
+      .filter((c) => c.getBoundingClientRect().height > 0).map((c) => { const r = c.getBoundingClientRect(); return Math.round(r.top + r.height / 2); })).size);
+    scen(w + 'x' + h + ': the edit-mode toolbar holds one row (ph-e82.15)', rows === 1, rows + ' rows');
+    await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+    const menu = await page.$eval('.dash-menu', (m) => {
+      const r = m.getBoundingClientRect();
+      const b = document.querySelector('[popovertarget="' + m.id + '"]').getBoundingClientRect();
+      const strip = document.querySelector('.topstrip').getBoundingClientRect();
+      return { open: m.matches(':popover-open'), in: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+        beside: r.top >= b.bottom - 1 || r.bottom <= b.top + 1, clear: r.top >= strip.bottom };
+    });
+    scen(w + 'x' + h + ': the layout menu opens on screen beside its button, clear of the strip',
+      menu.open && menu.in && menu.beside && menu.clear, JSON.stringify(menu));
+    await page.keyboard.press('Escape');
+    await ctx.close();
+  }
+  for (const [w, h] of [[320, 568], [360, 800]]) {
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    const f = (await page.evaluate(measure, { phone: true })).filter(([k]) => k === 'overflow' || k === 'target');
+    await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+    const open = await page.$eval('.dash-menu', (m) => {
+      const r = m.getBoundingClientRect();
+      return document.scrollingElement.scrollWidth <= innerWidth + 0.5 && r.left >= 0 && r.right <= innerWidth;
+    });
+    scen(w + 'x' + h + ': the edit-mode toolbar fits a phone, and so does its open menu (ph-e82.15)', f.length === 0 && open,
+      f.map((x) => x.join(' ')).join('; ') + (open ? '' : ' menu off screen'));
+    await ctx.close();
+  }
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(([etag, bytes, k, v]) => {
+      try { localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); localStorage.setItem(k, v); } catch (e) { /* none */ }
+    }, [ETAG, toHex(CAT), SCALE_KEY, String(SCALE_STEPS[0])]);
+    await ctx.routeWebSocket(/:82\//, fakeHub);
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => pageErrors.push('home: ' + e));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    const small = await page.$$eval('.dash-item .handle', (els) => els.map((e) => e.getBoundingClientRect())
+      .filter((r) => r.width < 39.5 || r.height < 39.5).map((r) => Math.round(r.width) + 'x' + Math.round(r.height)));
+    const n = await page.locator('.dash-item .handle').count();
+    scen('1280x720 at scale ' + SCALE_STEPS[0] + ': every layout handle is at least 40 CSS px (law 12)', n > 0 && small.length === 0, n + ' handles; ' + small.slice(0, 4).join(', '));
     await ctx.close();
   }
 }

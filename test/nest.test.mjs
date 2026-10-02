@@ -246,6 +246,7 @@ await page.waitForTimeout(150);
 ok('a member moved out can be added back (a $state delete is not a ghost)', (await membersOf(fresh)).includes(cards[0]));
 await nest2.locator('.nest-body .dash-cell[data-id="' + cards[0] + '"] button:has-text("Out")').click();
 await page.waitForTimeout(150);
+await page.click('button:has-text("Layout…")');
 await page.locator('select[aria-label="Module"]').selectOption('Nest');
 await page.click('button:has-text("Insert")');
 await page.waitForTimeout(150);
