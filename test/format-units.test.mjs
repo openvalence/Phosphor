@@ -28,6 +28,10 @@ console.log('unit ids');
 ok('deg renders as °', unitOf(f(UNIT_ID.deg)) === '°');
 ok('us renders as µs', unitOf(us) === 'µs');
 ok('hub_s renders as hub s when no clock is known', unitOf(f(UNIT_ID.hub_s)) === 'hub s');
+ok('count with a free-string unit shows it', formatWithUnit(f(UNIT_ID.count, { unit: 'strokes' }), 1).replace(/\s/g, ' ') === '1 strokes',
+  formatWithUnit(f(UNIT_ID.count, { unit: 'strokes' }), 1));
+ok('a plain count shows no unit', formatWithUnit(f(UNIT_ID.count), 1) === '1', formatWithUnit(f(UNIT_ID.count), 1));
+ok('a suffixed id keeps the registry suffix over the free string', unitOf(f(UNIT_ID.ms, { unit: 'msec' })) === 'ms');
 
 console.log('\nautorange (display only)');
 setAutorange(true);

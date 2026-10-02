@@ -139,9 +139,9 @@ function groupThousands(s) {
   return i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (f ? '.' + f : '');
 }
 
-/** Unit suffix, or '' when the catalog gave none. */
+/** Unit suffix, or '' when the catalog gave none. An id with no suffix (count) yields to the free string. */
 export function unitOf(field) {
-  if (field && field.unitId != null && field.unitId in UNIT_SUFFIX) return UNIT_SUFFIX[field.unitId];
+  if (field && field.unitId != null && UNIT_SUFFIX[field.unitId]) return UNIT_SUFFIX[field.unitId];
   const u = field && field.unit;
   if (!u || u === 'flag' || u === 'count' || u === '-') return '';
   return u;
