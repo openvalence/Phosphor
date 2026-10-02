@@ -73,6 +73,9 @@ export const restoreLayout = edit((n, json) => {
   return true;
 });
 export const exportLayout = (n) => G.exportLayout($state.snapshot(layouts), n);
+/** The active layout's density (grid.js DENSITY) and its setter. */
+export const density = () => G.layoutOpts(layouts).density;
+export const setDensity = edit((d) => G.setDensity(layouts, d));
 /** Add the layout in `text` (grid.js importLayout); returns its name, throws naming why not. */
 export const importLayout = edit((text) => G.importLayout(layouts, text));
 

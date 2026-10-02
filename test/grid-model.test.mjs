@@ -17,6 +17,7 @@ import {
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
   arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H, nudgePin, exportLayout, importLayout,
+  DENSITY, layoutOpts, setDensity,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -443,6 +444,26 @@ console.log('export');
      importLayout(s, '{"app":"phosphor","views":{"full.x":{"q":{"x":0,"y":0,"w":2,"h":1}},"nodot":{},"full.y":7}}') === 'Imported'
      && JSON.stringify(Object.keys(s.layouts.Imported)) === '["full.x"]');
   ok('a prototype name is not a name', importLayout(s, '{"app":"phosphor","layout":"__proto__","views":{}}') === 'Imported 2');
+}
+
+// ---- density per layout (ph-e82.20.7) ---------------------------------------------------
+console.log('density');
+{
+  const st = memStorage();
+  const s = loadStore(st);
+  viewMap(s, 'full', 'machine').a = { x: 0, y: 0, w: 4, h: 1 };
+  ok('a layout is comfortable by default', layoutOpts(s).density === DENSITY[0] && DENSITY.includes('compact'));
+  ok('setDensity stores compact on the active layout', setDensity(s, 'compact') && layoutOpts(s).density === 'compact' && s.layouts.Default.opts.density === 'compact');
+  ok('an unknown density is refused', !setDensity(s, 'tiny') && layoutOpts(s).density === 'compact');
+  ok('the option is no view: placement never sees it', JSON.stringify(Object.keys(viewMap(s, 'full', 'machine'))) === '["a"]'
+     && pack(items('a'), viewMap(s, 'full', 'machine'), 40).length === 1);
+  saveLayoutAs(s, 'Copy');
+  ok('save as carries it', layoutOpts(s, 'Copy').density === 'compact');
+  ok('comfortable is stored as no option at all', setDensity(s, 'comfortable') && !('opts' in s.layouts.Copy) && layoutOpts(s, 'Default').density === 'compact');
+  ok('export and import carry it', layoutOpts(s, importLayout(s, exportLayout(s, 'Default'))).density === 'compact');
+  saveStore(st, s);
+  ok('it survives a reload', layoutOpts(loadStore(st), 'Default').density === 'compact');
+  ok('a corrupt option reads as the default', layoutOpts({ active: 'X', layouts: { X: { opts: { density: 9 } } } }).density === DENSITY[0]);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

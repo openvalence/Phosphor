@@ -46,6 +46,7 @@
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const KIND_SECTION = { composite: 'Composites', plugin: 'Plugin widgets', safety: 'Safety' };
   // The resize floor (DashGrid): a field by its placed presentation, a composite or safety op by its declared cells.
+  // A field and a safety op name themselves (Field's label, the op's own text), so their card label may hide.
   const minOf = (c) => (look, o) => minCells(c.kind === 'field' ? (look && look.pres) || c.presentations[0] : c.cells, o);
 
   // Every module this catalog can place, in palette order: summaries,
@@ -65,13 +66,13 @@
     for (const k of ['composite', 'plugin', 'safety']) {
       for (const c of controls.filter((x) => x.kind === k)) {
         put(c.key, k === 'safety' ? (c.op === SAFETY_OP.estop ? estopLabel() : 'Pause') : c.hero.title || cap(c.hero.id),
-          KIND_SECTION[k], { kind: k, control: c, min: minOf(c) });
+          KIND_SECTION[k], { kind: k, control: c, min: minOf(c), selfLabeled: k === 'safety' });
       }
     }
     const fields = controls.filter((x) => x.kind === 'field');
     for (const sec of [...model.categories.map((c) => c.label), 'Other fields']) {
       for (const c of fields.filter((x) => (catOf.get(x.field.uid) || 'Other fields') === sec)) {
-        put(c.key, labelFor(c.field), sec, { kind: 'field', control: c, fields: [c.field], min: minOf(c) });
+        put(c.key, labelFor(c.field), sec, { kind: 'field', control: c, fields: [c.field], min: minOf(c), selfLabeled: true });
       }
     }
     return out;

@@ -35,7 +35,7 @@
   import {
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
-    layoutJson, restoreLayout, exportLayout, importLayout,
+    layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
   import { cellCount, placeable, resizeRect, arrangePins, nudgePin, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
@@ -516,7 +516,7 @@
 
 <svelte:window onresize={() => (winW = window.innerWidth)} onkeydown={onKey} />
 
-<div class="dash-wrap">
+<div class="dash-wrap" data-density={given ? null : density()}>
   {#if !given}
   <div class="dash-toolbar">
     <div class="scale" role="group" aria-label="Scale">
@@ -549,6 +549,11 @@
                   onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
           <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
         </div>
+        <label class="og-switch density">
+          <input type="checkbox" role="switch" checked={density() === 'compact'}
+                 onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
+          <span class="track"></span>Compact cards in {layouts.active}
+        </label>
         <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
                   placeholder="Export fills this; paste a layout here to import" bind:value={layoutText}></textarea>
         <div class="menu-row">
@@ -808,8 +813,18 @@
   /* .og-panel's outline paints 4px outside each card's border box; 7px of
      padding keeps neighboring outlines apart and off the grid's edge. */
   .dash-cell {
-    padding: 7px;
+    padding: var(--dash-cell-pad, 7px);
     min-width: 0;
+  }
+  /* Density (per layout): cells keep their size; the gutter, the card padding
+     and the card label shrink. Read by DashItem through the inherited tokens.
+     The label stays at 11 px or more (test/responsive-matrix.mjs font floor)
+     and every handle keeps its 40 px (law 12). */
+  .dash-wrap[data-density='compact'] {
+    --dash-cell-pad: 4px;
+    --dash-outline-offset: 2px;
+    --dash-body-pad: 6px;
+    --dash-title-size: .7rem;
   }
 
   .sr-only {

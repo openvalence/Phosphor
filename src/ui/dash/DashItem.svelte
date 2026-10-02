@@ -46,6 +46,15 @@
     onselect = null,
   } = $props();
 
+  // A self-labeled control (item.selfLabeled: it names itself, as a field or a
+  // safety op does) may hide the card label (look.label false). The head stays
+  // in edit mode, so the card can still be grabbed and the label brought back.
+  const bare = $derived(!!item.selfLabeled && !!item.look && item.look.label === false);
+  function toggleLabel() {
+    const { label, ...rest } = item.look || {};
+    item.setLook(bare ? rest : { ...rest, label: false });
+  }
+
   // ---- grab handle: drag to reorder --------------------------------------
   function onGrabPointerDown(e) {
     if (e.button !== undefined && e.button !== 0) return;
@@ -104,7 +113,8 @@
   }
 </script>
 
-<div class="dash-item og-panel" class:dragging class:editing class:selected>
+<div class="dash-item og-panel" class:dragging class:editing class:selected class:bare>
+  {#if editing || !bare}
   <div class="dash-head card-head">
     <!-- Handles are edit-mode-only: the reading surface stays quiet and a
          card's own controls never compete with layout chrome. -->
@@ -137,11 +147,18 @@
     {:else}
       <h3 class="dash-title" data-pidx={pidx}>{item.title}</h3>
     {/if}
+    {#if editing && item.selfLabeled && item.setLook}
+      <button type="button" class="og-btn sm label-btn" aria-pressed={!bare}
+              aria-label={(bare ? 'Show' : 'Hide') + ' the card label of ' + item.title}
+              title={bare ? 'The label is hidden outside edit mode' : 'Hide the label; the control names itself'}
+              onclick={toggleLabel}>Label</button>
+    {/if}
     {#if editing && onremove}
       <button type="button" class="og-btn sm out" aria-label={'Move ' + item.title + ' out of the nest'}
               onclick={onremove}>Out</button>
     {/if}
   </div>
+  {/if}
 
   <div class="dash-body">
     <!-- The item is passed back to its own snippet so a CALLER can share one
@@ -224,9 +241,13 @@
   .dash-item:not(.editing) .dash-head {
     padding-left: 8px;
   }
+  .dash-item { outline-offset: var(--dash-outline-offset, 4px); }
+  .bare .dash-title { opacity: .5; }
+  .label-btn { margin-left: auto; }
+  .label-btn + .out { margin-left: 0; }
   .dash-title {
     font-family: var(--font);
-    font-size: .8rem;
+    font-size: var(--dash-title-size, .8rem);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: .12em;
@@ -260,7 +281,7 @@
   .dash-body {
     flex: 1 1 auto;
     min-height: 0;
-    padding: var(--gap);
+    padding: var(--dash-body-pad, var(--gap));
     min-width: 0;
   }
   /* The resize handle sits over the body's bottom-right corner: reserve its

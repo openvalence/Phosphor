@@ -28,6 +28,10 @@
  *   layouts  a switch with changes since editing began asks Keep, Discard
  *            or Stay; a switch runs no animation on the grid; a layout
  *            exports as JSON and imports under a free name (ph-e82.20.6)
+ *   density  Compact (per layout) shrinks the gutter, card padding and card
+ *            label, never a handle or the font floor; a self-labeled card
+ *            hides its label outside edit mode and keeps its field label
+ *            (ph-e82.20.7)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -443,6 +447,53 @@ console.log('layouts');
   ok('a foreign text is refused, named, and adds nothing', /Not imported: not a Phosphor layout/.test(await said())
      && Object.keys((await all()).layouts).length === 3, await said());
   await page.keyboard.press('Escape');
+  await ctx.close();
+}
+
+// ---- density and hidden labels (ph-e82.20.7) --------------------------------------------
+console.log('density');
+{
+  const built = { 'home:built': { x: 0, y: 40, w: 1, h: 1 } };
+  const store = { active: 'Default', modules: {}, layouts: {
+    Default: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 3 }, 'hero:pattern': { x: 14, y: 0, w: 16, h: 6 }, ...built } },
+    Spare: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 3 }, ...built } },
+  } };
+  const { ctx, page, said, card } = await open(null, { store });
+  const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
+  const metrics = () => card(SLIDER).evaluate((c) => ({ pad: parseFloat(getComputedStyle(c).paddingTop),
+    title: parseFloat(getComputedStyle(c.querySelector('.dash-title')).fontSize),
+    handle: Math.min(...[...c.querySelectorAll('.handle')].map((h) => Math.min(h.getBoundingClientRect().width, h.getBoundingClientRect().height))) }));
+  const roomy = await metrics();
+  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  await page.locator('.dash-menu label.density').click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const tight = await metrics();
+  ok('Compact is stored on the layout', (await all()).layouts.Default.opts?.density === 'compact' && /is compact/.test(await said()));
+  ok('Compact shrinks the gutter and the card label', tight.pad < roomy.pad && tight.title < roomy.title, { roomy, tight });
+  ok('the label keeps the 11 px floor and handles keep 40 px (law 12)', tight.title >= 11 && tight.handle >= 39.5, tight);
+  await page.locator('.home .dash-toolbar select[aria-label="Layout"]').selectOption('Spare');
+  await page.locator('.home .dash-switchbar button', { hasText: 'Keep and switch' }).click();
+  await page.waitForTimeout(150);
+  ok('density is per layout: another layout stays comfortable', (await metrics()).pad === roomy.pad && !(await all()).layouts.Spare.opts);
+  await page.locator('.home .dash-toolbar select[aria-label="Layout"]').selectOption('Default');
+  await page.waitForTimeout(150);
+
+  ok('only a self-labeled card offers to hide its label', await card(SLIDER).locator('.label-btn').count() === 1
+     && await card('hero:pattern').locator('.label-btn').count() === 0);
+  await card(SLIDER).locator('.label-btn').click();
+  await page.waitForTimeout(100);
+  ok('hiding is stored on the placement look', (await all()).layouts.Default['full.machine'][SLIDER].look?.label === false
+     && await card(SLIDER).locator('.label-btn').getAttribute('aria-pressed') === 'false');
+  ok('in edit mode the head stays, so the card can still be grabbed', await card(SLIDER).locator('.handle.grab').count() === 1);
+  await page.locator('.home .dash-toolbar .done-btn').click();
+  await page.waitForTimeout(100);
+  ok('outside edit mode the card label is gone and the field still names itself',
+     await card(SLIDER).locator('.dash-head').count() === 0 && await card(SLIDER).locator('.field-label').count() === 1);
+  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  await card(SLIDER).locator('.label-btn').click();
+  await page.waitForTimeout(100);
+  ok('showing it again clears the option', !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
   await ctx.close();
 }
 

@@ -318,8 +318,9 @@ export function commitOrder(map, items, cols, orderedIds) {
 // ---- named layouts ---------------------------------------------------------------
 
 /**
- * Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map } }, modules: { [name]: module } }.
- * Modules (saved nests) belong to no layout and no view.
+ * Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map, opts? } }, modules: { [name]: module } }.
+ * Modules (saved nests) belong to no layout and no view. A layout's `opts`
+ * ({density}) has no dot, so it never collides with a view key.
  */
 function emptyStore() {
   return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: {} }, modules: {} };
@@ -448,12 +449,30 @@ export function importLayout(store, text) {
   try { b = JSON.parse(text); } catch (e) { throw new Error('not JSON'); }
   if (!b || b.app !== 'phosphor' || !b.views || typeof b.views !== 'object' || Array.isArray(b.views)) throw new Error('not a Phosphor layout');
   const views = {};
-  for (const [k, m] of Object.entries(b.views)) if (m && typeof m === 'object' && !Array.isArray(m) && k.includes('.')) views[k] = m;
+  for (const [k, m] of Object.entries(b.views)) if (m && typeof m === 'object' && !Array.isArray(m) && (k.includes('.') || k === 'opts')) views[k] = m;
   const base = validName(b.layout) ? b.layout.trim() : 'Imported';
   let name = base;
   for (let i = 2; own(store.layouts, name); i++) name = base + ' ' + i;
   store.layouts[name] = clone(views);
   return name;
+}
+
+/** Density steps (DESIGN §10.5 cells stay the same size; cell padding and label size shrink). */
+export const DENSITY = ['comfortable', 'compact'];
+
+/** A layout's options: {density}, defaulted. */
+export function layoutOpts(store, name = store.active) {
+  const o = own(store.layouts, name) && store.layouts[name].opts;
+  return { density: o && DENSITY.includes(o.density) ? o.density : DENSITY[0] };
+}
+
+/** Set the active layout's density; the default is stored as no option at all. */
+export function setDensity(store, density) {
+  if (!DENSITY.includes(density)) return false;
+  const l = store.layouts[store.active];
+  if (density === DENSITY[0]) delete l.opts;
+  else l.opts = { density };
+  return true;
 }
 
 /** Delete a layout; the last one cannot go. */
