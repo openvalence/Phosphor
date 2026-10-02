@@ -204,7 +204,11 @@ async function release() {
 
 // ---- the page ---------------------------------------------------------------
 const WRITERS = ['slider', 'knob', 'stepper'];
-const PRES = [...WRITERS, 'numeral', 'bar'];
+const PRES = [...WRITERS, 'numeral', 'bar', 'graph'];
+// A small bounded integer field (under four digits) for the numeral's padding.
+const SMALL = MODEL.fields.find((f) => f.uid !== FIELD.uid && !f.options && f.min === 0 && f.max >= 100 && f.max < 1000
+  && f.step === 1 && f.maskFieldName);
+const MORE = SMALL ? ['numeral@' + SMALL.uid] : [];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 if (!LIVE) {
@@ -218,7 +222,8 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 const hubArg = LIVE ? HOST + ':' + SIM_PORT : '127.0.0.1';
 await page.goto('http://127.0.0.1:' + PORT + '/?hub=' + hubArg + '&uid=' + encodeURIComponent(FIELD.uid)
-  + '&pres=' + PRES.join(',') + (ACTION && !LIVE ? '&action=' + encodeURIComponent(ACTION.uid) : ''));
+  + '&pres=' + PRES.join(',') + (ACTION && !LIVE ? '&action=' + encodeURIComponent(ACTION.uid) : '')
+  + '&more=' + encodeURIComponent(MORE.join(',')));
 const up = await page.waitForSelector('.cell[data-pres=slider] input[type=range]:not([disabled])', { timeout: 15000 })
   .then(() => true).catch(() => false);
 ok('the harness adopted the catalog and the field is writable (' + FIELD.label + ')', up);
@@ -341,6 +346,95 @@ if (!LIVE) {
   ok('a refused write faults', await waitShadow('slider', 'fault', 1500));
   await same('at fault, its reason in the slot');
   hub.mode = 'echo';
+
+  console.log('\n[presentations]');
+  const setReported = async (f, v) => {
+    hub.values[f.channelId + ':' + f.name] = v;
+    hub.push(f.channelId);
+    await sleep(150);
+  };
+  const settle = async (p) => { await sleep(50); return waitShadow(p, 'confirmed'); };
+  const step = FIELD.step;
+  await setReported(FIELD, FIELD.min + Math.round((FIELD.max - FIELD.min) * 0.3 / step) * step);
+  const knob = page.locator('.cell[data-pres=knob] .knob');
+  const page10 = Math.max(10, Math.round((FIELD.max - FIELD.min) / 10 / step));
+  const notch = Math.max(1, Math.round(page10 / 10));
+  await page.mouse.click(2, 2);
+  let v0 = await current();
+  await knob.hover();
+  await page.mouse.wheel(0, -100);
+  await sleep(400);
+  ok('knob: the wheel writes nothing until the knob holds focus', await current() === v0 && !['pending', 'overdue'].includes(await shadowOf('knob')));
+  await knob.focus();
+  await page.mouse.wheel(0, -100);
+  await settle('knob');
+  ok('knob: a wheel notch turns it a tenth of a page', near(await current(), v0 + notch * step), [v0, await current(), notch]);
+  v0 = await current();
+  await page.keyboard.down('Shift');
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up('Shift');
+  await settle('knob');
+  ok('knob: Shift makes a notch one step', near(await current(), v0 + step), [v0, await current()]);
+  v0 = await current();
+  await page.keyboard.press('PageUp');
+  await settle('knob');
+  ok('knob: PageUp moves a tenth of the range', near(await current(), v0 + page10 * step), [v0, await current(), page10]);
+  ok('knob: its value in words carries the unit (aria-valuetext)', /\S/.test(await knob.getAttribute('aria-valuetext') || ''),
+    await knob.getAttribute('aria-valuetext'));
+  const kb = await knob.boundingBox();
+  const drag = async (dy, shift) => {
+    v0 = await current();
+    await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2);
+    await page.mouse.down();
+    if (shift) await page.keyboard.down('Shift');
+    for (let i = 1; i <= 4; i++) await page.mouse.move(kb.x + kb.width / 2, kb.y + kb.height / 2 - dy * i / 4);
+    if (shift) await page.keyboard.up('Shift');
+    await page.mouse.up();
+    await settle('knob');
+    return (await current()) - v0;
+  };
+  const coarse = await drag(16, false);
+  const fine = await drag(16, true);
+  ok('knob: a drag turns it, Shift drags ten times finer', coarse > 0 && near(fine * 10, coarse), [coarse, fine]);
+
+  const plus = page.locator('.cell[data-pres=stepper] .stepper button').nth(1);
+  const pb = await plus.boundingBox();
+  v0 = await current();
+  await page.mouse.move(pb.x + pb.width / 2, pb.y + pb.height / 2);
+  await page.mouse.down();
+  await sleep(1100);
+  await page.mouse.up();
+  await settle('stepper');
+  const held = Math.round(((await current()) - v0) / step);
+  ok('stepper: a long press repeats the step', held >= 3, held);
+  v0 = await current();
+  await plus.click();
+  await settle('stepper');
+  ok('stepper: a click is one step', near(await current(), v0 + step), [v0, await current()]);
+
+  const gpath = () => page.locator('.cell[data-pres=graph] .graph path').getAttribute('d');
+  ok('graph: a held value is drawn on to now', /H100(\.00)?$/.test(await gpath()), (await gpath()).slice(-24));
+  hub.mute = true;
+  await page.locator('.cell[data-pres=graph] .field.stale').waitFor({ timeout: 5000 });
+  await sleep(600);
+  ok('graph: link silence ends the line (a gap, never a held guess)', !/H100(\.00)?$/.test(await gpath()), (await gpath()).slice(-24));
+  hub.mute = false;
+  await page.locator('.cell[data-pres=graph] .field:not(.stale)').waitFor({ timeout: 3000 });
+  await plus.click();
+  await settle('stepper');
+  await sleep(300);
+  ok('graph: the line resumes after the gap as a new segment', ((await gpath()).match(/M/g) || []).length >= 2, await gpath());
+
+  if (SMALL) {
+    const num = page.locator('.cell[data-pres="numeral@' + SMALL.uid + '"] .numeral-digits');
+    const digits = String(SMALL.max).length;
+    await setReported(SMALL, 5);
+    const t5 = await num.textContent(), w5 = (await num.boundingBox()).width;
+    await setReported(SMALL, SMALL.max);
+    const tm = await num.textContent(), wm = (await num.boundingBox()).width;
+    ok('numeral: zero-padded to the bound\'s digits', t5 === '5'.padStart(digits, '0') && tm === String(SMALL.max), [t5, tm]);
+    ok('numeral: the column keeps its width as the value changes', Math.abs(w5 - wm) < 0.5, [w5, wm]);
+  } else ok('the fixture has a small bounded field for the numeral', false);
 
   console.log('\n[aspect]');
   const ctl = page.locator('.cell[data-pres=control] .field');

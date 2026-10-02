@@ -9,10 +9,15 @@
   import { placeableControls } from '../../src/model/settings.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
-  let { uid, pres, action } = $props();
+  let { uid, pres, action, more = [] } = $props();
 
   const model = $derived(machine.catalog.model);
   const field = $derived(model && model.fields.find((f) => f.uid === uid));
+  // `more`: extra cells, each one presentation of another field ('pres@uid').
+  const extra = $derived(model ? more.map((m) => {
+    const [p, u] = m.split('@');
+    return { key: m, pres: p, field: model.fields.find((f) => f.uid === u) };
+  }).filter((x) => x.field) : []);
   const control = $derived(model && placeableControls(model).find((c) => c.field && c.field.uid === uid));
   const act = $derived.by(() => {
     const a = model && action && model.actions.find((x) => x.uid === action);
@@ -37,6 +42,13 @@
       <Control {control} look={{ pres: 'slider' }} w={size.w} h={size.h} />
     </div>
   {/if}
+{/if}
+{#if extra.length}
+  <div class="row">
+    {#each extra as x (x.key)}
+      <div class="cell" data-pres={x.key}><Field field={x.field} presentation={x.pres} /></div>
+    {/each}
+  </div>
 {/if}
 {#if stop}
   <div class="cell" data-pres="safety"><Control control={stop} w={3} h={2} /></div>

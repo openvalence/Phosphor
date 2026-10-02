@@ -15,5 +15,6 @@ mount(Harness, {
     uid: q.get('uid'),
     pres: (q.get('pres') || '').split(',').filter(Boolean),
     action: q.get('action'),
+    more: (q.get('more') || '').split(',').filter(Boolean),
   },
 });

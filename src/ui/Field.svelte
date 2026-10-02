@@ -34,6 +34,11 @@
   // A read-only presentation of a writable field writes nothing (RFC-080 draft item 3).
   const displayOnly = $derived(!field.readOnly && READ_ONLY_PRESENTATIONS.has(pres));
 
+  const labelId = $derived(field.uid + '-label');
+  // Presentations whose element carrying field.uid a <label for> may name.
+  const LABELABLE = new Set([WIDGET.slider, WIDGET.stepper, WIDGET.text, WIDGET.secret, WIDGET.select,
+    WIDGET.toggle, WIDGET.datetime, WIDGET.color, WIDGET.numeral]);
+
   // ⓘ affordance state (OG density doctrine — a description is NOT printed
   // inline by default, it lives behind a per-field toggle). Local, default
   // closed; resets whenever this component instance changes field.
@@ -226,6 +231,30 @@
     commitNumber(sec);
   }
 
+  // Stepper long-press: held past HOLD_MS the nudge repeats every REPEAT_MS
+  // until release. The click that ends a repeat is swallowed, so a hold never
+  // adds one more tick; a plain click or a key press nudges once.
+  const HOLD_MS = 450, REPEAT_MS = 110;
+  let hold = null, repeated = false;
+  function holdStart(dir) {
+    holdEnd();
+    repeated = false;
+    if (!enabled) return;
+    hold = setTimeout(function tick() {
+      const n = Number(value);
+      if (!enabled || (dir > 0 ? n >= field.max : n <= field.min)) return holdEnd();
+      repeated = true;
+      nudge(dir);
+      hold = setTimeout(tick, REPEAT_MS);
+    }, HOLD_MS);
+  }
+  function holdEnd() { clearTimeout(hold); hold = null; }
+  function stepClick(dir) {
+    if (repeated) { repeated = false; return; }
+    nudge(dir);
+  }
+  $effect(() => () => holdEnd());
+
   /** Move one step-sized tick from wherever the value currently sits. */
   function nudge(dir) {
     const base = Number(value);
@@ -346,8 +375,39 @@
     : { kind: '', text: '' }
   );
 
+  // ---- numeral: fixed-width columns, the hero numerals' recipe --------------
+  // The integer part is zero-padded to the widest bound's digits (a grouped or
+  // unbounded value is not), and the digit box never narrows below the widest
+  // text it has shown, so a changing value never jiggles. No value stays '--'.
+  let numeralW = 0;
+  const numeral = $derived.by(() => {
+    if (pres !== WIDGET.numeral || field.options) return null;
+    const [t, u] = formatParts(field, value);
+    const m = /^(-?)(\d+)(\.\d+)?$/.exec(t);
+    const widest = Math.max(Math.abs(field.min ?? 0), Math.abs(field.max ?? 0));
+    const digits = widest >= 1 && widest < 1e4 ? Math.floor(Math.log10(widest)) + 1 : 0;
+    const text = m && digits ? m[1] + m[2].padStart(Math.max(digits - (m[1] ? 1 : 0), 1), '0') + (m[3] || '') : t;
+    numeralW = Math.max(numeralW, text.length);
+    return { text, unit: u, ch: numeralW };
+  });
+
+  // ---- segmented: one tab stop, at the reported option (else the first) ------
+  let segFocus = $state(0);
+  $effect(() => { const n = Number(value); segFocus = Number.isInteger(n) && field.options && n >= 0 && n < field.options.length ? n : 0; });
+  function segKey(e) {
+    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    const n = field.options.length;
+    const to = d ? (segFocus + d + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+    if (to == null) return;
+    e.preventDefault();
+    segFocus = to;
+    e.currentTarget.querySelectorAll('[role=radio]')[to].focus();
+  }
+
   // ---- knob: a bounded numeric as a rotary control ---------------------------
-  // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range.
+  // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range,
+  // ten times that with Shift held (fine). Every change snaps to the step and
+  // is an ordinary echo-confirmed write through commitNumber().
   const KNOB_DRAG_PX = 160;
   const KNOB_CIRC = 2 * Math.PI * 40;
   const KNOB_ARC = 0.75 * KNOB_CIRC;
@@ -356,6 +416,9 @@
     if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 0;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
+  const snap = (n) => field.min + Math.round((n - field.min) / step) * step;
+  // A page is a tenth of the range, never less than ten steps.
+  const pageSteps = $derived(Math.max(10, Math.round((field.max - field.min) / 10 / step)));
   let knobDrag = null;
   function knobDown(e) {
     if (!enabled) return;
@@ -365,20 +428,42 @@
   }
   function knobMove(e) {
     if (!knobDrag) return;
-    const raw = knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * (field.max - field.min);
-    const n = field.min + Math.round((raw - field.min) / step) * step;
+    const span = (field.max - field.min) * (e.shiftKey ? 0.1 : 1);
+    knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * span));
+    knobDrag.y = e.clientY;
+    const n = snap(knobDrag.v);
     if (n !== knobDrag.last) { knobDrag.last = n; commitNumber(n); }
   }
   function knobKey(e) {
-    const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
+    const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: pageSteps, PageDown: -pageSteps }[e.key];
     if (dir) { e.preventDefault(); nudge(dir); }
     else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); commitNumber(e.key === 'Home' ? field.min : field.max); }
   }
+  // The wheel turns the knob only while it holds focus (a click or Tab gives
+  // it), so scrolling a page past a knob never writes to the machine. A notch
+  // is a page/10 of the range, one step with Shift. Non-passive, to keep the
+  // page from scrolling under a focused knob.
+  $effect(() => {
+    const el = ctrlEl;
+    if (pres !== WIDGET.knob || !el) return;
+    const onWheel = (e) => {
+      if (!enabled || document.activeElement !== el) return;
+      const d = e.deltaY || e.deltaX;
+      if (!d) return;
+      e.preventDefault();
+      nudge((d < 0 ? 1 : -1) * (e.shiftKey ? 1 : Math.max(1, Math.round(pageSteps / 10))));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
 
   // ---- graph: reported values only, held as steps, broken where the link was
-  // stale (laws 8, 9). The ring is plain state the template never reads (T23).
+  // stale (laws 8, 9). STATE is pushed on change, so a quiet channel is a held
+  // value, drawn on to now; only link silence is missing data, drawn as a gap.
+  // The ring is plain state the template never reads (T23).
   const GRAPH_MS = 30000;
   const ring = [];
+  let graphStale = false;
   let graphD = $state('');
   $effect(() => {
     if (pres !== WIDGET.graph) return;
@@ -387,12 +472,22 @@
     const stale = !!(fresh && fresh.stale);
     untrack(() => {
       const last = ring[ring.length - 1];
+      graphStale = stale;
       if (stale) { if (last && last.v != null) ring.push({ t: Date.now(), v: null }); }
       else if (t && isFinite(v) && (!last || t > last.t)) ring.push({ t, v });
-      while (ring.length && ring[0].t < Date.now() - GRAPH_MS) ring.shift();
-      graphD = graphPath(ring);
+      redrawGraph();
     });
   });
+  // Time moves while values hold: redraw on a clock, not only on a sample.
+  $effect(() => {
+    if (pres !== WIDGET.graph) return;
+    const id = setInterval(redrawGraph, 250);
+    return () => clearInterval(id);
+  });
+  function redrawGraph() {
+    while (ring.length && ring[0].t < Date.now() - GRAPH_MS && ring[1] && ring[1].t < Date.now() - GRAPH_MS) ring.shift();
+    graphD = graphPath(ring);
+  }
   function graphPath(pts) {
     const vals = pts.filter((p) => p.v != null).map((p) => p.v);
     if (!vals.length) return '';
@@ -402,14 +497,15 @@
       if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
     }
     const now = Date.now();
-    const x = (t) => (100 - ((now - t) / GRAPH_MS) * 100).toFixed(2);
+    const x = (t) => Math.max(0, 100 - ((now - t) / GRAPH_MS) * 100).toFixed(2);
     const y = (v) => (38 - Math.max(0, Math.min(1, (v - lo) / (hi - lo))) * 36).toFixed(2);
     let d = '', open = false;
     for (const p of pts) {
-      if (p.v == null) { open = false; continue; }
+      if (p.v == null) { if (open) d += ' H' + x(p.t); open = false; continue; }
       d += open ? ' H' + x(p.t) + ' V' + y(p.v) : ' M' + x(p.t) + ' ' + y(p.v);
       open = true;
     }
+    if (open && !graphStale) d += ' H100';
     return d.trim();
   }
 </script>
@@ -427,7 +523,7 @@
 
   <div class="field-head">
     <span class="field-label-group">
-      <label class="field-label" for={field.uid}>
+      <label class="field-label" id={labelId} for={LABELABLE.has(pres) ? field.uid : undefined}>
         {labelFor(field)}
         {#if field.advanced}<span class="tag adv" title="Advanced setting">adv</span>{/if}
         {#if field.flagBits.restart_required}<span class="tag warn" title="Takes effect after restart">restart</span>{/if}
@@ -500,7 +596,7 @@
     <!-- §8.4 indicator: a status lamp is NEVER the sole carrier of the fact,
          so every lamp is paired with its state in words (§13). Read-only by
          construction — this branch draws no control at all. -->
-    <div class="lamps" id={field.uid}>
+    <div class="lamps" id={field.uid} role="group" aria-labelledby={labelId}>
       {#if field.bits}
         {#each field.bits as bitName, b}
           {#if bitName}
@@ -529,9 +625,14 @@
     </div>
 
   {:else if pres === WIDGET.segmented}
-    <div class="og-seg" role="radiogroup" aria-labelledby={field.uid} id={field.uid}>
+    <!-- Every option is a real value, index 0 included (RFC-064: only an op
+         select's index 0 is filler, and those are ActionField's). Roving
+         focus: Tab enters at the reported option, the arrows move focus,
+         Space or Enter writes, so arrowing past options sends nothing. -->
+    <div class="og-seg" role="radiogroup" aria-labelledby={labelId} id={field.uid} onkeydown={segKey}>
       {#each field.options as opt, i}
         <button type="button" role="radio" aria-checked={Number(value) === i}
+                tabindex={i === segFocus ? 0 : -1}
                 class:active={Number(value) === i} disabled={!enabled}
                 onclick={() => commit(i)}>{opt || i}</button>
       {/each}
@@ -546,7 +647,7 @@
     </select>
 
   {:else if pres === WIDGET.bitfield}
-    <div class="bitfield" id={field.uid}>
+    <div class="bitfield" id={field.uid} role="group" aria-labelledby={labelId}>
       {#each field.bits as bitName, b}
         {#if bitName}
           <label class="bit">
@@ -621,13 +722,15 @@
          nudges — without them this archetype is just a text box. -->
     <div class="stepper">
       <button type="button" disabled={!enabled} aria-label="decrease {labelFor(field)}"
-              onclick={() => nudge(-1)}>&minus;</button>
+              onclick={() => stepClick(-1)} onpointerdown={() => holdStart(-1)} onpointerup={holdEnd}
+              onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>&minus;</button>
       <input id={field.uid} type="number" class="og-num"
              min={field.min} max={field.max} step={step}
              value={value ?? ''} disabled={!enabled}
              onchange={(e) => commit(Number(e.currentTarget.value))} />
       <button type="button" disabled={!enabled} aria-label="increase {labelFor(field)}"
-              onclick={() => nudge(1)}>+</button>
+              onclick={() => stepClick(1)} onpointerdown={() => holdStart(1)} onpointerup={holdEnd}
+              onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>+</button>
     </div>
 
   {:else if pres === WIDGET.text}
@@ -645,8 +748,8 @@
     <!-- Drag up or down, or use the keys; every change is an ordinary
          echo-confirmed write through commitNumber(). -->
     <div class="knob" id={field.uid} bind:this={ctrlEl} role="slider" tabindex={enabled ? 0 : -1}
-         aria-label={labelFor(field)} aria-valuemin={field.min} aria-valuemax={field.max}
-         aria-valuenow={Number(value)} aria-disabled={!enabled}
+         aria-labelledby={labelId} aria-valuemin={field.min} aria-valuemax={field.max}
+         aria-valuenow={Number(value)} aria-valuetext={formatWithUnit(field, value)} aria-disabled={!enabled}
          class:is-disabled={!enabled}
          onpointerdown={knobDown} onpointermove={knobMove}
          onpointerup={() => (knobDrag = null)} onpointercancel={() => (knobDrag = null)}
@@ -670,7 +773,8 @@
 
   {:else if pres === WIDGET.numeral}
     <output class="numeral" id={field.uid} bind:this={ctrlEl} title={staleReason(fresh)}>
-      {#if field.options}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{:else}{@render vu(field, value)}{/if}
+      {#if numeral}<span class="numeral-digits" style="min-width: {numeral.ch}ch">{numeral.text}</span><span class="unit">{numeral.unit}</span>
+      {:else}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{/if}
       {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}
     </output>
 
@@ -1201,6 +1305,11 @@
   }
   .stepper button {
     flex: 0 0 34px;
+    min-height: 34px;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     background: var(--bg-sunken);
@@ -1220,7 +1329,7 @@
     cursor: not-allowed;
   }
   @media (pointer: coarse) {
-    .stepper button { flex-basis: 40px; }
+    .stepper button { flex-basis: 40px; min-height: 40px; }
   }
 
   /* Status lamps (indicator archetype). Same wrap cadence as .bitfield so a
@@ -1348,6 +1457,11 @@
     font-size: 1.6rem;
     line-height: 1.1;
     color: var(--tx-val);
+  }
+  .numeral-digits {
+    display: inline-block;
+    text-align: right;
+    white-space: pre;
   }
   .numeral .unit, .knob-val .unit {
     margin-left: 3px;
