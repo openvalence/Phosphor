@@ -36,13 +36,14 @@
  */
 
 import {
-  createSession, PRIORITY, NACK, LIMITS, acquireToken, getInstanceId, toHex,
+  createSession, PRIORITY, NACK, LIMITS, BLOB_ERROR, acquireToken, getInstanceId, toHex,
 } from '../../../Valence/clients/js/index.js';
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
 import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
+import { recorder } from './vault.js';
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -139,6 +140,7 @@ export const machine = $state({
     stale: true,            // freshness(): written only by checkFreshness()
     staleTick: 0,           // advances at 1 Hz while stale, so stale ages re-render
     openedAt: 0,            // this socket's open; older samples are a past session's
+    virtual: null,          // {key, name} while the session rides Virtual Valence (shell/virtual.svelte.js)
   },
 
   /** Catalog + everything derived from it. Replaced wholesale on adoption. */
@@ -166,6 +168,7 @@ export const machine = $state({
 });
 
 let session = null;
+let _cap = null; // this session's vault recorder, flushed on disconnect
 let _host = '';
 let _lastOpts = {};
 
@@ -249,19 +252,19 @@ if (typeof setInterval === 'function') setInterval(checkFreshness, 100);
  * clock is stamped at the socket. The platform WebSocket takes a listener; the
  * shell's BLE duck exposes only a plain `onmessage`, which gets wrapped.
  */
-function stampingSocket(Impl) {
+function stampingSocket(Impl, onData) {
   const Base = Impl || globalThis.WebSocket;
   if (!Base) return undefined;
   return function StampingSocket(url, protocols) {
     const ws = new Base(url, protocols);
-    const stamp = () => { machine.stats.lastRxMs = Date.now(); };
+    const stamp = (ev) => { machine.stats.lastRxMs = Date.now(); if (onData && ev) onData(ev.data); };
     if (typeof ws.addEventListener === 'function') {
       ws.addEventListener('message', stamp);
     } else {
       let handler = null;
       Object.defineProperty(ws, 'onmessage', {
         configurable: true,
-        get: () => handler && ((ev) => { stamp(); handler(ev); }),
+        get: () => handler && ((ev) => { stamp(ev); handler(ev); }),
         set: (fn) => { handler = fn; },
       });
     }
@@ -394,7 +397,9 @@ export function connect(opts = {}) {
   _lastOpts = opts;
   machine.link.host = host;
   machine.link.port = opts.port || 82;
-  machine.link.dialed = endpointLabel(host, machine.link.port, opts.WebSocketImpl ? (opts.bleName || '') : null);
+  machine.link.virtual = opts.virtual || null;
+  machine.link.dialed = opts.virtual ? 'virtual'
+    : endpointLabel(host, machine.link.port, opts.WebSocketImpl ? (opts.bleName || '') : null);
   machine.link.attempts = 0;
   machine.link.retryAt = 0;
 
@@ -409,6 +414,10 @@ export function connect(opts = {}) {
   let catalogSnap;
   let withdrawn = new Set();
 
+  // A replay is not evidence: a virtual session records nothing (vault.js).
+  const cap = opts.virtual ? null : recorder();
+  _cap = cap;
+
   let s = null;
   s = createSession({
     host: _host,
@@ -416,12 +425,14 @@ export function connect(opts = {}) {
     clientKind: 'webui',
     clientName: opts.clientName || 'Phosphor',
     instanceId: getInstanceId(),
-    token: (h) => acquireToken(h),
+    // The virtual hub grants its tier to every session; there is no /uitoken to ask.
+    token: opts.virtual ? null : (h) => acquireToken(h),
+    catalogStore: opts.catalogStore,
     subscriptions: HELLO_WISHES,
     autoReconnect: true,
     // Shell seam: a non-WS binding (BLE GATT) rides in as a WebSocket duck.
     // undefined = the platform WebSocket, which is every non-shell build.
-    WebSocketImpl: stampingSocket(opts.WebSocketImpl),
+    WebSocketImpl: stampingSocket(opts.WebSocketImpl, cap && cap.frame),
     // The close event carries no delay, so the library's own log line is the
     // only place the backoff it chose is visible. If that wording changes the
     // countdown disappears and the attempt count still shows.
@@ -430,6 +441,19 @@ export function connect(opts = {}) {
     },
   });
   session = s;
+  // Every write path and store read goes through these two properties, so
+  // wrapping them sees every echo and item without touching a caller.
+  if (cap) {
+    const fetchBlob = s.fetchBlob;
+    s.fetchBlob = (o) => fetchBlob(o).then((r) => { cap.item(r); return r; }, (e) => {
+      if (e && e.code === BLOB_ERROR.UNAVAILABLE) cap.item({ storeId: o.storeId, slot: o.slot, bytes: null });
+      throw e;
+    });
+  }
+  if (opts.onEcho) {
+    const sendIntent = s.sendIntent;
+    s.sendIntent = (ch, fields, o) => sendIntent(ch, fields, o).then((r) => { opts.onEcho(ch, r); return r; });
+  }
 
   session.on('open', () => {
     machine.link.openedAt = Date.now();
@@ -446,6 +470,7 @@ export function connect(opts = {}) {
     // SPEC §7.2: a new boot voids every hub timestamp (format.js staleMoment).
     machine.link.bootId = w.bootId ?? null;
     machine.link.hubIdentity = w.identity || null;
+    if (cap) cap.welcome(w.identity, host, opts.port || 82);
     // RFC-046: where the WS upgrade lives, for a session that arrived over
     // BLE. null on hubs that advertise none.
     machine.link.endpoint = w.endpoint || null;
@@ -480,6 +505,7 @@ export function connect(opts = {}) {
       cached: !!(meta && meta.cached),
       model: buildSettingsModel(entries),
     };
+    if (cap) cap.catalog(session.catalogBytes);
     // Device channels are subscribed only once we know what exists: wishing
     // for them before the catalog is how a client ends up hardcoding ids. The
     // registry's core channels already rode HELLO (HELLO_WISHES).
@@ -721,9 +747,11 @@ function forgetDevice() {
 /** Tear down (used by tests and by the Tauri shell on host change). */
 export function disconnect() {
   if (!session) return;
+  if (_cap) _cap.flush();
   try { session.close(); } catch (e) { /* ignore */ }
   session = null;
   machine.link.phase = 'idle';
+  machine.link.virtual = null;
   forgetDevice();
 }
 

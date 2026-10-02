@@ -19,7 +19,7 @@
   const identity = $derived(machine.link.hubIdentity);
   const nameField = $derived(machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0]);
   const hubName = $derived(hubTitle(identity,
-    nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : ''));
+    nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : '', machine.link.virtual));
   const etag = $derived(machine.catalog.etag || '--');
   let shellVersion = $state('--');
   getVersion().then((v) => { shellVersion = v; }).catch(() => {});

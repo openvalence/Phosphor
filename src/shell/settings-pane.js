@@ -1,11 +1,12 @@
 /**
  * settings-pane.js -- saved-hub upkeep, the launch redial, and the shell's
- * panes (panes.js): Hubs, Server, Settings, About.
+ * panes (panes.js): Hubs, Server, Settings, Merge, About.
  * SHELL ONLY: main.js imports it from the shell branch.
  *
  * Constraints:
  * - A hub is recorded only on a LIVE WS session; a BLE address is not a
  *   dialable endpoint, and a BLE session that hops to WS is recorded then.
+ *   A virtual session is never recorded (virtual.svelte.js).
  * - The redial dials the saved host AND port exactly (ph-dwy).
  */
 import { get, toStore } from 'svelte/store';
@@ -17,6 +18,7 @@ import HubsPane from './HubsPane.svelte';
 import SettingsPane from './SettingsPane.svelte';
 import ServerPane from './ServerPane.svelte';
 import AboutPane from './AboutPane.svelte';
+import MergePane from './MergePane.svelte';
 
 // hubs.svelte.js's keys, read only: the transport last chosen, and the port-less
 // host saved before this file existed.
@@ -26,7 +28,7 @@ if (target) connect(target);
 
 toStore(() => machine.link.phase).subscribe((phase) => {
   const l = machine.link;
-  if (phase === 'live' && l.dialed === endpointLabel(l.host, l.port, null)) {
+  if (phase === 'live' && !l.virtual && l.dialed === endpointLabel(l.host, l.port, null)) {
     rememberHub({ identity: l.hubIdentity, host: l.host, port: l.port });
   }
 });
@@ -34,4 +36,5 @@ toStore(() => machine.link.phase).subscribe((phase) => {
 registerPane({ id: 'hubs', label: 'Hubs', component: HubsPane });
 registerPane({ id: 'server', label: 'Server', component: ServerPane });
 registerPane({ id: 'settings', label: 'Settings', component: SettingsPane });
+registerPane({ id: 'merge', label: 'Merge', component: MergePane });
 registerPane({ id: 'about', label: 'About', component: AboutPane });

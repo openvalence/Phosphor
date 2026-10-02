@@ -356,7 +356,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const hubStatus = () => page.$eval('section[aria-labelledby="hp-link"] .pane-status', (el) => [el.dataset.phase, el.textContent.trim(), el.getBoundingClientRect().height]);
   const live = await hubStatus();
   ok('hubs: the link ladder settles on live', live[0] === 'settled' && /Live on 127\.0\.0\.1:82/.test(live[1]), live.join(' / '));
-  const saved = await page.$$eval('section[aria-labelledby="hp-saved"] li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ')));
+  const saved = await page.$$eval('section[aria-labelledby="hp-saved"] li:not(.virtual)', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ')));
   ok('hubs: saved hubs list here with the connected one marked', saved.length === 1 && /connected/.test(saved[0]), saved.join(' | '));
   await page.fill('section[aria-labelledby="hp-saved"] .nick input', 'bench');
   await page.press('section[aria-labelledby="hp-saved"] .nick input', 'Enter');

@@ -321,8 +321,11 @@ export function bytes(n) {
  * The machine header: the live identity.name setting (ground truth after a
  * rename, RENDERING law 4), then WELCOME identity hub_name (SPEC §6.3,
  * RFC-016, sent once), then product. Never a client-side name.
+ * `virtual` (machine.link.virtual): a replay always reads as one, never as
+ * the machine it replays.
  */
-export function hubTitle(identity, liveName) {
+export function hubTitle(identity, liveName, virtual = null) {
+  if (virtual) return virtual.name ? virtual.name + ' (virtual)' : 'Virtual Valence';
   return liveName || (identity && identity.hub_name) || (identity && identity.product) || '--';
 }
 

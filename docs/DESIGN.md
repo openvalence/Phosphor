@@ -603,6 +603,44 @@ OPEN (`ph-e82.7`). Likely the handheld class keeps an auto-built layout and
 desktop gets the builder. Top-strip safety applies on phones unless the
 operator rules otherwise.
 
+### 10.10 Virtual Valence: demo and configure mode
+
+Operator request 2026-10-02: configure the UI and try modes with no machine
+connected, then merge the setting changes onto the machine, ticked per item.
+
+- **Vault** (`src/model/vault.js`): every live session records, per machine
+  (prefs.js `hubKey`: `hub_instance_id`, else host:port), the catalog bytes,
+  the WELCOME identity, the raw retained STATE of every channel and every
+  store item read, in `phosphor.vault.<key>` and `phosphor.vault.<key>.catalog`.
+  A virtual session records nothing.
+- **The hub** is Valence's `createLocalHub` (`clients/js/localhub.js`), a
+  page-resident hub on the session's `WebSocketImpl` seam. The normal
+  `connect()` rides it, so every pane, the builder, plugins, the graph and the
+  strip work unchanged (the Prime Rule, §2). It validates and clamps writes,
+  latches the safety ops and arbitrates sources; nothing moves and telemetry
+  holds at its snapshot. It never sends a `hub_instance_id`.
+- **Picker**: the Hubs pane lists Virtual Valence last, always, marked
+  virtual; alone it runs the built-in machine (the valencesim fixture). Each
+  saved hub with a vault record offers Sim. Never auto-connected, never saved,
+  never the reconnect target.
+- **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
+  `virtual` (warn) where a machine reads `live`, and the hub chip reads
+  `virtual`. The strip stays rendered and acts on the virtual hub.
+  **(planned)** the strip's status slot carries a standing
+  `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
+- **Merge** (`src/model/merge.js`, the Merge pane): a virtual ECHO on a
+  `setting_key` field stages (machine key, field uid) to the applied value;
+  never a secret, never `pattern.running` or `advgen.running` (a merge never
+  starts motion). With the same machine live, each staged field shows the
+  hub's value and the staged one, pre-ticked where they differ, inert ("not
+  on this hub") where the live catalog lacks the field or its type, channel or
+  key changed. Apply sends one intent per ticked row in catalog order, awaits
+  each echo, confirm-gates destructive and background-run rows (SPEC §8.8,
+  RENDERING §10.1) and drops applied rows from staging (`phosphor.merge`).
+  Another machine gets a sentence and no rows.
+- Layouts, plugins and theme are client state: edits made while virtual are
+  already saved.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -618,3 +656,4 @@ operator rules otherwise.
 | 2026-10-01 | §10, §10.1, §10.2 | `ph-e82.1` items 1 (the home is an additional surface) and 3 (uid keys for unroled fields, inert when absent) confirmed as coded; the "nothing coded yet" note replaced by the per-phase commit list; §10.1 records the home's coded decisions. | operator |
 | 2026-10-02 | §10.6 | Nests are fixed and grow to fit (scroll and fold retired); nothing on the home or a category page scrolls on its own; placements are absolute; two surfaces, card and sunken nest; the scale control moves into the edit-mode Layout menu (`ph-e82.22`). | operator |
 | 2026-10-02 | §10.3 | RFC-085: the strip's mandatory pair is e-stop plus pause, each one two-state control (hold-to-release, Halted, Halt label without `estop_cuts_power`); stop, hold and every clear button retired; modules are one per pair (`ph-e82.12`). | operator (RFC-085 ruling) |
+| 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |

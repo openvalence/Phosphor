@@ -13,6 +13,8 @@
    *   their last-seen time (hubs.svelte.js upsert); status lines are fixed
    *   slots.
    * - Saved hubs are prefs.js's; a hub is saved once it is live over WiFi.
+   * - Virtual Valence (virtual.svelte.js) is always the last row, marked
+   *   virtual; Sim opens it on a saved hub's vault record.
    */
   import HostEntry from '../ui/HostEntry.svelte';
   import { advFlags } from './ble-adv.js';
@@ -20,6 +22,8 @@
   import { machine, disconnect, retryNow } from '../model/machine.svelte.js';
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
   import { since, endpointLabel } from '../model/format.js';
+  import { hasMachine, BUILTIN_KEY } from '../model/vault.js';
+  import { openVirtual } from './virtual.svelte.js';
   import '../ui/pane.css';
 
   let now = $state(Date.now());
@@ -40,12 +44,13 @@
         + (link.retryAt ? ' in ' + Math.max(0, Math.ceil((link.retryAt - now) / 1000)) + ' s' : '')
         + (link.closeReason ? ': ' + link.closeReason : '') };
       case 'failed': return { phase: 'fault', text: 'Failed: ' + (link.error || link.closeReason || 'the hub closed the link') };
-      case 'live': return { phase: 'settled', text: 'Live on ' + who
-        + (hubs.mode === 'ble' ? ' over Bluetooth (watch tier)' : '') };
+      case 'live': return link.virtual ? { phase: 'settled', text: 'Virtual: nothing moves' }
+        : { phase: 'settled', text: 'Live on ' + who + (hubs.mode === 'ble' ? ' over Bluetooth (watch tier)' : '') };
       default: return { phase: null, text: 'Not connected' };
     }
   });
   const dialedWs = (host, port) => link.phase !== 'idle' && link.dialed === endpointLabel(host, port, null);
+  const onVirtual = (key) => link.phase !== 'idle' && !!link.virtual && link.virtual.key === key;
   const discoveryText = $derived(hubs.finding ? 'Searching WiFi'
     : hubs.scanning ? 'Scanning Bluetooth'
       : hubs.note);
@@ -56,7 +61,7 @@
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
       <dt>Hub</dt><dd class="mono">{link.dialed || '--'}</dd>
-      <dt>Transport</dt><dd>{idle ? '--' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
+      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
       <dt>Link</dt><dd>{link.phase}</dd>
       <dt>Bluetooth wire</dt><dd class="mono">{hubs.stats || '--'}</dd>
     </dl>
@@ -74,7 +79,7 @@
     <div class="pane-head"><h2 id="hp-saved">Saved hubs</h2><span class="mono count">{$savedHubs.length}</span></div>
     {#if !$savedHubs.length}
       <p class="pane-empty">No saved hubs yet</p>
-    {:else}
+    {/if}
       <ul class="pane-list rows">
         {#each $savedHubs as h (h.id)}
           <li>
@@ -86,15 +91,27 @@
               </label>
               <span class="meta mono" title={h.host + ':' + h.port}>{h.host}:{h.port}{h.name && h.nickname ? ' · ' + h.name : ''}</span>
             </span>
-            <span class="seen mono">{dialedWs(h.host, h.port) ? 'connected' : 'seen ' + ago(h.lastSeen, now)}</span>
+            <span class="seen mono">{dialedWs(h.host, h.port) ? 'connected' : onVirtual(h.id) ? 'virtual' : 'seen ' + ago(h.lastSeen, now)}</span>
             <span class="acts">
               <button type="button" class="og-btn sm" disabled={dialedWs(h.host, h.port)} onclick={() => connectWs(h.host, h.port)}>Connect</button>
+              <button type="button" class="og-btn sm" disabled={onVirtual(h.id) || !hasMachine(h.id)}
+                      title={hasMachine(h.id) ? 'Virtual, from its last catalog' : 'No cached catalog'}
+                      aria-label={'Sim ' + hubLabel(h)} onclick={() => openVirtual(h.id, hubLabel(h))}>Sim</button>
               <button type="button" class="og-btn sm" onclick={() => forgetHub(h.id)} aria-label={'Forget ' + hubLabel(h)}>Forget</button>
             </span>
           </li>
         {/each}
+        <li class="virtual">
+          <span class="who">
+            <span class="name">Virtual Valence<span class="mark virt">virtual</span></span>
+            <span class="meta mono" title="built-in machine · nothing moves">built-in machine · nothing moves</span>
+          </span>
+          <span class="seen mono">{onVirtual(BUILTIN_KEY) ? 'connected' : 'in page'}</span>
+          <span class="acts">
+            <button type="button" class="og-btn sm" disabled={onVirtual(BUILTIN_KEY)} onclick={() => openVirtual()}>Connect</button>
+          </span>
+        </li>
       </ul>
-    {/if}
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="hp-find">
@@ -166,6 +183,7 @@
   .acts { display: flex; gap: 6px; }
   .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
+  .mark.virt { border-color: var(--warn); color: var(--warn); }
   .nick input {
     width: 100%;
     min-height: 30px;

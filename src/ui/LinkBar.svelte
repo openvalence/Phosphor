@@ -37,7 +37,9 @@
     failed: { label: 'no link', tone: 'bad' },
   };
 
-  const phaseInfo = $derived(PHASE[machine.link.phase] || { label: String(machine.link.phase), tone: 'dim' });
+  // A virtual session never reads as a live machine.
+  const phaseInfo = $derived(machine.link.virtual && machine.link.phase === 'live' ? { label: 'virtual', tone: 'warn' }
+    : PHASE[machine.link.phase] || { label: String(machine.link.phase), tone: 'dim' });
   const isLive = $derived(machine.link.phase === 'live');
   const hasSession = $derived(machine.link.sessionId != null);
   const tierLabel = $derived(hasSession
@@ -47,7 +49,7 @@
   const identity = $derived(machine.link.hubIdentity);
   const nameField = $derived(machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0]);
   const title = $derived(hubTitle(identity,
-    nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : ''));
+    nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : '', machine.link.virtual));
   const hubLabel = $derived(machine.link.dialed || '--');
   const fwLabel = $derived(identity && identity.fw_version ? identity.fw_version : '');
 
@@ -264,7 +266,8 @@
     </span>
   </div>
   <div class="chips opt">
-    <span class="chip chip-opt" title={fwLabel ? ('firmware ' + fwLabel) : ''}>
+    <span class="chip chip-opt" class:tone-warn={!!machine.link.virtual}
+          title={machine.link.virtual ? 'Virtual: nothing moves' : fwLabel ? ('firmware ' + fwLabel) : ''}>
       <span class="chip-lbl">hub</span>
       <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
     </span>
