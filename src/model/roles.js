@@ -105,7 +105,9 @@ export const ROLE = {
   // RFC-088 (SPEC §9.6): the rail's direction flip, a stored setting
   axisFlipped: 'axis.flipped',
 
-  // RFC-081: generator-advanced master controls; run/stop is patternRunning
+  // RFC-081: generator-advanced master controls; RFC-093: run/stop is its own
+  // advgenRunning, and advgenMode is retired (never bound)
+  advgenRunning: 'advgen.running',
   advgenMode: 'advgen.mode',
   advgenMaster: 'advgen.master',
   advgenDepthMax: 'advgen.depth_max',
@@ -339,7 +341,7 @@ export const AXIS_HERO_SPEC = {
  */
 export const ADVGEN_SPEC = {
   require: {
-    running: ROLE.patternRunning,
+    running: ROLE.advgenRunning,
     master: ROLE.advgenMaster,
     depthMax: ROLE.advgenDepthMax,
     depthMin: ROLE.advgenDepthMin,
@@ -350,10 +352,8 @@ export const ADVGEN_SPEC = {
   },
   optional: {
     bgRun: ROLE.sourceBackgroundRun,
-    mode: ROLE.advgenMode,
     presetOp: ROLE.actionStore,
   },
-  requireIf: { mode: ROLE.patternSelect },
   instances: {
     mods: {
       min: 0,

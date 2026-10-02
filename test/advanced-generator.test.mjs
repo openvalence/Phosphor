@@ -49,7 +49,7 @@ const MOD_KEYS = ['amount', 'rise', 'hold', 'fall', 'rest', 'phase'];
 // modulator i rides base field i % 7, `orphan` adds one naming no field.
 function catalog(modCount, { dropMaster = null, decoy = false, orphan = false, select = false, mode = false } = {}) {
   const out = [
-    state(0x7710, [lf('go', ROLE.patternRunning, 1, { max: 1 }), lf('stay', ROLE.sourceBackgroundRun, 2, { max: 1 }),
+    state(0x7710, [lf('go', ROLE.advgenRunning, 1, { max: 1 }), lf('stay', ROLE.sourceBackgroundRun, 2, { max: 1 }),
       ...(select ? [lf('pick', ROLE.patternSelect, 9, { options: ['a', 'b'] })] : []),
       ...(mode ? [lf('adv', ROLE.advgenMode, 10, { max: 1 })] : [])]),
     state(BASE, MASTER_ROLES.filter((r) => r !== dropMaster).map((r, i) => lf('m' + i, r, 3 + i))),
@@ -99,9 +99,8 @@ for (const n of [0, 1, 6, 9]) {
 for (const r of MASTER_ROLES) {
   ok('missing ' + r + ' declines', claim(catalog(3, { dropMaster: r })) === null);
 }
-ok('advgen.mode absent beside pattern.select declines', claim(catalog(1, { select: true })) === null);
-ok('advgen.mode present beside pattern.select claims', !!claim(catalog(1, { select: true, mode: true })));
-ok('no pattern.select: advgen.mode is optional', !!claim(catalog(1)));
+ok('RFC-093: claims beside pattern.select without advgen.mode', !!claim(catalog(1, { select: true })));
+ok('RFC-093: advgen.mode is never bound', !('mode' in (claim(catalog(1, { select: true, mode: true })) || { mode: 1 })));
 {
   let spec = null;
   advPen.activate({ registerHero: (h) => { spec = h.spec; } });
