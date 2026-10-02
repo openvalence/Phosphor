@@ -661,7 +661,6 @@ export function graphRuntime(api, shell, env) {
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
     hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
     why, wire, unwire, place, placeMap, removeMany, duplicate, moveMany, ports, echo, palette,
-    move: (id, x, y) => moveMany([{ id, x, y }]),
     undo: () => travel((swap) => history.undo(swap)),
     redo: () => travel((swap) => history.redo(swap)),
     get canUndo() { return history.canUndo; },
@@ -674,7 +673,9 @@ export function graphRuntime(api, shell, env) {
     out: (id) => runner.out(id),
     maps: MAPS, MAP,
     label(ref) {
-      const s = [...sources(), ...targets()].find((x) => refKey(x.ref) === refKey(ref));
+      // A toy control is both; its target label names it without the app's role.
+      const all = ref.kind === 'bp' ? [...targets(), ...sources()] : [...sources(), ...targets()];
+      const s = all.find((x) => refKey(x.ref) === refKey(ref));
       return s ? s.label : (ref.kind === 'bp' ? ref.device + ' (absent)' : ref.key + ' (absent)');
     },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
