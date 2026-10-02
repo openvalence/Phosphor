@@ -206,6 +206,20 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('log: Follow resumes with the new lines', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 45);
   ok('log: the status slot never changes height', h0 > 0 && h0 === await slotH(), h0 + 'px');
 
+  // ---- Display ---------------------------------------------------------------
+  await openTab(page, 'display');
+  const d = await facts(page);
+  const wantCls = label === 'phone' ? 'handheld' : 'full';
+  ok('display: the class readout is measured', d.class === wantCls && d.viewport.startsWith(viewport.width + ' × ' + viewport.height), d.class + ', ' + d.viewport);
+  ok('display: the pointer is named', /fine|coarse|none/.test(d.pointer), d.pointer);
+  ok('display: units read as a fact, not a one-choice selector', /metric/.test(d.system) && !(await page.$('.theme-picker select')));
+  await page.click('.theme-picker label.og-switch:has-text("Autorange")');
+  const ar = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.prefs')).autorange);
+  ok('display: autorange persists through prefs.js', ar === false);
+  await page.click('.theme-picker label.og-switch:has-text("High legibility")');
+  ok('display: hi-vis flips the html class and persists', await page.evaluate(() =>
+    document.documentElement.classList.contains('hivis') && localStorage.getItem('ui_hivis') === '1'));
+
   ok('no page errors (' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }

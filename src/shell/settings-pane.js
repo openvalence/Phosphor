@@ -10,15 +10,13 @@
  */
 import { get, toStore } from 'svelte/store';
 import { connect, machine } from '../model/machine.svelte.js';
-import { endpointLabel, setAutorange } from '../model/format.js';
+import { endpointLabel } from '../model/format.js';
 import { prefs, savedHubs, rememberHub, launchTarget } from '../model/prefs.js';
 import { registerPane } from './panes.js';
 import HubsPane from './HubsPane.svelte';
 import SettingsPane from './SettingsPane.svelte';
 import ServerPane from './ServerPane.svelte';
 import AboutPane from './AboutPane.svelte';
-
-prefs.subscribe((p) => setAutorange(p.autorange));
 
 // hubs.svelte.js's keys, read only: the transport last chosen, and the port-less
 // host saved before this file existed.

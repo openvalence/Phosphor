@@ -6,7 +6,8 @@
    * Constraints:
    * - Browser preferences only; nothing here writes to the hub, so there is
    *   no write ladder to show (RENDERING law 5 binds hub writes).
-   * - Theme, hi-vis and terse are ThemePicker's; this pane only hosts it.
+   * - Theme, legibility, units and the class readout are ThemePicker's
+   *   (the console Display pane); this pane only hosts it.
    * - No control that drives nothing: the telemetry rate preference stays
    *   hidden until machine.svelte.js reads telemetryRate() (prefs.js).
    * - Every target is at least --tap (RENDERING law 12).
@@ -40,20 +41,7 @@
 </script>
 
 <div class="set">
-  <section aria-labelledby="set-app">
-    <h3 id="set-app">Appearance</h3>
-    <ThemePicker />
-  </section>
-
-  <section aria-labelledby="set-disp">
-    <h3 id="set-disp">Display</h3>
-    <label class="og-switch">
-      <input type="checkbox" role="switch" checked={$prefs.autorange} onchange={(e) => setPref('autorange', e.currentTarget.checked)} />
-      <span class="track"></span>Autorange units
-    </label>
-    <p class="hint">Shows 85 mV for a reading of 0.085 V. Display only; what is sent to the machine never changes.</p>
-    <p class="hint">Units: metric, the only system today.</p>
-  </section>
+  <ThemePicker />
 
   <section aria-labelledby="set-conn">
     <h3 id="set-conn">Connection</h3>

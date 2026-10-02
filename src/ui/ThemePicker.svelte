@@ -1,22 +1,35 @@
+<script module>
+  import { prefs } from '../model/prefs.js';
+  import { setAutorange } from '../model/format.js';
+
+  // Module scope: the preference applies from first load in both deliveries,
+  // not only once this pane has been opened.
+  prefs.subscribe((p) => setAutorange(p.autorange));
+</script>
+
 <script>
   /**
-   * ThemePicker.svelte — accent theme swatches + the high-legibility toggle.
+   * ThemePicker.svelte -- the Display pane: accent theme, legibility, unit
+   * display, and the renderer class this window is drawn in. The shell's
+   * Settings pane hosts the same component.
    *
-   * Both controls here are BROWSER preferences, never device state: nothing
-   * in this file is sent to the machine, and the ground-truth doctrine
-   * (device echoes, shadow pending/confirmed lifecycle) does not apply to any
-   * of it. Theme choice and hi-vis persist to localStorage only.
-   *
-   * Driven entirely by model/theme.js's THEMES table — never a hardcoded
-   * list, so a new theme added there needs no change here. The custom pair
-   * uses the same setCustomColors()/customColors() the rest of the app reads
-   * through ac()/ACCENT, so a hand-picked pair repaints the canvas renderers
-   * (heatmap, rail, scopes) identically to a preset.
-   *
-   * No props — reads/writes theme.js and localStorage directly. Wire it in
-   * bare: <ThemePicker />
+   * Constraints:
+   * - Every control here is a BROWSER preference, never device state: nothing
+   *   is sent to the machine, so there is no write ladder (RENDERING law 5
+   *   binds hub writes). Theme, hi-vis and terse persist to localStorage;
+   *   autorange and units live in prefs.js.
+   * - Driven by theme.js's THEMES table, never a hardcoded list. The custom
+   *   pair goes through setCustomColors(), which the canvas renderers read.
+   * - Units is a readout while prefs.js offers one system: a selector with
+   *   one choice would drive nothing.
+   * - The class readout is measured, never configured (RENDERING §12.1).
    */
+  import { untrack } from 'svelte';
   import { THEMES, applyTheme, currentThemeId, setCustomColors, customColors } from '../model/theme.js';
+  import { setPref, UNITS } from '../model/prefs.js';
+  import { view } from '../model/viewport.svelte.js';
+  import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
+  import './pane.css';
 
   let current = $state(currentThemeId());
   let custom = $state(customColors());
@@ -25,14 +38,8 @@
     applyTheme(id);
     current = id;
   }
-
-  function setRealityColor(e) {
-    custom = { ...custom, reality: e.target.value };
-    setCustomColors(custom.reality, custom.intent);
-    current = 'custom';
-  }
-  function setIntentColor(e) {
-    custom = { ...custom, intent: e.target.value };
+  function setColor(kind, e) {
+    custom = { ...custom, [kind]: e.target.value };
     setCustomColors(custom.reality, custom.intent);
     current = 'custom';
   }
@@ -41,112 +48,97 @@
     current = 'custom';
   }
 
-  // Hi-vis: a browser preference persisted to localStorage `ui_hivis`
-  // ('1'/'0'). main.js already restores this class onto <html> before first
-  // paint (so the page never flashes the default weight) — this component
-  // only needs to read that starting state and flip it from here on.
-  let hivis = $state(
-    typeof document !== 'undefined' && document.documentElement.classList.contains('hivis')
-  );
-  function toggleHivis() {
-    hivis = !hivis;
-    document.documentElement.classList.toggle('hivis', hivis);
-    try { localStorage.setItem('ui_hivis', hivis ? '1' : '0'); } catch (e) { /* private mode: preference only */ }
+  // Hi-vis and terse: classes on <html>, restored by main.js before first
+  // paint from `ui_hivis` / `ui_terse` ('1'/'0'); this only flips them.
+  const htmlHas = (c) => typeof document !== 'undefined' && document.documentElement.classList.contains(c);
+  let hivis = $state(htmlHas('hivis'));
+  let terse = $state(htmlHas('terse'));
+  function flip(cls, key, on) {
+    document.documentElement.classList.toggle(cls, on);
+    try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) { /* private mode: preference only */ }
   }
 
-  // Terse instrument: hides `.explain` teaching copy on the hero instruments
-  // (style.css owns the rule + the convention), and moves a settings field's
-  // description from an inline line under the control to the hover tip on its
-  // `i` (Field.svelte owns that half). A description is reachable either way;
-  // terse only changes whether it costs vertical space. Same
-  // localStorage-before-first-paint mechanism as hivis (main.js restores).
-  let terse = $state(
-    typeof document !== 'undefined' && document.documentElement.classList.contains('terse')
-  );
-  function toggleTerse() {
-    terse = !terse;
-    document.documentElement.classList.toggle('terse', terse);
-    try { localStorage.setItem('ui_terse', terse ? '1' : '0'); } catch (e) { /* private mode: preference only */ }
-  }
+  // The measured viewport, for the class readout.
+  let vw = $state(typeof window !== 'undefined' ? window.innerWidth : 0);
+  let vh = $state(typeof window !== 'undefined' ? window.innerHeight : 0);
+  let dpr = $state(typeof window !== 'undefined' ? window.devicePixelRatio : 1);
+  $effect(() => untrack(() => {
+    const measure = () => { vw = window.innerWidth; vh = window.innerHeight; dpr = window.devicePixelRatio; };
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }));
+  const POINTER = { fine: 'fine (mouse or pen)', coarse: 'coarse (touch)', none: 'none (no pointer)' };
 </script>
 
-<div class="theme-picker">
-  <div class="swatches" role="list" aria-label="Accent theme">
-    {#each THEMES as t (t.id)}
-      <button
-        type="button"
-        class="swatch"
-        class:active={current === t.id}
-        role="listitem"
-        aria-pressed={current === t.id}
-        title={t.name + ' · reality ' + t.reality + ' / intent ' + t.intent}
-        onclick={() => pick(t.id)}
-      >
-        <span class="dot" style="background:{t.reality};box-shadow:0 0 6px {t.reality}" aria-hidden="true"></span>
-        <span class="dot" style="background:{t.intent}" aria-hidden="true"></span>
-        <span class="name">{t.name}</span>
-      </button>
-    {/each}
-
-    <div class="custom-swatch" role="listitem">
-      <button
-        type="button"
-        class="swatch"
-        class:active={current === 'custom'}
-        aria-pressed={current === 'custom'}
-        title="Your own accent pair"
-        onclick={pickCustom}
-      >
-        <span class="dot" style="background:{custom.reality};box-shadow:0 0 6px {custom.reality}" aria-hidden="true"></span>
-        <span class="dot" style="background:{custom.intent}" aria-hidden="true"></span>
-        <span class="name">Custom</span>
-      </button>
-      <label class="color-input">
-        <span class="sr-only">Custom reality accent color — what the machine reports</span>
-        <input type="color" value={custom.reality} oninput={setRealityColor} aria-label="Reality accent color" />
-      </label>
-      <label class="color-input">
-        <span class="sr-only">Custom intent accent color — what it was asked for, and the window band</span>
-        <input type="color" value={custom.intent} oninput={setIntentColor} aria-label="Intent accent color" />
-      </label>
+<div class="pane theme-picker">
+  <section class="pane-sec og-panel" aria-labelledby="tp-theme">
+    <div class="pane-head"><h2 id="tp-theme">Theme</h2></div>
+    <div class="swatches" role="group" aria-label="Accent theme">
+      {#each THEMES as t (t.id)}
+        <button type="button" class="swatch" class:active={current === t.id} aria-pressed={current === t.id}
+                title={t.name + ' · reality ' + t.reality + ' / intent ' + t.intent} onclick={() => pick(t.id)}>
+          <span class="dot" style="background:{t.reality};box-shadow:0 0 6px {t.reality}" aria-hidden="true"></span>
+          <span class="dot" style="background:{t.intent}" aria-hidden="true"></span>
+          <span class="name">{t.name}</span>
+        </button>
+      {/each}
+      <span class="custom-swatch">
+        <button type="button" class="swatch" class:active={current === 'custom'} aria-pressed={current === 'custom'}
+                title="Your own accent pair" onclick={pickCustom}>
+          <span class="dot" style="background:{custom.reality};box-shadow:0 0 6px {custom.reality}" aria-hidden="true"></span>
+          <span class="dot" style="background:{custom.intent}" aria-hidden="true"></span>
+          <span class="name">Custom</span>
+        </button>
+        <label class="color-input" title="Reality: what the machine reports">
+          <input type="color" value={custom.reality} oninput={(e) => setColor('reality', e)} aria-label="Reality accent color" />
+        </label>
+        <label class="color-input" title="Intent: what it was asked for, and the window band">
+          <input type="color" value={custom.intent} oninput={(e) => setColor('intent', e)} aria-label="Intent accent color" />
+        </label>
+      </span>
     </div>
-  </div>
+    <p class="pane-note">Accent colors only: safety amber and red are the same in every theme. A browser preference; the machine is unaffected.</p>
+  </section>
 
-  <p class="hint">
-    Accent colors only — safety amber/red are identical in every theme. Browser preference; the machine is unaffected.
-  </p>
+  <section class="pane-sec og-panel" aria-labelledby="tp-legibility">
+    <div class="pane-head"><h2 id="tp-legibility">Legibility</h2></div>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={hivis} onchange={(e) => flip('hivis', 'ui_hivis', (hivis = e.currentTarget.checked))} />
+      <span class="track"></span>High legibility: brighter text, heavier numerals
+    </label>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={terse} onchange={(e) => flip('terse', 'ui_terse', (terse = e.currentTarget.checked))} />
+      <span class="track"></span>Terse instruments
+    </label>
+    <p class="pane-note">Terse hides usage hints on instrument cards; on settings pages a field's description moves onto its info button.</p>
+  </section>
 
-  <!-- High-legibility toggle: brighter, heavier text, hierarchy preserved.
-       Browser-only; never touches device settings. -->
-  <button type="button" class="hivis-toggle" aria-pressed={hivis} onclick={toggleHivis}>
-    <span class="hv-dot" aria-hidden="true"></span>
-    High legibility
-    <span class="hv-state">{hivis ? 'on' : 'off'}</span>
-  </button>
+  <section class="pane-sec og-panel" aria-labelledby="tp-units">
+    <div class="pane-head"><h2 id="tp-units">Units</h2></div>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={$prefs.autorange} onchange={(e) => setPref('autorange', e.currentTarget.checked)} />
+      <span class="track"></span>Autorange: 85 mV, not 0.085 V
+    </label>
+    <dl class="pane-facts">
+      <dt>system</dt><dd>{$prefs.units}{UNITS.length === 1 ? ', the only system today' : ''}</dd>
+    </dl>
+    <p class="pane-note">Display only: what is sent to the machine never changes.</p>
+  </section>
 
-  <button type="button" class="hivis-toggle" aria-pressed={terse} onclick={toggleTerse}>
-    <span class="hv-dot" aria-hidden="true"></span>
-    Terse instruments
-    <span class="hv-state">{terse ? 'on' : 'off'}</span>
-  </button>
-  <p class="hint">
-    Terse hides usage hints and descriptions on the instrument cards once you know them. On settings pages a field's description moves out of the layout and onto its info button, which shows it on hover.
-  </p>
+  <section class="pane-sec og-screen" aria-labelledby="tp-class">
+    <div class="pane-head"><h2 id="tp-class">Renderer class</h2></div>
+    <dl class="pane-facts">
+      <dt>class</dt><dd class="cls">{view.cls}</dd>
+      <dt>viewport</dt><dd class="mono">{vw} × {vh} CSS px, {dpr}× pixel ratio</dd>
+      <dt>pointer</dt><dd>{POINTER[view.pointer] || view.pointer}</dd>
+      <dt>boundaries</dt><dd class="mono">glance below {GLANCE_UP} px or no pointer, full from {FULL_UP} px</dd>
+    </dl>
+    <p class="pane-note">Measured from this window, never set: resize it and the class follows.</p>
+  </section>
 </div>
 
 <style>
-  .theme-picker {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .swatches {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
   .swatch {
     display: inline-flex;
     align-items: center;
@@ -154,113 +146,31 @@
     min-height: var(--tap);
     padding: 0 10px;
     border-radius: var(--r-s);
-    background: var(--bg-card);
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-2);
     color: var(--ink-dim);
-    font-size: 12.5px;
+    font-size: .76rem;
     font-weight: 500;
     white-space: nowrap;
+    transition: border-color .12s, color .12s;
   }
-  .swatch.active {
-    color: var(--ink-hi);
-    border-color: var(--reality);
-    box-shadow: inset 0 0 0 1px var(--reality);
-  }
-  .swatch .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    flex: 0 0 auto;
-  }
-  .swatch .name {
-    text-transform: uppercase;
-    letter-spacing: .03em;
-  }
+  .swatch:hover { border-color: var(--line-4); }
+  .swatch.active { color: var(--ink-hi); border-color: var(--reality); box-shadow: var(--glow-reality); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .name { text-transform: uppercase; letter-spacing: .03em; }
 
-  .custom-swatch {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-  }
+  .custom-swatch { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .color-input {
     display: inline-flex;
-    min-width: var(--tap);
-    min-height: var(--tap);
+    width: var(--tap);
+    height: var(--tap);
     align-items: center;
     justify-content: center;
     border-radius: var(--r-s);
-    border: 1px solid var(--line);
-    background: var(--bg-card);
+    border: 1px solid var(--line-2);
     padding: 4px;
   }
-  .color-input input[type='color'] {
-    width: 100%;
-    height: 100%;
-    min-width: 28px;
-    min-height: 28px;
-    border: none;
-    background: none;
-    padding: 0;
-    cursor: pointer;
-  }
+  .color-input input { width: 100%; height: 100%; border: none; background: none; padding: 0; cursor: pointer; }
 
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .hint {
-    margin: 0;
-    font-size: 11.5px;
-    color: var(--ink-faint);
-  }
-
-  .hivis-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    align-self: flex-start;
-    min-height: var(--tap);
-    padding: 0 12px;
-    border-radius: var(--r-s);
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    color: var(--ink-dim);
-    font-size: 12.5px;
-    font-weight: 500;
-  }
-  .hv-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--line-2);
-    flex: 0 0 auto;
-    transition: background .18s, box-shadow .18s;
-  }
-  .hivis-toggle[aria-pressed='true'] {
-    color: var(--reality);
-    border-color: color-mix(in srgb, var(--reality) 45%, var(--line));
-  }
-  .hivis-toggle[aria-pressed='true'] .hv-dot {
-    background: var(--reality);
-    box-shadow: var(--glow-reality);
-  }
-  .hv-state {
-    color: var(--ink-faint);
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: .04em;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .hv-dot { transition: none; }
-  }
+  .og-switch { min-height: var(--tap); font-size: .8rem; align-self: flex-start; }
+  .cls { color: var(--reality); text-transform: uppercase; letter-spacing: .06em; }
 </style>
