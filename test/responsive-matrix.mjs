@@ -502,10 +502,12 @@ if (!ONLY || ONLY === 'picker') {
       if (n === 1) setTimeout(() => ws.close({ code: 1011, reason: 'reboot' }), 1500);
     });
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    const line = await page.waitForSelector('.pk-line[data-phase=retrying]', { timeout: 8000 }).catch(() => null);
+    // The strip's status slot carries the drop and Retry now (ph-e82.17).
+    const DROP = '.topstrip .status[data-kind=fault] button:has-text("Retry now")';
+    const line = await page.waitForSelector(DROP, { timeout: 8000 }).catch(() => null);
     const railKept = !!(await page.$('nav.rail'));
     scen('a dropped link is announced, and the page stays', !!line && railKept);
-    const back = await page.waitForSelector('.pk-line[data-phase=retrying]', { state: 'detached', timeout: 8000 }).then(() => true).catch(() => false);
+    const back = await page.waitForSelector(DROP, { state: 'detached', timeout: 8000 }).then(() => true).catch(() => false);
     await page.waitForTimeout(300);
     const lb = await page.textContent('.linkbar');
     scen('the reconnect adopts the rebooted hub', back && lb.includes('Rebooted fixture') && !lb.includes('Responsive fixture'));

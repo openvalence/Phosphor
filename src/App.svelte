@@ -22,7 +22,6 @@
   import TopStrip from './ui/TopStrip.svelte';
   import ConfirmLayer from './ui/ConfirmLayer.svelte';
   import { askConfirm } from './ui/confirm.svelte.js';
-  import TransportBar from './ui/TransportBar.svelte';
   import ValencePane from './ui/ValencePane.svelte';
   import LogPane from './ui/LogPane.svelte';
   import PairingPane from './ui/PairingPane.svelte';
@@ -335,10 +334,6 @@
   </button>
 {/snippet}
 
-{#snippet transportAccessory()}
-  <TransportBar />
-{/snippet}
-
 {#snippet heroCard(item)}
   <item.hero.component fields={item.hero.fields} hero={item.hero} />
 {/snippet}
@@ -418,7 +413,6 @@
 
 <div class="app">
   <TopStrip {shell} onopenlog={() => selectTab('log')} />
-  {#if ready}<HubPicker mode="link" />{/if}
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -432,17 +426,7 @@
          stands and how to point the page at a hub. -->
     <HubPicker />
   {:else if isDesktop}
-    <!-- Desktop: the transport row rides INSIDE the instrument hero row
-         (the OG .hero-row — numerals left, transport right, one baseline),
-         threaded down as a layout snippet. -->
-    {#if ready}
-      <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
-      {#if !instrumentHeroes.length}
-        <!-- No hero row to ride in: home still needs a home. The e-stop and
-             pause never depend on this; the top strip always carries them. -->
-        <div class="bare-transport"><TransportBar /></div>
-      {/if}
-    {/if}
+    {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
            forbids giving a non-interactive landmark an interactive role. -->
@@ -477,12 +461,7 @@
       </div>
     </div>
   {:else}
-    {#if ready}
-      <div class="instrument">
-        <TransportBar />
-        <HeroStrip heroes={instrumentHeroes} />
-      </div>
-    {/if}
+    {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
     <nav class="tabs" aria-label="Sections" bind:this={tabsNav}>
       <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
         {#each tabs as t (t.id)}
@@ -503,30 +482,6 @@
 </div>
 
 <style>
-  /* ---- instrument zone (mobile only) -------------------------------------
-     TransportBar is the OG's `.spine-transport`, Home only since RFC-085
-     (the safety pairs are the top strip's). Desktop
-     threads it INTO the instrument hero row via the accessory snippet — no
-     overlay positioning; the row itself is the alignment. A phone's page
-     scrolls instead, so it keeps its own full-width row ABOVE the hero
-     strip (OG mobile behavior), each button sharing the row equally.
-     Breakpoint matches the `isDesktop` matchMedia above. */
-  @media (max-width: 959px) {
-    .instrument {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .instrument :global(.transportbar) {
-      width: 100%;
-    }
-    .instrument :global(.transportbar .tbtn) {
-      flex: 1 1 0;
-    }
-  }
-
-  .bare-transport { padding-top: var(--gap); }
-
   .cat-empty {
     color: var(--ink-faint);
     font-size: 12.5px;
@@ -613,7 +568,7 @@
   }
   .rail-sec.shell .rail-tab:not(.on),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
-  .rail-sec.shell .rail-glyph { color: var(--ink-dim); }
+  .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
   .rail-lbl {
     padding: 2px 8px 4px;
     font-size: 11px;

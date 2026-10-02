@@ -6,15 +6,12 @@
    *   mode 'boot'  no catalog yet: status, retry, and (outside the shell) the
    *                hub field and remembered hubs. file:// and a failed first
    *                connect land here instead of on a blank page.
-   *   mode 'link'  catalog adopted but the link is down: one status line and
-   *                Retry now. The page below stays, dimmed stale (law 8), and
-   *                re-adopts whatever the hub pushes when it returns.
    *   mode 'tier'  live at watch: why, and the way to control (Pairing).
    *
    * Constraints:
    * - Renders link state only; never machine values, never a write.
-   * - In the shell the hub field lives in ShellStrip (same HostEntry). Showing
-   *   a second one here would be two doors to one room.
+   * - In the shell the hub field lives in Phosphor > Hubs (same HostEntry).
+   *   Showing a second one here would be two doors to one room.
    */
   import HostEntry from './HostEntry.svelte';
   import { machine, retryNow, switchHub, hostLabel } from '../model/machine.svelte.js';
@@ -84,11 +81,6 @@
       </p>
     {/if}
   </section>
-{:else if mode === 'link' && down}
-  <div class="pk-line" role="status" data-phase={link.phase}>
-    <span>{status} Values below are the last the hub reported.</span>
-    <button type="button" class="og-btn sm" onclick={retryNow}>Retry now</button>
-  </div>
 {:else if mode === 'tier' && link.phase === 'live' && link.roles === ACCESS.watch}
   <div class="pk-line tier" role="note">
     <span>
