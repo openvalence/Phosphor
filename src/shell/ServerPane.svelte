@@ -35,10 +35,10 @@
   let tab = $state('devices');
   const summary = $derived(statusLine(s));
   const runText = $derived(!s.ready ? s.reason
-    : s.fault ? 'Server error: ' + s.fault + '. The Log tab has the detail.'
-      : s.run.reason || (s.running ? 'Running. Apps connect to ws://127.0.0.1:' + s.port + '.' : 'Stopped. Start it to accept apps and find toys.'));
+    : s.fault ? 'Server error: ' + s.fault
+      : s.run.reason || (s.running ? 'Running on ws://127.0.0.1:' + s.port : 'Stopped'));
   const runPhase = $derived(!s.ready ? 'fault' : s.fault ? 'fault' : s.run.reason ? s.run.phase : s.running ? 'settled' : null);
-  const stopText = $derived(s.stopAll.reason || 'Stop all toys halts every toy. It is not the machine e-stop, which stays in the top strip.');
+  const stopText = $derived(s.stopAll.reason || 'Not the machine e-stop');
 
   function onTabKey(e) {
     const i = TABS.findIndex(([id]) => id === tab);
@@ -64,11 +64,11 @@
                 onclick={() => bp.start()}>Start server</button>
       {/if}
       <button type="button" class="og-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
-              title={s.running ? '' : 'Start the server first'} onclick={bp.stopAll}>Stop all toys</button>
+              title={s.running ? '' : 'Server stopped'} onclick={bp.stopAll}>Stop all toys</button>
     </div>
     <p class="pane-status" role="status" data-phase={runPhase} title={runText}>{runText}</p>
     <p class="pane-status" role="status" data-phase={s.stopAll.reason ? s.stopAll.phase : null} title={stopText}>{stopText}</p>
-    <p class="pane-note">Loopback only: apps on this computer can connect, nothing on the LAN.</p>
+    <p class="pane-note">Loopback only, no LAN access</p>
   </section>
 
   {#if s.ready}

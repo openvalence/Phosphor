@@ -27,10 +27,10 @@
       {#if o?.reason}<span class="sp-ladder" data-phase={o.phase}>{o.reason}</span>{/if}
     </li>
   {:else}
-    <li class="sp-note">{s.running ? 'no app connected; apps connect to ws://127.0.0.1:' + s.port : 'start the server to accept apps'}</li>
+    <li class="sp-note">{s.running ? 'no app connected' : 'server stopped'}</li>
   {/each}
 </ul>
-<p class="sp-note">one app at a time, as Intiface; an app that reconnects by itself comes straight back</p>
+<p class="sp-note">one app at a time</p>
 
 <style>
   .cl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

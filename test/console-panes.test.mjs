@@ -387,7 +387,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const slots = () => page.$$eval('.sp-pane > section:first-child .pane-status', (ps) => ps.map((p) => [p.dataset.phase, p.textContent.trim(), p.getBoundingClientRect().height]));
   const s0 = await slots();
   const b0 = await stopAt();
-  ok('server: stop all sits in its slot, disabled with a reason while stopped', await stopAllBtn.isDisabled() && s0.length === 2 && /not the machine e-stop/.test(s0[1][1]), JSON.stringify(s0));
+  ok('server: stop all sits in its slot, disabled with a reason while stopped', await stopAllBtn.isDisabled() && s0.length === 2 && /Not the machine e-stop/.test(s0[1][1]), JSON.stringify(s0));
   await page.click('.sp-pane button:has-text("Start server")');
   await page.waitForFunction(() => /Running/.test(document.querySelector('.sp-pane .pane-status')?.textContent || ''), null, { timeout: 5000 });
   const b1 = await stopAt();

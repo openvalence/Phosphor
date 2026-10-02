@@ -26,7 +26,7 @@
   <button class="og-btn sm sp-btn" disabled={!shown.length || s.copy.phase === 'pending'}
           onclick={() => bp.copyLog(level)}>Copy</button>
   {#if s.copy.reason}<span class="sp-ladder" data-phase={s.copy.phase}>{s.copy.reason}</span>{/if}
-  <span class="sp-note">{shown.length} of {s.log.length} lines; the server sends {s.settings?.log_level ?? 'its level'} and above</span>
+  <span class="sp-note">{shown.length} of {s.log.length} lines, server level {s.settings?.log_level ?? '--'}</span>
 </div>
 
 {#if shown.length}

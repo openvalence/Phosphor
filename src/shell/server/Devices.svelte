@@ -42,7 +42,7 @@
   <button class="og-btn sm sp-btn" disabled={!s.running || s.scan.phase === 'pending'}
           onclick={() => bp.scan(!s.scanning)}>{s.scanning ? 'Stop scan' : 'Scan for toys'}</button>
   {#if s.scanning}<span class="sp-note">scanning; stops by itself after {SCAN_S} s</span>{/if}
-  {#if !s.running}<span class="sp-note">start the server to scan</span>{/if}
+  {#if !s.running}<span class="sp-note">server stopped</span>{/if}
   {#if s.scan.reason}<span class="sp-ladder" data-phase={s.scan.phase}>{s.scan.reason}</span>{/if}
 </div>
 
@@ -62,7 +62,7 @@
           <dt>key</dt><dd>{d.key}</dd>
         </dl>
         {#if fixed}
-          <p class="sp-note">the machine's identity is fixed; it comes and goes with the hub link</p>
+          <p class="sp-note">follows the hub link</p>
         {:else}
           <div class="sp-row">
             <label class="sp-field">name
@@ -71,7 +71,7 @@
             </label>
             {#if op('rename', d)?.reason}<span class="sp-ladder" data-phase={op('rename', d).phase}>{op('rename', d).reason}</span>{/if}
           </div>
-          <p class="sp-note">blank keeps {d.device_name}; connected apps see a new name from the toy's next connection</p>
+          <p class="sp-note">applies on the toy's next connection</p>
         {/if}
         {#if d.connected}
           {#if outputs(d).length}
@@ -103,7 +103,6 @@
               <button class="og-btn sm sp-btn" disabled={op('disconnect', d)?.phase === 'pending'}
                       onclick={() => bp.disconnect(d)}>Disconnect</button>
               {#if op('disconnect', d)?.reason}<span class="sp-ladder" data-phase={op('disconnect', d).phase}>{op('disconnect', d).reason}</span>{/if}
-              <span class="sp-note">it comes back on the next scan</span>
             </div>
           {/if}
         {:else if !fixed}
@@ -111,7 +110,6 @@
             <button class="og-btn sm sp-btn" disabled={op('forget', d)?.phase === 'pending'}
                     onclick={() => bp.forget(d.key)}>Forget</button>
             {#if op('forget', d)?.reason}<span class="sp-ladder" data-phase={op('forget', d).phase}>{op('forget', d).reason}</span>{/if}
-            <span class="sp-note">drops its saved name and index</span>
           </div>
         {/if}
       </div>

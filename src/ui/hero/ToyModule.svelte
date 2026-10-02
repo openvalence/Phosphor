@@ -30,7 +30,7 @@
 <div class="toy">
   <div class="toy-head">
     <span class="toy-name">{toy.name}</span>
-    <button type="button" class="og-btn toy-stop" title="Stops this toy. The strip e-stop does not reach toys."
+    <button type="button" class="og-btn toy-stop"
             disabled={s.stop.phase === 'pending'} onclick={t.stop}>Stop</button>
   </div>
   <p class="toy-ladder" data-phase={s.stop.phase} role="status">{s.stop.reason || 'not on the strip e-stop'}</p>

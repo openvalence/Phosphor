@@ -16,7 +16,7 @@
     ['ble', 'Bluetooth LE'],
     ['serial', 'serial port'],
     ['hid', 'HID'],
-    ['machine', 'the machine, while a hub is live'],
+    ['machine', 'the machine (hub live)'],
   ];
   const LEVELS = ['error', 'warn', 'info', 'debug'];
 
@@ -35,7 +35,7 @@
 </script>
 
 {#if !st}
-  <p class="sp-note">{s.set.reason || 'reading the saved settings…'}</p>
+  <p class="sp-note">{s.set.reason || 'reading settings…'}</p>
 {:else}
   <div class="sp-form">
     <label class="sp-field">port
@@ -56,13 +56,13 @@
         </label>
       {/each}
     </fieldset>
-    {#if s.running}<p class="sp-note">stop the server to change the port or how devices are found</p>{/if}
+    {#if s.running}<p class="sp-note">stop the server to edit</p>{/if}
     <label class="sp-field">log level
       <select value={st.log_level} disabled={busy} onchange={(e) => commit(e, 'log_level')}>
         {#each LEVELS as l}<option value={l}>{l}</option>{/each}
       </select>
     </label>
-    <p class="sp-note">raw device messages: not offered; this server speaks buttplug spec v4, which has none</p>
+    <p class="sp-note">raw device messages: not in spec v4</p>
     {#if s.set.reason}<span class="sp-ladder" data-phase={s.set.phase}>{s.set.reason}</span>{/if}
   </div>
 {/if}

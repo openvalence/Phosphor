@@ -123,7 +123,7 @@ export function createToy(s, toy, { invoke, listen }, { echoMs = ECHO_MS, readMs
   async function fire(c, value, ms) {
     const k = ctlKey(c);
     const w = s.ctl[k];
-    Object.assign(w, { want: value, phase: 'pending', reason: 'sent, waiting for the server' });
+    Object.assign(w, { want: value, phase: 'pending', reason: 'waiting for the server' });
     overdueAfter(k, w);
     try {
       await invoke(CMD[c.kind], args(c, value, ms));
