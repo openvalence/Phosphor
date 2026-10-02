@@ -15,6 +15,9 @@ export const KEYS = [
     { keys: 'F3, Ctrl+F', does: 'Look for a control', where: 'Anywhere', src: 'src/ui/LookFor.svelte' },
     { keys: 'Escape', does: 'Close dialog, menu or popover', where: 'Anywhere', src: 'src/ui/ConfirmLayer.svelte' },
     { keys: 'Arrows', does: 'Switch page', where: 'Page tabs', src: 'src/App.svelte' },
+    { keys: 'Ctrl+=, Ctrl+-', does: 'UI scale up, down', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },
+    { keys: 'Ctrl+0', does: 'UI scale to 100%', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },
+    { keys: 'Ctrl+wheel', does: 'UI scale', where: 'Off canvases and sliders', src: 'src/ui/PageFoot.svelte' },
   ] },
   { group: 'Safety', items: [
     { keys: 'Enter, Space', does: 'Fire stop, pause or override', where: 'Focused safety op', src: 'src/ui/widgets/SafetyOp.svelte' },

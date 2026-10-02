@@ -100,8 +100,8 @@ const lowContrast = (sel) => {
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
 
-async function bootPage(browser, viewport, beforeGoto) {
-  const ctx = await browser.newContext({ viewport });
+async function bootPage(browser, viewport, beforeGoto, extra = {}) {
+  const ctx = await browser.newContext({ viewport, ...extra });
   await ctx.addInitScript(([etag, bytes]) => {
     try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
     catch (e) { /* no storage: the harness will report a missing catalog */ }
@@ -362,68 +362,76 @@ await checkRootFontAt(1280, 720);
   await ctx.close();
 }
 
-// ---- 8. the category page bar holds still (ph-vdk.60.3) --------------------
-for (const [w, h] of [[1440, 900], [360, 800]]) {
-  const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h });
+// ---- 8. the category page footer holds still (ph-vdk.60.3, ph-vdk.60.12) --
+for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
+  const tag = w + 'w' + (touch ? ' touch' : '') + ' footer: ';
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h }, null, { hasTouch: touch });
   const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
   await page.waitForSelector(tabSel, { timeout: 15000 });
   const tabs = page.locator(tabSel);
+  // The page with an advanced toggle; it moves the most cards.
   let found = false;
   for (let i = 0; i < await tabs.count() && !found; i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(200);
-    found = await page.locator('main.pane .cat-bar .adv-toggle').count() > 0;
+    found = await page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).count() > 0;
   }
-  ok(w + 'w page bar: a page with advanced settings carries its toggle in the bar', found);
+  ok(tag + 'a page with advanced settings carries its toggle in the footer', found);
   if (found) {
-    const t = page.locator('main.pane .cat-bar .adv-toggle').first();
-    const next = page.locator('main.pane .cat-bar + *');
-    const sy = () => page.evaluate(() => document.scrollingElement.scrollTop);
-    const s0 = await sy(), b0 = await t.boundingBox(), y0 = (await next.boundingBox()).y, n0 = await t.ariaSnapshot();
+    const t = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).first();
+    const foot = page.locator('main.pane .page-foot');
+    const main = page.locator('main.pane .pane-main');
+    const b0 = await t.boundingBox(), f0 = await foot.boundingBox(), y0 = (await main.boundingBox()).y, n0 = await t.ariaSnapshot();
+    const e0 = await t.getAttribute('aria-expanded');
     await t.click();
     await page.waitForTimeout(200);
-    const s1 = await sy(), b1 = await t.boundingBox(), y1 = (await next.boundingBox()).y, n1 = await t.ariaSnapshot();
-    // Viewport coordinates: the scroll holds too (ph-vdk.60.6).
-    ok(w + 'w page bar: the toggle keeps its place and width when flipped', Math.abs(b0.x - b1.x) < 0.5
-      && Math.abs(b0.y - b1.y) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1, s0, s1]));
-    ok(w + 'w page bar: the cards below start where they did', Math.abs(y0 - y1) < 0.5, [y0, s0, y1, s1].join(' '));
-    ok(w + 'w page bar: the toggle is named by its visible label only', /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n0)
-      && /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n1) && n0 !== n1, n0 + ' | ' + n1);
-    const box = await page.locator('main.pane .cat-bar').boundingBox();
-    ok(w + 'w page bar: inside the viewport', box.x >= 0 && box.x + box.width <= w + 0.5);
-    // ph-vdk.60.6: scrolled until the bar meets the sticky chrome, a card-set
-    // change keeps the scroll through the re-render, every frame, both ways;
-    // only a shorter page may clamp it, to its own new end. Clicked in-page:
-    // Playwright's click scrolls a target the sticky chrome covers into view,
-    // which is the 377 -> 0 the bead measured.
-    // The advanced toggle moves the most cards; the first page with one.
-    let big = t;
-    for (let i = 0; i < await tabs.count(); i++) {
-      const adv = page.locator('main.pane .cat-bar .adv-toggle', { hasText: 'advanced' });
-      if (await adv.count()) { big = adv.first(); break; }
-      await tabs.nth(i).click();
-      await page.waitForTimeout(200);
-    }
-    const flipScrolled = () => big.evaluate(async (el) => {
-      const se = document.scrollingElement;
-      const chrome = Math.max(...[...document.querySelectorAll('.topstrip, nav.tabs')].map((n) => n.getBoundingClientRect().bottom));
-      window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - chrome - 8);
+    const b1 = await t.boundingBox(), f1 = await foot.boundingBox(), y1 = (await main.boundingBox()).y, n1 = await t.ariaSnapshot();
+    ok(tag + 'the toggle keeps its place and width when flipped', Math.abs(b0.x - b1.x) < 0.5
+      && Math.abs(b0.y - b1.y) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1]));
+    ok(tag + 'the footer keeps its box when flipped', JSON.stringify(f0) === JSON.stringify(f1), JSON.stringify([f0, f1]));
+    ok(tag + 'the cards start where they did', Math.abs(y0 - y1) < 0.5, [y0, y1].join(' '));
+    const label = (n) => (/button "([^"]*)"/.exec(n) || [])[1];
+    ok(tag + 'the toggle is named by its visible label, its state by aria-expanded',
+      /^\d+ advanced$/.test(label(n0)) && label(n0) === label(n1) && e0 !== await t.getAttribute('aria-expanded'), n0 + ' | ' + n1);
+    ok(tag + 'inside the viewport, at its bottom', f1.x >= 0 && f1.x + f1.width <= w + 0.5 && f1.y + f1.height <= h + 0.5
+      && f1.y + f1.height > h - (w >= 960 ? 60 : 1), JSON.stringify(f1));
+    // Reachable: nothing covers a shown control's center (a disabled one
+    // passes the pointer to the footer), and a fingertip gets 40 px.
+    const ctl = await page.$$eval('main.pane .page-foot button', (els) => els.filter((el) => getComputedStyle(el).visibility === 'visible').map((el) => {
+      const r = el.getBoundingClientRect();
+      return { t: el.textContent.trim() || el.getAttribute('aria-label'), h: r.height, w: r.width,
+        own: el.closest('.page-foot').contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+    }));
+    ok(tag + 'every control is uncovered at its center', ctl.length > 0 && ctl.every((c) => c.own), JSON.stringify(ctl));
+    if (touch) ok(tag + 'every control is 40 px under a coarse pointer', ctl.every((c) => c.h >= 39.5 && c.w >= 39.5), JSON.stringify(ctl));
+    // Scrolled until the cards meet the sticky chrome, a flip keeps the
+    // scroll every frame (only a shorter page may clamp it, to its own new
+    // end) and the footer's box. Clicked in-page: Playwright's click would
+    // scroll its target first. Mid-page, scroll anchoring holds the card in
+    // view instead, which moves scrollTop on purpose.
+    const flipScrolled = () => t.evaluate(async (el) => {
+      const content = document.querySelector('.content');
+      const se = content || document.scrollingElement;
+      const chrome = content ? content.getBoundingClientRect().top
+        : Math.max(...[...document.querySelectorAll('.topstrip, nav.tabs')].map((n) => n.getBoundingClientRect().bottom));
+      se.scrollTop += document.querySelector('main.pane .pane-main').getBoundingClientRect().top - chrome;
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const s0 = se.scrollTop, track = [];
+      const foot = () => { const r = el.closest('.page-foot').getBoundingClientRect(); return [r.x, r.y, r.width, r.height].join(); };
+      const s0 = se.scrollTop, f0 = foot(), track = [];
       el.click();
       for (let i = 0; i < 30; i++) {
         await new Promise((r) => requestAnimationFrame(r));
-        track.push([se.scrollTop, se.scrollHeight - se.clientHeight]);
+        track.push([se.scrollTop, se.scrollHeight - se.clientHeight, foot() === f0]);
       }
       return { s0, track };
     });
     for (const dir of ['flip', 'flip back']) {
       const r = await flipScrolled();
-      ok(w + 'w page bar: ' + dir + ' keeps the scroll every frame', (w >= 960 || r.s0 > 0)
-        && r.track.every(([s, max]) => s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
+      ok(tag + dir + ' keeps the scroll and the footer every frame', r.track.length === 30 && (w >= 960 || r.s0 > 0)
+        && r.track.every(([s, max, still]) => still && s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
     }
   }
-  if (pageErrors.length) ok(w + 'w page bar: no page errors', false, pageErrors.join(' | '));
+  if (pageErrors.length) ok(tag + 'no page errors', false, pageErrors.join(' | '));
   await ctx.close();
 }
 
@@ -439,9 +447,9 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   for (let i = 0; i < await tabs.count(); i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(150);
-    for (const t of await page.locator('main.pane .cat-bar .adv-toggle[aria-expanded="false"]').all()) await t.click();
+    for (const t of await page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]').all()) await t.click();
     await page.waitForTimeout(150);
-    bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .cat-bar, .cat-empty) *'));
+    bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .page-foot, .cat-empty) *'));
   }
   ok(w + 'w hi-vis: every category page\'s text clears WCAG AA', bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | '));
   if (pageErrors.length) ok(w + 'w hi-vis: no page errors', false, pageErrors.join(' | '));

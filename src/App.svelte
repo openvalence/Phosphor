@@ -19,6 +19,7 @@
   import Field from './ui/Field.svelte';
   import ActionField from './ui/ActionField.svelte';
   import FootStrip from './ui/FootStrip.svelte';
+  import PageFoot from './ui/PageFoot.svelte';
   import TopStrip from './ui/TopStrip.svelte';
   import ConfirmLayer from './ui/ConfirmLayer.svelte';
   import KeyHelp from './ui/KeyHelp.svelte';
@@ -250,7 +251,7 @@
   // collapsed until asked for, with the count stated. Browser-local.
   let showDiagnostic = $state(false);
 
-  // `adv` and `diagAll` count whether shown or not, so the page bar's toggles
+  // `adv` and `diagAll` count whether shown or not, so the footer's toggles
   // keep one label width in both states.
   const visibleGroups = $derived.by(() => {
     if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
@@ -295,7 +296,9 @@
     && isFieldEnabled(f, machine.samples[f.channelId])));
   const resetWhy = $derived(machine.link.phase !== 'live' ? 'no hub link'
     : !resettable.length ? 'nothing to reset' : '');
-  // Writes in flight on this page, in the bar's fixed slot (law 5).
+  // The category branch of pane() below: its controls ride the footer.
+  const catPage = $derived(!current.pane && ready && current.id !== 'machine' && !!current.cat);
+  // Writes in flight on this page, in the footer's fixed slot (law 5).
   const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
   async function resetCategory() {
     const n = resettable.length;
@@ -356,69 +359,68 @@
 
 {#snippet pane()}
   <main class="pane">
-    {#if current.pane}
-      {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
-    {:else if !ready}
-      <HubPicker />
-    {:else if current.id === 'machine'}
-      <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
-      {#if model}<Home {model} {heroes} />{/if}
-    {:else if current.cat}
-      <!-- The page bar: one place for the page's own controls, above the
-           cards, so neither a toggle nor a refusal ever moves it. A toggle
-           reserves its other label's width (data-alt, drawn invisible and
-           silent), so flipping it never moves its neighbors. -->
-      <div class="cat-bar">
+    <div class="pane-main">
+      {#if current.pane}
+        {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
+      {:else if !ready}
+        <HubPicker />
+      {:else if current.id === 'machine'}
+        <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
+        {#if model}<Home {model} {heroes} />{/if}
+      {:else if current.cat}
+        {#if drillItem}
+          <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
+          <section class="og-panel drill-page" aria-label={drillItem.title}>
+            <h3 class="drill-title">{drillItem.title}</h3>
+            {@render groupCard(drillItem)}
+          </section>
+        {:else if settingItems.length}
+          <DashGrid viewId={current.id} items={settingItems} />
+        {:else}
+          <!-- ph-vdk.37: a category can be genuinely empty for THIS hub (no
+               fields survived rank/class projection) rather than broken; say
+               which, using the same counts the advanced/diagnostic toggles
+               below already carry. -->
+          <p class="cat-empty">
+            {#if visibleGroups.diag}
+              {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} hidden
+            {:else if visibleGroups.hidden}
+              {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} hidden
+            {:else}
+              No fields at this rank or class
+            {/if}
+          </p>
+        {/if}
+      {:else if current.id === 'pairing'}
+        <PairingPane />
+      {:else if current.id === 'valence'}
+        <ValencePane />
+      {:else if current.id === 'log'}
+        <LogPane />
+      {:else if current.id === 'display'}
+        <ThemePicker />
+      {:else if current.id === 'plugins'}
+        <PluginsPane />
+      {/if}
+    </div>
+    <PageFoot page={!isDesktop}>
+      {#if catPage}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
-                  data-alt={(showAdvanced ? 'Show ' : 'Hide ') + visibleGroups.adv + ' advanced'}
-            ><span>{showAdvanced ? 'Hide' : 'Show'} {visibleGroups.adv} advanced</span></button>
+                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
         {/if}
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
-                  data-alt={(showDiagnostic ? 'Show ' : 'Hide ') + visibleGroups.diagAll + ' diagnostic'}
-            ><span>{showDiagnostic ? 'Hide' : 'Show'} {visibleGroups.diagAll} diagnostic</span></button>
+                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} diagnostic</button>
         {/if}
         {#if hasDefaults}
-          <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy} title={resetWhy || undefined}
-                  onclick={resetCategory}>Reset {drillItem ? 'this group' : 'this page'} to defaults</button>
+          <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
+                  title={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
+                  onclick={resetCategory}>Reset</button>
         {/if}
         <span class="cat-busy" role="status">{pageBusy ? pageBusy + ' in flight' : ''}</span>
-      </div>
-      {#if drillItem}
-        <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
-        <section class="og-panel drill-page" aria-label={drillItem.title}>
-          <h3 class="drill-title">{drillItem.title}</h3>
-          {@render groupCard(drillItem)}
-        </section>
-      {:else if settingItems.length}
-        <DashGrid viewId={current.id} items={settingItems} />
-      {:else}
-        <!-- ph-vdk.37: a category can be genuinely empty for THIS hub (no
-             fields survived rank/class projection) rather than broken; say
-             which, using the same counts the advanced/diagnostic toggles
-             below already carry. -->
-        <p class="cat-empty">
-          {#if visibleGroups.diag}
-            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} hidden
-          {:else if visibleGroups.hidden}
-            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} hidden
-          {:else}
-            No fields at this rank or class
-          {/if}
-        </p>
       {/if}
-    {:else if current.id === 'pairing'}
-      <PairingPane />
-    {:else if current.id === 'valence'}
-      <ValencePane />
-    {:else if current.id === 'log'}
-      <LogPane />
-    {:else if current.id === 'display'}
-      <ThemePicker />
-    {:else if current.id === 'plugins'}
-      <PluginsPane />
-    {/if}
+    </PageFoot>
   </main>
 {/snippet}
 
@@ -720,24 +722,14 @@
     color: var(--ink-dim);
   }
 
-  /* ---- the category page bar --------------------------------------------- */
-  .cat-bar {
+  /* ---- the page footer (PageFoot) ----------------------------------------
+     Desktop: the page fills .content, so the footer's sticky bottom always
+     has the bottom edge to sit at. */
+  .content > .pane {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: var(--gap);
+    flex-direction: column;
+    min-height: 100%;
+    padding-bottom: 0;
   }
-  .cat-bar button { display: inline-grid; color: var(--ink-dim); }
-  .cat-bar button > span, .cat-bar button[data-alt]::after { grid-area: 1 / 1; }
-  .cat-bar button[data-alt]::after { content: attr(data-alt) / ''; visibility: hidden; }
-  .cat-bar .adv-toggle[aria-expanded='true'] { color: var(--ink); border-color: var(--line-3); }
-  /* Reserved width, so the count appearing never re-wraps the bar. */
-  .cat-busy {
-    margin-left: auto;
-    min-width: 11ch;
-    text-align: right;
-    font-size: .76rem;
-    color: var(--intent);
-  }
+  .pane-main { flex: 1 0 auto; min-width: 0; }
 </style>

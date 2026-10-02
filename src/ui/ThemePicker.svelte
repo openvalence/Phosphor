@@ -56,7 +56,7 @@
     contrast: ['Contrast', 'Ramp spread', (v) => Math.round(v * 100) + '%'],
     glow: ['Glow', 'Glow strength', (v) => Math.round(v * 100) + '%'],
     radius: ['Radius', 'Corner radius', (v) => v + ' px'],
-    scale: ['Scale', 'Control scale', (v) => Math.round(v * 100) + '%'],
+    scale: ['Scale', 'Control scale', (v) => Math.round(v / KNOBS.look.scale[3] * 100) + '%'],
     numWeight: ['Numerals', 'Readout numeral weight', (v) => String(v)],
     motion: ['Motion', 'Echo afterglow; 0 holds still', (v) => (v ? v + ' s' : 'still')],
   };

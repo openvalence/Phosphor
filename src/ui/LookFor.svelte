@@ -172,9 +172,9 @@
     // Hidden by the page's own toggles, or promoted to a drill-in page: open
     // it the way the operator would.
     const reveal = [
-      () => (g.diagnostic ? [...document.querySelectorAll('.cat-bar .adv-toggle[aria-expanded="false"]')]
+      () => (g.diagnostic ? [...document.querySelectorAll('.page-foot .adv-toggle[aria-expanded="false"]')]
         .find((b) => /diagnostic/.test(b.textContent)) : null),
-      () => (f.advanced ? [...document.querySelectorAll('.cat-bar .adv-toggle[aria-expanded="false"]')]
+      () => (f.advanced ? [...document.querySelectorAll('.page-foot .adv-toggle[aria-expanded="false"]')]
         .find((b) => /advanced/.test(b.textContent)) : null),
       () => pane()?.querySelector('.dash-cell[data-id="' + esc((g.diagnostic ? 'diag:' : 'group:') + t.cat.id + ':'
         + (g.name || 'ungrouped')) + '"] .drill-open'),

@@ -238,7 +238,8 @@ const surfaceFaults = (page) => page.evaluate(() => {
   for (const el of pane.querySelectorAll('*')) {
     const cs = getComputedStyle(el);
     if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) out.push(name(el) + ' scrolls');
-    if (el.closest(CONTROL) || !painted(el)) continue;
+    // The page footer is chrome, not a page surface.
+    if (el.closest(CONTROL) || el.closest('.page-foot') || !painted(el)) continue;
     const c = cs.backgroundColor;
     if (c !== CARD && c !== SUNK) { out.push(name(el) + ' paints ' + c); continue; }
     let up = el.parentElement;
@@ -270,7 +271,7 @@ async function harvestDerived(page) {
   for (const id of cats) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle', { hasText: /^\s*Show/ }).all()) await b.click();
+    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
     await page.waitForTimeout(100);
     await collect();
     const drills = await page.locator('main.pane .drill-open').count();
@@ -320,7 +321,7 @@ if (!LIVE) {
   for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle', { hasText: /^\s*Show/ }).all()) await b.click();
+    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
   }
@@ -454,7 +455,7 @@ if (!LIVE) {
     await page.waitForTimeout(150);
     if (await page.locator('main.pane .dash-cell[data-id="hero:pattern"]').count()) break;
   }
-  ok('bar: the Pattern page offers Reset', await page.locator('main.pane .cat-bar .reset-cat').count() === 1);
+  ok('bar: the Pattern page offers Reset', await page.locator('main.pane .page-foot .reset-cat').count() === 1);
   ok('bar: no card of send-only fields', await page.locator('main.pane .dash-cell[data-id$=":ungrouped"]').count() === 0,
     await page.$$eval('main.pane .dash-cell', (els) => els.map((e) => e.dataset.id)));
   hub.mode = 'hold';
@@ -464,10 +465,10 @@ if (!LIVE) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await page.waitForTimeout(150);
-  const busyText = () => page.locator('main.pane .cat-bar .cat-busy').textContent();
+  const busyText = () => page.locator('main.pane .page-foot .cat-busy').textContent();
   ok('bar: a held write inside the Pattern card is counted in flight', (await busyText()).trim() === '1 in flight', await busyText());
   await release();
-  await page.waitForFunction(() => !document.querySelector('main.pane .cat-bar .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => !document.querySelector('main.pane .page-foot .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
   ok('bar: the echo clears the count', !(await busyText()).trim(), await busyText());
   await ctx.close();
 

@@ -26,7 +26,11 @@
  * side by side at 40 px and the strip takes at most half the window
  * (ph-vdk.48). In the shell bundle the X
  * opens the close popover anchored under it, the bar keeps its height, and
- * Escape or a click outside cancels.
+ * Escape or a click outside cancels. The category page footer
+ * (ph-vdk.60.12), at 1280x800 and 390x844: absent on the home, one 48 px box
+ * on every category page with page controls, it and its controls hold still
+ * for 30 frames across each toggle both ways, and scrolled to its end the
+ * last card ends above it.
  *
  * Then the REAL shell bundle (shell-build.mjs, stub Tauri runtime, no hub):
  * the sidebar ends in a Phosphor section holding the shell's panes, which the
@@ -358,6 +362,154 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   ok(tag + ': bar and strip heights hold with a long fault reason', fault.slot === 'fault' && fault.bar === idle.bar
     && fault.strip === idle.strip, JSON.stringify(fault));
   await hctx.close();
+}
+
+// ---- ph-vdk.60.12: the category page footer ----------------------------------
+// One fixed box on every page; the home's carries the UI scale alone; 30
+// still frames across each toggle, both ways; scrolled to its end, the last
+// card ends above it. Then the UI scale (1280 only): the readout is the
+// theme's, +/- step it, Reset shows only off 100% and moves nothing, and
+// Ctrl+=, Ctrl+0 and Ctrl+wheel scale --s without zooming the page, except
+// over a surface that takes the wheel itself.
+for (const [w, h] of [[1280, 800], [390, 844]]) {
+  const tag = w + 'x' + h + ' footer';
+  const fctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 960 });
+  await fctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* no storage */ }
+  }, [ETAG, Buffer.from(CAT).toString('hex')]);
+  await fctx.routeWebSocket(/:82\//, hub({}));
+  const fp = await fctx.newPage();
+  await fp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  const tabSel = (w >= 960 ? 'nav.rail' : 'nav.tabs') + ' [role=tab][data-tab-id^="cat"]';
+  const up = await fp.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+  ok(tag + ': the category pages render', up);
+  if (!up) { await fctx.close(); continue; }
+  const footBox = () => fp.evaluate(() => { const r = document.querySelector('main.pane .page-foot')?.getBoundingClientRect();
+    return r ? [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(',') : null; });
+  const homeBox = await footBox();
+  ok(tag + ': the home footer carries the UI scale alone', !!homeBox && await fp.locator('.page-foot .foot-page > *').count() === 0
+    && await fp.locator('.page-foot .foot-scale output').count() === 1, homeBox);
+  const boxes = new Set([homeBox]), shifts = [], under = [];
+  let pages = 0, flips = 0;
+  for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
+    await fp.click('[data-tab-id="' + id + '"]');
+    await fp.waitForTimeout(250);
+    const box = await fp.evaluate(() => {
+      const f = document.querySelector('main.pane .page-foot');
+      return f && [...[f, ...f.children].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(','); })];
+    });
+    if (!box) continue;
+    pages++;
+    boxes.add(box[0]);
+    for (let i = 0; i < await fp.locator('main.pane .page-foot .adv-toggle').count(); i++) {
+      for (let k = 0; k < 2; k++) {
+        flips++;
+        const f = await fp.evaluate(async (i) => {
+          const foot = document.querySelector('main.pane .page-foot');
+          const frame = () => [foot, ...foot.querySelectorAll('button, output, .cat-busy')].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(','); }).join(' | ');
+          const out = [frame()];
+          foot.querySelectorAll('.adv-toggle')[i].click();
+          for (let n = 0; n < 30; n++) { await new Promise((r) => requestAnimationFrame(r)); out.push(frame()); }
+          return out;
+        }, i);
+        const moved = f.filter((x) => x !== f[0]);
+        if (moved.length) shifts.push(id + ' toggle ' + i + ': ' + f[0] + ' -> ' + moved[0]);
+      }
+    }
+    const end = await fp.evaluate(async () => {
+      const se = document.querySelector('.content') || document.scrollingElement;
+      se.scrollTop = se.scrollHeight;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const cards = [...document.querySelectorAll('main.pane :is(.dash-cell, .drill-page, .cat-empty)')];
+      const last = Math.max(...cards.map((c) => c.getBoundingClientRect().bottom));
+      const top = document.querySelector('main.pane .page-foot').getBoundingClientRect().top;
+      se.scrollTop = 0;
+      return { last, top };
+    });
+    if (!(end.last <= end.top + 0.5)) under.push(id + ' ' + JSON.stringify(end));
+  }
+  const [, , , fh] = [...boxes][0]?.split(',').map(Number) || [];
+  ok(tag + ': pages with page controls carry the footer', pages > 1, pages + ' pages');
+  ok(tag + ': one footer box on every page and the home, 48 px tall', boxes.size === 1 && fh === 48, [...boxes].join(' / '));
+  ok(tag + ': footer and its controls hold still for 30 frames across every toggle', flips > 0 && shifts.length === 0,
+    flips + ' flips; ' + shifts.slice(0, 2).join(' / '));
+  ok(tag + ': scrolled to its end, the last card ends above the footer', under.length === 0, under.join(' / '));
+  if (w >= 960) {
+    const look = () => fp.evaluate(() => ({ s: getComputedStyle(document.documentElement).getPropertyValue('--s').trim(),
+      out: document.querySelector('.page-foot .foot-scale output').textContent.trim(),
+      reset: getComputedStyle(document.querySelector('.page-foot .reset')).visibility,
+      theme: JSON.parse(localStorage.getItem('phosphor.theme') || '{}').look?.scale,
+      dpr: devicePixelRatio, zoom: visualViewport.scale }));
+    const s0 = await look();
+    ok(tag + ': the readout is the theme default at 100%, no Reset', s0.out === '100%' && s0.reset === 'hidden', JSON.stringify(s0));
+    // A step rescales every rem in the footer, its labels too; the footer's
+    // box and the scale group's right edge hold.
+    const frames = await fp.evaluate(async () => {
+      const box = () => [document.querySelector('.page-foot').getBoundingClientRect(), document.querySelector('.page-foot .foot-scale').getBoundingClientRect()]
+        .map((r, i) => (i ? [r.right] : [r.left, r.top, r.width, r.height]).map((v) => Math.round(v)).join(',')).join(' | ');
+      const out = [box()];
+      document.querySelector('.page-foot [aria-label=Larger]').click();
+      for (let n = 0; n < 30; n++) { await new Promise((r) => requestAnimationFrame(r)); out.push(box()); }
+      return out;
+    });
+    const s1 = await look();
+    ok(tag + ': + steps 10% and persists in the theme', s1.out === '110%' && Math.abs(s1.theme - 1.12 * 1.1) < 1e-9, JSON.stringify(s1));
+    ok(tag + ': Reset shows off 100%; the footer and the scale group hold still for 30 frames', s1.reset === 'visible'
+      && frames.every((f) => f === frames[0]), frames.find((f) => f !== frames[0]) || '');
+    // At one scale, Reset's slot is the same hidden or shown.
+    const flip = await fp.evaluate(() => {
+      const r = document.querySelector('.page-foot .reset');
+      const box = () => [...document.querySelectorAll('.page-foot .foot-page, .page-foot .foot-scale > *')]
+        .map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.width].map(Math.round).join(','); }).join(' | ');
+      const a = box();
+      r.classList.add('off');
+      const b = box();
+      r.classList.remove('off');
+      return [a, b, getComputedStyle(r).visibility];
+    });
+    ok(tag + ': Reset showing or hidden moves nothing', flip[0] === flip[1] && flip[2] === 'visible', JSON.stringify(flip));
+    await fp.locator('.page-foot [aria-label=Smaller]').click();
+    await fp.locator('.page-foot [aria-label=Smaller]').click();
+    ok(tag + ': - steps down', (await look()).out === '90%', (await look()).out);
+    await fp.locator('.page-foot .reset').click();
+    const s2 = await look();
+    ok(tag + ': Reset restores 100% and the default --s, and hides', s2.out === '100%' && s2.reset === 'hidden' && s2.s === s0.s,
+      JSON.stringify(s2));
+    await fp.mouse.move(640, 500);
+    await fp.keyboard.press('Control+Equal');
+    const k1 = await look();
+    await fp.keyboard.press('Control+0');
+    const k0 = await look();
+    ok(tag + ': Ctrl+= scales --s, Ctrl+0 resets, the page never zooms', k1.out === '110%' && k1.s !== s0.s && k0.out === '100%'
+      && k1.dpr === s0.dpr && k1.zoom === s0.zoom, JSON.stringify([k1, k0]));
+    await fp.keyboard.down('Control');
+    await fp.mouse.wheel(0, -100);
+    await fp.keyboard.up('Control');
+    await fp.waitForTimeout(100);
+    const w1 = await look();
+    ok(tag + ': Ctrl+wheel up scales --s, the page never zooms', w1.out === '110%' && w1.s !== s0.s && w1.dpr === s0.dpr
+      && w1.zoom === s0.zoom, JSON.stringify(w1));
+    // A surface that takes the wheel itself (as the node editor's canvas
+    // does: non-passive, default prevented), a range and a canvas.
+    await fp.evaluate(() => {
+      const mk = (tag, css) => { const el = document.createElement(tag); el.className = 'wheel-probe'; el.style.cssText = 'position:fixed;width:120px;height:60px;z-index:99;' + css; document.body.append(el); return el; };
+      mk('div', 'left:20px;top:200px;background:#333').addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+      const r = mk('input', 'left:160px;top:200px'); r.type = 'range';
+      mk('canvas', 'left:300px;top:200px');
+    });
+    for (const [x, what] of [[80, 'a wheel-taking surface'], [220, 'a range'], [360, 'a canvas']]) {
+      await fp.mouse.move(x, 230);
+      await fp.keyboard.down('Control');
+      await fp.mouse.wheel(0, -100);
+      await fp.keyboard.up('Control');
+      await fp.waitForTimeout(100);
+      const o = await look();
+      ok(tag + ': Ctrl+wheel over ' + what + ' leaves --s alone and the page unzoomed', o.s === w1.s && o.out === '110%'
+        && o.dpr === s0.dpr && o.zoom === s0.zoom, JSON.stringify(o));
+    }
+    await fp.evaluate(() => document.querySelectorAll('.wheel-probe').forEach((e) => e.remove()));
+  }
+  await fctx.close();
 }
 
 // ---- ph-b5d: every strip control inside the viewport, nothing scrolls -------

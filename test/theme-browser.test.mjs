@@ -247,9 +247,9 @@ for (const id of ['slate', 'ink', 'paper']) {
   for (let i = 0; i < await tabs.count(); i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .cat-bar .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    for (const b of await page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]').all()) await b.click();
     await page.waitForTimeout(150);
-    bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .cat-bar, .cat-empty) *'));
+    bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .page-foot, .cat-empty) *'));
   }
   ok(id + ' hi-vis: every category page clears WCAG AA', tabs && bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | '));
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));

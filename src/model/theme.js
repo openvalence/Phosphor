@@ -428,6 +428,11 @@ export function editTheme(fn) {
   return applyTheme(t);
 }
 
+/** The look's scale alone (footer, Ctrl shortcuts): the theme keeps its id and name. */
+export function setScale(v) {
+  return applyTheme({ ...current, look: { ...current.look, scale: v } });
+}
+
 export function saveAsPreset(name) {
   const t = { ...normalizeTheme(current), id: 'user-' + Date.now().toString(36), name: String(name || '').trim().slice(0, 40) || 'Saved' };
   write(PRESETS_KEY, [...savedPresets(), t]);

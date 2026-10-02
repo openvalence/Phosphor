@@ -737,9 +737,9 @@ select:focus { outline: none; border-color: var(--highlight); }
   padding-right: var(--gap);
 }
 
-/* Mobile: a normally-scrolling page. Nothing is fixed to the bottom edge
-   (DESIGN §10.3), so the only bottom clearance is the phone's own inset.
-   Breakpoint matches App.svelte's `isDesktop` (960px). */
+/* Mobile: a normally-scrolling page. Only the page footer is fixed to the
+   bottom edge (DESIGN §10.3); it reserves its own height here
+   (ui/PageFoot.svelte). Breakpoint matches App.svelte's `isDesktop` (960px). */
 @media (max-width: 959px) {
   .app {
     min-height: 100vh;

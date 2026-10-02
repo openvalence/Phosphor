@@ -20,8 +20,9 @@
  *   clip       no leaf text clipped by its own overflow box
  *   sticky     phone: tab strip parks flush under the top strip (T22)
  *   strip      one e-stop, inside the top strip, on screen with every scroll
- *              container scrolled to its end (law 11); nothing fixed to the
- *              bottom edge; .app spans the window (DESIGN §10.3, §10.4)
+ *              container scrolled to its end (law 11); nothing but the
+ *              page footer fixed to the bottom edge, and that footer one
+ *              whole 48 px bar; .app spans the window (DESIGN §10.3, §10.4)
  *   chrome     no two fixed/sticky bars overlap
  *   reach      phone: every control can be scrolled clear of fixed chrome
  *   font       no text below 11px
@@ -211,6 +212,8 @@ function measure({ phone, coarse = phone }) {
   const vis = (el) => {
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+    // A closed <details> keeps a box for its content but never shows it.
+    if (el.closest('details:not([open]) > :not(summary)')) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
@@ -352,9 +355,17 @@ function stripCheck() {
     || !pause || pause.getBoundingClientRect().right > r.left + 0.5)) out.push(['strip', 'the e-stop is not the outermost control']);
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
-    if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none') continue;
+    // The page footer is the one bar ruled onto the bottom edge (DESIGN §10.3).
+    if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none' || el.matches('.page-foot')) continue;
     const b = el.getBoundingClientRect();
     if (b.width > 0 && b.height > 0 && b.bottom >= innerHeight - 1) out.push(['strip', 'fixed bar at the bottom edge: ' + el.className]);
+  }
+  // ph-vdk.60.12: the page footer is one 48 px bar, whole, at every size,
+  // scrolled to the end as at the top.
+  const foot = document.querySelector('main.pane .page-foot');
+  const fb = foot && foot.getBoundingClientRect();
+  if (fb && !(Math.abs(fb.height - 48) < 0.5 && fb.top >= -0.5 && fb.bottom <= innerHeight + 0.5 && fb.left >= -0.5 && fb.right <= innerWidth + 0.5)) {
+    out.push(['strip', 'page footer ' + [fb.left, fb.top, fb.width, fb.height].map(Math.round).join(',') + ' scrolled to the end']);
   }
   const app = document.querySelector('.app').getBoundingClientRect();
   if (Math.abs(app.width - document.documentElement.clientWidth) > 1) out.push(['strip', '.app ' + Math.round(app.width) + 'px wide in a ' + document.documentElement.clientWidth + 'px window']);
@@ -582,7 +593,7 @@ if (!ONLY || ONLY === 'class') {
     await tabs.nth(i).click();
     await phone.page.waitForTimeout(250);
     // The fixture's one group past eight controls is diagnostic-rank.
-    await phone.page.click('.adv-toggle:has-text("Show") >> text=/diagnostic/', { timeout: 500 }).catch(() => {});
+    await phone.page.click('.adv-toggle[aria-expanded=false]:has-text("diagnostic")', { timeout: 500 }).catch(() => {});
     await phone.page.waitForTimeout(150);
     const btn = await phone.page.$('.drill-open');
     if (btn) { await btn.click(); await phone.page.waitForTimeout(250); opened = !!(await phone.page.$('.drill-page .field')); }

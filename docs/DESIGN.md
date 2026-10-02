@@ -500,6 +500,17 @@ question in §10.8).
   served page draws the strip without window controls.
 - One strip, one top reserve, one safe-area owner (`.claude/rules/webui.md`
   T22). Safety colors stay unthemeable in the new chrome (law 13).
+- The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
+  `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
+  area on every page, never scrolled, the scroll ending above it; it owns
+  the bottom safe-area inset. Left, a category page's own controls (the
+  advanced and diagnostic toggles, Reset, the in-flight count); right, the
+  UI scale: the theme's look scale as a percentage of its default (the
+  default reads 100%), minus and plus in 10% steps, Reset only off 100% in
+  a held slot. Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel act on the same value
+  and never zoom the webview; Ctrl+wheel over a surface that takes the wheel
+  itself never scales. Not a safety surface: the bottom-edge rule above
+  binds safety controls.
 
 ### 10.4 Full width
 
@@ -657,3 +668,4 @@ connected, then merge the setting changes onto the machine, ticked per item.
 | 2026-10-02 | §10.6 | Nests are fixed and grow to fit (scroll and fold retired); nothing on the home or a category page scrolls on its own; placements are absolute; two surfaces, card and sunken nest; the scale control moves into the edit-mode Layout menu (`ph-e82.22`). | operator |
 | 2026-10-02 | §10.3 | RFC-085: the strip's mandatory pair is e-stop plus pause, each one two-state control (hold-to-release, Halted, Halt label without `estop_cuts_power`); stop, hold and every clear button retired; modules are one per pair (`ph-e82.12`). | operator (RFC-085 ruling) |
 | 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |
+| 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
