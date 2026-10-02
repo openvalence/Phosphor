@@ -14,6 +14,10 @@
  *   READ to seed the layout named Default, never written or deleted.
  * - Every storage access degrades to in-memory on a throw (private mode,
  *   quota, storage disabled).
+ * - Placements are absolute (operator ruling 2026-10-02): a card keeps the
+ *   rect the user gave it, nothing compacts, a removed card leaves a hole,
+ *   and an unplaced card takes the first free rect without moving anyone.
+ *   `pack` is the first-run seed's flow only.
  * - A placement entry is {x, y, w, h}, plus `nest` on a nest and an optional
  *   `look` (the control's presentation and per-placement config, DESIGN
  *   §10.2). An entry without `look` is valid and means the derived
@@ -87,70 +91,74 @@ function int(v, lo, hi, dflt) {
 
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
+const positioned = (e) => !!(e && typeof e === 'object' && e.y != null);
+const sizeOf = (e, cols) => ({ w: int(e && e.w, 1, cols, cols), h: int(e && e.h, 1, MAX_H, DEFAULT_H) });
+const lookOf = (e) => (e && typeof e === 'object' && e.look ? { look: e.look } : {});
+const hits = (placed, r) => placed.some((p) => overlaps(r, p));
+const byReading = (a, b) => a.y - b.y || a.x - b.x;
+
 /**
- * Place `items` ([{id, ...}]) on a `cols`-wide grid from the saved `map`
- * ({[id]: {x, y, w, h}}). Pure: never writes `map`.
- *
- * - `pin` ({id, x, y, w, h}, or an array of them for a group) is placed first,
- *   exactly where asked (clamped): the item under a drag. Everything else
- *   yields to it; a later pin that collides with an earlier one moves down.
- * - Saved items keep their column (clamped to fit), are pushed down past any
- *   collision, then rise while the cell above is free (vertical compaction).
- * - Unsaved items, and entries with no position yet (a reset nest, a look set
- *   before the item was placed), flow below every saved item at their own size;
- *   an entry with no `w` (or no entry) fills the row, `h` defaults to DEFAULT_H.
- * Returns [{...item, x, y, w, h}] in reading order (y, then x).
+ * The first-run seed: `items` flow in order, each at the first free rect of
+ * its own size around `placed` (an entry with no `w`, or no entry, fills the
+ * row; `h` defaults to DEFAULT_H). place() puts an unplaced item the same way.
  */
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
-export function pack(items, map, cols, pin = null) {
-  const placed = [];
-  const fits = (r) => !placed.some((p) => overlaps(r, p));
-  const size = (e) => {
-    const w = int(e && e.w, 1, cols, cols);
-    return { w, h: folded(e) ? NEST_FOLD_H : int(e && e.h, 1, MAX_H, DEFAULT_H) };
-  };
-  const byId = new Map(items.map((it) => [it.id, it]));
-
-  const lookOf = (e) => (e && typeof e === 'object' && e.look ? { look: e.look } : {});
-  const pins = (pin == null ? [] : Array.isArray(pin) ? pin : [pin]).filter((p) => p && byId.has(p.id));
-  const pinned = new Set(pins.map((p) => p.id));
-  for (const p of pins) {
-    const { w, h } = size(p);
-    const r = { ...byId.get(p.id), x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h, ...lookOf(map[p.id]) };
-    while (!fits(r)) r.y++;
-    placed.push(r);
-  }
-
-  const saved = [], fresh = [];
+export function pack(items, map, cols, placed = []) {
   for (const it of items) {
-    if (pinned.has(it.id)) continue;
     const e = map[it.id];
-    if (e && typeof e === 'object' && e.y != null) saved.push({ it, e, y: int(e.y, 0, Infinity, 0), x: int(e.x, 0, Infinity, 0) });
-    else fresh.push(it);
-  }
-  saved.sort((a, b) => a.y - b.y || a.x - b.x || (a.it.id < b.it.id ? -1 : 1));
-  for (const { it, e, x, y } of saved) {
-    const { w, h } = size(e);
-    const r = { ...it, x: Math.min(x, cols - w), y, w, h, ...lookOf(e) };
-    while (!fits(r)) r.y++;
-    while (r.y > 0 && fits({ ...r, y: r.y - 1 })) r.y--;
-    placed.push(r);
-  }
-
-  const floor = placed.reduce((m, p) => Math.max(m, p.y + p.h), 0);
-  for (const it of fresh) {
-    const { w, h } = size(map[it.id]);
+    const { w, h } = sizeOf(e, cols);
     let r = null;
-    for (let y = floor; !r; y++) {
-      for (let x = 0; x + w <= cols; x++) {
-        if (fits({ x, y, w, h })) { r = { ...it, x, y, w, h, ...lookOf(map[it.id]) }; break; }
-      }
+    for (let y = 0; !r; y++) {
+      for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
     }
     placed.push(r);
   }
-  return placed.sort((a, b) => a.y - b.y || a.x - b.x);
+  return placed.sort(byReading);
 }
+
+/**
+ * Place `items` ([{id, ...}]) on a `cols`-wide grid from the saved `map`
+ * ({[id]: {x, y, w, h}}). Pure: never writes `map`. Nothing has gravity:
+ * - A saved item keeps its rect (x clamped to fit). Only a narrower window
+ *   makes two saved rects clash; the later in reading order is drawn at the
+ *   first free row below, and its saved rect waits for the wider window.
+ * - An unplaced item (no entry, or no position yet) takes the first free rect
+ *   of its size (pack).
+ * - `pin` ({id, x, y, w, h}, or an array for a group) is the item under a
+ *   drag: placed where asked, or at the first free row below when that is
+ *   taken. Every other item stays exactly where it is without the pin.
+ * Returns [{...item, x, y, w, h}] in reading order (y, then x).
+ */
+export function place(items, map, cols, pin = null) {
+  const at = (e, k) => int(e[k], 0, Infinity, 0);
+  const saved = items.filter((it) => positioned(map[it.id]))
+    .sort((a, b) => at(map[a.id], 'y') - at(map[b.id], 'y') || at(map[a.id], 'x') - at(map[b.id], 'x') || (a.id < b.id ? -1 : 1));
+  const placed = [];
+  for (const it of saved) {
+    const e = map[it.id];
+    const { w, h } = sizeOf(e, cols);
+    const r = { ...it, x: Math.min(at(e, 'x'), cols - w), y: at(e, 'y'), w, h, ...lookOf(e) };
+    while (hits(placed, r)) r.y++;
+    placed.push(r);
+  }
+  pack(items.filter((it) => !positioned(map[it.id])), map, cols, placed);
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const pins = (pin == null ? [] : [].concat(pin)).filter((p) => p && byId.has(p.id));
+  if (!pins.length) return placed;
+  const pinned = new Set(pins.map((p) => p.id));
+  const out = placed.filter((p) => !pinned.has(p.id));
+  for (const p of pins) {
+    const { w, h } = sizeOf(p, cols);
+    const r = { ...byId.get(p.id), x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h, ...lookOf(map[p.id]) };
+    while (hits(out, r)) r.y++;
+    out.push(r);
+  }
+  return out.sort(byReading);
+}
+
+/** The first item of `placed` other than `id` that rect `r` overlaps, or null: what stops a resize. */
+export const blocker = (placed, r, id) => placed.find((q) => q.id !== id && overlaps(r, q)) || null;
 
 /** Smallest card any resize may leave, in cells, when the item declares no minimum of its own. */
 export const RESIZE_FLOOR = [2, 1];
@@ -192,8 +200,7 @@ export function resizeRect(start, edge, c, cols, min = null) {
 function write(map, placed) {
   for (const p of placed) {
     const prev = map[p.id];
-    // A folded nest is drawn NEST_FOLD_H tall; its own height waits for the unfold.
-    const e = { x: p.x, y: p.y, w: p.w, h: folded(prev) ? prev.h : p.h };
+    const e = { x: p.x, y: p.y, w: p.w, h: p.h };
     if (isNest(prev)) e.nest = prev.nest;
     if (prev && typeof prev === 'object' && prev.look) e.look = prev.look;
     map[p.id] = e;
@@ -216,21 +223,10 @@ export function setLook(map, id, look, at = null) {
 }
 
 /**
- * The layout a commit of `pin` writes: placed with the pin, then compacted.
- * A drag previews this, so the pinned item and its siblings are drawn where
- * the release will leave them, never only where the pointer is.
- */
-export function settle(items, map, cols, pin) {
-  const tmp = {};
-  for (const p of pack(items, map, cols, pin)) tmp[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h, ...(p.look ? { look: p.look } : {}) };
-  return pack(items, tmp, cols);
-}
-
-/**
  * Pins that align or spread the rects of a selection ([{id, x, y, w, h}]):
  * 'left' and 'top' move every edge to the selection's smallest; 'spread'
  * keeps the outermost two and spaces the rest evenly across, in x order.
- * Collisions are pack's to resolve.
+ * A pin landing on another card moves down (place).
  */
 export function arrangePins(rects, how) {
   if (how === 'left') { const x = Math.min(...rects.map((r) => r.x)); return rects.map((r) => ({ ...r, x })); }
@@ -253,7 +249,7 @@ export function instanceKey(taken, base) {
 export const baseKey = (k) => k.replace(/#\d+$/, '');
 
 /**
- * Copy entry `from` as `to`, unplaced (it flows below everything), size and
+ * Copy entry `from` as `to`, unplaced (the first free rect), size and
  * look kept. A nest is copied whole under the next free nest id when `to` is
  * omitted. Returns the new id, or null.
  */
@@ -271,40 +267,36 @@ export function duplicate(map, from, to = null) {
 }
 
 /**
- * The pin for a keyboard nudge of `id` within `placed` (a pack result): one
- * cell sideways, or past the nearest card above or below in its own columns,
- * since a one-cell vertical step would be undone by compaction. Null when
- * there is nowhere to go.
+ * The pin for a keyboard nudge of `id` within `placed` (a place result): one
+ * cell in (dx, dy), or the first free rect past whatever sits there. Null when
+ * an edge comes first.
  */
 export function nudgePin(placed, id, dx, dy, cols) {
   const p = placed.find((q) => q.id === id);
   if (!p) return null;
-  const at = (x, y) => ({ id, x, y, w: p.w, h: p.h });
-  if (dx) {
-    const x = Math.min(cols - p.w, Math.max(0, p.x + dx));
-    return x === p.x ? null : at(x, p.y);
+  const others = placed.filter((q) => q.id !== id);
+  for (let x = p.x + dx, y = p.y + dy; x >= 0 && x + p.w <= cols && y >= 0; x += dx, y += dy) {
+    if (!hits(others, { x, y, w: p.w, h: p.h })) return { id, x, y, w: p.w, h: p.h };
   }
-  const cross = placed.filter((q) => q.id !== id && q.x < p.x + p.w && p.x < q.x + q.w);
-  if (dy < 0) {
-    const above = cross.filter((q) => q.y + q.h <= p.y).sort((a, b) => b.y + b.h - (a.y + a.h))[0];
-    return above ? at(p.x, above.y) : null;
-  }
-  const below = cross.filter((q) => q.y >= p.y + p.h).sort((a, b) => a.y - b.y)[0];
-  return below ? at(p.x, below.y + below.h) : null;
-}
-
-/** Commit a drag or resize: place with `pin`, compact, write every present item. */
-export function commitPin(map, items, cols, pin) {
-  write(map, settle(items, map, cols, pin));
+  return null;
 }
 
 /**
- * Commit a reading order (keyboard reorder, the stacked phone drag): the
- * i-th id takes the i-th current slot's origin, keeping its own size, then the
- * result is compacted. Ids not in `orderedIds` keep their places.
+ * Commit a drag or resize: write the pinned items, and every unplaced item at
+ * the rect it is drawn at now, so nothing the user did not touch moves later.
+ */
+export function commitPin(map, items, cols, pin) {
+  const ids = new Set([].concat(pin || []).map((p) => p && p.id));
+  write(map, place(items, map, cols, pin).filter((p) => ids.has(p.id) || !positioned(map[p.id])));
+}
+
+/**
+ * Commit a reading order (the stacked phone drag): the i-th id takes the i-th
+ * current slot's origin, keeping its own size; a clash moves the later one
+ * down. Ids not in `orderedIds` keep their places.
  */
 export function commitOrder(map, items, cols, orderedIds) {
-  const cur = pack(items, map, cols);
+  const cur = place(items, map, cols);
   const own = new Map(cur.map((p) => [p.id, p]));
   const tmp = {};
   for (const p of cur) tmp[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h };
@@ -312,7 +304,7 @@ export function commitOrder(map, items, cols, orderedIds) {
     const o = own.get(id);
     if (o && cur[i]) tmp[id] = { x: cur[i].x, y: cur[i].y, w: o.w, h: o.h };
   });
-  write(map, pack(items, tmp, cols));
+  write(map, place(items, tmp, cols));
 }
 
 // ---- named layouts ---------------------------------------------------------------
@@ -487,7 +479,10 @@ export function deleteLayout(store, name) {
 // ---- nests and modules (DESIGN §10.6) ---------------------------------------------
 //
 // A nest is a placement entry that also carries a subgrid:
-//   map['nest:<n>'] = { x, y, w, h, nest: { title, scroll, map: { [memberId]: {x, y, w, h} | null } } }
+//   map['nest:<n>'] = { x, y, w, h, nest: { title, map: { [memberId]: {x, y, w, h} | null } } }
+// A nest is a fixed subgrid that grows to fit its members: it never scrolls
+// and never folds, so every member is always in view (operator ruling
+// 2026-10-02). A stored `scroll` or `collapsed` from an older build is inert.
 // The member map's keys ARE the membership; null is a member not yet placed.
 // A member the current items lack is inert, exactly as at the top level.
 
@@ -501,8 +496,8 @@ export const FIELDS_NESTS_ONLY = false;
 
 /**
  * May a control of `kind` sit at the top level or in a nest? A nest never
- * nests. A safety op is top level only: a scrolling nest could carry it out of
- * view (law 11), and the strip's own copy is the one that cannot go.
+ * nests. A safety op is top level only: the strip's own copy is the one that
+ * cannot go, and a grid copy stays where the eye finds it.
  */
 export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
   if (kind === 'nest' || kind === 'safety') return !inNest;
@@ -511,9 +506,6 @@ export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
 
 export const NEST_W = 16;
 export const NEST_H = 6;
-/** Rows a collapsed nest occupies: its header and the bar with the in-flight count (law 9: never hidden). */
-export const NEST_FOLD_H = 2;
-const folded = (e) => isNest(e) && e.nest.collapsed === true;
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -522,23 +514,24 @@ export function isNest(e) {
     && e.nest.map && typeof e.nest.map === 'object' && !Array.isArray(e.nest.map));
 }
 
-/** The nests in one placement map: [{id, title, scroll, keys}], `keys` present or inert. */
+/** The nests in one placement map: [{id, title, keys}], `keys` present or inert. */
 export function nestsIn(map) {
   return Object.keys(map).filter((id) => isNest(map[id])).map((id) => {
     const n = map[id].nest;
-    return { id, title: typeof n.title === 'string' && n.title.trim() ? n.title : 'Nest', scroll: n.scroll !== false,
-      collapsed: n.collapsed === true, keys: Object.keys(n.map) };
+    return { id, title: typeof n.title === 'string' && n.title.trim() ? n.title : 'Nest', keys: Object.keys(n.map) };
   });
 }
 
-/** Add a nest below everything in `map`; `members` is copied. Returns the new id. */
-export function addNest(map, { title = 'Nest', scroll = true, w = NEST_W, h = NEST_H, members = {} } = {}) {
+/**
+ * Add an unplaced nest to `map` (drawn at the first free rect; the caller's
+ * next commit fixes it there); `members` is copied. Returns the new id.
+ */
+export function addNest(map, { title = 'Nest', w = NEST_W, h = NEST_H, members = {} } = {}) {
   let i = 1;
   while (own(map, 'nest:' + i)) i++;
   const id = 'nest:' + i;
-  const y = Object.values(map).reduce((m, e) => (e && Number.isFinite(e.y) && Number.isFinite(e.h) ? Math.max(m, e.y + e.h) : m), 0);
-  map[id] = { x: 0, y, w: int(w, 1, 1000, NEST_W), h: int(h, 1, MAX_H, NEST_H),
-    nest: { title: String(title), scroll: scroll !== false, map: clone(members && typeof members === 'object' ? members : {}) } };
+  map[id] = { w: int(w, 1, 1000, NEST_W), h: int(h, 1, MAX_H, NEST_H),
+    nest: { title: String(title), map: clone(members && typeof members === 'object' ? members : {}) } };
   return id;
 }
 
@@ -559,7 +552,7 @@ export function nestRemove(map, id, key) {
 /**
  * Move member `key` of nest `id` to the top level of `map`, keeping its look
  * and size. A top-level entry it already has keeps its place (a drag-out
- * writes it first); otherwise it flows as unplaced. Returns false when `key`
+ * writes it first); otherwise it is unplaced (the first free rect). Returns false when `key`
  * is not a member.
  */
 export function nestOut(map, id, key) {
@@ -573,12 +566,9 @@ export function nestOut(map, id, key) {
   return true;
 }
 
-export function setNest(map, id, { title, scroll, collapsed } = {}) {
+export function setNest(map, id, { title } = {}) {
   if (!isNest(map[id])) return false;
   if (typeof title === 'string' && title.trim()) map[id].nest.title = title.trim();
-  if (typeof scroll === 'boolean') map[id].nest.scroll = scroll;
-  if (collapsed === true) map[id].nest.collapsed = true;
-  else if (collapsed === false) delete map[id].nest.collapsed;
   return true;
 }
 
@@ -595,7 +585,7 @@ export function saveModule(store, map, id, name) {
   if (!store.modules) store.modules = {};
   if (!n || !isNest(map[id]) || own(store.modules, n)) return false;
   const e = map[id];
-  store.modules[n] = { title: n, scroll: e.nest.scroll !== false, w: e.w, h: e.h, members: clone(e.nest.map) };
+  store.modules[n] = { title: n, w: e.w, h: e.h, members: clone(e.nest.map) };
   return true;
 }
 
@@ -603,13 +593,13 @@ export function saveModule(store, map, id, name) {
 export function insertModule(store, map, name) {
   const m = store.modules && own(store.modules, name) ? store.modules[name] : null;
   if (!m || typeof m !== 'object') return null;
-  return addNest(map, { title: m.title, scroll: m.scroll, w: m.w, h: m.h, members: m.members });
+  return addNest(map, { title: m.title, w: m.w, h: m.h, members: m.members });
 }
 
 /**
  * Forget the arrangement in `map`, never its content: a nest keeps its size and
- * members and reflows; in a nest's own map (`members` true) every member stays,
- * unplaced.
+ * members and is placed again; in a nest's own map (`members` true) every
+ * member stays, unplaced.
  */
 export function resetMap(map, members = false) {
   for (const k of Object.keys(map)) {

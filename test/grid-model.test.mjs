@@ -5,18 +5,20 @@
  * the per-class span maps and the legacy sd32 keys; nests and modules
  * (ph-e82.6): round trip, reinsertion under a different catalog with inert
  * members, and the single-field placement flag both ways; a placement's look
- * (presentation and config) through pack, commits and storage.
+ * (presentation and config) through place, commits and storage; placements
+ * are absolute (operator ruling 2026-10-02): no commit, add or remove ever
+ * moves a card the user did not move.
  *
  * Run: node test/grid-model.test.mjs
  */
 import {
   CELL_DEVICE_PX, SCALE_STEPS, STORE_KEY,
-  cellCssPx, cellCount, allowedSteps, clampScale, stepScale, pack, commitPin, commitOrder,
+  cellCssPx, cellCount, allowedSteps, clampScale, stepScale, place, blocker, commitPin, commitOrder,
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
-  saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
-  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H, nudgePin, exportLayout, importLayout,
+  saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
+  arrangePins, instanceKey, baseKey, duplicate, nudgePin, exportLayout, importLayout,
   DENSITY, layoutOpts, setDensity,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
@@ -83,25 +85,71 @@ ok('garbage scale reads as 1', clampScale('x', fine) === 1);
 // ---- placement --------------------------------------------------------------------
 console.log('placement');
 {
-  const fresh = pack(items('a', 'b', 'c'), {}, 104);
+  const fresh = place(items('a', 'b', 'c'), {}, 104);
   ok('unsaved items fill the row at any width (ph-e82.15)', fresh.every((p, i) => p.x === 0 && p.y === i && p.w === 104), JSON.stringify(fresh.map((p) => [p.x, p.y, p.w])));
-  const early = pack(items('a', 'b'), { a: { x: 0, y: 0, w: 8, h: 1 }, b: { look: { pres: 'knob' } } }, 40);
+  const early = place(items('a', 'b'), { a: { x: 0, y: 0, w: 8, h: 1 }, b: { look: { pres: 'knob' } } }, 40);
   ok('an entry with a look but no place yet flows as unsaved and keeps its look',
      early[1].id === 'b' && early[1].y === 1 && early[1].w === 40 && early[1].look.pres === 'knob', JSON.stringify(early));
-  const narrow = pack(items('a', 'b'), {}, 30);
+  const narrow = place(items('a', 'b'), {}, 30);
   ok('a narrow window clamps width and stacks', narrow[0].w === 30 && narrow[1].y === 1);
   const saved = { a: { x: 0, y: 5, w: 10, h: 2 }, b: { x: 4, y: 0, w: 10, h: 1 } };
-  const p = pack(items('a', 'b'), saved, 40);
-  ok('saved items compact upward and never overlap', p[0].id === 'b' && p[1].id === 'a' && p[1].y === 1, JSON.stringify(p.map((q) => [q.id, q.x, q.y])));
-  const pinned = pack(items('a', 'b'), saved, 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('a pin wins its cell and pushes the other down', pinned[0].id === 'a' && pinned[0].y === 0 && pinned[1].y === 2);
+  const p = place(items('a', 'b'), saved, 40);
+  ok('saved items keep their rects: no gravity, a gap stays a gap', p[0].id === 'b' && p[1].id === 'a' && p[1].y === 5 && p[1].x === 0,
+     JSON.stringify(p.map((q) => [q.id, q.x, q.y])));
+  const pinned = place(items('a', 'b'), saved, 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
+  ok('a pin on a taken rect lands at the first free row below; the sibling stays', pinned.find((q) => q.id === 'a').y === 1
+     && pinned.find((q) => q.id === 'b').y === 0, JSON.stringify(pinned.map((q) => [q.id, q.x, q.y])));
   const m = { ...saved };
   commitPin(m, items('a', 'b'), 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('commitPin writes the compacted result', m.a.y === 0 && m.b.y === 2);
+  ok('commitPin writes the pin only', m.a.y === 1 && m.a.x === 4 && m.b === saved.b);
   const o = { a: { x: 0, y: 0, w: 40, h: 1 }, b: { x: 0, y: 1, w: 40, h: 1 } };
   commitOrder(o, items('a', 'b'), 40, ['b', 'a']);
   ok('commitOrder swaps reading order', o.b.y === 0 && o.a.y === 1);
-  ok('corrupt entries are clamped, not trusted', pack(items('a'), { a: { x: -9, y: 'q', w: 999, h: -1 } }, 20)[0].w === 20);
+  ok('corrupt entries are clamped, not trusted', place(items('a'), { a: { x: -9, y: 'q', w: 999, h: -1 } }, 20)[0].w === 20);
+
+  // The operator's rule: a card keeps the rect the user gave it.
+  const holed = { a: { x: 0, y: 0, w: 40, h: 1 }, c: { x: 0, y: 2, w: 40, h: 1 } };
+  ok('a removed card leaves a hole', place(items('a', 'c'), holed, 40).find((q) => q.id === 'c').y === 2);
+  const room = { a: { x: 0, y: 0, w: 10, h: 2 }, c: { x: 0, y: 3, w: 40, h: 1 }, d: { w: 10, h: 2 } };
+  const added = place(items('a', 'c', 'd', 'e'), room, 40);
+  const at = (list, id) => list.find((q) => q.id === id);
+  ok('an added card takes the first free rect that fits; the rest stay', at(added, 'd').x === 10 && at(added, 'd').y === 0
+     && at(added, 'e').y === 2 && at(added, 'a').y === 0 && at(added, 'c').y === 3, JSON.stringify(added.map((q) => [q.id, q.x, q.y])));
+  const fix = { a: { x: 0, y: 0, w: 40, h: 1 } };
+  commitPin(fix, items('a', 'b'), 40, { id: 'a', x: 0, y: 5, w: 40, h: 1 });
+  ok('an unplaced card is fixed where it was drawn, never into the hole the move opened', fix.b.y === 1 && fix.a.y === 5, JSON.stringify(fix));
+  const wide = { a: { x: 0, y: 0, w: 20, h: 1 }, b: { x: 20, y: 0, w: 20, h: 1 } };
+  const narrowed = place(items('a', 'b'), wide, 30);
+  ok('a narrower window draws a clash one row down and keeps the saved rect', at(narrowed, 'b').y === 1 && at(narrowed, 'b').x === 10
+     && wide.b.x === 20 && wide.b.y === 0);
+  ok('blocker names what a rect would overlap', blocker(place(items('a', 'b'), wide, 40), { x: 15, y: 0, w: 10, h: 1 }, 'a').id === 'b'
+     && blocker(place(items('a', 'b'), wide, 40), { x: 0, y: 1, w: 10, h: 1 }, 'a') === null);
+
+  // Property: whatever is pinned, no other card moves (drawn or stored), nothing overlaps.
+  let seed = 7;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  let moved = 0, overlapped = 0;
+  for (let t = 0; t < 300; t++) {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const map = {};
+    for (const id of ids) if (rnd(5)) map[id] = { x: rnd(30), y: rnd(12), w: 1 + rnd(10), h: 1 + rnd(3) };
+    // A layout as commits leave it: saved rects never overlap; some cards still unplaced.
+    for (const q of place(items(...ids), map, 40)) if (map[q.id]) map[q.id] = { x: q.x, y: q.y, w: q.w, h: q.h };
+    const base = place(items(...ids), map, 40);
+    const pick = ids.filter(() => rnd(3) === 0).slice(0, 2);
+    const pins = (pick.length ? pick : ['a']).map((id) => ({ id, x: rnd(36), y: rnd(14), w: 1 + rnd(8), h: 1 + rnd(3) }));
+    const before = JSON.parse(JSON.stringify(map));
+    commitPin(map, items(...ids), 40, pins);
+    const after = place(items(...ids), map, 40);
+    for (const q of base) {
+      if (pins.some((x) => x.id === q.id)) continue;
+      const r = after.find((x) => x.id === q.id);
+      if (r.x !== q.x || r.y !== q.y || r.w !== q.w || r.h !== q.h || (before[q.id] && JSON.stringify(map[q.id]) !== JSON.stringify(before[q.id]))) moved++;
+    }
+    for (const q of after) for (const r of after) if (q !== r && q.x < r.x + r.w && r.x < q.x + q.w && q.y < r.y + r.h && r.y < q.y + q.h) overlapped++;
+  }
+  ok('300 random commits: no sibling ever moves, drawn or stored', moved === 0, moved);
+  ok('300 random commits: nothing overlaps', overlapped === 0, overlapped);
 }
 
 // ---- named layouts, inert ids, round trip --------------------------------------
@@ -113,7 +161,7 @@ console.log('layouts');
   const m = viewMap(s, 'full', 'machine');
   m.ghost = { x: 3, y: 0, w: 4, h: 1 };   // an id this catalog lacks
   commitPin(m, items('a', 'b'), 40, { id: 'a', x: 0, y: 0, w: 8, h: 1 });
-  ok('an absent id is never visited by placement', !pack(items('a', 'b'), m, 40).some((p) => p.id === 'ghost'));
+  ok('an absent id is never visited by placement', !place(items('a', 'b'), m, 40).some((p) => p.id === 'ghost'));
   ok('an absent id survives a commit untouched', JSON.stringify(m.ghost) === '{"x":3,"y":0,"w":4,"h":1}');
   ok('save as copies and switches', saveLayoutAs(s, 'Evening') && s.active === 'Evening' && viewMap(s, 'full', 'machine').a.w === 8);
   viewMap(s, 'full', 'machine').a.w = 20;
@@ -159,17 +207,17 @@ console.log('migration');
   const s = loadStore(st);
   const m = s.layouts.Default['full.cat2'];
   ok('per-class maps seed Default', !!m && !!s.layouts.Default['handheld.cat2']);
-  const order = ids(pack(items('a', 'b', 'c'), m, 48));
+  const order = ids(place(items('a', 'b', 'c'), m, 48));
   ok('a seeded 12-span map keeps visual order', order === 'c,a,b', order);
   ok('two half spans share a row', m.a.y === m.b.y && m.a.x < m.b.x);
   ok('a full-span card migrates with no w, so it fills the row at DPR 2 (80 cells) too',
-     !('w' in m.c) && pack(items('a', 'b', 'c'), m, 80).find((p) => p.id === 'c').w === 80);
-  ok('an id this catalog lacks migrates and stays inert', !!m.gone && !pack(items('a', 'b', 'c'), m, 48).some((p) => p.id === 'gone'));
+     !('w' in m.c) && place(items('a', 'b', 'c'), m, 80).find((p) => p.id === 'c').w === 80);
+  ok('an id this catalog lacks migrates and stays inert', !!m.gone && !place(items('a', 'b', 'c'), m, 48).some((p) => p.id === 'gone'));
   ok('migration writes nothing by itself', st.writes.length === 0);
 
   const legacy = memStorage({ 'sd32.dash.machine': JSON.stringify({ x: { span: 12, order: 1 }, y: { span: 12, order: 0 } }) });
   const L = loadStore(legacy);
-  const lo = ids(pack(items('x', 'y'), L.layouts.Default['full.machine'], 48));
+  const lo = ids(place(items('x', 'y'), L.layouts.Default['full.machine'], 48));
   ok('a legacy sd32 key seeds the full class and keeps order', lo === 'y,x', lo);
   commitPin(viewMap(L, 'full', 'machine'), items('x', 'y'), 48, { id: 'x', x: 0, y: 0, w: 4, h: 1 });
   saveStore(legacy, L);
@@ -197,23 +245,31 @@ console.log('nests');
   const s = loadStore(st);
   const top = viewMap(s, 'full', 'home');
   commitPin(top, items('a', 'b', 'c', 'd'), 40, { id: 'd', x: 0, y: 0, w: 10, h: 2 });
-  const id = addNest(top, { title: 'Pump', scroll: true });
-  ok('addNest makes a nest entry below everything', isNest(top[id]) && top[id].y >= 2 && id === 'nest:1');
+  const id = addNest(top, { title: 'Pump' });
+  const first = place([...items('a', 'b', 'c', 'd'), { id }], top, 40).find((p) => p.id === id);
+  ok('addNest makes an unplaced nest, drawn at the first free rect', isNest(top[id]) && top[id].y === undefined && id === 'nest:1'
+     && first.x === 10 && first.y === 3, JSON.stringify(first));
   ok('a second nest gets its own id', addNest(top) === 'nest:2' && removeNest(top, 'nest:2') && !top['nest:2']);
   ok('members join unplaced', nestAdd(top, id, 'a') && nestAdd(top, id, 'b') && nestAdd(top, id, 'c') && top[id].nest.map.a === null);
   ok('a member cannot join twice, a nest cannot join a nest', !nestAdd(top, id, 'a') && !nestAdd(top, id, 'nest:9'));
   const n = top[id].nest.map;
   commitPin(n, items('a', 'b', 'c'), 12, { id: 'c', x: 0, y: 0, w: 12, h: 3 });
-  ok('the subgrid places like any grid', n.c.y === 0 && n.c.h === 3 && n.a.y >= 3, JSON.stringify(n));
+  ok('the subgrid places like any grid: the pin lands below the taken rows, the rest fixed where drawn',
+     n.c.y === 2 && n.c.h === 3 && n.a.y === 0 && n.b.y === 1, JSON.stringify(n));
   const topItems = [...items('d'), { id, title: 'Pump' }];
   commitPin(top, topItems, 40, { id, x: 0, y: 0, w: 20, h: 6 });
   ok('moving the nest keeps its contents', isNest(top[id]) && top[id].w === 20 && top[id].nest.map.c.h === 3);
   commitOrder(top, topItems, 40, ['d', id]);
   ok('reordering keeps its contents', isNest(top[id]) && top[id].nest.map.c.h === 3);
   ok('nestsIn lists members, present or not',
-     JSON.stringify(nestsIn(top)) === JSON.stringify([{ id, title: 'Pump', scroll: true, collapsed: false, keys: ['a', 'b', 'c'] }]));
-  ok('setNest renames and flips scroll', setNest(top, id, { title: ' Pump 2 ', scroll: false })
-     && nestsIn(top)[0].title === 'Pump 2' && !nestsIn(top)[0].scroll && setNest(top, id, { title: 'Pump', scroll: true }));
+     JSON.stringify(nestsIn(top)) === JSON.stringify([{ id, title: 'Pump', keys: ['a', 'b', 'c'] }]));
+  ok('setNest renames', setNest(top, id, { title: ' Pump 2 ' }) && nestsIn(top)[0].title === 'Pump 2' && setNest(top, id, { title: 'Pump' }));
+  top[id].nest.scroll = true;
+  top[id].nest.collapsed = true;
+  ok('a stored scroll or fold from an older build is inert', JSON.stringify(nestsIn(top)[0]) === JSON.stringify({ id, title: 'Pump', keys: ['a', 'b', 'c'] })
+     && place([{ id }], top, 40)[0].h === top[id].h);
+  delete top[id].nest.scroll;
+  delete top[id].nest.collapsed;
 
   // Serialize, deserialize: the module and the nest both survive a reload.
   ok('save as module', saveModule(s, top, id, 'Pump'));
@@ -221,7 +277,7 @@ console.log('nests');
   saveStore(st, s);
   const back = loadStore(st);
   const mod = back.modules.Pump;
-  ok('the module round-trips', !!mod && mod.scroll === true && mod.w === 20 && mod.h === 6
+  ok('the module round-trips', !!mod && !('scroll' in mod) && mod.w === 20 && mod.h === 6
      && JSON.stringify(mod.members) === JSON.stringify(n), JSON.stringify(mod));
   ok('the nest round-trips in its layout', JSON.stringify(back.layouts.Default['full.home'][id]) === JSON.stringify(top[id]));
   n.c.h = 4;
@@ -233,7 +289,7 @@ console.log('nests');
   const sub = other[nid].nest.map;
   const present = items('a', 'c', 'x').filter((it) => own(sub, it.id));
   ok('reinsertion keeps the inert member', nestsIn(other)[0].keys.join() === 'a,b,c' && JSON.stringify(sub.b) === JSON.stringify(mod.members.b));
-  ok('the inert member is never placed, never an error', ids(pack(present, sub, 12)) === 'c,a');
+  ok('the inert member is never placed, never an error', ids(place(present, sub, 12)) === 'a,c', ids(place(present, sub, 12)));
   commitPin(sub, present, 12, { id: 'a', x: 0, y: 0, w: 6, h: 1 });
   ok('a commit under the other catalog leaves the inert member untouched', JSON.stringify(sub.b) === JSON.stringify(mod.members.b) && sub.a.w === 6);
   ok('an unknown module inserts nothing', insertModule(back, other, 'Nope') === null && nestsIn(other).length === 1);
@@ -247,7 +303,7 @@ console.log('nests');
   const r = again.layouts.Default['full.home'];
   resetMap(r);
   ok('reset keeps the nest, its size and members', isNest(r[id]) && r[id].w === 20 && r[id].x === undefined && !r.d && nestsIn(r)[0].keys.length === 3);
-  ok('a reset nest reflows at its own size', JSON.stringify(pack([{ id }], r, 40).map((p) => [p.w, p.h])) === '[[20,6]]');
+  ok('a reset nest is placed again at its own size', JSON.stringify(place([{ id }], r, 40).map((p) => [p.w, p.h])) === '[[20,6]]');
   resetMap(r[id].nest.map, true);
   ok('a nest reset keeps every member, unplaced', Object.keys(r[id].nest.map).length === 3 && Object.values(r[id].nest.map).every((v) => v === null));
   ok('nestRemove drops one member', nestRemove(r, id, 'b') && !own(r[id].nest.map, 'b') && !nestRemove(r, id, 'b'));
@@ -267,14 +323,14 @@ console.log('nests');
   // An entry saved before `look` existed is still valid: derived presentation, catalog bounds.
   const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
   const map = { a: { x: 0, y: 0, w: 8, h: 2 }, b: { x: 8, y: 0, w: 8, h: 2 } };
-  const p0 = pack(items, map, 48);
+  const p0 = place(items, map, 48);
   ok('look: an entry without one packs as before, with no look on the item', p0.every((p) => !('look' in p))
      && JSON.stringify(p0.map(({ id, x, y, w, h }) => [id, x, y, w, h])) === '[["a",0,0,8,2],["b",8,0,8,2],["c",0,2,48,1]]');
   const look = { pres: 'knob', min: 10, max: 40, step: 2, default: 20 };
   setLook(map, 'a', look);
   ok('look: setLook keeps the place and stores a copy', map.a.x === 0 && map.a.w === 8 && JSON.stringify(map.a.look) === JSON.stringify(look) && map.a.look !== look);
-  ok('look: pack hands it to the placed item', pack(items, map, 48).find((p) => p.id === 'a').look.pres === 'knob');
-  const c = pack(items, map, 48).find((p) => p.id === 'c');
+  ok('look: place hands it to the placed item', place(items, map, 48).find((p) => p.id === 'a').look.pres === 'knob');
+  const c = place(items, map, 48).find((p) => p.id === 'c');
   setLook(map, 'c', { pres: 'toggle', a: 0, b: 5 }, c);
   ok('look: an unsaved item is written where it is drawn, so it does not move',
      map.c.x === c.x && map.c.y === c.y && map.c.w === c.w && map.c.look.b === 5);
@@ -282,7 +338,7 @@ console.log('nests');
   commitOrder(map, items, 48, ['c', 'a', 'b']);
   ok('look: survives a drag and a reorder', map.a.look.min === 10 && map.c.look.b === 5 && !map.b.look);
   ok('look: the pinned item keeps its look mid-drag',
-     pack(items, map, 48, { id: 'a', x: 30, y: 4, w: 8, h: 2 }).find((p) => p.id === 'a').look.max === 40);
+     place(items, map, 48, { id: 'a', x: 30, y: 4, w: 8, h: 2 }).find((p) => p.id === 'a').look.max === 40);
   setLook(map, 'a', null);
   setLook(map, 'c', {});
   ok('look: null or {} clears it, the place stays', !('look' in map.a) && !('look' in map.c) && Number.isFinite(map.a.x));
@@ -330,12 +386,14 @@ console.log('drag');
   const its = items('a', 'b', 'c');
   const map = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 2, look: { pres: 'knob' } }, c: { x: 10, y: 0, w: 6, h: 1 } };
   const pin = { id: 'a', x: 20, y: 5, w: 10, h: 2 };
-  const pre = settle(its, map, 40, pin);
+  const pre = place(its, map, 40, pin);
   const m2 = JSON.parse(JSON.stringify(map));
   commitPin(m2, its, 40, pin);
   ok('the preview is exactly what the commit writes', pre.every((p) => p.x === m2[p.id].x && p.y === m2[p.id].y && p.w === m2[p.id].w && p.h === m2[p.id].h),
      JSON.stringify(pre.map(({ id, x, y, w, h }) => [id, x, y, w, h])));
-  ok('the preview compacts: a pin dropped low rises, a sibling below the old spot rises', pre.find((p) => p.id === 'a').y === 0 && pre.find((p) => p.id === 'b').y === 0);
+  ok('the preview moves the dragged card only: it lands where dropped, the siblings keep their rects',
+     pre.find((p) => p.id === 'a').y === 5 && pre.find((p) => p.id === 'a').x === 20 && pre.find((p) => p.id === 'b').y === 2
+     && pre.find((p) => p.id === 'c').x === 10, JSON.stringify(pre.map(({ id, x, y }) => [id, x, y])));
   ok('the preview keeps looks', pre.find((p) => p.id === 'b').look.pres === 'knob');
   ok('the preview writes nothing', JSON.stringify(map.a) === '{"x":0,"y":0,"w":10,"h":2}');
 
@@ -351,7 +409,7 @@ console.log('drag');
      nestOut(top, nid, 'k') && top.k.x === 3 && top.k.y === 9 && top.k.look.pres === 'numeral');
   ok('nestOut: a non-member is refused', !nestOut(top, nid, 'm') && !nestOut(top, 'nest:9', 'k'));
   ok('nestOut: an unplaced member leaves an unplaced entry', nestAdd(top, nid, 'q') && nestOut(top, nid, 'q') && JSON.stringify(top.q) === '{}'
-     && pack(items('q'), top, 40)[0].w === 40);
+     && place(items('q'), top, 40)[0].w === 40);
 }
 
 // ---- selection: group pins, align, duplicate (ph-e82.20.3) ----------------------
@@ -360,15 +418,19 @@ console.log('selection');
   const its = items('a', 'b', 'c', 'd');
   const map = { a: { x: 0, y: 0, w: 4, h: 2 }, b: { x: 6, y: 0, w: 4, h: 2 }, c: { x: 0, y: 2, w: 10, h: 1 }, d: { x: 20, y: 0, w: 4, h: 1 } };
   const group = [{ id: 'a', x: 12, y: 0, w: 4, h: 2 }, { id: 'b', x: 18, y: 0, w: 4, h: 2 }];
-  const g = pack(its, map, 40, group);
+  const g = place(its, map, 40, group);
   const at = (id) => g.find((p) => p.id === id);
-  ok('a group pins every member where asked', at('a').x === 12 && at('b').x === 18 && at('a').y === 0 && at('b').y === 0);
-  ok('the rest yields: d is pushed below b, c rises', at('d').y === 2 && at('c').y === 0, JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
-  const clash = pack(its, map, 40, [{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 0, y: 0, w: 4, h: 2 }]);
-  ok('a pin that lands on an earlier pin moves down, never overlaps', clash.find((p) => p.id === 'b').y === 2);
+  ok('a group pins every member where asked; one landing on d moves down', at('a').x === 12 && at('a').y === 0 && at('b').x === 18 && at('b').y === 1,
+     JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
+  ok('the rest never yields: d and c keep their rects', at('d').x === 20 && at('d').y === 0 && at('c').y === 2);
+  const clash = place(its, map, 40, [{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 0, y: 0, w: 4, h: 2 }]);
+  const cb = clash.find((p) => p.id === 'b');
+  ok('a pin that lands on an earlier pin moves down, never overlaps', cb.y === 3 && !clash.some((q) => q !== cb
+     && q.x < cb.x + cb.w && cb.x < q.x + q.w && q.y < cb.y + cb.h && cb.y < q.y + q.h), cb);
   const m2 = JSON.parse(JSON.stringify(map));
   commitPin(m2, its, 40, group);
-  ok('a group commit writes the group', m2.a.x === 12 && m2.b.x === 18);
+  ok('a group commit writes the group and nothing else', m2.a.x === 12 && m2.b.x === 18 && JSON.stringify(m2.d) === JSON.stringify(map.d)
+     && JSON.stringify(m2.c) === JSON.stringify(map.c));
 
   const sel = [{ id: 'a', x: 2, y: 1, w: 4, h: 2 }, { id: 'b', x: 9, y: 3, w: 2, h: 2 }, { id: 'c', x: 20, y: 0, w: 6, h: 1 }];
   ok('align left takes the smallest x', arrangePins(sel, 'left').every((p) => p.x === 2));
@@ -393,35 +455,20 @@ console.log('selection');
   ok('a plain entry needs an explicit id', duplicate(dm, 'a') === null);
 }
 
-// ---- a collapsed nest (ph-e82.20.4) ------------------------------------------------
-console.log('fold');
-{
-  const map = { a: { x: 0, y: 0, w: 10, h: 1 } };
-  const nid = addNest(map, { title: 'Pump', h: 8 });
-  map.b = { x: 0, y: 9, w: 10, h: 1 };
-  const its = [...items('a', 'b'), { id: nid }];
-  ok('fold: setNest collapses and nestsIn reports it', setNest(map, nid, { collapsed: true }) && nestsIn(map)[0].collapsed === true);
-  const p = pack(its, map, 40);
-  ok('fold: a collapsed nest packs ' + NEST_FOLD_H + ' rows tall and what sat below rises',
-     p.find((q) => q.id === nid).h === NEST_FOLD_H && p.find((q) => q.id === 'b').y === 1 + NEST_FOLD_H, JSON.stringify(p.map(({ id, y, h }) => [id, y, h])));
-  commitPin(map, its, 40, { id: 'a', x: 20, y: 0, w: 10, h: 1 });
-  ok('fold: a commit keeps the nest\u2019s own height for the unfold', map[nid].h === 8 && map[nid].nest.collapsed === true);
-  ok('fold: unfolding restores the height', setNest(map, nid, { collapsed: false }) && !('collapsed' in map[nid].nest)
-     && pack(its, map, 40).find((q) => q.id === nid).h === 8);
-}
-
 // ---- keyboard nudge (ph-e82.20.5) ---------------------------------------------------
 console.log('nudge');
 {
   const its = items('a', 'b', 'c');
-  const map = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 1 }, c: { x: 20, y: 0, w: 6, h: 1 } };
-  const step = (id, dx, dy) => { const p = nudgePin(pack(its, map, 40), id, dx, dy, 40); if (p) commitPin(map, its, 40, p); return !!p; };
-  ok('up passes the card above in its columns', step('b', 0, -1) && map.b.y === 0 && map.a.y === 1, JSON.stringify(map));
-  ok('down passes the card below', step('b', 0, 1) && map.b.y === 2 && map.a.y === 0, JSON.stringify(map));
-  ok('a card alone in its columns has nowhere to go vertically', !step('c', 0, -1) && !step('c', 0, 1));
-  ok('sideways is one cell, clamped at the edges', step('c', 1, 0) && map.c.x === 21 && !nudgePin(pack(its, { ...map, c: { x: 34, y: 0, w: 6, h: 1 } }, 40), 'c', 1, 0, 40)
-     && !nudgePin(pack(its, map, 40), 'a', -1, 0, 40));
-  ok('an unknown id gives no pin', nudgePin(pack(its, map, 40), 'zz', 1, 0, 40) === null);
+  const map = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 4, w: 10, h: 1 }, c: { x: 20, y: 0, w: 6, h: 1 } };
+  const step = (id, dx, dy) => { const p = nudgePin(place(its, map, 40), id, dx, dy, 40); if (p) commitPin(map, its, 40, p); return !!p; };
+  ok('up is one cell into free space', step('b', 0, -1) && map.b.y === 3 && step('b', 0, -1) && map.b.y === 2 && map.a.y === 0, JSON.stringify(map));
+  ok('up with only taken cells above goes nowhere and moves nothing', !step('b', 0, -1) && map.b.y === 2 && map.a.y === 0);
+  map.a = { x: 0, y: 3, w: 10, h: 2 };
+  ok('down passes the card below to the first free rect; that card stays', step('b', 0, 1) && map.b.y === 5 && map.a.y === 3, JSON.stringify(map));
+  ok('a card at the top has nowhere to go up', !step('c', 0, -1));
+  ok('sideways is one cell, clamped at the edges', step('c', 1, 0) && map.c.x === 21 && !nudgePin(place(its, { ...map, c: { x: 34, y: 0, w: 6, h: 1 } }, 40), 'c', 1, 0, 40)
+     && !nudgePin(place(its, map, 40), 'b', -1, 0, 40));
+  ok('an unknown id gives no pin', nudgePin(place(its, map, 40), 'zz', 1, 0, 40) === null);
 }
 
 // ---- layout export and import (ph-e82.20.6) -------------------------------------------
@@ -456,7 +503,7 @@ console.log('density');
   ok('setDensity stores compact on the active layout', setDensity(s, 'compact') && layoutOpts(s).density === 'compact' && s.layouts.Default.opts.density === 'compact');
   ok('an unknown density is refused', !setDensity(s, 'tiny') && layoutOpts(s).density === 'compact');
   ok('the option is no view: placement never sees it', JSON.stringify(Object.keys(viewMap(s, 'full', 'machine'))) === '["a"]'
-     && pack(items('a'), viewMap(s, 'full', 'machine'), 40).length === 1);
+     && place(items('a'), viewMap(s, 'full', 'machine'), 40).length === 1);
   saveLayoutAs(s, 'Copy');
   ok('save as carries it', layoutOpts(s, 'Copy').density === 'compact');
   ok('comfortable is stored as no option at all', setDensity(s, 'comfortable') && !('opts' in s.layouts.Copy) && layoutOpts(s, 'Default').density === 'compact');

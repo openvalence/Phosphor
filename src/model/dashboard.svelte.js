@@ -86,7 +86,7 @@ export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
 function controller(read, write, members) {
   return {
-    arrange: (items, cols, pin = null) => (pin ? G.settle(items, read(), cols, pin) : G.pack(items, read(), cols)),
+    arrange: (items, cols, pin = null) => G.place(items, read(), cols, pin),
     move: edit((items, cols, pin) => (G.commitPin(write(), items, cols, pin), true)),
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
     setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
@@ -99,16 +99,16 @@ function controller(read, write, members) {
  * Placement controller for one view under one renderer class, always reading
  * the ACTIVE layout, so a switch re-places every mounted grid.
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order; with
- *                                 `pin`, the layout its commit would write
+ *                                 `pin`, where the dragged item lands (grid.js place)
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
  *   order(items, cols, ids)    -> commit a reading order
  *   setLook(id, look, at?)     -> a placement's presentation and config (grid.js setLook)
  *   reset()                    -> forget this view's placements (nests stay)
  * Nests (DESIGN §10.6):
- *   nests()                    -> [{id, title, scroll, keys}] in this view
+ *   nests()                    -> [{id, title, keys}] in this view
  *   nest(id)                   -> the same controller over nest `id`'s subgrid
- *   addNest({title, scroll, w, h}?) -> new nest id
- *   nestAdd(id, key) / nestRemove(id, key) / setNest(id, {title, scroll}) / removeNest(id)
+ *   addNest({title, w, h}?)    -> new nest id, unplaced until the next move commits it
+ *   nestAdd(id, key) / nestRemove(id, key) / setNest(id, {title}) / removeNest(id)
  *   nestOut(id, key)           -> member `key` to the top level, look and size kept
  *   duplicate(id, to?)         -> copy entry `id` as `to` (a nest: whole, next nest id); returns the id
  *   saveModule(id, name)       -> save nest `id` as a module; a taken name is refused
