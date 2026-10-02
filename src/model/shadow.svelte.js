@@ -89,6 +89,12 @@ import { NACK, NACK_NAME, HOME_OP, LOG_LEVEL_NAME } from '../../../Valence/clien
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
+// Every write stamps its record with the next number; an answer settles or
+// faults the record only while it still carries the stamp of the write that
+// answer belongs to. A late answer to an older write (the session's own 3 s
+// timeout landing after FAULT_MS faulted it and a newer write began) is
+// dropped, never applied to the newer write (ph-6i9).
+let writeSeq = 0;
 const SETTLE_MS = 900;      // how long a confirm flash lingers
 
 /** key -> shadow record. key is `${kind}:${channelId}:${key}` — see keyOf(). */
@@ -217,9 +223,13 @@ async function flush(channelId) {
   q.pending.clear();
   q.lastSentAt = Date.now();
 
+  const mine = (rec) => {
+    const sh = shadows[rec.shadowKey];
+    return sh && sh.seq === rec.seq ? sh : null;
+  };
   if (!session || !session.isLive) {
     for (const [, rec] of entries) {
-      const sh = shadows[rec.shadowKey];
+      const sh = mine(rec);
       if (sh) fail(sh, 'no link');
     }
     return;
@@ -232,7 +242,7 @@ async function flush(channelId) {
     const echo = await session.sendIntent(channelId, fields);
     const applied = (echo && echo.applied) || {};
     for (const [k, rec] of entries) {
-      const sh = shadows[rec.shadowKey];
+      const sh = mine(rec);
       if (!sh) continue;
       // The ECHO is the post-clamp APPLIED value. If the key is missing from
       // the echo the machine did not tell us what it did, and we must not
@@ -248,7 +258,7 @@ async function flush(channelId) {
   } catch (err) {
     const msg = (err && (err.name || err.message)) || 'rejected';
     for (const [, rec] of entries) {
-      const sh = shadows[rec.shadowKey];
+      const sh = mine(rec);
       if (sh) fail(sh, msg, err);
     }
   }
@@ -341,6 +351,7 @@ export function writeSetting(field, value) {
   sh.error = null;
   sh.settled = false;
   sh.sentAt = Date.now();
+  sh.seq = ++writeSeq;
   sh._t1 = setTimeout(() => {
     if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
   }, OVERDUE_MS);
@@ -350,7 +361,7 @@ export function writeSetting(field, value) {
     }
   }, FAULT_MS);
 
-  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey });
+  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq: sh.seq });
   schedule(field.writeChannel);
 }
 
@@ -385,6 +396,7 @@ export async function runAction(action, value = 1, extraFields = null) {
   sh.error = null;
   sh.settled = false;
   sh.sentAt = Date.now();
+  const seq = sh.seq = ++writeSeq;
 
   const session = getSession();
   if (!session || !session.isLive) {
@@ -395,12 +407,14 @@ export async function runAction(action, value = 1, extraFields = null) {
   try {
     const echo = await session.sendIntent(action.channelId, fields);
     const applied = (echo && echo.applied) || {};
-    sh.applied = Object.prototype.hasOwnProperty.call(applied, action.key) ? applied[action.key] : value;
-    settle(sh);
+    if (sh.seq === seq) {
+      sh.applied = Object.prototype.hasOwnProperty.call(applied, action.key) ? applied[action.key] : value;
+      settle(sh);
+    }
     return { ok: true, applied };
   } catch (err) {
     const msg = (err && (err.name || err.message)) || 'rejected';
-    fail(sh, msg, err);
+    if (sh.seq === seq) fail(sh, msg, err);
     return { ok: false, error: msg };
   }
 }
@@ -435,6 +449,7 @@ export function sendCommand(field, value, opts = {}) {
   sh.error = null;
   sh.settled = false;
   sh.sentAt = Date.now();
+  sh.seq = ++writeSeq;
   sh._t1 = setTimeout(() => {
     if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
   }, OVERDUE_MS);
@@ -444,7 +459,7 @@ export function sendCommand(field, value, opts = {}) {
     }
   }, FAULT_MS);
 
-  queueFor(field.channelId).pending.set(field.key, { value, shadowKey });
+  queueFor(field.channelId).pending.set(field.key, { value, shadowKey, seq: sh.seq });
   schedule(field.channelId);
 }
 
