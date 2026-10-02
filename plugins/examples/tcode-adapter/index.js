@@ -9,6 +9,9 @@
 //   streamed telemetry timeline. The I interval rides along as durationMs;
 //   the model carries it on the hub's motion STREAM when granted, and drops
 //   it on the command.position fallback (docs/PLUGINS.md).
+// - Never re-arms. While the hub reports PAUSE submitMotion refuses each
+//   sample with 'paused, resume to continue' (counted, logged once, shown
+//   below); only the operator's Resume lets lines move the machine again.
 // - Only the L0 (stroke) axis. Other axes, S (speed) suffixes and device
 //   commands (D*, $*) are ignored, never guessed at.
 // - Port: 8000, the TCode network convention (MultiFunPlayer's default UDP

@@ -1,9 +1,9 @@
 /**
  * buttplug-estop-sim.mjs — the strip e-stop wins over a live buttplug stream.
  *
- * submitMotion has no client-side e-stop check, by design: the latch is hub
- * policy (SPEC §11, safety 0x0003), and a client gate would be a second home
- * for it. This proves the hub latch is what gates the buttplug path: the
+ * The app's door refuses input while the REPORTED latch shows PAUSE or ESTOP
+ * (shadow.svelte.js `halted`); this test builds its door without that, so it
+ * proves the hub latch alone gates the buttplug path: the
  * REAL plugin host, the REAL buttplug adapter (src/plugins/buttplug.js) and
  * the REAL motion door (src/model/motion.js) stream bp://motion payloads into
  * valencesim; the machine moves; an e-stop is asserted while the stream keeps

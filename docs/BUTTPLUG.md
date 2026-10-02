@@ -109,13 +109,18 @@ any spec version, so the setting would drive nothing.
   its last target. A stop is NOT a Valence safety op: apps send stops on
   every disconnect, and a latched `stop` would need an operator clear each
   time. Ruled (operator, 2026-10-01, [DESIGN §10.8](DESIGN.md)): an app's
-  stop or disconnect never maps to a safety op; the hub e-stop stays the
-  only latch.
-- **E-stop.** No client-side gate: the hub's latch (safety 0x0003) refuses
-  the motion, whoever sends it. `test/buttplug-estop-sim.mjs` streams
-  through the real adapter and motion door into valencesim, asserts an
-  e-stop mid-stream, and checks the machine stops moving while payloads
-  keep arriving.
+  stop or disconnect never maps to a safety op. The operator's strip pause
+  and e-stop are the only latches (RFC-085).
+- **Pause and e-stop.** The hub's latch (safety 0x0003) is the gate: under
+  PAUSE it drops stream bundles, counted and never NACKed (SPEC §11.1). So
+  that the drop is never silent, the motion door also refuses every payload
+  while the REPORTED latch shows PAUSE or ESTOP, with "paused, resume to
+  continue", logged once (ph-vdk.42). Nothing re-arms on its own: no app
+  command and no stream data sends `resume`; motion flows again only after
+  the operator's Resume on the strip. `test/buttplug-bridge.test.mjs` (e)
+  covers the local refusal; `test/buttplug-estop-sim.mjs` builds its door
+  without it and proves the hub latch alone stops a live stream in
+  valencesim.
 - **Hub presence** is the webview's link phase (`live`), polled at 2 Hz.
   Disabling the `buttplug` adapter in the Plugins pane withdraws the
   machine. That toggle is not yet persisted across restarts for this

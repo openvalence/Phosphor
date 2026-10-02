@@ -329,6 +329,22 @@ console.log('(e) motion door routing');
   ok('hub grants nothing: setpoint path, logged', d4(0.6).ok && eq(o4.set, [0.6]) && /publish refused/.test(o4.log[0].msg));
   d4(0.7);
   ok('a refusal is asked once per session', s4.asked.length === 1);
+
+  // ph-vdk.42: the reported latch refuses every input and nothing leaves;
+  // the door never resumes, so only the latch clearing lets input flow.
+  let held = 'paused, resume to continue';
+  const s5 = fakeSession();
+  const set5 = [];
+  const d5 = createMotionDoor({
+    session: () => s5, entries: () => e1, log: () => {}, halted: () => held,
+    setpoint: (n) => { set5.push(n); return { ok: true }; },
+  });
+  const r5 = d5(0.3, 50);
+  ok('paused: refused with the reason, nothing asked, published or set',
+    !r5.ok && r5.reason === held && !s5.asked.length && !s5.sent.length && !set5.length);
+  held = '';
+  d5(0.3); await tick();
+  ok('after the operator resumes, input flows', d5(0.3, 50).ok && s5.sent.length === 1);
 }
 
 // ---- (f) tier-2 replace mode (ph-vdk.29, DESIGN §3 "renders instead") -----

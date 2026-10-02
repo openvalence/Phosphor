@@ -452,6 +452,11 @@ const LOG_LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, nam
 const motionDoor = createMotionDoor({
   session: getSession,
   entries: () => machine.catalog.entries,
+  halted: () => {
+    const s = machine.safety;
+    return !s ? '' : s.estopLatched ? 'e-stop latched, release and resume to continue'
+      : s.paused ? 'paused, resume to continue' : '';
+  },
   setpoint: (norm) => {
     const t = motionTarget(machine.catalog.model, machine.samples, norm);
     if (!t.field) return { ok: false, reason: t.reason };

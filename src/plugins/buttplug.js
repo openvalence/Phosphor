@@ -6,8 +6,12 @@
  *   reaches the kernel through api.submitMotion: the TCode adapter's door,
  *   its `motion` permission, its error boundary and its log (DESIGN §10.8).
  * - A stop sends nothing. The machine holds at its last target; stopping the
- *   machine is the operator's strip e-stop, which the hub latches and which
- *   no app's StopDeviceCmd can clear (docs/BUTTPLUG.md).
+ *   machine is the operator's strip pause or e-stop, which the hub latches
+ *   and which no app's StopDeviceCmd can clear (docs/BUTTPLUG.md).
+ * - Never re-arms. While the hub reports PAUSE (or an e-stop) the motion door
+ *   refuses every payload with 'paused, resume to continue', logged once;
+ *   motion flows again only after the operator's own Resume (SPEC §11.1).
+ *   No app command and no stream data ever sends resume.
  * - Toys the server finds are this adapter's heroes (buttplug-toys.js), so
  *   they place as hero:plugin:buttplug:<toy key> and leave with the adapter.
  * - Shell only: the server is src-tauri/src/buttplug.rs.

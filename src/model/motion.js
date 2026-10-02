@@ -96,9 +96,15 @@ export function motionStream(entries) {
  * - One source per session: while the grant is in flight the input is
  *   refused, never sent down the setpoint path, so the hub's arbiter never
  *   sees the move channel and the stream interleaved.
+ * - `halted()` (optional) reads the hub's REPORTED latch: while it returns a
+ *   reason every input is refused with it and nothing is sent. Under PAUSE
+ *   the hub drops stream bundles without a NACK (SPEC §11.1), so this is
+ *   where the refusal becomes visible. The door never resumes: resume is
+ *   the operator's own act (SPEC §11.1), never a side effect of input.
  *
  * @param {Object} deps {session() -> session|null, entries() -> catalog
- *   entries, setpoint(norm) -> {ok, reason}, log(level, msg)}
+ *   entries, setpoint(norm) -> {ok, reason}, log(level, msg),
+ *   halted?() -> reason string, '' when motion may flow}
  * @returns {(norm: number, durationMs?: number) => {ok: boolean, reason?: string}}
  */
 export function createMotionDoor(deps) {
@@ -114,6 +120,8 @@ export function createMotionDoor(deps) {
 
   return function submit(norm, durationMs) {
     if (!Number.isFinite(norm)) return { ok: false, reason: 'position is not a number' };
+    const held = deps.halted ? deps.halted() : '';
+    if (held) return { ok: false, reason: held };
     const st = motionStream(deps.entries());
     if (!st) return setpoint(norm, 'hub has no motion STREAM');
     const s = deps.session();

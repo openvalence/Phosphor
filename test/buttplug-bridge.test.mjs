@@ -8,7 +8,11 @@
  *   (b) it is gated by the same `motion` permission;
  *   (c) a client stop submits nothing;
  *   (d) hub connect/disconnect drive bp_machine_present, and deactivation
- *       withdraws the machine.
+ *       withdraws the machine;
+ *   (e) ph-vdk.42: while the hub reports PAUSE, buttplug and TCode input is
+ *       refused with 'paused, resume to continue' (logged once), nothing
+ *       reaches the wire, and input flows again only once the latch clears
+ *       (the door has no resume path of its own).
  * The Rust half is `cargo test` in src-tauri; the hub latch beating a live
  * stream is test/buttplug-estop-sim.mjs.
  *
@@ -18,6 +22,8 @@
 import { createPluginHost } from '../src/plugins/host.js';
 import * as bp from '../src/plugins/buttplug.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
+import { createMotionDoor } from '../src/model/motion.js';
+import { readFileSync } from 'node:fs';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -98,6 +104,43 @@ console.log('(d) hub presence');
   off();
   ok('deactivate withdraws the machine and the listeners',
     JSON.stringify(calls.at(-1)) === '["bp_machine_present",false]' && handlers.size === 0);
+}
+
+console.log('(e) paused: refused with a reason, resumed only by the operator');
+{
+  let held = 'paused, resume to continue';
+  const wire = [];
+  const door = createMotionDoor({
+    session: () => null, entries: () => [], log: () => {}, halted: () => held,
+    setpoint: (n) => { wire.push(n); return { ok: true }; },
+  });
+  const logs = [];
+  let onLine = null;
+  const host = createPluginHost({
+    model: () => null, sample: () => undefined, sampleAge: () => Infinity,
+    display: () => undefined, status: () => 'confirmed', write: () => {},
+    submitMotion: door, registerTheme: () => {}, prefs: null,
+    listenTcp: async (port, fn) => { onLine = fn; return () => {}; },
+    log: (name, level, msg) => logs.push({ name, level, msg }),
+  });
+  const handlers = new Map();
+  const shell = {
+    listen: (ev, fn) => { handlers.set(ev, fn); return Promise.resolve(() => handlers.delete(ev)); },
+    invoke: () => Promise.resolve(), live: () => false,
+  };
+  host.add(bp.manifest, { activate: (a) => bp.bridge(a, shell) });
+  host.add(JSON.parse(readFileSync(new URL('../plugins/examples/tcode-adapter/manifest.json', import.meta.url), 'utf8')), tcode);
+  await delay(0);
+  for (const p of [0.2, 0.4, 0.6]) handlers.get('bp://motion')({ payload: { position: p, ms: 50 } });
+  for (const l of ['L020I50', 'L040I50']) onLine(l);
+  const refused = (name) => logs.filter((l) => l.name === name && l.msg === 'motion refused: paused, resume to continue');
+  ok('buttplug: refused with the reason, logged once', refused('buttplug').length === 1);
+  ok('TCode: refused with the reason, logged once', refused('tcode-adapter').length === 1);
+  ok('nothing reached the wire while paused', wire.length === 0);
+  held = '';
+  handlers.get('bp://motion')({ payload: { position: 0.5, ms: 50 } });
+  onLine('L075I50');
+  ok('after the operator resumes, both flow', JSON.stringify(wire) === '[0.5,0.75]', JSON.stringify(wire));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
