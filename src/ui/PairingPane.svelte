@@ -294,7 +294,7 @@
         <li>The third cycle opens a {LIMITS.pairing_window_default_s} s window</li>
         <li>Press Pair this client after reconnect</li>
       </ol>
-      <p class="pane-note">Unclaimed machine: grants configure. Claimed: grants control.</p>
+      <p class="pane-note">Grants configure if unclaimed, control if claimed</p>
     </details>
   </section>
   {#if setupOpen && setupCat}<ProvisionWizard category={setupCat} onclose={() => (setupOpen = false)} />{/if}
