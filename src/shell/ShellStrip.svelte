@@ -269,9 +269,10 @@
     /* The one reader of env(safe-area-inset-top) while the shell is up; the
        $effect above zeroes the LinkBar's share (style.css --chrome-inset-top). */
     padding-top: env(safe-area-inset-top, 0px);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--shell-border);
+    background: var(--shell-bg);
     font-size: 0.72rem;
-    color: var(--ink-dim);
+    color: var(--shell-fg);
   }
   .sb-left {
     flex: 1 1 auto;
@@ -285,7 +286,7 @@
   .collapsed { border-bottom: none; }
   .collapsed .sb-left { padding-block: 0; }
   .sb-toggle {
-    color: var(--ink-faint);
+    color: var(--shell-fg);
     font-size: 0.68rem;
     padding: 3px 4px;
     text-transform: uppercase;
@@ -307,7 +308,7 @@
     border-color: color-mix(in srgb, var(--intent) 45%, var(--line));
     color: var(--intent);
   }
-  .sb-phase { color: var(--ink-dim); }
+  .sb-phase { color: var(--shell-fg); }
   .sb-btn {
     display: inline-flex;
     align-items: center;

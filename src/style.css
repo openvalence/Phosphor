@@ -55,6 +55,16 @@
   --screen:    #040507;   /* original name, same surface */
   --chip:      #111318;   /* original name, same surface */
 
+  /* ---- shell chrome (src/shell: the Tauri row and its drawer) ----
+     Shell-only: never on hub-rendered content, so the boundary between the
+     operator's window and the machine's UI reads at a glance. Darker than
+     every content surface; the chassis is already near black, so the
+     --shell-border rule carries most of that boundary. --shell-fg must keep
+     4.5:1 on --shell-bg (test/shell-chrome-geometry.test.mjs). */
+  --shell-bg:     color-mix(in srgb, var(--bg-sunken) 40%, #000);
+  --shell-fg:     var(--ink);
+  --shell-border: var(--line-3);
+
   --line-0: #121419;   /* outer nested frame */
   --line-1: #1D2026;   /* inner panel frame, dividers */
   --chip-line: #1D2026;   /* original name for the chip's own hairline */
