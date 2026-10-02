@@ -39,6 +39,7 @@ are load-bearing rather than decorative:
   instrument. Restyling safety colors for aesthetic reasons is a safety
   defect, not a design change.
 - Only the two accent hues vary by theme.
+- Copy (tooltips, hints, placeholders, casing) follows `docs/COPY.md`.
 
 Generative design tooling is for surfaces with no precedent yet (new Phosphor
 widgets, docs-site). On the existing webui it consumes this file; it does not
