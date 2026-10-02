@@ -64,9 +64,8 @@
  * of every kind above, that `ui/TopStrip.svelte` (pinned to the viewport)
  * renders unconditionally — so a refusal is visible even from a control that
  * cannot show it itself. `NACK_REMEDY` maps a NACK code to the RFC-019 action
- * role that clears it (`NOT_HOMED` -> `action.home`, `ESTOP_ACTIVE` ->
- * `action.safety`'s `estop_clear` op) — a mapping between two things the
- * catalog already publishes, not new protocol and not device knowledge. The
+ * role that clears it (`NOT_HOMED` -> `action.home`) — a mapping between two
+ * things the catalog already publishes, not new protocol and not device knowledge. The
  * action is looked up on THIS hub's own catalog and silently omitted if the
  * hub never advertised it.
  *
@@ -86,7 +85,7 @@ import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor } from './motion.js';
-import { NACK, NACK_NAME, SAFETY_OP, HOME_OP, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { NACK, NACK_NAME, HOME_OP, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -149,17 +148,14 @@ export function clearLastRefusal() {
 }
 
 /**
- * NACK code -> the RFC-019 action ROLE (and registry op enum) that clears it.
- * Both the role strings and the op enums are registry vocabulary: `HOME_OP`/
- * `SAFETY_OP` come straight from the Valence protocol client's index.js (generated from
- * registry.yaml), and `action.home`/`action.safety` are the same open-role
- * strings ui/TopStrip.svelte already keys its own discovery on. Extending
- * this table to a new code needs no protocol change — it is a mapping between
- * two things the catalog already publishes, never a new number.
+ * NACK code -> the RFC-019 action ROLE (and op) that clears it. A mapping
+ * between two things the catalog already publishes, never a new number.
+ * Never map a code to a safety pair's second half (ESTOP_ACTIVE -> release,
+ * INTERLOCK -> resume): RENDERING law 14 allows no separate release or resume
+ * button, so those remedies live on the pair's own control.
  */
 const NACK_REMEDY = new Map([
   [NACK.NOT_HOMED, { role: 'action.home', op: HOME_OP.home }],
-  [NACK.ESTOP_ACTIVE, { role: 'action.safety', op: SAFETY_OP.estop_clear }],
 ]);
 
 /**

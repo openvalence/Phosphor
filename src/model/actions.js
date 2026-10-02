@@ -21,9 +21,11 @@ export function actionTag(action) {
 // confirm; reset is confirm-gated).
 const CONFIRM_TAGS = new Set([ACTION_TAG.reboot, ACTION_TAG.reset]);
 
-// Ops that ENGAGE a hazard mode (RFC-025c). Meaningful only on the spec-core
-// safety-intents channel: the same integer on a device channel is another verb.
-const HAZARD_SAFETY_OPS = new Set([SAFETY_OP.override_on, SAFETY_OP.bypass_on]);
+// Ops that ENGAGE a hazard mode: override lifts the window and soft limits
+// (SPEC §11.1). Meaningful only on the spec-core safety-intents channel: the
+// same integer on a device channel is another verb. Its pair, return, takes no
+// gate (law 14).
+const HAZARD_SAFETY_OPS = new Set([SAFETY_OP.override]);
 
 /**
  * The catalog's own destructive bit (§8.2 row 6, §8.4 trigger row). SPEC §8.8

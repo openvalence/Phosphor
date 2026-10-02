@@ -36,8 +36,8 @@
 /** Registry `field_roles` vocabulary. */
 export const ROLE = {
   // kinematic limits — CEILINGS, never targets
-  limitUserSpeed: 'limit.user.speed',
-  limitUserAccel: 'limit.user.accel',
+  limitJogSpeed: 'limit.jog.speed',
+  limitJogAccel: 'limit.jog.accel',
   limitInputSpeed: 'limit.input.speed',
   limitInputAccel: 'limit.input.accel',
   limitInputJerk: 'limit.input.jerk',
@@ -142,8 +142,8 @@ export const DRAFT_ROLE = {
  * never a per-device name table).
  *
  * Wording prefers the pre-refactor UI's own choices where it had one
- * (`git show webui-prerefactor:webui/index.html` / `style.css` — "User
- * speed"/"Input jerk" etc for the limit sliders) so this reads as a relabel,
+ * (`git show webui-prerefactor:webui/index.html` / `style.css` — "Input
+ * jerk" etc for the limit sliders; RFC-085 renamed the manual set to jog) so this reads as a relabel,
  * not a redesign.
  *
  * A LABEL HERE NAMES THE QUANTITY AND NOTHING ELSE. It must never assert
@@ -159,8 +159,8 @@ export const DRAFT_ROLE = {
  * enforces.
  */
 export const ROLE_LABEL = {
-  [ROLE.limitUserSpeed]: 'User speed',
-  [ROLE.limitUserAccel]: 'User accel',
+  [ROLE.limitJogSpeed]: 'Jog speed',
+  [ROLE.limitJogAccel]: 'Jog accel',
   [ROLE.limitInputSpeed]: 'Input speed',
   [ROLE.limitInputAccel]: 'Input accel',
   [ROLE.limitInputJerk]: 'Input jerk',

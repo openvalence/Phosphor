@@ -1,6 +1,6 @@
 <script>
   /**
-   * LimitsWidget.svelte — the two kinematic ceilings: manual (user) and
+   * LimitsWidget.svelte — the two kinematic ceilings: jog (manual) and
    * machine-driven (input). Renders each knob through Field.svelte (OG .fld2
    * compact grid, same recipe as PatternWidget) instead of a hand-rolled
    * slider — one slider aesthetic for the whole app, one home for a field's
@@ -15,13 +15,13 @@
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
   // a fresh `fields` object whenever the catalog rebuilds.
-  const userSpeed = $derived(fields.userSpeed);
-  const userAccel = $derived(fields.userAccel);
+  const jogSpeed = $derived(fields.jogSpeed);
+  const jogAccel = $derived(fields.jogAccel);
   const inputSpeed = $derived(fields.inputSpeed);
   const inputAccel = $derived(fields.inputAccel);
   const inputJerk = $derived(fields.inputJerk);
 
-  const userKnobs = $derived([userSpeed, userAccel].filter((f) => f != null));
+  const jogKnobs = $derived([jogSpeed, jogAccel].filter((f) => f != null));
   const inputKnobs = $derived(
     [inputSpeed, inputAccel, inputJerk].filter((f) => f != null)
   );
@@ -29,9 +29,9 @@
 
 <div class="hero limits-hero">
   <section class="limit-group">
-    <h3 class="group-title">Manual limits <span class="group-sub">ceiling, not target</span></h3>
+    <h3 class="group-title">Jog limits <span class="group-sub">ceiling, not target</span></h3>
     <div class="fld2">
-      {#each userKnobs as f (f.uid)}
+      {#each jogKnobs as f (f.uid)}
         <Field field={f} />
       {/each}
     </div>

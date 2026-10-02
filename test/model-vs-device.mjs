@@ -80,7 +80,7 @@ const specs = [
   ['pattern', { require: { running: ROLE.patternRunning, select: ROLE.patternSelect },
                 optional: { speed: ROLE.patternSpeed, depth: ROLE.patternDepth,
                             stroke: ROLE.patternStroke, sensation: ROLE.patternSensation } }],
-  ['limits', { require: { userSpeed: ROLE.limitUserSpeed, userAccel: ROLE.limitUserAccel },
+  ['limits', { require: { jogSpeed: ROLE.limitJogSpeed, jogAccel: ROLE.limitJogAccel },
                optional: { inputSpeed: ROLE.limitInputSpeed, inputAccel: ROLE.limitInputAccel,
                            inputJerk: ROLE.limitInputJerk } }],
 ];

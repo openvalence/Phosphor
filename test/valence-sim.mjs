@@ -159,9 +159,9 @@ async function main() {
       : '');
 
   // ---- per-op access (RFC-009 gray-never-hide) ----------------------------
-  ok('0x0005 option_access read from the catalog: estop role-exempt, hold needs control',
+  ok('0x0005 option_access read from the catalog: estop role-exempt, resume needs control',
     s1.optionAccessFor(CH.SAFETY_INTENTS, 1, SAFETY_OP.estop) === ACCESS.watch &&
-    s1.optionAccessFor(CH.SAFETY_INTENTS, 1, SAFETY_OP.hold) === ACCESS.control);
+    s1.optionAccessFor(CH.SAFETY_INTENTS, 1, SAFETY_OP.resume) === ACCESS.control);
 
   // ========================================================================
   // Write the golden fixture for the offline test.
@@ -446,7 +446,7 @@ async function main() {
   // leave the sim as we found it
   const cleared = waitFor(s1, 'state',
     (ch, sm) => ch === CH.SAFETY && sm.word_bits && sm.word_bits.estop === false, 4000, 'estop clear');
-  await s1.sendSafetyIntent(SAFETY_OP.estop_clear).catch((e) => info('estop_clear: ' + e.message));
+  await s1.sendSafetyIntent(SAFETY_OP.release).catch((e) => info('release: ' + e.message));
   const clearedOk = await cleared.then(() => true).catch(() => false);
   ok('e-stop CLEARED again (latch gone; the machine still needs a re-home)', clearedOk);
   }

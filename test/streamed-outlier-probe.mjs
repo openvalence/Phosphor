@@ -88,7 +88,7 @@ const claim = claimRoles(model.byRole, {
   require: { move: ROLE.commandPosition },
   optional: {
     pos: ROLE.telemetryPosition, target: ROLE.telemetryTarget, vel: ROLE.telemetryVelocity,
-    speedCeil: ROLE.limitUserSpeed, accelCeil: ROLE.limitUserAccel,
+    speedCeil: ROLE.limitJogSpeed, accelCeil: ROLE.limitJogAccel,
   },
 });
 // The outer bound for "impossible", off the catalog's own published max for

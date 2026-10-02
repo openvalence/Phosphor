@@ -105,7 +105,7 @@ const CATALOG = [
     layout: [
       lf('hand_speed', PACKED.f32, {
         unit: 'mm/s', min: 1, max: 400, step: 1, settingKey: 7,
-        role: ROLE.limitUserSpeed, group: 'Ceilings', default: 60,
+        role: ROLE.limitJogSpeed, group: 'Ceilings', default: 60,
       }),
       // rank=hidden AND a setting: never drawn, but it still CONSUMES mask bit
       // 1, so hand_accel below must land on bit 2. Ordered between two visible
@@ -116,7 +116,7 @@ const CATALOG = [
       }),
       lf('hand_accel', PACKED.f32, {
         unit: 'mm/s2', min: 10, max: 9000, step: 10, settingKey: 8,
-        role: ROLE.limitUserAccel, group: 'Ceilings', default: 300,
+        role: ROLE.limitJogAccel, group: 'Ceilings', default: 300,
       }),
       // rank=advanced with NO flag bit: the ladder alone must fold it away.
       lf('jerk_trim', PACKED.f32, {
@@ -462,13 +462,12 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('an unregistered tag falls back to a plain trigger', !needsConfirm(act('action.service'), 2));
   ok('the tag is the role suffix', actionTag(act('action.preset_save')) === 'preset_save');
   const safety = act('action.safety', { channelId: CH_SAFETY_INTENTS });
-  ok('override_on / bypass_on on the spec-core safety channel confirm',
-     needsConfirm(safety, SAFETY_OP.override_on) && needsConfirm(safety, SAFETY_OP.bypass_on));
-  ok('...but turning them off, or stopping, never waits on a dialog',
-     !needsConfirm(safety, SAFETY_OP.override_off) && !needsConfirm(safety, SAFETY_OP.estop)
-     && !needsConfirm(safety, SAFETY_OP.stop));
+  ok('override on the spec-core safety channel confirms', needsConfirm(safety, SAFETY_OP.override));
+  ok('...but return, pause, resume, estop and release never wait on a dialog (law 14)',
+     [SAFETY_OP.return_op, SAFETY_OP.pause, SAFETY_OP.resume, SAFETY_OP.estop, SAFETY_OP.release]
+       .every((op) => !needsConfirm(safety, op)));
   ok('the same op number on a device channel is another verb: no confirm',
-     !needsConfirm(act('action.safety'), SAFETY_OP.override_on));
+     !needsConfirm(act('action.safety'), SAFETY_OP.override));
   const bg = { role: FIELD_ROLE.source_background_run };
   ok('background_run false->true confirms', settingNeedsConfirm(bg, 0, 1));
   ok('background_run true->false does not', !settingNeedsConfirm(bg, 1, 0));
@@ -664,15 +663,15 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const claim = claimAll(real.byRole, [{ id: 'rail', spec: AXIS_HERO_SPEC, cells: { h: [10, 4], v: [4, 10] } },
     { id: 'nope', spec: { require: { x: 'no.such.role' } } }]);
   const withHeroes = placeableControls(real, { heroes: claim.widgets, safety: {
-    channelId: 9, key: 1, options: ['', 'estop_clear', 'stop', 'hold', 'pause', 'resume', 'estop', 'override_on',
-      'override_off', 'bypass_on', 'bypass_off', 'vendor_op'] } });
+    channelId: 9, key: 1, options: ['', 'release', '', '', 'pause', 'resume', 'estop', 'override', 'return_op',
+      'vendor_op'] } });
   const rail = withHeroes.find((c) => c.key === 'hero:rail');
   ok('a claiming composite is placeable with its own minimum cells',
      rail && rail.kind === 'composite' && minCells(rail.cells, 'v').join() === '4,10');
   ok('a declining composite is not placeable (law 7)', !withHeroes.some((c) => c.key === 'hero:nope'));
   const safety = withHeroes.filter((c) => c.kind === 'safety').map((c) => c.key);
   ok('safety ops are placeable by registry name, index 0 and unnamed ops never',
-     safety.includes('safety:estop') && safety.includes('safety:stop') && safety.length === 10, safety.join(','));
+     safety.includes('safety:estop') && safety.includes('safety:pause') && safety.length === 6, safety.join(','));
 }
 
 // ---- ph-vic: a secret action payload is flagged so ActionField masks it -----

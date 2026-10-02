@@ -73,9 +73,9 @@ const HEROES = [
     cells: { h: [6, 4], v: [4, 6] },
     component: LimitsWidget,
     spec: {
-      // A machine with only a user limit set still gets the widget; the input
+      // A machine with only a jog limit set still gets the widget; the input
       // set is optional because not every machine HAS machine-driven motion.
-      require: { userSpeed: ROLE.limitUserSpeed, userAccel: ROLE.limitUserAccel },
+      require: { jogSpeed: ROLE.limitJogSpeed, jogAccel: ROLE.limitJogAccel },
       optional: {
         inputSpeed: ROLE.limitInputSpeed,
         inputAccel: ROLE.limitInputAccel,
