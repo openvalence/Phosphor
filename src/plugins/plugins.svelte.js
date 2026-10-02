@@ -134,6 +134,13 @@ export const host = createPluginHost({
   log: logLine,
 });
 
+// Every add consults the disabled set unless the caller decides, so a plugin
+// added outside the loaders below (buttplug.js, graph.js) keeps its disable
+// across launches.
+const addRaw = host.add;
+host.add = (manifest, mod, opts = {}) => addRaw(manifest, mod,
+  { enabled: !disabledSet().has(manifest && manifest.name), ...opts });
+
 host.onChange(() => {
   pluginsUi.list = host.list();
   pluginsUi.gen++;
@@ -142,6 +149,11 @@ host.onChange(() => {
 /** Active plugin heroes, ready for heroes.js's claim pass. */
 export function pluginHeroes() {
   return host.heroes().map((h) => ({ ...h, component: PluginSlot, host }));
+}
+
+/** The operator's choice, not the status: an enabled plugin may be in error. */
+export function isPluginDisabled(name) {
+  return disabledSet().has(name);
 }
 
 export function setPluginEnabled(name, on) {
@@ -162,13 +174,11 @@ async function importSource(source) {
 // Factory plugins ship inside the bundle; a same-named plugin folder loaded
 // after them replaces one (host.add keys on the name).
 function loadFactory() {
-  const off = disabledSet();
-  for (const p of FACTORY) host.add(p.manifest, p.module, { enabled: !off.has(p.manifest.name), source: 'factory' });
+  for (const p of FACTORY) host.add(p.manifest, p.module, { source: 'factory' });
 }
 
 async function loadFromShell() {
   const { invoke } = await import('@tauri-apps/api/core');
-  const off = disabledSet();
   let found;
   try {
     found = await invoke('plugins_list');
@@ -183,7 +193,7 @@ async function loadFromShell() {
     let mod = null;
     let loadError;
     try { mod = await importSource(p.source); } catch (e) { loadError = 'import: ' + (e && e.message); }
-    host.add(manifest, mod, { enabled: !off.has(manifest.name), loadError, source: p.path });
+    host.add(manifest, mod, { loadError, source: p.path });
   }
 }
 

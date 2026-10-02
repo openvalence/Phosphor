@@ -116,14 +116,16 @@ function logLine(level, tag, message) {
 
 const browser = await chromium.launch();
 
-async function boot(viewport, path = '/', shell = false) {
+async function boot(viewport, path = '/', shell = false, init = null) {
   const ctx = await browser.newContext({ viewport });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:' + PORT });
   await ctx.addInitScript(([etag, bytes]) => {
-    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
+    // First load only: a reload keeps what the page stored.
+    try { if (!sessionStorage.getItem('booted')) { sessionStorage.setItem('booted', '1'); localStorage.clear(); } localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
     catch (e) { /* no storage */ }
   }, [ETAG, toHex(CAT)]);
   if (shell) await ctx.addInitScript(TAURI_STUB);
+  if (init) await init(ctx);
   await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   const errors = [];
@@ -275,6 +277,51 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
     document.documentElement.classList.contains('hivis') && localStorage.getItem('ui_hivis') === '1'));
 
   ok('no page errors (' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// ---- shell bundle: the saved hub redials on launch, so the console tabs and
+// Plugins exist beside the Phosphor panes ----------------------------------------
+async function bootShell(viewport, extra) {
+  return boot(viewport, '/shell', true, (ctx) => ctx.addInitScript((x) => {
+    try {
+      if (!localStorage.getItem('phosphor.hubs')) {
+        localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'panes fixture', nickname: '', lastSeen: Date.now() - 60000 }]));
+      }
+      for (const [k, v] of Object.entries(x || {})) localStorage.setItem(k, v);
+    } catch (e) { /* no storage */ }
+  }, extra));
+}
+
+for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['phone', { width: 390, height: 844 }]]) {
+  console.log('\n--- shell panes, ' + label + ' ---');
+  const { ctx, page, errors } = await bootShell(viewport);
+
+  // ---- Plugins -----------------------------------------------------------------
+  await openTab(page, 'plugins');
+  await page.waitForSelector('.plugins .plugin', { timeout: 15000 });
+  const plugins = () => page.$$eval('.plugins .plugin', (ss) => ss.map((s) => ({
+    name: s.getAttribute('aria-label'),
+    chips: [...s.querySelectorAll('.pane-head .chip')].map((c) => c.textContent.trim()),
+    on: s.querySelector('.og-switch input')?.checked,
+    slot: s.querySelector('.pane-status')?.getBoundingClientRect().height,
+  })));
+  const p0 = await plugins();
+  const bp = p0.find((p) => p.name === 'buttplug');
+  ok('plugins: bundled plugins are marked factory or built-in', bp && bp.chips.includes('built-in') && p0.some((p) => p.chips.includes('factory')), JSON.stringify(p0.map((p) => p.name + ':' + p.chips.join('/'))));
+  ok('plugins: every plugin has its error slot', p0.every((p) => p.slot > 0), p0.map((p) => p.slot).join(','));
+  await page.click('.plugins .plugin[aria-label="buttplug"] label.og-switch');
+  await page.waitForTimeout(200);
+  ok('plugins: disabling persists in the disabled set', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.plugins.disabled') || '[]').includes('buttplug')));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await openTab(page, 'plugins');
+  await page.waitForSelector('.plugins .plugin[aria-label="buttplug"]', { timeout: 15000 });
+  const bp2 = (await plugins()).find((p) => p.name === 'buttplug');
+  ok('plugins: the buttplug adapter stays disabled across a launch', bp2 && bp2.on === false && bp2.chips.includes('disabled'), JSON.stringify(bp2));
+  await page.click('.plugins .plugin[aria-label="buttplug"] label.og-switch');
+  await page.waitForTimeout(200);
+
+  ok('no page errors (shell ' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
 
