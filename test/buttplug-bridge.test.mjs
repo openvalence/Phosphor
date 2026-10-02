@@ -12,7 +12,8 @@
  *   (e) ph-vdk.42: while the hub reports PAUSE, buttplug and TCode input is
  *       refused with 'paused, resume to continue' (logged once), nothing
  *       reaches the wire, and input flows again only once the latch clears
- *       (the door has no resume path of its own).
+ *       (the door has no resume path of its own);
+ *   (f) a shell without the event plugin degrades: one log line, no throw.
  * The Rust half is `cargo test` in src-tauri; the hub latch beating a live
  * stream is test/buttplug-estop-sim.mjs.
  *
@@ -141,6 +142,24 @@ console.log('(e) paused: refused with a reason, resumed only by the operator');
   handlers.get('bp://motion')({ payload: { position: 0.5, ms: 50 } });
   onLine('L075I50');
   ok('after the operator resumes, both flow', JSON.stringify(wire) === '[0.5,0.75]', JSON.stringify(wire));
+}
+
+console.log('(f) no event plugin: degraded, logged once, never thrown');
+{
+  const unhandled = [];
+  const onUnhandled = (e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  const shell = {
+    listen: () => Promise.reject(new Error('plugin event not found')),
+    invoke: () => Promise.resolve(), live: () => false,
+  };
+  const { api, logs } = hostWith(bp.manifest);
+  const off = bp.bridge(api, shell);
+  await delay(10);
+  off();
+  process.off('unhandledRejection', onUnhandled);
+  ok('no unhandled rejection', unhandled.length === 0, String(unhandled[0] || ''));
+  ok('one error line in the adapter log', logs.filter((l) => l.level === 'error').length === 1, JSON.stringify(logs));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

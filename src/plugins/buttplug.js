@@ -45,7 +45,10 @@ export function bridge(api, shell) {
   let present = false;
   let closed = false;
   const offs = [];
-  const on = (ev, fn) => shell.listen(ev, fn).then((off) => (closed ? off() : offs.push(off)));
+  // No event plugin (a shell without it): degraded, logged once, never thrown.
+  let deaf = false;
+  const on = (ev, fn) => shell.listen(ev, fn).then((off) => (closed ? off() : offs.push(off)))
+    .catch((e) => { if (!deaf) api.log(ev + ': ' + (e && e.message || e), 'error'); deaf = true; });
 
   on('bp://motion', (e) => {
     if (e.payload && e.payload.stop) { api.log('client stop: holding at the last target'); return; }
