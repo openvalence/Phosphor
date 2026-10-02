@@ -12,7 +12,12 @@
  *   (d) the TCode parser maps L0 lines to normalized samples, and a line
  *       arriving over the (fake) listener reaches submitMotion;
  *   (e) submitMotion's router sends a samples STREAM when the catalog has one
- *       and the hub grants it, and the command.position setpoint otherwise.
+ *       and the hub grants it, and the command.position setpoint otherwise;
+ *   (g) every factory plugin validates and activates; Advanced Penetration
+ *       substitutes generator-advanced on the role-carrying fixture
+ *       (RENDERING §10.2) and every way it can fail (a missing essential
+ *       role, the advgen.mode conditional thrown from mount, disabled, the
+ *       recorded catalog) leaves the built-in to claim.
  *
  * Run: node test/plugins.test.mjs
  */
@@ -20,11 +25,14 @@
 import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
-import { ROLE, claimAll } from '../src/model/roles.js';
+import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor } from '../src/model/motion.js';
 import { createPluginHost, validateManifest } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
+import { FACTORY } from '../src/plugins/factory.js';
+import { strokeTime, cycleLevel } from '../plugins/factory/advanced-penetration/index.js';
+import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -414,6 +422,66 @@ console.log('(f) tier-2 replace mode');
   ok('an unrecognized replaces target is a no-op, not an error',
      claimD.widgets.some((w) => w.id === 'plugin:stray:stray')
      && claimD.widgets.some((w) => w.id === 'gauge-builtin'));
+}
+
+// ---- (g) factory plugins; the generator-advanced substitute -----------------
+console.log('(g) factory plugins: Advanced Penetration substitutes generator-advanced');
+{
+  ok('every factory manifest validates', FACTORY.length > 0
+    && FACTORY.every((f) => validateManifest(f.manifest).length === 0 && typeof f.module.activate === 'function'));
+  const ap = FACTORY.find((f) => f.manifest.name === 'advanced-penetration');
+  // Stand-in for the built-in widget: it claims wherever the run role exists,
+  // so "the built-in renders" is observable on every catalog below.
+  const BUILTIN = { id: 'advanced-generator', spec: { require: { running: ROLE.patternRunning } } };
+  const isAp = (w) => w.plugin === 'advanced-penetration';
+  const isBuiltin = (w) => w.id === 'advanced-generator';
+  const pass = (m, host) => claimAll(m.byRole, [BUILTIN, ...host.heroes()]);
+  function load(opts) {
+    const m = opts === 'recorded' ? model : buildSettingsModel(decodeCatalog(advgenCatalog(opts).bytes));
+    const { host } = makeHost({ model: () => m });
+    host.add(ap.manifest, ap.module, { source: 'factory' });
+    return { m, host, ...pass(m, host) };
+  }
+
+  const spec = ap && load().host.heroes()[0];
+  ok('it registers as a substitute for the built-in id', spec && spec.replaces === 'advanced-generator');
+  ok('its require covers the pattern essential bindings (RENDERING §10, RFC-081)',
+    spec && Object.values(ADVGEN_SPEC.require).every((r) => Object.values(spec.spec.require).includes(r)));
+
+  const a = load();
+  const w = a.widgets.find(isAp);
+  ok('claims on the role-carrying fixture', !!w);
+  ok('the built-in it substitutes is not rendered beside it', !a.widgets.some(isBuiltin));
+  ok('all six modulators claimed, ascending by channel id', w && w.fields.mods.length === 6
+    && w.fields.mods.every((x, i, l) => !i || l[i - 1].channelId < x.channelId));
+  ok('modulator and preset fields leave the generic tree', w && w.fields.presetOp && a.claimed.has(w.fields.presetOp.uid)
+    && w.fields.mods.every((x) => ['amount', 'rise', 'hold', 'fall', 'rest', 'phase'].every((k) => a.claimed.has(x[k].uid))));
+
+  for (const r of ['advgen.master', 'advgen.depth_max', 'advgen.depth_min', 'advgen.speed_in',
+    'advgen.speed_out', 'advgen.accel_in', 'advgen.accel_out']) {
+    const b = load({ drop: [r] });
+    ok('missing ' + r + ': declines, the built-in claims', !b.widgets.some(isAp) && b.widgets.some(isBuiltin));
+  }
+  const noRun = load('recorded');
+  ok('the recorded catalog (no advgen roles): declines', !noRun.widgets.some(isAp) && noRun.widgets.some(isBuiltin));
+
+  const c = load({ drop: ['advgen.mode'] });
+  const wc = c.widgets.find(isAp);
+  ok('advgen.mode absent beside pattern.select: the claim alone cannot see it', !!wc);
+  ok('... mount throws, so the host drops the hero', wc && c.host.mountHero(wc, {}, wc.fields) === null);
+  ok('... and the next pass renders the built-in', pass(c.m, c.host).widgets.some(isBuiltin)
+    && !pass(c.m, c.host).widgets.some(isAp));
+
+  a.host.setEnabled('advanced-penetration', false);
+  ok('disabled: the built-in claims', pass(a.m, a.host).widgets.some(isBuiltin) && !pass(a.m, a.host).widgets.some(isAp));
+
+  const st = strokeTime(0.5, 0.5, 0);
+  ok('stroke sketch: accel 0 eases the whole half (fray-d calculateStroke)', st && Math.abs(st.ease - 0.5) < 1e-9);
+  ok('stroke sketch: no window or no speed draws nothing', strokeTime(0, 0.5, 0) === null && strokeTime(0.5, 0, 0) === null);
+  const c4 = { rise: 2, hold: 1, fall: 2, rest: 1, phase: 0 };
+  ok('cycle: rise, hold, fall, rest', cycleLevel(1, c4) === 0.5 && cycleLevel(2.5, c4) === 1
+    && cycleLevel(4, c4) === 0.5 && cycleLevel(5.5, c4) === 0);
+  ok('cycle: phase shifts the start', cycleLevel(0, { ...c4, phase: 2 }) === 1);
 }
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');
