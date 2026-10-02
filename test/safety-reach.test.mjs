@@ -40,9 +40,10 @@
  * ph-vdk.43 (RFC-088), on glance, handheld and full:
  *   flip     a catalog tagging axis.flipped gets one Flip toggle in the top
  *            strip beside Override (ph-e82.21; in the Home popover where the
- *            strip is short); every press confirms first, Cancel sends
- *            nothing, and the hub's NACK reason (SOURCE_CONFLICT) is shown on
- *            the toggle and in the strip's refusal surface
+ *            strip is short), an icon with no text whose state is in its
+ *            tooltip; every press confirms first, Cancel sends nothing, and
+ *            the hub's NACK reason (SOURCE_CONFLICT) is shown in the
+ *            toggle's tooltip and in the strip's refusal surface
  * ph-e82.21, at 1280x720 and 360x800:
  *   home     the snapshot's home_required pulses a red hazard border on the
  *            one Home control (static under reduced motion) until it
@@ -54,7 +55,9 @@
  *            reads "rail owned by" it; without labels, "plan" and the code
  *   axis     axis.flipped draws the rail reversed: the carriage marker for
  *            travel minus p sits where p sat unflipped, the endcaps swap,
- *            and a tape tap writes the value the reversed axis gives
+ *            and a tape tap writes the value the reversed axis gives; Flip
+ *            reads |-> normal and <-| flipped (ph-vdk.60.13), one chip
+ *            width in both states and while a write waits
  * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
  * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
@@ -534,8 +537,9 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     const n = up ? await (await reach()).count() : 0;
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
-    ok(cls + ': Flip reads Off from the reported value', /Off/.test(await flip.locator('small').first().textContent())
-      && await flip.getAttribute('aria-pressed') === 'false');
+    ok(cls + ': Flip is an icon, no text, its state in the tooltip', await flip.locator('svg path').count() === 1
+      && (await flip.textContent()).trim() === '' && await flip.getAttribute('title') === 'Normal: home at left'
+      && await flip.getAttribute('aria-pressed') === 'false', await flip.getAttribute('title'));
     await flip.click();
     await page.waitForTimeout(200);
     const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
@@ -546,7 +550,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     await page.waitForTimeout(200);
     await page.locator('.overlay.hazard .og-btn.danger').click();
     await page.waitForTimeout(600);
-    const text = (await (await reach()).locator('small').first().textContent()).trim();
+    const text = (await (await reach()).getAttribute('title')).trim();
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok(cls + ': confirmed, the write goes out and the hub refusal is shown in its words',
       wire.writes.length === 1 && /SOURCE_CONFLICT/.test(text) && /SOURCE_CONFLICT/.test(banner),
@@ -643,16 +647,33 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     const x = await page.evaluate(() => { const p = window.__railProbe.filter((f) => f[4] && f[5] != null); return p.length ? p.at(-1)[5] : null; });
     clearInterval(tick);
     const caps = await page.locator('.rail-endcap').allTextContents();
+    const chip = page.locator('.topstrip .rw-flip');
+    const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').getAttribute('d'),
+      text: (await chip.textContent()).trim(), w: (await chip.boundingBox()).width };
     const strip = await page.locator('.rail-hero .rail-tape').boundingBox();
     await page.mouse.click(strip.x + strip.width * 0.25, strip.y + strip.height / 2);
     await page.waitForTimeout(400);
-    seen[flipped] = { x, caps: caps.map((c) => c.trim()), sent: wire.values.at(-1) };
+    const sent = wire.values.at(-1);
+    // A write in flight dims the icon in the same box.
+    await chip.click();
+    await page.locator('.overlay.hazard .og-btn.danger').click();
+    face.waitW = await chip.evaluate((el) => (el.dataset.shadow === 'pending' || el.dataset.shadow === 'overdue' || el.dataset.shadow === 'fault'
+      ? el.getBoundingClientRect().width : null));
+    seen[flipped] = { x, caps: caps.map((c) => c.trim()), sent, face };
     await ctx.close();
   }
   ok('axis: the marker for travel minus p sits where p sat unflipped', seen[0].x != null && Math.abs(seen[1].x - seen[0].x) < 1,
     JSON.stringify(seen));
   ok('axis: flipped, the endcaps read travel then 0', seen[0].caps.join() === [...seen[1].caps].reverse().join()
     && parseFloat(seen[1].caps[0]) > parseFloat(seen[1].caps[1]), JSON.stringify([seen[0].caps, seen[1].caps]));
+  // The bar is home's end: left normal (|->), right flipped (<-|).
+  const [n, f] = [seen[0].face, seen[1].face];
+  ok('flip icon: normal is a bar at left, arrow right; flipped a bar at right, arrow left',
+    /^M3 3v10/.test(n.d) && /l3 3-3 3$/.test(n.d) && /^M13 3v10/.test(f.d) && /L2 8l3 3$/.test(f.d), JSON.stringify([n.d, f.d]));
+  ok('flip icon: no text, the state in words in the tooltip', !n.text && !f.text
+    && n.title === 'Normal: home at left' && f.title === 'Flipped: home at right', JSON.stringify([n.title, f.title]));
+  ok('flip icon: one chip width normal, flipped and waiting', n.w === f.w && [n.waitW, f.waitW].every((v) => v == null || v === n.w),
+    JSON.stringify([n.w, f.w, n.waitW, f.waitW]));
   // Wire units are the move field's own scale: compare the two taps' ratio.
   ok('axis: a tap a quarter in writes the reversed axis value (3x the unflipped)', seen[0].sent > 0 && Math.abs(seen[1].sent / seen[0].sent - 3) < 0.02,
     JSON.stringify([seen[0].sent, seen[1].sent]));

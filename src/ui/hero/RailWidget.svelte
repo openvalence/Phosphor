@@ -172,7 +172,7 @@
     if (flipStatus === STATUS.fault) return (sh && sh.error) || 'Refused';
     if (flipStatus === STATUS.pending || flipStatus === STATUS.overdue) return 'Waiting';
     if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'Not writable now';
-    return flipped ? 'Home at far end' : 'Off';
+    return flipped ? 'Flipped: home at right' : 'Normal: home at left';
   });
   const flipCtl = {
     get on() { return flipped; }, get enabled() { return flipEnabled; }, get status() { return flipStatus; },
@@ -189,8 +189,8 @@
     const on = !flipped;
     const ok = await askConfirm({
       title: on ? 'Flip the rail' : 'Unflip the rail',
-      body: 'Home swaps ends: position 0 becomes the ' + (on ? 'far' : 'near') + ' end and the hub mirrors the '
-        + 'window and every target. The hub refuses this while a source owns the rail, while unhomed, under '
+      body: 'Home moves to the ' + (on ? 'extended end, at right' : 'retracted end, at left') + ', and the hub mirrors '
+        + 'the window and every target. The hub refuses this while a source owns the rail, while unhomed, under '
         + 'override or in motion.',
       confirmLabel: on ? 'Flip' : 'Unflip',
     });

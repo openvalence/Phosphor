@@ -75,8 +75,6 @@
   const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
   const flip = $derived(rail ? rail.flip : null);
   const railCtl = $derived(hasOverride || !!flip);
-  // Flip's subline in every state it can take, so the box never resizes.
-  const FLIP_TEXTS = ['Home at far end', 'Off', 'Waiting', 'Not writable now'];
 
   // ---- latest safety edge ----------------------------------------------------
   // The core safety-events ring only. Stale when the link has not been live
@@ -285,11 +283,13 @@
 {/snippet}
 
 {#snippet flipButton()}
-  <button type="button" class="rw-flip" aria-pressed={flip.on} disabled={!flip.enabled}
+  <!-- Icon only, the state in words in the tooltip: home's end is the bar,
+       left retracted, right extended (operator sketch 2026-10-02). -->
+  <button type="button" class="rw-flip" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
           data-shadow={flip.status} title={flip.text} onclick={toggleFlip}>
-    <span class="lbl">Flip</span>
-    <small role="status">{flip.text}</small>
-    <span class="ghost" aria-hidden="true">{#each FLIP_TEXTS as t}<small>{t}</small>{/each}</span>
+    <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
+      {#if flip.on}<path d="M13 3v10M10 8H2M5 5L2 8l3 3"/>{:else}<path d="M3 3v10M6 8h8M11 5l3 3-3 3"/>{/if}
+    </svg>
   </button>
 {/snippet}
 
@@ -527,32 +527,24 @@
   .menu-pop :global(.safety-op) { height: auto; }
 
   /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on.
-     A fixed box: the ghost sublines size it, the live one never widens it. */
+     One square box in every state: the icon is its only content. */
   .rw-flip {
-    position: relative;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: var(--tap);
-    min-width: max(var(--tap), 96px);
-    padding: 2px 12px;
+    width: var(--tap);
+    padding: 0;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
-    font-size: .72rem;
-    font-weight: 500;
-    white-space: nowrap;
   }
+  .rw-flip .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
-  .rw-flip small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
-  .rw-flip > small { contain: inline-size; align-self: stretch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-  .rw-flip .ghost { display: grid; height: 0; overflow: hidden; visibility: hidden; }
-  .rw-flip .ghost small { grid-area: 1 / 1; }
-  .rw-flip[data-shadow='overdue'] small { color: var(--warn); }
-  .rw-flip[data-shadow='fault'] small { color: var(--warn); }
+  .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
+  .rw-flip:is([data-shadow='overdue'], [data-shadow='fault']) { color: var(--warn); }
 
   /* Home required (DESIGN §10.3): the safety red, pulsing; still at rest
      under reduced motion (law 12). */
@@ -566,8 +558,6 @@
   @media (max-width: 479px) {
     .dock :global(.safety-op .btn) { min-width: var(--tap); padding: 2px 8px; }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
-    .rw-flip { min-width: var(--tap); padding: 2px 8px; }
-    .rw-flip:is([data-shadow='confirmed'], :not([data-shadow])) > small, .rw-flip .ghost { display: none; }
   }
   @media (max-width: 300px) {
     .dock :global(.safety-op .btn) { padding: 2px 4px; }
