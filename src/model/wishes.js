@@ -6,6 +6,7 @@
  */
 
 import { CHANNEL_CLASS, PRIORITY } from '../../../Valence/clients/js/index.js';
+import { CORE_CHANNEL } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { ROLE } from './roles.js';
 import { telemetryRate } from './prefs.js';
 
@@ -74,7 +75,9 @@ export function subscriptionWishes(entries, { maxSubs, telemetryIds, skip = new 
     if (telemetryIds && telemetryIds.has(e.id) && e.maxRateHz) {
       rate = telemetryRate(e.maxRateHz, TELEMETRY_HZ, pref);
     }
-    wishes.push([e.id, rate, e.priority != null ? e.priority : PRIORITY.background]);
+    // RFC-077: every client MUST hold catalog 0x0001, so shedding never takes it.
+    const pri = e.id === CORE_CHANNEL.catalog ? PRIORITY.critical : e.priority ?? PRIORITY.background;
+    wishes.push([e.id, rate, pri]);
   }
 
   // ---- RESPECT THE HUB'S SUBSCRIPTION CAP --------------------------------
@@ -97,6 +100,23 @@ export function subscriptionWishes(entries, { maxSubs, telemetryIds, skip = new 
   if (wishes.length <= cap) return { wishes, dropped: 0 };
   const ranked = wishes.slice().sort((a, b) => b[2] - a[2]);
   return { wishes: ranked.slice(0, cap), dropped: wishes.length - cap };
+}
+
+/**
+ * RFC-077 (SPEC §8.6): a catalog adopted again inside one session. Survivors
+ * are byte-identical, so only the channels that vanished (`removed`, ids) and
+ * the wishes not already held (`fresh`, of the full policy for the new
+ * catalog) change. `held` is the set of ids this session subscribed.
+ * @returns {{removed: number[], fresh: Array, dropped: number}}
+ */
+export function regrow(prevEntries, nextEntries, held, opts) {
+  const ids = new Set(nextEntries.map((e) => e.id));
+  const { wishes, dropped } = subscriptionWishes(nextEntries, opts);
+  return {
+    removed: prevEntries.filter((e) => !ids.has(e.id)).map((e) => e.id),
+    fresh: wishes.filter((w) => !held.has(w[0])),
+    dropped,
+  };
 }
 
 /** Channel ids carrying any of TELEMETRY_ROLES on this machine, by role — never a hardcoded id. */

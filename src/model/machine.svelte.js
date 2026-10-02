@@ -40,7 +40,7 @@ import {
 } from '../../../Valence/clients/js/index.js';
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
-import { MAX_SUBSCRIBE_HZ, subscriptionWishes, telemetryChannelIds } from './wishes.js';
+import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 
@@ -401,6 +401,14 @@ export function connect(opts = {}) {
   machine.link.phase = 'connecting';
   machine.link.since = Date.now();
 
+  // Per session (reset on WELCOME): the ids subscribed, whether a catalog was
+  // already adopted (a second one is RFC-077 growth), the last 0x0001
+  // snapshot, and the channels already reported withdrawn.
+  let held = new Set();
+  let adopted = false;
+  let catalogSnap;
+  let withdrawn = new Set();
+
   let s = null;
   s = createSession({
     host: _host,
@@ -444,6 +452,10 @@ export function connect(opts = {}) {
     // The hub's own declared ceilings. max_subscriptions is the one that bites:
     // exceeding it drops the whole SUBSCRIBE silently. See subscriptionWishes().
     machine.link.limits = w.limits || {};
+    held = new Set();
+    adopted = false;
+    catalogSnap = undefined;
+    withdrawn = new Set();
     // §6.7 snapshot adoption: session.js rebuilt its grants from this WELCOME
     // and emits them as 'grant' right after 'welcome'; mirror the reset so a
     // previous session's grants never show as current.
@@ -453,7 +465,9 @@ export function connect(opts = {}) {
   session.on('catalog', (entries, _map, meta) => {
     // Rebuild the entire renderable model. Anything the machine dropped or
     // added between connections is picked up here with no per-channel code —
-    // which is the claim this whole refactor exists to make true.
+    // which is the claim this whole refactor exists to make true. A second
+    // adoption in one session is RFC-077 growth: rebuilt in place, never reset.
+    const prev = adopted ? machine.catalog.entries : [];
     // The session emits { cached, verified, etag } and the etag is RAW BYTES —
     // rendering it directly would print a garbled array. Hex it once here so
     // every consumer gets something displayable.
@@ -474,11 +488,16 @@ export function connect(opts = {}) {
     // per-frame wish count, which subscribeInBatches() sizes from the hub's
     // own advertised cap. See that function's header for the corrected story.
     const lim = machine.link.limits.max_subscriptions;
-    const { wishes, dropped } = subscriptionWishes(entries, {
+    const { removed, fresh, dropped } = regrow(prev, entries, held, {
       maxSubs: lim, telemetryIds: telemetryChannelIds(machine.catalog.model), skip: HELLO_IDS, reserved: HELLO_WISHES.length,
     });
+    // RFC-077: survivors keep their samples, grants, shadows and confirms; a
+    // vanished channel's go, so its placements resolve to nothing (inert, law 10).
+    for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.grants[id]; }
     machine.link.subsDropped = dropped;
-    subscribeInBatches(wishes);
+    adopted = true;
+    for (const w of fresh) held.add(w[0]);
+    if (fresh.length) subscribeInBatches(fresh);
   });
 
   session.on('grant', (grants) => {
@@ -512,6 +531,15 @@ export function connect(opts = {}) {
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
     machine.stats.lastRxMs = Date.now();
+
+    // RFC-077: a changed catalog snapshot mid-session is a new etag; fetch it
+    // in the background and keep LIVE. Compared opaquely, never by field.
+    // TODO(rfc-58u): drop this once valence-js refetches on its own.
+    if (channelId === CORE_CHANNEL.catalog) {
+      const snap = JSON.stringify(sample);
+      if (catalogSnap !== undefined && snap !== catalogSnap && s.isLive) s.requestCatalog();
+      catalogSnap = snap;
+    }
 
     // ph-vdk.14: did the safety latch actually change, with nothing on its
     // EVENT twin (0x000E) to say so? Compared OPAQUELY -- this never reads a
@@ -571,6 +599,13 @@ export function connect(opts = {}) {
   });
 
   session.on('nack', (n) => {
+    // RFC-077: a withdrawn grant is said once per channel, never a refusal storm.
+    if (n.code === NACK.CHANNEL_WITHDRAWN) {
+      if (withdrawn.has(n.channel)) return;
+      withdrawn.add(n.channel);
+      held.delete(n.channel);
+      delete machine.grants[n.channel];
+    }
     push(machine.events.nacks, { ...n, at: Date.now() }, NACK_MAX);
     // SUBSCRIBE_REJECTED (0x0204) means a client bug — this client sent a
     // SUBSCRIBE the hub could not process (RFC-033: usually more wishes than
