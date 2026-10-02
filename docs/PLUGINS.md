@@ -238,12 +238,27 @@ A factory plugin ships with Phosphor. It lives in `plugins/factory/<name>/`
 An example is documentation: never loaded by default, installed by copying
 its folder.
 
+Shipped:
+
+- `plugins/factory/advanced-penetration/`: RENDERING §10
+  `generator-advanced` as a substitute (`replaces: 'advanced-generator'`),
+  laid out after fray-d's OSSM-Lite web config: run/stop beside
+  `source.background_run`, a stroke picture (the depth window on the rail,
+  the in and out halves timed from their speed and accel), the master, the
+  depth window and the two halves, each RFC-066 modulator under the control
+  its `mod_target` names with a static preview of its cycle, and the preset
+  store through `action.store` (RFC-067, RFC-070). The registry names no
+  role for a store op's slot and name, so it tells them apart by schema type.
+
 ## Testing
 
 `node test/plugins.test.mjs` (part of `npm run check`) loads both examples
 through the real host and claim loop against the fixture catalog: hero
 claims, containment of throwing plugins, the no-transport API, permission
-refusals, the TCode parser, and the window mapping.
+refusals, the TCode parser, and the window mapping. It also loads every
+factory plugin and checks Advanced Penetration's substitution and each way
+it falls back. `node test/advanced-penetration.test.mjs` drives it in the
+shell bundle against a fake hub (`--live` against valencesim).
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The
