@@ -22,7 +22,9 @@
  * toggle, segmented, select, text and bitfield (a synthetic setting channel
  * appended to the recorded catalog carries the text, bitfield and destructive
  * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
- * destructive toggle's confirm (ph-vdk.60.5).
+ * destructive toggle's confirm (ph-vdk.60.5). A Shift-drag of the slider or
+ * knob writes once, on release, never on a cancel, with the ring pending and
+ * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider).
  *
  * Live mode (--live): the same page against a running valencesim; one
  * slider-class field driven through slider, knob and stepper, each value
@@ -50,6 +52,7 @@ import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
 const LIVE = args.includes('--live');
+const SHOTS = argOf('--shots', null);
 const HOST = argOf('--host', '127.0.0.1');
 const SIM_PORT = parseInt(argOf('--port', '8882'), 10);
 const SIM_HTTP = parseInt(argOf('--http', '8880'), 10);
@@ -166,7 +169,7 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 // ---- the fake hub -----------------------------------------------------------
-const hub = { mode: 'echo', held: [], values: { [XS + ':label_text']: 'alpha' }, mute: false, push: null };
+const hub = { mode: 'echo', held: [], values: { [XS + ':label_text']: 'alpha' }, mute: false, push: null, log: [] };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -236,6 +239,7 @@ function fakeHub(ws) {
         const m = cbDecodeFull(payload);
         const ch = m.get(K.channel_id), id = m.get(K.intent_id);
         const val = [...m.get(K.value)].sort((a, b) => a[0] - b[0]);
+        hub.log.push({ ch, val });
         // One INTENT channel may set fields of several STATE channels.
         const sts = ENTRIES.filter((e) => e.settingChannel === ch && e.layout);
         const answer = () => {
@@ -663,6 +667,107 @@ if (!LIVE) {
   await endGlow();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   hub.mode = 'echo';
+
+  // Shift-drag (ph-vdk.60.11, docs/EFFECTS.md): a held drag follows the
+  // pointer, writes nothing until release, and runs no pulses.
+  console.log('\n[defer] Shift-drag sends on release (ph-vdk.60.11)');
+  await page.evaluate(() => addEventListener('pointerdown', (e) => { window.__pid = e.pointerId; }, true));
+  const SLI = page.locator('.cell[data-pres=slider] input[type=range]');
+  const writes = () => hub.log.filter((w) => w.ch === FIELD.writeChannel);
+  const lastWrite = () => { const w = writes().at(-1); const kv = w && w.val.find(([k]) => k === FIELD.settingKey); return kv && kv[1]; };
+  const sb = await SLI.boundingBox();
+  const sy = sb.y + sb.height / 2, sx = (f) => sb.x + sb.width * f;
+  const sweep = async (f0, f1, n = 8) => { for (let i = 1; i <= n; i++) { await page.mouse.move(sx(f0 + (f1 - f0) * i / n), sy); await sleep(70); } };
+  const fxRun = () => page.evaluate((sel) => getComputedStyle(document.querySelector(sel)).getPropertyValue('--fx-run').trim(), SL);
+  const intentColor = () => page.evaluate(() => {
+    const p = document.body.appendChild(document.createElement('span'));
+    p.style.color = 'var(--intent)';
+    const c = getComputedStyle(p).color;
+    p.remove();
+    return c;
+  });
+  hub.mode = 'echo';
+  await waitShadow('slider', 'confirmed', 6000);
+  let w0 = writes().length;
+  await page.mouse.move(sx(0.2), sy);
+  await page.mouse.down();
+  await sweep(0.2, 0.8);
+  await page.mouse.up();
+  await sleep(500);
+  ok('a plain drag writes as it goes, more than once', writes().length - w0 > 1, writes().length - w0);
+
+  await waitShadow('slider', 'confirmed', 3000);
+  w0 = writes().length;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(sx(0.8), sy);
+  await page.mouse.down();
+  await sweep(0.8, 0.3);
+  await sleep(400);
+  const mid = { n: writes().length - w0, shadow: await shadowOf('slider'), defer: await cell('slider').getAttribute('data-defer'),
+    anims: await cssAnims(), ring: (await ring())[INTENT], slot: await ladderOf('slider') };
+  const runs = [];
+  for (let i = 0; i < 4; i++) { runs.push(await fxRun()); await sleep(120); }
+  ok('Shift-drag: nothing is written while it is held', mid.n === 0, mid.n);
+  ok('Shift-drag: the ring is pending and breathes in intent', mid.shadow === 'pending' && mid.defer === ''
+    && mid.anims.includes('fx-breath') && mid.ring > 0.2, mid);
+  ok('Shift-drag: no pulses run (nothing is in flight)', runs.every((x) => Number(x) === 0), runs);
+  ok('Shift-drag: the slot says it sends on release', mid.slot === 'sends on release', mid.slot);
+  const chip = page.locator('.cell[data-pres=slider] .chip-num');
+  ok('Shift-drag: the readout holds the pending number in intent',
+    await chip.evaluate((el) => getComputedStyle(el).color) === await intentColor()
+    && Number(await chip.inputValue()) === Number(await SLI.inputValue()), [await chip.inputValue(), await SLI.inputValue()]);
+  if (SHOTS) await page.locator('.cell[data-pres=slider]').screenshot({ path: join(SHOTS, 'shift-drag-slider.png') });
+  const heldV = Number(await SLI.inputValue());
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await sleep(500);
+  ok('Shift-drag: exactly one write, on release, with the final value', writes().length - w0 === 1 && lastWrite() === heldV,
+    [writes().length - w0, lastWrite(), heldV]);
+  ok('Shift-drag: the control settles on the written value', await waitShadow('slider', 'confirmed') && await current() === heldV);
+
+  w0 = writes().length;
+  await page.mouse.move(sx(0.3), sy);
+  await page.mouse.down();
+  await sweep(0.3, 0.5);
+  await page.keyboard.down('Shift');
+  await sleep(600);
+  const w1 = writes().length;
+  await sweep(0.5, 0.9);
+  ok('Shift pressed mid-drag: no write from that moment', writes().length === w1 && w1 > w0, [w0, w1, writes().length]);
+  const held2 = Number(await SLI.inputValue());
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await sleep(500);
+  ok('...and the release writes the held value once', writes().length === w1 + 1 && lastWrite() === held2,
+    [writes().length - w1, lastWrite(), held2]);
+  await waitShadow('slider', 'confirmed', 3000);
+
+  w0 = writes().length;
+  const v0c = await current();
+  await page.keyboard.down('Shift');
+  await page.mouse.move(sx(0.2), sy);
+  await page.mouse.down();
+  await sweep(0.2, 0.7);
+  await SLI.evaluate((el) => el.dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__pid, bubbles: true })));
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await sleep(500);
+  ok('a cancelled Shift-drag writes nothing and puts the control back', writes().length === w0 && await current() === v0c
+    && await shadowOf('slider') === 'confirmed', [writes().length - w0, await current(), v0c]);
+
+  const KN = page.locator('.cell[data-pres=knob] .knob');
+  const kb0 = await KN.boundingBox();
+  w0 = writes().length;
+  await page.mouse.move(kb0.x + kb0.width / 2, kb0.y + kb0.height / 2);
+  await page.keyboard.down('Shift');
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) { await page.mouse.move(kb0.x + kb0.width / 2, kb0.y + kb0.height / 2 - 6 * i); await sleep(70); }
+  const knobMid = writes().length - w0;
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await sleep(500);
+  ok('knob: a Shift-drag writes once, on release', knobMid === 0 && writes().length - w0 === 1, [knobMid, writes().length - w0]);
+  await waitShadow('knob', 'confirmed', 3000);
 
   console.log('\n[presentations]');
   const setReported = async (f, v) => {

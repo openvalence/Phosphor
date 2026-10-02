@@ -80,7 +80,7 @@
   );
 </script>
 
-<div class="field action" data-shadow={status} data-glow={glow || undefined} onanimationend={glowEnd}>
+<div class="field action" data-uid={action.uid} data-shadow={status} data-glow={glow || undefined} onanimationend={glowEnd}>
   <span class="field-label">{labelFor(action)}</span>
   {#if action.desc}<p class="hint">{action.desc}</p>{/if}
 

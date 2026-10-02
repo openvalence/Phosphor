@@ -80,6 +80,7 @@
   import { ACCENT, ac } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
+  import { deferring } from '../defer.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
 
   let { fields } = $props();
@@ -114,8 +115,10 @@
     return (machine.link.roles | 0) >= (e.access | 0);
   }
 
-  const minVal = $derived(displayValue(min, sampleOf(min)));
-  const maxVal = $derived(displayValue(max, sampleOf(max)));
+  // A Shift-drag of the window holds its edges here (defer.js) until release.
+  let pend = $state(null); // null | {min?, max?}
+  const minVal = $derived(pend && pend.min != null ? pend.min : displayValue(min, sampleOf(min)));
+  const maxVal = $derived(pend && pend.max != null ? pend.max : displayValue(max, sampleOf(max)));
 
   const minEnabled = $derived(enabledOf(min));
   const maxEnabled = $derived(enabledOf(max));
@@ -704,26 +707,37 @@
     if (!dragMode || !hostEl) return;
     // Ending the drag rather than merely skipping the write: a gesture resumed
     // from a stale dragStartX would jump the window on re-enable.
-    if (!dragAllowed(dragMode)) { dragMode = null; return; }
+    if (!dragAllowed(dragMode)) { dragMode = null; pend = null; return; }
     const rect = hostEl.getBoundingClientRect();
     if (!rect.width) return;
     const dv = dir * ((e.clientX - dragStartX) / rect.width) * span;
-
+    const out = {};
     if (dragMode === 'min') {
-      const upper = dragStartMax;
-      writeSetting(min, snap(clamp(dragStartMin + dv, lo, upper), min));
+      out.min = snap(clamp(dragStartMin + dv, lo, dragStartMax), min);
     } else if (dragMode === 'max') {
-      const lower = dragStartMin;
-      writeSetting(max, snap(clamp(dragStartMax + dv, lower, hi), max));
+      out.max = snap(clamp(dragStartMax + dv, dragStartMin, hi), max);
     } else if (dragMode === 'band') {
       const width = dragStartMax - dragStartMin;
       const newMin = clamp(dragStartMin + dv, lo, hi - width);
-      writeSetting(min, snap(newMin, min));
-      writeSetting(max, snap(newMin + width, max));
+      out.min = snap(newMin, min);
+      out.max = snap(newMin + width, max);
     }
+    if (deferring(e)) { pend = out; return; }
+    pend = null;
+    writeEdges(out);
+  }
+  function writeEdges(out) {
+    if (out.min != null) writeSetting(min, out.min);
+    if (out.max != null) writeSetting(max, out.max);
   }
 
-  function endDrag() { dragMode = null; }
+  // A held Shift-drag writes on release only; a cancelled pointer writes nothing.
+  function endDrag(e) {
+    const p = pend, mode = dragMode;
+    pend = null;
+    dragMode = null;
+    if (p && mode && e.type === 'pointerup' && dragAllowed(mode)) writeEdges(p);
+  }
 
   function onBandKey(e) {
     if (!bandEnabled) return;
@@ -799,6 +813,7 @@
   // ---------------------------------------------------------------------------
   let moveDragging = $state(false);
   let moveDragValue = $state(null);
+  let moveHeld = $state(false); // a Shift-drag holding its jog until release (defer.js)
   let tapeBarEl = $state(null);
 
   // BUG FIX (tap/scrub not registering): the pointer handlers used to live on
@@ -852,21 +867,23 @@
     if (!moveEnabled) return;
     moveDragging = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
-    const v = moveValueFromClientX(e.clientX);
-    moveDragValue = v;
-    requestMove(v);
+    onTapePointerMove(e);
     e.preventDefault();
   }
   function onTapePointerMove(e) {
     if (!moveDragging) return;
     const v = moveValueFromClientX(e.clientX);
     moveDragValue = v;
-    requestMove(v);
+    moveHeld = deferring(e);
+    if (!moveHeld) requestMove(v);
   }
-  function onTapePointerUp() {
+  function onTapePointerUp(e) {
     if (!moveDragging) return;
     moveDragging = false;
-    requestMove(moveDragValue); // guarantee the released position is (re)queued, even mid-coalesce
+    const held = moveHeld;
+    moveHeld = false;
+    // A cancelled live drag still requeues; a cancelled held one sends nothing.
+    if (e.type === 'pointerup' || !held) requestMove(moveDragValue); // guarantee the released position is (re)queued, even mid-coalesce
   }
 
   // Keyboard reach for the tape — the original had none (pointer/touch only);
@@ -932,7 +949,7 @@
            post-clamp ECHO plus telemetry.target are what the cursor shows once
            the drag ends — never an optimistic local guess. -->
       <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
-           data-shadow={statusOf(move)}>
+           data-shadow={moveHeld ? STATUS.pending : statusOf(move)}>
         <div class="rail-tape-labels"
              title={'jog · ' + (override ? 'travel' : 'window') + (!moveEnabled && moveReason ? ' · ' + moveReason : '')}>
           <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}{#if !moveEnabled && moveReason}<span
@@ -1028,13 +1045,13 @@
     {#if haveWindow}
       <div class="rail-band" title="Drag the window or its edges"
            class:disabled={!bandEnabled}
-           class:pending={statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
+           class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}
            aria-label="Stroke window" aria-orientation="horizontal"
            aria-valuemin={lo} aria-valuemax={hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={bandLabel}
            aria-disabled={!bandEnabled}
-           data-shadow={worstStatus(statusOf(min), statusOf(max))}
+           data-shadow={pend ? STATUS.pending : worstStatus(statusOf(min), statusOf(max))}
            style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"
            onpointerdown={(e) => startDrag('band', e)}
            onpointermove={onDragMove}
@@ -1051,7 +1068,7 @@
            aria-valuemin={lo} aria-valuemax={maxVal ?? hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={formatValue(min, minVal) + (unitOf(min) ? ' ' + unitOf(min) : '')}
            aria-disabled={!minEnabled}
-           data-shadow={statusOf(min)}
+           data-shadow={pend && pend.min != null ? STATUS.pending : statusOf(min)}
            style="left:{minPct * 100}%"
            onpointerdown={(e) => startDrag('min', e)}
            onpointermove={onDragMove}
@@ -1066,7 +1083,7 @@
            aria-valuemin={minVal ?? lo} aria-valuemax={hi} aria-valuenow={maxVal ?? hi}
            aria-valuetext={formatValue(max, maxVal) + (unitOf(max) ? ' ' + unitOf(max) : '')}
            aria-disabled={!maxEnabled}
-           data-shadow={statusOf(max)}
+           data-shadow={pend && pend.max != null ? STATUS.pending : statusOf(max)}
            style="left:{maxPct * 100}%"
            onpointerdown={(e) => startDrag('max', e)}
            onpointermove={onDragMove}

@@ -21,6 +21,8 @@
   import FootStrip from './ui/FootStrip.svelte';
   import TopStrip from './ui/TopStrip.svelte';
   import ConfirmLayer from './ui/ConfirmLayer.svelte';
+  import KeyHelp from './ui/KeyHelp.svelte';
+  import LookFor from './ui/LookFor.svelte';
   import { askConfirm } from './ui/confirm.svelte.js';
   import ValencePane from './ui/ValencePane.svelte';
   import LogPane from './ui/LogPane.svelte';
@@ -488,6 +490,8 @@
 
   <FootStrip />
   <ConfirmLayer onreview={() => selectTab('pairing')} knocksShown={current?.id === 'pairing'} />
+  <KeyHelp />
+  <LookFor {tabs} go={selectTab} />
 </div>
 
 <style>

@@ -1,0 +1,19 @@
+/**
+ * defer.js -- Shift held during a pointer drag defers a continuous control's
+ * write to the release (docs/EFFECTS.md, "Shift-drag").
+ *
+ * Constraints:
+ * - Read at every move, so pressing or releasing Shift mid-drag switches
+ *   from that moment. Keyboard input never defers.
+ * - A touch pointer never defers: touch has no Shift.
+ * - Window capture phase: a control that stops propagation still updates it.
+ */
+let shift = false;
+if (typeof window !== 'undefined') {
+  const track = (e) => { shift = e.shiftKey; };
+  for (const t of ['keydown', 'keyup', 'pointerdown', 'pointermove']) window.addEventListener(t, track, true);
+  window.addEventListener('blur', () => { shift = false; });
+}
+
+/** Should a move of this pointer hold its value instead of writing it? */
+export const deferring = (e) => !!e && e.pointerType !== 'touch' && shift;

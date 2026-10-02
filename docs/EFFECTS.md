@@ -41,6 +41,16 @@ stepper, segmented and toggle.
   tint at the handle; once a write has waited 250 ms, pulses run in from both
   ends of the line toward the handle.
 - Overdue: the same in amber, slower (2.8 s breath, slower pulses).
+- Held (Shift-drag, ph-vdk.60.11): the ring breathes in `--intent` with no
+  pulses, since nothing is in flight; the readout shows the held number in
+  `--intent` and the slot says "sends on release". One write leaves on
+  release, none on a cancelled pointer. The rail's tape, window and edges
+  wear their inset pending ring. Touch and the keyboard stay live
+  (`src/ui/defer.js`).
+- Locate (F3 look-for, ph-vdk.60.11): the ring's line lights dim in
+  `--intent` and one soft arc runs once clockwise around it over `--loc-ms`
+  (2 s, Field.svelte), then fades. Any write state puts it out at once.
+  Reduced motion holds the dim line for the same 2 s.
 - Says: "your value is on its way" (pulses converge on it), then "the machine
   took it" (the field lights), then "this changed recently" (the fade).
 

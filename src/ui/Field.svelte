@@ -20,6 +20,7 @@
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
+  import { deferring } from './defer.js';
   import { PACKED } from '../../../Valence/clients/js/index.js';
   import {
     formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag,
@@ -160,13 +161,13 @@
     && machine.link.phase === 'live' && canWrite(field.hi));
   const loFrac = $derived.by(() => {
     if (!isRange) return 0;
-    const n = Number(loValue);
+    const n = Number(shownLo);
     if (!isFinite(n) || field.lo.max <= field.lo.min) return 0;
     return Math.max(0, Math.min(1, (n - field.lo.min) / (field.lo.max - field.lo.min)));
   });
   const hiFrac = $derived.by(() => {
     if (!isRange) return 1;
-    const n = Number(hiValue);
+    const n = Number(shownHi);
     if (!isFinite(n) || field.hi.max <= field.hi.min) return 1;
     return Math.max(0, Math.min(1, (n - field.hi.min) / (field.hi.max - field.hi.min)));
   });
@@ -190,6 +191,40 @@
     writeSetting(field.hi, clampField(field.hi, Math.max(n, floor)));
   }
   const rangeStep = (f) => f.step || 1;
+
+  // ---- Shift-drag (defer.js): one write, on release -------------------------
+  // `held` is the value a deferred drag will write ({side: 'v'|'lo'|'hi', n});
+  // the control draws it, the ring wears pending without pulses, and a
+  // cancelled pointer drops it unwritten.
+  let held = $state(null);
+  let drag = null;
+  const WRITE = { v: (n) => commitNumber(n), lo: (n) => commitLo(n), hi: (n) => commitHi(n) };
+  function dragStart(e) {
+    drag = { id: e.pointerId, pointerType: e.pointerType };
+    held = null;
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('pointercancel', dragEnd);
+  }
+  function dragWrite(side, n) {
+    if (drag && deferring(drag)) { held = { side, n }; return; }
+    held = null;
+    WRITE[side](n);
+  }
+  function dragEnd(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    window.removeEventListener('pointerup', dragEnd);
+    window.removeEventListener('pointercancel', dragEnd);
+    const h = held;
+    drag = null;
+    held = null;
+    knobDrag = null;
+    if (h && e.type === 'pointerup') WRITE[h.side](h.n);
+  }
+  $effect(() => () => { if (drag) dragEnd({ pointerId: drag.id, type: 'pointercancel' }); });
+  const heldOf = (side, v) => (held && held.side === side ? held.n : v);
+  const shown = $derived(heldOf('v', value));
+  const shownLo = $derived(heldOf('lo', loValue));
+  const shownHi = $derived(heldOf('hi', hiValue));
 
   // ---- RENDERING §8.2 row 16 (RFC-083): one picker over a group's RGB -------
   // Each channel maps its own published [min, max] onto 0..255. The three
@@ -291,7 +326,7 @@
   // state and afterglow center on it. Anything without a handle uses its middle.
   const fxF = $derived.by(() => {
     if (pres !== WIDGET.slider && pres !== WIDGET.knob) return 0.5;
-    const n = Number(value);
+    const n = Number(shown);
     if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 0.5;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
@@ -305,6 +340,12 @@
     else if (sh && sh.settled) glow = untrack(() => glow) === 1 ? 2 : 1;
   });
   const glowEnd = (e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) glow = 0; };
+
+  // F3 locate (LookFor.svelte dispatches 'locate' on this root): one clockwise
+  // sweep on the ring. Any write state wins at once, as a write puts out the glow.
+  let locating = $state(0);
+  $effect(() => { if (status !== 'confirmed' || held) locating = 0; });
+  function locate() { if (status === 'confirmed' && !held) locating = locating === 1 ? 2 : 1; }
 
   // The slider is the one writable numeric with no numerals of its own, so its
   // chip carries the typing. A readout must never become typeable (no
@@ -350,7 +391,8 @@
   // the head row, clipped, so no state can change the field's height; the
   // full text rides in the title.
   const slot = $derived(
-    status === 'fault' ? { kind: 'fault', text: (sh && sh.error) || 'refused' }
+    held ? { kind: 'pending', text: 'sends on release' }
+    : status === 'fault' ? { kind: 'fault', text: (sh && sh.error) || 'refused' }
     : status === 'pending' ? { kind: 'pending', text: 'waiting for the machine' }
     : status === 'overdue' ? { kind: 'overdue', text: 'still waiting for the machine' }
     : outOfRange ? { kind: 'range', text: 'out of range ('
@@ -398,7 +440,7 @@
   const KNOB_CIRC = 2 * Math.PI * 40;
   const KNOB_ARC = 0.75 * KNOB_CIRC;
   const knobFrac = $derived.by(() => {
-    const n = Number(value);
+    const n = Number(shown);
     if (!isFinite(n) || field.min == null || field.max == null || field.max <= field.min) return 0;
     return Math.max(0, Math.min(1, (n - field.min) / (field.max - field.min)));
   });
@@ -411,6 +453,7 @@
     e.currentTarget.setPointerCapture(e.pointerId);
     const n = Number(value);
     knobDrag = { y: e.clientY, v: isFinite(n) ? n : field.min, last: n };
+    dragStart(e);
   }
   function knobMove(e) {
     if (!knobDrag) return;
@@ -418,7 +461,7 @@
     knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * span));
     knobDrag.y = e.clientY;
     const n = snap(knobDrag.v);
-    if (n !== knobDrag.last) { knobDrag.last = n; commitNumber(n); }
+    if (n !== knobDrag.last) { knobDrag.last = n; dragWrite('v', n); }
   }
   function knobKey(e) {
     const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: pageSteps, PageDown: -pageSteps }[e.key];
@@ -499,8 +542,9 @@
 <!-- One value formatter (format.js formatParts): hub time, autorange, plain. -->
 {#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
 
-<div class="field" data-uid={field.uid} data-shadow={status} data-widget={pres} data-orient={orientation}
-     data-glow={glow || undefined} onanimationend={glowEnd}
+<div class="field" data-uid={field.uid} data-shadow={held ? 'pending' : status} data-defer={held ? '' : undefined}
+     data-widget={pres} data-orient={orientation}
+     data-glow={glow || undefined} onanimationend={glowEnd} onlocate={locate}
      style="--fx-f: {fxF}"
      class:disabled={!enabled && !field.readOnly}
      class:readonly={field.readOnly || displayOnly}
@@ -545,10 +589,10 @@
            editable, so it wears the same recess as the chip it replaces rather
            than hiding as a click-to-reveal. Commits on change, never on input:
            writing a setting per keystroke would spray the machine. -->
-      <span class="field-value typeable" class:disabled={!enabled}>
+      <span class="field-value typeable" class:disabled={!enabled} class:held={!!held}>
         <input type="number" class="chip-num"
                min={field.min} max={field.max} step={step}
-               value={value ?? ''} disabled={!enabled}
+               value={shown ?? ''} disabled={!enabled}
                style="width: {chipChars}ch"
                aria-label={'exact value for ' + labelFor(field)}
                onchange={(e) => commitNumber(Number(e.currentTarget.value))} />
@@ -653,8 +697,8 @@
   {:else if pres === WIDGET.slider}
     <input id={domId} type="range"
            min={field.min} max={field.max} step={step}
-           value={value ?? field.min} disabled={!enabled}
-           oninput={(e) => commit(Number(e.currentTarget.value))} />
+           value={shown ?? field.min} disabled={!enabled} onpointerdown={dragStart}
+           oninput={(e) => dragWrite('v', Number(e.currentTarget.value))} />
     <!-- No printed min…max caption (OG density doctrine — the slider's own
          extent plus the value chip already carry the bounds; a bounds line
          under every slider is exactly the "flat wall of gray text" the OG
@@ -672,17 +716,17 @@
            style="left: {loFrac * 100}%; right: {(1 - hiFrac) * 100}%"></div>
       <input type="range" class="range-lo" class:on-top={loFrac >= hiFrac}
              min={field.lo.min} max={field.lo.max} step={rangeStep(field.lo)}
-             value={loValue ?? field.lo.min} disabled={!loEnabled}
+             value={shownLo ?? field.lo.min} disabled={!loEnabled} onpointerdown={dragStart}
              aria-label={'minimum ' + field.label}
-             oninput={(e) => commitLo(Number(e.currentTarget.value))} />
+             oninput={(e) => dragWrite('lo', Number(e.currentTarget.value))} />
       <input type="range" class="range-hi"
              min={field.hi.min} max={field.hi.max} step={rangeStep(field.hi)}
-             value={hiValue ?? field.hi.max} disabled={!hiEnabled}
+             value={shownHi ?? field.hi.max} disabled={!hiEnabled} onpointerdown={dragStart}
              aria-label={'maximum ' + field.label}
-             oninput={(e) => commitHi(Number(e.currentTarget.value))} />
+             oninput={(e) => dragWrite('hi', Number(e.currentTarget.value))} />
     </div>
-    <output class="field-value range-readout mono">
-      {formatWithUnit(field.lo, loValue)} &ndash; {formatWithUnit(field.hi, hiValue)}
+    <output class="field-value range-readout mono" class:held={!!held}>
+      {formatWithUnit(field.lo, shownLo)} &ndash; {formatWithUnit(field.hi, shownHi)}
     </output>
 
   {:else if pres === WIDGET.color}
@@ -740,10 +784,9 @@
          echo-confirmed write through commitNumber(). -->
     <div class="knob" id={domId} bind:this={knobEl} role="slider" style="--kl: {KNOB_ARC * knobFrac}" tabindex={enabled ? 0 : -1}
          aria-labelledby={labelId} aria-valuemin={field.min} aria-valuemax={field.max}
-         aria-valuenow={Number(value)} aria-valuetext={formatWithUnit(field, value)} aria-disabled={!enabled}
+         aria-valuenow={Number(shown)} aria-valuetext={formatWithUnit(field, shown)} aria-disabled={!enabled}
          class:is-disabled={!enabled}
          onpointerdown={knobDown} onpointermove={knobMove}
-         onpointerup={() => (knobDrag = null)} onpointercancel={() => (knobDrag = null)}
          onkeydown={knobKey}>
       <svg viewBox="0 0 100 100" aria-hidden="true">
         <circle class="knob-track" cx="50" cy="50" r="40"
@@ -756,7 +799,7 @@
         <line class="knob-hand" x1="50" y1="50" x2="50" y2="18"
               transform="rotate({-135 + 270 * knobFrac} 50 50)" />
       </svg>
-      <span class="knob-val">{@render vu(field, value)}</span>
+      <span class="knob-val" class:held={!!held}>{@render vu(field, shown)}</span>
     </div>
 
   {:else if pres === WIDGET.bar}
@@ -779,6 +822,16 @@
   {/if}
 
   {#if field.desc}<p class="field-desc" id={descId + '-inline'}>{field.desc}</p>{/if}
+  {#if locating}
+    {#key locating}
+      <svg class="locate" aria-hidden="true" onanimationend={(e) => { if (e.target === e.currentTarget) locating = 0; }}>
+        <rect class="loc-base" pathLength="100" />
+        <rect class="loc-arc a" pathLength="100" />
+        <rect class="loc-arc b" pathLength="100" />
+        <rect class="loc-arc c" pathLength="100" />
+      </svg>
+    {/key}
+  {/if}
 </div>
 
 <style>
@@ -1424,6 +1477,54 @@
 
   .color-row { display: flex; align-items: center; gap: 10px; }
   .color-row input.unknown { opacity: 0; }
+
+  /* Shift-drag (defer.js): the held number in intent; the ring stays pending
+     but runs no pulses, since nothing is in flight. !important outranks the
+     running animation. */
+  .field[data-defer] { --fx-run: 0 !important; }
+  .held, .held .chip-num { color: var(--intent); }
+
+  /* F3 locate: drawn on the ring's own line (style.css .field::after: 3 px out,
+     1 px wide), lit dim in intent while one soft arc runs once clockwise. The
+     arc is three centered dashes of one path, so its ends feather. */
+  .field { --loc-ms: 2s; }
+  .locate {
+    position: absolute;
+    inset: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+    overflow: visible;
+    pointer-events: none;
+    fill: none;
+    animation: loc-fade var(--loc-ms) linear both;
+  }
+  .locate rect {
+    x: .5px;
+    y: .5px;
+    width: calc(100% - 1px);
+    height: calc(100% - 1px);
+    rx: calc(var(--radius) + .5px);
+    stroke: rgb(var(--intent-rgb));
+    stroke-width: 1px;
+  }
+  .loc-base { stroke-opacity: .35; }
+  .loc-arc {
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 3px rgb(var(--intent-rgb)));
+    animation: loc-run var(--loc-ms) ease-in-out both;
+  }
+  .loc-arc.a { stroke-dasharray: 0 0 24 76; stroke-opacity: .3; stroke-width: 2px; }
+  .loc-arc.b { stroke-dasharray: 0 4 16 80; stroke-opacity: .6; stroke-width: 1.5px; }
+  .loc-arc.c { stroke-dasharray: 0 8 8 84; }
+  @keyframes loc-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+  @keyframes loc-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes loc-hold { from { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .loc-arc { display: none; }
+    .locate { animation: loc-hold var(--loc-ms) steps(1, jump-end) both; }
+  }
+  :global(html.still) .loc-arc { display: none; }
+  :global(html.still) .locate { animation: loc-hold var(--loc-ms) steps(1, jump-end) both; }
 
   /* Forced colors (Windows high contrast) repaint backgrounds as Canvas,
      which would erase a meter's fill: value marks take the system highlight. */
