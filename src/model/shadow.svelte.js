@@ -63,11 +63,7 @@
  * NACK lands. `lastRefusal` is a SINGLE reactive record, updated by every fault
  * of every kind above, that `ui/TopStrip.svelte` (pinned to the viewport)
  * renders unconditionally — so a refusal is visible even from a control that
- * cannot show it itself. `NACK_REMEDY` maps a NACK code to the RFC-019 action
- * role that clears it (`NOT_HOMED` -> `action.home`) — a mapping between two
- * things the catalog already publishes, not new protocol and not device knowledge. The
- * action is looked up on THIS hub's own catalog and silently omitted if the
- * hub never advertised it.
+ * cannot show it itself.
  *
  * ── Writing at the rate the machine accepts ────────────────────────────────
  *
@@ -85,7 +81,7 @@ import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor } from './motion.js';
-import { NACK, NACK_NAME, HOME_OP, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -154,33 +150,6 @@ export function clearLastRefusal() {
   lastRefusal.channelId = null;
   lastRefusal.label = null;
   lastRefusal.at = 0;
-}
-
-/**
- * NACK code -> the RFC-019 action ROLE (and op) that clears it. A mapping
- * between two things the catalog already publishes, never a new number.
- * Never map a code to a safety pair's second half (ESTOP_ACTIVE -> release,
- * INTERLOCK -> resume): RENDERING law 14 allows no separate release or resume
- * button, so those remedies live on the pair's own control.
- */
-const NACK_REMEDY = new Map([
-  [NACK.NOT_HOMED, { role: 'action.home', op: HOME_OP.home }],
-]);
-
-/**
- * The action to offer for the CURRENT global refusal, resolved against THIS
- * hub's own catalog. Null when the code has no known remedy, or when this hub
- * never advertised the action — a hub that lacks `action.home` silently offers
- * nothing rather than rendering a button that would just earn another NACK.
- * @returns {{action: Object, op: number}|null}
- */
-export function remedyForLastRefusal() {
-  if (lastRefusal.code == null) return null;
-  const r = NACK_REMEDY.get(lastRefusal.code);
-  if (!r) return null;
-  const actions = (machine.catalog.model && machine.catalog.model.actions) || [];
-  const action = actions.find((a) => a.role === r.role);
-  return action ? { action, op: r.op } : null;
 }
 
 // ---------------------------------------------------------------------------
