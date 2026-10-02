@@ -1,12 +1,13 @@
 /**
- * prefs.js -- app preferences and saved hubs. Browser state, never machine
- * state: nothing here is sent to the hub, so the ground-truth doctrine and
- * the write ladder (RENDERING law 5) do not apply.
+ * prefs.js -- app preferences, saved hubs and the settings backup. Browser
+ * state, never machine state: nothing here is sent to the hub, so the
+ * ground-truth doctrine and the write ladder (RENDERING law 5) do not apply.
  *
  * Constraints:
  * - Pure: no runes, no Tauri, no DOM, so test/prefs.test.mjs runs it under node.
  * - Theme and hi-vis keep their existing homes (theme.js and the `ui_hivis`
- *   key main.js restores before first paint). This file never copies them.
+ *   key main.js restores before first paint). This file never copies them;
+ *   the backup carries their keys.
  * - A saved hub's endpoint is host AND port, redialed exactly (ph-dwy).
  * - Every storage access degrades to in-memory on a throw (private mode,
  *   quota, storage disabled).
@@ -124,4 +125,31 @@ export function launchTarget({ reconnect, mode, hubs, legacyHost }) {
   if (!reconnect || (mode || 'ws') !== 'ws') return null;
   if (hubs[0]) return { host: hubs[0].host, port: hubs[0].port };
   return legacyHost ? { host: legacyHost } : null;
+}
+
+// ---- backup --------------------------------------------------------------
+
+/** Client-owned keys: prefs, hubs, layouts, chart lanes, plugins, theme, legibility. */
+const BACKUP_KEY = /^(phosphor\.|sd32\.theme|ui_hivis$|ui_terse$)/;
+
+export function exportBackup(storage = globalThis.localStorage) {
+  const keys = {};
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (BACKUP_KEY.test(k)) keys[k] = storage.getItem(k);
+    }
+  } catch (e) { /* nothing readable: an empty backup */ }
+  return JSON.stringify({ app: 'phosphor', v: PREFS_VERSION, keys }, null, 2);
+}
+
+/** Writes only client-owned string keys; returns how many. Throws on a non-backup. */
+export function importBackup(text, storage = globalThis.localStorage) {
+  const b = JSON.parse(text);
+  if (!b || b.app !== 'phosphor' || !b.keys || typeof b.keys !== 'object') throw new Error('not a Phosphor backup');
+  let n = 0;
+  for (const [k, v] of Object.entries(b.keys)) {
+    if (BACKUP_KEY.test(k) && typeof v === 'string') { storage.setItem(k, v); n++; }
+  }
+  return n;
 }

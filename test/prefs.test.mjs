@@ -17,6 +17,7 @@ Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable
 const {
   prefs, setPref, loadPrefs, telemetryRate, DEFAULTS, PREFS_KEY,
   savedHubs, rememberHub, renameHub, forgetHub, hubKey, hubLabel, launchTarget, HUBS_KEY,
+  exportBackup, importBackup,
 } = await import('../src/model/prefs.js');
 const { get } = await import('svelte/store');
 const { formatWithUnit, setAutorange, autorange } = await import('../src/model/format.js');
@@ -81,4 +82,20 @@ assert.deepEqual(launchTarget({ reconnect: true, mode: 'ws', hubs: [], legacyHos
 forgetHub('sim.local:8282');
 assert.deepEqual(get(savedHubs).map((h) => h.id), [ID]);
 
-console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs and the launch redial');
+// Backup: client-owned keys only, both ways.
+mem.set('phosphor.layouts', '{"Default":{}}');
+mem.set('ui_hivis', '1');
+mem.set('valence.catalog.127.0.0.1', 'not ours');
+const b = JSON.parse(exportBackup());
+assert.equal(b.app, 'phosphor');
+assert.deepEqual(Object.keys(b.keys).sort(), ['phosphor.hubs', 'phosphor.layouts', 'phosphor.prefs', 'ui_hivis']);
+mem.delete('phosphor.layouts');
+b.keys['valence.catalog.127.0.0.1'] = 'forged';
+b.keys['ui_terse'] = 1;
+assert.equal(importBackup(JSON.stringify(b)), 4, 'foreign and non-string keys are skipped');
+assert.equal(mem.get('phosphor.layouts'), '{"Default":{}}');
+assert.equal(mem.get('valence.catalog.127.0.0.1'), 'not ours');
+assert.throws(() => importBackup('{"keys":{}}'), /not a Phosphor backup/);
+assert.throws(() => importBackup('nope'));
+
+console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs, launch redial, backup');
