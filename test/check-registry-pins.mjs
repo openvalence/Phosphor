@@ -61,6 +61,7 @@ const registryValues = {
   ble_service_uuid: ble.service_uuid.toLowerCase(),
   ble_write_char_uuid: ble.write_char_uuid.toLowerCase(),
   ble_notify_char_uuid: ble.notify_char_uuid.toLowerCase(),
+  ble_msd_company_id: ble.msd_company_id.toLowerCase(),
 };
 
 for (const [k, v] of Object.entries(registryValues)) {
@@ -139,6 +140,15 @@ checkPin(
   'ble-ws.js CHAR_H2C_NOTIFY vs registry ble_identity.notify_char_uuid',
 );
 
+// src/shell/ble-adv.js -- scan-response company id. Not codegen output; gated here.
+checkPin(
+  'src/shell/ble-adv.js',
+  /ADV_COMPANY_ID = (0x[0-9A-Fa-f]+);/,
+  (m) => m[1].toLowerCase(),
+  registryValues.ble_msd_company_id,
+  'ble-adv.js ADV_COMPANY_ID vs registry ble_identity.msd_company_id',
+);
+
 // src/shell/ShellStrip.svelte -- discovery port, used only for the empty-result
 // message string (discovery.rs owns the real socket), but a stale number
 // there lies to the operator about what port it actually probed.
@@ -152,7 +162,7 @@ checkPin(
 
 console.log('registry-pins check');
 console.log('  registry : ' + REGISTRY);
-console.log('  pins     : 6 (3 Rust, 3 JS)');
+console.log('  pins     : 7 (2 Rust, 5 JS)');
 
 if (!failures.length) {
   console.log('\nPASS — every hand-copied registry pin matches registry.yaml.');
