@@ -17,7 +17,8 @@
  * words in the head-row slot (ph-vdk.60.1); an aspect flip at w = h swaps
  * orientation without dropping a write
  * in flight; a secret action payload masks and never reaches the status text
- * (ph-vic). The same ladder, height and snap-back after a refusal run on
+ * (ph-vic), and an action press climbs the same ladder with the same stamp
+ * rule (ph-vdk.58). The same ladder, height and snap-back after a refusal run on
  * toggle, segmented, select, text and bitfield (a synthetic setting channel
  * appended to the recorded catalog carries the text, bitfield and destructive
  * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
@@ -682,6 +683,31 @@ if (!LIVE) {
   hub.mode = 'echo';
 
   if (ACTION) {
+    console.log('\n[action ladder] (ph-vdk.58)');
+    const act = page.locator('.cell[data-pres=action] .field.action');
+    const actState = () => act.getAttribute('data-shadow');
+    const actWait = async (want, ms) => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) { if (await actState() === want) return true; await sleep(20); }
+      return false;
+    };
+    hub.mode = 'silent';
+    await act.locator('.ops button').first().click();
+    ok('action: pending on the press', await actWait('pending', 1000));
+    ok('action: overdue past 500 ms with no echo', await actWait('overdue', 1500));
+    ok('action: overdue names itself in words', /still waiting/.test(await act.locator('.hint.state').textContent()));
+    ok('action: fault when the echo never comes', await actWait('fault', 3000));
+    ok('action: fault gives the reason', /refused: no echo/.test(await act.locator('.hint.state').textContent()));
+    // The silent intent's session timeout lands about 1 s after the fault; a newer press must not feel it.
+    hub.mode = 'hold';
+    await act.locator('.ops button').first().click();
+    await sleep(1300);
+    const mid = await actState();
+    ok('action: a press in flight survives the silent intent timing out', mid === 'pending' || mid === 'overdue', mid);
+    await release();
+    ok('action: ...and confirms on its own echo', await actWait('confirmed', 3000));
+    hub.mode = 'echo';
+
     console.log('\n[secret action payload] (ph-vic)');
     const SECRET = 'hunter2-not-on-screen';
     const a = page.locator('.cell[data-pres=action] .field.action');

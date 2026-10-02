@@ -292,7 +292,7 @@ function ensureShadow(shadowKey, channelId, label) {
     // and writes to it bypass the $state proxy, so a first press never re-renders.
     shadows[shadowKey] = {
       status: STATUS.confirmed, requested: undefined, applied: undefined,
-      error: null, settled: false, sentAt: 0, channelId, label,
+      error: null, settled: false, channelId, label,
     };
     sh = shadows[shadowKey];
   } else {
@@ -331,6 +331,28 @@ function fail(sh, why, err) {
   }, FAULT_MS * 2);
 }
 
+/**
+ * Start a write on its record: pending, stamped, overdue at OVERDUE_MS and
+ * fault at FAULT_MS (law 5). Every entry point starts here, so no write shape
+ * can skip a rung. The timers live on the record and the next write clears
+ * them, so they never touch a newer write. Returns the stamp.
+ */
+function begin(sh, value) {
+  clearTimers(sh);
+  sh.status = STATUS.pending;
+  sh.requested = value;
+  sh.error = null;
+  sh.settled = false;
+  sh.seq = ++writeSeq;
+  sh._t1 = setTimeout(() => {
+    if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
+  }, OVERDUE_MS);
+  sh._t2 = setTimeout(() => {
+    if (sh.status === STATUS.pending || sh.status === STATUS.overdue) fail(sh, 'no echo');
+  }, FAULT_MS);
+  return sh.seq;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point 1 of 3: RFC-009 settings
 // ---------------------------------------------------------------------------
@@ -345,23 +367,8 @@ export function writeSetting(field, value) {
   if (!field || field.readOnly || field.writeChannel == null) return;
   const shadowKey = keyOf('set', field.writeChannel, field.settingKey);
   const sh = ensureShadow(shadowKey, field.writeChannel, labelFor(field));
-  clearTimers(sh);
-  sh.status = STATUS.pending;
-  sh.requested = value;
-  sh.error = null;
-  sh.settled = false;
-  sh.sentAt = Date.now();
-  sh.seq = ++writeSeq;
-  sh._t1 = setTimeout(() => {
-    if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
-  }, OVERDUE_MS);
-  sh._t2 = setTimeout(() => {
-    if (sh.status === STATUS.pending || sh.status === STATUS.overdue) {
-      fail(sh, 'no echo');
-    }
-  }, FAULT_MS);
-
-  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq: sh.seq });
+  const seq = begin(sh, value);
+  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq });
   schedule(field.writeChannel);
 }
 
@@ -390,13 +397,7 @@ export function writeSetting(field, value) {
 export async function runAction(action, value = 1, extraFields = null) {
   const shadowKey = keyOf('act', action.channelId, action.key);
   const sh = ensureShadow(shadowKey, action.channelId, labelFor(action));
-  clearTimers(sh);
-  sh.status = STATUS.pending;
-  sh.requested = value;
-  sh.error = null;
-  sh.settled = false;
-  sh.sentAt = Date.now();
-  const seq = sh.seq = ++writeSeq;
+  const seq = begin(sh, value);
 
   const session = getSession();
   if (!session || !session.isLive) {
@@ -443,23 +444,8 @@ export function sendCommand(field, value, opts = {}) {
   if (!field || field.channelId == null || field.key == null) return;
   const shadowKey = keyOf('cmd', field.channelId, field.key);
   const sh = ensureShadow(shadowKey, field.channelId, labelFor(field));
-  clearTimers(sh);
-  sh.status = STATUS.pending;
-  sh.requested = value;
-  sh.error = null;
-  sh.settled = false;
-  sh.sentAt = Date.now();
-  sh.seq = ++writeSeq;
-  sh._t1 = setTimeout(() => {
-    if (sh.status === STATUS.pending) sh.status = STATUS.overdue;
-  }, OVERDUE_MS);
-  sh._t2 = setTimeout(() => {
-    if (sh.status === STATUS.pending || sh.status === STATUS.overdue) {
-      fail(sh, 'no echo');
-    }
-  }, FAULT_MS);
-
-  queueFor(field.channelId).pending.set(field.key, { value, shadowKey, seq: sh.seq });
+  const seq = begin(sh, value);
+  queueFor(field.channelId).pending.set(field.key, { value, shadowKey, seq });
   schedule(field.channelId);
 }
 

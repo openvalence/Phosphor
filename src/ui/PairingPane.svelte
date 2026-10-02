@@ -151,17 +151,7 @@
   // ---- admin ops: one shadow (0x0009 op), one ladder, shown where it was asked
   const adminAction = $derived(adminEntry ? { channelId: adminEntry.id, key: keyOf('op'), label: 'session admin', widget: WIDGET.action } : null);
   const adminShadow = $derived(adminAction ? shadowOf(adminAction) : null);
-  const OVERDUE_MS = 500;
-  // ponytail: runAction arms no overdue timer (ph-vdk.58); derived here from
-  // sentAt until it does, re-read by the tick send() schedules.
-  const adminStatus = $derived.by(() => {
-    const st = adminAction ? statusOf(adminAction) : 'confirmed';
-    return st === 'pending' && adminShadow && now - adminShadow.sentAt >= OVERDUE_MS ? 'overdue' : st;
-  });
-  function send(op, extra) {
-    setTimeout(() => { now = Date.now(); }, OVERDUE_MS + 20);
-    return runAction(adminAction, op, extra);
-  }
+  const adminStatus = $derived(adminAction ? statusOf(adminAction) : 'confirmed');
   const adminBusy = $derived(adminStatus === 'pending' || adminStatus === 'overdue');
   let lastOp = $state(null); // {where: 'knock'|'evict', verb, done, who}
 
@@ -192,7 +182,7 @@
     // it hand out credentials. instance_id and role ride the op's own intent.
     const extra = { [keyOf('instance_id')]: instanceBytes(k) };
     if (approve) extra[keyOf('role')] = ACCESS.control;
-    await send(op, extra);
+    await runAction(adminAction, op, extra);
   }
 
   async function evict(sessionId) {
@@ -200,7 +190,7 @@
     const op = opIndex('evict');
     if (op < 0) { lastOp = { where: 'evict', local: 'This hub does not offer eviction.' }; return; }
     lastOp = { where: 'evict', verb: 'Evicting', done: 'Evicted', who: 'session ' + sessionId };
-    await send(op, { [keyOf('session_id')]: sessionId });
+    await runAction(adminAction, op, { [keyOf('session_id')]: sessionId });
   }
 
   const knockLadder = $derived(ladder('knock', !pendingEntry || !adminEntry ? 'This hub does not advertise a pairing surface.'
