@@ -19,8 +19,9 @@
 import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
-  storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap,
+  storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
 } from '../model/graph.js';
+import { ROLE } from '../model/roles.js';
 import { controlKey, WIDGET } from '../model/settings.js';
 import { PACKED, CORE_CHANNEL, STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
@@ -40,7 +41,6 @@ export const HERO = { id: 'editor', title: 'Node graph', cells: { h: [16, 10], v
 export const SENSOR_MS = 1000;
 const CMD = { scalar: 'bp_toy_scalar', rotate: 'bp_toy_rotate', linear: 'bp_toy_linear' };
 const msg = (e) => String(e?.message ?? e);
-const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 /** Canvas units between a map node and the field nodes an edge places for it. */
 const SPREAD = 260;
 
@@ -186,7 +186,7 @@ export function graphRuntime(api, shell, env) {
 
   // ---- what the editor offers ----------------------------------------------
   function sources() {
-    const out = allFields().filter(({ f }) => !f.isIntentField).map(({ f, key }) => ({ ref: { kind: 'field', key }, label: f.label + (f.unit ? ' (' + f.unit + ')' : ''), lo: f.min, hi: f.max }));
+    const out = allFields().filter(({ f }) => !f.isIntentField).map(({ f, key }) => ({ ref: { kind: 'field', key }, label: f.label + (f.unit ? ' (' + f.unit + ')' : ''), lo: f.min, hi: f.max, role: f.role }));
     for (const d of devices.values()) {
       for (const c of d.controls) {
         out.push({ ref: bpRef(d, c), label: d.name + ': ' + (c.description || c.type) + (c.kind === 'sensor' ? ' reading' : ', as an app sets it'), lo: c.range?.[0], hi: c.range?.[1] });
@@ -196,7 +196,7 @@ export function graphRuntime(api, shell, env) {
   }
   function targets() {
     const out = allFields().filter(({ f }) => writable(f))
-      .map(({ f, key }) => ({ ref: { kind: 'field', key }, label: f.label + (toAccessory(f) ? ' (accessory)' : ''), lo: f.min, hi: f.max }));
+      .map(({ f, key }) => ({ ref: { kind: 'field', key }, label: f.label + (toAccessory(f) ? ' (accessory)' : ''), lo: f.min, hi: f.max, role: f.role }));
     for (const d of devices.values()) {
       if (d.kind !== 'toy') continue;
       for (const c of d.controls) if (CMD[c.kind]) out.push({ ref: bpRef(d, c), label: d.name + ': ' + (c.description || c.type), lo: c.range[0], hi: c.range[1] });
@@ -470,9 +470,12 @@ export function graphRuntime(api, shell, env) {
     const t = targets().find((x) => refKey(x.ref) === refKey(b));
     const sameIn = cfg && cfg.src === fromId;
     const sameOut = cfg && cfg.dst === toId;
+    const win = [api.value(api.field(ROLE.windowMin)), api.value(api.field(ROLE.windowMax))];
+    const [ilo, ihi] = endRange(s && s.lo, s && s.hi, s && s.role, win);
+    const [olo, ohi] = endRange(t && t.lo, t && t.hi, t && t.role, win);
     const o = {
-      in_min: sameIn ? cfg.in_min : num(s && s.lo, 0), in_max: sameIn ? cfg.in_max : num(s && s.hi, 1),
-      out_min: sameOut ? cfg.out_min : num(t && t.lo, 0), out_max: sameOut ? cfg.out_max : num(t && t.hi, 1),
+      in_min: sameIn ? cfg.in_min : ilo, in_max: sameIn ? cfg.in_max : ihi,
+      out_min: sameOut ? cfg.out_min : olo, out_max: sameOut ? cfg.out_max : ohi,
     };
     if (o.in_min === o.in_max) o.in_max = o.in_min + 1;
     return { bounds: o, params: sameIn && sameOut ? cfg.params : undefined };

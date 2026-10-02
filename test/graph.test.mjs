@@ -21,8 +21,9 @@ import {
   MAP, MAPS, evalMap, SAFE, checkRel, homeOf, interlock, emptyGraph, addNode, connect,
   removeRel, freeRelId, encodeItem, decodeItem, storeItem, readStoreItem, saveLocal, loadLocal,
   createRunner, findHub, storeVerb, rosterBits, isUserSpace, addDraft, removeNode, planWire, snap,
-  createHistory, preview,
+  createHistory, preview, endRange,
 } from '../src/model/graph.js';
+import { ROLE } from '../src/model/roles.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
 import { STORE_OP, CORE_CHANNEL } from '../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -302,6 +303,25 @@ console.log('(g) the editor\'s model: drafts, wiring plans, snap, history, previ
   ok('the runner reports nothing for an edge it has not run', run.out(r.id) === undefined);
   run.step(g3, 0);
   ok('the runner reports the output it last wrote', run.out(r.id) === 50);
+}
+
+console.log('(h) a new map\'s ranges come from its ends (ph-9m9)');
+{
+  const win = [0, 500];
+  const is = (got, want) => JSON.stringify(got) === JSON.stringify(want);
+  ok('a rail position with no bounds takes the stroke window', is(endRange(undefined, undefined, ROLE.telemetryPosition, win), [0, 500]));
+  ok('a declared range wins over the window', is(endRange(0, 20, ROLE.telemetryPosition, win), [0, 20]));
+  ok('an unbounded field that is not the rail falls back to 0..1', is(endRange(undefined, undefined, '', win), [0, 1]));
+  ok('a rail with no window reported yet falls back to 0..1', is(endRange(undefined, undefined, ROLE.telemetryPosition, [undefined, undefined]), [0, 1]));
+  const g = emptyGraph();
+  const a = addNode(g, { kind: 'field', key: 'pos' });
+  const b = addNode(g, { kind: 'field', key: 'motor' });
+  const [in_min, in_max] = endRange(undefined, undefined, ROLE.telemetryPosition, win);
+  const [out_min, out_max] = endRange(0, 20, undefined, win);
+  const r = connect(g, a.id, b.id, { map: MAP.linear_clamp, in_min, in_max, out_min, out_max, home: 'client' }).rel;
+  ok('position 250 of a 0..500 window drives a 0..20 motor to 10, not a saturated 20', near(evalMap(r, {}, 250, 0), 10));
+  r.in_max = 400;
+  ok('the seeded bounds stay editable', checkRel(r) === '' && near(evalMap(r, {}, 200, 0), 10));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

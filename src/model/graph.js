@@ -22,6 +22,7 @@ import {
 import {
   cbMap, cbUint, cbTstr, cbF32, cbArray, cbBool, cbBstr, cbDecodeFull,
 } from '../../../Valence/clients/js/cbor.js';
+import { ROLE } from './roles.js';
 
 export { M as MAP };
 export const ITEM_KIND = 'relationship.map';
@@ -111,6 +112,19 @@ export function checkRel(r) {
   if (r.map === M.slew_limit && !(p[0] > 0 && (p.length < 2 || p[1] > 0))) return 'rates must be above zero';
   if (r.map === M.lowpass && !(p[0] >= 0)) return 'tau must not be negative';
   return '';
+}
+
+const RAIL = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, ROLE.commandPosition]);
+
+/**
+ * [lo, hi] a new map starts with at one end (ph-9m9): the field's declared
+ * bounds, else for a rail position the stroke window it moves in, else 0..1.
+ */
+export function endRange(lo, hi, role, window) {
+  const span = (a, b) => Number.isFinite(a) && Number.isFinite(b) && a !== b;
+  if (span(lo, hi)) return [lo, hi];
+  if (RAIL.has(role) && window && span(window[0], window[1])) return [window[0], window[1]];
+  return [0, 1];
 }
 
 /** Parameters a new edge starts with, from its source and target bounds. */
