@@ -247,21 +247,24 @@
   // collapsed until asked for, with the count stated. Browser-local.
   let showDiagnostic = $state(false);
 
+  // `adv` and `diagAll` count whether shown or not, so the page bar's toggles
+  // keep one label width in both states.
   const visibleGroups = $derived.by(() => {
-    if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0 };
-    let hidden = 0;
-    let diag = 0;
+    if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
+    let hidden = 0, diag = 0, adv = 0, diagAll = 0;
     const groups = [];
     for (const g of current.cat.groups) {
+      if (g.diagnostic) diagAll += g.fields.length;
       if (g.diagnostic && !showDiagnostic) { diag += g.fields.length; continue; }
       const fields = g.fields.filter((f) => {
+        if (f.advanced) adv++;
         if (showAdvanced || !f.advanced) return true;
         hidden++;
         return false;
       });
       if (fields.length) groups.push({ ...g, fields });
     }
-    return { groups, hidden, diag };
+    return { groups, hidden, diag, adv, diagAll };
   });
 
   /**
@@ -274,12 +277,16 @@
    * touched, and neither is one the mask, the tier or the link has closed.
    * Confirmed through the overlay layer because it moves many settings at once.
    */
-  const resettable = $derived(
-    visibleGroups.groups
-      .flatMap((g) => g.fields)
-      .filter((f) => !f.readOnly && f.dflt != null
-                     && isFieldEnabled(f, machine.samples[f.channelId]))
-  );
+  // Scoped to what is on screen: the open drill-in page, else the page.
+  // `hasDefaults` is the catalog fact that keeps the button in its place.
+  const onScreen = $derived(drillItem ? drillItem.group.fields : visibleGroups.groups.flatMap((g) => g.fields));
+  const hasDefaults = $derived(!!current?.cat?.groups.some((g) => g.fields.some((f) => !f.readOnly && f.dflt != null)));
+  const resettable = $derived(onScreen.filter((f) => !f.readOnly && f.dflt != null
+    && isFieldEnabled(f, machine.samples[f.channelId])));
+  const resetWhy = $derived(machine.link.phase !== 'live' ? 'no hub link'
+    : !resettable.length ? 'nothing on screen can be reset right now' : '');
+  // Writes in flight on this page, in the bar's fixed slot (law 5).
+  const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
   async function resetCategory() {
     const n = resettable.length;
     const ok = await askConfirm({
@@ -348,6 +355,27 @@
       <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
       {#if model}<Home {model} {heroes} />{/if}
     {:else if current.cat}
+      <!-- The page bar: one place for the page's own controls, above the
+           cards, so neither a toggle nor a refusal ever moves it. A toggle
+           reserves its other label's width (data-alt, drawn invisible and
+           silent), so flipping it never moves its neighbors. -->
+      <div class="cat-bar">
+        {#if visibleGroups.adv}
+          <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
+                  data-alt={(showAdvanced ? 'Show ' : 'Hide ') + visibleGroups.adv + ' advanced'}
+            ><span>{showAdvanced ? 'Hide' : 'Show'} {visibleGroups.adv} advanced</span></button>
+        {/if}
+        {#if visibleGroups.diagAll}
+          <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
+                  data-alt={(showDiagnostic ? 'Show ' : 'Hide ') + visibleGroups.diagAll + ' diagnostic'}
+            ><span>{showDiagnostic ? 'Hide' : 'Show'} {visibleGroups.diagAll} diagnostic</span></button>
+        {/if}
+        {#if hasDefaults}
+          <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy} title={resetWhy || undefined}
+                  onclick={resetCategory}>Reset {drillItem ? 'this group' : 'this page'} to defaults</button>
+        {/if}
+        <span class="cat-busy" role="status">{pageBusy ? pageBusy + ' in flight' : ''}</span>
+      </div>
       {#if drillItem}
         <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
         <section class="og-panel drill-page" aria-label={drillItem.title}>
@@ -364,38 +392,13 @@
         <p class="cat-empty">
           Nothing to show here yet.
           {#if visibleGroups.diag}
-            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} {visibleGroups.diag === 1 ? 'is' : 'are'} hidden below.
+            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} {visibleGroups.diag === 1 ? 'is' : 'are'} hidden: show them above.
           {:else if visibleGroups.hidden}
-            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} {visibleGroups.hidden === 1 ? 'is' : 'are'} hidden below.
+            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} {visibleGroups.hidden === 1 ? 'is' : 'are'} hidden: show them above.
           {:else}
             This hub has no fields at this rank or class for {current.label}.
           {/if}
         </p>
-      {/if}
-      {#if visibleGroups.hidden || showAdvanced}
-        <button class="adv-toggle" type="button" onclick={toggleAdvanced}
-                aria-expanded={showAdvanced}>
-          {#if showAdvanced}
-            Hide advanced settings
-          {:else}
-            Show {visibleGroups.hidden} advanced setting{visibleGroups.hidden === 1 ? '' : 's'}
-          {/if}
-        </button>
-      {/if}
-      {#if visibleGroups.diag || showDiagnostic}
-        <button class="adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)}
-                aria-expanded={showDiagnostic}>
-          {#if showDiagnostic}
-            Hide diagnostics
-          {:else}
-            Show {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'}
-          {/if}
-        </button>
-      {/if}
-      {#if resettable.length && machine.link.phase === 'live' && !drillItem}
-        <button class="adv-toggle reset-cat" type="button" onclick={resetCategory}>
-          Reset this page to defaults
-        </button>
       {/if}
     {:else if current.id === 'pairing'}
       <PairingPane />
@@ -707,16 +710,24 @@
     color: var(--ink-dim);
   }
 
-  .adv-toggle {
-    display: block;
-    width: 100%;
-    margin-top: var(--gap);
-    min-height: var(--tap);
-    border: 1px dashed var(--line-2);
-    border-radius: var(--radius);
-    color: var(--ink-dim);
-    font-size: .85rem;
-    letter-spacing: .04em;
+  /* ---- the category page bar --------------------------------------------- */
+  .cat-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: var(--gap);
   }
-  .adv-toggle:hover { color: var(--ink); border-color: var(--line-3); }
+  .cat-bar button { display: inline-grid; color: var(--ink-dim); }
+  .cat-bar button > span, .cat-bar button[data-alt]::after { grid-area: 1 / 1; }
+  .cat-bar button[data-alt]::after { content: attr(data-alt) / ''; visibility: hidden; }
+  .cat-bar .adv-toggle[aria-expanded='true'] { color: var(--ink); border-color: var(--line-3); }
+  /* Reserved width, so the count appearing never re-wraps the bar. */
+  .cat-busy {
+    margin-left: auto;
+    min-width: 11ch;
+    text-align: right;
+    font-size: .76rem;
+    color: var(--intent);
+  }
 </style>

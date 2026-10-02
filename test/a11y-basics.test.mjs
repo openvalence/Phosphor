@@ -330,6 +330,41 @@ await checkRootFontAt(1280, 720);
   await ctx.close();
 }
 
+// ---- 8. the category page bar holds still (ph-vdk.60.3) --------------------
+for (const [w, h] of [[1440, 900], [360, 800]]) {
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h });
+  const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
+  await page.waitForSelector(tabSel, { timeout: 15000 });
+  const tabs = page.locator(tabSel);
+  let found = false;
+  for (let i = 0; i < await tabs.count() && !found; i++) {
+    await tabs.nth(i).click();
+    await page.waitForTimeout(200);
+    found = await page.locator('main.pane .cat-bar .adv-toggle').count() > 0;
+  }
+  ok(w + 'w page bar: a page with advanced settings carries its toggle in the bar', found);
+  if (found) {
+    const t = page.locator('main.pane .cat-bar .adv-toggle').first();
+    const next = page.locator('main.pane .cat-bar + *');
+    const sy = () => page.evaluate(() => document.scrollingElement.scrollTop);
+    const s0 = await sy(), b0 = await t.boundingBox(), y0 = (await next.boundingBox()).y, n0 = await t.ariaSnapshot();
+    await t.click();
+    await page.waitForTimeout(200);
+    const s1 = await sy(), b1 = await t.boundingBox(), y1 = (await next.boundingBox()).y, n1 = await t.ariaSnapshot();
+    // Page coordinates: on a phone the page scrolls, and a toggle that
+    // re-renders the grid resets that scroll (ph-vdk.60.6, the grid's).
+    ok(w + 'w page bar: the toggle keeps its place and width when flipped', Math.abs(b0.x - b1.x) < 0.5
+      && Math.abs(b0.y + s0 - b1.y - s1) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1, s0, s1]));
+    ok(w + 'w page bar: the cards below start where they did', Math.abs(y0 + s0 - y1 - s1) < 0.5, [y0, s0, y1, s1].join(' '));
+    ok(w + 'w page bar: the toggle is named by its visible label only', /"(Show|Hide) \d+ advanced"/.test(n0)
+      && /"(Show|Hide) \d+ advanced"/.test(n1) && n0 !== n1, n0 + ' | ' + n1);
+    const box = await page.locator('main.pane .cat-bar').boundingBox();
+    ok(w + 'w page bar: inside the viewport', box.x >= 0 && box.x + box.width <= w + 0.5);
+  }
+  if (pageErrors.length) ok(w + 'w page bar: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
+
 await browser.close();
 srv.close();
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — keyboard, labels, focus and motion basics hold.'));
