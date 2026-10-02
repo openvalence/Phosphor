@@ -244,7 +244,7 @@ async function open({ disabled = false, roles = 2, coarse = false } = {}) {
 
 /** The category tab whose page carries the pattern's base fields; plugins load after the catalog. */
 async function toPatternPage(page, wantPlugin = true) {
-  const sel = wantPlugin ? 'main.pane .ap' : 'main.pane label.field-label[for="' + uidOf(ADV, 'master') + '"]';
+  const sel = wantPlugin ? 'main.pane .ap' : 'main.pane label.field-label[data-uid="' + uidOf(ADV, 'master') + '"]';
   for (let pass = 0; pass < 10; pass++) {
     for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
       await page.click('[data-tab-id="' + id + '"]');
@@ -467,7 +467,7 @@ console.log('Advanced Penetration (shell bundle, role fixture ' + ETAG + ')');
   const found = await toPatternPage(page, false);
   ok('fallback: disabled, nothing of the plugin renders', found && !(await page.$('main.pane .ap')));
   ok('fallback: the base fields render as generic settings again',
-    !!(await page.$('main.pane label.field-label[for="' + uidOf(ADV, 'master') + '"]')));
+    !!(await page.$('main.pane label.field-label[data-uid="' + uidOf(ADV, 'master') + '"]')));
   await ctx.close();
 }
 

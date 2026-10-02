@@ -15,6 +15,9 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
+import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
+import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
+import { STORE_KEY } from '../src/model/grid.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -295,6 +298,37 @@ async function checkRootFontAt(w, h) {
 }
 await checkRootFontAt(360, 800);
 await checkRootFontAt(1280, 720);
+
+// ---- 7. one control placed twice keeps every DOM id unique (ph-4cz) -------
+{
+  const MODEL = buildSettingsModel(decodeCatalog(CAT));
+  const dup = MODEL.fields.find((f) => !f.readOnly && !f.role && f.widget === WIDGET.slider);
+  const key = 'uid:' + dup.uid;
+  const store = JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: { 'full.machine': {
+    [key]: { x: 0, y: 0, w: 12, h: 2 }, [key + '#2']: { x: 0, y: 2, w: 12, h: 2 }, 'home:built': { x: 0, y: 9, w: 1, h: 1 } } } } });
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 1440, height: 900 },
+    (c) => c.addInitScript(([k, v]) => { try { localStorage.setItem(k, v); } catch (e) { /* none */ } }, [STORE_KEY, store]));
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  const twice = await page.waitForFunction((u) => document.querySelectorAll('.field[data-uid="' + u + '"]').length === 2,
+    dup.uid, { timeout: 8000 }).then(() => true).catch(() => false);
+  ok('duplicate: one control placed twice renders twice', twice);
+  const r = await page.evaluate((u) => {
+    const ids = [...document.querySelectorAll('[id]')].map((e) => e.id);
+    const fields = [...document.querySelectorAll('.field[data-uid="' + u + '"]')];
+    return {
+      dupIds: ids.filter((id, i) => ids.indexOf(id) !== i),
+      own: fields.map((f) => {
+        const l = f.querySelector('label.field-label[for]');
+        const t = l && document.getElementById(l.getAttribute('for'));
+        return !!t && f.contains(t);
+      }),
+    };
+  }, dup.uid);
+  ok('duplicate: no id appears twice on the page', r.dupIds.length === 0, r.dupIds.slice(0, 4).join(', '));
+  ok('duplicate: each label names the input in its own placement', r.own.length === 2 && r.own.every(Boolean), JSON.stringify(r.own));
+  if (pageErrors.length) ok('duplicate: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
 
 await browser.close();
 srv.close();

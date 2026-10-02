@@ -34,8 +34,13 @@
   // A read-only presentation of a writable field writes nothing (RFC-080 draft item 3).
   const displayOnly = $derived(!field.readOnly && READ_ONLY_PRESENTATIONS.has(pres));
 
-  const labelId = $derived(field.uid + '-label');
-  // Presentations whose element carrying field.uid a <label for> may name.
+  // DOM ids are per INSTANCE: one control may be placed twice (a duplicate, or
+  // one field in two nests), and an id shared by two elements points a label
+  // at the wrong input. field.uid stays on data-uid for anything that needs it.
+  const iid = $props.id();
+  const domId = $derived(field.uid + '~' + iid);
+  const labelId = $derived(domId + '-label');
+  // Presentations whose element carrying domId a <label for> may name.
   const LABELABLE = new Set([WIDGET.slider, WIDGET.stepper, WIDGET.text, WIDGET.secret, WIDGET.select,
     WIDGET.toggle, WIDGET.datetime, WIDGET.color, WIDGET.numeral]);
 
@@ -43,7 +48,7 @@
   // inline by default, it lives behind a per-field toggle). Local, default
   // closed; resets whenever this component instance changes field.
   let descOpen = $state(false);
-  const descId = $derived(field.uid + '-desc');
+  const descId = $derived(domId + '-desc');
 
   const sample = $derived(machine.samples[field.channelId]);
   const value = $derived(displayValue(field, sample));
@@ -513,7 +518,7 @@
 <!-- One value formatter (format.js formatParts): hub time, autorange, plain. -->
 {#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
 
-<div class="field" data-shadow={status} data-widget={pres} data-orient={orientation}
+<div class="field" data-uid={field.uid} data-shadow={status} data-widget={pres} data-orient={orientation}
      bind:this={fieldEl}
      style="--pulse-x: {pulseX}%; --echo-top: {echoTop}px; --echo-bottom: {echoBottom}px"
      class:disabled={!enabled && !field.readOnly}
@@ -523,7 +528,7 @@
 
   <div class="field-head">
     <span class="field-label-group">
-      <label class="field-label" id={labelId} for={LABELABLE.has(pres) ? field.uid : undefined}>
+      <label class="field-label" id={labelId} for={LABELABLE.has(pres) ? domId : undefined} data-uid={field.uid}>
         {labelFor(field)}
         {#if field.advanced}<span class="tag adv" title="Advanced setting">adv</span>{/if}
         {#if field.flagBits.restart_required}<span class="tag warn" title="Takes effect after restart">restart</span>{/if}
@@ -570,7 +575,7 @@
         <span class="unit">{unitOf(field)}</span>
       </span>
     {:else if showValueChip}
-      <output class="field-value" class:readout={READ_ONLY_PRESENTATIONS.has(pres)} for={field.uid}
+      <output class="field-value" class:readout={READ_ONLY_PRESENTATIONS.has(pres)} for={domId}
               class:stale={fresh && fresh.stale} title={staleReason(fresh)}>
         {#if field.options}
           {optionLabel(field, value)}
@@ -596,7 +601,7 @@
     <!-- §8.4 indicator: a status lamp is NEVER the sole carrier of the fact,
          so every lamp is paired with its state in words (§13). Read-only by
          construction — this branch draws no control at all. -->
-    <div class="lamps" id={field.uid} role="group" aria-labelledby={labelId}>
+    <div class="lamps" id={domId} role="group" aria-labelledby={labelId}>
       {#if field.bits}
         {#each field.bits as bitName, b}
           {#if bitName}
@@ -615,7 +620,7 @@
   {:else if pres === WIDGET.toggle}
     <div class="toggle-row">
       <label class="og-switch" class:is-disabled={!enabled}>
-        <input type="checkbox" id={field.uid}
+        <input type="checkbox" id={domId}
                role="switch" aria-checked={toggleOn} checked={toggleOn} disabled={!enabled}
                onchange={(e) => commitToggle(e.currentTarget)} />
         <span class="track"></span>
@@ -629,7 +634,7 @@
          select's index 0 is filler, and those are ActionField's). Roving
          focus: Tab enters at the reported option, the arrows move focus,
          Space or Enter writes, so arrowing past options sends nothing. -->
-    <div class="og-seg" role="radiogroup" aria-labelledby={labelId} id={field.uid} onkeydown={segKey}>
+    <div class="og-seg" role="radiogroup" aria-labelledby={labelId} id={domId} onkeydown={segKey}>
       {#each field.options as opt, i}
         <button type="button" role="radio" aria-checked={Number(value) === i}
                 tabindex={i === segFocus ? 0 : -1}
@@ -639,7 +644,7 @@
     </div>
 
   {:else if pres === WIDGET.select}
-    <select id={field.uid} disabled={!enabled}
+    <select id={domId} disabled={!enabled}
             onchange={(e) => commit(Number(e.currentTarget.value))}>
       {#each field.options as opt, i}
         <option value={i} selected={Number(value) === i}>{opt || i}</option>
@@ -647,7 +652,7 @@
     </select>
 
   {:else if pres === WIDGET.bitfield}
-    <div class="bitfield" id={field.uid} role="group" aria-labelledby={labelId}>
+    <div class="bitfield" id={domId} role="group" aria-labelledby={labelId}>
       {#each field.bits as bitName, b}
         {#if bitName}
           <label class="bit">
@@ -663,7 +668,7 @@
     </div>
 
   {:else if pres === WIDGET.slider}
-    <input id={field.uid} type="range" bind:this={ctrlEl}
+    <input id={domId} type="range" bind:this={ctrlEl}
            min={field.min} max={field.max} step={step}
            value={value ?? field.min} disabled={!enabled}
            oninput={(e) => commit(Number(e.currentTarget.value))} />
@@ -699,13 +704,13 @@
 
   {:else if pres === WIDGET.color}
     <div class="color-row" bind:this={ctrlEl}>
-      <input id={field.uid} type="color" value={colorHex || '#000000'} disabled={!colorEnabled}
+      <input id={domId} type="color" value={colorHex || '#000000'} disabled={!colorEnabled}
              onchange={(e) => commitColor(e.currentTarget.value)} />
       <output class="field-value mono">{colorHex || '--'}</output>
     </div>
 
   {:else if pres === WIDGET.datetime}
-    <input id={field.uid} type="datetime-local" step="1" class="value-input" bind:this={ctrlEl}
+    <input id={domId} type="datetime-local" step="1" class="value-input" bind:this={ctrlEl}
            value={datetimeLocal} disabled={!enabled || !clockRef}
            onchange={(e) => commitWall(new Date(e.currentTarget.value).getTime())} />
     {#if !clockRef}
@@ -724,7 +729,7 @@
       <button type="button" disabled={!enabled} aria-label="decrease {labelFor(field)}"
               onclick={() => stepClick(-1)} onpointerdown={() => holdStart(-1)} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>&minus;</button>
-      <input id={field.uid} type="number" class="og-num"
+      <input id={domId} type="number" class="og-num"
              min={field.min} max={field.max} step={step}
              value={value ?? ''} disabled={!enabled}
              onchange={(e) => commit(Number(e.currentTarget.value))} />
@@ -734,20 +739,20 @@
     </div>
 
   {:else if pres === WIDGET.text}
-    <input id={field.uid} type="text" class="value-input"
+    <input id={domId} type="text" class="value-input"
            value={value ?? ''} disabled={!enabled}
            onchange={(e) => commit(e.currentTarget.value)} />
 
   {:else if pres === WIDGET.secret}
     <!-- RFC-009.4: a secret's value NEVER appears in STATE. We can say whether
          one is set, and we can replace it. We can never show it. -->
-    <input id={field.uid} type="password" class="value-input" placeholder={value ? '•••••• (set)' : 'not set'}
+    <input id={domId} type="password" class="value-input" placeholder={value ? '•••••• (set)' : 'not set'}
            disabled={!enabled} onchange={(e) => commit(e.currentTarget.value)} />
 
   {:else if pres === WIDGET.knob}
     <!-- Drag up or down, or use the keys; every change is an ordinary
          echo-confirmed write through commitNumber(). -->
-    <div class="knob" id={field.uid} bind:this={ctrlEl} role="slider" tabindex={enabled ? 0 : -1}
+    <div class="knob" id={domId} bind:this={ctrlEl} role="slider" tabindex={enabled ? 0 : -1}
          aria-labelledby={labelId} aria-valuemin={field.min} aria-valuemax={field.max}
          aria-valuenow={Number(value)} aria-valuetext={formatWithUnit(field, value)} aria-disabled={!enabled}
          class:is-disabled={!enabled}
@@ -772,7 +777,7 @@
     </div>
 
   {:else if pres === WIDGET.numeral}
-    <output class="numeral" id={field.uid} bind:this={ctrlEl} title={staleReason(fresh)}>
+    <output class="numeral" id={domId} bind:this={ctrlEl} title={staleReason(fresh)}>
       {#if numeral}<span class="numeral-digits" style="min-width: {numeral.ch}ch">{numeral.text}</span><span class="unit">{numeral.unit}</span>
       {:else}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{/if}
       {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}
