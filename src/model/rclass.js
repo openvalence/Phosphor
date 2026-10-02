@@ -27,6 +27,12 @@ export const FULL_DOWN = 784;
 export const GLANCE_DOWN = 216;
 export const GLANCE_UP = 264;
 
+// RENDERING §12.1 item 3 floor, in CSS px: the strip holds e-stop and pause
+// side by side at law 12's 40 px there (DESIGN §10.3). src-tauri/tauri.conf.json
+// windows[0].minWidth/minHeight MUST equal these (shell-chrome-geometry).
+export const FLOOR_W = 200;
+export const FLOOR_H = 390;
+
 // RENDERING §11: handheld promotes a subgroup to a drill-in page past
 // roughly eight controls; glance promotes every subgroup; full never does.
 export const DRILL_AFTER = 8;

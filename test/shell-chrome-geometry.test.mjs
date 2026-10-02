@@ -21,7 +21,10 @@
  * box (its ink box grown by one standard deviation of the strong glow
  * layer, half its blur radius) is inside the strip and inside its clip; the
  * jog tape and the ruler share left and right edges, border and inner box
- * (ph-e82.21). In the shell bundle the X
+ * (ph-e82.21). At the RENDERING 12.1 floor (rclass.js FLOOR_W x FLOOR_H,
+ * which tauri.conf.json's minimum window must equal) e-stop and pause sit
+ * side by side at 40 px and the strip takes at most half the window
+ * (ph-vdk.48). In the shell bundle the X
  * opens the close popover anchored under it, the bar keeps its height, and
  * Escape or a click outside cancels.
  *
@@ -47,6 +50,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -452,6 +456,32 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
     await bp.keyboard.press('Escape');
   }
   await bctx.close();
+}
+
+// ---- ph-vdk.48: the RENDERING §12.1 floor is the shell's minimum window -------
+{
+  const win = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8')).app.windows[0];
+  ok('floor: the shell\'s minimum window is the derived floor', win.minWidth === FLOOR_W && win.minHeight === FLOOR_H,
+    JSON.stringify([win.minWidth, win.minHeight, FLOOR_W, FLOOR_H]));
+  const fctx = await browser.newContext({ viewport: { width: FLOOR_W, height: FLOOR_H } });
+  await fctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* no storage */ }
+  }, [ETAG, Buffer.from(CAT).toString('hex')]);
+  await fctx.routeWebSocket(/:82\//, hub({}));
+  const fp = await fctx.newPage();
+  await fp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await fp.waitForSelector('.strip .pair .btn-estop', { timeout: 15000 }).catch(() => {});
+  await fp.waitForTimeout(400);
+  const f = await fp.evaluate(() => ({
+    pair: [...document.querySelectorAll('.strip .pair button')].map((b) => { const r = b.getBoundingClientRect();
+      return { l: r.left, r: r.right, t: r.top, w: r.width, h: r.height }; }),
+    strip: document.querySelector('.strip').getBoundingClientRect().height,
+  }));
+  ok('floor: e-stop and pause sit side by side at the 40 px target, on screen', f.pair.length === 2
+    && f.pair.every((b) => b.w >= 40 && b.h >= 40 && b.l >= -0.5 && b.r <= FLOOR_W + 0.5)
+    && Math.abs(f.pair[0].t - f.pair[1].t) < 0.5, JSON.stringify(f.pair));
+  ok('floor: the strip takes at most half the window', f.strip <= FLOOR_H / 2, String(f.strip));
+  await fctx.close();
 }
 
 // ---- the shell's close popover (ph-e82.17) -----------------------------------

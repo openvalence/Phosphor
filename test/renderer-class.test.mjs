@@ -14,7 +14,7 @@
 import { readFileSync } from 'node:fs';
 import {
   nextClass, promotes, projectGroups, CLASSES,
-  FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER,
+  FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER, FLOOR_W, FLOOR_H,
 } from '../src/model/rclass.js';
 import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
 import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY } from '../../Valence/clients/js/index.js';
@@ -115,6 +115,15 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
   const tabbed = synth.categories.flatMap((c) => c.groups.flatMap((g) => g.fields.map((x) => x.name)));
   ok('detail, unranked, unknown-rank and claimed fields stay reachable on the category page',
      ['d_one', 'u_one', 'k_one', 'c_claimed'].every((n) => tabbed.includes(n)) && !tabbed.includes('x_one'), tabbed.join(','));
+}
+
+// ---- DESIGN §10.4 states the boundaries and the floor (ph-vdk.48) -----------
+{
+  const design = readFileSync(new URL('../docs/DESIGN.md', import.meta.url), 'utf8');
+  for (const [n, v] of Object.entries({ FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, FLOOR_W, FLOOR_H })) {
+    ok('DESIGN states ' + n + ' ' + v, design.includes('`' + n + '` ' + v));
+  }
+  ok('the floor is glance', nextClass(null, FLOOR_W, 'fine') === 'glance');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));

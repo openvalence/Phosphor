@@ -507,6 +507,24 @@ question in §10.8).
 `src/style.css`) goes; prose keeps its measure. Absorbs `ph-gf8`'s width
 half.
 
+Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
+
+| Boundary | Down below | Up at or above |
+|---|---|---|
+| handheld/full | `FULL_DOWN` 784 | `FULL_UP` 960 |
+| glance/handheld | `GLANCE_DOWN` 216 | `GLANCE_UP` 264 |
+
+- handheld/full is 872 ± 88 (10.1 %), inside the 600 to 960 band RENDERING
+  recommends, topped at 960 so `full` agrees with every 960 px media query.
+  glance/handheld is 240 ± 24 (10 %). No pointer selects glance at any width.
+- The floor is `FLOOR_W` 200 by `FLOOR_H` 390, the shell's minimum window
+  (`src-tauri/tauri.conf.json`). Derivation: at 200 the strip holds e-stop
+  and pause side by side at the 40 px target (SafetyOp drops its 96 px
+  minimum below 222 px and wraps its words), and the strip stays under half
+  of a 390 px window (`test/shell-chrome-geometry.test.mjs` measures both).
+  The responsive matrix runs 200 by 390 as its smallest size.
+  RENDERING §12.1 item 3 still says 320 for the reference client.
+
 ### 10.5 Grid, scale, resize
 
 - Cells are square and sized in device pixels, about 32 to 40 at 3840x2160
