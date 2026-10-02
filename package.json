@@ -8,7 +8,7 @@
     "build": "npm run check && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "check": "node test/check-device-knowledge.mjs && node test/check-registry-pins.mjs && node test/settings-model.test.mjs && node test/plugins.test.mjs && node test/lane-palette.test.mjs && node test/ble-adv.test.mjs && node test/prefs.test.mjs && node test/hub-identity.test.mjs && node test/renderer-class.test.mjs && node test/provision-wizard.test.mjs && node test/advanced-generator.test.mjs && node test/grid-model.test.mjs",
+    "check": "node test/check-device-knowledge.mjs && node test/check-registry-pins.mjs && node test/settings-model.test.mjs && node test/plugins.test.mjs && node test/graph.test.mjs && node test/graph-runtime.test.mjs && node test/lane-palette.test.mjs && node test/ble-adv.test.mjs && node test/prefs.test.mjs && node test/hub-identity.test.mjs && node test/renderer-class.test.mjs && node test/provision-wizard.test.mjs && node test/advanced-generator.test.mjs && node test/grid-model.test.mjs",
     "check:generic": "node test/check-device-knowledge.mjs",
     "check:pins": "node test/check-registry-pins.mjs",
     "check:model": "node test/settings-model.test.mjs",
