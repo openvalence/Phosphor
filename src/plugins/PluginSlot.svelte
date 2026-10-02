@@ -34,15 +34,21 @@
   });
 
   $effect(() => {
-    // Subscribe to every claimed field's reported value and write status.
+    // Subscribe to every claimed field's reported value and write status,
+    // instance lists (claimRoles `instances`) included, and to the link
+    // facts api.gate and api.stale read.
+    const watch = (f) => {
+      if (!f || !f.uid) return;
+      displayValue(f, machine.samples[f.channelId]);
+      statusOf(f);
+      void machine.sampleTs[f.channelId];
+    };
     for (const k in fields) {
       const f = fields[k];
-      if (f && f.uid) {
-        displayValue(f, machine.samples[f.channelId]);
-        statusOf(f);
-        void machine.sampleTs[f.channelId];
-      }
+      if (Array.isArray(f)) for (const m of f) for (const j in m) watch(m[j]);
+      else watch(f);
     }
+    void machine.link.phase; void machine.link.roles; void machine.link.stale;
     const i = inst;
     untrack(() => host.updateHero(i));
   });

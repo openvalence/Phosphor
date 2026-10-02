@@ -64,7 +64,12 @@ class PermissionError extends Error {
  *   sampleAge(channelId)          -> ms since that sample, or Infinity
  *   display(field, sample)        -> shadow-aware display value
  *   status(field)                 -> confirmed|pending|overdue|fault
- *   write(field, value)           -> routes to the right shadow entry point
+ *   write(field, value, payload)  -> routes to the right shadow entry point,
+ *                                    behind the host-rendered confirm
+ *   gate(field)                   -> '' or why the field cannot be written (law 3)
+ *   stale(field)                  -> '' or the stale reason in words (law 8)
+ *   modTarget(field)              -> uid of the field this modulator rides, or null
+ *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
  *   registerTheme(theme)          -> adds an accent pair to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
@@ -131,9 +136,13 @@ export function createPluginHost(deps) {
       value: (field) => (field ? deps.display(field, deps.sample(field.channelId)) : undefined),
       status: (field) => (field ? deps.status(field) : 'confirmed'),
       age: (field) => (field ? deps.sampleAge(field.channelId) : Infinity),
+      gate: (field) => (field && deps.gate ? deps.gate(field) : ''),
+      stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
+      modTarget: (field) => (field && deps.modTarget ? deps.modTarget(field) : null),
+      storeSlots: async (field) => (field && deps.storeSlots ? deps.storeSlots(field) : null),
 
       // ---- write: the shadow entry points, gated by the manifest ----
-      write: (field, value) => { need(rec, 'intent'); return deps.write(field, value); },
+      write: (field, value, payload) => { need(rec, 'intent'); return deps.write(field, value, payload); },
       submitMotion: (norm, durationMs) => { need(rec, 'motion'); return deps.submitMotion(norm, durationMs); },
 
       // ---- contributions ----

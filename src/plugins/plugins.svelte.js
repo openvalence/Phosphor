@@ -15,13 +15,19 @@
 
 import { createPluginHost } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
-import { machine } from '../model/machine.svelte.js';
+import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
 import {
   writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf,
 } from '../model/shadow.svelte.js';
-import { WIDGET } from '../model/settings.js';
+import { WIDGET, isFieldEnabled } from '../model/settings.js';
+import { DRAFT_ROLE } from '../model/roles.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
+import { askConfirm } from '../ui/confirm.svelte.js';
+import { pendingSlots, enumerateStore } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
+import { FACTORY } from './factory.js';
 import { LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -47,11 +53,64 @@ function logLine(name, level, msg) {
   (level === 'error' ? console.error : console.log)('[plugin:' + name + '] ' + msg);
 }
 
-function write(field, value) {
-  if (!field) return;
-  if (field.widget === WIDGET.action) return runAction(field, value);
+// RENDERING §10.2 items 2 and 4: a plugin requests, the host confirms. RFC-067
+// makes an action.store delete destructive by registration.
+// TODO(ph-vdk.31): fold the store-delete rule into actions.js isDestructive.
+const CANCELED = { ok: false, error: 'canceled' };
+async function write(field, value, payload) {
+  if (!field) return { ok: false, error: 'no field' };
+  if (field.widget === WIDGET.action) {
+    const confirm = needsConfirm(field, value)
+      || (field.role === DRAFT_ROLE.actionStore && value === STORE_OP.delete_item);
+    if (confirm && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
+    return runAction(field, value, payload || null);
+  }
   if (field.isIntentField) return sendCommand(field, value);
+  const from = displayValue(field, machine.samples[field.channelId]);
+  if (settingNeedsConfirm(field, from, value) && !(await askConfirm(confirmCopy(field)))) return CANCELED;
   return writeSetting(field, value);
+}
+
+// Law 3: the reasons Field.svelte and ActionField.svelte name, in their order.
+function gate(field) {
+  if (machine.link.phase !== 'live') return 'no hub link';
+  const s = getSession();
+  if (field.widget === WIDGET.action) {
+    return s && s.canUse(field.channelId, field.key) ? '' : 'this session is not authorized for this op';
+  }
+  if (field.readOnly) return 'read-only: the machine reports this, it is not a setting';
+  const e = machine.catalog.entries.find((x) => x.id === (field.isIntentField ? field.channelId : field.writeChannel));
+  if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'this session is not authorized to change settings';
+  if (!field.isIntentField && !isFieldEnabled(field, machine.samples[field.channelId])) {
+    return 'the machine is refusing this setting right now';
+  }
+  return '';
+}
+
+const entryOf = (id) => (machine.catalog.entries || []).find((e) => e.id === id) || null;
+
+// RFC-066: the modulator entry's mod_target, as the uid buildSettingsModel
+// gives the target (SPEC §8.1: a layout index on STATE/STREAM, a schema key on
+// INTENT). Null when the entry has none or it names no field.
+function modTarget(field) {
+  const mt = (entryOf(field.channelId) || {}).modTarget;
+  const t = mt && entryOf(mt.channel);
+  if (!t) return null;
+  if (t.layout) return t.layout[mt.field] ? t.id + ':' + t.layout[mt.field].name : null;
+  return (t.schema || []).some((f) => f.key === mt.field) ? t.id + ':' + mt.field : null;
+}
+
+// RFC-070: the writer's store_id names the STORE; slots read as roster.js
+// reads them (pending, locked and empty stay distinct). Null when unlinked.
+async function storeSlots(field) {
+  const sid = (entryOf(field.channelId) || {}).storeId;
+  const store = sid == null ? null : (machine.catalog.entries || []).find((e) => e.store && e.store.storeId === sid);
+  if (!store) return null;
+  const slots = pendingSlots(store);
+  const s = getSession();
+  if (!s || machine.link.phase !== 'live') return slots;
+  await enumerateStore(s.fetchBlob, store, { role: machine.link.roles, onSlot: (r) => { slots[r.slot] = r; } });
+  return slots;
 }
 
 async function listenTcp(port, onLine) {
@@ -79,6 +138,10 @@ export const host = createPluginHost({
   display: displayValue,
   status: statusOf,
   write,
+  gate,
+  stale: (field) => staleReason(freshness(field.channelId)) || '',
+  modTarget,
+  storeSlots,
   submitMotion,
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
@@ -109,6 +172,13 @@ export function setPluginEnabled(name, on) {
 async function importSource(source) {
   const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
   try { return await import(/* @vite-ignore */ url); } finally { URL.revokeObjectURL(url); }
+}
+
+// Factory plugins ship inside the bundle; a same-named plugin folder loaded
+// after them replaces one (host.add keys on the name).
+function loadFactory() {
+  const off = disabledSet();
+  for (const p of FACTORY) host.add(p.manifest, p.module, { enabled: !off.has(p.manifest.name), source: 'factory' });
 }
 
 async function loadFromShell() {
@@ -153,7 +223,7 @@ export async function loadPlugins() {
     && new URLSearchParams(location.search).has('plugin');
   if (!SHELL && !dev) return;
   pluginsUi.active = true;
-  if (SHELL) await loadFromShell();
+  if (SHELL) { loadFactory(); await loadFromShell(); }
   if (dev) await loadFromQuery();
   await import('./graph.js').then((m) => m.loadGraph(host)).catch((e) => logLine('graph', 'error', 'load: ' + (e && e.message)));
   pluginsUi.list = host.list();

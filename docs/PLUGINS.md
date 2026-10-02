@@ -75,6 +75,15 @@ plugin can only ever add a substitution, never leave a field unclaimed. An
 unrecognized id is simply never matched: no built-in of that name to suppress,
 same "opportunity, never requirement" degrade as an unknown role.
 
+**Substituting a §10 pattern (RENDERING §10.2, RFC-068).** A plugin that
+replaces a built-in pattern puts every one of the pattern's essential
+bindings in its own `require`, so the host can never mount it with less
+(item 1). It draws only into the `el` it is given (item 2), writes only
+through `api.write`, which renders the host's confirm (item 4), and a
+binding its spec cannot express (a conditional essential) is checked in
+`mount`, which throws: the hero is dropped and the built-in, or the
+settings cards, render instead (item 5).
+
 ## The API (v1)
 
 | member | what | status |
@@ -87,6 +96,11 @@ same "opportunity, never requirement" degrade as an unknown role.
 | `age(field)` | ms since the field's channel last reported (dim when stale, RENDERING §13 law 8) | **freeze candidate** |
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
+| `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
+| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only) | experimental |
+| `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
+| `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
+| `storeSlots(field)` | for an `action.store` writer: a Promise of every slot of the store its `store_id` names (RFC-070), `{slot, state, name}` with `state` one of `pending`, `item`, `empty`, `locked`, `error` (RENDERING §8.4 row 9); null when unlinked | experimental |
 | `manifest`, `apiVersion`, `log(msg, level)` | identity and the log pane | **freeze candidate** |
 | `registerHero`'s `cells: {h: [w, h], v: [w, h]}` | minimum footprint in builder grid cells per orientation (DESIGN §10.2, `ph-e82.4`) | experimental |
 | `registerHero` returning `withdraw()` | removes that hero (a device that went away); a saved placement of it stays inert | experimental |
@@ -204,6 +218,25 @@ Production builds compile that path out.
   (`L0500I100` = 0.5 over 100 ms; other axes, `S` and device commands are
   ignored) and submitted with `submitMotion`, the `I` interval as its
   duration. The hub never sees TCode.
+
+## Factory plugins
+
+A factory plugin ships with Phosphor. It lives in `plugins/factory/<name>/`
+(manifest plus one module, the same shape as any plugin) and is listed in
+`src/plugins/factory.js`, which bundles it. How it differs from an example:
+
+- **Enabled by default in the shell.** It loads before the plugins directory
+  is read, with no install step. The hub-served page still loads none.
+- **Removable.** Disabling it in the Plugins pane persists on the same
+  `phosphor.plugins.disabled` list as any plugin. A folder of the same
+  `name` in the plugins directory loads after it and replaces it.
+- **Same contract.** Same manifest rules, API, permission checks and error
+  boundary; no kernel imports, so the module still loads unchanged from a
+  `blob:` URL. It ships to every hub the shell meets, so it binds by role
+  only, as a tier-1 widget must.
+
+An example is documentation: never loaded by default, installed by copying
+its folder.
 
 ## Testing
 
