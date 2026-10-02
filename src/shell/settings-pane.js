@@ -1,6 +1,6 @@
 /**
  * settings-pane.js -- saved-hub upkeep, the launch redial, and the shell's
- * Server, Settings and About panes (panes.js; ShellStrip registers Hubs).
+ * panes (panes.js): Hubs, Server, Settings, About.
  * SHELL ONLY: main.js imports it from the shell branch.
  *
  * Constraints:
@@ -13,13 +13,14 @@ import { connect, machine } from '../model/machine.svelte.js';
 import { endpointLabel, setAutorange } from '../model/format.js';
 import { prefs, savedHubs, rememberHub, launchTarget } from '../model/prefs.js';
 import { registerPane } from './panes.js';
+import HubsPane from './HubsPane.svelte';
 import SettingsPane from './SettingsPane.svelte';
 import ServerPane from './ServerPane.svelte';
 import AboutPane from './AboutPane.svelte';
 
 prefs.subscribe((p) => setAutorange(p.autorange));
 
-// ShellStrip's keys, read only: the transport last chosen, and the port-less
+// hubs.svelte.js's keys, read only: the transport last chosen, and the port-less
 // host saved before this file existed.
 const shellKey = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const target = launchTarget({ ...get(prefs), mode: shellKey('shell_mode'), hubs: get(savedHubs), legacyHost: shellKey('shell_host') });
@@ -32,6 +33,7 @@ toStore(() => machine.link.phase).subscribe((phase) => {
   }
 });
 
+registerPane({ id: 'hubs', label: 'Hubs', component: HubsPane });
 registerPane({ id: 'server', label: 'Server', component: ServerPane });
 registerPane({ id: 'settings', label: 'Settings', component: SettingsPane });
 registerPane({ id: 'about', label: 'About', component: AboutPane });

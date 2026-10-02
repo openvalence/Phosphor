@@ -610,6 +610,7 @@
   }
   .rail-sec.shell .rail-tab:not(.on),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
+  .rail-sec.shell .rail-glyph { color: var(--ink-dim); }
   .rail-lbl {
     padding: 2px 8px 4px;
     font-size: 11px;
