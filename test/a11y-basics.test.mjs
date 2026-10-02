@@ -383,15 +383,45 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
     await t.click();
     await page.waitForTimeout(200);
     const s1 = await sy(), b1 = await t.boundingBox(), y1 = (await next.boundingBox()).y, n1 = await t.ariaSnapshot();
-    // Page coordinates: on a phone the page scrolls, and a toggle that
-    // re-renders the grid resets that scroll (ph-vdk.60.6, the grid's).
+    // Viewport coordinates: the scroll holds too (ph-vdk.60.6).
     ok(w + 'w page bar: the toggle keeps its place and width when flipped', Math.abs(b0.x - b1.x) < 0.5
-      && Math.abs(b0.y + s0 - b1.y - s1) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1, s0, s1]));
-    ok(w + 'w page bar: the cards below start where they did', Math.abs(y0 + s0 - y1 - s1) < 0.5, [y0, s0, y1, s1].join(' '));
+      && Math.abs(b0.y - b1.y) < 0.5 && Math.abs(b0.width - b1.width) < 0.5, JSON.stringify([b0, b1, s0, s1]));
+    ok(w + 'w page bar: the cards below start where they did', Math.abs(y0 - y1) < 0.5, [y0, s0, y1, s1].join(' '));
     ok(w + 'w page bar: the toggle is named by its visible label only', /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n0)
       && /"(Show|Hide) \d+ (advanced|diagnostic)"/.test(n1) && n0 !== n1, n0 + ' | ' + n1);
     const box = await page.locator('main.pane .cat-bar').boundingBox();
     ok(w + 'w page bar: inside the viewport', box.x >= 0 && box.x + box.width <= w + 0.5);
+    // ph-vdk.60.6: scrolled until the bar meets the sticky chrome, a card-set
+    // change keeps the scroll through the re-render, every frame, both ways;
+    // only a shorter page may clamp it, to its own new end. Clicked in-page:
+    // Playwright's click scrolls a target the sticky chrome covers into view,
+    // which is the 377 -> 0 the bead measured.
+    // The advanced toggle moves the most cards; the first page with one.
+    let big = t;
+    for (let i = 0; i < await tabs.count(); i++) {
+      const adv = page.locator('main.pane .cat-bar .adv-toggle', { hasText: 'advanced' });
+      if (await adv.count()) { big = adv.first(); break; }
+      await tabs.nth(i).click();
+      await page.waitForTimeout(200);
+    }
+    const flipScrolled = () => big.evaluate(async (el) => {
+      const se = document.scrollingElement;
+      const chrome = Math.max(...[...document.querySelectorAll('.topstrip, nav.tabs')].map((n) => n.getBoundingClientRect().bottom));
+      window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - chrome - 8);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const s0 = se.scrollTop, track = [];
+      el.click();
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => requestAnimationFrame(r));
+        track.push([se.scrollTop, se.scrollHeight - se.clientHeight]);
+      }
+      return { s0, track };
+    });
+    for (const dir of ['flip', 'flip back']) {
+      const r = await flipScrolled();
+      ok(w + 'w page bar: ' + dir + ' keeps the scroll every frame', (w >= 960 || r.s0 > 0)
+        && r.track.every(([s, max]) => s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
+    }
   }
   if (pageErrors.length) ok(w + 'w page bar: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
