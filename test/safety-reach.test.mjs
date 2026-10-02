@@ -21,7 +21,9 @@
  * Once, at 1280x720 and 360x800:
  *   motion   prefers-reduced-motion: no transition or animation on the pair
  *   edge     the latest safety edge renders with its unread count, opens the
- *            Safety feed, clears the count, and dims once the link drops
+ *            Safety feed and clears the count; the e-stop fires; a dropped
+ *            link takes the status slot in words, and back live the edge
+ *            reads stale (ph-e82.17: one slot, by priority)
  *   fire     pressing the strip e-stop puts a safety frame on the wire
  * ph-e82.12 (RFC-085), at 1280x720 mouse and 360x800 touch:
  *   label    WELCOME without identity key 6, or with it false: Halt; true: E-Stop
@@ -29,9 +31,10 @@
  *            reads Halted, two quick taps and a 1 s hold send nothing, a press
  *            held past 3 s sends release, which lands in pause
  * ph-vdk.41 (RFC-085), at 1280x720:
- *   override the rail row carries one Override/Return control, absent with no
- *            rail and on a hub whose op table lacks override (law 7); paused
- *            without override the jog tape is disabled with its reason;
+ *   override the strip carries one Override/Return control beside Home while
+ *            a rail is mounted, absent with no rail and on a hub whose op
+ *            table lacks override (law 7); paused without override the jog
+ *            tape is disabled with its reason on its own label line;
  *            Override confirms, sends override, reads Return, and the tape
  *            jogs over the whole travel; Return sends return_op, no gate
  * ph-vdk.43 (RFC-088), on glance, handheld and full:
@@ -308,11 +311,18 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
 
   await page.evaluate(() => { document.querySelectorAll('.content').forEach((c) => { c.scrollTop = 0; }); });
   wire.edges = false;   // a reconnect must not re-send them as fresh edges
+  // The hub was released meanwhile: the reconnect adopts a clear latch, so
+  // the slot falls through to the edge.
+  wire.latch = { word: 0, modes: 0 };
+  wire.states = { ...(wire.states || {}), [CORE_CHANNEL.safety]: snapshot(wire.latch) };
+  const down = page.waitForSelector('.strip .status[data-kind=fault]', { timeout: 3000 }).then(() => true).catch(() => false);
   if (wire.socket) await wire.socket.close();
-  await page.waitForTimeout(800);
+  ok(tag + ': the dropped link takes the status slot in words', await down
+    && /no hub link/.test(await page.locator('.strip .status').textContent()));
+  await line.waitFor({ timeout: 8000 }).catch(() => {});
   const stale = await line.evaluate((el) => el.classList.contains('stale') && /stale/.test(el.textContent)
-    && parseFloat(getComputedStyle(el).opacity) < 1);
-  ok(tag + ': the edge dims and says stale once the link drops', stale);
+    && parseFloat(getComputedStyle(el).opacity) < 1).catch(() => false);
+  ok(tag + ': back live, the edge dims and says stale', stale);
   await ctx.close();
 }
 
@@ -451,11 +461,11 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   }
 
   const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero' });
-  const ovr = page.locator('.rail-hero .rw-hero-accessory .btn-override');
+  const ovr = page.locator('.topstrip .ops.main .btn-override');
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
-  ok('override: one control on the rail row, beside Home', await ovr.count() === 1
-    && await page.locator('.rail-hero .rw-hero-accessory .transportbar').count() === 1);
+  ok('override: one control in the strip, beside Home', await ovr.count() === 1
+    && await page.locator('.topstrip .ops.main .btn', { hasText: /^home$/i }).count() === 1);
   ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
   await page.locator('.topstrip .btn-pause').click();
   await page.waitForTimeout(300);

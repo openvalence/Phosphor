@@ -65,9 +65,8 @@ async function boot() {
     // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
     // host:port, when the reconnect preference is on (shell/settings-pane.js).
     await import('./shell/settings-pane.js').catch((e) => console.error('saved hubs failed to load', e));
-    // Shell chrome (window controls, link state, the drawer with discovery,
-    // transport and the server) is a row of the kernel's top strip, handed in
-    // from here so the served bundle never carries it.
+    // Shell chrome (the window buttons at the end of the kernel's top bar)
+    // is handed in from here so the served bundle never carries it.
     return (await import('./shell/ShellStrip.svelte')).default;
   }
   if (host) connect({ host, port });

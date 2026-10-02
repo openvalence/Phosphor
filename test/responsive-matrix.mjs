@@ -252,6 +252,10 @@ function measure({ phone, coarse = phone }) {
     if (!vis(el) || el.clientWidth <= 2) continue;   // visually-hidden (sr-only) text is meant to be clipped
     const cs = getComputedStyle(el);
     if (!/(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') continue;
+    // Fixed-height chrome (ph-e82.17) ellipsizes on purpose; its full form
+    // must then be one hover away, in its own or an ancestor's title.
+    const full = el.closest('[title]')?.title || '';
+    if (full.includes(el.textContent.trim())) continue;
     if (el.scrollWidth > el.clientWidth + 1) fails.push(['clip', name(el) + ' ' + el.scrollWidth + '>' + el.clientWidth]);
   }
 

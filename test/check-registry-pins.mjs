@@ -149,15 +149,15 @@ checkPin(
   'ble-adv.js ADV_COMPANY_ID vs registry ble_identity.msd_company_id',
 );
 
-// src/shell/ShellStrip.svelte -- discovery port, used only for the empty-result
+// src/shell/hubs.svelte.js -- discovery port, used only for the empty-result
 // message string (discovery.rs owns the real socket), but a stale number
 // there lies to the operator about what port it actually probed.
 checkPin(
-  'src/shell/ShellStrip.svelte',
+  'src/shell/hubs.svelte.js',
   /DISCOVERY_PORT = (\d+);/,
   (m) => m[1],
   registryValues.udp_port,
-  'ShellStrip.svelte DISCOVERY_PORT vs registry udp_discovery.port',
+  'hubs.svelte.js DISCOVERY_PORT vs registry udp_discovery.port',
 );
 
 console.log('registry-pins check');

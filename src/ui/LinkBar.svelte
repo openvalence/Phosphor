@@ -1,25 +1,20 @@
 <script>
   /**
-   * LinkBar.svelte — the persistent header: are we even talking to the machine?
+   * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
+   * 2026-10-02). Left: the activity heatmap and the hub name. Right: the
+   * chips (phase, tier, hub, catalog, render, rx), then the shell's window
+   * buttons at the far end, shell only. The bar is the Tauri drag region.
    *
-   * CLAUDE.md 3 (Ground Truth Doctrine) applied to the link itself, not just to
-   * settings: this bar never claims a healthier link than machine.link.phase
-   * actually reports, and it says so LOUDLY the moment phase !== 'live' —
-   * there is no fallback control path on this firmware (HTTP is read-only), so
-   * a dead link means nothing on the page can drive the machine, and the
-   * operator must know that at a glance, not discover it by a control that
-   * quietly does nothing.
-   *
-   * Restores the pre-refactor identity (tag `webui-prerefactor`): the
-   * registration crosshair, the hub-name wordmark, the live activity heatmap
-   * canvas, the two link-health dots, and the chip row. The two safety-
-   * relevant facts — link phase and access tier — are pinned chips that never
-   * scroll out of view; everything else rides a horizontally-scrolling strip
-   * so a phone never gets page-level horizontal overflow.
-   *
-   * Everything here reads machine.* (and the catalog's own role-tagged
-   * fields) plus the browser's own theme, never a device fact that
-   * isn't something the machine actually sent.
+   * Constraints:
+   * - Never claims a healthier link than machine.link.phase reports (Ground
+   *   Truth Doctrine). The phase chip is the one live indicator; a dead link
+   *   and a link error are said in words by TopStrip's status slot, never as
+   *   a line added here.
+   * - Phase and tier are the last chips to shed at any width.
+   * - Shell shading (--shell-*) applies only when `shell` is set; the served
+   *   page has no shell chrome.
+   * - Reads machine.* and the catalog's own role-tagged fields, never a
+   *   device fact the machine did not send.
    */
   import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
@@ -28,6 +23,9 @@
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
+
+  // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
+  let { shell: Shell = null } = $props();
 
   /** Presentation only — every phase machine.link.phase can actually be. */
   const PHASE = {
@@ -246,112 +244,81 @@
   });
 </script>
 
-<header class="linkbar">
-  <!-- Registration crosshair, decorative. Anchored to this bar, not the
-       viewport, so it never draws over the shell row above it. -->
-  <svg class="crosshair" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M7 0v14M0 7h14"/>
-    <circle cx="7" cy="7" r="2.5"/>
-  </svg>
-  <div class="hdr-row">
-    <div class="header-left">
-      <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
-      <span class="wordmark" {title}>{title}</span>
-      <span class="link-dot tone-{phaseInfo.tone}" role="img" aria-label={'session link: ' + phaseInfo.label}></span>
-      <span class="link-dot tone-{rxTone}" role="img" aria-label={'telemetry: ' + rxToneLabel}></span>
-    </div>
-
-    <!-- ONE flat row of equal chips (OG). Phase and tier lead it because they
-         are the two safety-relevant reads and the narrow-viewport rules below
-         drop from the tail — they are the last to go, without needing a
-         separate pinned zone to say so. -->
-    <div class="chips">
-      <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
-        <span class="chip-dot"></span>{phaseInfo.label}
-      </span>
-      <span class="chip">
-        <span class="chip-lbl">tier</span>{tierLabel}
-      </span>
-      <span class="chip chip-opt" title={fwLabel ? ('firmware ' + fwLabel) : ''}>
-        <span class="chip-lbl">hub</span>
-        <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
-      </span>
-      <span class="chip chip-opt">
-        <span class="chip-lbl">catalog</span>{catalogLabel}
-      </span>
-      <span class="chip chip-opt tone-{renderTone}"
-            title="frames per second · telemetry jitter buffer · frames that outran the newest sample · rAF-vs-sample-stamp clock skew">
-        <span class="chip-lbl">render</span>
-        <span class="mono">{renderLabel}</span>
-      </span>
-      <span class="chip chip-opt-last tone-{rxTone}">
-        <span class="chip-lbl">rx</span>
-        <span class="mono">{rxAge}</span>
-      </span>
-    </div>
+<!-- "deep": empty bar space drags the undecorated shell window; buttons and
+     other clickables opt out on their own (Tauri drag.js). -->
+<header class="linkbar" class:shell={!!Shell} data-tauri-drag-region="deep">
+  <div class="header-left">
+    <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
+    <span class="wordmark" {title}>{title}</span>
   </div>
 
-  {#if !isLive}
-    <div class="banner tone-{phaseInfo.tone}" role="alert">
-      <strong>{phaseInfo.label}</strong>
-      — no hub link: nothing on this page can drive the machine right now.
-      {#if machine.link.closeReason}<span class="reason">({machine.link.closeReason})</span>{/if}
-    </div>
-  {/if}
-
-  {#if machine.link.error}
-    <!-- RFC-033: SUBSCRIBE_REJECTED (and any other link-level protocol error
-         this client causes) surfaces here, not just in the Valence pane's
-         NACK table — it means a client bug, and burying it in a list of
-         routine NACKs is how it goes unnoticed. -->
-    <div class="banner tone-bad" role="alert">
-      <strong>Link error</strong> — {machine.link.error}
-    </div>
-  {/if}
+  <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
+       shed: they are the two safety-relevant reads. The rest shed from the
+       tail, before the hub name ellipsizes. -->
+  <div class="chips pinned">
+    <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
+      <span class="chip-dot"></span>{phaseInfo.label}
+    </span>
+    <span class="chip">
+      <span class="chip-lbl">tier</span>{tierLabel}
+    </span>
+  </div>
+  <div class="chips opt">
+    <span class="chip chip-opt" title={fwLabel ? ('firmware ' + fwLabel) : ''}>
+      <span class="chip-lbl">hub</span>
+      <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
+    </span>
+    <span class="chip chip-opt">
+      <span class="chip-lbl">catalog</span>{catalogLabel}
+    </span>
+    <span class="chip chip-opt tone-{renderTone}"
+          title="frames per second · telemetry jitter buffer · frames that outran the newest sample · rAF-vs-sample-stamp clock skew">
+      <span class="chip-lbl">render</span>
+      <span class="mono">{renderLabel}</span>
+    </span>
+    <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
+      <span class="chip-lbl">rx</span>
+      <span class="mono">{rxAge}</span>
+    </span>
+  </div>
+  {#if Shell}<Shell />{/if}
 </header>
 
 <style>
-  .crosshair {
-    position: absolute;
-    top: calc(8px + var(--chrome-inset-top, 0px));
-    right: 8px;
-    width: 14px;
-    height: 14px;
-    color: var(--line-3);
-    z-index: 60;
-    pointer-events: none;
-  }
-
-  /* Positioned by its parent, TopStrip.svelte; never sticky on its own. */
+  /* Positioned by its parent, TopStrip.svelte; never sticky on its own.
+     ONE row, fixed height: nothing in it may add a line. It owns the notch
+     inset (--chrome-inset-top, style.css), the one bar that does. */
+  /* The rule under the bar is an inset shadow, not a border, so the window
+     buttons get the bar's full height. */
   .linkbar {
-    position: relative;
-    background: var(--bg-raised);
-    border-bottom: 1px solid var(--line);
-    /* Keeps the bar's content out of the status-bar/notch zone; the
-       background still paints under it. Reads the shared inset var rather
-       than env() directly — when the shell's row sits above this bar, that
-       row owns the notch and this one must not pad for it twice (style.css). */
-    padding: calc(8px + var(--chrome-inset-top, 0px)) var(--gap) 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  /* OG .hdr-row verbatim. Deliberately does NOT wrap: the linkbar is fixed
-     chrome the whole page reserves height for, so a row that grows a second
-     line silently covers content below it. The chips shed instead of wrapping
-     — see the narrow-viewport drops below. */
-  .hdr-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    height: calc(32px + var(--chrome-inset-top, 0px));
+    padding: var(--chrome-inset-top, 0px) var(--gap) 0;
+    background: var(--bg-raised);
+    box-shadow: inset 0 -1px 0 var(--line);
+  }
+  @media (pointer: coarse) {
+    .linkbar { height: calc(40px + var(--chrome-inset-top, 0px)); }
+  }
+  /* Shell chrome: the operator's window, not the machine's UI. The window
+     buttons sit flush at the right edge. */
+  .linkbar.shell {
+    padding-right: 0;
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+    box-shadow: inset 0 -1px 0 var(--shell-border);
   }
 
+  /* Shrinks after the optional chips have shed; the name ellipsizes. */
   .header-left {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 6ch;
+    overflow: hidden;
   }
 
   .act-grid {
@@ -360,7 +327,7 @@
     border-radius: 1px;
   }
 
-  /* OG .wordmark verbatim: Chakra Petch 500 at 1rem, NOT mono/700. The
+  /* OG .wordmark: Chakra Petch 500 at 1rem, NOT mono/700. The
      letter-spacing is --s-scaled so the mark tracks the global control scale
      rather than the font size. */
   .wordmark {
@@ -369,47 +336,36 @@
     font-size: 1rem;
     letter-spacing: calc(var(--s) * 1px);
     color: var(--ink-hi);
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
     white-space: nowrap;
     max-width: 18ch;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .link-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--line-2);
-    flex: 0 0 auto;
-    transition: background .2s, box-shadow .2s;
-  }
-  .link-dot.tone-good { background: var(--good); box-shadow: var(--glow-reality); }
-  .link-dot.tone-warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
-  .link-dot.tone-bad  { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
-  .link-dot.tone-dim  { background: var(--line-2); box-shadow: none; }
-
   /* ---- chips: ONE flat right-justified row ---- */
-  /* Whatever does not fit on the one line wraps below a clipped edge, so the
-     row sheds from its tail at ANY width, not only at the breakpoints below.
-     Phase and tier lead the row and are the last to go. */
   .chips {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    gap: 6px;
+  }
+  .chips.pinned { flex: none; margin-left: auto; }
+  /* Whatever does not fit on the one line wraps below a clipped edge, so the
+     optional chips shed from their tail at ANY width, first in the bar. */
+  .chips.opt {
     gap: 2em 6px;
-    margin-left: auto;
     min-width: 0;
-    flex: 0 1 auto;
+    flex: 0 1000 auto;
     flex-wrap: wrap;
     max-height: 1.5em;
     overflow: hidden;
   }
+  .chips.opt:empty { display: none; }
 
-  /* OG .chip verbatim (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every
-     chip wears these exact metrics — there is no heavier variant. A chip that
-     matters more says so with its tone color and its position in the row, not
-     by being bolder than its neighbors. */
+  /* OG .chip (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every chip
+     wears these exact metrics; a chip that matters more says so with its tone
+     and its position in the row, never by being bolder. */
   .chip {
     display: inline-flex;
     align-items: center;
@@ -430,6 +386,8 @@
     letter-spacing: .04em;
     font-size: .62rem;
   }
+  /* Shell chrome keeps 4.5:1 text (style.css --shell-*). */
+  .linkbar.shell .chip-lbl { color: var(--tx-val); }
   .chip-dot {
     width: 6px;
     height: 6px;
@@ -438,9 +396,8 @@
     flex: 0 0 auto;
   }
 
-  /* Tone rides the text color plus a tinted border, on any chip that has one.
-     The dot already carries the state; the border tint is the second,
-     non-color-dependent channel. */
+  /* Tone rides the text color plus a tinted border: the border tint is the
+     second, non-color-dependent channel. */
   .chip.tone-good { border-color: color-mix(in srgb, var(--good) 45%, var(--chip-line)); color: var(--good); }
   .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn); }
   .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad); }
@@ -448,51 +405,17 @@
   .chip.tone-warn .mono { color: var(--warn); }
   .chip.tone-bad  .mono { color: var(--bad); }
 
-  /* Narrow viewports shed chips from the tail rather than wrapping the row or
-     scrolling it. Phase and tier carry no drop class and therefore never
-     leave — they are the two facts an operator must be able to see before
-     touching anything. Marked by class, not :nth-child: a positional selector
-     silently retargets the moment a chip becomes conditional. */
+  /* Narrow viewports shed chips from the tail. Marked by class, not
+     :nth-child: a positional selector retargets when a chip turns conditional. */
   @media (max-width: 560px) {
     .chip-opt { display: none; }
   }
+  /* Phone: the heatmap (decor) goes before the name ellipsizes. */
   @media (max-width: 400px) {
     .chip-opt-last { display: none; }
-  }
-
-  .banner {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: baseline;
-    padding: 6px 8px;
-    border-radius: var(--r-s);
-    background: color-mix(in srgb, var(--bad) 12%, var(--bg-card));
-    border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
-    font-size: 12.5px;
-    color: var(--ink);
-  }
-  .banner.tone-warn {
-    background: color-mix(in srgb, var(--warn) 12%, var(--bg-card));
-    border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
-  }
-  .banner.tone-dim {
-    background: var(--bg-card);
-    border-color: var(--line);
-    color: var(--ink-dim);
-  }
-  .banner strong { text-transform: uppercase; }
-  .reason { color: var(--ink-faint); }
-
-  /* rem, never px: the wordmark tracks --s instead of pinning to one scale. */
-  @media (max-width: 400px) {
-    .wordmark { font-size: .82rem; }
-  }
-  /* Too narrow for the name on one line: the heatmap (decor) goes first,
-     then the name wraps at its spaces, never clips or widens the page. */
-  @media (max-width: 279px) {
+    .chips.opt { display: none; }
     .act-grid { display: none; }
-    .header-left { flex-shrink: 1; }
-    .wordmark { flex-shrink: 1; white-space: normal; overflow-wrap: break-word; }
+    .wordmark { font-size: .82rem; }
+    .header-left { min-width: 0; }
   }
 </style>

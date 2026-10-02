@@ -37,8 +37,8 @@ export function isDestructive(action, value) {
   return false;
 }
 
-// Verbs the persistent region draws by identity and tag (TopStrip, TransportBar,
-// the rail row); the generic trigger path never draws them a second time.
+// Verbs the persistent region draws by identity and tag (TopStrip's strip);
+// the generic trigger path never draws them a second time.
 const PERSISTENT_TAGS = new Set([ACTION_TAG.safety, ACTION_TAG.home]);
 
 export function isPersistentAction(action) {
@@ -61,6 +61,15 @@ export function settingNeedsConfirm(field, from, to) {
   return !!field && field.role === FIELD_ROLE.source_background_run && !from && !!to;
 }
 
+const firstOf = (byRole, r) => ((byRole && byRole.get(r)) || [])[0];
+const isOn = (samples, f) => { const s = f && samples[f.channelId]; return !!(s && s[f.name]); };
+
+/** The pattern generator is running with background_run on: it outlives its session. */
+export function runsOnAlone(byRole, samples) {
+  return isOn(samples, firstOf(byRole, FIELD_ROLE.pattern_running))
+    && isOn(samples, firstOf(byRole, FIELD_ROLE.source_background_run));
+}
+
 /**
  * RENDERING §10.1 rule 3: a source with background_run on is running and no
  * session owns a source. Reported values only, never a pending request.
@@ -69,16 +78,26 @@ export function settingNeedsConfirm(field, from, to) {
  */
 // ponytail: any-owner test; per-source once control sources are registry vocabulary.
 export function isUnattended(byRole, samples, ownerSample) {
-  const first = (r) => ((byRole && byRole.get(r)) || [])[0];
-  const bg = first(FIELD_ROLE.source_background_run);
-  const run = first(FIELD_ROLE.pattern_running);
-  if (!bg || !run) return false;
-  const on = (f) => { const s = samples[f.channelId]; return !!(s && s[f.name]); };
-  if (!on(bg) || !on(run)) return false;
+  if (!runsOnAlone(byRole, samples)) return false;
   for (let i = 0; ownerSample && ownerSample['owner' + i] !== undefined; i++) {
     if (ownerSample['owner' + i]) return false;
   }
   return true;
+}
+
+/**
+ * Does a source own the rail (SPEC §11.4)? A running pattern, or a
+ * control-owner slot held by a session other than `self` (this session's own
+ * point move owns a slot too). Reported values only.
+ */
+// ponytail: any foreign owner counts; per-source once source ids are registry vocabulary.
+export function railOwned(byRole, samples, ownerSample, self) {
+  if (isOn(samples, firstOf(byRole, FIELD_ROLE.pattern_running))) return true;
+  for (let i = 0; ownerSample && ownerSample['owner' + i] !== undefined; i++) {
+    const o = ownerSample['owner' + i];
+    if (o && o !== self) return true;
+  }
+  return false;
 }
 
 /**

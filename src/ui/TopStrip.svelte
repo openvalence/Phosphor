@@ -1,99 +1,74 @@
 <script>
   /**
-   * TopStrip.svelte -- the one top strip (DESIGN §10.3): the shell's row
-   * (window controls, discovery, transport; shell only), the LinkBar, and
-   * the persistent safety region. One sticky box at top 0 in both scroll
-   * modes, so there is no reserve to double-count (webui.md T22).
+   * TopStrip.svelte -- the one top strip (DESIGN §10.3): the top bar
+   * (LinkBar, with the shell's window buttons at its end) over the strip, the
+   * hero row of the persistent safety region. One sticky box at top 0 in both
+   * scroll modes, so there is no reserve to double-count (webui.md T22).
    *
-   * Discovers what to render entirely from the catalog: any INTENT action
-   * whose RFC-019 role starts with `action.safety` or `action.home` lands
-   * here, identified by role — never by channel id (CLAUDE.md 3 / the task
-   * contract). The safety-intents channel's `op` field is a single select
-   * schema field whose `.options` carries every op the hub knows (RFC-025b):
-   * each option is a distinct wire value and renders as its own button.
-   *
-   * E-STOP REACHABILITY: the strip's fixed pair is the e-stop and pause
-   * controls (RFC-085), each ONE two-state control (law 14, SafetyOp.svelte),
-   * outside the scrolling op groups at every width and in every state (law 1).
-   * This strip is the one surface stop reachability depends on; placed copies
-   * are extras. Builder edit mode must never remove the pair (DESIGN §10.3).
-   * The spec-core safety-intents channel renders NO op buttons of its own:
-   * release and resume are the pair's second states, override and return
-   * live on the rail (SPEC §11.1).
-   *
-   * GLOBAL REFUSAL SURFACE: this strip is pinned to the viewport, so it is the
-   * one place a refusal from ANY control (a settings slider, an action
-   * button, the rail's move tape — any of shadow.svelte.js's three entry
-   * points) is guaranteed to be visible even after the control that sent it
-   * has scrolled off or unmounted. `lastRefusal` + `remedyForLastRefusal()`
-   * come from shadow.svelte.js, which is also where the NACK-code -> action-
-   * role table lives (`NOT_HOMED` -> `action.home`); this component only
-   * renders it.
+   * Constraints:
+   * - NO PAGE SHIFT (operator 2026-10-02). The bar and the strip are fixed
+   *   heights that depend on the viewport only: never on the hub name, a
+   *   reason, a refusal or whether a rail is mounted. Nothing here adds a
+   *   line; a long text ellipsizes and carries its full form in `title`.
+   * - The strip: the rail's numerals left (railReadout(), the rail's own rAF
+   *   instant), ONE status slot in the middle, the controls right: the e-stop
+   *   and pause pair (law 14, SafetyOp.svelte), override/return while a rail
+   *   is mounted (SPEC §11.1), then every action.home / action.safety op the
+   *   catalog advertises (Home first). The pair never scrolls or shrinks, at
+   *   every width and in every state (law 1); placed copies are extras. Short
+   *   of width the extra ops scroll first, then the secondary numerals clip,
+   *   then override and Home scroll.
+   * - The status slot shows ONE thing, by priority: link fault, unattended
+   *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge.
+   *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
+   *   write paths, so a refusal is visible after its control has scrolled
+   *   off or unmounted; the remedy table (`NOT_HOMED` -> `action.home`) lives
+   *   there too, this file only renders it.
+   * - The safety-intents channel is found by spec-core identity
+   *   (specSafetyAction, law 2), a role tag being one more discovery path,
+   *   never the only one: a hub that never annotated it keeps its e-stop.
    */
-  import { machine, getSession, specSafetyAction } from '../model/machine.svelte.js';
+  import { machine, getSession, specSafetyAction, estopLabel, retryNow } from '../model/machine.svelte.js';
   import { runAction, lastRefusal, remedyForLastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
-  import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS } from '../../../Valence/clients/js/index.js';
+  import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS, CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
   import { optionLabel } from '../model/format.js';
-  import { needsConfirm, confirmCopy } from '../model/actions.js';
+  import { needsConfirm, confirmCopy, isUnattended } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
-  import { isUnattended } from '../model/actions.js';
-  import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
   import LinkBar from './LinkBar.svelte';
   import SafetyOp from './widgets/SafetyOp.svelte';
+  import HeroNumerals from './hero/HeroNumerals.svelte';
+  import { railReadout } from './hero/RailWidget.svelte';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
-  // switches nav. Shell: the shell's row (main.js), null on the served page.
-  let { onopenlog = null, shell: Shell = null } = $props();
-
-  const roleActions = $derived(
-    ((machine.catalog.model && machine.catalog.model.actions) || []).filter(
-      (a) => typeof a.role === 'string' && (a.role.startsWith('action.safety') || a.role.startsWith('action.home'))
-    )
-  );
-
-  /**
-   * THE E-STOP MUST NOT DEPEND ON AN OPTIONAL ANNOTATION.
-   *
-   * `action.*` roles are how DEVICE-DEFINED verbs get discovered, and that is
-   * the right mechanism for them. But safety-intents is a SPEC-CORE channel:
-   * every conforming hub has it, and RFC-025b makes its stop/estop ops
-   * role-exempt precisely so anyone connected can halt the machine. Finding it
-   * by role alone means a hub that simply never annotated it loses its e-stop
-   * button — which is what happened the first time this ran against a
-   * simulator whose catalog omitted the role. A missing garnish must never
-   * cost the emergency stop.
-   *
-   * So: locate it by its spec-core channel id (machine.svelte.js
-   * specSafetyAction), and treat any role tag as an additional discovery path
-   * rather than the only one.
-   */
-  const specSafety = $derived.by(specSafetyAction);
-
-  // De-duplicate: if the hub DID annotate its safety channel, the role-derived
-  // action and the spec-derived one are the same field.
-  const actions = $derived(
-    specSafety && !roleActions.some((a) => a.uid === specSafety.uid)
-      ? [specSafety, ...roleActions]
-      : roleActions
-  );
-  const linkUp = $derived(machine.link.phase === 'live');
-  const unattended = $derived(isUnattended(machine.catalog.model && machine.catalog.model.byRole,
-    machine.samples, machine.samples[CH_CONTROL_OWNER]));
+  // switches nav. shell: the shell's window buttons (main.js), null on the
+  // served page.
+  let { onopenlog = null, shell = null } = $props();
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
   const isHomeRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.home');
 
+  const roleActions = $derived(
+    ((machine.catalog.model && machine.catalog.model.actions) || []).filter((a) => isSafetyRole(a) || isHomeRole(a))
+  );
+  const specSafety = $derived.by(specSafetyAction);
+  // De-duplicate: an annotated safety channel is found both ways.
+  const actions = $derived(
+    specSafety && !roleActions.some((a) => a.uid === specSafety.uid) ? [specSafety, ...roleActions] : roleActions
+  );
+
+  const rail = $derived(railReadout());
+  // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
+  // and never on a hub whose op table lacks it (law 7).
+  const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
+
   // ---- latest safety edge ----------------------------------------------------
-  // The core safety-events ring only (routed by channel identity in
-  // machine.svelte.js). Stale when the link has not been live since the edge:
-  // later edges may have been missed, so the line is history, not state.
+  // The core safety-events ring only. Stale when the link has not been live
+  // since the edge: later edges may have been missed. Diagnostic and
+  // superseded records are feed-only (ph-vdk.14).
   // TODO(rfc-x3n): add the device anomaly log once the catalog can say which
   // device EVENT channel it is.
-  // ph-vdk.14: a synthesized `diagnostic` record (the client noticing a gap,
-  // never device data) and a `superseded` edge (arrived after a newer
-  // seq_of_state) are feed-only -- the summary shows the newest real edge.
   const latestSafety = $derived(
     machine.events.safety.findLast((e) => !e.diagnostic && !e.superseded) || null
   );
@@ -107,9 +82,6 @@
     const t = setInterval(() => { now = Date.now(); }, 1000);
     return () => clearInterval(t);
   });
-  function kindName(evt) {
-    return SAFETY_EVENT_KIND_NAME[evt.kind] || ('kind ' + evt.kind);
-  }
   function ageText(ms) {
     const sec = Math.max(0, Math.round(ms / 1000));
     if (sec < 60) return sec + ' s ago';
@@ -128,164 +100,158 @@
     return () => document.documentElement.style.removeProperty('--strip-h');
   });
 
-  /**
-   * Group caption from the ROLE that put the action in this strip — registry
-   * vocabulary, not device knowledge. An action here by any other role prefix
-   * falls back to its own catalog label.
-   */
-  function groupLabel(a) {
-    if (isSafetyRole(a)) return 'safety';
-    if (typeof a.role === 'string' && a.role.startsWith('action.home')) return 'home';
-    return a.label || a.name || '';
-  }
-
-  /**
-   * Presentation only: swap the hub's own '_' for a space so multi-word ops
-   * ("override_on") wrap and read naturally; CSS text-transform:capitalize
-   * does the casing. Not inventing text — this is the catalog's own label
-   * string, reformatted for display.
-   */
+  /** The hub's own '_' as a space; CSS capitalizes. Presentation only. */
   function displayLabel(label) {
     return String(label).replace(/_/g, ' ');
   }
 
-  /**
-   * The remedy for the CURRENT global refusal, if this hub advertises one.
-   * Reactive to `lastRefusal` (a new refusal anywhere in the app) and to the
-   * catalog (the action has to actually exist on THIS hub) — both reads
-   * happen inside remedyForLastRefusal() itself, which is enough for Svelte's
-   * fine-grained tracking to pick them up through this $derived.by.
-   */
+  // ---- the status slot ---------------------------------------------------------
+  const PHASE_WORD = { idle: 'idle', connecting: 'connecting', handshaking: 'handshaking', retrying: 'reconnecting',
+    failed: 'no link' };
+  const unattended = $derived(isUnattended(machine.catalog.model && machine.catalog.model.byRole,
+    machine.samples, machine.samples[CH_CONTROL_OWNER]));
+  const slot = $derived.by(() => {
+    const link = machine.link;
+    const latch = machine.safety;
+    if (link.error) return { kind: 'fault', text: 'link error: ' + link.error };
+    if (link.phase !== 'live') {
+      return { kind: 'fault', text: (PHASE_WORD[link.phase] || link.phase) + ': no hub link, nothing here can drive '
+        + 'the machine' + (link.closeReason ? ' (' + link.closeReason + ')' : '') };
+    }
+    if (unattended) return { kind: 'unattended', text: 'unattended: moving with no session in control' };
+    if (lastRefusal.at) return { kind: 'refusal' };
+    if (latch && latch.estopLatched) return { kind: 'notice', text: 'halted: hold ' + estopLabel() + ' 3 s to release' };
+    if (latch && latch.override) return { kind: 'notice', text: 'override: jog over the whole travel, Return when done' };
+    if (latch && latch.paused) {
+      return { kind: 'notice', text: latch.homeRequired ? 'paused: home required' : 'paused: resume to continue' };
+    }
+    if (latestSafety) return { kind: 'edge' };
+    return { kind: 'idle' };
+  });
+  const refusalText = $derived('refused: ' + lastRefusal.codeName + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
+  const refusalTitle = $derived(refusalText + (lastRefusal.detail ? ' · ' + lastRefusal.detail : ''));
+  const edgeText = $derived(latestSafety
+    ? displayLabel(SAFETY_EVENT_KIND_NAME[latestSafety.kind] || ('kind ' + latestSafety.kind)) : '');
+
   const remedy = $derived.by(() => remedyForLastRefusal());
   let remedyBusy = $state(false);
-
   async function fireRemedy() {
     if (!remedy) return;
     remedyBusy = true;
     const result = await runAction(remedy.action, remedy.op);
     remedyBusy = false;
-    // Ground truth: only clear the banner once the ECHO confirms the remedy
-    // was actually applied — never optimistically on the mere act of tapping.
+    // Cleared on the ECHO of the remedy, never on the tap.
     if (result.ok) clearLastRefusal();
   }
 
+  // ---- the ops -----------------------------------------------------------------
   /** May THIS session fire this exact op, per the catalog's own access data? */
   function canFire(action, value) {
-    // Reading these keeps the check reactive to auth/catalog changes even
-    // though the session object itself lives outside Svelte's reactivity.
+    // These reads keep the check reactive; the session lives outside Svelte.
     void machine.link.roles; void machine.link.phase; void machine.catalog.ready;
     const session = getSession();
     return !!session && session.isLive && session.canUse(action.channelId, action.key, value);
   }
-
   function reasonFor(action, value) {
-    if (!linkUp) return 'no hub link';
+    if (machine.link.phase !== 'live') return 'no hub link';
     if (!canFire(action, value)) return 'this session is not authorized for this op';
     return '';
   }
 
-  let busy = $state({});
-  let lastResult = $state(null); // { ok, label, error, at } — this strip's OWN last press
-
-  async function fire(action, value, label, btnKey) {
-    if (needsConfirm(action, value) && !(await askConfirm(confirmCopy(action, value)))) return;
-    busy = { ...busy, [btnKey]: true };
-    const result = await runAction(action, value);
-    busy = { ...busy, [btnKey]: false };
-    lastResult = { ok: result.ok, label, error: result.error || null, at: Date.now() };
-    // The global refusal banner is driven by shadow.svelte.js's `lastRefusal`
-    // — runAction() already updated it on failure, so there is nothing left
-    // to do here for that surface.
-  }
-
   /**
-   * Order by the access each op REQUIRES, lowest first (option_access, the
-   * same data the hub gates on), so exempt ops lead on every hub.
-   *
-   * WIRE VALUE 0 IS NOT RENDERED. RFC-034 (registry.yaml `field_roles`
-   * doctrine) is normative: for a select field carrying an `action.*` role,
-   * value 0 is NEVER an operation — every op table numbers its real ops from
-   * 1, and 0 exists only to keep the option array index-aligned. This strip
-   * used to gray it instead (an index-completeness argument borrowed from
-   * listbox semantics), which put a permanently dead button labeled
-   * "reserved" in the operator's face — a wire-format alignment artifact
-   * rendered as chrome. Operator ruling 2026-07-28: drop it. These are
-   * buttons, not an index-addressed listbox; nothing an operator can do
-   * refers to option INDEX, so omitting the placeholder loses nothing.
-   * Real ops a session merely lacks access to stay GRAYED, never hidden —
-   * that doctrine is unchanged.
-   *
-   * The spec-core safety-intents channel draws nothing here: every op it
-   * carries is half of a pair rendered elsewhere (law 14). Home renders in
-   * TransportBar. `force_home` is dev-only and stays here, unfiltered, until a
-   * dev affordance exists to hide it properly.
+   * One button per op, lowest required access first (option_access, the
+   * data the hub gates on), Home leading. Wire value 0 is never an op
+   * (RFC-034): every op table numbers real ops from 1. Ops a session lacks
+   * access to stay GRAYED, never hidden. The spec-core safety-intents
+   * channel draws nothing here: its ops are halves of the pairs (law 14).
    */
-  function optionButtons(action) {
-    if (action.channelId === CH_SAFETY_INTENTS) return [];
-    const floor = action.access | 0;
-    const accessOf = (i) => {
-      const a = action.optionAccess && action.optionAccess[i];
-      return a == null ? floor : a;
-    };
-    return (action.options || [])
-      .map((label, i) => ({ label: label || String(i), value: i, access: accessOf(i) }))
-      .filter((o) => o.value !== 0)
-      .filter((o) => !(isHomeRole(action) && o.value === HOME_OP.home))
-      .sort((a, b) => a.access - b.access);
-  }
+  const ops = $derived.by(() => {
+    const out = [];
+    for (const action of [...actions].sort((a, b) => isHomeRole(b) - isHomeRole(a))) {
+      if (action.channelId === CH_SAFETY_INTENTS) continue;
+      if (!(action.options && action.options.length)) {
+        out.push({ action, value: 1, label: action.label, key: action.uid });
+        continue;
+      }
+      const floor = action.access | 0;
+      const accessOf = (i) => (action.optionAccess && action.optionAccess[i] != null ? action.optionAccess[i] : floor);
+      action.options
+        .map((label, i) => ({ action, value: i, label: label || String(i), access: accessOf(i), key: action.uid + ':' + i }))
+        .filter((o) => o.value !== 0)
+        .sort((a, b) => a.access - b.access)
+        .forEach((o) => out.push(o));
+    }
+    return out;
+  });
 
+  // Home proper rides beside override; force_home and the rest are extras.
+  const isHome = (o) => isHomeRole(o.action) && o.value === HOME_OP.home;
+
+  let busy = $state({});
+  async function fire(op) {
+    if (needsConfirm(op.action, op.value) && !(await askConfirm(confirmCopy(op.action, op.value)))) return;
+    busy = { ...busy, [op.key]: true };
+    await runAction(op.action, op.value);
+    busy = { ...busy, [op.key]: false };
+  }
 </script>
 
-<!-- "deep": empty strip space drags the undecorated shell window; buttons
-     and other clickables opt out on their own (Tauri drag.js). -->
-<div class="topstrip" data-tauri-drag-region="deep" bind:offsetHeight={stripH}>
-  {#if Shell}<Shell />{/if}
-  <LinkBar />
-  <div class="safety" role="group" aria-label="Safety controls">
-    {#if unattended}
-      <!-- RENDERING §10.1 rule 3: moving with nobody attached is shown in words,
-           never inferred. Clears when a session owns a source again. -->
-      <div class="unattended" role="status">Unattended: moving with no session in control</div>
-    {/if}
-    {#if lastRefusal.code != null}
-      <!-- THE GLOBAL REFUSAL SURFACE. Any of shadow.svelte.js's three write
-           paths — a settings slider, an action button, the rail's move tape —
-           lands here the instant the hub refuses it, whether or not the
-           control that sent it is still on screen (CLAUDE.md 3, Ground Truth
-           Doctrine: a swallowed refusal misrepresents machine state). The
-           remedy button only appears when THIS hub's catalog actually
-           advertises the action that clears it. -->
-      <div class="recovery" role="alert">
-        <span>
-          refused{lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''}:
-          {lastRefusal.codeName}{lastRefusal.detail ? ' — ' + lastRefusal.detail : ''}
-        </span>
-        {#if remedy}
-          <button
-            type="button"
-            class="btn recover"
-            disabled={!canFire(remedy.action, remedy.op)}
-            title={reasonFor(remedy.action, remedy.op)}
-            onclick={fireRemedy}
-          >
-            {remedyBusy ? '…' : 'Fix: ' + optionLabel(remedy.action, remedy.op)}
-          </button>
-        {/if}
-      </div>
-    {/if}
+{#snippet opButton(op)}
+  <button type="button" class="btn" disabled={!canFire(op.action, op.value)}
+          title={reasonFor(op.action, op.value) || op.label} onclick={() => fire(op)}>
+    <span class="lbl">{busy[op.key] ? '…' : displayLabel(op.label)}</span>
+  </button>
+{/snippet}
 
-    {#if latestSafety}
-      <!-- Tier-1 anomaly surface: the latest safety edge, its age, and how many
-           arrived unread. Opens the Safety feed (LogPane), which is the history. -->
-      <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
-              title={safetyStale ? 'stale: the link has not been live since this edge, later edges may be missing'
-                                 : 'open the safety event history'}>
-        <span class="evkind">{displayLabel(kindName(latestSafety))}</span>
-        <span class="evage">{ageText(now - latestSafety.at)}</span>
-        {#if safetyStale}<span class="evtag">stale</span>{/if}
-        {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
-      </button>
-    {/if}
+<div class="topstrip" bind:offsetHeight={stripH}>
+  <LinkBar {shell} />
+  <div class="strip" role="group" aria-label="Safety controls">
+    <div class="nums">
+      {#if rail && rail.posField}
+        <HeroNumerals
+          posField={rail.posField} velField={rail.velField} targetField={rail.targetField}
+          posVal={rail.posVal} speedVal={rail.speedVal} targetVal={rail.targetVal}
+          moving={rail.moving} fresh={rail.fresh} targetFresh={rail.targetFresh}
+          extentHi={rail.extentHi}
+        />
+      {/if}
+    </div>
+
+    <div class="status" data-kind={slot.kind}>
+      {#if slot.kind === 'refusal'}
+        <!-- The text is its own dismiss button: one target, no extra width. -->
+        <div class="recovery" role="alert">
+          <button type="button" class="st-dismiss" title={refusalTitle + ' (tap to dismiss)'}
+                  onclick={clearLastRefusal}>
+            <span class="st-text">{refusalText}</span><span class="st-x" aria-hidden="true">×</span>
+          </button>
+          {#if remedy}
+            <button type="button" class="btn recover" disabled={!canFire(remedy.action, remedy.op)}
+                    title={reasonFor(remedy.action, remedy.op)} onclick={fireRemedy}>
+              {remedyBusy ? '…' : 'Fix: ' + optionLabel(remedy.action, remedy.op)}
+            </button>
+          {/if}
+        </div>
+      {:else if slot.kind === 'edge'}
+        <!-- The latest safety edge, its age and unread count; opens the
+             Safety feed (LogPane). Dimmed AND worded when stale (laws 5, 8). -->
+        <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
+                title={edgeText + ', ' + ageText(now - latestSafety.at) + (unreadSafety ? ', ' + unreadSafety + ' new' : '')
+                  + (safetyStale ? ' (stale: the link has not been live since this edge, later edges may be missing)'
+                                 : ': open the safety event history')}>
+          <span class="evkind">{edgeText}</span>
+          <span class="evage">{ageText(now - latestSafety.at)}</span>
+          {#if safetyStale}<span class="evtag">stale</span>{/if}
+          {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
+        </button>
+      {:else if slot.text}
+        <span class="st-text" class:unattended={slot.kind === 'unattended'}
+              role={slot.kind === 'notice' ? 'status' : 'alert'} title={slot.text}>{slot.text}</span>
+        {#if slot.kind === 'fault' && (machine.link.phase === 'retrying' || machine.link.phase === 'failed')}
+          <button type="button" class="btn" onclick={retryNow}>Retry now</button>
+        {/if}
+      {/if}
+    </div>
 
     <div class="dock">
       <!-- Bound by spec-core identity alone (law 2), never by a role tag. -->
@@ -293,58 +259,13 @@
         <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
         <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
       </div>
-
-      {#if !machine.catalog.ready}
-        <p class="empty">No catalog yet.</p>
-      {:else if !actions.length}
-        <p class="empty">This hub advertises no safety or home actions.</p>
-      {:else}
-        <div class="groups">
-          {#each actions as action (action.uid)}
-            {#if action.options && action.options.length}
-              {@const opts = optionButtons(action)}
-              {#if opts.length}
-                <div class="grp">
-                  <span class="grp-lbl">{groupLabel(action)}</span>
-                  <div class="grp-btns">
-                    {#each opts as opt (action.uid + ':' + opt.value)}
-                      {@const key = action.uid + ':' + opt.value}
-                      <button
-                        type="button"
-                        class="btn"
-                        disabled={!canFire(action, opt.value)}
-                        title={reasonFor(action, opt.value) || opt.label}
-                        onclick={() => fire(action, opt.value, opt.label, key)}
-                      >
-                        <span class="lbl">{busy[key] ? '…' : displayLabel(opt.label)}</span>
-                      </button>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {:else}
-              <div class="grp">
-                <span class="grp-lbl">{groupLabel(action)}</span>
-                <div class="grp-btns">
-                  <button
-                    type="button"
-                    class="btn"
-                    disabled={!canFire(action, 1)}
-                    title={reasonFor(action, 1) || action.label}
-                    onclick={() => fire(action, 1, action.label, action.uid)}
-                  >
-                    <span class="lbl">{busy[action.uid] ? '…' : displayLabel(action.label)}</span>
-                  </button>
-                </div>
-              </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-
-      {#if lastResult && !lastResult.ok}
-        <p class="err" role="status">refused ({lastResult.label}): {lastResult.error}</p>
-      {/if}
+      <div class="ops main">
+        {#if hasOverride}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
+        {#each ops.filter(isHome) as op (op.key)}{@render opButton(op)}{/each}
+      </div>
+      <div class="ops extra">
+        {#each ops.filter((o) => !isHome(o)) as op (op.key)}{@render opButton(op)}{/each}
+      </div>
     </div>
   </div>
 </div>
@@ -363,77 +284,120 @@
     background: var(--bg-raised);
     border-bottom: 1px solid var(--line);
   }
-  .safety {
+
+  /* ---- the strip: fixed height from the viewport alone ----------------------
+     --num-h mirrors HeroNumerals' primary clamp (.hn-primary .hn-val, line
+     height .95, plus its label line): change both together. */
+  .strip {
+    --num-h: calc(clamp(54px, 6.2vw, 80px) * .95 + 20px);
+    display: flex;
+    align-items: center;
+    gap: 6px 12px;
+    height: calc(max(var(--num-h), var(--tap)) + 12px);
     padding: 6px var(--gap);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    overflow: hidden;
+  }
+  @media (max-width: 1023px) {
+    .strip { --num-h: calc(clamp(42px, 8.5vw, 54px) * .95 + 20px); }
+  }
+  /* Phone: the primary numeral and the status on one row, the controls on
+     a second the grid guarantees (a wrapping flex row once pushed the pair
+     onto a third, clipped line). */
+  @media (max-width: 759px) {
+    .strip {
+      display: grid;
+      grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
+      height: calc(var(--num-h) + 6px + var(--tap) + 12px);
+    }
+    .nums { grid-area: num; }
+    .status { grid-area: status; align-self: center; }
+    .strip .dock { grid-area: dock; display: flex; gap: 6px; min-width: 0; }
+  }
+  /* Watch-sized: no room beside the numeral. A current condition covers
+     the numeral in its own cell; the edge history stays in the Log. */
+  @media (max-width: 300px) {
+    .strip { grid-template-columns: minmax(0, 1fr); grid-template-areas: "num" "dock"; }
+    .strip .status { grid-area: num; z-index: 1; justify-content: flex-start; background: var(--bg-raised); }
+    .strip .status:is([data-kind=idle], [data-kind=edge]) { display: none; }
   }
 
-  .unattended {
-    padding: 4px 8px;
-    border: 1px solid var(--warn);
-    color: var(--warn);
-    font-size: .8rem;
+  /* The secondary numerals wrap below the primary and clip rather than grow
+     the strip; the primary is the cell's minimum width. */
+  /* Shrink order on one row, by weight: extra ops, then the secondary
+     numerals, then override and Home. The pair never shrinks. */
+  .nums {
+    flex: 0 10 auto;
+    height: var(--num-h);
+    overflow: clip;
   }
-  .dock {
-    display: flex;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
-  .pair {
-    flex: 0 0 auto;
-    display: flex;
-    gap: 6px;
+  .nums :global(.hn-label) { white-space: nowrap; }
+  /* Proportional shrink would clip a whole numeral for a few px of extra
+     ops; wide enough that every numeral fits beside the pair, they never
+     shrink and only the extra ops give. */
+  @media (min-width: 1440px) {
+    .nums { flex-shrink: 0; }
   }
 
-  /* ---- op groups: labeled clusters, one scrolling row --------------------
-     ONE ROW, always. A wrapping strip grows as the machine advertises more
-     ops, and a strip that grows downward covers the page. Scrolling keeps the
-     height constant; the e-stop sits outside this scroll area entirely. */
-  .groups {
+  .status {
+    flex: 1 1 0;
+    min-width: min(240px, 25%);
+    overflow: hidden;
     display: flex;
-    align-items: flex-end;
-    gap: 14px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    font-size: 12.5px;
+  }
+  /* Two lines at most, inside the slot's fixed box. */
+  .st-text {
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+    color: var(--ink-dim);
+  }
+  [data-kind='fault'] .st-text, .recovery .st-text { color: var(--bad); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn); }
+
+  .recovery {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
   }
-  .groups::-webkit-scrollbar { display: none; }
 
-  .grp {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .grp-lbl {
-    /* OG .pidx-label voice (CSS-diff audit 2026-07-29): quiet mono, no
-       uppercase shouting — the label is a waypoint, not a heading. */
-    font-family: var(--mono);
-    font-size: .62rem;
-    letter-spacing: .08em;
-    color: var(--tx-faint);
-    padding-left: 1px;
-  }
-  .grp-btns {
+  .dock { display: contents; }
+  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
+  .pair {
+    flex: none;
     display: flex;
     gap: 6px;
   }
+  /* ONE row that scrolls, never wraps: the e-stop sits outside it. */
+  .ops {
+    flex: 0 1 auto;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ops.extra { flex-shrink: 1000; }
+  .ops:empty { display: none; }
+  .ops::-webkit-scrollbar { display: none; }
 
   .btn {
-    /* Never shrink: flex would otherwise squeeze the labels and clip them
-       mid-word ("estop_cle"). */
+    /* Never shrink: flex would clip the labels mid-word. */
     flex: 0 0 auto;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0;
-    min-height: 36px;
-    min-width: 56px;
+    min-height: var(--tap);
+    min-width: max(var(--tap), 56px);
     padding: 0 12px;
     background: transparent;
     border: 1px solid var(--line-2);
@@ -444,35 +408,12 @@
     white-space: nowrap;
     transition: border-color .12s, color .12s;
   }
-  @media (pointer: coarse) {
-    .btn { min-height: 40px; }
-  }
-  /* Short screens (landscape phone, laptop window): the group labels are
-     waypoints and the buttons carry their own names, so the strip gives the
-     labels' row back to the page. */
-  @media (max-height: 500px), (min-width: 960px) and (max-height: 860px) {
-    .grp-lbl { display: none; }
-  }
   .btn:disabled { opacity: 0.4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .btn:not(:disabled):active { border-color: var(--reality); color: var(--reality); }
-
-  /* Labels are the hub's own catalog strings: capitalize is presentation
-     only (see displayLabel()), never a hardcoded string. */
+  /* Labels are the hub's own catalog strings: capitalize is presentation. */
   .btn .lbl { text-transform: capitalize; }
 
-  .recovery {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-radius: var(--r-s);
-    background: color-mix(in srgb, var(--bad) 14%, var(--bg-card));
-    border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line));
-    font-size: 12.5px;
-    color: var(--ink);
-  }
   .btn.recover {
     background: var(--bad);
     border-color: var(--bad);
@@ -480,56 +421,45 @@
     font-weight: 700;
   }
   .btn.recover:disabled { opacity: 0.5; }
-
-  .empty {
-    align-self: center;
-    font-size: 12.5px;
-    color: var(--ink-faint);
-    margin: 0;
+  .st-dismiss {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: var(--tap);
+    padding: 0 4px;
+    text-align: left;
+    border-radius: var(--r-s);
   }
+  .st-dismiss:hover { background: var(--line-soft); }
+  .st-x { flex: none; font-size: 1rem; color: var(--ink-dim); }
 
-  /* ---- latest safety edge ---------------------------------------------------
-     One line, never a second row of buttons. Dimmed AND worded when stale
-     (law 8; law 5: never color alone). */
   .evline {
-    align-self: flex-start;
+    min-width: 0;
     max-width: 100%;
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 28px;
+    min-height: var(--tap);
     padding: 0 8px;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     font-size: 12px;
     color: var(--ink);
-    text-align: left;
-    min-width: 0;
-    flex-wrap: wrap;
-    row-gap: 2px;
+    overflow: hidden;
+    white-space: nowrap;
     transition: border-color .12s;
-  }
-  @media (pointer: coarse) {
-    .evline { min-height: 40px; }
   }
   .evline:hover { border-color: var(--line-4); }
   .evline.stale { opacity: .55; }
-  .evkind { text-transform: capitalize; white-space: nowrap; }
-  .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); white-space: nowrap; }
+  .evkind { text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; }
+  .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); }
   .evtag {
     font-family: var(--mono);
     font-size: 11px;
     color: var(--ink-dim);
     border: 1px solid var(--line-2);
     padding: 0 5px;
-    white-space: nowrap;
-  }
-
-  .err {
-    margin: 0;
-    align-self: center;
-    font-size: 12px;
-    color: var(--bad);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -55,7 +55,7 @@
   --screen:    #040507;   /* original name, same surface */
   --chip:      #111318;   /* original name, same surface */
 
-  /* ---- shell chrome (src/shell: the Tauri row and its drawer) ----
+  /* ---- shell chrome (the top bar in the shell; the sidebar's Phosphor section) ----
      Shell-only: never on hub-rendered content, so the boundary between the
      operator's window and the machine's UI reads at a glance. Darker than
      every content surface; the chassis is already near black, so the
@@ -136,12 +136,10 @@
   --num-wght: 400;
 
   /* Edge-to-edge devices (index.html sets viewport-fit=cover): the status
-     bar / notch overlaps the viewport, and exactly ONE bar — whichever is
-     topmost — absorbs that inset so content clears it. The LinkBar owns it
-     by default; when the Tauri shell's row sits ABOVE the LinkBar in the top
-     strip, ShellStrip takes ownership and zeroes this. Do not read
-     env(safe-area-inset-top) anywhere else: two bars padding for the same
-     notch is the double-gap bug. */
+     bar / notch overlaps the viewport, and exactly ONE bar, the topmost,
+     absorbs that inset so content clears it: the top bar (ui/LinkBar.svelte).
+     Do not read env(safe-area-inset-top) anywhere else: two bars padding for
+     the same notch is the double-gap bug. */
   --chrome-inset-top: env(safe-area-inset-top, 0px);
 
   color-scheme: dark;

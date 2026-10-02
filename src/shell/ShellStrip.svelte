@@ -1,394 +1,187 @@
 <script>
   /**
-   * ShellStrip.svelte -- the Tauri shell's row of the top strip: the drawer
-   * handle, the link state, the window controls, and the drawer
-   * (Drawer.svelte) whose Hubs pane carries discovery and transport. SHELL
-   * ONLY (main.js hands it to App, which hands it to TopStrip; never in the
-   * embedded bundle).
+   * ShellStrip.svelte -- the shell's end of the top bar (ui/LinkBar.svelte):
+   * a BLE chip while the session rides BLE, then the window buttons, and the
+   * close gate's popover under the X. SHELL ONLY: main.js hands it to App,
+   * App to TopStrip, TopStrip to LinkBar; never in the embedded bundle.
+   * Discovery and transport live in hubs.svelte.js, the panes in the
+   * sidebar's Phosphor section (panes.js).
    *
    * Constraints:
-   * - This is SHELL chrome, not kernel UI: it may know about transports and
-   *   addresses. It must NEVER touch machine state — it only picks which
-   *   transport the one kernel session rides (DOCTRINE: everything through
-   *   Valence).
-   * - BLE sessions have no HTTP sideband, so no /uitoken: they land at watch
-   *   tier by design. Control arrives with the WS upgrade.
-   * - A live BLE session hops to WS once, automatically, when WELCOME offers
-   *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
-   *   opens, and falls back to BLE if the WS session is not live in time.
-   * - The drawer closes on click, never on pointerdown: closing moves the
-   *   safety pair up, and a control that moves between press and release
-   *   loses the click, or the e-stop's release hold.
+   * - Shell chrome, not kernel UI: it never touches machine state.
+   * - decorations:false applies to desktop only; a phone shell has no frame
+   *   to replace, so it gets no window buttons.
+   * - The bar around it is the drag region; these buttons opt out on their
+   *   own (Tauri drag.js).
+   * - Close: the X and every OS close request open ONE popover (RENDERING §9
+   *   overlay: it covers, never shifts); only a held Close quits
+   *   (close-confirm.js). Never red: law 13 keeps red for hazards.
    */
-  import { untrack } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
-  import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
-  import { machine, connect, disconnect } from '../model/machine.svelte.js';
-  import HostEntry from '../ui/HostEntry.svelte';
-  import Drawer from './Drawer.svelte';
-  import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
-  import { advFlags, upgradeTarget } from './ble-adv.js';
+  import { invoke } from '@tauri-apps/api/core';
+  import { hubs } from './hubs.svelte.js';
+  import { machine } from '../model/machine.svelte.js';
+  import { runsOnAlone } from '../model/actions.js';
+  import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
+  import { createCloseGate, closeConsequences, HOLD_MS } from './close-confirm.js';
 
-  let scanning = $state(false);
-  let hubs = $state([]);
-  let finding = $state(false);
-  let found = $state([]);
-  // This row is the topmost thing in the strip, so it owns the notch inset
-  // and the LinkBar below it must not pad for the same inset again (T22).
-  $effect(() => {
-    const root = document.documentElement.style;
-    root.setProperty('--chrome-inset-top', '0px');
-    return () => root.removeProperty('--chrome-inset-top');
-  });
-  // decorations:false applies to desktop only; a phone shell has no frame to
-  // replace, so it gets no window controls.
   const win = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM) ? null : getCurrentWindow();
-  // No baked-in address: discovery is the front door. The input remembers
-  // only a host the operator themselves connected to before.
-  const manualHost = localStorage.getItem('shell_host') || '';
-  let mode = $state(localStorage.getItem('shell_mode') || 'ws');
-  let note = $state('');
 
-  // First run (no remembered hub) opens on the Hubs pane: discovery is the
-  // front door. After that the operator's last choice wins.
-  const DRAWER_KEY = 'shell_drawer';
-  let open = $state(storedOpen());
-  function storedOpen() {
-    try { const v = localStorage.getItem(DRAWER_KEY); return v == null ? !manualHost : v === '1'; } catch (e) { return false; }
+  let asking = $state(false);
+  let holding = $state(false);
+  let serverRunning = $state(false);
+  let winEl = $state(null);
+  let xEl = $state(null);
+  let holdEl = $state(null);
+
+  function ask() {
+    asking = true;
+    serverRunning = false;
+    invoke('bp_status').then((st) => { serverRunning = !!(st && st.running); }).catch(() => {});
   }
-  function setOpen(v) {
-    open = v;
-    try { localStorage.setItem(DRAWER_KEY, v ? '1' : '0'); } catch (e) { /* private mode: a convenience */ }
-  }
-  let shellEl = $state(null);
-  let handleEl = $state(null);
-  function onWindowKey(e) {
-    if (e.key !== 'Escape' || !open) return;
-    const had = shellEl.contains(document.activeElement);
-    setOpen(false);
-    if (had) handleEl.focus();
-  }
-  // composedPath, not contains(): a click that re-renders its own target
-  // (a picked hub leaves the list) has detached it by the time this runs.
-  function onDocClick(e) {
-    if (open && !e.composedPath().includes(shellEl)) setOpen(false);
+  const gate = win ? createCloseGate(win, ask) : null;
+  $effect(() => () => gate && gate.dispose());
+  $effect(() => { if (asking && holdEl) holdEl.focus(); });
+
+  function dismiss(refocus) {
+    if (gate) gate.release();
+    holding = false;
+    asking = false;
+    if (refocus && xEl) xEl.focus();
   }
 
-  const phase = $derived(machine.link.phase);
-  const endpoint = $derived(machine.link.endpoint || null);
-
-  // BLE wire counters, polled — bleStats is a plain module object (the bridge
-  // is not reactive code), so a 1 Hz sample into $state is the honest view.
-  let stats = $state('');
-  $effect(() => {
-    if (mode !== 'ble') { stats = ''; return; }
-    const t = setInterval(() => {
-      stats = 'rx ' + bleStats.rx + ' tx ' + bleStats.tx
-        + (bleStats.mtu ? ' mtu ' + bleStats.mtu + (bleStats.mtu < MTU_FLOOR ? ' (<' + MTU_FLOOR + ')' : '') : '')
-        + (bleStats.lastError ? ' err ' + bleStats.lastError : '');
-    }, 1000);
-    return () => clearInterval(t);
-  });
-  // The scan hit a BLE session rides: its flags gate the upgrade, and it is
-  // what a failed upgrade falls back to.
-  let bleDev = $state(null);
-  const target = $derived(
-    upgradeTarget({ mode, phase, endpoint, adv: bleDev && advFlags(bleDev) })
-  );
-  // Plain, not $state: one automatic attempt per operator-chosen BLE connect,
-  // so a fallback cannot loop. The manual button stays for a retry.
-  let upgradeTried = false;
-  $effect(() => {
-    if (target && !upgradeTried) {
-      upgradeTried = true;
-      untrack(() => upgrade());
-    }
-  });
-
-  // SPEC 13.8 UDP discovery, the WS-side front door (DESIGN.md;
-  // operator ruling 2026-07-28). The Rust command owns the socket and the dedupe;
-  // this only renders candidates and hands a click to connectWs.
-  const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
-  async function findHubs() {
-    if (finding) return;
-    finding = true;
-    note = '';
-    found = [];
-    try {
-      found = await invoke('discover_hubs', { timeoutMs: 2500 });
-      if (found.length === 0) note = 'no hubs answered on UDP ' + DISCOVERY_PORT;
-    } catch (e) {
-      note = 'discovery failed: ' + e;
-    } finally {
-      finding = false;
-    }
-  }
-  // Discovery is the front door: with no remembered hub there is nothing else
-  // to try, so probe once at mount.
-  if (!manualHost) findHubs();
-
-  async function scan() {
-    if (scanning) { await stopScan().catch(() => {}); scanning = false; return; }
-    note = '';
-    hubs = [];
-    try {
-      await checkPermissions(true);
-      scanning = true;
-      await startScan((devices) => {
-        // A Valence hub advertises the service UUID in its primary payload
-        // (fw: ValenceBlePort). Match on that, never on the name.
-        hubs = devices.filter((d) =>
-          (d.services || []).some((s) => String(s).toLowerCase() === BLE_SERVICE));
-      }, 6000);
-      setTimeout(() => { scanning = false; }, 6100);
-    } catch (e) {
-      scanning = false;
-      note = 'scan failed: ' + e;
-    }
-  }
-
-  function pickBle(dev) {
-    upgradeTried = false;
-    connectBle(dev);
-  }
-
-  async function connectBle(dev) {
-    // Never GATT-connect with a scan still running: Android's stack handles
-    // it badly, and the scan has done its job the moment a hub is chosen.
-    if (scanning) { await stopScan().catch(() => {}); scanning = false; }
-    disconnect();
-    bleDev = dev;
-    mode = 'ble';
-    localStorage.setItem('shell_mode', 'ble');
-    note = 'BLE → ' + (dev.name || dev.address) + ' (watch tier until WS upgrade)';
-    connect({ host: dev.address, bleName: dev.name, WebSocketImpl: makeBleWebSocket(dev.address) });
-  }
-
-  function connectWs(host, port) {
-    if (!host || !host.trim()) { note = 'enter a hub address or scan'; return; }
-    host = host.trim();
-    disconnect();
-    mode = 'ws';
-    localStorage.setItem('shell_mode', 'ws');
-    localStorage.setItem('shell_host', host);
-    note = '';
-    connect({ host, port: port || 82 });
-  }
-
-  const WS_PROBE_MS = 3000;
-  const WS_LIVE_MS = 8000;
-
-  // Opens and closes a bare socket: proves the endpoint answers before the
-  // live BLE session is touched.
-  function wsReachable(host, port) {
-    return new Promise((resolve) => {
-      let ws = null;
-      const done = (ok) => {
-        clearTimeout(timer);
-        try { ws?.close(); } catch (e) { /* already closed */ }
-        resolve(ok);
-      };
-      const timer = setTimeout(() => done(false), WS_PROBE_MS);
-      try { ws = new WebSocket('ws://' + host + ':' + port + '/', [WS_SUBPROTOCOL]); } catch (e) { done(false); return; }
-      ws.onopen = () => done(true);
-      ws.onerror = () => done(false);
-    });
-  }
-
-  async function untilLive(ms) {
-    for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 100))) {
-      if (machine.link.phase === 'live') return true;
+  const ownsSource = $derived.by(() => {
+    const o = machine.samples[CH_CONTROL_OWNER];
+    for (let i = 0; o && o['owner' + i] !== undefined; i++) {
+      if (o['owner' + i] && o['owner' + i] === machine.link.sessionId) return true;
     }
     return false;
-  }
+  });
+  const lines = $derived(closeConsequences({
+    runsOnAlone: runsOnAlone(machine.catalog.model && machine.catalog.model.byRole, machine.samples),
+    ownsSource, serverRunning,
+  }));
 
-  // Same instance_id on the new transport (the session client persists it),
-  // so the hub treats the HELLO as a migration (SPEC 6.3), not a newcomer.
-  let upgrading = false;
-  async function upgrade() {
-    const t = target, dev = bleDev;
-    if (!t || !dev || upgrading) return;
-    upgrading = true;
-    try { await hop(t, dev); } finally { upgrading = false; }
+  function start() { holding = true; gate.hold(); }
+  function stop() { holding = false; gate.release(); }
+  function onkeydown(e) {
+    if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
   }
-
-  async function hop(t, dev) {
-    const url = 'ws://' + t.host + ':' + t.port;
-    note = 'probing ' + url;
-    if (!(await wsReachable(t.host, t.port))) { note = url + ' unreachable, staying on BLE'; return; }
-    holdForMigration();
-    connectWs(t.host, t.port);
-    const live = await untilLive(WS_LIVE_MS);
-    await releaseHeld();
-    if (live) { note = 'upgraded → ' + url; return; }
-    note = 'WS upgrade failed, back on BLE';
-    connectBle(dev);
+  function onkeyup(e) {
+    if (e.key === 'Enter' || e.key === ' ') stop();
+  }
+  function onWindowKey(e) {
+    if (e.key === 'Escape' && asking) dismiss(winEl.contains(document.activeElement));
+  }
+  // composedPath, not contains(): a re-rendered target is already detached.
+  function onDocClick(e) {
+    if (asking && !e.composedPath().includes(winEl)) dismiss(false);
   }
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
 <svelte:document onclick={onDocClick} />
 
-{#snippet hubsPane()}
-  <div class="hp">
-    <div class="hp-row">
-      <button class="sb-btn" onclick={findHubs} disabled={finding}>
-        {finding ? 'finding…' : 'find hubs'}
-      </button>
-      {#each found as f (f.hub_instance_id)}
-        <button class="sb-hub ws mono" onclick={() => connectWs(f.ip, f.ws_port)}>
-          <span class="hub-name">{f.hub_name || 'hub'}</span>
-          <span>{f.ip}:{f.ws_port}</span>
-          <span>{f.fw_version || '?'}</span>
-          {#if f.pairing_window_open}<span class="hub-pair">pairing</span>{/if}
+{#if hubs.mode === 'ble'}<span class="sb-ble mono">BLE</span>{/if}
+{#if win}
+  <span class="sb-win" bind:this={winEl}>
+    <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
+    </button>
+    <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
+    </button>
+    <button class="sb-wbtn" bind:this={xEl} aria-label="Close" title="Close" aria-haspopup="dialog"
+            aria-expanded={asking} onclick={() => (asking ? dismiss(false) : ask())}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+    </button>
+    {#if asking}
+      <div class="sb-pop" role="dialog" aria-label="Close Phosphor">
+        <p class="sb-pop-t">Close Phosphor?</p>
+        {#each lines as l (l)}<p class="sb-pop-c">{l}</p>{/each}
+        <button class="sb-hold" bind:this={holdEl} class:holding
+                onpointerdown={start} onpointerup={stop} onpointerleave={stop} onpointercancel={stop}
+                {onkeydown} {onkeyup} oncontextmenu={(e) => e.preventDefault()}>
+          <span>{holding ? 'Keep holding' : 'Hold to close'}</span>
+          {#if holding}<span class="sb-fill" aria-hidden="true" style="--hold-ms: {HOLD_MS}ms"></span>{/if}
         </button>
-      {/each}
-    </div>
-    <div class="hp-row">
-      <button class="sb-btn" onclick={scan}>{scanning ? 'stop' : 'scan BLE'}</button>
-      {#each hubs as h (h.address)}
-        {@const adv = advFlags(h)}
-        <button class="sb-hub mono" onclick={() => pickBle(h)}>
-          <span class="hub-name">{h.name || 'hub'}</span>
-          <span>{h.address}</span>
-          {#if h.rssi}<span>{h.rssi} dBm</span>{/if}
-          {#if adv?.pairing}<span class="hub-pair">pairing</span>{/if}
-          {#if adv?.ws}<span class="hub-pair">WS</span>{/if}
-        </button>
-      {/each}
-      {#if scanning && hubs.length === 0}<span class="sb-note">scanning…</span>{/if}
-    </div>
-    <HostEntry value={manualHost} onpick={connectWs} />
-    {#if target}
-      <button class="sb-btn sb-upgrade" onclick={upgrade}>↑ WS {target.host}:{target.port}</button>
+        <p class="sb-pop-k">Esc or a click outside cancels</p>
+      </div>
     {/if}
-    {#if note}<p class="sb-note">{note}</p>{/if}
-    {#if stats}<p class="sb-note mono">{stats}</p>{/if}
-  </div>
-{/snippet}
-
-<div class="shell" bind:this={shellEl}>
-  <div class="shellrow">
-    <div class="sb-left">
-      <button class="sb-handle" bind:this={handleEl} onclick={() => setOpen(!open)}
-              aria-expanded={open} aria-controls="shell-drawer">
-        <svg viewBox="0 0 12 12" aria-hidden="true"><path d={open ? 'M2 8l4-4 4 4' : 'M2 4l4 4 4-4'}/></svg>
-        Menu
-      </button>
-      <span class="sb-mode mono" data-mode={mode}>{mode.toUpperCase()}</span>
-      <span class="sb-phase mono">{phase}</span>
-    </div>
-    {#if win}
-      <span class="sb-win">
-        <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
-          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
-        </button>
-        <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
-          <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
-        </button>
-        <button class="sb-wbtn" aria-label="Close" title="Close" onclick={() => win.close()}>
-          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
-        </button>
-      </span>
-    {/if}
-  </div>
-  {#if open}<Drawer hubs={hubsPane} />{/if}
-</div>
+  </span>
+{/if}
 
 <style>
-  .shell {
-    background: var(--shell-bg);
-    color: var(--shell-fg);
-  }
-  .shellrow {
-    display: flex;
-    align-items: flex-start;
-    /* The one reader of env(safe-area-inset-top) while the shell is up; the
-       $effect above zeroes the LinkBar's share (style.css --chrome-inset-top). */
-    padding-top: env(safe-area-inset-top, 0px);
-    border-bottom: 1px solid var(--shell-border);
-    font-size: 0.72rem;
-  }
-  .sb-left {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 32px;
-    padding: 0 10px 0 4px;
-  }
-  .sb-handle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 32px;
-    padding: 0 8px;
-    color: var(--shell-fg);
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-  .sb-handle:hover, .sb-handle[aria-expanded='true'] { color: var(--ink-hi); }
-  .sb-handle svg, .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
-  .sb-mode {
-    padding: 4px 7px;
+  .sb-ble {
+    flex: none;
+    padding: 3px 6px;
+    font-size: .62rem;
     border-radius: var(--radius);
-    font-weight: 700;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-  }
-  .sb-mode[data-mode='ws'] {
-    border-color: color-mix(in srgb, var(--reality) 45%, var(--line));
-    color: var(--reality);
-  }
-  .sb-mode[data-mode='ble'] {
-    border-color: color-mix(in srgb, var(--intent) 45%, var(--line));
+    border: 1px solid color-mix(in srgb, var(--intent) 45%, var(--line));
     color: var(--intent);
   }
-  .hp { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
-  .hp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .sb-btn, .sb-hub {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    min-height: 40px;
-    padding: 0 12px;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--ink);
-    font-size: 12.5px;
-  }
-  .sb-btn:hover { border-color: var(--line-4); }
-  .sb-upgrade {
-    align-self: flex-start;
-    border-color: color-mix(in srgb, var(--reality) 45%, var(--line));
-    background: color-mix(in srgb, var(--reality) 12%, var(--bg-card));
-    color: var(--reality);
-  }
-  .sb-hub { border: 1px dashed color-mix(in srgb, var(--intent) 55%, var(--line)); }
-  .sb-hub .hub-name { font-weight: 600; color: var(--intent); }
-  .sb-hub .hub-pair { color: var(--reality); font-weight: 600; }
-  /* Solid border: a WS candidate from UDP discovery, not a BLE scan hit. */
-  .sb-hub.ws { border-style: solid; }
-  .sb-note { color: var(--shell-fg); font-style: italic; font-size: 11px; }
-  /* Pinned top-right. Empty row space is the window drag region
-     (TopStrip's data-tauri-drag-region). */
-  .sb-win { flex: 0 0 auto; display: flex; }
+  /* Flush at the bar's right edge, the bar's full height. */
+  .sb-win { position: relative; flex: none; display: flex; align-self: stretch; }
   .sb-wbtn {
     display: grid;
     place-items: center;
     width: 46px;
-    height: 32px;
     padding: 0;
     color: var(--shell-fg);
   }
-  .sb-wbtn:hover { color: var(--ink-hi); background: var(--line-soft); }
-  @media (pointer: coarse) {
-    .sb-left, .sb-handle { min-height: 40px; }
-    .sb-wbtn { height: 40px; }
+  @media (max-width: 480px) {
+    .sb-wbtn { width: 40px; }
+  }
+  .sb-wbtn:hover, .sb-wbtn[aria-expanded='true'] { color: var(--ink-hi); background: var(--line-soft); }
+  .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+
+  /* Overlay: out of flow under the X, above the strip; moves nothing. */
+  .sb-pop {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 40;
+    width: max-content;
+    max-width: min(320px, calc(100vw - 16px));
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+    border: 1px solid var(--shell-border);
+    border-radius: var(--r-s);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  }
+  .sb-pop p { margin: 0; }
+  .sb-pop-t { font-weight: 600; font-size: .85rem; }
+  .sb-pop-c { font-size: 12px; color: var(--ink-dim); }
+  .sb-pop-k { font-size: 11px; color: var(--ink-dim); }
+  .sb-hold {
+    position: relative;
+    overflow: hidden;
+    min-height: var(--tap);
+    padding: 0 14px;
+    border: 1px solid var(--line-3);
+    border-radius: var(--r-s);
+    color: var(--ink-hi);
+    font-weight: 600;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .sb-hold:hover, .sb-hold.holding { border-color: var(--intent); }
+  .sb-fill {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: 100%;
+    background: var(--intent);
+    transform-origin: left;
+    animation: sb-fill var(--hold-ms) linear forwards;
+  }
+  @keyframes sb-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .sb-fill { animation: none; }
   }
 </style>

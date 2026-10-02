@@ -1,8 +1,8 @@
 <script>
   /**
    * SafetyOp.svelte: one safety pair as ONE two-state control (RENDERING
-   * law 14): the top strip's fixed pair and every placed copy (DESIGN §10.3),
-   * and the rail row's override/return (RailWidget).
+   * law 14): the top strip's fixed pair, its override/return while a rail is
+   * mounted, and every placed copy (DESIGN §10.3).
    *
    * Constraints:
    * - `op` is the pair's first op: SAFETY_OP.estop (estop/release),

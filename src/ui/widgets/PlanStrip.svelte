@@ -127,9 +127,9 @@
   const styleVal = $derived(fields && fields.style ? fieldValue(fields.style) : undefined);
 
   // ---------------------------------------------------------------------------
-  // "Is a plan actually running right now" — bug #4's visibility rule (the
-  // strip must appear ONLY while a plan is actually streaming, the same as
-  // the pre-refactor original). No role names a "plan active" concept (see
+  // "Is a plan actually streaming right now": dims the lane when not. When
+  // the strip shows at all is RailWidget's call (a source owns the rail).
+  // No role names a "plan active" concept (see
   // this file's header), so this reads the one signal every role-claimed
   // channel already gives for free, generically: how recently it last
   // pushed. This device's plan-strip publisher only republishes while a plan
@@ -138,8 +138,8 @@
   // still arriving" check depended on, just read off the generic per-channel
   // sample clock instead of a wire-specific staleness field. FRESH_MS mirrors
   // the original's 250ms recency window; HIDE_GRACE_MS mirrors its 1000ms
-  // post-stream fade-out grace so a brief gap between segments doesn't
-  // flicker the strip off and straight back on.
+  // post-stream grace so a brief gap between segments doesn't flicker the
+  // lane dim and straight back.
   // ---------------------------------------------------------------------------
   const FRESH_MS = 250;
   const HIDE_GRACE_MS = 1000;
@@ -269,10 +269,8 @@
         ctx.restore();
       }
 
-      // Caret at the "to" end. isActive is the freshness signal above; the
-      // fade-out grace means this can briefly draw a "just went stale" frame
-      // in the warn tone before the whole strip's opacity finishes dropping
-      // to 0 — cosmetic, not a second source of truth for "is it running".
+      // Caret at the "to" end, warn-toned once isActive (above) goes false:
+      // cosmetic, not a second source of truth for "is it running".
       ctx.save();
       ctx.shadowColor = isActive ? cIntent : cWarn;
       ctx.shadowBlur = reduced ? 0 : 6;
@@ -296,98 +294,80 @@
 </script>
 
 {#if fields && haveAnyPosition}
-  <!-- Presence in the DOM follows the role claim (bug #4: only renders at
-       all when a hub tags plan.*) so mounting never causes a jump of its
-       own; `.on` (both here and on .plan-strip) follows `isActive`, the
-       freshness-based "is a plan actually streaming right now" signal.
-       reproducing the pre-refactor original's "invisible except while
-       streaming" placement under the rail.
-
-       BUG FIX (dead space under the rail): the original reserved this
-       card's full height PERMANENTLY (opacity-only show/hide) — correct for
-       "never reflows", wrong for "never wastes ~85px of idle vertical space"
-       (measured: .plan-strip's own box was 61px plus a 12px flex gap on
-       each side = 85px of nothing between the rail and the hint text, for
-       every session that never streams a plan). `.plan-collapse` animates
-       the row's height via the `grid-template-rows: 0fr -> 1fr` technique
-       instead of reserving it outright: a smooth grow/shrink (no snap, no
-       jump) that costs ~0px while idle rather than a fixed ~85px forever.
-       The 24px of flex gap around this element is what's left when idle —
-       ordinary rhythm spacing, not a hole. -->
-  <div class="plan-collapse" class:on={isActive}>
-    <div class="plan-strip" class:on={isActive} aria-hidden={!isActive}>
-      <div class="plan-lane">
-        <canvas bind:this={canvasEl} role="img" aria-label="In-flight motion plan"></canvas>
-      </div>
-
-      <div class="plan-meta">
-        {#if fields.style}
-          <span class="chip">{optionLabel(fields.style, styleVal)}</span>
-        {/if}
+  <!-- Mounted by RailWidget in the rail row's fixed box, in place of the jog
+       tape while a source owns the rail: a labels line over the lane, the
+       tape's own geometry, so the swap never moves anything. `.on` follows
+       isActive (a plan streaming right now); off, the lane dims (law 8). -->
+  <div class="plan-strip" class:on={isActive}>
+    <div class="plan-labels">
+      <span class="plan-mode">plan{#if fields.style} &middot; {optionLabel(fields.style, styleVal)}{/if}</span>
+      <span class="plan-meta mono">
         {#if fields.velocity}
-          <output class="chip mono">{formatValue(fields.velocity, velVal)}<span class="unit">{unitOf(fields.velocity)}</span></output>
+          <output>{formatValue(fields.velocity, velVal)}<span class="unit">{unitOf(fields.velocity)}</span></output>
         {/if}
         {#if haveTiming}
-          <span class="chip progress">
-            {#if progressFrac != null}
-              <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
-            {/if}
-            <output class="mono">{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span> / {formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
-          </span>
+          {#if progressFrac != null}
+            <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
+          {/if}
+          <output>{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span> / {formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
         {:else if fields.elapsed}
-          <output class="chip mono">{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span></output>
+          <output>{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span></output>
         {:else if fields.duration}
-          <output class="chip mono">{formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
+          <output>{formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
         {/if}
-      </div>
+      </span>
+    </div>
+    <div class="plan-lane">
+      <canvas bind:this={canvasEl} role="img" aria-label="In-flight motion plan"></canvas>
     </div>
   </div>
 {/if}
 
 <style>
-  /* Height-collapsing wrapper — see the header note above. `0fr`/`1fr` on a
-     single-row grid is the standard trick for animating to/from an
-     un-measured intrinsic height; `.plan-strip` below is the grid item and
-     needs `min-height: 0` + `overflow: hidden` for the track to actually be
-     able to size it down to (visually) nothing while collapsed. */
-  .plan-collapse {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 0.35s ease;
-  }
-  .plan-collapse.on { grid-template-rows: 1fr; }
-  @media (prefers-reduced-motion: reduce) {
-    .plan-collapse { transition: none; }
-  }
-
-  /* `.on` here still gates opacity/pointer-events (unchanged from before) so
-     the content crossfades as the row grows/shrinks rather than popping in
-     at the end of the height transition. This is a plain layout wrapper
-     nested inside RailWidget's own card, not a card of its own — the visual
-     chrome lives on .plan-lane below, same as the original. */
   .plan-strip {
     display: flex;
     flex-direction: column;
+    height: 100%;
+  }
+  /* 14px + 4px, the same line RailWidget's tape labels hold. */
+  .plan-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
-    opacity: 0;
-    min-height: 0;
+    height: 14px;
+    line-height: 14px;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    font-size: calc(var(--s) * 10px);
+  }
+  .plan-mode {
+    letter-spacing: 0.14em;
+    text-transform: lowercase;
+    color: color-mix(in srgb, var(--reality) 78%, var(--tx-mut));
+    min-width: 0;
     overflow: hidden;
-    pointer-events: none;
-    transition: opacity 0.35s ease;
+    text-overflow: ellipsis;
   }
-  .plan-strip.on { opacity: 1; pointer-events: auto; }
-  @media (prefers-reduced-motion: reduce) {
-    .plan-strip { transition: none; }
+  .plan-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    color: var(--ink);
   }
+  .unit { color: var(--ink-dim); font-size: 0.9em; margin-left: 1px; }
 
   .plan-lane {
     position: relative;
-    height: 30px;
+    flex: 1 1 auto;
+    min-height: 0;
     background: var(--bg-sunken);
     border: 1px solid var(--line);
     border-radius: var(--r-s);
     box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.5);
   }
+  .plan-strip:not(.on) .plan-lane { opacity: .55; }
   .plan-lane canvas {
     position: absolute;
     inset: 0;
@@ -396,28 +376,6 @@
     display: block;
   }
 
-  .plan-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--line);
-    font-size: 0.74rem;
-    color: var(--ink-dim);
-  }
-  .chip output, .chip.mono { color: var(--ink); }
-  .unit { color: var(--ink-dim); font-size: 0.9em; margin-left: 1px; }
-
-  .progress { min-width: 0; }
   .progress-track {
     width: 48px;
     height: 4px;

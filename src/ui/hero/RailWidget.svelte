@@ -1,3 +1,11 @@
+<script module>
+  // The strip's numerals (TopStrip) read this rail's rAF instant through it,
+  // so the big numeral and the comet never disagree about "now". Null while
+  // no rail is mounted; one rail publishes at a time.
+  let readout = $state.raw(null);
+  export function railReadout() { return readout; }
+</script>
+
 <script>
   /**
    * RailWidget.svelte — the flagship instrument: travel rail + stroke-window
@@ -25,8 +33,8 @@
    *    through sendCommand also means the tape is throttled at the MOVE
    *    channel's own catalog-advertised rate instead of a hand-rolled
    *    client-side guess, and a refusal (this device: NACK NOT_HOMED while
-   *    unhomed) is no longer silent — see `moveShadow` below and
-   *    ui/TopStrip.svelte's global refusal surface. When a machine has not
+   *    unhomed) is no longer silent: the tape's own data-shadow and
+   *    ui/TopStrip.svelte's status slot say it. When a machine has not
    *    annotated its move channel this way, the tape correctly declines —
    *    spans the window, disabled, with a reason — exactly like a
    *    Field.svelte control the session cannot write. That decline path is
@@ -50,7 +58,7 @@
    * marker; none is claimed today, so the rail draws one trace and says
    * nothing about a second.
    *
-   * 3. Manual mode is OVERRIDE now (SPEC §11.1, RFC-085): the hero row's
+   * 3. Manual mode is OVERRIDE now (SPEC §11.1, RFC-085): the top strip's
    *    override/return control latches it on the hub, and only then does the
    *    tape span the full travel as a jog. The Set-Min/Max-here buttons are
    *    not ported.
@@ -62,9 +70,9 @@
    * work off whatever `[lo, hi]` and unit the catalog reports instead of an
    * assumed 0-999mm rail.
    */
-  import { machine, getSession, freshness, specSafetyAction } from '../../model/machine.svelte.js';
-  import { SAFETY_OP } from '../../../../Valence/clients/js/index.js';
-  import SafetyOp from '../widgets/SafetyOp.svelte';
+  import { machine, getSession, freshness } from '../../model/machine.svelte.js';
+  import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
+  import { railOwned } from '../../model/actions.js';
   import { isFieldEnabled, reportedValue } from '../../model/settings.js';
   import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
@@ -72,10 +80,9 @@
   import { ACCENT, ac } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
-  import HeroNumerals from './HeroNumerals.svelte';
   import PlanStrip from '../widgets/PlanStrip.svelte';
 
-  let { fields, accessory = null } = $props();
+  let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
   // a fresh `fields` object whenever the catalog rebuilds, and a plain
   // destructure would freeze on the first machine we ever saw.
@@ -130,11 +137,6 @@
     return !!session && session.isLive && session.canUse(move.channelId, move.key, 0);
   });
 
-  // Override/return: an essential binding of the axis archetype (SPEC §11.1,
-  // RENDERING §8.4 `axis`). A hub whose op table lacks override gets no
-  // control at all (law 7), never a dead one.
-  const safety = $derived.by(specSafetyAction);
-  const hasOverride = $derived(!!(safety && (safety.options || [])[SAFETY_OP.override]));
   const latch = $derived(machine.safety);
   const override = $derived(!!latch && latch.override);
   // The hub's jog gate, mirrored (SPEC §11.1, §11.4): an e-stop refuses all
@@ -144,6 +146,13 @@
   const jogBlock = $derived(!latch ? '' : latch.estopLatched ? 'e-stop latched: no motion until release'
     : latch.paused && !latch.override ? 'paused: press Override to jog' : '');
   const moveEnabled = $derived(moveAllowed && !jogBlock);
+
+  // The rail row shows the plan strip in place of the tape while a source
+  // owns the rail: a jog never takes it from a source (SPEC §11.4), and
+  // override is the one way in, so override brings the tape back.
+  const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples,
+    machine.samples[CH_CONTROL_OWNER], machine.link.sessionId));
+  const planShown = $derived(sourceOwns && !override);
 
   // Flip (SPEC §9.6, RFC-088): the axis.flipped setting, a bool or two-option
   // select where 1 is flipped. Confirmed on every class (reversing a rail
@@ -364,8 +373,8 @@
   // ---------------------------------------------------------------------------
   // rAF render loop — drives the canvas AND the hero numerals from the SAME
   // interpolated instant, so the phosphor dot and the big numeral never
-  // disagree about "now" (the whole reason HeroNumerals is composed here
-  // rather than reading telemetry independently).
+  // disagree about "now" (the whole reason the strip's HeroNumerals reads
+  // this rail's readout rather than telemetry of its own).
   // ---------------------------------------------------------------------------
   let posDisplay = $state(null);
   let speedDisplay = $state(null);
@@ -373,6 +382,16 @@
   let fresh = $state(false);
   let targetDisplay = $state(null);
   let targetFresh = $state(false);
+  // Getters, not values: TopStrip's reads subscribe to these same signals.
+  $effect(() => {
+    readout = {
+      get posField() { return pos; }, get velField() { return vel; }, get targetField() { return target; },
+      get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
+      get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
+      get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
+    };
+    return () => { readout = null; };
+  });
 
   let hostEl = $state(null);
   let canvasEl = $state(null);
@@ -753,7 +772,6 @@
   let moveDragging = $state(false);
   let moveDragValue = $state(null);
   let tapeBarEl = $state(null);
-  const moveShadow = $derived(shadowOf(move));
 
   // BUG FIX (tap/scrub not registering): the pointer handlers used to live on
   // `.rail-tape.live` — the highlighted sub-strip, sized to exactly the
@@ -857,117 +875,84 @@
 </script>
 
 <div class="hero rail-hero">
-  <!-- The OG .hero-row: numerals left, transport accessory right, ONE flex
-       row sharing a baseline (align-items flex-end). The accessory is a
-       layout slot handed down by the composition root — this widget never
-       knows what is in it, only that the hero row's right side is where the
-       OG carried its transport controls. -->
-  <div class="rw-hero-row">
-    {#if pos}
-      <HeroNumerals
-        posField={pos} velField={vel} targetField={target}
-        posVal={posDisplay} speedVal={speedDisplay} targetVal={targetDisplay}
-        moving={moving} fresh={fresh} targetFresh={targetFresh}
-        extentHi={hi}
-      />
-    {:else}
-      <span aria-hidden="true"></span>
-    {/if}
-    <div class="rw-hero-accessory">
-      {#if hasOverride}
-        <SafetyOp action={safety} op={SAFETY_OP.override} />
-      {/if}
-      {#if flip}
-        <button type="button" class="rw-flip" aria-pressed={flipped} disabled={!flipEnabled}
-                data-shadow={flipStatus} title={flipText} onclick={toggleFlip}>
-          <span class="lbl">Flip</span>
-          <small role="status">{flipText}</small>
-        </button>
-      {/if}
-      {#if accessory}{@render accessory()}{/if}
-    </div>
-  </div>
-
-  <!-- OG information architecture: the window readout is NOT a separate hero
-       numeral row — it lives exactly once, on the band label below
-       (`lo–hi · width`). A second min/max readout up here would be the same
-       fact with two homes (CANON C-1); removed rather than restyled. -->
-
-  <!-- The OG split: the hero row above is a FLAT strip; everything from the
-       tape down lives in the outlined rail panel (`.rail-panel`, the OG's
-       corner-bracket chrome). One card around both was never the OG look. -->
+  <!-- The numerals and override/return live in the top strip (TopStrip.svelte,
+       reading railReadout()); this panel is the rail row and the rail. -->
   <div class="rail-panel og-panel">
-  {#if move}
-    <!-- Input tape — a live command surface. In the original this was
-         two layers: a full-width TRACK (dashed guides marking full travel)
-         with a highlighted, draggable STRIP inside it sized/positioned to
-         EXACTLY the reported window — so the strip you touch sits directly
-         above the window band on the rail below, and dragging anywhere on
-         it can only ever produce a value inside that window. Tap or drag it
-         to send a move INTENT; the hub clamps (window, limits) and the
-         post-clamp ECHO plus telemetry.target are what the cursor shows once
-         the drag ends — never an optimistic local guess. -->
-    <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
-         data-shadow={statusOf(move)}>
-      <div class="rail-tape-labels">
-        <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}</span>
-        <span class="rail-tape-extent mono">{formatValue(move, tapeLo)}&ndash;{formatValue(move, tapeHi)}</span>
-      </div>
-      <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
-           tapeTrackEl above) — the whole dashed-guide width is tappable, not
-           just the highlighted strip nested inside it. The strip
-           (`.rail-tape.live`) stays purely visual: it still shows exactly
-           where the window sits, still carries the pip, but no longer owns
-           any listeners of its own (pointer events on it bubble to the
-           track same as anywhere else). -->
-      <div class="rail-tape-track" bind:this={tapeTrackEl}
-           role="slider" tabindex={moveEnabled ? 0 : -1}
-           aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
-           aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
-           aria-disabled={!moveEnabled}
-           class:live={moveEnabled}
-           onpointerdown={onTapePointerDown}
-           onpointermove={onTapePointerMove}
-           onpointerup={onTapePointerUp}
-           onpointercancel={onTapePointerUp}
-           onkeydown={onTapeKey}>
-        <div class="rail-tape live" bind:this={tapeBarEl}
-             style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
-          <span class="rail-tape-micro">tap &middot; scrub</span>
-          {#if tapeDotFrac != null}
-            <div class="rail-tape-pip" class:on={moveDragging} style="left:{tapeDotFrac * 100}%"></div>
-          {/if}
+  <!-- THE RAIL ROW, one fixed height (.rail-swap): the jog tape, or the plan
+       strip in its place while a source owns the rail (planShown). Flip rides
+       its end. A reason renders inside the row, never as a line under it. -->
+  <div class="rail-row">
+    <div class="rail-swap">
+    {#if planShown}
+      <PlanStrip />
+    {:else if move}
+      <!-- Input tape — a live command surface. In the original this was
+           two layers: a full-width TRACK (dashed guides marking full travel)
+           with a highlighted, draggable STRIP inside it sized/positioned to
+           EXACTLY the reported window — so the strip you touch sits directly
+           above the window band on the rail below, and dragging anywhere on
+           it can only ever produce a value inside that window. Tap or drag it
+           to send a move INTENT; the hub clamps (window, limits) and the
+           post-clamp ECHO plus telemetry.target are what the cursor shows once
+           the drag ends — never an optimistic local guess. -->
+      <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
+           data-shadow={statusOf(move)}>
+        <div class="rail-tape-labels">
+          <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}{#if !moveEnabled && moveReason}<span
+            class="rail-reason"> &middot; {moveReason}</span>{/if}</span>
+          <span class="rail-tape-extent mono">{formatValue(move, tapeLo)}&ndash;{formatValue(move, tapeHi)}</span>
+        </div>
+        <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
+             tapeTrackEl above) — the whole dashed-guide width is tappable, not
+             just the highlighted strip nested inside it. The strip
+             (`.rail-tape.live`) stays purely visual: it still shows exactly
+             where the window sits, still carries the pip, but no longer owns
+             any listeners of its own (pointer events on it bubble to the
+             track same as anywhere else). -->
+        <div class="rail-tape-track" bind:this={tapeTrackEl}
+             role="slider" tabindex={moveEnabled ? 0 : -1}
+             aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
+             aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
+             aria-disabled={!moveEnabled}
+             class:live={moveEnabled}
+             onpointerdown={onTapePointerDown}
+             onpointermove={onTapePointerMove}
+             onpointerup={onTapePointerUp}
+             onpointercancel={onTapePointerUp}
+             onkeydown={onTapeKey}>
+          <div class="rail-tape live" bind:this={tapeBarEl}
+               style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
+            <span class="rail-tape-micro">tap &middot; scrub</span>
+            {#if tapeDotFrac != null}
+              <div class="rail-tape-pip" class:on={moveDragging} style="left:{tapeDotFrac * 100}%"></div>
+            {/if}
+          </div>
         </div>
       </div>
-      <!-- The tape has no persistent widget of its own once a drag ends, so a
-           refusal here is ALSO caught by ui/TopStrip.svelte's global surface
-           (shadow.svelte.js's `lastRefusal`) — this is the local, inline echo
-           of the exact same fault, not a second source of truth. -->
-      {#if moveShadow && moveShadow.status === STATUS.fault && moveShadow.error}
-        <p class="rail-reason err">jog refused: {moveShadow.error}{moveShadow.error === 'SOURCE_CONFLICT'
-          ? ' (a source owns the rail: press Override to jog)' : ''}</p>
-      {:else if !moveEnabled}
-        <p class="rail-reason">{moveReason}</p>
-      {/if}
-    </div>
-  {:else}
-    <!-- Fallback for a machine that has not tagged a move INTENT by role —
-         renders the window extent so the visual rhythm survives, commands
-         nothing, and says exactly why. -->
-    <div class="rail-tape-assembly disabled" aria-disabled="true">
-      <div class="rail-tape-labels">
-        <span class="rail-tape-mode">jog &middot; window</span>
-        <span class="rail-tape-extent mono">{haveWindow ? formatValue(min, minVal) + '–' + formatValue(max, maxVal) : '--'}</span>
-      </div>
-      <div class="rail-tape-track">
-        <div class="rail-tape"
-             style="left:{haveWindow ? minPct * 100 : 0}%; width:{haveWindow ? Math.max(0, (maxPct - minPct) * 100) : 100}%">
-          <span class="rail-tape-micro">no move intent on this catalog</span>
+    {:else}
+      <!-- A catalog with no role-tagged move INTENT: the window extent keeps
+           the rhythm, commands nothing, and says why. -->
+      <div class="rail-tape-assembly disabled" aria-disabled="true"
+           title="This catalog does not tag a move INTENT by role, so a generic client cannot find it safely.">
+        <div class="rail-tape-labels">
+          <span class="rail-tape-mode">jog &middot; window<span class="rail-reason"> &middot; no move intent on this catalog</span></span>
+          <span class="rail-tape-extent mono">{haveWindow ? formatValue(min, minVal) + '–' + formatValue(max, maxVal) : '--'}</span>
+        </div>
+        <div class="rail-tape-track">
+          <div class="rail-tape"
+               style="left:{haveWindow ? minPct * 100 : 0}%; width:{haveWindow ? Math.max(0, (maxPct - minPct) * 100) : 100}%"></div>
         </div>
       </div>
-      <p class="rail-reason">This catalog does not tag a move INTENT by role, so a generic client cannot find it safely &mdash; see RailWidget.svelte.</p>
+    {/if}
     </div>
-  {/if}
+    {#if flip}
+      <button type="button" class="rw-flip" aria-pressed={flipped} disabled={!flipEnabled}
+              data-shadow={flipStatus} title={flipText} onclick={toggleFlip}>
+        <span class="lbl">Flip</span>
+        <small role="status">{flipText}</small>
+      </button>
+    {/if}
+  </div>
 
   <div class="spine-rail-host" class:drag-live={dragMode !== null} bind:this={hostEl}>
     <!-- Tick geometry mirrors the original's 72px-tall host ratios (tickTop
@@ -1051,13 +1036,6 @@
     {/if}
   </div>
 
-  <!-- Plan strip — bug #4: belongs directly under the rail, inside this same
-       card, visible ONLY while a plan is actually streaming (see
-       widgets/PlanStrip.svelte). It used to live as its own separate
-       dashboard widget card; this is a straight relocation, not a rewrite of
-       its own logic beyond the role-purity fix documented there. -->
-  <PlanStrip />
-
   <div class="rail-hint explain">
     <span>drag band &middot; drag edges &middot; arrow keys to nudge</span>
     <span class="rail-trk">trk 00</span>
@@ -1079,29 +1057,19 @@
     gap: 0;
   }
 
-  /* The OG .hero-row: numerals left, transport accessory right, one shared
-     baseline. */
-  .rw-hero-row {
+  /* The rail row: a fixed height whatever fills it. Labels line plus track,
+     the same box for the tape and the plan strip (PlanStrip.svelte reads
+     --rail-row-h), so the swap never moves the rail below it. */
+  .rail-row {
+    --rail-row-h: max(var(--tap), calc(18px + var(--s) * 26px));
     display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 12px;
-    padding: 10px 0 8px;
+    gap: 8px;
+    height: var(--rail-row-h);
   }
-  /* The rail's control row: override/return (and Flip) beside Home. Short of
-     width it drops under the numerals, then wraps itself; never overlaps them
-     or overflows the page. */
-  .rw-hero-accessory {
-    flex: 0 1 auto;
-    min-width: 0;
-    margin-left: auto;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: stretch;
-    gap: 4px;
+  @media (pointer: coarse) {
+    .rail-row { --rail-row-h: max(var(--tap), 58px); }
   }
+  .rail-swap { flex: 1 1 auto; min-width: 0; overflow: hidden; }
   /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
   .rw-flip {
     display: flex;
@@ -1146,17 +1114,25 @@
   /* ---- input tape (disabled command surface) ------------------------------ */
   .rail-tape-assembly { width: 100%; }
   .rail-tape-assembly.disabled { opacity: 0.7; }
+  /* 14px + 4px: the 18px the rail row reserves above the track. */
   .rail-tape-labels {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
+    gap: 8px;
+    height: 14px;
+    line-height: 14px;
     margin-bottom: 4px;
+    white-space: nowrap;
   }
   .rail-tape-mode {
     font-size: calc(var(--s) * 10px);
     letter-spacing: 0.14em;
     text-transform: lowercase;
     color: color-mix(in srgb, var(--intent) 78%, var(--tx-mut));
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .rail-tape-extent { font-size: calc(var(--s) * 10px); color: var(--tx-ghost); }
   /* Track spans the full assembly width with dashed top/bottom guides — the
@@ -1234,8 +1210,7 @@
   }
   .rail-tape-pip.on { opacity: 1; }
   .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity .1s ease; }
-  .rail-reason { margin: 4px 0 0; color: var(--tx-ghost); font-size: 0.72rem; }
-  .rail-reason.err { color: var(--bad); }
+  .rail-reason { color: var(--tx-mut); }
 
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
