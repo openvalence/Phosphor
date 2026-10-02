@@ -9,7 +9,11 @@
  * catalog, at 1440x900 and 390x844: the bar and the strip keep their height
  * with a long hub name, with a refusal in the status slot and with a long
  * fault reason; the rail row and the rail below it hold across the swap to
- * the plan strip while a pattern runs, and back. In the shell bundle the X
+ * the plan strip while a pattern runs, and back; the rail panel is the rail
+ * row plus the rail, no help lines (ph-i0y). At 1920, 1440, 1280, 1024, 800
+ * and 390 every strip control's right edge is inside the viewport, nothing
+ * in the strip scrolls sideways, and a collapsed Home control opens its
+ * popover on screen without moving the strip (ph-b5d). In the shell bundle the X
  * opens the close popover anchored under it, the bar keeps its height, and
  * Escape or a click outside cancels.
  *
@@ -246,7 +250,7 @@ function hub(wire) {
 const heights = (p) => p.evaluate(() => {
   const h = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().height * 10) / 10 : null; };
   const word = document.querySelector('.linkbar .wordmark');
-  return { bar: h('.linkbar'), strip: h('.strip'), row: h('.rail-row'),
+  return { bar: h('.linkbar'), strip: h('.strip'), row: h('.rail-row'), panel: h('.rail-panel'),
     railTop: Math.round((document.querySelector('.spine-rail-host')?.getBoundingClientRect().top ?? -1) * 10) / 10,
     nameClipped: !!word && word.scrollWidth > word.clientWidth,
     slot: document.querySelector('.strip .status')?.dataset.kind };
@@ -267,6 +271,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await hp.waitForTimeout(300);
   const idle = await heights(hp);
   ok(tag + ': a long hub name ellipsizes in one bar row', idle.nameClipped, JSON.stringify(idle));
+  ok(tag + ': the tape carries the rail hint as its tooltip', await hp.locator('.rail-tape-track[title*="drag its edges"]').count() === 1);
 
   await hp.locator('.rail-tape-track').click();
   await hp.waitForSelector('.strip .status[data-kind=refusal]', { timeout: 3000 }).catch(() => {});
@@ -280,7 +285,11 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const plan = await heights(hp);
   ok(tag + ': a running pattern swaps the plan strip into the rail row',
     await hp.locator('.rail-swap .plan-strip').count() === 1 && await hp.locator('.rail-swap .rail-tape-track').count() === 0);
-  ok(tag + ': rail row and the rail below it hold across the swap', plan.row === idle.row && plan.railTop === idle.railTop,
+  ok(tag + ': the rail panel is the rail row and the rail, no help lines', await hp.evaluate(() =>
+    [...document.querySelector('.rail-panel').children].every((c) => c.matches('.rail-row, .spine-rail-host'))
+));
+  ok(tag + ': rail row, rail and panel hold across the swap', plan.row === idle.row && plan.railTop === idle.railTop
+    && plan.panel === idle.panel,
     JSON.stringify([idle, plan]));
   wire.send(FRAME.STATE, RUN.id, patternState(false));
   await hp.waitForSelector('.rail-swap .rail-tape-track', { timeout: 3000 }).catch(() => {});
@@ -294,6 +303,45 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   ok(tag + ': bar and strip heights hold with a long fault reason', fault.slot === 'fault' && fault.bar === idle.bar
     && fault.strip === idle.strip, JSON.stringify(fault));
   await hctx.close();
+}
+
+// ---- ph-b5d: every strip control inside the viewport, nothing scrolls -------
+for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800, 600], [390, 844]]) {
+  const tag = w + 'x' + h;
+  const bctx = await browser.newContext({ viewport: { width: w, height: h } });
+  await bctx.addInitScript(([etag, bytes]) => {
+    try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* no storage */ }
+  }, [ETAG, Buffer.from(CAT).toString('hex')]);
+  await bctx.routeWebSocket(/:82\//, hub({}));
+  const bp = await bctx.newPage();
+  await bp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await bp.waitForSelector('.strip .btn-override', { timeout: 15000 }).catch(() => {});
+  await bp.waitForTimeout(400);
+  const g2 = await bp.evaluate(() => {
+    const ctl = [...document.querySelectorAll('.strip button')].filter((b) => b.getBoundingClientRect().width > 0
+      && !b.closest('.status'));
+    const out = ctl.filter((b) => b.getBoundingClientRect().right > innerWidth + 0.5 || b.getBoundingClientRect().left < -0.5)
+      .map((b) => b.textContent.trim().replace(/\s+/g, ' '));
+    const scrollers = [...document.querySelectorAll('.strip, .strip *')].filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowX))
+      .map((el) => el.className);
+    return { n: ctl.length, out, scrollers, menu: !!document.querySelector('.strip .dock button.home-btn'),
+      pair: document.querySelectorAll('.strip .btn-estop, .strip .btn-pause').length, strip: document.querySelector('.strip').getBoundingClientRect().height };
+  });
+  ok(tag + ': every strip control ends inside the viewport', g2.n >= 3 && g2.pair === 2 && g2.out.length === 0, JSON.stringify(g2));
+  ok(tag + ': nothing in the strip scrolls sideways', g2.scrollers.length === 0, JSON.stringify(g2.scrollers));
+  if (g2.menu) {
+    await bp.click('.strip .dock button.home-btn');
+    const m = await bp.evaluate(() => {
+      const pop = document.querySelector('.strip .menu-pop');
+      const r = pop && pop.getBoundingClientRect();
+      return { open: !!pop, inside: !!r && r.left >= -0.5 && r.right <= innerWidth + 0.5, items: pop ? pop.querySelectorAll('button').length : 0,
+        strip: document.querySelector('.strip').getBoundingClientRect().height };
+    });
+    ok(tag + ': the Home control opens its popover on screen, the strip does not move', m.open && m.inside && m.items >= 2
+      && m.strip === g2.strip, JSON.stringify(m));
+    await bp.keyboard.press('Escape');
+  }
+  await bctx.close();
 }
 
 // ---- the shell's close popover (ph-e82.17) -----------------------------------

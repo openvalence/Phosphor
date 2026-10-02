@@ -151,7 +151,7 @@
            stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
       <span class="lbl">{label}</span>
     </span>
-    <small class="state" role="status">{status}</small>
+    <small class="state" class:hint={status === hint} role="status">{status}</small>
     {#if holding}<span class="hold" aria-hidden="true" style="--hold-ms: {RELEASE_HOLD_MS}ms"></span>{/if}
   </button>
 </div>

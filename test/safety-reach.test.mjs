@@ -461,11 +461,11 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   }
 
   const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero' });
-  const ovr = page.locator('.topstrip .ops.main .btn-override');
+  const ovr = page.locator('.topstrip .dock .ovr .btn-override');
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
   ok('override: one control in the strip, beside Home', await ovr.count() === 1
-    && await page.locator('.topstrip .ops.main .btn', { hasText: /^home$/i }).count() === 1);
+    && await page.locator('.topstrip .dock button', { hasText: /^home$/i }).count() === 1);
   ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
   await page.locator('.topstrip .btn-pause').click();
   await page.waitForTimeout(300);

@@ -15,9 +15,13 @@
    *   and pause pair (law 14, SafetyOp.svelte), override/return while a rail
    *   is mounted (SPEC §11.1), then every action.home / action.safety op the
    *   catalog advertises (Home first). The pair never scrolls or shrinks, at
-   *   every width and in every state (law 1); placed copies are extras. Short
-   *   of width the extra ops scroll first, then the secondary numerals clip,
-   *   then override and Home scroll.
+   *   every width and in every state (law 1); placed copies are extras.
+   * - Nothing in the strip scrolls sideways (ph-b5d). Short of width the
+   *   secondary numerals clip first; past the group's measured budget, in
+   *   order: the ops collapse into ONE Home control with a popover (Home,
+   *   Force Home, whatever else the hub offers), that control drops its
+   *   label, the strip stacks into two rows, and last override/return joins
+   *   the popover. The pair never shrinks and is never in the popover.
    * - The status slot shows ONE thing, by priority: link fault, unattended
    *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge.
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
@@ -184,17 +188,78 @@
     return out;
   });
 
-  // Home proper rides beside override; force_home and the rest are extras.
-  const isHome = (o) => isHomeRole(o.action) && o.value === HOME_OP.home;
+  // ---- the measured budget (ph-b5d) --------------------------------------------
+  // Every width below is measured from something the decision does not
+  // change (the off-layout measuring row, the pair, the primary numeral, the
+  // strip box), so a level never feeds back into its own inputs. Levels:
+  // 0 every op inline, 1 the ops in the Home popover, 2 that control
+  // icon-only, 3 override in the popover too. One row while level 2 or less
+  // fits beside the primary numeral and the status floor, else two rows.
+  const homeOp = $derived(ops.find((o) => isHomeRole(o.action) && o.value === HOME_OP.home) || null);
+  let stripEl = $state(null), measureEl = $state(null), pairEl = $state(null), ovrEl = $state(null);
+  let level = $state(0);
+  let stacked = $state(false);
+  let menuOpen = $state(false);
+  let menuEl = $state(null);
+  let ovrW = 0;   // kept from when override was last inline (level 3 unmounts it)
+  function measure() {
+    if (!stripEl || !measureEl) return;
+    const cs = getComputedStyle(stripEl);
+    const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
+    const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
+    const GAP = 6;
+    if (ovrEl) ovrW = ovrEl.offsetWidth + GAP;
+    const pair = pairEl ? pairEl.offsetWidth : 0;
+    const ovr = hasOverride ? ovrW : 0;
+    const menuFull = w('menu'), menuIcon = w('icon');
+    const many = ops.length > 1;
+    const needs = [pair + ovr + w('op'), pair + ovr + (many ? menuFull : w('op')),
+      pair + ovr + (ops.length ? menuIcon : 0), pair + (ops.length || hasOverride ? menuIcon : 0)];
+    const oneRow = content - prim - Math.min(240, content * 0.25) - 24;
+    stacked = !needs.slice(0, 3).some((n) => n <= oneRow);
+    const budget = stacked ? content : oneRow;
+    const fit = needs.findIndex((n) => n <= budget);
+    level = fit < 0 ? 3 : fit;
+  }
+  $effect(() => {
+    if (!stripEl || !measureEl) return;
+    const ro = new ResizeObserver(() => measure());
+    for (const el of [stripEl, measureEl, stripEl.querySelector('.nums')]) if (el) ro.observe(el);
+    return () => ro.disconnect();
+  });
+  // A rail mounting or the op set changing moves the budget too.
+  $effect(() => { void rail; void ops.length; void hasOverride; queueMicrotask(measure); });
+  const menuShown = $derived(level >= 1 && (ops.length > 1 || level >= 2));
+  const ovrInMenu = $derived(level === 3 && hasOverride);
+  function onDocClick(e) {
+    if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
+  }
+  function onWindowKey(e) {
+    if (e.key === 'Escape' && menuOpen) {
+      menuOpen = false;
+      menuEl?.querySelector('.home-btn')?.focus();
+    }
+  }
+  // Home's icon (Lucide, MIT; the OG ui.js ICONS entry).
+  const HOME_ICON = '<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>';
 
   let busy = $state({});
   async function fire(op) {
+    menuOpen = false;
     if (needsConfirm(op.action, op.value) && !(await askConfirm(confirmCopy(op.action, op.value)))) return;
     busy = { ...busy, [op.key]: true };
     await runAction(op.action, op.value);
     busy = { ...busy, [op.key]: false };
   }
 </script>
+
+{#snippet homeFace()}
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+       stroke-linejoin="round" aria-hidden="true">{@html HOME_ICON}</svg>
+  <span class="lbl">{homeOp ? displayLabel(homeOp.label) : 'More'}</span>
+  <svg class="caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>
+{/snippet}
 
 {#snippet opButton(op)}
   <button type="button" class="btn" disabled={!canFire(op.action, op.value)}
@@ -203,9 +268,17 @@
   </button>
 {/snippet}
 
+<svelte:window onkeydown={onWindowKey} />
+<svelte:document onclick={onDocClick} />
+
 <div class="topstrip" bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" role="group" aria-label="Safety controls">
+  <div class="strip" class:stacked role="group" aria-label="Safety controls" bind:this={stripEl}>
+    <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
+      {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
+      <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
+      <span class="btn home-btn icon-only" data-k="icon">{@render homeFace()}</span>
+    </div>
     <div class="nums">
       {#if rail && rail.posField}
         <HeroNumerals
@@ -255,17 +328,27 @@
 
     <div class="dock">
       <!-- Bound by spec-core identity alone (law 2), never by a role tag. -->
-      <div class="pair">
+      <div class="pair" bind:this={pairEl}>
         <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
         <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
       </div>
-      <div class="ops main">
-        {#if hasOverride}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
-        {#each ops.filter(isHome) as op (op.key)}{@render opButton(op)}{/each}
-      </div>
-      <div class="ops extra">
-        {#each ops.filter((o) => !isHome(o)) as op (op.key)}{@render opButton(op)}{/each}
-      </div>
+      {#if hasOverride && !ovrInMenu}<div class="ovr" bind:this={ovrEl}><SafetyOp action={specSafety} op={SAFETY_OP.override} /></div>{/if}
+      {#if !menuShown}
+        <div class="ops">{#each ops as op (op.key)}{@render opButton(op)}{/each}</div>
+      {:else}
+        <div class="home-menu" bind:this={menuEl}>
+          <button type="button" class="btn home-btn" class:icon-only={level >= 2} aria-haspopup="true" aria-expanded={menuOpen}
+                  aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
+                  title={(homeOp ? 'Home' : 'More') + ': ' + [...(ovrInMenu ? ['override'] : []), ...ops.map((o) => displayLabel(o.label))].join(', ')}
+                  onclick={() => (menuOpen = !menuOpen)}>{@render homeFace()}</button>
+          {#if menuOpen}
+            <div class="menu-pop" role="group" aria-label="Home and machine ops">
+              {#if ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
+              {#each ops as op (op.key)}{@render opButton(op)}{/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 </div>
@@ -295,48 +378,53 @@
     gap: 6px 12px;
     height: calc(max(var(--num-h), var(--tap)) + 12px);
     padding: 6px var(--gap);
-    overflow: hidden;
+    position: relative;
   }
+  /* Off-layout: the ops at their inline width, for the budget only. */
+  .measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .measure > * { flex: none; }
   @media (max-width: 1023px) {
     .strip { --num-h: calc(clamp(42px, 8.5vw, 54px) * .95 + 20px); }
   }
-  /* Phone: the primary numeral and the status on one row, the controls on
-     a second the grid guarantees (a wrapping flex row once pushed the pair
-     onto a third, clipped line). */
-  @media (max-width: 759px) {
-    .strip {
-      display: grid;
-      grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
-      height: calc(var(--num-h) + 6px + var(--tap) + 12px);
-    }
-    .nums { grid-area: num; }
-    .status { grid-area: status; align-self: center; }
-    .strip .dock { grid-area: dock; display: flex; gap: 6px; min-width: 0; }
+  /* Stacked (the measured budget says one row cannot hold the group): the
+     primary numeral and the status on one row, the controls on a second the
+     grid guarantees (a wrapping flex row once pushed the pair onto a third,
+     clipped line). */
+  .strip.stacked {
+    display: grid;
+    grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
+    height: calc(var(--num-h) + 6px + var(--tap) + 12px);
   }
+  .stacked .nums { grid-area: num; }
+  .stacked .status { grid-area: status; align-self: center; }
+  .strip.stacked .dock { grid-area: dock; display: flex; gap: 6px; min-width: 0; }
   /* Watch-sized: no room beside the numeral. A current condition covers
      the numeral in its own cell; the edge history stays in the Log. */
   @media (max-width: 300px) {
-    .strip { grid-template-columns: minmax(0, 1fr); grid-template-areas: "num" "dock"; }
+    .strip.stacked { grid-template-columns: minmax(0, 1fr); grid-template-areas: "num" "dock"; }
     .strip .status { grid-area: num; z-index: 1; justify-content: flex-start; background: var(--bg-raised); }
     .strip .status:is([data-kind=idle], [data-kind=edge]) { display: none; }
   }
 
   /* The secondary numerals wrap below the primary and clip rather than grow
      the strip; the primary is the cell's minimum width. */
-  /* Shrink order on one row, by weight: extra ops, then the secondary
-     numerals, then override and Home. The pair never shrinks. */
+  /* The only thing on the row that shrinks: its secondary numerals clip. */
   .nums {
-    flex: 0 10 auto;
+    flex: 0 1 auto;
     height: var(--num-h);
     overflow: clip;
   }
   .nums :global(.hn-label) { white-space: nowrap; }
-  /* Proportional shrink would clip a whole numeral for a few px of extra
-     ops; wide enough that every numeral fits beside the pair, they never
-     shrink and only the extra ops give. */
-  @media (min-width: 1440px) {
-    .nums { flex-shrink: 0; }
-  }
 
   .status {
     flex: 1 1 0;
@@ -377,18 +465,45 @@
     display: flex;
     gap: 6px;
   }
-  /* ONE row that scrolls, never wraps: the e-stop sits outside it. */
-  .ops {
-    flex: 0 1 auto;
-    display: flex;
-    gap: 6px;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .ops.extra { flex-shrink: 1000; }
+  /* Never shrink, never scroll: the budget decides what is inline. */
+  .ovr, .ops, .home-menu { flex: none; display: flex; gap: 6px; }
   .ops:empty { display: none; }
-  .ops::-webkit-scrollbar { display: none; }
+
+  .home-menu { position: relative; }
+  .home-btn { gap: 6px; }
+  .home-btn .ico { width: 14px; height: 14px; }
+  .home-btn .caret { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+  .home-btn[aria-expanded='true'] { border-color: var(--line-4); }
+  /* Overlay: out of flow under its button, above the rail; moves nothing. */
+  .menu-pop {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    min-width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  }
+  .menu-pop .btn { justify-content: flex-start; }
+
+  /* Phone: the safety ops drop their idle hint line and the 96 px floor
+     (--tap still holds, law 12); a live status line still shows. */
+  @media (max-width: 479px) {
+    .dock :global(.safety-op .btn) { min-width: var(--tap); padding: 2px 8px; }
+    .dock :global(.safety-op .state.hint) { display: none; }
+  }
+  @media (max-width: 300px) {
+    .dock :global(.safety-op .btn) { padding: 2px 4px; }
+    .dock :global(.safety-op .ico) { display: none; }
+  }
+  .home-btn.icon-only { padding: 0 8px; min-width: var(--tap); }
+  .home-btn.icon-only .lbl { display: none; }
 
   .btn {
     /* Never shrink: flex would clip the labels mid-word. */
