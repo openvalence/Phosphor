@@ -580,7 +580,10 @@ export function buildSettingsModel(entries) {
     bucket.get(gname).fields.push(field);
     return true;
   };
-  for (const field of fields) place(field);
+  // A client-to-hub stream is what a client sends; the hub never reports it,
+  // so it has no value a page could show (law 9). Heroes still bind it by role.
+  const sentOnly = (f) => { const e = entries.find((x) => x.id === f.channelId); return e.clsName === 'STREAM' && e.dirName === 'c2h'; };
+  for (const field of fields) if (!sentOnly(field)) place(field);
 
   // Generic triggers (§8.2 row 6) join their channel's category like any
   // field. Uncategorized ones are `looseActions`: a home module and the

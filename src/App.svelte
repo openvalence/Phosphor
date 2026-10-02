@@ -279,8 +279,15 @@
    */
   // Scoped to what is on screen: the open drill-in page, else the page.
   // `hasDefaults` is the catalog fact that keeps the button in its place.
-  const onScreen = $derived(drillItem ? drillItem.group.fields : visibleGroups.groups.flatMap((g) => g.fields));
-  const hasDefaults = $derived(!!current?.cat?.groups.some((g) => g.fields.some((f) => !f.readOnly && f.dflt != null)));
+  // A page's card heroes count with their claimed fields (ph-jgq).
+  const heroFields = $derived.by(() => {
+    const uids = new Set((current?.cat?.heroes || []).flatMap((h) => [...h.fields.claimed]));
+    return model ? [...model.fields, ...model.actions].filter((f) => uids.has(f.uid)) : [];
+  });
+  const onScreen = $derived(drillItem ? drillItem.group.fields
+    : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields]);
+  const hasDefaults = $derived([...(current?.cat?.groups || []).flatMap((g) => g.fields), ...heroFields]
+    .some((f) => !f.readOnly && f.dflt != null));
   const resettable = $derived(onScreen.filter((f) => !f.readOnly && f.dflt != null
     && isFieldEnabled(f, machine.samples[f.channelId])));
   const resetWhy = $derived(machine.link.phase !== 'live' ? 'no hub link'

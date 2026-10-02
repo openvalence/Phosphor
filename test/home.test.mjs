@@ -383,6 +383,29 @@ if (!LIVE) {
   ok('build: an emptied home is not reseeded', (await topIds(page)).length === 0, await topIds(page));
 
   checkReach('full', BEFORE.full, await harvestDerived(page));
+
+  // bar (ph-jgq): a composite's claimed fields count in its page's bar, and a
+  // card of fields the hub never reports is not drawn.
+  for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.dataset.tabId))) {
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(150);
+    if (await page.locator('main.pane .dash-cell[data-id="hero:pattern"]').count()) break;
+  }
+  ok('bar: the Pattern page offers Reset', await page.locator('main.pane .cat-bar .reset-cat').count() === 1);
+  ok('bar: no card of send-only fields', await page.locator('main.pane .dash-cell[data-id$=":ungrouped"]').count() === 0,
+    await page.$$eval('main.pane .dash-cell', (els) => els.map((e) => e.dataset.id)));
+  hub.mode = 'hold';
+  await page.locator('main.pane .dash-cell[data-id="hero:pattern"] .field[data-widget=slider] input[type=range]').first().evaluate((el) => {
+    const step = Number(el.step) || 1;
+    el.value = String(Number(el.value) + step * 3 <= Number(el.max) ? Number(el.value) + step * 3 : Number(el.value) - step * 3);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  const busyText = () => page.locator('main.pane .cat-bar .cat-busy').textContent();
+  ok('bar: a held write inside the Pattern card is counted in flight', (await busyText()).trim() === '1 in flight', await busyText());
+  await release();
+  await page.waitForFunction(() => !document.querySelector('main.pane .cat-bar .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
+  ok('bar: the echo clears the count', !(await busyText()).trim(), await busyText());
   await ctx.close();
 
   // ---- a home saved before ph-e82.9 keyed a role field by uid ------------------
