@@ -11,7 +11,7 @@ the dev board (`ph-e82.8`).
 |---|---|---|
 | server | `src-tauri/src/buttplug.rs` | buttplug's `ButtplugServer` over the fork's websocket server transport, one client at a time (as Intiface), JSON message spec v0 to v4 |
 | machine | same file, `Machine*` | an in-process hardware manager presenting exactly one device while the webview reports a live hub |
-| protocol | fork, `protocol_impl/valence.rs` + `protocols/valence.yml` | the machine as one linear axis: LinearCmd (v3) / HwPositionWithDuration (v4), position steps 0..`POSITION_STEPS`, duration 0..65535 ms |
+| protocol | fork, `protocol_impl/valence.rs` + `protocols/valence.yml` | the machine as one linear axis: LinearCmd (v3) / HwPositionWithDuration (v4), position steps 0..`POSITION_STEPS`, duration 0..65535 ms; plus feature 1, Vibrate (0..100 steps), which writes nothing to the machine |
 | toys | fork's btleplug, serial and hid managers | found on scan, listed as kind `toy`; commanded through `Run::op`, an in-process server over the same device manager. Relationships wait on the DESIGN §10.8 flag |
 | toy modules | `src/plugins/buttplug-toys.js`, `src/ui/hero/ToyModule.svelte` | one plugin hero per toy on the `buttplug` adapter, placeable as `hero:plugin:buttplug:<key>` |
 | bridge | `src/plugins/buttplug.js` | a built-in adapter on the plugin host: `bp://motion` into `api.submitMotion` under the `motion` permission, hub presence into `bp_machine_present` |
@@ -72,7 +72,7 @@ Events:
 | `bp://devices` | same as `bp_devices` |
 | `bp://log` | `{level, msg}` |
 | `bp://motion` | `{position: f64 0..1, ms: u32}` or `{stop: true}` |
-| `bp://output` | `{index, feature, type, value}`: an output a toy applied, from any client (an app, a stop, a module); never the machine |
+| `bp://output` | `{index, feature, type, value}`: an output a device applied, from any client (an app, a stop, a module). For the machine only its Vibrate: its position is `bp://motion` |
 
 The server starts with the shell only when `start_on_launch` is saved;
 otherwise the shell calls `bp_start`. `port` in `bp_status` reads the saved
@@ -139,6 +139,14 @@ any spec version, so the setting would drive nothing.
 - **Machine identity.** The device is protocol `valence`, websocket
   specifier name `valence`, address `phosphor-machine`, display name
   `Valence Machine` (from `valence.yml`).
+- **Machine Vibrate** (`ph-e82.13.4`). Apps that only vibrate find a Vibrate
+  output on the machine (feature 1, 0..100 steps; ScalarCmd/VibrateCmd in v3,
+  OutputCmd Vibrate in v4). The fork's handler writes nothing for it, so it
+  never reaches `submitMotion`; upstream emits the applied value as an output
+  observation, which arrives on `bp://output` under the machine's index for the
+  node graph to map (to pattern speed, or whatever the user wires). Stops zero
+  it like any toy output. `bp_toy_*` still refuse the machine, Vibrate
+  included: the graph consumes it, nothing in Phosphor commands it.
 - **Device config version.** The fork's device-config build bumps
   `version.yaml` only when a protocol file changes; a consumer build with
   unchanged protocols leaves the fork clean.
@@ -173,15 +181,16 @@ any spec version, so the setting would drive nothing.
   (LinearCmd over loopback lands as the TCode adapter's mapping of the same
   L0/I input), `loopback_client_reaches_the_fake_kernel` (JSON v3 client:
   handshake, RequestDeviceList returns the machine, LinearCmd and
-  StopDeviceCmd reach the event sink, hub loss disconnects the machine and the
-  device config keeps it as remembered).
+  StopDeviceCmd reach the event sink, a v3 ScalarCmd Vibrate on the machine
+  lands on `bp://output` and never on `bp://motion`, hub loss disconnects the
+  machine and the device config keeps it as remembered).
 - `cargo test` toys: upstream simulated devices (2-motor vibrator, rotator,
   stroker) stand in for BLE hardware, all three and the machine connecting
   in one scan (distinct indices, fork b898a4d1). `scalar_toy_commands_and_stops`,
   `rotate_toy_and_stop_all`, `linear_toy_takes_position_and_duration`:
   each command lands as the device's applied output on `bp://output`,
   refusals resolve as errors, the machine is refused, a toy stop zeroes that
-  toy and leaves a running rotator alone, stop-all zeroes every toy. No simulated device has a sensor; reads are covered on the JS side.
+  toy and leaves a running rotator alone, stop-all zeroes every toy and the machine's Vibrate. No simulated device has a sensor; reads are covered on the JS side.
 - `cargo test` devices: `device_config_rename_disconnect_forget` (a rename
   shows at once and survives a restart through devices.json, blank resets,
   forget refused while connected, a disconnected toy stays listed with its

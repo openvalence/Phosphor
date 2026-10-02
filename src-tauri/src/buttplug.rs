@@ -824,15 +824,17 @@ async fn op_call(op: &ButtplugServer, msg: ButtplugClientMessageV4) -> Result<Bu
   }
 }
 
-/// Applied toy outputs, from any client, as bp://output. The machine is left
-/// out: its motion is bp://motion, and an app streams it far faster.
+/// Applied outputs, from any client, as bp://output. The machine's position is
+/// left out: it is bp://motion, and an app streams it far faster. The
+/// machine's Vibrate is in: it moves nothing, and the node graph maps it.
 async fn watch_outputs(dm: Arc<ServerDeviceManager>, sh: Arc<Shared>) {
   // A lagged receiver ends the stream; resubscribe. dm (held here) owns the
   // sender, so the stream never ends for good while this task runs.
   while let Some(obs) = dm.output_observation_stream() {
     futures::pin_mut!(obs);
     while let Some(o) = obs.next().await {
-      if !is_machine(&dm, o.device_index) {
+      let motion = o.output_type == OutputType::HwPositionWithDuration.to_string();
+      if !(motion && is_machine(&dm, o.device_index)) {
         (sh.sink)(
           "bp://output",
           json!({ "index": o.device_index, "feature": o.feature_index, "type": o.output_type, "value": o.value }),
@@ -1312,6 +1314,27 @@ mod tests {
     assert!(r[0].get("Ok").is_some(), "StopDeviceCmd: {r}");
     assert_eq!(next_motion(&mut rx).await, json!({ "stop": true }));
 
+    // The machine's Vibrate is an observation only: bp://output, never motion.
+    let m = bp.devices().await.into_iter().find(|d| d.kind == "machine").unwrap();
+    let vib = m.controls.iter().find(|c| c.ty == "Vibrate").expect("the machine has a Vibrate control");
+    assert_eq!((vib.kind, vib.range), ("scalar", Some([0, 100])));
+    let r = call(
+      &mut ws,
+      json!([{ "ScalarCmd": { "Id": 7, "DeviceIndex": index,
+        "Scalars": [{ "Index": 0, "Scalar": 0.5, "ActuatorType": "Vibrate" }] } }]),
+    )
+    .await;
+    assert!(r[0].get("Ok").is_some(), "ScalarCmd: {r}");
+    loop {
+      let (ev, v) = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await.expect("bp://output").unwrap();
+      assert_ne!(ev, "bp://motion", "vibrate never moves the machine: {v}");
+      // The StopDeviceCmd above zeroed it first.
+      if ev == "bp://output" && v["value"] != 0.0 {
+        assert_eq!(v, json!({ "index": index, "feature": vib.feature, "type": "Vibrate", "value": 50.0 }));
+        break;
+      }
+    }
+
     assert_eq!(bp.status().clients, 1);
     bp.machine_present(false);
     let live_machine = |d: &Device| d.kind == "machine" && d.connected;
@@ -1431,7 +1454,7 @@ mod tests {
 
   #[tokio::test(flavor = "multi_thread")]
   async fn rotate_toy_and_stop_all() {
-    let Toys { bp, mut rx, vib, rot, .. } = toys().await;
+    let Toys { bp, mut rx, vib, rot, machine, .. } = toys().await;
     let c = &rot.controls[0];
     assert_eq!((c.kind, c.ty.as_str()), ("rotate", "Rotate"));
     assert!(c.range.unwrap()[0] < 0, "rotate range is signed: {:?}", c.range);
@@ -1440,11 +1463,21 @@ mod tests {
     bp.toy_scalar(vib.index, 0, 20).await.unwrap();
     assert_eq!(next_output(&mut rx).await, out(vib.index, 0, "Vibrate", 20.0));
     bp.stop_all().await.unwrap();
-    let mut got = vec![next_output(&mut rx).await, next_output(&mut rx).await, next_output(&mut rx).await];
+    let mut got = Vec::new();
+    for _ in 0..4 {
+      got.push(next_output(&mut rx).await);
+    }
     got.sort_by_key(|v| (v["index"].as_u64(), v["feature"].as_u64()));
-    let mut want = vec![out(rot.index, 0, "Rotate", 0.0), out(vib.index, 0, "Vibrate", 0.0), out(vib.index, 1, "Vibrate", 0.0)];
+    // The machine's Vibrate is stopped too; its position is not an output here.
+    let mv = machine.controls.iter().find(|c| c.ty == "Vibrate").unwrap().feature;
+    let mut want = vec![
+      out(rot.index, 0, "Rotate", 0.0),
+      out(vib.index, 0, "Vibrate", 0.0),
+      out(vib.index, 1, "Vibrate", 0.0),
+      out(machine.index, mv, "Vibrate", 0.0),
+    ];
     want.sort_by_key(|v| (v["index"].as_u64(), v["feature"].as_u64()));
-    assert_eq!(got, want, "stop-all zeroes every toy");
+    assert_eq!(got, want, "stop-all zeroes every toy and the machine's vibrate");
     bp.stop().await;
   }
 
