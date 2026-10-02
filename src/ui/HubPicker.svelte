@@ -68,7 +68,7 @@
       <button type="button" class="og-btn primary" onclick={retryNow}>Retry now</button>
     {/if}
     {#if SHELL}
-      <p class="pk-note">Find or enter a hub in the shell bar above.</p>
+      <p class="pk-note">Find or enter a hub under Menu &gt; Hubs above.</p>
     {:else}
       <HostEntry onpick={switchHub} value={link.host ? hub : ''} />
       <p class="pk-note">
