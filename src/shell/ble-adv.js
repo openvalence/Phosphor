@@ -26,6 +26,8 @@ export function advFlags(dev) {
   return {
     pairing: !!(rec[0] & BLE_ADV_FLAG.pairing_window_open),
     ws: !!(rec[0] & BLE_ADV_FLAG.ws_available),
+    // RFC-079: booted into config mode; the hub list marks it "needs setup".
+    configMode: !!(rec[0] & BLE_ADV_FLAG.config_mode),
   };
 }
 

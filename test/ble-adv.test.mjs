@@ -13,9 +13,10 @@ const hub = (msd) => ({
   manufacturerData: msd,
 });
 
-assert.deepEqual(advFlags(hub({ [ADV_COMPANY_ID]: [0x03] })), { pairing: true, ws: true });
-assert.deepEqual(advFlags(hub({ '65535': [0x02] })), { pairing: false, ws: true });
-assert.deepEqual(advFlags(hub({ '65535': [0xfc] })), { pairing: false, ws: false }, 'reserved bits ignored');
+assert.deepEqual(advFlags(hub({ [ADV_COMPANY_ID]: [0x03] })), { pairing: true, ws: true, configMode: false });
+assert.deepEqual(advFlags(hub({ '65535': [0x02] })), { pairing: false, ws: true, configMode: false });
+assert.deepEqual(advFlags(hub({ '65535': [0x04] })), { pairing: false, ws: false, configMode: true }, 'RFC-079 config mode');
+assert.deepEqual(advFlags(hub({ '65535': [0xf8] })), { pairing: false, ws: false, configMode: false }, 'reserved bits ignored');
 assert.equal(advFlags(hub({ '76': [0x02] })), null, 'another company id is not ours');
 assert.equal(advFlags(hub({ '65535': [] })), null);
 assert.equal(advFlags(hub(undefined)), null);
@@ -36,4 +37,4 @@ assert.equal(upgradeTarget({ ...live, endpoint: null }), null);
 assert.equal(upgradeTarget({ ...live, phase: 'handshaking' }), null, 'only a live session hops');
 assert.equal(upgradeTarget({ ...live, mode: 'ws' }), null, 'already on WS');
 
-console.log('PASS — ble-adv: scan-response flags and upgrade decision');
+console.log('PASS — ble-adv: scan-response flags (config mode included) and upgrade decision');
