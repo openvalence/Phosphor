@@ -246,13 +246,13 @@
   });
 </script>
 
-<!-- Registration crosshair — pinned top-right of the viewport, decorative. -->
-<svg class="crosshair" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M7 0v14M0 7h14"/>
-  <circle cx="7" cy="7" r="2.5"/>
-</svg>
-
 <header class="linkbar">
+  <!-- Registration crosshair, decorative. Anchored to this bar, not the
+       viewport, so it never draws over the shell row above it. -->
+  <svg class="crosshair" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M7 0v14M0 7h14"/>
+    <circle cx="7" cy="7" r="2.5"/>
+  </svg>
   <div class="hdr-row">
     <div class="header-left">
       <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
@@ -312,8 +312,8 @@
 
 <style>
   .crosshair {
-    position: fixed;
-    top: calc(8px + env(safe-area-inset-top, 0px));
+    position: absolute;
+    top: calc(8px + var(--chrome-inset-top, 0px));
     right: 8px;
     width: 14px;
     height: 14px;
@@ -324,6 +324,7 @@
 
   /* Positioned by its parent, TopStrip.svelte; never sticky on its own. */
   .linkbar {
+    position: relative;
     background: var(--bg-raised);
     border-bottom: 1px solid var(--line);
     /* Keeps the bar's content out of the status-bar/notch zone; the

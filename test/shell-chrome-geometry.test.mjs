@@ -11,7 +11,8 @@
  * on desktop and opens below the whole strip on a phone; the shell chrome is
  * darker than the content in default, hi-vis and high-contrast, its text
  * keeps 4.5:1; tabs follow the WAI-ARIA keys; Escape and a click outside
- * close it; open state and pane survive a reload (ph-e82.14).
+ * close it; open state and pane survive a reload (ph-e82.14); the LinkBar's
+ * decorative crosshair stays below the shell row.
  *
  * Deliberately NOT part of `npm run check`: that script runs inside every
  * firmware build (build_webui.py), and launching a browser there would put a
@@ -184,6 +185,9 @@ await sp.waitForSelector('#shell-drawer');
 await sp.mouse.click(720, 860);
 await sp.waitForTimeout(100);
 ok('a click outside closes the drawer', JSON.stringify(await drawerOpen()) === '[false,"false"]');
+const cross = await rect('.linkbar .crosshair'), rowNow = await rect('.shellrow');
+ok('the LinkBar crosshair sits below the shell row, off the window buttons', cross && cross.top >= rowNow.bottom,
+  JSON.stringify([cross, rowNow]));
 
 // Phone: below the whole strip, full width; the e-stop does not move.
 await sp.setViewportSize({ width: 360, height: 640 });
