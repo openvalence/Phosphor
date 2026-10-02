@@ -17,6 +17,9 @@
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
    *   writes the layout, so every intermediate frame is cancelable.
+   * - A resize never goes below the item's `min(look, orientation)` cells
+   *   (grid.js resizeRect, RESIZE_FLOOR without one): the ghost shows the
+   *   refusal and the live region says it, never a silent clamp.
    * - Rows are minmax(cell, auto): `h` is a floor, and a card whose content
    *   is taller grows its rows rather than clipping a control.
    * - Under 641 CSS px every item is stacked full width (mobile is
@@ -33,7 +36,8 @@
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
   } from '../../model/dashboard.svelte.js';
-  import { cellCount, placeable, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { cellCount, placeable, resizeRect, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null } = $props();
@@ -84,6 +88,9 @@
     return { destroy() { if (cellEls.get(id) === node) cellEls.delete(id); } };
   }
 
+  // An item may carry `min(look, orientation) -> [w, h]` in cells (Home's controls do).
+  const minOf = (p) => p && p.min ? (w, h) => p.min(p.look, orientationOf(w, h)) : null;
+  const ORIENT = { h: 'horizontal', v: 'vertical' };
   const announce = (msg) => { announceMsg = msg; };
   const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
@@ -105,9 +112,15 @@
     const p = placed.find((q) => q.id === id);
     if (p) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move' };
   }
-  function resizeStart(id) {
+  function resizeStart(id, edge = 'se') {
     const p = placed.find((q) => q.id === id);
-    if (p && !stack) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize' };
+    if (p && !stack) pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize', edge, start: { x: p.x, y: p.y, w: p.w, h: p.h }, refused: false };
+  }
+  /** Resize `id` to `r` (resizeRect), announcing a refusal at the minimum and an orientation flip. */
+  function resizeNote(id, from, r, wasRefused) {
+    const o = orientationOf(r.w, r.h);
+    if (r.refused && !wasRefused) announce(titleOf(id) + ': minimum size, ' + r.w + ' by ' + r.h + ' cells');
+    else if (o !== orientationOf(from.w, from.h)) announce(titleOf(id) + ' now ' + ORIENT[o]);
   }
   function pointerMove(id, clientX, clientY) {
     if (!pin || pin.id !== id) return;
@@ -124,9 +137,11 @@
       return;
     }
     const c = cellAt(clientX, clientY);
-    pin = pin.mode === 'move'
-      ? { ...pin, x: c.x, y: c.y }
-      : { ...pin, w: Math.max(1, c.x - pin.x + 1), h: Math.max(1, c.y - pin.y + 1) };
+    if (pin.mode === 'move') { pin = { ...pin, x: c.x, y: c.y }; return; }
+    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(placed.find((q) => q.id === id)));
+    if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
+    resizeNote(id, pin, r, pin.refused);
+    pin = { ...pin, ...r };
   }
   function pointerEnd(id) {
     if (!pin || pin.id !== id) return;
@@ -136,7 +151,8 @@
     } else {
       layout.move(all, cols, pin);
       const p = layout.arrange(all, cols).find((q) => q.id === id);
-      if (p) announce(titleOf(id) + ' at ' + where(p));
+      const flip = p && pin.start && orientationOf(p.w, p.h) !== orientationOf(pin.start.w, pin.start.h);
+      if (p) announce(titleOf(id) + ' at ' + where(p) + (pin.refused ? ', its minimum' : '') + (flip ? ', now ' + ORIENT[orientationOf(p.w, p.h)] : ''));
     }
     pin = null;
     stackOrder = null;
@@ -165,9 +181,13 @@
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
-    layout.move(all, cols, { id, x: p.x, y: p.y, w: Math.max(1, p.w + dw), h: Math.max(1, p.h + dh) });
-    const q = layout.arrange(all, cols).find((r) => r.id === id);
-    if (q) announce(titleOf(id) + ' resized to ' + q.w + ' by ' + q.h + ' cells');
+    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p));
+    layout.move(all, cols, { id, x: r.x, y: r.y, w: r.w, h: r.h });
+    const q = layout.arrange(all, cols).find((x) => x.id === id);
+    if (!q) return;
+    if (r.refused) announce(titleOf(id) + ': minimum size, ' + q.w + ' by ' + q.h + ' cells');
+    else announce(titleOf(id) + ' resized to ' + q.w + ' by ' + q.h + ' cells'
+      + (orientationOf(q.w, q.h) !== orientationOf(p.w, p.h) ? ', now ' + ORIENT[orientationOf(q.w, q.h)] : ''));
   }
 
   // ---- palette drag-to-place --------------------------------------------------------
@@ -293,7 +313,7 @@
             onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
   </div>
   {#if editing}
-    <p class="dash-hint">Drag a card by its grip, resize it by its corner, or drag a palette entry onto the grid.
+    <p class="dash-hint">Drag a card by its grip, resize it by any edge or corner, or drag a palette entry onto the grid.
       Keyboard: focus a grip; arrows move, Shift+arrows resize. Ctrl+Z undoes the last change.</p>
   {/if}
   {/if}
@@ -315,7 +335,7 @@
           ongrabstart={() => grabStart(item.id)}
           ongrabmove={(x, y) => pointerMove(item.id, x, y)}
           ongrabend={() => pointerEnd(item.id)}
-          onresizestart={() => resizeStart(item.id)}
+          onresizestart={(edge) => resizeStart(item.id, edge)}
           onresizemove={(x, y) => pointerMove(item.id, x, y)}
           onresizeend={() => pointerEnd(item.id)}
           onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
@@ -325,8 +345,11 @@
       </div>
     {/each}
     {#if ghost}
-      <div class="drop-ghost" aria-hidden="true"
-           style={'grid-column:' + (ghost.x + 1) + ' / span ' + ghost.w + ';grid-row:' + (ghost.y + 1) + ' / span ' + ghost.h}></div>
+      <div class="drop-ghost" class:refused={pin?.refused} aria-hidden="true"
+           style={'grid-column:' + (ghost.x + 1) + ' / span ' + ghost.w + ';grid-row:' + (ghost.y + 1) + ' / span ' + ghost.h}>
+        <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.start
+          && orientationOf(ghost.w, ghost.h) !== orientationOf(pin.start.w, pin.start.h) ? ' · ' + ORIENT[orientationOf(ghost.w, ghost.h)] : ''}</span>
+      </div>
     {/if}
   </div>
 
@@ -419,6 +442,24 @@
     border-radius: var(--radius);
     background: color-mix(in srgb, var(--intent) 8%, transparent);
     pointer-events: none;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    min-width: 0;
+    overflow: hidden;
+  }
+  /* A layout limit, not a machine fault: the refusal reads in the chassis's
+     high ink, never in a safety color (law 13 keeps those for hazards). */
+  .drop-ghost.refused { border-style: solid; border-color: var(--ink-hi); }
+  .ghost-size {
+    margin: 4px;
+    padding: 1px 6px;
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    color: var(--ink-hi);
+    font-family: var(--mono);
+    font-size: .72rem;
+    white-space: nowrap;
   }
 
   /* .og-panel's outline paints 4px outside each card's border box; 7px of

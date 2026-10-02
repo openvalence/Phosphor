@@ -22,9 +22,10 @@
     "check:nest": "node test/nest.test.mjs",
     "check:a11y": "node test/a11y-basics.test.mjs",
     "check:live": "node test/actions-live.test.mjs",
+    "check:builder": "node test/builder-edit.test.mjs",
     "test": "npm run check && node test/valence-wire.test.mjs && node test/telebuf-sim.mjs && node test/server-pane.test.mjs && node test/buttplug-bridge.test.mjs && node test/buttplug-toys.test.mjs",
     "test:bp-sim": "node test/buttplug-estop-sim.mjs",
-    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:home && npm run check:nest && npm run check:a11y",
+    "test:browser": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:home && npm run check:nest && npm run check:a11y && npm run check:builder",
     "tauri": "tauri"
   },
   "devDependencies": {

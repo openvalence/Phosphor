@@ -67,11 +67,14 @@
     else onkeymove && onkeymove(horiz ? d : 0, horiz ? 0 : d);
   }
 
-  // ---- resize handle: drag the corner to change w x h -------------------
-  function onResizePointerDown(e) {
+  // ---- resize: the corner handle, plus edge and corner zones -------------
+  // The zones are fine-pointer extras straddling the card's border; the 40 px
+  // corner handle (law 12) and the keyboard stay the universal path.
+  const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'sw'];
+  function onResizePointerDown(e, edge = 'se') {
     if (e.button !== undefined && e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    onresizestart && onresizestart();
+    onresizestart && onresizestart(edge);
   }
   function onResizePointerMove(e) {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
@@ -131,6 +134,13 @@
   </div>
 
   {#if editing && !stack}
+    {#each EDGES as edge (edge)}
+      <div class={'edge edge-' + edge} role="presentation"
+           onpointerdown={(e) => onResizePointerDown(e, edge)}
+           onpointermove={onResizePointerMove}
+           onpointerup={onResizePointerUp}
+           onpointercancel={onResizePointerUp}></div>
+    {/each}
     <button type="button" class="handle resize"
             aria-label={'Resize ' + item.title + ', currently ' + w + ' by ' + h + ' cells. Arrow keys shrink or grow it.'}
             title="Drag to resize. Arrow keys shrink or grow."
@@ -273,4 +283,23 @@
     width: 9px;
     height: 9px;
   }
+
+  /* Mostly in the cell's 7px gutter, so a card's own controls keep their pointer. */
+  .edge {
+    position: absolute;
+    z-index: 1;
+    touch-action: none;
+  }
+  .edge-n, .edge-s { left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
+  .edge-e, .edge-w { top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
+  .edge-n { top: -7px; }
+  .edge-s { bottom: -7px; }
+  .edge-e { right: -7px; }
+  .edge-w { left: -7px; }
+  .edge-ne, .edge-nw, .edge-sw { width: 14px; height: 14px; }
+  .edge-ne { top: -7px; right: -7px; cursor: nesw-resize; }
+  .edge-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+  .edge-nw { top: -7px; left: -7px; cursor: nwse-resize; }
+  .edge:hover { background: color-mix(in srgb, var(--intent) 25%, transparent); }
+  @media (pointer: coarse) { .edge { display: none; } }
 </style>

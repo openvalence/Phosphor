@@ -147,6 +147,42 @@ export function pack(items, map, cols, pin = null) {
   return placed.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+/** Smallest card any resize may leave, in cells, when the item declares no minimum of its own. */
+export const RESIZE_FLOOR = [2, 1];
+
+/**
+ * Resize `start` ({x, y, w, h}) by dragging `edge` (n, s, e, w or a corner
+ * such as 'se') so the cell `c` ({x, y}) becomes that edge's outermost cell.
+ * The opposite edges stay put, and an edge drag changes only its own
+ * dimension: it stops at the nearest size the floor allows. `min(w, h)`
+ * returns the [w, h] floor for a candidate size (it may differ by
+ * orientation); RESIZE_FLOOR when absent. Returns {x, y, w, h, refused}:
+ * `refused` is true when the floor stopped the drag, so the caller can show
+ * the refusal rather than silently clamp.
+ */
+export function resizeRect(start, edge, c, cols, min = null) {
+  const right = start.x + start.w, bottom = start.y + start.h;
+  let x = start.x, y = start.y, w = start.w, h = start.h;
+  if (edge.includes('e')) w = c.x - x + 1;
+  if (edge.includes('w')) w = right - Math.max(0, c.x);
+  if (edge.includes('s')) h = c.y - y + 1;
+  if (edge.includes('n')) h = bottom - Math.max(0, c.y);
+  const floor = (a, b) => (min && min(a, b)) || RESIZE_FLOOR;
+  const legal = (a, b) => { const [mw, mh] = floor(a, b); return a >= mw && b >= mh; };
+  const capW = edge.includes('w') ? right : cols - x;
+  let W = Math.min(capW, Math.max(1, w)), H = Math.min(MAX_H, Math.max(1, h));
+  if (!/[ns]/.test(edge)) while (W < capW && !legal(W, H)) W++;
+  else if (!/[ew]/.test(edge)) while (H < MAX_H && !legal(W, H)) H++;
+  else if (!legal(W, H)) {
+    const [mw, mh] = floor(W, H);
+    W = Math.min(capW, Math.max(W, mw));
+    H = Math.min(MAX_H, Math.max(H, mh));
+  }
+  if (edge.includes('w')) x = right - W;
+  if (edge.includes('n')) y = bottom - H;
+  return { x, y, w: W, h: H, refused: W > w || H > h };
+}
+
 /** Write placements into `map`; ids not in `placed` are left untouched, a nest keeps its contents, a look stays. */
 function write(map, placed) {
   for (const p of placed) {

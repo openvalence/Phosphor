@@ -15,8 +15,9 @@ import {
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
-  saveModule, insertModule, deleteModule, resetMap, setLook,
+  saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR,
 } from '../src/model/grid.js';
+import { minCells, orientationOf } from '../src/model/settings.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -295,6 +296,30 @@ console.log('nests');
   setLook(n[nid].nest.map, 'k', { pres: 'numeral' }, { x: 0, y: 0, w: 3, h: 3 });
   commitPin(n, [{ id: nid }], 48, { id: nid, x: 0, y: 2, w: 16, h: 6 });
   ok('look: a nest member keeps its own look in the nest map when the nest moves', n[nid].nest.map.k.look.pres === 'numeral');
+}
+
+// ---- resize from every edge (ph-e82.20.1) -------------------------------------
+console.log('resize');
+{
+  const s = { x: 10, y: 4, w: 8, h: 4 };
+  const r = (edge, c, min) => { const o = resizeRect(s, edge, c, 40, min); return [o.x, o.y, o.w, o.h, o.refused].join(','); };
+  ok('east and south move only their own edge', r('e', { x: 21, y: 0 }) === '10,4,12,4,false' && r('s', { x: 0, y: 9 }) === '10,4,8,6,false');
+  ok('west keeps the right edge', r('w', { x: 6, y: 0 }) === '6,4,12,4,false' && r('w', { x: 14, y: 0 }) === '14,4,4,4,false');
+  ok('north keeps the bottom edge', r('n', { x: 0, y: 2 }) === '10,2,8,6,false' && r('n', { x: 0, y: 6 }) === '10,6,8,2,false');
+  ok('a corner moves both of its edges', r('nw', { x: 8, y: 3 }) === '8,3,10,5,false' && r('se', { x: 19, y: 9 }) === '10,4,10,6,false');
+  ok('past the floor: clamped at the floor, refused, the anchored edge holds',
+     r('w', { x: 30, y: 0 }) === [18 - RESIZE_FLOOR[0], 4, RESIZE_FLOOR[0], 4, true].join(',')
+     && r('n', { x: 0, y: 30 }) === [10, 8 - RESIZE_FLOOR[1], 8, RESIZE_FLOOR[1], true].join(','));
+  ok('exactly at the floor is not a refusal', r('e', { x: 10 + RESIZE_FLOOR[0] - 1, y: 0 }).endsWith(',false'));
+  ok('west stops at the grid edge, east at the last column', r('w', { x: -5, y: 0 }) === '0,4,18,4,false' && r('e', { x: 99, y: 0 }) === '10,4,30,4,false');
+  // A slider's floor depends on orientation: [6, 2] wide, [2, 6] tall.
+  const slider = (w, h) => minCells('slider', orientationOf(w, h));
+  ok('an edge drag stops at the nearest legal size of its own dimension', r('e', { x: 12, y: 0 }, slider) === '10,4,6,4,true',
+     r('e', { x: 12, y: 0 }, slider));
+  ok('a corner drag may flip the orientation, under the new floor', r('se', { x: 11, y: 9 }, slider) === '10,4,2,6,false'
+     && r('se', { x: 11, y: 8 }, slider) === '10,4,2,6,true', r('se', { x: 11, y: 8 }, slider));
+  ok('a flip is visible in the result', orientationOf(8, 4) === 'h' && orientationOf(2, 6) === 'v');
+  ok('the keyboard step is a south-east resize', JSON.stringify(resizeRect(s, 'se', { x: 18, y: 7 }, 40)) === '{"x":10,"y":4,"w":9,"h":4,"refused":false}');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));
