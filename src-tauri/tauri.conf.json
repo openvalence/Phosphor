@@ -15,7 +15,7 @@
         "title": "Phosphor",
         "width": 1440,
         "height": 900,
-        "minWidth": 320,
+        "minWidth": 200,
         "minHeight": 390,
         "resizable": true,
         "decorations": false,

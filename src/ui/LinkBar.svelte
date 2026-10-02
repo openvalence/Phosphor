@@ -488,4 +488,11 @@
   @media (max-width: 400px) {
     .wordmark { font-size: .82rem; }
   }
+  /* Too narrow for the name on one line: the heatmap (decor) goes first,
+     then the name wraps at its spaces, never clips or widens the page. */
+  @media (max-width: 279px) {
+    .act-grid { display: none; }
+    .header-left { flex-shrink: 1; }
+    .wordmark { flex-shrink: 1; white-space: normal; overflow-wrap: break-word; }
+  }
 </style>

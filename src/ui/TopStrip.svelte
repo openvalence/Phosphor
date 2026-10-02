@@ -505,6 +505,8 @@
     color: var(--ink);
     text-align: left;
     min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 2px;
     transition: border-color .12s;
   }
   @media (pointer: coarse) {

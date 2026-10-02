@@ -1090,6 +1090,10 @@
   }
   /* The rail's control row: override/return (and Flip) beside Home. */
   .rw-hero-accessory { flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px; }
+  /* Below a phone: the controls wrap under each other instead of overflowing. */
+  @media (max-width: 319px) {
+    .rw-hero-accessory { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  }
   /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
   .rw-flip {
     display: flex;

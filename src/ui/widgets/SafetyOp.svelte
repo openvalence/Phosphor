@@ -181,6 +181,11 @@
     -webkit-touch-callout: none;
     transition: border-color .12s, color .12s;
   }
+  /* Narrower than the strip's pair at 96px (2 x 96 + 6 + 2 x --gap): the
+     op sheds the 96px floor and its text wraps; --tap still holds. */
+  @media (max-width: 221px) {
+    .btn { min-width: var(--tap); padding: 2px 6px; white-space: normal; }
+  }
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .row { display: flex; align-items: center; gap: 4px; }

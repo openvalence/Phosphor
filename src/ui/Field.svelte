@@ -735,6 +735,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
   }
 
   /* Slider row tightened to the OG's compact cadence (.fld2 input[type=range]
@@ -788,8 +789,10 @@
 
   /* Quiet label voice — same recipe as the hero numerals' .hn-label. Size
      matches the OG stylesheet's base `label` rule (.76rem, Chakra Petch 500,
-     tx-mut) verified against og-ref/style.css. */
+     tx-mut) verified against og-ref/style.css. Wraps anywhere: the label
+     gives way before the value chip can overflow the page. */
   .field-label {
+    overflow-wrap: anywhere;
     font-family: var(--font);
     font-size: .76rem;
     font-weight: 500;
