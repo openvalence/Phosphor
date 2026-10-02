@@ -32,7 +32,7 @@ const REPLY_BYTES: usize = 4 + 4 + HUB_NAME_BYTES + 8 + 1 + 2 + FW_VERSION_BYTES
 pub struct Hub {
     pub ip: String,
     pub hub_name: String,
-    pub hub_instance_id: String, // hex: a u64 does not survive JSON's f64
+    pub hub_instance_id: String, // 16 lowercase hex digits, the session's form; a u64 does not survive JSON's f64
     pub proto_ver: u8,
     pub ws_port: u16,
     pub fw_version: String,
@@ -75,7 +75,7 @@ fn decode_reply(buf: &[u8], nonce: u32, ip: String) -> Option<Hub> {
     Some(Hub {
         ip,
         hub_name,
-        hub_instance_id: format!("{:#018x}", inst),
+        hub_instance_id: format!("{:016x}", inst),
         proto_ver,
         ws_port,
         fw_version,
@@ -194,7 +194,7 @@ mod tests {
             Hub {
                 ip: "10.0.0.5".into(),
                 hub_name: "Phosphor".into(),
-                hub_instance_id: "0x0123456789abcdef".into(),
+                hub_instance_id: "0123456789abcdef".into(),
                 proto_ver: 1,
                 ws_port: 82,
                 fw_version: "2.4.99".into(),
