@@ -87,7 +87,7 @@
       <h2 id="overlay-title">Pairing request{knockCount === 1 ? '' : 's'} waiting</h2>
       <p id="overlay-body">
         {knockCount === 1 ? (knockSample.name0 || 'A device') + ' is' : knockCount + ' devices are'}
-        asking to pair with this machine.
+        asking to pair
       </p>
       <div class="acts">
         <button type="button" class="og-btn" onclick={cancel}>Later</button>

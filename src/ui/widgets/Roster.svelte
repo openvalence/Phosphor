@@ -25,7 +25,7 @@
   const live = $derived(machine.link.phase === 'live');
   const locked = $derived(storeLocked(store, machine.link.roles));
   const reason = $derived(!live ? 'no hub link'
-    : locked ? 'this session is not authorized to read this list' : '');
+    : locked ? 'session not authorized' : '');
 
   function refresh() {
     if (ctl) ctl.abort();

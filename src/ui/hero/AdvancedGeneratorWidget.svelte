@@ -41,7 +41,7 @@
 
   const ridesLabel = (uid) => {
     const f = uid && (machine.catalog.model?.fields || []).find((x) => x.uid === uid);
-    return f ? labelFor(f) : 'a field this catalog does not have';
+    return f ? labelFor(f) : 'missing field';
   };
   // mod.amount 0 = no modulation (SPEC §8.8).
   const isOff = (m) => reportedValue(m.amount, machine.samples[m.amount.channelId]) === 0;

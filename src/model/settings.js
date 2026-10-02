@@ -739,17 +739,17 @@ export function placementLook(f, look, crossArchetype = CROSS_ARCHETYPE) {
     kind = 'range';
     let min = num(l.min) ?? f.min, max = num(l.max) ?? f.max;
     if (!(min >= f.min && max <= f.max && min < max)) {
-      errors.push('the range must lie inside ' + f.min + ' to ' + f.max);
+      errors.push('range must lie inside ' + f.min + ' to ' + f.max);
       min = f.min; max = f.max;
     }
     let step = num(l.step) ?? f.step;
     if (step != null && !(step > 0 && (!f.step || whole(step / f.step)))) {
-      errors.push('the step must be a whole multiple of ' + f.step);
+      errors.push('step must be a whole multiple of ' + f.step);
       step = f.step;
     }
     let dflt = num(l.default) ?? f.dflt;
     if (dflt != null && !(dflt >= min && dflt <= max)) {
-      if (num(l.default) != null) errors.push('the default must lie inside the range');
+      if (num(l.default) != null) errors.push('default must lie inside the range');
       dflt = f.dflt != null && f.dflt >= min && f.dflt <= max ? f.dflt : null;
     }
     if (min !== f.min || max !== f.max || step !== f.step || dflt !== f.dflt) {
@@ -760,7 +760,7 @@ export function placementLook(f, look, crossArchetype = CROSS_ARCHETYPE) {
     const [da, db] = toggleDefaults(f);
     let a = num(l.a) ?? da, b = num(l.b) ?? db;
     if (!(a !== b && toggleFits(f, a) && toggleFits(f, b))) {
-      errors.push('a toggle writes two different values inside the field\'s range');
+      errors.push('toggle needs two distinct in-range values');
       a = da; b = db;
     }
     toggle = { a, b };

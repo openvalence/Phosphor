@@ -614,7 +614,7 @@ export function connect(opts = {}) {
     // link-level error, because it means the batching logic above regressed,
     // not that the operator did anything wrong.
     if (n.code === NACK.SUBSCRIBE_REJECTED) {
-      machine.link.error = 'SUBSCRIBE_REJECTED' + (n.detail ? ': ' + n.detail : '') + ' — client bug, see machine.svelte.js';
+      machine.link.error = 'SUBSCRIBE_REJECTED' + (n.detail ? ': ' + n.detail : '');
     }
   });
 

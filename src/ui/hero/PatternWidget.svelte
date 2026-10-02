@@ -34,8 +34,8 @@
     if (!f || f.readOnly) return 'read-only';
     if (machine.link.phase !== 'live') return 'no hub link';
     const e = machine.catalog.entries.find((x) => x.id === f.writeChannel);
-    if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'this session is not authorized to change this';
-    if (!isFieldEnabled(f, sampleOf(f))) return 'the machine is refusing this right now';
+    if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
+    if (!isFieldEnabled(f, sampleOf(f))) return 'disabled by the machine';
     return '';
   }
   const enabledOf = (f) => !reasonOf(f);

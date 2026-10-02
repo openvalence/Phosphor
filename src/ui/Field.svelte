@@ -77,8 +77,8 @@
   // The gate in words (law 3). A composite (range, color) names the first
   // closed gate among its own fields.
   const gateOf = (f) => (!linkUp ? 'no hub link'
-    : !canWrite(f) ? 'this session is not authorized to change settings'
-    : !isFieldEnabled(f, machine.samples[f.channelId]) ? 'the machine is refusing this setting right now'
+    : !canWrite(f) ? 'session not authorized'
+    : !isFieldEnabled(f, machine.samples[f.channelId]) ? 'disabled by the machine'
     : '');
   const reason = $derived(
     displayOnly || field.readOnly ? ''
@@ -373,7 +373,7 @@
     status === 'fault' ? { kind: 'fault', text: (sh && sh.error) || 'refused' }
     : status === 'pending' ? { kind: 'pending', text: 'waiting for the machine' }
     : status === 'overdue' ? { kind: 'overdue', text: 'still waiting for the machine' }
-    : outOfRange ? { kind: 'range', text: 'outside this control\'s range ('
+    : outOfRange ? { kind: 'range', text: 'out of range ('
         + formatWithUnit(field, field.min) + ' to ' + formatWithUnit(field, field.max) + ')' }
     : reason ? { kind: 'gate', text: reason }
     : sh && sh.settled ? { kind: 'confirmed', text: 'confirmed' }
@@ -549,7 +549,7 @@
       {/if}
       {#if hasDefault}
         <button type="button" class="info reset" disabled={!enabled || atDefault}
-                title={(atDefault ? 'Already at ' : 'Reset to ') + (field.ownDefault ? 'this control\'s default' : 'the machine default')
+                title={(atDefault ? 'At ' : 'Reset to ') + (field.ownDefault ? 'control default' : 'machine default')
                        + (atDefault ? '' : ' (' + formatWithUnit(field, field.dflt) + ')')}
                 onclick={() => commit(field.dflt)}>
           <span class="glyph" aria-hidden="true">&#8635;</span>
@@ -720,9 +720,9 @@
            value={datetimeLocal} disabled={!enabled || !clockRef}
            onchange={(e) => commitWall(new Date(e.currentTarget.value).getTime())} />
     {#if !clockRef}
-      <p class="field-reason">the hub clock is not known yet: no uptime reported</p>
+      <p class="field-reason">hub clock unknown: no uptime reported</p>
     {:else if stale}
-      <p class="field-reason" role="status">set before the hub restarted, so it no longer holds
+      <p class="field-reason" role="status">stale: set before the hub restarted
         <button type="button" class="og-btn" disabled={!enabled} onclick={() => commitWall(stale.wallMs)}>Re-arm</button></p>
     {/if}
 

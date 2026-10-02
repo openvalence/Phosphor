@@ -35,7 +35,7 @@
     void machine.link.roles; void machine.catalog.ready;
     if (machine.link.phase !== 'live') return 'no hub link';
     const s = getSession();
-    if (!s || !s.canUse(action.channelId, action.key, v)) return 'this session is not authorized for this op';
+    if (!s || !s.canUse(action.channelId, action.key, v)) return 'session not authorized';
     return '';
   }
   const reasons = $derived([...new Set(ops.map((o) => reasonFor(o.value)).filter(Boolean))]);
@@ -95,7 +95,7 @@
   <div class="ops">
     {#each ops as op (op.value)}
       <button type="button" class="og-btn" disabled={!!reasonFor(op.value)}
-              title={reasonFor(op.value) || op.label} onclick={() => press(op.value)}>{op.label}</button>
+              title={reasonFor(op.value) || undefined} onclick={() => press(op.value)}>{op.label}</button>
     {/each}
   </div>
   <!-- One fixed line for the ladder, else the gate (laws 3, 5): no state

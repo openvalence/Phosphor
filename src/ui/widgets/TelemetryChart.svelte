@@ -286,7 +286,7 @@
         {@const on = selected.includes(f.role)}
         {@const fr = on ? freshness(f.channelId) : null}
         <button type="button" class="leg" class:off={!on} aria-pressed={on}
-                title={on ? 'Hide this lane' : 'Plot this lane'}
+                title={on ? 'Hide lane' : 'Plot lane'}
                 onclick={() => toggleLane(f.role)}>
           <i class="swatch" style="background: var({paletteVarFor(f)})" aria-hidden="true"></i>
           <span class="leg-label">{labelFor(f)}</span>
@@ -306,7 +306,7 @@
   <!-- ph-vdk.37: the Telemetry home module is offered on every hub
        (Home.svelte), so a hub with no telemetry-role fields must say so
        rather than leaving a titled card with nothing under it. -->
-  <p class="empty">No telemetry-role fields on this hub.</p>
+  <p class="empty">No telemetry fields on this hub</p>
 {/if}
 
 <style>

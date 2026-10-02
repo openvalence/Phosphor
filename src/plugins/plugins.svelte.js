@@ -70,13 +70,13 @@ function gate(field) {
   if (machine.link.phase !== 'live') return 'no hub link';
   const s = getSession();
   if (field.widget === WIDGET.action) {
-    return s && s.canUse(field.channelId, field.key) ? '' : 'this session is not authorized for this op';
+    return s && s.canUse(field.channelId, field.key) ? '' : 'session not authorized';
   }
   if (field.readOnly) return 'read-only: the machine reports this, it is not a setting';
   const e = machine.catalog.entries.find((x) => x.id === (field.isIntentField ? field.channelId : field.writeChannel));
-  if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'this session is not authorized to change settings';
+  if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
   if (!field.isIntentField && !isFieldEnabled(field, machine.samples[field.channelId])) {
-    return 'the machine is refusing this setting right now';
+    return 'disabled by the machine';
   }
   return '';
 }

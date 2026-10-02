@@ -542,7 +542,7 @@ if (!LIVE) {
   hub.push(STATE_CH);
   ok('the machine closes the field (enabled_mask)', await page.locator('.cell[data-pres=slider] input[type=range][disabled]')
     .waitFor({ timeout: 2000 }).then(() => true).catch(() => false));
-  ok('...and the gate is named in the slot', /refusing/.test(await ladderOf('slider')), await ladderOf('slider'));
+  ok('...and the gate is named in the slot', /disabled by the machine/.test(await ladderOf('slider')), await ladderOf('slider'));
   await same('grayed');
   hub.values[MASK] = 0xff;
   hub.push(STATE_CH);

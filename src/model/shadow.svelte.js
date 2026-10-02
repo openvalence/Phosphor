@@ -461,7 +461,7 @@ const motionDoor = createMotionDoor({
   entries: () => machine.catalog.entries,
   halted: () => {
     const s = machine.safety;
-    return !s ? '' : s.estopLatched ? 'e-stop latched, release and resume to continue'
+    return !s ? '' : s.estopLatched ? 'e-stop latched'
       : s.paused ? 'paused, resume to continue' : '';
   },
   setpoint: (norm) => {
