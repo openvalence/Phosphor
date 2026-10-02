@@ -115,9 +115,9 @@ ok('no pattern.select: advgen.mode is optional', !!claim(catalog(1)));
   const base = new Set(['master', 'depthMax', 'depthMin', 'speedIn', 'speedOut', 'accelIn', 'accelOut'].map((k) => c && c[k].uid));
   ok('the reference catalog with its due roles claims six modulators', !!c && c.mods.length === 6);
   ok('... each riding a base control', !!c && c.mods.every((m) => base.has(modTargetUid(entries, m.channelId))));
-  // The recorded catalog predates the roles: the widget must decline there.
+  // The hub emits the roles itself since Nucleus val-091.38..42.
   const real = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
-  ok('the recorded catalog declines (no advgen/mod roles)', claim(real) === null);
+  ok('the recorded catalog claims (its own advgen/mod roles)', claim(real) !== null);
 }
 
 console.log('\nroster slot model');

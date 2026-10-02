@@ -277,7 +277,7 @@ if (!LIVE) {
   ok('no palette outside edit mode', await page.locator('.palette').count() === 0);
 
   // inflight: a held write survives entering and leaving edit mode
-  const slider = page.locator('.home .dash-cell[data-id="widget:hero-rank"] .field[data-widget=slider]').first();
+  const slider = page.locator('.home .dash-cell .field[data-widget=slider]').first();
   const field = await slider.elementHandle();
   hub.mode = 'hold';
   await slider.locator('input[type=range]').evaluate((el) => {
@@ -312,9 +312,9 @@ if (!LIVE) {
   const badFields = FIELD_UIDS.filter((u) => uids.filter((x) => x === u).length !== 1);
   ok('palette: every fixture-catalog field exactly once (' + FIELD_UIDS.length + ')', !badFields.length, badFields);
   ok('palette: no key listed twice', new Set(keys).size === keys.length);
-  for (const k of ['hero:rail', 'hero:pattern', 'hero:limits']) ok('palette: claimed composite ' + k, count(k) === 1);
+  for (const k of ['hero:rail', 'hero:pattern', 'hero:limits', 'hero:advanced-generator']) ok('palette: claimed composite ' + k, count(k) === 1);
   ok('palette: the safety ops are modules', keys.some((k) => k.startsWith('safety:')), keys.filter((k) => k.startsWith('safety:')));
-  ok('palette: Overview\'s summaries are modules', ['widget:hero-rank', 'widget:telemetry', 'widget:actions'].every((k) => count(k) === 1));
+  ok('palette: Overview\'s summaries are modules', count('widget:telemetry') === 1);
 
   // build: delete everything, then place from the palette
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {

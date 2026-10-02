@@ -577,9 +577,9 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
     .filter((f) => f.widget === WIDGET.action);
   const drawn = generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role));
   ok('fixture hub: safety/home verbs are not duplicated onto settings tabs',
-     !drawn.some((r) => r !== 'action.preset'), drawn.join(',') || 'none');
+     !drawn.some((r) => r !== 'action.store'), drawn.join(',') || 'none');
   ok('fixture hub: the preset store verb is reachable exactly once',
-     drawn.filter((r) => r === 'action.preset').length === 1, drawn.join(',') || 'none');
+     drawn.filter((r) => r === 'action.store').length === 1, drawn.join(',') || 'none');
 }
 
 // ---- pattern-panel: background_run bound by role (RENDERING §10.1) --------

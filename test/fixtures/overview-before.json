@@ -1,20 +1,6 @@
 {
  "full": [
   {
-   "title": "Machine",
-   "uids": [
-    "4624:ap_mode",
-    "4624:master",
-    "4624:max_depth",
-    "4624:min_depth",
-    "4624:in_speed",
-    "4624:out_speed",
-    "4624:in_accel",
-    "4624:out_accel"
-   ],
-   "actions": []
-  },
-  {
    "title": "Telemetry",
    "uids": [],
    "actions": []
@@ -41,29 +27,22 @@
    "actions": []
   },
   {
-   "title": "Actions",
-   "uids": [],
-   "actions": [
-    "Op"
-   ]
+   "title": "Advanced-generator",
+   "uids": [
+    "4624:ap_mode",
+    "4624:master",
+    "4624:max_depth",
+    "4624:min_depth",
+    "4624:in_speed",
+    "4624:out_speed",
+    "4624:in_accel",
+    "4624:out_accel"
+   ],
+   "actions": []
   }
  ],
  "handheld": [
   {
-   "title": "Machine",
-   "uids": [
-    "4624:ap_mode",
-    "4624:master",
-    "4624:max_depth",
-    "4624:min_depth",
-    "4624:in_speed",
-    "4624:out_speed",
-    "4624:in_accel",
-    "4624:out_accel"
-   ],
-   "actions": []
-  },
-  {
    "title": "Telemetry",
    "uids": [],
    "actions": []
@@ -90,11 +69,18 @@
    "actions": []
   },
   {
-   "title": "Actions",
-   "uids": [],
-   "actions": [
-    "Op"
-   ]
+   "title": "Advanced-generator",
+   "uids": [
+    "4624:ap_mode",
+    "4624:master",
+    "4624:max_depth",
+    "4624:min_depth",
+    "4624:in_speed",
+    "4624:out_speed",
+    "4624:in_accel",
+    "4624:out_accel"
+   ],
+   "actions": []
   }
  ]
 }

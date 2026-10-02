@@ -390,7 +390,7 @@ console.log('Advanced Penetration (shell bundle, role fixture ' + ETAG + ')');
   await setRange(det.locator('.ap-ctl', { has: page.locator('label', { hasText: /^Rise/ }) }).locator('input[type=range]'), 4);
   await page.waitForTimeout(300);
   const depth1 = byName('pattern-adv-mod-depth1');
-  ok('modulator: amount round-trips to its own channel', hub.values[uidOf(depth1, 'amplitude')] === 60);
+  ok('modulator: amount round-trips to its own channel', hub.values[uidOf(depth1, 'amount')] === 60);
   ok('modulator: the summary and preview follow the reported values',
     /amount 60/.test(await det.locator('summary').textContent()) && (await det.locator('polyline').getAttribute('points')) !== flat);
 

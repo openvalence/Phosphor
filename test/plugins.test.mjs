@@ -16,8 +16,8 @@
  *   (g) every factory plugin validates and activates; Advanced Penetration
  *       substitutes generator-advanced on the role-carrying fixture
  *       (RENDERING §10.2) and every way it can fail (a missing essential
- *       role, the advgen.mode conditional thrown from mount, disabled, the
- *       recorded catalog) leaves the built-in to claim.
+ *       role, the advgen.mode conditional thrown from mount, disabled) leaves
+ *       the built-in to claim.
  *
  * Run: node test/plugins.test.mjs
  */
@@ -512,7 +512,7 @@ console.log('(g) factory plugins: Advanced Penetration substitutes generator-adv
     ok('missing ' + r + ': declines, the built-in claims', !b.widgets.some(isAp) && b.widgets.some(isBuiltin));
   }
   const noRun = load('recorded');
-  ok('the recorded catalog (no advgen roles): declines', !noRun.widgets.some(isAp) && noRun.widgets.some(isBuiltin));
+  ok('the recorded catalog (hub emits the advgen roles): claims', noRun.widgets.some(isAp) && !noRun.widgets.some(isBuiltin));
 
   const c = load({ drop: ['advgen.mode'] });
   const wc = c.widgets.find(isAp);

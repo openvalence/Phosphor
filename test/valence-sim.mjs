@@ -334,7 +334,7 @@ async function main() {
         sm.max_depth === 80 && sm.min_depth === 10,
       2000, 'pattern-advanced reflect').then(() => true).catch(() => false);
     const modP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.AP_MOD_SPEEDIN && sm.amplitude === 40 && sm.in_step === 25,
+      (ch, sm) => ch === CH19.AP_MOD_SPEEDIN && sm.amount === 40 && sm.in_step === 25,
       2000, 'pattern-adv-mod-speedin reflect').then(() => true).catch(() => false);
 
     const echo = await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD,

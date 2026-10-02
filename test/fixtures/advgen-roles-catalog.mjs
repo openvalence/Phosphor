@@ -1,6 +1,6 @@
 /**
  * advgen-roles-catalog.mjs -- the recorded valencesim catalog with the
- * annotations Nucleus is due to emit (val-091.38..42): RFC-081 advgen.* on the
+ * annotations Nucleus emits (val-091.38..42) re-applied: RFC-081 advgen.* on the
  * advanced-pattern base controls, RFC-066 mod.* plus entry key 20 mod_target
  * on each modifier channel (mod.amount 0 = no modulation), RFC-067
  * action.store on the preset op and RFC-070 store_id on the writer and the
@@ -22,7 +22,7 @@ import { LIMITS } from '../../../Valence/clients/js/frames.js';
 const BASE = { ap_mode: 'advgen.mode', master: 'advgen.master', max_depth: 'advgen.depth_max',
   min_depth: 'advgen.depth_min', in_speed: 'advgen.speed_in', out_speed: 'advgen.speed_out',
   in_accel: 'advgen.accel_in', out_accel: 'advgen.accel_out' };
-const MOD = { amplitude: 'mod.amount', in_step: 'mod.rise', in_wait: 'mod.hold', out_step: 'mod.fall',
+const MOD = { amount: 'mod.amount', amplitude: 'mod.amount', in_step: 'mod.rise', in_wait: 'mod.hold', out_step: 'mod.fall',
   out_wait: 'mod.rest', offset: 'mod.phase' };
 // Modifier channel name suffix -> the base field it rides.
 const RIDES = { speedin: 'in_speed', speedout: 'out_speed', accelin: 'in_accel', accelout: 'out_accel',
@@ -48,7 +48,7 @@ export function advgenCatalog({ drop = [], noStoreId = false } = {}) {
   const raw = readFileSync(new URL('./valencesim-catalog.bin', import.meta.url));
   const entries = cbDecodeFull(new Uint8Array(raw));
   const byName = (n) => entries.find((e) => e.get(E.name) === n);
-  const role = (f, r) => { if (!drop.includes(r)) f.set(F.role, r); };
+  const role = (f, r) => { if (drop.includes(r)) f.delete(F.role); else f.set(F.role, r); };
 
   const adv = byName('pattern-advanced');
   for (const f of adv.get(E.layout)) if (BASE[f.get(F.name)]) role(f, BASE[f.get(F.name)]);
@@ -67,11 +67,15 @@ export function advgenCatalog({ drop = [], noStoreId = false } = {}) {
   }
 
   const cmd = byName('pattern-presets-cmd');
-  for (const f of cmd.get(E.schema).values()) if (f.get(F.role) === 'action.preset') role(f, 'action.store');
-  if (!noStoreId) {
+  for (const f of cmd.get(E.schema).values()) if (['action.preset', 'action.store'].includes(f.get(F.role))) role(f, 'action.store');
+  const roster = byName('pattern-presets-roster');
+  if (noStoreId) {
+    cmd.delete(E.storeId);
+    roster.delete(E.storeId);
+  } else {
     const sid = byName('pattern-presets').get(E.store).get(1);
     cmd.set(E.storeId, sid);
-    byName('pattern-presets-roster').set(E.storeId, sid);
+    roster.set(E.storeId, sid);
   }
   const bytes = enc(entries);
   return { bytes, etag: toHex(catalogEtag(bytes, LIMITS.etag_bytes)) };
