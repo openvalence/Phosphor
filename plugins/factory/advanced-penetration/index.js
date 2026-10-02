@@ -5,9 +5,9 @@
 //
 // Constraints:
 // - One self-contained ES module, no framework, no imports (docs/PLUGINS.md).
-// - Binds by registry role only. `require` is generator-advanced's base set
-//   (RFC-081) and one run role (RFC-093 advgen.running, or pattern.running);
-//   pattern-panel's (running, select) is drawn whenever both exist.
+// - Binds by registry role only. `require` is generator-advanced's essential
+//   set (RFC-081, RFC-093 advgen.running); pattern-panel's (running, select)
+//   is drawn whenever both exist.
 // - Advanced and Classic are two §11.4 sources: each tab starts its own, the
 //   hub refuses a second with SOURCE_CONFLICT. The tabs only switch the view.
 // - A handle and its numeric twin are two views of one field: each shows
@@ -211,7 +211,7 @@ const CSS = `
 .ap-h[aria-orientation=vertical] .ap-tag { top: auto; bottom: calc(50% + 8px); }
 .ap-h.left .ap-tag { left: auto; right: calc(50% + 12px); }
 .ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem var(--mono); color: var(--reality); pointer-events: none; }
-.ap-play { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--intent); pointer-events: none; }
+.ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--bg-card); box-sizing: border-box; pointer-events: none; z-index: 1; }
 .ap h4 { margin: 0; font-size: .85rem; color: var(--tx); font-weight: 600; }
 .ap-sub { margin: 0; font-size: .72rem; color: var(--tx-mut); }
 .ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; }
@@ -245,15 +245,12 @@ export function activate(api) {
     replaces: ['advanced-generator', 'pattern'],
     cells: { h: [12, 16], v: [8, 24] },
     spec: {
-      require: { master: 'advgen.master', ...Object.fromEntries(BASE.map(([k, r]) => [k, r])) },
-      // RFC-093: the advanced generator runs on its own advgen.running; a hub
-      // without it yet still gets the editor, its Start says what is missing.
+      // RFC-093: the advanced generator runs on its own advgen.running.
+      require: { advRun: 'advgen.running', master: 'advgen.master', ...Object.fromEntries(BASE.map(([k, r]) => [k, r])) },
       optional: {
-        running: 'pattern.running', advRun: 'advgen.running',
-        bgRun: 'source.background_run', presetOp: 'action.store',
+        running: 'pattern.running', bgRun: 'source.background_run', presetOp: 'action.store',
         select: 'pattern.select', ...Object.fromEntries(CLASSIC.map(([k, r]) => [k, r])),
       },
-      requireOne: [['running', 'advRun']],
       // A modulator is one entry carrying all six roles (RFC-066); no minimum.
       instances: { mods: { min: 0, roles: Object.fromEntries(MOD.map(([k, r]) => [k, r])) } },
     },
@@ -565,7 +562,7 @@ function mountCard(api, el, fields) {
   }
   let raf = 0;
   // Only the advanced source plays this curve; Classic running is not drawn on it.
-  const running = () => !!F.advRun && on(api.value(F.advRun));
+  const running = () => on(api.value(F.advRun));
   const tick = () => { frame(); raf = running() ? requestAnimationFrame(tick) : 0; if (!raf) { play.hidden = true; trace.length = 0; } };
   loops.push(() => cancelAnimationFrame(raf));
   updaters.push(() => { if (!raf && running()) raf = requestAnimationFrame(tick); });
@@ -574,14 +571,13 @@ function mountCard(api, el, fields) {
   const presets = F.presetOp ? presetRow(api, F, updaters) : null;
 
   // ---- the card: two sources (SPEC §11.4), one panel each, each with its own Start
-  const runRow = (f, other, need) => {
+  const runRow = (f, other) => {
     const run = h('button', { type: 'button', class: 'og-btn ap-run' });
     const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
-    if (f) run.addEventListener('click', () => api.write(f, on(api.value(f)) ? 0 : 1));
+    run.addEventListener('click', () => api.write(f, on(api.value(f)) ? 0 : 1));
     const row = h('div', { class: 'ap-row' }, run);
     if (F.bgRun) row.append(bgSwitch());
     updaters.push(() => {
-      if (!f) { run.textContent = 'Start pattern'; run.disabled = true; note.textContent = 'needs ' + need; return; }
       const r = on(api.value(f)), st = api.status(f), gate = api.gate(f);
       run.textContent = r ? 'Stop pattern' : 'Start pattern';
       run.setAttribute('aria-pressed', String(r));
@@ -605,17 +601,16 @@ function mountCard(api, el, fields) {
     });
     return sw;
   }
-  // SOURCE_CONFLICT names the owner by id through the control-owner source
-  // labels (options, index-aligned to the source id); never by name.
+  // SOURCE_CONFLICT names the owner by id: an owned slot's source id indexes
+  // its field's options (control-owner labels). Unlabeled: no name.
+  // ponytail: a slot is a labeled source field and the owner field after it; the
+  // control-owner shape has no roles to pair them by (registry note only).
   function ownerText(other) {
-    const co = (api.catalog().fields || []).filter((f) => f.channelId === CONTROL_OWNER && f.options);
-    for (const f of co) {
-      const label = f.options[Number(api.value(f))];
-      if (label && label !== '-' && label !== 'none') {
-        return other && String(label).toLowerCase() === other.toLowerCase() ? 'stop ' + label + ' first' : 'rail owned by ' + label;
-      }
-    }
-    return 'stop the other source first';
+    const co = (api.catalog().fields || []).filter((f) => f.channelId === CONTROL_OWNER);
+    const owned = co.filter((f, i) => f.options && co[i + 1] && !co[i + 1].options && Number(api.value(co[i + 1])))
+      .map((f) => f.options[Number(api.value(f))]).filter(Boolean);
+    if (!owned.length) return 'stop the other source first';
+    return on(api.value(other)) ? 'stop ' + owned[0] + ' first' : 'rail owned by ' + owned[0];
   }
 
   const adv = h('div', { class: 'ap' },
@@ -625,15 +620,15 @@ function mountCard(api, el, fields) {
     h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l))),
     ...(rhythm ? [rhythm] : []),
     wave,
-    runRow(F.advRun, 'Classic', 'advgen.running'));
+    runRow(F.advRun, F.running));
   const classic = F.select && F.running ? h('div', { class: 'ap' }, choice(F.select, 'Pattern'),
     ...CLASSIC.filter(([k]) => F[k]).map(([k, , l]) => slider(F[k], l)),
-    runRow(F.running, 'Advanced', 'pattern.running')) : null;
+    runRow(F.running, F.advRun)) : null;
 
   const root = h('div', { class: 'ap' }, h('style', { text: CSS }));
   if (classic) {
     // A view switch, never a write: the running source opens first.
-    let view = on(api.value(F.running)) && !(F.advRun && on(api.value(F.advRun))) ? 'classic' : 'advanced';
+    let view = on(api.value(F.running)) && !on(api.value(F.advRun)) ? 'classic' : 'advanced';
     const tAdv = h('button', { type: 'button', role: 'tab', text: 'Advanced' });
     const tCls = h('button', { type: 'button', role: 'tab', text: 'Classic' });
     const body = h('div');
