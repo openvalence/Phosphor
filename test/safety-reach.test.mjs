@@ -484,18 +484,12 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
 
 // ---- ph-vdk.43: Flip on the rail row, confirm-gated, refusals in the hub's words --
 {
-  // The fixture's one two-valued unroled setting stands in for a flip field.
-  const FLIP = (() => {
-    const m = cbDecodeFull(FIXTURE);
-    for (const e of m) for (const f of e.get(8) || []) if (f.get(1) === 'ap_mode') f.set(13, 'axis.flipped');
-    return enc(m);
-  })();
-  CATALOGS.flip = { bytes: FLIP, etag: catalogEtag(FLIP, LIMITS.etag_bytes) };
-  // Its channel's snapshot: every byte 0 (not flipped) but the enabled mask.
-  const flipCh = cbDecodeFull(FLIP).find((e) => (e.get(8) || []).some((f) => f.get(13) === 'axis.flipped'));
-  const states = { [flipCh.get(1)]: Uint8Array.of(...new Array(flipCh.get(8).length - 1).fill(0), 0xff) };
+  // The fixture's machine-modes channel tags axis.flipped (RFC-088). Its
+  // snapshot: every byte 0 (not flipped) but the enabled mask.
+  const flipCh = cbDecodeFull(FIXTURE).find((e) => (e.get(8) || []).some((f) => f.get(13) === 'axis.flipped'));
+  const states = { [flipCh.get(1)]: Uint8Array.from(flipCh.get(8), (f) => (f.get(13) === 'meta.enabled_mask' ? 0xff : 0)) };
   for (const [w, h, touch, cls] of [[1280, 720, false, 'full'], [360, 800, true, 'handheld'], [220, 480, true, 'glance']]) {
-    const { ctx, page, wire, up } = await open(browser, { w, h, touch, catalog: 'flip', states });
+    const { ctx, page, wire, up } = await open(browser, { w, h, touch, catalog: 'hero', states });
     const flip = page.locator('.rail-hero .rw-flip');
     const n = up ? await flip.count() : 0;
     ok(cls + ': one Flip toggle on the rail row', n === 1, n + ' found');

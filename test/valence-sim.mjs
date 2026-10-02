@@ -11,7 +11,7 @@
  *   Build:  cmake --build ../Nucleus/sim/valencesim/build
  *   Run it: ../Nucleus/sim/valencesim/build/valencesim.exe machine \
  *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns
- *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82]
+ *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82] [--http 80]
  *
  * KILL ANY STALE VALENCESIM ON 80/82 FIRST or you are testing the wrong binary.
  *
@@ -44,6 +44,7 @@ const args = process.argv.slice(2);
 const argOf = (flag, def) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : def; };
 const HOST = argOf('--host', '127.0.0.1');
 const PORT = parseInt(argOf('--port', '82'), 10);
+const HTTP = argOf('--http', null);
 
 let failures = 0;
 const ok = (name, cond, extra) => {
@@ -83,7 +84,7 @@ async function openSession(label, extra = {}) {
     catalogStore,
     // Bare sessions land at watch; every intent below needs control, so each
     // connect mints a single-use /uitoken (HTTP on port 80).
-    token: (h) => acquireToken(h),
+    token: (h) => acquireToken(HTTP ? h + ':' + HTTP : h),
     subscriptions: [
       [CH.SAFETY, 0, PRIORITY.critical],
       [CH.MACHINE_CONFIG, 0, PRIORITY.elevated],
@@ -123,7 +124,7 @@ async function main() {
   ok('WELCOME adopted (session id + boot id + catalog etag)',
     !!w.sessionId && !!w.bootId && !!w.catalogEtag,
     'session=' + w.sessionId + ' etag=' + toHex(w.catalogEtag));
-  if (w.identity) info('identity: ' + JSON.stringify(w.identity));
+  if (w.identity) info('identity: ' + JSON.stringify(w.identity, (k, v) => (typeof v === 'bigint' ? v.toString(16) : v)));
   ok('roles granted', typeof w.roles === 'number', 'roles=' + w.roles + ' (' + ['watch', 'control', 'configure'][w.roles] + ')');
 
   ok('catalog FETCHED over BLOB_REQ/BLOB_CHUNK (not cached)',

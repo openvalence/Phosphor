@@ -32,8 +32,8 @@
   {
    "title": "Limits",
    "uids": [
-    "4096:user_speed",
-    "4096:user_accel",
+    "4096:jog_speed",
+    "4096:jog_accel",
     "4096:input_speed",
     "4096:input_accel",
     "4096:input_jerk"
@@ -81,8 +81,8 @@
   {
    "title": "Limits",
    "uids": [
-    "4096:user_speed",
-    "4096:user_accel",
+    "4096:jog_speed",
+    "4096:jog_accel",
     "4096:input_speed",
     "4096:input_accel",
     "4096:input_jerk"

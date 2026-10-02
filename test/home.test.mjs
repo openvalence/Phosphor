@@ -53,16 +53,7 @@ const ok = (name, cond, extra) => {
 };
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
-// The recorded fixture predates RFC-085's limit.user.* -> limit.jog.* rename;
-// renamed here until it is re-recorded from a sim that speaks it. Each role is
-// a short CBOR tstr (header 0x60 + length), and arrays and maps count items,
-// not bytes, so swapping header plus text in place keeps the catalog valid.
-const CAT = (() => {
-  let hex = readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)).toString('hex');
-  const tstr = (s) => (0x60 + s.length).toString(16) + Buffer.from(s).toString('hex');
-  for (const q of ['speed', 'accel']) hex = hex.replace(tstr('limit.user.' + q), tstr('limit.jog.' + q));
-  return new Uint8Array(Buffer.from(hex, 'hex'));
-})();
+const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const BEFORE = JSON.parse(readFileSync(new URL('./fixtures/overview-before.json', import.meta.url), 'utf8'));
 const ENTRIES = decodeCatalog(CAT);
