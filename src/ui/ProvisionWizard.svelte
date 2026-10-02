@@ -29,9 +29,9 @@
   const last = $derived(idx === steps.length - 1);
 
   const REASON = {
-    [STATUS.fault]: 'a write here was refused or never answered; the field says why',
-    [STATUS.overdue]: 'still waiting on the machine to confirm a write',
-    [STATUS.pending]: 'waiting on the machine to confirm a write',
+    [STATUS.fault]: 'A write was refused or unanswered',
+    [STATUS.overdue]: 'Still waiting for the machine',
+    [STATUS.pending]: 'Waiting for the machine',
   };
   function stepStatus(s) {
     const all = s.fields.flatMap((f) => (f.widget === WIDGET.range ? [f.lo, f.hi] : [f])).map(statusOf);
@@ -61,7 +61,7 @@
   </header>
 
   {#if !step}
-    <p class="note">This hub no longer advertises anything to set up here.</p>
+    <p class="note">Nothing to set up on this hub</p>
   {:else}
     <ol class="rail">
       {#each steps as s, i (s.id)}
@@ -77,7 +77,7 @@
         {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
       {/each}
     </div>
-    {#if REASON[status]}<p class="status" role="status">This step is {REASON[status]}.</p>{/if}
+    {#if REASON[status]}<p class="status" role="status">{REASON[status]}</p>{/if}
   {/if}
 
   <div class="acts">
