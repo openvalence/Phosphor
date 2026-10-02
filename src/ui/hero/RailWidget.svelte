@@ -143,35 +143,40 @@
   // motion, a pause without override refuses it INTERLOCK, override makes the
   // tape a jog over the whole travel. An idle, unpaused rail takes a plain
   // point move; a source owning the rail is the hub's SOURCE_CONFLICT to say.
-  const jogBlock = $derived(!latch ? '' : latch.estopLatched ? 'e-stop latched: no motion until release'
-    : latch.paused && !latch.override ? 'paused: press Override to jog' : '');
+  const jogBlock = $derived(!latch ? '' : latch.estopLatched ? 'E-stop latched'
+    : latch.paused && !latch.override ? 'Paused: Override to jog' : '');
   const moveEnabled = $derived(moveAllowed && !jogBlock);
 
-  // The rail row shows the plan strip in place of the tape while a source
-  // owns the rail: a jog never takes it from a source (SPEC §11.4), and
-  // override is the one way in, so override brings the tape back.
+  // The rail row shows the plan strip over the tape while a source owns the
+  // rail: a jog never takes it from a source (SPEC §11.4), and override is
+  // the one way in, so override brings the tape back. Both stay mounted.
   const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples,
     machine.samples[CH_CONTROL_OWNER], machine.link.sessionId));
   const planShown = $derived(sourceOwns && !override);
 
   // Flip (SPEC §9.6, RFC-088): the axis.flipped setting, a bool or two-option
-  // select where 1 is flipped. Confirmed on every class (reversing a rail
-  // under a person is a real act). Never pre-gated beyond the field's own
-  // write gate: the hub's SOURCE_CONFLICT, NOT_HOMED and INTERLOCK are shown
-  // as it says them. The state is the REPORTED value, never the request.
+  // select where 1 is flipped. Drawn in the top strip beside Override
+  // (ph-e82.21) through the readout. Confirmed on every class (reversing a
+  // rail under a person is a real act). Never pre-gated beyond the field's
+  // own write gate: the hub's SOURCE_CONFLICT, NOT_HOMED and INTERLOCK are
+  // shown as it says them. The state is the REPORTED value, never the request.
   const flip = $derived(fields.flip);
   const flipped = $derived(!!Number(reportedValue(flip, sampleOf(flip))));
   const flipEnabled = $derived(enabledOf(flip));
   const flipStatus = $derived(statusOf(flip));
   const flipText = $derived.by(() => {
     const sh = shadowOf(flip);
-    if (flipStatus === STATUS.fault) return (sh && sh.error) || 'refused';
-    if (flipStatus === STATUS.pending || flipStatus === STATUS.overdue) return 'waiting for the machine';
-    if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'not writable now';
-    return flipped ? 'on: home at the far end' : 'off';
+    if (flipStatus === STATUS.fault) return (sh && sh.error) || 'Refused';
+    if (flipStatus === STATUS.pending || flipStatus === STATUS.overdue) return 'Waiting';
+    if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'Not writable now';
+    return flipped ? 'Home at far end' : 'Off';
   });
-  // The tape's tooltip carries what the rail's help line used to say (ph-i0y).
-  const HINT = 'tap or scrub to jog; the window band below: drag it, drag its edges, arrow keys nudge';
+  const flipCtl = {
+    get on() { return flipped; }, get enabled() { return flipEnabled; }, get status() { return flipStatus; },
+    get text() { return flipText; }, toggle: () => toggleFlip(),
+  };
+  // The tooltips carry what the rail's help line used to say (ph-i0y).
+  const HINT = 'Tap or scrub to jog';
   const windowDesc = $derived(min.desc || max.desc || '');
   let descOpen = $state(false);
   const descId = 'rail-desc-' + Math.random().toString(36).slice(2, 8);
@@ -191,7 +196,7 @@
   const moveReason = $derived.by(() => {
     if (!move) return '';
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!moveAllowed) return 'this session is not authorized to command motion';
+    if (!moveAllowed) return 'session not authorized';
     return jogBlock;
   });
 
@@ -217,13 +222,25 @@
   const hi = $derived(extent.hi);
   const span = $derived(extent.span);
 
+  // FLIPPED AXIS (operator 2026-10-02): a flipped hub reports every position
+  // as travel minus position (RFC-088), so the rail draws its axis reversed,
+  // hi on the left. The carriage keeps its screen x across a flip and every
+  // number reads the hub's mirrored truth. pct() is the one value-to-screen
+  // map; pointer and arrow-key input go back through `dir`.
+  const dir = $derived(flipped ? -1 : 1);
   function pct(v) {
-    return norm(v, lo, hi);
+    const n = norm(v, lo, hi);
+    return n == null || !flipped ? n : 1 - n;
   }
 
   const minPct = $derived(pct(minVal));
   const maxPct = $derived(pct(maxVal));
   const haveWindow = $derived(minPct != null && maxPct != null);
+  // The window's screen edges, whichever value sits on the left.
+  const bandL = $derived(haveWindow ? Math.min(minPct, maxPct) : 0);
+  const bandR = $derived(haveWindow ? Math.max(minPct, maxPct) : 1);
+  /** "a–b" in screen order, left to right. */
+  const ends = (fa, a, fb, b) => (flipped ? formatValue(fb, b) + '–' + formatValue(fa, a) : formatValue(fa, a) + '–' + formatValue(fb, b));
 
   function clamp(v, a, b) {
     const lo2 = Math.min(a, b), hi2 = Math.max(a, b);
@@ -290,7 +307,7 @@
     for (let u = 0; u <= railUnits; u += minorStep) {
       const major = u % 10 === 0;
       const mid = !major && u % 5 === 0;
-      const x = (u / railUnits) * w;
+      const x = (flipped ? 1 - u / railUnits : u / railUnits) * w;
       const len = major ? majorLen : (mid ? midLen : minorLen);
       out.push({ x, y1: tickTop, y2: tickTop + len, major, mid });
     }
@@ -395,6 +412,7 @@
       get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
+      get flip() { return flip ? flipCtl : null; },
     };
     return () => { readout = null; };
   });
@@ -592,7 +610,8 @@
       // harvests it, so marker smoothness is MEASURED per frame instead of
       // eyeballed. Zero cost when the flag is unset (the normal case).
       if (window.__railProbe) {
-        window.__railProbe.push([nowMs, tRender, posDisplay, targetDisplay, fresh ? 1 : 0]);
+        window.__railProbe.push([nowMs, tRender, posDisplay, targetDisplay, fresh ? 1 : 0,
+          pos && posDisplay != null && rectW > 0 ? pct(posDisplay) * rectW : null]);
       }
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -688,7 +707,7 @@
     if (!dragAllowed(dragMode)) { dragMode = null; return; }
     const rect = hostEl.getBoundingClientRect();
     if (!rect.width) return;
-    const dv = ((e.clientX - dragStartX) / rect.width) * span;
+    const dv = dir * ((e.clientX - dragStartX) / rect.width) * span;
 
     if (dragMode === 'min') {
       const upper = dragStartMax;
@@ -711,8 +730,10 @@
     const width = (maxVal ?? hi) - (minVal ?? lo);
     const step = min.step || max.step || Math.max(span / 100, 1e-6);
     let dv = 0;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') dv = step;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') dv = -step;
+    if (e.key === 'ArrowRight') dv = dir * step;
+    else if (e.key === 'ArrowLeft') dv = -dir * step;
+    else if (e.key === 'ArrowUp') dv = step;
+    else if (e.key === 'ArrowDown') dv = -step;
     else if (e.key === 'Home') dv = lo - (minVal ?? lo);
     else if (e.key === 'End') dv = hi - (maxVal ?? hi);
     else return;
@@ -729,8 +750,10 @@
     const step = field.step || Math.max(span / 100, 1e-6);
     let target;
     const cur = which === 'min' ? (minVal ?? lo) : (maxVal ?? hi);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') target = cur + step;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') target = cur - step;
+    if (e.key === 'ArrowRight') target = cur + dir * step;
+    else if (e.key === 'ArrowLeft') target = cur - dir * step;
+    else if (e.key === 'ArrowUp') target = cur + step;
+    else if (e.key === 'ArrowDown') target = cur - step;
     else if (e.key === 'Home') target = lo;
     else if (e.key === 'End') target = hi;
     else if (e.key === 'PageUp') target = cur + step * 10;
@@ -744,8 +767,7 @@
 
   const bandLabel = $derived(
     haveWindow
-      ? formatValue(min, minVal) + '–' + formatValue(max, maxVal)
-        + ' · ' + formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + unitOf(min)
+      ? ends(min, minVal, max, maxVal) + ' · ' + formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + unitOf(min)
       : ''
   );
 
@@ -809,8 +831,8 @@
   // touch is drawn directly above the window it commands (the visual half of
   // "geometrically impossible to command outside the window"; the original's
   // `positionTape()` did the identical alignment).
-  const tapeStripLoPct = $derived(haveWindow && !override ? minPct : 0);
-  const tapeStripHiPct = $derived(haveWindow && !override ? maxPct : 1);
+  const tapeStripLoPct = $derived(haveWindow && !override ? bandL : 0);
+  const tapeStripHiPct = $derived(haveWindow && !override ? bandR : 1);
 
   /** clientX -> commandable value, mapped against the STRIP's own width (not the whole assembly) so a short window strip still reads its full drag travel as [tapeLo,tapeHi]. */
   function moveValueFromClientX(clientX) {
@@ -818,7 +840,7 @@
     const rect = tapeBarEl.getBoundingClientRect();
     if (!rect.width) return null;
     const frac = clamp((clientX - rect.left) / rect.width, 0, 1);
-    return tapeLo + frac * tapeSpan;
+    return flipped ? tapeHi - frac * tapeSpan : tapeLo + frac * tapeSpan;
   }
 
   function requestMove(value) {
@@ -858,8 +880,10 @@
     const step = (move && move.step) || Math.max(tapeSpan / 100, 1e-6);
     const cur = tapeVal ?? tapeLo;
     let v;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') v = cur + step;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') v = cur - step;
+    if (e.key === 'ArrowRight') v = cur + dir * step;
+    else if (e.key === 'ArrowLeft') v = cur - dir * step;
+    else if (e.key === 'ArrowUp') v = cur + step;
+    else if (e.key === 'ArrowDown') v = cur - step;
     else if (e.key === 'PageUp') v = cur + step * 10;
     else if (e.key === 'PageDown') v = cur - step * 10;
     else if (e.key === 'Home') v = tapeLo;
@@ -877,21 +901,27 @@
   // Fraction WITHIN the strip's own local width (0..1) — the pip rides under
   // the pointer/setpoint the same way the original's did, in the strip's own
   // coordinate space, not the full rail's.
-  const tapeDotFrac = $derived(tapeVal != null ? clamp((tapeVal - tapeLo) / tapeSpan, 0, 1) : null);
+  const tapeDotFrac = $derived.by(() => {
+    if (tapeVal == null) return null;
+    const f = clamp((tapeVal - tapeLo) / tapeSpan, 0, 1);
+    return flipped ? 1 - f : f;
+  });
 </script>
 
 <div class="hero rail-hero">
-  <!-- The numerals and override/return live in the top strip (TopStrip.svelte,
-       reading railReadout()); this panel is the rail row and the rail. -->
+  <!-- The numerals, override/return and Flip live in the top strip
+       (TopStrip.svelte, reading railReadout()); this panel is the rail row
+       and the rail. -->
   <div class="rail-panel og-panel">
-  <!-- THE RAIL ROW, one fixed height (.rail-swap): the jog tape, or the plan
-       strip in its place while a source owns the rail (planShown). Flip rides
-       its end. A reason renders inside the row, never as a line under it. -->
+  <!-- THE RAIL ROW, one fixed height, the rail's full width: the jog tape
+       and the plan strip share one cell, both mounted, and planShown picks
+       the visible one, so a swap remounts and moves nothing. A reason
+       renders inside the row, never as a line under it. -->
   <div class="rail-row">
     <div class="rail-swap" class:has-info={!!windowDesc}>
-    {#if planShown}
-      <PlanStrip />
-    {:else if move}
+    <div class="swap-face" class:off={!planShown}><PlanStrip shown={planShown} /></div>
+    <div class="swap-face" class:off={planShown}>
+    {#if move}
       <!-- Input tape — a live command surface. In the original this was
            two layers: a full-width TRACK (dashed guides marking full travel)
            with a highlighted, draggable STRIP inside it sized/positioned to
@@ -907,7 +937,7 @@
              title={'jog · ' + (override ? 'travel' : 'window') + (!moveEnabled && moveReason ? ' · ' + moveReason : '')}>
           <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}{#if !moveEnabled && moveReason}<span
             class="rail-reason"> &middot; {moveReason}</span>{/if}</span>
-          <span class="rail-tape-extent mono">{formatValue(move, tapeLo)}&ndash;{formatValue(move, tapeHi)}</span>
+          <span class="rail-tape-extent mono">{ends(move, tapeLo, move, tapeHi)}</span>
         </div>
         <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
              tapeTrackEl above) — the whole dashed-guide width is tappable, not
@@ -939,18 +969,18 @@
     {:else}
       <!-- A catalog with no role-tagged move INTENT: the window extent keeps
            the rhythm, commands nothing, and says why. -->
-      <div class="rail-tape-assembly disabled" aria-disabled="true"
-           title="This catalog does not tag a move INTENT by role, so a generic client cannot find it safely.">
+      <div class="rail-tape-assembly disabled" aria-disabled="true" title="No move intent on this catalog">
         <div class="rail-tape-labels" title="jog · window · no move intent on this catalog">
           <span class="rail-tape-mode">jog &middot; window<span class="rail-reason"> &middot; no move intent on this catalog</span></span>
-          <span class="rail-tape-extent mono">{haveWindow ? formatValue(min, minVal) + '–' + formatValue(max, maxVal) : '--'}</span>
+          <span class="rail-tape-extent mono">{haveWindow ? ends(min, minVal, max, maxVal) : '--'}</span>
         </div>
         <div class="rail-tape-track" title={HINT}>
           <div class="rail-tape"
-               style="left:{haveWindow ? minPct * 100 : 0}%; width:{haveWindow ? Math.max(0, (maxPct - minPct) * 100) : 100}%"></div>
+               style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"></div>
         </div>
       </div>
     {/if}
+    </div>
     {#if windowDesc}
       <!-- The window's catalog description, behind the same info affordance
            Field.svelte uses; it never takes a line of its own (ph-i0y). -->
@@ -964,13 +994,6 @@
       </span>
     {/if}
     </div>
-    {#if flip}
-      <button type="button" class="rw-flip" aria-pressed={flipped} disabled={!flipEnabled}
-              data-shadow={flipStatus} title={flipText} onclick={toggleFlip}>
-        <span class="lbl">Flip</span>
-        <small role="status">{flipText}</small>
-      </button>
-    {/if}
   </div>
 
   <div class="spine-rail-host" class:drag-live={dragMode !== null} bind:this={hostEl}>
@@ -991,19 +1014,19 @@
       {/each}
       <line x1="0" y1={baselineY} x2={railWidthPx} y2={baselineY} stroke="var(--line-1)" stroke-width="1" />
     </svg>
-    <span class="rail-endcap lo mono">{formatValue(min, lo)}</span>
-    <span class="rail-endcap hi mono">{formatValue(max, hi)}</span>
+    <span class="rail-endcap lo mono">{flipped ? formatValue(max, hi) : formatValue(min, lo)}</span>
+    <span class="rail-endcap hi mono">{flipped ? formatValue(min, lo) : formatValue(max, hi)}</span>
     <span class="rail-ghost mono">{formatValue(max, (lo + hi) / 2)}</span>
     <span class="rail-tri lo" aria-hidden="true"></span>
     <span class="rail-tri hi" aria-hidden="true"></span>
 
-    <div class="rail-hz lo" style="clip-path: inset(0 {haveWindow ? (100 - minPct * 100) : 100}% 0 0)"></div>
-    <div class="rail-hz hi" style="clip-path: inset(0 0 0 {haveWindow ? (maxPct * 100) : 100}%)"></div>
+    <div class="rail-hz lo" style="clip-path: inset(0 {haveWindow ? (100 - bandL * 100) : 100}% 0 0)"></div>
+    <div class="rail-hz hi" style="clip-path: inset(0 0 0 {haveWindow ? (bandR * 100) : 100}%)"></div>
 
     <canvas class="rail-canvas" bind:this={canvasEl}></canvas>
 
     {#if haveWindow}
-      <div class="rail-band"
+      <div class="rail-band" title="Drag the window or its edges"
            class:disabled={!bandEnabled}
            class:pending={statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}
@@ -1012,7 +1035,7 @@
            aria-valuetext={bandLabel}
            aria-disabled={!bandEnabled}
            data-shadow={worstStatus(statusOf(min), statusOf(max))}
-           style="left:{minPct * 100}%; width:{Math.max(0, (maxPct - minPct) * 100)}%"
+           style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"
            onpointerdown={(e) => startDrag('band', e)}
            onpointermove={onDragMove}
            onpointerup={endDrag}
@@ -1068,43 +1091,29 @@
     gap: 0;
   }
 
-  /* The rail row: a fixed height whatever fills it. Labels line plus track,
-     the same box for the tape and the plan strip (PlanStrip.svelte reads
-     --rail-row-h), so the swap never moves the rail below it. */
+  /* The rail row: a fixed height whatever fills it, the rail's own width.
+     Labels line plus track, one grid cell for the tape and the plan strip
+     (PlanStrip.svelte reads --rail-row-h), so the swap never moves the rail
+     below it. */
   .rail-row {
     --rail-row-h: max(var(--tap), calc(18px + var(--s) * 26px));
     display: flex;
-    gap: 8px;
     height: var(--rail-row-h);
   }
   @media (pointer: coarse) {
     .rail-row { --rail-row-h: max(var(--tap), 58px); }
   }
-  .rail-swap { position: relative; flex: 1 1 auto; min-width: 0; }
+  .rail-swap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  }
+  .swap-face { grid-area: 1 / 1; min-width: 0; }
+  .swap-face.off { visibility: hidden; }
   /* The info box rides the labels line's right end; the labels make room. */
   .has-info .rail-tape-labels, .has-info :global(.plan-labels) { padding-right: 24px; }
-  /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
-  .rw-flip {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: var(--tap);
-    min-width: max(var(--tap), 72px);
-    padding: 2px 10px;
-    background: transparent;
-    border: 1px solid var(--line-2);
-    border-radius: var(--r-s);
-    color: var(--ink);
-    font-size: .72rem;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-  .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
-  .rw-flip:disabled { opacity: .4; }
-  .rw-flip small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
-  .rw-flip[data-shadow='overdue'] small { color: var(--warn); }
-  .rw-flip[data-shadow='fault'] small { color: var(--warn); }
 
   /* OG .rail-panel spacing: 10px vertical margin so the og-panel's 4px
      outline-offset frame never collides with the row above or the content
@@ -1153,12 +1162,16 @@
      the window" landmark. The STRIP (.rail-tape) is what actually commands;
      it is positioned/sized to the window fraction of that same width, in the
      markup above. */
+  /* The transparent sides mirror the rail host's 1px border, so the tape's
+     percentages land on the ruler's pixels. */
   .rail-tape-track {
     position: relative;
     width: 100%;
     height: calc(var(--s) * 26px);
     border-top: 1px dashed var(--line-1);
     border-bottom: 1px dashed var(--line-1);
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
     touch-action: none;
     cursor: not-allowed;
   }

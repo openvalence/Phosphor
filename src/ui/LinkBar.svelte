@@ -272,7 +272,7 @@
       <span class="chip-lbl">catalog</span>{catalogLabel}
     </span>
     <span class="chip chip-opt tone-{renderTone}"
-          title="frames per second · telemetry jitter buffer · frames that outran the newest sample · rAF-vs-sample-stamp clock skew">
+          title="FPS · jitter buffer · held frames · clock skew">
       <span class="chip-lbl">render</span>
       <span class="mono">{renderLabel}</span>
     </span>

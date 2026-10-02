@@ -11,32 +11,38 @@
    *   reason, a refusal or whether a rail is mounted. Nothing here adds a
    *   line; a long text ellipsizes and carries its full form in `title`.
    * - The strip: the rail's numerals left (railReadout(), the rail's own rAF
-   *   instant), ONE status slot in the middle, the controls right: the e-stop
-   *   and pause pair (law 14, SafetyOp.svelte), override/return while a rail
-   *   is mounted (SPEC §11.1), then every action.home / action.safety op the
-   *   catalog advertises (Home first). The pair never scrolls or shrinks, at
-   *   every width and in every state (law 1); placed copies are extras.
+   *   instant), ONE status slot in the middle, the controls right, mirrored
+   *   so the e-stop is outermost (operator 2026-10-02): Home (every
+   *   action.home / action.safety op the catalog advertises), then Flip and
+   *   override/return while a rail is mounted (SPEC §9.6, §11.1), then the
+   *   pause and e-stop pair (law 14, SafetyOp.svelte). The pair never
+   *   scrolls or shrinks, at every width and in every state (law 1); placed
+   *   copies are extras.
+   * - Home is ONE control. With more than one op it opens a popover (Home,
+   *   Force Home, whatever else the hub offers); no other op is inline.
+   *   While home is required (the snapshot's home_required, or a NOT_HOMED
+   *   refusal until a home echoes) it pulses a red hazard border: a
+   *   safety-adjacent required act (DESIGN §10.3, operator 2026-10-02).
    * - Nothing in the strip scrolls sideways (ph-b5d). Short of width the
    *   secondary numerals clip first; past the group's measured budget, in
-   *   order: the ops collapse into ONE Home control with a popover (Home,
-   *   Force Home, whatever else the hub offers), that control drops its
-   *   label, the strip stacks into two rows, and last override/return joins
-   *   the popover. The pair never shrinks and is never in the popover.
+   *   order: the Home control drops its label and Flip joins its popover,
+   *   the strip stacks into two rows, and last override/return joins the
+   *   popover. The pair never shrinks and is never in the popover.
+   * - The numeral's glow paints to the strip's edges, never past them: the
+   *   numerals cell clips at the strip box, not at its own.
    * - The status slot shows ONE thing, by priority: link fault, unattended
    *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge.
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
-   *   off or unmounted; the remedy table (`NOT_HOMED` -> `action.home`) lives
-   *   there too, this file only renders it.
+   *   off or unmounted.
    * - The safety-intents channel is found by spec-core identity
    *   (specSafetyAction, law 2), a role tag being one more discovery path,
    *   never the only one: a hub that never annotated it keeps its e-stop.
    */
   import { machine, getSession, specSafetyAction, estopLabel, retryNow } from '../model/machine.svelte.js';
-  import { runAction, lastRefusal, remedyForLastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
-  import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS, CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
-  import { optionLabel } from '../model/format.js';
-  import { needsConfirm, confirmCopy, isUnattended } from '../model/actions.js';
+  import { runAction, lastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
+  import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS, CH_CONTROL_OWNER, NACK } from '../../../Valence/clients/js/index.js';
+  import { needsConfirm, confirmCopy, isUnattended, railOwnerName } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
@@ -66,6 +72,10 @@
   // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
   // and never on a hub whose op table lacks it (law 7).
   const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
+  const flip = $derived(rail ? rail.flip : null);
+  const railCtl = $derived(hasOverride || !!flip);
+  // Flip's subline in every state it can take, so the box never resizes.
+  const FLIP_TEXTS = ['Home at far end', 'Off', 'Waiting', 'Not writable now'];
 
   // ---- latest safety edge ----------------------------------------------------
   // The core safety-events ring only. Stale when the link has not been live
@@ -110,43 +120,38 @@
   }
 
   // ---- the status slot ---------------------------------------------------------
-  const PHASE_WORD = { idle: 'idle', connecting: 'connecting', handshaking: 'handshaking', retrying: 'reconnecting',
-    failed: 'no link' };
+  const PHASE_WORD = { idle: 'Idle', connecting: 'Connecting', handshaking: 'Handshaking', retrying: 'Reconnecting',
+    failed: 'Failed' };
   const unattended = $derived(isUnattended(machine.catalog.model && machine.catalog.model.byRole,
     machine.samples, machine.samples[CH_CONTROL_OWNER]));
   const slot = $derived.by(() => {
     const link = machine.link;
     const latch = machine.safety;
-    if (link.error) return { kind: 'fault', text: 'link error: ' + link.error };
+    if (link.error) return { kind: 'fault', text: 'Link error: ' + link.error };
     if (link.phase !== 'live') {
-      return { kind: 'fault', text: (PHASE_WORD[link.phase] || link.phase) + ': no hub link, nothing here can drive '
-        + 'the machine' + (link.closeReason ? ' (' + link.closeReason + ')' : '') };
+      return { kind: 'fault', text: (PHASE_WORD[link.phase] || link.phase) + ': no hub link'
+        + (link.closeReason ? ' (' + link.closeReason + ')' : '') };
     }
-    if (unattended) return { kind: 'unattended', text: 'unattended: moving with no session in control' };
+    if (unattended) return { kind: 'unattended', text: 'Unattended: no session in control' };
     if (lastRefusal.at) return { kind: 'refusal' };
-    if (latch && latch.estopLatched) return { kind: 'notice', text: 'halted: hold ' + estopLabel() + ' 3 s to release' };
-    if (latch && latch.override) return { kind: 'notice', text: 'override: jog over the whole travel, Return when done' };
-    if (latch && latch.paused) {
-      return { kind: 'notice', text: latch.homeRequired ? 'paused: home required' : 'paused: resume to continue' };
-    }
+    if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
+    if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
+    if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
     if (latestSafety) return { kind: 'edge' };
     return { kind: 'idle' };
   });
-  const refusalText = $derived(lastRefusal.text + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
+  // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.
+  const ownerName = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
+    machine.samples[CH_CONTROL_OWNER]));
+  const refusalText = $derived((lastRefusal.code === NACK.SOURCE_CONFLICT && ownerName
+    ? 'refused: rail owned by ' + ownerName : lastRefusal.text) + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
   const refusalTitle = $derived(refusalText + (lastRefusal.detail ? ' · ' + lastRefusal.detail : ''));
   const edgeText = $derived(latestSafety
     ? displayLabel(SAFETY_EVENT_KIND_NAME[latestSafety.kind] || ('kind ' + latestSafety.kind)) : '');
 
-  const remedy = $derived.by(() => remedyForLastRefusal());
-  let remedyBusy = $state(false);
-  async function fireRemedy() {
-    if (!remedy) return;
-    remedyBusy = true;
-    const result = await runAction(remedy.action, remedy.op);
-    remedyBusy = false;
-    // Cleared on the ECHO of the remedy, never on the tap.
-    if (result.ok) clearLastRefusal();
-  }
+  // The hub's home_required is the truth; a NOT_HOMED refusal stands in for
+  // a hub that never sets it, until a home op echoes (fire below).
+  const homeNeeded = $derived(!!(machine.safety && machine.safety.homeRequired) || lastRefusal.code === NACK.NOT_HOMED);
 
   // ---- the ops -----------------------------------------------------------------
   /** May THIS session fire this exact op, per the catalog's own access data? */
@@ -158,7 +163,7 @@
   }
   function reasonFor(action, value) {
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!canFire(action, value)) return 'this session is not authorized for this op';
+    if (!canFire(action, value)) return 'session not authorized';
     return '';
   }
 
@@ -192,16 +197,17 @@
   // Every width below is measured from something the decision does not
   // change (the off-layout measuring row, the pair, the primary numeral, the
   // strip box), so a level never feeds back into its own inputs. Levels:
-  // 0 every op inline, 1 the ops in the Home popover, 2 that control
-  // icon-only, 3 override in the popover too. One row while level 2 or less
-  // fits beside the primary numeral and the status floor, else two rows.
+  // 0 Home inline (labeled popover when the hub offers more than Home), 1
+  // that control icon-only and Flip in its popover, 2 override in the
+  // popover too. One row while level 1 or less fits beside the primary
+  // numeral and the status floor, else two rows.
   const homeOp = $derived(ops.find((o) => isHomeRole(o.action) && o.value === HOME_OP.home) || null);
   let stripEl = $state(null), measureEl = $state(null), pairEl = $state(null), ovrEl = $state(null);
   let level = $state(0);
   let stacked = $state(false);
   let menuOpen = $state(false);
   let menuEl = $state(null);
-  let ovrW = 0;   // kept from when override was last inline (level 3 unmounts it)
+  let flipW = 0, ovrW = 0;   // kept from when each was last inline (the popover unmounts them)
   function measure() {
     if (!stripEl || !measureEl) return;
     const cs = getComputedStyle(stripEl);
@@ -209,18 +215,18 @@
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
     const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
     const GAP = 6;
-    if (ovrEl) ovrW = ovrEl.offsetWidth + GAP;
+    const fEl = ovrEl && ovrEl.querySelector('.rw-flip'), oEl = ovrEl && ovrEl.querySelector('.safety-op');
+    if (fEl) flipW = fEl.offsetWidth + GAP;
+    if (oEl) ovrW = oEl.offsetWidth + GAP;
     const pair = pairEl ? pairEl.offsetWidth : 0;
-    const ovr = hasOverride ? ovrW : 0;
-    const menuFull = w('menu'), menuIcon = w('icon');
-    const many = ops.length > 1;
-    const needs = [pair + ovr + w('op'), pair + ovr + (many ? menuFull : w('op')),
-      pair + ovr + (ops.length ? menuIcon : 0), pair + (ops.length || hasOverride ? menuIcon : 0)];
+    const ovr = hasOverride ? ovrW : 0, fl = flip ? flipW : 0;
+    const needs = [pair + ovr + fl + (ops.length > 1 ? w('menu') : w('op')), pair + ovr + (ops.length || flip ? w('icon') : 0),
+      pair + (ops.length || railCtl ? w('icon') : 0)];
     const oneRow = content - prim - Math.min(240, content * 0.25) - 24;
-    stacked = !needs.slice(0, 3).some((n) => n <= oneRow);
+    stacked = !needs.slice(0, 2).some((n) => n <= oneRow);
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
-    level = fit < 0 ? 3 : fit;
+    level = fit < 0 ? 2 : fit;
   }
   $effect(() => {
     if (!stripEl || !measureEl) return;
@@ -229,9 +235,10 @@
     return () => ro.disconnect();
   });
   // A rail mounting or the op set changing moves the budget too.
-  $effect(() => { void rail; void ops.length; void hasOverride; queueMicrotask(measure); });
-  const menuShown = $derived(level >= 1 && (ops.length > 1 || level >= 2));
-  const ovrInMenu = $derived(level === 3 && hasOverride);
+  $effect(() => { void rail; void ops.length; void railCtl; queueMicrotask(measure); });
+  const menuShown = $derived(ops.length > 1 || level >= 1);
+  const flipInMenu = $derived(level >= 1 && !!flip);
+  const ovrInMenu = $derived(level === 2 && hasOverride);
   function onDocClick(e) {
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
@@ -249,8 +256,14 @@
     menuOpen = false;
     if (needsConfirm(op.action, op.value) && !(await askConfirm(confirmCopy(op.action, op.value)))) return;
     busy = { ...busy, [op.key]: true };
-    await runAction(op.action, op.value);
+    const r = await runAction(op.action, op.value);
     busy = { ...busy, [op.key]: false };
+    // A NOT_HOMED refusal clears on the ECHO of a home op, never on the tap.
+    if (r.ok && isHomeRole(op.action) && lastRefusal.code === NACK.NOT_HOMED) clearLastRefusal();
+  }
+  function toggleFlip() {
+    menuOpen = false;
+    flip.toggle();
   }
 </script>
 
@@ -262,9 +275,19 @@
 {/snippet}
 
 {#snippet opButton(op)}
-  <button type="button" class="btn" disabled={!canFire(op.action, op.value)}
-          title={reasonFor(op.action, op.value) || op.label} onclick={() => fire(op)}>
+  <button type="button" class="btn" class:hazard={homeNeeded && op === homeOp} disabled={!canFire(op.action, op.value)}
+          title={reasonFor(op.action, op.value) || (homeNeeded && op === homeOp ? 'Home required' : undefined)}
+          onclick={() => fire(op)}>
     <span class="lbl">{busy[op.key] ? '…' : displayLabel(op.label)}</span>
+  </button>
+{/snippet}
+
+{#snippet flipButton()}
+  <button type="button" class="rw-flip" aria-pressed={flip.on} disabled={!flip.enabled}
+          data-shadow={flip.status} title={flip.text} onclick={toggleFlip}>
+    <span class="lbl">Flip</span>
+    <small role="status">{flip.text}</small>
+    <span class="ghost" aria-hidden="true">{#each FLIP_TEXTS as t}<small>{t}</small>{/each}</span>
   </button>
 {/snippet}
 
@@ -294,24 +317,17 @@
       {#if slot.kind === 'refusal'}
         <!-- The text is its own dismiss button: one target, no extra width. -->
         <div class="recovery" role="alert">
-          <button type="button" class="st-dismiss" title={refusalTitle + ' (tap to dismiss)'}
+          <button type="button" class="st-dismiss" title={refusalTitle} aria-label={'Dismiss: ' + refusalTitle}
                   onclick={clearLastRefusal}>
             <span class="st-text">{refusalText}</span><span class="st-x" aria-hidden="true">×</span>
           </button>
-          {#if remedy}
-            <button type="button" class="btn recover" disabled={!canFire(remedy.action, remedy.op)}
-                    title={reasonFor(remedy.action, remedy.op)} onclick={fireRemedy}>
-              {remedyBusy ? '…' : 'Fix: ' + optionLabel(remedy.action, remedy.op)}
-            </button>
-          {/if}
         </div>
       {:else if slot.kind === 'edge'}
         <!-- The latest safety edge, its age and unread count; opens the
              Safety feed (LogPane). Dimmed AND worded when stale (laws 5, 8). -->
         <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
-                title={edgeText + ', ' + ageText(now - latestSafety.at) + (unreadSafety ? ', ' + unreadSafety + ' new' : '')
-                  + (safetyStale ? ' (stale: the link has not been live since this edge, later edges may be missing)'
-                                 : ': open the safety event history')}>
+                title={edgeText + ' · ' + ageText(now - latestSafety.at) + (unreadSafety ? ' · ' + unreadSafety + ' new' : '')
+                  + (safetyStale ? ' · stale, later edges may be missing' : '')}>
           <span class="evkind">{edgeText}</span>
           <span class="evage">{ageText(now - latestSafety.at)}</span>
           {#if safetyStale}<span class="evtag">stale</span>{/if}
@@ -321,34 +337,42 @@
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
               role={slot.kind === 'notice' ? 'status' : 'alert'} title={slot.text}>{slot.text}</span>
         {#if slot.kind === 'fault' && (machine.link.phase === 'retrying' || machine.link.phase === 'failed')}
-          <button type="button" class="btn" onclick={retryNow}>Retry now</button>
+          <button type="button" class="btn" onclick={retryNow}>Retry</button>
         {/if}
       {/if}
     </div>
 
     <div class="dock">
-      <!-- Bound by spec-core identity alone (law 2), never by a role tag. -->
-      <div class="pair" bind:this={pairEl}>
-        <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
-        <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
-      </div>
-      {#if hasOverride && !ovrInMenu}<div class="ovr" bind:this={ovrEl}><SafetyOp action={specSafety} op={SAFETY_OP.override} /></div>{/if}
       {#if !menuShown}
         <div class="ops">{#each ops as op (op.key)}{@render opButton(op)}{/each}</div>
       {:else}
         <div class="home-menu" bind:this={menuEl}>
-          <button type="button" class="btn home-btn" class:icon-only={level >= 2} aria-haspopup="true" aria-expanded={menuOpen}
+          <button type="button" class="btn home-btn" class:icon-only={level >= 1} class:hazard={homeNeeded}
+                  aria-haspopup="true" aria-expanded={menuOpen}
                   aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
-                  title={(homeOp ? 'Home' : 'More') + ': ' + [...(ovrInMenu ? ['override'] : []), ...ops.map((o) => displayLabel(o.label))].join(', ')}
+                  title={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
                   onclick={() => (menuOpen = !menuOpen)}>{@render homeFace()}</button>
           {#if menuOpen}
             <div class="menu-pop" role="group" aria-label="Home and machine ops">
-              {#if ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
               {#each ops as op (op.key)}{@render opButton(op)}{/each}
+              {#if flipInMenu}{@render flipButton()}{/if}
+              {#if ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
             </div>
           {/if}
         </div>
       {/if}
+      {#if (flip && !flipInMenu) || (hasOverride && !ovrInMenu)}
+        <div class="ovr" bind:this={ovrEl}>
+          {#if flip && !flipInMenu}{@render flipButton()}{/if}
+          {#if hasOverride && !ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
+        </div>
+      {/if}
+      <!-- Bound by spec-core identity alone (law 2), never by a role tag.
+           The e-stop is outermost. -->
+      <div class="pair" bind:this={pairEl}>
+        <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
+        <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
+      </div>
     </div>
   </div>
 </div>
@@ -406,8 +430,8 @@
     height: calc(var(--num-h) + 6px + var(--tap) + 12px);
   }
   .stacked .nums { grid-area: num; }
-  .stacked .status { grid-area: status; align-self: center; }
-  .strip.stacked .dock { grid-area: dock; display: flex; gap: 6px; min-width: 0; }
+  .stacked .status { grid-area: status; }
+  .strip.stacked .dock { grid-area: dock; display: flex; justify-content: flex-end; gap: 6px; min-width: 0; }
   /* Watch-sized: no room beside the numeral. A current condition covers
      the numeral in its own cell; the edge history stays in the Log. */
   @media (max-width: 300px) {
@@ -416,18 +440,24 @@
     .strip .status:is([data-kind=idle], [data-kind=edge]) { display: none; }
   }
 
-  /* The secondary numerals wrap below the primary and clip rather than grow
-     the strip; the primary is the cell's minimum width. */
-  /* The only thing on the row that shrinks: its secondary numerals clip. */
+  /* The only thing on the row that shrinks: its secondary numerals wrap
+     below the primary and clip rather than grow the strip. The clip box is
+     the strip's own edges (the 6px padding above and below, the gutter on
+     the left) and, on the right, the numerals' own 18px gap, so the glow is
+     never cut short and a clipped neighbor never peeks in. Stacked, it
+     reaches 12px into the row gap and the dock row; a wrapped row starts
+     past the 18px row gap, outside either box. */
   .nums {
     flex: 0 1 auto;
     height: var(--num-h);
-    overflow: clip;
+    clip-path: inset(-6px -18px -6px calc(var(--gap) * -1));
   }
+  .stacked .nums { clip-path: inset(-6px -18px -12px calc(var(--gap) * -1)); }
   .nums :global(.hn-label) { white-space: nowrap; }
 
   .status {
     flex: 1 1 0;
+    align-self: stretch;
     min-width: min(240px, 25%);
     overflow: hidden;
     display: flex;
@@ -474,11 +504,12 @@
   .home-btn .ico { width: 14px; height: 14px; }
   .home-btn .caret { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
   .home-btn[aria-expanded='true'] { border-color: var(--line-4); }
-  /* Overlay: out of flow under its button, above the rail; moves nothing. */
+  /* Overlay: out of flow under its button, above the rail; moves nothing.
+     Opens toward the pair, mirrored with the dock. */
   .menu-pop {
     position: absolute;
     top: calc(100% + 4px);
-    right: 0;
+    left: 0;
     z-index: 40;
     display: flex;
     flex-direction: column;
@@ -491,12 +522,50 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
   }
   .menu-pop .btn { justify-content: flex-start; }
+  .menu-pop :global(.safety-op) { height: auto; }
+
+  /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on.
+     A fixed box: the ghost sublines size it, the live one never widens it. */
+  .rw-flip {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--tap);
+    min-width: max(var(--tap), 96px);
+    padding: 2px 12px;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    color: var(--ink);
+    font-size: .72rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
+  .rw-flip:disabled { opacity: .4; }
+  .rw-flip small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  .rw-flip > small { contain: inline-size; align-self: stretch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .rw-flip .ghost { display: grid; height: 0; overflow: hidden; visibility: hidden; }
+  .rw-flip .ghost small { grid-area: 1 / 1; }
+  .rw-flip[data-shadow='overdue'] small { color: var(--warn); }
+  .rw-flip[data-shadow='fault'] small { color: var(--warn); }
+
+  /* Home required (DESIGN §10.3): the safety red, pulsing; still at rest
+     under reduced motion (law 12). */
+  .btn.hazard { border-color: var(--bad); animation: home-need 1.2s ease-in-out infinite; }
+  @keyframes home-need {
+    50% { box-shadow: 0 0 0 2px rgba(var(--bad-rgb), .45), 0 0 10px rgba(var(--bad-rgb), .35); }
+  }
 
   /* Phone: the safety ops drop their idle hint line and the 96 px floor
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
     .dock :global(.safety-op .btn) { min-width: var(--tap); padding: 2px 8px; }
-    .dock :global(.safety-op .state.hint) { display: none; }
+    .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
+    .rw-flip { min-width: var(--tap); padding: 2px 8px; }
+    .rw-flip:is([data-shadow='confirmed'], :not([data-shadow])) > small, .rw-flip .ghost { display: none; }
   }
   @media (max-width: 300px) {
     .dock :global(.safety-op .btn) { padding: 2px 4px; }
@@ -529,13 +598,6 @@
   /* Labels are the hub's own catalog strings: capitalize is presentation. */
   .btn .lbl { text-transform: capitalize; }
 
-  .btn.recover {
-    background: var(--bad);
-    border-color: var(--bad);
-    color: var(--bg);
-    font-weight: 700;
-  }
-  .btn.recover:disabled { opacity: 0.5; }
   .st-dismiss {
     display: flex;
     align-items: center;
@@ -579,5 +641,6 @@
 
   @media (prefers-reduced-motion: reduce) {
     .btn, .evline { transition: none; }
+    .btn.hazard { animation: none; }
   }
 </style>
