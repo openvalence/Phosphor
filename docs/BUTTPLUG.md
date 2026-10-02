@@ -14,6 +14,7 @@ the dev board (`ph-e82.8`).
 | protocol | fork, `protocol_impl/valence.rs` + `protocols/valence.yml` | the machine as one linear axis: LinearCmd (v3) / HwPositionWithDuration (v4), position steps 0..`POSITION_STEPS`, duration 0..65535 ms; plus feature 1, Vibrate (0..100 steps), which writes nothing to the machine |
 | toys | fork's btleplug, serial and hid managers | found on scan, listed as kind `toy`; commanded through `Run::op`, an in-process server over the same device manager. Relationships wait on the DESIGN §10.8 flag |
 | toy modules | `src/plugins/buttplug-toys.js`, `src/ui/hero/ToyModule.svelte` | one plugin hero per toy on the `buttplug` adapter, placeable as `hero:plugin:buttplug:<key>` |
+| pane | `src/shell/ServerPane.svelte`, `src/shell/server/*`, `src/shell/bp-server.js` | the server UI, self-contained (a host mounts it with no props): a status row (state, port, client and connected-device counts, start/stop, stop all toys, the latest error) over tabs for devices, clients, the log and settings; every command on the pending/overdue/fault/settled ladder with text |
 | bridge | `src/plugins/buttplug.js` | a built-in adapter on the plugin host: `bp://motion` into `api.submitMotion` under the `motion` permission, hub presence into `bp_machine_present` |
 
 The fork is a path dependency (`../../ButtplugIO`, branch `valence`). Its

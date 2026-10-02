@@ -19,7 +19,7 @@
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { blank, createBp } from './bp-server.js';
+  import { blank, createBp, statusLine } from './bp-server.js';
   import Clients from './server/Clients.svelte';
   import Devices from './server/Devices.svelte';
   import Log from './server/Log.svelte';
@@ -32,9 +32,7 @@
   const TABS = ['devices', 'clients', 'log', 'settings'];
   let open = $state(false);
   let tab = $state('devices');
-  const summary = $derived(!s.ready ? 'unavailable'
-    : s.running ? 'on :' + s.port + ' · ' + s.clients + (s.clients === 1 ? ' client' : ' clients')
-    : 'off');
+  const summary = $derived(statusLine(s));
 </script>
 
 <button class="sp-entry mono" aria-expanded={open} onclick={() => (open = !open)}>
@@ -53,9 +51,9 @@
         <button class="sp-btn" disabled={!s.ready || !s.settings || s.run.phase === 'pending'}
                 onclick={() => bp.start()}>start server</button>
       {/if}
-      <span class="sp-note mono">{s.running ? 'on 127.0.0.1:' + s.port : 'off'}</span>
+      <span class="sp-state mono" data-on={s.running}>{summary}</span>
+      {#if s.scanning}<span class="sp-note">scanning</span>{/if}
       <span class="sp-note">loopback only: apps on this computer can connect, nothing on the LAN</span>
-      {#if s.running}<span class="sp-note mono">{s.clients} {s.clients === 1 ? 'client' : 'clients'}</span>{/if}
       {#if s.run.reason}<span class="sp-ladder" data-phase={s.run.phase}>{s.run.reason}</span>{/if}
     </div>
     {#if s.fault}
@@ -108,7 +106,8 @@
   .sp-entry:hover, .sp-pane :global(.sp-btn:hover:not(:disabled)) { border-color: var(--line-4); }
   .sp-pane :global(.sp-btn:disabled) { opacity: .5; }
   .sp-sum { color: var(--ink-dim); }
-  .sp-sum[data-on='true'] { color: var(--reality); }
+  .sp-sum[data-on='true'], .sp-state[data-on='true'] { color: var(--reality); }
+  .sp-state { color: var(--ink-dim); font-size: 12px; }
   /* Takes its own line in a wrapping host row. */
   .sp-pane {
     flex: 1 0 100%;

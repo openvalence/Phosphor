@@ -1,5 +1,5 @@
 // bp-server.js -- the embedded buttplug server's client side: the Tauri IPC
-// contract (docs/BUTTPLUG.md), the write lifecycle for its two toggles, and the
+// contract (docs/BUTTPLUG.md), the write lifecycle for every command, and the
 // degrade when the commands are missing. SHELL ONLY; plain JS so the node test
 // drives it with a fake invoke/listen.
 //
@@ -27,6 +27,16 @@ export const logAt = (log, level) => log.filter((l) => LEVELS.indexOf(l.level) <
 /** Plain text for the clipboard: ISO time (when the line has one), level, message. */
 export const logText = (lines) =>
   lines.map((l) => (l.time != null ? new Date(l.time).toISOString() + ' ' : '') + l.level.toUpperCase() + ' ' + l.msg).join('\n');
+
+const count = (n, one) => n + ' ' + one + (n === 1 ? '' : 's');
+
+/** The status line: unavailable, off, or where it listens with its client and connected-device counts. */
+export function statusLine(s) {
+  if (!s.ready) return 'unavailable';
+  if (!s.running) return 'off';
+  return 'on 127.0.0.1:' + s.port + ' · ' + count(s.clients, 'client') + ' · '
+    + count(s.devices.filter((d) => d.connected).length, 'device');
+}
 
 export const blank = () => ({
   ready: false,

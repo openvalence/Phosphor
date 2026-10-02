@@ -3,7 +3,7 @@
 // Run: node test/server-pane.test.mjs
 
 import assert from 'node:assert/strict';
-import { blank, createBp, BP_PORT, SCAN_S, logAt, logText } from '../src/shell/bp-server.js';
+import { blank, createBp, BP_PORT, SCAN_S, logAt, logText, statusLine } from '../src/shell/bp-server.js';
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
@@ -388,6 +388,19 @@ function fakeShell(cmds) {
   await bp.start();
   assert.equal(s.fault, '', 'a start request clears it');
   bp.dispose();
+}
+
+// --- status line: state, port, clients, connected devices
+{
+  const s = blank();
+  assert.equal(statusLine(s), 'unavailable');
+  Object.assign(s, { ready: true });
+  assert.equal(statusLine(s), 'off');
+  Object.assign(s, { running: true, port: 23456, clients: 1,
+    devices: [{ connected: true }, { connected: true }, { connected: false }] });
+  assert.equal(statusLine(s), 'on 127.0.0.1:23456 · 1 client · 2 devices', 'remembered devices are not counted');
+  Object.assign(s, { clients: 0, devices: [{ connected: true }] });
+  assert.equal(statusLine(s), 'on 127.0.0.1:23456 · 0 clients · 1 device');
 }
 
 console.log('server-pane: ok');
