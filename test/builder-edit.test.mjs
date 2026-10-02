@@ -25,6 +25,9 @@
  *            stays on the moved grip; Tab meets the grips in reading order;
  *            Enter opens the look picker; Delete removes (Ctrl+Z restores);
  *            Escape cancels a pointer drag with nothing written (ph-e82.20.5)
+ *   layouts  a switch with changes since editing began asks Keep, Discard
+ *            or Stay; a switch runs no animation on the grid; a layout
+ *            exports as JSON and imports under a free name (ph-e82.20.6)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -384,6 +387,62 @@ console.log('keys');
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(100);
   ok('Ctrl+Z brings it back', JSON.stringify((await stored())[F1]) === before);
+  await ctx.close();
+}
+
+// ---- layout switching, export and import (ph-e82.20.6) -------------------------------
+console.log('layouts');
+{
+  const built = { 'home:built': { x: 0, y: 40, w: 1, h: 1 } };
+  const store = { active: 'Default', modules: {}, layouts: {
+    Default: { 'full.machine': { [F1]: { x: 0, y: 0, w: 10, h: 2 }, ...built } },
+    Night: { 'full.machine': { [F2]: { x: 4, y: 0, w: 12, h: 2 }, ...built } },
+  } };
+  const { ctx, page, said, card } = await open(null, { store });
+  const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
+  const picker = page.locator('.home .dash-toolbar select[aria-label="Layout"]');
+  const bar = page.locator('.home .dash-switchbar');
+  await card(F1).locator('.handle.grab').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(100);
+  await picker.selectOption('Night');
+  await page.waitForTimeout(100);
+  ok('a switch with changes since editing began asks first', await bar.count() === 1 && (await all()).active === 'Default'
+     && await picker.inputValue() === 'Default', await said());
+  await bar.locator('button', { hasText: 'Stay' }).click();
+  ok('Stay keeps the layout and its change', (await all()).active === 'Default' && (await all()).layouts.Default['full.machine'][F1].x === 1
+     && await bar.count() === 0);
+  await picker.selectOption('Night');
+  await page.waitForTimeout(50);
+  await bar.locator('button', { hasText: 'Discard and switch' }).click();
+  const moving = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.dash-grid')).length);
+  const still = await page.$$eval('.home .dash-cell, .home .dash-item', (els) => els.every((e) => getComputedStyle(e).transitionDuration.split(',').every((d) => parseFloat(d) === 0)));
+  await page.waitForTimeout(100);
+  let s = await all();
+  ok('Discard puts the old layout back and switches', s.active === 'Night' && s.layouts.Default['full.machine'][F1].x === 0
+     && await card(F2).count() === 1 && await card(F1).count() === 0, JSON.stringify(s.layouts.Default['full.machine'][F1]));
+  ok('a switch animates nothing on the grid (no transition, no animation)', moving === 0 && still, { moving, still });
+  await picker.selectOption('Default');
+  await page.waitForTimeout(100);
+  ok('a switch with no changes goes at once', (await all()).active === 'Default' && await bar.count() === 0);
+
+  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  await page.locator('.dash-menu button', { hasText: 'Export' }).click();
+  const text = await page.locator('.dash-menu textarea[aria-label="Layout JSON"]').inputValue();
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch (e) { /* reported below */ }
+  ok('Export writes the active layout as JSON', parsed && parsed.app === 'phosphor' && parsed.layout === 'Default'
+     && parsed.views['full.machine'][F1].w === 10, text.slice(0, 80));
+  await page.locator('.dash-menu button', { hasText: 'Import' }).click();
+  await page.waitForTimeout(100);
+  s = await all();
+  ok('Import adds it under a free name and switches to it', s.active === 'Default 2'
+     && JSON.stringify(s.layouts['Default 2']) === JSON.stringify(s.layouts.Default) && /Imported layout Default 2/.test(await said()), s.active);
+  await page.locator('.dash-menu textarea[aria-label="Layout JSON"]').fill('{"app":"other"}');
+  await page.locator('.dash-menu button', { hasText: 'Import' }).click();
+  ok('a foreign text is refused, named, and adds nothing', /Not imported: not a Phosphor layout/.test(await said())
+     && Object.keys((await all()).layouts).length === 3, await said());
+  await page.keyboard.press('Escape');
   await ctx.close();
 }
 

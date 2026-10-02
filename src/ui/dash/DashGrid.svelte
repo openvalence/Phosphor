@@ -35,8 +35,9 @@
   import {
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
+    layoutJson, restoreLayout, exportLayout, importLayout,
   } from '../../model/dashboard.svelte.js';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { cellCount, placeable, resizeRect, arrangePins, nudgePin, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
@@ -77,6 +78,18 @@
   let nameDraft = $state('');
   let moduleDraft = $state('');
   let sel = $state([]);          // selected ids (edit mode)
+  // The active layout as it was when editing began (or it became active while
+  // editing): the switch guard compares against it. Layouts save on every
+  // edit, so "changes" means changes since then, which Discard can take back.
+  let baseline = $state(null);
+  let pendingSwitch = $state(null);
+  let layoutText = $state('');
+  $effect(() => {
+    const a = layouts.active;
+    const on = !given && editing;
+    // untrack (T23): the snapshot reads the whole layout and must not subscribe to it.
+    untrack(() => { baseline = on ? layoutJson(a) : null; pendingSwitch = null; });
+  });
   let marquee = $state(null);    // {x0, y0, x1, y1, add} client px while a marquee is drawn
   let dragMoved = false;         // the grip's click after a real drag is not a selection
 
@@ -415,6 +428,52 @@
     sel = [];
     announce('Layout edit mode ' + (on ? 'on' : 'off'));
   }
+  // ---- layout switching: no motion, a guard for changes, JSON in and out ----------
+  function pick(e) {
+    const to = e.currentTarget.value;
+    e.currentTarget.value = layouts.active;
+    if (to === layouts.active) return;
+    if (baseline !== null && layoutJson() !== baseline) {
+      pendingSwitch = to;
+      announce(layouts.active + ' has changes since editing began; keep or discard them before switching');
+      return;
+    }
+    doSwitch(to);
+  }
+  function doSwitch(to) {
+    const from = layouts.active;
+    pendingSwitch = null;
+    pin = null;
+    stackOrder = null;
+    sel = [];
+    if (switchLayout(to)) announce('Layout ' + to + (from !== to ? ', was ' + from : ''));
+  }
+  function resolveSwitch(how) {
+    const to = pendingSwitch;
+    if (how === 'stay' || !to) { pendingSwitch = null; announce('Staying on ' + layouts.active); return; }
+    if (how === 'discard') restoreLayout(layouts.active, baseline);
+    doSwitch(to);
+  }
+  function exportText() {
+    layoutText = exportLayout(layouts.active);
+    navigator.clipboard?.writeText(layoutText).then(() => announce('Layout ' + layouts.active + ' copied as JSON'), () => {});
+    announce('Layout ' + layouts.active + ' exported below');
+  }
+  function importText() {
+    try {
+      const name = importLayout(layoutText);
+      layoutText = '';
+      if (baseline !== null && layoutJson() !== baseline) {
+        pendingSwitch = name;
+        announce('Imported layout ' + name + '; keep or discard the changes to ' + layouts.active + ' to switch to it');
+      } else {
+        doSwitch(name);
+        announce('Imported layout ' + name + ' and switched to it');
+      }
+    } catch (err) {
+      announce('Not imported: ' + err.message);
+    }
+  }
   function nameOp(fn, ok, fail) {
     if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
@@ -468,8 +527,7 @@
       <button type="button" class="og-btn sm" aria-label="Scale up"
               disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
     </div>
-    <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active}
-            onchange={(e) => switchLayout(e.currentTarget.value) && announce('Layout ' + layouts.active)}>
+    <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active} onchange={pick}>
       {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
     </select>
     {#if editing}
@@ -490,6 +548,12 @@
           <button type="button" class="og-btn sm" disabled={layoutNames().length < 2}
                   onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
           <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
+        </div>
+        <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
+                  placeholder="Export fills this; paste a layout here to import" bind:value={layoutText}></textarea>
+        <div class="menu-row">
+          <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
+          <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
         </div>
         {#if moduleNames().length}
           <div class="menu-row">
@@ -516,7 +580,14 @@
     <button type="button" class="og-btn sm edit-toggle" class:done-btn={editing} aria-pressed={editing}
             onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
   </div>
-  {#if editing && !selSet.size}
+  {#if pendingSwitch}
+    <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
+      <span class="sel-n">{layouts.active} changed since editing began.</span>
+      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
+      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
+      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
+    </div>
+  {:else if editing && !selSet.size}
     <p class="dash-hint">Drag a card by its grip, resize it by any edge or corner, or drag a palette entry onto the grid.
       Click grips to select (Shift adds) or drag across empty grid. Keyboard: focus a grip; arrows move, Shift+arrows
       resize, Space selects, Enter picks a look, Delete removes, Esc cancels a drag. Ctrl+Z undoes the last change.</p>
@@ -654,6 +725,17 @@
     overflow-wrap: anywhere;
   }
   .module-preview .inert { color: var(--ink-faint); font-style: italic; }
+  .layout-json {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--tx);
+    font-family: var(--mono);
+    font-size: .72rem;
+    resize: vertical;
+  }
   .layout-name {
     width: 100%;
     padding: 6px 8px;

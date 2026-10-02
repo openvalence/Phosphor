@@ -16,7 +16,7 @@ import {
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
-  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H, nudgePin,
+  arrangePins, instanceKey, baseKey, duplicate, NEST_FOLD_H, nudgePin, exportLayout, importLayout,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -421,6 +421,28 @@ console.log('nudge');
   ok('sideways is one cell, clamped at the edges', step('c', 1, 0) && map.c.x === 21 && !nudgePin(pack(its, { ...map, c: { x: 34, y: 0, w: 6, h: 1 } }, 40), 'c', 1, 0, 40)
      && !nudgePin(pack(its, map, 40), 'a', -1, 0, 40));
   ok('an unknown id gives no pin', nudgePin(pack(its, map, 40), 'zz', 1, 0, 40) === null);
+}
+
+// ---- layout export and import (ph-e82.20.6) -------------------------------------------
+console.log('export');
+{
+  const s = loadStore(memStorage());
+  viewMap(s, 'full', 'machine').a = { x: 1, y: 0, w: 4, h: 1, look: { pres: 'knob' } };
+  addNest(viewMap(s, 'full', 'machine'), { title: 'Pump', members: { b: null } });
+  const text = exportLayout(s);
+  const b = JSON.parse(text);
+  ok('export is the prefs-backup shape with the layout name and its views', b.app === 'phosphor' && b.layout === 'Default'
+     && b.views['full.machine'].a.look.pres === 'knob' && isNest(b.views['full.machine']['nest:1']));
+  ok('import never overwrites: a taken name gets a number', importLayout(s, text) === 'Default 2' && importLayout(s, text) === 'Default 3');
+  ok('the import is a copy', JSON.stringify(s.layouts['Default 2']) === JSON.stringify(s.layouts.Default) && s.layouts['Default 2'] !== s.layouts.Default);
+  ok('import does not switch by itself', s.active === 'Default');
+  const bad = (t) => { try { importLayout(s, t); return null; } catch (e) { return e.message; } };
+  ok('garbage, a foreign app and a views array are refused by name', bad('{') === 'not JSON' && bad('{"app":"x","views":{}}') === 'not a Phosphor layout'
+     && bad('{"app":"phosphor","views":[]}') === 'not a Phosphor layout');
+  ok('a nameless layout imports as Imported; junk views are dropped',
+     importLayout(s, '{"app":"phosphor","views":{"full.x":{"q":{"x":0,"y":0,"w":2,"h":1}},"nodot":{},"full.y":7}}') === 'Imported'
+     && JSON.stringify(Object.keys(s.layouts.Imported)) === '["full.x"]');
+  ok('a prototype name is not a name', importLayout(s, '{"app":"phosphor","layout":"__proto__","views":{}}') === 'Imported 2');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

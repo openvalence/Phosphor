@@ -429,6 +429,33 @@ export function renameLayout(store, from, to) {
   return true;
 }
 
+/**
+ * One named layout as JSON text, shaped like the prefs backup
+ * (prefs.js exportBackup): {app: 'phosphor', layout, views: {[cls.view]: map}}.
+ * Modules are not included; a nest carries its own members.
+ */
+export function exportLayout(store, name = store.active) {
+  return JSON.stringify({ app: 'phosphor', layout: name, views: own(store.layouts, name) ? store.layouts[name] : {} }, null, 2);
+}
+
+/**
+ * Add the layout in `text` (exportLayout's shape) under its own name, or that
+ * name with a number when taken; an existing layout is never overwritten.
+ * Returns the name it was stored under. Throws, naming why, on anything else.
+ */
+export function importLayout(store, text) {
+  let b;
+  try { b = JSON.parse(text); } catch (e) { throw new Error('not JSON'); }
+  if (!b || b.app !== 'phosphor' || !b.views || typeof b.views !== 'object' || Array.isArray(b.views)) throw new Error('not a Phosphor layout');
+  const views = {};
+  for (const [k, m] of Object.entries(b.views)) if (m && typeof m === 'object' && !Array.isArray(m) && k.includes('.')) views[k] = m;
+  const base = validName(b.layout) ? b.layout.trim() : 'Imported';
+  let name = base;
+  for (let i = 2; own(store.layouts, name); i++) name = base + ' ' + i;
+  store.layouts[name] = clone(views);
+  return name;
+}
+
 /** Delete a layout; the last one cannot go. */
 export function deleteLayout(store, name) {
   const names = Object.keys(store.layouts);

@@ -64,6 +64,17 @@ export const switchLayout = (n) => saved(G.switchLayout(layouts, n));
 export const saveLayoutAs = edit((n) => G.saveLayoutAs(layouts, n));
 export const renameLayout = edit((a, b) => G.renameLayout(layouts, a, b));
 export const deleteLayout = edit((n) => G.deleteLayout(layouts, n));
+/** Layout `n` (default: the active one) as comparable JSON: the switch guard's baseline. */
+export const layoutJson = (n = layouts.active) => JSON.stringify($state.snapshot(layouts.layouts[n]) ?? null);
+/** Put layout `n` back to a layoutJson() text; one undo step. */
+export const restoreLayout = edit((n, json) => {
+  if (!Object.prototype.hasOwnProperty.call(layouts.layouts, n) || json == null) return false;
+  layouts.layouts[n] = JSON.parse(json);
+  return true;
+});
+export const exportLayout = (n) => G.exportLayout($state.snapshot(layouts), n);
+/** Add the layout in `text` (grid.js importLayout); returns its name, throws naming why not. */
+export const importLayout = edit((text) => G.importLayout(layouts, text));
 
 /** Saved nests (modules), shared by every layout and view. */
 export const moduleNames = () => Object.keys(layouts.modules || {});
