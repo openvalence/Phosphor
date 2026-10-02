@@ -23,7 +23,7 @@
       <span class="mono cl-fact">{c.address}</span>
       <span class="cl-fact">since {since(c.since)}</span>
       <span class="mono cl-fact">{c.rate} msg/s, {c.messages} in all</span>
-      <button class="sp-btn" disabled={o?.phase === 'pending'} onclick={() => bp.kick(c)}>disconnect</button>
+      <button class="og-btn sm sp-btn" disabled={o?.phase === 'pending'} onclick={() => bp.kick(c)}>Disconnect</button>
       {#if o?.reason}<span class="sp-ladder" data-phase={o.phase}>{o.reason}</span>{/if}
     </li>
   {:else}
@@ -36,5 +36,5 @@
   .cl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .cl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
   .cl-name { font-weight: 600; }
-  .cl-fact { color: var(--ink-dim); font-size: 11px; }
+  .cl-fact { color: var(--ink-dim); font-size: .72rem; }
 </style>

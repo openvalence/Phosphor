@@ -39,8 +39,8 @@
 </script>
 
 <div class="sp-row">
-  <button class="sp-btn" disabled={!s.running || s.scan.phase === 'pending'}
-          onclick={() => bp.scan(!s.scanning)}>{s.scanning ? 'stop scan' : 'scan for toys'}</button>
+  <button class="og-btn sm sp-btn" disabled={!s.running || s.scan.phase === 'pending'}
+          onclick={() => bp.scan(!s.scanning)}>{s.scanning ? 'Stop scan' : 'Scan for toys'}</button>
   {#if s.scanning}<span class="sp-note">scanning; stops by itself after {SCAN_S} s</span>{/if}
   {#if !s.running}<span class="sp-note">start the server to scan</span>{/if}
   {#if s.scan.reason}<span class="sp-ladder" data-phase={s.scan.phase}>{s.scan.reason}</span>{/if}
@@ -93,23 +93,23 @@
             <div class="sp-row">
               <span class="dv-sensor">{c.type}</span>
               <span class="mono" class:dv-stale={r?.phase === 'fault'}>{r?.value ?? 'not read yet'}</span>
-              <button class="sp-btn" disabled={r?.phase === 'pending'} onclick={() => bp.read(d, c)}>read</button>
+              <button class="og-btn sm sp-btn" disabled={r?.phase === 'pending'} onclick={() => bp.read(d, c)}>Read</button>
               {#if r?.reason}<span class="sp-ladder" data-phase={r.phase}>{r.reason}</span>{/if}
             </div>
           {/each}
           {#if !d.controls.length}<p class="sp-note">no outputs or readable inputs</p>{/if}
           {#if !fixed}
             <div class="sp-row">
-              <button class="sp-btn" disabled={op('disconnect', d)?.phase === 'pending'}
-                      onclick={() => bp.disconnect(d)}>disconnect</button>
+              <button class="og-btn sm sp-btn" disabled={op('disconnect', d)?.phase === 'pending'}
+                      onclick={() => bp.disconnect(d)}>Disconnect</button>
               {#if op('disconnect', d)?.reason}<span class="sp-ladder" data-phase={op('disconnect', d).phase}>{op('disconnect', d).reason}</span>{/if}
               <span class="sp-note">it comes back on the next scan</span>
             </div>
           {/if}
         {:else if !fixed}
           <div class="sp-row">
-            <button class="sp-btn" disabled={op('forget', d)?.phase === 'pending'}
-                    onclick={() => bp.forget(d.key)}>forget</button>
+            <button class="og-btn sm sp-btn" disabled={op('forget', d)?.phase === 'pending'}
+                    onclick={() => bp.forget(d.key)}>Forget</button>
             {#if op('forget', d)?.reason}<span class="sp-ladder" data-phase={op('forget', d).phase}>{op('forget', d).reason}</span>{/if}
             <span class="sp-note">drops its saved name and index</span>
           </div>
@@ -146,20 +146,20 @@
     text-align: left;
   }
   .dv-head:hover { border-color: var(--line); }
-  .dv-kind { color: var(--ink-faint); text-transform: uppercase; font-size: 10px; min-width: 7ch; }
+  .dv-kind { color: var(--ink-faint); text-transform: uppercase; font-size: .68rem; min-width: 7ch; }
   .dv[data-kind='machine'] .dv-kind { color: var(--reality); }
   .dv-name { font-weight: 600; }
-  .dv-conn { color: var(--ink-faint); font-size: 11px; }
+  .dv-conn { color: var(--ink-faint); font-size: .72rem; }
   .dv[data-on='true'] .dv-conn { color: var(--reality); }
   .dv[data-on='false'] .dv-name { color: var(--ink-dim); }
   .dv-body { display: grid; gap: 6px; padding: 4px 8px 10px 8px; border-left: 2px solid var(--line); margin-left: 8px; }
-  .dv-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 11px; }
+  .dv-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: .72rem; }
   .dv-facts dt { color: var(--ink-faint); }
   .dv-facts dd { margin: 0; overflow-wrap: anywhere; }
-  .dv-table { border-collapse: collapse; font-size: 11px; }
+  .dv-table { border-collapse: collapse; font-size: .72rem; }
   .dv-table th { color: var(--ink-faint); font-weight: normal; text-align: left; padding: 2px 10px 2px 0; }
   .dv-table td { padding: 2px 10px 2px 0; }
   .dv-sensor { min-width: 9ch; color: var(--ink-dim); }
   .dv-stale { opacity: .5; }
-  .dv-sub { margin: 6px 0 0; color: var(--ink-dim); font-size: 11px; }
+  .dv-sub { margin: 6px 0 0; color: var(--ink-dim); font-size: .72rem; }
 </style>

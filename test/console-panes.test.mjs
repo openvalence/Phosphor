@@ -291,11 +291,21 @@ async function bootShell(viewport, extra) {
       for (const [k, v] of Object.entries(x || {})) localStorage.setItem(k, v);
     } catch (e) { /* no storage */ }
     // The one Rust command these panes need answered: discovery.
+    // The Rust commands these panes need answered: discovery and the buttplug server.
     const stub = window.__TAURI_INTERNALS__.invoke;
-    window.__TAURI_INTERNALS__.invoke = (cmd, args) => (cmd === 'discover_hubs'
-      ? Promise.resolve([{ hub_name: 'bench hub', ip: '10.0.0.5', ws_port: 82, fw_version: '1.2.3',
-        hub_instance_id: '00112233aabbccdd', pairing_window_open: true }])
-      : stub(cmd, args));
+    const bp = { running: false, port: 12345, clients: 0, scanning: false };
+    const answers = {
+      discover_hubs: () => [{ hub_name: 'bench hub', ip: '10.0.0.5', ws_port: 82, fw_version: '1.2.3',
+        hub_instance_id: '00112233aabbccdd', pairing_window_open: true }],
+      bp_status: () => ({ ...bp }),
+      bp_devices: () => [],
+      bp_clients: () => [],
+      bp_settings: () => ({ port: 12345, start_on_launch: false, ble: true, serial: false, hid: false, machine: true, log_level: 'info' }),
+      bp_start: () => { bp.running = true; return null; },
+      bp_stop: () => { bp.running = false; return null; },
+      bp_stop_all: () => null,
+    };
+    window.__TAURI_INTERNALS__.invoke = (cmd, args) => (cmd in answers ? Promise.resolve(answers[cmd](args)) : stub(cmd, args));
   }, extra));
 }
 
@@ -353,6 +363,34 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const off = await hubStatus();
   ok('hubs: disconnect reads as not connected in the same slot', off[0] === undefined && /Not connected/.test(off[1]) && off[2] === live[2], off.join(' / '));
   if (label === 'phone') ok('hubs: no horizontal page scroll at phone width', await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1));
+
+  // ---- Server ------------------------------------------------------------------------
+  await openTab(page, 'shell:server');
+  await page.waitForSelector('.sp-pane [role=tablist]', { timeout: 5000 });
+  const stopAllBtn = page.locator('.sp-pane button:has-text("Stop all toys")');
+  // Relative to the pane: the page above it is not this pane's to hold still.
+  const stopAt = () => page.$eval('.sp-pane', (pane) => { const b = [...pane.querySelectorAll('button')].find((x) => /Stop all toys/.test(x.textContent)).getBoundingClientRect(); const r = pane.getBoundingClientRect(); return { x: b.x - r.x, y: b.y - r.y }; });
+  const slots = () => page.$$eval('.sp-pane > section:first-child .pane-status', (ps) => ps.map((p) => [p.dataset.phase, p.textContent.trim(), p.getBoundingClientRect().height]));
+  const s0 = await slots();
+  const b0 = await stopAt();
+  ok('server: stop all sits in its slot, disabled with a reason while stopped', await stopAllBtn.isDisabled() && s0.length === 2 && /not the machine e-stop/.test(s0[1][1]), JSON.stringify(s0));
+  await page.click('.sp-pane button:has-text("Start server")');
+  await page.waitForFunction(() => /Running/.test(document.querySelector('.sp-pane .pane-status')?.textContent || ''), null, { timeout: 5000 });
+  const b1 = await stopAt();
+  ok('server: starting moves nothing; stop all keeps its place', b0 && b1 && b0.x === b1.x && b0.y === b1.y && !(await stopAllBtn.isDisabled()), JSON.stringify([b0, b1]));
+  await stopAllBtn.click();
+  await page.waitForTimeout(200);
+  const s1 = await slots();
+  ok('server: the stop-all ladder settles in its own line at the same height', s1[1][0] === 'settled' && /all toys stopped/.test(s1[1][1]) && s1[1][2] === s0[1][2], JSON.stringify(s1[1]));
+  await page.focus('.sp-pane [role=tab][aria-selected=true]');
+  await page.keyboard.press('ArrowRight');
+  ok('server: arrow keys move between the tabs', await page.evaluate(() => document.activeElement.dataset.tab === 'clients'));
+  await page.click('.sp-pane [data-tab="log"]');
+  await page.waitForTimeout(100);
+  const sel = await page.$eval('.sp-pane select', (el) => el.getBoundingClientRect().height);
+  ok('server: the log level select meets the 40 px floor (ph-3cl)', sel >= 40, sel + 'px');
+  await page.click('.sp-pane button:has-text("Stop server")');
+  await page.waitForTimeout(200);
 
   ok('no page errors (shell ' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();

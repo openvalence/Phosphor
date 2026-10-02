@@ -23,8 +23,8 @@
       {#each LEVELS as l}<option value={l}>{l} and above</option>{/each}
     </select>
   </label>
-  <button class="sp-btn" disabled={!shown.length || s.copy.phase === 'pending'}
-          onclick={() => bp.copyLog(level)}>copy</button>
+  <button class="og-btn sm sp-btn" disabled={!shown.length || s.copy.phase === 'pending'}
+          onclick={() => bp.copyLog(level)}>Copy</button>
   {#if s.copy.reason}<span class="sp-ladder" data-phase={s.copy.phase}>{s.copy.reason}</span>{/if}
   <span class="sp-note">{shown.length} of {s.log.length} lines; the server sends {s.settings?.log_level ?? 'its level'} and above</span>
 </div>
@@ -46,7 +46,7 @@
     padding: 0;
     max-height: 22em;
     overflow-y: auto;
-    font-size: 10.5px;
+    font-size: .72rem;
     color: var(--ink-dim);
     overflow-wrap: anywhere;
   }

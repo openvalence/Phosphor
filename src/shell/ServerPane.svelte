@@ -1,10 +1,10 @@
 <script>
   /**
    * ServerPane.svelte -- the embedded buttplug server's pane (DESIGN §10.8):
-   * a status row (on/off, port, clients, devices, stop all toys) over tabs for
-   * devices, clients, the log and the saved settings. SHELL ONLY: never in the
-   * served bundle. Self-contained: it owns its controller and its listeners,
-   * so a host mounts it with no props.
+   * a status section (state, start/stop, stop all toys, each with its ladder
+   * line) over tabs for devices, clients, the log and the saved settings.
+   * SHELL ONLY: never in the served bundle. Self-contained: it owns its
+   * controller and its listeners, so a host mounts it with no props.
    *
    * Constraints:
    * - Shows what bp_status, bp_settings and the bp:// events report, never
@@ -12,9 +12,10 @@
    *   disables the pane with the reason as text.
    * - The listener is loopback only until ph-vdk.28 rules otherwise; the note
    *   below states that and must change with it.
-   * - Red is for safety only (RENDERING law 13): log levels and faults are
-   *   text plus amber, never red. Stop all toys is not hub safety and stays
-   *   neutral. Hit targets are 40 px (law 12).
+   * - Stop all toys sits in a fixed slot whether or not the server runs, with
+   *   its own ladder line: it is not hub safety and stays neutral.
+   * - Faults read amber, never red (red is the hazard color). Hit targets
+   *   are 40 px (law 12).
    */
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -24,57 +25,61 @@
   import Devices from './server/Devices.svelte';
   import Log from './server/Log.svelte';
   import Settings from './server/Settings.svelte';
+  import '../ui/pane.css';
 
   const s = $state(blank());
   const bp = createBp(s, { invoke, listen });
   onMount(() => { bp.init(); return bp.dispose; });
 
-  const TABS = ['devices', 'clients', 'log', 'settings'];
-  let open = $state(false);
+  const TABS = [['devices', 'Devices'], ['clients', 'Clients'], ['log', 'Log'], ['settings', 'Settings']];
   let tab = $state('devices');
   const summary = $derived(statusLine(s));
+  const runText = $derived(!s.ready ? s.reason
+    : s.fault ? 'Server error: ' + s.fault + '. The Log tab has the detail.'
+      : s.run.reason || (s.running ? 'Running. Apps connect to ws://127.0.0.1:' + s.port + '.' : 'Stopped. Start it to accept apps and find toys.'));
+  const runPhase = $derived(!s.ready ? 'fault' : s.fault ? 'fault' : s.run.reason ? s.run.phase : s.running ? 'settled' : null);
+  const stopText = $derived(s.stopAll.reason || 'Stop all toys halts every toy. It is not the machine e-stop, which stays in the top strip.');
+
+  function onTabKey(e) {
+    const i = TABS.findIndex(([id]) => id === tab);
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    tab = TABS[(i + step + TABS.length) % TABS.length][0];
+    e.currentTarget.querySelector('[data-tab="' + tab + '"]')?.focus();
+  }
 </script>
 
-<button class="sp-entry mono" aria-expanded={open} onclick={() => (open = !open)}>
-  server <span class="sp-sum" data-on={s.running}>{summary}</span>
-</button>
-
-{#if open}
-  <div class="sp-pane" role="region" aria-label="buttplug server">
-    {#if !s.ready}
-      <p class="sp-reason">{s.reason}</p>
-    {/if}
+<div class="pane-stack sp-pane">
+  <section class="pane-sec og-panel" aria-labelledby="sp-title">
+    <div class="pane-head">
+      <h2 id="sp-title">Buttplug server</h2>
+      <span class="sp-state mono" data-on={s.running} title={summary}>{summary}</span>
+    </div>
     <div class="sp-row">
       {#if s.running}
-        <button class="sp-btn" disabled={!s.ready || s.run.phase === 'pending'} onclick={bp.stop}>stop server</button>
+        <button type="button" class="og-btn run" disabled={!s.ready || s.run.phase === 'pending'} onclick={bp.stop}>Stop server</button>
       {:else}
-        <button class="sp-btn" disabled={!s.ready || !s.settings || s.run.phase === 'pending'}
-                onclick={() => bp.start()}>start server</button>
+        <button type="button" class="og-btn primary run" disabled={!s.ready || !s.settings || s.run.phase === 'pending'}
+                onclick={() => bp.start()}>Start server</button>
       {/if}
-      <span class="sp-state mono" data-on={s.running}>{summary}</span>
-      {#if s.scanning}<span class="sp-note">scanning</span>{/if}
-      <span class="sp-note">loopback only: apps on this computer can connect, nothing on the LAN</span>
-      {#if s.run.reason}<span class="sp-ladder" data-phase={s.run.phase}>{s.run.reason}</span>{/if}
+      <button type="button" class="og-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
+              title={s.running ? '' : 'Start the server first'} onclick={bp.stopAll}>Stop all toys</button>
     </div>
-    {#if s.fault}
-      <p class="sp-ladder" data-phase="fault">server error: {s.fault} <button class="sp-link" onclick={() => (tab = 'log')}>see the log</button></p>
-    {/if}
+    <p class="pane-status" role="status" data-phase={runPhase} title={runText}>{runText}</p>
+    <p class="pane-status" role="status" data-phase={s.stopAll.reason ? s.stopAll.phase : null} title={stopText}>{stopText}</p>
+    <p class="pane-note">Loopback only: apps on this computer can connect, nothing on the LAN.</p>
+  </section>
 
-    <div class="sp-row">
-      <button class="sp-btn" disabled={!s.ready || !s.running || s.stopAll.phase === 'pending'}
-              onclick={bp.stopAll}>stop all toys</button>
-      {#if s.stopAll.reason}<span class="sp-ladder" data-phase={s.stopAll.phase}>{s.stopAll.reason}</span>{/if}
-      <span class="sp-note">toys only: this is not the machine e-stop, which stays in the top strip</span>
-    </div>
-
-    {#if s.ready}
-      <div class="sp-tabs" role="tablist" aria-label="server sections">
-        {#each TABS as t}
-          <button role="tab" class="sp-tab" aria-selected={tab === t} onclick={() => (tab = t)}>{t}</button>
+  {#if s.ready}
+    <section class="pane-sec og-panel" aria-label="Server sections">
+      <div class="og-seg" role="tablist" aria-label="Server sections" tabindex="-1" onkeydown={onTabKey}>
+        {#each TABS as [id, label] (id)}
+          <button type="button" role="tab" data-tab={id} aria-selected={tab === id} tabindex={tab === id ? 0 : -1}
+                  class:active={tab === id} onclick={() => (tab = id)}>{label}</button>
         {/each}
       </div>
-
-      <div role="tabpanel" aria-label={tab}>
+      <div role="tabpanel" aria-label={tab} class="sp-panel">
         {#if tab === 'devices'}
           <Devices {s} {bp} />
         {:else if tab === 'clients'}
@@ -85,73 +90,40 @@
           <Settings {s} {bp} />
         {/if}
       </div>
-    {/if}
-  </div>
-{/if}
+    </section>
+  {/if}
+</div>
 
 <style>
-  /* :global under .sp-pane: the tab components in ./server share these. */
-  .sp-entry, .sp-pane :global(.sp-btn) {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 40px;
-    padding: 0 12px;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    color: var(--ink);
-    font-size: 12.5px;
-  }
-  .sp-entry:hover, .sp-pane :global(.sp-btn:hover:not(:disabled)) { border-color: var(--line-4); }
-  .sp-pane :global(.sp-btn:disabled) { opacity: .5; }
-  .sp-sum { color: var(--ink-dim); }
-  .sp-sum[data-on='true'], .sp-state[data-on='true'] { color: var(--reality); }
-  .sp-state { color: var(--ink-dim); font-size: 12px; }
-  /* Takes its own line in a wrapping host row. */
-  .sp-pane {
-    flex: 1 0 100%;
-    display: grid;
-    gap: 6px;
-    padding: 6px 0;
-    min-width: 0;
-  }
+  /* One line, ellipsized: the summary growing never wraps the header. */
+  .sp-pane .pane-head { flex-wrap: nowrap; }
+  .sp-pane .pane-head h2 { flex: 0 0 auto; white-space: nowrap; }
+  .sp-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; color: var(--tx-mut); }
+  .sp-state[data-on='true'] { color: var(--reality); }
+  .sp-panel { display: grid; gap: 8px; min-width: 0; }
+  /* One width for Start and Stop, so Stop all toys never moves. */
+  .run { min-width: 9.5em; }
+  .og-seg button { flex: 1 0 auto; }
+
+  /* :global under .sp-pane: the tab components in ./server share these.
+     Their buttons are .og-btn; these are the shared row, field and ladder. */
+  .sp-pane :global(.sp-btn) { min-height: 40px; }
   .sp-pane :global(.sp-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: 6px; }
+  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--tx-mut); }
   .sp-pane :global(.sp-field input), .sp-pane :global(.sp-field select) {
     min-height: 40px;
-    padding: 0 6px;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
+    padding: 0 8px;
+    background: var(--bg-sunken);
+    border: 1px solid var(--line-2);
     border-radius: var(--radius);
     color: var(--ink);
   }
+  .sp-pane :global(.sp-field select) { width: auto; padding-right: 28px; }
   .sp-pane :global(.sp-field input[type='number']) { width: 8ch; }
-  .sp-pane :global(.sp-check) { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; }
+  .sp-pane :global(.sp-check) { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; font-size: .8rem; }
   .sp-pane :global(.sp-check input) { width: 18px; height: 18px; margin: 0; }
-  .sp-pane :global(.sp-note) { margin: 0; color: var(--ink-faint); font-style: italic; font-size: 11px; }
-  .sp-reason { margin: 0; color: var(--ink-dim); }
-  .sp-pane :global(.sp-ladder) { margin: 0; font-size: 11px; color: var(--ink-dim); }
+  .sp-pane :global(.sp-note) { margin: 0; color: var(--tx-mut); font-size: .75rem; }
+  .sp-pane :global(.sp-ladder) { margin: 0; font-size: .75rem; color: var(--ink-dim); }
   .sp-pane :global(.sp-ladder[data-phase='pending']) { color: var(--intent); }
   .sp-pane :global(.sp-ladder[data-phase='overdue']), .sp-pane :global(.sp-ladder[data-phase='fault']) { color: var(--warn); }
-  .sp-link {
-    min-height: 40px;
-    padding: 0 6px;
-    background: none;
-    border: 0;
-    color: inherit;
-    text-decoration: underline;
-    font-size: inherit;
-  }
-  .sp-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
-  .sp-tab {
-    min-height: 40px;
-    padding: 0 14px;
-    background: none;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    color: var(--ink-dim);
-    font-size: 12.5px;
-  }
-  .sp-tab[aria-selected='true'] { color: var(--ink); border-bottom-color: var(--intent); }
 </style>

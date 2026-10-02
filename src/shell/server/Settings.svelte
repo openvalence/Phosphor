@@ -78,5 +78,5 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
   }
-  .sp-group legend { color: var(--ink-dim); font-size: 11px; padding: 0 4px; }
+  .sp-group legend { color: var(--ink-dim); font-size: .72rem; padding: 0 4px; }
 </style>

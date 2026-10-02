@@ -126,7 +126,7 @@ ok('first run: Hubs is selected and its pane fills the content area',
    await sp.getAttribute('[data-tab-id="shell:hubs"]', 'aria-selected') === 'true'
    && await sp.evaluate(() => !!document.querySelector('.content main.pane .hp')));
 
-for (const [id, sel] of [['about', 'dl.about'], ['settings', '.set'], ['server', '.sp-entry']]) {
+for (const [id, sel] of [['about', 'dl.about'], ['settings', '.set'], ['server', '.sp-pane']]) {
   await sp.click('[data-tab-id="shell:' + id + '"]');
   await sp.waitForTimeout(100);
   ok('Phosphor > ' + id + ' renders in the content area', await sp.evaluate((s) => !!document.querySelector('.content main.pane ' + s), sel));
