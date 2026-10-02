@@ -376,7 +376,7 @@ export const ADVGEN_SPEC = {
  * way a built-in does. Each hero's own fields are returned alongside it.
  *
  * DESIGN §3 tier-2 "renders instead": a hero descriptor may carry
- * `replaces: '<built-in hero id>'` (plugins/host.js's `registerHero`). Its
+ * `replaces: '<built-in hero id>'` or a list of ids (plugins/host.js's `registerHero`). Its
  * OWN claim is resolved first, independent of list order, so a built-in
  * earlier in `heroes` is skipped outright rather than claimed and then
  * discarded. When the replacer declines (roles absent, plugin disabled) the
@@ -384,7 +384,7 @@ export const ADVGEN_SPEC = {
  * fields are never left unclaimed just because a replacement was requested.
  *
  * @param {Map<string, Array>} byRole from buildSettingsModel
- * @param {Array<{spec: Object, replaces?: string}>} heroes in render order
+ * @param {Array<{spec: Object, replaces?: string|string[]}>} heroes in render order
  * @returns {{widgets: Array, claimed: Set<string>}}
  */
 export function claimAll(byRole, heroes) {
@@ -405,7 +405,7 @@ export function claimAll(byRole, heroes) {
   const suppressed = new Set();
   for (const h of heroes) {
     if (!h.replaces) continue;
-    if (claimOne(h)) suppressed.add(h.replaces);
+    if (claimOne(h)) for (const id of [].concat(h.replaces)) suppressed.add(id);
   }
   for (const h of heroes) {
     if (h.replaces || suppressed.has(h.id)) continue;   // already resolved above, or superseded

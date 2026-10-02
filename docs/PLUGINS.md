@@ -65,7 +65,8 @@ placed cell, so a hero that cares about its orientation reads its own
 box. A hero that throws leaves the palette with its claims, exactly as above.
 
 **Replace mode (experimental, `ph-vdk.29`).** `registerHero` accepts an
-optional `replaces: '<built-in hero id>'` (the id a built-in registers with in
+optional `replaces: '<built-in hero id>'`, or a list of them, each
+suppressed when the claim succeeds (the id a built-in registers with in
 `src/ui/heroes.js`'s `HEROES` array, e.g. `'rail'`). When such a plugin is
 enabled and its own claim succeeds, `claimAll` skips the named built-in
 entirely for that pass (DESIGN §3: a tier-2 widget "renders instead", by the
@@ -99,6 +100,7 @@ settings cards, render instead (item 5).
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
 | `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only) | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
+| `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
 | `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
 | `storeSlots(field)` | for an `action.store` writer: a Promise of every slot of the store its `store_id` names (RFC-070), `{slot, state, name}` with `state` one of `pending`, `item`, `empty`, `locked`, `error` (RENDERING §8.4 row 9); null when unlinked | experimental |
 | `manifest`, `apiVersion`, `log(msg, level)` | identity and the log pane | **freeze candidate** |
@@ -248,15 +250,20 @@ its folder.
 
 Shipped:
 
-- `plugins/factory/advanced-penetration/`: RENDERING §10
-  `generator-advanced` as a substitute (`replaces: 'advanced-generator'`),
-  laid out after fray-d's OSSM-Lite web config: run/stop beside
-  `source.background_run`, a stroke picture (the depth window on the rail,
-  the in and out halves timed from their speed and accel), the master, the
-  depth window and the two halves, each RFC-066 modulator under the control
-  its `mod_target` names with a static preview of its cycle, and the preset
-  store through `action.store` (RFC-067, RFC-070). The registry names no
-  role for a store op's slot and name, so it tells them apart by schema type.
+- `plugins/factory/advanced-penetration/`: the pattern card. It substitutes
+  both RENDERING §10 `generator-advanced` and `pattern-panel`
+  (`replaces: ['advanced-generator', 'pattern']`) as a direct-manipulation
+  editor after the SlopDrive-32 card and fray-d's OSSM-Lite. Advanced and
+  Classic are two SPEC §11.4 sources in two tabs, each with its own Start
+  (RFC-093 `advgen.running`, `pattern.running`); a tab switch writes nothing.
+  Advanced: master speed, a presets dropdown over the store (RFC-067,
+  RFC-070), the stroke editor (deep and shallow on the window, in and out
+  speed as the width of each half, accel as a bezier diamond at each foot),
+  a rhythm staircase per modulator (amp fader, step handles in whole strokes,
+  offset marker), a told-wave strip, and a numeric twin for every handle. A
+  handle writes once on release through `api.write`; arrows nudge, Shift by
+  ten. The registry names no role for a store op's slot and name, so it tells
+  them apart by schema type.
 
 ## Testing
 

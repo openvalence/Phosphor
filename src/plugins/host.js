@@ -68,6 +68,7 @@ class PermissionError extends Error {
  *                                    behind the host-rendered confirm
  *   gate(field)                   -> '' or why the field cannot be written (law 3)
  *   stale(field)                  -> '' or the stale reason in words (law 8)
+ *   reason(field)                 -> '' or the last refusal of the field's write
  *   modTarget(field)              -> uid of the field this modulator rides, or null
  *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
@@ -138,6 +139,7 @@ export function createPluginHost(deps) {
       age: (field) => (field ? deps.sampleAge(field.channelId) : Infinity),
       gate: (field) => (field && deps.gate ? deps.gate(field) : ''),
       stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
+      reason: (field) => (field && deps.reason ? deps.reason(field) : ''),
       modTarget: (field) => (field && deps.modTarget ? deps.modTarget(field) : null),
       storeSlots: async (field) => (field && deps.storeSlots ? deps.storeSlots(field) : null),
 
@@ -150,8 +152,9 @@ export function createPluginHost(deps) {
         if (!def || typeof def.id !== 'string' || typeof def.mount !== 'function' || !def.spec) {
           throw new Error('registerHero needs {id, spec, mount}');
         }
-        if (def.replaces != null && typeof def.replaces !== 'string') {
-          throw new Error('registerHero: replaces must be a built-in hero id string');
+        const ids = def.replaces == null ? [] : [].concat(def.replaces);
+        if (def.replaces != null && (!ids.length || !ids.every((x) => typeof x === 'string'))) {
+          throw new Error('registerHero: replaces must be a built-in hero id or a list of them');
         }
         const cellPair = (c) => Array.isArray(c) && c.length === 2 && c.every((n) => Number.isInteger(n) && n > 0 && n <= 64);
         if (def.cells != null && !(cellPair(def.cells.h) && cellPair(def.cells.v))) {

@@ -17,7 +17,7 @@ import { createPluginHost } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
 import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
 import {
-  writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf,
+  writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf, shadowOf,
 } from '../model/shadow.svelte.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
@@ -125,6 +125,7 @@ export const host = createPluginHost({
   write,
   gate,
   stale: (field) => staleReason(freshness(field.channelId)) || '',
+  reason: (field) => (shadowOf(field) || {}).error || '',
   modTarget,
   storeSlots,
   submitMotion,
