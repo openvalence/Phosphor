@@ -240,6 +240,108 @@ console.log('(e) hub edges through the relationships store');
   ok('delete removes the item from the store and the graph', !slots.has(0) && !rt.graph.rels.some((x) => x.home === 'hub'));
 }
 
+console.log('(f) the canvas: place, wire through drafts, refuse, undo and redo');
+{
+  const pos = src((r) => r.kind === 'field' && r.key === 'role:telemetry.position').ref;
+  const acc = dst((r) => r.kind === 'field' && r.key === 'uid:' + ACC.uid).ref;
+  const toy = dst((r) => r.kind === 'bp' && r.device === TOY.key).ref;
+  const P = rt.place(pos, 0, 0);
+  ok('placing a ref already on the canvas returns its node, not a second one', P.already
+    && rt.graph.nodes.filter((n) => n.ref.key === pos.key).length === 1);
+  const A = rt.place(acc, 613, 207);
+  ok('a placed node snaps to the grid and is pinned', !A.already && (() => {
+    const n = rt.graph.nodes.find((x) => x.id === A.id);
+    return n.x === 620 && n.y === 200 && n.pinned;
+  })());
+  ok('an accessory field offers an input and an output socket', JSON.stringify(rt.ports(acc)) === '{"out":"field","in":"field"}');
+  ok('a toy control is an app command out and a toy control in', JSON.stringify(rt.ports(toy)) === '{"out":"app","in":"toy"}');
+
+  const d = rt.placeMap(MAP.invert, 300, 200);
+  ok('a placed map is a draft until both ends are wired', rt.graph.drafts.some((x) => x.id === d));
+  ok('source to draft wires one end', rt.wire(P.id, d) === '' && rt.graph.drafts.find((x) => x.id === d).from === P.id);
+  const nRels = rt.graph.rels.length;
+  ok('draft to accessory target makes a hub edge, no refusal', rt.wire(d, A.id) === '', rt.hubState({ rel_id: 0 }).reason);
+  const hubRel = rt.graph.rels.find((x) => x.home === 'hub');
+  ok('the draft became the edge, at the draft\'s place, id h<slot>', rt.graph.rels.length === nRels + 1 && !rt.graph.drafts.some((x) => x.id === d)
+    && hubRel && hubRel.id === 'h' + hubRel.rel_id && hubRel.x === 300 && hubRel.map === MAP.invert);
+  await delay(10);
+  ok('the hub edge is confirmed by the store, still where the draft was', slots.has(hubRel.rel_id) && rt.hubState(hubRel).phase === 'confirmed'
+    && rt.graph.rels.find((x) => x.id === hubRel.id).x === 300);
+
+  ok('undo is offered', rt.canUndo);
+  rt.undo();
+  ok('undo puts the draft back, wired at its source', rt.graph.drafts.some((x) => x.id === d && x.from === P.id && x.to === null));
+  await delay(10);
+  ok('undo of a hub edge deletes it from the store (the ladder, never local only)', !slots.has(hubRel.rel_id) && !rt.graph.rels.some((x) => x.home === 'hub'));
+  rt.redo();
+  await delay(10);
+  ok('redo saves it again and the store confirms', slots.has(hubRel.rel_id) && rt.graph.rels.some((x) => x.id === hubRel.id) && rt.hubState(hubRel).phase === 'confirmed');
+
+  const T = rt.place(toy, 0, 400);
+  const d2 = rt.placeMap(MAP.linear_clamp, 200, 400);
+  rt.wire(T.id, d2);
+  ok('a toy driving itself through a map is refused as a loop, before the drop', /feedback loop/.test(rt.why(d2, T.id)));
+  ok('...and on the drop, with no step left behind', /feedback loop/.test(rt.wire(d2, T.id)) && rt.graph.drafts.find((x) => x.id === d2).to === null);
+  ok('a map cannot feed a map', /do not chain/.test(rt.why(d2, rt.placeMap(MAP.gate, 400, 400))));
+  const speedRel = rt.graph.rels.find((x) => rt.graph.nodes.find((n) => n.id === x.to)?.ref.key === 'role:pattern.speed');
+  const S = rt.graph.nodes.find((n) => n.id === speedRel.to);
+  ok('a second driver for a driven target is refused at the socket', /already driven/.test(rt.why(P.id, S.id)));
+  rt.edit(speedRel.id, { enabled: false });
+  ok('field to machine field is a home mismatch, in words', /accessory fields/.test(rt.why(P.id, S.id)));
+  rt.undo();
+  ok('undo of an edit restores it', rt.graph.rels.find((x) => x.id === speedRel.id).enabled === true);
+
+  const beforeX = rt.graph.nodes.find((n) => n.id === A.id).x;
+  rt.moveMany([{ id: A.id, x: 800, y: 0 }, { id: hubRel.id, x: 500, y: 0 }]);
+  ok('a multi-move is one step', rt.graph.nodes.find((n) => n.id === A.id).x === 800 && rt.graph.rels.find((x) => x.id === hubRel.id).x === 500);
+  const saves = [...slots.keys()].length;
+  rt.undo();
+  ok('undo of a move restores every position and writes nothing to the hub',
+    rt.graph.nodes.find((n) => n.id === A.id).x === beforeX && rt.graph.rels.find((x) => x.id === hubRel.id).x === 300 && slots.size === saves,
+    JSON.stringify([rt.graph.nodes.find((n) => n.id === A.id).x, beforeX, rt.graph.rels.find((x) => x.id === hubRel.id).x, slots.size, saves]));
+  rt.redo();
+  rt.undo();
+
+  const clientRel = rt.graph.rels.find((x) => x.home === 'client' && x.enabled);
+  const dup = rt.duplicate([clientRel.id, A.id]);
+  ok('duplicate copies maps only, unwired, with their numbers', dup.length === 1 && (() => {
+    const x = rt.graph.drafts.find((q) => q.id === dup[0]);
+    return x.from === null && x.to === null && x.map === clientRel.map && x.cfg.out_max === clientRel.out_max;
+  })());
+  rt.undo();
+  ok('undo of a duplicate removes the copy', !rt.graph.drafts.some((q) => q.id === dup[0]));
+
+  rt.unwire(clientRel.id, 'out');
+  const loose = rt.graph.drafts.find((x) => x.from === clientRel.from && x.to === null);
+  ok('cutting a client edge\'s output leaves its map as a draft wired at the source', !rt.graph.rels.some((x) => x.id === clientRel.id) && !!loose);
+  rt.undo();
+  ok('undo rewires it as it was', rt.graph.rels.some((x) => x.id === clientRel.id) && !rt.graph.drafts.includes(loose));
+
+  rt.removeMany([A.id]);
+  await delay(10);
+  ok('deleting a target node unwires its maps: the hub edge leaves the store, its map stays as a draft',
+    !rt.graph.nodes.some((n) => n.id === A.id) && !slots.has(hubRel.rel_id)
+    && rt.graph.drafts.some((x) => x.from === hubRel.from && x.to === null && x.map === MAP.invert));
+  rt.undo();
+  await delay(10);
+  ok('undo brings the node and the hub edge back through the store', rt.graph.nodes.some((n) => n.id === A.id) && slots.has(hubRel.rel_id));
+
+  const e = rt.echo(acc);
+  ok('a target node reads its write status and value from the host', typeof e.status === 'string' && 'value' in e);
+  ok('a source shows its live value and unit', rt.value(pos) === samples[129].pos && rt.unit(pos) === 'mm');
+
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const fakeApi = { catalog: () => model, value: () => undefined, status: () => 'confirmed', stale: () => '', write() {}, log() {} };
+  const r1 = graphRuntime(fakeApi, null, { ...env, storage });
+  r1.setView({ x: 12, y: -8, k: 0.75 });
+  r1.placeMap(MAP.lowpass, 0, 0);
+  r1.dispose();
+  const r2 = graphRuntime(fakeApi, null, { ...env, storage });
+  ok('the view and the drafts persist in the local graph store', JSON.stringify(r2.view) === '{"x":12,"y":-8,"k":0.75}' && r2.graph.drafts.length === 1);
+  r2.dispose();
+}
+
 host.setEnabled('graph', false);
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -19,7 +19,7 @@
 import {
   MAP, MAPS, TICK_MS, refKey, homeOf, interlock, isUserSpace, addNode, connect, removeRel,
   refuseConnect, checkRel, freeRelId, loadLocal, saveLocal, createRunner, findHub, storeVerb,
-  storeItem, readStoreItem, rosterBits,
+  storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap,
 } from '../model/graph.js';
 import { controlKey, WIDGET } from '../model/settings.js';
 import { PACKED, CORE_CHANNEL, STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
@@ -40,6 +40,9 @@ export const HERO = { id: 'editor', title: 'Node graph', cells: { h: [16, 10], v
 export const SENSOR_MS = 1000;
 const CMD = { scalar: 'bp_toy_scalar', rotate: 'bp_toy_rotate', linear: 'bp_toy_linear' };
 const msg = (e) => String(e?.message ?? e);
+const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+/** Canvas units between a map node and the field nodes an edge places for it. */
+const SPREAD = 260;
 
 const numeric = (f) => (f.isIntentField
   ? typeof f.min === 'number' && typeof f.max === 'number'
@@ -48,12 +51,14 @@ const numeric = (f) => (f.isIntentField
 /**
  * @param {Object} api the plugin API
  * @param {{invoke: Function, listen: Function}|null} shell the Tauri bridge; null leaves buttplug refs absent
- * @param {Object} env {live(), safety(), storage, entries(), sample(ch), fetchBlob(o)?, runAction(act, op, extra)?}
+ * @param {Object} env {live(), safety(), storage, entries(), sample(ch), fetchBlob(o)?, runAction(act, op, extra)?, shadow(f)?}
  */
 export function graphRuntime(api, shell, env) {
   const local = loadLocal(env.storage);
   const hubPos = local.hubPos;
-  let g = { v: 1, nodes: local.nodes, rels: local.rels };
+  let view = local.view;
+  let g = { v: 1, nodes: local.nodes, rels: local.rels, drafts: local.drafts };
+  const history = createHistory();
   const devices = new Map();          // device key -> bp_devices record
   const outputs = new Map();          // refKey -> last applied output or reading
   const inflight = new Map();         // refKey -> queued value or null
@@ -65,7 +70,7 @@ export function graphRuntime(api, shell, env) {
   let closed = false;
 
   const changed = () => { for (const fn of listeners) fn(); };
-  const persist = () => saveLocal(env.storage, g);
+  const persist = () => saveLocal(env.storage, g, view);
 
   // ---- fields --------------------------------------------------------------
   function allFields() {
@@ -266,8 +271,8 @@ export function graphRuntime(api, shell, env) {
       const b = refAt(it.dst, true);
       if (!a || !b) continue;
       const [x, y] = hubPos[it.rel_id] || [0, 0];
-      const from = addNode(g, a, x - 160, y).id;
-      const to = addNode(g, b, x + 160, y).id;
+      const from = addNode(g, a, x - SPREAD, y).id;
+      const to = addNode(g, b, x + SPREAD, y).id;
       const { src, dst, ...rest } = it;
       g.rels.push({ ...rest, id: 'h' + it.rel_id, from, to, home: 'hub', x, y });
       if (!hubState.has(it.rel_id)) hubState.set(it.rel_id, { phase: 'confirmed', reason: 'stored on the hub' });
@@ -318,21 +323,33 @@ export function graphRuntime(api, shell, env) {
   }
 
   // ---- edits -----------------------------------------------------------------
-  /** Add an edge from source ref a to target ref b. Returns '' or the refusal in words. */
-  function add(a, b, map, bounds, at = { x: 0, y: 0 }) {
+  /** Why the hub cannot hold an edge from source ref a, in words; '' when it can. */
+  function hubRefusal(a) {
+    const s = surfaces();
+    if (s.reason) return s.reason;
+    if (!hubLoc(a, false)) return 'the hub maps from STATE or STREAM fields only';
+    if (freeRelId(g, hub.store ? hub.store.store.capacity : undefined) < 0) return 'the hub stores no more relationships';
+    return '';
+  }
+
+  /**
+   * Add an edge from source ref a to target ref b. `extra`: {name?, params?}.
+   * Returns '' or the refusal in words.
+   */
+  function add(a, b, map, bounds, at = { x: 0, y: 0 }, extra = {}) {
     const h = home(a, b);
     if (!h.home) return h.why;
     if (h.home === 'hub') {
-      const s = surfaces();
-      if (s.reason) return s.reason;
-      if (!hubLoc(a, false)) return 'the hub maps from STATE or STREAM fields only';
+      const why = hubRefusal(a);
+      if (why) return why;
     }
-    const from = addNode(g, a, at.x - 160, at.y).id;
-    const to = addNode(g, b, at.x + 160, at.y).id;
-    const o = { map, ...bounds, home: h.home, x: at.x, y: at.y };
+    const from = addNode(g, a, at.x - SPREAD, at.y).id;
+    const to = addNode(g, b, at.x + SPREAD, at.y).id;
+    const o = { map, ...bounds, home: h.home, x: at.x, y: at.y, name: extra.name, params: extra.params };
     if (h.home === 'hub') {
       o.rel_id = freeRelId(g, hub.store ? hub.store.store.capacity : undefined);
-      if (o.rel_id < 0) return 'the hub stores no more relationships';
+      o.id = 'h' + o.rel_id;
+      hubPos[o.rel_id] = [at.x, at.y];
     }
     const res = connect(g, from, to, o);
     if (res.reason) { removeRel(g, null); return res.reason; }   // drops the nodes just added
@@ -344,37 +361,284 @@ export function graphRuntime(api, shell, env) {
 
   /** Change a rel's numbers, name or enabled. Client: applied now. Hub: saved, pending until read back. */
   function edit(id, patch) {
-    const r = g.rels.find((x) => x.id === id);
+    return step(() => {
+      const r = g.rels.find((x) => x.id === id);
+      if (!r) return 'that map is gone';
+      const next = { ...r, ...patch };
+      const bad = checkRel(next) || (patch.enabled && !r.enabled ? refuseConnect(g, r.from, r.to, r) : '');
+      if (bad) return bad;
+      Object.assign(r, patch);
+      if (r.home === 'hub') saveHub(r);
+      return '';
+    });
+  }
+
+  /** Delete a map node and its edge. A hub edge stays, pending, until the store drops it. */
+  function remove(id) {
+    step(() => { const r = g.rels.find((x) => x.id === id); if (r) dropRel(r); return ''; });
+  }
+
+  function dropRel(r) {
+    if (r.home === 'hub' && hub.rels.some((it) => it.rel_id === r.rel_id)) { saveHub(r, STORE_OP.delete_item); return; }
+    hubState.delete(r.rel_id);
+    removeRel(g, r.id);
+  }
+
+  // ---- the canvas: nodes, drafts, wires, undo ----------------------------------
+  const nodeOf = (id) => g.nodes.find((n) => n.id === id);
+  const draftOf = (id) => g.drafts.find((d) => d.id === id);
+  const homeNodes = (a, b) => home(a.ref, b.ref);
+  const snapshot = () => JSON.parse(JSON.stringify({ nodes: g.nodes, rels: g.rels, drafts: g.drafts }));
+  // What a hub slot holds, positions aside: a change here is a store write.
+  const hubKey = (r, nodes) => {
     if (!r) return '';
-    const next = { ...r, ...patch };
-    const bad = checkRel(next) || (patch.enabled && !r.enabled ? refuseConnect(g, r.from, r.to, r) : '');
-    if (bad) return bad;
-    Object.assign(r, patch);
-    if (r.home === 'hub') saveHub(r);
+    const ref = (id) => { const n = nodes.find((m) => m.id === id); return n ? refKey(n.ref) : id; };
+    return JSON.stringify([r.name, r.map, r.in_min, r.in_max, r.out_min, r.out_max, r.params, r.enabled, ref(r.from), ref(r.to)]);
+  };
+  const hubSlots = (s) => new Map(s.rels.filter((r) => r.home === 'hub').map((r) => [r.rel_id, r]));
+
+  /**
+   * One user edit as one undo step: `fn` mutates g and returns '' or a refusal
+   * in words; a refusal leaves no step. The step remembers which hub slots the
+   * edit touched, so undo writes those and leaves every other slot as it is.
+   */
+  function step(fn) {
+    const before = snapshot();
+    const why = fn();
+    if (why) return why;
+    const a = hubSlots(before);
+    const b = hubSlots(g);
+    const slots = new Set();
+    for (const id of new Set([...a.keys(), ...b.keys()])) {
+      if (hubKey(a.get(id), before.nodes) !== hubKey(b.get(id), g.nodes)) slots.add(id);
+    }
+    history.push({ snap: before, slots });
     persist();
     changed();
     return '';
   }
 
-  function remove(id) {
-    const r = g.rels.find((x) => x.id === id);
-    if (!r) return;
-    if (r.home === 'hub' && hub.rels.some((it) => it.rel_id === r.rel_id)) { saveHub(r, STORE_OP.delete_item); return; }
-    hubState.delete(r.rel_id);
-    removeRel(g, id);
+  /** Back to a stored state: local parts at once, each touched hub slot through the store (law 4). */
+  function restore(e) {
+    const want = e.snap;
+    const cur = hubSlots(g);
+    const wantHub = hubSlots(want);
+    const rels = want.rels.filter((r) => r.home === 'client');
+    const saves = [];
+    const deletes = [];
+    for (const [id, r] of cur) {
+      if (e.slots.has(id)) continue;
+      const w = wantHub.get(id);
+      rels.push(w ? { ...r, x: w.x, y: w.y } : r);
+    }
+    for (const id of e.slots) {
+      const w = wantHub.get(id);
+      const c = cur.get(id);
+      if (w) {
+        rels.push(w);
+        if (hubKey(w, want.nodes) !== hubKey(c, g.nodes)) saves.push(w);
+      } else if (c) {
+        rels.push(c);   // stays until the store drops it
+        deletes.push(c);
+      }
+    }
+    const nodes = [...want.nodes];
+    for (const r of rels) {
+      for (const id of [r.from, r.to]) {
+        if (!nodes.some((n) => n.id === id)) { const n = nodeOf(id); if (n) nodes.push(n); }
+      }
+    }
+    g = { v: 1, nodes, rels, drafts: want.drafts };
+    for (const r of rels) if (r.home === 'hub') hubPos[r.rel_id] = [r.x, r.y];
+    for (const r of saves) saveHub(r);
+    for (const r of deletes) saveHub(r, STORE_OP.delete_item);
     persist();
     changed();
   }
 
-  /** Move a node or a rel's map node; positions are local. */
-  function move(id, x, y) {
-    const n = g.nodes.find((m) => m.id === id) || g.rels.find((r) => r.id === id);
-    if (!n) return;
-    n.x = x;
-    n.y = y;
-    if (n.rel_id != null && n.home === 'hub') hubPos[n.rel_id] = [x, y];
-    persist();
-    changed();
+  const travel = (pop) => {
+    const e = pop((x) => ({ snap: snapshot(), slots: x.slots }));
+    if (e) restore(e);
+    return !!e;
+  };
+
+  /** Bounds and parameters for an edge between two nodes; a draft's own carry over where its ends are the same. */
+  function configFor(fromId, toId, cfg) {
+    const a = nodeOf(fromId).ref;
+    const b = nodeOf(toId).ref;
+    const s = sources().find((x) => refKey(x.ref) === refKey(a));
+    const t = targets().find((x) => refKey(x.ref) === refKey(b));
+    const sameIn = cfg && cfg.src === fromId;
+    const sameOut = cfg && cfg.dst === toId;
+    const o = {
+      in_min: sameIn ? cfg.in_min : num(s && s.lo, 0), in_max: sameIn ? cfg.in_max : num(s && s.hi, 1),
+      out_min: sameOut ? cfg.out_min : num(t && t.lo, 0), out_max: sameOut ? cfg.out_max : num(t && t.hi, 1),
+    };
+    if (o.in_min === o.in_max) o.in_max = o.in_min + 1;
+    return { bounds: o, params: sameIn && sameOut ? cfg.params : undefined };
+  }
+
+  /** A rel back to a draft map node, keeping one end ('from', 'to' or null) and its numbers. */
+  function toDraft(r, keep) {
+    const d = addDraft(g, r.map, r.x, r.y, { name: r.name, from: keep === 'from' ? r.from : null, to: keep === 'to' ? r.to : null });
+    d.cfg = { src: r.from, dst: r.to, in_min: r.in_min, in_max: r.in_max, out_min: r.out_min, out_max: r.out_max, params: r.params };
+    dropRel(r);
+    return d;
+  }
+
+  /** Why output socket a cannot be wired to input socket b, in words; '' when it can. Changes nothing. */
+  function why(a, b) {
+    const p = planWire(g, a, b, homeNodes);
+    if (p.reason || p.partial) return p.reason || '';
+    const h = homeNodes(nodeOf(p.from), nodeOf(p.to));
+    return h.home === 'hub' ? hubRefusal(nodeOf(p.from).ref) : '';
+  }
+
+  /** Wire output socket a to input socket b (node, draft or rel ids). '' or the refusal in words. */
+  function wire(a, b) {
+    return step(() => {
+      const p = planWire(g, a, b, homeNodes);
+      if (p.reason) return p.reason;
+      if (p.partial) {
+        p.draft.from = p.from;
+        p.draft.to = p.to;
+      } else {
+        const A = nodeOf(p.from);
+        const B = nodeOf(p.to);
+        const d = p.draft;
+        const at = d ? { x: d.x, y: d.y } : { x: snap((A.x + B.x) / 2), y: snap((A.y + B.y) / 2) };
+        const { bounds, params } = configFor(p.from, p.to, d && d.cfg);
+        let res = add(A.ref, B.ref, d ? d.map : MAP.linear_clamp, bounds, at, { name: d && d.name, params });
+        if (res && params) res = add(A.ref, B.ref, d.map, bounds, at, { name: d.name });
+        if (res) return res;
+        if (d) g.drafts = g.drafts.filter((x) => x !== d);
+      }
+      for (const id of [p.from, p.to]) { const n = id != null && nodeOf(id); if (n) n.pinned = true; }
+      return '';
+    });
+  }
+
+  /** Cut the wire at one socket: a map's in or out, or every wire at a field node's in or out. */
+  function unwire(id, side) {
+    return step(() => {
+      const end = side === 'in' ? 'from' : 'to';
+      const d = draftOf(id);
+      if (d) { d[end] = null; return ''; }
+      const r = g.rels.find((x) => x.id === id);
+      if (r) { toDraft(r, side === 'in' ? 'to' : 'from'); return ''; }
+      const at = side === 'in' ? 'to' : 'from';
+      for (const x of g.drafts) if (x[at] === id) x[at] = null;
+      for (const x of g.rels.filter((q) => q[at] === id)) toDraft(x, side === 'in' ? 'from' : 'to');
+      return '';
+    });
+  }
+
+  /** Put a node for a ref on the canvas at (x, y); a ref already there is returned, not doubled. */
+  function place(ref, x, y) {
+    const had = g.nodes.find((n) => refKey(n.ref) === refKey(ref));
+    if (had) return { id: had.id, already: true };
+    let id = null;
+    step(() => { const n = addNode(g, ref, snap(x), snap(y)); n.pinned = true; id = n.id; return ''; });
+    return { id, already: false };
+  }
+
+  /** Put a map node (a draft until both ends are wired) at (x, y). */
+  function placeMap(map, x, y) {
+    let id = null;
+    step(() => { id = addDraft(g, map, snap(x), snap(y)).id; return ''; });
+    return id;
+  }
+
+  /** Delete nodes, drafts and map nodes by id as one step. A field node's maps stay, unwired at that end. */
+  function removeMany(ids) {
+    return step(() => {
+      for (const id of ids) {
+        const r = g.rels.find((x) => x.id === id);
+        if (r) { dropRel(r); continue; }
+        if (draftOf(id)) { g.drafts = g.drafts.filter((x) => x.id !== id); continue; }
+        if (!nodeOf(id)) continue;
+        for (const x of g.rels.filter((q) => q.from === id || q.to === id)) toDraft(x, x.from === id ? 'to' : 'from');
+        removeNode(g, id);
+      }
+      return '';
+    });
+  }
+
+  /** Unwired copies of the map nodes among ids, one grid step pair down and right. Fields appear once, so they are skipped. */
+  function duplicate(ids) {
+    const made = [];
+    step(() => {
+      for (const id of ids) {
+        const m = g.rels.find((x) => x.id === id) || draftOf(id);
+        if (!m) continue;
+        const d = addDraft(g, m.map, m.x + 40, m.y + 40, { name: m.name });
+        if (m.cfg) d.cfg = JSON.parse(JSON.stringify(m.cfg));
+        else d.cfg = { src: m.from, dst: m.to, in_min: m.in_min, in_max: m.in_max, out_min: m.out_min, out_max: m.out_max, params: [...m.params] };
+        made.push(d.id);
+      }
+      return made.length ? '' : 'nothing to duplicate: fields appear once on the canvas';
+    });
+    return made;
+  }
+
+  /** Move several things at once, one step: [{id, x, y}]. Positions are local. */
+  function moveMany(list) {
+    return step(() => {
+      for (const { id, x, y } of list) {
+        const n = nodeOf(id) || g.rels.find((r) => r.id === id) || draftOf(id);
+        if (!n) continue;
+        n.x = x;
+        n.y = y;
+        if (n.ref) n.pinned = true;
+        if (n.rel_id != null && n.home === 'hub') hubPos[n.rel_id] = [x, y];
+      }
+      return '';
+    });
+  }
+
+  // ---- what a node shows -------------------------------------------------------
+  /** Socket types by what they carry: field (a numeric catalog field), app (an app's command), sensor (a toy reading), toy (a toy control). */
+  function ports(ref) {
+    const k = refKey(ref);
+    const wired = (end) => g.rels.some((r) => { const n = nodeOf(r[end]); return n && refKey(n.ref) === k; });
+    const asSrc = sources().some((s) => refKey(s.ref) === k) || wired('from');
+    const asDst = targets().some((t) => refKey(t.ref) === k) || wired('to');
+    const bp = ref.kind === 'bp';
+    return {
+      out: asSrc ? (bp ? (ref.ctl === 'sensor' ? 'sensor' : 'app') : 'field') : null,
+      in: asDst ? (bp ? 'toy' : 'field') : null,
+    };
+  }
+
+  /** A target's own answer: a field's write status and NACK reason, a toy's last applied output. */
+  function echo(ref) {
+    if (ref.kind === 'bp') return { status: 'confirmed', reason: '', value: outputs.get(refKey(ref)) };
+    const f = fieldFor(ref.key);
+    if (!f) return { status: 'fault', reason: 'absent from this catalog', value: undefined };
+    const sh = env.shadow ? env.shadow(f) : null;
+    return { status: api.status(f), reason: (sh && sh.error) || '', value: api.value(f) };
+  }
+
+  /** The palette: sources by category plus toy inputs and app commands; targets by where they live. */
+  function palette() {
+    const m = api.catalog();
+    const cat = new Map();
+    for (const c of (m && m.categories) || []) {
+      for (const gr of c.groups) for (const f of gr.fields) for (const x of [f, f.lo, f.hi]) if (x) cat.set(x.uid, c.label);
+    }
+    const srcGroup = (s) => {
+      if (s.ref.kind === 'bp') return s.ref.ctl === 'sensor' ? 'Toy inputs' : 'App commands';
+      const f = fieldFor(s.ref.key);
+      return (f && cat.get(f.uid)) || 'Other';
+    };
+    const dstGroup = (t) => {
+      if (t.ref.kind === 'bp') return 'Toy outputs';
+      return toAccessory(fieldFor(t.ref.key)) ? 'Accessory fields' : 'Machine fields';
+    };
+    return {
+      sources: sources().map((s) => ({ ...s, group: srcGroup(s) })),
+      targets: targets().map((t) => ({ ...t, group: dstGroup(t) })),
+    };
   }
 
   // ---- lifecycle ---------------------------------------------------------------
@@ -395,7 +659,19 @@ export function graphRuntime(api, shell, env) {
     get hub() { return hub; },
     get armed() { return armedNow; },
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
-    hubArmed, home, sources, targets, add, edit, remove, move, refreshHub, tick,
+    hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
+    why, wire, unwire, place, placeMap, removeMany, duplicate, moveMany, ports, echo, palette,
+    move: (id, x, y) => moveMany([{ id, x, y }]),
+    undo: () => travel((swap) => history.undo(swap)),
+    redo: () => travel((swap) => history.redo(swap)),
+    get canUndo() { return history.canUndo; },
+    get canRedo() { return history.canRedo; },
+    get view() { return view; },
+    setView(v) { view = v; persist(); },
+    value: (ref) => io.read(ref),
+    unit: (ref) => (ref.kind === 'field' && fieldFor(ref.key)?.unit) || '',
+    stale: (ref) => (ref.kind === 'field' && fieldFor(ref.key) ? api.stale(fieldFor(ref.key)) : ''),
+    out: (id) => runner.out(id),
     maps: MAPS, MAP,
     label(ref) {
       const s = [...sources(), ...targets()].find((x) => refKey(x.ref) === refKey(ref));
@@ -413,7 +689,7 @@ export function graphRuntime(api, shell, env) {
 
 /** Add the graph to the app's plugin host. Its editor mounts GraphEditor.svelte. */
 export async function loadGraph(host) {
-  const [{ machine, getSession }, { runAction }, { mount, unmount }, { default: GraphEditor }] = await Promise.all([
+  const [{ machine, getSession }, { runAction, shadowOf }, { mount, unmount }, { default: GraphEditor }] = await Promise.all([
     import('../model/machine.svelte.js'),
     import('../model/shadow.svelte.js'),
     import('svelte'),
@@ -432,6 +708,7 @@ export async function loadGraph(host) {
     sample: (ch) => machine.samples[ch],
     fetchBlob: (o) => { const s = getSession(); return s ? s.fetchBlob(o) : Promise.reject(new Error('no session')); },
     runAction,
+    shadow: shadowOf,
   };
   host.add(manifest, {
     activate(api) {

@@ -20,7 +20,8 @@
 import {
   MAP, MAPS, evalMap, SAFE, checkRel, homeOf, interlock, emptyGraph, addNode, connect,
   removeRel, freeRelId, encodeItem, decodeItem, storeItem, readStoreItem, saveLocal, loadLocal,
-  createRunner, findHub, storeVerb, rosterBits, isUserSpace,
+  createRunner, findHub, storeVerb, rosterBits, isUserSpace, addDraft, removeNode, planWire, snap,
+  createHistory, preview,
 } from '../src/model/graph.js';
 import { CBOR_FIELD } from '../../Valence/clients/js/frames.js';
 import { STORE_OP, CORE_CHANNEL } from '../../Valence/clients/js/generated/registry_vocab.js';
@@ -223,6 +224,84 @@ console.log('(f) the hub surfaces, against a fixture catalog');
   ok('delete carries op and slot only', JSON.stringify(del) === JSON.stringify({ 1: STORE_OP.delete_item, 2: 5 }));
   const bits = rosterBits(roster, { armed_lo: 0b101, armed_hi: 1, faulted_lo: 0, faulted_hi: 0x80 });
   ok('roster bits by rel_id', bits.armed === (0b101 | 256) && bits.faulted === 0x8000);
+}
+
+console.log('(g) the editor\'s model: drafts, wiring plans, snap, history, preview, stored view');
+{
+  const g = emptyGraph();
+  const field = (k, x = 0) => addNode(g, { kind: 'field', key: k }, x, 0);
+  const [S, T, U] = [field('s'), field('t', 400), field('u', 800)];
+  S.pinned = true;
+  const homeFor = (a, b) => homeOf(a.ref, b.ref, b.ref.key !== 'machine');
+  const d = addDraft(g, MAP.invert, 200, 0);
+  const d2 = addDraft(g, MAP.gate, 200, 100);
+  ok('a map cannot feed a map', /do not chain/.test(planWire(g, d.id, d2.id, homeFor).reason || ''));
+  const p1 = planWire(g, S.id, d.id, homeFor);
+  ok('source to an empty draft is a partial plan', p1.partial && p1.from === S.id && p1.to == null && p1.draft === d);
+  d.from = S.id;
+  const p2 = planWire(g, d.id, T.id, homeFor);
+  ok('draft with a source to a target is a full plan', !p2.partial && p2.from === S.id && p2.to === T.id && p2.draft === d);
+  const p3 = planWire(g, S.id, U.id, homeFor);
+  ok('field to field with no draft is a full plan with no draft', !p3.partial && p3.draft === null);
+  connect(g, S.id, T.id, { map: MAP.invert, in_min: 0, in_max: 1, out_min: 0, out_max: 1, home: 'hub', id: 'h0', rel_id: 0 });
+  ok('connect keeps a given id', g.rels[0].id === 'h0');
+  ok('a rel\'s sockets are full: its output refuses a second target', /already drives/.test(planWire(g, 'h0', U.id, homeFor).reason || ''));
+  ok('...and its input a second source', /already reads/.test(planWire(g, U.id, 'h0', homeFor).reason || ''));
+  ok('a draft aimed at a driven target is refused before its source is wired', /already driven/.test(planWire(g, d2.id, T.id, homeFor).reason || ''));
+  ok('closing a loop through a draft is refused', /feedback loop/.test((d.from = T.id, planWire(g, d.id, S.id, homeFor).reason) || ''));
+  const M = addNode(g, { kind: 'field', key: 'machine' }, 0, 300);
+  ok('a home mismatch is refused in words', /refused: .*accessory/.test(planWire(g, U.id, M.id, homeFor).reason || ''));
+
+  removeRel(g, 'h0');
+  ok('removing a rel keeps pinned nodes and nodes a draft holds, drops the rest',
+    g.nodes.some((n) => n.id === S.id) && g.nodes.some((n) => n.id === T.id) && !g.nodes.some((n) => n.id === U.id));
+  removeNode(g, T.id);
+  ok('removing a node clears the draft end that held it', d.from === null && !g.nodes.some((n) => n.id === T.id));
+
+  ok('snap rounds to the grid', snap(29) === 20 && snap(31) === 40 && snap(-11) === -20 && snap(7, 5) === 5);
+
+  const h = createHistory(2);
+  ok('an empty history has nothing to undo', !h.canUndo && h.undo(() => 'x') === null);
+  h.push('a'); h.push('b'); h.push('c');
+  const u1 = h.undo((e) => 'now<' + e);
+  ok('undo returns the latest entry and stores the current state', u1 === 'c' && h.canRedo);
+  ok('redo returns what undo stored', h.redo(() => 'cur') === 'now<c');
+  h.undo(() => 'y'); h.undo(() => 'z');
+  ok('the stack is bounded: the oldest entry fell off', !h.canUndo);
+  h.push('d');
+  ok('a new edit clears redo', !h.canRedo);
+
+  const lin = preview({ map: MAP.linear_clamp, in_min: 0, in_max: 10, out_min: 0, out_max: 100, params: [] });
+  ok('preview: a curve over the input window, ends at the bounds', !lin.time && lin.pts[0][1] === 0 && lin.pts.at(-1)[1] === 100 && lin.x0 === 0 && lin.x1 === 10);
+  const gate = preview({ map: MAP.gate, in_min: 2, in_max: 8, out_min: 0, out_max: 100, params: [] });
+  ok('preview: a gate shows gaps outside its window', gate.pts[0] === null && gate.pts.at(-1) === null && gate.pts[12] !== null);
+  const hy = preview({ map: MAP.threshold_hysteresis, in_min: 0, in_max: 10, out_min: 0, out_max: 1, params: [7, 3] });
+  ok('preview: hysteresis is its loop', JSON.stringify(hy.pts) === '[[0,0],[7,0],[7,1],[10,1],[3,1],[3,0]]', JSON.stringify(hy.pts));
+  const sl = preview({ map: MAP.slew_limit, in_min: 0, in_max: 1, out_min: 0, out_max: 100, params: [50, 25] });
+  ok('preview: slew is a trapezoid, 2 s up and 4 s down for 100 at 50/s and 25/s',
+    sl.time && sl.pts.length === 4 && near(sl.pts[1][0], 2) && near(sl.pts[3][0] - sl.pts[2][0], 4));
+  const lp = preview({ map: MAP.lowpass, in_min: 0, in_max: 1, out_min: 0, out_max: 100, params: [2] });
+  ok('preview: low-pass is its step response over five tau', lp.time && near(lp.x1, 10) && near(lp.pts.at(-1)[1], 100 * (1 - Math.exp(-5))));
+  const pw = preview({ map: MAP.piecewise_table, params: [0, 5, 10, 50] });
+  ok('preview: a table is its points', JSON.stringify(pw.pts) === '[[0,5],[10,50]]' && pw.y0 === 5 && pw.y1 === 50);
+
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  saveLocal(storage, g, { x: -40, y: 20, k: 1.5 });
+  const back = loadLocal(storage);
+  ok('drafts, pinned nodes and the view round-trip the store', back.drafts.length === 2 && back.nodes.find((n) => n.id === S.id)?.pinned === true
+    && JSON.stringify(back.view) === '{"x":-40,"y":20,"k":1.5}');
+  saveLocal(storage, g, { x: 0, y: 0, k: 0 });
+  ok('a degenerate view loads as none', loadLocal(storage).view === null);
+
+  const g3 = emptyGraph();
+  const a = addNode(g3, { kind: 'field', key: 'a' });
+  const b = addNode(g3, { kind: 'field', key: 'b' });
+  const r = connect(g3, a.id, b.id, { map: MAP.linear_clamp, in_min: 0, in_max: 10, out_min: 0, out_max: 100, home: 'client' }).rel;
+  const run = createRunner({ read: () => 5, target: () => ({}), write() {}, armed: () => ({ ok: true }) });
+  ok('the runner reports nothing for an edge it has not run', run.out(r.id) === undefined);
+  run.step(g3, 0);
+  ok('the runner reports the output it last wrote', run.out(r.id) === 50);
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

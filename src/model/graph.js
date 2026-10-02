@@ -170,11 +170,15 @@ export function interlock(live, safety) {
 // ---------------------------------------------------------------------------
 
 /**
- * {v, nodes: [{id, ref, x, y}], rels: [rel]}; rel = {id, name, from, to (node
- * ids), map, in_min, in_max, out_min, out_max, params, enabled, home, x, y}.
- * A hub rel also carries `rel_id`, its store slot.
+ * {v, nodes: [{id, ref, x, y, pinned?}], rels: [rel], drafts: [draft]}; rel =
+ * {id, name, from, to (node ids), map, in_min, in_max, out_min, out_max,
+ * params, enabled, home, x, y}. A hub rel also carries `rel_id`, its store
+ * slot. A draft is a map node the editor holds until both ends are wired:
+ * {id, map, name, x, y, from, to (node id or null)}. Positions are a node's
+ * top-left in canvas units. A pinned node was placed by the editor and stays
+ * when no edge touches it.
  */
-export const emptyGraph = () => ({ v: 1, nodes: [], rels: [] });
+export const emptyGraph = () => ({ v: 1, nodes: [], rels: [], drafts: [] });
 
 let seq = 0;
 const newId = (p) => p + Date.now().toString(36) + (seq++).toString(36);
@@ -220,7 +224,7 @@ export function connect(g, from, to, o) {
   const reason = refuseConnect(g, from, to);
   if (reason) return { reason };
   const rel = {
-    id: newId('r'), name: o.name || MAPS[o.map].label, from, to, map: o.map,
+    id: o.id || newId('r'), name: o.name || MAPS[o.map].label, from, to, map: o.map,
     in_min: o.in_min, in_max: o.in_max, out_min: o.out_min, out_max: o.out_max,
     params: o.params || defaultParams(o.map, o.in_min, o.in_max, o.out_min, o.out_max),
     enabled: true, home: o.home, x: o.x || 0, y: o.y || 0,
@@ -232,10 +236,129 @@ export function connect(g, from, to, o) {
   return { rel };
 }
 
-/** Drop a rel, then any node no rel touches. */
+/** Drop a rel, then every unpinned node no rel or draft touches. */
 export function removeRel(g, id) {
   g.rels = g.rels.filter((r) => r.id !== id);
-  g.nodes = g.nodes.filter((n) => g.rels.some((r) => r.from === n.id || r.to === n.id));
+  const used = new Set();
+  for (const x of [...g.rels, ...(g.drafts || [])]) used.add(x.from).add(x.to);
+  g.nodes = g.nodes.filter((n) => n.pinned || used.has(n.id));
+}
+
+/** Drop a node; a draft wired to it loses that end. Rels touching it are the caller's (a hub rel needs the store). */
+export function removeNode(g, id) {
+  g.nodes = g.nodes.filter((n) => n.id !== id);
+  for (const d of g.drafts || []) {
+    if (d.from === id) d.from = null;
+    if (d.to === id) d.to = null;
+  }
+}
+
+/** A map node with no rel yet, at (x, y). `o`: {name?, from?, to?}. */
+export function addDraft(g, map, x, y, o = {}) {
+  const d = { id: newId('d'), map, name: o.name || MAPS[map].label, x, y, from: o.from ?? null, to: o.to ?? null };
+  (g.drafts || (g.drafts = [])).push(d);
+  return d;
+}
+
+/**
+ * What wiring output socket `a` to input socket `b` does, or why it cannot:
+ * {reason} or {from, to, draft, partial}. `a` and `b` are node, draft or rel
+ * ids; `homeFor(fromNode, toNode)` is homeOf's answer for two nodes. A
+ * partial plan sets one end of a draft; a full one makes a rel (from the
+ * draft when there is one, else a linear clamp between the two nodes).
+ */
+export function planWire(g, a, b, homeFor) {
+  const node = (id) => g.nodes.find((n) => n.id === id);
+  const draft = (id) => (g.drafts || []).find((d) => d.id === id);
+  if (g.rels.some((r) => r.id === a)) return { reason: 'refused: this map already drives a target; delete that wire first' };
+  if (g.rels.some((r) => r.id === b)) return { reason: 'refused: this map already reads a source; delete that wire first' };
+  const da = draft(a);
+  const db = draft(b);
+  if (da && db) return { reason: 'refused: maps do not chain; a relationship is one source, one map, one target (SPEC 8.11)' };
+  if (!da && !node(a)) return { reason: 'refused: that output is gone' };
+  if (!db && !node(b)) return { reason: 'refused: that input is gone' };
+  const from = da ? da.from : a;
+  const to = db ? db.to : b;
+  const d = da || db || null;
+  if (from == null || to == null) {
+    const other = to != null && g.rels.find((r) => r.to === to && r.enabled);
+    if (other) return { reason: 'refused: that target is already driven by "' + other.name + '"; one target has at most one enabled edge' };
+    return { from, to, draft: d, partial: true };
+  }
+  const reason = refuseConnect(g, from, to);
+  if (reason) return { reason };
+  const h = homeFor(node(from), node(to));
+  if (!h.home) return { reason: 'refused: ' + h.why };
+  return { from, to, draft: d, partial: false };
+}
+
+/** Canvas grid pitch, in canvas units. Node positions snap to it. */
+export const GRID = 20;
+export const snap = (v, grid = GRID) => Math.round(v / grid) * grid;
+
+/**
+ * One undo stack of opaque entries, pushed before each edit. undo and redo
+ * pop an entry and keep `swap(entry)`, the current state, for the way back.
+ */
+export function createHistory(limit = 100) {
+  const back = [];
+  const fwd = [];
+  const trade = (from, to, swap) => { if (!from.length) return null; const e = from.pop(); to.push(swap(e)); return e; };
+  return {
+    push(e) { back.push(e); if (back.length > limit) back.shift(); fwd.length = 0; },
+    undo: (swap) => trade(back, fwd, swap),
+    redo: (swap) => trade(fwd, back, swap),
+    get canUndo() { return back.length > 0; },
+    get canRedo() { return fwd.length > 0; },
+  };
+}
+
+/**
+ * A map's shape for its node preview: {pts: [[x, y] | null], time, x0, x1, y0, y1}.
+ * A curve map's x is the input in physical units over x0..x1; a time map's
+ * (slew limit, low-pass) is seconds of its response to a full step. y is the
+ * output over y0..y1. A null point is a gap: a gate outside its window, where
+ * the target gets its safe value.
+ */
+export function preview(r) {
+  const p = r.params || [];
+  const lo = r.out_min;
+  const hi = r.out_max;
+  if (r.map === M.slew_limit) {
+    const span = Math.abs(hi - lo) || 1;
+    const up = span / (p[0] || 1);
+    const dn = span / ((p.length > 1 ? p[1] : p[0]) || 1);
+    const hold = (up + dn) / 2;
+    return { pts: [[0, lo], [up, hi], [up + hold, hi], [up + hold + dn, lo]], time: true, x0: 0, x1: up + hold + dn, y0: lo, y1: hi };
+  }
+  if (r.map === M.lowpass) {
+    const tau = p[0] > 0 ? p[0] : 1;
+    const pts = [];
+    for (let i = 0; i <= 24; i++) pts.push([i * tau / 4.8, lo + (hi - lo) * (1 - Math.exp(-i / 4.8))]);
+    return { pts, time: true, x0: 0, x1: 5 * tau, y0: lo, y1: hi };
+  }
+  if (r.map === M.threshold_hysteresis) {
+    const a = Math.min(r.in_min, r.in_max);
+    const b = Math.max(r.in_min, r.in_max);
+    return { pts: [[a, lo], [p[0], lo], [p[0], hi], [b, hi], [p[1], hi], [p[1], lo]], time: false, x0: a, x1: b, y0: lo, y1: hi };
+  }
+  if (r.map === M.piecewise_table) {
+    const pts = [];
+    for (let i = 0; i + 1 < p.length; i += 2) pts.push([p[i], p[i + 1]]);
+    if (!pts.length) return { pts, time: false, x0: 0, x1: 1, y0: 0, y1: 1 };
+    const ys = pts.map((q) => q[1]);
+    return { pts, time: false, x0: pts[0][0], x1: pts[pts.length - 1][0], y0: Math.min(...ys), y1: Math.max(...ys) };
+  }
+  let a = Math.min(r.in_min, r.in_max);
+  let b = Math.max(r.in_min, r.in_max);
+  if (r.map === M.gate) { const w = (b - a) / 4; a -= w; b += w; }
+  const pts = [];
+  for (let i = 0; i <= 24; i++) {
+    const x = a + (b - a) * i / 24;
+    const y = evalMap(r, {}, x, 0);
+    pts.push(typeof y === 'number' ? [x, y] : null);
+  }
+  return { pts, time: false, x0: a, x1: b, y0: lo, y1: hi };
 }
 
 /** Lowest free hub slot, or -1 when every one of `capacity` is taken. */
@@ -251,11 +374,14 @@ export function freeRelId(g, capacity = LIMITS.relationships_max) {
 
 export const STORAGE_KEY = 'phosphor.graph';
 
-/** The graph as stored: nodes, client rels, and hub rels' positions by rel_id. Hub rels' truth is the hub. */
-export function saveLocal(storage, g) {
+/**
+ * The graph as stored: nodes, drafts, client rels, hub rels' positions by
+ * rel_id, and the editor's view {x, y, k}. Hub rels' truth is the hub.
+ */
+export function saveLocal(storage, g, view = null) {
   const pos = {};
   for (const r of g.rels) if (r.home === 'hub') pos[r.rel_id] = [r.x, r.y];
-  const out = { v: 1, nodes: g.nodes, rels: g.rels.filter((r) => r.home === 'client'), hubPos: pos };
+  const out = { v: 1, nodes: g.nodes, rels: g.rels.filter((r) => r.home === 'client'), drafts: g.drafts || [], hubPos: pos, view };
   try { storage.setItem(STORAGE_KEY, JSON.stringify(out)); } catch (e) { /* private mode: the graph lives for this run */ }
 }
 
@@ -263,10 +389,15 @@ export function loadLocal(storage) {
   try {
     const o = JSON.parse(storage.getItem(STORAGE_KEY));
     if (o && o.v === 1 && Array.isArray(o.nodes) && Array.isArray(o.rels)) {
-      return { v: 1, nodes: o.nodes, rels: o.rels.filter((r) => r.home === 'client' && MAPS[r.map]), hubPos: o.hubPos || {} };
+      const v = o.view;
+      return {
+        v: 1, nodes: o.nodes, rels: o.rels.filter((r) => r.home === 'client' && MAPS[r.map]),
+        drafts: Array.isArray(o.drafts) ? o.drafts.filter((d) => MAPS[d.map]) : [], hubPos: o.hubPos || {},
+        view: v && [v.x, v.y, v.k].every(Number.isFinite) && v.k > 0 ? v : null,
+      };
     }
   } catch (e) { /* absent or unreadable: start empty */ }
-  return { ...emptyGraph(), hubPos: {} };
+  return { ...emptyGraph(), hubPos: {}, view: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -425,5 +556,7 @@ export function createRunner(io) {
     return a;
   }
 
-  return { step, reset: () => { st.clear(); was = false; last = 0; } };
+  /** The output last written for rel `id`, while armed; undefined otherwise. */
+  const out = (id) => st.get(id)?.last;
+  return { step, out, reset: () => { st.clear(); was = false; last = 0; } };
 }
