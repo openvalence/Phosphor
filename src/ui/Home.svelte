@@ -13,7 +13,9 @@
    *   BUILT keeps a home emptied by deletes from reseeding; the grid's Reset
    *   clears it, which reseeds.
    * - Keys the catalog no longer resolves stay in the map, inert (law 10). A
-   *   role field's uid-form key is an alias of its role key (ph-e82.9).
+   *   role field's uid-form key is an alias of its role key (ph-e82.9). A
+   *   `<key>#<n>` key is a second placement of the same control (Duplicate),
+   *   with its own place and look; the palette counts the control once.
    * - Only the `full` class builds (ph-e82.7); other classes always show the seed.
    */
   import DashGrid from './dash/DashGrid.svelte';
@@ -24,7 +26,7 @@
   import LookEditor from './LookEditor.svelte';
   import TelemetryChart from './widgets/TelemetryChart.svelte';
   import { dashboardLayout, layouts, grid, checkpoint } from '../model/dashboard.svelte.js';
-  import { viewMap, cellCount, isNest, placeable } from '../model/grid.js';
+  import { viewMap, cellCount, isNest, placeable, instanceKey, baseKey } from '../model/grid.js';
   import { view } from '../model/viewport.svelte.js';
   import { specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { SAFETY_OP } from '../../../Valence/clients/js/index.js';
@@ -94,7 +96,7 @@
   // one control, which keeps the saved key as its id (its placement entry).
   const aliases = $derived(new Map([...modules.values()].filter((m) => m.control && m.control.alias)
     .map((m) => [m.control.alias, m.id])));
-  const canon = (k) => aliases.get(k) || k;
+  const canon = (k) => { const b = baseKey(k); return aliases.get(b) || b; };
   const items = $derived(keys.filter((k) => modules.has(canon(k)))
     .map((k) => (k === canon(k) ? modules.get(k) : { ...modules.get(canon(k)), id: k })));
   const placed = $derived(new Set(keys.map(canon)));
@@ -116,20 +118,38 @@
     else commit([...items, m], at && { id: key, ...at });
     if (pres && pres !== m.control?.presentations?.[0]) (nest ? layout.nest(nest) : layout).setLook(key, { pres });
   }
-  function remove(key) {
+  // `all` (the palette) removes every placement of the control; a card's own Remove only itself.
+  function remove(key, all = true) {
     checkpoint();
-    const gone = keys.filter((k) => canon(k) === canon(key));
+    const gone = all ? keys.filter((k) => canon(k) === canon(key)) : [key];
     const next = items.filter((it) => !gone.includes(it.id));
     for (const n of layout.nests()) for (const k of gone) if (n.keys.includes(k)) layout.nestRemove(n.id, k);
     for (const k of gone) delete viewMap(layouts, view.cls, VIEW)[k];
     commit(next);
+  }
+  // The grid's selection: a nest goes with its members, except a member another nest also holds.
+  function removeIds(ids) {
+    checkpoint();
+    for (const id of ids) {
+      const n = layout.nests().find((x) => x.id === id);
+      if (!n) { remove(id, false); continue; }
+      const kept = new Set(layout.nests().filter((x) => x.id !== id).flatMap((x) => x.keys));
+      layout.removeNest(id);
+      n.keys.filter((k) => !kept.has(k)).forEach((k) => remove(k, false));
+    }
+  }
+  function duplicateId(id) {
+    checkpoint();
+    commit(items);
+    const to = instanceKey(new Set(Object.keys(viewMap(layouts, view.cls, VIEW))), baseKey(id));
+    return layout.duplicate(id, to);
   }
 </script>
 
 {#snippet body(item)}
   {#if editing && builder}
     <button type="button" class="og-btn sm home-remove" aria-label={'Remove ' + item.title + ' from home'}
-            onclick={() => remove(item.id)}>Remove</button>
+            onclick={() => remove(item.id, false)}>Remove</button>
   {/if}
   {#if item.control}
     {#if editing && builder && item.kind === 'field' && item.setLook}
@@ -151,7 +171,7 @@
   {#if editing && builder}
     <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
   {/if}
-  <DashGrid viewId={VIEW} {items} bind:editing
+  <DashGrid viewId={VIEW} {items} bind:editing ondelete={builder ? removeIds : null} onduplicate={builder ? duplicateId : null}
             ondropkey={builder ? (key, at, nest) => add(key, nest || '', null, at) : null} />
 </div>
 

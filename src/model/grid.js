@@ -91,8 +91,9 @@ const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
  * Place `items` ([{id, ...}]) on a `cols`-wide grid from the saved `map`
  * ({[id]: {x, y, w, h}}). Pure: never writes `map`.
  *
- * - `pin` ({id, x, y, w, h}) is placed first, exactly where asked (clamped):
- *   the item under a drag. Everything else yields to it.
+ * - `pin` ({id, x, y, w, h}, or an array of them for a group) is placed first,
+ *   exactly where asked (clamped): the item under a drag. Everything else
+ *   yields to it; a later pin that collides with an earlier one moves down.
  * - Saved items keep their column (clamped to fit), are pushed down past any
  *   collision, then rise while the cell above is free (vertical compaction).
  * - Unsaved items, and entries with no position yet (a reset nest, a look set
@@ -112,14 +113,18 @@ export function pack(items, map, cols, pin = null) {
   const byId = new Map(items.map((it) => [it.id, it]));
 
   const lookOf = (e) => (e && typeof e === 'object' && e.look ? { look: e.look } : {});
-  if (pin && byId.has(pin.id)) {
-    const { w, h } = size(pin);
-    placed.push({ ...byId.get(pin.id), x: int(pin.x, 0, cols - w, 0), y: int(pin.y, 0, Infinity, 0), w, h, ...lookOf(map[pin.id]) });
+  const pins = (pin == null ? [] : Array.isArray(pin) ? pin : [pin]).filter((p) => p && byId.has(p.id));
+  const pinned = new Set(pins.map((p) => p.id));
+  for (const p of pins) {
+    const { w, h } = size(p);
+    const r = { ...byId.get(p.id), x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h, ...lookOf(map[p.id]) };
+    while (!fits(r)) r.y++;
+    placed.push(r);
   }
 
   const saved = [], fresh = [];
   for (const it of items) {
-    if (pin && it.id === pin.id) continue;
+    if (pinned.has(it.id)) continue;
     const e = map[it.id];
     if (e && typeof e === 'object' && e.y != null) saved.push({ it, e, y: int(e.y, 0, Infinity, 0), x: int(e.x, 0, Infinity, 0) });
     else fresh.push(it);
@@ -218,6 +223,50 @@ export function settle(items, map, cols, pin) {
   const tmp = {};
   for (const p of pack(items, map, cols, pin)) tmp[p.id] = { x: p.x, y: p.y, w: p.w, h: p.h, ...(p.look ? { look: p.look } : {}) };
   return pack(items, tmp, cols);
+}
+
+/**
+ * Pins that align or spread the rects of a selection ([{id, x, y, w, h}]):
+ * 'left' and 'top' move every edge to the selection's smallest; 'spread'
+ * keeps the outermost two and spaces the rest evenly across, in x order.
+ * Collisions are pack's to resolve.
+ */
+export function arrangePins(rects, how) {
+  if (how === 'left') { const x = Math.min(...rects.map((r) => r.x)); return rects.map((r) => ({ ...r, x })); }
+  if (how === 'top') { const y = Math.min(...rects.map((r) => r.y)); return rects.map((r) => ({ ...r, y })); }
+  const s = [...rects].sort((a, b) => a.x - b.x);
+  if (s.length < 3) return s;
+  const x0 = s[0].x, end = s[s.length - 1].x + s[s.length - 1].w;
+  const gap = (end - x0 - s.reduce((a, r) => a + r.w, 0)) / (s.length - 1);
+  let x = x0;
+  return s.map((r) => { const o = { ...r, x: Math.round(x) }; x += r.w + gap; return o; });
+}
+
+/** The first free instance key for a second placement of `base` (`base#2`, `base#3`...). */
+export function instanceKey(taken, base) {
+  let n = 2;
+  while (taken.has(base + '#' + n)) n++;
+  return base + '#' + n;
+}
+/** The stable id an instance key places (law 10): `base#n` is a second placement of `base`. */
+export const baseKey = (k) => k.replace(/#\d+$/, '');
+
+/**
+ * Copy entry `from` as `to`, unplaced (it flows below everything), size and
+ * look kept. A nest is copied whole under the next free nest id when `to` is
+ * omitted. Returns the new id, or null.
+ */
+export function duplicate(map, from, to = null) {
+  const e = map[from];
+  if (!e || typeof e !== 'object') return null;
+  if (!to && isNest(e)) { let i = 1; while (own(map, 'nest:' + i)) i++; to = 'nest:' + i; }
+  if (!to || own(map, to)) return null;
+  const c = clone(e);
+  delete c.x;
+  delete c.y;
+  if (isNest(c)) c.nest.title = c.nest.title + ' copy';
+  map[to] = c;
+  return to;
 }
 
 /** Commit a drag or resize: place with `pin`, compact, write every present item. */

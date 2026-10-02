@@ -36,12 +36,12 @@
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
   } from '../../model/dashboard.svelte.js';
-  import { cellCount, placeable, resizeRect, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { cellCount, placeable, resizeRect, arrangePins, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false } = $props();
+    ondragout = null, target = false, ondelete = null, onduplicate = null } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -75,14 +75,35 @@
   let announceMsg = $state('');
   let nameDraft = $state('');
   let moduleDraft = $state('');
+  let sel = $state([]);          // selected ids (edit mode)
+  let marquee = $state(null);    // {x0, y0, x1, y1, add} client px while a marquee is drawn
+  let dragMoved = false;         // the grip's click after a real drag is not a selection
 
+  /** A group move's pins: every member shifted by the dragged card's delta, clamped as one. */
+  function groupPins(p) {
+    const g = p.group;
+    const dx = Math.min(cols - Math.max(...g.map((r) => r.x + r.w)), Math.max(-Math.min(...g.map((r) => r.x)), p.x - p.x0));
+    const dy = Math.max(-Math.min(...g.map((r) => r.y)), p.y - p.y0);
+    return g.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy }));
+  }
   // Each placed item carries its entry's `look` (grid.js pack) and a setter
   // bound to THIS grid's map, so one control in two nests keeps two looks.
-  const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? pin : null);
+  const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? (pin.group ? groupPins(pin) : pin) : null);
   const placed = $derived(layout.arrange(all, cols, live)
     .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
-  // The drop target: where the dragged card or palette entry lands on release.
-  const ghost = $derived(stack ? null : live ? placed.find((p) => p.id === pin.id) : dropRect);
+  // The drop targets: where the dragged cards or the palette entry land on release.
+  const ghosts = $derived(stack ? [] : live ? placed.filter((p) => (pin.group || [pin]).some((g) => g.id === p.id))
+    : dropRect ? [dropRect] : []);
+  const selSet = $derived(new Set(editing ? sel.filter((id) => placed.some((p) => p.id === id)) : []));
+  const selItems = $derived(placed.filter((p) => selSet.has(p.id)));
+  const canDup = (p) => (p.kind === 'nest' ? !given : !!onduplicate);
+  const canDrop = (p) => p.kind === 'nest' || !!ondelete || !!onremove;
+  const mq = $derived.by(() => {
+    if (!marquee) return null;
+    const g = gridEl.getBoundingClientRect();
+    return { left: Math.min(marquee.x0, marquee.x1) - g.left, top: Math.min(marquee.y0, marquee.y1) - g.top,
+      width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) };
+  });
   const displayList = $derived.by(() => {
     if (!stackOrder) return placed;
     const byId = new Map(placed.map((p) => [p.id, p]));
@@ -120,12 +141,15 @@
     if (stack) { stackOrder = placed.map((p) => p.id); pin = { id, mode: 'stack' }; return; }
     const p = placed.find((q) => q.id === id);
     if (!p) return;
+    dragMoved = false;
     stackOrder = displayList.map((q) => q.id);
-    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move' };
+    const group = selSet.size > 1 && selSet.has(id) ? selItems.map(({ id: i, x, y, w, h }) => ({ id: i, x, y, w, h })) : null;
+    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move', ...(group ? { group, x0: p.x, y0: p.y } : {}) };
   }
   function resizeStart(id, edge = 'se') {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
+    dragMoved = false;
     stackOrder = displayList.map((q) => q.id);
     pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'resize', edge, start: { x: p.x, y: p.y, w: p.w, h: p.h }, refused: false };
   }
@@ -153,6 +177,7 @@
     if (pin.mode === 'move') { moveTo(id, c, clientX, clientY); return; }
     const r = resizeRect(pin.start, pin.edge, c, cols, minOf(placed.find((q) => q.id === id)));
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
+    dragMoved = true;
     resizeNote(id, pin, r, pin.refused);
     pin = { ...pin, ...r };
   }
@@ -164,6 +189,8 @@
    */
   function moveTo(id, c, cx, cy) {
     const it = placed.find((q) => q.id === id);
+    if (c.x !== pin.x || c.y !== pin.y) dragMoved = true;
+    if (pin.group) { pin = { ...pin, x: c.x, y: c.y }; return; }
     if (given && ondragout) {
       const r = (gridEl.closest('.nest-body') || gridEl).getBoundingClientRect();
       if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) {
@@ -205,6 +232,9 @@
     if (!pin || pin.id !== id) return;
     if (pin.out) {
       ondragout(placed.find((q) => q.id === id), pin.cx, pin.cy, 'end');
+    } else if (pin.group) {
+      layout.move(all, cols, groupPins(pin));
+      announce(pin.group.length + ' cards moved');
     } else if (pin.into) {
       if (layout.nestAdd(pin.into, id)) announce(titleOf(id) + ' moved into ' + titleOf(pin.into));
     } else if (pin.mode === 'stack') {
@@ -218,6 +248,58 @@
     }
     pin = null;
     stackOrder = null;
+  }
+
+  // ---- selection (edit mode): a grip click, shift/ctrl adds; a marquee on empty grid --
+  function select(id, additive) {
+    if (dragMoved) { dragMoved = false; return; }
+    const cur = [...selSet];
+    sel = additive ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])
+      : cur.length === 1 && cur[0] === id ? [] : [id];
+    announce(sel.length ? sel.length + ' selected' : 'Selection cleared');
+  }
+  function marqueeStart(e) {
+    if (!editing || stack || e.target !== gridEl || e.button !== 0) return;
+    gridEl.setPointerCapture(e.pointerId);
+    marquee = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey || e.ctrlKey || e.metaKey };
+  }
+  function marqueeMove(e) {
+    if (marquee && gridEl.hasPointerCapture(e.pointerId)) marquee = { ...marquee, x1: e.clientX, y1: e.clientY };
+  }
+  function marqueeEnd() {
+    if (!marquee) return;
+    const m = marquee;
+    marquee = null;
+    const l = Math.min(m.x0, m.x1), r = Math.max(m.x0, m.x1), t = Math.min(m.y0, m.y1), b = Math.max(m.y0, m.y1);
+    if (r - l < 4 && b - t < 4) {
+      if (!m.add && selSet.size) { sel = []; announce('Selection cleared'); }
+      return;
+    }
+    const hit = [...cellEls].filter(([, el]) => { const q = el.getBoundingClientRect(); return q.left < r && q.right > l && q.top < b && q.bottom > t; })
+      .map(([id]) => id);
+    sel = m.add ? [...new Set([...selSet, ...hit])] : hit;
+    announce(sel.length + ' selected');
+  }
+  function arrangeSel(how) {
+    layout.move(all, cols, arrangePins(selItems.map(({ id, x, y, w, h }) => ({ id, x, y, w, h })), how));
+    announce(selItems.length + ' cards ' + (how === 'spread' ? 'spread across' : 'aligned ' + how));
+  }
+  function duplicateSel() {
+    const made = [];
+    for (const p of selItems.filter(canDup)) {
+      const id = p.kind === 'nest' ? layout.duplicate(p.id) : onduplicate(p.id);
+      if (id) made.push(id);
+    }
+    sel = made;
+    announce(made.length ? 'Duplicated ' + made.length + ', placed below' : 'Nothing here can be duplicated');
+  }
+  // Home deletes from the home; a nest member steps out of its nest; elsewhere a nest ungroups.
+  function deleteSel() {
+    const ids = selItems.filter(canDrop).map((p) => p.id);
+    if (ondelete) ondelete(ids);
+    else for (const p of selItems.filter(canDrop)) (p.kind === 'nest' ? layout.removeNest(p.id) : onremove(p.id));
+    sel = [];
+    announce(ids.length + ' removed');
   }
 
   // ---- keyboard ------------------------------------------------------------------
@@ -294,6 +376,7 @@
     editing = on;
     pin = null;
     stackOrder = null;
+    sel = [];
     announce('Layout edit mode ' + (on ? 'on' : 'off'));
   }
   function nameOp(fn, ok, fail) {
@@ -377,15 +460,31 @@
     <button type="button" class="og-btn sm edit-toggle" class:done-btn={editing} aria-pressed={editing}
             onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
   </div>
-  {#if editing}
+  {#if editing && !selSet.size}
     <p class="dash-hint">Drag a card by its grip, resize it by any edge or corner, or drag a palette entry onto the grid.
-      Keyboard: focus a grip; arrows move, Shift+arrows resize. Ctrl+Z undoes the last change.</p>
+      Click grips to select (Shift adds) or drag across empty grid. Keyboard: focus a grip; arrows move, Shift+arrows
+      resize. Ctrl+Z undoes the last change.</p>
   {/if}
+  {/if}
+  {#if editing && selSet.size}
+    <div class="dash-selbar" role="group" aria-label="Selection">
+      <span class="sel-n">{selSet.size} selected</span>
+      <button type="button" class="og-btn sm" disabled={!selItems.some(canDup)} onclick={duplicateSel}
+              title={selItems.some(canDup) ? 'Copy below' : 'A control is placed once per grid; a nest can hold it twice'}>Duplicate</button>
+      {#if selSet.size > 1}
+        <button type="button" class="og-btn sm" onclick={() => arrangeSel('left')}>Align left</button>
+        <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
+        {#if selSet.size > 2}<button type="button" class="og-btn sm" onclick={() => arrangeSel('spread')}>Spread</button>{/if}
+      {/if}
+      <button type="button" class="og-btn sm" disabled={!selItems.some(canDrop)} onclick={deleteSel}>Remove</button>
+      <button type="button" class="og-btn sm" onclick={() => { sel = []; announce('Selection cleared'); }}>Clear</button>
+    </div>
   {/if}
 
   <div class="dash-grid" class:stack class:editing class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols} role="presentation"
-       ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}>
+       ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
+       onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
     {#each displayList as item, i (item.id)}
       <div class="dash-cell" data-id={item.id} use:registerCell={item.id}
            style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
@@ -396,7 +495,9 @@
           pidx={String(i + 1).padStart(2, '0')}
           {editing}
           {stack}
-          dragging={pin?.id === item.id}
+          dragging={pin?.id === item.id || !!pin?.group?.some((g) => g.id === item.id)}
+          selected={selSet.has(item.id)}
+          onselect={(additive) => select(item.id, additive)}
           ongrabstart={() => grabStart(item.id)}
           ongrabmove={(x, y) => pointerMove(item.id, x, y)}
           ongrabend={() => pointerEnd(item.id)}
@@ -409,12 +510,15 @@
         />
       </div>
     {/each}
-    {#if ghost}
+    {#each ghosts as ghost (ghost.id || 'drop')}
       <div class="drop-ghost" class:refused={pin?.refused} aria-hidden="true"
            style={'grid-column:' + (ghost.x + 1) + ' / span ' + ghost.w + ';grid-row:' + (ghost.y + 1) + ' / span ' + ghost.h}>
         <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.start
           && orientationOf(ghost.w, ghost.h) !== orientationOf(pin.start.w, pin.start.h) ? ' · ' + ORIENT[orientationOf(ghost.w, ghost.h)] : ''}</span>
       </div>
+    {/each}
+    {#if mq}
+      <div class="marquee" aria-hidden="true" style={'left:' + mq.left + 'px;top:' + mq.top + 'px;width:' + mq.width + 'px;height:' + mq.height + 'px'}></div>
     {/if}
   </div>
 
@@ -449,6 +553,22 @@
     margin: 0;
     font-size: .72rem;
     color: var(--ink-faint);
+  }
+  .dash-selbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: .8rem;
+    color: var(--ink-hi);
+  }
+  .sel-n { margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .marquee {
+    position: absolute;
+    z-index: 2;
+    border: 1px solid var(--intent);
+    background: color-mix(in srgb, var(--intent) 12%, transparent);
+    pointer-events: none;
   }
 
   /* A popover in the top layer: never clipped by the pane, never widens the
@@ -485,6 +605,7 @@
   /* Tracks are exactly one cell; the spacing lives inside .dash-cell so the
      cell pitch IS the cell edge (test/dash-measure.test.mjs measures it). */
   .dash-grid {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(var(--cols), var(--cell));
     grid-auto-rows: minmax(var(--cell), auto);

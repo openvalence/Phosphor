@@ -16,6 +16,7 @@ import {
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, settle, nestOut,
+  arrangePins, instanceKey, baseKey, duplicate,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -350,6 +351,45 @@ console.log('drag');
   ok('nestOut: a non-member is refused', !nestOut(top, nid, 'm') && !nestOut(top, 'nest:9', 'k'));
   ok('nestOut: an unplaced member leaves an unplaced entry', nestAdd(top, nid, 'q') && nestOut(top, nid, 'q') && JSON.stringify(top.q) === '{}'
      && pack(items('q'), top, 40)[0].w === 40);
+}
+
+// ---- selection: group pins, align, duplicate (ph-e82.20.3) ----------------------
+console.log('selection');
+{
+  const its = items('a', 'b', 'c', 'd');
+  const map = { a: { x: 0, y: 0, w: 4, h: 2 }, b: { x: 6, y: 0, w: 4, h: 2 }, c: { x: 0, y: 2, w: 10, h: 1 }, d: { x: 20, y: 0, w: 4, h: 1 } };
+  const group = [{ id: 'a', x: 12, y: 0, w: 4, h: 2 }, { id: 'b', x: 18, y: 0, w: 4, h: 2 }];
+  const g = pack(its, map, 40, group);
+  const at = (id) => g.find((p) => p.id === id);
+  ok('a group pins every member where asked', at('a').x === 12 && at('b').x === 18 && at('a').y === 0 && at('b').y === 0);
+  ok('the rest yields: d is pushed below b, c rises', at('d').y === 2 && at('c').y === 0, JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
+  const clash = pack(its, map, 40, [{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 0, y: 0, w: 4, h: 2 }]);
+  ok('a pin that lands on an earlier pin moves down, never overlaps', clash.find((p) => p.id === 'b').y === 2);
+  const m2 = JSON.parse(JSON.stringify(map));
+  commitPin(m2, its, 40, group);
+  ok('a group commit writes the group', m2.a.x === 12 && m2.b.x === 18);
+
+  const sel = [{ id: 'a', x: 2, y: 1, w: 4, h: 2 }, { id: 'b', x: 9, y: 3, w: 2, h: 2 }, { id: 'c', x: 20, y: 0, w: 6, h: 1 }];
+  ok('align left takes the smallest x', arrangePins(sel, 'left').every((p) => p.x === 2));
+  ok('align top takes the smallest y', arrangePins(sel, 'top').every((p) => p.y === 0));
+  const sp = arrangePins(sel, 'spread');
+  ok('spread keeps the outer two and spaces the middle evenly', sp[0].x === 2 && sp[2].x === 20 && sp[1].x === 12,
+     JSON.stringify(sp.map((p) => p.x)));
+  ok('spread of two changes nothing', JSON.stringify(arrangePins(sel.slice(0, 2), 'spread').map((p) => p.x)) === '[2,9]');
+
+  ok('instance keys count up from 2 and skip taken ones', instanceKey(new Set(), 'role:x') === 'role:x#2'
+     && instanceKey(new Set(['uid:1:y#2']), 'uid:1:y') === 'uid:1:y#3');
+  ok('baseKey strips an instance suffix only', baseKey('uid:1:y#3') === 'uid:1:y' && baseKey('role:a.b') === 'role:a.b' && baseKey('nest:2') === 'nest:2');
+  const dm = { a: { x: 3, y: 4, w: 5, h: 2, look: { pres: 'knob' } } };
+  ok('duplicate copies size and look, unplaced', duplicate(dm, 'a', 'a#2') === 'a#2' && JSON.stringify(dm['a#2']) === '{"w":5,"h":2,"look":{"pres":"knob"}}');
+  ok('duplicate refuses a taken id or a missing entry', duplicate(dm, 'a', 'a#2') === null && duplicate(dm, 'zz', 'q') === null);
+  dm['a#2'].look.pres = 'bar';
+  ok('the copy is independent', dm.a.look.pres === 'knob');
+  const nid = addNest(dm, { title: 'Pump', members: { a: { x: 0, y: 0, w: 4, h: 1, look: { pres: 'numeral' } } } });
+  const cid = duplicate(dm, nid);
+  ok('a nest duplicates whole under the next nest id, titled as a copy', cid === 'nest:2' && isNest(dm[cid]) && dm[cid].nest.title === 'Pump copy'
+     && dm[cid].nest.map.a.look.pres === 'numeral' && dm[cid].w === dm[nid].w && dm[cid].x === undefined);
+  ok('a plain entry needs an explicit id', duplicate(dm, 'a') === null);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

@@ -96,6 +96,7 @@ function controller(read, write, members) {
  *   addNest({title, scroll, w, h}?) -> new nest id
  *   nestAdd(id, key) / nestRemove(id, key) / setNest(id, {title, scroll}) / removeNest(id)
  *   nestOut(id, key)           -> member `key` to the top level, look and size kept
+ *   duplicate(id, to?)         -> copy entry `id` as `to` (a nest: whole, next nest id); returns the id
  *   saveModule(id, name)       -> save nest `id` as a module; a taken name is refused
  *   insertModule(name)         -> place a module as a new nest; returns its id or null
  */
@@ -112,6 +113,7 @@ export function dashboardLayout(viewId, cls = 'full') {
     nestAdd: inMap(G.nestAdd),
     nestRemove: inMap(G.nestRemove),
     nestOut: inMap(G.nestOut),
+    duplicate: inMap(G.duplicate),
     setNest: inMap(G.setNest),
     removeNest: inMap(G.removeNest),
     saveModule: edit((id, name) => G.saveModule(layouts, read(), id, name)),

@@ -11,6 +11,10 @@
  *            layout while dragging; the ghost is the committed rect; a card
  *            dropped on a nest lights the nest and joins it; a member dragged
  *            out of its nest lands at the top level (ph-e82.20.2)
+ *   select   grip click and Shift+click select; a marquee on empty grid
+ *            selects what it crosses; a group moves as one; align left;
+ *            duplicate a card (a second placement) and a nest (a copy);
+ *            remove as a group, one undo step (ph-e82.20.3)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -185,6 +189,77 @@ console.log('drag');
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(150);
   ok('one undo puts the member back in its nest', await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 1);
+  await ctx.close();
+}
+
+// ---- multi-select (ph-e82.20.3) --------------------------------------------------
+console.log('select');
+{
+  const { ctx, page, cell, stored, said, card } = await open({
+    [F1]: { x: 0, y: 0, w: 8, h: 2 }, [F2]: { x: 10, y: 0, w: 8, h: 2 }, [F3]: { x: 0, y: 2, w: 8, h: 2 },
+    'nest:1': { x: 20, y: 0, w: 12, h: 4, nest: { title: 'Pump', scroll: false, map: { [SLIDER]: { x: 0, y: 0, w: 8, h: 2 } } } },
+  });
+  const grip = (key) => card(key).locator(':scope > .dash-item > .dash-head > .handle.grab');
+  const pressed = async () => (await page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => els
+    .filter((c) => c.querySelector(':scope > .dash-item > .dash-head > .handle.grab')?.getAttribute('aria-pressed') === 'true')
+    .map((c) => c.dataset.id))).sort();
+  const selbar = () => page.locator('.home > .dash-wrap > .dash-selbar');
+  await grip(F1).click();
+  await grip(F2).click({ modifiers: ['Shift'] });
+  ok('a grip click selects, Shift+click adds', JSON.stringify(await pressed()) === JSON.stringify([F1, F2].sort())
+     && /2 selected/.test(await selbar().textContent()), await pressed());
+  await drag(page, grip(F1), 3 * cell, 0);
+  let s = await stored();
+  ok('dragging one selected card moves the group as one', s[F1].x === 3 && s[F2].x === 13 && s[F1].y === 0 && s[F2].y === 0,
+     JSON.stringify([s[F1], s[F2]]));
+  ok('the move is announced for the group', /2 cards moved/.test(await said()), await said());
+  ok('a drag is not a click: the selection stands', (await pressed()).length === 2);
+
+  await card(F3).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const f3 = await card(F3).boundingBox();
+  // Start on empty grid just right of F3, inside its bottom row; end on F3's center.
+  await page.mouse.move(f3.x + f3.width + 1.5 * cell, f3.y + f3.height - 10);
+  await page.mouse.down();
+  await page.mouse.move(f3.x + f3.width / 2, f3.y + f3.height / 2, { steps: 6 });
+  const drawn = await page.locator('.home > .dash-wrap > .dash-grid > .marquee').count();
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  ok('a marquee on empty grid draws and selects what it crosses', drawn === 1 && JSON.stringify(await pressed()) === JSON.stringify([F3]),
+     await pressed());
+  await grip(F1).click({ modifiers: ['Shift'] });
+  await grip(F2).click({ modifiers: ['Shift'] });
+  await selbar().locator('button', { hasText: 'Align left' }).click();
+  await page.waitForTimeout(100);
+  s = await stored();
+  ok('align left puts every selected card on one left edge', s[F1].x === 0 && s[F2].x === 0 && s[F3].x === 0, JSON.stringify([s[F1].x, s[F2].x, s[F3].x]));
+  ok('aligned cards never overlap', new Set([F1, F2, F3].map((k) => s[k].y)).size === 3);
+
+  await selbar().locator('button', { hasText: 'Clear' }).click();
+  await grip('nest:1').click();
+  await selbar().locator('button', { hasText: 'Duplicate' }).click();
+  await page.waitForTimeout(150);
+  s = await stored();
+  ok('a nest duplicates whole, below, titled as a copy', s['nest:2'] && s['nest:2'].nest.title === 'Pump copy'
+     && Object.keys(s['nest:2'].nest.map).join() === SLIDER, JSON.stringify(s['nest:2']));
+  ok('the copy draws its member too', await card('nest:2').locator('.nest-body .dash-cell[data-id="' + SLIDER + '"]').count() === 1);
+  await grip(F1).click();
+  await selbar().locator('button', { hasText: 'Duplicate' }).click();
+  await page.waitForTimeout(150);
+  s = await stored();
+  ok('a card duplicates as a second placement with its own key', !!s[F1 + '#2'] && await card(F1 + '#2').count() === 1, Object.keys(s));
+  ok('the copy is selected', JSON.stringify(await pressed()) === JSON.stringify([F1 + '#2']), await pressed());
+  await grip('nest:2').click({ modifiers: ['Shift'] });
+  await selbar().locator('button', { hasText: 'Remove' }).click();
+  await page.waitForTimeout(150);
+  s = await stored();
+  ok('remove takes the selection off the home', !s[F1 + '#2'] && !s['nest:2'] && !!s[F1], Object.keys(s));
+  ok('a member another nest holds stays in it', await card('nest:1').locator('.nest-body .dash-cell[data-id="' + SLIDER + '"]').count() === 1);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  s = await stored();
+  ok('one undo restores the whole group remove', !!s[F1 + '#2'] && !!s['nest:2'], Object.keys(s));
+  await page.locator('.home .dash-toolbar .done-btn').click();
+  ok('leaving edit mode clears the selection', await page.locator('.home .dash-selbar').count() === 0);
   await ctx.close();
 }
 

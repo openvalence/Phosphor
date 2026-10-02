@@ -39,6 +39,9 @@
     onkeyresize,
     // Set on a nest member: edit mode offers "Out" (back to the top level).
     onremove = null,
+    // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
+    selected = false,
+    onselect = null,
   } = $props();
 
   // ---- grab handle: drag to reorder --------------------------------------
@@ -96,14 +99,16 @@
   }
 </script>
 
-<div class="dash-item og-panel" class:dragging class:editing>
+<div class="dash-item og-panel" class:dragging class:editing class:selected>
   <div class="dash-head card-head">
     <!-- Handles are edit-mode-only: the reading surface stays quiet and a
          card's own controls never compete with layout chrome. -->
     {#if editing}
       <button type="button" class="handle grab"
               aria-label={'Drag to move ' + item.title + '. Arrow keys move it; shift plus arrow keys resize it.'}
-              title="Drag to move. Arrow keys move, Shift+arrows resize."
+              title="Drag to move, click to select. Arrow keys move, Shift+arrows resize."
+              aria-pressed={selected}
+              onclick={(e) => onselect && onselect(e.shiftKey || e.ctrlKey || e.metaKey)}
               onpointerdown={onGrabPointerDown}
               onpointermove={onGrabPointerMove}
               onpointerup={onGrabPointerUp}
@@ -177,6 +182,8 @@
     transform: translateY(-3px);
     opacity: 0.92;
   }
+
+  .dash-item.selected { outline: 2px solid var(--intent); }
 
   .dash-head {
     display: flex;
