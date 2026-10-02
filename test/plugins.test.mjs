@@ -19,7 +19,9 @@
  *       role, advgen.running included, a mount that throws, disabled) leaves the
  *       built-ins to claim; advgen.mode stays generic (RFC-093);
  *   (h) the editor geometry: speed and accel to half width and curvature and
- *       back, handle position to field value on the step grid and bounds.
+ *       back, handle position to field value on the step grid and bounds;
+ *       the speed link's rescale, span and partner rounding; label placement
+ *       clear of a line and of a neighbor.
  *
  * Run: node test/plugins.test.mjs
  */
@@ -35,6 +37,7 @@ import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
 import {
   snap, halfTime, speedInAt, speedOutAt, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
+  linkedInAt, linkedOutAt, linkSpan, linkPartner, linkRescale, placeLabels, densify,
 } from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
 
@@ -552,9 +555,38 @@ console.log('(h) editor geometry');
   ok('a wider in half is a slower in speed', strokeValue.speedIn(spd, g, g.vIn.x + 40) < 50);
   const share = (q) => { const a = halfTime(0.7, q.sIn, q.aIn); return a / (a + halfTime(0.7, q.sOut, q.aOut)); };
   ok('unlinked: the turn share solves one speed, the other half kept',
-    near(share({ ...p, sIn: speedInAt(p, 0.3, false) }), 0.3) && near(share({ ...p, sOut: speedOutAt(p, 0.3, false) }), 0.3));
-  const li = speedInAt(p, 0.3, true), lo = speedOutAt(p, 0.3, true);
-  ok('linked: the pair sums to full scale and puts the turn at the share', near(li + lo, 1) && near(share({ ...p, sIn: li, sOut: lo }), 0.3));
+    near(share({ ...p, sIn: speedInAt(p, 0.3) }), 0.3) && near(share({ ...p, sOut: speedOutAt(p, 0.3) }), 0.3));
+  const U = 1 / p.sIn + 1 / p.sOut, li = linkedInAt(p, 0.3, U), lo = linkedOutAt(p, 0.3, U);
+  ok('linked: 1/in + 1/out held and the turn at the share', near(1 / li + 1 / lo, U) && near(share({ ...p, sIn: li, sOut: lo }), 0.3));
+
+  // The link in whole percent: T = 1/in + 1/out, master x half the physical speed.
+  const r = linkRescale(40, 100, 100, 100, 1, 100);
+  ok('link: 40/100/100 rescales to 80/50/50, the physical halves unchanged', r && r.master === 80 && r.in === 50 && r.out === 50
+    && 40 * 100 === r.master * r.in, r);
+  ok('link: master at its top, or 0, rescales nothing', linkRescale(100, 100, 100, 100, 1, 100) === null && linkRescale(0, 100, 100, 100, 1, 100) === null);
+  ok('link: k = top / master past 50', (({ master, in: i, out: o }) => master === 100 && i === 70 && o === 70)(linkRescale(70, 100, 100, 100, 1, 100)));
+  const r2 = linkRescale(45, 100, 75, 100, 1, 100);
+  ok('link: rounding takes the pair with the least period error (45/100/75 -> 90/50/38)', r2.in === 50 && r2.out === 38
+    && Math.abs(1 / 50 + 1 / 38 - 2 * (1 / 100 + 1 / 75)) < Math.abs(1 / 50 + 1 / 37 - 2 * (1 / 100 + 1 / 75)), r2);
+  ok('link: 100/100 has no room, 50/50 has room both ways', linkSpan(0.02, 1, 100).join() === '100,100' && linkSpan(0.04, 1, 100).join() === '34,100');
+  const T = 1 / 50 + 1 / 50;
+  ok('link: every partner holds T within one step of rounding', [34, 40, 50, 63, 80, 100].every((v) => {
+    const b = linkPartner(T, v, 1, 100);
+    return b >= 1 && b <= 100 && Math.abs(1 / v + 1 / b - T) <= Math.abs(1 / b - 1 / (b + 1)) + 1e-12;
+  }));
+
+  // Labels clear of the line: a rising diagonal, a label on its mid point.
+  const diag = [densify([[0, 200], [400, 0]])];
+  const lab = placeLabels([{ x: 200, y: 100, w: 60, h: 14 }], diag, [[200, 100]], 400, 200);
+  const rect = { x: 200 + lab[0].dx, y: 100 + lab[0].dy, w: 60, h: 14 };
+  const inside = (q) => q[0] >= rect.x && q[0] <= rect.x + rect.w && q[1] >= rect.y && q[1] <= rect.y + rect.h;
+  ok('labels: beside the handle on the side away from the tangent, clear of the line', !lab[0].bg && !diag[0].some(inside)
+    && ((lab[0].dx > 0 && lab[0].dy > 0) || (lab[0].dx < 0 && lab[0].dy < 0)), lab);
+  const two = placeLabels([{ x: 100, y: 50, w: 60, h: 14 }, { x: 110, y: 50, w: 60, h: 14 }], [densify([[0, 50], [400, 50]])], [[100, 50], [110, 50]], 400, 200);
+  const ra = { x: 100 + two[0].dx, y: 50 + two[0].dy, w: 60, h: 14 }, rb = { x: 110 + two[1].dx, y: 50 + two[1].dy, w: 60, h: 14 };
+  ok('labels: a neighbor flips side rather than overlap', !(ra.x < rb.x + 60 && rb.x < ra.x + 60 && ra.y < rb.y + 14 && rb.y < ra.y + 14) && !two[1].bg, two);
+  const boxed = placeLabels([{ x: 20, y: 20, w: 60, h: 14 }], [densify([[0, 0], [40, 40]]), densify([[0, 40], [40, 0]]), densify([[0, 20], [40, 20]]), densify([[20, 0], [20, 40]])], [], 40, 40);
+  ok('labels: no clear side, the clearest wears a backing', boxed[0].bg);
   ok('any stroke spans the plot: the time axis never stretches', [{ ...p, hi: 0.95 }, { ...p, sIn: 0.05 }, { ...p, aOut: 1 }]
     .every((q) => { const h = strokeGeom(q, L); return near(h.x0, L.X0) && near(h.x2, L.XR); }));
   ok('playhead: a depth share maps onto the half', near(atDepth(g.inC, 0.5).y, (g.ylo + g.yhi) / 2, 1e-6));

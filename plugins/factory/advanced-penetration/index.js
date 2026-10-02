@@ -16,10 +16,20 @@
 // - A draft or pending value is drawn in the intent look until the echo.
 // - The stroke picture always spans the plot: x is the share of one stroke's
 //   time, never absolute time, so no drag can draw past the box.
-// - The in/out speed link is a client rule, not a wire one: linked, the pair
-//   sums to 100 % and both go out in the same tick, which the shadow
-//   coalesces into one intent. Switching it on writes nothing.
+// - The in/out speed link is a client rule, not a wire one. Linked, an edit
+//   holds 1/in + 1/out (the stroke period at a fixed master) and moves the
+//   peak; both halves go out in the same tick, one intent. Linking rescales
+//   master x k, each half / k (k = min(2, max / master)) in one intent so the
+//   halves have room; the physical speeds master x half are unchanged only
+//   while the hub's master is a linear rate scale (registry: "percent of its
+//   own range"). Unlinking writes nothing.
+// - Handle shape is its drag axis, everywhere in this card: a dot moves any
+//   direction, a vertical pill left-right only, a horizontal pill up-down
+//   only. The accel diamond and the offset triangle are markers that move
+//   left-right.
+// - A label sits beside its handle, clear of the drawn line (placeLabels).
 // - mod.shape is not claimed: it stays a Tier-0 field until a hub emits it.
+// - Crest and trough dwell are not drawn: they wait on RFC-095 (strokeGeom).
 
 const STORE_OP = { save: 1, load: 2, delete: 3 };   // registry store_ops (RFC-067)
 const CBOR = { uint: 0, tstr: 4 };                 // SPEC §8.1 schema field types
@@ -28,6 +38,7 @@ const TANGENT = 0.7;                               // accel diamond: share of th
 const WAVE_MS = 6000;
 const CONTROL_OWNER = 0x0004;                     // registry core channel control-owner
 const LINK_KEY = 'phosphor.advpen.speedLink';     // client preference; phosphor.* rides the prefs backup
+const INPUTS_KEY = 'phosphor.advpen.inputs';      // client preference: the numeric rows shown
 
 const BASE = [
   ['depthMax', 'advgen.depth_max', 'Max depth'], ['depthMin', 'advgen.depth_min', 'Min depth'],
@@ -66,17 +77,58 @@ export const halfTime = (span, s, a) => (span > 0 && s > 0 ? span * gain(a) / s 
 export const accTime = (span, s, a) => (span > 0 && s > 0 ? span / (s * (1 + 9 * a)) : null);
 /** Control offset / half width = 1/(2+9A); inverted. */
 export const accelForEase = (e) => clamp((1 / e - 2) / 9, 0, 1);
-/**
- * The speeds (units) that put the turn at share r of the stroke time. The
- * other half keeps its speed, or, linked, takes the rest of full scale.
- */
-export function speedInAt(p, r, linked) {
-  const a = gain(p.aIn) * (1 - r), b = gain(p.aOut) * r;
-  return linked ? a / (a + b) : a * p.sOut / b;
+/** The speed (units) that puts the turn at share r of the stroke time, the other half kept. */
+export function speedInAt(p, r) {
+  return gain(p.aIn) * (1 - r) * p.sOut / (gain(p.aOut) * r);
 }
-export function speedOutAt(p, r, linked) {
-  const a = gain(p.aIn) * (1 - r), b = gain(p.aOut) * r;
-  return linked ? b / (a + b) : b * p.sIn / a;
+export function speedOutAt(p, r) {
+  return gain(p.aOut) * r * p.sIn / (gain(p.aIn) * (1 - r));
+}
+/**
+ * Linked: the speeds (units) that put the turn at share r while 1/sIn + 1/sOut
+ * = U holds. q is (1/sIn) / (1/sOut).
+ */
+export function linkedInAt(p, r, U) {
+  const q = r / (1 - r) * gain(p.aOut) / gain(p.aIn);
+  return (1 + q) / (q * U);
+}
+export function linkedOutAt(p, r, U) {
+  const q = r / (1 - r) * gain(p.aOut) / gain(p.aIn);
+  return (1 + q) / U;
+}
+
+// The link, in whole field steps. T = 1/in + 1/out is the period at a fixed master.
+/** The whole values one half may take with T held and its partner inside [lo, hi]. */
+export function linkSpan(T, lo, hi) {
+  const a = 1 / (T - 1 / hi);
+  const b = T - 1 / lo > 0 ? 1 / (T - 1 / lo) : hi;
+  return [Math.max(lo, Math.ceil(a - 1e-9)), Math.min(hi, Math.floor(b + 1e-9))];
+}
+/** The whole partner of v with T held: of floor and ceil, the one whose 1/x misses T - 1/v least. */
+export function linkPartner(T, v, lo, hi) {
+  const want = T - 1 / v;
+  const x = 1 / want;
+  const [a, b] = [Math.floor(x), Math.ceil(x)].map((y) => clamp(y, lo, hi));
+  return Math.abs(1 / a - want) <= Math.abs(1 / b - want) ? a : b;
+}
+/**
+ * Link on: master x k, each half / k with k = min(2, mhi / master), so the
+ * physical speeds master x half stay. Null when master is 0 or at its top.
+ * Rounding: of the four floor/ceil pairs of in/k and out/k, the one whose
+ * 1/in' + 1/out' misses k (1/in + 1/out) least, the least period error.
+ */
+export function linkRescale(m, a, b, mhi, lo, hi) {
+  const m2 = Math.min(2 * m, mhi);
+  if (!(m > 0) || !(m2 > m)) return null;
+  const k = m2 / m, T = k * (1 / a + 1 / b);
+  let best = null;
+  for (const x of [Math.floor(a / k), Math.ceil(a / k)]) {
+    for (const y of [Math.floor(b / k), Math.ceil(b / k)]) {
+      const i = clamp(x, lo, hi), o = clamp(y, lo, hi), e = Math.abs(1 / i + 1 / o - T);
+      if (!best || e < best.e - 1e-12) best = { master: m2, in: i, out: o, e };
+    }
+  }
+  return best;
 }
 
 function bez(c, t) {
@@ -110,6 +162,9 @@ export function strokeGeom(p, L) {
   const tIn = halfTime(g.span, p.sIn, p.aIn), tOut = halfTime(g.span, p.sOut, p.aOut);
   g.ok = !!(tIn && tOut);
   if (!g.ok) return g;
+  // DWELL SEAM (RFC-095, not yet): a crest dwell is a flat segment at yhi
+  // between the in half's end (x1) and the out half's start, a trough dwell
+  // a flat segment at ylo after x2; both add their time to tIn + tOut in k.
   g.k = (L.XR - L.X0) / (tIn + tOut);
   g.x0 = L.X0;
   g.x1 = g.x0 + g.k * tIn;
@@ -133,9 +188,16 @@ const turnShare = (g, x) => clamp((x - g.L.X0) / (g.L.XR - g.L.X0), 0.01, 0.99);
 /** A handle at (x, y) of drag-start geometry g, as its field's raw value. */
 export const strokeValue = {
   depth: (f, g, x, y) => fromFrac(f, (g.L.YB - y) / (g.L.YB - g.L.YT)),
-  // A speed dot sits mid-half, so the turn is at 2x - X0 (in) or 2x - XR (out).
-  speedIn: (f, g, x, y, linked) => valueOf(f, speedInAt(g.p, turnShare(g, 2 * x - g.L.X0), linked)),
-  speedOut: (f, g, x, y, linked) => valueOf(f, speedOutAt(g.p, turnShare(g, 2 * x - g.L.XR), linked)),
+  // A speed pill sits mid-half, so the turn is at 2x - X0 (in) or 2x - XR (out).
+  // U: linked, 1/sIn + 1/sOut held (units); 0, unlinked.
+  speedIn: (f, g, x, y, U) => {
+    const r = turnShare(g, 2 * x - g.L.X0);
+    return valueOf(f, U ? linkedInAt(g.p, r, U) : speedInAt(g.p, r));
+  },
+  speedOut: (f, g, x, y, U) => {
+    const r = turnShare(g, 2 * x - g.L.XR);
+    return valueOf(f, U ? linkedOutAt(g.p, r, U) : speedOutAt(g.p, r));
+  },
   accelIn: (f, g, x) => valueOf(f, accelForEase(Math.max(x - g.x0, 1e-3) / (TANGENT * (g.x1 - g.x0)))),
   accelOut: (f, g, x) => valueOf(f, accelForEase(Math.max(g.x2 - x, 1e-3) / (TANGENT * (g.x2 - g.x1)))),
 };
@@ -180,15 +242,79 @@ export const stairValue = {
   phase: (f, g, x) => (x - g.L.X0) / g.k,
 };
 
+// ---- labels: beside the handle, clear of the line (pure, px) ----------------
+
+const COMPASS = [[1, 0], [-1, 0], [0, -1], [0, 1], [1, -1], [-1, -1], [1, 1], [-1, 1]];
+const away = (pts, r) => pts.reduce((m, p) => Math.min(m, Math.hypot(
+  Math.max(r.x - p[0], 0, p[0] - r.x - r.w), Math.max(r.y - p[1], 0, p[1] - r.y - r.h))), Infinity);
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+/** A polyline with no gap over step px, so a point test cannot slip between samples. */
+export function densify(poly, step = 2) {
+  const out = [];
+  poly.forEach((p, i) => {
+    const q = poly[i + 1];
+    out.push(p);
+    if (!q) return;
+    const n = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / step);
+    for (let j = 1; j < n; j++) out.push([p[0] + (q[0] - p[0]) * j / n, p[1] + (q[1] - p[1]) * j / n]);
+  });
+  return out;
+}
+function normalAt(lines, x, y) {
+  let best = null, bd = Infinity;
+  for (const l of lines) l.forEach((p, i) => { const d = Math.hypot(p[0] - x, p[1] - y); if (d < bd) { bd = d; best = [l, i]; } });
+  if (!best) return [0, 1];
+  const [l, i] = best, a = l[Math.max(0, i - 3)], b = l[Math.min(l.length - 1, i + 3)];
+  const tx = b[0] - a[0], ty = b[1] - a[1], n = Math.hypot(tx, ty) || 1;
+  return [-ty / n, tx / n];
+}
+/**
+ * Labels in px. items: {x, y, w, h} (handle center, label size); lines:
+ * densified polylines; marks: handle centers. A label tries the eight sides
+ * of its handle, squarest to the line's local tangent first; it takes the
+ * first inside the box, clear of the lines, of other handles and of labels
+ * already placed, then of the plot's own text (fixed, {x, y, w, h}), which
+ * yields first. None clear: the clearest, with a backing (bg).
+ */
+export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
+  const pts = lines.flat(), placed = [];
+  return items.map((it) => {
+    const n = normalAt(lines, it.x, it.y);
+    const cands = COMPASS.map(([ux, uy]) => {
+      const r = { x: it.x + ux * (G + it.w / 2) - it.w / 2, y: it.y + uy * (G + it.h / 2) - it.h / 2, w: it.w, h: it.h };
+      return { r, pref: Math.abs(ux * n[0] + uy * n[1]) / Math.hypot(ux, uy), line: away(pts, r),
+        mark: away(marks.filter((m) => m[0] !== it.x || m[1] !== it.y), r), free: !placed.some((q) => overlaps(r, q)),
+        text: !fixed.some((q) => overlaps(r, q)), inside: r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H };
+    }).sort((a, b) => b.pref - a.pref);
+    const clear = (c) => c.inside && c.free && c.line > 1.5 && c.mark > 8;
+    let pick = cands.find((c) => clear(c) && c.text) || cands.find(clear);
+    const bg = !pick;
+    if (!pick) pick = [...cands].sort((a, b) => (b.free - a.free) || (b.inside - a.inside) || (b.line - a.line))[0];
+    placed.push(pick.r);
+    return { dx: pick.r.x - it.x, dy: pick.r.y - it.y, bg };
+  });
+}
+
 // ---- DOM helpers -----------------------------------------------------------
 
 const CSS = `
 .ap { display: flex; flex-direction: column; gap: var(--gap); }
 .ap [hidden] { display: none !important; }
 .ap-tabs { display: grid; grid-template-columns: 1fr 1fr; }
-.ap-tabs button, .ap-mtabs button { min-height: var(--tap); background: none; border: 1px solid var(--line); color: var(--tx-mut);
-  font: inherit; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
-.ap-tabs button[aria-selected=true], .ap-mtabs button[aria-selected=true] { color: var(--reality); border-color: var(--reality); }
+.ap-tabs button, .ap-mtab { min-height: var(--tap); background: none; border: 1px solid var(--line); color: var(--tx-mut);
+  font: inherit; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+.ap-tabs button { cursor: pointer; }
+.ap-tabs button[aria-selected=true], .ap-mtab:has([aria-selected=true]) { color: var(--reality); border-color: var(--reality); }
+.ap-mtab { display: flex; align-items: stretch; min-width: 0; }
+.ap-mtab button { background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0 6px; }
+.ap-mtab [role=tab] { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-mon { flex: none; display: grid; place-items: center; }
+.ap-mon::before { content: ''; width: 22px; height: 12px; border-radius: 6px; border: 1px solid var(--line-2); box-sizing: border-box;
+  background: radial-gradient(circle at 5px 50%, var(--tx-mut) 3px, transparent 3.5px); }
+.ap-mon[aria-checked=true]::before { border-color: var(--reality); background: radial-gradient(circle at 15px 50%, var(--reality) 3px, transparent 3.5px); }
+.ap-mtrash { flex: none; display: grid; place-items: center; color: var(--tx-mut); }
+.ap-mtrash svg, .ap-tool svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ap-mtab button:disabled { cursor: default; opacity: .4; }
 .ap [data-status=pending] { border-style: dashed; }
 .ap [data-status=overdue], .ap [data-status=fault] { border-color: var(--warn); }
 .ap-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -205,12 +331,8 @@ const CSS = `
 .ap-num { display: flex; flex-direction: column; gap: 2px; font-size: .72rem; color: var(--tx-mut); }
 .ap-num input { font-family: var(--mono); }
 .ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
-.ap-in { display: flex; gap: 4px; }
-.ap-in input { flex: 1 1 0; min-width: 0; }
-.ap-link { flex: none; width: 28px; padding: 0; display: grid; place-items: center; background: none; cursor: pointer;
-  border: 1px solid var(--line); border-radius: var(--radius); color: var(--tx-mut); }
-.ap-link[aria-pressed=true] { color: var(--reality); border-color: var(--reality); }
-.ap-link svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ap-row .ap-tool { flex: none; width: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
+.ap-row .ap-tool[aria-pressed=true] { color: var(--reality); border-color: var(--reality); }
 .ap-num[data-status=overdue] input, .ap-num[data-status=fault] input { border-color: var(--warn); }
 .ap-cap { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
 .ap-ed { position: relative; width: 100%; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; }
@@ -223,6 +345,13 @@ const CSS = `
 .ap-ed .curve.intent { stroke: var(--intent); }
 .ap-ed .guide { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .ap-ed .grid { stroke: var(--line); }
+.ap-ed .vguide { stroke: var(--tx-ghost); stroke-width: 1.5; }
+.ap-plus { position: absolute; width: var(--tap); height: var(--tap); margin: 0; padding: 0; background: none; border: 0; cursor: pointer;
+  transform: translate(6px, 8px); color: var(--tx-mut); z-index: 2; }
+.ap-plus::after { content: '+'; position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; display: grid; place-items: center;
+  border: 1px solid var(--line-2); border-radius: 50%; background: var(--bg-card); font: 600 14px/1 var(--mono); }
+.ap-plus:hover, .ap-plus:focus-visible { color: var(--reality); outline: none; }
+.ap-plus:is(:hover, :focus-visible)::after { border-color: var(--reality); }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
 .ap-ed .told { stroke: var(--intent); stroke-width: 1.5; }
 .ap-ax { position: absolute; left: 4px; transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
@@ -230,6 +359,8 @@ const CSS = `
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
 .ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
   border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--bg-card); box-sizing: border-box; }
+.ap-h[data-shape=vpill]::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; }
+.ap-h[data-shape=hpill]::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
 .ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--hc, var(--reality)); background: none; }
 .ap-h:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--reality-rgb), .35); }
@@ -238,15 +369,16 @@ const CSS = `
 .ap-h:is([data-status=overdue], [data-status=fault]) { --hc: var(--warn); }
 .ap-h[data-status=fault] .ap-tag { color: var(--warn); }
 .ap-h.off { opacity: .4; }
-.ap-h[aria-orientation=vertical] .ap-tag { top: auto; bottom: calc(50% + 8px); }
-.ap-h.left .ap-tag { left: auto; right: calc(50% + 12px); }
-.ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem var(--mono); color: var(--reality); pointer-events: none; }
+.ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem/1.3 var(--mono); color: var(--reality);
+  pointer-events: none; padding: 0 3px; border-radius: 4px; }
+.ap-tag.bg { background: color-mix(in srgb, var(--bg-card) 85%, transparent); }
+.ap-tag:empty { display: none; }
 .ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--bg-card); box-sizing: border-box; pointer-events: none; z-index: 1; }
 .ap h4 { margin: 0; font-size: .85rem; color: var(--tx); font-weight: 600; }
 .ap-sub { margin: 0; font-size: .72rem; color: var(--tx-mut); }
-.ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; }
-.ap-mtabs button::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--line-2); vertical-align: middle; }
-.ap-mtabs button[data-on=true]::before { background: var(--reality); }
+.ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px; }
+.ap-mtabs [role=tab]::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--line-2); vertical-align: middle; }
+.ap-mtabs [role=tab][data-on=true]::before { background: var(--reality); }
 .ap .ap-stale { opacity: .55; }
 `;
 
@@ -298,9 +430,11 @@ function makeEditor(api, o, ed) {
   let drag = null;
   const { val } = ed;
   const geom = () => o.geom(val, drag ? drag.g0 : null);
+  // axis: 'x' (default) left-right, 'y' up-down, 'xy' any; the shape says which (header).
   const hs = o.handles.filter((d) => d.field).map((d) => {
+    const shape = d.shape || (d.axis === 'y' ? 'hpill' : d.axis === 'xy' ? 'dot' : 'vpill');
     const el = h('div', { class: 'ap-h', role: 'slider', tabindex: '0', 'aria-label': d.label,
-      'data-key': d.key, 'data-shape': d.shape || 'dot', 'aria-orientation': d.axis === 'y' ? 'vertical' : 'horizontal' });
+      'data-key': d.key, 'data-shape': shape, 'aria-orientation': d.axis === 'y' ? 'vertical' : 'horizontal' });
     const tag = h('span', { class: 'ap-tag' });
     el.append(tag);
     const hd = { ...d, el, tag };
@@ -368,7 +502,6 @@ function makeEditor(api, o, ed) {
       if (!p) continue;
       hd.el.style.left = (p.x / o.W * 100) + '%';
       hd.el.style.top = (p.y / o.H * 100) + '%';
-      hd.el.classList.toggle('left', p.x > o.W * 0.85);
       const st = ed.has(f) ? 'draft' : api.status(f);
       hd.el.dataset.status = st;
       hd.el.classList.toggle('off', !!fg);
@@ -381,7 +514,37 @@ function makeEditor(api, o, ed) {
     }
     note.textContent = gate;
     box.classList.toggle('ap-stale', hs.some((hd) => api.stale(hd.field)));
+    labels(g);
   }
+  // Labels in px: the plot stretches, so they are placed against the box as laid out.
+  function labels(g) {
+    const bw = box.clientWidth, bh = box.clientHeight;
+    if (!bw || !bh) return;
+    const px = ([x, y]) => [x / o.W * bw, y / o.H * bh];
+    const shown = hs.filter((hd) => !hd.el.hidden);
+    const marks = shown.map((hd) => px([hd.at(g).x, hd.at(g).y]));
+    const tagged = shown.filter((hd) => hd.tag.textContent);
+    const lines = o.lines(g).map((l) => densify(l.map(px)));
+    const items = tagged.map((hd) => {
+      const [x, y] = px([hd.at(g).x, hd.at(g).y]);
+      return { x, y, w: hd.tag.offsetWidth, h: hd.tag.offsetHeight };
+    });
+    // Client rects in layout px: a UI scale (zoom or transform) divides out.
+    const b0 = box.getBoundingClientRect(), z = b0.width / bw || 1;
+    const fixed = [...box.querySelectorAll(':scope > :is(.ap-seg, .ap-cap, .ap-ax):not([hidden])')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { x: (r.left - b0.left) / z, y: (r.top - b0.top) / z, w: r.width / z, h: r.height / z };
+    });
+    placeLabels(items, lines, marks, bw, bh, fixed).forEach((r, i) => {
+      const t = tagged[i].tag;
+      t.style.left = 'calc(50% + ' + r.dx.toFixed(1) + 'px)';
+      t.style.top = 'calc(50% + ' + r.dy.toFixed(1) + 'px)';
+      t.classList.toggle('bg', r.bg);
+    });
+  }
+  const ro = new ResizeObserver(() => render());
+  ro.observe(box);
+  ed.loops.push(() => ro.disconnect());
   return { box, note, render };
 }
 
@@ -395,15 +558,20 @@ function mountCard(api, el, fields) {
   // ---- the one edit path: every handle and every numeric twin reads val()
   const draft = new Map();
   const val = (f) => (draft.has(f.uid) ? draft.get(f.uid) : Number(api.value(f)));
-  let linked = true;
-  try { linked = localStorage.getItem(LINK_KEY) !== '0'; } catch (e) { /* private mode */ }
+  let linked = false;
+  try { linked = localStorage.getItem(LINK_KEY) === '1'; } catch (e) { /* private mode */ }
   const partner = (f) => (!linked ? null : f === F.speedIn ? F.speedOut : f === F.speedOut ? F.speedIn : null);
-  // Linked, the partner takes the rest of full scale and f stays where the partner keeps its min.
+  // T from the written values, never drafts, so rounding cannot walk it mid-edit.
+  const period = () => 1 / Number(api.value(F.speedIn)) + 1 / Number(api.value(F.speedOut));
+  // Linked, f stays where its partner keeps inside its bounds, and the partner holds T.
   function preview(f, v) {
-    const o = partner(f);
-    v = snap(f, o ? Math.min(v, valueOf(f, 1 - unitOf(o, o.min ?? 0))) : v);
-    draft.set(f.uid, v);
-    if (o) draft.set(o.uid, snap(o, valueOf(o, 1 - unitOf(f, v))));
+    const o = partner(f), T = period();
+    if (o && Number.isFinite(T)) {
+      const [lo, hi] = linkSpan(T, o.min, o.max);
+      v = clamp(Math.round(v), Math.max(lo, f.min), Math.min(hi, f.max));
+      draft.set(f.uid, v);
+      draft.set(o.uid, linkPartner(T, v, o.min, o.max));
+    } else draft.set(f.uid, snap(f, v));
     update();
   }
   // Both halves in the same tick: the shadow sends one channel's writes as one intent.
@@ -416,13 +584,12 @@ function mountCard(api, el, fields) {
     }
     update();
   }
-  const ed = { val, has: (f) => draft.has(f.uid), preview, commit };
+  const ed = { val, has: (f) => draft.has(f.uid), preview, commit, loops };
 
   // A field as a number input: the numeric twin of a handle.
-  function numCtl(f, label, extra) {
+  function numCtl(f, label) {
     const input = h('input', { type: 'number', class: 'og-num', min: f.min ?? '', max: f.max ?? '', step: f.step || 1, 'aria-label': label });
-    const box = h('label', { class: 'ap-num' }, h('span', { text: label + (f.unit ? ' (' + f.unit + ')' : '') }),
-      extra ? h('span', { class: 'ap-in' }, input, extra) : input);
+    const box = h('label', { class: 'ap-num' }, h('span', { text: label + (f.unit ? ' (' + f.unit + ')' : '') }), input);
     input.addEventListener('input', () => { if (input.value !== '' && Number.isFinite(+input.value)) preview(f, +input.value); });
     input.addEventListener('change', () => commit(f));
     input.addEventListener('blur', () => commit(f));
@@ -435,9 +602,9 @@ function mountCard(api, el, fields) {
     });
     return box;
   }
-  // The in/out speed link: a client preference; switching it writes nothing.
+  // The in/out speed link: on rescales once (linkRescale, one intent), off writes nothing.
   function linkBtn() {
-    const btn = h('button', { type: 'button', class: 'ap-link' });
+    const btn = h('button', { type: 'button', class: 'og-btn ap-tool ap-link' });
     const draw = () => {
       if (btn.getAttribute('aria-pressed') !== String(linked)) {
         btn.setAttribute('aria-pressed', String(linked));
@@ -446,12 +613,44 @@ function mountCard(api, el, fields) {
           ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="5.25" width="8" height="5.5" rx="2.75"/><rect x="7" y="5.25" width="8" height="5.5" rx="2.75"/></svg>'
           : '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x=".75" y="5.25" width="6" height="5.5" rx="2.75"/><rect x="9.25" y="5.25" width="6" height="5.5" rx="2.75"/></svg>';
       }
-      const sum = val(F.speedIn) + val(F.speedOut);
-      btn.title = !linked ? 'Unlinked: each half alone' : 'Linked: in + out = ' + num(sum) + ' %';
+      const [lo, hi] = linkSpan(period(), F.speedOut.min, F.speedOut.max);
+      const room = hi > Math.max(lo, F.speedIn.min);
+      const m = Number(api.value(F.master));
+      btn.title = !linked ? 'Link: shift the peak, keep the period'
+        : room ? 'Linked: the peak shifts, the period holds'
+          : m >= F.master.max ? 'Lower master to shift the peak' : m > 0 ? 'Relink to make room' : 'Set master, then relink';
     };
     btn.addEventListener('click', () => {
       linked = !linked;
       try { localStorage.setItem(LINK_KEY, linked ? '1' : '0'); } catch (e) { /* private mode */ }
+      const r = linked && linkRescale(Number(api.value(F.master)), Number(api.value(F.speedIn)), Number(api.value(F.speedOut)),
+        F.master.max, F.speedIn.min, F.speedIn.max);
+      // Same tick, one channel: the shadow sends the three keys as one intent.
+      if (r && ![F.master, F.speedIn, F.speedOut].some((f) => api.gate(f))) {
+        api.write(F.master, r.master);
+        api.write(F.speedIn, r.in);
+        api.write(F.speedOut, r.out);
+      }
+      draw();
+    });
+    updaters.push(draw);
+    return btn;
+  }
+  // The numeric rows: shown on request, default hidden; the handles carry the keys.
+  let inputs = false;
+  try { inputs = localStorage.getItem(INPUTS_KEY) === '1'; } catch (e) { /* private mode */ }
+  const numRows = [];
+  function inputsBtn() {
+    const btn = h('button', { type: 'button', class: 'og-btn ap-tool ap-inputs', 'aria-label': 'Inputs' });
+    btn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z"/><circle cx="8" cy="8" r="2"/></svg>';
+    const draw = () => {
+      btn.setAttribute('aria-pressed', String(inputs));
+      btn.title = inputs ? 'Hide inputs' : 'Show inputs';
+      for (const r of numRows) r.hidden = !inputs;
+    };
+    btn.addEventListener('click', () => {
+      inputs = !inputs;
+      try { localStorage.setItem(INPUTS_KEY, inputs ? '1' : '0'); } catch (e) { /* private mode */ }
       draw();
     });
     updaters.push(draw);
@@ -511,6 +710,7 @@ function mountCard(api, el, fields) {
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YT, y2: SL.YT }),
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YB, y2: SL.YB }), pIn, pOut],
     geom: strokeNow,
+    lines: (g) => (g.ok ? [g.inC, g.outC].map((c) => Array.from({ length: 49 }, (_, i) => { const p = bez(c, i / 48); return [p.x, p.y]; })) : []),
     draw(g) {
       const intent = BASE.some(([k]) => draft.has(F[k].uid) || /^(pending|overdue)$/.test(api.status(F[k])));
       for (const [p, c] of [[pIn, g.inC], [pOut, g.outC]]) {
@@ -524,9 +724,9 @@ function mountCard(api, el, fields) {
       { key: 'shallow', field: F.depthMin, label: 'Min depth', axis: 'y', at: (g) => (g.ok ? g.shallow : { x: SL.XR, y: g.ylo }),
         value: SV.depth, text: (v) => 'shallow ' + num(v) },
       { key: 'vin', field: F.speedIn, label: 'In speed', at: (g) => g.ok && g.vIn,
-        value: (f, g, x, y) => SV.speedIn(f, g, x, y, linked), text: (v) => 'in v' + num(v) },
+        value: (f, g, x, y) => SV.speedIn(f, g, x, y, linked && f.max * period()), text: (v) => 'in v' + num(v) },
       { key: 'vout', field: F.speedOut, label: 'Out speed', at: (g) => g.ok && g.vOut,
-        value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked), text: (v) => 'out v' + num(v) },
+        value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked && f.max * period()), text: (v) => 'out v' + num(v) },
       { key: 'ain', field: F.accelIn, label: 'In accel', shape: 'diamond', at: (g) => g.ok && g.aIn, value: SV.accelIn, text: (v) => 'a' + num(v) },
       { key: 'aout', field: F.accelOut, label: 'Out accel', shape: 'diamond', at: (g) => g.ok && g.aOut, value: SV.accelOut, text: (v) => 'a' + num(v) },
     ],
@@ -540,26 +740,47 @@ function mountCard(api, el, fields) {
     .sort((a, b) => (order.get(a.t) ?? 99) - (order.get(b.t) ?? 99));
   let rhythm = null;
   if (mods.length) {
-    const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152 };
+    const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152, H: 170 };
     let cur = 0;
+    const kept = new Map();
     const tabs = h('div', { class: 'ap-mtabs', role: 'tablist' });
     const host = h('div');
+    const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>';
     const views = mods.map(({ m, t }, i) => {
       const name = labelOf.get(t) || m.amount.group || 'Modulator';
       const btn = h('button', { type: 'button', role: 'tab', text: name });
       btn.addEventListener('click', () => { cur = i; show(); });
-      tabs.append(btn);
+      // Enable: off writes amount 0 (RFC-066: no modulation) and keeps the amount here to restore.
+      const sw = h('button', { type: 'button', class: 'ap-mon', role: 'switch', 'aria-label': name + ' modifier' });
+      sw.addEventListener('click', () => {
+        const a = Number(api.value(m.amount));
+        if (a > 0) { kept.set(m.amount.uid, a); api.write(m.amount, 0); } else api.write(m.amount, kept.get(m.amount.uid) ?? Math.min(100, m.amount.max ?? 100));
+      });
+      // Reset: all six to the catalog defaults, one tick, one intent; a preset recovers it.
+      const trash = h('button', { type: 'button', class: 'ap-mtrash', 'aria-label': 'Reset ' + name + ' modifier', title: 'Reset to defaults' });
+      trash.innerHTML = TRASH;
+      trash.addEventListener('click', () => { for (const [k] of MOD) if (m[k].dflt != null) api.write(m[k], Number(m[k].dflt)); });
+      tabs.append(h('div', { class: 'ap-mtab', role: 'presentation' }, sw, btn, trash));
       const stair = s('path', { class: 'curve' });
       const fill = s('path', { class: 'fill' });
       const segs = ['to min', 'at min', 'to max', 'at max'].map((w) => h('span', { class: 'ap-seg', 'data-w': w }));
+      // A hold (at min, at max) is reached on the graph: a guide at its end, a plus at its corner while it is 0.
+      const vg = [0, 1].map(() => s('line', { class: 'vguide', y1: ML.H - ML.TRACK, y2: ML.TRACK }));
+      const plus = [[m.hold, 'Add at min'], [m.rest, 'Add at max']].map(([f, l]) => {
+        const b = h('button', { type: 'button', class: 'ap-plus', 'aria-label': l, title: l });
+        b.addEventListener('pointerdown', (e) => e.stopPropagation());
+        b.addEventListener('click', () => { ed.preview(f, 1); ed.commit(f); });
+        return b;
+      });
       const cyc = makeEditor(api, {
-        W: 1000, H: 170, cls: 'ap-stair',
-        decor: [...segs, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'modifier · cycle' })],
-        svgKids: [s('line', { class: 'guide', x1: ML.X0, x2: ML.XR, y1: ML.YT, y2: ML.YT }),
+        W: 1000, H: ML.H, cls: 'ap-stair',
+        decor: [...segs, ...plus, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'modifier · cycle' })],
+        svgKids: [...vg, s('line', { class: 'guide', x1: ML.X0, x2: ML.XR, y1: ML.YT, y2: ML.YT }),
           s('line', { class: 'grid', x1: ML.AX, x2: ML.AX, y1: ML.YT, y2: ML.YB }),
           s('line', { class: 'grid', x1: ML.X0, x2: ML.XR, y1: ML.TRACK, y2: ML.TRACK }), fill, stair],
         geom: (val, g0) => stairGeom(Object.fromEntries(MOD.map(([k]) => [k, Math.max(0, val(m[k]))])),
           m.amount.max || 100, ML, g0 && g0.k),
+        lines: (g) => [[[ML.X0, ML.YT], ...g.bars.flatMap((y, i) => [[ML.X0 + g.k * i, y], [ML.X0 + g.k * (i + 1), y]])]],
         draw(g, val) {
           let d = 'M' + ML.X0 + ' ' + ML.YT;
           g.bars.forEach((y, i) => { d += ' V' + y + ' H' + (ML.X0 + g.k * (i + 1)); });
@@ -572,19 +793,37 @@ function mountCard(api, el, fields) {
             e.textContent = e.dataset.w + ' ' + n[j];
             e.hidden = !Number(n[j]);
           });
+          [g.hold, g.rest].forEach((p, j) => { vg[j].setAttribute('x1', p.x); vg[j].setAttribute('x2', p.x); });
+          [[m.hold, g.hold], [m.rest, g.rest]].forEach(([f, p], j) => {
+            plus[j].hidden = val(f) > 0;
+            plus[j].disabled = !!api.gate(f);
+            plus[j].style.left = (p.x / 10) + '%';
+            plus[j].style.top = (p.y / ML.H * 100) + '%';
+          });
         },
         handles: [
           { key: 'amp', field: m.amount, label: 'Amp', axis: 'y', at: (g) => g.amp, value: stairValue.amount, text: (v) => 'amp ' + num(v) },
           { key: 'rise', field: m.rise, label: 'To min', at: (g) => g.rise, value: stairValue.rise, text: () => '' },
-          { key: 'hold', field: m.hold, label: 'At min', at: (g) => g.hold, value: stairValue.hold, text: () => '' },
+          { key: 'hold', field: m.hold, label: 'At min', at: (g) => g.c.hold > 0 && g.hold, value: stairValue.hold, text: () => '' },
           { key: 'fall', field: m.fall, label: 'To max', at: (g) => g.fall, value: stairValue.fall, text: () => '' },
-          { key: 'rest', field: m.rest, label: 'At max', at: (g) => g.rest, value: stairValue.rest, text: () => '' },
+          { key: 'rest', field: m.rest, label: 'At max', at: (g) => g.c.rest > 0 && g.rest, value: stairValue.rest, text: () => '' },
           { key: 'phase', field: m.phase, label: 'Offset', shape: 'tri', at: (g) => g.phase, value: stairValue.phase, text: (v) => 'offset ' + num(v) },
         ],
       }, ed);
       const nums = h('div', { class: 'ap-nums' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
+      numRows.push(nums);
       const view = h('div', { class: 'ap-mview', role: 'tabpanel', 'aria-label': name }, cyc.box, cyc.note, nums);
-      updaters.push(() => { btn.dataset.on = String(Number(api.value(m.amount)) > 0); cyc.render(); });
+      updaters.push(() => {
+        const a = Number(api.value(m.amount)), gate = api.gate(m.amount);
+        btn.dataset.on = String(a > 0);
+        sw.setAttribute('aria-checked', String(a > 0));
+        sw.title = a > 0 ? 'Modifier on' : 'Modifier off';
+        sw.disabled = !!gate;
+        const dirty = MOD.some(([k]) => m[k].dflt != null && val(m[k]) !== Number(m[k].dflt));
+        trash.style.visibility = dirty ? '' : 'hidden';
+        trash.disabled = MOD.some(([k]) => api.gate(m[k]));
+        cyc.render();
+      });
       return { btn, view };
     });
     const show = () => {
@@ -640,7 +879,10 @@ function mountCard(api, el, fields) {
   updaters.push(() => { if (!raf && running()) raf = requestAnimationFrame(tick); });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
-  const presets = F.presetOp ? presetRow(api, F, updaters) : null;
+  const baseNums = h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l)));
+  numRows.push(baseNums);
+  const tools = [inputsBtn(), linkBtn()];
+  const presets = F.presetOp ? presetRow(api, F, updaters, tools) : h('div', { class: 'ap-row' }, ...tools);
 
   // ---- the card: two sources (SPEC §11.4), one panel each, each with its own Start
   const runRow = (f, other) => {
@@ -689,7 +931,7 @@ function mountCard(api, el, fields) {
     slider(F.master, 'Speed'),
     ...(presets ? [presets] : []),
     stroke.box, stroke.note,
-    h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l, k === 'speedIn' ? linkBtn() : null))),
+    baseNums,
     ...(rhythm ? [rhythm] : []),
     wave,
     runRow(F.advRun, F.running));
@@ -721,7 +963,7 @@ function mountCard(api, el, fields) {
   return { update, unmount() { for (const l of loops) l(); el.replaceChildren(); } };
 }
 
-function presetRow(api, F, updaters) {
+function presetRow(api, F, updaters, tools) {
   const op = F.presetOp;
   // The registry names no role for the op's slot and name: told apart by type (ph-e82.18).
   const slotKey = ((op.payload || []).find((p) => p.type === CBOR.uint) || {}).key;
@@ -734,7 +976,7 @@ function presetRow(api, F, updaters) {
   const name = h('input', { type: 'text', placeholder: 'Preset name', 'aria-label': 'Preset name', hidden: '' });
   const ok = h('button', { type: 'button', class: 'og-btn', text: 'Save as', hidden: '' });
   const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
-  const box = h('div', {}, h('div', { class: 'ap-row' }, sel, save, reset, del), h('div', { class: 'ap-row' }, name, ok), note);
+  const box = h('div', {}, h('div', { class: 'ap-row' }, sel, ...tools, save, reset, del), h('div', { class: 'ap-row' }, name, ok), note);
 
   const pick = () => (sel.value === '' ? null : Number(sel.value));
   const payload = (slot, nm) => {

@@ -23,11 +23,21 @@
  *   targets    40 px on a touch pointer (law 12); nothing wears --bad
  *   gate       a watch-tier session disables every handle with the reason
  *   fallback   disabled, the plugin renders nothing
+ *   link       off by default; on from 40/100/100 writes 80/50/50 in one
+ *              intent; a linked drag moves the peak and holds 1/in + 1/out;
+ *              unlink writes nothing; at master 100 nothing, and the tooltip
+ *   labels     no handle label on the stroke or staircase line, none backed,
+ *              in five base states
+ *   inputs     the toggle right of the preset box, hidden by default and
+ *              persisted; the strip above stays; handles keep the keys
+ *   mod tabs   the switch writes amount 0 and restores it; the trash resets
+ *              all six in one intent; a plus spawns a hold as a vertical pill
  *
  * Live mode (--live): against valencesim, the deep drag (echo and numeric
- * twin), Advanced running with its playhead and told-wave, and both
- * SOURCE_CONFLICT refusals; skips (exit 0) unless the sim carries advgen.*.
- * --shot <png> saves the card.
+ * twin), the link rescale (one intent, keys 2, 5, 6, echoed), Advanced
+ * running with its playhead and told-wave, and both SOURCE_CONFLICT
+ * refusals; skips (exit 0) unless the sim carries advgen.*.
+ * --shot <png> saves the card, and each item's shot beside it.
  *
  * Run: node test/advanced-penetration.test.mjs [--shot out.png]
  *      node test/advanced-penetration.test.mjs --live [--port 8882] [--http 8880] [--shot out.png]
@@ -42,6 +52,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKE
 import { toHex } from '../../Valence/clients/js/sha256.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
+import { linkRescale, linkSpan, linkPartner } from '../plugins/factory/advanced-penetration/index.js';
 
 const args = process.argv.slice(2);
 const LIVE = args.includes('--live');
@@ -49,6 +60,9 @@ const SHOT = args.includes('--shot') ? args[args.indexOf('--shot') + 1] : null;
 const SIM_PORT = args.includes('--port') ? parseInt(args[args.indexOf('--port') + 1], 10) : 8882;
 const SIM_HTTP = args.includes('--http') ? parseInt(args[args.indexOf('--http') + 1], 10) : 8880;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A sibling of --shot named for one item. */
+const shot = (name) => SHOT.replace(/[^/\\]+$/, name + '.png');
+const BASE_LABELS = ['Max depth', 'Min depth', 'In speed', 'Out speed', 'In accel', 'Out accel'];
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -241,21 +255,32 @@ function HTTP_STUB() {
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const browser = await chromium.launch();
 
-async function open({ disabled = false, roles = 2, coarse = false } = {}) {
+// Every intent the page sends, decoded off the socket (fake hub and live alike).
+const wire = [];
+async function open({ disabled = false, roles = 2, coarse = false, inputs = true } = {}) {
   hub.roles = roles;
   const ctx = await browser.newContext({ viewport: { width: 1440, height: SHOT ? 2400 : 1000 }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   if (LIVE) await ctx.addInitScript(HTTP_STUB);
-  await ctx.addInitScript(([etag, bytes, live, disabled, port]) => {
+  await ctx.addInitScript(([etag, bytes, live, disabled, port, inputs]) => {
     try {
+      if (inputs && !sessionStorage.getItem('ap.seeded')) { localStorage.setItem('phosphor.advpen.inputs', '1'); sessionStorage.setItem('ap.seeded', '1'); }
       if (!live) localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
       if (live) localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:' + port, host: '127.0.0.1', port }]));
       else localStorage.setItem('shell_host', '127.0.0.1');
       localStorage.setItem('phosphor.plugins.disabled', JSON.stringify(disabled ? ['advanced-penetration'] : []));
     } catch (e) { /* none */ }
-  }, [ETAG, toHex(CAT), LIVE, disabled, SIM_PORT]);
+  }, [ETAG, toHex(CAT), LIVE, disabled, SIM_PORT, inputs]);
   if (!LIVE) await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
+  page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {
+    if (typeof payload === 'string') return;
+    for (const { header, payload: p } of parseFrames(new Uint8Array(payload))) {
+      if (header.type !== FRAME.INTENT) continue;
+      const m = cbDecodeFull(p);
+      wire.push({ ch: m.get(K.channel_id), val: Object.fromEntries(m.get(K.value)) });
+    }
+  }));
   page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) ok('no page error', false, String(e)); });
   await page.goto('http://127.0.0.1:' + srv.address().port + '/');
   const up = await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).then(() => true).catch(() => false);
@@ -321,19 +346,35 @@ if (LIVE) {
   }, null, { timeout: 5000 }).then(() => true).catch(() => false), await deep.getAttribute('data-status'));
   ok('live: the numeric twin followed the echoed value', Number(await numIn(page, 'Max depth').inputValue()) === want,
     await numIn(page, 'Max depth').inputValue());
-  // A linked in-speed drag: both halves echo, summing to 100; then put the sim's pair back.
+  // Link on: master x k and both halves / k in one intent, three keys, echoed; then put the sim back.
   const spIn = numIn(page, 'In speed'), spOut = numIn(page, 'Out speed');
-  const pair0 = [await spIn.inputValue(), await spOut.inputValue()];
-  ok('live: the link is on by default', (await page.locator('main.pane .ap .ap-link').getAttribute('aria-pressed')) === 'true');
-  await dragBy(page, handle(page, 'vin'), 40, 0);
-  const both = await page.waitForFunction(() => ['vin', 'vout'].every((k) =>
-    document.querySelector('main.pane .ap .ap-h[data-key="' + k + '"]').dataset.status === 'confirmed'), null, { timeout: 5000 })
-    .then(() => true).catch(() => false);
-  const pair = [Number(await spIn.inputValue()), Number(await spOut.inputValue())];
-  ok('live: a linked drag echoes both halves, summing to 100', both && pair[0] + pair[1] === 100 && String(pair[0]) !== pair0[0], { pair0, pair });
-  await page.locator('main.pane .ap .ap-link').click();
-  for (const [inp, v] of [[spIn, pair0[0]], [spOut, pair0[1]]]) { await inp.fill(v); await inp.press('Enter'); await page.waitForTimeout(400); }
-  await page.locator('main.pane .ap .ap-link').click();
+  const speedR = page.locator('main.pane .ap input[type=range][aria-label="Speed"]');
+  const link = page.locator('main.pane .ap .ap-link');
+  const typeIn = async (inp, v) => { await inp.fill(String(v)); await inp.press('Enter'); await page.waitForTimeout(400); };
+  const keep = [Number(await speedR.inputValue()), await spIn.inputValue(), await spOut.inputValue()];
+  ok('live: the link is off by default', (await link.getAttribute('aria-pressed')) === 'false');
+  await setRange(speedR, 40);
+  await page.waitForTimeout(400);
+  await typeIn(spIn, 100);
+  await typeIn(spOut, 100);
+  const w0 = wire.length;
+  await link.click();
+  const linkEcho = await page.waitForFunction(() => {
+    const v = (l) => document.querySelector('main.pane .ap .ap-num input[aria-label="' + l + '"]').value;
+    return document.querySelector('main.pane .ap input[type=range][aria-label="Speed"]').value === '80' && v('In speed') === '50' && v('Out speed') === '50'
+      && ['vin', 'vout'].every((k) => document.querySelector('main.pane .ap .ap-h[data-key="' + k + '"]').dataset.status === 'confirmed');
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false);
+  const lw = wire.slice(w0);
+  const resc = linkRescale(40, 100, 100, 100, 1, 100);
+  ok('live: link on sends one intent with master, in and out (keys 2, 5, 6)', lw.length === 1
+    && Object.keys(lw[0].val).sort().join() === '2,5,6' && lw[0].val[2] === resc.master && lw[0].val[5] === resc.in && lw[0].val[6] === resc.out, lw);
+  ok('live: the sim echoes 80/50/50 onto the slider, both halves confirmed', linkEcho);
+  if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('6-live-link') });
+  await link.click();
+  await setRange(speedR, keep[0]);
+  await page.waitForTimeout(400);
+  await typeIn(spIn, keep[1]);
+  await typeIn(spOut, keep[2]);
   const runBtn = () => page.locator('main.pane .ap .ap-run:visible');
   const runNote = async () => (await runBtn().locator('xpath=../../p').textContent()).trim();
   const tab = (t) => page.click('main.pane .ap-tabs button:has-text("' + t + '")');
@@ -422,7 +463,7 @@ if (LIVE) {
       ['deep', 'shallow', 'vin', 'vout', 'ain', 'aout'].every((k) => keys.includes(k)), keys);
     ok('map: handles are labeled by value', /^deep \d/.test(await tagOf(handle(page, 'deep'))) && /^in v\d/.test(await tagOf(handle(page, 'vin')))
       && /^a\d/.test(await tagOf(handle(page, 'ain'))));
-    const mtabs = await page.$$eval('main.pane .ap .ap-mtabs button', (bs) => bs.map((b) => b.textContent));
+    const mtabs = await page.$$eval('main.pane .ap .ap-mtabs [role=tab]', (bs) => bs.map((b) => b.textContent));
     ok('map: one rhythm tab per driven control, in base order', mtabs.join() === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel', mtabs);
     ok('map: Advanced has its own Start, background_run beside it', /Start pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent())
       && await page.locator('main.pane .ap .ap-sw:visible', { hasText: 'Run in background' }).isVisible());
@@ -576,6 +617,7 @@ if (LIVE) {
   {
     // ---- live redraw, a fixed time axis, and the in/out speed link
     const SPOUT = settingOf('pattern-advanced', 'out_speed');
+    const MAST = settingOf('pattern-advanced', 'master');
     const { ctx, page } = await open();
     await toPatternPage(page);
     await toAdvanced(page);
@@ -586,23 +628,25 @@ if (LIVE) {
       return [+a.x.toFixed(2), +(b.x + b.width).toFixed(2)];
     });
     const link = page.locator('main.pane .ap .ap-link');
+    const speed = page.locator('main.pane .ap input[type=range][aria-label="Speed"]');
     const spIn = numIn(page, 'In speed'), spOut = numIn(page, 'Out speed');
-    ok('link: a chain beside In speed, on by default', (await link.getAttribute('aria-pressed')) === 'true');
+    const typeIn = async (inp, v) => { await inp.fill(String(v)); await inp.press('Enter'); await page.waitForTimeout(250); };
+    ok('link: a chain beside the preset box, off by default', (await link.getAttribute('aria-pressed')) === 'false');
 
-    // Typing redraws before any write or echo; Enter writes both halves in one intent.
+    // Typing redraws before any write or echo; Enter writes the one key.
     hub.mode = 'hold';
     const c0 = await curve(), vx0 = (await handle(page, 'vin').boundingBox()).x, n0 = hub.intents.length;
+    const out0 = await spOut.inputValue();
     await spIn.fill('30');
     await page.waitForTimeout(100);
     ok('live: typing In speed redraws the curve and moves its handle before any write', (await curve()) !== c0
       && Math.abs((await handle(page, 'vin').boundingBox()).x - vx0) > 5 && hub.intents.length === n0);
     ok('live: the draft wears the intent look', await intentLook());
-    ok('link: the out half follows inversely while typing', (await spOut.inputValue()) === '70', await spOut.inputValue());
+    ok('unlinked: the out half stays while typing', (await spOut.inputValue()) === out0);
     await spIn.press('Enter');
     await page.waitForTimeout(200);
-    const lw = hub.intents.slice(n0);
-    ok('link: one intent carries in and out, summing to 100', lw.length === 1 && lw[0].ch === SPIN.ch
-      && lw[0].val[SPIN.key] === 30 && lw[0].val[SPOUT.key] === 70, lw);
+    const uw = hub.intents.slice(n0);
+    ok('unlinked: an edit writes its own key only', uw.length === 1 && uw[0].val[SPIN.key] === 30 && !(SPOUT.key in uw[0].val), uw);
     ok('live: pending stays in the intent look until the echo', await intentLook());
     await release();
     await page.waitForTimeout(250);
@@ -619,37 +663,228 @@ if (LIVE) {
         await page.mouse.move(x + (key === 'deep' ? 0 : 8 * i), y - (key === 'deep' ? 12 * i : 0));
         seen.push(await extent());
       }
-      if (SHOT && key === 'vin') await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-drag.png' });
       await page.mouse.up();
       await page.waitForTimeout(200);
       ok('drag: ' + key + ' keeps the time axis (x extent fixed mid-drag)', seen.every(([a, z]) => a === seen[0][0] && z === seen[0][1]), seen);
     }
-    const sum = Number(await spIn.inputValue()) + Number(await spOut.inputValue());
-    ok('link: a linked handle drag keeps the sum at 100', sum === 100, sum);
-    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-linked.png' });
 
-    // Unlinked: each half writes alone; the toggle writes nothing and persists.
+    // Link on at master 40, halves 100/100: one intent, master 80, halves 50/50.
+    await setRange(speed, 40);
+    await typeIn(spIn, 100);
+    await typeIn(spOut, 100);
     const n1 = hub.intents.length;
     await link.click();
-    ok('link: switching writes nothing', hub.intents.length === n1 && (await link.getAttribute('aria-pressed')) === 'false');
-    const out0 = await spOut.inputValue();
-    await spIn.fill('20');
-    await spIn.press('Enter');
+    await page.waitForTimeout(300);
+    const lw = hub.intents.slice(n1);
+    ok('link: on from 40/100/100 writes 80/50/50 in one intent', lw.length === 1 && lw[0].ch === MAST.ch
+      && lw[0].val[MAST.key] === 80 && lw[0].val[SPIN.key] === 50 && lw[0].val[SPOUT.key] === 50, lw);
+    ok('link: the echo lands on the slider and both halves', Number(await speed.inputValue()) === 80
+      && (await spIn.inputValue()) === '50' && (await spOut.inputValue()) === '50');
+    ok('link: the tooltip says the peak shifts', /peak shifts/.test(await link.getAttribute('title')), await link.getAttribute('title'));
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('1-link-on') });
+
+    // A linked drag moves the peak and holds 1/in + 1/out, both halves in one intent.
+    const T = 1 / 50 + 1 / 50;
+    const peak0 = (await handle(page, 'deep').boundingBox()).x;
+    const n2 = hub.intents.length;
+    const dw = (await dragBy(page, handle(page, 'vin'), 60, 0)).filter((i) => i.ch === SPIN.ch);
+    const [a, b] = [Number(await spIn.inputValue()), Number(await spOut.inputValue())];
+    ok('link: a linked drag writes both halves in one intent', hub.intents.length - n2 === 1 && dw.length === 1
+      && SPIN.key in dw[0].val && SPOUT.key in dw[0].val, dw);
+    ok('link: the drag moved the peak and held 1/in + 1/out within rounding', Math.abs((await handle(page, 'deep').boundingBox()).x - peak0) > 20
+      && a < 50 && Math.abs(1 / a + 1 / b - T) <= 1 / b - 1 / (b + 1), { a, b, err: 1 / a + 1 / b - T });
+    const T2 = 1 / a + 1 / b, [lo] = linkSpan(T2, 1, 100);
+    await spIn.fill(String(lo + 4));
+    await page.waitForTimeout(100);
+    ok('link: typing previews the partner from the constant', (await spOut.inputValue()) === String(linkPartner(T2, lo + 4, 1, 100)),
+      [await spOut.inputValue(), linkPartner(T2, lo + 4, 1, 100)]);
+    await spIn.fill(String(lo - 10));
+    await page.waitForTimeout(100);
+    ok('link: a value past the partner range stops at the edge', (await spOut.inputValue()) === String(linkPartner(T2, lo, 1, 100))
+      && Number(await page.locator('main.pane .ap .ap-h[data-key="vin"]').getAttribute('aria-valuenow')) === lo,
+    [lo, await spOut.inputValue(), await page.locator('main.pane .ap .ap-h[data-key="vin"]').getAttribute('aria-valuenow')]);
+    await spIn.evaluate((e) => e.blur());
     await page.waitForTimeout(250);
-    const uw = hub.intents.slice(n1);
-    ok('unlinked: an edit writes its own key only', uw.length === 1 && uw[0].val[SPIN.key] === 20 && !(SPOUT.key in uw[0].val), uw);
-    ok('unlinked: the other half stays', (await spOut.inputValue()) === out0);
-    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-unlinked.png' });
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('1-link-drag') });
+
+    // Unlink writes nothing, and the choice persists.
+    const n3 = hub.intents.length;
+    await link.click();
+    await page.waitForTimeout(200);
+    ok('link: unlinking writes nothing', hub.intents.length === n3 && (await link.getAttribute('aria-pressed')) === 'false');
     await page.reload();
     await toPatternPage(page);
     await toAdvanced(page);
     ok('link: the choice survives a reload', (await link.getAttribute('aria-pressed')) === 'false');
-    const n2 = hub.intents.length;
+
+    // Master at its top and halves at 100: linking writes nothing and says why.
+    await setRange(speed, 100);
+    await typeIn(spIn, 100);
+    await typeIn(spOut, 100);
+    const n4 = hub.intents.length;
     await link.click();
+    await page.waitForTimeout(250);
+    ok('link: at master 100 with 100/100, linking writes nothing and says lower master', hub.intents.length === n4
+      && (await link.getAttribute('title')) === 'Lower master to shift the peak', await link.getAttribute('title'));
+    await link.click();
+    await setRange(speed, 0);
+    await page.waitForTimeout(250);
+    await ctx.close();
+  }
+
+  {
+    // ---- labels clear of the line, in every fixture state
+    const { ctx, page } = await open();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(150); };
+    const onLine = () => page.evaluate(() => {
+      const hits = [];
+      for (const ed of document.querySelectorAll('main.pane .ap .ap-ed:is(.ap-stroke, .ap-stair)')) {
+        if (!ed.offsetParent) continue;
+        const pts = [];
+        for (const p of ed.querySelectorAll('path.curve')) {
+          const m = p.getScreenCTM(), L = p.getTotalLength();
+          for (let s = 0; s <= L; s += 1) { const q = p.getPointAtLength(s); pts.push([m.a * q.x + m.c * q.y + m.e, m.b * q.x + m.d * q.y + m.f]); }
+        }
+        for (const t of ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')) {
+          if (!t.textContent) continue;
+          const r = t.getBoundingClientRect();
+          const n = pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length;
+          if (n || t.classList.contains('bg')) hits.push({ tag: t.textContent, n, bg: t.classList.contains('bg') });
+        }
+      }
+      return hits;
+    });
+    const STATES = [null, [85, 0, 100, 50, 40, 40], [50, 30, 20, 100, 0, 100], [100, 0, 1, 100, 100, 0], [30, 25, 100, 5, 0, 0]];
+    for (const st of STATES) {
+      if (st) for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, st[i]);
+      await page.waitForTimeout(200);
+      const hits = await onLine();
+      ok('labels: none on the stroke or staircase line, none backed (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
+      if (SHOT && st && st[0] === 85) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
+    }
+    await page.click('main.pane .ap .ap-mtabs [role=tab]:has-text("Max depth")');
+    await typeIn('Amp', 100);
+    await page.waitForTimeout(200);
+    ok('labels: the staircase labels clear its line at full amp', (await onLine()).length === 0, await onLine());
+    await typeIn('Amp', 0);
+    for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, [10, 0, 100, 100, 40, 40][i]);
+    await ctx.close();
+  }
+
+  {
+    // ---- the Inputs toggle: default hidden, persisted, nothing above it moves
+    const { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const tog = page.locator('main.pane .ap .ap-inputs');
+    const rows = () => page.$$eval('main.pane .ap .ap-nums', (els) => els.filter((e) => e.offsetParent !== null).length);
+    const sel = page.locator('main.pane .ap select[aria-label="Preset"]');
+    const right = async () => { const a = await sel.boundingBox(), b = await tog.boundingBox(); return b.x >= a.x + a.width && Math.abs(b.y - a.y) < 4; };
+    ok('inputs: a toggle right of the preset box', await right());
+    ok('inputs: hidden by default, not rendered', (await tog.getAttribute('aria-pressed')) === 'false' && (await rows()) === 0
+      && (await page.locator('main.pane .ap .ap-num input:visible').count()) === 0);
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('3-inputs-hidden') });
+    const strokeY = (await page.locator('main.pane .ap .ap-stroke').boundingBox()).y;
+    const rhythmY = (await page.locator('main.pane .ap .ap-rhythm').boundingBox()).y;
+    await tog.click();
     await page.waitForTimeout(150);
-    const want = 20 + Number(out0);
-    ok('link: on with a pair off 100 writes nothing and shows the sum', hub.intents.length === n2
-      && (await link.getAttribute('title')).includes(want + ' %'), await link.getAttribute('title'));
+    ok('inputs: shown on toggle, the strip above stays, the sections below move down',
+      (await rows()) >= 2 && (await page.locator('main.pane .ap .ap-stroke').boundingBox()).y === strokeY
+      && (await page.locator('main.pane .ap .ap-rhythm').boundingBox()).y > rhythmY + 20);
+    ok('inputs: the tooltip is terse', (await tog.getAttribute('title')) === 'Hide inputs');
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: shot('3-inputs-shown') });
+    await page.reload();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    ok('inputs: the choice persists (phosphor.advpen.inputs)', (await tog.getAttribute('aria-pressed')) === 'true'
+      && await page.evaluate(() => localStorage.getItem('phosphor.advpen.inputs')) === '1');
+    await tog.click();
+    const n0 = hub.intents.length;
+    const vin = handle(page, 'vin');
+    await vin.focus();
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(250);
+    ok('inputs: hidden, a focused handle still steps on the arrow keys, one write', hub.intents.length - n0 === 1
+      && SPIN.key in hub.intents[n0].val, hub.intents.slice(n0));
+    ok('shapes: up-down handles are horizontal pills, left-right ones vertical pills', (await handle(page, 'deep').getAttribute('data-shape')) === 'hpill'
+      && (await handle(page, 'vin').getAttribute('data-shape')) === 'vpill' && (await handle(page, 'amp').getAttribute('data-shape')) === 'hpill'
+      && (await handle(page, 'rise').getAttribute('data-shape')) === 'vpill');
+    await ctx.close();
+  }
+
+  {
+    // ---- modifier tabs: enable switch and reset trash; holds on the graph
+    const { ctx, page } = await open();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const AMT = settingOf('pattern-adv-mod-speedin', 'amount');
+    const HOLD = settingOf('pattern-adv-mod-speedin', 'in_wait');
+    const REST = settingOf('pattern-adv-mod-speedin', 'out_wait');
+    const MODKEYS = ['amount', 'in_step', 'in_wait', 'out_step', 'out_wait', 'offset'].map((n) => settingOf('pattern-adv-mod-speedin', n).key);
+    const tab = page.locator('main.pane .ap .ap-mtab', { has: page.locator('[role=tab]', { hasText: 'In speed' }) });
+    await tab.locator('[role=tab]').click();
+    const sw = tab.locator('.ap-mon'), trash = tab.locator('.ap-mtrash');
+    const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(250); };
+    const order = await tab.evaluate((t) => [...t.children].map((c) => c.className || c.getAttribute('role')).join());
+    ok('mod tab: switch left, name with its dot, trash right', order === 'ap-mon,tab,ap-mtrash', order);
+    ok('mod tab: at the defaults, off and no trash', (await sw.getAttribute('aria-checked')) === 'false'
+      && (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'hidden');
+    let n = hub.intents.length;
+    await sw.click();
+    await page.waitForTimeout(250);
+    ok('mod switch: on with nothing kept writes 100', hub.intents.length - n === 1 && hub.intents[n].val[AMT.key] === 100
+      && (await sw.getAttribute('aria-checked')) === 'true', hub.intents.slice(n));
+    await typeIn('Amp', 60);
+    n = hub.intents.length;
+    await sw.click();
+    await page.waitForTimeout(250);
+    ok('mod switch: off writes amount 0', hub.intents.length - n === 1 && hub.intents[n].val[AMT.key] === 0
+      && (await tab.locator('[role=tab]').getAttribute('data-on')) === 'false');
+    n = hub.intents.length;
+    await sw.click();
+    await page.waitForTimeout(250);
+    ok('mod switch: on restores the kept amount', hub.intents.length - n === 1 && hub.intents[n].val[AMT.key] === 60);
+
+    // Holds on the graph: a guide and a plus at each corner while 0; the plus spawns one stroke with a vertical pill.
+    const plusMin = page.locator('main.pane .ap .ap-stair .ap-plus[aria-label="Add at min"]');
+    const plusMax = page.locator('main.pane .ap .ap-stair .ap-plus[aria-label="Add at max"]');
+    ok('holds: at 0, a plus at each corner and no hold handle', await plusMin.isVisible() && await plusMax.isVisible()
+      && !(await handle(page, 'hold').count()) && !(await handle(page, 'rest').count()));
+    const guides = await page.$$eval('main.pane .ap .ap-stair:not([hidden]) line.vguide', (ls) => ls.filter((l) => l.closest('.ap-mview').isConnected)
+      .map((l) => [+l.getAttribute('y1'), +l.getAttribute('y2')]));
+    ok('holds: gray guides span the plot, the top gap equal to the bottom one', guides.length === 2 && guides.every(([a, b]) => a === 170 - b), guides);
+    if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('5-holds-plus') });
+    n = hub.intents.length;
+    await plusMin.click();
+    await page.waitForTimeout(250);
+    ok('holds: the plus spawns at min at one stroke', hub.intents.length - n === 1 && hub.intents[n].val[HOLD.key] === 1, hub.intents.slice(n));
+    const pill = handle(page, 'hold');
+    ok('holds: the hold carries a vertical pill, the plus gone', (await pill.getAttribute('data-shape')) === 'vpill' && !(await plusMin.isVisible()));
+    const k = await page.evaluate(() => { const e = document.querySelector('main.pane .ap .ap-stair'); return e.getBoundingClientRect().width * 880 / 1000 / 8; });
+    let dw = (await dragBy(page, pill, 2 * k, 0)).filter((i) => HOLD.key in i.val);
+    ok('holds: dragging the pill right lengthens the hold', dw.length === 1 && dw[0].val[HOLD.key] === 3, dw);
+    await plusMax.click();
+    await page.waitForTimeout(250);
+    if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('5-holds-pills') });
+    dw = (await dragBy(page, handle(page, 'hold'), -6 * k, 0)).filter((i) => HOLD.key in i.val);
+    ok('holds: dragging it back to 0 collapses the segment, the plus returns', dw.length === 1 && dw[0].val[HOLD.key] === 0
+      && await plusMin.isVisible() && !(await handle(page, 'hold').count()), dw);
+    ok('holds: at max spawned the same way', hub.values[settingOf('pattern-adv-mod-speedin', 'out_wait').uid] === 1 && (await handle(page, 'rest').count()) === 1);
+    void REST;
+
+    // Trash: shown once any value leaves its default, resets all six in one intent.
+    ok('mod trash: shown once a value leaves its default', (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'visible');
+    if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('4-mod-tab') });
+    n = hub.intents.length;
+    await trash.click();
+    await page.waitForTimeout(300);
+    const tw = hub.intents.slice(n);
+    ok('mod trash: one intent with all six keys at their defaults', tw.length === 1 && MODKEYS.every((key) => key in tw[0].val)
+      && tw[0].val[AMT.key] === 0 && tw[0].val[HOLD.key] === 0, tw);
+    ok('mod trash: hidden again, the switch off', (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'hidden'
+      && (await sw.getAttribute('aria-checked')) === 'false');
     await ctx.close();
   }
 

@@ -266,12 +266,36 @@ Shipped:
   the intent look, and release, Enter or blur writes once through
   `api.write`; arrows nudge, Shift by ten. The stroke picture's x axis is the
   share of one stroke's time, so the curve always spans the plot, mid-drag
-  included. A chain toggle beside In speed links the pair (on by default,
-  `phosphor.advpen.speedLink` in localStorage): linked, in + out = 100 % and
-  editing one moves the other, both keys in the same tick, which the shadow
-  sends as one intent; unlinked, each writes alone. The link is presentation
-  only: the hub's two fields stay independent, and switching the link on
-  writes nothing (the tooltip shows the pair's sum until the next edit). The
+  included. A handle's shape is its drag axis: a dot moves any direction, a
+  vertical pill left-right only, a horizontal pill up-down only. Each label
+  sits beside its handle on the side square to the curve's tangent, flips
+  when a neighbor would overlap, and wears a backing only when no side is
+  clear. The numeric rows hide behind an Inputs toggle right of the preset
+  box (default hidden, `phosphor.advpen.inputs`); hidden, they are not
+  rendered and the handles carry the arrow keys.
+
+  **The in/out link** (chain toggle beside it, off by default,
+  `phosphor.advpen.speedLink`). Linked, an edit holds `1/in + 1/out`, the
+  stroke period at a fixed master, so dragging one half moves the peak and
+  the other half follows; a handle stops where its partner would leave
+  1..100, and both keys go out in the same tick, one intent. Switching it on
+  rescales once so the halves have room: `master' = master x k`,
+  `in' = in / k`, `out' = out / k`, `k = min(2, 100 / master)`, the three keys
+  in one intent (halves rounded to the pair with the least period error).
+  At master 100 or 0 nothing is written and the tooltip says what to do.
+  Switching it off writes nothing. The rescale keeps the physical stroke
+  only while the hub's master is a linear rate scale (the registry note:
+  "percent of its own range").
+
+  **Modifier tabs.** Each tab carries an enable switch on the left (off
+  writes `mod.amount` 0, RFC-066's no modulation, and keeps the amount in
+  the card to restore; on with none kept writes 100) and a trash on the
+  right, shown once any of the six values leaves its catalog default, which
+  writes all six defaults in one intent. At min and at max (`mod.hold`,
+  `mod.rest`) are reached on the graph: at 0, a gray guide and a plus sit at
+  the corner where the hold would start; the plus spawns it at one stroke
+  with a vertical pill on the guide, and dragging the pill back to 0
+  collapses it. Crest and trough dwell are not drawn yet (RFC-095). The
   registry names no role for a store op's slot and name, so it tells them
   apart by schema type.
 
