@@ -105,7 +105,7 @@
           <span>{holding ? 'Keep holding' : 'Hold to close'}</span>
           {#if holding}<span class="sb-fill" aria-hidden="true" style="--hold-ms: {HOLD_MS}ms"></span>{/if}
         </button>
-        <p class="sb-pop-k">Esc or a click outside cancels</p>
+        <p class="sb-pop-k">Esc to cancel</p>
       </div>
     {/if}
   </span>

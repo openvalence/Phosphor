@@ -50,8 +50,8 @@ export function createCloseGate(win, ask, { holdMs = HOLD_MS, timers = globalThi
 /** The one-line consequences of closing now, from live state; empty when none. */
 export function closeConsequences({ runsOnAlone, ownsSource, serverRunning }) {
   const out = [];
-  if (runsOnAlone) out.push('the pattern keeps running after Phosphor closes (run in background is on)');
-  else if (ownsSource) out.push('this session is driving the machine; it settles when the session ends');
-  if (serverRunning) out.push('the server is running; connected apps will drop');
+  if (runsOnAlone) out.push('Pattern keeps running (run in background)');
+  else if (ownsSource) out.push('Motion settles: this session drives it');
+  if (serverRunning) out.push('Server running: connected apps will drop');
   return out;
 }

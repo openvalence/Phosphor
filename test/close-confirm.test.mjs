@@ -61,7 +61,7 @@ ok('HOLD_MS is about a second', HOLD_MS >= 800 && HOLD_MS <= 1500, String(HOLD_M
 }
 
 ok('consequences: nothing to say', closeConsequences({}).length === 0);
-ok('consequences: this session drives', /settles when the session ends/.test(closeConsequences({ ownsSource: true }).join()));
+ok('consequences: this session drives', /Motion settles/.test(closeConsequences({ ownsSource: true }).join()));
 ok('consequences: background run outranks the settle line',
   closeConsequences({ runsOnAlone: true, ownsSource: true }).length === 1
   && /keeps running/.test(closeConsequences({ runsOnAlone: true, ownsSource: true })[0]));

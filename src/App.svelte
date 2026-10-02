@@ -291,14 +291,13 @@
   const resettable = $derived(onScreen.filter((f) => !f.readOnly && f.dflt != null
     && isFieldEnabled(f, machine.samples[f.channelId])));
   const resetWhy = $derived(machine.link.phase !== 'live' ? 'no hub link'
-    : !resettable.length ? 'nothing on screen can be reset right now' : '');
+    : !resettable.length ? 'nothing to reset' : '');
   // Writes in flight on this page, in the bar's fixed slot (law 5).
   const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
   async function resetCategory() {
     const n = resettable.length;
     const ok = await askConfirm({
       title: 'Reset ' + n + ' setting' + (n === 1 ? '' : 's') + ' to defaults',
-      body: 'Each field goes back to the default its own catalog entry declares.',
     });
     if (ok) for (const f of resettable) writeSetting(f, f.dflt);
   }
@@ -397,13 +396,12 @@
              which, using the same counts the advanced/diagnostic toggles
              below already carry. -->
         <p class="cat-empty">
-          Nothing to show here yet.
           {#if visibleGroups.diag}
-            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} {visibleGroups.diag === 1 ? 'is' : 'are'} hidden: show them above.
+            {visibleGroups.diag} diagnostic field{visibleGroups.diag === 1 ? '' : 's'} hidden
           {:else if visibleGroups.hidden}
-            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} {visibleGroups.hidden === 1 ? 'is' : 'are'} hidden: show them above.
+            {visibleGroups.hidden} advanced field{visibleGroups.hidden === 1 ? '' : 's'} hidden
           {:else}
-            This hub has no fields at this rank or class for {current.label}.
+            No fields at this rank or class
           {/if}
         </p>
       {/if}

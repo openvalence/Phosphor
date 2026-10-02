@@ -42,16 +42,16 @@
 
   const down = $derived(link.phase === 'retrying' || link.phase === 'failed');
   const status = $derived.by(() => {
-    if (!hub) return 'No hub chosen. This page was opened without one.';
+    if (!hub) return 'No hub chosen';
     switch (link.phase) {
-      case 'live': return 'Connected to ' + hub + '. Receiving catalog' + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
-      case 'handshaking': return 'Reached ' + hub + '. Handshaking…';
+      case 'live': return 'Receiving catalog from ' + hub + (receiveS ? ' (' + receiveS + ' s)' : '') + '…';
+      case 'handshaking': return 'Handshaking with ' + hub + '…';
       case 'retrying':
-        return 'No link to ' + hub + (link.closeReason ? ' (' + link.closeReason + ')' : '') + '. '
-          + (waitS != null ? 'Retrying in ' + waitS + ' s' : 'Retrying')
-          + (link.attempts > 1 ? ', attempt ' + link.attempts : '') + '.';
-      case 'failed': return 'Link to ' + hub + ' closed' + (link.closeReason ? ': ' + link.closeReason : '') + '.';
-      case 'idle': return 'Paused while this page is hidden.';
+        return 'No link to ' + hub + (link.closeReason ? ' (' + link.closeReason + ')' : '')
+          + (waitS != null ? ', retrying in ' + waitS + ' s' : ', retrying')
+          + (link.attempts > 1 ? ', attempt ' + link.attempts : '');
+      case 'failed': return 'Link to ' + hub + ' closed' + (link.closeReason ? ': ' + link.closeReason : '');
+      case 'idle': return 'Paused while hidden';
       default: return 'Connecting to ' + hub + '…';
     }
   });
@@ -65,27 +65,17 @@
       <button type="button" class="og-btn primary" onclick={retryNow}>Retry now</button>
     {/if}
     {#if SHELL}
-      <p class="pk-note">Find or enter a hub under Phosphor &gt; Hubs.</p>
+      <p class="pk-note">Add a hub under Phosphor &gt; Hubs</p>
     {:else}
       <HostEntry onpick={switchHub} value={link.host ? hub : ''} />
-      <p class="pk-note">
-        A page served by the hub itself needs nothing here. Anywhere else, add
-        <code>?hub=&lt;address&gt;</code> to this page's URL, or enter the address
-        above; the page remembers the hubs it reached.
-      </p>
-      <p class="pk-note">
-        A page that did not come from the hub cannot fetch a control credential
-        (<code>/uitoken</code> answers its own origin only), so it joins at
-        <b>watch</b>: it sees everything and can stop the machine, but cannot command
-        it. Once connected, pair from the Pairing tab to gain control.
-      </p>
+      <p class="pk-note">Enter an address, or add <code>?hub=&lt;address&gt;</code> to the URL</p>
+      <p class="pk-note">Pages not served by the hub join at <b>watch</b></p>
     {/if}
   </section>
 {:else if mode === 'tier' && link.phase === 'live' && link.roles === ACCESS.watch}
   <div class="pk-line tier" role="note">
     <span>
-      Watch tier: this session can observe and stop, not command.
-      {crossOrigin ? 'This page did not come from the hub, so it had no control credential.' : 'The hub granted watch to this session.'}
+      Watch tier: observe and stop only{crossOrigin ? ' (page not served by the hub)' : ''}
     </span>
     {#if onpair}<button type="button" class="og-btn sm" onclick={onpair}>Pair for control</button>{/if}
   </div>

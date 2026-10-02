@@ -26,7 +26,7 @@
    */
   import { untrack } from 'svelte';
   import { THEMES, applyTheme, currentThemeId, setCustomColors, customColors } from '../model/theme.js';
-  import { setPref, UNITS } from '../model/prefs.js';
+  import { setPref } from '../model/prefs.js';
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
   import './pane.css';
@@ -84,20 +84,20 @@
       {/each}
       <span class="custom-swatch">
         <button type="button" class="swatch" class:active={current === 'custom'} aria-pressed={current === 'custom'}
-                title="Your own accent pair" onclick={pickCustom}>
+                title="Custom accent pair" onclick={pickCustom}>
           <span class="dot" style="background:{custom.reality};box-shadow:0 0 6px {custom.reality}" aria-hidden="true"></span>
           <span class="dot" style="background:{custom.intent}" aria-hidden="true"></span>
           <span class="name">Custom</span>
         </button>
-        <label class="color-input" title="Reality: what the machine reports">
+        <label class="color-input" title="Reality: reported values">
           <input type="color" value={custom.reality} oninput={(e) => setColor('reality', e)} aria-label="Reality accent color" />
         </label>
-        <label class="color-input" title="Intent: what it was asked for, and the window band">
+        <label class="color-input" title="Intent: requested values and window band">
           <input type="color" value={custom.intent} oninput={(e) => setColor('intent', e)} aria-label="Intent accent color" />
         </label>
       </span>
     </div>
-    <p class="pane-note">Accent colors only: safety amber and red are the same in every theme. A browser preference; the machine is unaffected.</p>
+    <p class="pane-note">Safety amber and red never change</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-legibility">
@@ -110,7 +110,7 @@
       <input type="checkbox" role="switch" checked={terse} onchange={(e) => flip('terse', 'ui_terse', (terse = e.currentTarget.checked))} />
       <span class="track"></span>Terse instruments
     </label>
-    <p class="pane-note">Terse hides usage hints on instrument cards; on settings pages a field's description moves onto its info button.</p>
+    <p class="pane-note">Hides card hints; descriptions move to info buttons</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-units">
@@ -120,9 +120,9 @@
       <span class="track"></span>Autorange: 85 mV, not 0.085 V
     </label>
     <dl class="pane-facts">
-      <dt>System</dt><dd>{$prefs.units}{UNITS.length === 1 ? ', the only system today' : ''}</dd>
+      <dt>System</dt><dd>{$prefs.units}</dd>
     </dl>
-    <p class="pane-note">Display only: what is sent to the machine never changes.</p>
+    <p class="pane-note">Display only</p>
   </section>
 
   <section class="pane-sec og-screen" aria-labelledby="tp-class">
@@ -133,7 +133,7 @@
       <dt>Pointer</dt><dd>{POINTER[view.pointer] || view.pointer}</dd>
       <dt>Boundaries</dt><dd class="mono">glance below {GLANCE_UP} px or no pointer, full from {FULL_UP} px</dd>
     </dl>
-    <p class="pane-note">Measured from this window, never set: resize it and the class follows.</p>
+    <p class="pane-note">Measured from the window size</p>
   </section>
 </div>
 
