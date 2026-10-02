@@ -313,10 +313,17 @@ if (!LIVE) {
 
   console.log('\n[safety module]');
   const so = page.locator('.cell[data-pres=safety] .safety-op');
-  ok('a safety op places as a module bound by identity', await so.locator('button').textContent() === 'stop');
+  ok('a safety pair places as a module bound by identity', await so.locator('.lbl').textContent() === 'Pause');
+  hub.mode = 'hold';
   await so.locator('button').click();
-  ok('its press reaches confirmed, in words', await so.locator('.state', { hasText: 'confirmed' }).waitFor({ timeout: 3000 })
-    .then(() => true).catch(() => false));
+  ok('its press shows pending, in words', await so.locator('.state', { hasText: 'waiting for the machine' })
+    .waitFor({ timeout: 3000 }).then(() => true).catch(() => false));
+  await release();
+  ok('...and settles once the hub echoes', await page.waitForFunction(() => {
+    const el = document.querySelector('.cell[data-pres=safety] .safety-op');
+    return el.dataset.shadow === 'confirmed' && !/waiting|refused/.test(el.textContent);
+  }, null, { timeout: 3000 }).then(() => true).catch(() => false));
+  hub.mode = 'echo';
 
   if (ACTION) {
     console.log('\n[secret action payload] (ph-vic)');

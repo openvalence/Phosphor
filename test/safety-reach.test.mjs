@@ -5,18 +5,17 @@
  * (touch-target floor, reduced motion), measured on the rendered page with no
  * hub: the same Playwright WebSocket route and etag-cache seeding as
  * test/responsive-matrix.mjs, reduced to what the safety region needs (WELCOME,
- * GRANT, PONG, and two safety-events edges). No STATE is sent: nothing asserted
- * here reads a value.
+ * GRANT, PONG, two safety-events edges) plus a small model of the hub's safety
+ * latch: each safety-intents op is ECHOed and the 0x0003 snapshot it implies
+ * is published, so a control's state is always the hub's (law 4).
  *
- * Two catalogs: the recorded valencesim fixture (claims the rail hero, so the
- * hero row carries TransportBar), and the same fixture with every window.min /
- * window.max role stripped (claims NO hero, the unannotated-hub case of
- * ph-vdk.1). At 360x800, 844x390, 1280x720 and 1920x1080, each with a mouse and
- * with touch, it asserts:
- *   strip    the top strip's e-stop and stop are visible, enabled, on screen, not
- *            covered, and at least --tap in both axes
+ * Two catalogs: the recorded valencesim fixture (claims the rail hero), and the
+ * same fixture with every window.min / window.max role stripped (claims NO
+ * hero, the unannotated-hub case of ph-vdk.1). At 360x800, 844x390, 1280x720
+ * and 1920x1080, each with a mouse and with touch, it asserts:
+ *   strip    exactly one e-stop and one pause control in the top strip, each
+ *            visible, enabled, on screen, not covered, at least --tap
  *   hero     no-hero catalog: no hero slot rendered (the case is real)
- *   row      hero catalog, desktop: the hero row's stop/e-stop also >= --tap
  * At 1280x720, both catalogs: every home module deleted, the strip pair stays
  * (ph-e82.5).
  * Once, at 1280x720 and 360x800:
@@ -24,6 +23,11 @@
  *   edge     the latest safety edge renders with its unread count, opens the
  *            Safety feed, clears the count, and dims once the link drops
  *   fire     pressing the strip e-stop puts a safety frame on the wire
+ * ph-e82.12 (RFC-085), at 1280x720 mouse and 360x800 touch:
+ *   label    WELCOME without identity key 6, or with it false: Halt; true: E-Stop
+ *   pair     pause sends pause, reads Resume, sends resume; the e-stop latches,
+ *            reads Halted, two quick taps and a 1 s hold send nothing, a press
+ *            held past 3 s sends release, which lands in pause
  * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
  * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
@@ -35,7 +39,7 @@ import { readFileSync } from 'node:fs';
 import { cbMap, cbArray, cbInt, cbF32, cbTstr, cbBstr, cbBool, cbNull, cbUint, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
 import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
-import { CORE_CHANNEL, SAFETY_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -85,6 +89,15 @@ function safetyEdge(kind, word, seq) {
   top.push([K.body, cbMap([[1, cbUint(word)], [2, cbUint(1)], [3, cbUint(7)], [4, cbUint(1)]])]);
   return cbMap(top);
 }
+// SPEC §11.1 snapshot: word (bit0 ESTOP, bit3 PAUSE) at byte 0, modes at 8.
+const PAUSE_BIT = 0x08;
+const LATCH = {
+  [SAFETY_OP.estop]: (w) => w | 1,
+  [SAFETY_OP.release]: (w) => (w & ~1) | PAUSE_BIT,
+  [SAFETY_OP.pause]: (w) => w | PAUSE_BIT,
+  [SAFETY_OP.resume]: (w) => w & ~PAUSE_BIT,
+};
+const snapshot = (word) => Uint8Array.of(word, 0, 0, 0, 0, 0, 0, 0, 0);
 function hubFor(cat, wire) {
   return (ws) => {
     wire.socket = ws;
@@ -94,14 +107,16 @@ function hubFor(cat, wire) {
       for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
         wire.seen.push({ type: header.type, channel: header.channel });
         if (header.type === FRAME.HELLO) {
+          const identity = [[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
+            [IDENTITY_K.hub_name, cbTstr('Safety fixture')]];
+          if (wire.cutsPower != null) identity.push([IDENTITY_K.estop_cuts_power, cbBool(wire.cutsPower)]);
           send(FRAME.WELCOME, 0, cbMap([
             [K.session_id, cbUint(7)], [K.boot_id, cbUint(0x5eed)],
             [K.catalog_etag, cbBstr(cat.etag)], [K.cfg_gen, cbUint(1)],
             [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
               [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
             [K.roles, cbUint(2)], [K.deadman_ms, cbUint(600000)],
-            [K.identity, cbMap([[IDENTITY_K.product, cbTstr('fixture')], [IDENTITY_K.fw_version, cbTstr('0.0.0-fixture')],
-              [IDENTITY_K.hub_name, cbTstr('Safety fixture')]])],
+            [K.identity, cbMap(identity)],
           ]));
         } else if (header.type === FRAME.SUBSCRIBE) {
           const m = cbDecodeFull(payload);
@@ -116,6 +131,16 @@ function hubFor(cat, wire) {
             }
           }
           send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+        } else if (header.type === FRAME.INTENT && header.channel === CORE_CHANNEL.safety_intents) {
+          const m = cbDecodeFull(payload);
+          const op = m.get(K.value).get(1);
+          wire.ops.push(op);
+          send(FRAME.ECHO, header.channel, cbMap([[K.cfg_gen, cbUint(1)], [K.intent_id, cbUint(m.get(K.intent_id))],
+            [K.applied, cbMap([[1, cbUint(op)]])]]));
+          if (LATCH[op]) {
+            wire.word = LATCH[op](wire.word);
+            send(FRAME.STATE, CORE_CHANNEL.safety, snapshot(wire.word));
+          }
         } else if (header.type === FRAME.PING) {
           send(FRAME.PONG, header.channel, payload);
         }
@@ -124,9 +149,9 @@ function hubFor(cat, wire) {
   };
 }
 
-async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false }) {
+async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false, cutsPower = null }) {
   const cat = CATALOGS[catalog];
-  const wire = { seen: [], socket: null, edges };
+  const wire = { seen: [], ops: [], word: 0, socket: null, edges, cutsPower };
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: false, reducedMotion });
   await ctx.addInitScript(([etag, bytes]) => {
     try {
@@ -164,14 +189,12 @@ function measurePair() {
       transition: cs.transitionDuration, animation: cs.animationName,
     };
   };
-  const row = (sel) => [...document.querySelectorAll('.transportbar ' + sel)].find((b) => getComputedStyle(b).display !== 'none') || null;
   return {
     tap,
     heroes: document.querySelectorAll('.hero-slot').length,
+    counts: [document.querySelectorAll('.topstrip .btn-estop').length, document.querySelectorAll('.topstrip .btn-pause').length],
     estop: box(document.querySelector('.topstrip .btn-estop')),
-    stop: box(document.querySelector('.topstrip .btn-stop')),
-    rowEstop: box(row('.btn-estop')),
-    rowStop: box(row('.btn-stop')),
+    pause: box(document.querySelector('.topstrip .btn-pause')),
   };
 }
 
@@ -197,16 +220,12 @@ for (const catalog of ['none', 'hero']) {
       if (!up) { await ctx.close(); continue; }
       const m = await page.evaluate(measurePair);
       if (catalog === 'none') ok(tag + ': no hero claims', m.heroes === 0, m.heroes + ' hero slot(s)');
-      for (const [name, b] of [['e-stop', m.estop], ['stop', m.stop]]) {
+      ok(tag + ': exactly one e-stop and one pause control in the strip', m.counts.join() === '1,1', m.counts.join());
+      for (const [name, b] of [['e-stop', m.estop], ['pause', m.pause]]) {
         ok(tag + ': strip ' + name + ' shown, enabled, on screen, uncovered',
           !!b && b.shown && !b.disabled && b.onScreen && b.uncovered, b && JSON.stringify(b));
         ok(tag + ': strip ' + name + ' >= --tap (' + m.tap.toFixed(1) + ')',
           !!b && b.w >= m.tap - 0.5 && b.h >= m.tap - 0.5, size(b));
-      }
-      if (catalog === 'hero' && w >= 960) {
-        for (const [name, b] of [['e-stop', m.rowEstop], ['stop', m.rowStop]]) {
-          ok(tag + ': hero-row ' + name + ' >= --tap', !!b && b.w >= m.tap - 0.5 && b.h >= m.tap - 0.5, size(b));
-        }
       }
       await ctx.close();
     }
@@ -223,7 +242,7 @@ for (const catalog of ['none', 'hero']) {
   const left = await page.locator('.home .dash-cell').count();
   ok(catalog + ': every home module deleted', left === 0, left + ' left');
   const m = await page.evaluate(measurePair);
-  for (const [name, b] of [['e-stop', m.estop], ['stop', m.stop]]) {
+  for (const [name, b] of [['e-stop', m.estop], ['pause', m.pause]]) {
     ok(catalog + ': empty home: strip ' + name + ' shown, enabled, on screen, uncovered, >= --tap',
       !!b && b.shown && !b.disabled && b.onScreen && b.uncovered && b.w >= m.tap - 0.5 && b.h >= m.tap - 0.5, b && JSON.stringify(b));
   }
@@ -234,7 +253,7 @@ for (const catalog of ['none', 'hero']) {
 {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', reducedMotion: 'reduce' });
   const m = await page.evaluate(measurePair);
-  for (const [name, b] of [['strip e-stop', m.estop], ['strip stop', m.stop], ['row e-stop', m.rowEstop], ['row stop', m.rowStop]]) {
+  for (const [name, b] of [['strip e-stop', m.estop], ['strip pause', m.pause]]) {
     ok('reduced motion: ' + name + ' has no transition or animation',
       !!b && /^0s(, 0s)*$/.test(b.transition) && b.animation === 'none', b && (b.transition + ' / ' + b.animation));
   }
@@ -333,6 +352,61 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     JSON.stringify(flags) === '[false,false,true]', JSON.stringify(flags));
   const summary = await page.locator('.topstrip .evline').textContent();
   ok('wrap: the strip summarizes the post-wrap edge', /estop cleared/.test(summary), JSON.stringify(summary.trim()));
+  await ctx.close();
+}
+
+// ---- ph-e82.12: the label follows estop_cuts_power (law 15) -----------------
+for (const [cutsPower, want, why] of [[null, 'Halt', 'no key 6'], [false, 'Halt', 'key 6 false'], [true, 'E-Stop', 'key 6 true']]) {
+  const { ctx, page, up } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'none', cutsPower });
+  const label = up ? (await page.locator('.topstrip .btn-estop .lbl').textContent()).trim() : '';
+  ok('label: ' + why + ' renders ' + want, label === want, JSON.stringify(label));
+  await ctx.close();
+}
+
+// ---- ph-e82.12: each pair is one control; release is a 3 s hold -------------
+for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
+  const tag = w + 'x' + h + (touch ? ' touch' : ' mouse');
+  const { ctx, page, wire } = await open(browser, { w, h, touch, catalog: 'none', cutsPower: true });
+  const estop = page.locator('.topstrip .btn-estop');
+  const pause = page.locator('.topstrip .btn-pause');
+  const lbl = async (l) => (await l.locator('.lbl').textContent()).trim();
+  const settle = () => page.waitForTimeout(300);
+  // A held press: real mouse buttons, or pointer events for a touch screen.
+  const hold = async (ms) => {
+    if (!touch) {
+      await estop.hover();
+      await page.mouse.down();
+      await page.waitForTimeout(ms);
+      await page.mouse.up();
+    } else {
+      await estop.dispatchEvent('pointerdown', { pointerType: 'touch', isPrimary: true });
+      await page.waitForTimeout(ms);
+      await estop.dispatchEvent('pointerup', { pointerType: 'touch', isPrimary: true });
+      await estop.dispatchEvent('click');
+    }
+    await settle();
+  };
+
+  await pause.click(); await settle();
+  ok(tag + ': pause sends pause and reads Resume', wire.ops.join() === String(SAFETY_OP.pause) && await lbl(pause) === 'Resume',
+    wire.ops.join() + ' / ' + await lbl(pause));
+  await pause.click(); await settle();
+  ok(tag + ': a second press sends resume, no gate', wire.ops.at(-1) === SAFETY_OP.resume && await lbl(pause) === 'Pause',
+    wire.ops.join());
+
+  await estop.click(); await settle();
+  ok(tag + ': the e-stop latches and reads Halted', wire.ops.at(-1) === SAFETY_OP.estop && await lbl(estop) === 'Halted',
+    wire.ops.join() + ' / ' + await lbl(estop));
+  const n = wire.ops.length;
+  await estop.click(); await estop.click(); await settle();
+  ok(tag + ': two quick taps on Halted send nothing', wire.ops.length === n, wire.ops.slice(n).join());
+  await hold(1000);
+  ok(tag + ': a 1 s hold sends nothing', wire.ops.length === n && await lbl(estop) === 'Halted', wire.ops.slice(n).join());
+  await hold(3300);
+  ok(tag + ': a hold past 3 s sends release once, and nothing after it',
+    wire.ops.slice(n).join() === String(SAFETY_OP.release), wire.ops.slice(n).join());
+  ok(tag + ': release lands in pause (E-Stop, Resume)', await lbl(estop) === 'E-Stop' && await lbl(pause) === 'Resume',
+    await lbl(estop) + ' / ' + await lbl(pause));
   await ctx.close();
 }
 

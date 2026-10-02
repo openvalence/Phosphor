@@ -422,8 +422,8 @@
          threaded down as a layout snippet. -->
     <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
     {#if !instrumentHeroes.length}
-      <!-- No hero row to ride in: pause and home still need a home. Stop and
-           e-stop never depend on this; the top strip always carries them. -->
+      <!-- No hero row to ride in: home still needs a home. The e-stop and
+           pause never depend on this; the top strip always carries them. -->
       <div class="bare-transport"><TransportBar /></div>
     {/if}
     <div class="frame">
@@ -484,8 +484,8 @@
 
 <style>
   /* ---- instrument zone (mobile only) -------------------------------------
-     TransportBar is the OG's `.spine-transport` (Pause/Halt/E-Stop/Home),
-     promoted out of the safety region (operator ruling 2026-07-28). Desktop
+     TransportBar is the OG's `.spine-transport`, Home only since RFC-085
+     (the safety pairs are the top strip's). Desktop
      threads it INTO the instrument hero row via the accessory snippet — no
      overlay positioning; the row itself is the alignment. A phone's page
      scrolls instead, so it keeps its own full-width row ABOVE the hero

@@ -780,16 +780,16 @@ export function controlKey(f, byRole) {
 /** The all-uid key. Builds before ph-e82.9 saved role fields under it; placements accept it as an alias. */
 const uidKey = (f) => (f.lo && f.hi ? uidKey(f.lo) + '+' + uidKey(f.hi) : 'uid:' + f.uid);
 
-const SAFETY_OP_NAME = Object.fromEntries(Object.entries(SAFETY_OP).map(([k, v]) => [v, k]));
-
 /**
  * Everything a builder palette may place, one entry per control:
  *   {key, kind: 'field'|'composite'|'plugin'|'safety', cells, ...}
  * field: `field`, `presentations` (default first), and `alias`, the uid-form
  * key a role field also answers to (null when the key is already uid-form). composite/plugin: the
  * claimed `hero` from heroClaims (claim-or-decline unchanged, law 7).
- * safety: the safety-intents `action` and one `op`, bound by identity
- * (law 2); the top strip's own e-stop is not one of these and never moves.
+ * safety: the safety-intents `action` and one pair's first `op` (estop or
+ * pause: one control per pair, law 14), bound by identity (law 2); the top
+ * strip's own pair is not one of these and never moves. override/return is
+ * the rail's (SPEC §11.1), never a module.
  *
  * @param {Object} model buildSettingsModel output
  * @param {{heroes?: Array, safety?: Object|null}} [o] claimed hero widgets;
@@ -809,9 +809,8 @@ export function placeableControls(model, { heroes = [], safety = null } = {}) {
       cells: h.cells || COMPOSITE_CELLS });
   }
   const ops = (safety && safety.options) || [];
-  for (let op = 1; op < ops.length; op++) {
-    // An op with no registry name has only an index to key on (law 10): not placeable.
-    if (SAFETY_OP_NAME[op]) out.push({ key: 'safety:' + SAFETY_OP_NAME[op], kind: 'safety', action: safety, op, cells: SAFETY_CELLS });
+  for (const [name, op] of [['estop', SAFETY_OP.estop], ['pause', SAFETY_OP.pause]]) {
+    if (ops[op]) out.push({ key: 'safety:' + name, kind: 'safety', action: safety, op, cells: SAFETY_CELLS });
   }
   return out;
 }

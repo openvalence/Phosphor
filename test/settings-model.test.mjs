@@ -670,8 +670,8 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      rail && rail.kind === 'composite' && minCells(rail.cells, 'v').join() === '4,10');
   ok('a declining composite is not placeable (law 7)', !withHeroes.some((c) => c.key === 'hero:nope'));
   const safety = withHeroes.filter((c) => c.kind === 'safety').map((c) => c.key);
-  ok('safety ops are placeable by registry name, index 0 and unnamed ops never',
-     safety.includes('safety:estop') && safety.includes('safety:pause') && safety.length === 6, safety.join(','));
+  ok('one module per strip pair (law 14): estop/release and pause/resume, nothing else',
+     safety.join() === 'safety:estop,safety:pause', safety.join(','));
 }
 
 // ---- ph-vic: a secret action payload is flagged so ActionField masks it -----

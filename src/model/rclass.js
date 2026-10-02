@@ -13,7 +13,7 @@
  *   LinkBar) switch at 960. So `handheld` always means width < 960 and the
  *   CSS agrees with it; inside the band a `full` page keeps its rail but
  *   scrolls as a page under the sticky top strip.
- * - The e-stop pair lives in the top strip at every width and class (law 1),
+ * - The e-stop and pause pair lives in the top strip at every width and class (law 1),
  *   so no class choice here can strand it.
  * - The class chooses projection only. Input primitives follow the pointer
  *   through CSS `(pointer: coarse)` rules (RFC-062 item 3), not through this.

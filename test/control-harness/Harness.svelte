@@ -20,7 +20,7 @@
   });
 
   const stop = $derived(model && placeableControls(model, { safety: specSafetyAction() })
-    .find((c) => c.key === 'safety:stop'));
+    .find((c) => c.key === 'safety:pause'));
 
   let size = $state({ w: 4, h: 4 });
   window.__size = (w, h) => { size = { w, h }; };

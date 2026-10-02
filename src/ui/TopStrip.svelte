@@ -12,16 +12,14 @@
    * schema field whose `.options` carries every op the hub knows (RFC-025b):
    * each option is a distinct wire value and renders as its own button.
    *
-   * E-STOP REACHABILITY: the protocol makes `stop`/`estop` role-exempt — any
-   * connected session, including a bare watch-tier viewer, may fire them. We
-   * never guess which ops are exempt; `session.canUse(channelId, key, value)`
-   * asks the catalog's own per-option `option_access` (RFC-009 key 17), the
-   * exact same data the hub gates on, so this strip and the hub cannot disagree
-   * about what a given session may press. The e-stop and stop render OUTSIDE
-   * the scrolling op groups as the strip's fixed pair, at every width and in
-   * every state (RENDERING §13 law 1): this strip is the one surface stop
-   * reachability depends on; TransportBar's copies are extra instances only.
-   * Builder edit mode must never remove the pair (DESIGN §10.3).
+   * E-STOP REACHABILITY: the strip's fixed pair is the e-stop and pause
+   * controls (RFC-085), each ONE two-state control (law 14, SafetyOp.svelte),
+   * outside the scrolling op groups at every width and in every state (law 1).
+   * This strip is the one surface stop reachability depends on; placed copies
+   * are extras. Builder edit mode must never remove the pair (DESIGN §10.3).
+   * The spec-core safety-intents channel renders NO op buttons of its own:
+   * release and resume are the pair's second states, override and return
+   * live on the rail (SPEC §11.1).
    *
    * GLOBAL REFUSAL SURFACE: this strip is pinned to the viewport, so it is the
    * one place a refusal from ANY control (a settings slider, an action
@@ -29,12 +27,12 @@
    * points) is guaranteed to be visible even after the control that sent it
    * has scrolled off or unmounted. `lastRefusal` + `remedyForLastRefusal()`
    * come from shadow.svelte.js, which is also where the NACK-code -> action-
-   * role table lives (`NOT_HOMED` -> `action.home`, `ESTOP_ACTIVE` ->
-   * `action.safety`'s `estop_clear` op) — this component only renders it.
+   * role table lives (`NOT_HOMED` -> `action.home`); this component only
+   * renders it.
    */
   import { machine, getSession, specSafetyAction } from '../model/machine.svelte.js';
   import { runAction, lastRefusal, remedyForLastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
-  import { SAFETY_OP, HOME_OP } from '../../../Valence/clients/js/index.js';
+  import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS } from '../../../Valence/clients/js/index.js';
   import { optionLabel } from '../model/format.js';
   import { needsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
@@ -43,6 +41,7 @@
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
   import LinkBar from './LinkBar.svelte';
+  import SafetyOp from './widgets/SafetyOp.svelte';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. Shell: the shell's row (main.js), null on the served page.
@@ -85,41 +84,6 @@
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
   const isHomeRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.home');
-
-  /**
-   * One safety op located by wire value, ONLY within a safety-role action:
-   * SAFETY_OP numbers are the safety op table's; the same integer in a home
-   * channel is a different verb entirely.
-   */
-  function safetyOp(value) {
-    for (const a of actions) {
-      if (!isSafetyRole(a) || !a.options || !a.options.length) continue;
-      if (value < a.options.length) {
-        return { action: a, value, label: a.options[value] || OP_NAME[value], key: a.uid + ':' + value };
-      }
-    }
-    return null;
-  }
-  const OP_NAME = Object.fromEntries(Object.entries(SAFETY_OP).map(([k, v]) => [v, k]));
-
-  /**
-   * The fixed pair, e-stop then stop. Never absent: an op the catalog cannot
-   * back yet (no link, no catalog, a hub missing the op) renders disabled with
-   * its reason, so the stop affordance is never a thing that appears later.
-   */
-  const fixedCtls = $derived([SAFETY_OP.estop, SAFETY_OP.stop].map((op) => {
-    const ctl = safetyOp(op);
-    const why = ctl ? reasonFor(ctl.action, ctl.value)
-      : !linkUp ? 'no hub link'
-      : !machine.catalog.ready ? 'no catalog yet'
-      : 'this hub advertises no ' + OP_NAME[op] + ' op';
-    return {
-      op, ctl, why,
-      cls: op === SAFETY_OP.estop ? 'btn-estop' : 'btn-stop',
-      label: ctl ? ctl.label : OP_NAME[op],
-      enabled: !!ctl && canFire(ctl.action, ctl.value),
-    };
-  }));
 
   // ---- latest safety edge ----------------------------------------------------
   // The core safety-events ring only (routed by channel identity in
@@ -175,48 +139,6 @@
     return a.label || a.name || '';
   }
 
-  /**
-   * REGISTRY VOCABULARY — icon + subtitle keyed by SAFETY_OP/HOME_OP wire
-   * value. Duplicated from TransportBar.svelte (icon path strings copied
-   * VERBATIM from the OG's ui.js ICONS table, Lucide MIT) — this task's
-   * edit scope is limited to these two files, so there is no shared module
-   * to hoist this into yet; do that if a third consumer needs it. Same
-   * two-namespace split as TransportBar's copy: a SAFETY_OP value and a
-   * HOME_OP value are different verbs, so one flat table keyed by raw
-   * number would risk a silent cross-namespace collision. pause/stop/home
-   * never actually reach this strip's option groups (see optionButtons'
-   * filters below) — they render in TransportBar now — so in practice only
-   * a future op could ever match here; absence still means label-only.
-   */
-  const SAFETY_META = {
-    [SAFETY_OP.pause]: {
-      icon: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
-      subtitle: 'hold position',
-    },
-    [SAFETY_OP.stop]: {
-      icon: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
-      subtitle: 'stop motion',
-    },
-    [SAFETY_OP.estop]: {
-      icon: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-      subtitle: 'cut power',
-    },
-  };
-  const HOME_META = {
-    [HOME_OP.home]: {
-      icon: '<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>',
-      subtitle: 'seek home',
-    },
-  };
-  function metaFor(action, value) {
-    if (isSafetyRole(action)) return SAFETY_META[value];
-    if (isHomeRole(action)) return HOME_META[value];
-    return undefined;
-  }
-  /** Wrap an OG-derived path string in the exact svg attrs its ICONS table uses. */
-  function iconMarkup(paths) {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-  }
   /**
    * Presentation only: swap the hub's own '_' for a space so multi-word ops
    * ("override_on") wrap and read naturally; CSS text-transform:capitalize
@@ -277,15 +199,9 @@
   }
 
   /**
-   * Order by the access each op REQUIRES, lowest first.
+   * Order by the access each op REQUIRES, lowest first (option_access, the
+   * same data the hub gates on), so exempt ops lead on every hub.
    *
-   * This is not cosmetic. RFC-025b makes stop and estop role-exempt, and the
-   * catalog encodes that as an `option_access` of `watch` — the lowest tier
-   * there is. So sorting ascending by required access puts the emergency ops
-   * at the head of the row on every conforming hub, without this component
-   * knowing which ops those are.
-   */
-  /**
    * WIRE VALUE 0 IS NOT RENDERED. RFC-034 (registry.yaml `field_roles`
    * doctrine) is normative: for a select field carrying an `action.*` role,
    * value 0 is NEVER an operation — every op table numbers its real ops from
@@ -299,16 +215,13 @@
    * Real ops a session merely lacks access to stay GRAYED, never hidden —
    * that doctrine is unchanged.
    *
-   * The e-stop and stop are also filtered from their group here — they render
-   * separately as the strip's fixed pair, and drawing one twice in the same
-   * strip would be worse than either rendering alone.
-   *
-   * Operator ruling 2026-07-28: pause and home also leave this group — they
-   * render in TransportBar (see below). `force_home` is dev-only
-   * and stays here for now, unfiltered, until a dev affordance exists to
-   * hide/disable it properly.
+   * The spec-core safety-intents channel draws nothing here: every op it
+   * carries is half of a pair rendered elsewhere (law 14). Home renders in
+   * TransportBar. `force_home` is dev-only and stays here, unfiltered, until a
+   * dev affordance exists to hide it properly.
    */
   function optionButtons(action) {
+    if (action.channelId === CH_SAFETY_INTENTS) return [];
     const floor = action.access | 0;
     const accessOf = (i) => {
       const a = action.optionAccess && action.optionAccess[i];
@@ -317,8 +230,6 @@
     return (action.options || [])
       .map((label, i) => ({ label: label || String(i), value: i, access: accessOf(i) }))
       .filter((o) => o.value !== 0)
-      .filter((o) => !(isSafetyRole(action) && (o.value === SAFETY_OP.estop || o.value === SAFETY_OP.stop)))
-      .filter((o) => !(isSafetyRole(action) && o.value === SAFETY_OP.pause))
       .filter((o) => !(isHomeRole(action) && o.value === HOME_OP.home))
       .sort((a, b) => a.access - b.access);
   }
@@ -377,22 +288,10 @@
     {/if}
 
     <div class="dock">
+      <!-- Bound by spec-core identity alone (law 2), never by a role tag. -->
       <div class="pair">
-        {#each fixedCtls as f (f.op)}
-          <button
-            type="button"
-            class="btn fixed {f.cls}"
-            disabled={!f.enabled}
-            title={f.why || f.label}
-            onclick={() => f.ctl && fire(f.ctl.action, f.ctl.value, f.ctl.label, f.ctl.key)}
-          >
-            <span class="row">
-              <span class="ico" aria-hidden="true">{@html iconMarkup(SAFETY_META[f.op].icon)}</span>
-              <span class="lbl">{f.ctl && busy[f.ctl.key] ? '…' : displayLabel(f.label)}</span>
-            </span>
-            <small>{SAFETY_META[f.op].subtitle}</small>
-          </button>
-        {/each}
+        <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
+        <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
       </div>
 
       {#if !machine.catalog.ready}
@@ -410,7 +309,6 @@
                   <div class="grp-btns">
                     {#each opts as opt (action.uid + ':' + opt.value)}
                       {@const key = action.uid + ':' + opt.value}
-                      {@const meta = metaFor(action, opt.value)}
                       <button
                         type="button"
                         class="btn"
@@ -418,18 +316,13 @@
                         title={reasonFor(action, opt.value) || opt.label}
                         onclick={() => fire(action, opt.value, opt.label, key)}
                       >
-                        <span class="row">
-                          {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
-                          <span class="lbl">{busy[key] ? '…' : displayLabel(opt.label)}</span>
-                        </span>
-                        {#if meta}<small>{meta.subtitle}</small>{/if}
+                        <span class="lbl">{busy[key] ? '…' : displayLabel(opt.label)}</span>
                       </button>
                     {/each}
                   </div>
                 </div>
               {/if}
             {:else}
-              {@const meta = metaFor(action, 1)}
               <div class="grp">
                 <span class="grp-lbl">{groupLabel(action)}</span>
                 <div class="grp-btns">
@@ -440,11 +333,7 @@
                     title={reasonFor(action, 1) || action.label}
                     onclick={() => fire(action, 1, action.label, action.uid)}
                   >
-                    <span class="row">
-                      {#if meta}<span class="ico" aria-hidden="true">{@html iconMarkup(meta.icon)}</span>{/if}
-                      <span class="lbl">{busy[action.uid] ? '…' : displayLabel(action.label)}</span>
-                    </span>
-                    {#if meta}<small>{meta.subtitle}</small>{/if}
+                    <span class="lbl">{busy[action.uid] ? '…' : displayLabel(action.label)}</span>
                   </button>
                 </div>
               </div>
@@ -493,41 +382,11 @@
     gap: 12px;
   }
 
-  /* ---- the fixed pair: e-stop + stop -------------------------------------
-     Law 12: at least --tap in both axes at EVERY pointer type, not only under
-     (pointer: coarse); the stop is the one control never sized for a mouse. */
+  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
   .pair {
     flex: 0 0 auto;
     display: flex;
     gap: 6px;
-  }
-  .btn.fixed {
-    align-self: stretch;
-    min-height: var(--tap);
-    min-width: var(--tap);
-  }
-
-  /* ---- the e-stop: OG hazard-stripe wash (tag webui-prerefactor) ---------
-     No fill, no glow, no uppercase/bold override — pixel-checked against
-     test/evidence/og-ref/og-full.png: a quiet two-line chip like
-     every other transport button, whose only hazard cue is the diagonal
-     stripe wash in the safety red plus the alert-triangle icon; text and
-     icon stay the default ink color at rest and only redden on hover/active.
-     Same visual as TransportBar's copy (operator requirement: shared look).
-     The stripe is static: no hazard animation exists to reduce. */
-  .btn.btn-estop {
-    min-width: 96px;
-    padding: 0 14px;
-    background-image: repeating-linear-gradient(135deg, rgba(255, 71, 87, .09) 0 5px, rgba(255, 71, 87, .012) 5px 10px);
-    border-color: var(--line-2);
-    color: var(--ink);
-  }
-  .btn-estop:not(:disabled):hover {
-    border-color: var(--bad);
-  }
-  .btn-estop:not(:disabled):active {
-    border-color: var(--bad);
-    color: var(--bad);
   }
 
   /* ---- op groups: labeled clusters, one scrolling row --------------------
@@ -598,20 +457,9 @@
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .btn:not(:disabled):active { border-color: var(--reality); color: var(--reality); }
 
-  /* ---- two-line treatment (TransportBar's .tbtn, shared here) ------------
-     Labels are the hub's own catalog strings — capitalize is presentation
-     only (see displayLabel()), never a hardcoded string. Ops absent from
-     SAFETY_META/HOME_META render no .ico/small — label-only, single line,
-     same as before this pass; a future hub op must not break this strip. */
-  .btn .row { display: flex; align-items: center; gap: 4px; }
+  /* Labels are the hub's own catalog strings: capitalize is presentation
+     only (see displayLabel()), never a hardcoded string. */
   .btn .lbl { text-transform: capitalize; }
-  .btn .ico { width: 14px; height: 14px; display: inline-grid; }
-  .btn .ico :global(svg) { width: 14px; height: 14px; }
-  .btn small {
-    font-size: max(11px, .56rem);
-    color: var(--tx-mut);
-    font-weight: 400;
-  }
 
   .recovery {
     display: flex;

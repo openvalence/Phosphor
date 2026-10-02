@@ -175,6 +175,13 @@ export const machine = $state({
 
   /** channelId -> last decoded STATE sample. The ONLY source of device values. */
   samples: {},
+  /**
+   * The 0x0003 latch by registry bits (session.js decodeSafetySnapshot):
+   * {estopLatched, paused, override, homeRequired, ...}; null until the hub
+   * sends one. Never read the catalog's bit labels for it: a pre-RFC-085
+   * catalog still names retired bits.
+   */
+  safety: null,
   /** channelId -> ms timestamp of that sample, for staleness display. */
   sampleTs: {},
   /** channelId -> granted {rate, priority}, so the UI can show what it really gets. */
@@ -303,7 +310,7 @@ export function coreEntry(id) {
 /**
  * The safety-intents op select as an action, bound to spec-core identity so a
  * hub that never role-tagged it keeps its e-stop (RENDERING §13 law 2). The one
- * discovery path for TopStrip and TransportBar.
+ * discovery path for the strip pair and its placed copies (SafetyOp.svelte).
  */
 export function specSafetyAction() {
   const e = coreEntry(CORE_CHANNEL.safety_intents);
@@ -317,6 +324,11 @@ export function specSafetyAction() {
     optionAccess: f.optionAccess || null,
     access: f.access != null ? f.access : e.access,
   };
+}
+
+/** RENDERING law 15: E-Stop only on a hub that declared estop_cuts_power true. */
+export function estopLabel() {
+  return machine.link.hubIdentity && machine.link.hubIdentity.estop_cuts_power === true ? 'E-Stop' : 'Halt';
 }
 
 // ---------------------------------------------------------------------------
@@ -595,6 +607,8 @@ export function connect(opts = {}) {
     }
   });
 
+  session.on('safety', (snap) => { machine.safety = snap; });
+
   session.on('event', (evt) => {
     machine.stats.lastRxMs = Date.now();
     // Routed by spec-core IDENTITY (RENDERING §13 law 6), never by name. The
@@ -733,6 +747,7 @@ function forgetDevice() {
   machine.grants = {};
   machine.events = blankEvents();
   machine.stats = blankStats();
+  machine.safety = null;
   machine.link.hubIdentity = null;
   machine.link.limits = {};
   machine.link.subsDropped = 0;

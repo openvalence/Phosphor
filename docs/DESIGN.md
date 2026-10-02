@@ -469,12 +469,18 @@ question in §10.8).
   Windows taskbar, where a missed click is jarring; at the top there is
   nothing to hit by accident. Supersedes the bottom dock; the strip is
   `src/ui/TopStrip.svelte`.
-- NON-NEGOTIABLE: the top strip always carries an e-stop the user cannot
-  remove. It is bound by safety-op identity (law 2; `fixedCtls` in
-  `TopStrip.svelte`), never scrolled or hidden (laws 1, 11; RENDERING §9
-  `persistent`).
-- Every safety op is also a placeable module. A second e-stop on the grid is
-  fine; the strip's copy is the one that cannot go.
+- NON-NEGOTIABLE: the top strip always carries the e-stop and pause controls
+  the user cannot remove (RENDERING law 1, RFC-085). Each is ONE control with
+  two states (law 14; `src/ui/widgets/SafetyOp.svelte`): pause/resume, and
+  estop/release, where release is the same control held 3 s and the latched
+  state reads Halted. The e-stop reads E-Stop only on a hub whose WELCOME
+  declares `estop_cuts_power` true, else Halt (law 15). Bound by safety-op
+  identity (law 2), never scrolled or hidden (laws 1, 11; RENDERING §9
+  `persistent`). No separate clear, release or resume button exists anywhere.
+- Each strip pair is also a placeable module (`safety:estop`,
+  `safety:pause`). A second e-stop on the grid is fine; the strip's copy is
+  the one that cannot go. Override/return is not a module: it is the rail's
+  (SPEC §11.1).
 - The global refusal surface and the unattended chip (RENDERING §10.1 rule 3)
   stay in the strip, because it is the one surface always on screen.
 - Phosphor replaces the OS title bar with its own decorations, and the shell
@@ -571,3 +577,4 @@ operator rules otherwise.
 | 2026-10-01 | §10.2 | Design as though RFC-080 is accepted: read/write-class presentations on (`CROSS_ARCHETYPE`), per-placement `look` (range narrowing, two-valued toggles) carried in the layout store, single fields placeable anywhere (RFC-080 leaves it open). Codes against a DRAFT RFC by ruling; C-5 flag recorded in §10.2. | operator |
 | 2026-10-01 | §10.8 | An app's stop or disconnect leaves the machine holding its last target; the hub e-stop stays the only latch. | operator |
 | 2026-10-01 | §10, §10.1, §10.2 | `ph-e82.1` items 1 (the home is an additional surface) and 3 (uid keys for unroled fields, inert when absent) confirmed as coded; the "nothing coded yet" note replaced by the per-phase commit list; §10.1 records the home's coded decisions. | operator |
+| 2026-10-02 | §10.3 | RFC-085: the strip's mandatory pair is e-stop plus pause, each one two-state control (hold-to-release, Halted, Halt label without `estop_cuts_power`); stop, hold and every clear button retired; modules are one per pair (`ph-e82.12`). | operator (RFC-085 ruling) |

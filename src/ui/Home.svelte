@@ -26,9 +26,10 @@
   import { dashboardLayout, layouts, grid } from '../model/dashboard.svelte.js';
   import { viewMap, cellCount, isNest } from '../model/grid.js';
   import { view } from '../model/viewport.svelte.js';
-  import { specSafetyAction } from '../model/machine.svelte.js';
+  import { specSafetyAction, estopLabel } from '../model/machine.svelte.js';
+  import { SAFETY_OP } from '../../../Valence/clients/js/index.js';
   import { placeableControls, surfacedFields, WIDGET } from '../model/settings.js';
-  import { labelFor, optionLabel } from '../model/format.js';
+  import { labelFor } from '../model/format.js';
 
   let { model, heroes } = $props();
 
@@ -59,7 +60,7 @@
     const controls = placeableControls(model, { heroes: heroes.widgets, safety: specSafetyAction() });
     for (const k of ['composite', 'plugin', 'safety']) {
       for (const c of controls.filter((x) => x.kind === k)) {
-        put(c.key, k === 'safety' ? cap(optionLabel(c.action, c.op).replace(/_/g, ' ')) : c.hero.title || cap(c.hero.id),
+        put(c.key, k === 'safety' ? (c.op === SAFETY_OP.estop ? estopLabel() : 'Pause') : c.hero.title || cap(c.hero.id),
           KIND_SECTION[k], { kind: k, control: c });
       }
     }

@@ -217,6 +217,9 @@
     padding: var(--gap);
     min-width: 0;
   }
+  /* The resize handle sits over the body's bottom-right corner: reserve its
+     height so it never covers a short module's own Remove or control. */
+  .editing .dash-body { padding-bottom: var(--tap); }
   .out { margin-left: auto; }
 
   /* ---- handles ----
