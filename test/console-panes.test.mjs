@@ -196,6 +196,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('valence: session facts are rows', ['access tier', 'max sessions', 'sessions in use', 'e-stop cuts power', 'raw frames', 'publishes']
     .every((k) => k in f), Object.keys(f).join(', '));
   ok('valence: limits show what WELCOME sent', f['max sessions'] === '4' && f['sessions in use'] === '2', f['max sessions'] + '/' + f['sessions in use']);
+  ok('valence: the catalog etag reads as the hub declared it', f.etag === ETAG.toLowerCase(), f.etag);
   ok('valence: estop_cuts_power reads E-Stop', /E-Stop/.test(f['e-stop cuts power']), f['e-stop cuts power']);
   const copyBtn = page.locator('section[aria-labelledby="vp-identity"] button', { hasText: 'Copy' });
   const before = await copyBtn.boundingBox();
@@ -337,6 +338,11 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.click('.plugins .plugin[aria-label="buttplug"] label.og-switch');
   await page.waitForTimeout(200);
 
+  // ---- About (while the hub is still connected) ----------------------------------
+  await openTab(page, 'shell:about');
+  const ab = await facts(page);
+  ok('about: UI build, protocol and the catalog etag', ab['UI build'] && ab['UI build'] !== '--' && ab.Protocol === 'v1 (valence.v1)' && ab['Catalog etag'] === ETAG.toLowerCase(), JSON.stringify(ab));
+
   // ---- Hubs ------------------------------------------------------------------------
   await openTab(page, 'shell:hubs');
   const hubStatus = () => page.$eval('section[aria-labelledby="hp-link"] .pane-status', (el) => [el.dataset.phase, el.textContent.trim(), el.getBoundingClientRect().height]);
@@ -391,6 +397,18 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('server: the log level select meets the 40 px floor (ph-3cl)', sel >= 40, sel + 'px');
   await page.click('.sp-pane button:has-text("Stop server")');
   await page.waitForTimeout(200);
+
+  // ---- Settings and About ---------------------------------------------------------
+  await openTab(page, 'shell:settings');
+  const setSlot = () => page.$eval('section[aria-labelledby="set-adv"] .pane-status', (el) => el.getBoundingClientRect().height);
+  const st0 = await setSlot();
+  ok('settings: Cancel always renders, disabled until a restore is pending', await page.isDisabled('section[aria-labelledby="set-adv"] button:has-text("Cancel")'));
+  ok('settings: saved hubs are not duplicated here', !(await page.$('.set .nick')));
+  await page.fill('#set-backup', '{"app":"other"}');
+  await page.click('section[aria-labelledby="set-adv"] button:has-text("Import")');
+  await page.click('section[aria-labelledby="set-adv"] button:has-text("Replace everything")');
+  const bad = await page.textContent('section[aria-labelledby="set-adv"] .pane-status');
+  ok('settings: a refused restore reads in the fixed slot', /Not restored/.test(bad) && st0 === await setSlot(), bad);
 
   ok('no page errors (shell ' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();

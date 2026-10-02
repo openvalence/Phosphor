@@ -14,7 +14,7 @@
    *   pane's 1 Hz clock re-reads them.
    */
   import { machine, getSession } from '../model/machine.svelte.js';
-  import { ACCESS_NAME, toHex } from '../../../Valence/clients/js/index.js';
+  import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
   import { bytes, since } from '../model/format.js';
   import './pane.css';
 
@@ -34,7 +34,8 @@
   // RFC-055: 0 means the hub does not know.
   const count = (v) => (v ? String(v) : v === 0 ? 'not reported' : '--');
 
-  const etagHex = $derived(machine.catalog.etag && machine.catalog.etag.length ? toHex(machine.catalog.etag) : '--');
+  // machine.svelte.js stores the etag as hex already.
+  const etagHex = $derived(machine.catalog.etag || '--');
 
   function hexId(id) { return '0x' + id.toString(16).padStart(4, '0').toUpperCase(); }
   function categoryOf(entry) {

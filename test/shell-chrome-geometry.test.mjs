@@ -133,7 +133,7 @@ for (const [id, sel] of [['about', 'dl.about'], ['settings', '.set'], ['server',
 }
 await sp.click('[data-tab-id="shell:about"]');
 await sp.waitForTimeout(100);
-const about = await sp.textContent('.content dl.about');
+const about = await sp.textContent('.content main.pane');
 ok('About: hub identity, versions, UI build', /Hub/.test(about) && /Firmware/.test(about) && /UI build/.test(about), about.replace(/\s+/g, ' ').slice(0, 80));
 await sp.focus('[data-tab-id="shell:hubs"]');
 await sp.keyboard.press('ArrowDown');
