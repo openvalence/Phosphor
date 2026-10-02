@@ -4,13 +4,36 @@
   "api": 1,
   "kind": "widget",
   "entry": "index.js",
-  "description": "Advanced generator with modulators and presets",
+  "description": "Pattern card: stroke editor, rhythm, presets",
   "roles": [
-    "pattern.running", "source.background_run",
-    "advgen.mode", "advgen.master", "advgen.depth_max", "advgen.depth_min",
-    "advgen.speed_in", "advgen.speed_out", "advgen.accel_in", "advgen.accel_out",
-    "mod.amount", "mod.rise", "mod.hold", "mod.fall", "mod.rest", "mod.phase",
-    "action.store"
+    "pattern.running",
+    "pattern.select",
+    "pattern.speed",
+    "pattern.depth",
+    "pattern.stroke",
+    "pattern.sensation",
+    "source.background_run",
+    "advgen.mode",
+    "advgen.master",
+    "advgen.depth_max",
+    "advgen.depth_min",
+    "advgen.speed_in",
+    "advgen.speed_out",
+    "advgen.accel_in",
+    "advgen.accel_out",
+    "mod.amount",
+    "mod.rise",
+    "mod.hold",
+    "mod.fall",
+    "mod.rest",
+    "mod.phase",
+    "action.store",
+    "telemetry.position",
+    "telemetry.target",
+    "window.min",
+    "window.max"
   ],
-  "permissions": ["intent"]
+  "permissions": [
+    "intent"
+  ]
 }
