@@ -299,14 +299,15 @@ console.log('(e) motion door routing');
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   const s1 = fakeSession();
-  const e1 = [stream([lay('a', { unitId: UNIT_ID.normalized }), lay('b', { type: 3, typeName: 'i16', scale: 1000 })])];
+  const e1 = [stream([lay('a', { unitId: UNIT_ID.normalized, role: 'input.target' }), lay('b', { type: 3, typeName: 'i16', scale: 1000 })])];
   const { d: d1, out: o1 } = door(e1, s1);
   const first = d1(0.25, 200);
   ok('first input asks for the grant lazily and is held, not sent as a setpoint',
     !first.ok && s1.asked.length === 1 && s1.asked[0][0][0] === 0x7000 && s1.asked[0][0][1] === 100 && o1.set.length === 0);
   await tick();
   ok('granted: input rides publishSamples', d1(0.25, 200).ok && s1.sent.length === 1 && s1.sent[0].ch === 0x7000);
-  ok('target by unit fallback carries the norm, other fields 0', eq(s1.sent[0].sample, { a: 0.25, b: 0 }));
+  ok('target by input.target carries the norm, the untagged i16 its unspecified sentinel (RFC-058/071)',
+    eq(s1.sent[0].sample, { a: 0.25, b: LIMITS.segment_end_vel_unspecified / 1000 }));
   ok('duration becomes the anchor lead (hubNow + 200 ms)', s1.sent[0].anchor === 1_200_000);
   d1(0.5);
   ok('no duration: anchored at hubNow', s1.sent[1].anchor === 1_000_000);
@@ -315,11 +316,16 @@ console.log('(e) motion door routing');
     s1.sent[2].sample.a === 1 && s1.sent[2].anchor === 1_000_000 + LIMITS.max_future_schedule_ms * 1000);
   ok('the live path is logged once', o1.log.filter((l) => /samples STREAM/.test(l.msg)).length === 1);
 
+  const s0 = fakeSession();
+  const { d: d0, out: o0 } = door([stream([lay('x', { unitId: UNIT_ID.normalized })])], s0);
+  ok('unit normalized without input.target is not motion: setpoint, nothing asked',
+    d0(0.4, 20).ok && eq(o0.set, [0.4]) && !s0.asked.length);
+
   const e2 = [stream([lay('x', { unitId: UNIT_ID.normalized }), lay('y', { unitId: UNIT_ID.normalized, role: 'input.target' })])];
   const s2 = fakeSession();
   const { d: d2 } = door(e2, s2);
   d2(0.4); await tick(); d2(0.4, 20);
-  ok('role input.target outranks the unit fallback', eq(s2.sent[0].sample, { x: 0, y: 0.4 }));
+  ok('the input.target field binds, an untagged unsigned field rides 0', eq(s2.sent[0].sample, { x: 0, y: 0.4 }));
 
   s2.publishSamples = () => { throw new PublishError('RATE_EXCEEDED', 0x7000, 'too fast'); };
   const { d: d2b, out: o2b } = door(e2, s2);

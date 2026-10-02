@@ -11,14 +11,14 @@
  * - The hub still clamps every target into its own window. This mapping only
  *   decides what "halfway" means, the same way the rail tape does
  *   (RailWidget's tapeLo/tapeHi).
- * - The STREAM door finds its channel by class, direction and stream_kind and
- *   its target by role; a layout field's name is only the key the catalog
- *   itself hands back for encoding, never matched.
+ * - The STREAM door finds its channel by class, direction, stream_kind and the
+ *   input.target role (SPEC §9.6, RFC-071); a layout field's name is only the
+ *   key the catalog itself hands back for encoding, never matched.
  */
 
 import { ROLE } from './roles.js';
 import { reportedValue } from './settings.js';
-import { CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS } from '../../../Valence/clients/js/index.js';
+import { CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PACKED, FIELD_ROLE } from '../../../Valence/clients/js/index.js';
 
 const first = (byRole, role) => {
   const l = byRole && byRole.get(role);
@@ -60,24 +60,30 @@ export function motionTarget(model, samples, norm) {
 
 // ---- motion-input STREAM door (ph-vdk.26) ---------------------------------
 
-// RFC-071 draft: not yet in the registry's field_roles.
-const INPUT_TARGET = 'input.target';
 // Wish for a STREAM that advertises no ceiling; the hub clamps it either way.
 const FALLBACK_RATE_HZ = 50;
+const SIGNED_MIN = { [PACKED.i8]: -128, [PACKED.i16]: LIMITS.segment_end_vel_unspecified, [PACKED.i32]: -(2 ** 31) };
 
 /**
- * The c2h samples-kind STREAM that takes motion input, and its target field.
- * Target by role first (RFC-071 draft). FALLBACK until hubs tag it: the layout
- * field in unit `normalized`, the discovery RFC-071's origin run used.
+ * SPEC §5.4 (RFC-058/071): the value a sender puts in a motion-input field it
+ * has no value for, in physical units. A signed integer's type minimum; an
+ * unsigned or float field has no sentinel, so it rides 0.
+ */
+export function unspecified(f) {
+  return f.type in SIGNED_MIN ? SIGNED_MIN[f.type] / (f.scale || 1) : 0;
+}
+
+/**
+ * The c2h samples-kind STREAM that takes motion input: it carries
+ * `input.target` in unit normalized (SPEC §9.6, RFC-071). A STREAM without
+ * the role is some other input, never motion.
  * @param {Object[]} entries decoded catalog entries
  * @returns {{entry: Object, target: Object}|null}
  */
 export function motionStream(entries) {
   for (const e of entries || []) {
     if (e.cls !== CHANNEL_CLASS.STREAM || e.dirName !== 'c2h' || e.streamKind !== STREAM_KIND.samples) continue;
-    const layout = e.layout || [];
-    const target = layout.find((f) => f.role === INPUT_TARGET)
-      || layout.find((f) => f.unitId === UNIT_ID.normalized);
+    const target = (e.layout || []).find((f) => f.role === FIELD_ROLE.input_target);
     if (target && target.unitId === UNIT_ID.normalized) return { entry: e, target };
   }
   return null;
@@ -148,10 +154,10 @@ export function createMotionDoor(deps) {
     // "reach X over I ms" describes now + I. Capped at max_future_schedule_ms,
     // §5.4's only scheduling-lead bound; the spec states none for samples.
     const leadMs = durationMs > 0 ? Math.min(durationMs, LIMITS.max_future_schedule_ms) : 0;
-    // Every other field is written 0: RFC-071 open questions 1-2 leave an
-    // untagged field's absent value unruled.
+    // Every field we have no value for (input.velocity included) rides its
+    // unspecified sentinel (RFC-071), never a guessed zero.
     const sample = {};
-    for (const f of st.entry.layout) sample[f.name] = 0;
+    for (const f of st.entry.layout) sample[f.name] = unspecified(f);
     sample[st.target.name] = Math.min(1, Math.max(0, norm));
     try {
       s.publishSamples(ch, sample, { anchor: (s.hubNowUs() + leadMs * 1000) >>> 0 });

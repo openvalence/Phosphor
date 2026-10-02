@@ -121,7 +121,8 @@ ruling. Tracked as `ph-vdk.30`.
 **Motion input.** `submitMotion` publishes on the hub's samples-kind c2h
 STREAM when the catalog has one: the grant is asked for on the first call
 (that call returns `{ok: false}` while it is in flight), the target field is
-found by the RFC-071 draft role `input.target` or else by unit `normalized`,
+found by the registered role `input.target` only (RFC-071; every field it has
+no value for rides its `unspecified` sentinel, RFC-058),
 and `durationMs` becomes the sample's timestamp lead (SPEC §5.4: a sample
 describes an instant, so "reach X over I ms" is the point at now + I, capped
 at `max_future_schedule_ms`). A hub with no such stream, or one that grants
