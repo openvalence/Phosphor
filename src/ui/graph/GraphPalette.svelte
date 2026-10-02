@@ -55,7 +55,7 @@
         {/each}
       </div>
     {:else}
-      <p class="gpal-name">Nothing matches.</p>
+      <p class="gpal-name">Nothing matches</p>
     {/each}
   </div>
 </div>

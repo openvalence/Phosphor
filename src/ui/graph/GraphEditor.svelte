@@ -357,7 +357,7 @@
       return;
     }
     kwire = kwire && kwire.id === id && kwire.side === side ? null : { id, side };
-    said = kwire ? 'Wiring from the ' + sockName(id, side) + ': choose an ' + (side === 'out' ? 'input' : 'output') + ' socket, Escape cancels' : 'wiring cancelled';
+    said = kwire ? 'Wiring from the ' + sockName(id, side) + ', Escape cancels' : 'wiring cancelled';
   }
   function sockFocus(id, side) {
     if (!kwire || kwire.side === side) return;
@@ -383,7 +383,7 @@
   }
   function dup() {
     const made = R.duplicate([...sel]);
-    if (!made.length) { said = 'nothing to duplicate: fields appear once on the canvas'; return; }
+    if (!made.length) { said = 'nothing to duplicate'; return; }
     sel = new Set(made);
     said = made.length + ' duplicated';
     focusBox(made[0]);
@@ -442,7 +442,7 @@
     let id;
     if (v.map != null) {
       id = R.placeMap(v.map, wx, wy);
-      said = MAPS[v.map].label + ' placed: wire a source into its left socket and a target out of its right';
+      said = MAPS[v.map].label + ' placed';
     } else {
       const r = R.place(v.ref, wx, wy);
       id = r.id;
@@ -491,7 +491,7 @@
     <span class="gicon" aria-hidden="true">{bp ? '◎' : '◆'}</span>
     <span class="gname">{nf.label}</span>
     <span class="gbadge" data-home={bp ? 'client' : 'hub'}
-          title={bp ? 'a buttplug device connected to Phosphor: edges with it run in Phosphor' : 'a catalog field: it lives on the hub'}>{bp ? 'client' : 'hub'}</span>
+          title={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
   </span>
   {#if nf.ports.out}
     {@const v = (void beat, R.value(n.ref))}
@@ -505,7 +505,7 @@
     {#if d.home === 'client'}<p class="gline">mapped <span class="gnum">{fmt((void beat, R.out(d.id))) || 'nothing yet'}</span></p>{/if}
     <p class="gline">reads <span class="gnum">{fmt(ec.value) || 'no value yet'}</span> {fmt(ec.value) ? nf.unit : ''}</p>
     {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">{ec.reason || 'no answer from the hub'}</p>
-    {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub's echo</p>{/if}
+    {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub</p>{/if}
   {/if}
   {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.label)}{/if}
   {#if nf.ports.out}{@render socket(n.id, 'out', nf.ports.out, nf.label)}{/if}
@@ -514,7 +514,7 @@
 {#snippet mapNode(b)}
   {@const r = b.o}
   {@const isRel = b.kind === 'rel'}
-  {@const why = isRel && refOf(r.from) && refOf(r.to) ? R.home(refOf(r.from), refOf(r.to)).why : 'a draft: wire a source into the left socket and a target out of the right'}
+  {@const why = isRel && refOf(r.from) && refOf(r.to) ? R.home(refOf(r.from), refOf(r.to)).why : 'draft: wire a source and a target'}
   <span class="ghead">
     <span class="gicon" aria-hidden="true">ƒ</span>
     <span class="gname">{r.name}</span>
@@ -561,20 +561,20 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
-    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add a node (right-click the canvas, or Shift+F10)">+ Add</button>
+    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+F10)">+ Add</button>
     <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} title="Undo (Ctrl+Z)">Undo</button>
     <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} title="Redo (Ctrl+Shift+Z)">Redo</button>
-    <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate the selected maps (Ctrl+D)">Duplicate</button>
-    <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} title="Delete the selection (Delete)">Delete</button>
-    <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} title="Drag on the canvas selects a box instead of panning (Shift+drag does it once)">Box select</button>
-    <button type="button" class="og-btn" onclick={fit} title="Fit everything in view">Fit</button>
-    <button type="button" class="og-btn" onclick={reset} title="Reset the view">Reset view</button>
+    <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate selected maps (Ctrl+D)">Duplicate</button>
+    <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} title="Delete selection (Delete)">Delete</button>
+    <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} title="Drag to box-select (Shift+drag)">Box select</button>
+    <button type="button" class="og-btn" onclick={fit} title="Frame all nodes">Fit</button>
+    <button type="button" class="og-btn" onclick={reset}>Reset view</button>
     <button type="button" class="og-btn" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
     <button type="button" class="og-btn" onclick={() => zoomBy(0.8)} aria-label="Zoom out">−</button>
-    <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} title="Use the whole window below the top strip (Escape returns)">Full size</button>
+    <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} title="Fill the window (Escape exits)">Full size</button>
   </div>
   <p class="gnote">
-    Client edges: <span data-phase={note.ok ? 'armed' : 'disarmed'}>{note.why || 'not evaluated yet'}</span>.
+    Client edges: <span data-phase={note.ok ? 'armed' : 'disarmed'}>{note.why || 'not evaluated yet'}</span>
     {#if note.hub}Hub edges: {note.hub}.{/if}
   </p>
 
@@ -630,7 +630,7 @@
     </div>
 
     {#if !boxes.length}
-      <p class="gempty">Right-click, or press + Add, to place a source, a map and a target. Drag from a socket to wire them.</p>
+      <p class="gempty">Right-click or + Add to place nodes</p>
     {/if}
     {#if box}
       <div class="gbox" style:left={Math.min(box.x0, box.x1) + 'px'} style:top={Math.min(box.y0, box.y1) + 'px'}

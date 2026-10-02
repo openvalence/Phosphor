@@ -162,18 +162,18 @@ export const isUserSpace = (ch) => ch >= 0x8000 && ch <= 0xbfff;
  */
 export function homeOf(from, to, toAccessory) {
   if (from.kind === 'bp' || to.kind === 'bp') {
-    return { home: 'client', why: 'runs in Phosphor: a buttplug end is connected here, not to the hub, so it stops when Phosphor closes' };
+    return { home: 'client', why: 'runs in Phosphor (buttplug end)' };
   }
   if (toAccessory) {
-    return { home: 'hub', why: 'runs on the hub: both ends are hub fields, so it keeps running with no client open' };
+    return { home: 'hub', why: 'runs on the hub' };
   }
-  return { home: null, why: 'the hub maps only onto accessory fields (SPEC 8.11), and a field-to-field mapping kept in Phosphor would stop when Phosphor closes' };
+  return { home: null, why: 'the hub maps only onto accessory fields (SPEC 8.11)' };
 }
 
 /** SPEC 11.6, mirrored for client edges: armed only with a live link, a safety word, no ESTOP and no PAUSE. */
 export function interlock(live, safety) {
-  if (!live) return { ok: false, why: 'disarmed: no hub link, so pause and e-stop are unknown' };
-  if (!safety) return { ok: false, why: 'disarmed: no safety word from the hub yet' };
+  if (!live) return { ok: false, why: 'disarmed: no hub link' };
+  if (!safety) return { ok: false, why: 'disarmed: safety state unknown' };
   if (safety.estopLatched) return { ok: false, why: 'disarmed: e-stop latched' };
   if (safety.paused) return { ok: false, why: 'disarmed: paused' };
   return { ok: true, why: 'armed' };
@@ -224,9 +224,9 @@ export function wouldLoop(g, from, to) {
 
 /** Why a rel from->to cannot be added, in words; '' when it can. */
 export function refuseConnect(g, from, to, except = null) {
-  if (wouldLoop(g, from, to)) return 'refused: this edge would close a feedback loop (the hub refuses it too, SPEC 8.11)';
+  if (wouldLoop(g, from, to)) return 'refused: feedback loop (SPEC 8.11)';
   const other = g.rels.find((r) => r !== except && r.to === to && r.enabled);
-  if (other) return 'refused: that target is already driven by "' + other.name + '"; one target has at most one enabled edge';
+  if (other) return 'refused: target already driven by "' + other.name + '"';
   return '';
 }
 
@@ -284,11 +284,11 @@ export function addDraft(g, map, x, y, o = {}) {
 export function planWire(g, a, b, homeFor) {
   const node = (id) => g.nodes.find((n) => n.id === id);
   const draft = (id) => (g.drafts || []).find((d) => d.id === id);
-  if (g.rels.some((r) => r.id === a)) return { reason: 'refused: this map already drives a target; delete that wire first' };
-  if (g.rels.some((r) => r.id === b)) return { reason: 'refused: this map already reads a source; delete that wire first' };
+  if (g.rels.some((r) => r.id === a)) return { reason: 'refused: map already drives a target' };
+  if (g.rels.some((r) => r.id === b)) return { reason: 'refused: map already reads a source' };
   const da = draft(a);
   const db = draft(b);
-  if (da && db) return { reason: 'refused: maps do not chain; a relationship is one source, one map, one target (SPEC 8.11)' };
+  if (da && db) return { reason: 'refused: maps do not chain (SPEC 8.11)' };
   if (!da && !node(a)) return { reason: 'refused: that output is gone' };
   if (!db && !node(b)) return { reason: 'refused: that input is gone' };
   const from = da ? da.from : a;
@@ -296,7 +296,7 @@ export function planWire(g, a, b, homeFor) {
   const d = da || db || null;
   if (from == null || to == null) {
     const other = to != null && g.rels.find((r) => r.to === to && r.enabled);
-    if (other) return { reason: 'refused: that target is already driven by "' + other.name + '"; one target has at most one enabled edge' };
+    if (other) return { reason: 'refused: target already driven by "' + other.name + '"' };
     return { from, to, draft: d, partial: true };
   }
   const reason = refuseConnect(g, from, to);
@@ -484,16 +484,16 @@ export function readStoreItem(bytes) {
  */
 export function findHub(entries, coreId, CBOR) {
   const store = entries.find((e) => e.id === coreId && e.store);
-  if (!store) return { reason: 'this hub has no relationships store yet, so hub edges cannot be saved' };
+  if (!store) return { reason: 'no relationships store on this hub' };
   const sid = store.store.storeId;
   const roster = entries.find((e) => e.storeId === sid && e.layout) || null;
   const writer = entries.find((e) => e.storeId === sid && e.schema && e.schema.some((f) => f.role === 'action.store'));
-  if (!writer) return { reason: 'this hub stores relationships but declares no writer for them' };
+  if (!writer) return { reason: 'no writer for the relationships store' };
   const plain = writer.schema.filter((f) => !f.role);
   const one = (t) => { const hit = plain.filter((f) => f.type === t); return hit.length === 1 ? hit[0] : null; };
   const op = writer.schema.find((f) => f.role === 'action.store');
   const item = one(CBOR.bstr_t);
-  if (!item) return { reason: "this hub's relationships writer has no item field this client can fill" };
+  if (!item) return { reason: 'relationships writer has no fillable item field' };
   return { store, roster, writer, op, slot: one(CBOR.uint_t), name: one(CBOR.tstr_t), item };
 }
 

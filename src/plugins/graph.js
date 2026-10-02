@@ -189,7 +189,7 @@ export function graphRuntime(api, shell, env) {
     const out = allFields().filter(({ f }) => !f.isIntentField).map(({ f, key }) => ({ ref: { kind: 'field', key }, label: f.label + (f.unit ? ' (' + f.unit + ')' : ''), lo: f.min, hi: f.max, role: f.role }));
     for (const d of devices.values()) {
       for (const c of d.controls) {
-        out.push({ ref: bpRef(d, c), label: d.name + ': ' + (c.description || c.type) + (c.kind === 'sensor' ? ' reading' : ', as an app sets it'), lo: c.range?.[0], hi: c.range?.[1] });
+        out.push({ ref: bpRef(d, c), label: d.name + ': ' + (c.description || c.type) + (c.kind === 'sensor' ? ' reading' : ' (app)'), lo: c.range?.[0], hi: c.range?.[1] });
       }
     }
     return out;
@@ -288,7 +288,7 @@ export function graphRuntime(api, shell, env) {
     const src = hubLoc(nodes.get(r.from).ref, false);
     const dst = hubLoc(nodes.get(r.to).ref, true);
     if (op === STORE_OP.save && (!src || !dst)) { hubState.set(r.rel_id, { phase: 'fault', reason: 'an end is missing from this catalog' }); changed(); return; }
-    hubState.set(r.rel_id, { phase: 'pending', reason: op === STORE_OP.save ? 'sent, waiting for the store to return it' : 'deleting' });
+    hubState.set(r.rel_id, { phase: 'pending', reason: op === STORE_OP.save ? 'waiting for the store' : 'deleting' });
     changed();
     const bytes = op === STORE_OP.save ? storeItem(r, src, dst) : null;
     const act = { channelId: h.writer.id, key: h.op.key, label: 'relationships' };
@@ -306,7 +306,7 @@ export function graphRuntime(api, shell, env) {
     if (op !== STORE_OP.save) {
       if (back) hubState.set(r.rel_id, { phase: 'fault', reason: 'the hub still holds it' });
     } else if (!back) {
-      hubState.set(r.rel_id, { phase: 'fault', reason: 'acked, but the store does not hold it' });
+      hubState.set(r.rel_id, { phase: 'fault', reason: 'acked, not stored' });
     } else {
       hubState.set(r.rel_id, { phase: 'confirmed', reason: 'stored on the hub' });
     }
@@ -316,10 +316,10 @@ export function graphRuntime(api, shell, env) {
   /** Armed and faulted for a hub edge, from the hub's roster only (never local belief). */
   function hubArmed(r) {
     const bits = hub.roster && rosterBits(hub.roster, env.sample(hub.roster.id));
-    if (!bits) return { known: false, why: 'armed state unknown: no roster from the hub' };
+    if (!bits) return { known: false, why: 'armed state unknown' };
     const b = 1 << r.rel_id;
     if (bits.faulted & b) return { known: true, armed: false, why: 'faulted on the hub' };
-    return bits.armed & b ? { known: true, armed: true, why: 'armed on the hub' } : { known: true, armed: false, why: 'disarmed on the hub; resume arms it' };
+    return bits.armed & b ? { known: true, armed: true, why: 'armed on the hub' } : { known: true, armed: false, why: 'disarmed on the hub' };
   }
 
   // ---- edits -----------------------------------------------------------------
@@ -579,7 +579,7 @@ export function graphRuntime(api, shell, env) {
         else d.cfg = { src: m.from, dst: m.to, in_min: m.in_min, in_max: m.in_max, out_min: m.out_min, out_max: m.out_max, params: [...m.params] };
         made.push(d.id);
       }
-      return made.length ? '' : 'nothing to duplicate: fields appear once on the canvas';
+      return made.length ? '' : 'nothing to duplicate';
     });
     return made;
   }
