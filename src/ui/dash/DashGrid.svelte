@@ -31,9 +31,20 @@
    *   node that holds pointer capture drops the capture.
    * - Nothing on the grid transitions or animates: a layout switch or a
    *   reflow lands at once, never as motion that could read as the machine.
-   * - A resize never goes below the item's `min(look, orientation)` cells
-   *   (grid.js resizeRect, RESIZE_FLOOR without one): the ghost shows the
-   *   refusal and the live region says it, never a silent clamp.
+   * - A resize never goes below the item's floor: per dimension the larger
+   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
+   *   its measured content (grid.js floorOf): the ghost shows the refusal and
+   *   the live region says it, never a silent clamp. The measured height
+   *   binds only a resize that changes height, at widths no wider than it was
+   *   measured at, and never above the height the resize started from.
+   * - Content is measured per (id, orientation, presentation, cell edge),
+   *   never lowered in a session: min-content width with the title at zero
+   *   width (it truncates) and a nest's subgrid replaced by its widest
+   *   member's floor (the nested grid's `data-floor`), and the height at the
+   *   current width. A measure writes and restores inline styles in one
+   *   task, so nothing paints and no observer sees a size change. A committed
+   *   card under its width floor grows (grid.js growWidth, layout.fit, no
+   *   undo step); one with no room clips at its frame.
    * - Rows are minmax(cell, auto): `h` is a floor, and a card whose content
    *   is taller grows its rows rather than clipping a control.
    * - Under 641 CSS px every item is stacked full width (mobile is
@@ -53,7 +64,8 @@
     layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
-  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME } from '../../model/grid.js';
+  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
+    RESIZE_FLOOR, cellsFor, floorOf, growWidth } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { view } from '../../model/viewport.svelte.js';
 
@@ -147,8 +159,85 @@
     return { destroy() { if (cellEls.get(id) === node) cellEls.delete(id); } };
   }
 
-  // An item may carry `min(look, orientation) -> [w, h]` in cells (Home's controls do).
-  const minOf = (p) => p && p.min ? (w, h) => p.min(p.look, orientationOf(w, h)) : null;
+  // ---- content floor -------------------------------------------------------------
+  // {[keyOf]: {w, h, at}}: px needed (cell gutter included) and the width in cells `h` was measured at.
+  let need = $state({});
+  const dirty = new Set();
+  const keyOf = (p, o) => p.id + '|' + o + '|' + ((p.look && p.look.pres) || '') + '|' + grid.cell;
+  const padOf = (el) => { const cs = getComputedStyle(el); return [parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)]; };
+  function styled(el, prop, val, read) {
+    const was = el.style.getPropertyValue(prop);
+    el.style.setProperty(prop, val);
+    try { return read(); } finally { el.style.setProperty(prop, was); }
+  }
+  /** Min-content width of card `it` in CSS px; a nest's subgrid counts as its widest member floor (`data-floor`). */
+  function minWidth(it) {
+    const sub = it.querySelector('.dash-grid');
+    const own = () => styled(it, 'width', 'min-content', () => it.getBoundingClientRect().width);
+    if (!sub) return own();
+    const chrome = it.getBoundingClientRect().width - sub.getBoundingClientRect().width;
+    const cell = parseFloat(sub.style.getPropertyValue('--cell')) || grid.cell;
+    const k = Math.max(0, ...[...sub.querySelectorAll(':scope > .dash-cell')].map((c) => Number(c.dataset.floor) || 0));
+    return Math.max(styled(sub, 'display', 'none', own), chrome + k * cell);
+  }
+  /** {w, h} px the card in `cell` needs, gutter included; null for an opened card. */
+  function measure(cell) {
+    const it = cell.firstElementChild;
+    if (!it || it.classList.contains('open')) return null;
+    const [px, py] = padOf(cell);
+    return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
+  }
+  /**
+   * The floor function for item `p` (grid.js resizeRect `min`): `from` is the
+   * rect the resize started at, `tall` true when the resize changes height.
+   */
+  const minOf = (p, from = p, tall = false) => (w, h) => {
+    const o = orientationOf(w, h);
+    const fixed = (p.min && p.min(p.look, o)) || RESIZE_FLOOR;
+    const m = need[keyOf(p, o)];
+    return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), tall && w <= m.at ? Math.min(from.h, cellsFor(m.h, grid.cell)) : 0] : []);
+  };
+  const short = (p) => p.w < minOf(p)(p.w, p.h)[0];
+  /** Measure what changed or is new, re-clamp a resize in flight, then grow one committed card under its floor. */
+  function settle() {
+    frame = 0;
+    if (stack || !gridEl) return;
+    let grew = false;
+    for (const p of placed) {
+      const el = cellEls.get(p.id);
+      const k = keyOf(p, orientationOf(p.w, p.h));
+      if (!el || (need[k] && !dirty.has(p.id))) continue;
+      const m = measure(el);
+      if (!m) continue;
+      const o = need[k];
+      const next = { w: Math.max(m.w, o ? o.w : 0), h: o && o.at === p.w ? Math.max(m.h, o.h) : m.h, at: p.w };
+      if (!o || next.w !== o.w || next.h !== o.h || next.at !== o.at) { need[k] = next; grew = true; }
+    }
+    dirty.clear();
+    if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
+    for (const p of placed) {
+      const r = short(p) && growWidth(placed, p.id, minOf(p)(p.w, p.h)[0], cols);
+      if (r) { layout.fit(all, cols, r); return; }
+    }
+  }
+  let frame = 0;
+  const later = () => { if (!frame) frame = requestAnimationFrame(settle); };
+  $effect(() => {
+    // Any layout, scale or mode change may show a card at a size not yet measured.
+    placed; grid.cell; editing; stack;
+    later();
+  });
+  $effect(() => {
+    // A card's content changed (catalog adoption, a presentation, an option list, a nest member's floor): measure it again.
+    const top = (n) => { while (n && n.parentElement !== gridEl) n = n.parentElement; return n; };
+    const mo = new MutationObserver((recs) => {
+      for (const r of recs) { const c = top(r.target); if (c && c.dataset.id) dirty.add(c.dataset.id); }
+      if (dirty.size) later();
+    });
+    mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor'] });
+    document.fonts?.ready.then(() => { for (const id of cellEls.keys()) dirty.add(id); later(); });
+    return () => { mo.disconnect(); if (frame) cancelAnimationFrame(frame); frame = 0; };
+  });
   const ORIENT = { h: 'horizontal', v: 'vertical' };
   const announce = (msg) => { announceMsg = msg; };
   const retitle = (id) => (name) => { if (layout.setNest(id, { title: name })) announce('Nest renamed to ' + name.trim()); };
@@ -211,7 +300,14 @@
     }
     const c = cellAt(clientX, clientY);
     if (pin.mode === 'move') { moveTo(id, c, clientX, clientY); return; }
-    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(placed.find((q) => q.id === id)));
+    resizeTo(id, c);
+  }
+  /** The resize in flight toward cell `c`: the ghost stops at the floor or at a neighbor. */
+  function resizeTo(id, c) {
+    const p = placed.find((q) => q.id === id);
+    if (!p) return;
+    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(p, pin.start, /[ns]/.test(pin.edge)));
+    if (!pin.c || pin.c.x !== c.x || pin.c.y !== c.y) pin = { ...pin, c };
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
     const b = blocker(placed, r, id);
     if (b) {
@@ -397,7 +493,7 @@
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
-    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p));
+    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p, p, dh !== 0));
     const b = blocker(placed, r, id);
     if (b) { announce(titleOf(id) + ': blocked by ' + titleOf(b.id)); return; }
     layout.move(all, cols, { id, x: r.x, y: r.y, w: r.w, h: r.h });
@@ -646,7 +742,7 @@
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
     {#each displayList as item, i (item.id)}
-      <div class="dash-cell" data-id={item.id} use:registerCell={item.id}
+      <div class="dash-cell" data-id={item.id} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
            style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
         <DashItem
           {item}
@@ -657,6 +753,7 @@
           {stack}
           dragging={pin?.id === item.id || !!pin?.group?.some((g) => g.id === item.id)}
           selected={selSet.has(item.id)}
+          clip={!stack && !pin && short(item)}
           onselect={(additive) => select(item.id, additive)}
           ongrabstart={() => grabStart(item.id)}
           ongrabmove={(x, y) => pointerMove(item.id, x, y)}

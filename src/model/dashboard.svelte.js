@@ -88,6 +88,8 @@ function controller(read, write, members) {
   return {
     arrange: (items, cols, pin = null) => G.place(items, read(), cols, pin),
     move: edit((items, cols, pin) => (G.commitPin(write(), items, cols, pin), true)),
+    // A repair the user did not make (DashGrid's grow to a measured floor): saved, never an undo step.
+    fit: (items, cols, pin) => { G.commitPin(write(), items, cols, pin); persist(); },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
     setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
     // An emptied map, not a deleted key: the migration can never resurrect it.
@@ -101,6 +103,7 @@ function controller(read, write, members) {
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order; with
  *                                 `pin`, where the dragged item lands (grid.js place)
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
+ *   fit(items, cols, pin)      -> commit a repair (a grow to the content floor); no undo step
  *   order(items, cols, ids)    -> commit a reading order
  *   setLook(id, look, at?)     -> a placement's presentation and config (grid.js setLook)
  *   reset()                    -> forget this view's placements (nests stay)

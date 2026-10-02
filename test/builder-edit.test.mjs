@@ -36,6 +36,10 @@
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
  *            (ph-e82.20.7)
+ *   floor    an action card under its measured content floor grows on load
+ *            (saved, no undo step); pointer and keyboard stop at the floor;
+ *            nothing spills past the frame; a card with no room keeps its
+ *            rect and clips; titles stay one line (ph-e82.25)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -141,7 +145,7 @@ const ghost = (page) => page.$eval('.home .drop-ghost', (g) => ({ text: g.textCo
 // ---- resize from every edge (ph-e82.20.1) --------------------------------------
 console.log('resize');
 {
-  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 }, [F1]: { x: 20, y: 0, w: 6, h: 2 } });
+  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 }, [F1]: { x: 20, y: 0, w: 8, h: 2 } });
   const c = card(SLIDER);
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
@@ -152,9 +156,10 @@ console.log('resize');
   await drag(page, c.locator('.edge-e'), 3 * cell, 0);
   s = (await stored())[SLIDER];
   ok('east edge: only the width grows', s.x === 2 && s.w === 17 && s.h === 3, s);
-  const [mw] = minCells(WIDGET.slider, 'h');
   const g2 = await drag(page, c.locator('.edge-e'), -15 * cell, 0, () => ghost(page));
-  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && g2.text === mw + ' × 3 · minimum', g2);
+  // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
+  const mw = g2 && Number((/^(\d+) × 3 · minimum$/.exec(g2.text) || [])[1]);
+  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0], g2);
   ok('the refusal is announced', /its minimum$/.test(await said()), await said());
   s = (await stored())[SLIDER];
   ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
@@ -162,13 +167,13 @@ console.log('resize');
   ok('a corner drag past square flips the orientation, shown on the ghost', g3 && / · vertical$/.test(g3.text), g3);
   ok('the flip is announced', /now vertical/.test(await said()), await said());
   s = (await stored())[SLIDER];
-  ok('the vertical size is committed', s.w === 2 && s.h >= minCells(WIDGET.slider, 'v')[1], s);
+  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1], s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
   await drag(page, c.locator('.edge-e'), 30 * cell, 0);
   s = await stored();
   ok('a resize stops at a neighbor and says so', s[SLIDER].x + s[SLIDER].w <= 20 && s[SLIDER].w > 2 && /blocked by/.test(await said()),
      [s[SLIDER], await said()]);
-  ok('the neighbor never moves', JSON.stringify(s[F1]) === '{"x":20,"y":0,"w":6,"h":2}', s[F1]);
+  ok('the neighbor never moves', JSON.stringify(s[F1]) === '{"x":20,"y":0,"w":8,"h":2}', s[F1]);
   await ctx.close();
 }
 
@@ -512,6 +517,93 @@ console.log('density');
   await card(SLIDER).locator('.label-btn').click();
   await page.waitForTimeout(100);
   ok('showing it again clears the option', !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
+  await ctx.close();
+}
+
+// ---- the content floor (ph-e82.25) ----------------------------------------------------------
+// The operator squeezed an action card (op, slot, name, four buttons) to one
+// column: the controls spilled right of the frame and the title stacked one
+// letter per line. A card is never sized below its measured content.
+console.log('floor');
+{
+  const ACT = (CONTROLS.find((c) => c.key === 'role:action.store') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.action)).key;
+  const NEST_TITLE = 'A nest title far longer than its card';
+  const { ctx, page, cell, stored, said, card } = await open({
+    [ACT]: { x: 0, y: 0, w: 1, h: 8 },
+    [F2]: { x: 8, y: 0, w: 9, h: 2 }, [F3]: { x: 18, y: 0, w: 9, h: 2 },
+    // No room: a one-column action card wedged between two cards.
+    [ACT + '#2']: { x: 17, y: 0, w: 1, h: 2 },
+    'nest:1': { x: 0, y: 14, w: 3, h: 4, nest: { title: NEST_TITLE, map: {} } },
+    'nest:2': { x: 8, y: 14, w: 5, h: 4, nest: { title: 'Pair', map: { [F1]: { x: 0, y: 0, w: 8, h: 2 } } } },
+  });
+  // Px any element of the body pokes past the body's frame; the title's lines.
+  const fit = (key) => card(key).evaluate((c) => {
+    const body = c.querySelector('.dash-body');
+    const b = body.getBoundingClientRect();
+    let out = 0;
+    for (const e of body.querySelectorAll('*')) {
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height) out = Math.max(out, r.right - b.right, b.left - r.left);
+    }
+    const t = c.querySelector('.dash-title');
+    return { out: Math.round(out), w: Math.round(b.width), lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight || '0') || 1),
+      titleH: t.getBoundingClientRect().height, font: parseFloat(getComputedStyle(t).fontSize), clip: getComputedStyle(body).overflowX,
+      cut: t.scrollWidth > t.clientWidth };
+  });
+  ok('the grid holds the case', await page.$eval('.home > .dash-wrap > .dash-grid', (el) => Number(el.style.getPropertyValue('--cols'))) >= 27);
+  let s = await stored();
+  const floor = s[ACT].w;
+  ok('a saved rect under its floor grows on load and is saved', floor > 1 && s[ACT].x === 0 && s[ACT].y === 0 && s[ACT].h === 8, s[ACT]);
+  let f = await fit(ACT);
+  ok('grown: nothing spills past the frame', f.out <= 0, f);
+  ok('the title keeps one line', f.titleH < 2 * f.font, f);
+  ok('a fitting card does not clip', f.clip === 'visible', f);
+  ok('a grow is no undo step', await page.locator('.home .dash-toolbar button', { hasText: 'Undo' }).isDisabled());
+
+  const g = await drag(page, card(ACT).locator('.edge-e'), -(floor + 4) * cell, 0, () => ghost(page));
+  ok('toward one column: the ghost stops at the floor', g && g.refused && g.text === floor + ' × 8 · minimum', g);
+  s = await stored();
+  ok('the release commits the floor', s[ACT].w === floor && s[ACT].x === 0, s[ACT]);
+  await card(ACT).locator('.handle.resize').focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(100);
+  ok('the keyboard refuses too', (await stored())[ACT].w === floor && /minimum size/.test(await said()), await said());
+  f = await fit(ACT);
+  ok('at the floor: nothing spills, one-line title', f.out <= 0 && f.titleH < 2 * f.font, f);
+  s = await stored();
+  ok('no room: the card keeps its rect', JSON.stringify(s[ACT + '#2']) === '{"x":17,"y":0,"w":1,"h":2}', s[ACT + '#2']);
+  ok('its neighbors never move', JSON.stringify(s[F2]) === '{"x":8,"y":0,"w":9,"h":2}' && JSON.stringify(s[F3]) === '{"x":18,"y":0,"w":9,"h":2}', [s[F2], s[F3]]);
+  f = await fit(ACT + '#2');
+  ok('its surface clips the overflow at the frame', f.clip === 'clip', f);
+  const over = await card(ACT + '#2').evaluate((c) => {
+    const b = c.querySelector('.dash-body').getBoundingClientRect(), h = c.querySelector('.dash-head').getBoundingClientRect();
+    return [b.top + b.height / 2, h.top + h.height / 2].some((y) => { const hit = document.elementFromPoint(b.right + 10, y); return !!(hit && c.contains(hit)); });
+  });
+  ok('nothing of it, head or body, is drawn over the next card', !over);
+
+  s = await stored();
+  ok('a nest under its floor grows too', s['nest:1'].w > 3, s['nest:1']);
+  ok('a nest holds its widest member at that member width', s['nest:2'].w > 8 && s['nest:2'].nest.map[F1].w === 8, s['nest:2']);
+  f = await page.locator('.home .dash-cell[data-id="' + F1 + '"]').evaluate((c) => {
+    const n = c.closest('.dash-grid').closest('.dash-body').getBoundingClientRect(), r = c.getBoundingClientRect();
+    return { inside: r.right <= n.right + 0.5 && r.left >= n.left - 0.5 };
+  });
+  ok('the member lies inside the nest frame', f.inside, f);
+  await page.locator('.home .dash-toolbar .done-btn').click();
+  await page.waitForTimeout(150);
+  f = await fit('nest:1');
+  ok('a long title truncates on one line', f.titleH < 2 * f.font && f.cut, f);
+  await ctx.close();
+}
+
+// The measured height binds a resize that changes height: alone on the grid, so no neighbor's rows inflate its own.
+{
+  const ACT = (CONTROLS.find((c) => c.key === 'role:action.store') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.action)).key;
+  const { ctx, page, cell, stored, card } = await open({ [ACT]: { x: 0, y: 0, w: 8, h: 40 } });
+  const rows = () => card(ACT).evaluate((c, k) => c.getBoundingClientRect().height / k, cell);
+  const gh = await drag(page, card(ACT).locator('.edge-s'), 0, -38 * cell, () => ghost(page));
+  const s = (await stored())[ACT];
+  ok('a shorter drag stops at the content height', gh && gh.refused && s.h < 40 && s.h > 2 && await rows() <= s.h + 0.02, [gh, s, await rows()]);
   await ctx.close();
 }
 

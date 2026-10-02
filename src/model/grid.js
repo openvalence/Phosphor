@@ -163,6 +163,27 @@ export const blocker = (placed, r, id) => placed.find((q) => q.id !== id && over
 /** Smallest card any resize may leave, in cells, when the item declares no minimum of its own. */
 export const RESIZE_FLOOR = [2, 1];
 
+/** Whole cells that hold `px` CSS px of measured content; 0 for no measurement. */
+export const cellsFor = (px, cell) => (px > 0 ? Math.ceil(px / cell - 1e-6) : 0);
+
+/** The resize floor [w, h]: per dimension, the larger of the static floor and the measured cells. */
+export const floorOf = (fixed, measured) => [Math.max(fixed[0], measured[0] || 0), Math.max(fixed[1], measured[1] || 0)];
+
+/**
+ * The rect item `id` of `placed` grows to so it is `need` cells wide: east
+ * first, then west, one cell at a time, stopping at a neighbor or the grid's
+ * edge (a resize never pushes). Null when it is wide enough or cannot grow.
+ */
+export function growWidth(placed, id, need, cols) {
+  const p = placed.find((q) => q.id === id);
+  if (!p || p.w >= need) return null;
+  const others = placed.filter((q) => q.id !== id);
+  let x = p.x, w = p.w;
+  while (w < need && x + w < cols && !hits(others, { x, y: p.y, w: w + 1, h: p.h })) w++;
+  while (w < need && x > 0 && !hits(others, { x: x - 1, y: p.y, w: w + 1, h: p.h })) { x--; w++; }
+  return w > p.w ? { id, x, y: p.y, w, h: p.h } : null;
+}
+
 /**
  * Resize `start` ({x, y, w, h}) by dragging `edge` (n, s, e, w or a corner
  * such as 'se') so the cell `c` ({x, y}) becomes that edge's outermost cell.

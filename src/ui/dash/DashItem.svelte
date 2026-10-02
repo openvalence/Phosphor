@@ -53,6 +53,8 @@
     // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
     selected = false,
     onselect = null,
+    // Under its content floor with no room to grow (DashGrid): the surface clips.
+    clip = false,
   } = $props();
 
   // A self-labeled control (item.selfLabeled: it names itself, as a field or a
@@ -143,7 +145,7 @@
 
 <svelte:window onkeydown={closeOnEscape} />
 
-<div class="dash-item" class:dragging class:editing class:selected class:bare class:open bind:this={itemEl}>
+<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip bind:this={itemEl}>
   {#if editing || !bare}
   <div class="dash-head card-head">
     <!-- Handles are edit-mode-only: the reading surface stays quiet and a
@@ -176,7 +178,8 @@
                else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
              }} />
     {:else}
-      <h3 class="dash-title" data-pidx={pidx}>{item.title}</h3>
+      <!-- The title attribute is the full form of a title cut by its ellipsis. -->
+      <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
     {/if}
     {#if editing && item.selfLabeled && item.setLook}
       <button type="button" class="og-btn sm label-btn" aria-pressed={!bare}
@@ -293,8 +296,14 @@
     text-transform: uppercase;
     letter-spacing: .12em;
     color: var(--tx-val);
-    overflow-wrap: anywhere;
+    /* One line at any width: zero width keeps the title out of the card's
+       measured content floor (DashGrid), and it grows into what is left. */
+    flex: 1 1 auto;
+    width: 0;
     min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   /* Runtime index, not a CSS counter: mirrors the OG's renumberPanels() --
      a counter renumbers by DOM order and breaks across hidden/filtered
@@ -325,6 +334,10 @@
     padding: var(--dash-body-pad, var(--gap));
     min-width: 0;
   }
+  /* Clip, never scroll: content past the frame stays inside it. The margin
+     keeps the grab handle's -4px overhang. */
+  .clip > .dash-body { overflow: clip; }
+  .clip > .dash-head { overflow: clip; overflow-clip-margin: 4px; }
   /* The resize handle sits over the body's bottom-right corner: reserve its
      height so it never covers a short module's own Remove or control. */
   .editing .dash-body { padding-bottom: var(--handle); }

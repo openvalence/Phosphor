@@ -7,7 +7,9 @@
  * members, and the single-field placement flag both ways; a placement's look
  * (presentation and config) through place, commits and storage; placements
  * are absolute (operator ruling 2026-10-02): no commit, add or remove ever
- * moves a card the user did not move.
+ * moves a card the user did not move. The content floor (ph-e82.25):
+ * measured px to cells, the larger of static and measured, and the grow of
+ * an under-floor rect that stops at a neighbor or the edge.
  *
  * Run: node test/grid-model.test.mjs
  */
@@ -19,7 +21,7 @@ import {
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
   arrangePins, instanceKey, baseKey, duplicate, nudgePin, exportLayout, importLayout,
-  DENSITY, layoutOpts, setDensity,
+  DENSITY, layoutOpts, setDensity, cellsFor, floorOf, growWidth,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -511,6 +513,32 @@ console.log('density');
   saveStore(st, s);
   ok('it survives a reload', layoutOpts(loadStore(st), 'Default').density === 'compact');
   ok('a corrupt option reads as the default', layoutOpts({ active: 'X', layouts: { X: { opts: { density: 9 } } } }).density === DENSITY[0]);
+}
+
+// ---- the content floor (ph-e82.25) -------------------------------------------------------
+console.log('floor');
+{
+  ok('measured px round UP to whole cells', cellsFor(200, 36) === 6 && cellsFor(216, 36) === 6 && cellsFor(216.5, 36) === 7);
+  ok('a float error at an exact multiple does not cost a cell', cellsFor(36 * 3 + 1e-9, 36) === 3);
+  ok('no measurement is no floor', cellsFor(0, 36) === 0 && cellsFor(undefined, 36) === 0);
+  ok('the floor is the larger of static and measured, per dimension',
+     JSON.stringify(floorOf([6, 2], [9, 1])) === '[9,2]' && JSON.stringify(floorOf([6, 2], [])) === '[6,2]'
+     && JSON.stringify(floorOf(RESIZE_FLOOR, [1, 4])) === '[2,4]');
+  const at = (rects) => rects.map(([id, x, y, w, h]) => ({ id, x, y, w, h }));
+  ok('grows east into free cells', JSON.stringify(growWidth(at([['a', 0, 0, 1, 8]]), 'a', 6, 40)) === '{"id":"a","x":0,"y":0,"w":6,"h":8}');
+  ok('stops at an east neighbor, then grows west',
+     JSON.stringify(growWidth(at([['a', 10, 0, 1, 2], ['b', 13, 1, 4, 1]]), 'a', 6, 40)) === '{"id":"a","x":7,"y":0,"w":6,"h":2}');
+  ok('a neighbor in any of its rows stops it', JSON.stringify(growWidth(at([['a', 10, 0, 1, 4], ['b', 12, 3, 4, 1], ['c', 7, 2, 2, 1]]), 'a', 6, 40))
+     === '{"id":"a","x":9,"y":0,"w":3,"h":4}');
+  ok('the grid edge stops it', JSON.stringify(growWidth(at([['a', 38, 0, 1, 1], ['b', 30, 0, 7, 1]]), 'a', 6, 40)) === '{"id":"a","x":37,"y":0,"w":3,"h":1}');
+  const wedged = at([['l', 0, 0, 10, 2], ['a', 10, 0, 1, 2], ['r', 11, 0, 9, 2]]);
+  ok('no room: null, nothing moves', growWidth(wedged, 'a', 6, 40) === null
+     && JSON.stringify(wedged) === JSON.stringify(at([['l', 0, 0, 10, 2], ['a', 10, 0, 1, 2], ['r', 11, 0, 9, 2]])));
+  ok('wide enough or unknown: null', growWidth(at([['a', 0, 0, 6, 1]]), 'a', 6, 40) === null && growWidth([], 'a', 6, 40) === null);
+  const map = { a: { x: 10, y: 0, w: 1, h: 2 }, b: { x: 13, y: 1, w: 4, h: 1 } };
+  const items = [{ id: 'a' }, { id: 'b' }];
+  commitPin(map, items, 40, growWidth(place(items, map, 40), 'a', 6, 40));
+  ok('a grow commits like a resize: the neighbor keeps its rect', JSON.stringify(map) === '{"a":{"x":7,"y":0,"w":6,"h":2},"b":{"x":13,"y":1,"w":4,"h":1}}', JSON.stringify(map));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));
