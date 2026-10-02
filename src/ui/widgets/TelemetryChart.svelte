@@ -25,7 +25,7 @@
   import { machine, freshness, staleReason } from '../../model/machine.svelte.js';
   import { ROLE } from '../../model/roles.js';
   import { reportedValue, NUMERIC_TYPES } from '../../model/settings.js';
-  import { formatValue, unitOf, labelFor } from '../../model/format.js';
+  import { formatValue, formatParts, labelFor } from '../../model/format.js';
   import { norm } from '../../model/bounds.js';
   import { VALUE_ASPECT } from '../../../../Valence/clients/js/index.js';
   import { createTelebuf, chartPath } from '../hero/telebuf.js';
@@ -274,6 +274,8 @@
   });
 </script>
 
+{#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
+
 {#if candidates.length}
   <div class="tchart">
     <!-- OG DIAG strip legend (.diag-key): label and value stay neutral
@@ -289,7 +291,7 @@
           <i class="swatch" style="background: var({paletteVarFor(f)})" aria-hidden="true"></i>
           <span class="leg-label">{labelFor(f)}</span>
           {#if on}
-            <output class="mono leg-val" class:stale={fr && fr.stale} title={staleReason(fr)}>{formatValue(f, reportedValue(f, machine.samples[f.channelId]))}<span class="unit">{unitOf(f)}</span></output>
+            <output class="mono leg-val" class:stale={fr && fr.stale} title={staleReason(fr)}>{@render vu(f, reportedValue(f, machine.samples[f.channelId]))}</output>
           {/if}
         </button>
       {/each}

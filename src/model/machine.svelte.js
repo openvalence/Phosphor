@@ -41,7 +41,7 @@ import {
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
 import { ROLE } from './roles.js';
-import { endpointLabel } from './format.js';
+import { endpointLabel, setHubClock, unitOf } from './format.js';
 
 /**
  * Default ceiling for ordinary channels (settings, diagnostics, tuning) —
@@ -325,6 +325,25 @@ export function specSafetyAction() {
     access: f.access != null ? f.access : e.access,
   };
 }
+
+/**
+ * The hub-clock reference format.js converts hub-time stamps with (SPEC §7.1):
+ * the session's CLOCK-offset hub-µs for the fraction, the `telemetry.uptime`
+ * field, extrapolated from its arrival, for the wrap. Null with no uptime.
+ */
+export function hubClockRef() {
+  const up = ((machine.catalog.model && machine.catalog.model.byRole.get(ROLE.telemetryUptime)) || [])[0];
+  const smp = up && machine.samples[up.channelId];
+  const k = up && { s: 1, ms: 1e-3 }[unitOf(up)];
+  if (!k || !smp || typeof smp[up.name] !== 'number') return null;
+  const wallMs = Date.now();
+  return {
+    hubUs: session && session.state.clockSynced ? session.hubNowUs() : null,
+    wallMs,
+    uptimeS: smp[up.name] * k + (wallMs - machine.sampleTs[up.channelId]) / 1000,
+  };
+}
+setHubClock(hubClockRef);
 
 /** RENDERING law 15: E-Stop only on a hub that declared estop_cuts_power true. */
 export function estopLabel() {

@@ -20,7 +20,7 @@
   import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
-  import { formatValue, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
+  import { formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag } from '../model/format.js';
 
   // `presentation`: one of settings.js offeredPresentations(field), chosen by
   // the user (DESIGN §10.2); absent means the derived widget. `orientation`
@@ -354,6 +354,9 @@
   }
 </script>
 
+<!-- One value formatter (format.js formatParts): hub time, autorange, plain. -->
+{#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
+
 <div class="field" data-shadow={status} data-widget={pres} data-orient={orientation}
      bind:this={fieldEl}
      style="--pulse-x: {pulseX}%; --echo-top: {echoTop}px; --echo-bottom: {echoBottom}px"
@@ -386,7 +389,7 @@
       {#if hasDefault}
         <button type="button" class="info reset" disabled={!enabled || atDefault}
                 title={(atDefault ? 'Already at ' : 'Reset to ') + (field.ownDefault ? 'this control\'s default' : 'the machine default')
-                       + (atDefault ? '' : ' (' + formatValue(field, field.dflt) + unitOf(field) + ')')}
+                       + (atDefault ? '' : ' (' + formatWithUnit(field, field.dflt) + ')')}
                 onclick={() => commit(field.dflt)}>
           <span class="glyph" aria-hidden="true">&#8635;</span>
           <span class="sr-only">Reset {labelFor(field)} to default</span>
@@ -415,8 +418,8 @@
         {#if field.options}
           {optionLabel(field, value)}
         {:else}
-          {formatValue(field, value)}<span class="unit">{unitOf(field)}</span>
-          {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatValue(field.peak, peakValue)}{unitOf(field.peak)}</span>{/if}
+          {@render vu(field, value)}
+          {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}
         {/if}
       </output>
     {/if}
@@ -461,7 +464,7 @@
         <span class="track"></span>
       </label>
       <span class="toggle-text">{field.options ? optionLabel(field, value)
-        : tog ? formatValue(field, value) + unitOf(field) : (value ? 'on' : 'off')}</span>
+        : tog ? formatWithUnit(field, value) : (value ? 'on' : 'off')}</span>
     </div>
 
   {:else if pres === WIDGET.segmented}
@@ -529,7 +532,7 @@
              oninput={(e) => commitHi(Number(e.currentTarget.value))} />
     </div>
     <output class="field-value range-readout mono">
-      {formatValue(field.lo, loValue)}{unitOf(field.lo)} &ndash; {formatValue(field.hi, hiValue)}{unitOf(field.hi)}
+      {formatWithUnit(field.lo, loValue)} &ndash; {formatWithUnit(field.hi, hiValue)}
     </output>
 
   {:else if pres === WIDGET.stepper}
@@ -577,7 +580,7 @@
         <line class="knob-hand" x1="50" y1="50" x2="50" y2="18"
               transform="rotate({-135 + 270 * knobFrac} 50 50)" />
       </svg>
-      <span class="knob-val">{formatValue(field, value)}<span class="unit">{unitOf(field)}</span></span>
+      <span class="knob-val">{@render vu(field, value)}</span>
     </div>
 
   {:else if pres === WIDGET.bar}
@@ -588,8 +591,8 @@
 
   {:else if pres === WIDGET.numeral}
     <output class="numeral" id={field.uid} bind:this={ctrlEl} title={staleReason(fresh)}>
-      {field.options ? optionLabel(field, value) : formatValue(field, value)}<span class="unit">{unitOf(field)}</span>
-      {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatValue(field.peak, peakValue)}{unitOf(field.peak)}</span>{/if}
+      {#if field.options}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{:else}{@render vu(field, value)}{/if}
+      {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}
     </output>
 
   {:else if pres === WIDGET.graph}
@@ -600,7 +603,7 @@
 
   {#if outOfRange}
     <p class="field-reason out-of-range" role="status">outside this control's range
-      ({formatValue(field, field.min)} to {formatValue(field, field.max)}{unitOf(field)})</p>
+      ({formatWithUnit(field, field.min)} to {formatWithUnit(field, field.max)})</p>
   {/if}
 
   {#if field.desc}<p class="field-desc" id={descId + '-inline'}>{field.desc}</p>{/if}

@@ -20,7 +20,8 @@ const UNIT_SUFFIX = {
   [UNIT_ID.s]: 's', [UNIT_ID.v]: 'V', [UNIT_ID.a]: 'A', [UNIT_ID.w]: 'W', [UNIT_ID.wh]: 'Wh',
   [UNIT_ID.deg_c]: '°C', [UNIT_ID.count]: '', [UNIT_ID.bytes]: 'B', [UNIT_ID.db]: 'dB',
   [UNIT_ID.n]: 'N', [UNIT_ID.kpa]: 'kPa', [UNIT_ID.ml]: 'mL', [UNIT_ID.ml_min]: 'mL/min',
-  [UNIT_ID.rpm]: 'rpm', [UNIT_ID.bpm]: 'bpm',
+  [UNIT_ID.rpm]: 'rpm', [UNIT_ID.bpm]: 'bpm', [UNIT_ID.deg]: '°', [UNIT_ID.us]: 'µs',
+  [UNIT_ID.hub_s]: 'hub s',
 };
 
 /** Aspects that are a statistic over some span, so their scope must show (§5.4). */
@@ -145,20 +146,63 @@ export function unitOf(field) {
   return u;
 }
 
-/** Full "value unit" string, autoranged when enabled. */
-export function formatWithUnit(field, value) {
+/**
+ * [text, unit] for display, the one value formatter: a hub-time stamp as wall
+ * time, else autoranged when enabled, else the plain value and suffix.
+ */
+export function formatParts(field, value) {
+  if (field && field.unitId === UNIT_ID.hub_s && typeof value === 'number') {
+    const ms = hubSecToWallMs(value, hubClock && hubClock());
+    if (ms != null) return [new Date(ms).toLocaleString(), ''];
+  }
   const u = unitOf(field);
-  const r = autorange(field, value, u);
-  if (r) return r[0] + ' ' + r[1];
-  const v = formatValue(field, value);
+  return autorange(field, value, u) || [formatValue(field, value), u];
+}
+
+/** Full "value unit" string. */
+export function formatWithUnit(field, value) {
+  const [v, u] = formatParts(field, value);
   return u ? v + ' ' + u : v;
+}
+
+// ---- hub time (SPEC §7.1, RFC-083, RFC-086) ---------------------------------
+
+const WRAP_S = 2 ** 32 / 1e6;   // hub-µs wraps every ~71.6 min (SPEC §7.2)
+let hubClock = null;
+
+/** machine.svelte.js installs its hub-clock reference here (format.js stays pure). */
+export function setHubClock(fn) { hubClock = fn; }
+
+/**
+ * Hub seconds since boot, now, from a reference {hubUs, wallMs, uptimeS}:
+ * the CLOCK offset's hub-µs (wrapping) gives the fraction, a coarse uptime
+ * picks the wrap. Without CLOCK the uptime alone (1 s resolution); without
+ * uptime null: the wrap cannot be told and a guessed wall time would lie.
+ */
+function hubNowS(ref) {
+  if (!ref || ref.uptimeS == null) return null;
+  if (ref.hubUs == null) return ref.uptimeS;
+  const fine = (ref.hubUs >>> 0) / 1e6;
+  return fine + Math.round((ref.uptimeS - fine) / WRAP_S) * WRAP_S;
+}
+
+/** A hub-time stamp (whole seconds since hub boot) as wall-clock epoch ms, or null. */
+export function hubSecToWallMs(hubSec, ref) {
+  const n = hubNowS(ref);
+  return n == null || !isFinite(hubSec) ? null : ref.wallMs + (hubSec - n) * 1000;
+}
+
+/** Wall-clock epoch ms as whole hub seconds (the write half), or null. */
+export function wallMsToHubSec(wallMs, ref) {
+  const n = hubNowS(ref);
+  return n == null || !isFinite(wallMs) ? null : Math.round(n + (wallMs - ref.wallMs) / 1000);
 }
 
 /**
  * RFC-086 (RENDERING §6): SI prefixes for DISPLAY only; the wire unit and
  * scale never change. Exponent bounds per base unit, where a prefix reads
- * naturally (no kiloseconds). Only formatWithUnit autoranges: callers that
- * render value and unit separately need ph-vdk.51's migration first.
+ * naturally (no kiloseconds). formatParts is the caller; µs is `s` with a
+ * prefix, so it autoranges to ms and s by magnitude.
  */
 const SI_RANGE = { V: [-6, 3], A: [-6, 3], W: [-3, 6], Wh: [0, 6], s: [-6, 0], Hz: [0, 6], N: [-3, 3] };
 const SI_PREFIX = { '-6': 'µ', '-3': 'm', 0: '', 3: 'k', 6: 'M' };

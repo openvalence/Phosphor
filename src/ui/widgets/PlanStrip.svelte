@@ -53,7 +53,7 @@
    * list, so a planner that gains or retires a style needs no change here.
    */
   import { machine } from '../../model/machine.svelte.js';
-  import { formatValue, unitOf, optionLabel } from '../../model/format.js';
+  import { formatParts, optionLabel } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
 
@@ -293,6 +293,8 @@
   });
 </script>
 
+{#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
+
 {#if fields && haveAnyPosition}
   <!-- Mounted by RailWidget in the rail row's fixed box, in place of the jog
        tape while a source owns the rail: a labels line over the lane, the
@@ -303,17 +305,17 @@
       <span class="plan-mode">plan{#if fields.style} &middot; {optionLabel(fields.style, styleVal)}{/if}</span>
       <span class="plan-meta mono">
         {#if fields.velocity}
-          <output>{formatValue(fields.velocity, velVal)}<span class="unit">{unitOf(fields.velocity)}</span></output>
+          <output>{@render vu(fields.velocity, velVal)}</output>
         {/if}
         {#if haveTiming}
           {#if progressFrac != null}
             <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
           {/if}
-          <output>{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span> / {formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
+          <output>{@render vu(fields.elapsed, elapsedVal)} / {@render vu(fields.duration, durVal)}</output>
         {:else if fields.elapsed}
-          <output>{formatValue(fields.elapsed, elapsedVal)}<span class="unit">{unitOf(fields.elapsed)}</span></output>
+          <output>{@render vu(fields.elapsed, elapsedVal)}</output>
         {:else if fields.duration}
-          <output>{formatValue(fields.duration, durVal)}<span class="unit">{unitOf(fields.duration)}</span></output>
+          <output>{@render vu(fields.duration, durVal)}</output>
         {/if}
       </span>
     </div>
