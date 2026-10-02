@@ -41,6 +41,10 @@
  *            holds one row at 1280, its menu opens on screen, and a phone in
  *            edit mode has no horizontal scroll; layout handles stay 40 CSS
  *            px at the smallest scale (ph-e82.15)
+ *   builder  1280 and 360: a category page in edit mode under a compact
+ *            layout, with a collapsed nest holding a write-free member, an
+ *            empty nest and a card selected (selection bar), passes the
+ *            layout and strip checks (ph-e82.20)
  *   nest     phone: a scrolling nest is not a scroll region of its own, a
  *            wheel over it scrolls the page, the page passes the layout
  *            checks (ph-e82.6)
@@ -51,7 +55,7 @@
  *
  * Build first (`npm run build:only`); this builds nothing but the phosphor
  * scenario's shell bundle.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest|phosphor] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest|builder|phosphor] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -783,6 +787,46 @@ if (!ONLY || ONLY === 'nest') {
     }
     const f = await page.evaluate(measure, { phone: true });
     scen(tag + ': a page holding a nest passes the phone checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+    await ctx.close();
+  }
+}
+
+// ---- builder (ph-e82.20): the night's grid and nest chrome at desktop and phone.
+if (!ONLY || ONLY === 'builder') {
+  console.log('\nbuilder scenarios');
+  for (const [w, h] of [[1280, 720], [360, 800]]) {
+    const phone = w < 600, tag = w + 'x' + h;
+    const tabSel = phone ? 'nav.tabs [role=tab]' : 'nav.rail [role=tab]';
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector(tabSel, { timeout: 15000 });
+    const tabs = page.locator(tabSel);
+    let tab = -1, key = '', ids = [];
+    for (let i = 1; i < await tabs.count() && tab < 0; i++) {
+      await tabs.nth(i).click();
+      await page.waitForTimeout(200);
+      const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
+        ids: [...el.children].map((c) => c.getAttribute('data-id')).filter(Boolean) })).catch(() => null);
+      if (g && g.ids.length >= 3) { tab = i; key = g.key; ids = g.ids; }
+    }
+    const store = { active: 'Default', modules: {}, layouts: { Default: { opts: { density: 'compact' }, [key]: {
+      'nest:1': { x: 0, y: 0, w: 20, h: 6, nest: { title: 'Folded', scroll: true, collapsed: true, map: { [ids[0]]: null } } },
+      'nest:2': { x: 0, y: 2, w: 20, h: 4, nest: { title: 'Empty', scroll: false, map: {} } },
+    } } } };
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
+    await page.reload();
+    await page.waitForSelector(tabSel, { timeout: 15000 });
+    if (tab > 0) await tabs.nth(tab).click();
+    await page.waitForTimeout(300);
+    await page.locator('.dash-wrap[data-density] > .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[1] + '"] .handle.grab').click();
+    await page.waitForTimeout(200);
+    const ready = await page.evaluate(() => ({ compact: !!document.querySelector('.dash-wrap[data-density="compact"]'),
+      folded: !!document.querySelector('.nest.collapsed'), empty: !!document.querySelector('.nest-empty'), selbar: !!document.querySelector('.dash-selbar') }));
+    scen(tag + ': the builder chrome is on screen (compact, folded nest, empty nest, selection bar)',
+      ready.compact && ready.folded && ready.empty && ready.selbar, JSON.stringify(ready));
+    const f = [...await page.evaluate(measure, { phone }), ...await page.evaluate(stripCheck)];
+    scen(tag + ': the builder in edit mode passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
     await ctx.close();
   }
 }
