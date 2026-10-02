@@ -11,20 +11,21 @@
    * quietly does nothing.
    *
    * Restores the pre-refactor identity (tag `webui-prerefactor`): the
-   * registration crosshair, the SD·32 wordmark, the live activity heatmap
+   * registration crosshair, the hub-name wordmark, the live activity heatmap
    * canvas, the two link-health dots, and the chip row. The two safety-
    * relevant facts — link phase and access tier — are pinned chips that never
    * scroll out of view; everything else rides a horizontally-scrolling strip
    * so a phone never gets page-level horizontal overflow.
    *
    * Everything here reads machine.* (and the catalog's own role-tagged
-   * fields) plus the browser's own location/theme — never a device fact that
+   * fields) plus the browser's own theme, never a device fact that
    * isn't something the machine actually sent.
    */
   import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
-  import { bytes, since } from '../model/format.js';
+  import { bytes, since, hubTitle } from '../model/format.js';
+  import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
 
@@ -45,9 +46,11 @@
     ? (ACCESS_NAME[machine.link.roles] || ('tier ' + machine.link.roles))
     : '--');
 
-  const hostFallback = $derived(typeof location !== 'undefined' ? location.hostname : '--');
   const identity = $derived(machine.link.hubIdentity);
-  const hubLabel = $derived(identity ? (identity.hub_name || identity.product || hostFallback) : hostFallback);
+  const nameField = $derived(machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0]);
+  const title = $derived(hubTitle(identity,
+    nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : ''));
+  const hubLabel = $derived(machine.link.dialed || '--');
   const fwLabel = $derived(identity && identity.fw_version ? identity.fw_version : '');
 
   const catalogLabel = $derived(
@@ -253,7 +256,7 @@
   <div class="hdr-row">
     <div class="header-left">
       <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
-      <span class="wordmark">SD&middot;32</span>
+      <span class="wordmark" {title}>{title}</span>
       <span class="link-dot tone-{phaseInfo.tone}" role="img" aria-label={'session link: ' + phaseInfo.label}></span>
       <span class="link-dot tone-{rxTone}" role="img" aria-label={'telemetry: ' + rxToneLabel}></span>
     </div>
@@ -367,6 +370,9 @@
     color: var(--ink-hi);
     flex: 0 0 auto;
     white-space: nowrap;
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .link-dot {

@@ -205,3 +205,21 @@ export function bytes(n) {
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
+
+/**
+ * The machine header: WELCOME identity hub_name (SPEC §6.3, RFC-016), then
+ * the live identity.name setting, then product. Never a client-side name.
+ */
+export function hubTitle(identity, liveName) {
+  return (identity && identity.hub_name) || liveName || (identity && identity.product) || '--';
+}
+
+/**
+ * The HUB chip: the endpoint this session dialed (WS host:port, or the BLE
+ * device name). Never location.hostname: in the shell that is the page's own
+ * origin, not the hub.
+ */
+export function endpointLabel(host, port, bleName) {
+  if (!host) return '--';
+  return bleName != null ? (bleName || host) : host + ':' + port;
+}

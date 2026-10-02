@@ -134,7 +134,7 @@
     mode = 'ble';
     localStorage.setItem('shell_mode', 'ble');
     note = 'BLE → ' + (dev.name || dev.address) + ' (watch tier until WS upgrade)';
-    connect({ host: dev.address, WebSocketImpl: makeBleWebSocket(dev.address) });
+    connect({ host: dev.address, bleName: dev.name, WebSocketImpl: makeBleWebSocket(dev.address) });
   }
 
   function connectWs(host, port) {

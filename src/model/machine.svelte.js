@@ -41,6 +41,7 @@ import {
 import { CORE_CHANNEL, CORE_CHANNEL_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel } from './settings.js';
 import { ROLE } from './roles.js';
+import { endpointLabel } from './format.js';
 
 /**
  * Default ceiling for ordinary channels (settings, diagnostics, tuning) —
@@ -151,6 +152,7 @@ export const machine = $state({
     since: 0,
     host: '',               // the hub this page is pointed at; '' = none chosen
     port: 82,
+    dialed: '',             // what the HUB chip shows: WS host:port or the BLE name
     attempts: 0,            // consecutive failed opens since the last good one
     retryAt: 0,             // ms timestamp of the next automatic attempt; 0 = unknown
     sessionId: null,
@@ -459,6 +461,7 @@ export function connect(opts = {}) {
   _lastOpts = opts;
   machine.link.host = host;
   machine.link.port = opts.port || 82;
+  machine.link.dialed = endpointLabel(host, machine.link.port, opts.WebSocketImpl ? (opts.bleName || '') : null);
   machine.link.attempts = 0;
   machine.link.retryAt = 0;
 
