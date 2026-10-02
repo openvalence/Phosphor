@@ -336,7 +336,7 @@ console.log('Advanced Penetration (shell bundle, role fixture ' + ETAG + ')');
   const { ctx, page, up } = await open();
   ok('boot: the shell adopted the fixture catalog', up);
   ok('load: the plugin card is on the pattern page', await toPatternPage(page) && !!(await page.$('main.pane .ap')));
-  const generic = await page.$$eval('main.pane label.field-label[for]', (els) => els.map((e) => e.getAttribute('for')));
+  const generic = await page.$$eval('main.pane label.field-label[data-uid]', (els) => els.map((e) => e.dataset.uid));
   const claimedUids = [ADV, ...ENTRIES.filter((e) => e.modTarget)].flatMap((e) => e.layout.filter((f) => f.role && f.role !== 'meta.enabled_mask').map((f) => uidOf(e, f.name)));
   ok('load: claimed fields leave the generic cards', claimedUids.every((u) => !generic.includes(u)), claimedUids.filter((u) => generic.includes(u)));
 

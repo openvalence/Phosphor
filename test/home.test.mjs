@@ -222,7 +222,7 @@ async function harvestDerived(page) {
     const r = await page.evaluate(() => {
       const pane = document.querySelector('main.pane');
       return {
-        uids: [...pane.querySelectorAll('label.field-label[for]')].map((l) => l.getAttribute('for')),
+        uids: [...pane.querySelectorAll('label.field-label[data-uid]')].map((l) => l.dataset.uid),
         actions: [...pane.querySelectorAll('.field.action .field-label')].map((l) => l.textContent.trim()),
         titles: [...pane.querySelectorAll('.dash-title')].map((t) => t.textContent.trim()),
       };
