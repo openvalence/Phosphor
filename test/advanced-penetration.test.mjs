@@ -321,6 +321,19 @@ if (LIVE) {
   }, null, { timeout: 5000 }).then(() => true).catch(() => false), await deep.getAttribute('data-status'));
   ok('live: the numeric twin followed the echoed value', Number(await numIn(page, 'Max depth').inputValue()) === want,
     await numIn(page, 'Max depth').inputValue());
+  // A linked in-speed drag: both halves echo, summing to 100; then put the sim's pair back.
+  const spIn = numIn(page, 'In speed'), spOut = numIn(page, 'Out speed');
+  const pair0 = [await spIn.inputValue(), await spOut.inputValue()];
+  ok('live: the link is on by default', (await page.locator('main.pane .ap .ap-link').getAttribute('aria-pressed')) === 'true');
+  await dragBy(page, handle(page, 'vin'), 40, 0);
+  const both = await page.waitForFunction(() => ['vin', 'vout'].every((k) =>
+    document.querySelector('main.pane .ap .ap-h[data-key="' + k + '"]').dataset.status === 'confirmed'), null, { timeout: 5000 })
+    .then(() => true).catch(() => false);
+  const pair = [Number(await spIn.inputValue()), Number(await spOut.inputValue())];
+  ok('live: a linked drag echoes both halves, summing to 100', both && pair[0] + pair[1] === 100 && String(pair[0]) !== pair0[0], { pair0, pair });
+  await page.locator('main.pane .ap .ap-link').click();
+  for (const [inp, v] of [[spIn, pair0[0]], [spOut, pair0[1]]]) { await inp.fill(v); await inp.press('Enter'); await page.waitForTimeout(400); }
+  await page.locator('main.pane .ap .ap-link').click();
   const runBtn = () => page.locator('main.pane .ap .ap-run:visible');
   const runNote = async () => (await runBtn().locator('xpath=../../p').textContent()).trim();
   const tab = (t) => page.click('main.pane .ap-tabs button:has-text("' + t + '")');
@@ -334,8 +347,9 @@ if (LIVE) {
   await runNote());
   await page.waitForTimeout(1500);
   const p1 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.left + ',' + e.style.top);
-  await page.waitForTimeout(400);
-  const p2 = await page.locator('main.pane .ap .ap-play').evaluate((e) => !e.hidden && e.style.left + ',' + e.style.top);
+  // The sim can still sit at the shallow end here; wait for it to leave, not a fixed window.
+  const p2 = await page.waitForFunction((p) => { const e = document.querySelector('main.pane .ap .ap-play'); const q = !e.hidden && e.style.left + ',' + e.style.top; return q && q !== p && q; },
+    p1, { timeout: 5000, polling: 50 }).then((h) => h.jsonValue()).catch(() => p1);
   ok('live: a playhead rides the curve while Advanced runs', !!p1 && !!p2 && p1 !== p2, [p1, p2]);
   const pts = (await page.locator('main.pane .ap .ap-wave polyline').getAttribute('points') || '').split(' ').filter(Boolean);
   const ys = new Set(pts.map((x) => x.split(',')[1]));
@@ -556,6 +570,86 @@ if (LIVE) {
     });
     ok('colors: nothing in the card wears --bad', red === 0, red);
     if (SHOT) { await toAdvanced(page); await page.locator('main.pane .ap').first().screenshot({ path: SHOT }); }
+    await ctx.close();
+  }
+
+  {
+    // ---- live redraw, a fixed time axis, and the in/out speed link
+    const SPOUT = settingOf('pattern-advanced', 'out_speed');
+    const { ctx, page } = await open();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const curve = () => page.$$eval('main.pane .ap .ap-stroke path.curve', (ps) => ps.map((p) => p.getAttribute('d')).join('|'));
+    const intentLook = () => page.$$eval('main.pane .ap .ap-stroke path.curve', (ps) => ps.every((p) => p.classList.contains('intent')));
+    const extent = () => page.evaluate(() => {
+      const [a, b] = [...document.querySelectorAll('main.pane .ap .ap-stroke path.curve')].map((p) => p.getBBox());
+      return [+a.x.toFixed(2), +(b.x + b.width).toFixed(2)];
+    });
+    const link = page.locator('main.pane .ap .ap-link');
+    const spIn = numIn(page, 'In speed'), spOut = numIn(page, 'Out speed');
+    ok('link: a chain beside In speed, on by default', (await link.getAttribute('aria-pressed')) === 'true');
+
+    // Typing redraws before any write or echo; Enter writes both halves in one intent.
+    hub.mode = 'hold';
+    const c0 = await curve(), vx0 = (await handle(page, 'vin').boundingBox()).x, n0 = hub.intents.length;
+    await spIn.fill('30');
+    await page.waitForTimeout(100);
+    ok('live: typing In speed redraws the curve and moves its handle before any write', (await curve()) !== c0
+      && Math.abs((await handle(page, 'vin').boundingBox()).x - vx0) > 5 && hub.intents.length === n0);
+    ok('live: the draft wears the intent look', await intentLook());
+    ok('link: the out half follows inversely while typing', (await spOut.inputValue()) === '70', await spOut.inputValue());
+    await spIn.press('Enter');
+    await page.waitForTimeout(200);
+    const lw = hub.intents.slice(n0);
+    ok('link: one intent carries in and out, summing to 100', lw.length === 1 && lw[0].ch === SPIN.ch
+      && lw[0].val[SPIN.key] === 30 && lw[0].val[SPOUT.key] === 70, lw);
+    ok('live: pending stays in the intent look until the echo', await intentLook());
+    await release();
+    await page.waitForTimeout(250);
+    ok('live: the echo returns the curve to the reality look', !(await intentLook()));
+
+    // A held drag keeps the time axis: the stroke spans the same x at every step.
+    for (const key of ['deep', 'vin', 'ain']) {
+      const b = await handle(page, key).boundingBox();
+      const x = b.x + b.width / 2, y = b.y + b.height / 2;
+      const seen = [await extent()];
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (let i = 1; i <= 5; i++) {
+        await page.mouse.move(x + (key === 'deep' ? 0 : 8 * i), y - (key === 'deep' ? 12 * i : 0));
+        seen.push(await extent());
+      }
+      if (SHOT && key === 'vin') await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-drag.png' });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      ok('drag: ' + key + ' keeps the time axis (x extent fixed mid-drag)', seen.every(([a, z]) => a === seen[0][0] && z === seen[0][1]), seen);
+    }
+    const sum = Number(await spIn.inputValue()) + Number(await spOut.inputValue());
+    ok('link: a linked handle drag keeps the sum at 100', sum === 100, sum);
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-linked.png' });
+
+    // Unlinked: each half writes alone; the toggle writes nothing and persists.
+    const n1 = hub.intents.length;
+    await link.click();
+    ok('link: switching writes nothing', hub.intents.length === n1 && (await link.getAttribute('aria-pressed')) === 'false');
+    const out0 = await spOut.inputValue();
+    await spIn.fill('20');
+    await spIn.press('Enter');
+    await page.waitForTimeout(250);
+    const uw = hub.intents.slice(n1);
+    ok('unlinked: an edit writes its own key only', uw.length === 1 && uw[0].val[SPIN.key] === 20 && !(SPOUT.key in uw[0].val), uw);
+    ok('unlinked: the other half stays', (await spOut.inputValue()) === out0);
+    if (SHOT) await page.locator('main.pane .ap').first().screenshot({ path: SHOT.replace(/\.png$/, '') + '-unlinked.png' });
+    await page.reload();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    ok('link: the choice survives a reload', (await link.getAttribute('aria-pressed')) === 'false');
+    const n2 = hub.intents.length;
+    await link.click();
+    await page.waitForTimeout(150);
+    const want = 20 + Number(out0);
+    ok('link: on with a pair off 100 writes nothing and shows the sum', hub.intents.length === n2
+      && (await link.getAttribute('title')).includes(want + ' %'), await link.getAttribute('title'));
     await ctx.close();
   }
 

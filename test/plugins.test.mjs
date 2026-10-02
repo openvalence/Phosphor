@@ -34,7 +34,7 @@ import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
 import {
-  snap, halfTime, speedForTime, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
+  snap, halfTime, speedInAt, speedOutAt, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
 } from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
 
@@ -534,8 +534,6 @@ console.log('(h) editor geometry');
   const pct = { min: 0, max: 100, step: 1 }, spd = { min: 1, max: 100, step: 1 };
   ok('snap: step grid and bounds', snap(spd, 37.6) === 38 && snap(spd, 150) === 100 && snap(spd, -4) === 1
     && snap({ min: 0, max: 1, step: 0.1 }, 0.26) === 0.3);
-  const t = halfTime(0.5, 0.4, 0.3);
-  ok('speed to half time and back', near(speedForTime(0.5, 0.3, t), 0.4));
   ok('accel to control offset share and back', [0, 0.25, 1].every((A) => near(accelForEase(1 / (2 + 9 * A)), A)));
   ok('no window or no speed: no stroke', halfTime(0, 0.5, 0) === null && halfTime(0.5, 0, 0) === null);
   const L = { X0: 70, XR: 960, YT: 30, YB: 210 };
@@ -552,7 +550,13 @@ console.log('(h) editor geometry');
     && snap(pct, strokeValue.accelOut(pct, g, g.aOut.x)) === 60);
   ok('a diamond rides its curve', near(onCurve(g.inC, g.aIn.x).y, g.aIn.y, 1e-3));
   ok('a wider in half is a slower in speed', strokeValue.speedIn(spd, g, g.vIn.x + 40) < 50);
-  ok('frozen scale: same k, same handle', near(strokeGeom(p, L, g.k).vIn.x, g.vIn.x));
+  const share = (q) => { const a = halfTime(0.7, q.sIn, q.aIn); return a / (a + halfTime(0.7, q.sOut, q.aOut)); };
+  ok('unlinked: the turn share solves one speed, the other half kept',
+    near(share({ ...p, sIn: speedInAt(p, 0.3, false) }), 0.3) && near(share({ ...p, sOut: speedOutAt(p, 0.3, false) }), 0.3));
+  const li = speedInAt(p, 0.3, true), lo = speedOutAt(p, 0.3, true);
+  ok('linked: the pair sums to full scale and puts the turn at the share', near(li + lo, 1) && near(share({ ...p, sIn: li, sOut: lo }), 0.3));
+  ok('any stroke spans the plot: the time axis never stretches', [{ ...p, hi: 0.95 }, { ...p, sIn: 0.05 }, { ...p, aOut: 1 }]
+    .every((q) => { const h = strokeGeom(q, L); return near(h.x0, L.X0) && near(h.x2, L.XR); }));
   ok('playhead: a depth share maps onto the half', near(atDepth(g.inC, 0.5).y, (g.ylo + g.yhi) / 2, 1e-6));
 
   const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152 };

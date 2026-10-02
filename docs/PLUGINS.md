@@ -261,9 +261,19 @@ Shipped:
   speed as the width of each half, accel as a bezier diamond at each foot),
   a rhythm staircase per modulator (amp fader, step handles in whole strokes,
   offset marker), a told-wave strip, and a numeric twin for every handle. A
-  handle writes once on release through `api.write`; arrows nudge, Shift by
-  ten. The registry names no role for a store op's slot and name, so it tells
-  them apart by schema type.
+  handle and its twin read one effective value (the card's draft while
+  edited, else `api.value`): a drag, nudge or keystroke redraws at once in
+  the intent look, and release, Enter or blur writes once through
+  `api.write`; arrows nudge, Shift by ten. The stroke picture's x axis is the
+  share of one stroke's time, so the curve always spans the plot, mid-drag
+  included. A chain toggle beside In speed links the pair (on by default,
+  `phosphor.advpen.speedLink` in localStorage): linked, in + out = 100 % and
+  editing one moves the other, both keys in the same tick, which the shadow
+  sends as one intent; unlinked, each writes alone. The link is presentation
+  only: the hub's two fields stay independent, and switching the link on
+  writes nothing (the tooltip shows the pair's sum until the next edit). The
+  registry names no role for a store op's slot and name, so it tells them
+  apart by schema type.
 
 ## Testing
 

@@ -10,9 +10,15 @@
 //   is drawn whenever both exist.
 // - Advanced and Classic are two §11.4 sources: each tab starts its own, the
 //   hub refuses a second with SOURCE_CONFLICT. The tabs only switch the view.
-// - A handle and its numeric twin are two views of one field: each shows
-//   api.value, a drag or nudge previews locally and writes once on release.
-// - Everything shown is api.value; nothing claims a value before the echo.
+// - A handle and its numeric twin are two views of one field and read one
+//   effective value: the card's draft while edited, else api.value. A drag,
+//   nudge or keystroke previews; release, key-up, change or blur writes once.
+// - A draft or pending value is drawn in the intent look until the echo.
+// - The stroke picture always spans the plot: x is the share of one stroke's
+//   time, never absolute time, so no drag can draw past the box.
+// - The in/out speed link is a client rule, not a wire one: linked, the pair
+//   sums to 100 % and both go out in the same tick, which the shadow
+//   coalesces into one intent. Switching it on writes nothing.
 // - mod.shape is not claimed: it stays a Tier-0 field until a hub emits it.
 
 const STORE_OP = { save: 1, load: 2, delete: 3 };   // registry store_ops (RFC-067)
@@ -21,6 +27,7 @@ const HIT = 30;                                    // px: pointer radius that pi
 const TANGENT = 0.7;                               // accel diamond: share of the bezier control offset
 const WAVE_MS = 6000;
 const CONTROL_OWNER = 0x0004;                     // registry core channel control-owner
+const LINK_KEY = 'phosphor.advpen.speedLink';     // client preference; phosphor.* rides the prefs backup
 
 const BASE = [
   ['depthMax', 'advgen.depth_max', 'Max depth'], ['depthMin', 'advgen.depth_min', 'Min depth'],
@@ -57,9 +64,20 @@ export const fromFrac = (f, u) => f.min + clamp(u, 0, 1) * (f.max - f.min);
 const gain = (a) => 1 + 1 / (1 + 9 * a);
 export const halfTime = (span, s, a) => (span > 0 && s > 0 ? span * gain(a) / s : null);
 export const accTime = (span, s, a) => (span > 0 && s > 0 ? span / (s * (1 + 9 * a)) : null);
-export const speedForTime = (span, a, t) => span * gain(a) / t;
 /** Control offset / half width = 1/(2+9A); inverted. */
 export const accelForEase = (e) => clamp((1 / e - 2) / 9, 0, 1);
+/**
+ * The speeds (units) that put the turn at share r of the stroke time. The
+ * other half keeps its speed, or, linked, takes the rest of full scale.
+ */
+export function speedInAt(p, r, linked) {
+  const a = gain(p.aIn) * (1 - r), b = gain(p.aOut) * r;
+  return linked ? a / (a + b) : a * p.sOut / b;
+}
+export function speedOutAt(p, r, linked) {
+  const a = gain(p.aIn) * (1 - r), b = gain(p.aOut) * r;
+  return linked ? b / (a + b) : b * p.sIn / a;
+}
 
 function bez(c, t) {
   const u = 1 - t;
@@ -84,15 +102,15 @@ export function atDepth(c, u) {
 
 /**
  * The stroke picture. p: {lo, hi} depth shares, {sIn, sOut, aIn, aOut} units.
- * L: {X0, XR, YT, YB}. k (px per time) is fitted unless given (frozen in a drag).
+ * L: {X0, XR, YT, YB}. The stroke always spans X0..XR.
  */
-export function strokeGeom(p, L, k) {
+export function strokeGeom(p, L) {
   const y = (u) => L.YB - u * (L.YB - L.YT);
   const g = { p, L, ylo: y(p.lo), yhi: y(p.hi), span: p.hi - p.lo };
   const tIn = halfTime(g.span, p.sIn, p.aIn), tOut = halfTime(g.span, p.sOut, p.aOut);
   g.ok = !!(tIn && tOut);
   if (!g.ok) return g;
-  g.k = k || (L.XR - L.X0) / (tIn + tOut);
+  g.k = (L.XR - L.X0) / (tIn + tOut);
   g.x0 = L.X0;
   g.x1 = g.x0 + g.k * tIn;
   g.x2 = g.x1 + g.k * tOut;
@@ -109,11 +127,15 @@ export function strokeGeom(p, L, k) {
   return g;
 }
 
+// The in half's share of the stroke time with the turn at x.
+const turnShare = (g, x) => clamp((x - g.L.X0) / (g.L.XR - g.L.X0), 0.01, 0.99);
+
 /** A handle at (x, y) of drag-start geometry g, as its field's raw value. */
 export const strokeValue = {
   depth: (f, g, x, y) => fromFrac(f, (g.L.YB - y) / (g.L.YB - g.L.YT)),
-  speedIn: (f, g, x) => valueOf(f, speedForTime(g.span, g.p.aIn, 2 * Math.max(x - g.x0, 1e-3) / g.k)),
-  speedOut: (f, g, x) => valueOf(f, speedForTime(g.span, g.p.aOut, 2 * Math.max(x - g.x1, 1e-3) / g.k)),
+  // A speed dot sits mid-half, so the turn is at 2x - X0 (in) or 2x - XR (out).
+  speedIn: (f, g, x, y, linked) => valueOf(f, speedInAt(g.p, turnShare(g, 2 * x - g.L.X0), linked)),
+  speedOut: (f, g, x, y, linked) => valueOf(f, speedOutAt(g.p, turnShare(g, 2 * x - g.L.XR), linked)),
   accelIn: (f, g, x) => valueOf(f, accelForEase(Math.max(x - g.x0, 1e-3) / (TANGENT * (g.x1 - g.x0)))),
   accelOut: (f, g, x) => valueOf(f, accelForEase(Math.max(g.x2 - x, 1e-3) / (TANGENT * (g.x2 - g.x1)))),
 };
@@ -182,7 +204,13 @@ const CSS = `
 .ap-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px 10px; }
 .ap-num { display: flex; flex-direction: column; gap: 2px; font-size: .72rem; color: var(--tx-mut); }
 .ap-num input { font-family: var(--mono); }
-.ap-num[data-status=pending] input { border-style: dashed; }
+.ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
+.ap-in { display: flex; gap: 4px; }
+.ap-in input { flex: 1 1 0; min-width: 0; }
+.ap-link { flex: none; width: 28px; padding: 0; display: grid; place-items: center; background: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--radius); color: var(--tx-mut); }
+.ap-link[aria-pressed=true] { color: var(--reality); border-color: var(--reality); }
+.ap-link svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .ap-num[data-status=overdue] input, .ap-num[data-status=fault] input { border-color: var(--warn); }
 .ap-cap { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
 .ap-ed { position: relative; width: 100%; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; }
@@ -192,6 +220,7 @@ const CSS = `
 .ap-wave { height: 64px; touch-action: auto; }
 .ap-ed path, .ap-ed line, .ap-ed polyline { fill: none; vector-effect: non-scaling-stroke; }
 .ap-ed .curve { stroke: var(--reality); stroke-width: 2; }
+.ap-ed .curve.intent { stroke: var(--intent); }
 .ap-ed .guide { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .ap-ed .grid { stroke: var(--line); }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
@@ -200,12 +229,13 @@ const CSS = `
 .ap-seg { position: absolute; bottom: 20px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
 .ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
-  border-radius: 50%; border: 2px solid var(--reality); background: var(--bg-card); box-sizing: border-box; }
+  border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--bg-card); box-sizing: border-box; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
-.ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--reality); background: none; }
+.ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--hc, var(--reality)); background: none; }
 .ap-h:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--reality-rgb), .35); }
-.ap-h[data-status=pending]::after { border-style: dashed; }
-.ap-h[data-status=overdue]::after, .ap-h[data-status=fault]::after { border-color: var(--warn); }
+.ap-h:is([data-status=draft], [data-status=pending]) { --hc: var(--intent); }
+.ap-h:is([data-status=draft], [data-status=pending]):not([data-shape=tri])::after { border-style: dashed; }
+.ap-h:is([data-status=overdue], [data-status=fault]) { --hc: var(--warn); }
 .ap-h[data-status=fault] .ap-tag { color: var(--warn); }
 .ap-h.off { opacity: .4; }
 .ap-h[aria-orientation=vertical] .ap-tag { top: auto; bottom: calc(50% + 8px); }
@@ -260,13 +290,13 @@ export function activate(api) {
 
 // ---- the editor shell: handles over an SVG, drag and keys, one write per release
 
-function makeEditor(api, o) {
+// ed: the card's one edit path {val, has, preview, commit} (mountCard).
+function makeEditor(api, o, ed) {
   const svg = s('svg', { viewBox: '0 0 ' + o.W + ' ' + o.H, preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const box = h('div', { class: 'ap-ed ' + o.cls }, svg);
   const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
-  const draft = new Map();
   let drag = null;
-  const val = (f) => (draft.has(f.uid) ? draft.get(f.uid) : Number(api.value(f)));
+  const { val } = ed;
   const geom = () => o.geom(val, drag ? drag.g0 : null);
   const hs = o.handles.filter((d) => d.field).map((d) => {
     const el = h('div', { class: 'ap-h', role: 'slider', tabindex: '0', 'aria-label': d.label,
@@ -274,9 +304,9 @@ function makeEditor(api, o) {
     const tag = h('span', { class: 'ap-tag' });
     el.append(tag);
     const hd = { ...d, el, tag };
-    el.addEventListener('blur', () => commit(hd));
+    el.addEventListener('blur', () => ed.commit(hd.field));
     el.addEventListener('keydown', (e) => nudge(hd, e));
-    el.addEventListener('keyup', (e) => { if (e.key in KEYS) commit(hd); });
+    el.addEventListener('keyup', (e) => { if (e.key in KEYS) ed.commit(hd.field); });
     return hd;
   });
   box.append(...(o.decor || []), ...hs.map((hd) => hd.el));
@@ -287,17 +317,7 @@ function makeEditor(api, o) {
     const k = KEYS[e.key];
     if (k === undefined || api.gate(f)) return;
     e.preventDefault();
-    const v = k === 'min' ? f.min : k === 'max' ? f.max : val(f) + k * (f.step || 1) * (e.shiftKey ? 10 : 1);
-    draft.set(f.uid, snap(f, v));
-    render();
-  }
-  function commit(hd) {
-    const f = hd.field;
-    if (!draft.has(f.uid)) return;
-    const v = draft.get(f.uid);
-    draft.delete(f.uid);
-    if (v !== Number(api.value(f))) api.write(f, v);
-    render();
+    ed.preview(f, k === 'min' ? f.min : k === 'max' ? f.max : val(f) + k * (f.step || 1) * (e.shiftKey ? 10 : 1));
   }
   const local = (e) => {
     const r = box.getBoundingClientRect();
@@ -324,14 +344,13 @@ function makeEditor(api, o) {
     const p = local(e);
     const f = drag.hd.field;
     const v = drag.hd.value(f, drag.g0, p.x, p.y);
-    if (Number.isFinite(v)) draft.set(f.uid, snap(f, v));
-    render();
+    if (Number.isFinite(v)) ed.preview(f, v);
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const hd = drag.hd;
+    const f = drag.hd.field;
     drag = null;
-    commit(hd);
+    ed.commit(f);
   };
   box.addEventListener('pointerup', end);
   box.addEventListener('pointercancel', end);
@@ -350,7 +369,7 @@ function makeEditor(api, o) {
       hd.el.style.left = (p.x / o.W * 100) + '%';
       hd.el.style.top = (p.y / o.H * 100) + '%';
       hd.el.classList.toggle('left', p.x > o.W * 0.85);
-      const st = draft.has(f.uid) ? 'draft' : api.status(f);
+      const st = ed.has(f) ? 'draft' : api.status(f);
       hd.el.dataset.status = st;
       hd.el.classList.toggle('off', !!fg);
       hd.el.setAttribute('aria-disabled', String(!!fg));
@@ -363,7 +382,7 @@ function makeEditor(api, o) {
     note.textContent = gate;
     box.classList.toggle('ap-stale', hs.some((hd) => api.stale(hd.field)));
   }
-  return { box, note, render, val };
+  return { box, note, render };
 }
 
 // ---- the card --------------------------------------------------------------
@@ -373,19 +392,70 @@ function mountCard(api, el, fields) {
   const updaters = [];
   const loops = [];
 
+  // ---- the one edit path: every handle and every numeric twin reads val()
+  const draft = new Map();
+  const val = (f) => (draft.has(f.uid) ? draft.get(f.uid) : Number(api.value(f)));
+  let linked = true;
+  try { linked = localStorage.getItem(LINK_KEY) !== '0'; } catch (e) { /* private mode */ }
+  const partner = (f) => (!linked ? null : f === F.speedIn ? F.speedOut : f === F.speedOut ? F.speedIn : null);
+  // Linked, the partner takes the rest of full scale and f stays where the partner keeps its min.
+  function preview(f, v) {
+    const o = partner(f);
+    v = snap(f, o ? Math.min(v, valueOf(f, 1 - unitOf(o, o.min ?? 0))) : v);
+    draft.set(f.uid, v);
+    if (o) draft.set(o.uid, snap(o, valueOf(o, 1 - unitOf(f, v))));
+    update();
+  }
+  // Both halves in the same tick: the shadow sends one channel's writes as one intent.
+  function commit(f) {
+    for (const x of [f, partner(f)]) {
+      if (!x || !draft.has(x.uid)) continue;
+      const v = draft.get(x.uid);
+      draft.delete(x.uid);
+      if (v !== Number(api.value(x))) api.write(x, v);
+    }
+    update();
+  }
+  const ed = { val, has: (f) => draft.has(f.uid), preview, commit };
+
   // A field as a number input: the numeric twin of a handle.
-  function numCtl(f, label) {
+  function numCtl(f, label, extra) {
     const input = h('input', { type: 'number', class: 'og-num', min: f.min ?? '', max: f.max ?? '', step: f.step || 1, 'aria-label': label });
-    const box = h('label', { class: 'ap-num' }, h('span', { text: label + (f.unit ? ' (' + f.unit + ')' : '') }), input);
-    input.addEventListener('change', () => { if (input.value !== '') api.write(f, snap(f, Number(input.value))); });
+    const box = h('label', { class: 'ap-num' }, h('span', { text: label + (f.unit ? ' (' + f.unit + ')' : '') }),
+      extra ? h('span', { class: 'ap-in' }, input, extra) : input);
+    input.addEventListener('input', () => { if (input.value !== '' && Number.isFinite(+input.value)) preview(f, +input.value); });
+    input.addEventListener('change', () => commit(f));
+    input.addEventListener('blur', () => commit(f));
     updaters.push(() => {
-      const st = api.status(f), gate = api.gate(f);
+      const st = draft.has(f.uid) ? 'draft' : api.status(f), gate = api.gate(f);
       box.dataset.status = st;
       box.title = gate || LADDER[st] || '';
       input.disabled = !!gate;
-      if (document.activeElement !== input) input.value = num(api.value(f));
+      if (document.activeElement !== input) input.value = num(val(f));
     });
     return box;
+  }
+  // The in/out speed link: a client preference; switching it writes nothing.
+  function linkBtn() {
+    const btn = h('button', { type: 'button', class: 'ap-link' });
+    const draw = () => {
+      if (btn.getAttribute('aria-pressed') !== String(linked)) {
+        btn.setAttribute('aria-pressed', String(linked));
+        btn.setAttribute('aria-label', linked ? 'Unlink in and out speed' : 'Link in and out speed');
+        btn.innerHTML = linked
+          ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="5.25" width="8" height="5.5" rx="2.75"/><rect x="7" y="5.25" width="8" height="5.5" rx="2.75"/></svg>'
+          : '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x=".75" y="5.25" width="6" height="5.5" rx="2.75"/><rect x="9.25" y="5.25" width="6" height="5.5" rx="2.75"/></svg>';
+      }
+      const sum = val(F.speedIn) + val(F.speedOut);
+      btn.title = !linked ? 'Unlinked: each half alone' : 'Linked: in + out = ' + num(sum) + ' %';
+    };
+    btn.addEventListener('click', () => {
+      linked = !linked;
+      try { localStorage.setItem(LINK_KEY, linked ? '1' : '0'); } catch (e) { /* private mode */ }
+      draw();
+    });
+    updaters.push(draw);
+    return btn;
   }
   // A full-width slider (master, the classic knobs), the ladder in words under it.
   function slider(f, label) {
@@ -429,32 +499,38 @@ function mountCard(api, el, fields) {
   const pIn = s('path', { class: 'curve' }), pOut = s('path', { class: 'curve' });
   const play = h('div', { class: 'ap-play', hidden: '' });
   const SV = strokeValue;
+  const strokeNow = () => strokeGeom({
+    lo: fracOf(F.depthMin, val(F.depthMin)), hi: fracOf(F.depthMax, val(F.depthMax)),
+    sIn: unitOf(F.speedIn, val(F.speedIn)), sOut: unitOf(F.speedOut, val(F.speedOut)),
+    aIn: unitOf(F.accelIn, val(F.accelIn)), aOut: unitOf(F.accelOut, val(F.accelOut)),
+  }, SL);
   const stroke = makeEditor(api, {
     W: 1000, H: 240, cls: 'ap-stroke',
     decor: [...ticks, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'stroke · shape' }), play],
     svgKids: [
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YT, y2: SL.YT }),
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YB, y2: SL.YB }), pIn, pOut],
-    geom: (val, g0) => strokeGeom({
-      lo: fracOf(F.depthMin, val(F.depthMin)), hi: fracOf(F.depthMax, val(F.depthMax)),
-      sIn: unitOf(F.speedIn, val(F.speedIn)), sOut: unitOf(F.speedOut, val(F.speedOut)),
-      aIn: unitOf(F.accelIn, val(F.accelIn)), aOut: unitOf(F.accelOut, val(F.accelOut)),
-    }, SL, g0 && g0.k),
+    geom: strokeNow,
     draw(g) {
-      pIn.setAttribute('d', g.ok ? cpath(g.inC) : '');
-      pOut.setAttribute('d', g.ok ? cpath(g.outC) : '');
+      const intent = BASE.some(([k]) => draft.has(F[k].uid) || /^(pending|overdue)$/.test(api.status(F[k])));
+      for (const [p, c] of [[pIn, g.inC], [pOut, g.outC]]) {
+        p.setAttribute('d', g.ok ? cpath(c) : '');
+        p.classList.toggle('intent', intent);
+      }
     },
     handles: [
       { key: 'deep', field: F.depthMax, label: 'Max depth', axis: 'y', at: (g) => (g.ok ? g.deep : { x: SL.X0, y: g.yhi }),
         value: SV.depth, text: (v) => 'deep ' + num(v) },
       { key: 'shallow', field: F.depthMin, label: 'Min depth', axis: 'y', at: (g) => (g.ok ? g.shallow : { x: SL.XR, y: g.ylo }),
         value: SV.depth, text: (v) => 'shallow ' + num(v) },
-      { key: 'vin', field: F.speedIn, label: 'In speed', at: (g) => g.ok && g.vIn, value: SV.speedIn, text: (v) => 'in v' + num(v) },
-      { key: 'vout', field: F.speedOut, label: 'Out speed', at: (g) => g.ok && g.vOut, value: SV.speedOut, text: (v) => 'out v' + num(v) },
+      { key: 'vin', field: F.speedIn, label: 'In speed', at: (g) => g.ok && g.vIn,
+        value: (f, g, x, y) => SV.speedIn(f, g, x, y, linked), text: (v) => 'in v' + num(v) },
+      { key: 'vout', field: F.speedOut, label: 'Out speed', at: (g) => g.ok && g.vOut,
+        value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked), text: (v) => 'out v' + num(v) },
       { key: 'ain', field: F.accelIn, label: 'In accel', shape: 'diamond', at: (g) => g.ok && g.aIn, value: SV.accelIn, text: (v) => 'a' + num(v) },
       { key: 'aout', field: F.accelOut, label: 'Out accel', shape: 'diamond', at: (g) => g.ok && g.aOut, value: SV.accelOut, text: (v) => 'a' + num(v) },
     ],
-  });
+  }, ed);
   updaters.push(stroke.render);
 
   // ---- rhythm modifier: one tab per modulator, ordered by the control it rides
@@ -476,7 +552,7 @@ function mountCard(api, el, fields) {
       const stair = s('path', { class: 'curve' });
       const fill = s('path', { class: 'fill' });
       const segs = ['to min', 'at min', 'to max', 'at max'].map((w) => h('span', { class: 'ap-seg', 'data-w': w }));
-      const ed = makeEditor(api, {
+      const cyc = makeEditor(api, {
         W: 1000, H: 170, cls: 'ap-stair',
         decor: [...segs, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'modifier · cycle' })],
         svgKids: [s('line', { class: 'guide', x1: ML.X0, x2: ML.XR, y1: ML.YT, y2: ML.YT }),
@@ -505,10 +581,10 @@ function mountCard(api, el, fields) {
           { key: 'rest', field: m.rest, label: 'At max', at: (g) => g.rest, value: stairValue.rest, text: () => '' },
           { key: 'phase', field: m.phase, label: 'Offset', shape: 'tri', at: (g) => g.phase, value: stairValue.phase, text: (v) => 'offset ' + num(v) },
         ],
-      });
+      }, ed);
       const nums = h('div', { class: 'ap-nums' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
-      const view = h('div', { class: 'ap-mview', role: 'tabpanel', 'aria-label': name }, ed.box, ed.note, nums);
-      updaters.push(() => { btn.dataset.on = String(Number(api.value(m.amount)) > 0); ed.render(); });
+      const view = h('div', { class: 'ap-mview', role: 'tabpanel', 'aria-label': name }, cyc.box, cyc.note, nums);
+      updaters.push(() => { btn.dataset.on = String(Number(api.value(m.amount)) > 0); cyc.render(); });
       return { btn, view };
     });
     const show = () => {
@@ -545,11 +621,7 @@ function mountCard(api, el, fields) {
     waveLine.setAttribute('points', trace.map(([t, v]) => ((t - now + WAVE_MS) / WAVE_MS * 1000).toFixed(1) + ',' + (60 - v * 56).toFixed(1)).join(' '));
     // Playhead: the live position on the half it is travelling (depth window shares).
     const p = share(pos);
-    const g = strokeGeom({
-      lo: fracOf(F.depthMin, stroke.val(F.depthMin)), hi: fracOf(F.depthMax, stroke.val(F.depthMax)),
-      sIn: unitOf(F.speedIn, stroke.val(F.speedIn)), sOut: unitOf(F.speedOut, stroke.val(F.speedOut)),
-      aIn: unitOf(F.accelIn, stroke.val(F.accelIn)), aOut: unitOf(F.accelOut, stroke.val(F.accelOut)),
-    }, SL);
+    const g = strokeNow();
     if (p != null && g.ok && g.span > 0) {
       if (lastU != null && p !== lastU) dir = p > lastU ? 1 : -1;
       lastU = p;
@@ -617,7 +689,7 @@ function mountCard(api, el, fields) {
     slider(F.master, 'Speed'),
     ...(presets ? [presets] : []),
     stroke.box, stroke.note,
-    h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l))),
+    h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l, k === 'speedIn' ? linkBtn() : null))),
     ...(rhythm ? [rhythm] : []),
     wave,
     runRow(F.advRun, F.running));
