@@ -34,6 +34,11 @@
  *            without override the jog tape is disabled with its reason;
  *            Override confirms, sends override, reads Return, and the tape
  *            jogs over the whole travel; Return sends return_op, no gate
+ * ph-vdk.43 (RFC-088), on glance, handheld and full:
+ *   flip     a catalog tagging axis.flipped gets one Flip toggle on the rail
+ *            row; every press confirms first, Cancel sends nothing, and the
+ *            hub's NACK reason (SOURCE_CONFLICT) is shown on the toggle and in
+ *            the strip's refusal surface
  * Then ph-vdk.14: out-of-order and post-wrap seq_of_state edges are marked
  * superseded by SPEC §7.3 serial arithmetic and skipped by the strip summary.
  *
@@ -43,7 +48,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { cbMap, cbArray, cbInt, cbF32, cbTstr, cbBstr, cbBool, cbNull, cbUint, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
-import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
 import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
 import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -52,26 +57,26 @@ const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catal
 
 // ---- the no-hero catalog: strip the rail's window roles, re-encode ---------
 // Wire floats are f32 only and map keys are ints, so this round-trips to a
-// catalog that decodes identically apart from the dropped roles.
+// catalog that decodes identically apart from the dropped roles (`drop`).
 const STRIP = new Set(['window.min', 'window.max']);
 let stripped = 0;
-function enc(v) {
+function enc(v, drop = new Set()) {
   if (v instanceof Map) {
     const pairs = [];
     for (const [k, x] of v) {
-      if (k === 13 && STRIP.has(x)) { stripped++; continue; }
-      pairs.push([k, enc(x)]);
+      if (k === 13 && drop.has(x)) { stripped++; continue; }
+      pairs.push([k, enc(x, drop)]);
     }
-    return cbMap(pairs);
+    return cbMap(pairs.sort((a, b) => a[0] - b[0]));
   }
-  if (Array.isArray(v)) return cbArray(v.map(enc));
+  if (Array.isArray(v)) return cbArray(v.map((x) => enc(x, drop)));
   if (v instanceof Uint8Array) return cbBstr(v);
   if (typeof v === 'string') return cbTstr(v);
   if (typeof v === 'boolean') return cbBool(v);
   if (v == null) return cbNull();
   return Number.isInteger(v) ? cbInt(v) : cbF32(v);
 }
-const NO_HERO = enc(cbDecodeFull(FIXTURE));
+const NO_HERO = enc(cbDecodeFull(FIXTURE), STRIP);
 const CATALOGS = {
   hero: { bytes: FIXTURE, etag: catalogEtag(FIXTURE, LIMITS.etag_bytes) },
   none: { bytes: NO_HERO, etag: catalogEtag(NO_HERO, LIMITS.etag_bytes) },
@@ -141,6 +146,7 @@ function hubFor(cat, wire) {
             }
           }
           send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
+          for (const [ch, p] of Object.entries(wire.states || {})) send(FRAME.STATE, Number(ch), p);
         } else if (header.type === FRAME.INTENT && header.channel === CORE_CHANNEL.safety_intents) {
           const m = cbDecodeFull(payload);
           const op = m.get(K.value).get(1);
@@ -151,6 +157,11 @@ function hubFor(cat, wire) {
             LATCH[op](wire.latch);
             send(FRAME.STATE, CORE_CHANNEL.safety, snapshot(wire.latch));
           }
+        } else if (header.type === FRAME.INTENT) {
+          // Any other write: the hub refuses it as a busy rail would (SPEC §9.6).
+          wire.writes.push(header.channel);
+          send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(NACK.SOURCE_CONFLICT)],
+            [K.detail, cbTstr('a source owns the rail')], [K.intent_id, cbUint(cbDecodeFull(payload).get(K.intent_id))]]));
         } else if (header.type === FRAME.PING) {
           send(FRAME.PONG, header.channel, payload);
         }
@@ -159,9 +170,10 @@ function hubFor(cat, wire) {
   };
 }
 
-async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false, cutsPower = null }) {
+async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-preference', edges = false, cutsPower = null,
+  states = null }) {
   const cat = CATALOGS[catalog];
-  const wire = { seen: [], ops: [], latch: { word: 0, modes: 0 }, socket: null, edges, cutsPower };
+  const wire = { seen: [], ops: [], writes: [], latch: { word: 0, modes: 0 }, socket: null, edges, cutsPower, states };
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: touch, isMobile: false, reducedMotion });
   await ctx.addInitScript(([etag, bytes]) => {
     try {
@@ -431,9 +443,10 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     return enc(m);
   })();
   CATALOGS.short = { bytes: SHORT_OPS, etag: catalogEtag(SHORT_OPS, LIMITS.etag_bytes) };
-  for (const [catalog, why] of [['none', 'no rail'], ['short', 'no override op']]) {
+  for (const [catalog, why, rails] of [['none', 'no rail', 0], ['short', 'no override op', 1]]) {
     const { ctx, page, up } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
-    ok('override: declines with ' + why, up && await page.locator('.btn-override').count() === 0);
+    ok('override: declines with ' + why, up && await page.locator('.rail-hero').count() === rails
+      && await page.locator('.btn-override').count() === 0);
     await ctx.close();
   }
 
@@ -467,6 +480,46 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     wire.ops.at(-1) === SAFETY_OP.return_op && await lbl() === 'Override'
     && await tape.getAttribute('aria-disabled') === 'true', wire.ops.slice(n).join());
   await ctx.close();
+}
+
+// ---- ph-vdk.43: Flip on the rail row, confirm-gated, refusals in the hub's words --
+{
+  // The fixture's one two-valued unroled setting stands in for a flip field.
+  const FLIP = (() => {
+    const m = cbDecodeFull(FIXTURE);
+    for (const e of m) for (const f of e.get(8) || []) if (f.get(1) === 'ap_mode') f.set(13, 'axis.flipped');
+    return enc(m);
+  })();
+  CATALOGS.flip = { bytes: FLIP, etag: catalogEtag(FLIP, LIMITS.etag_bytes) };
+  // Its channel's snapshot: every byte 0 (not flipped) but the enabled mask.
+  const flipCh = cbDecodeFull(FLIP).find((e) => (e.get(8) || []).some((f) => f.get(13) === 'axis.flipped'));
+  const states = { [flipCh.get(1)]: Uint8Array.of(...new Array(flipCh.get(8).length - 1).fill(0), 0xff) };
+  for (const [w, h, touch, cls] of [[1280, 720, false, 'full'], [360, 800, true, 'handheld'], [220, 480, true, 'glance']]) {
+    const { ctx, page, wire, up } = await open(browser, { w, h, touch, catalog: 'flip', states });
+    const flip = page.locator('.rail-hero .rw-flip');
+    const n = up ? await flip.count() : 0;
+    ok(cls + ': one Flip toggle on the rail row', n === 1, n + ' found');
+    if (n !== 1) { await ctx.close(); continue; }
+    ok(cls + ': Flip reads off from the reported value', /off/.test(await flip.locator('small').textContent())
+      && await flip.getAttribute('aria-pressed') === 'false');
+    await flip.click();
+    await page.waitForTimeout(200);
+    const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
+    await page.locator('.overlay.hazard .og-btn').first().click();
+    await page.waitForTimeout(300);
+    ok(cls + ': a press asks first; Cancel sends nothing', asked && wire.writes.length === 0, wire.writes.join());
+    await flip.click();
+    await page.waitForTimeout(200);
+    await page.locator('.overlay.hazard .og-btn.danger').click();
+    await page.waitForTimeout(600);
+    const text = (await flip.locator('small').textContent()).trim();
+    const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
+    ok(cls + ': confirmed, the write goes out and the hub refusal is shown in its words',
+      wire.writes.length === 1 && /SOURCE_CONFLICT/.test(text) && /SOURCE_CONFLICT/.test(banner),
+      JSON.stringify([text, banner]));
+    ok(cls + ': a refused flip still reads off', await flip.getAttribute('aria-pressed') === 'false');
+    await ctx.close();
+  }
 }
 
 await browser.close();

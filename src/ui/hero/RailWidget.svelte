@@ -65,7 +65,8 @@
   import { machine, getSession, freshness, specSafetyAction } from '../../model/machine.svelte.js';
   import { SAFETY_OP } from '../../../../Valence/clients/js/index.js';
   import SafetyOp from '../widgets/SafetyOp.svelte';
-  import { isFieldEnabled } from '../../model/settings.js';
+  import { isFieldEnabled, reportedValue } from '../../model/settings.js';
+  import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
   import { ACCENT, ac } from '../../model/theme.js';
@@ -143,6 +144,35 @@
   const jogBlock = $derived(!latch ? '' : latch.estopLatched ? 'e-stop latched: no motion until release'
     : latch.paused && !latch.override ? 'paused: press Override to jog' : '');
   const moveEnabled = $derived(moveAllowed && !jogBlock);
+
+  // Flip (SPEC §9.6, RFC-088): the axis.flipped setting, a bool or two-option
+  // select where 1 is flipped. Confirmed on every class (reversing a rail
+  // under a person is a real act). Never pre-gated beyond the field's own
+  // write gate: the hub's SOURCE_CONFLICT, NOT_HOMED and INTERLOCK are shown
+  // as it says them. The state is the REPORTED value, never the request.
+  const flip = $derived(fields.flip);
+  const flipped = $derived(!!Number(reportedValue(flip, sampleOf(flip))));
+  const flipEnabled = $derived(enabledOf(flip));
+  const flipStatus = $derived(statusOf(flip));
+  const flipText = $derived.by(() => {
+    const sh = shadowOf(flip);
+    if (flipStatus === STATUS.fault) return 'refused: ' + ((sh && sh.error) || 'no reason given');
+    if (flipStatus === STATUS.pending || flipStatus === STATUS.overdue) return 'waiting for the machine';
+    if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'not writable now';
+    return flipped ? 'on: home at the far end' : 'off';
+  });
+  async function toggleFlip() {
+    if (!flipEnabled) return;
+    const on = !flipped;
+    const ok = await askConfirm({
+      title: on ? 'Flip the rail' : 'Unflip the rail',
+      body: 'Home swaps ends: position 0 becomes the ' + (on ? 'far' : 'near') + ' end and the hub mirrors the '
+        + 'window and every target. The hub refuses this while a source owns the rail, while unhomed, under '
+        + 'override or in motion.',
+      confirmLabel: on ? 'Flip' : 'Unflip',
+    });
+    if (ok) writeSetting(flip, on ? 1 : 0);
+  }
   const moveReason = $derived.by(() => {
     if (!move) return '';
     if (machine.link.phase !== 'live') return 'no hub link';
@@ -847,6 +877,13 @@
       {#if hasOverride}
         <SafetyOp action={safety} op={SAFETY_OP.override} />
       {/if}
+      {#if flip}
+        <button type="button" class="rw-flip" aria-pressed={flipped} disabled={!flipEnabled}
+                data-shadow={flipStatus} title={flipText} onclick={toggleFlip}>
+          <span class="lbl">Flip</span>
+          <small role="status">{flipText}</small>
+        </button>
+      {/if}
       {#if accessory}{@render accessory()}{/if}
     </div>
   </div>
@@ -1053,6 +1090,28 @@
   }
   /* The rail's control row: override/return (and Flip) beside Home. */
   .rw-hero-accessory { flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px; }
+  /* Law 12 floor; a quiet chip like its neighbors, warn-bordered while on. */
+  .rw-flip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--tap);
+    min-width: max(var(--tap), 72px);
+    padding: 2px 10px;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    color: var(--ink);
+    font-size: .72rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
+  .rw-flip:disabled { opacity: .4; }
+  .rw-flip small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  .rw-flip[data-shadow='overdue'] small { color: var(--warn); }
+  .rw-flip[data-shadow='fault'] small { color: var(--bad); }
 
   /* OG .rail-panel spacing: 10px vertical margin so the og-panel's 4px
      outline-offset frame never collides with the row above or the content

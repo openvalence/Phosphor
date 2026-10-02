@@ -101,6 +101,9 @@ export const ROLE = {
 
   // RENDERING §10.1: an autonomous source keeps running after its session ends
   sourceBackgroundRun: 'source.background_run',
+
+  // RFC-088 (SPEC §9.6): the rail's direction flip, a stored setting
+  axisFlipped: 'axis.flipped',
 };
 
 /**
@@ -202,6 +205,8 @@ export const ROLE_LABEL = {
   [ROLE.patternSensation]: 'Sensation',
 
   [ROLE.sourceBackgroundRun]: 'Run in background',
+
+  [ROLE.axisFlipped]: 'Flip',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */
@@ -305,6 +310,8 @@ export const AXIS_HERO_SPEC = {
     // fields' own bounds.
     extentMeasured: ROLE.geometryMeasuredTravel,
     extentMax: ROLE.geometryMaxTravel,
+    // RFC-088: absent means no Flip control, never a dead one.
+    flip: ROLE.axisFlipped,
   },
 };
 

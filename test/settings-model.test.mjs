@@ -321,6 +321,14 @@ ok('and binds to fields whose names it could not have known',
   ok('the commanded side may be command.position instead of telemetry.target',
      !!claimRoles(new Map([...without(ROLE.telemetryTarget),
        [ROLE.commandPosition, [{ uid: 'x:1', role: ROLE.commandPosition }]]]), AXIS_HERO_SPEC));
+  // ph-vdk.43: Flip binds where axis.flipped is present, and its absence
+  // costs the rail nothing but the control (RENDERING §8.4 `axis`).
+  const flipF = { uid: 'f:1', role: ROLE.axisFlipped };
+  ok('Flip: no axis.flipped role, no flip binding, the rail still claims',
+     railClaim && railClaim.flip === null);
+  const withFlip = claimRoles(new Map([...model.byRole, [ROLE.axisFlipped, [flipF]]]), AXIS_HERO_SPEC);
+  ok('Flip: the axis.flipped field binds to the rail and leaves the generic tree',
+     withFlip && withFlip.flip === flipF && withFlip.claimed.has('f:1'));
 }
 
 const patternClaim = claimRoles(model.byRole, {
