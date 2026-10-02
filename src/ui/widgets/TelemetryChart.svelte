@@ -115,12 +115,23 @@
     const ctx = canvasEl.getContext('2d');
     const root = document.documentElement;
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
-    const paletteColors = PALETTE_VARS.map(cssVar);
-    const inkFaint = cssVar('--ink-faint');
-    // Hairline color only, matched to the OG DIAG graph's gridline token
-    // (--line-1); --line-soft reads as near-invisible against --bg.
-    const line = cssVar('--line-1');
+    // Tokens are re-read on every theme switch: applyTheme() flips
+    // documentElement.dataset.theme and the custom-palette keys, and a
+    // snapshot taken at mount would keep drawing the previous theme's lanes.
+    let paletteColors, inkFaint, line;
+    function readTokens() {
+      paletteColors = PALETTE_VARS.map(cssVar);
+      inkFaint = cssVar('--ink-faint');
+      // Hairline color only, matched to the OG DIAG graph's gridline token
+      // (--line-1); --line-soft reads as near-invisible against --bg.
+      line = cssVar('--line-1');
+    }
+    readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
+    const themeObserver = new MutationObserver(() => { readTokens(); });
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+    // The custom theme re-injects its <style> without touching data-theme.
+    themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
 
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reduced = mq.matches;
@@ -255,6 +266,7 @@
     }
 
     return () => {
+      themeObserver.disconnect();
       mq.removeEventListener('change', onMqChange);
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearInterval(timer);
