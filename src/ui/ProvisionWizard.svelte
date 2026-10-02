@@ -56,7 +56,7 @@
 
 <div class="wizard" bind:this={card} role="dialog" tabindex="-1" aria-labelledby="wz-title">
   <header>
-    <h2 id="wz-title">Set up: {category.label}</h2>
+    <h2 id="wz-title">{category.label}</h2>
     {#if step}<span class="count mono">Step {idx + 1} of {steps.length}</span>{/if}
   </header>
 

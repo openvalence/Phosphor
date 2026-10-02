@@ -13,10 +13,8 @@
 import { UI_CATEGORY } from '../../../../Valence/clients/js/index.js';
 import { humanize } from '../../model/settings.js';
 
-// TODO(rfc-079): the draft `setup` category supersedes `network` the moment
-// the registry carries it; until then `network` is the ratified home of
-// provisioning (registry ui_categories 11).
-export const PROVISION_CATEGORY = UI_CATEGORY.setup ?? UI_CATEGORY.network;
+// RFC-079: `setup` is the commissioning surface; `network` is never walked.
+export const PROVISION_CATEGORY = UI_CATEGORY.setup;
 
 const settable = (fields) => fields.some((f) => !f.readOnly);
 

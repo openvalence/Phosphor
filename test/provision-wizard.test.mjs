@@ -2,9 +2,9 @@
  * provision-wizard.test.mjs -- the `wizard` pattern's step derivation
  * (RENDERING §10, src/ui/wizard/steps.js) against a synthetic setup catalog
  * nothing ships: invented ids and names, so a pass proves the steps come from
- * catalog facts and nothing else (§11). Covers the degraded paths: no
- * provisioning category, a step whose only settable field is absent, and a
- * draft category id the registry does not carry.
+ * catalog facts and nothing else (§11). Walks the RFC-079 `setup` category,
+ * never `network`. Covers the degraded paths: no setup category, and a step
+ * whose only settable field is absent.
  *
  * Run: node test/provision-wizard.test.mjs
  */
@@ -22,10 +22,10 @@ const lf = (name, type, extra = {}) => ({
   name, type, typeName: String(type), unit: '', scale: 1, provenanceName: 'actual',
   rank: UI_RANK.detail, unitId: null, ...extra,
 });
-const net = { category: UI_CATEGORY.network, categoryKnown: true, categoryName: 'network' };
+const setup = { category: UI_CATEGORY.setup, categoryKnown: true, categoryName: 'setup' };
 const state = (id, name, layout, extra = {}) => ({
   id, name, cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 0,
-  settingChannel: 0x0e90, schema: null, layout, ...net, ...extra,
+  settingChannel: 0x0e90, schema: null, layout, ...setup, ...extra,
 });
 
 const CATALOG = [
@@ -48,21 +48,21 @@ const CATALOG = [
   ]),
   // an action verb in the category: its own step
   { id: 0x0e43, name: 'beacon_cmd', cls: CHANNEL_CLASS.INTENT, dir: 1, access: 2, maxRateHz: 2,
-    priority: 1, settingChannel: null, layout: null, ...net,
+    priority: 1, settingChannel: null, layout: null, ...setup,
     schema: [{ key: 1, name: 'beacon_op', type: 1, typeName: 'uint', role: 'action.identify', options: ['none', 'blink'] }] },
-  // a decoy settable category the wizard must not walk
+  // settable network entry: provisioning's pre-RFC-079 home, no longer walked
   state(0x0e50, 'decoy', [lf('decoy_knob', PACKED.u8, { settingKey: 6 })],
-    { category: UI_CATEGORY.control, categoryName: 'control' }),
+    { category: UI_CATEGORY.network, categoryName: 'network' }),
 ];
 
 console.log('provisioning wizard steps vs. a synthetic setup catalog\n');
 
-ok('the ratified provisioning home is network until the registry carries setup (TODO rfc-079)',
-   PROVISION_CATEGORY === (UI_CATEGORY.setup ?? UI_CATEGORY.network));
+ok('the wizard walks the registry setup category (RFC-079)',
+   PROVISION_CATEGORY === UI_CATEGORY.setup && UI_CATEGORY.setup != null);
 
 const model = buildSettingsModel(CATALOG);
 const cat = provisionCategory(model);
-ok('the wizard walks the provisioning category, not the decoy', cat && cat.id === PROVISION_CATEGORY);
+ok('the wizard walks setup, not the settable network entry', cat && cat.id === UI_CATEGORY.setup);
 
 const steps = wizardSteps(cat);
 const ids = steps.map((s) => s.id).join(',');
@@ -77,22 +77,15 @@ ok('an action reaches its step as a trigger', steps[2] && steps[2].fields[0].wid
 ok('readouts-only entry, diagnostic group, and absent-setting group are not steps',
    !steps.some((s) => ['ch:' + 0x0e42, 'g:Debug', 'g:Spare'].includes(s.id)));
 
-// ---- degraded: no provisioning category at all ----------------------------
-const bare = buildSettingsModel(CATALOG.filter((e) => e.category !== UI_CATEGORY.network));
-ok('no provisioning category: no wizard, and no steps from null', provisionCategory(bare) === null && wizardSteps(null).length === 0);
+// ---- degraded: no setup category; a settable network one is not a stand-in --
+const bare = buildSettingsModel(CATALOG.filter((e) => e.category !== UI_CATEGORY.setup));
+ok('no setup category: no wizard (network is no fallback), and no steps from null', provisionCategory(bare) === null && wizardSteps(null).length === 0);
 ok('no model yet: no wizard', provisionCategory(null) === null);
 
 // ---- degraded: the category exists but every setting in it is absent ------
 const hollow = buildSettingsModel([CATALOG[2], CATALOG[4]]);
 ok('a category with nothing settable declines (law 7) instead of an empty wizard',
-   !!hollow.categories.find((c) => c.id === UI_CATEGORY.network) && provisionCategory(hollow) === null);
-
-// ---- a draft category id the registry does not carry is never bound -------
-const DRAFT_ID = 15; // RFC-079 draft `setup`; deliberately a test-only literal
-const draft = buildSettingsModel([state(0x0e60, 'first_run', [lf('fr_knob', PACKED.u8, { settingKey: 7 })],
-  { category: DRAFT_ID, categoryKnown: UI_CATEGORY.setup === DRAFT_ID, categoryName: 'setup' })]);
-ok('an unregistered category id is not taken for provisioning',
-   UI_CATEGORY.setup === DRAFT_ID ? provisionCategory(draft) !== null : provisionCategory(draft) === null);
+   !!hollow.categories.find((c) => c.id === UI_CATEGORY.setup) && provisionCategory(hollow) === null);
 
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- provision wizard steps');
 process.exit(fails ? 1 : 0);
