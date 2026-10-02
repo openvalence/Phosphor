@@ -21,6 +21,13 @@
    *   declared false or nothing.
    * - The ladder is this press's own: one shadow record serves every op of
    *   the safety channel, so a sibling copy's press must not light this one.
+   * - FIXED BOX in both states (ph-e82.21): hidden ghosts size the button to
+   *   its widest label and standing subline; the live status line never adds
+   *   width (it ellipsizes, the title carries it). A pending press once
+   *   widened Pause for one frame and shifted the whole strip.
+   * - The subline carries live state only (docs/COPY.md rule 5); what a
+   *   press does is the tooltip. Override and Return carry neither
+   *   (operator 2026-10-02).
    */
   import { machine, getSession, estopLabel } from '../../model/machine.svelte.js';
   import { runAction } from '../../model/shadow.svelte.js';
@@ -50,8 +57,7 @@
   };
   const OVERRIDE_COPY = {
     title: 'Override',
-    body: 'Pause the machine and take the rail by hand: the travel window and soft limits are lifted and jog is '
-      + 'enabled until you press Return. Hardware protection stays.',
+    body: 'Lifts the travel window and soft limits until Return; hardware protection stays',
     confirmLabel: 'Override',
   };
 
@@ -61,24 +67,26 @@
   const latched = $derived(!!latch && latch[pair.bit]);
   // The op a press (or a full hold) sends right now.
   const send = $derived(latched ? pair.second : op);
-  const label = $derived(
-    isEstop ? (latched ? 'Halted' : estopLabel())
-    : op === SAFETY_OP.override ? (latched ? 'Return' : 'Override')
-    : (latched ? 'Resume' : 'Pause'));
-  const hint = $derived(
-    isEstop ? (latched ? 'hold 3 s to release' : estopLabel() === 'E-Stop' ? 'cut power' : 'stop motion')
-    : op === SAFETY_OP.override ? (latched ? 'back to the paused position' : 'take the rail, jog')
-    : (latched ? (latch.homeRequired ? 'home required' : 'paused') : 'hold position'));
+  // [first state, second state]. TIPS: what a press does. STANDING: the
+  // second state's own subline, the one a release or resume waits on.
+  const isOverride = $derived(op === SAFETY_OP.override);
+  const LABELS = $derived(isEstop ? [estopLabel(), 'Halted'] : isOverride ? ['Override', 'Return'] : ['Pause', 'Resume']);
+  const TIPS = $derived(isEstop ? [estopLabel() === 'E-Stop' ? 'Cut motor power' : 'Stop motion', 'Hold 3 s to release']
+    : isOverride ? [] : ['Hold position', 'Continue motion']);
+  const STANDING = $derived(isEstop ? ['Hold 3 s'] : isOverride ? [] : ['home required']);
+  const label = $derived(LABELS[latched ? 1 : 0]);
+  const tip = $derived(TIPS[latched ? 1 : 0] || '');
+  const hint = $derived(!latched ? '' : isEstop ? STANDING[0] : !isOverride && latch.homeRequired ? STANDING[0] : '');
   const icon = $derived(isEstop ? 'estop' : op === SAFETY_OP.override ? (latched ? 'return' : 'override')
     : latched ? 'resume' : 'pause');
 
   const why = $derived.by(() => {
     void machine.link.roles; void machine.catalog.ready;
     if (machine.link.phase !== 'live') return 'no hub link';
-    if (!action) return machine.catalog.ready ? 'this hub advertises no safety intents' : 'no catalog yet';
-    if (!(action.options || [])[send]) return 'this hub advertises no ' + SAFETY_OP_NAME[send] + ' op';
+    if (!action) return machine.catalog.ready ? 'no safety intents on this hub' : 'no catalog yet';
+    if (!(action.options || [])[send]) return 'no ' + SAFETY_OP_NAME[send] + ' op on this hub';
     const s = getSession();
-    return s && s.canUse(action.channelId, action.key, send) ? '' : 'this session is not authorized for this op';
+    return s && s.canUse(action.channelId, action.key, send) ? '' : 'session not authorized';
   });
 
   let phase = $state('');   // '' | pending | overdue | confirmed | fault
@@ -132,9 +140,9 @@
   }
 
   const status = $derived(
-    holding ? 'keep holding to release'
-    : phase === 'pending' ? 'waiting for the machine'
-    : phase === 'overdue' ? 'still waiting for the machine'
+    holding ? 'Keep holding'
+    : phase === 'pending' ? 'Waiting'
+    : phase === 'overdue' ? 'Still waiting'
     : phase === 'fault' ? error
     : why || hint
   );
@@ -142,16 +150,17 @@
 
 <div class="safety-op" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase}>
   <button type="button" class="btn {pair.cls}" class:latched class:holding
-          disabled={!!why} title={why || label} aria-pressed={latched}
+          disabled={!!why} title={status && status !== hint ? status : tip || undefined} aria-pressed={latched}
           {onclick} {onkeydown} {onkeyup}
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
           oncontextmenu={(e) => { if (isEstop && latched) e.preventDefault(); }}>
     <span class="row">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
            stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
-      <span class="lbl">{label}</span>
+      <span class="lbls"><span class="lbl">{label}</span><span class="ghost" aria-hidden="true">{LABELS[latched ? 0 : 1]}</span></span>
     </span>
     <small class="state" class:hint={status === hint} role="status">{status}</small>
+    <span class="hints ghost" aria-hidden="true">{#each STANDING as h}<small>{h}</small>{/each}</span>
     {#if holding}<span class="hold" aria-hidden="true" style="--hold-ms: {RELEASE_HOLD_MS}ms"></span>{/if}
   </button>
 </div>
@@ -190,7 +199,13 @@
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .row { display: flex; align-items: center; gap: 4px; }
   .ico { width: 14px; height: 14px; }
-  .state { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  .lbls, .hints { display: grid; }
+  .lbls > *, .hints > * { grid-area: 1 / 1; }
+  .ghost { visibility: hidden; }
+  .hints { height: 0; overflow: hidden; }
+  .state, .hints small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  /* Never widens the box: no intrinsic width, stretched to the button. */
+  .state { contain: inline-size; align-self: stretch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   [data-shadow='overdue'] .state { color: var(--warn); }
   [data-shadow='fault'] .state { color: var(--warn); }
 
