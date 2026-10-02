@@ -154,6 +154,12 @@ async function open({ coarse = false, seed = null } = {}) {
     }
   }
   await page.locator('.graph .gview').scrollIntoViewIfNeeded().catch(() => {});
+  // In a grid the editor is a still preview (ph-e82.22); Open gives it the window below the strip.
+  const still = await page.$eval('.graph', (g) => ({ inert: g.inert, open: !!g.closest('.dash-item')?.querySelector('.dash-open') })).catch(() => null);
+  ok('in the grid the editor is an inert preview with Open (no scroll or zoom of its own)', !!still && still.inert && still.open, still);
+  await page.locator('.dash-item:has(.graph) .dash-open').click();
+  ok('Open makes it live, full window below the strip', await page.$eval('.graph', (g) => !g.inert && getComputedStyle(g.closest('.dash-item')).position === 'fixed'));
+  await page.waitForTimeout(100);
   return { ctx, page, errors };
 }
 

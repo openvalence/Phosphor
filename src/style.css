@@ -402,6 +402,31 @@ select:focus { outline: none; border-color: var(--reality); }
   background-repeat: no-repeat;
 }
 
+/* ---- builder surfaces: the home and the category pages (DESIGN §10.6) ----
+   Two surfaces and no third (operator ruling 2026-10-02): a card is ONE
+   --bg-card surface with ONE hairline frame; a nest is ONE --bg-sunken
+   surface holding cards. Titles are text on whatever holds them, never a
+   band. test/home.test.mjs walks both pages and fails on any other tint or
+   on a box nested in a box of its own token. */
+.surface-card, .surface-nest {
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius);
+}
+.surface-card { background: var(--bg-card); }
+.surface-nest { background: var(--bg-sunken); }
+/* A widget that paints its own card box inside a card is the double frame
+   the rule forbids; the card already is that box. */
+.dash-body.surface-card > :is(.hero, .tchart) {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+/* Nothing in a card scrolls on its own: a toy module grows with its controls. */
+.dash-body.surface-card .toy {
+  height: auto;
+  overflow: visible;
+}
+
 /* Recessed display surface: scopes, readouts, the log. */
 .og-screen {
   background: var(--screen);

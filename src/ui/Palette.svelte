@@ -38,7 +38,7 @@
   }
 </script>
 
-<section class="palette og-panel" aria-label="Module palette">
+<section class="palette surface-card" aria-label="Module palette">
   <div class="palette-bar">
     <input class="palette-filter" type="search" placeholder="Search modules or looks" aria-label="Search modules" bind:value={q} />
     {#if nests.length}
@@ -56,7 +56,7 @@
           <li data-key={e.id} draggable={canAdd(e)} ondragstart={(ev) => dragStart(ev, e)} class:grabbable={canAdd(e)}>
             <span class="palette-title">{e.title}</span>
             {#if e.kind === 'safety'}
-              <span class="palette-tag" title="The top strip always carries this control; a grid copy is optional and sits at the top level only">
+              <span class="palette-tag" title="A grid copy of a strip control">
                 {target ? 'Strip and top level only' : 'Also in the strip'}</span>
             {/if}
             {#if placed.has(e.id)}
@@ -81,11 +81,8 @@
 </section>
 
 <style>
-  .palette {
-    max-height: 40vh;
-    overflow-y: auto;
-    padding: 8px 12px;
-  }
+  /* Grows with its open sections: the page scrolls, never the palette. */
+  .palette { padding: 8px 12px; }
   .palette-bar {
     display: flex;
     gap: 6px;

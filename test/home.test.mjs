@@ -22,6 +22,10 @@
  *   drag       a palette entry dragged onto the grid lands at the drop
  *              column, onto a nest joins it; a look chip adds that look;
  *              Ctrl+Z undoes the last change, one level (ph-e82.15)
+ *   surfaces   on the home (reading and edit mode, palette open) and every
+ *              category page, every painted box is --bg-card or --bg-sunken,
+ *              and none sits directly in a box of its own token; nothing in
+ *              the pane scrolls on its own (ph-e82.22)
  *
  * Live mode (--live): the build-and-reload check against a running valencesim
  * (catalog fetched, not seeded). Skips (exit 0) when no sim answers.
@@ -212,6 +216,37 @@ async function boot(page, w) {
 const topIds = (page) => page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => els.map((e) => e.dataset.id));
 const topTitles = (page) => page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell .dash-title',
   (els) => els.filter((e) => !e.closest('.nest-body')).map((e) => e.textContent.trim()));
+/**
+ * Surface rule (ph-e82.22): every painted box in the pane is a card or a
+ * sunken surface, never inside a painted box of its own token, and no element
+ * in the pane is its own scroll region. Controls and their parts are not
+ * boxes (buttons, inputs, switches, bars and chips under 48 x 32 px).
+ */
+const surfaceFaults = (page) => page.evaluate(() => {
+  const pane = document.querySelector('main.pane');
+  const probe = document.body.appendChild(document.createElement('div'));
+  const rgb = (v) => { probe.style.backgroundColor = v; return getComputedStyle(probe).backgroundColor; };
+  const CARD = rgb('var(--bg-card)'), SUNK = rgb('var(--bg-sunken)');
+  probe.remove();
+  const CONTROL = 'button, input, select, textarea, label, svg, canvas, .og-switch';
+  const painted = (el) => {
+    const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+    return !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor) && cs.visibility !== 'hidden' && r.width >= 48 && r.height >= 32;
+  };
+  const name = (el) => el.tagName.toLowerCase() + [...el.classList].filter((c) => !c.startsWith('svelte-')).map((c) => '.' + c).join('');
+  const out = [];
+  for (const el of pane.querySelectorAll('*')) {
+    const cs = getComputedStyle(el);
+    if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) out.push(name(el) + ' scrolls');
+    if (el.closest(CONTROL) || !painted(el)) continue;
+    const c = cs.backgroundColor;
+    if (c !== CARD && c !== SUNK) { out.push(name(el) + ' paints ' + c); continue; }
+    let up = el.parentElement;
+    while (up && up !== pane && !painted(up)) up = up.parentElement;
+    if (up && up !== pane && getComputedStyle(up).backgroundColor === c) out.push(name(el) + ' in ' + name(up) + ', both ' + (c === CARD ? 'card' : 'sunken'));
+  }
+  return [...new Set(out)];
+});
 const editBtn = (page) => page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' });
 const doneBtn = (page) => page.locator('.home .dash-toolbar .done-btn');
 
@@ -275,6 +310,23 @@ if (!LIVE) {
     await topTitles(page));
   ok('outside edit mode nothing drags', await page.locator('.home .handle').count() === 0);
   ok('no palette outside edit mode', await page.locator('.palette').count() === 0);
+  ok('surfaces: the home reads as cards and nests only', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
+  await editBtn(page).click();
+  await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
+  await page.waitForTimeout(150);
+  ok('surfaces: the home in edit mode, palette open, too', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
+  await doneBtn(page).click();
+  const catFaults = [];
+  for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(150);
+    for (const b of await page.locator('main.pane .adv-toggle', { hasText: /^\s*Show/ }).all()) await b.click();
+    await page.waitForTimeout(100);
+    catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
+  }
+  ok('surfaces: every category page reads as cards and nests only', catFaults.length === 0, catFaults);
+  await page.click('nav.rail [role=tab] >> nth=0');
+  await page.waitForTimeout(150);
 
   // inflight: a held write survives entering and leaving edit mode
   const slider = page.locator('.home .dash-cell .field[data-widget=slider]').first();
@@ -346,6 +398,17 @@ if (!LIVE) {
   const inNest = () => page.$$eval('.home .dash-cell[data-id="' + nestId + '"] .nest-body .dash-cell', (els) => els.map((e) => e.dataset.id));
   ok('build: the palette places into a chosen nest', JSON.stringify(await inNest()) === JSON.stringify([nested]), await inNest());
   ok('build: a nested control is not also at the top level', !(await topIds(page)).includes(nested));
+  const tones = await page.$eval('.home .dash-cell[data-id="' + nestId + '"]', (c) => {
+    const bg = (el) => el && getComputedStyle(el).backgroundColor;
+    const probe = document.body.appendChild(document.createElement('div'));
+    const rgb = (v) => { probe.style.backgroundColor = v; return getComputedStyle(probe).backgroundColor; };
+    const want = { card: rgb('var(--bg-card)'), sunk: rgb('var(--bg-sunken)') };
+    probe.remove();
+    return { nest: bg(c.querySelector(':scope > .dash-item > .dash-body')) === want.sunk,
+      member: bg(c.querySelector('.nest-body .dash-body')) === want.card };
+  });
+  ok('surfaces: a nest is one sunken surface holding cards', tones.nest && tones.member, tones);
+  ok('surfaces: the home with a nest passes the rule', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
   await doneBtn(page).click();
   await page.reload();
   await boot(page, 1280);

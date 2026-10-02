@@ -1,13 +1,15 @@
 /**
- * nest.test.mjs -- ph-e82.6: a scrolling nest never hides a write in flight
- * (RENDERING §9 placement invariant, DESIGN §10.6).
+ * nest.test.mjs -- ph-e82.6, ph-e82.22: a nest is a fixed subgrid that grows
+ * to fit its members, never a scroll region, and its frame still carries the
+ * in-flight count (RENDERING §9 placement invariant, law 9; DESIGN §10.6).
  *
  * The built app on a fake hub (Playwright's WebSocket route; the recorded
  * valencesim catalog pre-seeded in the etag cache). A category page's cards
- * are put into one scrolling nest through the stored layout, a write is made
- * on the last member while the hub holds its echo, the nest is scrolled back
- * to the top so that member is out of view, and the nest's frame must carry
- * the in-flight count outside the scroll region. The count clears on echo.
+ * are put into one short nest through the stored layout, with the scroll flag
+ * an older build wrote (inert now). Every member must be inside the nest's
+ * visible surface with nothing to scroll; a write is made on the last member
+ * while the hub holds its echo and the frame shows the in-flight count until
+ * the echo clears it.
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`); this builds nothing.
@@ -163,9 +165,10 @@ for (let i = 1; i < await tabs.count() && tab < 0; i++) {
 ok('found a category page with three or more cards and a writable range', tab > 0, viewKey + ' ' + cards.length);
 if (tab < 0) { await browser.close(); srv.close(); process.exit(1); }
 
-// Every card into one short scrolling nest, through the stored layout.
+// Every card into one short nest, through the stored layout; scroll and
+// collapsed are what an older build wrote, inert now.
 const store = { active: 'Default', modules: {}, layouts: { Default: { [viewKey]: {
-  'nest:1': { x: 0, y: 0, w: 20, h: 5, nest: { title: 'Test nest', scroll: true, map: Object.fromEntries(cards.map((id) => [id, null])) } },
+  'nest:1': { x: 0, y: 0, w: 20, h: 5, nest: { title: 'Test nest', scroll: true, collapsed: true, map: Object.fromEntries(cards.map((id) => [id, null])) } },
 } } } };
 await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
 await page.reload();
@@ -176,19 +179,26 @@ await page.waitForTimeout(400);
 const nest = page.locator('.dash-cell[data-id="nest:1"]');
 const geo = await nest.evaluate((cell) => {
   const body = cell.querySelector('.nest-body');
+  const surface = cell.querySelector(':scope > .dash-item > .dash-body').getBoundingClientRect();
   const top = [...cell.closest('.dash-grid').children].map((c) => c.getAttribute('data-id'));
-  return { scrolls: !!cell.querySelector('.nest.scrolls'), sh: body.scrollHeight, ch: body.clientHeight,
-    members: body.querySelectorAll('.dash-cell').length, top };
+  const scrollers = [...cell.querySelectorAll('*')].filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY)
+    && el.scrollHeight > el.clientHeight + 1).length;
+  const outside = [...body.querySelectorAll('.dash-cell')].filter((m) => {
+    const r = m.getBoundingClientRect();
+    return r.top < surface.top - 1 || r.bottom > surface.bottom + 1 || r.left < surface.left - 1 || r.right > surface.right + 1;
+  }).map((m) => m.getAttribute('data-id'));
+  return { scrollers, outside, sh: body.scrollHeight, ch: body.clientHeight, members: body.querySelectorAll('.dash-cell').length, top,
+    tall: surface.height };
 });
-ok('the nest renders, scrolling, with every card inside it', geo.scrolls && geo.members === cards.length && geo.top.join() === 'nest:1', geo);
-ok('the nest body is a scroll region shorter than its content', geo.sh > geo.ch + 20, geo);
+ok('the nest renders every card inside it, unfolded', geo.members === cards.length && geo.top.join() === 'nest:1', geo);
+ok('nothing in the nest scrolls on its own', geo.scrollers === 0 && geo.sh <= geo.ch + 1, geo);
+ok('the nest grows to fit: every member is inside its surface', geo.outside.length === 0 && geo.tall > 5 * 30, geo);
+ok('the nest offers no scroll or fold switch', await nest.locator('.nest-fold, button:has-text("Scrolling"), button:has-text("Fixed")').count() === 0);
 
 // The last member with a writable range: write it while the hub holds the echo.
 const target = await nest.evaluate((cell) => {
   const withRange = [...cell.querySelectorAll('.nest-body .dash-cell')].filter((c) => c.querySelector('input[type=range]:not([disabled])'));
-  const m = withRange[withRange.length - 1];
-  m.querySelector('input[type=range]').scrollIntoView({ block: 'nearest' });
-  return m.getAttribute('data-id');
+  return withRange[withRange.length - 1].getAttribute('data-id');
 });
 const range = nest.locator('.nest-body .dash-cell[data-id="' + target + '"] input[type=range]').first();
 hub.mode = 'hold';
@@ -198,32 +208,16 @@ await range.evaluate((el) => {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 });
 await page.waitForTimeout(100);
-await nest.evaluate((cell) => { cell.querySelector('.nest-body').scrollTop = 0; });
-await page.waitForTimeout(100);
-const away = await nest.evaluate((cell, id) => {
-  const body = cell.querySelector('.nest-body').getBoundingClientRect();
-  const r = cell.querySelector('.nest-body .dash-cell[data-id="' + id + '"] input[type=range]').getBoundingClientRect();
-  return r.top >= body.bottom || r.bottom <= body.top;
-}, target);
-ok('the written member is scrolled out of the nest\'s view', away, target);
 
 const busy = nest.locator('.nest-busy');
 const shown = await busy.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false);
 const text = shown ? (await busy.textContent()).trim() : '';
 ok('the nest frame shows the in-flight count', shown && /^1 in flight$/.test(text), text);
-ok('the count sits outside the scroll region', shown && await busy.evaluate((el) => !el.closest('.nest-body')));
-// ph-e82.20.4: collapsing hides the members, never the count (RENDERING §9 invariant).
-await nest.locator('.nest-fold').click();
-await page.waitForTimeout(100);
-ok('collapsed: the members are hidden', await nest.locator('.nest-body').count() === 0);
-ok('collapsed: the in-flight count stays visible', await busy.isVisible() && /^1 in flight$/.test((await busy.textContent()).trim()));
+ok('the count sits in the frame, outside the subgrid', shown && await busy.evaluate((el) => !el.closest('.nest-body')));
 
 await release();
 const cleared = await busy.waitFor({ state: 'detached', timeout: 3000 }).then(() => true).catch(() => false);
 ok('the count clears on echo', cleared);
-await nest.locator('.nest-fold').click();
-await page.waitForTimeout(100);
-ok('expanding draws the members again', await nest.locator('.nest-body .dash-cell').count() === cards.length);
 
 // ---- edit flow: new nest, add, save, insert, out, ungroup --------------------
 const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
@@ -282,5 +276,5 @@ ok('no page errors', pageErrors.length === 0, pageErrors);
 
 await browser.close();
 srv.close();
-console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- a scrolling nest shows what it holds in flight.'));
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- a nest shows every member and what it holds in flight.'));
 process.exit(fails ? 1 : 0);

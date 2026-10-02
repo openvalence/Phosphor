@@ -515,11 +515,21 @@ half.
 
 ### 10.6 Nests and layouts
 
-- A NEST is a control holding a subgrid, scrolling or fixed. A nest with its
-  contents is saveable as a reusable module; members the current catalog
-  lacks stay inert.
-- A scrolling nest never hides pending or degraded state (RENDERING §9): its
-  frame carries the in-flight count, as `drillCard` does in `App.svelte`.
+- A NEST is a control holding a fixed subgrid that grows to fit its members.
+  Nothing on the home or a category page scrolls or zooms on its own: no
+  scrolling or folding nest, and a module that takes its own pointer and
+  wheel (the node editor) is a still preview in the grid with Open (operator
+  ruling 2026-10-02, `ph-e82.22`). A nest with its contents is saveable as a
+  reusable module; members the current catalog lacks stay inert.
+- A nest's frame carries the in-flight count, as `drillCard` does in
+  `App.svelte` (RENDERING §9, law 9), though every member is in view.
+- Placements are absolute (same ruling): a card keeps the rect the user gave
+  it, an add takes the first free rect, a remove leaves a hole, and nothing
+  moves unless the user moves it. Compaction is gone; the flow survives only
+  as the first-run seed (`src/model/grid.js` `place`, `pack`).
+- Surfaces (same ruling): a card is one `--bg-card` surface with one frame, a
+  nest one `--bg-sunken` surface holding cards, no third tint; titles are
+  text on the page. `src/style.css` `.surface-card`, `.surface-nest`.
 - LAYOUTS are named and saved per user per client, stored locally, with the
   try/catch degrade `dashboard.svelte.js` already uses. Sync is a later
   maybe, not planned.
@@ -577,4 +587,5 @@ operator rules otherwise.
 | 2026-10-01 | §10.2 | Design as though RFC-080 is accepted: read/write-class presentations on (`CROSS_ARCHETYPE`), per-placement `look` (range narrowing, two-valued toggles) carried in the layout store, single fields placeable anywhere (RFC-080 leaves it open). Codes against a DRAFT RFC by ruling; C-5 flag recorded in §10.2. | operator |
 | 2026-10-01 | §10.8 | An app's stop or disconnect leaves the machine holding its last target; the hub e-stop stays the only latch. | operator |
 | 2026-10-01 | §10, §10.1, §10.2 | `ph-e82.1` items 1 (the home is an additional surface) and 3 (uid keys for unroled fields, inert when absent) confirmed as coded; the "nothing coded yet" note replaced by the per-phase commit list; §10.1 records the home's coded decisions. | operator |
+| 2026-10-02 | §10.6 | Nests are fixed and grow to fit (scroll and fold retired); nothing on the home or a category page scrolls on its own; placements are absolute; two surfaces, card and sunken nest; the scale control moves into the edit-mode Layout menu (`ph-e82.22`). | operator |
 | 2026-10-02 | §10.3 | RFC-085: the strip's mandatory pair is e-stop plus pause, each one two-state control (hold-to-release, Halted, Halt label without `estop_cuts_power`); stop, hold and every clear button retired; modules are one per pair (`ph-e82.12`). | operator (RFC-085 ruling) |
