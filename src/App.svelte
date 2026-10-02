@@ -42,9 +42,12 @@
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
   import { pluginsUi, pluginHeroes } from './plugins/plugins.svelte.js';
+  import { panes as shellPanes } from './shell/panes.js';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
   let { shell = null } = $props();
+  // main.js's shell signal; the served page never shows the Phosphor group.
+  const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 
   const model = $derived(machine.catalog.model);
 
@@ -104,13 +107,21 @@
     { id: 'display', label: 'Display' },
     ...(pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }] : []),
   ]);
-  const tabs = $derived([...machineTabs, ...consoleTabs]);
+  // Phosphor: the shell's own panes (shell/panes.js), the shell's menu. In the
+  // shell the nav stands before any catalog, since Hubs is how one arrives.
+  const phosphorTabs = $derived(SHELL
+    ? $shellPanes.map((p) => ({ id: 'shell:' + p.id, label: p.label, pane: p }))
+    : []);
+  const ready = $derived(machine.catalog.ready);
+  const tabs = $derived([...machineTabs, ...(ready ? consoleTabs : []), ...phosphorTabs]);
   const navSections = $derived([
     { label: 'Machine', tabs: machineTabs },
-    { label: 'Console', tabs: consoleTabs },
+    ...(ready ? [{ label: 'Console', tabs: consoleTabs }] : []),
+    ...(phosphorTabs.length ? [{ label: 'Phosphor', tabs: phosphorTabs, shell: true }] : []),
   ]);
 
-  let active = $state('machine');
+  // First run in the shell (no hub dialed at launch) opens on Hubs.
+  let active = $state(SHELL && !machine.link.host ? 'shell:hubs' : 'machine');
   const current = $derived(tabs.find((t) => t.id === active) || tabs[0]);
 
   // The renderer class decides WHICH rendering of the nav mounts (rail vs tab
@@ -334,7 +345,11 @@
 
 {#snippet pane()}
   <main class="pane">
-    {#if current.id === 'machine'}
+    {#if current.pane}
+      {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
+    {:else if !ready}
+      <HubPicker />
+    {:else if current.id === 'machine'}
       <HubPicker mode="tier" onpair={() => selectTab('pairing')} />
       {#if model}<Home {model} {heroes} />{/if}
     {:else if current.cat}
@@ -403,7 +418,7 @@
 
 <div class="app">
   <TopStrip {shell} onopenlog={() => selectTab('log')} />
-  {#if machine.catalog.ready}<HubPicker mode="link" />{/if}
+  {#if ready}<HubPicker mode="link" />{/if}
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -411,7 +426,7 @@
        desktop they run full width above the nav+pane frame; on a phone they
        sit above the tab strip. CARD-zone heroes are home modules and cards on
        their category's page instead. -->
-  {#if !machine.catalog.ready}
+  {#if !ready && !SHELL}
     <!-- Deliberately no fallback control path: a page with no hub link
          genuinely cannot drive anything. The picker says where the link
          stands and how to point the page at a hub. -->
@@ -420,11 +435,13 @@
     <!-- Desktop: the transport row rides INSIDE the instrument hero row
          (the OG .hero-row — numerals left, transport right, one baseline),
          threaded down as a layout snippet. -->
-    <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
-    {#if !instrumentHeroes.length}
-      <!-- No hero row to ride in: home still needs a home. The e-stop and
-           pause never depend on this; the top strip always carries them. -->
-      <div class="bare-transport"><TransportBar /></div>
+    {#if ready}
+      <HeroStrip heroes={instrumentHeroes} accessory={transportAccessory} />
+      {#if !instrumentHeroes.length}
+        <!-- No hero row to ride in: home still needs a home. The e-stop and
+             pause never depend on this; the top strip always carries them. -->
+        <div class="bare-transport"><TransportBar /></div>
+      {/if}
     {/if}
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
@@ -438,7 +455,7 @@
         </button>
         <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
           {#each navSections as sec (sec.label)}
-            <div class="rail-sec">
+            <div class="rail-sec" class:shell={sec.shell}>
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
                 <button role="tab" class="rail-tab" data-tab-id={t.id}
@@ -460,16 +477,19 @@
       </div>
     </div>
   {:else}
-    <div class="instrument">
-      <TransportBar />
-      <HeroStrip heroes={instrumentHeroes} />
-    </div>
+    {#if ready}
+      <div class="instrument">
+        <TransportBar />
+        <HeroStrip heroes={instrumentHeroes} />
+      </div>
+    {/if}
     <nav class="tabs" aria-label="Sections" bind:this={tabsNav}>
       <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
         {#each tabs as t (t.id)}
           <button role="tab" data-tab-id={t.id}
                   aria-selected={current && current.id === t.id}
                   tabindex={current && current.id === t.id ? 0 : -1}
+                  class:shell={!!t.pane}
                   class:on={current && current.id === t.id}
                   onclick={() => selectTab(t.id)}>{t.label}</button>
         {/each}
@@ -573,6 +593,23 @@
     border-top: 1px solid var(--line-0);
     padding-top: 8px;
   }
+  /* Phosphor: shell chrome, shaded as the shell row is (style.css --shell-*),
+     pinned to the rail's foot. */
+  .rail > [role=tablist] {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .rail-sec.shell {
+    margin-top: auto;
+    padding: 6px;
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+    border: 1px solid var(--shell-border);
+    border-radius: var(--radius);
+  }
+  .rail-sec.shell .rail-tab:not(.on),
+  .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-lbl {
     padding: 2px 8px 4px;
     font-size: 11px;
@@ -670,6 +707,11 @@
     font-weight: 500;
     white-space: nowrap;
     border: 1px solid transparent;
+  }
+  .tabs button.shell {
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+    border-color: var(--shell-border);
   }
   .tabs button.on {
     color: var(--ink-hi);

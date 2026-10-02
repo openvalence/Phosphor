@@ -11,7 +11,7 @@
    *   with no overscroll containment: at its end a wheel or swipe goes on to
    *   the page.
    * - About shows what the hub sent and `--` for anything it did not.
-   * - Siblings add panes through drawer.js, never by editing this file.
+   * - Siblings add panes through panes.js, never by editing this file.
    */
   import { getVersion } from '@tauri-apps/api/app';
   import { machine } from '../model/machine.svelte.js';
@@ -19,7 +19,7 @@
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import ServerPane from './ServerPane.svelte';
-  import { drawerPanes } from './drawer.js';
+  import { panes as drawerPanes } from './panes.js';
 
   // hubs: ShellStrip's discovery and transport, a snippet because that state
   // must outlive the drawer closing (BLE upgrade, wire counters).

@@ -1,7 +1,7 @@
 /**
- * settings-pane.js -- saved-hub upkeep, the launch redial, and the Settings
- * pane's drawer registration. SHELL ONLY: main.js imports it from the shell
- * branch.
+ * settings-pane.js -- saved-hub upkeep, the launch redial, and the shell's
+ * Server, Settings and About panes (panes.js; ShellStrip registers Hubs).
+ * SHELL ONLY: main.js imports it from the shell branch.
  *
  * Constraints:
  * - A hub is recorded only on a LIVE WS session; a BLE address is not a
@@ -12,7 +12,10 @@ import { get, toStore } from 'svelte/store';
 import { connect, machine } from '../model/machine.svelte.js';
 import { endpointLabel, setAutorange } from '../model/format.js';
 import { prefs, savedHubs, rememberHub, launchTarget } from '../model/prefs.js';
+import { registerPane } from './panes.js';
 import SettingsPane from './SettingsPane.svelte';
+import ServerPane from './ServerPane.svelte';
+import AboutPane from './AboutPane.svelte';
 
 prefs.subscribe((p) => setAutorange(p.autorange));
 
@@ -29,11 +32,6 @@ toStore(() => machine.link.phase).subscribe((phase) => {
   }
 });
 
-// The drawer is a sibling's file: absent, the pane mounts nowhere (glob, not
-// import(), so a missing file is not a build error).
-const drawer = import.meta.glob('./drawer.js')['./drawer.js'];
-if (drawer) {
-  drawer().then((m) => m.registerDrawerPane({ id: 'settings', label: 'Settings', component: SettingsPane }));
-} else {
-  console.info('settings: no shell drawer (src/shell/drawer.js), the Settings pane is not mounted');
-}
+registerPane({ id: 'server', label: 'Server', component: ServerPane });
+registerPane({ id: 'settings', label: 'Settings', component: SettingsPane });
+registerPane({ id: 'about', label: 'About', component: AboutPane });
