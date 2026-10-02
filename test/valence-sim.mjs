@@ -330,7 +330,7 @@ async function main() {
     // above — this one write touches BOTH pattern-advanced and its
     // pattern-adv-mod-speedin lane in the same tick.
     const baseP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.PATTERN_ADVANCED && sm.ap_mode === 1 && sm.master === 50 &&
+      (ch, sm) => ch === CH19.PATTERN_ADVANCED && sm.master === 50 &&
         sm.max_depth === 80 && sm.min_depth === 10,
       2000, 'pattern-advanced reflect').then(() => true).catch(() => false);
     const modP = waitFor(s1, 'state',
@@ -338,9 +338,9 @@ async function main() {
       2000, 'pattern-adv-mod-speedin reflect').then(() => true).catch(() => false);
 
     const echo = await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD,
-      { 1: true, 2: 50, 3: 80, 4: 10, 21: 40, 22: 999 });
+      { 2: 50, 3: 80, 4: 10, 21: 40, 22: 999 });
     ok('pattern-advanced-cmd ECHO carries post-clamp APPLIED base + modifier values',
-      echo.applied[1] === true && echo.applied[2] === 50 && echo.applied[3] === 80 &&
+      echo.applied[2] === 50 && echo.applied[3] === 80 &&
       echo.applied[4] === 10 && echo.applied[21] === 40,
       JSON.stringify(echo.applied));
     ok('pattern-advanced-cmd CLAMPS an out-of-range modifier sub-field (speedin in_step=999 -> 25)',
@@ -358,7 +358,7 @@ async function main() {
     // Restore the catalog defaults. The hub republishes on CHANGE only, so a
     // second run against the same sim would otherwise wait on a push that
     // never comes (its write would change nothing).
-    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 1: false, 2: 0, 3: 10, 4: 0, 21: 100, 22: 1 });
+    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 2: 0, 3: 10, 4: 0, 21: 100, 22: 1 });
   }
 
   // ---- preset roster/store/cmd trio (0x1220 / 0x5220 / 0x3220) ------------
@@ -376,20 +376,18 @@ async function main() {
       2000, 'preset roster count+1').then(() => true).catch(() => false);
     ok('0x1220 pattern-presets-roster STATE count increments after save (0x5220 STORE backs it)', rosterAfterSave);
 
-    // ap_mode is already true from the pattern-advanced-cmd test just above,
-    // so `load` re-asserting true would NOT change the STATE bytes and would
-    // NEVER produce a fresh push to wait on (diff-what-we-sent, same as the
-    // firmware) — flip it off first so `load` turning it back on is a REAL,
-    // observable diff, not a no-op this test would hang on.
-    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 1: false });
-    const apModeP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.PATTERN_ADVANCED && sm.ap_mode === 1,
-      2000, 'ap_mode after load').then(() => true).catch(() => false);
+    // A load starts nothing (RFC-093: the run flag is the writer's alone), so
+    // the marker is a captured base control: move in_speed away from what was
+    // saved, then expect the load to bring it back (a real STATE diff to wait on).
+    const savedInSpeed = seen1.states.get(CH19.PATTERN_ADVANCED)?.in_speed;
+    await s1.sendIntent(CH19.PATTERN_ADVANCED_CMD, { 5: savedInSpeed === 33 ? 44 : 33 });
+    const inSpeedP = waitFor(s1, 'state',
+      (ch, sm) => ch === CH19.PATTERN_ADVANCED && sm.in_speed === savedInSpeed,
+      2000, 'in_speed after load').then(() => true).catch(() => false);
     const loadEcho = await s1.sendIntent(CH19.PATTERN_PRESETS_CMD, { 1: 2, 2: 0 });
     ok('pattern-presets-cmd load ECHO carries op/slot',
       loadEcho.applied[1] === 2 && loadEcho.applied[2] === 0, JSON.stringify(loadEcho.applied));
-    const apModeAfterLoad = await apModeP;
-    ok('preset load engages Advanced mode (0x1210 ap_mode reflects on)', apModeAfterLoad);
+    ok('preset load recalls the saved base controls (0x1210 in_speed back to saved)', await inSpeedP);
 
     const renameEcho = await s1.sendIntent(CH19.PATTERN_PRESETS_CMD, { 1: 4, 2: 0, 3: 'renamed' });
     ok('pattern-presets-cmd rename ECHO carries op/slot/name',

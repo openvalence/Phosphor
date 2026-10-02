@@ -163,7 +163,7 @@ async function checkActions(tag, w, h, touch) {
   ok(tag + ': choosing a pattern tile writes pattern-state.pattern on the wire', selAfterPick === pickIdx, selAfterPick, pickIdx);
 
   // What action.preset actually snapshots is the ADVANCED generator config
-  // (0x1210 ap_mode etc, valence-sim.mjs's own established fixture behavior),
+  // (0x1210 base controls, valence-sim.mjs's own established fixture behavior),
   // not the basic 7-name selector above. Phosphor has no UI for that channel
   // yet (ph-vdk.11, a separate open bead: "requires the list/roster
   // archetype"), so the round trip is set up and observed over the wire --
@@ -171,8 +171,8 @@ async function checkActions(tag, w, h, touch) {
   // exactly what this proves end to end.
   const rosterBefore = wire.seen.samples.get(0x1220);
   const countBefore = rosterBefore ? rosterBefore.count : 0;
-  // ap_mode itself is NOT a round-tripped value: a load always ENGAGES
-  // Advanced mode as a side effect. `in_speed` (0x3210 key 5) is the marker
+  // A load starts nothing (RFC-093: advgen.running is the writer's alone).
+  // `in_speed` (0x3210 key 5) is the marker
   // because the preset payload captures it; `master` is NOT captured
   // (Nucleus flagship_p4/src/patterns/PatternSettings.h capturePreset()).
   await wire.s.sendIntent(0x3210, { 5: 77 });
