@@ -12,20 +12,22 @@
    *   returns to the control that opened it.
    * - Copy is whatever the caller passed from the catalog; this file adds only
    *   the two button words.
+   * - No knock prompt while `knocksShown`: the Pairing pane's own rows carry
+   *   approve and deny, and a second prompt over them would only cover them.
    */
   import { tick } from 'svelte';
   import { confirmUi, answerConfirm } from './confirm.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { CH_PENDING_PAIRING } from '../../../Valence/clients/js/frames.js';
 
-  let { onreview = null } = $props();
+  let { onreview = null, knocksShown = false } = $props();
 
   // Pending knocks: the spec-core pending-pairing roster (§12.2), readable only
   // by a `configure` session, so a lower tier simply never sees this prompt.
   const knockSample = $derived(machine.samples[CH_PENDING_PAIRING]);
   const knockCount = $derived(knockSample ? (knockSample.count | 0) : 0);
   let dismissedGen = $state(null);
-  const knockOpen = $derived(knockCount > 0 && knockSample.generation !== dismissedGen);
+  const knockOpen = $derived(!knocksShown && knockCount > 0 && knockSample.generation !== dismissedGen);
 
   const open = $derived(!!confirmUi.req || knockOpen);
 

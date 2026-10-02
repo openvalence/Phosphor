@@ -7,7 +7,8 @@
  * Asserts the instrument-panel rules: every fact is a stable row, status
  * slots hold their height whether or not they carry text, lists keep their
  * rows when content arrives, and the pane-specific facts render what the
- * wire sent.
+ * wire sent. The knock prompt stays off the Pairing pane and rises anywhere
+ * else.
  *
  * Build first (`npm run build:only`).
  * Run: node test/console-panes.test.mjs   (no device needed)
@@ -159,6 +160,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
     kind0: 1, expires_s0: 90, name0: 'tablet' }));
   await page.waitForFunction(() => /tablet/.test(document.querySelector('.knocks')?.textContent || ''), null, { timeout: 5000 });
   const k1 = await knockRows();
+  ok('pairing: no knock prompt over the pane that already shows the knock', await page.$$('.overlay').then((a) => a.length === 0));
   ok('pairing: a knock fills the first row, the rest stay', k1.length === LIMITS.pairing_pending_max && /tablet/.test(k1[0]) && /expires in \d+ s/.test(k1[0]), k1[0]);
   ok('pairing: the list does not grow or shift when a knock arrives',
     Math.abs(await knocksBox() - listH) < 1.5 && statusTop === await page.$eval('section[aria-labelledby="pp-knocks"] .pane-status', (el) => el.getBoundingClientRect().top),
@@ -199,13 +201,19 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('valence: the catalog etag reads as the hub declared it', f.etag === ETAG.toLowerCase(), f.etag);
   ok('valence: estop_cuts_power reads E-Stop', /E-Stop/.test(f['e-stop cuts power']), f['e-stop cuts power']);
   const copyBtn = page.locator('section[aria-labelledby="vp-identity"] button', { hasText: 'Copy' });
-  const before = await copyBtn.boundingBox();
+  // Page coordinates: the click may scroll the button out from under the sticky chrome.
+  const pageBox = () => copyBtn.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY }; });
+  const before = await pageBox();
   await copyBtn.click();
   await page.waitForTimeout(150);
-  const after = await copyBtn.boundingBox();
+  const after = await pageBox();
   const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
   ok('valence: Copy puts the identity on the clipboard', clip.includes('panes fixture') && clip.includes('estop_cuts_power'), clip.slice(0, 60));
   ok('valence: the copy flash does not move the button', before && after && before.x === after.x && before.y === after.y);
+  wire.send(FRAME.STATE, PEND.id, encodePacked(PEND, { generation: 3, count: 1, inst_lo0: 1, inst_hi0: 2, kind0: 1, expires_s0: 90, name0: 'phone' }));
+  ok('pairing: off the Pairing pane a knock raises the prompt', await page.waitForSelector('.overlay:has-text("phone")', { timeout: 5000 }).then(() => true).catch(() => false));
+  wire.send(FRAME.STATE, PEND.id, encodePacked(PEND, { generation: 4, count: 0 }));
+  ok('pairing: the prompt leaves with the knock', await page.waitForSelector('.overlay', { state: 'detached', timeout: 5000 }).then(() => true).catch(() => false));
   if (label === 'phone') {
     const wide = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => {
       const r = el.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1 && !el.closest('.table-wrap');

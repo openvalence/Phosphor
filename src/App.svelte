@@ -481,7 +481,7 @@
   {/if}
 
   <FootStrip />
-  <ConfirmLayer onreview={() => selectTab('pairing')} />
+  <ConfirmLayer onreview={() => selectTab('pairing')} knocksShown={current?.id === 'pairing'} />
 </div>
 
 <style>
