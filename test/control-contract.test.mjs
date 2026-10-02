@@ -17,7 +17,11 @@
  * words in the head-row slot (ph-vdk.60.1); an aspect flip at w = h swaps
  * orientation without dropping a write
  * in flight; a secret action payload masks and never reaches the status text
- * (ph-vic).
+ * (ph-vic). The same ladder, height and snap-back after a refusal run on
+ * toggle, segmented, select, text and bitfield (a synthetic setting channel
+ * appended to the recorded catalog carries the text, bitfield and destructive
+ * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
+ * destructive toggle's confirm (ph-vdk.60.5).
  *
  * Live mode (--live): the same page against a running valencesim; one
  * slider-class field driven through slider, knob and stepper, each value
@@ -37,9 +41,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
-import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
-import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK, CBOR_FIELD } from '../../Valence/clients/js/frames.js';
-import { createSession } from '../../Valence/clients/js/index.js';
+import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull, head, concatBytes } from '../../Valence/clients/js/cbor.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK, CBOR_FIELD, SETTING_FLAG } from '../../Valence/clients/js/frames.js';
+import { createSession, catalogEtag, toHex } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 
 const args = process.argv.slice(2);
@@ -56,8 +60,30 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
-const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
+// The recorded catalog has no writable text field, no writable named-bit
+// bitfield and no destructive toggle, so one synthetic setting channel pair
+// carrying them is appended, and the etag is the hash of the bytes served.
+const XS = 0x7e00, XI = 0x7e01;
+const CAT = withExtras(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+function withExtras(raw) {
+  const ai = raw[0] & 0x1f;
+  const [n, hl] = ai < 24 ? [ai, 1] : ai === 24 ? [raw[1], 2] : [(raw[1] << 8) | raw[2], 3];
+  const lf = (name, type, key, more = []) => cbMap([[1, cbTstr(name)], [2, cbUint(type)], [3, cbTstr('')], [4, cbF32(1)],
+    [8, cbUint(key)], ...more].sort((x, y) => x[0] - y[0]));
+  const sf = (name, type) => cbMap([[1, cbTstr(name)], [2, cbUint(type)], [3, cbTstr('')]]);
+  const off = cbArray([cbTstr('off'), cbTstr('on')]);
+  const state = cbMap([[1, cbUint(XS)], [2, cbTstr('fixture-extras')], [3, cbUint(0)], [4, cbUint(0)], [5, cbUint(0)],
+    [6, cbF32(0)], [7, cbUint(0)], [8, cbArray([
+      lf('label_text', PACKED.str16, 1),
+      lf('lamp_bits', PACKED.bitfield8, 2, [[7, cbMap([[0, cbTstr('alpha')], [1, cbTstr('beta')], [2, cbTstr('gamma')]])]]),
+      lf('arm', PACKED.u8, 3, [[10, off], [15, cbUint(SETTING_FLAG.destructive)]]),
+    ])], [14, cbUint(XI)]]);
+  const intent = cbMap([[1, cbUint(XI)], [2, cbTstr('fixture-extras-set')], [3, cbUint(2)], [4, cbUint(1)], [5, cbUint(1)],
+    [6, cbF32(5)], [7, cbUint(1)], [9, cbMap([[1, sf('label_text', CBOR_FIELD.tstr_t)], [2, sf('lamp_bits', CBOR_FIELD.uint_t)],
+      [3, sf('arm', CBOR_FIELD.uint_t)]])]]);
+  return concatBytes([head(4, n + 2), raw.subarray(hl), state, intent]);
+}
+const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const ENTRIES = decodeCatalog(CAT);
 const MODEL = buildSettingsModel(ENTRIES);
 // The first writable, unroled slider-class field: no hero claims it anywhere.
@@ -105,7 +131,7 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 // ---- the fake hub -----------------------------------------------------------
-const hub = { mode: 'echo', held: [], values: {}, mute: false, push: null };
+const hub = { mode: 'echo', held: [], values: { [XS + ':label_text']: 'alpha' }, mute: false, push: null };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -131,6 +157,8 @@ function encodePacked(e) {
       case PACKED.u32: dv.setUint32(off, raw, true); break;
       case PACKED.i32: dv.setInt32(off, raw, true); break;
       case PACKED.f32: dv.setFloat32(off, v, true); break;
+      case PACKED.str16: case PACKED.str32: case PACKED.str64:
+        out.set(new TextEncoder().encode(String(v || '')).subarray(0, SIZE[f.type] - 1), off); break;
       default: break;
     }
     off += SIZE[f.type] ?? f.declaredSize ?? 0;
@@ -173,15 +201,18 @@ function fakeHub(ws) {
         const m = cbDecodeFull(payload);
         const ch = m.get(K.channel_id), id = m.get(K.intent_id);
         const val = [...m.get(K.value)].sort((a, b) => a[0] - b[0]);
-        const st = ENTRIES.find((e) => e.settingChannel === ch);
+        // One INTENT channel may set fields of several STATE channels.
+        const sts = ENTRIES.filter((e) => e.settingChannel === ch && e.layout);
         const answer = () => {
           for (const [k, v] of val) {
-            const f = st && st.layout.find((x) => x.settingKey === k);
-            if (f) hub.values[st.id + ':' + f.name] = v;
+            for (const st of sts) {
+              const f = st.layout.find((x) => x.settingKey === k);
+              if (f) hub.values[st.id + ':' + f.name] = v;
+            }
           }
           send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
             [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
-          if (st) pushState(st.id);
+          for (const st of sts) pushState(st.id);
         };
         if (hub.mode === 'echo') answer();
         else if (hub.mode === 'hold') hub.held.push(answer);
@@ -208,7 +239,19 @@ const PRES = [...WRITERS, 'numeral', 'bar', 'graph'];
 // A small bounded integer field (under four digits) for the numeral's padding.
 const SMALL = MODEL.fields.find((f) => f.uid !== FIELD.uid && !f.options && f.min === 0 && f.max >= 100 && f.max < 1000
   && f.step === 1 && f.maskFieldName);
-const MORE = SMALL ? ['numeral@' + SMALL.uid] : [];
+// One writable field per remaining writing presentation (ph-vdk.60.5).
+const unroled = (w) => MODEL.fields.filter((f) => !f.readOnly && !f.role && f.widget === w && f.channelId !== XS);
+const CHOICES = unroled(WIDGET.segmented);
+const LADDER = {
+  toggle: unroled(WIDGET.toggle).find((f) => !(f.flagBits && f.flagBits.destructive)),
+  segmented: CHOICES[0],
+  select: CHOICES[1],
+  text: MODEL.fields.find((f) => f.uid === XS + ':label_text'),
+  bitfield: MODEL.fields.find((f) => f.uid === XS + ':lamp_bits'),
+};
+const ARM = MODEL.fields.find((f) => f.uid === XS + ':arm');
+const MORE = [...(SMALL ? ['numeral@' + SMALL.uid] : []),
+  ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 if (!LIVE) {
@@ -297,6 +340,119 @@ if (!LIVE) {
     hub.mode = 'echo';
     await sleep(100);
   }
+
+  // ---- the same ladder on every other writing presentation ---------------
+  const xcell = (p) => page.locator('.cell[data-pres="' + p + '@' + LADDER[p].uid + '"] .field');
+  const xshadow = (p) => xcell(p).getAttribute('data-shadow');
+  const xladder = (p) => xcell(p).locator('.ladder').textContent();
+  const xheight = async (p) => (await xcell(p).boundingBox()).height;
+  async function xwait(p, want, ms = 3000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (await xshadow(p) === want) return true; await sleep(20); }
+    return false;
+  }
+  /** Drive one write; returns a reader and the value it should read back. */
+  async function xdrive(p) {
+    const c = xcell(p);
+    if (p === 'toggle') {
+      const want = !(await c.locator('input[type=checkbox]').isChecked());
+      await c.locator('.og-switch').click();
+      return [() => c.locator('input[type=checkbox]').isChecked(), want];
+    }
+    if (p === 'segmented') {
+      const radios = c.locator('[role=radio]');
+      const i = await radios.evaluateAll((els) => els.findIndex((e) => e.getAttribute('aria-checked') !== 'true'));
+      await radios.nth(i).click();
+      return [() => radios.evaluateAll((els) => els.findIndex((e) => e.getAttribute('aria-checked') === 'true')), i];
+    }
+    if (p === 'select') {
+      const sel = c.locator('select');
+      const want = String((Number(await sel.inputValue()) + 1) % LADDER.select.options.length);
+      await sel.selectOption(want);
+      return [() => sel.inputValue(), want];
+    }
+    if (p === 'text') {
+      const inp = c.locator('input[type=text]');
+      const want = (await inp.inputValue()) === 'alpha' ? 'beta' : 'alpha';
+      await inp.fill(want);
+      await inp.dispatchEvent('change');
+      return [() => inp.inputValue(), want];
+    }
+    const bit = c.locator('.bit input[type=checkbox]').first();
+    const want = !(await bit.isChecked());
+    await bit.click();
+    return [() => bit.isChecked(), want];
+  }
+  for (const p of Object.keys(LADDER)) {
+    console.log('\n[' + p + ']');
+    if (!LADDER[p]) { ok(p + ': the fixture has a writable field for it', false); continue; }
+    const h0 = await xheight(p);
+    const sameH = async (st) => ok(p + ': the same height ' + st, Math.abs(await xheight(p) - h0) < 0.5, [h0, await xheight(p)]);
+    hub.mode = 'hold';
+    const [read, want] = await xdrive(p);
+    ok(p + ': pending while the hub holds the echo', await xwait(p, 'pending', 1000));
+    ok(p + ': pending names itself in words', (await xladder(p)).includes('waiting'), await xladder(p));
+    await sameH('pending');
+    ok(p + ': overdue past 500 ms', await xwait(p, 'overdue', 1500));
+    await sameH('overdue');
+    await release();
+    ok(p + ': confirmed on the echo, in words', await xwait(p, 'confirmed') && (await xladder(p)) === 'confirmed', await xladder(p));
+    ok(p + ': the control shows the applied value', await read() === want, [await read(), want]);
+    hub.mode = 'silent';
+    await xdrive(p);
+    ok(p + ': fault when the echo never comes', await xwait(p, 'fault', 4000));
+    ok(p + ': ...with its reason in the slot', /refused: no echo/.test(await xladder(p)), await xladder(p));
+    await sameH('at fault');
+    hub.mode = 'nack';
+    const before = await read();
+    await xdrive(p);
+    ok(p + ': fault on a NACK, the code in words', await xwait(p, 'fault', 1500) && /INVALID_VALUE/.test(await xladder(p)),
+      await xladder(p));
+    ok(p + ': ...and the control shows what the machine reports again', await read() === before, [await read(), before]);
+    hub.mode = 'echo';
+  }
+
+  console.log('\n[choices] index 0 and the keyboard');
+  if (LADDER.segmented && LADDER.select) {
+    const seg = xcell('segmented');
+    const radios = seg.locator('[role=radio]');
+    ok('segmented: index 0 is a real, enabled option (RFC-064)', await radios.count() === LADDER.segmented.options.length
+      && !(await radios.nth(0).isDisabled()));
+    ok('select: index 0 is a real option (RFC-064)', await xcell('select').locator('option[value="0"]').count() === 1);
+    ok('segmented: one tab stop', (await radios.evaluateAll((els) => els.filter((e) => e.tabIndex === 0).length)) === 1);
+    const at = await radios.evaluateAll((els) => els.findIndex((e) => e.tabIndex === 0));
+    await radios.nth(at).focus();
+    await page.keyboard.press('ArrowRight');
+    const moved = await page.evaluate(() => document.activeElement.getAttribute('aria-checked'));
+    await sleep(300);
+    ok('segmented: an arrow moves focus and writes nothing', moved === 'false' && await xshadow('segmented') !== 'pending'
+      && await xshadow('segmented') !== 'overdue');
+    await page.keyboard.press('Space');
+    const to = (at + 1) % LADDER.segmented.options.length;
+    ok('segmented: Space writes the focused option', await xwait('segmented', 'confirmed')
+      && (await radios.nth(to).getAttribute('aria-checked')) === 'true');
+    await radios.nth(0).click();
+    ok('segmented: index 0 writes and confirms', await xwait('segmented', 'confirmed')
+      && (await radios.nth(0).getAttribute('aria-checked')) === 'true');
+  }
+
+  console.log('\n[toggle confirm] a destructive setting asks first');
+  const arm = page.locator('.cell[data-pres="toggle@' + ARM.uid + '"] .field');
+  const armBox = arm.locator('input[type=checkbox]');
+  const was = await armBox.isChecked();
+  await arm.locator('.og-switch').click();
+  const dialog = page.locator('.overlay[role=alertdialog]');
+  ok('toggle: a destructive flag opens the confirm', await dialog.waitFor({ timeout: 2000 }).then(() => true).catch(() => false));
+  await dialog.locator('button', { hasText: 'Cancel' }).click();
+  await sleep(300);
+  ok('toggle: Cancel writes nothing and the switch shows the machine again',
+    await armBox.isChecked() === was && await arm.getAttribute('data-shadow') === 'confirmed');
+  await arm.locator('.og-switch').click();
+  await dialog.locator('button.danger').click();
+  ok('toggle: Confirm writes, and the echo settles it', await page.waitForFunction((u) =>
+    document.querySelector('.cell[data-pres="toggle@' + u + '"] input[type=checkbox]').checked !== undefined
+    && document.querySelector('.cell[data-pres="toggle@' + u + '"] .field').dataset.shadow === 'confirmed', ARM.uid,
+    { timeout: 3000 }).then(() => true).catch(() => false) && await armBox.isChecked() === !was);
 
   console.log('\n[display-only]');
   for (const p of ['numeral', 'bar']) {

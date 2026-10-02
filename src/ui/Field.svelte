@@ -644,10 +644,13 @@
     </div>
 
   {:else if pres === WIDGET.select}
-    <select id={domId} disabled={!enabled}
+    <!-- The value is set on the select, never as option `selected`: once the
+         operator has picked, the selected attribute no longer moves the
+         selection, and the control would keep the pick after a refusal. -->
+    <select id={domId} disabled={!enabled} value={Number(value)}
             onchange={(e) => commit(Number(e.currentTarget.value))}>
       {#each field.options as opt, i}
-        <option value={i} selected={Number(value) === i}>{opt || i}</option>
+        <option value={i}>{opt || i}</option>
       {/each}
     </select>
 

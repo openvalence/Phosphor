@@ -5,6 +5,7 @@
   import Field from '../../src/ui/Field.svelte';
   import ActionField from '../../src/ui/ActionField.svelte';
   import Control from '../../src/ui/widgets/Control.svelte';
+  import ConfirmLayer from '../../src/ui/ConfirmLayer.svelte';
   import { machine, specSafetyAction } from '../../src/model/machine.svelte.js';
   import { placeableControls } from '../../src/model/settings.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
@@ -50,6 +51,7 @@
     {/each}
   </div>
 {/if}
+<ConfirmLayer />
 {#if stop}
   <div class="cell" data-pres="safety"><Control control={stop} w={3} h={2} /></div>
 {/if}
