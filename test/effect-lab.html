@@ -1,0 +1,375 @@
+<!doctype html>
+<!--
+  effect-lab.html -- the write-feedback effect, three candidates side by side
+  (ph-vdk.62, docs/EFFECTS.md). Not shipped; open through any static server
+  rooted at the repo (test/effect-lab.mjs serves it and screenshots it).
+
+  Constraints:
+  - Markup mirrors Field.svelte's DOM and class names, so the shared rules
+    below are the ones style.css carries; the lab only adds its own chrome.
+  - Uses `data-st`, not `data-shadow`: style.css still styles data-shadow on
+    non-field surfaces, and the lab must show the candidates alone.
+  - window.lab.at(ms) freezes every station at one moment for screenshots.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Effect lab</title>
+<link rel="stylesheet" href="../src/style.css">
+<style>
+  /* ---- lab chrome ---- */
+  body { padding: 16px; background: var(--bg); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; font-size: .8rem; color: var(--tx-mut); }
+  .bar .og-btn { min-height: 32px; padding: 4px 10px; }
+  .bar label { display: inline-flex; gap: 6px; align-items: center; }
+  .cand { margin: 0 0 20px; padding: 14px 16px 18px; background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
+  .cand h2 { font-size: .9rem; font-weight: 500; color: var(--tx-hi); margin-bottom: 2px; }
+  .cand p { font-size: .74rem; color: var(--tx-mut); margin-bottom: 14px; max-width: 120ch; }
+  .grid { display: grid; grid-template-columns: 64px repeat(6, 212px); gap: 22px 26px; align-items: center; }
+  .ch, .rh { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--tx-ghost); }
+  .ch { align-self: end; }
+
+  /* ---- Field.svelte layout, copied (it is scoped there) ---- */
+  .field { position: relative; display: flex; flex-direction: column; gap: 6px; }
+  .field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .field-label-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .field-label { font-size: .76rem; font-weight: 500; color: var(--tx-mut); text-transform: lowercase; letter-spacing: .04em; white-space: nowrap; }
+  .field-value { display: inline-flex; align-items: center; font-family: var(--mono); font-variation-settings: 'wdth' 90;
+    font-weight: var(--num-wght); font-size: .76rem; color: var(--tx-val); background: var(--screen);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); border: 1px solid var(--line-1); border-radius: var(--r-s); padding: 1px 6px; }
+  .field-value .unit { margin-left: 3px; font-family: var(--font); font-weight: 500; font-size: .64rem; color: var(--tx-ghost); }
+  .ladder { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+    font-size: 11px; line-height: 14px; height: 14px; align-self: center; color: var(--tx-mut); }
+  .ladder[data-slot='pending'] { color: var(--intent); }
+  .ladder[data-slot='overdue'], .ladder[data-slot='fault'] { color: var(--warn); }
+  .field input[type='range'] { margin: 8px 0 2px; width: 100%; display: block; }
+  .stepper { display: flex; align-items: stretch; gap: 6px; }
+  .stepper input { flex: 1 1 auto; min-width: 0; text-align: center; }
+  .stepper button { flex: 0 0 34px; min-height: 34px; border-radius: var(--r-s); border: 1px solid var(--line-2);
+    background: var(--bg-sunken); color: var(--tx-mut); font-family: var(--mono); }
+  .knob { position: relative; align-self: center; width: 100%; max-width: 104px; aspect-ratio: 1; }
+  .knob svg { width: 100%; height: 100%; display: block; }
+  .knob circle { fill: none; stroke-width: 6; }
+  .knob-track { stroke: var(--line-2); }
+  .knob-fill { stroke: var(--reality); }
+  .knob-hand { stroke: var(--tx-val); stroke-width: 3; }
+  .knob-val { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--mono); font-size: .8rem; color: var(--tx-val); }
+  .toggle-row { display: flex; align-items: center; gap: 8px; }
+  .toggle-text { font-family: var(--mono); font-size: .85rem; color: var(--tx-val); }
+  .field.stale > :not(.field-head), .field.stale .field-value { opacity: .5; }
+
+  /* =====================================================================
+     SHARED MACHINERY: what every candidate reads. Five registered numbers
+     carry the whole ladder; consumers only ever read them.
+       --fx-p  pending weight   (pending)            low-passed
+       --fx-w  amber weight     (overdue, fault)     low-passed
+       --fx-g  afterglow level  (confirm ignition)   decays
+       --fx-b  breath phase     (pending, overdue)   0..1..0
+       --fx-run travel phase    (pending, overdue)   0..1, starts late
+     ===================================================================== */
+  @property --fx-p   { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fx-w   { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fx-g   { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fx-b   { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fx-run { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fx-t   { syntax: '<number>'; inherits: true; initial-value: 1; }
+
+  :root {
+    --fx-glow: 5s;
+    /* Phosphor decay: a fast flash term (30%, tau 0.3 s) over a slow glow
+       term (70%, (1 - t/T)^1.6) that reaches zero at --fx-glow. */
+    --fx-glow-ease: linear(0, .057 1%, .107 2%, .19 4%, .283 7%, .352 10%, .436 15%, .499 20%, .583 28%,
+      .674 38%, .769 50%, .863 64%, .938 78%, .982 90%, 1);
+    --fx-follow: 160ms;
+    --fx-breath: 1.8s;
+    --fx-breath-slow: 2.8s;
+    --fx-run-ms: 1.1s;
+    --fx-run-delay: 250ms;
+  }
+
+  .field {
+    --fx-c: var(--intent-rgb);
+    /* the afterglow as drawn: yields to any state that is not settled */
+    --ga: calc(var(--fx-g) * (1 - var(--fx-p)) * (1 - var(--fx-w)));
+    transition: --fx-p var(--fx-follow), --fx-w var(--fx-follow); }
+  .field[data-st='pending'] {
+    --fx-p: 1;
+    animation: fx-breath var(--fx-breath) ease-in-out infinite,
+               fx-run var(--fx-run-ms) cubic-bezier(.45, 0, .8, .55) var(--fx-run-delay) infinite;
+  }
+  .field[data-st='overdue'] {
+    --fx-w: 1; --fx-c: var(--warn-rgb);
+    animation: fx-breath var(--fx-breath-slow) ease-in-out infinite,
+               fx-run calc(var(--fx-run-ms) * 1.7) cubic-bezier(.45, 0, .8, .55) infinite;
+  }
+  .field[data-st='fault'] { --fx-w: 1; --fx-c: var(--warn-rgb); }
+  .field.glow[data-st='confirmed'] { animation: fx-glow var(--fx-glow) var(--fx-glow-ease) both; }
+  .field.stale { --fx-g: 0 !important; }
+
+  @keyframes fx-breath { 0%, 100% { --fx-b: 0; } 50% { --fx-b: 1; } }
+  @keyframes fx-run { from { --fx-run: 0; } to { --fx-run: 1; } }
+  @keyframes fx-glow { from { --fx-g: var(--fx-g-peak, 1); } to { --fx-g: 0; } }
+
+  /* The line: the slider's track, and the bottom edge of the part that holds
+     the value everywhere else. --h is where the handle (or the value) sits. */
+  .field input[type='range'] {
+    --fx-dir: to right;
+    --h: calc(var(--slider-thumb-w) / 2 + var(--fx-f, .5) * (100% - var(--slider-thumb-w)));
+  }
+  .field[data-orient='v'] input[type='range'] { --fx-dir: to top; }
+  .field :is(.og-num, .og-seg button.active, .og-switch .track) {
+    --fx-dir: to right; --h: 50%;
+    background-size: 100% 2px; background-position: 0 100%; background-repeat: no-repeat;
+  }
+  /* A boxed value (stepper box, chosen option, switch track) also wears the
+     state on its own frame: intent, then amber, over its resting color. */
+  .field :is(.og-num, .og-seg button.active, .og-switch .track) {
+    --fx-base: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--line-1));
+    border-color: color-mix(in srgb, rgb(var(--warn-rgb)) calc(var(--fx-w) * 100%),
+      color-mix(in srgb, rgb(var(--intent-rgb)) calc(max(var(--fx-p) - var(--fx-w), 0) * 100%), var(--fx-base)));
+  }
+  .field :is(.og-seg button.active, .og-switch input:checked + .track) { --fx-base: var(--reality); }
+  .field .og-switch .track { --fx-base: var(--line-2); }
+  .field .og-switch .track { --h: 26%; }
+  .field .og-switch input:checked + .track { --h: 74%; }
+
+  /* ---- generic line layers (comets, tints) ---- */
+  .field :is(input[type='range'], .og-num, .og-seg button.active, .og-switch .track) {
+    --l: calc(var(--h) * var(--fx-run));
+    --r: calc(100% - (100% - var(--h)) * var(--fx-run));
+    --ca: calc((var(--fx-p) + var(--fx-w)) * var(--fx-run) * .95);
+    --comets: linear-gradient(var(--fx-dir), transparent calc(var(--l) - 26px), rgba(var(--fx-c), var(--ca)) var(--l),
+        transparent calc(var(--l) + 1px), transparent calc(var(--r) - 1px), rgba(var(--fx-c), var(--ca)) var(--r),
+        transparent calc(var(--r) + 26px));
+    --tint: linear-gradient(var(--fx-dir), transparent calc(var(--h) - 48px),
+        rgba(var(--intent-rgb), calc(max(var(--fx-p) - var(--fx-w), 0) * (.7 + .3 * var(--fx-b)))) var(--h),
+        transparent calc(var(--h) + 48px)),
+      linear-gradient(var(--fx-dir), transparent calc(var(--h) - 48px),
+        rgba(var(--warn-rgb), calc(var(--fx-w) * (.7 + .3 * var(--fx-b)))) var(--h), transparent calc(var(--h) + 48px));
+  }
+
+  /* =====================================================================
+     CANDIDATE A -- afterglow ring. The ring is the phosphor: it lights on the
+     echo and decays over 5 s. The line glows from the handle outward and the
+     glow recedes into the handle as it fades. Pending breathes.
+     ===================================================================== */
+  [data-fx='A'] .field::after {
+    content: ''; position: absolute; inset: -3px; border-radius: var(--radius); pointer-events: none;
+    box-shadow:
+      0 0 0 1px rgba(var(--warn-rgb), calc(var(--fx-w) * var(--fx-wa, .85))),
+      0 0 0 1px rgba(var(--intent-rgb), calc(max(var(--fx-p) - var(--fx-w), 0) * (.28 + .42 * var(--fx-b)))),
+      0 0 0 1px rgba(var(--reality-rgb), var(--ga)),
+      0 0 14px 1px rgba(var(--reality-rgb), calc(var(--ga) * .5)),
+      0 0 12px 0 rgba(var(--intent-rgb), calc(max(var(--fx-p) - var(--fx-w), 0) * .22 * var(--fx-b))),
+      0 0 12px 0 rgba(var(--warn-rgb), calc(var(--fx-w) * .2));
+  }
+  [data-fx] .field[data-st='overdue'] { --fx-wa: calc(.4 + .45 * var(--fx-b)); }
+  [data-fx='A'] .field :is(input[type='range'], .og-num, .og-seg button.active, .og-switch .track) {
+    --sp: calc(10px + var(--fx-g) * 42%);
+    background-image: var(--comets), var(--tint),
+      linear-gradient(var(--fx-dir), transparent calc(var(--h) - var(--sp)),
+        rgba(var(--reality-rgb), calc(var(--ga) * .35)) calc(var(--h) - var(--sp) * .45),
+        rgba(var(--reality-rgb), var(--ga)) var(--h),
+        rgba(var(--reality-rgb), calc(var(--ga) * .35)) calc(var(--h) + var(--sp) * .45),
+        transparent calc(var(--h) + var(--sp)));
+  }
+
+  /* =====================================================================
+     CANDIDATE B -- trace. The line tells the story: while pending a pulse
+     runs from where the machine IS (the old value) to the handle; on the
+     echo a bright head runs that same path and leaves the segment lit, and
+     the segment decays. The ring only says "in flight" and "refused".
+     ===================================================================== */
+  [data-fx='B'] .field::after {
+    content: ''; position: absolute; inset: -3px; border-radius: var(--radius); pointer-events: none;
+    box-shadow:
+      0 0 0 1px rgba(var(--warn-rgb), calc(var(--fx-w) * var(--fx-wa, .85))),
+      0 0 0 1px rgba(var(--intent-rgb), calc(max(var(--fx-p) - var(--fx-w), 0) * (.15 + .35 * var(--fx-b))));
+  }
+  [data-fx='B'] .field.glow[data-st='confirmed'] {
+    animation: fx-glow var(--fx-glow) var(--fx-glow-ease) both, fx-trace 420ms cubic-bezier(.2, .7, .3, 1) both;
+  }
+  @keyframes fx-trace { from { --fx-t: 0; } to { --fx-t: 1; } }
+  [data-fx='B'] .field input[type='range'] {
+    --o: calc(var(--slider-thumb-w) / 2 + var(--fx-f0, .5) * (100% - var(--slider-thumb-w)));
+    --x: calc(var(--o) + (var(--h) - var(--o)) * var(--fx-run));
+    --hd: calc(var(--o) + (var(--h) - var(--o)) * var(--fx-t));
+    --lo: min(var(--o), var(--hd)); --hi: max(var(--o), var(--hd));
+    background-image:
+      linear-gradient(var(--fx-dir), transparent calc(var(--x) - 14px), rgba(var(--fx-c), var(--ca)) var(--x), transparent calc(var(--x) + 14px)),
+      var(--tint),
+      linear-gradient(var(--fx-dir), transparent calc(var(--lo) - 6px), rgba(var(--reality-rgb), calc(var(--ga) * .8)) var(--lo),
+        rgba(var(--reality-rgb), calc(var(--ga) * .8)) var(--hi), transparent calc(var(--hi) + 6px)),
+      linear-gradient(var(--fx-dir), transparent calc(var(--hd) - 18px), rgba(var(--reality-rgb), calc(var(--ga) * (1 - var(--fx-t) * .6))) var(--hd), transparent calc(var(--hd) + 18px));
+  }
+  /* No old position off the slider: the whole line flashes and decays. */
+  [data-fx='B'] .field :is(.og-num, .og-seg button.active, .og-switch .track) {
+    background-image: var(--comets), var(--tint),
+      linear-gradient(rgba(var(--reality-rgb), calc(var(--ga) * .85)), rgba(var(--reality-rgb), calc(var(--ga) * .85)));
+  }
+
+  /* =====================================================================
+     CANDIDATE C -- persistence. Everything the echo changed is painted
+     bright and left to decay like a CRT: the digits brightest and longest,
+     the handle next, the ring first. Pending: a dim ring that jitters one
+     pixel at 2 Hz (the beam waiting); overdue slows it and turns amber.
+     ===================================================================== */
+  [data-fx='C'] .field::after {
+    content: ''; position: absolute; inset: -3px; border-radius: var(--radius); pointer-events: none;
+    box-shadow:
+      0 0 0 1px rgba(var(--warn-rgb), calc(var(--fx-w) * var(--fx-wa, .85))),
+      0 0 0 1px rgba(var(--intent-rgb), calc(max(var(--fx-p) - var(--fx-w), 0) * .4)),
+      0 0 0 1px rgba(var(--reality-rgb), calc(var(--ga) * var(--ga) * .9)),
+      0 0 10px 0 rgba(var(--reality-rgb), calc(var(--ga) * var(--ga) * .4));
+  }
+  [data-fx='C'] .field[data-st='pending']::after { animation: fx-jitter .5s steps(1) infinite; }
+  [data-fx='C'] .field[data-st='overdue']::after { animation: fx-jitter 1s steps(1) infinite; }
+  @keyframes fx-jitter { 0% { translate: 0 0; } 50% { translate: 1px 0; } }
+  [data-fx='C'] .field :is(input[type='range'], .og-num, .og-seg button.active, .og-switch .track) {
+    background-image: var(--comets), var(--tint),
+      linear-gradient(var(--fx-dir), transparent calc(var(--h) - 22px), rgba(var(--reality-rgb), calc(var(--ga) * .9)) var(--h), transparent calc(var(--h) + 22px));
+  }
+  [data-fx='C'] .field input[type='range']::-webkit-slider-thumb {
+    border-color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-val));
+    box-shadow: 0 0 0 2px var(--bg), 0 0 calc(var(--ga) * 12px) rgba(var(--reality-rgb), calc(var(--ga) * .7));
+  }
+  [data-fx='C'] .field :is(.field-value, .og-num, .knob-val, .og-seg button.active, .toggle-text) {
+    color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-val));
+    text-shadow: 0 0 calc(var(--ga) * 10px) rgba(var(--reality-rgb), calc(var(--ga) * .8));
+  }
+
+  /* ---- the knob's line is its arc ---- */
+  .knob-run { stroke-dasharray: 12 400; stroke-linecap: butt; }
+  .knob-glow { stroke-width: 6; }
+  .field .knob-track {
+    stroke: color-mix(in srgb, rgb(var(--warn-rgb)) calc(var(--fx-w) * 70%),
+      color-mix(in srgb, rgb(var(--intent-rgb)) calc(var(--fx-p) * (45% + 25% * var(--fx-b))), var(--line-2)));
+  }
+  .field .knob-run {
+    stroke: rgba(var(--fx-c), calc((var(--fx-p) + var(--fx-w)) * var(--fx-run)));
+    stroke-dashoffset: calc(12px - var(--fx-run) * var(--kl) * 1px);
+  }
+  [data-fx] .field .knob-glow { stroke: rgba(var(--reality-rgb), calc(var(--fx-g) * (1 - var(--fx-p)) * (1 - var(--fx-w)))); filter: blur(calc(1px + var(--fx-g) * 2.5px)); }
+  [data-fx='C'] .field .knob-hand { stroke: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-val)); }
+
+  /* ---- reduced motion: the same states, held still ---- */
+  html.rm .field, html.rm .field::after { animation: none !important; }
+  html.rm .field.glow[data-st='confirmed'] { animation: fx-glow var(--fx-glow) steps(1, jump-end) both !important; --fx-g-peak: .6; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="og-btn" id="replay" type="button">Replay write (echo at 900 ms)</button>
+  <button class="og-btn" id="replayFast" type="button">Replay fast echo (30 ms)</button>
+  <button class="og-btn" id="replayFault" type="button">Replay refusal</button>
+  <button class="og-btn" id="drag" type="button">Drag (5 Hz echoes, 2 s)</button>
+  <label><input type="checkbox" id="rm"> reduced motion</label>
+  <label><input type="checkbox" id="hv"> hi-vis</label>
+  <label>theme <select id="theme" style="width:auto;padding:2px 24px 2px 6px"><option value="4DA6FF A78BFA">Phosphor</option><option value="FF8A4D FFD24D">Ember</option><option value="52E88C E85CFF">Tracer</option><option value="D8DEE8 8A93A6">Stealth</option></select></label>
+</div>
+<main id="lab"></main>
+<script>
+  const CANDS = [
+    ['A', 'A. Afterglow ring', 'The ring is the phosphor: lit by the echo, decaying over 5 s on a fast-then-slow curve. The line glows from the handle outward and the glow recedes into the handle. Pending breathes the ring in intent; pulses run along the line toward the handle once a write has waited 250 ms. Overdue is the same, slower and amber. Fault holds amber.'],
+    ['B', 'B. Trace', 'The line tells the story: pending runs a pulse from where the machine is (the old value) to the handle; the echo runs a bright head along that path and leaves the segment lit, decaying over 5 s. The ring only marks in flight (dim breath) and refused (amber).'],
+    ['C', 'C. Persistence', 'Everything the echo changed is painted bright and decays like a CRT: the digits brightest and longest, then the handle and line, the ring first. Pending is a dim ring that jitters 1 px at 2 Hz; overdue slows it and turns amber.'],
+  ];
+  const STATIONS = ['live', 'pending', 'overdue', 'confirmed', 'fault', 'stale'];
+  const WORD = { pending: 'waiting for the machine', overdue: 'still waiting for the machine', confirmed: 'confirmed', fault: 'no answer from the hub' };
+  const ARC = 0.75 * 2 * Math.PI * 40, CIRC = 2 * Math.PI * 40, F = 0.42, F0 = 0.2;
+
+  const head = (label, chip) => `<div class="field-head"><span class="field-label-group"><label class="field-label">${label}</label></span>`
+    + `<span class="ladder" data-slot=""></span>${chip ? `<span class="field-value">${chip}<span class="unit">mm/s</span></span>` : ''}</div>`;
+  const PRES = {
+    slider: () => head('jog speed', '1057') + `<input type="range" min="0" max="1" step="0.001" value="${F}">`,
+    knob: () => head('jog speed') + `<div class="knob" style="--kl:${ARC * F}"><svg viewBox="0 0 100 100">`
+      + `<circle class="knob-track" cx="50" cy="50" r="40" stroke-dasharray="${ARC} ${CIRC}" transform="rotate(135 50 50)"/>`
+      + `<circle class="knob-glow" cx="50" cy="50" r="40" stroke-dasharray="${ARC * F} ${CIRC}" transform="rotate(135 50 50)"/>`
+      + `<circle class="knob-fill" cx="50" cy="50" r="40" stroke-dasharray="${ARC * F} ${CIRC}" transform="rotate(135 50 50)"/>`
+      + `<circle class="knob-run" cx="50" cy="50" r="40" transform="rotate(135 50 50)"/>`
+      + `<line class="knob-hand" x1="50" y1="50" x2="50" y2="18" transform="rotate(${-135 + 270 * F} 50 50)"/></svg>`
+      + `<span class="knob-val">1057</span></div>`,
+    stepper: () => head('stroke depth', '84') + `<div class="stepper"><button type="button">&minus;</button>`
+      + `<input type="number" class="og-num" value="84"><button type="button">+</button></div>`,
+    segmented: () => head('pattern') + `<div class="og-seg"><button type="button">sine</button><button type="button" class="active">saw</button><button type="button">step</button></div>`,
+    toggle: () => head('background run') + `<div class="toggle-row"><label class="og-switch"><input type="checkbox" checked><span class="track"></span></label><span class="toggle-text">on</span></div>`,
+  };
+
+  const lab = document.getElementById('lab');
+  for (const [id, title, blurb] of CANDS) {
+    const sec = document.createElement('section');
+    sec.className = 'cand';
+    sec.dataset.fx = id;
+    let g = `<h2>${title}</h2><p>${blurb}</p><div class="grid"><span></span>` + STATIONS.map((s) => `<span class="ch">${s}</span>`).join('');
+    for (const p of Object.keys(PRES)) {
+      g += `<span class="rh">${p}</span>`;
+      for (const s of STATIONS) g += `<div class="field" data-widget="${p}" data-station="${s}" data-st="confirmed" style="--fx-f:${F};--fx-f0:${F0}">${PRES[p]()}</div>`;
+    }
+    sec.innerHTML = g + '</div>';
+    lab.append(sec);
+  }
+
+  const all = (station) => [...document.querySelectorAll(`.field[data-station="${station}"]`)];
+  function set(el, st, glow) {
+    el.dataset.st = st;
+    const w = el.querySelector('.ladder');
+    const word = st === 'confirmed' ? (glow ? WORD.confirmed : '') : WORD[st];
+    w.textContent = word; w.dataset.slot = st === 'confirmed' ? (glow ? 'confirmed' : '') : st;
+    el.classList.toggle('glow', !!glow);
+  }
+  // Field.svelte clears the glow on animationend of fx-glow, which also ends the word.
+  document.addEventListener('animationend', (e) => {
+    if (e.animationName === 'fx-glow' && e.target.classList.contains('field')) set(e.target, e.target.dataset.st, false);
+  });
+  const timers = new Set();
+  const later = (ms, fn) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); };
+  function ignite(el) { set(el, 'confirmed', false); void el.offsetWidth; set(el, 'confirmed', true); }
+  function cycle(els, echoMs, fault) {
+    els.forEach((el) => set(el, 'pending'));
+    later(500, () => els.forEach((el) => el.dataset.st === 'pending' && set(el, 'overdue')));
+    if (fault) later(2000, () => els.forEach((el) => set(el, 'fault')));
+    else later(echoMs, () => els.forEach(ignite));
+  }
+  /** Every station to its state, started together, then optionally frozen at `ms`. */
+  function start() {
+    timers.forEach(clearTimeout); timers.clear();
+    all('pending').forEach((el) => set(el, 'pending'));
+    all('overdue').forEach((el) => set(el, 'overdue'));
+    all('confirmed').forEach(ignite);
+    all('fault').forEach((el) => set(el, 'fault'));
+    all('stale').forEach((el) => { set(el, 'confirmed'); el.classList.add('stale'); });
+    all('live').forEach((el) => set(el, 'confirmed'));
+  }
+  window.lab = {
+    start,
+    at(ms) {
+      start();
+      for (const a of document.getAnimations()) { a.pause(); a.currentTime = a instanceof CSSTransition ? 1e6 : ms; }
+    },
+  };
+  start();
+  // The confirmed column re-ignites every 6 s so it can be watched.
+  setInterval(() => { if (!document.getAnimations().some((a) => a.playState === 'paused')) all('confirmed').forEach(ignite); }, 6000);
+  const live = () => all('live');
+  document.getElementById('replay').onclick = () => cycle(live(), 900);
+  document.getElementById('replayFast').onclick = () => cycle(live(), 30);
+  document.getElementById('replayFault').onclick = () => cycle(live(), 0, true);
+  document.getElementById('drag').onclick = () => {
+    for (let t = 0; t < 2000; t += 200) { later(t, () => live().forEach((el) => set(el, 'pending'))); later(t + 170, () => live().forEach(ignite)); }
+  };
+  document.getElementById('rm').onchange = (e) => document.documentElement.classList.toggle('rm', e.target.checked);
+  document.getElementById('hv').onchange = (e) => document.documentElement.classList.toggle('hivis', e.target.checked);
+  // The theme's two accents, as model/theme.js applies them.
+  function theme(pair) {
+    const [r, i] = pair.split(' ').map((h) => [0, 2, 4].map((k) => parseInt(h.slice(k, k + 2), 16)).join(','));
+    const st = document.documentElement.style;
+    st.setProperty('--reality-rgb', r); st.setProperty('--reality', `rgb(${r})`);
+    st.setProperty('--intent-rgb', i); st.setProperty('--intent', `rgb(${i})`);
+  }
+  document.getElementById('theme').onchange = (e) => theme(e.target.value);
+  window.lab.theme = theme;
+</script>
+</body>
+</html>
