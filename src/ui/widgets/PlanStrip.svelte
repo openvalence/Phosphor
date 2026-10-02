@@ -56,6 +56,12 @@
   import { formatParts, optionLabel } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
+  import { railOwnerName } from '../../model/actions.js';
+  import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
+
+  // shown: RailWidget keeps this mounted under the jog tape and flips
+  // visibility (ph-e82.21); hidden, the draw loop stops.
+  let { shown = true } = $props();
 
   /** Per-field sample lookup — every role-claimed field carries its own
       channelId, so a claim spread across multiple channels still reads the
@@ -125,6 +131,9 @@
     !!(fields && fields.elapsed && fields.duration) && elapsedVal != null && durVal != null);
 
   const styleVal = $derived(fields && fields.style ? fieldValue(fields.style) : undefined);
+  // The source holding the rail, in the hub's own words; '' reads "plan".
+  const owner = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
+    machine.samples[CH_CONTROL_OWNER]));
 
   // ---------------------------------------------------------------------------
   // "Is a plan actually streaming right now": dims the lane when not. When
@@ -173,7 +182,7 @@
   const GHOST_FADE_MS = 1200;
 
   $effect(() => {
-    if (!canvasEl || !haveAnyPosition) return;
+    if (!canvasEl || !haveAnyPosition || !shown) return;
     const ctx = canvasEl.getContext('2d');
     const root = document.documentElement;
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
@@ -296,13 +305,13 @@
 {#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
 
 {#if fields && haveAnyPosition}
-  <!-- Mounted by RailWidget in the rail row's fixed box, in place of the jog
+  <!-- Mounted by RailWidget in the rail row's fixed box, shown over the jog
        tape while a source owns the rail: a labels line over the lane, the
        tape's own geometry, so the swap never moves anything. `.on` follows
        isActive (a plan streaming right now); off, the lane dims (law 8). -->
   <div class="plan-strip" class:on={isActive}>
     <div class="plan-labels">
-      <span class="plan-mode">plan{#if fields.style} &middot; {optionLabel(fields.style, styleVal)}{/if}</span>
+      <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + optionLabel(fields.style, styleVal)}{/if}</span>
       <span class="plan-meta mono">
         {#if fields.velocity}
           <output>{@render vu(fields.velocity, velVal)}</output>
@@ -351,6 +360,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Hub text renders as sent (docs/COPY.md rule 8). */
+  .plan-owner { text-transform: none; }
   .plan-meta {
     display: flex;
     align-items: center;

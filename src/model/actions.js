@@ -110,6 +110,23 @@ export function railOwned(byRole, samples, ownerSample, self) {
 }
 
 /**
+ * The name of the source holding the rail. control-owner is {source,
+ * owner} pairs (SPEC §11.4); an owned pair's source id reads through that
+ * source field's own `options` (index-aligned to the source id, the hub's
+ * labels). '' when no pair is owned or the catalog labels no sources.
+ */
+// ponytail: first owned, labeled pair wins; ask the hub for one active source if two can own at once.
+export function railOwnerName(ownerEntry, ownerSample) {
+  const layout = (ownerEntry && ownerEntry.layout) || [];
+  for (let k = 0; ownerSample && k + 1 < layout.length; k += 2) {
+    const src = layout[k], owner = layout[k + 1];
+    const name = ownerSample[owner.name] && src.options && src.options[ownerSample[src.name]];
+    if (name) return name;
+  }
+  return '';
+}
+
+/**
  * Confirm-dialog copy, straight from the catalog: the op's own option label
  * (or the field's label) as the title, its `desc` as the body.
  */
