@@ -292,13 +292,14 @@
 
 <style>
   .logpane { gap: 8px; }
-  .tabs button { min-width: 0; }
+  /* Wrap rather than squeeze: a tab never clips its label or count. */
+  .tabs button { flex: 1 0 auto; }
   .count { color: var(--ink-faint); font-size: .68rem; margin-left: 4px; }
 
   .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .tool { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--tx-mut); }
+  .tool { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: .75rem; color: var(--tx-mut); }
   /* Fixed width: a new tag arriving never resizes the toolbar. */
-  .tool select { width: 16ch; }
+  .tool select { width: 16ch; min-width: 0; flex: 0 1 auto; }
 
   /* All feeds share one cell; only the active one is visible. */
   .stack { display: grid; }
