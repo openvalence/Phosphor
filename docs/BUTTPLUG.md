@@ -42,6 +42,8 @@ Commands (all async):
 | `bp_toy_stop(index)` | upstream StopCmd for that toy alone, outputs only (sensor subscriptions survive), write acknowledged (bounded at 1 s) |
 | `bp_toy_read(index, feature, input: string)` | one reading (`Battery`, `Rssi`, `Button`, `Pressure`) as an integer |
 | `bp_stop_all()` | upstream StopCmd for every device, each write acknowledged (bounded at 1 s) |
+| `bp_clients()` | `[{id, name, address, since, messages, rate}]`: the connected app (0 or 1 entries). `id` is per connection; `name` is the handshake's ClientName (null until RequestServerInfo); `address` is the peer's `ip:port` (fork `on_client_accepted`); `since` is unix ms at accept on this host's clock; `messages` and `rate` (messages in the last whole second) update once a second |
+| `bp_client_disconnect(id)` | closes that connection; errors when `id` is not the connected client. The listener then takes the next app |
 | `bp_settings()` | the saved settings: `{port: u16, start_on_launch: bool, ble: bool, serial: bool, hid: bool, machine: bool, log_level: "error" | "warn" | "info" | "debug"}` |
 | `bp_settings_set(settings)` | saves the whole record and returns it as saved. Errors (nothing saved) on port 0, an unknown level, a failed write, or a changed port or manager while running |
 
@@ -69,6 +71,7 @@ Events:
 | event | payload |
 |---|---|
 | `bp://status` | same as `bp_status` |
+| `bp://clients` | same as `bp_clients`: on connect, on disconnect, and at most once a second while the name or rate changes |
 | `bp://devices` | same as `bp_devices` |
 | `bp://log` | `{level, msg}` |
 | `bp://motion` | `{position: f64 0..1, ms: u32}` or `{stop: true}` |
@@ -197,6 +200,11 @@ any spec version, so the setting would drive nothing.
   name, the machine refused throughout), `timed_scan_stops_itself` (with the
   machine manager alone, which never finishes a scan, the timer ends it; a
   later request outdates the timer).
+- `cargo test` clients: `clients_list_rate_and_operator_disconnect` (the
+  handshake's name, a loopback address and the message count land within a
+  second; a stale id is refused; the operator's disconnect closes the socket
+  and empties the list on `bp://clients`; the next client connects with a new
+  id).
 - `cargo test` settings: `settings_persist_and_gate_the_managers` (saved to
   and read back from the file, refusals change nothing, the machine manager
   off leaves the machine out, port and managers refused while running, lines

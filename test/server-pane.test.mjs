@@ -64,7 +64,7 @@ function fakeShell(cmds) {
   await bp.init();
   assert.equal(s.ready, true);
   assert.deepEqual(s.devices, [machine]);
-  assert.deepEqual(Object.keys(sh.handlers).sort(), ['bp://devices', 'bp://log', 'bp://status']);
+  assert.deepEqual(Object.keys(sh.handlers).sort(), ['bp://clients', 'bp://devices', 'bp://log', 'bp://status']);
 
   sh.calls.length = 0;
   const p = bp.start(23456);
@@ -310,6 +310,43 @@ function fakeShell(cmds) {
   await bp.rename('x', 'y');
   await bp.read(vib, bat);
   assert.deepEqual(sh.calls, [], 'device commands need a running server');
+  bp.dispose();
+}
+
+// --- clients: the list from bp_clients and bp://clients; a disconnect settles when it leaves
+{
+  const app = { id: 3, name: 'Game', address: '127.0.0.1:50000', since: 1, messages: 40, rate: 12 };
+  let conns = [app];
+  let stuck = false;
+  const sh = fakeShell({
+    bp_status: () => ({ running: true, port: BP_PORT, clients: conns.length, scanning: false }),
+    bp_clients: () => conns.map((c) => ({ ...c })),
+    bp_client_disconnect: ({ id }) => {
+      if (!conns.some((c) => c.id === id)) throw 'client ' + id + ' is not connected';
+      if (!stuck) conns = conns.filter((c) => c.id !== id);
+    },
+  });
+  const s = blank();
+  const bp = createBp(s, sh.api, { echoMs: 20 });
+  await bp.init();
+  assert.deepEqual(s.conns, [app], 'read on init');
+  sh.emit('bp://clients', [{ ...app, rate: 30, messages: 70 }]);
+  assert.equal(s.conns[0].rate, 30, 'the event updates the list');
+
+  stuck = true;
+  await bp.kick(s.conns[0]);
+  assert.deepEqual(sh.calls.find((c) => c[0] === 'bp_client_disconnect')[1], { id: 3 });
+  assert.equal(s.ops['kick:3'].phase, 'pending', 'still listed: not yet confirmed');
+  assert.match(s.ops['kick:3'].reason, /disconnecting Game/);
+  await tick(40);
+  assert.equal(s.ops['kick:3'].phase, 'overdue');
+  conns = [];
+  sh.emit('bp://clients', []);
+  assert.equal(s.ops['kick:3'].phase, 'settled', 'leaving the list confirms');
+
+  await bp.kick(app);
+  assert.equal(s.ops['kick:3'].phase, 'fault');
+  assert.match(s.ops['kick:3'].reason, /disconnect failed: client 3 is not connected/);
   bp.dispose();
 }
 

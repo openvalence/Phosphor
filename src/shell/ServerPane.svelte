@@ -20,6 +20,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { blank, createBp } from './bp-server.js';
+  import Clients from './server/Clients.svelte';
   import Devices from './server/Devices.svelte';
   import Settings from './server/Settings.svelte';
 
@@ -27,7 +28,7 @@
   const bp = createBp(s, { invoke, listen });
   onMount(() => { bp.init(); return bp.dispose; });
 
-  const TABS = ['devices', 'log', 'settings'];
+  const TABS = ['devices', 'clients', 'log', 'settings'];
   let open = $state(false);
   let tab = $state('devices');
   const summary = $derived(!s.ready ? 'unavailable'
@@ -74,6 +75,8 @@
       <div role="tabpanel" aria-label={tab}>
         {#if tab === 'devices'}
           <Devices {s} {bp} />
+        {:else if tab === 'clients'}
+          <Clients {s} {bp} />
         {:else if tab === 'log'}
           {#if s.log.length}
             <ol class="sp-log mono">

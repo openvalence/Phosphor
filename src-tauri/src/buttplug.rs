@@ -268,6 +268,28 @@ struct Shared {
   level: AtomicUsize,
   /// Bumped by every scan request; a timed stop fires only if unchanged.
   scan_gen: AtomicU32,
+  /// The connected app, if any (one at a time, as Intiface).
+  client: Mutex<Option<Client>>,
+  next_client: AtomicU32,
+}
+
+/// A connected buttplug client as bp_clients reports it.
+#[derive(Clone, Serialize)]
+pub struct Client {
+  /// Per connection, so a stale disconnect never reaches a newer client.
+  id: u32,
+  /// From the handshake; null until RequestServerInfo.
+  name: Option<String>,
+  /// The peer's address and port (loopback while the listener is).
+  address: String,
+  /// Unix ms at accept, on this host's clock.
+  since: u64,
+  /// Messages received, counted at each whole second.
+  messages: u64,
+  /// Messages received in the last whole second.
+  rate: u32,
+  #[serde(skip)]
+  kick: Arc<tokio::sync::Notify>,
 }
 
 impl Shared {
@@ -282,6 +304,14 @@ impl Shared {
 
   fn emit_status(&self) {
     (self.sink)("bp://status", json!(self.status()));
+  }
+
+  fn clients(&self) -> Vec<Client> {
+    self.client.lock().unwrap().iter().cloned().collect()
+  }
+
+  fn emit_clients(&self) {
+    (self.sink)("bp://clients", json!(self.clients()));
   }
 
   fn log(&self, level: log::Level, msg: String) {
@@ -354,6 +384,8 @@ impl Buttplug {
         settings: Mutex::new(settings),
         level: AtomicUsize::new(level),
         scan_gen: AtomicU32::new(0),
+        client: Mutex::new(None),
+        next_client: AtomicU32::new(0),
       }),
       run: Arc::new(tokio::sync::Mutex::new(None)),
     };
@@ -462,6 +494,8 @@ impl Buttplug {
     *self.sh.machine.lock().unwrap() = None;
     self.sh.running.store(false, Ordering::Relaxed);
     self.sh.clients.store(0, Ordering::Relaxed);
+    *self.sh.client.lock().unwrap() = None;
+    self.sh.emit_clients();
     self.sh.scanning.store(false, Ordering::Relaxed);
     self.sh.emit_status();
     (self.sh.sink)("bp://devices", json!([]));
@@ -469,6 +503,21 @@ impl Buttplug {
 
   pub fn status(&self) -> Status {
     self.sh.status()
+  }
+
+  pub fn clients(&self) -> Vec<Client> {
+    self.sh.clients()
+  }
+
+  /// Close one client's connection; the listener then takes the next one.
+  pub fn disconnect_client(&self, id: u32) -> Result<(), String> {
+    match self.sh.client.lock().unwrap().as_ref() {
+      Some(c) if c.id == id => {
+        c.kick.notify_one();
+        Ok(())
+      }
+      _ => Err(format!("client {id} is not connected")),
+    }
   }
 
   async fn dm(&self) -> Result<Arc<ServerDeviceManager>, String> {
@@ -879,8 +928,13 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
         break;
       }
     };
+    let peer = Arc::new(Mutex::new(None::<std::net::SocketAddr>));
+    let seen = peer.clone();
     let mut transport = ButtplugWebsocketServerTransportBuilder::default();
-    transport.port(port).listen_on_all_interfaces(false);
+    transport
+      .port(port)
+      .listen_on_all_interfaces(false)
+      .on_client_accepted(move |a| *seen.lock().unwrap() = Some(a));
     let mut connector =
       ButtplugRemoteServerConnector::<_, ButtplugServerJSONSerializer>::new(transport.finish());
     let (tx, mut rx) = mpsc::channel(256);
@@ -888,16 +942,55 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
       sh.log(log::Level::Error, format!("buttplug listener 127.0.0.1:{}: {}", port, e));
       break;
     }
+    let address = peer.lock().unwrap().map_or_else(String::new, |a| a.to_string());
+    let kick = Arc::new(tokio::sync::Notify::new());
+    let since = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH)
+      .map_or(0, |d| d.as_millis() as u64);
+    *sh.client.lock().unwrap() = Some(Client {
+      id: sh.next_client.fetch_add(1, Ordering::Relaxed) + 1,
+      name: None,
+      address: address.clone(),
+      since,
+      messages: 0,
+      rate: 0,
+      kick: kick.clone(),
+    });
     sh.clients.store(1, Ordering::Relaxed);
     sh.emit_status();
+    sh.emit_clients();
+    sh.log(log::Level::Info, format!("buttplug client connected from {address}"));
     let connector = Arc::new(connector);
     let replies = server.event_stream();
     futures::pin_mut!(replies);
+    let second = std::time::Duration::from_secs(1);
+    let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + second, second);
+    let mut window = 0u32;
     loop {
       tokio::select! {
+        _ = kick.notified() => {
+          sh.log(log::Level::Info, format!("buttplug client at {address} disconnected by the operator"));
+          let _ = connector.disconnect().await;
+          break;
+        }
+        _ = tick.tick() => {
+          let name = server.client_name();
+          let changed = sh.client.lock().unwrap().as_mut().is_some_and(|c| {
+            let changed = c.rate != window || c.name != name;
+            c.messages += u64::from(window);
+            c.rate = window;
+            c.name = name;
+            changed
+          });
+          window = 0;
+          if changed {
+            sh.emit_clients();
+          }
+        }
         msg = rx.recv() => match msg {
           None => break,
           Some(msg) => {
+            window += 1;
             if stops_machine(&msg, &dm) {
               sh.stop_machine();
             }
@@ -921,7 +1014,9 @@ async fn serve(dm: Arc<ServerDeviceManager>, port: u16, sh: Arc<Shared>) {
     let _ = server.disconnect().await;
     sh.stop_machine();
     sh.clients.store(0, Ordering::Relaxed);
+    *sh.client.lock().unwrap() = None;
     sh.emit_status();
+    sh.emit_clients();
   }
   sh.running.store(false, Ordering::Relaxed);
   sh.emit_status();
@@ -1100,6 +1195,16 @@ pub async fn bp_device_forget(bp: State<'_, Buttplug>, key: String) -> Result<()
 #[tauri::command]
 pub async fn bp_device_disconnect(bp: State<'_, Buttplug>, index: u32) -> Result<(), String> {
   bp.disconnect_device(index).await
+}
+
+#[tauri::command]
+pub async fn bp_clients(bp: State<'_, Buttplug>) -> Result<Vec<Client>, String> {
+  Ok(bp.clients())
+}
+
+#[tauri::command]
+pub async fn bp_client_disconnect(bp: State<'_, Buttplug>, id: u32) -> Result<(), String> {
+  bp.disconnect_client(id)
 }
 
 #[tauri::command]
@@ -1628,5 +1733,76 @@ mod tests {
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(bp.status().scanning, "an outdated timer leaves a newer scan alone");
     bp.stop().await;
+  }
+
+  #[tokio::test(flavor = "multi_thread")]
+  async fn clients_list_rate_and_operator_disconnect() {
+    let (bp, mut rx, mut ws, _) = session().await;
+    for n in 0..5 {
+      call(&mut ws, json!([{ "RequestDeviceList": { "Id": 20 + n } }])).await;
+    }
+    // Name and counts land at the next whole second.
+    let mut c = bp.clients();
+    for _ in 0..60 {
+      c = bp.clients();
+      if c.len() == 1 && c[0].messages > 0 {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(c.len(), 1);
+    assert_eq!(c[0].name.as_deref(), Some("loopback"), "the handshake's name");
+    assert!(c[0].address.starts_with("127.0.0.1:"), "{}", c[0].address);
+    assert!(c[0].since > 0 && c[0].messages >= 5, "messages {}", c[0].messages);
+    let id = c[0].id;
+
+    assert!(bp.disconnect_client(id + 1).is_err(), "a stale id reaches nobody");
+    bp.disconnect_client(id).unwrap();
+    let closed = tokio::time::timeout(Duration::from_secs(5), async {
+      while let Some(m) = ws.next().await {
+        if matches!(m, Ok(Message::Close(_)) | Err(_)) {
+          return;
+        }
+      }
+    });
+    closed.await.expect("the operator's disconnect closes the socket");
+    for _ in 0..100 {
+      if bp.status().clients == 0 {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(bp.status().clients, 0);
+    assert!(bp.clients().is_empty());
+    let mut emptied = false;
+    while let Ok((ev, v)) = rx.try_recv() {
+      if ev == "bp://clients" && v == json!([]) {
+        emptied = true;
+      }
+    }
+    assert!(emptied, "bp://clients announces the empty list");
+
+    // The listener takes the next client.
+    let port = bp.status().port;
+    let mut again = None;
+    for _ in 0..50 {
+      if let Ok((s, _)) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}")).await {
+        again = Some(s);
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let mut again = again.expect("reconnects");
+    let info = call(&mut again, json!([{ "RequestServerInfo": { "Id": 1, "ClientName": "second", "MessageVersion": 3 } }])).await;
+    assert!(info[0].get("ServerInfo").is_some());
+    for _ in 0..60 {
+      if bp.clients().first().is_some_and(|c| c.id > id) {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(bp.clients()[0].id > id, "a new connection gets a new id");
+    bp.stop().await;
+    assert!(bp.clients().is_empty());
   }
 }

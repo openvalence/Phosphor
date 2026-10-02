@@ -9,8 +9,9 @@
 //   §8.1 ladder: pending, overdue, fault, settled, each with a text reason).
 // - A command with no status echo (stop all, settings) is confirmed by its own
 //   answer: settings show what bp_settings_set saved, never what was asked.
-// - A device-config command (rename, disconnect, forget) is pending until the
-//   device list agrees with it, whoever's list (event or re-read) arrives.
+// - A device-config command (rename, disconnect, forget) or a client
+//   disconnect is pending until the device or client list agrees with it,
+//   whichever list (event or re-read) arrives.
 // - A missing command (Rust side not built in, or no Tauri at all) degrades
 //   to `ready: false` with a reason. Nothing here throws to the caller.
 
@@ -28,6 +29,7 @@ export const blank = () => ({
   clients: 0,
   scanning: false,
   devices: [],
+  conns: [],
   log: [],
   run: { want: null, phase: 'settled', reason: '' },
   scan: { want: null, phase: 'settled', reason: '' },
@@ -46,7 +48,7 @@ const msg = (e) => String(e?.message ?? e);
 export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
   const timers = {};
   const unlisten = [];
-  const waits = new Map();   // op id -> (devices) => agrees
+  const waits = new Map();   // op id -> (s) => agrees
   let disposed = false;
 
   function ladder(map, id) {
@@ -61,17 +63,18 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     }, echoMs);
   }
 
-  function setDevices(d) {
-    s.devices = d || [];
+  function checkWaits() {
     for (const [id, agrees] of waits) {
-      if (!agrees(s.devices)) continue;
+      if (!agrees(s)) continue;
       waits.delete(id);
       clearTimeout(timers['op:' + id]);
       Object.assign(s.ops[id], { phase: 'settled', reason: '' });
     }
   }
+  function setDevices(d) { s.devices = d || []; checkWaits(); }
+  function setConns(c) { s.conns = c || []; checkWaits(); }
 
-  async function devOp(id, pending, cmd, args, fail, agrees) {
+  async function op(id, pending, cmd, args, fail, agrees, [reread, set] = ['bp_devices', setDevices]) {
     const w = ladder(s.ops, id);
     if (!s.ready || !s.running || w.phase === 'pending') return;
     Object.assign(w, { phase: 'pending', reason: pending });
@@ -85,7 +88,7 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
       Object.assign(w, { phase: 'fault', reason: fail + ': ' + msg(e) });
       return;
     }
-    try { setDevices(await invoke('bp_devices')); } catch (e) { /* bp://devices may still confirm */ }
+    try { set(await invoke(reread)); } catch (e) { /* the event may still confirm */ }
   }
 
   const find = (d, key) => d.find((x) => x.key === key);
@@ -177,10 +180,12 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     s.ready = true;
     s.reason = '';
     try { setDevices(await invoke('bp_devices')); } catch (e) { /* bp://devices fills it */ }
+    try { setConns(await invoke('bp_clients')); } catch (e) { /* bp://clients fills it */ }
     try { s.settings = await invoke('bp_settings'); } catch (e) { s.set.reason = 'settings unavailable: ' + msg(e); }
     const on = {
       'bp://status': applyStatus,
       'bp://devices': setDevices,
+      'bp://clients': setConns,
       'bp://log': (l) => { s.log = [...s.log, l].slice(-LOG_KEEP); },
     };
     for (const [ev, fn] of Object.entries(on)) {
@@ -198,12 +203,14 @@ export function createBp(s, { invoke, listen }, { echoMs = ECHO_MS } = {}) {
     scan: (on) => (on ? request('scan', true, 'bp_scan_start', { seconds: SCAN_S }) : request('scan', false, 'bp_scan_stop')),
     rename(key, name) {
       const want = String(name ?? '').trim() || null;
-      return devOp('rename:' + key, want ? 'saving the name ' + want : 'going back to the protocol name',
-        'bp_device_rename', { key, name: want }, 'rename failed', (d) => (find(d, key)?.display_name ?? null) === want);
+      return op('rename:' + key, want ? 'saving the name ' + want : 'going back to the protocol name',
+        'bp_device_rename', { key, name: want }, 'rename failed', (x) => (find(x.devices, key)?.display_name ?? null) === want);
     },
-    disconnect: (dev) => devOp('disconnect:' + dev.key, 'disconnecting', 'bp_device_disconnect', { index: dev.index },
-      'disconnect failed', (d) => !find(d, dev.key)?.connected),
-    forget: (key) => devOp('forget:' + key, 'forgetting', 'bp_device_forget', { key }, 'forget failed', (d) => !find(d, key)),
+    disconnect: (dev) => op('disconnect:' + dev.key, 'disconnecting', 'bp_device_disconnect', { index: dev.index },
+      'disconnect failed', (x) => !find(x.devices, dev.key)?.connected),
+    forget: (key) => op('forget:' + key, 'forgetting', 'bp_device_forget', { key }, 'forget failed', (x) => !find(x.devices, key)),
+    kick: (c) => op('kick:' + c.id, 'disconnecting ' + (c.name ?? c.address), 'bp_client_disconnect', { id: c.id },
+      'disconnect failed', (x) => !x.conns.some((y) => y.id === c.id), ['bp_clients', setConns]),
     read,
     stopAll,
     saveSettings,

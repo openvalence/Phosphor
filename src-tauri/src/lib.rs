@@ -50,6 +50,10 @@ pub fn run() {
       buttplug::bp_device_forget,
       #[cfg(desktop)]
       buttplug::bp_device_disconnect,
+      #[cfg(desktop)]
+      buttplug::bp_clients,
+      #[cfg(desktop)]
+      buttplug::bp_client_disconnect,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
