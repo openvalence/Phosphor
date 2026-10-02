@@ -29,6 +29,7 @@
   import { norm } from '../../model/bounds.js';
   import { VALUE_ASPECT } from '../../../../Valence/clients/js/index.js';
   import { createTelebuf, chartPath } from '../hero/telebuf.js';
+  import { onTheme } from '../../model/theme.js';
 
   let { roles = [ROLE.telemetryPosition, ROLE.telemetryVelocity] } = $props();
 
@@ -115,8 +116,7 @@
     const ctx = canvasEl.getContext('2d');
     const root = document.documentElement;
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
-    // Tokens are re-read on every theme switch: applyTheme() flips
-    // documentElement.dataset.theme and the custom-palette keys, and a
+    // Tokens are re-read on every theme apply and every hi-vis flip: a
     // snapshot taken at mount would keep drawing the previous theme's lanes.
     let paletteColors, inkFaint, line;
     function readTokens() {
@@ -129,9 +129,8 @@
     readTokens();
     const colorFor = (f) => paletteColors[Math.max(0, candidates.indexOf(f)) % paletteColors.length];
     const themeObserver = new MutationObserver(() => { readTokens(); });
-    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
-    // The custom theme re-injects its <style> without touching data-theme.
-    themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
+    const offTheme = onTheme(readTokens);
 
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reduced = mq.matches;
@@ -267,6 +266,7 @@
 
     return () => {
       themeObserver.disconnect();
+      offTheme();
       mq.removeEventListener('change', onMqChange);
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearInterval(timer);

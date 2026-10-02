@@ -1164,7 +1164,7 @@
     margin: 0;
   }
   .field-value .chip-num:focus-visible {
-    outline: 1px solid var(--reality);
+    outline: 1px solid var(--highlight);
     outline-offset: 1px;
   }
   .field-value.typeable.disabled {
@@ -1372,7 +1372,7 @@
     cursor: ns-resize;
   }
   .knob.is-disabled { opacity: .45; cursor: not-allowed; }
-  .knob:focus-visible { outline: 1px solid var(--reality); outline-offset: 2px; }
+  .knob:focus-visible { outline: 1px solid var(--highlight); outline-offset: 2px; }
   .knob svg { width: 100%; height: 100%; display: block; }
   .knob circle { fill: none; stroke-width: 6; }
   .knob-track { stroke: var(--line-2); }

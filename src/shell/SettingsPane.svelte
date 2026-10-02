@@ -95,12 +95,12 @@
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
     background: var(--bg-sunken);
-    box-shadow: inset 0 2px 5px rgba(0,0,0,.6);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
     color: var(--tx-val);
     resize: vertical;
     font-size: .72rem;
   }
-  textarea:focus { outline: none; border-color: var(--reality); }
+  textarea:focus { outline: none; border-color: var(--highlight); }
   .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;

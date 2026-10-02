@@ -1227,7 +1227,7 @@
       repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .10) 0 1px, transparent 1px 7px),
       var(--screen);
     border: 1px solid rgba(var(--intent-rgb), .45);
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, .6);
+    box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .6);
   }
   .rail-tape-assembly.drag-live .rail-tape { transition: none; }
   .rail-tape-micro {
@@ -1262,7 +1262,7 @@
     background: var(--bg-sunken);
     border: 1px solid var(--line-1);
     border-radius: var(--r-s);
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+    box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .6);
     overflow: hidden;
     touch-action: none;
     cursor: crosshair;

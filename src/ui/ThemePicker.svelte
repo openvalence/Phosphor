@@ -9,43 +9,106 @@
 
 <script>
   /**
-   * ThemePicker.svelte -- the Display pane: accent theme, legibility, unit
-   * display, and the renderer class this window is drawn in. The shell's
-   * Settings pane hosts the same component.
+   * ThemePicker.svelte -- the Display pane: the theme editor, legibility,
+   * unit display, and the renderer class this window is drawn in. The
+   * shell's Settings pane hosts the same component.
    *
    * Constraints:
    * - Every control here is a BROWSER preference, never device state: nothing
    *   is sent to the machine, so there is no write ladder (RENDERING law 5
    *   binds hub writes). Theme, hi-vis and terse persist to localStorage;
    *   autorange and units live in prefs.js.
-   * - Driven by theme.js's THEMES table, never a hardcoded list. The custom
-   *   pair goes through setCustomColors(), which the canvas renderers read.
-   * - Units is a readout while prefs.js offers one system: a selector with
-   *   one choice would drive nothing.
+   * - Driven by theme.js (presets, KNOBS, TOKENS, LOCKED), never a local
+   *   list: a new knob or token appears here without an edit.
+   * - Safety colors render locked, never editable (RENDERING law 13).
+   * - Nothing shifts: the ratio readout, the active name and both status
+   *   lines are fixed slots; Advanced is closed by default and never scrolls
+   *   on its own.
+   * - No <select>: test/console-panes.test.mjs reads units as a fact.
    * - The class readout is measured, never configured (RENDERING §12.1).
    */
   import { untrack } from 'svelte';
-  import { THEMES, applyTheme, currentThemeId, setCustomColors, customColors } from '../model/theme.js';
+  import {
+    KNOBS, TOKENS, LOCKED, SAFETY, DEFAULT_THEME,
+    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList,
+    saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
+  } from '../model/theme.js';
   import { setPref } from '../model/prefs.js';
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
   import './pane.css';
 
-  let current = $state(currentThemeId());
-  let custom = $state(customColors());
+  let theme = $state(currentTheme());
+  let presets = $state(presetList());
+  $effect(() => onTheme((t) => { theme = t; presets = presetList(); }));
+  const d = $derived(deriveTokens(theme));
+  const chips = $derived(presets.map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
 
-  function pick(id) {
-    applyTheme(id);
-    current = id;
+  const ACCENTS = [
+    ['reality', 'Reality', 'Measured truth'],
+    ['intent', 'Intent', 'Requested, not yet confirmed'],
+    ['highlight', 'Highlight', 'Focus, selection, hover'],
+  ];
+  const KNOB_COPY = {
+    hue: ['Hue', 'Chassis hue', (v) => v + '°'],
+    tint: ['Tint', 'Chassis color strength', (v) => Math.round(v * 100) + '%'],
+    brightness: ['Brightness', 'Page lightness', (v) => Math.round(v * 100) + '%'],
+    contrast: ['Contrast', 'Ramp spread', (v) => Math.round(v * 100) + '%'],
+    glow: ['Glow', 'Glow strength', (v) => Math.round(v * 100) + '%'],
+    radius: ['Radius', 'Corner radius', (v) => v + ' px'],
+    scale: ['Scale', 'Control scale', (v) => Math.round(v * 100) + '%'],
+    numWeight: ['Numerals', 'Readout numeral weight', (v) => String(v)],
+    motion: ['Motion', 'Echo afterglow; 0 holds still', (v) => (v ? v + ' s' : 'still')],
+  };
+  const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
+    '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
+
+  const setAccent = (k, v) => editTheme((t) => { t.accents[k] = v.toUpperCase(); });
+  const setKnob = (g, k, v) => editTheme((t) => { t[g][k] = v; });
+
+  // ---- presets ----
+  let saveName = $state('');
+  function save() {
+    saveAsPreset(saveName);
+    saveName = '';
   }
-  function setColor(kind, e) {
-    custom = { ...custom, [kind]: e.target.value };
-    setCustomColors(custom.reality, custom.intent);
-    current = 'custom';
+  function remove(id) {
+    deletePreset(id);
+    presets = presetList();
   }
-  function pickCustom() {
-    setCustomColors(custom.reality, custom.intent);
-    current = 'custom';
+
+  // ---- advanced: pinned tokens ----
+  let advNote = $state('');
+  function pin(k, raw) {
+    const v = raw.trim();
+    if (v && !validOverride(k, v)) { advNote = 'Not a single CSS value: ' + k; return; }
+    advNote = '';
+    editTheme((t) => { if (v) t.overrides[k] = v; else delete t.overrides[k]; });
+  }
+
+  // ---- export / import ----
+  let paste = $state('');
+  let ioNote = $state('');
+  let ioPhase = $state(null);
+  async function copy() {
+    paste = exportTheme();
+    try {
+      await navigator.clipboard.writeText(paste);
+      ioNote = 'Copied';
+    } catch (e) {
+      ioNote = 'Clipboard blocked; copy from the field';
+    }
+    ioPhase = null;
+  }
+  function load() {
+    try {
+      importTheme(paste);
+      ioNote = 'Imported';
+      ioPhase = 'settled';
+    } catch (e) {
+      ioNote = 'Not imported: ' + e.message;
+      ioPhase = 'fault';
+    }
   }
 
   // Hi-vis and terse: classes on <html>, restored by main.js before first
@@ -68,36 +131,119 @@
     return () => window.removeEventListener('resize', measure);
   }));
   const POINTER = { fine: 'fine (mouse or pen)', coarse: 'coarse (touch)', none: 'none (no pointer)' };
+  const ratio = (v) => (v == null ? '--' : v.toFixed(1) + ':1');
 </script>
 
 <div class="pane-stack theme-picker">
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
-    <div class="pane-head"><h2 id="tp-theme">Theme</h2></div>
-    <div class="swatches" role="group" aria-label="Accent theme">
-      {#each THEMES as t (t.id)}
-        <button type="button" class="swatch" class:active={current === t.id} aria-pressed={current === t.id}
-                title={t.name + ' · reality ' + t.reality + ' / intent ' + t.intent} onclick={() => pick(t.id)}>
-          <span class="dot" style="background:{t.reality};box-shadow:0 0 6px {t.reality}" aria-hidden="true"></span>
-          <span class="dot" style="background:{t.intent}" aria-hidden="true"></span>
-          <span class="name">{t.name}</span>
-        </button>
+    <div class="pane-head"><h2 id="tp-theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
+    <div class="swatches" role="group" aria-label="Theme presets">
+      {#each chips as { p, bg } (p.id)}
+        <span class="preset">
+          <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
+                  data-theme-id={p.id} onclick={() => applyTheme(p)}>
+            <span class="chassis" style="background:{bg}" aria-hidden="true">
+              <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
+              <span class="dot" style="background:{p.accents.intent}"></span>
+            </span>
+            <span class="name">{p.name}</span>
+          </button>
+          {#if p.id.startsWith('user-')}
+            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} title="Delete preset" onclick={() => remove(p.id)}>×</button>
+          {/if}
+        </span>
       {/each}
-      <span class="custom-swatch">
-        <button type="button" class="swatch" class:active={current === 'custom'} aria-pressed={current === 'custom'}
-                title="Custom accent pair" onclick={pickCustom}>
-          <span class="dot" style="background:{custom.reality};box-shadow:0 0 6px {custom.reality}" aria-hidden="true"></span>
-          <span class="dot" style="background:{custom.intent}" aria-hidden="true"></span>
-          <span class="name">Custom</span>
-        </button>
-        <label class="color-input" title="Reality: reported values">
-          <input type="color" value={custom.reality} oninput={(e) => setColor('reality', e)} aria-label="Reality accent color" />
-        </label>
-        <label class="color-input" title="Intent: requested values and window band">
-          <input type="color" value={custom.intent} oninput={(e) => setColor('intent', e)} aria-label="Intent accent color" />
-        </label>
-      </span>
     </div>
-    <p class="pane-note">Safety amber and red never change</p>
+    <div class="row">
+      <input class="og-num name-in" placeholder="Preset name" aria-label="Preset name" maxlength="40" bind:value={saveName} />
+      <button type="button" class="og-btn" onclick={save}>Save as preset</button>
+      <button type="button" class="og-btn" disabled={theme.id === DEFAULT_THEME.id} onclick={() => applyTheme(DEFAULT_THEME.id)}>Reset</button>
+    </div>
+  </section>
+
+  <section class="pane-sec og-panel" aria-labelledby="tp-accents">
+    <div class="pane-head"><h2 id="tp-accents">Accents</h2></div>
+    <div class="accents">
+      {#each ACCENTS as [k, label, tip] (k)}
+        {@const v = k === 'highlight' ? (theme.accents.highlight || theme.accents.reality) : theme.accents[k]}
+        <label class="accent" title={tip}>
+          <span class="color-input"><input type="color" value={v.toLowerCase()} aria-label={label + ' color'}
+                 oninput={(e) => setAccent(k, e.currentTarget.value)} /></span>
+          <span class="accent-name">{label}</span><span class="mono hex">{v}</span>
+        </label>
+      {/each}
+    </div>
+    <div class="locked" role="group" aria-label="Safety colors">
+      {#each SAFETY as k (k)}
+        <span class="lock" title={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
+      {/each}
+      <span class="pane-note">Locked: safety colors (law 13)</span>
+    </div>
+  </section>
+
+  <section class="pane-sec og-panel" aria-labelledby="tp-chassis">
+    <div class="pane-head"><h2 id="tp-chassis">Chassis</h2></div>
+    <div class="knobs">
+      {#each Object.entries(KNOBS.chassis) as [k, [min, max, step]] (k)}
+        <label class="knob-row" title={KNOB_COPY[k][1]}>
+          <span class="knob-name">{KNOB_COPY[k][0]}</span>
+          <input type="range" {min} {max} {step} value={theme.chassis[k]} aria-label={KNOB_COPY[k][1]}
+                 data-knob={'chassis.' + k} oninput={(e) => setKnob('chassis', k, Number(e.currentTarget.value))} />
+          <output class="mono">{KNOB_COPY[k][2](theme.chassis[k])}</output>
+        </label>
+      {/each}
+    </div>
+    <div class="ramp" aria-hidden="true">
+      {#each RAMP as k (k)}<i style="background:var({k})" title={k}></i>{/each}
+    </div>
+    <p class="ratios mono" data-testid="theme-ratios">
+      Text {ratio(d.ratios.text)} · Labels {ratio(d.ratios.labels)} · Reality {ratio(d.ratios.reality)}
+    </p>
+  </section>
+
+  <section class="pane-sec og-panel" aria-labelledby="tp-look">
+    <div class="pane-head"><h2 id="tp-look">Look</h2></div>
+    <div class="knobs">
+      {#each Object.entries(KNOBS.look) as [k, [min, max, step]] (k)}
+        <label class="knob-row" title={KNOB_COPY[k][1]}>
+          <span class="knob-name">{KNOB_COPY[k][0]}</span>
+          <input type="range" {min} {max} {step} value={theme.look[k]} aria-label={KNOB_COPY[k][1]}
+                 data-knob={'look.' + k} oninput={(e) => setKnob('look', k, Number(e.currentTarget.value))} />
+          <output class="mono">{KNOB_COPY[k][2](theme.look[k])}</output>
+        </label>
+      {/each}
+    </div>
+  </section>
+
+  <section class="pane-sec og-panel" aria-labelledby="tp-adv">
+    <details class="adv">
+      <summary><h2 id="tp-adv">Advanced</h2><span class="pane-note">{Object.keys(theme.overrides).length} pinned</span></summary>
+      <p class="pane-status" role="status" data-phase={advNote ? 'fault' : null}>{advNote}</p>
+      <ul class="tokens">
+        {#each TOKENS as k (k)}
+          <li class:pinned={k in theme.overrides}>
+            <span class="mono tk">{k}</span>
+            <span class="mono derived">{d.base[k]}</span>
+            <input class="og-num mono" placeholder="Derived" aria-label={'Pin ' + k} spellcheck="false"
+                   value={theme.overrides[k] ?? ''} onchange={(e) => pin(k, e.currentTarget.value)} />
+            <button type="button" class="og-btn sm" disabled={!(k in theme.overrides)} aria-label={'Reset ' + k}
+                    onclick={() => pin(k, '')}>Reset</button>
+          </li>
+        {/each}
+      </ul>
+    </details>
+  </section>
+
+  <section class="pane-sec og-panel" aria-labelledby="tp-io">
+    <div class="pane-head"><h2 id="tp-io">Export / import</h2></div>
+    <label class="sr-only" for="tp-json">Theme JSON</label>
+    <textarea id="tp-json" class="mono" rows="3" spellcheck="false" placeholder="Paste theme JSON" bind:value={paste}></textarea>
+    <div class="row">
+      <button type="button" class="og-btn" onclick={copy}>Copy theme</button>
+      <button type="button" class="og-btn" disabled={!paste.trim()} onclick={load}>Import</button>
+    </div>
+    <p class="pane-status" role="status" data-phase={ioPhase}>{ioNote}</p>
+    <p class="pane-note">Browser preference; never sent to the hub</p>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-legibility">
@@ -138,13 +284,18 @@
 </div>
 
 <style>
+  .tp-active { font-size: .76rem; color: var(--ink-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
+
   .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset { display: inline-flex; align-items: center; gap: 2px; }
   .swatch {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     min-height: var(--tap);
-    padding: 0 10px;
+    padding: 0 10px 0 6px;
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     color: var(--ink-dim);
@@ -154,22 +305,70 @@
     transition: border-color .12s, color .12s;
   }
   .swatch:hover { border-color: var(--line-4); }
-  .swatch.active { color: var(--ink-hi); border-color: var(--reality); box-shadow: var(--glow-reality); }
+  .swatch.active { color: var(--ink-hi); border-color: var(--highlight); box-shadow: 0 0 10px rgba(var(--highlight-rgb), .35); }
+  .chassis {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+    border-radius: var(--r-s);
+    border: 1px solid var(--line-1);
+  }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
   .name { text-transform: uppercase; letter-spacing: .03em; }
+  .del { min-width: 30px; padding: 4px; }
 
-  .custom-swatch { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .accents { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .accent { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; max-width: 100%; font-size: .8rem; color: var(--tx); }
+  .hex { color: var(--tx-mut); font-size: .72rem; }
   .color-input {
     display: inline-flex;
     width: var(--tap);
     height: var(--tap);
-    align-items: center;
-    justify-content: center;
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
   }
-  /* The input IS the hit box (law 12): it fills the 40 px+ label. */
+  /* The input IS the hit box (law 12): it fills the 40 px+ box. */
   .color-input input { width: 100%; height: 100%; border: none; background: none; padding: 2px; cursor: pointer; }
+
+  .locked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .lock { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--tx-mut); }
+  .lock i { width: 14px; height: 14px; border-radius: var(--r-s); outline: 1px dashed var(--line-3); outline-offset: 2px; }
+
+  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 28px; }
+  .knob-row { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 7ch; align-items: center; gap: 10px; font-size: .8rem; color: var(--tx-mut); }
+  .knob-row output { text-align: right; color: var(--tx-val); font-size: .74rem; }
+
+  .ramp { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); height: 18px; border: 1px solid var(--line-1); }
+  /* Two lines reserved: a phone wraps the readout, a desktop never shifts. */
+  .ratios { margin: 0; height: calc(2 * 1.45em); line-height: 1.45; font-size: .74rem; color: var(--tx-val); }
+
+  .adv summary { display: flex; align-items: center; gap: 10px; min-height: var(--tap); cursor: pointer; }
+  .adv summary h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
+  .tokens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .72rem; }
+  .tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  .tokens .tk { flex: 0 0 18ch; color: var(--tx-val); overflow-wrap: anywhere; }
+  .tokens .derived { flex: 1 1 14ch; min-width: 0; color: var(--tx-mut); overflow-wrap: anywhere; }
+  .tokens li.pinned .tk { color: var(--highlight); }
+  .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: 4px 6px; font-size: .72rem; }
+
+  textarea {
+    width: 100%;
+    min-height: var(--tap);
+    padding: 6px 8px;
+    border-radius: var(--r-s);
+    border: 1px solid var(--line-1);
+    background: var(--bg-sunken);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
+    color: var(--tx-val);
+    resize: vertical;
+    font-size: .72rem;
+  }
+  textarea:focus { outline: none; border-color: var(--highlight); }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
 
   .og-switch { min-height: var(--tap); font-size: .8rem; align-self: flex-start; }
   .cls { color: var(--reality); text-transform: uppercase; letter-spacing: .06em; }

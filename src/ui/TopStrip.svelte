@@ -596,7 +596,7 @@
   }
   .btn:disabled { opacity: 0.4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
-  .btn:not(:disabled):active { border-color: var(--reality); color: var(--reality); }
+  .btn:not(:disabled):active { border-color: var(--highlight); color: var(--highlight); }
   /* Labels are the hub's own catalog strings: capitalize is presentation. */
   .btn .lbl { text-transform: capitalize; }
 

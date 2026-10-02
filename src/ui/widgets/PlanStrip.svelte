@@ -58,6 +58,7 @@
   import { norm } from '../../model/bounds.js';
   import { railOwnerName } from '../../model/actions.js';
   import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
+  import { onTheme } from '../../model/theme.js';
 
   // shown: RailWidget keeps this mounted under the jog tape and flips
   // visibility (ph-e82.21); hidden, the draw loop stops.
@@ -186,9 +187,10 @@
     const ctx = canvasEl.getContext('2d');
     const root = document.documentElement;
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
-    const cIntent = cssVar('--reality');
-    const cWarn = cssVar('--warn');
-    const cLine = cssVar('--line');
+    let cIntent, cWarn, cLine;
+    const readTokens = () => { cIntent = cssVar('--reality'); cWarn = cssVar('--warn'); cLine = cssVar('--line'); };
+    readTokens();
+    const offTheme = onTheme(readTokens);
 
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reduced = mq.matches;
@@ -294,6 +296,7 @@
     else raf = requestAnimationFrame(frame);
 
     return () => {
+      offTheme();
       mq.removeEventListener('change', onMqChange);
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearInterval(timer);
@@ -378,7 +381,7 @@
     background: var(--bg-sunken);
     border: 1px solid var(--line);
     border-radius: var(--r-s);
-    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.5);
+    box-shadow: inset 0 1px 4px rgba(var(--shade-rgb), .5);
   }
   .plan-strip:not(.on) .plan-lane { opacity: .55; }
   .plan-lane canvas {

@@ -110,7 +110,7 @@ settings cards, render instead (item 5).
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
-| `registerTheme({id, name, reality, intent})` | an accent pair, kind `theme` only | experimental |
+| `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 
 **Freeze.** Operator ruling (DESIGN §4): the widget API freezes the moment the

@@ -2,10 +2,11 @@
  * style.css — design tokens, reset, and the ground-truth visual language.
  *
  * The palette, type ramp and accent semantics are ported from the pre-refactor
- * page (tag `webui-prerefactor`). That identity is deliberate and locked: the
- * neutral chassis is frozen, only the two ACCENT hues change with a theme, and
- * the SAFETY colors (--warn amber, --bad red) are identical in every theme so
- * hazard styling reads the same however the operator dresses the instrument.
+ * page (tag `webui-prerefactor`). The :root values below ARE the default
+ * theme and the paint before model/theme.js runs; a theme re-derives them
+ * from its knobs (docs/THEMES.md). The SAFETY colors (--warn amber, --bad
+ * red) are identical in every theme so hazard styling reads the same however
+ * the operator dresses the instrument (RENDERING law 13).
  *
  * ── ONE NAMING COLLISION, READ THIS ────────────────────────────────────────
  * The original sheet used `--ink` for the page BACKGROUND. Here `--ink` is the
@@ -47,13 +48,13 @@
 }
 
 :root {
-  /* ---- surfaces (the frozen neutral chassis) ---- */
+  /* ---- surfaces (the default chassis; model/theme.js reproduces it) ---- */
   --bg:        #08090B;   /* page AND panel background — identical, always */
   --bg-raised: #0D0F13;   /* bars that float above the page */
   --bg-card:   #111318;   /* a live value lives here */
   --bg-sunken: #040507;   /* recessed displays: scopes, log */
-  --screen:    #040507;   /* original name, same surface */
-  --chip:      #111318;   /* original name, same surface */
+  --screen:    var(--bg-sunken);   /* original name, same surface */
+  --chip:      var(--bg-card);     /* original name, same surface */
 
   /* ---- shell chrome (the top bar in the shell; the sidebar's Phosphor section) ----
      Shell-only: never on hub-rendered content, so the boundary between the
@@ -67,7 +68,7 @@
 
   --line-0: #121419;   /* outer nested frame */
   --line-1: #1D2026;   /* inner panel frame, dividers */
-  --chip-line: #1D2026;   /* original name for the chip's own hairline */
+  --chip-line: var(--line-1);   /* original name for the chip's own hairline */
   --line-2: #272B31;   /* dim glyphs, hairline emphasis */
   --line-3: #33373E;   /* brackets, ruler majors */
   --line-4: #454A54;   /* bracket highlight */
@@ -89,9 +90,10 @@
   /* ---- accents ----
      reality = MEASURED TRUTH (live motion, confirmed values, active controls)
      intent  = COMMANDED / DESIRED / NOT YET CONFIRMED
-     Themes (model/theme.js) override only these four properties. */
+     highlight = focus, selection, hover emphasis; never a state */
   --reality: #4DA6FF;
   --intent:  #A78BFA;
+  --highlight: #4DA6FF;
   --warn:    #F5B94D;   /* never themed: safety */
   --bad:     #FF4757;   /* never themed: safety */
   /* The same two safety colors as rgb triples, for tints and glows; never
@@ -104,7 +106,8 @@
 
   --reality-rgb:     77,166,255;
   --intent-rgb:      167,139,250;
-  --intent-deep-rgb: 139,92,246;
+  --intent-deep-rgb: 142,118,213;
+  --highlight-rgb:   77,166,255;
   --glow-reality: 0 0 18px rgba(var(--reality-rgb),.5), 0 0 42px rgba(var(--reality-rgb),.16);
   --glow-intent:  0 0 14px rgba(var(--intent-deep-rgb),.16);
   --glow-warn:    0 0 18px rgba(var(--warn-rgb),.5), 0 0 42px rgba(var(--warn-rgb),.16);
@@ -146,6 +149,14 @@
      Do not read env(safe-area-inset-top) anywhere else: two bars padding for
      the same notch is the double-gap bug. */
   --chrome-inset-top: env(safe-area-inset-top, 0px);
+
+  /* .og-panel's corner brackets: TL --line-4, TR and BL --line-2, BR
+     --line-3. Derived by model/theme.js from the lines; never set by hand. */
+  --og-brackets:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 0L0 0L0 8' stroke='%23454A54' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 0L8 0L8 8' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 8L0 8L0 0' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 8L8 8L8 0' stroke='%2333373E' stroke-width='1' fill='none'/%3E%3C/svg%3E");
 
   color-scheme: dark;
 }
@@ -211,9 +222,10 @@ p { max-width: 75ch; }
 /* Focus must be visible: this page is operated by keyboard, and by people who
    cannot see it well. */
 :focus-visible {
-  outline: 2px solid var(--reality);
+  outline: 2px solid var(--highlight);
   outline-offset: 2px;
 }
+::selection { background: rgba(var(--highlight-rgb), .35); }
 
 .mono, output, .num {
   font-family: var(--mono);
@@ -423,6 +435,15 @@ p { max-width: 75ch; }
   }
   .field { transition: --fx-p var(--fx-follow), --fx-w var(--fx-follow) !important; }
 }
+/* Theme motion 0 (model/theme.js): the same stillness, chosen in the app. */
+html.still [data-shadow='overdue']:not(.field) { animation: none; }
+html.still * { transition: none !important; }
+html.still .field[data-shadow] { animation: none; }
+html.still .field[data-glow][data-shadow='confirmed'] {
+  --fx-g-peak: .6;
+  animation: fx-glow var(--fx-glow) steps(1, jump-end) both;
+}
+html.still .field { transition: --fx-p var(--fx-follow), --fx-w var(--fx-follow) !important; }
 
 /* =========================================================================
    OG CONTROL LANGUAGE — element defaults + og-* utility classes, ported
@@ -472,26 +493,26 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 0 0 2px var(--bg);
   transition: border-color .12s, box-shadow .12s;
 }
-/* Thumb ignites --reality + glow while dragged. */
+/* Thumb ignites --highlight + glow while dragged. */
 input[type="range"]:active::-webkit-slider-thumb {
-  border-color: var(--reality);
-  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb),.5);
 }
 input[type="range"]:active::-moz-range-thumb {
-  border-color: var(--reality);
-  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb),.5);
 }
 /* The track's own outline is suppressed above (it is a 2px hairline, not a
    useful focus target); the ring belongs on the THUMB, the part a keyboard
    user is actually steering. Same treatment as :active — a range control has
    no unfocused-but-visibly-different state otherwise. */
 input[type="range"]:focus-visible::-webkit-slider-thumb {
-  border-color: var(--reality);
-  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb),.5);
 }
 input[type="range"]:focus-visible::-moz-range-thumb {
-  border-color: var(--reality);
-  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--reality-rgb),.5);
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb),.5);
 }
 
 /* ---- Select ---- */
@@ -510,7 +531,7 @@ select {
   background-position: right 8px center;
   background-size: 14px;
 }
-select:focus { outline: none; border-color: var(--reality); }
+select:focus { outline: none; border-color: var(--highlight); }
 
 /* ---- Scrollbars ---- */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -527,12 +548,7 @@ select:focus { outline: none; border-color: var(--reality); }
   border: 1px solid var(--line-1);
   outline: 1px solid var(--line-0);
   outline-offset: 4px;
-  /* Corner brackets: TL=--line-4, TR=--line-2, BL=--line-2, BR=--line-3 */
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 0L0 0L0 8' stroke='%23454A54' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 0L8 0L8 8' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M8 8L0 8L0 0' stroke='%23272B31' stroke-width='1' fill='none'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 8L8 8L8 0' stroke='%2333373E' stroke-width='1' fill='none'/%3E%3C/svg%3E");
+  background-image: var(--og-brackets);
   background-position: top left, top right, bottom left, bottom right;
   background-size: 8px 8px;
   background-repeat: no-repeat;
@@ -584,7 +600,7 @@ select:focus { outline: none; border-color: var(--reality); }
   font-family: 'Martian Mono', monospace;
   font-variation-settings: "wght" var(--num-wght), "wdth" 90;
 }
-.og-num:focus { outline: none; border-color: var(--reality); }
+.og-num:focus { outline: none; border-color: var(--highlight); }
 /* Native spinners clash with the instrument styling and are too small to be
    useful touch targets — nudge/trim buttons cover the increment use-case. */
 .og-num::-webkit-outer-spin-button,
@@ -603,7 +619,7 @@ select:focus { outline: none; border-color: var(--reality); }
   pointer-events: none;
 }
 .og-switch input:focus-visible + .track {
-  outline: 2px solid var(--reality);
+  outline: 2px solid var(--highlight);
   outline-offset: 1px;
 }
 .og-switch .track {
@@ -657,7 +673,7 @@ select:focus { outline: none; border-color: var(--reality); }
   transition: border-color .12s, color .12s;
 }
 .og-btn:hover { border-color: var(--line-4); }
-.og-btn:active { border-color: var(--reality); color: var(--reality); }
+.og-btn:active { border-color: var(--highlight); color: var(--highlight); }
 .og-btn:disabled, .og-btn[aria-disabled="true"] {
   opacity: .45;
   cursor: not-allowed;

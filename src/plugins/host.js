@@ -72,7 +72,7 @@ class PermissionError extends Error {
  *   modTarget(field)              -> uid of the field this modulator rides, or null
  *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
- *   registerTheme(theme)          -> adds an accent pair to the theme table
+ *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
  *   prefs                         -> Storage-like {getItem, setItem} or null
  *   log(pluginName, level, msg)   -> the log pane
@@ -178,12 +178,13 @@ export function createPluginHost(deps) {
       },
       registerTheme: (t) => {
         if (rec.manifest.kind !== 'theme') throw new Error('registerTheme is for kind "theme"');
-        if (!t || !NAME_RE.test(t.id || '') || !HEX_RE.test(t.reality || '') || !HEX_RE.test(t.intent || '')) {
-          throw new Error('registerTheme needs {id, name, reality: #rrggbb, intent: #rrggbb}');
+        const a = t && (t.accents || t);
+        if (!t || !NAME_RE.test(t.id || '') || !HEX_RE.test(a.reality || '') || !HEX_RE.test(a.intent || '')) {
+          throw new Error('registerTheme needs {id, name, accents: {reality, intent}} as #rrggbb');
         }
-        // Accent pair only: the neutral chassis and the safety colors are not
-        // reachable from here, by construction (webui.md, house look).
-        deps.registerTheme({ id: name + '-' + t.id, name: String(t.name || t.id), reality: t.reality, intent: t.intent });
+        // Safety colors are unreachable: theme.js normalizes and drops any
+        // LOCKED override (RENDERING law 13).
+        deps.registerTheme({ ...t, id: name + '-' + t.id, name: String(t.name || t.id) });
       },
 
       // ---- services ----

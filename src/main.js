@@ -14,13 +14,13 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
 import { connect, parseHost, recentHubs } from './model/machine.svelte.js';
-import { applyTheme, currentThemeId } from './model/theme.js';
+import { applyStoredTheme } from './model/theme.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 
 // Client preferences, applied before first paint so the page never flashes the
 // default palette. These are BROWSER state, not machine state — the
 // ground-truth doctrine does not apply and nothing here is sent to the device.
-applyTheme(currentThemeId());
+applyStoredTheme();
 try {
   if (localStorage.getItem('ui_hivis') === '1') document.documentElement.classList.add('hivis');
   if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
