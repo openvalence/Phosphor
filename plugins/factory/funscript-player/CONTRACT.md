@@ -28,10 +28,11 @@ Rules for every module:
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
 | interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
+| analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, interp`; `scheduler -> funscript`;
+scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funscript, scheduler`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
 `prefs -> interp`; `interp -> funscript`.
 
@@ -514,7 +515,7 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   state }      PlayerState, read-only to everyone else
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
-//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn', notes: string[]}, view: 'player'|'library',
+//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
 //   composition: 'full'|'handheld'|'glance' }
 
 // timeline.js
@@ -524,14 +525,18 @@ export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
   clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom });
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand });
+  // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
+  // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
+  // detail at the same x; the detail window is [m - s x zoom, m + (1 - s) x zoom], s = m / duration.
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), unmount() }
+  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), setExpanded(on), unmount() }
   // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
   // ceiling: {vmax: number | null, spanMm: number | null}
-  // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean}>, telemetry.position on the media axis, last 8 s
+  // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
+  //   media axis, last 8 s; p is plan.current as a window share (null when stale or absent), drawn under the script
 ```
 
 One `Player` per activation owns the single `<video>` (no `controls`,
@@ -553,6 +558,38 @@ library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
 observations, marks) only while localStorage `phosphor.funscript.probe` is
 `'1'`.
+
+The trial notice `Preview: not saved` (tone `intent`, an `--intent` bar)
+follows the gate in the slot order and stands while `api.trialPending`.
+
+---
+
+## analyzer: `analyzer.js`
+
+```js
+export const TUNING = 'Tuning', LIMIT_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk'];
+export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
+export const CSS, COPY;
+export function tuningGroups(model);   // -> [{name, fields}]: writable slider, stepper, toggle, segmented and
+  // select fields of every group whose first ' / ' segment is 'Tuning' (RFC-094), named by the rest; then
+  // writable fields sharing a write channel with those (the kinetic ceilings); then limit.input.* by role
+export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
+  // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
+export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
+export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script(), T(): the player's
+  // -> { frame(), mode: 'live'|'preview', unmount() }
+```
+
+The expand button on the detail opens it in place: the outer card rect is
+unchanged (the tl box carries the stage's 16:9 spacer), the library leaves,
+the video moves to an in-card thumbnail (full: 320 x 180 at the top right;
+handheld: one tap high in the source row), never picture-in-picture (law 1).
+Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
+(or the last refusal); then the rows, one `var(--tap)` each, in a list that
+scrolls inside its box. Live writes through `api.write`; Preview through
+`api.writeTrial`, Apply `api.commitTrial()`, Discard `api.revertTrial()`;
+Preview is the default and is grayed on a hub without `action.trial`. A
+segmented field of more than two options renders as a select.
 
 ---
 
@@ -602,8 +639,8 @@ export function readPrefs(api);        // -> Prefs, each key merged over its def
 export function writePref(api, key, value);
 ```
 
-`manifest.json`: kind `widget`, permissions `["motion", "net.fetch"]`, no
-`intent` (the player writes no field). It is listed in
+`manifest.json`: kind `widget`, permissions `["motion", "net.fetch", "intent"]`
+(`intent` for the analyzer's tuning writes; R-D superseded). It is listed in
 `src/plugins/factory.js` because the host accepts `net.fetch` (ruling R-A,
 pending: a veto reverts the host's `net.fetch` and the FACTORY entry
 together, since test (g) validates every factory manifest).
