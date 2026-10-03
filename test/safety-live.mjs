@@ -211,11 +211,11 @@ try {
   ok('rail: the stream owns the rail on the hub', await until(() => owners().some((o) => o), 3000), owners());
   // A jog never takes the rail from a source (SPEC §11.4): the tape gives way
   // to the plan strip, which names the owner.
-  const planFace = page.locator('.rail-hero .swap-face:has(.plan-labels)');
+  const planFace = page.locator('.rail-hero .swap-face:has(.plan-strip)');
   ok('rail: the tape gives way to the plan strip, naming the owner',
     await until(async () => !(await planFace.getAttribute('class')).includes('off')
-      && (await page.locator('.rail-hero .plan-owner').textContent().catch(() => '')).trim() !== ''),
-    (await page.locator('.rail-hero .plan-labels').textContent().catch(() => '')).trim());
+      && (await page.locator('.topstrip .readback .plan-owner').textContent().catch(() => '')).trim() !== ''),
+    (await page.locator('.topstrip .readback').textContent().catch(() => '')).trim());
   // ...because the hub refuses both from anyone else (SOURCE_CONFLICT), and
   // grays the flip ahead of time through its enabled_mask. A throwaway
   // session asks: a refused move still takes the Jog source (Nucleus val-u8a),
