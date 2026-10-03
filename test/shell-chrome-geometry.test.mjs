@@ -733,6 +733,9 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
   ok(tag + ': the tape and the ruler share left and right edges', !!edges
     && edges.tape.every((v, i) => Math.abs(v - edges.ruler[i]) < 0.5), JSON.stringify(edges));
   if (g2.menu) {
+    await bp.waitForSelector('.strip .hn-col', { timeout: 5000 }).catch(() => {});
+    await bp.waitForTimeout(500);   // the rail's numerals move the one-row budget
+    const before = await bp.evaluate(() => document.querySelector('.strip').getBoundingClientRect().height);
     await bp.click('.strip .dock button.home-btn');
     const m = await bp.evaluate(() => {
       const pop = document.querySelector('.strip .menu-pop');
@@ -741,7 +744,7 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
         strip: document.querySelector('.strip').getBoundingClientRect().height };
     });
     ok(tag + ': the Home control opens its popover on screen, the strip does not move', m.open && m.inside && m.items >= 2
-      && m.strip === g2.strip, JSON.stringify(m));
+      && m.strip === before, JSON.stringify([m, before]));
     await bp.keyboard.press('Escape');
   }
   await bctx.close();

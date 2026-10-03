@@ -256,7 +256,8 @@
     const ovr = hasOverride ? ovrW : 0, fl = flip ? flipW : 0;
     const needs = [pair + ovr + fl + (ops.length > 1 ? w('menu') : w('op')), pair + ovr + (ops.length || flip ? w('icon') : 0),
       pair + (ops.length || railCtl ? w('icon') : 0)];
-    const oneRow = content - prim - Math.min(240, content * 0.25) - 24;
+    const col = stripEl.querySelector('.hn-col')?.offsetWidth;
+    const oneRow = content - prim - (col ? col + 18 : 0) - Math.min(240, content * 0.25) - 24;
     stacked = !needs.slice(0, 2).some((n) => n <= oneRow);
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
@@ -500,6 +501,8 @@
   }
   .stacked .nums { clip-path: inset(-6px -18px -12px calc(var(--gap) * -1)); }
   .nums :global(.hn-label) { white-space: nowrap; }
+  /* Handheld: no room beside the numeral; the column stays measurable but unseen. */
+  @media (max-width: 640px) { .stacked .nums :global(.hn-col) { position: absolute; visibility: hidden; } }
   /* The strip's top 6 px plus one label line is clear of the status slot
      and the dock (both centered, a --tap tall). Stacked, a condition in the
      status slot outranks it. */

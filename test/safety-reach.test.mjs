@@ -912,6 +912,52 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await ctx.close();
 }
 
+// ---- ph-pmor: planned target, lag, speed stack in one column beside the big numeral --
+// The strip is one fixed height; the column never moves it, and the plan readback
+// (running only) rides above the column's top. Handheld hides the column as before.
+{
+  const cfgE = byRole('window.min'), tgtE = byRole('telemetry.target'), runE = byRole('pattern.running'), planE = byRole('plan.current');
+  const cfg = stateOf(cfgE, { 'window.min': 100, 'window.max': 400, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
+  const tgt = stateOf(tgtE, { 'telemetry.target': 250, 'telemetry.position': 200 });
+  const heights = {};
+  for (const [w, h] of [[1280, 800], [1440, 900], [1920, 1080], [390, 844]]) {
+    for (const running of [false, true]) {
+      const tag = 'numerals ' + w + 'x' + h + (running ? ' running' : ' rest');
+      const states = { [cfgE.id]: cfg };
+      if (running) { states[runE.id] = stateOf(runE, { 'pattern.running': 1 }); states[planE.id] = stateOf(planE, { 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }); }
+      const { ctx, page, wire } = await open(browser, { w, h, touch: false, catalog: 'labeled', reducedMotion: 'reduce', states });
+      const tick = setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, tgtE.id, tgt))); } catch (e) { /* closed */ } }, 30);
+      await page.waitForTimeout(700);
+      const g = await page.evaluate(() => {
+        const r = (s) => { const e = document.querySelector('.strip ' + s); const b = e && e.getBoundingClientRect(); return b && b.width ? b : null; };
+        const row = (i) => document.querySelectorAll('.strip .hn-col .hn-secondary')[i];
+        const val = (i) => { const e = row(i) && row(i).querySelector('.hn-val'); const b = e && e.getBoundingClientRect(); return b && b.width ? b : null; };
+        const strip = document.querySelector('.strip').getBoundingClientRect(), nums = r('.nums'), rb = r('.readback .plan-mode');
+        const v = [0, 1, 2].map(val), col = r('.hn-col');
+        return { strip: strip.height, stripR: strip.right, stacked: document.querySelector('.strip').classList.contains('stacked'),
+          numsR: nums && nums.right, v: v.map((b) => b && [b.left, b.top, b.right, b.bottom]), col: col && [col.top, col.right], hidden: getComputedStyle(document.querySelector('.strip .hn-col')).visibility === 'hidden', w: innerWidth,
+          rb: rb && rb.bottom, prim: r('.hn-primary').right };
+      });
+      heights[tag] = g.strip;
+      if (process.env.SHOT_DIR) await page.screenshot({ path: process.env.SHOT_DIR + '/' + tag.replace(/\W+/g, '-') + '.png', clip: { x: 0, y: 0, width: w, height: 140 } });
+      if (g.stacked && w <= 640) {
+        ok(tag + ': stacked strip keeps the column unseen as before', g.hidden, JSON.stringify(g));
+      } else {
+        const [t, l, s] = g.v;
+        ok(tag + ': target, lag, speed in order, one left edge, each below the last',
+          !!t && !!l && !!s && Math.abs(t[0] - l[0]) < 0.5 && Math.abs(t[0] - s[0]) < 0.5 && t[3] <= l[1] + 0.5 && l[3] <= s[1] + 0.5, JSON.stringify(g.v));
+        ok(tag + ': speed is visible, inside the numerals box and the strip', !!s && s[2] <= g.numsR + 0.5 && s[2] <= g.stripR, JSON.stringify([g.v, g.numsR]));
+        if (running) ok(tag + ': the plan readback sits above the column', g.rb != null && !!g.v[0] && g.rb <= g.v[0][1] + 0.5, JSON.stringify([g.rb, g.v[0]]));
+      }
+      clearInterval(tick);
+      await ctx.close();
+    }
+    ok('numerals ' + w + 'x' + h + ': the strip height is one value, rest and running', heights['numerals ' + w + 'x' + h + ' rest'] === heights['numerals ' + w + 'x' + h + ' running'],
+      JSON.stringify([heights['numerals ' + w + 'x' + h + ' rest'], heights['numerals ' + w + 'x' + h + ' running']]));
+  }
+  console.log('  strip heights: ' + JSON.stringify(heights));
+}
+
 // ---- ph-e82.21: a flipped axis draws reversed --------------------------------
 {
   const flipE = byRole('axis.flipped'), posE = byRole('telemetry.position'), cfgE = byRole('window.min');

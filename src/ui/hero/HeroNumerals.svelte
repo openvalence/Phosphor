@@ -177,6 +177,7 @@
     <span class="hn-val mono" class:glow={moving && fresh}>{posText}</span>
   </div>
 
+  <div class="hn-col">
   {#if targetField}
     <div class="hn-item hn-secondary">
       <span class="hn-label">{labelFor(targetField).toLowerCase()}</span>
@@ -188,6 +189,7 @@
         <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl}
                 aria-disabled={!!jogWhy} title={jogWhy || 'Click to type a target'} onclick={openEdit}>{commandedText}</button>
       {/if}
+      <span class="hn-unit">{unitOf(targetField)}</span>
     </div>
 
     <!-- "lag" has no role of its own (roles.js: it is target - position,
@@ -197,6 +199,7 @@
     <div class="hn-item hn-secondary">
       <span class="hn-label">lag</span>
       <span class="hn-val mono">{lagText}</span>
+      <span class="hn-unit">{unitOf(targetField)}</span>
     </div>
   {/if}
 
@@ -205,7 +208,9 @@
          the machine annotated telemetry.velocity, else the plain fallback
          (this number is client-derived from position, not its own field). -->
     <span class="hn-label">{velField ? labelFor(velField).toLowerCase() : 'speed'}</span>
-    <span class="hn-val mono">{speedText}<span class="hn-unit">{speedUnit}</span></span>
+    <span class="hn-val mono">{speedText}</span>
+    <span class="hn-unit">{speedUnit}</span>
+  </div>
   </div>
 </div>
 
@@ -214,8 +219,26 @@
     display: flex;
     align-items: flex-end;
     gap: 18px;
-    flex-wrap: wrap;
   }
+
+  /* Planned target, lag, speed: one column of "label value unit" rows beside
+     the big numeral, at every width. The rows share three grid columns; their
+     height is the primary numeral's box (the strip's --num-h less its label
+     line), so the column never grows the strip and clears the plan readback
+     on the label line. */
+  .hn-col {
+    display: grid;
+    grid-template-columns: max-content max-content max-content;
+    align-items: baseline;
+    column-gap: 6px;
+    align-self: flex-end;
+  }
+  .hn-col .hn-secondary { display: contents; }
+  .hn-col .hn-val { font-size: min(1.35rem, calc((var(--num-h, 96px) - 20px) / 3.4)); line-height: 1; }
+  .hn-col .hn-label, .hn-col .hn-unit { line-height: 1; }
+  .hn-col .hn-entry { height: 1em; }
+  /* The touch target reaches 40 px without growing its row. */
+  @media (pointer: coarse) { .hn-col .hn-entry { margin: calc((1em - 40px) / 2) 0; } }
 
   .hn-item {
     display: flex;
@@ -297,14 +320,12 @@
     text-shadow: none;
   }
 
-  /* Speed is the only numeral with its unit still riding beside the value
-     (OG: unit baked directly into the padded string) — primary/commanded/lag
-     carry their unit once, in the label above, per the reference. */
+  /* The rows carry their unit beside the value; the primary carries its
+     unit once, in its label. */
   .hn-unit {
     font-family: var(--font);
-    font-size: .5em;
+    font-size: .68rem;
     color: var(--tx-mut);
-    margin-left: 3px;
   }
 
   @media (prefers-reduced-motion: reduce) {
