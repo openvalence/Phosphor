@@ -11,6 +11,8 @@
  * - No DOM or window at import time: node imports this module.
  */
 
+import { INTERP, cleanInterp } from './interp.js';
+
 export const PREFS = deepFreeze({
   T: { offsetMs: 0, lo: 0, hi: 1, invert: false },
   motion: true,
@@ -19,6 +21,7 @@ export const PREFS = deepFreeze({
   lib: { q: '', sort: 'date', direction: 'DESC' },
   view: 'player',
   zoomMs: 10000,
+  interp: INTERP,
 });
 
 const MIRROR = 'phosphor.funscript.';
@@ -63,6 +66,7 @@ const REPAIR = {
   lib: (l) => ({ ...l, sort: l.sort || PREFS.lib.sort, direction: l.direction === 'ASC' ? 'ASC' : 'DESC' }),
   view: (v) => (v === 'library' ? v : 'player'),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
+  interp: cleanInterp,
 };
 
 /** Merged over the key's default and repaired. */

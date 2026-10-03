@@ -19,6 +19,8 @@
 //   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
+// - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
+//   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
 
 import { posAt, indexAfter, heat, fmtTime } from './funscript.js';
 
@@ -120,6 +122,7 @@ export const CSS = `
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
+.fsp-dt .raw { stroke: var(--line-4); stroke-width: 1; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
@@ -155,7 +158,7 @@ const s = (tag, attrs = {}) => {
 };
 
 export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000 }) {
-  let script = null, T = T0, ceiling = null, preview = null, m = 0, trace = [];
+  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [];
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -201,9 +204,10 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const dtSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const rgLo = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
+  const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
   const real = s('g');
-  dtSvg.append(rgLo, rgHi, curve, real, s('line', { class: 'ph', x1: '500', x2: '500', y1: '0', y2: '100' }));
+  dtSvg.append(rgLo, rgHi, rawLine, curve, real, s('line', { class: 'ph', x1: '500', x2: '500', y1: '0', y2: '100' }));
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
@@ -262,6 +266,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     const d = dur(), Te = eff();
     const from = m - zoom / 2, to = m + zoom / 2;
     curve.setAttribute('points', curvePoints(script, from, to, 1000, 100, Te));
+    rawLine.setAttribute('points', raw && raw !== script ? curvePoints(raw, from, to, 1000, 100, Te) : '');
     curve.classList.toggle('draft', !!preview);
     real.replaceChildren(...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
       class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));
@@ -287,8 +292,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   }
 
   return {
-    setScript(sc, t, ceil) {
+    setScript(sc, t, ceil, rawSc) {
       script = sc || null;
+      raw = rawSc || null;
       T = t || T0;
       ceiling = ceil || null;
       drawHeat();

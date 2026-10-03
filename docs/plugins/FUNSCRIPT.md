@@ -92,6 +92,57 @@ action gap, `input.end_velocity` at its `unspecified` sentinel, no
 `curve_family`, no client feasibility. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
+## Interpolation
+
+`interp.js` (ph-smvd.10) bends the content between actions before the
+scheduler sees it. Linear is the default, and with smoothing and slew off
+`shape()` returns the parsed Script itself: everything above holds byte for
+byte. Any other setting cuts each action gap into pieces of at most 40 ms
+(`STEP_MS`, 25 segments/s, under the 50 Hz grant), keeps every action,
+merges collinear pieces back, and schedules that Script; preroll, stop,
+thinning, the speed meter and the heat read it too. Each piece is still one
+segment with end velocity `unspecified` and no `curve_family`.
+
+| mode | rule | parameter | leaves its two actions |
+|---|---|---|---|
+| Linear | the authored meaning | | no |
+| Step | hold, then the move in the last piece | | no |
+| Smoothstep | `3u^2 - 2u^3`, at rest on every action | | no |
+| Cosine | `(1 - cos(pi u)) / 2`, at rest on every action | | no |
+| Catmull-Rom | cardinal: `(1 - tension)(y[k+1] - y[k-1]) / (t[k+1] - t[k-1])` | tension 0..1 | yes |
+| Hermite | Kochanek-Bartels bias: `((1 + b) d_in + (1 - b) d_out) / 2` | bias -1..1 | yes |
+| Monotone | Fritsch-Carlson | | no |
+| PCHIP | Fritsch-Butland, MultiFunPlayer's rule | | no |
+| Akima | Akima 1970 | | slightly |
+| Makima | MATLAB makima, MultiFunPlayer's rule, symmetric second phantom | | slightly |
+
+The cubic modes start and end the script at rest; every value is clamped to
+0..1. After any mode, a smoothing window (a centered box, 0 to 500 ms, no
+lag) and then a slew limit (0 to 2000 mm/s, causal, over the window's length
+in mm times the Range share; off without the length) apply. Prefs key
+`interp`, mirrored as `phosphor.funscript.interp`: `{mode, tension, bias,
+smoothMs, slewMmS}`; the controls sit on the plugin's settings card. The
+detail view draws the shaped curve as intent and the file's actions muted
+under it.
+
+Veto-able (ph-smvd.10):
+
+- **I1** Dense knots, not `end_velocity` plus `c1_cubic` (the MFP notes'
+  exact mapping): that needs an end velocity in the host packer and covers
+  PCHIP and Makima only; dense knots cover every mode with no host or wire
+  change. Cost: up to 25 segments/s where a script had 2 to 6, and a
+  `RATE_EXCEEDED` thins back to extrema, toward linear.
+- **I2** Step is offered (the notes advise against it): its jump is the
+  last piece, 20 to 40 ms, shaped by the hub's speed limit or the slew limit.
+- **I3** The slew limit is a content transform the operator sets, like
+  Range; `limit.input.speed` on the hub stays the bound (SPEC §9.6). Off by
+  default.
+- **I4** Makima uses the symmetric second phantom, not MFP's `pm2`: it
+  matches MFP from the third span on (tested) and rests on the first action.
+- **I5** The slew limit reads the window length when the script loads, the
+  hero's fields change or the Range commits; a window resize alone does not
+  reshape.
+
 ## Sync
 
 1. **Three clocks, one map.** Media time is the master. One affine map
@@ -492,7 +543,7 @@ law 13; the card draws its own token heat).
   playback until the operator's Play; a stall holds and continues on
   `playing` (Play is still in force).
 - **D17** Local files by file input only; no drag and drop.
-- **D18** Funscript literal semantics: linear between actions for display,
+- **D18** Funscript literal semantics: linear between actions by default (Interpolation),
   `range` ignored, `inverted` honored, only L0 drives the rail, other axes
   named in the status.
 - **D19** Library pages, never scrolls (DESIGN §10.6); the library is a side

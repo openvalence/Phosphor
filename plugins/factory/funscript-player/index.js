@@ -11,6 +11,8 @@
  */
 import { createPlayer } from './ui.js';
 import { mountConnect } from './library.js';
+import { mountInterp } from './interp.js';
+import { readPrefs, writePref } from './prefs.js';
 
 export const HERO = Object.freeze({
   id: 'player',
@@ -27,6 +29,10 @@ export const HERO = Object.freeze({
 export function activate(api) {
   const player = createPlayer(api);
   api.registerHero({ ...HERO, mount: (el, fields) => player.mount(el, fields) });
-  api.registerSettings((el) => mountConnect(el, { api }));
+  api.registerSettings((el) => {
+    const a = mountConnect(el, { api });
+    const b = mountInterp(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); } });
+    return () => { a(); b(); };
+  });
   return () => player.dispose();
 }

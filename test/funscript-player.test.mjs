@@ -47,6 +47,7 @@ const CONTRACT = {
     'windowShare', 'ceilingOf', 'localScene', 'extraNote'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
+  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'index.js']: ['HERO', 'activate'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
@@ -97,7 +98,8 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000 };
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000,
+    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 } };
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));
@@ -108,6 +110,8 @@ if (prefs) {
   const t = readPrefs(fakeApi({ T: { offsetMs: 512, lo: 0.2, hi: 0.8, invert: true } })).T;
   ok('offset clamps to 500, a valid range and invert survive', same(t, { offsetMs: 500, lo: 0.2, hi: 0.8, invert: true }), t);
   ok('offset rounds to its 5 ms step', readPrefs(fakeApi({ T: { offsetMs: -12 } })).T.offsetMs === -10);
+  const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999 } })).interp;
+  ok('interp: an unknown mode is linear, ranges clamp', same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0 }), ip);
   ok('an array is not an object pref', same(readPrefs(fakeApi({ audio: [1, 2] })).audio, want.audio));
   const a = fakeApi();
   writePref(a, 'T', { offsetMs: 45, lo: 0.1, hi: 0.9, invert: false });

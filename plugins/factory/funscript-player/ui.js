@@ -41,6 +41,7 @@ import { createStash } from './stash.js';
 import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { readPrefs, writePref } from './prefs.js';
+import { shape } from './interp.js';
 
 export const FULL_UP = 960;
 export const GLANCE_UP = 264;
@@ -137,7 +138,7 @@ export function extraNote(script, extra = []) {
 export function createControl({ api, video, clock, scheduler, submit, now = () => performance.now(),
   probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u) }) {
   const prefs = readPrefs(api);
-  const state = { phase: 'empty', scene: null, script: null, T: { ...prefs.T }, motion: prefs.motion !== false,
+  const state = { phase: 'empty', scene: null, script: null, shaped: null, T: { ...prefs.T }, motion: prefs.motion !== false,
     status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full' };
   let fields = null;
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
@@ -145,6 +146,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let transient = '';
   let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0;
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
+  let interp = prefs.interp;
   const trace = [];
   scheduler.setTransform(state.T);
 
@@ -262,13 +264,24 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.motion && state.script && fields && !gate()) submit([]);
   }
 
+  /** The scheduler runs the shaped Script (interp.js): linear with no filters is the Script itself. */
+  function reshape() {
+    const s = state.script;
+    const next = s ? shape(s, interp, { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi }) : null;
+    if (next === state.shaped) return;
+    state.shaped = next;
+    scheduler.load(next);
+    peak = next ? peakSpeed(next) : 0;
+    if (state.phase === 'playing' && clock.ready) restart = true;
+  }
+
   /** scene: Scene | LocalScene; script: Script | Promise<Script> | null; none: words when it has no script. */
   function load(scene, script, none, extra = []) {
     if (active()) stop('ready');
     if (url) revoke(url);
     url = String(scene.key).startsWith('file:') ? scene.stream : null;
     const my = ++seq;
-    Object.assign(state, { scene, script: null, phase: 'ready' });
+    Object.assign(state, { scene, script: null, shaped: null, phase: 'ready' });
     scheduler.load(null);
     peak = 0;
     why = '';
@@ -279,8 +292,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       Promise.resolve(script).then((s) => {
         if (my !== seq) return;
         state.script = s;
-        scheduler.load(s);
-        peak = peakSpeed(s);
+        reshape();
         info = [...s.notes, extraNote(s, extra)].filter(Boolean);
         warm();
         changed();
@@ -311,6 +323,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     state.T = T;
     writePref(api, 'T', T);
     scheduler.setTransform(T);
+    reshape();
     if (state.phase === 'playing' && clock.ready) restart = true;
     changed();
   }
@@ -351,7 +364,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     toggle: () => (active() ? stop('ready') : play()),
     halt: () => { if (active()) stop('held'); },
     canPlay,
-    setFields(f) { fields = f; warm(); changed(); },
+    setFields(f) { fields = f; reshape(); warm(); changed(); },
+    setInterp(v) { interp = v; reshape(); changed(); },
     update() { if (gate() && active()) stop('held', '', true); else changed(); },
     dispose() {
       if (active()) stop('held');
@@ -639,8 +653,8 @@ export function createPlayer(api) {
     let tlKey = null;
     function render() {
       const ceil = ceilingOf(api, fields);
-      const key = [st.script, st.T, ceil.vmax, ceil.spanMm];
-      if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.script, st.T, ceil); }
+      const key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm];
+      if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, ceil, st.script); }
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setText(play, act ? COPY.pause : COPY.play);
       play.disabled = !act && !ctl.canPlay();
@@ -666,14 +680,14 @@ export function createPlayer(api) {
       if (comp !== 'glance') tl.frame(m, ctl.trace);
       const ceil = ceilingOf(api, fields);
       if (st.script) {
-        const sp = strokeSpeed(st.script, m, st.T, ceil.spanMm);
+        const sp = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm);
         const cap = sp.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
         setText(speedTxt, Math.round(sp.v) + ' ' + sp.unit);
         speedBar.style.width = cap ? clamp(sp.v / cap, 0, 1) * 100 + '%' : '0';
         speed.toggleAttribute('data-over', !!cap && sp.v > cap);
         speed.title = cap && sp.v > cap ? COPY.speedOver : COPY.speed;
         tickI.hidden = false;
-        tickI.style.left = applyT(posAt(st.script, m), st.T) * 100 + '%';
+        tickI.style.left = applyT(posAt(st.shaped || st.script, m), st.T) * 100 + '%';
       } else {
         setText(speedTxt, '');
         speedBar.style.width = '0';
@@ -710,6 +724,7 @@ export function createPlayer(api) {
       video.removeAttribute('src');
       video.load();
     },
+    setInterp(v) { ctl.setInterp(v); },
     get state() { return ctl.state; },
   };
 }
