@@ -506,7 +506,8 @@ question in §10.8).
   §9.6) rides the strip beside Override, not the rail row, so the jog tape
   spans the rail edge for edge.
 - The hero's target numeral takes a typed jog (operator ruling 2026-10-03,
-  `ph-9kjh`): it wears the typeable-chip recess at rest, a click or Enter
+  `ph-9kjh`, styling reverted by `ph-akeq`): it looks like the plain intent
+  numeral, a hidden feature with no recess or border, a click or Enter
   opens an entry in place, and Enter sends the rail tape's own move,
   clamped to the tape's domain with "clamped to window" in the status slot,
   disabled with the tape's reason wherever the tape is; the big numeral
@@ -548,6 +549,11 @@ question in §10.8).
   bottom safe-area inset. The UI scale is not in it (operator ruling
   2026-10-03, `ph-5q67`): it is the right end of the shell's bottom status
   row (`src/ui/ScaleControl.svelte` in `FootStrip`), compact, on every page.
+  That row is one line at every width (operator ruling 2026-10-03,
+  `ph-wt7r`): each value holds a fixed slot and a compact form (3.25k, 55.1k;
+  clock offset and RTT as s.mmm; deadman in s) with the exact value on hover,
+  build and catalog etag are one cell, and narrow widths drop whole cells in
+  the order the `FootStrip` header lists, never wrapping.
   The theme's look scale as a percentage of its default (the default reads
   100%), minus and plus in 10% steps, Reset only off 100% in a held slot.
   Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel act on the same value and never zoom
@@ -794,4 +800,6 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The UI scale moves from the page footer into the right end of the bottom status row; a page with no controls has no footer; the rail and content outer edges match the hero panel's frame (`ph-5q67`). | operator (hiding the empty footer is the agent's, veto-able) |
 | 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | The target numeral takes a typed jog: the rail tape's move, clamped to the tape's domain, disabled where the tape is (`ph-9kjh`). | operator (the recess at rest, the clamp note in the slot and leaving a source-owned rail to the hub's SOURCE_CONFLICT are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | The target numeral's recess goes: it reads as the plain intent numeral, a hidden feature (`ph-akeq`). | operator |
+| 2026-10-03 | §10.3 | The bottom status row is one line always, with fixed-width compact values, the exact value on hover, one UI build:etag cell and ordered cell drops (`ph-wt7r`). | operator |
 | 2026-10-03 | §10.3 | The rail row is the track alone, the panel inset equal on all sides; a generator's run shows the planned segment at the window's width, a foreign owner the plan strip; the plan readback moves into the strip (`ph-ryi7`). | operator (amber on a stalled or overrun plan, as the hub states no infeasibility, the readback while any plan streams, and the window description in the band's tooltip are the agent's, veto-able) |

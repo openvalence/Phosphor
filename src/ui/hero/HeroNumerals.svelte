@@ -184,7 +184,7 @@
                style="width:{editW}ch" aria-label={'Jog target, ' + (unitOf(targetField) || 'position')}
                onkeydown={onEditKey} onblur={() => closeEdit(false)} />
       {:else}
-        <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl} style="width:{editW}ch"
+        <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl}
                 aria-disabled={!!jogWhy} title={jogWhy || 'Click to type a target'} onclick={openEdit}>{commandedText}</button>
       {/if}
     </div>
@@ -263,30 +263,28 @@
     text-shadow: none;
   }
 
-  /* The typeable target wears Field.svelte's typeable-chip recess at rest and
-     while typing, one box for both, so editable looks editable and the swap
-     moves nothing. */
+  /* The typeable target looks like the plain intent numeral: a hidden
+     feature (operator 2026-10-03, ph-akeq). No recess, border or hover box;
+     the open input keeps the numeral's box and shows only a caret and an
+     underline. */
   .hn-entry {
     box-sizing: content-box;
     margin: 0;
-    padding: 0 6px 0 5px;
-    font-size: 1.35rem;
-    line-height: 1.2;
+    padding: 0;
+    border: 0;
+    background: none;
+    line-height: inherit;
     text-align: left;
-    background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
-    border: 1px solid var(--line-1);
-    border-radius: var(--r-s);
     cursor: text;
     appearance: textfield;
   }
-  .hn-entry:hover:not([aria-disabled='true'], :focus) { border-color: var(--line-4); }
-  .hn-entry:focus-visible, input.hn-entry:focus { outline: none; border-color: var(--highlight); }
-  .hn-entry[aria-disabled='true'] { opacity: .45; cursor: default; }
-  /* Touch: the box itself reaches 40 px (the strip is sticky chrome, so a
+  .hn-entry:focus-visible { outline: 1px solid var(--highlight); outline-offset: 1px; }
+  input.hn-entry:focus { outline: none; box-shadow: 0 1px 0 var(--highlight); }
+  .hn-entry[aria-disabled='true'] { cursor: default; }
+  /* Touch: the button itself reaches 40 px (the strip is sticky chrome, so a
      pseudo-element hit extension does not count); the primary numeral sets
      the row height, so the row does not grow. */
-  @media (pointer: coarse) { .hn-entry { min-height: 38px; } }
+  @media (pointer: coarse) { .hn-entry { min-height: 40px; } }
   .hn-entry::-webkit-inner-spin-button, .hn-entry::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
   /* Virtual (DESIGN §10.10): a frozen snapshot measured nothing, so the
