@@ -4,12 +4,15 @@
 // Constraints:
 // - 'range ignored' is noted only when `range` is a number other than 100: 100 is the identity.
 // - Further notes: 'N invalid actions dropped', 'N long spans split'.
+// - Refused in words, before any expansion: more than MAX_ACTIONS actions, or a
+//   last action past MAX_SCRIPT_MS (a 1e12 ms gap split into 60 s spans was
+//   16.7 million knots; 1e13 threw the engine's 'Invalid array length').
 // - thin(): extrema are slope-sign changes, so hold corners count. Each leg keeps its farthest
 //   extremum; a leg shorter than minGapMs absorbs the next reversal instead of committing, so the
 //   stroke survives at a slower period. The last action replaces a kept point closer than minGapMs
 //   unless that is the first. Notes gain 'N actions thinned'.
 
-export const MAX_SPAN_MS = 60000;
+export const MAX_SPAN_MS = 60000, MAX_SCRIPT_MS = 24 * 3600000, MAX_ACTIONS = 1000000;
 
 const NAMED = { '': 'L0', stroke: 'L0', surge: 'L1', sway: 'L2', twist: 'R0', roll: 'R1', pitch: 'R2',
   vib: 'V0', valve: 'A0', suck: 'A1', lube: 'A2' };
@@ -26,6 +29,7 @@ export function parseFunscript(input, name = '') {
   let doc = input;
   if (typeof input === 'string') { try { doc = JSON.parse(input); } catch { fail('not a funscript'); } }
   if (!doc || typeof doc !== 'object' || !Array.isArray(doc.actions)) fail('not a funscript');
+  if (doc.actions.length > MAX_ACTIONS) fail('more than a million actions');
 
   const notes = [];
   const raw = [];
@@ -35,6 +39,7 @@ export function parseFunscript(input, name = '') {
     else invalid++;
   }
   if (!raw.length) fail('no actions');
+  if (raw.some((a) => a.at > MAX_SCRIPT_MS)) fail('script longer than 24 hours');
   if (raw.some((a, i) => i && a.at < raw[i - 1].at)) raw.sort((x, y) => x.at - y.at);   // stable
 
   const keep = [];
@@ -118,6 +123,13 @@ export function posAt(script, tMs) {
 }
 
 const chord = (at, pos, i) => (Math.abs(pos[i] - pos[i - 1]) * 1000) / (at[i] - at[i - 1]);
+
+/** The fastest chord in the script, norm/s. */
+export function peakSpeed(script) {
+  let v = 0;
+  for (let i = 1; i < script.at.length; i++) v = Math.max(v, chord(script.at, script.pos, i));
+  return v;
+}
 
 export function speedAt(script, tMs) {
   const i = indexAfter(script, tMs);

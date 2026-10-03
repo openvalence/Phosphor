@@ -11,7 +11,7 @@
  * Run: node test/funscript-core.test.mjs
  */
 import {
-  MAX_SPAN_MS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, thin, heat, fmtTime,
+  MAX_SPAN_MS, MAX_ACTIONS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
 
 let fails = 0;
@@ -59,6 +59,12 @@ console.log('parse');
   ok('non-object', throws(() => parseFunscript(42), 'not a funscript') && throws(() => parseFunscript('null'), 'not a funscript'));
   ok('empty actions', throws(() => parseFunscript({ actions: [] }), 'no actions'));
   ok('nothing survives', throws(() => parseFunscript({ actions: [{ at: -1, pos: 0 }] }), 'no actions'));
+  const t0 = Date.now();
+  ok('a 1e12 ms gap is refused in words before any split', throws(() => parseFunscript(acts([0, 0], [1e12, 100])), 'script longer than 24 hours')
+    && throws(() => parseFunscript(acts([0, 0], [1e13, 100])), 'script longer than 24 hours') && Date.now() - t0 < 100, (Date.now() - t0) + ' ms');
+  ok('24 hours exactly is kept', parseFunscript(acts([0, 0], [86400000, 100])).at.length === 1441);
+  ok('more than MAX_ACTIONS is refused in words', throws(() => parseFunscript({ actions: new Array(MAX_ACTIONS + 1) }),
+    'more than a million actions'));
 }
 
 console.log('60 s split');
@@ -129,6 +135,7 @@ console.log('posAt, indexAfter, speedAt');
   ok('indexAfter matches a linear scan on 50k', good);
   ok('speedAt chord norm/s', near(speedAt(s, 150), 10) && near(speedAt(s, 300), 5) && near(speedAt(s, 200), 5));
   ok('speedAt 0 outside', speedAt(s, 50) === 0 && speedAt(s, 400) === 0 && speedAt(s, 500) === 0);
+  ok('peakSpeed is the fastest chord', near(peakSpeed(s), 10) && peakSpeed(parseFunscript(acts([0, 50]))) === 0);
 }
 
 console.log('thin');
