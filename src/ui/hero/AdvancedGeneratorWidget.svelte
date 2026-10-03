@@ -2,15 +2,16 @@
   /**
    * AdvancedGeneratorWidget.svelte -- RENDERING §10 `generator-advanced`:
    * master run/stop with `source.background_run` beside it (§10.1 rule 1),
-   * the seven base controls and any claimed dwell, each with the modulators whose mod_target names
-   * it grouped under it (RFC-066), and the preset store.
+   * the seven base controls and any claimed dwell, then one block of
+   * modulators, each naming the base control its mod_target rides (RFC-066),
+   * and the preset store.
    *
    * Constraints:
    * - Every binding is a role (roles.js ADVGEN_SPEC); a missing essential role
    *   declines the whole widget (law 7). Modulator count is the catalog's.
-   * - A modulator riding a field outside the base set is still drawn, under
-   *   "Other modulators" naming what it rides; one whose target this catalog
-   *   lacks says so instead of guessing a home.
+   * - A modulator riding a field outside the base set is still drawn, naming
+   *   what it rides; one whose target this catalog lacks says so instead of
+   *   guessing a home.
    * - A claimed preset op is always drawn here (claimed fields leave Tier 0);
    *   its slot list only when the op's store_id names a STORE (RFC-070).
    */
@@ -47,6 +48,13 @@
   };
   // mod.amount 0 = no modulation (SPEC §8.8).
   const isOff = (m) => reportedValue(m.amount, machine.samples[m.amount.channelId]) === 0;
+  // Base order first, then the loose ones, each with what it rides.
+  const modRows = $derived([
+    ...BASE.flatMap((k) => (grouped.under.get(fields[k].uid) || []).map((m) => ({ m, rides: labelFor(fields[k]) }))),
+    ...grouped.loose.map(({ m, t }) => ({ m, rides: ridesLabel(t) })),
+  ]);
+  // A block advanced as a whole carries one tag, not one per field (ph-55r).
+  const modsAdv = $derived(modRows.length > 0 && modRows.every(({ m }) => MOD_KEYS.every((k) => m[k].advanced)));
 
   // RFC-070: the writer, its STORE and the roster join by store_id only.
   const presets = $derived.by(() => {
@@ -60,7 +68,7 @@
 
 {#snippet modulator(m, rides)}
   <section class="mod">
-    <h4>{m.amount.group || 'Modulator'}{rides ? ' (rides ' + rides + ')' : ''}{isOff(m) ? ': off' : ''}</h4>
+    <h4>{m.amount.group || 'Modulator'} (rides {rides}){isOff(m) ? ': off' : ''}</h4>
     <div class="grid">
       {#each MOD_KEYS as k (k)}<Field field={m[k]} />{/each}
     </div>
@@ -75,18 +83,13 @@
   </div>
 
   <div class="grid">
-    {#each BASE as k (k)}
-      <div class="base">
-        <Field field={fields[k]} />
-        {#each grouped.under.get(fields[k].uid) || [] as m (m.channelId)}{@render modulator(m)}{/each}
-      </div>
-    {/each}
+    {#each BASE as k (k)}<Field field={fields[k]} />{/each}
   </div>
 
-  {#if grouped.loose.length}
-    <section class="block">
-      <h4>Other modulators</h4>
-      {#each grouped.loose as { m, t } (m.channelId)}{@render modulator(m, ridesLabel(t))}{/each}
+  {#if modRows.length}
+    <section class="block mods" class:adv={modsAdv}>
+      <h4>Modulators{#if modsAdv}<span class="tag">adv</span>{/if}</h4>
+      {#each modRows as { m, rides } (m.channelId)}{@render modulator(m, rides)}{/each}
     </section>
   {/if}
 
@@ -126,7 +129,18 @@
     flex-direction: column;
     gap: 8px;
   }
-  .base { display: flex; flex-direction: column; gap: 8px; }
+  .mods.adv :global(.field .tag.adv) { display: none; }
+  .tag {
+    margin-left: 6px;
+    padding: 1px 5px;
+    font-size: .62rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    color: var(--tx-mut);
+    background: var(--bg-sunken);
+    box-shadow: inset 0 0 0 1px var(--line-2);
+    border-radius: var(--r-s);
+  }
   .mod {
     margin-left: 12px;
     border-left: 2px solid var(--line);

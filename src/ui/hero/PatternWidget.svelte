@@ -12,8 +12,6 @@
   import { writeSetting, displayValue, statusOf } from '../../model/shadow.svelte.js';
   import { optionLabel, labelFor } from '../../model/format.js';
   import Field from '../Field.svelte';
-  import { settingNeedsConfirm, confirmCopy } from '../../model/actions.js';
-  import { askConfirm } from '../confirm.svelte.js';
 
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
@@ -44,10 +42,7 @@
   const isRunning = $derived(!!runningVal);
   const runningEnabled = $derived(enabledOf(running));
 
-  // RENDERING §10.1: co-located with run/stop; false -> true confirms first.
-  const bgOn = $derived(bgRun ? !!displayValue(bgRun, sampleOf(bgRun)) : false);
-  const bgEnabled = $derived(enabledOf(bgRun));
-  const headReason = $derived(reasonOf(running) || (bgRun ? reasonOf(bgRun) : ''));
+  const headReason = $derived(reasonOf(running));
 
   const selectVal = $derived(displayValue(select, sampleOf(select)));
   const selectEnabled = $derived(enabledOf(select));
@@ -69,13 +64,6 @@
     writeSetting(running, isRunning ? 0 : 1);
   }
 
-  async function toggleBg() {
-    if (!bgEnabled) return;
-    const to = bgOn ? 0 : 1;
-    if (settingNeedsConfirm(bgRun, bgOn, to) && !(await askConfirm(confirmCopy(bgRun)))) return;
-    writeSetting(bgRun, to);
-  }
-
   function chooseOption(i) {
     if (!selectEnabled || Number(selectVal) === i) return;
     writeSetting(select, i);
@@ -95,22 +83,14 @@
       <span class="run-dot" aria-hidden="true"></span>
       <span class="run-text">{isRunning ? 'Stop pattern' : 'Start pattern'}</span>
     </button>
-    {#if bgRun}
-      <button type="button" class="bg-btn og-btn" role="switch" aria-checked={bgOn}
-              disabled={!bgEnabled} data-shadow={statusOf(bgRun)}
-              title={reasonOf(bgRun) || bgRun.desc} onclick={toggleBg}>
-        {labelFor(bgRun)}: {bgOn ? 'on' : 'off'}
-      </button>
-    {/if}
   </div>
+  <!-- RENDERING §10.1: co-located with run/stop, the shared switch (Field
+       confirms false -> true first). -->
+  {#if bgRun}<Field field={bgRun} />{/if}
   {#if headReason}<p class="hint">{headReason}</p>{/if}
 
   {#if select.options && select.options.length}
-    <!-- OG .pat-grid/.pat-tile: bordered label tiles, active = intent border
-         + glow (commanded-but-not-yet-measured, same semantic as everywhere
-         else intent purple appears). The OG tiles also carried a per-pattern
-         waveform glyph (device art); that art has no source here, so this
-         renders label-only — a waveform-glyph hint is a catalog/RFC
+    <!-- OG .pat-grid/.pat-tile, label-only: a waveform glyph is a catalog/RFC
          candidate (a `glyph` field on the pattern registry entry), never a
          client-invented shape. -->
     <div class="pattern-grid" role="radiogroup" aria-label={labelFor(select)}
@@ -124,6 +104,7 @@
         </button>
       {/each}
     </div>
+    {#if select.desc}<p class="hint">{select.desc}</p>{/if}
   {/if}
 
   {#if knobs.length}
@@ -137,8 +118,6 @@
       {/each}
     </div>
   {/if}
-
-  {#if select.desc}<p class="hint explain">{select.desc}</p>{/if}
 </div>
 
 <style>
@@ -173,8 +152,6 @@
     flex-wrap: wrap;
     gap: 8px;
   }
-  .bg-btn { flex: 0 1 auto; min-width: 0; min-height: var(--tap); padding: 0 12px; }
-  .bg-btn[aria-checked='true'] { border-color: var(--warn); color: var(--warn); }
 
   /* Chrome (border/color/disabled/hover) comes from the global .og-btn /
      .og-btn.primary / .og-btn.running utilities — restating those here would
@@ -214,9 +191,11 @@
   /* OG .pat-grid/.pat-tile — bordered label tiles, responsive rather than
      the OG's fixed 4-column grid (dashboard cards here are user-resizable,
      the OG's Pattern card was not). */
+  /* Equal rows, so a two-line label never makes its tile the odd one. */
   .pattern-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    grid-auto-rows: 1fr;
     gap: 7px;
   }
   .pat-tile {
@@ -231,17 +210,16 @@
   .pat-tile-label {
     display: block;
     font-family: var(--font);
-    font-size: .66rem;
+    font-size: 11px;
     letter-spacing: .04em;
     color: var(--tx-mut);
   }
-  /* Active tile = intent purple: commanded/selected, not yet a measured
-     truth — the same semantic intent already carries everywhere else. */
-  .pat-tile.on {
-    border-color: var(--intent);
-    box-shadow: 0 0 12px rgba(var(--intent-deep-rgb), .25), inset 0 0 14px rgba(var(--intent-deep-rgb), .08);
-  }
-  .pat-tile.on .pat-tile-label { color: var(--intent); }
+  /* The hub's current pattern in reality, as the segmented control marks its
+     option; intent only while a pick is out (ph-zri). */
+  .pat-tile.on { border-color: var(--reality); }
+  .pat-tile.on .pat-tile-label { color: var(--reality); }
+  .pattern-grid:is([data-shadow='pending'], [data-shadow='overdue']) .pat-tile.on { border-color: var(--intent); }
+  .pattern-grid:is([data-shadow='pending'], [data-shadow='overdue']) .pat-tile.on .pat-tile-label { color: var(--intent); }
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* OG .fld2 — compact slider grid (mock r6, Pattern card): 220px columns,

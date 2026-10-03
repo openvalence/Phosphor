@@ -470,6 +470,54 @@ if (!LIVE) {
   await release();
   await page.waitForFunction(() => !document.querySelector('main.pane .page-foot .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
   ok('bar: the echo clears the count', !(await busyText()).trim(), await busyText());
+
+  // roster (ph-zri, ph-6a2): the hub's pattern in reality, intent only while a
+  // pick is out; 11 px labels on equal tiles; the hint under the roster; the
+  // shared switch for background run.
+  const pat = page.locator('main.pane .dash-cell[data-id="hero:pattern"]');
+  const tok = (name) => page.evaluate((n) => {
+    const p = document.body.appendChild(document.createElement('span'));
+    p.style.color = 'var(' + n + ')';
+    const c = getComputedStyle(p).color;
+    p.remove();
+    return c;
+  }, name);
+  const onColor = () => pat.locator('.pat-tile.on .pat-tile-label').evaluate((el) => getComputedStyle(el).color);
+  ok('roster: the current pattern reads in reality at rest (ph-zri)', await onColor() === await tok('--reality'), await onColor());
+  hub.mode = 'hold';
+  await pat.locator('.pat-tile:not(.on)').first().click();
+  await page.waitForTimeout(250);
+  ok('roster: the picked pattern reads in intent while its write is out', await onColor() === await tok('--intent'), await onColor());
+  await release();
+  await page.waitForTimeout(400);
+  ok('roster: ...and in reality once the hub echoes', await onColor() === await tok('--reality'), await onColor());
+  const tiles = await pat.locator('.pat-tile').evaluateAll((els) => els.map((e) => [Math.round(e.getBoundingClientRect().height * 2) / 2,
+    parseFloat(getComputedStyle(e.querySelector('.pat-tile-label')).fontSize)]));
+  ok('roster: tile labels at 11 px or more, every tile one height (ph-6a2)',
+    tiles.length > 1 && tiles.every(([h, px]) => px >= 11 && Math.abs(h - tiles[0][0]) < 0.5), tiles);
+  ok('roster: the select hint sits right under the roster', await pat.evaluate((c) => {
+    const n = c.querySelector('.pattern-grid').nextElementSibling;
+    return !!n && n.matches('p.hint');
+  }));
+  ok('roster: background run is the shared switch', await pat.locator('.field[data-widget=toggle] .og-switch').count() === 1);
+
+  // advanced generator (ph-55r): base controls in one grid, the modulators in
+  // one block after it, one adv tag for the block and none per field.
+  for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.dataset.tabId))) {
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(150);
+    if (await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"]').count()) break;
+  }
+  const advShape = await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .advgen').evaluate((el) => ({
+    gridHasMods: !!el.querySelector(':scope > .grid .mod'),
+    mods: el.querySelectorAll(':scope > .mods .mod').length,
+    fieldTags: [...el.querySelectorAll(':scope > .mods .field .tag.adv')].filter((t) => getComputedStyle(t).display !== 'none').length,
+    blockTag: !!el.querySelector(':scope > .mods > h4 .tag'),
+  }));
+  ok('advanced generator: modulators in their own block, one adv tag for it (ph-55r)',
+    !advShape.gridHasMods && advShape.mods > 0 && advShape.fieldTags === 0 && advShape.blockTag, advShape);
+  ok('advanced generator: its card reads its title (ph-c46)', await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .dash-title')
+    .first().textContent().then((t) => t.trim()) === 'Advanced generator');
   await ctx.close();
 
   // ---- a home saved before ph-e82.9 keyed a role field by uid ------------------
