@@ -15,7 +15,7 @@ Decisions below.
 
 | id | flag | what | without it |
 |---|---|---|---|
-| R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), and Stash is not known to answer a CORS preflight |
+| R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), although Stash answers the preflight (v0.31.1, measured 2026-10-03: allow-origin `*`, allow-headers `Apikey, Content-Type`) |
 | R-B | config | CSP `media-src 'self' blob: http: https:` and `img-src` + `http: https:`; http capability + `https://**` | `media-src` falls back to `default-src 'self'`: not even a local file (blob:) plays in the shell |
 | R-C | CANON FLAG, PLUGINS.md "manifest plus one module" | a multi-module factory plugin; Vite bundles the siblings; an override copy in the plugins folder must be bundled into one file first | the plugin builder inlines the modules into `index.js` at the end (the import graph has no cycles and no import-time side effects) |
 | R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`) | — |
@@ -322,29 +322,43 @@ Pages and scripts are cached for the session. Load: hold, fetch and parse
 the funscript, set `video.src` to the direct stream and the poster to the
 screenshot. A scene without a script loads video only, Play stays grayed.
 
-Assumptions (each marked `ASSUMPTION An` in `stash.js`; verified by
-`node test/funscript-stash.test.mjs --live <base> --key <key>` once the
-operator gives a URL and key):
+Assumptions (each marked `ASSUMPTION An` in `stash.js`). Verdicts from the
+operator's Stash v0.31.1 on the LAN, 2026-10-03, read-only (queries and
+GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
+<file.json>` (a local `{base, apiKey}`, never committed; or `--live <base>
+--key <key>`) and, in the browser, `node test/funscript-player.test.mjs
+--stash-live <file.json>`.
 
-- **A1** GraphQL at `<base>/graphql`, POST JSON, header `ApiKey: <key>`;
-  no session cookie is used.
-- **A2** Media URLs (`stream`, `screenshot`) accept `?apikey=<key>`.
-- **A3** `SceneFilterType.interactive` is a plain Boolean (design 2 read
-  Stash's develop schema 2026-10-02). The brief's
-  `{value: true, modifier: EQUALS}` form would fail validation.
-- **A4** findScenes returns `count` and `scenes { id title date rating100
-  interactive interactive_speed files { duration width height } paths {
-  screenshot stream funscript } studio { name } performers { name } tags {
-  name } }`; `files[].duration` is in seconds.
-- **A5** `paths.stream` is the original file, direct and Range-capable;
-  WebView2 plays mp4 (H.264/AAC) and WebM, not every HEVC or MKV.
-- **A6** `paths.*` carry Stash's own idea of its host; the client rebases
-  them onto the configured base.
-- **A7** `paths.funscript` (`<base>/scene/<id>/funscript`) serves the main
-  script JSON with the ApiKey header; Stash serves no multi-axis companions.
-- **A8** Sort keys `date`, `created_at`, `title`, `rating`,
-  `interactive_speed` exist; direction is ASC or DESC.
-- **A9** `{ version { version } }` exists for Test.
+- **A1** verified. GraphQL at `<base>/graphql`, POST JSON, header
+  `ApiKey: <key>`; no cookie needed; no key or a wrong key is 401. CORS
+  answers any origin (the vite dev path works).
+- **A2** verified. `?apikey=<key>` opens `stream`, `screenshot` and
+  `funscript`; without it each is a 302 to `/login`. Stash already writes
+  the key into `paths.stream` (not `screenshot`); `withKey` replaces it.
+- **A3** verified. `interactive` is a Boolean: `{value, modifier}` is
+  refused with `cannot use map as Boolean`.
+- **A4** verified. The selection answers as written (plus
+  `files { basename }`); `duration` is seconds. Every title on this server
+  is empty, so the basename fallback is the title in practice; four scenes
+  carry two files, `files[0]` is the primary. `interactive_speed` is 0 on
+  three scripted scenes Stash never measured: the client reads 0 as
+  unknown.
+- **A5** verified. `stream` is the original file, 206 to a Range, with
+  `accept-ranges: bytes`. Primary files: WebM VP8/VP9 114, MP4 H.264 65,
+  MP4 AV1 8, Matroska VP9 with PCM audio 1 (the one Chromium may refuse).
+  In the browser harness, under the shell CSP's `img-src` and `media-src`
+  (`http: https:` covers a LAN Stash; the shell's origin is
+  `http://tauri.localhost`, so no mixed content), every tile's screenshot
+  loads and a scene plays from its direct stream.
+- **A6** verified. `paths.*` are absolute and carry the host the request
+  used; rebasing onto the base is then a no-op, kept for a proxy.
+- **A7** verified. `paths.funscript` serves the main script (text/plain
+  JSON) to the ApiKey header; `ScenePathsType` has no companion path
+  (`screenshot preview stream webp vtt sprite funscript
+  interactive_heatmap caption`).
+- **A8** verified. All five keys sort both ways; an unknown key is refused
+  (`invalid sort`), so a pass is meaningful.
+- **A9** verified. `{ version { version } }` answers `v0.31.1`.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
 `currentTime` at the seek point, which the clock would need to model),

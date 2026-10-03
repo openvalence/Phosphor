@@ -17,6 +17,7 @@
  * Run: node test/funscript-player.test.mjs --unit
  *      node test/funscript-player.test.mjs [--shot out.png]
  *      node test/funscript-player.test.mjs --live --port P --http P+7
+ *      node test/funscript-player.test.mjs --stash-live <file.json>
  */
 import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
@@ -183,6 +184,10 @@ if (UNIT || fails) {
 //              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
 //              script with the ApiKey header and playing
+// Stash live (--stash-live <file.json>, a local {base, apiKey}, never
+// committed): only the stash section, against that real Stash, read-only,
+// under the shell CSP's img-src and media-src: every tile's screenshot
+// loads, and a picked scene's stream plays and drives the fake hub.
 // Live (--live): valencesim on spare ports plays 8 s: bundles, no NACK, the
 // plan strip moving, the strip's Pause pauses the video and Resume leaves it
 // paused, a seek plays on from the new time, an Advanced start grays Play,
@@ -212,6 +217,10 @@ const LIVE = args.includes('--live');
 const SHOT = args.includes('--shot') ? args[args.indexOf('--shot') + 1] : null;
 const SIM_PORT = args.includes('--port') ? parseInt(args[args.indexOf('--port') + 1], 10) : 8882;
 const SIM_HTTP = args.includes('--http') ? parseInt(args[args.indexOf('--http') + 1], 10) : SIM_PORT + 7;
+const STASH_LIVE = args.includes('--stash-live') ? JSON.parse(readFileSync(args[args.indexOf('--stash-live') + 1], 'utf8')) : null;
+// The shell's media directives (tauri.conf.json), served with the page under --stash-live.
+const CSP_MEDIA = STASH_LIVE && JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
+  .app.security.csp.split(';').map((d) => d.trim()).filter((d) => /^(img|media)-src /.test(d)).join('; ');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 const PAUSE_BIT = 0x08;   // registry: safety word bit3
@@ -355,7 +364,7 @@ const srv = createServer((q, s) => {
       .catch(() => { s.writeHead(502); s.end('{}'); });
     return;
   }
-  s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL);
+  s.writeHead(200, { 'Content-Type': 'text/html', ...(CSP_MEDIA ? { 'Content-Security-Policy': CSP_MEDIA } : {}) }); s.end(SHELL);
 });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PAGE = 'http://127.0.0.1:' + srv.address().port;
@@ -559,9 +568,10 @@ const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bj
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
 
 if (!LIVE) {
-  console.log('(d) the card on a fake hub');
   const cat = advgenCatalog();
   cat.entries = decodeCatalog(cat.bytes);
+  if (!STASH_LIVE) {
+  console.log('(d) the card on a fake hub');
   {
     const noseg = advgenCatalog({ drop: ['input.duration'] });
     noseg.entries = decodeCatalog(noseg.bytes);
@@ -909,10 +919,15 @@ if (!LIVE) {
     await c2.close();
   }
 
+  }
+
   // ---- stash ----
-  console.log('(e) Stash');
+  console.log('(e) Stash' + (STASH_LIVE ? ' live' : ''));
   {
-    const stash = await startFakeStash({ key: KEY, video: VIDEO });
+    const stash = STASH_LIVE ? { url: STASH_LIVE.base.replace(/\/+$/, ''), seen: null, close: async () => {} }
+      : await startFakeStash({ key: KEY, video: VIDEO });
+    const SK = STASH_LIVE ? STASH_LIVE.apiKey : KEY;
+    const hide = (t) => String(t).split(SK).join('***');
     const h3 = makeHub(cat);
     const { ctx: c3, page: p3 } = await open({ cat, hub: h3 });
     await toCard(p3);
@@ -921,31 +936,55 @@ if (!LIVE) {
     const url = p3.locator(C + ' .fsp-connect input[type=url]');
     ok('stash: with no base the connect card fills the library', await url.isVisible().catch(() => false));
     await url.fill(stash.url);
-    await p3.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await p3.locator(C + ' .fsp-connect input[type=password]').fill(SK);
     await p3.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
-    const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: 5000 }).then(() => true).catch(() => false);
-    ok('stash: Save shows interactive tiles', tiles);
+    const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: STASH_LIVE ? 15000 : 5000 }).then(() => true).catch(() => false);
+    ok('stash: Save shows interactive tiles', tiles, STASH_LIVE ? await p3.locator(C + ' .fsp-n').textContent() : undefined);
+    if (STASH_LIVE) {
+      const shots = await p3.waitForFunction((c) => {
+        const t = document.querySelectorAll(c + ' .fsp-tile');
+        const imgs = [...document.querySelectorAll(c + ' .fsp-tile img')];
+        return imgs.length === t.length && imgs.every((i) => i.complete && i.naturalWidth > 0) && t.length;
+      }, C, { timeout: 20000 }).then((h) => h.jsonValue()).catch(() => 0);
+      ok('stash live: every tile on the page shows its screenshot under the CSP', shots > 0, shots + ' tiles; ' + CSP_MEDIA);
+    }
     await p3.waitForTimeout(300);
     const ssp = await spill(p3);
     ok('stash: the grid and its pager lie inside the card, no label cut', ssp.out.length === 0 && ssp.cut.length === 0, ssp);
     if (SHOT) { await p3.waitForTimeout(500); await p3.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'stash-grid.png') }); }
     const src = await p3.locator(C + ' .fsp-tile img').first().getAttribute('src').catch(() => '');
-    ok('stash: tile screenshots are rebased and keyed with apikey', src.startsWith(stash.url) && src.includes('apikey=' + KEY), src);
-    const gql = stash.seen.find((r) => r.path.startsWith('/graphql'));
-    ok('stash: GraphQL carries the ApiKey header', !!gql && gql.headers.apikey === KEY);
+    ok('stash: tile screenshots are rebased and keyed with apikey', src.startsWith(stash.url) && src.includes('apikey=' + SK), hide(src));
+    if (stash.seen) {
+      const gql = stash.seen.find((r) => r.path.startsWith('/graphql'));
+      ok('stash: GraphQL carries the ApiKey header', !!gql && gql.headers.apikey === KEY);
+    }
     await p3.locator(C + ' .fsp-tile').first().click();
     await p3.waitForTimeout(800);
-    const fs = stash.seen.find((r) => /\/scene\/\d+\/funscript/.test(r.path));
-    ok('stash: a pick fetches the script with the ApiKey header', !!fs && fs.headers.apikey === KEY, fs && fs.headers);
+    if (stash.seen) {
+      const fs = stash.seen.find((r) => /\/scene\/\d+\/funscript/.test(r.path));
+      ok('stash: a pick fetches the script with the ApiKey header', !!fs && fs.headers.apikey === KEY, fs && fs.headers);
+    } else {
+      const ready = await p3.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 15000 })
+        .then(() => true).catch(() => false);
+      ok('stash live: the picked scene script loads and Play wakes', ready, await statusText(p3).catch(() => ''));
+    }
     const vsrc = await p3.locator(C + ' .fsp-stage video').getAttribute('src');
-    ok('stash: the video streams from the rebased URL with apikey', !!vsrc && vsrc.startsWith(stash.url) && vsrc.includes('apikey=' + KEY), vsrc);
+    ok('stash: the video streams from the rebased URL with apikey', !!vsrc && vsrc.startsWith(stash.url) && vsrc.includes('apikey=' + SK), hide(vsrc));
     const n3 = h3.bundles.length;
     await playBtn(p3).click();
     const played3 = await video(p3, (v) => new Promise((r) => { const t0 = v.currentTime; setTimeout(() => r(!v.paused && v.currentTime > t0), 3000); }));
-    ok('stash: the picked scene plays and drives the hub', played3 && h3.bundles.length > n3 + 3, { played: played3, bundles: h3.bundles.length - n3 });
+    ok('stash: the picked scene plays and drives the hub', played3 && h3.bundles.length > n3 + (STASH_LIVE ? 0 : 3), { played: played3, bundles: h3.bundles.length - n3 });
+    if (STASH_LIVE) {
+      // A real script may open on one long span; the middle carries strokes.
+      const n4 = h3.bundles.length;
+      const mid = await video(p3, (v) => new Promise((r) => { v.currentTime = v.duration / 2; const t0 = v.currentTime;
+        setTimeout(() => r({ playing: !v.paused && v.currentTime > t0, t: Math.round(v.currentTime) }), 3000); }));
+      ok('stash live: a seek to the middle plays on and keeps the hub fed', mid.playing && h3.bundles.length > n4 + 3,
+        { ...mid, bundles: h3.bundles.length - n4 });
+    }
     await playBtn(p3).click();
-    ok('stash: the key never sits in the backup prefix', !(await p3.evaluate(() => Object.keys(localStorage)
-      .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes('test-key-1')))));
+    ok('stash: the key never sits in the backup prefix', !(await p3.evaluate((sk) => Object.keys(localStorage)
+      .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes(sk)), SK)));
     clearInterval(h3.timer);
     await c3.close();
     await stash.close();
