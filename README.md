@@ -110,6 +110,13 @@ README has the recipe), run it, then `node test/valence-sim.mjs` — its last
 step writes both files from that session's real BLOB_CHUNK bytes and the etag
 the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
 
+## Builds
+
+Windows, macOS (aarch64) and Linux bundles, each carrying the valencesim
+sidecar, plus a Flatpak: local recipes, what CI
+(`.github/workflows/build.yml`) produces and what it needs on the remote are
+in [docs/BUILD.md](docs/BUILD.md).
+
 ## Its relatives
 
 | repo | what it is | how Phosphor touches it |

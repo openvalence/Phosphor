@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Phosphor
+Comment=Valence machine control
+Exec=phosphor
+Icon=org.openvalence.Phosphor
+Terminal=false
+Categories=Utility;

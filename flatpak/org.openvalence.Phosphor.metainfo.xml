@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.openvalence.Phosphor</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Phosphor</name>
+  <summary>Control interfaces for Valence machines</summary>
+  <developer id="org.openvalence">
+    <name>AtlanticTM</name>
+  </developer>
+  <description>
+    <p>Phosphor connects to Valence hubs and builds control pages over the protocol. A simulated machine ships with it.</p>
+  </description>
+  <launchable type="desktop-id">org.openvalence.Phosphor.desktop</launchable>
+  <url type="homepage">https://github.com/openvalence/Phosphor</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-03"/>
+  </releases>
+</component>
