@@ -89,7 +89,11 @@ scheduler, stash, library, timeline, prefs, interp`; `scheduler -> funscript`;
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
   stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000,
-  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0} }
+  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0},
+  play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
+         seekMs: 500, lowLatency: false, autoLatency: false} }
+// play repairs: loopCount 0..99 integer (0 = forever), homeAfterMs 1000..60000 step 500, homePoint 0..1,
+// homeSpeed 0.05..2 norm/s, seekMs 0..3000 step 50 (0 = jump).
 // Every key but stash is also mirrored to localStorage phosphor.funscript.<key> (the prefix the prefs
 // backup carries) and read from there when api.prefs has none. stash holds the API key: never mirrored.
 ```
@@ -162,10 +166,23 @@ export function createMediaClock();   // -> MediaClock
 //       seen since the reset: after play() or a seek the first frame repeats for several vsyncs.
 //   displayAt(mediaMs) -> performance.now() ms the frame is SHOWN (NaN before ready),
 //   mediaAt(displayMs) -> media ms (NaN before ready) }
-export function frameSource(video, onFrame, now = () => performance.now());   // -> stop()
+export function frameSource(video, onFrame, now = () => performance.now(), fallbackMs = () => FALLBACK_AFTER_MS);   // -> stop()
   // onFrame(mediaMs, displayMs). requestVideoFrameCallback when present: (md.mediaTime * 1000,
   // md.expectedDisplayTime). A rAF loop reports (video.currentTime * 1000, now()) only while no
-  // rVFC frame came for FALLBACK_AFTER_MS (audio only, hidden video, glance).
+  // rVFC frame came for fallbackMs() (audio only, hidden video, glance).
+// Playback (ph-smvd.12):
+export const LOW = {window: 8, slew: 15, fallbackMs: 100}, WRAP_EARLY_MS = 34;
+// createMediaClock({window = CLOCK_WINDOW, slew = SLEW_MS_PER_S} = {}); MediaClock gains tune({window, slew})
+//   (LOW, or {} for the defaults), in force at once.
+export function loopSpec(a, b, count = 0, durationMs = Infinity);   // -> {a, b, count} | null
+  // media ms; null when b - a < 1000 or count is 1; b bounded by durationMs. count 0 = forever, N = the
+  // a..b section plays N times in all, then plays on.
+export function createLoop();   // -> Loop, the video side of a loop
+// Loop = { lap, spec, set(spec | null), reset(), more(), wrapping,
+//   due(mediaMs) -> true from b - WRAP_EARLY_MS to b + 1000 while the section still repeats and no wrap is pending,
+//   wrap() -> a: marks a wrap pending; the caller seeks there,
+//   unroll(mediaMs) -> mediaMs + lap x (b - a); a backward jump past half a lap while a wrap is pending counts a lap,
+//   seeked(mediaMs) -> spec | null: lap 0 again; a landing at or past b clears the loop }
 
 // scheduler.js
 export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PREROLL_SKIP = 0.05, OFFER_MAX = 32;
@@ -199,7 +216,61 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               PREROLL_STROKE_MS * |delta|}, target = applyT(posAt(script, mediaMs), T),
 //                               delta = 1 when hereNorm is null. The caller submits it and plays at its end.
 //   cursor: number, skipped: number }
+//
+// Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform,
+// home or loop change is pending until restart; preroll reads the pending ones.
+export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
+export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
+export function withHome(script, home, actions = script);   // home: {afterMs, point: 0..1 script space, speed: norm/s} | null -> Script copy
+  // A gap of at least afterMs + move in + move out gets knots: (t0 + afterMs, the line), +move in at point,
+  // (t1 - move out, point), then the next action at its time. move(d) = max(HOME_MIN_MS, |d| / speed s).
+  // Before the first action the gap runs from 0 (a knot (0, pos[0]) is added); after the last, one move
+  // home after afterMs. null returns the script itself. actions: the parsed Script whose actions define
+  // the gaps when script is a shaped copy (interp.js; every action is one of its knots); the copy's knots
+  // inside a homed gap after afterMs are replaced.
+// Scheduler gains:
+//   load(script | null, actions = script)   actions as in withHome
+//   setHome(home | null), setLoop(loopSpec | null)   pending until restart
+//   setLatency({low, auto})     in force at once. low: the offer stops at atMs > now + LEAD_LOW_MS.
+//                               auto: when |clamp(lagMs, +-COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
+//                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
+//   restart(clock, transitionMs = 0)   transitionMs > 0 (a seek): the first segment is {atMs: now,
+//                               norm: applyT(script at mediaAt(now + transitionMs - offset)), durationMs:
+//                               transitionMs}; the span holding that instant follows from its end, the knots
+//                               inside are passed over
+//   observePlan(arrivalMs, elapsedMs, durationMs)   one plan strip sample (plan.elapsed, plan.duration in ms;
+//                               arrival in performance.now() ms, now() - api.age(field)). Samples of one
+//                               duration within 15 ms of one start are one plan, start = the least
+//                               arrival - elapsed; a closed plan matches the sent segment of its duration
+//                               (+-1 ms) with the nearest atMs within LAG_MATCH_MS, sent at least 2 ms ahead
+//                               and not superseded; its lag is start - atMs
+//   lagMs                       median of the last LAG_WINDOW lags, NaN under LAG_MIN; compMs: applied
+// With a loop the clock runs in unrolled media time (createLoop.unroll) and the cursor walks lap 0 to b,
+// then the knots inside (a, b) once per lap, then the last lap plays on: the seam span is the last knot
+// before b to the first after a, (at[iA] - at[iB-1]) + (b - a) long.
 ```
+
+Playback wiring owed by the player-ui and plugin owners (`ui.js`, `index.js`);
+the scheduler and clock do none of it:
+
+- Hero spec optional gains `planEl: 'plan.elapsed', planDur: 'plan.duration'`;
+  each tick a new sample (its `api.age` dropped) goes to
+  `observePlan(now() - api.age(planEl), elapsed ms, duration ms)`, converted
+  from the field's unit.
+- `scheduler.load(shaped, state.script)`: home finds its gaps in the file's
+  actions, never in the shaped pieces.
+- Prefs `play` map to `setHome(home ? {afterMs, point, speed} : null)`,
+  `setLatency({low: lowLatency, auto: autoLatency})`, `clock.tune(low ? LOW : {})`,
+  `frameSource(..., () => low ? LOW.fallbackMs : FALLBACK_AFTER_MS)`, and a
+  `seeked` restart as `restart(clock, seekMs)`; every other restart passes 0.
+- Loop: `loop.set(loopSpec(a, b, loopCount, video.duration * 1000))` and
+  `setLoop(loop.spec)` (a, b the timeline's A-B points, else 0 and the
+  duration). `onFrame` feeds the clock `loop.unroll(mediaMs)`; each tick
+  `if (loop.due(video.currentTime * 1000)) video.currentTime = loop.wrap() / 1000`.
+  The `seeking` a wrap starts is not a stop: no hold, no clock reset, no
+  restart (the clock steps on the landing frame when the seek took over
+  `STEP_MS`). Any other seek calls `loop.seeked(ms)`, then
+  `setLoop(loop.spec)` and a seek restart.
 
 The cadence: the player calls `tick` once per animation frame while
 playing; nothing else submits motion.
