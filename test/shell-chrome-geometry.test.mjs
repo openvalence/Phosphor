@@ -575,7 +575,9 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     const s2 = await look();
     ok(tag + ': Reset restores 100% and the default --s, and hides', s2.out === '100%' && s2.reset === 'hidden' && s2.s === s0.s,
       JSON.stringify(s2));
-    await fp.mouse.move(640, 500);
+    // The wheel lands on the status row's readout: a fixed point the page's
+    // cards (ranges, charts) never cover, whatever the strip above measures.
+    await fp.locator('.footstrip .foot-scale output').hover();
     await fp.keyboard.press('Control+Equal');
     const k1 = await look();
     await fp.keyboard.press('Control+0');

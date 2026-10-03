@@ -302,6 +302,10 @@
   .hn-entry:hover:not([aria-disabled='true'], :focus) { border-color: var(--line-4); }
   .hn-entry:focus-visible, input.hn-entry:focus { outline: none; border-color: var(--highlight); }
   .hn-entry[aria-disabled='true'] { opacity: .45; cursor: default; }
+  /* Touch: the box itself reaches 40 px (the strip is sticky chrome, so a
+     pseudo-element hit extension does not count); the primary numeral sets
+     the row height, so the row does not grow. */
+  @media (pointer: coarse) { .hn-entry { min-height: 38px; } }
   .hn-entry::-webkit-inner-spin-button, .hn-entry::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
   /* Virtual (DESIGN §10.10): a frozen snapshot measured nothing, so the
