@@ -9,7 +9,8 @@
  * an older build wrote (inert now). Every member must be inside the nest's
  * visible surface with nothing to scroll; a write is made on the last member
  * while the hub holds its echo and the frame shows the in-flight count until
- * the echo clears it.
+ * the echo clears it. The member's own card head carries the same count after
+ * its title, and its appearing moves nothing (ph-vdk.60.7).
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`); this builds nothing.
@@ -200,7 +201,15 @@ const target = await nest.evaluate((cell) => {
   const withRange = [...cell.querySelectorAll('.nest-body .dash-cell')].filter((c) => c.querySelector('input[type=range]:not([disabled])'));
   return withRange[withRange.length - 1].getAttribute('data-id');
 });
-const range = nest.locator('.nest-body .dash-cell[data-id="' + target + '"] input[type=range]').first();
+const member = nest.locator('.nest-body .dash-cell[data-id="' + target + '"]');
+const range = member.locator('input[type=range]').first();
+// ph-vdk.60.7: the member's own head counts it too, after its title, and moves nothing.
+const headGeo = () => member.evaluate((c) => ({ card: c.getBoundingClientRect().toJSON(),
+  body: c.querySelector('.dash-body').getBoundingClientRect().toJSON(),
+  head: [...c.querySelectorAll('.dash-head > :not(.dash-name)')].map((e) => e.getBoundingClientRect().toJSON()),
+  titleTop: c.querySelector('.dash-title').getBoundingClientRect().top, titleH: c.querySelector('.dash-title').getBoundingClientRect().height }));
+const geo0 = await headGeo(), store0 = await page.evaluate((k) => localStorage.getItem(k), STORE_KEY);
+ok('idle: no count in the card head', await member.locator('.dash-busy').count() === 0);
 hub.mode = 'hold';
 await range.evaluate((el) => {
   const step = Number(el.step) || 1, v = Number(el.value);
@@ -214,10 +223,17 @@ const shown = await busy.waitFor({ state: 'visible', timeout: 2000 }).then(() =>
 const text = shown ? (await busy.textContent()).trim() : '';
 ok('the nest frame shows the in-flight count', shown && /^1 in flight$/.test(text), text);
 ok('the count sits in the frame, outside the subgrid', shown && await busy.evaluate((el) => !el.closest('.nest-body')));
+const own = member.locator('.dash-head .dash-busy');
+ok('the card head shows its own count after the title', await own.count() === 1 && (await own.textContent()).trim() === '1 in flight'
+   && await own.evaluate((el) => el.previousElementSibling?.classList.contains('dash-title')));
+await page.waitForTimeout(150);
+const geo1 = await headGeo();
+ok('the count moves nothing: card, body, head controls, title', JSON.stringify(geo1) === JSON.stringify(geo0), [geo0, geo1]);
+ok('the count raises no floor: the stored layout holds', await page.evaluate((k) => localStorage.getItem(k), STORE_KEY) === store0);
 
 await release();
 const cleared = await busy.waitFor({ state: 'detached', timeout: 3000 }).then(() => true).catch(() => false);
-ok('the count clears on echo', cleared);
+ok('the count clears on echo', cleared && await own.count() === 0);
 
 // ---- edit flow: new nest, add, save, insert, out, ungroup --------------------
 const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));

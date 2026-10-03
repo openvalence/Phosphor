@@ -562,7 +562,15 @@ let saved = null;
   const cdp = await ctx.newCDPSession(page);
   const vb = await page.locator('.graph .gview').boundingBox();
   const cx = vb.x + vb.width / 2;
-  const cy = vb.y + vb.height - 24;
+  // The lowest row where both fingers land on bare canvas, 40 px clear all
+  // round (Chrome snaps a touch to a nearby target): a finger on a node
+  // belongs to that node, and the opened card's fit puts nodes anywhere.
+  const cy = await page.evaluate(([x, top, bottom]) => {
+    const bare = (px, y) => { const e = document.elementFromPoint(px, y); return !!e && !!e.closest('.gview') && !e.closest('[data-gid], [data-sock], .gwire-hit'); };
+    const clear = (px, y) => [-40, 0, 40].every((dx) => [-40, 0, 40].every((dy) => bare(px + dx, y + dy)));
+    for (let y = bottom - 48; y > top + 48; y -= 8) if (clear(x - 20, y) && clear(x + 20, y)) return y;
+    return bottom - 24;
+  }, [cx, vb.y, vb.y + vb.height]);
   const touch = (type, d) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }] });
   await touch('touchStart', 20);
   for (const d of [30, 45, 60, 80]) await touch('touchMove', d);

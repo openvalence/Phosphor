@@ -2,7 +2,8 @@
  * theme-browser.test.mjs -- the theme engine in the served bundle against a
  * fake hub (ph-vdk.64): a chassis change moves computed --bg, a canvas that
  * paints neutrals repaints, the editor's fixed slots hold still, a pinned
- * token wins, and the safety colors never move.
+ * token wins, the safety colors never move, and the Look scale applies live
+ * under a grid scale step (ph-vdk.66).
  *
  * Build first (`npm run build:only`).
  * Run: node test/theme-browser.test.mjs [shots-dir]
@@ -223,6 +224,22 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   await page.waitForSelector('[data-tab-id="display"]', { timeout: 15000 });
   ok('migration: the old custom reality is live', await hexOf(page, '--reality') === '#12AB34');
   ok('migration: written into the new key', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.theme')).accents.intent) === '#AB12CD');
+  ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// ---- 2b. the Look scale applies live under a grid scale step (ph-vdk.66) -------
+{
+  console.log('\n--- theme, live scale ---');
+  const { ctx, page, errors } = await boot({ width: 1440, height: 900 }, { 'phosphor.scale': '1.25' });
+  await openTab(page, 'display');
+  const s = async () => Number(await css(page, '--s'));
+  const s0 = await s();
+  ok('scale: the grid step multiplies the theme base', Math.abs(s0 - 1.12 * 1.25) < 1e-6, s0);
+  await setKnob(page, 'look.scale', 1.4);
+  await page.waitForTimeout(150);
+  const s1 = await s();
+  ok('scale: the Look knob applies live through the grid step', Math.abs(s1 - 1.4 * 1.25) < 1e-6, s0 + ' -> ' + s1);
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }

@@ -18,12 +18,19 @@
  * shell-chrome-geometry.test.mjs: that script runs inside every firmware
  * build and must not launch a browser.
  *
+ * Third half (ph-e82.13.10): an opened card hands its full height to its
+ * application region. In the shell bundle (plugins load there only) the node
+ * editor's card is opened: the canvas fills the card body below the editor's
+ * own toolbar, nothing runs past the window, and Full size spans the strip's
+ * bottom edge to the window's.
+ *
  * Run: node test/dash-measure.test.mjs   (no device needed)
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { CELL_DEVICE_PX, SCALE_KEY } from '../src/model/grid.js';
+import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 
@@ -171,6 +178,56 @@ for (const [dpr, scale] of [[1.25, 1], [2, 1], [1.25, 1.25]]) {
      Math.abs(m.track * m.dpr - want) < 0.05, (m.track * m.dpr).toFixed(2) + ' device px, ' + m.n + ' cells in ' + m.width + ' CSS px');
   ok('DPR ' + dpr + ' scale ' + scale + ': cell count follows the grid width', m.n === Math.floor(m.width / m.track + 1e-6));
   await ctx.close();
+}
+
+// ---- an opened card's application region fills it (ph-e82.13.10) ------------
+{
+  const SHELL = await buildShellPage();
+  const shell = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
+  await new Promise((r) => shell.listen(0, '127.0.0.1', r));
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await ctx.addInitScript(TAURI_STUB);
+  await ctx.addInitScript(([etag, bytes]) => {
+    try {
+      localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+      localStorage.setItem('shell_host', '127.0.0.1');
+    } catch (e) { /* none */ }
+  }, [ETAG, CAT]);
+  await ctx.routeWebSocket(/:82\//, fakeHub);
+  const pg = await ctx.newPage();
+  await pg.goto('http://127.0.0.1:' + shell.address().port + '/');
+  await pg.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  // The editor is a card on a category page until it is placed on the home.
+  for (let pass = 0; pass < 10 && !(await pg.$('.graph .gview')); pass++) {
+    for (const id of await pg.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
+      await pg.click('[data-tab-id="' + id + '"]');
+      await pg.waitForTimeout(120);
+      if (await pg.$('.graph .gview')) break;
+    }
+  }
+  ok('the node editor card is on a page', await pg.waitForSelector('.graph .gview', { timeout: 5000 }).then(() => true, () => false));
+  await pg.locator('.dash-item:has(.graph) .dash-open').click();
+  await pg.waitForTimeout(150);
+  const geo = await pg.$eval('.graph', (g) => {
+    const body = g.closest('.dash-body'), cs = getComputedStyle(body), b = body.getBoundingClientRect();
+    const v = g.querySelector('.gview').getBoundingClientRect(), r = g.getBoundingClientRect();
+    const it = g.closest('.dash-item').getBoundingClientRect();
+    return { top: b.top + parseFloat(cs.paddingTop) + parseFloat(cs.borderTopWidth),
+      bottom: b.bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth),
+      graphTop: r.top, header: v.top - r.top, view: v.height, viewBottom: v.bottom, item: it.bottom, win: innerHeight };
+  });
+  ok('opened: the canvas is the card body minus the editor header',
+     Math.abs(geo.graphTop - geo.top) < 1 && Math.abs(geo.view - (geo.bottom - geo.top - geo.header)) < 1 && geo.view > 320, JSON.stringify(geo));
+  ok('opened: nothing runs past the window', geo.item <= geo.win + 0.5 && geo.viewBottom <= geo.win, JSON.stringify(geo));
+  await pg.click('.gtool button:has-text("Full size")');
+  await pg.waitForTimeout(150);
+  const full = await pg.$eval('.graph.full', (g) => {
+    const r = g.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, win: innerHeight, strip: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--strip-h')) || 0 };
+  });
+  ok('Full size in an opened card spans the strip to the window bottom', Math.abs(full.top - full.strip) < 1 && Math.abs(full.bottom - full.win) < 1, JSON.stringify(full));
+  await ctx.close();
+  shell.close();
 }
 
 await browser.close();

@@ -26,6 +26,7 @@
    * cells, because only it knows the grid's tracks.
    */
   import { untrack } from 'svelte';
+  import { statusOf, STATUS } from '../../model/shadow.svelte.js';
 
   let {
     item,
@@ -61,6 +62,8 @@
   // safety op does) may hide the card label (look.label false). The head stays
   // in edit mode, so the card can still be grabbed and the label brought back.
   const bare = $derived(!!item.selfLabeled && !!item.look && item.look.label === false);
+  // Writes in flight among the card's fields (`fields`, else `group.fields`), as a nest's bar counts its members (law 5).
+  const busy = $derived((item.fields || (item.group && item.group.fields) || []).filter((f) => statusOf(f) !== STATUS.confirmed).length);
 
   // ---- application region: a still preview until opened --------------------
   let itemEl;
@@ -178,8 +181,12 @@
                else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
              }} />
     {:else}
-      <!-- The title attribute is the full form of a title cut by its ellipsis. -->
-      <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
+      <!-- The title attribute is the full form of a title cut by its ellipsis;
+           the count follows the title and the title yields to it. -->
+      <div class="dash-name">
+        <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
+        {#if busy}<span class="dash-busy" data-shadow="pending">{busy} in flight</span>{/if}
+      </div>
     {/if}
     {#if editing && item.selfLabeled && item.setLook}
       <button type="button" class="og-btn sm label-btn" aria-pressed={!bare}
@@ -253,6 +260,22 @@
     padding: 8px;
     background: var(--bg);
   }
+  /* Opened: the body hands its full height down to the application region
+     through every element holding it, and the region's own height yields to
+     the frame (a fixed full-size region then spans strip to window bottom). */
+  .dash-item.open > .dash-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding-bottom: var(--dash-body-pad, var(--gap));
+  }
+  .dash-item.open > .dash-body :global(:has([role='application'])) { display: flex; flex-direction: column; }
+  .dash-item.open > .dash-body :global(:is(:has([role='application']), [role='application'])) {
+    flex: 1 1 auto;
+    align-self: stretch;
+    height: auto;
+    min-height: 0;
+  }
   .dash-open { margin-left: auto; }
   .out + .dash-open, .label-btn + .dash-open { margin-left: 0; }
   .dash-item.dragging {
@@ -296,14 +319,28 @@
     text-transform: uppercase;
     letter-spacing: .12em;
     color: var(--tx-val);
-    /* One line at any width: zero width keeps the title out of the card's
-       measured content floor (DashGrid), and it grows into what is left. */
-    flex: 1 1 auto;
-    width: 0;
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* One line at any width: zero width keeps the title and its count out of
+     the card's measured content floor (DashGrid), so a count appearing never
+     raises the floor or moves a control; the pair grows into what is left. */
+  .dash-name {
+    flex: 1 1 auto;
+    width: 0;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .dash-busy {
+    flex: none;
+    font-size: .7rem;
+    white-space: nowrap;
+    color: var(--intent);
   }
   /* Runtime index, not a CSS counter: mirrors the OG's renumberPanels() --
      a counter renumbers by DOM order and breaks across hidden/filtered

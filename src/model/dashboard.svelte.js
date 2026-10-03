@@ -15,6 +15,7 @@
  */
 
 import * as G from './grid.js';
+import { onTheme } from './theme.js';
 
 const hasWindow = typeof window !== 'undefined';
 const storage = hasWindow ? (() => { try { return window.localStorage; } catch (e) { return null; } })() : null;
@@ -172,6 +173,8 @@ export function stepScale(dir) {
 if (hasWindow) {
   // After the module graph, so style.css (imported after App in main.js) is live.
   queueMicrotask(refresh);
+  // The theme's scale is the base --s this module multiplies.
+  onTheme(() => { baseS = NaN; refresh(); });
   window.addEventListener('resize', refresh);
   window.matchMedia?.('(pointer: coarse)').addEventListener?.('change', refresh);
   // A DPR change (monitor move, browser zoom) does not always fire resize.

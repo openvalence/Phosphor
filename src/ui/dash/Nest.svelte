@@ -9,7 +9,7 @@
    * - Never scrolls and never folds (operator ruling 2026-10-02): the subgrid
    *   grows its rows to fit every member, so nothing in it is out of view.
    * - The bar still carries the in-flight count of every present member, the
-   *   way drillCard does (RENDERING §9, law 9). It is always drawn, so the
+   *   way a card head counts its own (DashItem; RENDERING §9, law 9). It is always drawn, so the
    *   count appearing never shifts the layout (law 5).
    * - A member's fields for the count: `fields`, else `group.fields`.
    * - Members the catalog lacks are inert: never drawn, never deleted, counted

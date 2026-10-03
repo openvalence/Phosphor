@@ -342,13 +342,11 @@
   </div>
 {/snippet}
 
-<!-- A promoted group's card. Writes in flight inside it stay visible here
-     (law 5): the controls rendering them are one tap away. -->
+<!-- A promoted group's card. Its writes in flight are counted in the card
+     head (DashItem, law 5); the controls rendering them are one tap away. -->
 {#snippet drillCard(item)}
-  {@const busy = item.group.fields.filter((f) => statusOf(f) !== STATUS.confirmed).length}
   <button type="button" class="og-btn drill-open" onclick={() => (drill = item.id)}>
     <span>{item.group.fields.length} settings</span>
-    {#if busy}<span class="drill-busy" data-shadow="pending">{busy} in flight</span>{/if}
     <span aria-hidden="true">›</span>
   </button>
 {/snippet}
@@ -711,7 +709,6 @@
     justify-content: space-between;
     gap: 12px;
   }
-  .drill-busy { color: var(--intent); }
   .drill-back { margin-bottom: var(--gap); }
   .drill-page { padding: 12px; }
   .drill-title {
