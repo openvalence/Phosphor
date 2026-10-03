@@ -182,7 +182,7 @@ async function checkActions(tag, w, h, touch) {
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .payload input[type=text]').fill('phlive');
   await card.locator('.field.action .ops button', { hasText: 'save' }).click();
-  const savedLine = card.locator('.field.action .hint.state', { hasText: 'confirmed' });
+  const savedLine = card.locator('.field.action .state', { hasText: 'confirmed' });
   const savedOk = await savedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   ok(tag + ': save press reaches confirmed (post-ECHO)', savedOk, null, savedOk ? await savedLine.textContent() : '(timed out -- see comment above)');
   await page.waitForTimeout(300);
@@ -197,7 +197,7 @@ async function checkActions(tag, w, h, touch) {
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .payload input[type=text]').fill('');
   await card.locator('.field.action .ops button', { hasText: 'load' }).click();
-  const loadedLine = card.locator('.field.action .hint.state', { hasText: 'confirmed' });
+  const loadedLine = card.locator('.field.action .state', { hasText: 'confirmed' });
   const loadedOk = await loadedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   ok(tag + ': load press reaches confirmed (post-ECHO)', loadedOk, null, loadedOk ? await loadedLine.textContent() : '(timed out)');
   await page.waitForTimeout(400);
@@ -206,7 +206,7 @@ async function checkActions(tag, w, h, touch) {
 
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .ops button', { hasText: 'delete' }).click();
-  await card.locator('.field.action .hint.state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 }).catch(() => {});
+  await card.locator('.field.action .state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(300);
   const rosterAfterDelete = wire.seen.samples.get(0x1220);
   ok(tag + ': roster count restored after delete (cleanup left no residue)',
