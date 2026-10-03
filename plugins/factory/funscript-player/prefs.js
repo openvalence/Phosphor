@@ -21,6 +21,7 @@ export const PREFS = deepFreeze({
   lib: { q: '', sort: 'date', direction: 'DESC' },
   view: 'player',
   zoomMs: 10000,
+  settingsOpen: false, // the page's Settings section (page.js)
   interp: INTERP,
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
   // seekMs 0 = jump; lowLatency and autoLatency per scheduler.js setLatency.

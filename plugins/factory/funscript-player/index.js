@@ -33,12 +33,13 @@ export const HERO = Object.freeze({
 export function activate(api) {
   const player = createPlayer(api);
   api.registerHero({ ...HERO, mount: (el, fields) => player.mount(el, fields) });
-  api.registerSettings((el) => {
+  const settings = (el) => {
     const a = mountConnect(el, { api });
     const b = mountInterp(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); } });
     const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p) });
     return () => { a(); b(); c(); };
-  });
-  registerPlayerPage(api, player, HERO.spec);
+  };
+  api.registerSettings(settings);
+  registerPlayerPage(api, player, HERO.spec, settings);
   return () => player.dispose();
 }

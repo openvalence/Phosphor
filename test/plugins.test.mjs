@@ -922,9 +922,10 @@ console.log('(k) plugin pages');
   const { registerPlayerPage, PAGE_ICON } = await import('../plugins/factory/funscript-player/page.js');
   const { HERO } = await import('../plugins/factory/funscript-player/index.js');
   let def = null;
-  registerPlayerPage({ registerPage: (d) => { def = d; } }, { mount: (el, f) => ({ el, f }) }, HERO.spec);
-  ok('the funscript page: Funscript, its own icon, the hero spec, the player mount', !!def && def.id === 'player'
-    && def.label === 'Funscript' && def.icon === PAGE_ICON && def.spec === HERO.spec && def.mount('E', 'F').el === 'E');
+  registerPlayerPage({ registerPage: (d) => { def = d; } }, {}, HERO.spec, () => () => {});
+  // The mount wraps the player's in DOM: the page browser suite (test/pages.test.mjs) mounts it.
+  ok('the funscript page: Funscript, its own icon, the hero spec', !!def && def.id === 'player'
+    && def.label === 'Funscript' && def.icon === PAGE_ICON && def.spec === HERO.spec && typeof def.mount === 'function');
 }
 
 // ---- (h) the editor geometry: field values to handles and back ------------

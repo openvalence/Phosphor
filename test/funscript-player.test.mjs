@@ -107,7 +107,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false,
     interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
@@ -241,6 +241,9 @@ if (UNIT || fails) {
 //              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
 //              script with the ApiKey header and playing
+//   settings   the page's Settings mounts the plugin settings card without
+//              moving the card; a change there reads back in the Plugins
+//              pane and the reverse; open/closed persists ([--shots <dir>])
 // Stash live (--stash-live <file.json>, a local {base, apiKey}, never
 // committed): only the stash section, against that real Stash, read-only,
 // under the shell CSP's img-src and media-src: every tile's screenshot
@@ -1248,6 +1251,74 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('title')) === 'Set loop start'
     && await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width')) === 0);
   ok('playback: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (s) the page's Settings section: the registerSettings card, prefs shared with the Plugins pane, open remembered ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(s) page settings');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  const { ctx, page, up, errors } = await open({ cat, hub, width: 1280 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]', SUM = 'main.pane .fsp-page > details > summary';
+  const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
+  const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-interp', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > details ' + s).length));
+  const cardBox = () => page.locator(C).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top - e.closest('.pane-main').getBoundingClientRect().top, r.height].map(Math.round).join(','); });
+  // The viewport, and the whole page region (card and section) on a viewport tall enough to hold it.
+  const pageShot = async (name) => {
+    if (!SHOTS) return;
+    await page.screenshot({ path: join(SHOTS, name + '.png') });
+    const vp = page.viewportSize();
+    const tall = await page.locator('main.pane .fsp-page').evaluate((e) => Math.ceil(e.getBoundingClientRect().height));
+    await page.setViewportSize({ width: vp.width, height: vp.height + tall });
+    await page.waitForTimeout(300);
+    await page.locator('main.pane .fsp-page').screenshot({ path: join(SHOTS, name + '-region.png') });
+    await page.setViewportSize(vp);
+    await page.waitForTimeout(300);
+  };
+  ok('page settings: the page mounts the card', up && await toPage());
+  ok('page settings: closed by default, one Settings button, nothing mounted',
+    (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
+  await pageShot('page-settings-closed-1280x800');
+  const before = await cardBox();
+  await page.click(SUM);
+  await page.waitForTimeout(200);
+  ok('page settings: Settings mounts the plugin settings card (connect, curve, playback)', same(await rows(), [1, 1, 1]), await rows());
+  ok('page settings: the card stays put', (await cardBox()) === before, before + ' -> ' + await cardBox());
+  ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
+  await page.locator(SUM).evaluate((e) => e.scrollIntoView());
+  await pageShot('page-settings-open-1280x800');
+  await page.click('main.pane details .fsp-pset button[aria-label="Loop"]');
+  await page.waitForTimeout(100);
+  ok('page settings: a change there reaches the store', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.play') || '{}').loop) === true);
+  await page.click('[data-tab-id="plugins"]');
+  await page.waitForSelector('.fsp-pset', { timeout: 5000 });
+  ok('page settings: the Plugins pane card reads it back', (await page.locator('.fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'true');
+  await page.locator('.fsp-pset button[aria-label="Loop"]').click();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(600);
+  await toPage();
+  ok('page settings: open is remembered across a launch, and the pane change reads back here', same(await rows(), [1, 1, 1])
+    && (await page.locator('main.pane details .fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'false');
+  if (SHOTS) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(600);
+    await page.locator(SUM).evaluate((e) => e.scrollIntoView());
+    await pageShot('page-settings-open-390x844');
+    await page.locator(SUM).click();
+    await page.waitForTimeout(300);
+    await page.evaluate(() => scrollTo(0, 0));
+    await pageShot('page-settings-closed-390x844');
+  }
+  await page.locator(SUM).evaluate((e) => { if (e.parentNode.open) e.click(); });
+  await page.waitForTimeout(100);
+  ok('page settings: closed persists and unmounts the card', same(await rows(), [0, 0, 0])
+    && await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'false');
+  ok('page settings: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
 }

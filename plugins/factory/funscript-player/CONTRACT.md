@@ -90,7 +90,7 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false,
   interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0},
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, lowLatency: false, autoLatency: false} }
@@ -649,6 +649,7 @@ export function activate(api);   // -> deactivate()
 //                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
 //   api.registerSettings((el) => mountConnect + mountInterp + mountPlay, one unmount for the three);
+//   registerPlayerPage(api, player, HERO.spec, that same function);   // page.js: the card, then a Settings section mounting it
 //   return () => player.dispose();
 
 // prefs.js

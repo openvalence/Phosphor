@@ -491,6 +491,10 @@ The card (ph-smvd.13):
   latency, Auto latency; toggles read On or Off in a fixed box, sliders wear
   the analyzer's vertical-pill thumb. A change applies at once: home and the
   loop at the next restart (a playing card restarts), latency in force.
+  The Funscript page opens the same card (the one registerSettings
+  function) in a Settings section below the transport, open or closed kept
+  in pref `settingsOpen`; the dash hero gets no button, its transport
+  having no free fixed column at 264 px (P3).
 - **A-B.** One button in the detail's cluster, `A-B`: the first press sets A
   at the playhead, the second B (the loop starts; B at the playhead wraps at
   once), the third clears. The section is a selection: a `--highlight` band
