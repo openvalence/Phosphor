@@ -88,7 +88,7 @@ import { cbMap, cbArray, cbInt, cbF32, cbTstr, cbBstr, cbBool, cbNull, cbUint, c
 import { decodeCatalog, encodePacked } from '../../Valence/clients/js/catalog.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
 import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
-import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
+import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP, SOURCE_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -818,6 +818,40 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     await page.waitForTimeout(2600);
     const stalled = await markerAt(0.65);
     ok('segment: a stalled plan turns the marker amber', near(stalled, warn), JSON.stringify([stalled, warn]));
+    await ctx.close();
+  }
+  // RFC-098 (ph-6gj1): a foreign stream holding its slot owns the rail like a
+  // generator, and the readback names the session. 216 B: pair i at 5i, slot
+  // i's {kind, client_kind str16, client_name str32} at 20 + 49i. The hub's
+  // quiet release frees the slot: the tape and a clear status slot come back.
+  {
+    const flipE = byRole('axis.flipped');
+    const own = new Uint8Array(216), te = new TextEncoder();
+    const kinds = [SOURCE_KIND.jog, SOURCE_KIND.stream, SOURCE_KIND.classic, SOURCE_KIND.advanced];
+    for (let i = 0; i < 4; i++) { own[5 * i] = i; own[20 + 49 * i] = kinds[i]; }
+    new DataView(own.buffer).setUint32(6, 99, true);
+    te.encodeInto('MultiFunPlayer', own.subarray(70, 86));
+    te.encodeInto('DESK', own.subarray(86, 118));
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+      states: { [cfgE.id]: cfg, [flipE.id]: stateOf(flipE, {}), [CORE_CHANNEL.control_owner]: own,
+        [planE.id]: stateOf(planE, { 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }) } });
+    ok('stream: a foreign stream slot shows the plan strip over the tape', await page.locator('.rail-swap .plan-strip:not(.segment)').isVisible()
+      && !await page.locator('.rail-hero .rail-tape-track').isVisible());
+    const mode = (await page.locator('.topstrip .readback .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
+    ok('stream: the readback names the source and the session holding it', /^Stream · owned by MultiFunPlayer on DESK/.test(mode),
+      JSON.stringify(mode));
+    await page.locator('.topstrip .rw-flip').click();
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
+    await page.waitForTimeout(600);
+    const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
+    ok('stream: a SOURCE_CONFLICT names the source and the session', /rail owned by Stream \(MultiFunPlayer on DESK\)/.test(banner),
+      JSON.stringify(banner));
+    wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, CORE_CHANNEL.control_owner, new Uint8Array(216))));
+    await page.waitForTimeout(600);
+    ok('quiet release: the tape comes back and the plan strip goes', await page.locator('.rail-hero .rail-tape-track').isVisible()
+      && !await page.locator('.rail-swap .plan-strip').first().isVisible());
+    ok('quiet release: the status slot drops the stale conflict and the readback',
+      await page.locator('.topstrip .recovery').count() === 0 && await page.locator('.topstrip .readback .plan-mode').count() === 0);
     await ctx.close();
   }
 }

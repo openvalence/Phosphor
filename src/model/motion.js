@@ -383,8 +383,7 @@ export function createMotionDoor(deps) {
 /**
  * Why a motion-input STREAM field cannot take input now (law 3), first that
  * applies, or ''. `running` is railOwned (a generator); `busy` the host's
- * producer-lock words. Reported values only. Never read control-owner here:
- * a slot stays held for its session's life, so a foreign stream holding the
+ * producer-lock words. Reported values only. A foreign stream holding the
  * rail is the hub's SOURCE_CONFLICT to say (conflictWords names it).
  */
 export function streamGate({ live, roles, access, halted, running, busy }) {

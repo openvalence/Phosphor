@@ -8,7 +8,7 @@
  * confirm COPY comes from the catalog's own label and desc.
  */
 
-import { ACTION_TAG, SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS } from '../../../Valence/clients/js/index.js';
+import { ACTION_TAG, SAFETY_OP, FIELD_ROLE, CH_SAFETY_INTENTS, SOURCE_KIND } from '../../../Valence/clients/js/index.js';
 import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { ACTION_PREFIX, isActionRole } from './roles.js';
 import { labelFor, optionLabel } from './format.js';
@@ -105,29 +105,53 @@ export function runsOnAlone(byRole, samples) {
 /**
  * RENDERING §10.1 rule 3: a source with background_run on is running and no
  * session owns a source. Reported values only, never a pending request.
- * control-owner does not say WHICH source is the generator (source ids are not
- * registry vocabulary), so any owned source reads as attended.
+ * Any held control-owner slot reads as attended: the hub frees a slot on
+ * release (RFC-098).
  */
-// ponytail: any-owner test; per-source once control sources are registry vocabulary.
+// ponytail: any-owner test; match the generator's slot kind if a held jog or stream must not count.
 export function isUnattended(byRole, samples, ownerSample) {
-  if (!runsOnAlone(byRole, samples)) return false;
-  for (let i = 0; ownerSample && ownerSample['owner' + i] !== undefined; i++) {
-    if (ownerSample['owner' + i]) return false;
+  return runsOnAlone(byRole, samples) && !anyOwner(ownerSample);
+}
+
+// control-owner's slots by their SPEC §11.4 names (src<i>, owner<i>, and the
+// RFC-098 kind<i>, client_kind<i>, client_name<i>), in slot order.
+function slotsOf(o) {
+  const out = [];
+  for (let i = 0; o && o['owner' + i] !== undefined; i++) {
+    out.push({ i, src: o['src' + i], owner: o['owner' + i], kind: o['kind' + i],
+      clientKind: o['client_kind' + i] || '', client: o['client_name' + i] || '' });
   }
-  return true;
+  return out;
 }
 
 /**
  * Does a source own the rail (SPEC §11.4)? A generator owns it from start to
- * stop (RFC-093): pattern.running or advgen.running, reported values only.
- * Never read control-owner here: a slot stays held for its session's life
- * (a stopped generator, a finished jog or stream), so it cannot say the rail
- * is busy now. A stream holding the rail is the hub's SOURCE_CONFLICT to say.
+ * stop (RFC-093): pattern.running or advgen.running, reported values only. A
+ * stream, classic or advanced slot owns it while held: the hub releases a
+ * stream once it goes quiet (RFC-098). Without `ownerSample`, generators only.
  */
-// ponytail: generators only; a live stream joins once source ids are registry vocabulary.
-export function railOwned(byRole, samples) {
+const PLAN_KINDS = [SOURCE_KIND.stream, SOURCE_KIND.classic, SOURCE_KIND.advanced];
+export function railOwned(byRole, samples, ownerSample) {
   return isOn(samples, firstOf(byRole, FIELD_ROLE.pattern_running))
-    || isOn(samples, firstOf(byRole, FIELD_ROLE.advgen_running));
+    || isOn(samples, firstOf(byRole, FIELD_ROLE.advgen_running))
+    || slotsOf(ownerSample).some((s) => s.owner && PLAN_KINDS.includes(s.kind));
+}
+
+/**
+ * The first owner that is not `self`, in words (SPEC §11.4, RFC-098):
+ * "<client_kind> on <client_name>", the client kind alone when unnamed, or ''
+ * (none, or an older hub).
+ */
+export function foreignOwner(ownerSample, self) {
+  const s = slotsOf(ownerSample).find((x) => x.owner && x.owner !== self);
+  if (!s) return '';
+  if (s.client) return (s.clientKind ? s.clientKind + ' on ' : '') + s.client;
+  return s.clientKind;
+}
+
+/** Any control-owner slot held (SPEC §11.4); a slot freed by quiet release reads unheld. */
+export function anyOwner(ownerSample) {
+  return slotsOf(ownerSample).some((s) => s.owner);
 }
 
 /**
@@ -138,13 +162,8 @@ export function railOwned(byRole, samples) {
  */
 // ponytail: first owned, labeled pair wins; ask the hub for one active source if two can own at once.
 export function railOwnerName(ownerEntry, ownerSample) {
-  const layout = (ownerEntry && ownerEntry.layout) || [];
-  for (let k = 0; ownerSample && k + 1 < layout.length; k += 2) {
-    const src = layout[k], owner = layout[k + 1];
-    const name = ownerSample[owner.name] && src.options && src.options[ownerSample[src.name]];
-    if (name) return name;
-  }
-  return '';
+  const o = railOwners(ownerEntry, ownerSample).find((x) => x.name);
+  return o ? o.name : '';
 }
 
 /**
@@ -163,11 +182,8 @@ export function confirmCopy(item, value) {
  */
 export function railOwners(ownerEntry, ownerSample) {
   const layout = (ownerEntry && ownerEntry.layout) || [];
-  const out = [];
-  for (let k = 0; ownerSample && k + 1 < layout.length; k += 2) {
-    const src = layout[k], owner = layout[k + 1];
-    const session = ownerSample[owner.name];
-    if (session) out.push({ name: (src.options && src.options[ownerSample[src.name]]) || '', session });
-  }
-  return out;
+  return slotsOf(ownerSample).filter((s) => s.owner).map((s) => {
+    const f = layout[2 * s.i]; // the pairs lead the layout: {src, owner} per slot
+    return { name: (f && f.options && f.options[s.src]) || '', session: s.owner };
+  });
 }

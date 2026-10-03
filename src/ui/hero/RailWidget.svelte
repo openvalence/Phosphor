@@ -151,10 +151,12 @@
     : latch.paused && !latch.override ? 'Paused: Override to jog' : '');
   const moveEnabled = $derived(moveAllowed && !jogBlock);
 
-  // The rail row shows the plan strip over the tape while a generator owns the
-  // rail: a jog never takes it from a source (SPEC §11.4), and override is
-  // the one way in, so override brings the tape back. Both stay mounted.
-  const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples));
+  // The rail row shows the plan strip over the tape while a generator or a
+  // stream owns the rail: a jog never takes it from a source (SPEC §11.4), and
+  // override is the one way in, so override brings the tape back. Both stay
+  // mounted.
+  const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples,
+    machine.samples[CH_CONTROL_OWNER]));
   const planShown = $derived(sourceOwns && !override);
   // Another session holds a control-owner slot: the full-width plan strip.
   // Else the planned segment, at the window's own width (ph-ryi7).

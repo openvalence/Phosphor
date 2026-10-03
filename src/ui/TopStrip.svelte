@@ -45,10 +45,11 @@
    *   (specSafetyAction, law 2), a role tag being one more discovery path,
    *   never the only one: a hub that never annotated it keeps its e-stop.
    */
+  import { untrack } from 'svelte';
   import { machine, getSession, specSafetyAction, estopLabel, retryNow } from '../model/machine.svelte.js';
   import { runAction, lastRefusal, clearLastRefusal } from '../model/shadow.svelte.js';
   import { SAFETY_OP, HOME_OP, CH_SAFETY_INTENTS, CH_CONTROL_OWNER, NACK } from '../../../Valence/clients/js/index.js';
-  import { needsConfirm, confirmCopy, isUnattended, railOwnerName } from '../model/actions.js';
+  import { needsConfirm, confirmCopy, isUnattended, railOwnerName, foreignOwner, anyOwner } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
@@ -167,8 +168,16 @@
   // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.
   const ownerName = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
     machine.samples[CH_CONTROL_OWNER]));
-  const refusalText = $derived((lastRefusal.code === NACK.SOURCE_CONFLICT && ownerName
-    ? 'refused: rail owned by ' + ownerName : lastRefusal.text) + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
+  // RFC-098: the holding session in words, "<client kind> on <client name>".
+  const ownerBy = $derived(foreignOwner(machine.samples[CH_CONTROL_OWNER], machine.link.sessionId));
+  const ownerText = $derived(ownerName && ownerBy ? ownerName + ' (' + ownerBy + ')' : ownerName || ownerBy);
+  const refusalText = $derived((lastRefusal.code === NACK.SOURCE_CONFLICT && ownerText
+    ? 'refused: rail owned by ' + ownerText : lastRefusal.text) + (lastRefusal.label ? ' (' + lastRefusal.label + ')' : ''));
+  // The hub freed every slot (quiet release, RFC-098): the conflict is over.
+  $effect(() => {
+    const o = machine.samples[CH_CONTROL_OWNER];
+    if (o && !anyOwner(o)) untrack(() => { if (lastRefusal.code === NACK.SOURCE_CONFLICT) clearLastRefusal(); });
+  });
   const refusalTitle = $derived(refusalText + (lastRefusal.detail ? ' · ' + lastRefusal.detail : ''));
   const edgeText = $derived(latestSafety
     ? displayLabel(SAFETY_EVENT_KIND_NAME[latestSafety.kind] || ('kind ' + latestSafety.kind)) : '');

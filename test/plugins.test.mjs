@@ -42,11 +42,11 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
-import { railOwners, railOwnerName, railOwned } from '../src/model/actions.js';
+import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
@@ -665,6 +665,24 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     === JSON.stringify([{ name: ownerEntry.layout[0].options[1], session: 7 }, { name: '', session: 8 }]));
   ok('railOwnerName keeps its meaning: the first labeled pair, else empty', railOwnerName(ownerEntry, smp) === ownerEntry.layout[0].options[1]
     && railOwnerName(ownerEntry, { ...smp, owner0: 0 }) === '' && railOwners(ownerEntry, null).length === 0);
+
+  // RFC-098: each slot names its kind and its owner; the tail is never read as pairs.
+  const named = { ...smp, kind0: SOURCE_KIND.jog, client_kind0: 'phosphor', client_name0: 'ATLANTIC-PC',
+    kind1: SOURCE_KIND.stream, client_kind1: '', client_name1: '', kind2: SOURCE_KIND.classic,
+    client_kind2: 'MultiFunPlayer', client_name2: 'DESK', kind3: SOURCE_KIND.advanced, client_kind3: '', client_name3: '' };
+  ok('railOwners reads only the four pairs, whatever the catalog appends',
+    JSON.stringify(railOwners(ownerEntry, named)) === JSON.stringify(railOwners(ownerEntry, smp)));
+  ok('foreignOwner: the first owner that is not self, "<client kind> on <client name>"',
+    foreignOwner(named, 3) === 'phosphor on ATLANTIC-PC' && foreignOwner(named, 7) === 'MultiFunPlayer on DESK'
+    && foreignOwner(smp, 3) === '' && foreignOwner(null, 3) === '');
+  ok('foreignOwner: unnamed, the client kind alone, else empty',
+    foreignOwner({ ...named, client_name2: '' }, 7) === 'MultiFunPlayer'
+    && foreignOwner({ ...named, client_kind2: '', client_name2: '' }, 7) === '');
+  const streaming = { ...named, owner1: 5 };
+  ok('railOwned: a held stream, classic or advanced slot owns the rail like a generator, a jog does not (ph-6gj1)',
+    railOwned(model.byRole, {}, streaming) && railOwned(model.byRole, {}, named)
+    && !railOwned(model.byRole, {}, { ...named, owner2: 0 }) && !railOwned(model.byRole, {}, smp));
+  ok('railOwned without control-owner stays generators only (the plugin gate)', !railOwned(model.byRole, { [CH_CONTROL_OWNER]: streaming }));
 }
 
 // ---- (i) the producer lock (ph-smvd.2) -------------------------------------

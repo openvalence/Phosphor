@@ -56,7 +56,7 @@
   import { formatParts, optionLabel, labelFor } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
-  import { railOwnerName } from '../../model/actions.js';
+  import { railOwnerName, foreignOwner } from '../../model/actions.js';
   import { CH_CONTROL_OWNER, LIMITS, UNIT_ID } from '../../../../Valence/clients/js/index.js';
   import { onTheme } from '../../model/theme.js';
 
@@ -148,6 +148,8 @@
   // The source holding the rail, in the hub's own words; '' reads "plan".
   const owner = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
     machine.samples[CH_CONTROL_OWNER]));
+  // Another session holding it, by its HELLO kind and name (RFC-098).
+  const by = $derived(foreignOwner(machine.samples[CH_CONTROL_OWNER], machine.link.sessionId));
 
   // ---------------------------------------------------------------------------
   // "Is a plan actually streaming right now": dims the lane when not. When
@@ -364,7 +366,7 @@
        own label, so a style named "idle" never reads as the run state
        (ph-kts). -->
   <div class="plan-rb">
-    <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
+    <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if by}{' · owned by '}<span class="plan-owner">{by}</span>{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
     <span class="plan-meta mono">
       {#if fields.velocity}
         <output>{@render vu(fields.velocity, velVal)}</output>
