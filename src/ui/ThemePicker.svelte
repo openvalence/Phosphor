@@ -269,6 +269,10 @@
       <span class="track"></span>Terse instruments
     </label>
     <p class="pane-note">Hides card hints; descriptions move to info buttons</p>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={$prefs.scrollbars} onchange={(e) => setPref('scrollbars', e.currentTarget.checked)} />
+      <span class="track"></span>Scrollbars
+    </label>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-units">

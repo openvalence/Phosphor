@@ -26,12 +26,12 @@ const { formatWithUnit, setAutorange, autorange } = await import('../src/model/f
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
 
 // Load: valid fields kept, bad ones take their default; the stored copy is stamped.
-assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window' });
+assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false });
 assert.deepEqual(loadPrefs(null), { ...DEFAULTS });
 assert.deepEqual(loadPrefs('garbage'), { ...DEFAULTS });
 setPref('reconnect', false);
 assert.deepEqual(JSON.parse(mem.get(PREFS_KEY)),
-  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window' });
+  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false });
 setPref('units', 'furlongs');
 assert.equal(get(prefs).units, 'metric', 'only known unit systems');
 

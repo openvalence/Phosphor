@@ -31,6 +31,7 @@ export const DEFAULTS = Object.freeze({
   telemetryHz: null,  // null = the client default; always clamped to the catalog max
   estopDatagram: true, // shell: an e-stop press also broadcasts the RFC-053 datagram (opt-out)
   fullscreen: 'window',
+  scrollbars: false,  // recess shadows are the scroll affordance (DESIGN §10.3)
 });
 
 function read(key) {
@@ -51,6 +52,7 @@ export function loadPrefs(raw = read(PREFS_KEY)) {
     telemetryHz: p.telemetryHz != null && Number.isFinite(hz) && hz > 0 ? hz : null,
     estopDatagram: typeof p.estopDatagram === 'boolean' ? p.estopDatagram : DEFAULTS.estopDatagram,
     fullscreen: FULLSCREEN.includes(p.fullscreen) ? p.fullscreen : DEFAULTS.fullscreen,
+    scrollbars: typeof p.scrollbars === 'boolean' ? p.scrollbars : DEFAULTS.scrollbars,
   };
 }
 

@@ -48,6 +48,7 @@
   import { panes as shellPanes } from './shell/panes.js';
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
+  import { scrollshade } from './ui/scrollshade.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -174,6 +175,8 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
+  // Scrollbars are a pref, off by default; style.css switches on this one attribute.
+  $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
   function onFullKey(e) {
     if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full); }
     // After every listener: an overlay's own Escape (F1, F3) prevents it.
@@ -409,7 +412,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare}>
+  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} use:scrollshade={isFull}>
     <div class="pane-main">
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
@@ -511,7 +514,7 @@
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
            forbids giving a non-interactive landmark an interactive role. -->
-      <nav class="rail" class:mini={railMini} aria-label="Sections">
+      <nav class="rail" class:mini={railMini} aria-label="Sections" use:scrollshade>
         <button type="button" class="rail-collapse" onclick={toggleRail}
                 aria-expanded={!railMini}
                 aria-label={railMini ? 'Expand navigation' : 'Collapse navigation'}
@@ -537,7 +540,7 @@
           {/each}
         </div>
       </nav>
-      <div class="content" bind:this={contentEl}>
+      <div class="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
       </div>
     </div>
@@ -594,27 +597,23 @@
     padding-top: var(--gap);
     /* The hero panel's frame (style.css .og-panel: a 4px offset, 1px outline)
        reaches 5px past its box; the rail and the content reach it too, and
-       the content's scrollbar track sits past it on the right. --track must
-       fit the .app padding left past the hero frame. */
-    --track: 4px;
+       with the scrollbars pref on, the content's track sits past it on the
+       right (style.css [data-shade]). --track must fit the .app padding left
+       past the hero frame. */
+    --track: 0px;
     margin: 0 calc(-5px - var(--track)) 0 -5px;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
   }
+  :global(:root[data-scrollbars]) .frame { --track: 4px; }
   /* position: a pane's absolutely positioned descendants (sr-only labels)
-     must scroll with it, never overflow the non-scrolling column.
-     scrollbar-gutter: a scrollbar that comes and goes changes the grid's
-     columns, which changes the content's height: a flicker loop. Width and
-     color auto let style.css's 4px ::-webkit-scrollbar (--track) apply. */
+     must scroll with it, never overflow the non-scrolling column. */
   .content {
     position: relative;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-gutter: stable;
-    scrollbar-width: auto;
-    scrollbar-color: auto;
   }
 
   .rail {
@@ -633,6 +632,10 @@
     overflow-y: auto;
   }
   .rail.mini { width: 56px; }
+  /* The recess shades (style.css [data-shade]) take no room: their margin
+     also cancels the rail's 2px flex gap. */
+  .rail::before { margin-bottom: -26px; }
+  .rail::after { margin-top: -26px; }
 
   .rail-collapse {
     align-self: flex-end;
@@ -844,7 +847,6 @@
     flex-direction: column;
     padding: var(--caret-h) var(--gap) 0;
     overflow-y: auto;
-    scrollbar-gutter: stable;
     overscroll-behavior: contain;
     background: var(--bg);
   }

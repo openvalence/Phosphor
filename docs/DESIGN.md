@@ -562,9 +562,15 @@ question in §10.8).
   controls. On desktop the rail and the content reach the hero panel's
   frame (its 4 px outline offset plus the 1 px line, 5 px past its box) on
   both sides, so the pane's outer edges line up with the hero card's.
-  The content always reserves its scrollbar track (`ph-i7ln`): a scrollbar
-  appearing would drop a grid column and loop.
-  That track is 4 px and sits past the hero frame on the right (`ph-p6a2`).
+- Scroll recesses (operator ruling 2026-10-03, `ph-inh5`): a scroller's
+  affordance is a shadow on its own top edge while it can scroll up and on its
+  bottom edge while it can scroll down, so the pane reads as sliding under the
+  hero panel and the footer; a page footer casts its own. Scrollbars are the
+  `scrollbars` pref, off by default; the guided onboarding, when it exists,
+  asks this once. With them on, the content reserves its 4 px track past the
+  hero frame on the right (`ph-i7ln`, `ph-p6a2`): a scrollbar appearing would
+  drop a grid column and loop. Seams: `src/ui/scrollshade.js`, `[data-shade]`
+  in `src/style.css`.
 - Page fullscreen (operator ruling 2026-10-03, `ph-wb4j`): a plugin page's
   footer carries Fullscreen (F11) and, in the desktop shell, its mode: In
   window (default) or Borderless. In window, the page takes the whole window
@@ -806,3 +812,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The target numeral's recess goes: it reads as the plain intent numeral, a hidden feature (`ph-akeq`). | operator |
 | 2026-10-03 | §10.3 | The bottom status row is one line always, with fixed-width compact values, the exact value on hover, one UI build:etag cell and ordered cell drops (`ph-wt7r`). | operator |
 | 2026-10-03 | §10.3 | The rail row is the track alone, the panel inset equal on all sides; a generator's run shows the planned segment at the window's width, a foreign owner the plan strip; the plan readback moves into the strip (`ph-ryi7`). | operator (amber on a stalled or overrun plan, as the hub states no infeasibility, the readback while any plan streams, and the window description in the band's tooltip are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | Recess shadows replace scrollbars as the scroll affordance; scrollbars become a pref, off by default, asked once by the guided onboarding (`ph-inh5`). | operator (the 1 px lip on the shade, the page footer casting its own shade and the toggle's home in Legibility are the agent's, veto-able) |

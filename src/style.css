@@ -544,6 +544,35 @@ select:focus { outline: none; border-color: var(--highlight); }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 0; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) var(--bg); }
 
+/* ---- Scroll recesses (DESIGN §10.3, ui/scrollshade.js) ----
+   The pane slides under the chrome above and below it: a shadow on the pane's
+   own top or bottom edge while it can scroll that way. Scrollbars are the
+   `scrollbars` pref (html[data-scrollbars]); only with one shown does the
+   gutter stay reserved (a scrollbar that comes and goes changes the grid's
+   columns and loops, ph-i7ln). The shades sit under the page footer (z 15),
+   which casts its own. */
+:root:not([data-scrollbars]) [data-shade] { scrollbar-width: none; }
+:root:not([data-scrollbars]) [data-shade]::-webkit-scrollbar { display: none; }
+:root[data-scrollbars] [data-shade] { scrollbar-width: auto; scrollbar-color: auto; scrollbar-gutter: stable; }
+[data-shade]::before,
+[data-shade]::after {
+  content: '';
+  position: sticky;
+  z-index: 14;
+  display: block;
+  flex: none;
+  height: 24px;
+  pointer-events: none;
+  opacity: 0;
+}
+[data-shade]::before { top: 0; margin-bottom: -24px; background: linear-gradient(var(--line-1) 0 1px, rgba(var(--shade-rgb), .95) 1px, rgba(var(--shade-rgb), 0)); }
+[data-shade]::after { bottom: 0; margin-top: -24px; background: linear-gradient(rgba(var(--shade-rgb), 0), rgba(var(--shade-rgb), .95) calc(100% - 1px), var(--line-1) 0); }
+[data-shade-top]::before,
+[data-shade-bottom]::after { opacity: 1; }
+:is([data-shade-bottom], [data-shade-bottom] > .pane) > .page-foot {
+  box-shadow: inset 0 1px 0 var(--line-0), 0 -10px 12px -8px rgba(var(--shade-rgb), .75);
+}
+
 /* ---- Panel chrome: the canonical OG panel recipe. Components apply
    .og-panel instead of restating background + border + outline + the
    corner-bracket SVGs by hand. ---- */

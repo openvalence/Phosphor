@@ -477,12 +477,20 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   const sb0 = await sbox();
   ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
   if (w >= 960) {
-    const edges = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), p = r('.hero-strip .og-panel'), a = r('nav.rail'), c = document.querySelector('.content');
-      return [a.left - p.left, p.right - (c.getBoundingClientRect().left + c.clientWidth), c.offsetWidth - c.clientWidth].map((v) => Math.round(v * 10) / 10); });
     // style.css .og-panel: outline 1px at a 4px offset, so the panel's frame reaches 5px past its box.
-    // The content's edge is its scrollport's: the always-reserved scrollbar track sits past the frame.
-    ok(tag + ': the rail and the content reach the hero panel frame on both sides', edges[0] === -5 && edges[1] === -5, edges.join(' / '));
-    ok(tag + ': the content reserves its scrollbar track', edges[2] > 0, edges.join(' / '));
+    // The content's edge is its scrollport's. Scrollbars off (default): no track, the visible edge is
+    // the frame's; on, the reserved 4 px track sits past the frame (DESIGN §10.3).
+    for (const on of [false, true]) {
+      const edges = await fp.evaluate((on) => { document.documentElement.toggleAttribute('data-scrollbars', on);
+        const r = (s) => document.querySelector(s).getBoundingClientRect(), p = r('.hero-strip .og-panel'), a = r('nav.rail'), c = document.querySelector('.content'), cb = c.getBoundingClientRect();
+        const out = [a.left - p.left, p.right - (cb.left + c.clientWidth), c.offsetWidth - c.clientWidth, p.right - cb.right].map((v) => Math.round(v * 10) / 10);
+        document.documentElement.removeAttribute('data-scrollbars');
+        return out; }, on);
+      const st = on ? ' (scrollbars on)' : ' (scrollbars off)';
+      ok(tag + ': the rail and the content reach the hero panel frame on both sides' + st, edges[0] === -5 && edges[1] === -5, edges.join(' / '));
+      ok(tag + (on ? ': the content reserves its 4 px track past the frame' : ': no track, the content box ends at the frame') + st,
+        on ? edges[2] === 4 && edges[3] === -9 : edges[2] === 0 && edges[3] === -5, edges.join(' / '));
+    }
   }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
