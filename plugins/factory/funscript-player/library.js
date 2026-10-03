@@ -57,7 +57,6 @@ export const CSS = `
 .fsp-lib-head .fsp-in { flex: 1 1 120px; }
 .fsp-lib-head select { flex: 0 1 96px; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); padding: 0; }
-.fsp-pg { font-size: 1.25rem; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
 .fsp-grid { display: grid; gap: ${GAP}px; align-content: start; height: 100%; }
 .fsp-grid.busy { opacity: .5; }
@@ -129,8 +128,8 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   const note = h('p', { class: 'fsp-note', role: 'status', 'aria-live': 'polite' });
   const connectBox = h('div', { hidden: '' });
   const body = h('div', { class: 'fsp-lib-body' }, grid, note, connectBox);
-  const prev = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '‹', title: COPY.prev, 'aria-label': COPY.prev });
-  const next = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '›', title: COPY.next, 'aria-label': COPY.next });
+  const prev = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '←', title: COPY.prev, 'aria-label': COPY.prev });
+  const next = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '→', title: COPY.next, 'aria-label': COPY.next });
   const pageOut = h('output');
   const countOut = h('output', { class: 'fsp-n' });
   const root = h('div', { class: 'fsp-lib' }, h('style', { text: CSS }),

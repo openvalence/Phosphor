@@ -387,7 +387,7 @@ export function mountConnect(el, { api, onSaved, client });   // -> unmount(); c
 debounce; sort; direction; Open files, `.fsp-lib-open`, which the player's
 full layout hides because its source row carries one), a tile grid that
 never scrolls (per page = cols x rows fitted by a ResizeObserver), and a
-foot row (`‹` Previous page, `page n / m`, `›` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
+foot row (`←` Previous page, `page n / m`, `→` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
 box with a lazy screenshot, a one-line title, `duration · speed`. With no
 base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
