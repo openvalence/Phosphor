@@ -1159,7 +1159,9 @@
   }
 
   /* ---- input tape (disabled command surface) ------------------------------ */
-  .rail-tape-assembly { width: 100%; }
+  /* A container: the rail places as a module too, so "narrow" is the row's
+     own width, never the window's. */
+  .rail-tape-assembly { width: 100%; container-type: inline-size; }
   .rail-tape-assembly.disabled { opacity: 0.7; }
   /* 14px + 4px: the 18px the rail row reserves above the track. */
   .rail-tape-labels {
@@ -1265,7 +1267,7 @@
      and keeps the reason whole (ph-ddx). */
   .rail-reason { color: var(--tx-mut); }
   .rail-reason::before { content: '\00a0·\00a0'; }
-  @media (max-width: 599px) {
+  @container (max-width: 559px) {
     .rail-tape-mode:has(.rail-reason) .rail-mode { display: none; }
     .rail-reason::before { content: none; }
   }

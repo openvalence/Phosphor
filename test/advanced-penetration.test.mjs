@@ -1039,7 +1039,7 @@ if (LIVE) {
     plan({ flags: 1, style: 4, start_norm: 0.85, end_norm: 0.85, cur_norm: 0.85, duration_us: 5000000, elapsed_us: 1000000 });
     await page.waitForTimeout(300);
     const mode = (await page.locator('.rail-swap .plan-mode').textContent()).trim();
-    ok('plan: a hold sample reads the owner and hold', mode === 'Advanced · hold', mode);
+    ok('plan: a hold sample reads the owner and hold', mode === 'Advanced · Style hold', mode);
     await page.waitForTimeout(2000);
     ok('plan: a hold stays live with no new sample inside its duration (no stall)', await strip.evaluate((e) => e.classList.contains('on')));
     if (SHOT) await page.locator('.rail-swap').screenshot({ path: shot('8-plan-hold') });

@@ -78,11 +78,13 @@ const geom = () => page.evaluate(() => {
   const strip = document.querySelector('.topstrip').getBoundingClientRect();
   const lb = document.querySelector('.linkbar').getBoundingClientRect();
   const app = document.querySelector('.app').getBoundingClientRect();
+  // The page footer is the one bar ruled onto the bottom edge (DESIGN §10.3);
+  // it renders once a hub answers (a live hub on :82 makes this page live).
   const bottomFixed = [...document.querySelectorAll('body *')].filter((el) => {
     const cs = getComputedStyle(el);
     const b = el.getBoundingClientRect();
-    return cs.position === 'fixed' && cs.pointerEvents !== 'none' && b.height > 0 && b.bottom >= innerHeight - 1;
-  }).length;
+    return cs.position === 'fixed' && cs.pointerEvents !== 'none' && b.height > 0 && b.bottom >= innerHeight - 1 && !el.matches('.page-foot');
+  }).map((el) => el.tagName.toLowerCase() + '.' + el.className).join(' ');
   return { stripTop: strip.top, stripL: strip.left, stripW: strip.width, lbTop: lb.top,
            appH: app.height, vw: document.documentElement.clientWidth, vh: innerHeight, bottomFixed,
            scrolls: document.scrollingElement.scrollHeight > innerHeight + 2 };
@@ -95,7 +97,7 @@ ok('no shell: strip spans the window', Math.abs(g.stripL) < 1 && Math.abs(g.stri
 ok('no shell: LinkBar is the strip\'s first row', Math.abs(g.lbTop - g.stripTop) < 1);
 ok('no shell: desktop column is exactly one viewport', Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
 ok('no shell: page does not scroll', !g.scrolls);
-ok('nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
+ok('nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
 // ph-wks: the notch inset must not depend on html.hivis.
 const inset = await page.evaluate(() => [document.documentElement.classList.contains('hivis'),
   getComputedStyle(document.documentElement).getPropertyValue('--chrome-inset-top').trim()]);
@@ -124,6 +126,16 @@ const fsMove = await page.evaluate(() => {
   return out;
 });
 ok('footstrip: a value growing or shrinking moves no neighbor', fsMove.every((s) => s === fsMove[0]), JSON.stringify(fsMove));
+for (const fw of [1280, 1024]) {
+  await page.setViewportSize({ width: fw, height: 800 });
+  await page.waitForTimeout(200);
+  const fs = await page.evaluate(() => ({ out: [...document.querySelectorAll('.footstrip .fact')].filter((f) => f.getBoundingClientRect().right > innerWidth + 0.5)
+    .map((f) => f.textContent.trim().replace(/\s+/g, ' ')), scrollers: [...document.querySelectorAll('.footstrip, .footstrip *')]
+    .filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
+    rows: new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().top))).size }));
+  ok('footstrip: at ' + fw + ' every link fact is on screen, no sideways scroller', fs.out.length === 0 && fs.scrollers === 0,
+    JSON.stringify(fs));
+}
 
 // ---- phone: the page scrolls; the strip sticks, the tabs park under it --------
 await page.setViewportSize({ width: 420, height: 800 });
@@ -139,7 +151,7 @@ ok('phone scrolled: strip stays at the top', Math.abs(g.stripTop) < 1, 'top=' + 
 const stripBottom = await page.evaluate(() => document.querySelector('.topstrip').getBoundingClientRect().bottom);
 ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
    'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
-ok('phone: nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
+ok('phone: nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
 const fsCols = await page.evaluate(() => [...new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().left)))]);
 ok('phone: the link facts sit in grid columns (ph-rt1)', fsCols.length <= 4, JSON.stringify(fsCols));
 

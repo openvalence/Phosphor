@@ -14,7 +14,8 @@
  *   reason ellipsizes; the full text rides `title`.
  * - A section's title sits on the page above its card, as a category page's
  *   does (DESIGN §10.6, ph-09o): the head is lifted out of the frame by a
- *   fixed height, so it holds one line and never wraps.
+ *   fixed height, so it holds one line. On glance it stays in its card and
+ *   wraps: a watch-width head cannot hold one line unclipped.
  * - Overdue and fault read amber: red stays the hazard color (style.css).
  * - Rows and header controls meet the 40 px floor under a coarse pointer
  *   (law 12); .og-btn.sm already does.
@@ -26,15 +27,15 @@
 .pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 30px; }
 /* Lifted: 12 px padding and the 1 px frame sideways; up by its height, a
    10 px gap (clear of .og-panel's 4 px outline) and the 11 px top inset. */
-.pane-sec:has(> .pane-head:first-child) { margin-top: calc(var(--pane-head-h) + 10px); }
-.pane-sec > .pane-head:first-child {
+html:not([data-rc=glance]) .pane-sec:has(> .pane-head:first-child) { margin-top: calc(var(--pane-head-h) + 10px); }
+html:not([data-rc=glance]) .pane-sec > .pane-head:first-child {
   flex-wrap: nowrap;
   height: var(--pane-head-h);
   min-height: 0;
   margin: calc(-1 * (var(--pane-head-h) + 21px)) -13px 13px;
   white-space: nowrap;
 }
-.pane-sec > .pane-head:first-child > :is(h2, h3) { overflow: hidden; text-overflow: ellipsis; }
+html:not([data-rc=glance]) .pane-sec > .pane-head:first-child > :is(h2, h3) { overflow: hidden; text-overflow: ellipsis; }
 .pane-head h2, .pane-head h3 {
   margin: 0 auto 0 0;
   font-size: .8rem;
