@@ -16,6 +16,11 @@
 
   let { fields, hero } = $props();
   const host = $derived(hero.host);
+  // By identity: a prop read reruns an effect whenever its source object
+  // changes (a card moved or resized), and a remount drops the plugin's own
+  // state. Only a new hero or a new claim remounts.
+  const sameHero = $derived(hero);
+  const sameFields = $derived(fields);
 
   let el = $state(null);
   let inst = $state(null);
@@ -23,8 +28,8 @@
   $effect(() => {
     const node = el;
     if (!node) return;
-    const h = hero;
-    const f = fields;
+    const h = sameHero;
+    const f = sameFields;
     const mounted = untrack(() => host.mountHero(h, node, f));
     inst = mounted;
     return () => {
