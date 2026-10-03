@@ -145,7 +145,7 @@ or a seek needs no flush.
 
 `submitSegments(list)` is the lookahead door (RFC-087), segments STREAM only,
 never a fallback. The host owns every timing fact: it reads hub now (from
-the least-RTT of the session's last 4 CLOCK exchanges, SPEC §7.1) and
+the kept CLOCK exchange with the least RTT/2 plus age x 50 ppm, SPEC §7.1) and
 `performance.now()` together, converts each execution start to hub time and
 stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
 latency). A start already past the earliest executable instant is clipped

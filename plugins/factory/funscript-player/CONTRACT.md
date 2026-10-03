@@ -114,7 +114,7 @@ export function parseFunscript(input, name = '');   // input: string | object ->
   // keeps finite at >= 0 and finite pos; stable sort; duplicate at keeps the last; pos clamped 0..100, /100;
   // inverted (exactly true): pos = 1 - pos; a numeric range other than 100 is noted 'range ignored';
   // an `axes` array (multi-axis) is listed in `ignored`. Further notes: 'N invalid actions dropped',
-  // 'N long spans split'; thin() adds 'N actions thinned'.
+  // 'N long spans split', 'actions sorted'; thin() adds 'N actions thinned'.
 export function axisOf(fileName);   // -> {base: string, axis: string} | null (null when not *.funscript);
                                     // directory parts are stripped
 export function pairFiles(files);   // Array<{name, type?}> -> {video, script, extra: []}; media by MIME type,
@@ -217,10 +217,12 @@ sync measurement against valencesim (FUNSCRIPT.md, Tests).
 ### `src/model/motion.js`
 
 ```js
-export const SEG_FLOOR_MS = 10, CLOCK_KEEP = 4, CLOCK_BURST = 4;
+export const SEG_FLOOR_MS = 10, CLOCK_KEEP = 32, CLOCK_HUNT = 16, CLOCK_HUNT_GAP_MS = 250, CLOCK_DRIFT = 50e-6;
 export function latchWords(safety);   // -> 'e-stop latched' | 'paused, resume to continue' | ''
-export function filteredHubNowUs(s);  // -> hub now from the least-RTT of the session's last CLOCK_KEEP
-                                      // CLOCK exchanges; CLOCK_BURST on first use and on 'live'; a close
+export function filteredHubNowUs(s, nowMs = performance.now());
+                                      // -> hub now from the kept CLOCK exchange (last CLOCK_KEEP) with the
+                                      // least RTT/2 + age x CLOCK_DRIFT; CLOCK_HUNT at random gaps on first
+                                      // use (submitSegments' warm call) and on 'live'; a close
                                       // voids them; hubNowUs() for a session without on() or syncClock()
 // createMotionDoor(deps): call shape unchanged; deps gain optional now() (default () => performance.now())
 // and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
@@ -426,7 +428,7 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   state }      PlayerState, read-only to everyone else
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
-//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'}, view: 'player'|'library',
+//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn', notes: string[]}, view: 'player'|'library',
 //   composition: 'full'|'handheld'|'glance' }
 
 // timeline.js
@@ -454,7 +456,8 @@ or a fatal refusal pauses and sends no hold (the rail is not the player's
 to command then). The status slot reads, first that applies: a fatal
 refusal or media error, the gate, Positioning, Buffering, a transient
 refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
-past `limit.input.speed`), then the parse notes and extra axes, joined. The
+past `limit.input.speed`), then the first parse note or extra-axes note with
+` (+N more)`; `status.notes` holds them all, the slot's tooltip one per line. The
 library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
