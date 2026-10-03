@@ -178,13 +178,15 @@ if (UNIT || fails) {
 //              words, nothing is sent after; clearing it plays nothing
 //   gates      advgen.running grays Play; a second plugin reads the busy words
 //   layout     identical rects across states; 40 px targets under a coarse
-//              pointer; nothing wears --bad; copy within docs/COPY.md;
-//              glance at 220 px
+//              pointer; no control outside the card, no cut label; nothing
+//              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
-//              script with the ApiKey header
+//              script with the ApiKey header and playing
 // Live (--live): valencesim on spare ports plays 8 s: bundles, no NACK, the
 // plan strip moving, the strip's Pause pauses the video and Resume leaves it
-// paused, an Advanced start grays Play.
+// paused, a seek plays on from the new time, an Advanced start grays Play,
+// and last the strip's E-stop pauses it with nothing sent after (the spare
+// sim stays latched).
 //
 // The fake hub's clock is epoch microseconds (node's timeOrigin + now), so a
 // segment's execution start reads directly in the page's epoch ms
@@ -901,6 +903,19 @@ if (LIVE) {
   await pauseBtn.click();
   await page.waitForTimeout(1500);
   ok('live: Resume leaves it paused', await video(page, (v) => v.paused));
+  // Play again (the operator's act), then a seek on the overview: the stream re-stamps from the new time.
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
+  const nSeek = frames.bundles;
+  const ovBox = await page.locator(C + ' .fsp-ov').boundingBox();
+  await page.mouse.click(ovBox.x + ovBox.width * 0.6, ovBox.y + ovBox.height / 2);
+  await page.waitForTimeout(2500);
+  const afterSeek = await video(page, (v) => ({ t: v.currentTime, paused: v.paused, d: v.duration }));
+  ok('live: a seek re-schedules: the video plays on from the new time and bundles flow, no NACK',
+    !afterSeek.paused && afterSeek.t > afterSeek.d * 0.6 && afterSeek.t < afterSeek.d * 0.6 + 4 && frames.bundles > nSeek + 5
+      && frames.nacks.length === 0, { ...afterSeek, bundles: frames.bundles - nSeek, nacks: frames.nacks });
+  await playBtn(page).click();
+  await page.waitForTimeout(600);
   // An Advanced start (the pattern card's Start) grays Play with the generator words.
   const run = page.locator('main.pane .ap .ap-run:visible');
   const toAp = async () => { if (await run.count()) return true; return toCard(page, 'main.pane .ap'); };
@@ -918,6 +933,19 @@ if (LIVE) {
     await run.click();
     await page.waitForTimeout(500);
   } else ok('live: the pattern card renders', false);
+  // Last: the strip's E-stop latches the spare sim until its operator release, so nothing runs after it.
+  await toCard(page);
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
+  await page.locator('.topstrip .btn-estop').click();
+  const stopped = await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 1000 })
+    .then(() => true).catch(() => false);
+  ok('live: the strip E-stop pauses the video with the latch words', stopped && /e-stop|halt/i.test(await statusText(page)), await statusText(page));
+  await page.waitForTimeout(300);
+  const nEstop = frames.bundles;
+  await page.waitForTimeout(1500);
+  ok('live: after the E-stop nothing is sent, the video stays paused, Play is grayed',
+    frames.bundles === nEstop && await video(page, (v) => v.paused) && await playBtn(page).isDisabled(), frames.bundles - nEstop);
   ok('live: no page error', errors.length === 0, errors.slice(0, 3));
   if (SHOT) await page.locator(C).screenshot({ path: SHOT });
   await ctx.close();

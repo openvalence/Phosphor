@@ -301,14 +301,18 @@ law 13; the card draws its own token heat).
   pauses the video within 100 ms with the latch words and nothing is sent
   after, clearing it does not play; `advgen.running` on grays Play; a
   second plugin gets the busy words; identical rects across states; 40 px
-  targets under a coarse pointer; no computed `--bad`; runtime copy within
-  the COPY rules; glance at 220 px; Stash settings, tiles with apikey, a
-  pick fetching the script with the header.
+  targets under a coarse pointer; no control outside the card and no cut
+  label (full, glance, the Stash grid); no computed `--bad`; runtime copy
+  within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK in the
+  status slot; Stash settings, tiles with apikey, a pick fetching the
+  script with the header and playing it.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:
   plays 8 s, asserts bundles, no NACK, the plan strip moving, the strip's
-  Pause pauses the video and Resume leaves it paused, an Advanced start
-  grays Play.
+  Pause pauses the video and Resume leaves it paused, a seek on the
+  overview plays on from the new time with bundles flowing, an Advanced
+  start grays Play, and last the strip's E-stop pauses the video with the
+  latch words and nothing is sent after.
 - **The sync measurement:** `node test/funscript-sync-live.mjs --port P
   --http P+7 [--horizon 250|500|1000]`, never in `check`, skips when no sim
   answers or the hub has no segments STREAM, prints the hub_instance_id
