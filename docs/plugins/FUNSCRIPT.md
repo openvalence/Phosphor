@@ -416,6 +416,64 @@ Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
 markers, write-back (play count), Stash's heatmap PNG (its red ramp breaks
 law 13; the card draws its own token heat).
 
+## Playback (ph-smvd.12)
+
+Loop, auto-home, seek transition and latency, in `clock.js` and
+`scheduler.js`; signatures and the wiring the card owes in CONTRACT.md,
+module scheduler. MFP's behavior for each: FUNSCRIPT-MFP-NOTES.md. Prefs
+key `play`. Each choice below is veto-able.
+
+- **Loop without a gap.** MFP treats a loop as a seek (a hold, a re-anchor,
+  a 4 s chase). Here the clock runs in unrolled media time (lap L adds
+  L x (b - a)), so the map stays one line across the wrap and the scheduler
+  stamps the next lap before the video jumps. The seam is one span from the
+  last knot before b to the first after a: the rail never jumps, and that
+  span departs from the authored line (which would jump from the script at
+  b to the script at a). The video is sent back `WRAP_EARLY_MS` (one 30 fps
+  frame) before b, so a whole-media loop never reaches `ended`; the seek's
+  landing delay is a clock residual, stepped past 25 ms. A-B points are the
+  timeline's runtime state, not prefs (they belong to one video); a seek
+  past b clears them, as MFP does. Count 0 plays forever; N plays the
+  section N times, then plays on.
+- **Auto-home only while playing.** A gap of `homeAfterMs` plus both moves
+  follows the line for `homeAfterMs`, moves to the point at `homeSpeed`,
+  waits, and returns to land on the next action at its time; after the last
+  action, one move home. These are knots in the scheduler's copy of the
+  script, so they tile and ride `submitSegments` like any span; the gaps
+  are the file's actions, never the shaped pieces (interp.js). Off by
+  default (MFP: on, but never inside the script while playing): it is
+  motion nobody authored. A pause stays a hold ending at rest; homing while
+  paused would be motion the operator did not start.
+- **Seek transition.** MFP bends the output for 4 s with a per-sample
+  chase, which segments cannot carry. A seek here is one segment from now
+  to where the script will be `seekMs` later, then the script from that
+  instant: knots keep their times, the tiling holds, and the knots inside
+  the delay are passed over. 500 ms by default, 0 jumps as before. The
+  hub's input speed limit still bounds a short delay.
+- **Low latency** (off by default). RFC-087 item 3 names no 100 ms horizon:
+  a low-latency segments client stamps 50 ms ahead under the same 250 ms
+  horizon. So the setting caps the offer at `LEAD_LOW_MS` (50), narrows the
+  clock ring to 8 frames and raises the slew to 15 ms/s (a display-latency
+  change followed in about 0.9 s instead of 2.7), and lets the rAF fallback
+  take over after 100 ms without a frame. It does not move the alignment:
+  stamps are absolute, so a lookahead player's felt latency is the offset,
+  not the lead. What it costs is stall tolerance (about 105 ms down to 30)
+  and more vsync jitter in the stamps; the CPU cost is nil in a page, where
+  the rAF loop already runs every frame (MFP's precise sleep has no
+  analog).
+- **Automatic compensation** (off by default). The scheduler reads the plan
+  strip the way `test/funscript-sync-live.mjs` does (start = arrival -
+  `plan.elapsed`, the least of a plan's samples), matches each plan to the
+  sent segment of its duration, and takes the median of the last 32 start
+  minus `atMs`. It is measured against the stamp, so applying it changes
+  nothing it measures: no loop to hunt. It is applied as `T.offsetMs -
+  compMs`, by one restart, when it moves 2 ms or more, bounded to 100 ms.
+  Its known bias: the arrival includes the STATE frame's one-way transport,
+  and the 14 ms floor on the sim (Tests, what the sync bars do not cover) is not split between hub
+  lateness and observation, so it can make the machine early by that much.
+  It sits on top of the declared `schedule_latency_us` (RFC-059 forbids
+  bidding that down) and beside the operator's offset.
+
 ## Tests
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,

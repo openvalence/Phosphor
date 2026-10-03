@@ -38,9 +38,11 @@ const P = '../plugins/factory/funscript-player/';
 const CONTRACT = {
   [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
     'indexAfter', 'speedAt', 'peakSpeed', 'thin', 'heat', 'fmtTime'],
-  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'createMediaClock', 'frameSource'],
+  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'LOW', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
+    'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
-    'applyT', 'strokeSpeed', 'createScheduler'],
+    'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
+    'applyT', 'strokeSpeed', 'withHome', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
@@ -99,7 +101,8 @@ if (prefs) {
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
     stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000,
-    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 } };
+    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 },
+    play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));
