@@ -506,6 +506,20 @@ function sameChrome(a, b) {
   return { ok: diff.length === 0 && Object.keys(a).length > 4, diff: diff.map((k) => k + ' ' + a[k] + ' -> ' + b[k]) };
 }
 
+/** Controls that leave the card's box, and labels cut inside their own box. */
+const spill = (page) => page.evaluate((c) => {
+  const root = document.querySelector(c), o = root.getBoundingClientRect();
+  const shown = [...root.querySelectorAll('button, input:not([type=file]), select, output, .fsp-slot, .fsp-stage, .fsp-tlbox')]
+    .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && e.getBoundingClientRect().width > 1);
+  const name = (e) => (e.className || e.tagName) + (e.textContent ? ' "' + e.textContent.trim().slice(0, 16) + '"' : '');
+  return {
+    out: shown.map((e) => [e, e.getBoundingClientRect()])
+      .filter(([, r]) => r.left < o.left - 0.5 || r.top < o.top - 0.5 || r.right > o.right + 0.5 || r.bottom > o.bottom + 0.5)
+      .map(([e, r]) => name(e) + ' ' + [r.left - o.left, r.top - o.top, r.right - o.right, r.bottom - o.bottom].map(Math.round).join(',')),
+    cut: shown.filter((e) => e.matches('button, output') && e.scrollWidth > e.clientWidth + 1).map(name),
+  };
+}, C);
+
 /** Display epoch ms of media ms m, from the clock's own observations around m. */
 function displayAt(obs, m, rate = 1) {
   let best = null;
@@ -571,7 +585,10 @@ if (!LIVE) {
   ok('preroll: the video starts at its end', await video(page, (v) => !v.paused && v.currentTime > 0.05));
   await page.waitForTimeout(3500);
   rects.playing = await chrome(page);
-  if (SHOT) await page.locator(C).screenshot({ path: SHOT });
+  if (SHOT) {
+    await page.locator(C).screenshot({ path: SHOT });
+    await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'timeline-heat.png') });
+  }
   if (process.env.FSP_DEBUG) console.log(await page.locator(C).evaluate((e) => [e, e.parentElement, e.parentElement.parentElement, ...e.children]
     .map((x) => x.className + ' ' + JSON.stringify(x.getBoundingClientRect()) + ' ' + getComputedStyle(x).overflow)));
 
@@ -734,6 +751,9 @@ if (!LIVE) {
     }).length;
   }, C);
   ok('layout: nothing in the card wears --bad or --estop (law 13)', red === 0, red);
+  const sp = await spill(page);
+  ok('layout: every control lies inside the card', sp.out.length === 0, sp.out);
+  ok('layout: no button or readout cuts its label', sp.cut.length === 0, sp.cut);
   const texts = await page.evaluate((c) => {
     const root = document.querySelector(c);
     const out = [];
@@ -759,6 +779,8 @@ if (!LIVE) {
     play: e.querySelector('.fsp-play').getBoundingClientRect().width > 0, w: e.getBoundingClientRect().width }));
   ok('glance: at 220 px the card composes glance, meter and Play shown, the video still mounted',
     glance.comp === 'glance' && glance.video && glance.meter && glance.play, glance);
+  const gsp = await spill(page);
+  ok('glance: every control lies inside the card, no label cut', gsp.out.length === 0 && gsp.cut.length === 0, gsp);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
   ok('no page error', errors.length === 0, errors.slice(0, 3));
@@ -804,6 +826,10 @@ if (!LIVE) {
     await p3.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
     const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: 5000 }).then(() => true).catch(() => false);
     ok('stash: Save shows interactive tiles', tiles);
+    await p3.waitForTimeout(300);
+    const ssp = await spill(p3);
+    ok('stash: the grid and its pager lie inside the card, no label cut', ssp.out.length === 0 && ssp.cut.length === 0, ssp);
+    if (SHOT) { await p3.waitForTimeout(500); await p3.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'stash-grid.png') }); }
     const src = await p3.locator(C + ' .fsp-tile img').first().getAttribute('src').catch(() => '');
     ok('stash: tile screenshots are rebased and keyed with apikey', src.startsWith(stash.url) && src.includes('apikey=' + KEY), src);
     const gql = stash.seen.find((r) => r.path.startsWith('/graphql'));
@@ -814,6 +840,11 @@ if (!LIVE) {
     ok('stash: a pick fetches the script with the ApiKey header', !!fs && fs.headers.apikey === KEY, fs && fs.headers);
     const vsrc = await p3.locator(C + ' .fsp-stage video').getAttribute('src');
     ok('stash: the video streams from the rebased URL with apikey', !!vsrc && vsrc.startsWith(stash.url) && vsrc.includes('apikey=' + KEY), vsrc);
+    const n3 = h3.bundles.length;
+    await playBtn(p3).click();
+    const played3 = await video(p3, (v) => new Promise((r) => { const t0 = v.currentTime; setTimeout(() => r(!v.paused && v.currentTime > t0), 3000); }));
+    ok('stash: the picked scene plays and drives the hub', played3 && h3.bundles.length > n3 + 3, { played: played3, bundles: h3.bundles.length - n3 });
+    await playBtn(p3).click();
     ok('stash: the key never sits in the backup prefix', !(await p3.evaluate(() => Object.keys(localStorage)
       .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes('test-key-1')))));
     clearInterval(h3.timer);

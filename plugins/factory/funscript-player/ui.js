@@ -345,13 +345,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 
 // ---- the card ---------------------------------------------------------------
 
-// The stage row keeps a floor: on a category page the card has intrinsic height and a bare 1fr is 0.
+// The stage row is the only flexible row and may shrink to 0, so the fixed rows always fit the card.
+// Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px;
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--tap) minmax(240px, 1fr) 124px 20px var(--tap);
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--tap) minmax(0, 1fr) 124px 20px var(--tap);
   grid-template-areas: "src lib" "stage lib" "tl lib" "st st" "tr tr"; }
 .fsp[data-comp=handheld] { --fsp-detail: 72px; grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(160px, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
+  grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
   grid-template-areas: "src" "stage" "tl" "st" "tr"; }
 .fsp[data-comp=glance] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
@@ -367,10 +368,11 @@ export const CSS = `
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
 .fsp-tab { display: none; }
 .fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
-.fsp[data-comp=handheld] .fsp-title, .fsp[data-comp=glance] .fsp-open, .fsp[data-comp=full] .fsp-open { display: none; }
+.fsp[data-comp=handheld] .fsp-title, .fsp[data-comp=glance] .fsp-open, .fsp[data-comp=full] .fsp-lib-open { display: none; }
 .fsp[data-comp=handheld][data-view=library] .fsp-open { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-title { font-size: .75rem; line-height: 20px; }
 .fsp-stage { grid-area: stage; position: relative; min-height: 0; background: var(--bg-sunken); border-radius: var(--r-s); overflow: hidden; }
+.fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
 .fsp-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .fsp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-mut); font-size: .85rem; pointer-events: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
@@ -398,6 +400,7 @@ export const CSS = `
 .fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed, .fsp-mute, .fsp-vol) { display: none; }
 .fsp-play { grid-area: play; min-width: 72px; }
 .fsp-time { grid-area: time; font: .8rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
+.fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-motion { grid-area: motion; }
 .fsp-inv { grid-area: inv; }
 .fsp-mute { grid-area: mute; }
@@ -409,7 +412,7 @@ export const CSS = `
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--warn); }
-.fsp-vol { grid-area: vol; min-width: 0; min-height: var(--tap); }
+.fsp-vol { grid-area: vol; min-width: 0; margin: 0; }
 `;
 
 const h = (tag, attrs = {}, ...kids) => {
