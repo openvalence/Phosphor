@@ -9,7 +9,9 @@
  * are absolute (operator ruling 2026-10-02): no commit, add or remove ever
  * moves a card the user did not move. The content floor (ph-e82.25):
  * measured px to cells, the larger of static and measured, and the grow of
- * an under-floor rect that stops at a neighbor or the edge.
+ * an under-floor rect that stops at a neighbor or the edge. Rows are cells
+ * (ph-29r): growHeight is growWidth's twin, an unplaced item is packed at its
+ * measured height (`fit`), and a commit holds an add never measured.
  *
  * Run: node test/grid-model.test.mjs
  */
@@ -21,7 +23,7 @@ import {
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
   arrangePins, instanceKey, baseKey, duplicate, nudgePin, exportLayout, importLayout,
-  DENSITY, layoutOpts, setDensity, cellsFor, floorOf, growWidth,
+  DENSITY, layoutOpts, setDensity, cellsFor, floorOf, growWidth, growHeight, pack,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -540,6 +542,26 @@ console.log('floor');
   const items = [{ id: 'a' }, { id: 'b' }];
   commitPin(map, items, 40, growWidth(place(items, map, 40), 'a', 6, 40));
   ok('a grow commits like a resize: the neighbor keeps its rect', JSON.stringify(map) === '{"a":{"x":7,"y":0,"w":6,"h":2},"b":{"x":13,"y":1,"w":4,"h":1}}', JSON.stringify(map));
+
+  // Rows are cells (ph-29r): the height floor grows a card the same way.
+  ok('grows south into free cells', JSON.stringify(growHeight(at([['a', 0, 0, 8, 3]]), 'a', 5)) === '{"id":"a","x":0,"y":0,"w":8,"h":5}');
+  ok('stops at a south neighbor, then grows north',
+     JSON.stringify(growHeight(at([['a', 0, 4, 8, 3], ['b', 2, 8, 4, 2]]), 'a', 6)) === '{"id":"a","x":0,"y":2,"w":8,"h":6}');
+  ok('a neighbor under any of its columns stops it', growHeight(at([['a', 0, 0, 8, 3], ['b', 7, 3, 4, 2]]), 'a', 5) === null);
+  ok('no room: null, nothing moves; tall enough: null', growHeight(at([['t', 0, 0, 8, 2], ['a', 0, 2, 8, 3], ['u', 0, 5, 8, 2]]), 'a', 5) === null
+     && growHeight(at([['a', 0, 0, 8, 5]]), 'a', 5) === null);
+  const fit = (it, w) => ({ a: 4, b: null }[it.id] ?? null) && (w === 40 ? 4 : 9);
+  const packed = pack([{ id: 'a' }, { id: 'b' }], {}, 40, [], fit);
+  ok('an unplaced item is packed at its measured height; an unmeasured one at the default',
+     JSON.stringify(packed.map((p) => [p.id, p.y, p.h])) === '[["a",0,4],["b",4,1]]', JSON.stringify(packed));
+  ok('a module hundreds of rows tall is drawn whole (12 px cells at 2x)', pack([{ id: 'a' }], {}, 40, [], () => 400)[0].h === 400);
+  ok('a stored height above the measured one stands', pack([{ id: 'a' }], { a: { h: 6 } }, 40, [], fit)[0].h === 6);
+  ok('the fit sees the entry\'s look', pack([{ id: 'a' }], { a: { look: { pres: 'knob' } } }, 40, [],
+     (it) => (it.look && it.look.pres === 'knob' ? 7 : 1))[0].h === 7);
+  const held = { a: { x: 0, y: 0, w: 8, h: 3 } };
+  const ids = commitPin(held, [{ id: 'a' }, { id: 'n' }, { id: 'm' }], 40, null, (it) => (it.id === 'm' ? 2 : it.id === 'a' ? 3 : null));
+  ok('a commit holds an add never measured (entered, no rect), writes a measured one', JSON.stringify(ids) === '["n"]' && JSON.stringify(held.n) === '{}'
+     && JSON.stringify(held.m) === '{"x":0,"y":4,"w":40,"h":2}' && JSON.stringify(held.a) === '{"x":0,"y":0,"w":8,"h":3}', JSON.stringify(held));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- grid model holds.'));

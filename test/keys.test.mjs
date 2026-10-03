@@ -74,7 +74,7 @@ const PROBES = {
   'Grid|Shift+drag, Ctrl+drag': /add: e\.shiftKey \|\| e\.ctrlKey/,
   'Grid|Arrows|Card handle': /function onGrabKeyDown[\s\S]*ArrowLeft/,
   'Grid|Shift+Arrows': /if \(e\.shiftKey\) onkeyresize/,
-  'Grid|Enter': /key === 'Enter'.*onkeylook/,
+  'Grid|Enter': /key === 'Enter'.*keyLook\(\)/,
   'Grid|Delete, Backspace': /key === 'Delete' \|\| key === 'Backspace'/,
   'Grid|Shift+click, Ctrl+click': /onselect\(e\.shiftKey \|\| e\.ctrlKey/,
   'Grid|Arrows|Resize handle': /function onResizeKeyDown/,

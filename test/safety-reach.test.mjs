@@ -281,6 +281,8 @@ for (const catalog of ['none', 'hero']) {
 for (const catalog of ['none', 'hero']) {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
   await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  // The palette overlays the grid's top right (ph-wia): put it away to reach the cards under it.
+  await page.locator('.home .dash-toolbar .palette-toggle').click();
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
     await page.locator('.home .home-remove').first().click();
   }

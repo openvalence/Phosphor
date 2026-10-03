@@ -593,6 +593,7 @@ if (LIVE) {
     ok('keys: shift+arrow nudges ten steps, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 10, kv);
 
     // ---- rhythm: In speed's staircase
+    const apEl = await page.locator('main.pane .ap').first().elementHandle();
     await page.click('main.pane .ap .ap-mtabs button:has-text("In speed")');
     const AMT = settingOf('pattern-adv-mod-speedin', 'amount');
     const RISE = settingOf('pattern-adv-mod-speedin', 'in_step');
@@ -601,6 +602,8 @@ if (LIVE) {
     const aw = (await dragBy(page, amp, 0, 50)).filter((i) => i.ch === AMT.ch && AMT.key in i.val);
     ok('rhythm: the amp fader writes amount', aw.length === 1 && aw[0].val[AMT.key] > 0, aw[0] && aw[0].val);
     await page.waitForTimeout(200);
+    // The tab's taller content regrows the card; the plugin keeps its element and state (PluginSlot).
+    ok('rhythm: the card regrowing never remounts the plugin', await apEl.evaluate((el) => el.isConnected));
     ok('rhythm: the staircase follows the echoed amount', (await page.locator('main.pane .ap .ap-stair path.curve').getAttribute('d')) !== flat
       && /^amp \d/.test(await tagOf(amp)));
     const rsent = await dragBy(page, handle(page, 'rise'), 120, 0);

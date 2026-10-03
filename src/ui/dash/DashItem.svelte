@@ -1,3 +1,25 @@
+<script module>
+  import { statusOf, STATUS } from '../../model/shadow.svelte.js';
+  import { WIDGET } from '../../model/settings.js';
+
+  let seq = 0;
+  const partsOf = (f) => (f.widget === WIDGET.range ? [f.lo, f.hi] : f.widget === WIDGET.color ? [f.r, f.g, f.b] : [f]);
+  /**
+   * Controls among `fields` with a write in flight, and whether any is
+   * overdue: pending and overdue count, a refused write never does (ph-sbu).
+   * Planned: shadow.svelte.js inFlight (fix/fields) replaces this twin.
+   */
+  export function inFlight(fields) {
+    let n = 0, overdue = false;
+    for (const f of fields) {
+      const st = partsOf(f).map(statusOf);
+      if (st.some((s) => s === STATUS.pending || s === STATUS.overdue)) n++;
+      if (st.includes(STATUS.overdue)) overdue = true;
+    }
+    return { n, overdue };
+  }
+</script>
+
 <script>
   /**
    * DashItem.svelte -- one dashboard widget's frame: a header with a grab
@@ -24,9 +46,15 @@
    *
    * Both handles report raw client positions; DashGrid alone maps them to
    * cells, because only it knows the grid's tracks.
+   *
+   * Edit mode changes no geometry (ph-wia): the head is one fixed height in
+   * both modes, its edit tools sit out of flow at its right end (the title
+   * never moves, only yields), a bare card's head overlays its body, and the
+   * resize handle overlays the corner. A look popover in the body
+   * (`[data-look] [popover]`, LookEditor) opens from the head's look tool or
+   * Enter on the grip, anchored to this card (`--card`).
    */
   import { untrack } from 'svelte';
-  import { statusOf, STATUS } from '../../model/shadow.svelte.js';
 
   let {
     item,
@@ -49,7 +77,7 @@
     onkeyresize,
     onkeylook = null,
     onkeydelete = null,
-    // Set on a nest member: edit mode offers "Out" (back to the top level).
+    // Set on a nest member: edit mode offers Out (back to the top level).
     onremove = null,
     // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
     selected = false,
@@ -58,41 +86,56 @@
     clip = false,
   } = $props();
 
+  const anchor = '--dash-card-' + ++seq;
   // A self-labeled control (item.selfLabeled: it names itself, as a field or a
-  // safety op does) may hide the card label (look.label false). The head stays
-  // in edit mode, so the card can still be grabbed and the label brought back.
-  const bare = $derived(!!item.selfLabeled && !!item.look && item.look.label === false);
+  // safety op does) is bare by default (ph-w4r): its card label shows only
+  // when the look opts in (look.label true).
+  const bare = $derived(!!item.selfLabeled && !(item.look && item.look.label === true));
   // Writes in flight among the card's fields (`fields`, else `group.fields`), as a nest's bar counts its members (law 5).
-  const busy = $derived((item.fields || (item.group && item.group.fields) || []).filter((f) => statusOf(f) !== STATUS.confirmed).length);
+  const busy = $derived(inFlight(item.fields || (item.group && item.group.fields) || []));
 
-  // ---- application region: a still preview until opened --------------------
+  // ---- application region and look popover, found in the body ---------------
   let itemEl;
   let bodyEl;
   let app = $state(null);
-  let open = $state(false);
+  let look = $state(null);
   $effect(() => {
-    // untrack (T23): the read of `app` inside find() must not subscribe this effect.
+    const own = (sel) => [...bodyEl.querySelectorAll(sel)].find((e) => e.closest('.dash-item') === itemEl) || null;
+    // untrack (T23): the reads of `app` and `look` inside find() must not subscribe this effect.
     const find = () => untrack(() => {
-      const el = [...bodyEl.querySelectorAll('[role=application]')].find((e) => e.closest('.dash-item') === itemEl) || null;
-      if (el !== app) app = el;
+      const a = own('[role=application]'), l = own('[data-look] [popover]');
+      if (a !== app) app = a;
+      if (l !== look) look = l;
     });
     find();
     const mo = new MutationObserver(find);
     mo.observe(bodyEl, { childList: true, subtree: true });
     return () => mo.disconnect();
   });
+  let open = $state(false);
   $effect(() => { if (app) app.inert = !open; });
   const closeOnEscape = (e) => { if (open && e.key === 'Escape' && !e.defaultPrevented) open = false; };
+  // Tools in the head's right end, the grip last: the title yields this much.
+  const tools = $derived((look ? 1 : 0) + (item.selfLabeled && item.setLook ? 1 : 0) + (onremove ? 1 : 0));
   function toggleLabel() {
     const { label, ...rest } = item.look || {};
-    item.setLook(bare ? rest : { ...rest, label: false });
+    item.setLook(bare ? { ...rest, label: true } : rest);
+  }
+  /** Enter on the grip: the look popover with its first choice focused, else DashGrid says there is none. */
+  function keyLook() {
+    if (!look) { onkeylook && onkeylook(); return; }
+    look.showPopover();
+    const s = look.querySelector('select, input');
+    if (!s) return;
+    s.focus();
+    try { if (s.tagName === 'SELECT') s.showPicker(); } catch (e) { /* focused is enough where showPicker is missing */ }
   }
 
   // ---- grab handle: drag to reorder --------------------------------------
   function onGrabPointerDown(e) {
     if (e.button !== undefined && e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    ongrabstart && ongrabstart();
+    ongrabstart && ongrabstart(e.clientX, e.clientY);
   }
   function onGrabPointerMove(e) {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
@@ -106,8 +149,8 @@
   }
   function onGrabKeyDown(e) {
     const key = e.key;
-    // Enter would also click (select); it opens the look picker instead.
-    if (key === 'Enter') { e.preventDefault(); onkeylook && onkeylook(); return; }
+    // Enter would also click (select); it opens the look popover instead.
+    if (key === 'Enter') { e.preventDefault(); keyLook(); return; }
     if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); onkeydelete && onkeydelete(); return; }
     if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown') return;
     e.preventDefault();
@@ -148,59 +191,74 @@
 
 <svelte:window onkeydown={closeOnEscape} />
 
-<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip bind:this={itemEl}>
+<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip bind:this={itemEl}
+     style={'anchor-name:' + anchor + ';--card:' + anchor + ';--tools:' + tools}>
   {#if editing || !bare}
-  <div class="dash-head card-head">
-    <!-- Handles are edit-mode-only: the reading surface stays quiet and a
-         card's own controls never compete with layout chrome. -->
-    {#if editing}
-      <button type="button" class="handle grab"
-              aria-label={'Move ' + item.title}
-              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowRight Shift+ArrowDown Enter Delete"
-              title="Drag to move, click to select"
-              aria-pressed={selected}
-              onclick={(e) => onselect && onselect(e.shiftKey || e.ctrlKey || e.metaKey)}
-              onpointerdown={onGrabPointerDown}
-              onpointermove={onGrabPointerMove}
-              onpointerup={onGrabPointerUp}
-              onpointercancel={onGrabPointerUp}
-              onlostpointercapture={() => ongrabend && ongrabend()}
-              onkeydown={onGrabKeyDown}>
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <circle cx="4" cy="4" r="1.3" /><circle cx="10" cy="4" r="1.3" />
-          <circle cx="4" cy="8" r="1.3" /><circle cx="10" cy="8" r="1.3" />
-          <circle cx="4" cy="12" r="1.3" /><circle cx="10" cy="12" r="1.3" />
-        </svg>
-      </button>
-    {/if}
-    {#if editing && item.retitle}
-      <input class="dash-title dash-title-edit" type="text" value={item.title} aria-label={'Name of ' + item.title}
-             onchange={(e) => (e.currentTarget.value.trim() ? item.retitle(e.currentTarget.value) : (e.currentTarget.value = item.title))}
-             onkeydown={(e) => {
-               if (e.key === 'Enter') e.currentTarget.blur();
-               else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
-             }} />
-    {:else}
-      <!-- The title attribute is the full form of a title cut by its ellipsis;
-           the count follows the title and the title yields to it. -->
-      <div class="dash-name">
-        <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
-        {#if busy}<span class="dash-busy" data-shadow="pending">{busy} in flight</span>{/if}
-      </div>
-    {/if}
-    {#if editing && item.selfLabeled && item.setLook}
-      <button type="button" class="og-btn sm label-btn" aria-pressed={!bare}
-              aria-label={(bare ? 'Show' : 'Hide') + ' label of ' + item.title}
-              title={bare ? 'Hidden outside edit mode' : 'Hide label (control names itself)'}
-              onclick={toggleLabel}>Label</button>
-    {/if}
-    {#if editing && onremove}
-      <button type="button" class="og-btn sm out" aria-label={'Move ' + item.title + ' out of the nest'}
-              onclick={onremove}>Out</button>
+  <div class="dash-head card-head" class:over={bare}>
+    {#if !bare}
+      {#if editing && item.retitle}
+        <input class="dash-title dash-title-edit" type="text" value={item.title} aria-label={'Name of ' + item.title}
+               onchange={(e) => (e.currentTarget.value.trim() ? item.retitle(e.currentTarget.value) : (e.currentTarget.value = item.title))}
+               onkeydown={(e) => {
+                 if (e.key === 'Enter') e.currentTarget.blur();
+                 else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
+               }} />
+      {:else}
+        <!-- The title attribute is the full form of a title cut by its ellipsis;
+             the count follows the title and the title yields to it. -->
+        <div class="dash-name">
+          <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
+          {#if busy.n}<span class="dash-busy" class:overdue={busy.overdue}>{busy.n} in flight</span>{/if}
+        </div>
+      {/if}
     {/if}
     {#if app}
       <button type="button" class="og-btn sm dash-open" aria-expanded={open} title={open ? 'Back to the grid (Esc)' : 'Open full size'}
               onclick={() => (open = !open)}>{open ? 'Close' : 'Open'}</button>
+    {/if}
+    <!-- Tools are edit-mode-only: the reading surface stays quiet and a
+         card's own controls never compete with layout chrome. -->
+    {#if editing}
+      <div class="tools">
+        {#if look}
+          <button type="button" class="ico look-btn" popovertarget={look.id} aria-label={'Look of ' + item.title} title="Look">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M2 4h12M2 8h12M2 12h12" /><circle cx="5" cy="4" r="1.7" /><circle cx="11" cy="8" r="1.7" /><circle cx="7" cy="12" r="1.7" />
+            </svg>
+          </button>
+        {/if}
+        {#if item.selfLabeled && item.setLook}
+          <button type="button" class="ico label-btn" aria-pressed={!bare}
+                  aria-label={(bare ? 'Show' : 'Hide') + ' label of ' + item.title}
+                  title={bare ? 'Show label' : 'Hide label'} onclick={toggleLabel}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 3.5h10M8 3.5V13" /></svg>
+          </button>
+        {/if}
+        {#if onremove}
+          <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} title="Out of the nest"
+                  onclick={onremove}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M12 10v3.5H2.5V4H6" /></svg>
+          </button>
+        {/if}
+        <button type="button" class="handle grab"
+                aria-label={'Move ' + item.title}
+                aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowRight Shift+ArrowDown Enter Delete"
+                title="Drag to move, click to select"
+                aria-pressed={selected}
+                onclick={(e) => onselect && onselect(e.shiftKey || e.ctrlKey || e.metaKey)}
+                onpointerdown={onGrabPointerDown}
+                onpointermove={onGrabPointerMove}
+                onpointerup={onGrabPointerUp}
+                onpointercancel={onGrabPointerUp}
+                onlostpointercapture={() => ongrabend && ongrabend()}
+                onkeydown={onGrabKeyDown}>
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="5" cy="4" r="1.3" /><circle cx="11" cy="4" r="1.3" />
+            <circle cx="5" cy="8" r="1.3" /><circle cx="11" cy="8" r="1.3" />
+            <circle cx="5" cy="12" r="1.3" /><circle cx="11" cy="12" r="1.3" />
+          </svg>
+        </button>
+      </div>
     {/if}
   </div>
   {/if}
@@ -250,7 +308,17 @@
     flex-direction: column;
     height: 100%;
     min-width: 0;
+    /* The head's height and its tools: --ico an icon tool, --handle the grip
+       and the resize handle, at least 40 CSS px at every scale (law 12).
+       The title yields the tools' glyphs (--tools-w; the grip's transparent
+       hit box may lie over its tail), a control the tools' whole boxes. */
+    --head-h: 20px;
+    --ico: 22px;
+    --handle: max(40px, var(--tap));
+    --tools-w: calc(var(--tools) * (var(--ico) + 2px) + 30px);
+    --tools-box: calc(var(--tools) * (var(--ico) + 2px) + var(--handle) - 4px);
   }
+  @media (pointer: coarse) { .dash-item { --ico: 40px; } }
   /* Opened: the whole window below the top strip, which stays on top (law 1). */
   .dash-item.open {
     position: fixed;
@@ -277,7 +345,7 @@
     min-height: 0;
   }
   .dash-open { margin-left: auto; }
-  .out + .dash-open, .label-btn + .dash-open { margin-left: 0; }
+  .editing .dash-open { margin-right: var(--tools-box); }
   .dash-item.dragging {
     /* intent purple already means "commanded, not yet settled" everywhere
        else in this instrument -- a card mid-move is exactly that. Lifted by a
@@ -287,31 +355,48 @@
     opacity: 0.92;
   }
 
-  .dash-item.selected { outline: 2px solid var(--intent); }
-  /* An item with `retitle` (a nest) names itself in place, in edit mode. */
+  /* Selection is highlight; intent means commanded (THEMES). */
+  .dash-item.selected { outline: 2px solid var(--highlight); }
+  /* An item with `retitle` (a nest) names itself in place, in edit mode, at
+     the head's height (the coarse target reaches past it). */
   .dash-title-edit {
     flex: 1 1 auto;
     width: 0;
-    min-height: 30px;
-    padding: 2px 6px;
+    height: var(--head-h);
+    padding: 0 6px;
     border: 1px dashed var(--line-3);
     border-radius: var(--radius);
     background: transparent;
     font: inherit;
   }
-  @media (pointer: coarse) { .dash-title-edit { min-height: 40px; } }
+  @media (pointer: coarse) { .dash-title-edit { height: 40px; margin-block: calc((var(--head-h) - 40px) / 2); } }
 
+  /* One height in both modes; the tools never widen it (out of flow), and
+     the title's zero width keeps the head out of the card's content floor. */
   .dash-head {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
+    height: var(--head-h);
     padding: 0 0 4px;
     min-width: 0;
   }
+  /* A bare card has no head outside edit mode; in it the tools overlay the
+     card's top border, so the card measures as it runs and the body's own
+     top row stays clear. */
+  .dash-head.over {
+    position: absolute;
+    z-index: 2;
+    top: calc(var(--head-h) / -2);
+    left: 0;
+    right: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+  .dash-head.over .tools { pointer-events: auto; }
+  .editing .dash-name, .editing .dash-title-edit { max-width: calc(100% - var(--tools-w)); }
   .dash-item { outline-offset: 2px; }
-  .bare .dash-title { opacity: .5; }
-  .label-btn { margin-left: auto; }
-  .label-btn + .out { margin-left: 0; }
   .dash-title {
     font-family: var(--font);
     font-size: var(--dash-title-size, .8rem);
@@ -336,12 +421,14 @@
     gap: 6px;
     overflow: hidden;
   }
+  /* Words and color only: the ring box is the controls' language (ph-sbu). */
   .dash-busy {
     flex: none;
     font-size: .7rem;
     white-space: nowrap;
     color: var(--intent);
   }
+  .dash-busy.overdue { color: var(--warn); }
   /* Runtime index, not a CSS counter: mirrors the OG's renumberPanels() --
      a counter renumbers by DOM order and breaks across hidden/filtered
      panes, so DashGrid computes the 1-based position and stamps it here. */
@@ -372,35 +459,51 @@
     min-width: 0;
   }
   /* Clip, never scroll: content past the frame stays inside it. The margin
-     keeps the grab handle's -4px overhang. */
+     keeps the grip's overhang. */
   .clip > .dash-body { overflow: clip; }
-  .clip > .dash-head { overflow: clip; overflow-clip-margin: 4px; }
-  /* The resize handle sits over the body's bottom-right corner: reserve its
-     height so it never covers a short module's own Remove or control. */
-  .editing .dash-body { padding-bottom: var(--handle); }
-  .out { margin-left: auto; }
+  /* Edit mode clips a card at its frame too: a host's in-body chrome that
+     squeezes the control (Home's Remove) never spills onto a neighbor. The
+     margin is the cell gutter: a control's hit extension past the body's
+     edge still reaches, as it does running. */
+  .editing > .dash-body.surface-card { overflow: clip; overflow-clip-margin: var(--dash-cell-pad, 7px); }
+  .clip > .dash-head { overflow: clip; overflow-clip-margin: 10px; }
 
-  /* ---- handles ----
+  /* ---- tools and handles ----
      Near-invisible until hover/focus -- the frame should read as quiet
-     instrument chassis, not a toy with visible chrome everywhere. Both are
-     at least 40 CSS px (law 12) at every scale step, however small the glyph
-     or a scaled-down --tap. */
-  .dash-item { --handle: max(40px, var(--tap)); }
-  .handle {
+     instrument chassis, not a toy with visible chrome everywhere. The grip
+     and the resize handle are at least 40 CSS px (law 12) at every scale
+     step, however small the glyph or a scaled-down --tap; an icon tool is
+     40 px under a coarse pointer. Out of flow at the head's right end,
+     wrapping downward on a card narrower than they are. */
+  .tools {
+    position: absolute;
+    top: calc(var(--head-h) / 2);
+    right: -4px;
+    transform: translateY(-50%);
+    max-width: calc(100% + 4px);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 2px;
+  }
+  .handle, .ico {
     display: grid;
     place-items: center;
+    padding: 0;
     color: var(--ink-faint);
     border-radius: var(--radius);
-    touch-action: none;
     -webkit-user-select: none;
     user-select: none;
   }
-  .handle:hover,
-  .handle:focus-visible {
+  .handle { touch-action: none; }
+  .ico { width: var(--ico); height: var(--ico); }
+  .handle:hover, .handle:focus-visible, .ico:hover, .ico:focus-visible {
     color: var(--ink);
     background: var(--line-soft);
   }
-  .handle svg {
+  .ico[aria-pressed='true'] { color: var(--ink-hi); }
+  .handle svg, .ico svg {
     width: 14px;
     height: 14px;
     fill: currentColor;
@@ -408,13 +511,12 @@
     stroke-width: 1.4;
     stroke-linecap: round;
   }
+  .ico svg path { fill: none; }
 
   .handle.grab {
     flex: 0 0 auto;
     width: var(--handle);
     height: var(--handle);
-    padding: 0;
-    margin: -4px 0 -4px -4px;
     cursor: grab;
   }
   .handle.grab:active { cursor: grabbing; }
@@ -425,7 +527,6 @@
     bottom: 0;
     width: var(--handle);
     height: var(--handle);
-    padding: 0;
     background: transparent;
     cursor: nwse-resize;
   }

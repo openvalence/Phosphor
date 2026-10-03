@@ -40,6 +40,14 @@
  *            (saved, no undo step); pointer and keyboard stop at the floor;
  *            nothing spills past the frame; a card with no room keeps its
  *            rect and clips; titles stay one line (ph-e82.25)
+ *   modes    edit mode draws what runs (ph-wia): the grid origin and every
+ *            card rect are the same in both modes, the palette and an open
+ *            look popover take no room; a self-labeled card is bare until
+ *            its label is shown (ph-w4r); edit tools are icon-sized and a
+ *            title keeps its room (ph-fhx); a selection is outlined in
+ *            --highlight (ph-9lu); a refused look part reads in --warn on
+ *            the input it names (ph-5rt); the palette's strip tag is muted,
+ *            never red (ph-r2m)
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Build first (`npm run build:only`). Run: node test/builder-edit.test.mjs
@@ -98,8 +106,8 @@ const PORT = srv.address().port;
 const browser = await chromium.launch();
 const pageErrors = [];
 
-/** The home, built from `home` ({[key]: {x, y, w, h}}), in edit mode. */
-async function open(home, { w = 1280, h = 1000, store = null } = {}) {
+/** The home, built from `home` ({[key]: {x, y, w, h}}), in edit mode unless `edit` is false. */
+async function open(home, { w = 1280, h = 1000, store = null, edit = true } = {}) {
   const st = store || { active: 'Default', modules: {}, layouts: { Default: { 'full.machine': { ...home, 'home:built': { x: 0, y: 40, w: 1, h: 1 } } } } };
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await ctx.addInitScript(([etag, hex, k, v]) => {
@@ -116,8 +124,12 @@ async function open(home, { w = 1280, h = 1000, store = null } = {}) {
   await page.goto('http://127.0.0.1:' + PORT + '/');
   await page.waitForSelector('.home .dash-grid', { timeout: 15000 });
   await page.waitForTimeout(300);
-  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
-  await page.waitForTimeout(150);
+  if (edit) {
+    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    // The palette overlays the grid's top right (ph-wia); these cases edit the grid alone.
+    await page.locator('.dash-toolbar .palette-toggle').click();
+    await page.waitForTimeout(150);
+  }
   const grid = page.locator('.home > .dash-wrap > .dash-grid');
   const cell = await grid.evaluate((el) => parseFloat(el.style.getPropertyValue('--cell')));
   const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)).layouts.Default['full.machine'], STORE_KEY);
@@ -147,23 +159,26 @@ console.log('resize');
 {
   const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 }, [F1]: { x: 20, y: 0, w: 8, h: 2 } });
   const c = card(SLIDER);
+  // Rows are cells (ph-29r): a card shorter than its content grew on load; these are the rects it runs at.
+  const h0 = (await stored())[SLIDER].h, f1 = JSON.stringify((await stored())[F1]);
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
   const g1 = await drag(page, c.locator('.edge-w'), -2 * cell, 0, () => ghost(page));
-  ok('west edge: the ghost shows the live size', g1 && g1.text === '14 × 3' && !g1.refused, g1);
+  ok('west edge: the ghost shows the live size', g1 && g1.text === '14 × ' + h0 && !g1.refused, g1);
   let s = (await stored())[SLIDER];
   ok('west edge: the left edge moves, the right holds', s.x === 2 && s.w === 14, s);
   await drag(page, c.locator('.edge-e'), 3 * cell, 0);
   s = (await stored())[SLIDER];
-  ok('east edge: only the width grows', s.x === 2 && s.w === 17 && s.h === 3, s);
+  ok('east edge: only the width grows', s.x === 2 && s.w === 17 && s.h === h0, s);
   const g2 = await drag(page, c.locator('.edge-e'), -15 * cell, 0, () => ghost(page));
   // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
-  const mw = g2 && Number((/^(\d+) × 3 · minimum$/.exec(g2.text) || [])[1]);
+  const mw = g2 && Number((new RegExp('^(\\d+) × ' + h0 + ' · minimum$').exec(g2.text) || [])[1]);
   ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0], g2);
   ok('the refusal is announced', /its minimum$/.test(await said()), await said());
   s = (await stored())[SLIDER];
   ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
-  const g3 = await drag(page, c.locator('.handle.resize'), -(mw - 2) * cell, 6 * cell, () => ghost(page));
+  // Tall enough that the vertical layout's own measured width still leaves it taller than wide.
+  const g3 = await drag(page, c.locator('.handle.resize'), -(mw - 2) * cell, 12 * cell, () => ghost(page));
   ok('a corner drag past square flips the orientation, shown on the ghost', g3 && / · vertical$/.test(g3.text), g3);
   ok('the flip is announced', /now vertical/.test(await said()), await said());
   s = (await stored())[SLIDER];
@@ -173,7 +188,7 @@ console.log('resize');
   s = await stored();
   ok('a resize stops at a neighbor and says so', s[SLIDER].x + s[SLIDER].w <= 20 && s[SLIDER].w > 2 && /blocked by/.test(await said()),
      [s[SLIDER], await said()]);
-  ok('the neighbor never moves', JSON.stringify(s[F1]) === '{"x":20,"y":0,"w":8,"h":2}', s[F1]);
+  ok('the neighbor never moves', JSON.stringify(s[F1]) === f1, [s[F1], f1]);
   await ctx.close();
 }
 
@@ -189,20 +204,21 @@ console.log('drag');
     .map((el) => [el.dataset.id, (el.style.gridColumn + ' / ' + el.style.gridRow).replace(/\s+/g, ' ')])));
   const siblingsMoved = (a, b, except) => Object.keys(a).filter((k) => k !== except && k in b && a[k] !== b[k]);
   const before = await areas();
-  const during = await drag(page, card(F1).locator('.handle.grab'), 10 * cell, 3 * cell, async () => ({
+  // Straight down into free rows: the grip sits at the card's right end, so a
+  // move right would carry the pointer over the nest.
+  const during = await drag(page, card(F1).locator('.handle.grab'), 0, 6 * cell, async () => ({
     all: await areas(),
     lifted: await card(F1).locator('.dash-item').evaluate((el) => { const cs = getComputedStyle(el); return el.classList.contains('dragging') && cs.boxShadow !== 'none' && cs.transform !== 'none'; }),
-    sibling: await area(F2),
     ghost: await page.$eval('.home .drop-ghost', (g) => g.style.gridColumn + ' / ' + g.style.gridRow),
     card: await area(F1),
   }));
   ok('the dragged card lifts with a shadow', during.lifted, during);
-  ok('no sibling moves while dragging', siblingsMoved(before, during.all, F1).length === 0 && /^1 \/ span 10 \/ 3 \/ span 2$/.test(during.sibling.replace(/\s+/g, ' ')),
-     [during.sibling, siblingsMoved(before, during.all, F1)]);
+  ok('no sibling moves while dragging', siblingsMoved(before, during.all, F1).length === 0, siblingsMoved(before, during.all, F1));
   ok('no sibling moves after the drop', siblingsMoved(before, await areas(), F1).length === 0, siblingsMoved(before, await areas(), F1));
   ok('the ghost is the cell rect the release commits', during.ghost === during.card, during);
   const s = await stored();
   ok('the release commits what the ghost showed', during.card.replace(/\s+/g, ' ').startsWith((s[F1].x + 1) + ' / span 10 / ' + (s[F1].y + 1)), JSON.stringify(s[F1]));
+  ok('the card moved by the pointer\'s cells: the grabbed cell stays under it (ph-29r)', s[F1].x === 0 && s[F1].y === 6, JSON.stringify(s[F1]));
 
   const nestBody = card('nest:1').locator('.nest-body');
   const nb = await nestBody.boundingBox();
@@ -214,9 +230,11 @@ console.log('drag');
      && /into Pump/.test(await said()), await said());
 
   const m = card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"] .handle.grab');
-  const mb = await m.boundingBox();
+  // The member's cells sit under the top grid's columns (ph-nnl), so moving
+  // its cell's left edge onto column 2 moves its grabbed cell with it.
+  const mc = await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').boundingBox();
   const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
-  const out = await drag(page, m, gb.x + 2.5 * cell - (mb.x + mb.width / 2), 0,
+  const out = await drag(page, m, gb.x + 2 * cell - mc.x, 0,
     () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
   ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 6/.test(out.replace(/\s+/g, ' ')), out);
   const after = await stored();
@@ -237,11 +255,12 @@ console.log('select');
     [F1]: { x: 0, y: 0, w: 8, h: 2 }, [F2]: { x: 10, y: 0, w: 8, h: 2 }, [F3]: { x: 0, y: 2, w: 8, h: 2 },
     'nest:1': { x: 20, y: 0, w: 12, h: 4, nest: { title: 'Pump', scroll: false, map: { [SLIDER]: { x: 0, y: 0, w: 8, h: 2 } } } },
   });
-  const grip = (key) => card(key).locator(':scope > .dash-item > .dash-head > .handle.grab');
+  const grip = (key) => card(key).locator(':scope > .dash-item > .dash-head .handle.grab');
   const pressed = async () => (await page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => els
-    .filter((c) => c.querySelector(':scope > .dash-item > .dash-head > .handle.grab')?.getAttribute('aria-pressed') === 'true')
+    .filter((c) => c.querySelector(':scope > .dash-item > .dash-head .handle.grab')?.getAttribute('aria-pressed') === 'true')
     .map((c) => c.dataset.id))).sort();
-  const selbar = () => page.locator('.home > .dash-wrap > .dash-selbar');
+  // The selection takes the toolbar's status slot in place (ph-wia).
+  const selbar = () => page.locator('.home > .dash-wrap > .dash-toolbar .dash-selbar');
   await grip(F1).click();
   await grip(F2).click({ modifiers: ['Shift'] });
   ok('a grip click selects, Shift+click adds', JSON.stringify(await pressed()) === JSON.stringify([F1, F2].sort())
@@ -483,9 +502,12 @@ console.log('density');
   } };
   const { ctx, page, said, card } = await open(null, { store });
   const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
-  const metrics = () => card(SLIDER).evaluate((c) => ({ pad: parseFloat(getComputedStyle(c).paddingTop),
-    title: parseFloat(getComputedStyle(c.querySelector('.dash-title')).fontSize),
-    handle: Math.min(...[...c.querySelectorAll('.handle')].map((h) => Math.min(h.getBoundingClientRect().width, h.getBoundingClientRect().height))) }));
+  // The slider card is bare (ph-w4r): the card label is measured on the titled pattern card.
+  const metrics = () => page.evaluate(([a, b]) => {
+    const c = document.querySelector('.dash-cell[data-id="' + a + '"]'), t = document.querySelector('.dash-cell[data-id="' + b + '"] .dash-title');
+    return { pad: parseFloat(getComputedStyle(c).paddingTop), title: t && parseFloat(getComputedStyle(t).fontSize),
+      handle: Math.min(...[...c.querySelectorAll('.handle')].map((h) => Math.min(h.getBoundingClientRect().width, h.getBoundingClientRect().height))) };
+  }, [SLIDER, 'hero:pattern']);
   const roomy = await metrics();
   await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
   await page.locator('.dash-menu label.density').click();
@@ -502,21 +524,26 @@ console.log('density');
   await page.locator('.home .dash-toolbar select[aria-label="Layout"]').selectOption('Default');
   await page.waitForTimeout(150);
 
-  ok('only a self-labeled card offers to hide its label', await card(SLIDER).locator('.label-btn').count() === 1
+  ok('only a self-labeled card offers its label', await card(SLIDER).locator('.label-btn').count() === 1
      && await card('hero:pattern').locator('.label-btn').count() === 0);
+  ok('a self-labeled card is bare by default (ph-w4r)', await card(SLIDER).locator('.label-btn').getAttribute('aria-pressed') === 'false'
+     && !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
+  ok('in edit mode a bare card can still be grabbed', await card(SLIDER).locator('.handle.grab').count() === 1);
   await card(SLIDER).locator('.label-btn').click();
   await page.waitForTimeout(100);
-  ok('hiding is stored on the placement look', (await all()).layouts.Default['full.machine'][SLIDER].look?.label === false
-     && await card(SLIDER).locator('.label-btn').getAttribute('aria-pressed') === 'false');
-  ok('in edit mode the head stays, so the card can still be grabbed', await card(SLIDER).locator('.handle.grab').count() === 1);
+  ok('showing the label is stored on the placement look', (await all()).layouts.Default['full.machine'][SLIDER].look?.label === true
+     && await card(SLIDER).locator('.label-btn').getAttribute('aria-pressed') === 'true');
   await page.locator('.home .dash-toolbar .done-btn').click();
   await page.waitForTimeout(100);
-  ok('outside edit mode the card label is gone and the field still names itself',
-     await card(SLIDER).locator('.dash-head').count() === 0 && await card(SLIDER).locator('.field-label').count() === 1);
+  ok('outside edit mode a shown label heads the card', await card(SLIDER).locator('.dash-head .dash-title').count() === 1);
   await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
   await card(SLIDER).locator('.label-btn').click();
   await page.waitForTimeout(100);
-  ok('showing it again clears the option', !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
+  ok('hiding it again clears the option', !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
+  await page.locator('.home .dash-toolbar .done-btn').click();
+  await page.waitForTimeout(100);
+  ok('outside edit mode a bare card has no head and the field names itself once',
+     await card(SLIDER).locator('.dash-head').count() === 0 && await card(SLIDER).locator('.field-label').count() === 1);
   await ctx.close();
 }
 
@@ -529,11 +556,12 @@ console.log('floor');
   const ACT = (CONTROLS.find((c) => c.key === 'role:action.store') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.action)).key;
   const NEST_TITLE = 'A nest title far longer than its card';
   const { ctx, page, cell, stored, said, card } = await open({
-    [ACT]: { x: 0, y: 0, w: 1, h: 8 },
+    // Labels shown (ph-w4r makes a field bare by default): the title's one line is under test.
+    [ACT]: { x: 0, y: 0, w: 1, h: 8, look: { label: true } },
     [F2]: { x: 8, y: 0, w: 9, h: 2 }, [F3]: { x: 18, y: 0, w: 9, h: 2 },
     // No room: a one-column action card wedged between two cards.
-    [ACT + '#2']: { x: 17, y: 0, w: 1, h: 2 },
-    'nest:1': { x: 0, y: 14, w: 3, h: 4, nest: { title: NEST_TITLE, map: {} } },
+    [ACT + '#2']: { x: 17, y: 0, w: 1, h: 2, look: { label: true } },
+    'nest:1': { x: 0, y: 14, w: 2, h: 4, nest: { title: NEST_TITLE, map: {} } },
     'nest:2': { x: 8, y: 14, w: 5, h: 4, nest: { title: 'Pair', map: { [F1]: { x: 0, y: 0, w: 8, h: 2 } } } },
   });
   // Px any element of the body pokes past the body's frame; the title's lines.
@@ -552,16 +580,18 @@ console.log('floor');
   });
   ok('the grid holds the case', await page.$eval('.home > .dash-wrap > .dash-grid', (el) => Number(el.style.getPropertyValue('--cols'))) >= 27);
   let s = await stored();
-  const floor = s[ACT].w;
-  ok('a saved rect under its floor grows on load and is saved', floor > 1 && s[ACT].x === 0 && s[ACT].y === 0 && s[ACT].h === 8, s[ACT]);
+  const loaded = s;
+  const floor = s[ACT].w, ah = s[ACT].h;
+  // Rows are cells (ph-29r): it may also have grown downward into free rows.
+  ok('a saved rect under its floor grows on load and is saved', floor > 1 && s[ACT].x === 0 && s[ACT].y === 0 && ah >= 8, s[ACT]);
   let f = await fit(ACT);
   ok('grown: nothing spills past the frame', f.out <= 0, f);
   ok('the title keeps one line', f.titleH < 2 * f.font, f);
-  ok('a fitting card does not clip', f.clip === 'visible', f);
+
   ok('a grow is no undo step', await page.locator('.home .dash-toolbar button', { hasText: 'Undo' }).isDisabled());
 
   const g = await drag(page, card(ACT).locator('.edge-e'), -(floor + 4) * cell, 0, () => ghost(page));
-  ok('toward one column: the ghost stops at the floor', g && g.refused && g.text === floor + ' × 8 · minimum', g);
+  ok('toward one column: the ghost stops at the floor', g && g.refused && g.text === floor + ' × ' + ah + ' · minimum', g);
   s = await stored();
   ok('the release commits the floor', s[ACT].w === floor && s[ACT].x === 0, s[ACT]);
   await card(ACT).locator('.handle.resize').focus();
@@ -571,8 +601,9 @@ console.log('floor');
   f = await fit(ACT);
   ok('at the floor: nothing spills, one-line title', f.out <= 0 && f.titleH < 2 * f.font, f);
   s = await stored();
-  ok('no room: the card keeps its rect', JSON.stringify(s[ACT + '#2']) === '{"x":17,"y":0,"w":1,"h":2}', s[ACT + '#2']);
-  ok('its neighbors never move', JSON.stringify(s[F2]) === '{"x":8,"y":0,"w":9,"h":2}' && JSON.stringify(s[F3]) === '{"x":18,"y":0,"w":9,"h":2}', [s[F2], s[F3]]);
+  // Wedged between two cards it cannot widen; free rows below may still take its height.
+  ok('no room to widen: the card keeps its column and width', s[ACT + '#2'].x === 17 && s[ACT + '#2'].y === 0 && s[ACT + '#2'].w === 1, s[ACT + '#2']);
+  ok('its neighbors never move', JSON.stringify(s[F2]) === JSON.stringify(loaded[F2]) && JSON.stringify(s[F3]) === JSON.stringify(loaded[F3]), [s[F2], s[F3]]);
   f = await fit(ACT + '#2');
   ok('its surface clips the overflow at the frame', f.clip === 'clip', f);
   const over = await card(ACT + '#2').evaluate((c) => {
@@ -582,10 +613,11 @@ console.log('floor');
   ok('nothing of it, head or body, is drawn over the next card', !over);
 
   s = await stored();
-  ok('a nest under its floor grows too', s['nest:1'].w > 3, s['nest:1']);
-  ok('a nest holds its widest member at that member width', s['nest:2'].w > 8 && s['nest:2'].nest.map[F1].w === 8, s['nest:2']);
+  ok('a nest under its floor grows too', s['nest:1'].w > 2, s['nest:1']);
+  // Its subgrid's columns are its own (ph-nnl): eight columns hold an eight-cell member.
+  ok('a nest holds its widest member at that member width', s['nest:2'].w >= 8 && s['nest:2'].nest.map[F1].w === 8, s['nest:2']);
   f = await page.locator('.home .dash-cell[data-id="' + F1 + '"]').evaluate((c) => {
-    const n = c.closest('.dash-grid').closest('.dash-body').getBoundingClientRect(), r = c.getBoundingClientRect();
+    const n = c.closest('.dash-grid').closest('.dash-body').getBoundingClientRect(), r = c.firstElementChild.getBoundingClientRect();
     return { inside: r.right <= n.right + 0.5 && r.left >= n.left - 0.5 };
   });
   ok('the member lies inside the nest frame', f.inside, f);
@@ -593,6 +625,9 @@ console.log('floor');
   await page.waitForTimeout(150);
   f = await fit('nest:1');
   ok('a long title truncates on one line', f.titleH < 2 * f.font && f.cut, f);
+  // Edit mode clips every card at its frame (a host's in-body chrome); running, only one under its floor clips.
+  ok('outside edit mode a fitting card does not clip, one under its floor does', (await fit(ACT)).clip === 'visible' && (await fit(ACT + '#2')).clip === 'clip',
+     [(await fit(ACT)).clip, (await fit(ACT + '#2')).clip]);
   await ctx.close();
 }
 
@@ -605,6 +640,96 @@ console.log('floor');
   const s = (await stored())[ACT];
   ok('a shorter drag stops at the content height', gh && gh.refused && s.h < 40 && s.h > 2 && await rows() <= s.h + 0.02, [gh, s, await rows()]);
   await ctx.close();
+}
+
+// ---- edit mode draws what runs (ph-wia, ph-w4r, ph-fhx, ph-9lu, ph-5rt, ph-r2m) -------------
+console.log('modes');
+{
+  const DEPTH = (CONTROLS.find((c) => c.key === 'role:pattern.depth') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.slider
+    && ![SLIDER, F1, F2, F3].includes(c.key))).key;
+  const FMAX = CONTROLS.find((c) => c.key === SLIDER).field.max;
+  for (const [w, h] of [[1920, 1080], [1280, 800]]) {
+    const tag = w + 'x' + h + ': ';
+    const { ctx, page, card, cell, stored } = await open({
+      [SLIDER]: { x: 0, y: 0, w: 8, h: 3 },
+      [DEPTH]: { x: 8, y: 0, w: 5, h: 6, look: { pres: 'knob', label: true } },
+      [F2]: { x: 13, y: 0, w: 6, h: 4 },
+      'hero:pattern': { x: 0, y: 7, w: 12, h: 8 },
+      'nest:1': { x: 13, y: 7, w: 14, h: 6, nest: { title: 'Pump', map: { [F3]: { x: 0, y: 0, w: 6, h: 3 } } } },
+    }, { w, h, edit: false });
+    const geo = () => page.evaluate(() => {
+      const g = document.querySelector('main.pane .dash-toolbar').parentElement.querySelector(':scope > .dash-grid');
+      const r = (el) => { const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
+      return { grid: r(g), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
+    });
+    const run = await geo();
+    // Rows are cells (ph-29r): every card's box is its stored rect times the cell pitch.
+    const s0 = await stored();
+    const off = Object.keys(s0).filter((k) => k !== 'home:built' && run.cards[k]).filter((k) => {
+      const [l, t, wd, ht] = run.cards[k], e = s0[k], near = (a, b) => Math.abs(a - b) <= 1;
+      return !(near(l - run.grid[0], e.x * cell) && near(t - run.grid[1], e.y * cell) && near(wd, e.w * cell) && near(ht, e.h * cell));
+    });
+    ok(tag + 'every card is its cells: stored rect x cell pitch (ph-29r)', off.length === 0, off.map((k) => [k, s0[k], run.cards[k]]));
+    const sub = await card('nest:1').locator('.nest-body .dash-grid').evaluate((g) => Number(g.style.getPropertyValue('--cols')));
+    const m = s0['nest:1'].nest.map[F3];
+    ok(tag + 'a nest member sits at its stored cells, on the top grid\'s columns (ph-nnl)', sub === s0['nest:1'].w
+       && Math.abs(run.cards[F3][0] - run.grid[0] - (s0['nest:1'].x + m.x) * cell) <= 1 && Math.abs(run.cards[F3][2] - m.w * cell) <= 1,
+       [sub, s0['nest:1'].w, m, run.cards[F3]]);
+    await page.locator('main.pane .dash-toolbar .edit-toggle').click();
+    await page.waitForTimeout(300);
+    const edit = await geo();
+    // Origin and width; the height may grow by the palette's reserve below the cards.
+    ok(tag + 'edit mode keeps the grid origin', JSON.stringify(run.grid.slice(0, 3)) === JSON.stringify(edit.grid.slice(0, 3)), [run.grid, edit.grid]);
+    const moved = Object.keys(run.cards).filter((k) => JSON.stringify(run.cards[k]) !== JSON.stringify(edit.cards[k]));
+    ok(tag + 'every card, a nest member too, keeps its rect in edit mode', moved.length === 0 && Object.keys(run.cards).length === 6,
+       moved.map((k) => [k, run.cards[k], edit.cards[k]]));
+    ok(tag + 'the palette overlays the grid, out of flow', await page.$eval('main.pane .palette', (p) => getComputedStyle(p).position) === 'absolute');
+
+    const tone = (v) => page.evaluate((x) => { const p = document.body.appendChild(document.createElement('i')); p.style.color = x;
+      const c = getComputedStyle(p).color; p.remove(); return c; }, v);
+    const [HL, WARN, MUT, LINE2, BAD] = [await tone('var(--highlight)'), await tone('var(--warn)'), await tone('var(--tx-mut)'), await tone('var(--line-2)'), await tone('var(--bad)')];
+    const tools = await card(SLIDER).locator('.dash-head .ico').evaluateAll((els) => els.map((e) => { const b = e.getBoundingClientRect(); return [b.width, b.height]; }));
+    ok(tag + 'edit tools are icon-sized (ph-fhx)', tools.length >= 2 && tools.every(([a, b]) => a <= 24.5 && b <= 24.5), tools);
+    const cut = await card(DEPTH).locator('.dash-title').evaluate((t) => ({ cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent.trim(), w: t.clientWidth }));
+    ok(tag + 'a five-cell titled card keeps its whole title in edit mode (ph-fhx)', !cut.cut, cut);
+
+    // The look popover: no room taken, anchored to its card.
+    const cardBox = () => card(SLIDER).evaluate((c) => { const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); });
+    await card(SLIDER).locator('.look-btn').click();
+    await page.waitForTimeout(150);
+    const pop = await card(SLIDER).evaluate((c) => {
+      const p = c.querySelector('[data-look] [popover]'), r = p.getBoundingClientRect(), b = c.firstElementChild.getBoundingClientRect();
+      return { open: p.matches(':popover-open'), dx: Math.round(r.left - b.left), dy: Math.round(r.top - b.top) };
+    });
+    ok(tag + 'the look opens as a popover anchored under its card\'s head', pop.open && Math.abs(pop.dx) <= 2 && pop.dy > 0 && pop.dy < 40, pop);
+    ok(tag + 'an open look takes no room in its card', JSON.stringify(await cardBox()) === JSON.stringify(edit.cards[SLIDER]), [await cardBox(), edit.cards[SLIDER]]);
+    const max = card(SLIDER).locator('input[aria-label^="Max of"]');
+    await max.fill(String(FMAX * 10));
+    await max.dispatchEvent('change');
+    await page.waitForTimeout(120);
+    const ref = await card(SLIDER).evaluate((c, warn) => {
+      const p = c.querySelector('[data-look] [popover]'), msg = p.querySelector('.look-warn'), inp = p.querySelector('input[aria-label^="Max of"]');
+      const cs = getComputedStyle(msg);
+      return { text: msg.textContent.trim(), warn: cs.color === warn, line: msg.getBoundingClientRect().height < 2 * parseFloat(cs.fontSize),
+        invalid: inp.getAttribute('aria-invalid'), border: getComputedStyle(inp).borderTopColor === warn, named: inp.getAttribute('aria-describedby') === msg.id,
+        others: [...p.querySelectorAll('input[aria-invalid="true"]')].map((e) => e.getAttribute('aria-label').split(' ')[0]) };
+    }, WARN);
+    ok(tag + 'a refused look part reads in --warn, one line, on the inputs it names (ph-5rt)',
+       /range must lie inside/.test(ref.text) && ref.warn && ref.line && ref.invalid === 'true' && ref.border && ref.named
+       && JSON.stringify(ref.others) === '["Min","Max"]', ref);
+    await page.keyboard.press('Escape');
+
+    await card(SLIDER).locator('.handle.grab').click();
+    await page.waitForTimeout(80);
+    ok(tag + 'a selection is outlined in --highlight (ph-9lu)',
+       await card(SLIDER).locator(':scope > .dash-item').evaluate((el) => getComputedStyle(el).outlineColor) === HL);
+    await page.keyboard.press('Escape');
+
+    await page.$$eval('main.pane .palette details', (els) => els.forEach((d) => { d.open = true; }));
+    const tagTone = await page.$eval('main.pane .palette li[data-key^="safety:"] .palette-tag', (t) => [getComputedStyle(t).color, getComputedStyle(t).borderTopColor]);
+    ok(tag + 'the strip tag is muted text on a quiet line, never red (ph-r2m)', tagTone[0] === MUT && tagTone[1] === LINE2 && !tagTone.includes(BAD), tagTone);
+    await ctx.close();
+  }
 }
 
 ok('no page errors', pageErrors.length === 0, pageErrors);
