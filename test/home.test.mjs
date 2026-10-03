@@ -271,7 +271,9 @@ async function harvestDerived(page) {
   for (const id of cats) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    // Each click shrinks the match set, so click the first until none is left.
+    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     await collect();
     const drills = await page.locator('main.pane .drill-open').count();
@@ -321,7 +323,9 @@ if (!LIVE) {
   for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    // Each click shrinks the match set, so click the first until none is left.
+    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
   }

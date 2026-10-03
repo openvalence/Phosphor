@@ -381,6 +381,9 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
     const t = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).first();
     const foot = page.locator('main.pane .page-foot');
     const main = page.locator('main.pane .pane-main');
+    // From the page top: a reveal above a scrolled view is the scroll anchor's to hold (the flip-keeps-the-scroll checks).
+    await page.evaluate(() => { for (const e of [document.scrollingElement, ...document.querySelectorAll('main.pane, main.pane *')]) if (e && e.scrollTop) e.scrollTop = 0; });
+    await page.waitForTimeout(100);
     const b0 = await t.boundingBox(), f0 = await foot.boundingBox(), y0 = (await main.boundingBox()).y, n0 = await t.ariaSnapshot();
     const e0 = await t.getAttribute('aria-expanded');
     await t.click();
@@ -447,7 +450,9 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   for (let i = 0; i < await tabs.count(); i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(150);
-    for (const t of await page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]').all()) await t.click();
+    // Each click shrinks the match set, so click the first until none is left.
+    const shut = page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]');
+    for (let k = 0; k < 40 && await shut.count(); k++) await shut.first().click();
     await page.waitForTimeout(150);
     bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .page-foot, .cat-empty) *'));
   }
