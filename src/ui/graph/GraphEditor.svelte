@@ -816,6 +816,8 @@
   .gtool { display: flex; flex-wrap: wrap; gap: 4px; }
   .gtool .og-btn { width: auto; min-height: 30px; padding: 2px 10px; }
   .gtool .og-btn[aria-pressed='true'] { border-color: var(--intent); color: var(--ink-hi); }
+  /* The grid's inert preview (DashItem) is a picture: no tools until Open. */
+  .graph:global([inert]) .gtool, .graph:global([inert]) .gnote { display: none; }
   .gnote { margin: 0; font-size: 11px; color: var(--ink-dim); }
   [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn); }
   [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
@@ -867,6 +869,8 @@
   .gparams .wide { grid-column: 1 / -1; }
   .gparams .check { flex-direction: row; align-items: center; gap: 4px; }
   .gparams input:not([type='checkbox']) { min-height: 24px; min-width: 0; width: 100%; font-size: .75rem; }
+  /* A live field reads as a value, never as a disabled placeholder. */
+  .grow input, .gparams input { color: var(--tx-val); }
 
   /* Op input rows: ROW_H in the script must equal --grow. */
   .graph { --grow: 28px; --vt-float: var(--reality); --vt-bool: var(--intent);

@@ -30,14 +30,45 @@ import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeF
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED } from '../../Valence/clients/js/frames.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { STORAGE_KEY } from '../src/model/graph.js';
+import { deriveTokens, THEMES } from '../src/model/theme.js';
 
 const SHOT = process.argv.includes('--shot') ? process.argv[process.argv.indexOf('--shot') + 1] : null;
 const SHOTS = process.argv.includes('--shots') ? process.argv[process.argv.indexOf('--shots') + 1] : null;
 let fails = 0;
+let previews = 0;
 const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
   if (!cond) fails++;
 };
+
+/** The worst text contrast among `sel` on its own opaque background, under each preset's tokens. */
+async function inkUnder(page, sel, ids = ['phosphor', 'ember', 'paper']) {
+  const out = {};
+  for (const id of ids) {
+    const d = deriveTokens(THEMES.find((t) => t.id === id));
+    out[id] = await page.evaluate(([sel, base, dark]) => {
+      const root = document.documentElement.style;
+      const prev = Object.keys(base).map((k) => [k, root.getPropertyValue(k)]);
+      const scheme = root.colorScheme;
+      for (const [k, v] of Object.entries(base)) root.setProperty(k, v);
+      root.colorScheme = dark ? 'dark' : 'light';
+      const c2d = document.createElement('canvas').getContext('2d');
+      const rgb = (c) => { c2d.clearRect(0, 0, 1, 1); c2d.fillStyle = '#000'; c2d.fillStyle = c; c2d.fillRect(0, 0, 1, 1); return [...c2d.getImageData(0, 0, 1, 1).data]; };
+      const lum = (c) => { const [r, g, b] = rgb(c).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const bgOf = (el) => { for (; el; el = el.parentElement) { const c = getComputedStyle(el).backgroundColor; if (rgb(c)[3] === 255) return c; } return getComputedStyle(document.body).backgroundColor; };
+      let worst = 99;
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        const a = lum(getComputedStyle(el).color), b = lum(bgOf(el));
+        worst = Math.min(worst, (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05));
+      }
+      for (const [k, v] of prev) { if (v) root.setProperty(k, v); else root.removeProperty(k); }
+      root.colorScheme = scheme;
+      return els.length ? Math.round(worst * 100) / 100 : 0;
+    }, [sel, d.base, d.dark]);
+  }
+  return out;
+}
 
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
@@ -158,9 +189,14 @@ async function open({ coarse = false, seed = null, before = null } = {}) {
   // In a grid the editor is a still preview (ph-e82.22); Open gives it the window below the strip.
   const still = await page.$eval('.graph', (g) => ({ inert: g.inert, open: !!g.closest('.dash-item')?.querySelector('.dash-open') })).catch(() => null);
   ok('in the grid the editor is an inert preview with Open (no scroll or zoom of its own)', !!still && still.inert && still.open, still);
+  if (SHOTS) await page.locator('.dash-item:has(.graph)').screenshot({ path: SHOTS + '/preview-' + (++previews) + '.png' });
+  const drawn = () => page.$eval('.graph', (g) => [...g.querySelectorAll('.gtool, .gnote')].map((e) => e.getClientRects().length));
+  const tools = await drawn();
+  ok('the preview draws no toolbar and no edges line until Open (ph-eg2)', tools.length === 2 && tools.every((n) => n === 0), tools);
   if (before) await before(page);
   await page.locator('.dash-item:has(.graph) .dash-open').click();
   ok('Open makes it live, full window below the strip', await page.$eval('.graph', (g) => !g.inert && getComputedStyle(g.closest('.dash-item')).position === 'fixed'));
+  ok('...with its toolbar and edges line', (await drawn()).every((n) => n > 0));
   await page.waitForTimeout(100);
   return { ctx, page, errors };
 }
@@ -232,6 +268,8 @@ let saved = null;
   ok('the source\'s live value rides its wire', await page.locator('.gval').count() >= 1);
   const st = await stored(page);
   ok('the edge and the node positions persist in the local graph store', st && st.rels.length === 1 && st.nodes.length === 2);
+  const mapInk = await inkUnder(page, '.gnode .gparams input:not([type=checkbox])');
+  ok('map node fields read as live values, 4.5:1 or better per theme (ph-6uf)', Object.values(mapInk).every((x) => x >= 4.5), mapInk);
 
   // refuse: the toy's own output into a map, the map's output back into the toy.
   const mapLabel = await place(page, 0.45, 0.65, 'linear', 'Maps');
@@ -529,6 +567,10 @@ let saved = null;
     });
   });
   ok('every link ends on its socket, op input rows included', onSock);
+
+  // 2026-10-02 design review, typed nodes.
+  const opInk = await inkUnder(page, '.gnode .grow input:not([type=checkbox])');
+  ok('op node values read as live fields, 4.5:1 or better per theme (ph-6uf)', Object.values(opInk).every((x) => x >= 4.5), opInk);
   if (SHOTS) {
     // Screenshot only: a taller canvas than the card gives, then Fit.
     await page.addStyleTag({ content: '.gview { min-height: 640px !important; }' });
