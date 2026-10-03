@@ -111,9 +111,8 @@ which is the point during development.
 
 Tier-2 plugins (shell-loaded, plus a dev-only `?plugin=` path): [docs/PLUGINS.md](docs/PLUGINS.md).
 
-Carved out of the archived `SlopDrive-32` machine repo (`webui/`), where it was
-called SlopDeck. Doctrine lives in `.claude/rules/`; volatile truth lives on the
-dev board (`bd`, prefix `ph`).
+Doctrine lives in `.claude/rules/`; volatile truth lives on the dev board
+(`bd`, prefix `ph`).
 
 Design rulings: [`docs/DESIGN.md`](docs/DESIGN.md).
 The builder (home page, controls, nests, layouts; 2026-09-26): [`docs/DESIGN.md` §10](docs/DESIGN.md#10-the-builder-operator-rulings-2026-09-26).

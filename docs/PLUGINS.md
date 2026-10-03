@@ -284,7 +284,7 @@ Shipped:
 - `plugins/factory/advanced-penetration/`: the pattern card. It substitutes
   both RENDERING §10 `generator-advanced` and `pattern-panel`
   (`replaces: ['advanced-generator', 'pattern']`) as a direct-manipulation
-  editor after the SlopDrive-32 card and fray-d's OSSM-Lite. Advanced and
+  editor after fray-d's OSSM-Lite. Advanced and
   Classic are two SPEC §11.4 sources in two tabs, each with its own Start
   (RFC-093 `advgen.running`, `pattern.running`); a tab switch writes nothing.
   Advanced: master speed, a presets dropdown over the store (RFC-067,

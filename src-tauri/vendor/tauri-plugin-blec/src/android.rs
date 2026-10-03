@@ -105,7 +105,7 @@ impl btleplug::api::Central for Adapter {
         let (tx, rx) = tokio::sync::mpsc::channel::<CentralEvent>(64);
         let stream = ReceiverStream::new(rx);
         let channel: Channel = Channel::new(move |response| {
-            // SLOPDECK PATCH: this closure runs on Android's binder thread via
+            // PHOSPHOR PATCH: this closure runs on Android's binder thread via
             // JNI (extern "C") — a panic here cannot unwind and ABORTS the
             // whole process. A receiver dropped mid-disconnect is a normal
             // race, never fatal: drop the event, don't kill the app.
@@ -566,7 +566,7 @@ impl btleplug::api::Peripheral for Peripheral {
         let (tx, rx) = tokio::sync::mpsc::channel::<ValueNotification>(64);
         let stream = ReceiverStream::new(rx);
         let channel: Channel<Notification> = Channel::new(move |response| {
-            // SLOPDECK PATCH: runs on the binder thread via JNI (extern "C")
+            // PHOSPHOR PATCH: runs on the binder thread via JNI (extern "C")
             // — a panic here cannot unwind and ABORTS the process. The
             // receiver dropping (listen task aborted on disconnect) is a
             // normal race with an in-flight notification; drop the frame,

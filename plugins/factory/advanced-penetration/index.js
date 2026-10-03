@@ -1,7 +1,7 @@
 // advanced-penetration -- factory plugin: the pattern card. Substitutes
 // RENDERING §10 `generator-advanced` and `pattern-panel` per RFC-068
-// (RENDERING §10.2), as a direct-manipulation editor after fray-d's OSSM-Lite
-// and the SlopDrive-32 pattern card; the reading is recorded on ph-e82.18.
+// (RENDERING §10.2), as a direct-manipulation editor after fray-d's
+// OSSM-Lite; the reading is recorded on ph-e82.18.
 //
 // Constraints:
 // - One self-contained ES module, no framework, no imports (docs/PLUGINS.md).

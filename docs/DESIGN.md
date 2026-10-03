@@ -1,7 +1,9 @@
 # Phosphor -- the reference Valence client & widget system
 
-> Home of Phosphor's design rulings. Moved from the archived machine repo
-> 2026-09-25; rulings predate the rename and stand.
+> Home of Phosphor's design rulings; rulings that predate the 2026-09-21
+> rename stand. The predecessor firmware is frozen and never cited: no file
+> here names it, and a pointer to what exists now replaces any citation of it
+> (Nucleus `.claude/rules/governance.md` §6, amendment 2026-10-03).
 
 Wire truth stays in the Valence repo (sibling checkout, pinned by
 `valence.pin`); this document is everything above the wire -- the
@@ -73,8 +75,8 @@ Founding set (operator-ratified 2026-07-27), current implementation:
 
 *(A Tier-1 binding is to a role or channel's registered IDENTITY, which
 survives renumbering, not to a number restated here. The machine's own
-channel-map doc has not been re-created since the Nucleus/P4 rebuild; it
-lived at `docs/slopsync/CHANNEL-MAP.md` on the archived S3 machine.)*
+channel allocation is the `ch::` namespace in Nucleus
+`flagship_p4/src/hub/ValenceCatalog.h`.)*
 
 ```mermaid
 flowchart TB
@@ -162,11 +164,10 @@ The replacement -- **catalog profiles as a sim flag**:
 Test mapping: fixture + Tier-1 tests <-> `device`; genericity/compliance
 tests <-> `alien` + `minimal`.
 
-**(planned)** These three profiles described the old `slopsim` harness.
-`Nucleus/sim/valencesim`, its successor, is being ported now and does not
-exist on disk yet as of this writing -- treat the profile flags and the
-per-channel sim-coverage gap they used to document as unverified until the
-port lands. Current state: the dev board (`bd`, prefix `ph-` here;
+**(planned)** `Nucleus/sim/valencesim` has no `--profile` flag yet
+[verified 2026-10-03 -- `git grep -- --profile sim` in Nucleus is empty];
+treat the profile flags and the per-channel sim-coverage gap as unverified
+until it does. Current state: the dev board (`bd`, prefix `ph-` here;
 Nucleus's own board for the sim side).
 
 > DEMO-CANDIDATE: `Nucleus/sim/valencesim --profile minimal` next to
@@ -184,7 +185,7 @@ Nucleus's own board for the sim side).
 - Tauri 2 shell owns: plugin discovery/loading ([PLUGINS.md](PLUGINS.md)),
   the community plugin list (planned), updates, multi-hub connections
   (SPEC §13.8 UDP discovery -- `src-tauri/src/discovery.rs` -- + manual host entry; **not
-  mDNS**, corrected from the original SlopDeck-era text), and whatever the
+  mDNS**), and whatever the
   embedded-UI ruling (§8) leaves to it.
 - **Hubs pane Scan: UDP discovery first, Bluetooth fallback** (operator
   ruling 2026-10-02 on RFC-046; no mDNS, RFC-072 ruling 2026-10-01). The
@@ -225,8 +226,7 @@ delivery:
 - **Embedded (hubs with the capability):** a thin client exposing ALL
   controls at Tier 0+1 -- the machine-served page, zero-install from any
   browser on the LAN, doubles as the emergency surface (tokenless e-stop is
-  role-exempt by design). SlopDrive-32 (archived, S3, 16 MB) shipped this
-  first; Nucleus (P4) inherits the role.
+  role-exempt by design). Nucleus (P4) carries the role.
   *(Amended 2026-09-26, §10.7: the hub-served page is the BACKUP delivery;
   parity with the shell may break. "ALL controls" now means every field
   stays reachable per RENDERING §12, not that every shell feature ships.)*
@@ -625,7 +625,7 @@ is build configuration, never code" clause (amendments below). Seam:
   path (`submitMotion`, `src/plugins/host.js`, the TCode adapter's door).
   The Prime Rule holds on the machine side: one Valence session, no side
   channel. The buttplug fork's own Valence hardware manager
-  (`buttplug_server_hwmgr_slopsync`, its own session) is not linked.
+  (`buttplug_server_hwmgr_valence`, its own session) is not linked.
 - Toys buttplug supports appear as modules under §10.2 and as relationship
   targets. OPEN, raised to the operator: relationships are hub policy that
   survives Phosphor closing (accessory rulings, same date), and a toy
