@@ -171,9 +171,13 @@
       e.preventDefault();
       full = e.detail?.on ? { on: true, bare: true } : OFF;
     };
+    // The mode, for a page that offers it itself (mediaFullscreen): desktop shell only.
+    const mode = (e) => { if (['window', 'borderless'].includes(e.detail?.mode)) setPref('fullscreen', e.detail.mode); };
     window.addEventListener('phosphor-page-fullscreen', ask);
-    return () => window.removeEventListener('phosphor-page-fullscreen', ask);
+    window.addEventListener('phosphor-page-fullscreen-mode', mode);
+    return () => { window.removeEventListener('phosphor-page-fullscreen', ask); window.removeEventListener('phosphor-page-fullscreen-mode', mode); };
   });
+  $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
@@ -464,7 +468,7 @@
       {/if}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
-      {#if current.page?.fields}
+      {#if current.page?.fields && !current.page.mediaFullscreen}
         <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
                 onclick={() => (full = toggle(full))}>Fullscreen</button>
         {#if OS_SHELL}

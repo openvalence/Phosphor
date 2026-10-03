@@ -24,12 +24,15 @@
 //   mid-play holds and the video plays on.
 // - Composition follows the card's own box: full >= 960, handheld 264..959,
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
-// - Handheld takes data-narrow (a three-row transport) when
-//   the two-row transport overflows at the card's width, measured on a width
-//   change and on a Look change (the Offset label's box), never on a state
-//   change, so the Look scale moves the switch with the text. Its button
+// - Handheld takes data-narrow (two strip rows; three beside the analyzer) when
+//   the strip overflows at the card's width, measured on a width change, on a
+//   Look change (the Offset label's box) and on an analyzer toggle, never on a
+//   state change, so the Look scale moves the switch with the text. Its button
 //   columns are max-content: an auto column squeezes a button to its 40 px
 //   min-width, cutting the label, and never overflows.
+// - Play and the time live in the hover bar; the strip shows them only where the
+//   bar cannot draw (glance, the handheld analyzer's thumbnail).
+// - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
 //   its current text, so the switch does not move with the reading.
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
@@ -38,12 +41,14 @@
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
 // - The analyzer keeps the outer card rect: the video moves to an in-card thumbnail,
 //   never picture-in-picture or element fullscreen (law 1: nothing may cover the strip).
-// - The hover bar acts through the controller (toggle, seek) like the transport: it never
+// - The hover bar acts through the controller (toggle, seek): it never
 //   calls the video's play() or pause() or sets currentTime. Volume and mute are the video's
 //   own, stored as prefs audio; the bar holds the card's only mute and volume. Its fullscreen
 //   is the shell's page fullscreen, bare (the stop
 //   pair stays): a page mount only (opts.fullscreen), asked by the cancelable
 //   'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
+//   Its mode button shows only where the shell sets <html data-fullscreen-mode> (the
+//   desktop shell) and asks by 'phosphor-page-fullscreen-mode' {mode}; it never stores the pref.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
@@ -115,6 +120,7 @@ export const COPY = Object.freeze({
   unmuteKey: 'Unmute (m)',
   seek: 'Seek',
   full: 'Fullscreen (f)',
+  mode: 'In window / Borderless',
   fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
@@ -131,6 +137,9 @@ const ICON = {
   muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
   full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
   unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
+  win: ['', 'M2 3.5h12v9H2zM2 6h12'],
+  bdl: ['', 'M1.5 2.5h13v9h-13zM6 14h4M8 11.5V14'],
+  caret: ['', 'M6.5 5l3 3-3 3'],
 };
 
 // ---- pure helpers -----------------------------------------------------------
@@ -532,14 +541,17 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // The stage row is the only flexible row and may shrink to 0, so the fixed rows always fit the card.
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
-.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px;
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--tap) minmax(0, 1fr) 124px 20px var(--tap);
-  grid-template-areas: "src lib" "stage lib" "tl lib" "st st" "tr tr"; }
+.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px;
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-bar) 124px 20px;
+  grid-template-areas: "src lib" "stage lib" "tr lib" "tl lib" "st st"; }
+@media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); } }
+.fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "tr" "tl" "st"; }
+.fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
 .fsp[data-comp=handheld] { --fsp-detail: 72px; grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
-  grid-template-areas: "src" "stage" "tl" "st" "tr"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 3 + 8px); }
-.fsp[data-comp=glance] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
+  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) 100px 20px;
+  grid-template-areas: "src" "stage" "tr" "tl" "st"; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) calc(var(--fsp-bar) * 2 + 4px) 100px 20px; }
+.fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
 .fsp button, .fsp input { font: inherit; }
@@ -550,6 +562,16 @@ export const CSS = `
 .fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
 .fsp-btn:disabled { opacity: .4; cursor: default; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fsp-open { min-height: 0; height: var(--fsp-src); padding: 0 8px; font-size: .8rem; }
+.fsp-libcaret { display: none; flex: none; place-items: center; width: 18px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
+  background: var(--bg-raised); border: 1px solid var(--line); border-right: 0; border-radius: var(--r-s) 0 0 var(--r-s); cursor: pointer; }
+@media (pointer: coarse) { .fsp-libcaret { width: var(--tap); } }
+.fsp[data-comp=full]:not([data-an]) .fsp-libcaret { display: grid; }
+.fsp-libcaret:hover { color: var(--tx-hi); }
+.fsp-libcaret:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
+.fsp-libcaret svg { width: 14px; height: 14px; fill: none; }
+.fsp-libcaret svg .s { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp[data-libshut] .fsp-libcaret svg { transform: rotate(180deg); }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
 .fsp-src > [role=tablist] { display: flex; flex: none; gap: 4px; }
 .fsp-tab { display: none; }
@@ -563,8 +585,8 @@ export const CSS = `
 .fsp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-mut); font-size: .85rem; pointer-events: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow: hidden; }
-.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 4 / 2; }
-.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-tlbox) { visibility: hidden; }
+.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 5 / 2; }
+.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -578,15 +600,19 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: 6px; }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
-  grid-template-columns: auto 16ch auto auto auto minmax(auto, 1fr);
-  grid-template-areas: "play time motion off inv speed"; }
-.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content;
+  grid-template-columns: max-content max-content max-content minmax(auto, 1fr);
+  grid-template-areas: "motion off inv speed"; }
+.fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
+.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: max-content minmax(auto, 1fr);
+  grid-template-rows: var(--fsp-bar) var(--fsp-bar); grid-template-areas: "motion off" "inv speed"; }
+.fsp:not([data-comp=glance], [data-an][data-comp=handheld]) :is(.fsp-play, .fsp-time) { display: none; }
+.fsp[data-an][data-comp=handheld] .fsp-tr { --fsp-bar: var(--tap); grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content;
   grid-template-rows: var(--tap) var(--tap);
   grid-template-areas: "play time speed speed" "motion off off inv"; }
-.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
+.fsp[data-an][data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: var(--tap) var(--tap) var(--tap);
   grid-template-areas: "play time time" "motion off off" "inv speed speed"; }
-.fsp[data-comp=handheld][data-narrow] .fsp-time { font-size: .7rem; }
+.fsp[data-an][data-comp=handheld][data-narrow] .fsp-time { font-size: .7rem; }
 .fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; grid-template-areas: "play time"; }
 .fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed) { display: none; }
 .fsp-play { grid-area: play; min-width: 72px; }
@@ -594,11 +620,11 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-motion { grid-area: motion; }
 .fsp-inv { grid-area: inv; }
-.fsp-off { grid-area: off; display: flex; align-items: center; gap: 6px; min-height: var(--tap); }
-.fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--tap); display: grid; align-items: center; }
-.fsp-off input { width: 7ch; min-height: var(--tap); font-family: var(--mono); }
-.fsp-speed { grid-area: speed; position: relative; height: var(--tap); min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center; }
-.fsp-speed i { position: absolute; left: 0; bottom: 6px; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
+.fsp-off { grid-area: off; display: flex; align-items: center; gap: 6px; min-height: var(--fsp-bar); }
+.fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--fsp-bar); display: grid; align-items: center; }
+.fsp-off input { width: 7ch; height: var(--fsp-bar); min-height: var(--fsp-bar); font-family: var(--mono); }
+.fsp-speed { grid-area: speed; position: relative; height: var(--fsp-bar); min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center; }
+.fsp-speed i { position: absolute; left: 0; bottom: 3px; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
@@ -610,19 +636,20 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 128px; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
-.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--tap) calc(180px - var(--tap) - 4px) minmax(0, 1fr) 20px var(--tap);
+.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - 4px) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 2 + 4px);
   grid-template-areas: "src" "tl" "st" "tr"; }
 .fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 3 + 8px); }
-.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: 104px; }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) + 100px - var(--tap) * 2); }
+.fsp[data-an][data-comp=handheld][data-narrow] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) * 2 + 100px - var(--tap) * 3); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
 .fsp[data-an][data-comp=handheld] .fsp-stage::before { display: none; }
 .fsp[data-an][data-comp=handheld] .fsp-tab { display: none; }
-.fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox) { visibility: visible; }
+.fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
 .fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
 .fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: 20px 6px 0;
@@ -631,7 +658,7 @@ export const CSS = `
 .fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
 @media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: 8px; } }
 @container (max-height: 129px) { .fsp-hb { display: none; } }
-@container (max-width: 439px) { .fsp-hb-vol { display: none; } }
+@container (max-width: 439px) { .fsp-hb-vol, .fsp-hov .fsp-hb-mode { display: none; } }
 .fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 6px; cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
 .fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height .1s; }
@@ -839,8 +866,18 @@ export function createPlayer(api) {
       if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
     };
     const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
-    const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full');
+    const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full'), hbMode = hbBtn('fsp-hb-mode');
     hbFull.hidden = !opts.fullscreen;
+    const fsMode = () => document.documentElement.dataset.fullscreenMode || '';
+    hbMode.addEventListener('click', () => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode',
+      { detail: { mode: fsMode() === 'borderless' ? 'window' : 'borderless' } })));
+    const libCaret = h('button', { type: 'button', class: 'fsp-libcaret', title: COPY.library, 'aria-label': COPY.library });
+    libCaret.append(icon());
+    libCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
+    libCaret.addEventListener('click', () => { const on = root.hasAttribute('data-libshut'); setLib(on); writePref(api, 'libOpen', on); });
+    const setLib = (on) => { root.toggleAttribute('data-libshut', !on); libCaret.setAttribute('aria-expanded', String(on)); };
+    setLib(readPrefs(api).libOpen);
+    src.append(libCaret);
     const hbVol = h('input', { class: 'fsp-hb-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     const hbTime = h('span', { class: 'fsp-hb-time' });
     const hbBuf = h('i', { class: 'fsp-hb-buf' }), hbPlayed = h('i', { class: 'fsp-hb-played' });
@@ -848,7 +885,7 @@ export function createPlayer(api) {
     const seek = h('div', { class: 'fsp-hb-seek', role: 'slider', tabindex: '0', 'aria-label': COPY.seek, 'aria-valuemin': '0' },
       h('div', { class: 'fsp-hb-track' }, hbBuf, hbPlayed), hbTip);
     const hb = h('div', { class: 'fsp-hb' }, seek,
-      h('div', { class: 'fsp-hb-row' }, hbPlay, hbMute, hbVol, hbTime, h('span', { class: 'fsp-hb-gap' }), hbFull));
+      h('div', { class: 'fsp-hb-row' }, hbPlay, hbMute, hbVol, hbTime, h('span', { class: 'fsp-hb-gap' }), hbMode, hbFull));
     const hov = h('div', { class: 'fsp-hov' }, hb);
     stage.append(hov);
     hbPlay.addEventListener('click', () => ctl.toggle());
@@ -920,16 +957,23 @@ export function createPlayer(api) {
       onSeek: (ms) => ctl.seek(ms),
       onScrub: (phase, ms) => ctl.seek(ms),
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
+      onSettings: opts.settings ? (on) => opts.settings.toggle(on) : null,
+      settingsOpen: !!(opts.settings && opts.settings.open),
     });
     let library = null, analyzer = null;
     function expand(on) {
       root.toggleAttribute('data-an', on);
       tl.setExpanded(on);
+      measure();
       if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => st.shaped || st.script, T: () => st.T });
     }
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
     let comp = '';
+    const measure = () => {
+      root.removeAttribute('data-narrow');
+      if (comp === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
+    };
     const ro = new ResizeObserver(() => {
       const c = compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -939,8 +983,7 @@ export function createPlayer(api) {
         if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
           fetch: (u, i) => api.net.fetch(u, i) });
       }
-      root.removeAttribute('data-narrow');
-      if (c === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
+      measure();
     });
     ro.observe(root);
     ro.observe(offK);
@@ -958,6 +1001,10 @@ export function createPlayer(api) {
       hbPlay.disabled = play.disabled;
       setIcon(hbMute, video.muted ? ICON.muted : ICON.vol, video.muted ? COPY.unmuteKey : COPY.muteKey);
       setIcon(hbFull, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : COPY.full);
+      const fm = fsMode();
+      hbMode.hidden = !opts.fullscreen || !fm;
+      setIcon(hbMode, fm === 'borderless' ? ICON.bdl : ICON.win, COPY.mode);
+      attr(hbMode, 'aria-pressed', String(fm === 'borderless'));
       if (document.activeElement !== hbVol) hbVol.value = String(video.muted ? 0 : video.volume);
       motion.setAttribute('aria-pressed', String(st.motion));
       inv.setAttribute('aria-pressed', String(st.T.invert));

@@ -22,6 +22,7 @@ export const PREFS = deepFreeze({
   view: 'player',
   zoomMs: 10000,
   settingsOpen: false, // the page's Settings section (page.js)
+  libOpen: true, // the full card's library column (ui.js caret)
   interp: INTERP,
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
   // seekMs 0 = jump; lowLatency and autoLatency per scheduler.js setLatency.

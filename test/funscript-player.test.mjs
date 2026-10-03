@@ -109,7 +109,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
     interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
@@ -572,7 +572,12 @@ async function toCard(page, sel = 'main.pane .fsp') {
 
 const C = 'main.pane .fsp';
 const statusText = (page) => page.locator(C + ' > .fsp-slot').textContent().then((t) => t.trim());
-const playBtn = (page) => page.locator(C + ' .fsp-play');
+// Play is the hover bar's (the strip shows its own only at glance and beside the handheld analyzer).
+const playBtn = (page) => {
+  const l = page.locator(C + ' .fsp-hb-play');
+  return { click: () => l.evaluate((e) => e.click()), isDisabled: () => l.isDisabled(),
+    textContent: () => l.getAttribute('aria-label').then((t) => t.replace(/ \(k\)$/, '')) };
+};
 async function loadClip(page) {
   await page.setInputFiles(C + ' .fsp-src input[type=file]', [
     { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
@@ -1032,9 +1037,9 @@ if (!LIVE) {
       return { name: e.getAttribute('aria-label'), share: Math.round((hit / n) * 100) };
     }), C);
     ok('targets: every slider takes touches over at least 85 % of its box', hits.length >= 3 && hits.every((x) => x.share >= 85), hits);
-    await p2.locator(C + ' .fsp-play').click();
+    await playBtn(p2).click();
     await p2.waitForTimeout(3000);
-    await p2.locator(C + ' .fsp-play').click();
+    await playBtn(p2).click();
     const ahead = h2.segs().filter((x) => !clipped(x)).map((x) => (x.exec - x.arrival) / 1000);
     ok('horizon 1000: every start within 500 ms of its arrival, the lead widened past 250',
       ahead.length > 3 && ahead.every((a) => a <= 502) && Math.max(...ahead) > 250, { n: ahead.length, max: Math.max(...ahead) });
@@ -1401,9 +1406,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   const hub = makeHub(cat);
   const { ctx, page, up, errors } = await open({ cat, hub, width: 1280 });
   await page.setViewportSize({ width: 1280, height: 800 });
-  const TAB = '[data-tab-id="plugin:funscript-player:player"]', SUM = 'main.pane .fsp-page > details > summary';
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]', SUM = C + ' .fsp-set';
   const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
-  const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-interp', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > details ' + s).length));
+  const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-interp', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > .fsp-psec ' + s).length));
   const cardBox = () => page.locator(C).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top - e.closest('.pane-main').getBoundingClientRect().top, r.height].map(Math.round).join(','); });
   // The viewport, and the whole page region (card and section) on a viewport tall enough to hold it.
   const pageShot = async (name) => {
@@ -1429,7 +1434,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
-  await page.click('main.pane details .fsp-pset button[aria-label="Loop"]');
+  await page.click('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]');
   await page.waitForTimeout(100);
   ok('page settings: a change there reaches the store', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.play') || '{}').loop) === true);
   await page.click('[data-tab-id="plugins"]');
@@ -1441,7 +1446,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(600);
   await toPage();
   ok('page settings: open is remembered across a launch, and the pane change reads back here', same(await rows(), [1, 1, 1])
-    && (await page.locator('main.pane details .fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'false');
+    && (await page.locator('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'false');
   if (SHOTS) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
@@ -1452,7 +1457,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.evaluate(() => scrollTo(0, 0));
     await pageShot('page-settings-closed-390x844');
   }
-  await page.locator(SUM).evaluate((e) => { if (e.parentNode.open) e.click(); });
+  await page.locator(SUM).evaluate((e) => { if (e.getAttribute('aria-pressed') === 'true') e.click(); });
   await page.waitForTimeout(100);
   ok('page settings: closed persists and unmounts the card', same(await rows(), [0, 0, 0])
     && await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'false');
@@ -1526,7 +1531,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.click(C + ' .fsp-hb-play');
   await page.waitForTimeout(200);
   ok('hover pause: paused by the controller', await video(page, (v) => v.paused) && await vids('pause') >= 1
-    && await page.locator(C + ' .fsp-play').textContent() === 'Play');
+    && await playBtn(page).textContent() === 'Play');
   // Seek: a press at 50 % of the bar, its tooltip reading that time first.
   await overVideo();
   const sk = await page.locator(C + ' .fsp-hb-seek').boundingBox();
@@ -1579,7 +1584,7 @@ if (!LIVE && !args.includes('--stash-live')) {
       return [b.x, b.y, b.width, b.height].map(Math.round); };
     return { full: !!document.querySelector('main.pane.full'), bare: !!document.querySelector('main.pane.full.bare'),
       media: !!document.querySelector(c + '[data-media]'), stage: r(c + ' .fsp-stage'), tl: r(c + ' .fsp-tlbox'), tr: r(c + ' .fsp-tr'),
-      settings: r('main.pane .fsp-page > details'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
+      settings: r(c + ' .fsp-set'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
   }, C);
   await overVideo();
   await page.click(C + ' .fsp-hb-full');
@@ -1605,12 +1610,36 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
   ok('media fullscreen: f enters and leaves', fKey.media && fKey.bare && !(await fsLook()).full, fKey);
-  await page.click('main.pane .page-foot button[title="Fullscreen, F11"]');
+  ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
+  await page.keyboard.press('F11');
   await page.waitForTimeout(300);
   const footFull = await fsLook();
-  ok('page fullscreen from the foot stays the whole page, no media flag', footFull.full && !footFull.media && !!footFull.tl, footFull);
+  ok('page fullscreen by F11 stays the whole page, no media flag', footFull.full && !footFull.media && !!footFull.tl, footFull);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
+  // The mode beside the bar's Fullscreen: the shell's pref, set through the shell's event.
+  const mode = () => page.evaluate((c) => ({ pref: JSON.parse(localStorage.getItem('phosphor.prefs') || '{}').fullscreen,
+    html: document.documentElement.dataset.fullscreenMode, b: document.querySelector(c + ' .fsp-hb-mode').getAttribute('aria-pressed'),
+    next: document.querySelector(c + ' .fsp-hb-mode').nextElementSibling.classList.contains('fsp-hb-full') }), C);
+  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
+  await page.waitForTimeout(200);
+  const m1 = await mode();
+  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
+  await page.waitForTimeout(200);
+  const m2 = await mode();
+  ok('hover: the mode toggle beside Fullscreen switches the shell mode both ways', m1.next && m1.pref === 'borderless' && m1.html === 'borderless'
+    && m1.b === 'true' && m2.pref === 'window' && m2.b === 'false', { m1, m2 });
+  // The library caret: the column closes, the stage takes the width, remembered.
+  const libW = () => page.locator(C).evaluate((e) => ({ lib: e.querySelector('.fsp-libbox').getClientRects().length > 0,
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width) }));
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(200);
+  const shut = await libW();
+  ok('library: the caret closes the column and the stage takes the card width, remembered', !shut.lib && shut.stage === shut.card
+    && await page.evaluate(() => localStorage.getItem('phosphor.funscript.libOpen')) === 'false', shut);
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(200);
+  ok('library: the caret opens it again', (await libW()).lib);
 
   // The analyzer column (ph-tz5t): two fifths of the card at desktop widths, 320 to 560 px.
   const col = async () => page.locator(C).evaluate((e) => {

@@ -24,6 +24,8 @@
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
 // - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
+// - onSettings(on), a page mount's, puts Settings at the cluster's right end; the button holds
+//   its own pressed state from settingsOpen, the page being its only other writer.
 // - frame's kin (the analyzer's Kinetic render, display only) draws --intent under the script curve:
 //   the machine's own planner, rendered ahead.
 // - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
@@ -51,6 +53,7 @@ export const COPY = Object.freeze({
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
   analyzer: 'Analyzer',
+  settings: 'Settings',
   abGlyph: 'A-B',
   abStart: 'Set loop start',
   abEnd: 'Set loop end',
@@ -189,7 +192,8 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null }) {
+export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null,
+  onSettings = null, settingsOpen = false }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
@@ -250,8 +254,19 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
   const zAn = h('button', { type: 'button', class: 'fsp-expand', title: COPY.analyzer, 'aria-label': COPY.analyzer, 'aria-pressed': 'false' });
   const icon = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
-  icon.append(s('path', { d: 'M9.5 2.5h4v4M13.5 2.5l-5 5M6.5 13.5h-4v-4M2.5 13.5l5-5' }));
+  icon.append(s('path', { d: 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8' }));
   zAn.append(icon);
+  const zSet = h('button', { type: 'button', class: 'fsp-set', title: COPY.settings, 'aria-label': COPY.settings, 'aria-pressed': String(!!settingsOpen) });
+  const gear = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  gear.append(s('path', { d: 'M2 4h6.5M11.5 4H14M11.5 4a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M2 8h1.5M6.5 8H14M6.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'
+    + 'M2 12h5.5M10.5 12H14M10.5 12a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0' }));
+  zSet.append(gear);
+  zSet.hidden = !onSettings;
+  zSet.addEventListener('click', () => {
+    const on = zSet.getAttribute('aria-pressed') !== 'true';
+    zSet.setAttribute('aria-pressed', String(on));
+    onSettings(on);
+  });
   const zAB = h('button', { type: 'button', class: 'fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
   zAB.hidden = !onLoop;
   zAB.addEventListener('click', () => onLoop && onLoop());
@@ -294,7 +309,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn));
+    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn, zSet));
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
   el.append(root);

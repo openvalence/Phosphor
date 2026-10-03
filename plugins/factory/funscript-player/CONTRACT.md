@@ -94,7 +94,7 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
   interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0},
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, lowLatency: false, autoLatency: false} }
@@ -525,7 +525,8 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 // Player = {
 //   mount(el, fields, opts = {}) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
-//       opts.fullscreen: the hover bar offers media fullscreen (the page mount, page.js)
+//       opts.fullscreen: the hover bar offers media fullscreen and the shell's mode (the page mount, page.js)
+//       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
@@ -548,8 +549,9 @@ export function kinPoints(render, fromMs, toMs, W, H);        // -> 'x,y ...', a
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
   clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop });
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop, onSettings, settingsOpen });
   // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
+  // onSettings(on): the Settings button at the cluster's right end (hidden without it), pressed from settingsOpen.
   // onLoop(): the A-B button (hidden without it); setLoop({a, b}) draws the points: a --highlight band on
   // the heat, dashed lines in the detail; the button's tooltip reads the next press (start, end, clear).
   // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
@@ -589,11 +591,15 @@ loop), so a test can prove no other path drives the video.
 
 Hover bar (ph-mcfe), in the stage of every view: the seek bar (role slider,
 played and buffered fill, a time tooltip), Play/Pause, Mute, volume, the
-time and, with `opts.fullscreen`, Fullscreen. Shown on pointer movement,
+time and, with `opts.fullscreen`, the mode and Fullscreen. The mode shows
+where the shell sets `<html data-fullscreen-mode>` and dispatches
+`phosphor-page-fullscreen-mode` (`detail: {mode}`); the shell stores it. Shown on pointer movement,
 hidden after `HOVER_IDLE_MS` idle and on pointer leave; not drawn under 130
 px of stage height. Play/Pause is `ctl.toggle()`, a seek `ctl.seek(ms)`;
 volume and mute set the video's own and store pref `audio`; they are the
-card's only mute and volume (the transport has none). Keys on the
+card's only mute and volume. Play and the time are the bar's; the strip
+under the video (Motion, Offset, Invert, speed) draws its own only at glance
+and beside the handheld analyzer. Keys on the
 card root: Space and K toggle, J/L 10 s, arrows 5 s, M mute, F fullscreen.
 Fullscreen dispatches `phosphor-page-fullscreen` (bubbles, cancelable,
 `detail: {on}`) from the card; the shell's `preventDefault()` is the

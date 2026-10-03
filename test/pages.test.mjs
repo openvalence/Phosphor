@@ -189,8 +189,9 @@ console.log('\n--- desktop 1280x800 ---');
   // Page fullscreen.
   await page.click(TAB);
   await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
-  const FS = 'main.pane .page-foot button[aria-pressed]';
-  await page.click(FS);
+  // The player owns its fullscreen (mediaFullscreen): no foot button; F11 enters.
+  ok('full: a page owning its fullscreen has no foot button', await page.locator('main.pane .page-foot button').count() === 0);
+  await page.keyboard.press('F11');
   await page.waitForTimeout(200);
   const geo = await page.evaluate(() => {
     const p = document.querySelector('main.pane').getBoundingClientRect();
@@ -239,8 +240,9 @@ console.log('\n--- desktop 1280x800 ---');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
   ok('full: Escape leaves after F1 closed', await page.locator('main.pane.full').count() === 0);
-  await page.selectOption('main.pane .page-foot select', 'borderless');
-  await page.click(FS);
+  await page.locator('main.pane .fsp-hb-mode').evaluate((e) => e.click());
+  await page.waitForTimeout(150);
+  await page.keyboard.press('F11');
   await page.waitForTimeout(150);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);

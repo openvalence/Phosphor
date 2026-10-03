@@ -586,7 +586,8 @@ question in §10.8).
   §8.4 row 11; the §10 `safety-strip` pair). It is the strip's own pair
   moved, never a copy, at full size and hit target, half opacity at rest
   and full on hover, focus or any pointer movement. The mode persists
-  (`prefs.js` `fullscreen`), the state never does. Seams:
+  (`prefs.js` `fullscreen`), the state never does. A page registered
+  `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`). Seams:
   `src/model/fullscreen.js`, `isFull` in `src/App.svelte`, `bare` in
   `src/ui/TopStrip.svelte`.
 
@@ -817,3 +818,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The rail row is the track alone, the panel inset equal on all sides; a generator's run shows the planned segment at the window's width, a foreign owner the plan strip; the plan readback moves into the strip (`ph-ryi7`). | operator (amber on a stalled or overrun plan, as the hub states no infeasibility, the readback while any plan streams, and the window description in the band's tooltip are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | Recess shadows replace scrollbars as the scroll affordance; scrollbars become a pref, off by default, asked once by the guided onboarding (`ph-inh5`). | operator (the 1 px lip on the shade, the page footer casting its own shade and the toggle's home in Legibility are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | The planned target, lag and speed stack vertically beside the big numeral, one row each, at every width but a handheld strip; the 1280 px side-by-side form clipped speed (`ph-pmor`). | operator (the row font one step down so three rows fit the numeral's box is the agent's, veto-able) |
+| 2026-10-03 | §10.3 | A page registered `mediaFullscreen` (the funscript player) offers Fullscreen and In window / Borderless in its own hover bar; the footer offers neither (`ph-n4t7`). | operator (the event and html attribute seam are the agent's, veto-able) |

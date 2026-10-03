@@ -30,7 +30,7 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | core | `funscript.js` | parse and validate (sort, dedupe, clamp, `inverted`, `range` ignored, notes), linear interpolation, chord speed, thinning that keeps extrema, heat bins, axis naming and file pairing; pure |
 | scheduler | `clock.js`, `scheduler.js` | the media clock (rVFC display times, median, slew, step), one segment per funscript span, offset/range/invert, stop and preroll segments, the per-frame submit cadence, refusal classes |
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
-| player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, transport, status slot, layout tiers |
+| player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, the strip, status slot, layout tiers |
 | stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
 | plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, curve, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
 | interp | `interp.js` | ten curves between actions, smoothing and a slew limit; the settings card's curve rows (Interpolation) |
@@ -281,33 +281,44 @@ renderer-class thresholds: full at 960 px and wider (`FULL_UP`), handheld
 ```
 FULL
 +------------------------------------------------+--------------------+
-| source bar: Open files, title                   | search, sort, dir  |
-| stage 16:9, object-fit contain                  | tiles, paged,      |
-|   empty: 'Open a video'                         |   never scrolled   |
-| detail 96: automation curve (intent), reality   | page n / m, N      |
-|   trace, plan, range pills, zoom, Analyzer      |                    |
+| source 24: Open files (compact), title, caret > | search, sort, dir  |
+| stage 16:9, object-fit contain, the hover bar   | tiles, paged,      |
+|   (Play, mute, volume, time, mode, Fullscreen)  |   never scrolled   |
+|   empty: 'Open a video'                         |                    |
+| strip 28: Motion | Offset | Invert | speed      | page n / m, N      |
+| detail 96: automation curve (intent), reality   |                    |
+|   trace, plan, range pills, zoom, A-B,          |                    |
+|   Analyzer, Settings (page only)                |                    |
 | overview 24: whole-script heat, window box,     |                    |
 |   vertical-pill scrub (40 px hit); its line     |                    |
 |   runs up through the detail: one playhead bar  |                    |
 +------------------------------------------------+--------------------+
 | status slot 20, one line, aria-live                                  |
-| transport var(--tap): Play | time | Motion | Offset | Invert |        |
-|   speed meter (mute and volume: the hover bar)                       |
 +----------------------------------------------------------------------+
 ```
+
+- **Strip and source row** (operator ruling 2026-10-03, `ph-n4t7`): Motion,
+  Offset, Invert and the speed reading sit in one fixed 28 px row under the
+  video, left-aligned; Play and the time are the hover bar's, and the strip
+  draws them only where the bar cannot (glance, and the handheld analyzer's
+  thumbnail, three rows as before). The source row is 24 px with a compact
+  Open files. Under a coarse pointer both rows are `var(--tap)` (law 12).
+- **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
+  library column's edge, `Library`: it closes the column and the player
+  takes the width, open again from the card's edge; a view switch kept in
+  pref `libOpen`. Full only: handheld has its tabs.
 
 - **Handheld:** tabs Player | Library (shown only here; in full the library
   is the side column) swap the one main region in place (a view switch,
   never a write; the video keeps playing under the library); detail 72 px;
-  transport in two fixed rows. Their button columns are `max-content`
+  the strip one fixed row. Its button columns are `max-content`
   and the speed reading's floor is 10ch (`20000 mm/s`), so a label never
   squeezes: an `auto` column shrank a button to its 40 px min-width and
-  cut a label at 426 to 433 px without ever overflowing. Where the rows
-  overflow the card (measured on a width change and on a Look change; at
-  or under 358 px at the default Look, 440 at 1.4), `data-narrow` gives
-  three fixed rows, Play and time /
-  Motion and Offset / Invert and speed. A 390 px phone's 326 px card spilled
-  101 px before this. The floor scales with the Look while the tier
+  cut a label without ever overflowing. Where the row overflows the card
+  (measured on a width change, a Look change and an analyzer toggle; at or
+  under 386 px at the default Look, 468 at 1.4), `data-narrow` gives two
+  fixed rows, Motion and Offset / Invert and speed; beside the analyzer,
+  three, Play and time / Motion and Offset / Invert and speed. The floor scales with the Look while the tier
   thresholds stay the shell's px: at Look 1.4 the source row (tabs and
   Open files) needs 304 px and cuts `Open files` below it.
 - **Glance:** title, a 24 px stroke meter (an intent tick for the script,
@@ -342,36 +353,40 @@ FULL
   10 %). A pill's hit box stays inside the detail, which clips, and only
   the drawn pill rides the value to the edge (a clipped box took touches
   over 60 % of itself). They preview in the intent look and commit on release.
-  Offset is a transport number field (drag 5 ms per 2 px, type, arrows 5 ms,
+  Offset is a strip number field (drag 5 ms per 2 px, type, arrows 5 ms,
   Shift 50 ms). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
   captured. Keys: Hover controls.
 - **Hover controls** (ph-mcfe, ruling 2026-10-03: familiar, YouTube's
   shape). Over the video in the card and the page: a bottom gradient bar
   with the seek bar (played in `--highlight`, buffered lighter, a dot and a
   time tooltip under the pointer), then Play/Pause, Mute, volume, current /
-  total time and, on the page only, Fullscreen at the right. It shows on
+  total time and, on the page only, the mode and Fullscreen at the right.
+  The mode is a two-state glyph, `In window / Borderless`, in the desktop
+  shell only: it asks the shell to set its pref `fullscreen` (docs/PLUGINS.md,
+  Pages) and stores nothing itself; under 440 px of stage it yields with the
+  volume slider. It shows on
   pointer movement and hides after `HOVER_IDLE_MS` (2.5 s) idle and on
   pointer leave; it stays while the pointer rests on it, a seek drags or a
   control holds keyboard focus. A touch on the video while it is hidden
   shows it without toggling; a click on the video toggles Play. Keys while
   the card has focus: Space or K play/pause, J and L 10 s back and on,
   arrows 5 s, M mute, F fullscreen (page). Every act goes through the
-  controller the transport uses (`toggle`, `seek`): Play prerolls, a seek
+  controller (`toggle`, `seek`): Play prerolls, a seek
   holds and glides; the bar never calls the video's `play()` or `pause()`
   or sets `currentTime`. Volume and mute are the video's own, stored in
   pref `audio` (`phosphor.funscript.audio`); they are the card's only
-  mute and volume (the transport has none). The bar is its own size container: under 130 px of stage
+  mute and volume. The bar is its own size container: under 130 px of stage
   height it is not drawn (the analyzer's handheld thumbnail), under 440 px
   of width the volume slider yields so the time stays whole.
 - **Media fullscreen.** The bar's Fullscreen asks the shell for page
   fullscreen, bare (docs/PLUGINS.md, Pages): the window holds the video
   alone, the hover bar over it, the stop pair floating top right and the
-  caret above; the timeline, transport, analyzer and the page's Settings
+  caret above; the timeline, strip, analyzer and the page's Settings
   are hidden until fullscreen ends (Escape, F, the bar's button, F11, a
-  page switch, or the caret's bar and the foot's Fullscreen). The In window
-  or Borderless mode applies as for any page. Never element fullscreen:
-  it would cover the stop pair (RENDERING §8.4 row 11). The foot's
-  Fullscreen still takes the whole page; the dash hero has no Fullscreen
+  page switch, or the caret's bar). The bar's mode applies. Never element fullscreen:
+  it would cover the stop pair (RENDERING §8.4 row 11). The page registers
+  `mediaFullscreen`, so its footer has no Fullscreen (`ph-n4t7`); F11
+  still takes the whole page; the dash hero has no Fullscreen
   (page fullscreen is for pages).
 - **Speed meter.** The current stroke's speed in mm/s when the window's
   unit allows, else %/s, against `limit.input.speed` with `--warn` past it.
@@ -384,7 +399,9 @@ FULL
   coarse pointer, law 12).
 - **Copy** (COPY.md): Play, Pause, Open files, Library, Player, Motion,
   Offset, Invert; the hover bar's `Play (k)`, `Pause (k)`, `Mute
-  (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`;
+  (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`,
+  `In window / Borderless`; the timeline's `Analyzer` (a sine in a box) and
+  `Settings` (sliders); the caret's `Library`;
   `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,
@@ -526,9 +543,9 @@ The card (ph-smvd.13):
   loop at the next restart (a playing card restarts), home and latency in
   force.
   The Funscript page opens the same card (the one registerSettings
-  function) in a Settings section below the transport, open or closed kept
-  in pref `settingsOpen`; the dash hero gets no button, its transport
-  having no free fixed column at 264 px (P3).
+  function) in a Settings section below the card, from the Settings
+  button at the right end of the timeline's cluster (`ph-n4t7`), open or
+  closed kept in pref `settingsOpen`; the dash hero gets no button (P3).
 - **A-B.** One button in the detail's cluster, `A-B`: the first press sets A
   at the playhead, the second B (the loop starts; B at the playhead wraps at
   once), the third clears. The section is a selection: a `--highlight` band
@@ -751,8 +768,10 @@ Decisions (veto-able):
   `play()`, `pause()` and `currentTime` set on the video follows the
   controller's own probe mark; volume and mute stored and back after a
   launch; Fullscreen enters page fullscreen bare with the media flag (the
-  video alone, the stop pair on screen), Escape and F leave, the foot's
-  Fullscreen keeps the whole page; the analyzer column at
+  video alone, the stop pair on screen), Escape and F leave, the foot has
+  no Fullscreen and F11 keeps the whole page; the mode toggle beside
+  Fullscreen sets the shell's pref both ways; the library caret closes the
+  column (the stage takes the card width) and is remembered; the analyzer column at
   `clamp(320px, 40%, 560px)` at 1280 and 1920 with no row label cut; at
   390 x 844 the bar inside the stage, the time uncut. Screenshots with
   `--shots <dir>`.
