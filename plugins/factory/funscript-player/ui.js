@@ -136,6 +136,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let info = '';         // a load fact: no script, extra axes
   let transient = '';
   let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0;
+  let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
   const trace = [];
   scheduler.setTransform(state.T);
 
@@ -153,8 +154,9 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       scheduler.stop(clock);
     }
     sentSince = false;
-    clock.reset();
+    resetClock();
   }
+  function resetClock() { clock.reset(); lastM = NaN; }
   /** Every stop: one hold when owed, the video paused in the same call. */
   function stop(phase, words = '') {
     if (state.phase === 'playing') hold();
@@ -175,7 +177,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     pre = null;
     buffering = false;
     sentSince = false;
-    clock.reset();
+    resetClock();
     probe({ k: 'mark', t: now(), name: 'play' });
     const p = video.play();
     if (p && p.catch) p.catch((e) => { if (e && e.name !== 'AbortError' && state.phase === 'playing') stop('error', COPY.badFormat); });
@@ -233,6 +235,11 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   function onFrame(mediaMs, displayMs) {
     if (state.phase !== 'playing' || buffering || video.paused || video.seeking) return;
     probe({ k: 'obs', m: mediaMs, d: displayMs });
+    const prev = lastM;
+    lastM = mediaMs;
+    // Only a frame that advances past one seen since the reset carries the clock: after play()
+    // or a seek the first frame often repeats for several vsyncs at one media time.
+    if (!(mediaMs > prev)) return;
     if (!clock.ready) { clock.anchor(mediaMs, displayMs, video.playbackRate); restart = true; }
     else if (clock.observe(mediaMs, displayMs) === 'step') restart = true;
   }
@@ -315,7 +322,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   });
   on('ended', () => { if (state.phase === 'playing') { state.phase = 'ready'; sentSince = false; changed(); } });
   on('waiting', () => { if (state.phase === 'playing') { hold(); buffering = true; changed(); } });
-  on('playing', () => { if (state.phase === 'playing') { buffering = false; clock.reset(); changed(); } });
+  on('playing', () => { if (state.phase === 'playing') { buffering = false; resetClock(); changed(); } });
   on('seeking', () => { if (state.phase === 'playing') hold(); trace.length = 0; });
   on('ratechange', () => { if (state.phase === 'playing') hold(); });
   on('error', () => { if (state.scene) stop('error', COPY.badFormat); });

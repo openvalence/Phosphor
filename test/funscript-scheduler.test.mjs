@@ -116,6 +116,11 @@ console.log('(a) media clock');
   s.observe(33 * 33, 33 * 33 + 30);   // one outlier, ring full: the median does not move
   s.observe(34 * 33, 34 * 33);
   ok('a settled clock ignores one 30 ms outlier', near(s.displayAt(34 * 33), 34 * 33, 1e-9));
+  const e = createMediaClock();
+  e.anchor(0, 0, 1);   // the anchor frame, 70 ms ahead of the frames that follow
+  const early = [1, 2, 3].map((k) => e.observe(k * 33, k * 33 + 70));
+  ok('a 70 ms settling correction returns step once and moves the map',
+    early.join() === 'step,,' && near(e.displayAt(99), 99 + 70, 1e-9), early.join());
 }
 
 // ---- (b) frameSource ---------------------------------------------------------

@@ -9,10 +9,15 @@
 // - The step test reads the median of the LAST 8 residuals (the contract's "within 8
 //   observations"); the 32-wide median would need 17 frames to see a jump.
 // - observe() before the first anchor does nothing: only the caller anchors.
+// - A whole-median correction before the ring fills that moves the map more than STEP_MS
+//   also returns 'step': the first frames after play() often land tens of ms off the anchor
+//   frame, and segments already stamped from the old map would leave a hole.
+// - STEP_MS sits between one 60 Hz vsync (16.7 ms, slewed) and one dropped 30 fps frame
+//   (33 ms, stepped): slewing a dropped frame out at 5 ms/s lagged the video for 6 s.
 // - frameSource's rAF fallback reports only while the video is not paused: a paused
 //   currentTime against a running now() would read as a step on every frame.
 
-export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 40, FALLBACK_AFTER_MS = 250;
+export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 25, FALLBACK_AFTER_MS = 250;
 const STEP_WINDOW = 8;
 
 const median = (a) => {
@@ -47,7 +52,7 @@ export function createMediaClock() {
       const corr = filled ? Math.max(-lim, Math.min(lim, r)) : r;
       c0 += corr;
       for (let i = 0; i < ring.length; i++) ring[i] -= corr;
-      return '';
+      return !filled && Math.abs(corr) > STEP_MS ? 'step' : '';
     },
     displayAt(mediaMs) { return clock.ready ? c0 + (mediaMs - m0) / clock.rate : NaN; },
     mediaAt(displayMs) { return clock.ready ? m0 + (displayMs - c0) * clock.rate : NaN; },

@@ -173,6 +173,22 @@ const real = (sent) => sent.filter((l) => l.length);
   ok('Play at the script position: no preroll', r.ctl.state.phase === 'playing' && !r.video.paused && real(r.sent).length === 0);
   for (let i = 0; i < 5; i++) r.frame();
   const n = real(r.sent).length;
+  {
+    // After a start the first frame can repeat for several vsyncs at one media time: no anchor
+    // until the media time advances, then every span sits on the steady frames' map.
+    const q = rig();
+    q.ctl.load({ key: 'stash:2', title: 'Two', stream: 'http://x/2' }, long);
+    await flush();
+    q.fields.pos.v = 0;
+    q.ctl.play();
+    for (let i = 0; i < 5; i++) { q.set(q.now() + 16); q.ctl.onFrame(0, q.now()); q.ctl.tick(); }
+    const stuck = real(q.sent).length;
+    for (let i = 0; i < 3; i++) q.frame();
+    const lead = q.now() - q.video.currentTime * 1000;   // the steady map: shown = media + lead
+    const first = real(q.sent).flat();
+    ok('a repeated start frame never anchors; spans sit on the steady map',
+      stuck === 0 && first.length > 0 && first.every((s) => long.at.some((a) => near(s.atMs, a + lead, 1e-6))), first.slice(0, 2));
+  }
   r.ctl.pause();
   const holds = real(r.sent).slice(n);
   ok('Pause: one hold, paused', r.video.paused && r.ctl.state.phase === 'ready' && holds.length === 1 && holds[0].length === 1, holds);
