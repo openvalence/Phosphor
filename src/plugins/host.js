@@ -26,7 +26,7 @@ export const KINDS = ['widget', 'adapter', 'theme'];
 export const MOTION_HOLD_MS = 500;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const PERM_RE = /^(intent|motion|net\.listen:([1-9][0-9]{0,4}))$/;
+const PERM_RE = /^(intent|motion|net\.fetch|net\.listen:([1-9][0-9]{0,4}))$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 /**
@@ -51,6 +51,12 @@ export function validateManifest(m) {
     if (!hit || (hit[2] && Number(hit[2]) > 65535)) errs.push('unknown permission "' + p + '"');
   }
   return errs;
+}
+
+/** Is `u` (a URL) one of the hub's own origins: its host on the default ports or its WS port? */
+export function isHubUrl(u, host, port) {
+  return !!host && u.hostname.toLowerCase() === String(host).toLowerCase()
+    && ['', '80', '443', String(port)].includes(u.port);
 }
 
 class PermissionError extends Error {
@@ -80,6 +86,8 @@ class PermissionError extends Error {
  *   now()                         -> ms clock of submitSegments' atMs (default performance.now)
  *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
+ *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
+ *   isHub(URL)                    -> true for the connected hub's own origins
  *   prefs                         -> Storage-like {getItem, setItem} or null
  *   log(pluginName, level, msg)   -> the log pane
  */
@@ -219,6 +227,15 @@ export function createPluginHost(deps) {
 
       // ---- services ----
       net: Object.freeze({
+        // Never a machine path (Prime Rule): the hub's own origins are refused.
+        fetch: async (url, init) => {
+          need(rec, 'net.fetch');
+          const u = new URL(String(url));
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('net.fetch: http or https only');
+          if (deps.isHub && deps.isHub(u)) throw new Error('net.fetch: the hub is reached through Valence');
+          if (!deps.fetch) throw new Error('net.fetch needs the shell');
+          return deps.fetch(u.href, init);
+        },
         listenTcp: async (port, onLine) => {
           need(rec, 'net.listen:' + port);
           if (!deps.listenTcp) throw new Error('TCP listen is only available in the Tauri shell');

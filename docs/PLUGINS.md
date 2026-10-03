@@ -110,6 +110,7 @@ settings cards, render instead (item 5).
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs}]`, `atMs` the `performance.now()` instant the machine starts each, ascending; advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
+| `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
@@ -184,7 +185,7 @@ reason: 'motion input in use by <plugin>'}` without reaching the door, and its
 | `entry` | a plain `.js`/`.mjs` file name in the plugin folder (default `index.js`); a path is refused |
 | `description` | shown in the Plugins pane; one fragment per `docs/COPY.md` |
 | `roles`, `channels` | what it binds, displayed in the pane. Informational: the claim spec is what binds |
-| `permissions` | `intent`, `motion`, `net.listen:<port>`; anything else makes the manifest invalid |
+| `permissions` | `intent`, `motion`, `net.fetch`, `net.listen:<port>`; anything else makes the manifest invalid |
 
 Validation lives in one place, `src/plugins/host.js` `validateManifest`. An
 invalid manifest is listed with its problems and its code is never run.
@@ -201,7 +202,9 @@ opening its own WebSocket. Install plugins you would install as any program.
 Reading needs no permission. `intent` covers every settings/action/command
 write, `motion` covers motion input, and `net.listen:<port>` opens a TCP
 listener on **127.0.0.1 only** (`src-tauri/src/plugins.rs`; a LAN bind would
-be an unauthenticated control path, `ph-vdk.28`).
+be an unauthenticated control path, `ph-vdk.28`). `net.fetch` reaches HTTP(S)
+services that are not the machine; the hub's own origins are refused, so it
+never becomes a side channel around Valence (DESIGN §2).
 
 Every call into plugin code (activate, deactivate, mount, update, unmount,
 settings, TCP line callbacks) is wrapped: a throw is recorded on the plugin,
@@ -224,9 +227,14 @@ like the rest of the nav it appears once a hub's catalog is adopted.
 **CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
 carries `blob:` for this loader; drop it and every plugin shows an `import:`
 error on its row. A plugin runs under the page's policy, so `connect-src`
-(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; loopback TCP
-is `net.listenTcp`. Plugin files come through the `plugins_list` command, so
-no asset-protocol scope is involved.
+(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
+through `net.fetch` (the `http:default` capability allows `http://**` and
+`https://**`) and loopback TCP through `net.listenTcp`. `img-src` and
+`media-src` take `blob:`, `http:` and `https:`, so a plugin plays a local file
+from an object URL or media from a library by URL (ruling R-B); `media-src`
+otherwise falls back to `default-src 'self'` and nothing plays. Plugin files
+come through the `plugins_list` command, so no asset-protocol scope is
+involved.
 
 **The hub-served page never loads plugins.** A hub serves one file and
 nothing else. For development only, a `vite dev` build accepts

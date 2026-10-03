@@ -28,7 +28,10 @@
  *       clear of a line and of a neighbor;
  *   (i) the producer lock: another plugin's motion is refused until the
  *       holder's last sent segment ends plus MOTION_HOLD_MS, and its gate
- *       says so.
+ *       says so;
+ *   (j) net.fetch: the permission, http(s) only, the hub's origins refused,
+ *       init passed through; the shell's CSP and http capability, read
+ *       statically (the real shell verifies them, C-8).
  *
  * Run: node test/plugins.test.mjs
  */
@@ -39,7 +42,7 @@ import { buildSettingsModel, reportedValue, placeableControls, minCells } from '
 import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate } from '../src/model/motion.js';
 import { railOwners, railOwnerName } from '../src/model/actions.js';
-import { createPluginHost, validateManifest, MOTION_HOLD_MS } from '../src/plugins/host.js';
+import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -615,6 +618,46 @@ console.log('(i) one motion producer at a time');
   now = 2100;
   ok('... then frees it', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).ok && B.gate(durField) === 'motion input in use by alpha');
   ok('MOTION_HOLD_MS is 500', MOTION_HOLD_MS === 500);
+}
+
+// ---- (j) net.fetch and the shell's media policy (ph-smvd.2; rulings R-A, R-B) --
+console.log('(j) net.fetch, CSP and the http capability');
+{
+  ok('net.fetch is a known permission, a near miss is not', validateManifest({ ...gaugeManifest, permissions: ['net.fetch'] }).length === 0
+    && validateManifest({ ...gaugeManifest, permissions: ['net.fetchx'] }).length === 1);
+  const seen = [];
+  const res = { ok: true, status: 200 };
+  const hub = (u) => isHubUrl(u, '192.168.1.50', 82);
+  const { host } = makeHost({ fetch: async (u, i) => { seen.push([u, i]); return res; }, isHub: hub });
+  const apis = {};
+  host.add({ ...gaugeManifest, name: 'fetcher', permissions: ['net.fetch'] }, { activate(a) { apis.f = a; } });
+  host.add({ ...gaugeManifest, name: 'nofetch' }, { activate(a) { apis.n = a; } });
+  const why = async (p) => { try { await p; return ''; } catch (e) { return e.name === 'PermissionError' ? 'perm' : e.message; } };
+  ok('without "net.fetch": PermissionError', await why(apis.n.net.fetch('http://stash.lan:9999/graphql')) === 'perm' && !seen.length);
+  ok('only http and https', (await Promise.all(['ftp://x/a', 'file:///c:/a', 'data:text/plain,a', 'ws://stash.lan/']
+    .map((u) => why(apis.f.net.fetch(u))))).every((m) => m === 'net.fetch: http or https only') && !seen.length);
+  ok('the hub\'s own origins are refused', (await Promise.all(['http://192.168.1.50/uitoken', 'http://192.168.1.50:82/',
+    'https://192.168.1.50/x', 'http://192.168.1.50:80/x'].map((u) => why(apis.f.net.fetch(u)))))
+    .every((m) => m === 'net.fetch: the hub is reached through Valence') && !seen.length);
+  const init = { method: 'POST', headers: { ApiKey: 'k' }, body: '{}' };
+  const r = await apis.f.net.fetch('http://192.168.1.50:9999/graphql', init);
+  ok('another port on the hub host, and the init, pass through', r === res && seen.length === 1
+    && seen[0][0] === 'http://192.168.1.50:9999/graphql' && seen[0][1] === init);
+  ok('isHubUrl: host case-insensitive, default ports and the WS port only', isHubUrl(new URL('http://HUB.local/'), 'hub.local', 82)
+    && isHubUrl(new URL('http://hub.local:82/'), 'hub.local', 82) && !isHubUrl(new URL('http://hub.local:8080/'), 'hub.local', 82)
+    && !isHubUrl(new URL('http://other/'), 'hub.local', 82) && !isHubUrl(new URL('http://x/'), '', 82));
+  const { host: bare } = makeHost();
+  let b = null;
+  bare.add({ ...gaugeManifest, name: 'bare', permissions: ['net.fetch'] }, { activate(a) { b = a; } });
+  ok('without the shell: refused in words', await why(b.net.fetch('https://stash.example/graphql')) === 'net.fetch needs the shell');
+
+  const conf = json('../src-tauri/tauri.conf.json');
+  const csp = Object.fromEntries(conf.app.security.csp.split(';').map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v.join(' ')]));
+  ok('CSP: media-src and img-src take http(s) and blob:, connect-src unchanged',
+    csp['media-src'] === "'self' blob: http: https:" && csp['img-src'] === "'self' data: blob: http: https:"
+    && csp['connect-src'] === "'self' ipc: http://ipc.localhost ws:", JSON.stringify(csp));
+  const cap = json('../src-tauri/capabilities/default.json').permissions.find((p) => p.identifier === 'http:default');
+  ok('the http capability allows http and https', ['http://**', 'https://**'].every((u) => cap.allow.some((a) => a.url === u)));
 }
 
 // ---- (f) tier-2 replace mode (ph-vdk.29, DESIGN §3 "renders instead") -----

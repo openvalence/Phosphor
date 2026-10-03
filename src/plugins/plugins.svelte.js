@@ -13,7 +13,7 @@
  * See: docs/PLUGINS.md, src/plugins/host.js
  */
 
-import { createPluginHost } from './host.js';
+import { createPluginHost, isHubUrl } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
 import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
 import {
@@ -135,6 +135,12 @@ async function listenTcp(port, onLine) {
   };
 }
 
+// The shell's HTTP plugin answers without CORS; vite dev uses the page's fetch.
+async function shellFetch(url, init) {
+  const { fetch } = await import('@tauri-apps/plugin-http');
+  return fetch(url, init);
+}
+
 export const host = createPluginHost({
   model: () => machine.catalog.model,
   sample: (ch) => machine.samples[ch],
@@ -152,6 +158,8 @@ export const host = createPluginHost({
   now: () => performance.now(),
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
+  fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
+  isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
   log: logLine,
 });
