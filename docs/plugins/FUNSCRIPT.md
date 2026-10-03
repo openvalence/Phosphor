@@ -318,14 +318,14 @@ law 13; the card draws its own token heat).
   answers or the hub has no segments STREAM, prints the hub_instance_id
   (two sims bound one port on Windows once). A node session with a control
   token runs the real door and scheduler over a synthetic feasible script
-  (strokes, a fast section, a five-knot same-direction run, a 2 s hold,
-  seeded random) with a perfect clock (pass A) and 30 fps on 60 Hz jitter
-  (pass B), including a seek, a rate change and a pause. For each observed
+  (60 s: strokes, a fast section, a five-knot same-direction run, a 2 s
+  hold, seeded random) with a perfect clock (pass A) and 30 fps on 60 Hz
+  jitter (pass B), including a seek, a rate change and a pause. For each observed
   plan: start = arrival - elapsed, end = start + duration, matched by
   duration and start. First bars, recorded on the epic and tightened later:
   hub adherence spread p95 at most 5 ms around its median, median at most
   30 ms (the plan strip publishes every 22 ms; design 2 read 20 to 23 ms);
-  script-timeline spread p95 at most 2 ms (A) and 6 ms (B); coverage 98 %;
+  script-timeline spread p95 at most 5 ms (A) and 6 ms (B); coverage 98 %;
   seek and pause clean. The same-direction run's interior speed ratio is
   printed; under 0.3 prints WARN for G3, never FAIL.
 - **Hardware phase:** the same measurement against the P4 (192.168.1.118,
@@ -384,6 +384,11 @@ law 13; the card draws its own token heat).
 - **D19** Library pages, never scrolls (DESIGN §10.6); the library is a side
   column in full and a tab in handheld (design 3's threshold, the renderer
   class's `FULL_UP`).
+- **D20** The sync test's pass A script-timeline bar is 5 ms, not 2: with a
+  perfect clock that spread is the hub adherence spread, whose bar is 5 ms,
+  and the plan strip (start = arrival - elapsed, 2 to 9 samples per plan on
+  a 22 ms cadence) cannot resolve 2 ms. Veto: a hub-stamped plan start
+  event, then 2 ms.
 
 ## Protocol gaps and risks
 

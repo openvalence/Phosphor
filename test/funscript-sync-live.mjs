@@ -12,7 +12,7 @@
  * against the commanded start (adherence) and the instant its knot is on screen (script timeline),
  * matched to a sent segment by duration (1 ms) and start (100 ms). Bars (first, recorded
  * on the epic, tightened later): adherence median <= 30 ms, spread p95 <= 5 ms around it;
- * script-timeline spread p95 <= 2 ms (A), 6 ms (B); coverage 98 % of segments >= 50 ms that
+ * script-timeline spread p95 <= 5 ms (A), 6 ms (B); coverage 98 % of segments >= 50 ms that
  * were neither clipped nor superseded;
  * no plan from a superseded segment after the seek, none between the hold's end and resume.
  * The same-direction run's interior speed ratio is printed; under 0.3 is WARN (G3), never FAIL.
@@ -73,7 +73,7 @@ function script(vmax) {
   RUN.forEach((at, i) => a.push({ at, pos: 100 * (0.5 - 2 * run + run * i) }));
   a.push({ at: 13200, pos: 100 * (0.5 + 2 * run) });
   let p = 0.5;
-  for (t = 13600; t < 45000;) {
+  for (t = 13600; t < 60000;) {
     const g = 200 + Math.round(r() * 500);
     const d = (r() * 2 - 1) * amp(g, 0.8);
     p = Math.min(0.9, Math.max(0.1, p + d));
@@ -297,7 +297,7 @@ function judge(name, r, from, to, spreadBar) {
 try {
   let t = performance.now();
   const a = await pass('A', false);
-  judge('pass A (perfect clock)', a, t, performance.now(), 2);
+  judge('pass A (perfect clock)', a, t, performance.now(), 5);
   await sleep(1000);
   t = performance.now();
   const b = await pass('B', true);
