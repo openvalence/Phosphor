@@ -146,7 +146,7 @@ const ovr = page.locator('.topstrip .dock .ovr .btn-override'), flip = page.loca
 const tape = page.locator('.rail-hero .rail-tape-track');
 const lbl = async (l) => (await l.locator('.lbl').textContent()).trim();
 const numeral = async () => Number(await page.locator('.hn-primary .hn-val').textContent());
-const confirmHazard = () => page.locator('.overlay[role=alertdialog] .og-btn.danger').click();
+const confirmHazard = () => page.locator('.overlay[role=alertdialog] .og-btn.confirm').click();
 const tapAt = async (frac) => { const b = await tape.boundingBox(); await page.mouse.click(b.x + b.width * frac, b.y + b.height / 2); };
 
 try {
