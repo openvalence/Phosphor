@@ -29,6 +29,7 @@ Rules for every module:
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
 | interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
 | analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
+| integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
@@ -182,7 +183,8 @@ export function createLoop();   // -> Loop, the video side of a loop
 // Loop = { lap, spec, set(spec | null), reset(), more(), wrapping,
 //   due(mediaMs) -> true from b - WRAP_EARLY_MS to b + 1000 while the section still repeats and no wrap is pending,
 //   wrap() -> a: marks a wrap pending; the caller seeks there,
-//   unroll(mediaMs) -> mediaMs + lap x (b - a); a backward jump past half a lap while a wrap is pending counts a lap,
+//   unroll(mediaMs) -> mediaMs + lap x (b - a); a frame in the section's first half while a wrap is pending counts a lap
+//       (no frame before the wrap is needed: a loop set at the playhead wraps at once),
 //   seeked(mediaMs) -> spec | null: lap 0 again; a landing at or past b clears the loop }
 
 // scheduler.js
@@ -251,13 +253,13 @@ export function withHome(script, home, actions = script);   // home: {afterMs, p
 // before b to the first after a, (at[iA] - at[iB-1]) + (b - a) long.
 ```
 
-Playback wiring owed by the player-ui and plugin owners (`ui.js`, `index.js`);
-the scheduler and clock do none of it:
+Playback wiring (ph-smvd.13), done by `ui.js` and `index.js`; the scheduler
+and clock do none of it:
 
-- Hero spec optional gains `planEl: 'plan.elapsed', planDur: 'plan.duration'`;
-  each tick a new sample (its `api.age` dropped) goes to
-  `observePlan(now() - api.age(planEl), elapsed ms, duration ms)`, converted
-  from the field's unit.
+- Hero spec optional has `planEl: 'plan.elapsed', planDur: 'plan.duration'`;
+  each playing tick a new sample (its `api.age` dropped, or its elapsed
+  changed) goes to `observePlan(now() - api.age(planEl), elapsed ms,
+  duration ms)`, converted from the field's unit (us, ms, s).
 - `scheduler.load(shaped, state.script)`: home finds its gaps in the file's
   actions, never in the shaped pieces.
 - Prefs `play` map to `setHome(home ? {afterMs, point, speed} : null)`,
@@ -266,12 +268,18 @@ the scheduler and clock do none of it:
   `seeked` restart as `restart(clock, seekMs)`; every other restart passes 0.
 - Loop: `loop.set(loopSpec(a, b, loopCount, video.duration * 1000))` and
   `setLoop(loop.spec)` (a, b the timeline's A-B points, else 0 and the
-  duration). `onFrame` feeds the clock `loop.unroll(mediaMs)`; each tick
+  duration while `play.loop`). `onFrame` feeds the clock `loop.unroll(mediaMs)`; each tick
   `if (loop.due(video.currentTime * 1000)) video.currentTime = loop.wrap() / 1000`.
-  The `seeking` a wrap starts is not a stop: no hold, no clock reset, no
-  restart (the clock steps on the landing frame when the seek took over
-  `STEP_MS`). Any other seek calls `loop.seeked(ms)`, then
-  `setLoop(loop.spec)` and a seek restart.
+  The `seeking`, `waiting` and `playing` a wrap starts are not a stop: no
+  hold, no clock reset (the clock steps on the landing frame when the seek
+  took over `STEP_MS`). Any other seek calls `loop.seeked(ms)`, then
+  `setLoop(loop.spec)` and a seek restart; one that clears the loop clears
+  the A-B points. A loop change while playing holds and re-anchors (lap 0).
+- Displayed media time (the time readout, the playhead, the trace) is the
+  unrolled clock folded back by `lap x (b - a)`; the trace reads the machine's
+  script time at `mediaAt(now - T.offsetMs + compMs)`.
+- The probe (localStorage `phosphor.funscript.probe`) adds `{k: 'mark', name:
+  'wrap', lap}` per wrap and `{k: 'lat', t, lag, comp}` every 500 ms while playing.
 
 The cadence: the player calls `tick` once per animation frame while
 playing; nothing else submits motion.
@@ -510,13 +518,20 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
   localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
 // Player = {
 //   mount(el, fields) -> { update(), unmount() },
-//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?} from the hero spec
+//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
+//   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
 //   state }      PlayerState, read-only to everyone else
+// createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get low.
+export const PLAY_CSS;
+export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
+  // Loop, Loop count, Auto-home, Home after, Home point, Home speed, Seek glide, Low latency, Auto latency;
+  // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
-//   composition: 'full'|'handheld'|'glance' }
+//   composition: 'full'|'handheld'|'glance', ab: {a, b} (media ms | null, runtime only), play: Prefs.play }
 
 // timeline.js
 export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 8000, MIN_SPAN = 0.05;
@@ -525,14 +540,16 @@ export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
   clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand });
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop });
   // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
+  // onLoop(): the A-B button (hidden without it); setLoop({a, b}) draws the points: a --highlight band on
+  // the heat, dashed lines in the detail; the button's tooltip reads the next press (start, end, clear).
   // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
   // detail at the same x; the detail window is [m - s x zoom, m + (1 - s) x zoom], s = m / duration.
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), setExpanded(on), unmount() }
+  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), setExpanded(on), setLoop({a, b}), unmount() }
   // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
   // ceiling: {vmax: number | null, spanMm: number | null}
   // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
@@ -576,7 +593,7 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
-export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script(), T(): the player's
+export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the shaped Script), T(): the player's
   // -> { frame(), mode: 'live'|'preview', unmount() }
 ```
 
@@ -628,9 +645,10 @@ export function activate(api);   // -> deactivate()
 //     cells: { h: [16, 12], v: [8, 16] },
 //     spec: { require: { target: 'input.target', dur: 'input.duration' },
 //             optional: { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
-//                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running' } },
+//                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
+//                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
-//   api.registerSettings((el) => mountConnect(el, { api }));
+//   api.registerSettings((el) => mountConnect + mountInterp + mountPlay, one unmount for the three);
 //   return () => player.dispose();
 
 // prefs.js
@@ -647,4 +665,7 @@ together, since test (g) validates every factory manifest).
 `test/funscript-player.test.mjs`: `--unit` (in `npm run check`) checks every
 export named here, the prefs and the hero spec; the default run is the
 fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
---port P --http P+7` runs the card against valencesim on spare ports.
+--port P --http P+7` runs the card against valencesim on spare ports, and
+`--live-playback --port P --http P+7 [--shots dir]` plays a 60 s clip there
+with auto latency, a seek glide, auto-home in a 14 s gap, an A-B loop, low
+latency and a Preview write, printing one `PB-RESULT` JSON line.
