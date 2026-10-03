@@ -12,6 +12,11 @@
 // - The wheel is never captured: zoom is two buttons.
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
+// - A pill's hit box stays inside the detail (it clips) and only its drawn
+//   pill rides the value to the edge; high sits one tap right of low, so two
+//   close values never stack one box over the other.
+// - Heat past the limit is striped, not only recolored: in Ember --intent and
+//   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
 
@@ -112,7 +117,8 @@ export const CSS = `
 .fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
 .fsp-scrub::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; border: 2px solid var(--highlight); }
-.fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden; }
+.fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
+  container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
@@ -120,8 +126,11 @@ export const CSS = `
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .ph { stroke: var(--highlight); stroke-width: 1.5; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
-.fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1; }
-.fsp-rh::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--intent); }
+.fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
+  top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
+.fsp-rh[data-key=hi] { left: var(--tap); }
+.fsp-rh::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--intent);
+  translate: 0 calc(clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
 .fsp-zoom { position: absolute; right: 0; top: 0; display: flex; z-index: 1; }
@@ -244,9 +253,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const eff = () => (preview ? { ...T, ...preview } : T);
 
   function drawHeat() {
-    bins.replaceChildren(...(script ? heatLevels(heat(script, HEAT_BINS), T, ceiling) : []).map((b, i) => s('rect', {
-      class: 'bin' + (b.over ? ' over' : ''), x: String(i), y: '0', width: '1', height: '24',
-      'fill-opacity': (0.08 + 0.92 * b.level).toFixed(3) })));
+    bins.replaceChildren(...(script ? heatLevels(heat(script, HEAT_BINS), T, ceiling) : []).flatMap((b, i) => (b.over
+      ? [0, 6, 12, 18].map((y) => s('rect', { class: 'bin over', x: String(i), y: String(y), width: '1', height: '3' }))
+      : [s('rect', { class: 'bin', x: String(i), y: '0', width: '1', height: '24', 'fill-opacity': (0.08 + 0.92 * b.level).toFixed(3) })])));
   }
 
   function draw() {
@@ -262,7 +271,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     }
     for (const p of pills) {
       const v = Te[p.dataset.key];
-      p.style.top = 'clamp(5px, ' + (100 - v * 100) + '%, calc(100% - 5px))';
+      p.style.setProperty('--y', String(100 - v * 100));
       p.setAttribute('aria-valuenow', String(Math.round(v * 100)));
       p.toggleAttribute('data-draft', !!preview && p.dataset.key in preview);
     }

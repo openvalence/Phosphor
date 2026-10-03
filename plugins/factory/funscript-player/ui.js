@@ -21,7 +21,12 @@
 //   mid-play holds and the video plays on.
 // - Composition follows the card's own box: full >= 960, handheld 264..959,
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
+// - Handheld takes data-narrow (a three-row transport, no volume slider) when
+//   the two-row transport overflows at the card's width, measured on a width
+//   change, so the Look scale moves the switch with the text.
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
+// - --warn is a mark, never text: on a light chassis it reads 1.8:1, and it is
+//   locked (law 13). Warn text stays --tx beside a --warn bar.
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed } from './funscript.js';
@@ -356,6 +361,7 @@ export const CSS = `
 .fsp[data-comp=handheld] { --fsp-detail: 72px; grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
   grid-template-areas: "src" "stage" "tl" "st" "tr"; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 3 + 8px); }
 .fsp[data-comp=glance] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
@@ -390,14 +396,20 @@ export const CSS = `
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-.fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fsp-slot[data-tone=warn] { color: var(--warn); }
+.fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left: 3px solid transparent; padding-left: 6px; }
+.fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
   grid-template-columns: auto 16ch auto auto auto minmax(80px, 1fr) auto minmax(60px, 110px);
   grid-template-areas: "play time motion off inv speed mute vol"; }
 .fsp[data-comp=handheld] .fsp-tr { grid-template-columns: auto 16ch minmax(60px, 1fr) auto minmax(50px, 90px);
   grid-template-rows: var(--tap) var(--tap);
   grid-template-areas: "play time speed mute vol" "motion off off inv inv"; }
+.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: var(--tap) var(--tap) var(--tap);
+  grid-template-areas: "play time time" "motion off off" "inv speed mute"; }
+.fsp[data-comp=handheld][data-narrow] .fsp-vol { display: none; }
+.fsp[data-comp=handheld][data-narrow] .fsp-time { font-size: .7rem; }
 .fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; grid-template-areas: "play time"; }
 .fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed, .fsp-mute, .fsp-vol) { display: none; }
 .fsp-play { grid-area: play; min-width: 72px; }
@@ -413,7 +425,7 @@ export const CSS = `
 .fsp-speed i { position: absolute; left: 0; bottom: 6px; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
-.fsp-speed[data-over] span { color: var(--warn); }
+.fsp-speed[data-over] span { color: var(--tx); }
 .fsp-vol { grid-area: vol; min-width: 0; margin: 0; }
 `;
 
@@ -596,15 +608,21 @@ export function createPlayer(api) {
     let library = null;
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
-    let comp = '';
+    let comp = '', lastW = -1;
     const ro = new ResizeObserver(() => {
-      const c = compositionOf(root.clientWidth);
-      if (c === comp) return;
-      comp = c;
-      root.dataset.comp = c;
-      if (hosting()) st.composition = c;
-      if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
-        fetch: (u, i) => api.net.fetch(u, i) });
+      const w = root.clientWidth;
+      if (w === lastW) return;
+      lastW = w;
+      const c = compositionOf(w);
+      if (c !== comp) {
+        comp = c;
+        root.dataset.comp = c;
+        if (hosting()) st.composition = c;
+        if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
+          fetch: (u, i) => api.net.fetch(u, i) });
+      }
+      root.removeAttribute('data-narrow');
+      if (c === 'handheld' && tr.scrollWidth > tr.clientWidth + 1) root.setAttribute('data-narrow', '');
     });
     ro.observe(root);
 

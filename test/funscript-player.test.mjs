@@ -768,6 +768,26 @@ if (!LIVE) {
     }).length;
   }, C);
   ok('layout: nothing in the card wears --bad or --estop (law 13)', red === 0, red);
+  // --warn is a mark, never text: Paper's white card reads it at 1.8:1.
+  const warnText = await page.evaluate((c) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--warn)';
+    document.body.append(probe);
+    const warn = getComputedStyle(probe).color;
+    probe.remove();
+    const slot = document.querySelector(c + ' > .fsp-slot');
+    const tone = slot.dataset.tone;
+    slot.dataset.tone = 'warn';
+    const speed = document.querySelector(c + ' .fsp-speed');
+    speed.setAttribute('data-over', '');
+    const hits = [...document.querySelectorAll(c + ' *')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
+      && getComputedStyle(e).color === warn).map((e) => e.className || e.tagName);
+    const bar = getComputedStyle(slot).borderLeftColor === warn;
+    speed.removeAttribute('data-over');
+    slot.dataset.tone = tone;
+    return { hits, bar };
+  }, C);
+  ok('layout: no text wears --warn; the warn slot marks it with a --warn bar', warnText.hits.length === 0 && warnText.bar, warnText);
   const sp = await spill(page);
   ok('layout: every control lies inside the card', sp.out.length === 0, sp.out);
   ok('layout: no button or readout cuts its label', sp.cut.length === 0, sp.cut);
@@ -799,6 +819,23 @@ if (!LIVE) {
   const gsp = await spill(page);
   ok('glance: every control lies inside the card, no label cut', gsp.out.length === 0 && gsp.cut.length === 0, gsp);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
+  // Handheld from its floor up: the transport goes to three rows where two do not fit.
+  const sweep = [];
+  for (const w of [264, 300, 326, 360, 400, 440, 520, 700, 959]) {
+    await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
+    await page.waitForTimeout(120);
+    const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
+    const s = await spill(page);
+    sweep.push({ w, comp, out: s.out, cut: s.cut });
+  }
+  ok('handheld: from 264 to 959 px every control lies inside the card, no label cut',
+    sweep.every((x) => x.comp.startsWith('handheld') && !x.out.length && !x.cut.length), sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld')));
+  console.log('  [NOTE] handheld composition by width: ' + sweep.map((x) => x.w + ' ' + x.comp).join(', '));
+  if (SHOT) {
+    await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
+    await page.waitForTimeout(150);
+    await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'handheld-326.png') });
+  }
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
   ok('no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
@@ -817,6 +854,18 @@ if (!LIVE) {
       .map((e) => [e.className || e.getAttribute('aria-label') || e.tagName, e.getBoundingClientRect()])
       .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
     ok('targets: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
+    // The box is not the target where a parent clips it: probe what a touch actually hits.
+    const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].map((e) => {
+      e.scrollIntoView({ block: 'center' });
+      const r = e.getBoundingClientRect();
+      let n = 0, hit = 0;
+      for (let y = r.top + 1; y < r.bottom; y += 2) for (let x = r.left + 1; x < r.right; x += 2) {
+        n++;
+        if (e.contains(document.elementFromPoint(x, y))) hit++;
+      }
+      return { name: e.getAttribute('aria-label'), share: Math.round((hit / n) * 100) };
+    }), C);
+    ok('targets: every slider takes touches over at least 85 % of its box', hits.length >= 3 && hits.every((x) => x.share >= 85), hits);
     await p2.locator(C + ' .fsp-play').click();
     await p2.waitForTimeout(3000);
     await p2.locator(C + ' .fsp-play').click();
@@ -905,6 +954,10 @@ if (LIVE) {
   await page.waitForTimeout(5500);
   const p2 = await plan();
   ok('live: segments bundles flow', frames.bundles > 8, frames.bundles);
+  const heatOver = await page.locator(C + ' .fsp-ov').evaluate((e) => [...e.querySelectorAll('rect.bin.over')].map((r) => r.getAttribute('height')));
+  ok('live: heat past limit.input.speed is striped, not only recolored', heatOver.length > 0 && heatOver.every((h) => h === '3'),
+    heatOver.length + ' stripes');
+  ok('live: the status names a script past the limit', (await statusText(page)) === 'Script past the input speed limit', await statusText(page));
   ok('live: no NACK on the segments STREAM', frames.nacks.length === 0, frames.nacks);
   ok('live: the plan strip moves', !!p1 && p1 !== p2, [p1, p2]);
   const pauseBtn = page.locator('.topstrip .btn-pause');
