@@ -309,5 +309,51 @@ const real = (sent) => sent.filter((l) => l.length);
   ok('a range that brings it under clears it', r.ctl.state.status.text === '' && r.ctl.canPlay(), r.ctl.state.status.text);
 }
 
+{
+  // Pause home (prefs play.home): one move once a pause has lasted homeAfterMs; never while playing;
+  // Play before the delay cancels it; a gate at the due time sends nothing.
+  const r = rig();
+  r.ctl.load({ key: 'stash:5', title: 'Five', stream: 'http://x/5' }, long);
+  await flush();
+  r.ctl.setPlay({ home: true, homeAfterMs: 2000, homePoint: 0.5, homeSpeed: 0.25 });
+  const homes = () => real(r.sent).flat().filter((g) => near(g.norm, 0.5));
+  r.fields.pos.v = 0;
+  r.ctl.play();
+  for (let i = 0; i < 150; i++) r.frame();
+  ok('pause home: nothing goes home while playing', homes().length === 0 && real(r.sent).length > 2);
+  r.ctl.pause();
+  const n = real(r.sent).length;
+  for (let i = 0; i < 115; i++) r.frame();
+  ok('pause home: nothing before the delay', real(r.sent).length === n, real(r.sent).slice(n));
+  r.fields.pos.v = 100;
+  for (let i = 0; i < 10; i++) r.frame();
+  const h = real(r.sent).slice(n);
+  ok('pause home: one move to the point at the home speed once the delay passes', h.length === 1 && h[0].length === 1
+    && near(h[0][0].norm, 0.5) && near(h[0][0].durationMs, 2000), h);
+  for (let i = 0; i < 300; i++) r.frame();
+  ok('pause home: once', real(r.sent).length === n + 1);
+  r.fields.pos.v = 0;
+  r.ctl.play();
+  for (let i = 0; i < 100; i++) r.frame();
+  r.ctl.pause();
+  for (let i = 0; i < 60; i++) r.frame();
+  r.ctl.play();
+  for (let i = 0; i < 200; i++) r.frame();
+  ok('pause home: Play before the delay cancels it', homes().length === 1);
+  r.ctl.pause();
+  r.fields.pos.v = 100;
+  r.st.gate = 'stop the pattern first';
+  const g = real(r.sent).length;
+  for (let i = 0; i < 200; i++) r.frame();
+  ok('pause home: gated at the due time, nothing sent', real(r.sent).length === g && homes().length === 1);
+  r.st.gate = '';
+  r.ctl.setPlay({ home: false });
+  r.ctl.play();
+  for (let i = 0; i < 100; i++) r.frame();
+  r.ctl.pause();
+  for (let i = 0; i < 200; i++) r.frame();
+  ok('pause home: off, a pause stays a hold', homes().length === 1);
+}
+
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- funscript card logic');
 process.exit(fails ? 1 : 0);

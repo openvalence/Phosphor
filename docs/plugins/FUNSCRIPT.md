@@ -427,7 +427,7 @@ law 13; the card draws its own token heat).
 
 ## Playback (ph-smvd.12)
 
-Loop, auto-home, seek transition and latency, in `clock.js` and
+Loop, pause home, seek transition and latency, in `clock.js` and
 `scheduler.js`; signatures and the card's wiring (ph-smvd.13) in CONTRACT.md,
 module scheduler. MFP's behavior for each: FUNSCRIPT-MFP-NOTES.md. Prefs
 key `play`. Each choice below is veto-able.
@@ -444,15 +444,16 @@ key `play`. Each choice below is veto-able.
   timeline's runtime state, not prefs (they belong to one video); a seek
   past b clears them, as MFP does. Count 0 plays forever; N plays the
   section N times, then plays on.
-- **Auto-home only while playing.** A gap of `homeAfterMs` plus both moves
-  follows the line for `homeAfterMs`, moves to the point at `homeSpeed`,
-  waits, and returns to land on the next action at its time; after the last
-  action, one move home. These are knots in the scheduler's copy of the
-  script, so they tile and ride `submitSegments` like any span; the gaps
-  are the file's actions, never the shaped pieces (interp.js). Off by
-  default (MFP: on, but never inside the script while playing): it is
-  motion nobody authored. A pause stays a hold ending at rest; homing while
-  paused would be motion the operator did not start.
+- **Home on pause** (ph-hanh, ruling 2026-10-03: auto home happens when
+  paused only). Never inside the script while playing: a gap plays as its
+  one authored span. Once a pause or the end has lasted `homeAfterMs`,
+  one segment moves to the home point (through the pending range) at
+  `homeSpeed`, norm/s of the window from the measured position (a whole
+  stroke when there is none), at least `HOME_MIN_MS`; none when already
+  within 0.05. Play, a load and a Motion change cancel a pending home; a
+  gate at the due time drops it; a transient refusal retries next frame.
+  A stop for any other reason (gate, refusal, hidden page) never homes.
+  Off by default: the operator's Pause is what starts it.
 - **Seek transition.** MFP bends the output for 4 s with a per-sample
   chase, which segments cannot carry. A seek here is one segment from now
   to where the script will be `seekMs` later, then the script from that
@@ -486,11 +487,12 @@ key `play`. Each choice below is veto-able.
 The card (ph-smvd.13):
 
 - **Controls.** The plugin's settings card carries nine Playback rows under
-  the curve rows: Loop (the whole video), Loop count (`forever` at 0), Auto-home,
-  Home after, Home point, Home speed (%/s), Seek glide (`jump` at 0), Low
-  latency, Auto latency; toggles read On or Off in a fixed box, sliders wear
-  the analyzer's vertical-pill thumb. A change applies at once: home and the
-  loop at the next restart (a playing card restarts), latency in force.
+  the curve rows: Loop (the whole video), Loop count (`forever` at 0), Pause
+  home, After pause, Home point, Home speed (%/s), Seek glide (`jump` at 0),
+  Low latency, Auto latency; toggles read On or Off in a fixed box, sliders
+  wear the analyzer's vertical-pill thumb. A change applies at once: the
+  loop at the next restart (a playing card restarts), home and latency in
+  force.
   The Funscript page opens the same card (the one registerSettings
   function) in a Settings section below the transport, open or closed kept
   in pref `settingsOpen`; the dash hero gets no button, its transport
@@ -510,11 +512,12 @@ The card (ph-smvd.13):
   14.55 ms (lag 14.44 ms) in one step, the sim's known floor; the lead
   stayed within 125.6 ms (half the 250 ms horizon). A seek to 16 s while
   playing sent one hold, then a 500 ms glide 109 ms later
-  whose target sat on the script 500 ms on (error under 0.0001). Auto-home in the
-  14.2 s gap moved in over 400 ms
-  (the 400 ms floor: the line there was close to the point), held 8012 ms, and
-  the measured position read 0.5 of the window (160 samples, every one
-  within 0.001). An A-B loop of 4.05 s wrapped 4
+  whose target sat on the script 500 ms on (error under 0.0001). Home on
+  pause (rerun on the same harness after ph-hanh, valencesim on spare ports,
+  2026-10-03): the 14.17 s gap went out as its one span with nothing homed;
+  a Pause sent the home move 5046 ms later (`homeAfterMs` 5000), 691 ms
+  long, and the measured position read 0.5 of the window (54 samples, every
+  one on it). An A-B loop of 4.05 s wrapped 4
   times with no hole in the schedule and no NACK; on two of the three wraps the seek
   landed late enough to step the clock, so the seam span was re-sent 48.9 ms later
   (a cut, not a hole; an adaptive wrap lead is open), and the largest position change between samples was 0.0883 of the
@@ -644,7 +647,8 @@ notice and Discard clears it and restores the stored value.
   against valencesim on spare ports with a private `--state`: a 60 s clip
   and script (400 to 697 ms spans of 25 to 75, inside the sim's speed limit,
   so plans keep their durations, and a 14 s gap), auto latency on, a seek
-  glide, auto-home, an A-B loop, low latency through the settings card, and a
+  glide, the gap sent as its one span with nothing homed, a pause that homes
+  once after `homeAfterMs`, an A-B loop, low latency through the settings card, and a
   Preview write the sim must show with its trial mark and then drop on
   Discard; one `PB-RESULT` JSON line. After it the caller restarts the sim on
   the same `--state`: the previewed field must read its stored value

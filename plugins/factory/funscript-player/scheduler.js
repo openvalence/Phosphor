@@ -5,8 +5,8 @@
 // Constraints:
 // - Span k (knot k-1 -> k) is stamped from the clock's one map, so each start is the previous
 //   end. The cursor advances by SegResult.sent only: each span is sent once.
-// - Never resumes, never sends a safety op: tick, stop and preroll are the only motion.
-// - setTransform, setHome and setLoop are pending until restart; preroll reads the pending ones
+// - Never resumes, never sends a safety op: tick, stop, preroll and home are the only motion.
+// - setTransform and setLoop are pending until restart; preroll and home read the pending ones
 //   (the ones Play runs with).
 // - restart and stop read the machine's script time as mediaAt(now - offset): the offset is
 //   wall ms, so it scales with the rate. The offset in force is T.offsetMs - compMs.
@@ -16,9 +16,8 @@
 // - Loop: the clock runs in unrolled media time (clock.js createLoop). The seam span goes from
 //   the last knot before b to the first knot after a, so the rail never jumps; it departs from
 //   the authored line by that one span.
-// - Home inserts knots into the script copy the scheduler sends, never into the shown Script,
-//   and only while playing: a pause stays a hold ending at rest (never motion the operator did
-//   not start). Every home move is a plain segment through submit.
+// - Home is a pause behavior, never a knot while playing: a gap follows the authored line.
+//   home() is one segment the caller submits once a pause has lasted afterMs.
 // - A seek transition is one segment from now to the script's position transitionMs later;
 //   the next span starts at its end, so the tiling holds and no knot moves.
 // - Compensation: lag = plan start (arrival - plan.elapsed, the least of a plan's samples)
@@ -52,43 +51,6 @@ export function strokeSpeed(script, mediaMs, T, spanMm) {
   return spanMm > 0 ? { v: s * spanMm, unit: 'mm/s' } : { v: s * 100, unit: '%/s' };
 }
 
-/**
- * The script with home moves: a gap of at least afterMs + both moves follows the line for afterMs,
- * moves to point, waits, and returns to land on the next action at its time. Before the first action
- * the gap runs from 0; after the last, one move home. A move takes |delta| / speed s, at least
- * HOME_MIN_MS. home: {afterMs, point: 0..1 of the script, speed: norm/s} | null.
- * actions: the Script whose actions define the gaps (the parsed file when `script` is a shaped copy,
- * interp.js); its every action must be a knot of `script`. Knots of `script` inside a homed gap after
- * afterMs are replaced.
- */
-export function withHome(script, home, actions = script) {
-  if (!script || !home || !(home.afterMs > 0) || !(home.speed > 0)) return script;
-  const move = (d) => Math.max(HOME_MIN_MS, Math.abs(d) * 1000 / home.speed);
-  const src = script.at[0] > 0 ? { at: [0, ...script.at], pos: [script.pos[0], ...script.pos] } : script;
-  const A = actions.at[0] > 0 ? [0, ...actions.at] : actions.at;
-  const gaps = [];
-  for (let k = 1; k < A.length; k++) {
-    const w = A[k - 1] + home.afterMs, t1 = A[k];
-    const line = posAt(src, w), p1 = posAt(src, t1);
-    const tIn = w + move(home.point - line), tOut = t1 - move(p1 - home.point);
-    if (tOut >= tIn) gaps.push({ w, line, tIn, tOut, t1 });
-  }
-  const at = [], pos = [];
-  const n = src.at.length;
-  for (let i = 0, g = 0; i < n;) {
-    if (g < gaps.length && src.at[i] >= gaps[g].w) {
-      const q = gaps[g++];
-      at.push(q.w, q.tIn); pos.push(q.line, home.point);
-      if (q.tOut > q.tIn) { at.push(q.tOut); pos.push(home.point); }
-      while (i < n && src.at[i] < q.t1) i++;
-    } else { at.push(src.at[i]); pos.push(src.pos[i]); i++; }
-  }
-  const last = at[at.length - 1], pl = pos[pos.length - 1];
-  at.push(last + home.afterMs, last + home.afterMs + move(home.point - pl));
-  pos.push(pl, home.point);
-  return { ...script, at: Float64Array.from(at), pos: Float32Array.from(pos), durationMs: at[at.length - 1] };
-}
-
 /** Knots in unrolled time: lap 0 runs to b, each later lap repeats the knots inside (a, b), the last plays on. */
 function timeline(src, loop) {
   const { at, pos } = src, n = at.length;
@@ -120,9 +82,9 @@ function timeline(src, loop) {
 }
 
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} }) {
-  let script = null, acts = null, src = null, tl = null, T = T0, next = T0, thinnedFor = 0, thinFrom = Infinity, lastReason = '';
-  let home = null, nextHome = null, loop = null, nextLoop = null, low = false, auto = false, comp = 0;
-  let lead = null, joinAt = null, pre = null;
+  let script = null, src = null, tl = null, T = T0, next = T0, thinnedFor = 0, thinFrom = Infinity, lastReason = '';
+  let nextHome = null, loop = null, nextLoop = null, low = false, auto = false, comp = 0;
+  let lead = null, joinAt = null;
   const sentLog = [], lags = [];
   let plan = null;
   const sch = { cursor: 0, skipped: 0 };
@@ -132,7 +94,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
   const scriptNow = (clock) => clock.mediaAt(now() - off());
 
   function build() {
-    src = withHome(script, home, acts);
+    src = script;
     tl = src ? timeline(src, loop) : null;
     thinnedFor = 0; thinFrom = Infinity;
   }
@@ -184,15 +146,14 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
   }
 
   Object.assign(sch, {
-    /** actions: the parsed Script when s is a shaped copy (interp.js); home finds its gaps there. */
-    load(s, actions = s) {
-      script = s || null; acts = script && actions ? actions : script;
+    load(s) {
+      script = s || null;
       build();
-      sch.cursor = 1; sch.skipped = 0; lastReason = ''; lead = null; joinAt = null; pre = null;
+      sch.cursor = 1; sch.skipped = 0; lastReason = ''; lead = null; joinAt = null;
     },
     setTransform(t) { next = { ...T0, ...t }; },
-    /** {afterMs, point, speed} | null */
-    setHome(h) { nextHome = h || null; pre = null; },
+    /** {point: 0..1 of the script, speed: norm/s} | null; afterMs is the caller's. */
+    setHome(h) { nextHome = h || null; },
     /** loopSpec(...) | null, in the clock's unrolled media time */
     setLoop(l) { nextLoop = l || null; },
     /** {low, auto}: low caps the offer at LEAD_LOW_MS; auto feeds the measured lag into the offset. */
@@ -210,7 +171,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     },
     /** transitionMs > 0 (a seek): one segment to where the script is transitionMs from now, then on. */
     restart(clock, transitionMs = 0) {
-      T = next; home = nextHome; loop = nextLoop;
+      T = next; loop = nextLoop;
       build();
       lead = null; joinAt = null;
       supersede(now());
@@ -269,11 +230,18 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     },
     preroll(mediaMs, hereNorm) {
       if (!script) return null;
-      if (!pre) pre = withHome(script, nextHome, acts);
-      const target = applyT(posAt(pre, mediaMs), next);
+      const target = applyT(posAt(script, mediaMs), next);
       const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
       if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;
       return { atMs: now(), norm: target, durationMs: PREROLL_MIN_MS + PREROLL_STROKE_MS * delta };
+    },
+    /** One move to the home point, |delta| / speed s and at least HOME_MIN_MS; null when off or already there. */
+    home(hereNorm) {
+      if (!script || !nextHome || !(nextHome.speed > 0)) return null;
+      const target = applyT(nextHome.point, next);
+      const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
+      if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;
+      return { atMs: now(), norm: target, durationMs: Math.max(HOME_MIN_MS, delta * 1000 / nextHome.speed) };
     },
   });
   // Object.assign would copy a getter's value once: these stay live.

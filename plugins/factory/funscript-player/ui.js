@@ -10,6 +10,9 @@
 //   nothing: the rail is another source's, latched, gone or refusing, so a
 //   hold would land in someone else's stream. Nothing here ever plays except
 //   the operator's Play; a 'play' the player did not start is paused at once.
+// - The one move outside Play is the pause home (prefs play.home, off by default):
+//   one segment once a pause or the end has lasted homeAfterMs, never while gated
+//   or after a stop for another reason; Play, a load and Motion cancel it.
 // - A hold is sent only for the player's own stops, and only while segments
 //   went out since the last restart, so a stop is one hold and silence after.
 // - A pause or gate during preroll cancels the video start and sends nothing:
@@ -37,8 +40,6 @@
 //   never picture-in-picture or fullscreen (law 1: nothing may cover the strip).
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
-// - The scheduler loads the shaped Script with the parsed one as its actions: home finds
-//   its gaps in the file's actions, never in interp.js's pieces.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
@@ -92,9 +93,9 @@ export const COPY = Object.freeze({
   loopTip: 'Loop the whole video',
   loopCount: 'Loop count',
   forever: 'forever',
-  home: 'Auto-home',
-  homeTip: 'Home in long gaps while playing',
-  homeAfter: 'Home after',
+  home: 'Pause home',
+  homeTip: 'Move home once paused this long',
+  homeAfter: 'After pause',
   homePoint: 'Home point',
   homeSpeed: 'Home speed',
   seekMs: 'Seek glide',
@@ -179,6 +180,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
   let interp = prefs.interp;
   let seekT = 0;        // the seek transition the next restart carries
+  let homeAt = Infinity; // the pause home's due time
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
   const trace = [];
   scheduler.setTransform(state.T);
@@ -205,7 +207,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   }
   function applyPlay() {
     const p = state.play;
-    scheduler.setHome(p.home ? { afterMs: p.homeAfterMs, point: p.homePoint, speed: p.homeSpeed } : null);
+    scheduler.setHome(p.home ? { point: p.homePoint, speed: p.homeSpeed } : null);
     scheduler.setLatency({ low: p.lowLatency, auto: p.autoLatency });
     if (clock.tune) clock.tune(p.lowLatency ? LOW : {});
     setLoopSpec();
@@ -235,6 +237,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   /** Every stop: one hold when owed (never on a yield), the video paused in the same call. */
   function stop(phase, words = '', yieldRail = false) {
     if (yieldRail) sentSince = false;
+    homeAt = phase === 'ready' && state.phase === 'playing' ? now() + state.play.homeAfterMs : Infinity;
     if (state.phase === 'playing') hold();
     if (loop.wrapping) loop.reset();
     pre = null;
@@ -272,6 +275,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   }
   function play() {
     if (!canPlay()) return;
+    homeAt = Infinity;
     why = '';
     transient = '';
     scheduler.setTransform(state.T);
@@ -301,7 +305,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       if (r.fatal) stop('held', r.reason, true);
       else transient = r.ok ? '' : r.reason;
       observePlan();
-    }
+    } else if (state.phase === 'ready' && now() >= homeAt) goHome();
     if (state.phase === 'playing' && !video.seeking && loop.due(video.currentTime * 1000)) {
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
@@ -341,6 +345,15 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     else if (clock.observe(mediaMs, displayMs) === 'step') restart = true;
   }
 
+  /** The pause home: one move, retried while the refusal is transient. */
+  function goHome() {
+    if (!state.play.home || !state.motion || !fields || gate()) { homeAt = Infinity; return; }
+    const seg = scheduler.home(here());
+    const r = seg ? submit([seg]) : { ok: true };
+    if (r.ok || !TRANSIENT.has(r.reason)) homeAt = Infinity;
+    if (seg && r.ok) probe({ k: 'mark', t: now(), name: 'home' });
+  }
+
   function warm() {
     if (state.motion && state.script && fields && !gate()) submit([]);
   }
@@ -351,7 +364,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const next = s ? shape(s, interp, { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi }) : null;
     if (next === state.shaped) return;
     state.shaped = next;
-    scheduler.load(next, s);
+    scheduler.load(next);
     peak = next ? peakSpeed(next) : 0;
     if (state.phase === 'playing' && clock.ready) restart = true;
   }
@@ -359,6 +372,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   /** scene: Scene | LocalScene; script: Script | Promise<Script> | null; none: words when it has no script. */
   function load(scene, script, none, extra = []) {
     if (active()) stop('ready');
+    homeAt = Infinity;
     if (url) revoke(url);
     url = String(scene.key).startsWith('file:') ? scene.stream : null;
     const my = ++seq;
@@ -391,6 +405,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 
   function setMotion(on) {
     if (on === state.motion) return;
+    homeAt = Infinity;
     if (state.phase === 'preroll' || (state.phase === 'playing' && on)) stop('ready');
     else if (state.phase === 'playing') hold();
     state.motion = on;
@@ -448,10 +463,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   const on = (ev, fn) => video.addEventListener(ev, fn);
   on('play', () => { if (state.phase !== 'playing') video.pause(); });
   on('pause', () => {
-    if (state.phase === 'playing' && video.ended) { state.phase = 'ready'; sentSince = false; changed(); }
+    if (state.phase === 'playing' && video.ended) { state.phase = 'ready'; sentSince = false; homeAt = now() + state.play.homeAfterMs; changed(); }
     else if (active()) stop('ready');
   });
-  on('ended', () => { if (state.phase === 'playing') { state.phase = 'ready'; sentSince = false; changed(); } });
+  on('ended', () => { if (state.phase === 'playing') { state.phase = 'ready'; sentSince = false; homeAt = now() + state.play.homeAfterMs; changed(); } });
   on('waiting', () => { if (state.phase === 'playing' && !loop.wrapping) { hold(); buffering = true; changed(); } });
   on('playing', () => { if (state.phase === 'playing' && !loop.wrapping) { buffering = false; resetClock(); changed(); } });
   on('seeking', () => {

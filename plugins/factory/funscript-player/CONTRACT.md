@@ -220,20 +220,18 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               delta = 1 when hereNorm is null. The caller submits it and plays at its end.
 //   cursor: number, skipped: number }
 //
-// Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform,
-// home or loop change is pending until restart; preroll reads the pending ones.
+// Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform or
+// loop change is pending until restart; preroll and home read the pending ones.
 export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
 export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
-export function withHome(script, home, actions = script);   // home: {afterMs, point: 0..1 script space, speed: norm/s} | null -> Script copy
-  // A gap of at least afterMs + move in + move out gets knots: (t0 + afterMs, the line), +move in at point,
-  // (t1 - move out, point), then the next action at its time. move(d) = max(HOME_MIN_MS, |d| / speed s).
-  // Before the first action the gap runs from 0 (a knot (0, pos[0]) is added); after the last, one move
-  // home after afterMs. null returns the script itself. actions: the parsed Script whose actions define
-  // the gaps when script is a shaped copy (interp.js; every action is one of its knots); the copy's knots
-  // inside a homed gap after afterMs are replaced.
 // Scheduler gains:
-//   load(script | null, actions = script)   actions as in withHome
-//   setHome(home | null), setLoop(loopSpec | null)   pending until restart
+//   setHome(home | null)        home: {point: 0..1 script space, speed: norm/s}; in force at once
+//   home(hereNorm) -> Seg | null   the pause home (never a knot while playing): null when off or when
+//                               |hereNorm - target| <= PREROLL_SKIP; else {atMs: now(), norm: target,
+//                               durationMs: max(HOME_MIN_MS, |delta| / speed s)}, target = applyT(point, T),
+//                               delta = 1 when hereNorm is null. The caller submits it once a pause has
+//                               lasted afterMs
+//   setLoop(loopSpec | null)    pending until restart
 //   setLatency({low, auto})     in force at once. low: the offer stops at atMs > now + LEAD_LOW_MS.
 //                               auto: when |clamp(lagMs, +-COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
 //                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
@@ -260,9 +258,13 @@ and clock do none of it:
   each playing tick a new sample (its `api.age` dropped, or its elapsed
   changed) goes to `observePlan(now() - api.age(planEl), elapsed ms,
   duration ms)`, converted from the field's unit (us, ms, s).
-- `scheduler.load(shaped, state.script)`: home finds its gaps in the file's
-  actions, never in the shaped pieces.
-- Prefs `play` map to `setHome(home ? {afterMs, point, speed} : null)`,
+- `scheduler.load(shaped)`.
+- Pause home: Pause (a stop to ready from playing) or the end arms it at
+  `now() + homeAfterMs`; each tick past that while ready submits
+  `scheduler.home(here())` once (a transient refusal retries next tick),
+  unless `play.home` is off, Motion is off or the gate reads; Play, a load
+  and a Motion change disarm it. Probe mark `home` when it went out.
+- Prefs `play` map to `setHome(home ? {point, speed} : null)`,
   `setLatency({low: lowLatency, auto: autoLatency})`, `clock.tune(low ? LOW : {})`,
   `frameSource(..., () => low ? LOW.fallbackMs : FALLBACK_AFTER_MS)`, and a
   `seeked` restart as `restart(clock, seekMs)`; every other restart passes 0.
@@ -527,7 +529,7 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get low.
 export const PLAY_CSS;
 export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
-  // Loop, Loop count, Auto-home, Home after, Home point, Home speed, Seek glide, Low latency, Auto latency;
+  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Low latency, Auto latency;
   // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
@@ -668,5 +670,5 @@ export named here, the prefs and the hero spec; the default run is the
 fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
 --port P --http P+7` runs the card against valencesim on spare ports, and
 `--live-playback --port P --http P+7 [--shots dir]` plays a 60 s clip there
-with auto latency, a seek glide, auto-home in a 14 s gap, an A-B loop, low
+with auto latency, a seek glide, a 14 s gap held as one span, a pause home, an A-B loop, low
 latency and a Preview write, printing one `PB-RESULT` JSON line.

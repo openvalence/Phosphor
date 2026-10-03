@@ -47,7 +47,7 @@ const CONTRACT = {
     'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
     'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
-    'applyT', 'strokeSpeed', 'withHome', 'createScheduler'],
+    'applyT', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
@@ -312,7 +312,7 @@ try {
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
 // --live-playback: 400..697 ms spans of 25..75 (inside the sim's speed limit, so plans keep their durations) and a
-// gap from the last action at or before 20 s to 34 s for auto-home.
+// gap from the last action at or before 20 s to 34 s that plays as one span (home is a pause behavior).
 if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: k % 2 ? 75 : 25 }); at += 400 + ((k * 37) % 298); }
 else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
@@ -1324,7 +1324,8 @@ if (!LIVE && !args.includes('--stash-live')) {
 }
 
 // ---- (p) live playback (--live-playback): valencesim plays the 60 s script with a 14 s gap ----
-// Auto latency on from the start; a seek with the glide; auto-home in the gap; an A-B loop;
+// Auto latency on from the start; a seek with the glide; the gap held as one span, then a pause
+// that homes after the delay; an A-B loop;
 // low latency on; a Preview tuning write the sim marks, then Discard. Prints the numbers as
 // one 'PB-RESULT' JSON line; the stored-value recheck after a sim restart is the caller's.
 if (PB) {
@@ -1437,19 +1438,28 @@ if (PB) {
   ok('pb seek: one hold, then a 500 ms glide to the script 500 ms on, the next span joins its end', R.seek.hold && R.seek.glideMs === 500
     && near < 0.01 && (R.seek.joinMs == null || Math.abs(R.seek.joinMs) < 0.01), R.seek);
 
-  // ---- 3: auto-home in the 14 s gap ----
+  // ---- 3: the 14 s gap plays as its one authored span; a pause homes once after the delay ----
   const gapA = SCRIPT.actions.filter((a) => a.at <= 20000).at(-1).at, gapB = 34000;
   await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').currentTime > 35.5, C, { timeout: 30000 }).catch(() => {});
   segs = await since(t0, 'seg');
-  const homeSegs = segs.flatMap((x) => x.list).filter((s) => Math.abs(s.norm - 0.5) < 0.002);
-  const homeAt = homeSegs.length ? nodeAt(homeSegs[0].atMs) : NaN;
-  const homeEnd = homeSegs.length ? nodeAt(homeSegs.at(-1).atMs + homeSegs.at(-1).durationMs) : NaN;
-  const atHome = posLog.filter((p) => p.at > homeAt + (homeSegs[0] ? homeSegs[0].durationMs : 0) + 300 && p.at < homeEnd - 300).map((p) => p.u);
-  R.home = { gapMs: [gapA, gapB], segs: homeSegs.length, moveInMs: homeSegs[0] ? Math.round(homeSegs[0].durationMs) : null,
-    holdMs: homeSegs[1] ? Math.round(homeSegs[1].durationMs) : null, measured: atHome.length ? +median(atHome).toFixed(4) : null, samples: atHome.length,
+  const gapSegs = segs.flatMap((x) => x.list);
+  const gapSpan = gapSegs.find((s) => Math.abs(s.durationMs - (gapB - gapA)) < 1);
+  R.gap = { gapMs: [gapA, gapB], spanMs: gapSpan ? Math.round(gapSpan.durationMs) : null, homeSegs: gapSegs.filter((s) => Math.abs(s.norm - 0.5) < 0.002).length };
+  ok('pb gap: while playing the gap is one authored span, nothing goes home', !!gapSpan && R.gap.homeSegs === 0, R.gap);
+  t0 = await pnow();
+  await playBtn(page).click();
+  await page.waitForTimeout(PLAY.homeAfterMs + 3500);
+  const homeSeg = (await since(t0, 'seg')).flatMap((x) => x.list).find((s) => Math.abs(s.norm - 0.5) < 0.002);
+  const homeMark = (await since(t0, 'mark')).find((m) => m.name === 'home');
+  const atHome = homeSeg ? posLog.filter((p) => p.at > nodeAt(homeSeg.atMs + homeSeg.durationMs) + 300).map((p) => p.u) : [];
+  R.home = { afterPauseMs: homeMark ? Math.round(homeMark.t - t0) : null, moveMs: homeSeg ? Math.round(homeSeg.durationMs) : null,
+    measured: atHome.length ? +median(atHome).toFixed(4) : null, samples: atHome.length,
     worst: atHome.length ? +Math.max(...atHome.map((u) => Math.abs(u - 0.5))).toFixed(4) : null };
-  ok('pb home: a move to the point and a wait there in the gap, the machine measured at the point', homeSegs.length >= 2
-    && atHome.length > 10 && Math.abs(median(atHome) - 0.5) < 0.01, R.home);
+  ok('pb home: one move home once the pause lasts homeAfterMs, the machine measured at the point', !!homeSeg
+    && R.home.afterPauseMs >= PLAY.homeAfterMs && R.home.afterPauseMs < PLAY.homeAfterMs + 300 && atHome.length > 10
+    && Math.abs(median(atHome) - 0.5) < 0.01, R.home);
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
 
   // ---- 4: an A-B loop ----
   const ab = page.locator(C + ' .fsp-ab');

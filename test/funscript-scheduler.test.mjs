@@ -15,7 +15,7 @@ import {
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
-  withHome, HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS,
+  HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
@@ -387,35 +387,9 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
     l2.unroll(1020) === 3020 && l2.lap === 1 && !l2.wrapping);
 }
 {
-  // Auto-home: a 20 s gap after 1000 ms, home 0.5 after 5 s at 0.25 norm/s.
+  // Pause home (prefs play.home): a 20 s gap while playing follows the authored line, no home knot.
   const s = parseFunscript({ actions: [{ at: 0, pos: 10 }, { at: 1000, pos: 90 }, { at: 21000, pos: 30 }, { at: 21400, pos: 80 }] });
-  const H = { afterMs: 5000, point: 0.5, speed: 0.25 };
-  const h = withHome(s, H);
-  const k = (t) => h.at.indexOf(t);
-  const line = 0.9 + (0.3 - 0.9) * (5000 / 20000);
-  ok('home: the gap follows the line for afterMs, then moves to the point at speed', k(6000) > 0 && near(h.pos[k(6000)], line, 1e-6)
-    && near(h.at[k(6000) + 1], 6000 + Math.abs(0.5 - line) * 4000, 1e-3) && near(h.pos[k(6000) + 1], 0.5, 1e-6));
-  ok('home: it waits at the point and returns to land on the next action at its time', near(h.at[k(21000) - 1], 21000 - 0.2 * 4000, 1e-3)
-    && near(h.pos[k(21000) - 1], 0.5, 1e-6) && near(h.pos[k(21000)], 0.3, 1e-6));
-  ok('home: a 400 ms gap is not homed', h.at[h.at.length - 3] === 21400);
-  ok('home: after the last action one move home', near(h.at.at(-2), 26400, 1e-9) && near(h.at.at(-1), 26400 + Math.max(HOME_MIN_MS, 0.3 * 4000), 1e-3)
-    && near(h.pos.at(-1), 0.5, 1e-6));
-  ok('home: knots stay strictly increasing; the shown script is untouched', h.at.every((v, i) => !i || v > h.at[i - 1]) && s.at.length === 4);
-  const late = withHome(parseFunscript({ actions: [{ at: 12000, pos: 100 }, { at: 12300, pos: 0 }] }), H);
-  ok('home: before the first action the gap runs from 0', late.at[0] === 0 && late.at.includes(5000) && near(late.pos[late.at.indexOf(5000) + 1], 0.5, 1e-6));
-  ok('home: off is the script itself', withHome(s, null) === s);
-  // A shaped copy (interp.js): 40 ms pieces between the same actions. The gaps come from the actions.
-  const dense = { at: [], pos: [] };
-  for (let i = 1; i < s.at.length; i++) {
-    for (let t = s.at[i - 1]; t < s.at[i]; t += 40) { dense.at.push(t); dense.pos.push(posAt(s, t)); }
-  }
-  dense.at.push(s.at.at(-1)); dense.pos.push(s.pos.at(-1));
-  const shaped = { ...s, at: Float64Array.from(dense.at), pos: Float32Array.from(dense.pos) };
-  const hs = withHome(shaped, H, s);
-  ok('home: a shaped copy is homed in the action gap, its pieces kept up to afterMs and from the next action on',
-    hs.at.includes(5960) && near(hs.at[hs.at.indexOf(6000) + 1], h.at[k(6000) + 1], 1e-3) && !hs.at.includes(10000)
-    && hs.at.includes(21040) && hs.at.every((v, i) => !i || v > hs.at[i - 1]) && withHome(shaped, H).at.length > hs.at.length);
-  const r = play(s, {});
+  const H = { point: 0.5, speed: 0.25 };
   let t = 0;
   const host = fakeHost(() => t);
   const sch = createScheduler({ submit: host.submit, now: () => t });
@@ -423,9 +397,17 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   clock.anchor(0, 0, 1);
   sch.load(s); sch.setHome(H); sch.restart(clock);
   while (t < 28000) { sch.tick(clock); t += VSYNC; }
-  ok('home: the scheduler sends the homed knots as plain tiled segments', host.sent.length === h.at.length - 1 && tiles(host.sent) <= 0.001
-    && host.sent.some((g) => near(g.norm, 0.5, 1e-6)) && r.host.sent.length === 3, host.sent.length + ' spans');
-  ok('home: preroll reads the pending home', near(sch.preroll(15000, null).norm, 0.5, 1e-6));
+  ok('home: never inside a gap while playing; the gap is the one authored span', host.sent.length === 3 && tiles(host.sent) <= 0.001
+    && near(host.sent[1].durationMs, 20000, 1e-6) && near(host.sent[1].norm, 0.3, 1e-6), host.sent.length + ' spans');
+  ok('home: preroll reads the script, not the home point', near(sch.preroll(11000, null).norm, posAt(s, 11000), 1e-6));
+  const g = sch.home(0.9);
+  ok('home: one move to the point at speed, from here', g.atMs === t && near(g.norm, 0.5, 1e-6) && near(g.durationMs, 0.4 * 4000, 1e-6), g);
+  ok('home: at least HOME_MIN_MS; none when already there; a whole stroke without a reading',
+    near(sch.home(0.42).durationMs, HOME_MIN_MS, 1e-9) && sch.home(0.51) === null && near(sch.home(null).durationMs, 4000, 1e-6));
+  sch.setTransform({ lo: 0.2, hi: 0.6 });
+  ok('home: the point goes through the pending range', near(sch.home(0.9).norm, 0.4, 1e-6));
+  sch.setHome(null);
+  ok('home: off sends nothing', sch.home(0.9) === null);
 }
 {
   // Seek transition: a restart at media 1400 with 500 ms moves to the script's position at 1900.
