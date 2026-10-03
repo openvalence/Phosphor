@@ -2,7 +2,7 @@
   /**
    * AdvancedGeneratorWidget.svelte -- RENDERING §10 `generator-advanced`:
    * master run/stop with `source.background_run` beside it (§10.1 rule 1),
-   * the seven base controls, each with the modulators whose mod_target names
+   * the seven base controls and any claimed dwell, each with the modulators whose mod_target names
    * it grouped under it (RFC-066), and the preset store.
    *
    * Constraints:
@@ -24,7 +24,9 @@
 
   let { fields } = $props();
 
-  const BASE = ['master', 'depthMax', 'depthMin', 'speedIn', 'speedOut', 'accelIn', 'accelOut'];
+  // The dwells (RFC-095) are optional bindings: drawn, with their modulators, only when claimed.
+  const BASE = $derived(['master', 'depthMax', 'depthMin', 'speedIn', 'speedOut', 'accelIn', 'accelOut',
+    'dwellCrest', 'dwellTrough'].filter((k) => fields[k]));
   const MOD_KEYS = ['amount', 'rise', 'hold', 'fall', 'rest', 'phase'];
 
   // uid of the base control -> its modulators; anything else is `loose`.

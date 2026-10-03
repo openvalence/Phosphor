@@ -36,7 +36,9 @@
     "4624:in_speed",
     "4624:out_speed",
     "4624:in_accel",
-    "4624:out_accel"
+    "4624:out_accel",
+    "4624:dwell_crest",
+    "4624:dwell_trough"
    ],
    "actions": []
   }
@@ -78,7 +80,9 @@
     "4624:in_speed",
     "4624:out_speed",
     "4624:in_accel",
-    "4624:out_accel"
+    "4624:out_accel",
+    "4624:dwell_crest",
+    "4624:dwell_trough"
    ],
    "actions": []
   }

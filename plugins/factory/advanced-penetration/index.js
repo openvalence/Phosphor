@@ -29,7 +29,11 @@
 //   left-right.
 // - A label sits beside its handle, clear of the drawn line (placeLabels).
 // - mod.shape is not claimed: it stays a Tier-0 field until a hub emits it.
-// - Crest and trough dwell are not drawn: they wait on RFC-095 (strokeGeom).
+// - Dwells (RFC-095) are optional: the trough flat leads the stroke at the
+//   left, the crest flat follows the deep turn, each to scale on the stroke's
+//   own clock until it would pass DWELL_CAP of the plot; past it the flat is
+//   drawn at the cap with its middle dotted (cut). The picture never caps the
+//   value: the field's own max bounds it.
 
 const STORE_OP = { save: 1, load: 2, delete: 3 };   // registry store_ops (RFC-067)
 const CBOR = { uint: 0, tstr: 4 };                 // SPEC §8.1 schema field types
@@ -49,6 +53,11 @@ const MOD = [['amount', 'mod.amount', 'Amp'], ['rise', 'mod.rise', 'To min'], ['
   ['fall', 'mod.fall', 'To max'], ['rest', 'mod.rest', 'At max'], ['phase', 'mod.phase', 'Offset']];
 const CLASSIC = [['pSpeed', 'pattern.speed', 'Speed'], ['pDepth', 'pattern.depth', 'Depth'],
   ['pStroke', 'pattern.stroke', 'Stroke'], ['pSensation', 'pattern.sensation', 'Sensation']];
+// RFC-095: the dwells, flats on the stroke picture when the hub carries them.
+const DWELL = [['dwellCrest', 'advgen.dwell_crest', 'Crest dwell'], ['dwellTrough', 'advgen.dwell_trough', 'Trough dwell']];
+export const DWELL_CAP = 0.25;                     // share of the plot a flat takes before it is drawn cut
+export const DWELL_SPAWN = 0.25;                   // strokes a plus writes
+const DWELL_OFF = 36;                              // viewBox units: a dwell pill sits this far off its bound
 const LADDER = { pending: 'waiting', overdue: 'still waiting', fault: 'refused' };
 const KEYS = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 'min', End: 'max' };
 
@@ -153,8 +162,10 @@ export function atDepth(c, u) {
 }
 
 /**
- * The stroke picture. p: {lo, hi} depth shares, {sIn, sOut, aIn, aOut} units.
- * L: {X0, XR, YT, YB}. The stroke always spans X0..XR.
+ * The stroke picture. p: {lo, hi} depth shares, {sIn, sOut, aIn, aOut} units,
+ * {dt, dc} trough and crest dwell in strokes (optional). L: {X0, XR, YT, YB}.
+ * The stroke always spans X0..XR: trough flat, in half, crest flat, out half.
+ * A dwell's clock is one stroke, the two moving halves (RFC-095).
  */
 export function strokeGeom(p, L) {
   const y = (u) => L.YB - u * (L.YB - L.YT);
@@ -162,44 +173,86 @@ export function strokeGeom(p, L) {
   const tIn = halfTime(g.span, p.sIn, p.aIn), tOut = halfTime(g.span, p.sOut, p.aOut);
   g.ok = !!(tIn && tOut);
   if (!g.ok) return g;
-  // DWELL SEAM (RFC-095, not yet): a crest dwell is a flat segment at yhi
-  // between the in half's end (x1) and the out half's start, a trough dwell
-  // a flat segment at ylo after x2; both add their time to tIn + tOut in k.
-  g.k = (L.XR - L.X0) / (tIn + tOut);
-  g.x0 = L.X0;
-  g.x1 = g.x0 + g.k * tIn;
-  g.x2 = g.x1 + g.k * tOut;
-  const dIn = g.k * accTime(g.span, p.sIn, p.aIn), dOut = g.k * accTime(g.span, p.sOut, p.aOut);
+  const M = tIn + tOut, W = L.XR - L.X0, cap = DWELL_CAP * W;
+  const t = { trough: Math.max(0, p.dt || 0) * M, crest: Math.max(0, p.dc || 0) * M };
+  // A cut flat takes the cap and the rest share what is left; cutting one only
+  // widens the others, so a flat once cut stays cut.
+  const cut = { trough: false, crest: false };
+  let k = 0;
+  for (let i = 0; i < 3; i++) {
+    k = (W - (cut.trough + cut.crest) * cap) / (M + (cut.trough ? 0 : t.trough) + (cut.crest ? 0 : t.crest));
+    const more = ['trough', 'crest'].filter((f) => !cut[f] && t[f] * k > cap);
+    if (!more.length) break;
+    for (const f of more) cut[f] = true;
+  }
+  const w = (f) => (cut[f] ? cap : t[f] * k);
+  Object.assign(g, { k, M, tIn, tOut, cut });
+  g.xt = L.X0;
+  g.x0 = g.xt + w('trough');
+  g.x1 = g.x0 + k * tIn;
+  g.xc = g.x1 + w('crest');
+  g.x2 = g.xc + k * tOut;
+  g.mw = k * M;
+  const dIn = k * accTime(g.span, p.sIn, p.aIn), dOut = k * accTime(g.span, p.sOut, p.aOut);
   g.inC = [g.x0, g.ylo, g.x0 + dIn, g.ylo, g.x1 - dIn, g.yhi, g.x1, g.yhi];
-  g.outC = [g.x1, g.yhi, g.x1 + dOut, g.yhi, g.x2 - dOut, g.ylo, g.x2, g.ylo];
+  g.outC = [g.xc, g.yhi, g.xc + dOut, g.yhi, g.x2 - dOut, g.ylo, g.x2, g.ylo];
   const mid = (g.ylo + g.yhi) / 2;
   g.deep = { x: g.x1, y: g.yhi };
   g.shallow = { x: g.x2, y: g.ylo };
   g.vIn = { x: (g.x0 + g.x1) / 2, y: mid };
-  g.vOut = { x: (g.x1 + g.x2) / 2, y: mid };
+  g.vOut = { x: (g.xc + g.x2) / 2, y: mid };
   g.aIn = onCurve(g.inC, g.x0 + TANGENT * dIn);
   g.aOut = onCurve(g.outC, g.x2 - TANGENT * dOut);
+  // Flats [x from, x to, y]; a dwell pill rides its guide off the bound, toward
+  // the other bound, else the other way when that would leave the plot.
+  g.flat = { trough: [g.xt, g.x0, g.ylo], crest: [g.x1, g.xc, g.yhi] };
+  const off = (y0, d) => (y0 + d * DWELL_OFF >= L.YT && y0 + d * DWELL_OFF <= L.YB ? y0 + d * DWELL_OFF : y0 - d * DWELL_OFF);
+  g.pill = { trough: { x: g.x0, y: off(g.ylo, -1) }, crest: { x: g.xc, y: off(g.yhi, 1) } };
   return g;
 }
 
-// The in half's share of the stroke time with the turn at x.
-const turnShare = (g, x) => clamp((x - g.L.X0) / (g.L.XR - g.L.X0), 0.01, 0.99);
+/**
+ * The dwell (strokes) whose flat end sits at x: drawn to scale against
+ * drag-start g with this flat uncut, so the pill tracks the pointer and the
+ * value grows without bound toward the plot's right edge. A cut flat maps the
+ * pointer piecewise so the grab point keeps its value and the flat's start is 0.
+ */
+export function dwellAt(which, g, x) {
+  const W = g.L.XR - g.L.X0, cap = DWELL_CAP * W, M = g.M;
+  const other = which === 'crest' ? 'trough' : 'crest';
+  const oT = Math.max(0, (which === 'crest' ? g.p.dt : g.p.dc) || 0) * M;
+  const F = g.cut[other] ? cap : 0, Tf = M + (g.cut[other] ? 0 : oT);
+  // Before this flat: px held by a cut trough, time otherwise.
+  const Apx = which === 'crest' && g.cut.trough ? cap : 0;
+  const At = which === 'crest' ? g.tIn + (g.cut.trough ? 0 : oT) : 0;
+  const share = (xx) => (xx - g.L.X0 - Apx) / (W - F);
+  const u0 = Math.max(0, (which === 'crest' ? g.p.dc : g.p.dt) || 0) * M;
+  const r0 = (At + u0) / (Tf + u0), rs = At / Tf, rh = share(g.pill[which].x);
+  let r = share(x);
+  if (rh < r0 - 1e-9) r = r <= rh ? rs + (r - rs) * (r0 - rs) / (rh - rs) : r0 + (r - rh) * (1 - r0) / (1 - rh);
+  return r >= 1 ? Infinity : Math.max(0, (r * Tf - At) / (1 - r)) / M;
+}
+
+// The in half's share of the moving time, from the half's width at the pill.
+const inShare = (g, wIn) => clamp(wIn / g.mw, 0.01, 0.99);
 
 /** A handle at (x, y) of drag-start geometry g, as its field's raw value. */
 export const strokeValue = {
   depth: (f, g, x, y) => fromFrac(f, (g.L.YB - y) / (g.L.YB - g.L.YT)),
-  // A speed pill sits mid-half, so the turn is at 2x - X0 (in) or 2x - XR (out).
+  // A speed pill sits mid-half, so its half is 2 (x - x0) wide (in) or 2 (x2 - x) (out).
   // U: linked, 1/sIn + 1/sOut held (units); 0, unlinked.
   speedIn: (f, g, x, y, U) => {
-    const r = turnShare(g, 2 * x - g.L.X0);
+    const r = inShare(g, 2 * (x - g.x0));
     return valueOf(f, U ? linkedInAt(g.p, r, U) : speedInAt(g.p, r));
   },
   speedOut: (f, g, x, y, U) => {
-    const r = turnShare(g, 2 * x - g.L.XR);
+    const r = 1 - inShare(g, 2 * (g.x2 - x));
     return valueOf(f, U ? linkedOutAt(g.p, r, U) : speedOutAt(g.p, r));
   },
   accelIn: (f, g, x) => valueOf(f, accelForEase(Math.max(x - g.x0, 1e-3) / (TANGENT * (g.x1 - g.x0)))),
-  accelOut: (f, g, x) => valueOf(f, accelForEase(Math.max(g.x2 - x, 1e-3) / (TANGENT * (g.x2 - g.x1)))),
+  accelOut: (f, g, x) => valueOf(f, accelForEase(Math.max(g.x2 - x, 1e-3) / (TANGENT * (g.x2 - g.xc)))),
+  dwellCrest: (f, g, x) => dwellAt('crest', g, x),
+  dwellTrough: (f, g, x) => dwellAt('trough', g, x),
 };
 
 /** fray-d getModification as a drop share per stroke of the cycle (0 = base, 1 = full swing). */
@@ -346,6 +399,9 @@ const CSS = `
 .ap-ed .guide { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .ap-ed .grid { stroke: var(--line); }
 .ap-ed .vguide { stroke: var(--tx-ghost); stroke-width: 1.5; }
+.ap-ed .vguide.thin { stroke-width: 1; }
+.ap-ed .cut { stroke: var(--reality); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 0 6; }
+.ap-ed .cut.intent { stroke: var(--intent); }
 .ap-plus { position: absolute; width: var(--tap); height: var(--tap); margin: 0; padding: 0; background: none; border: 0; cursor: pointer;
   transform: translate(6px, 8px); color: var(--tx-mut); z-index: 2; }
 .ap-plus::after { content: '+'; position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; display: grid; place-items: center;
@@ -376,7 +432,7 @@ const CSS = `
 .ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--bg-card); box-sizing: border-box; pointer-events: none; z-index: 1; }
 .ap h4 { margin: 0; font-size: .85rem; color: var(--tx); font-weight: 600; }
 .ap-sub { margin: 0; font-size: .72rem; color: var(--tx-mut); }
-.ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px; }
+.ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 4px; }
 .ap-mtabs [role=tab]::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--line-2); vertical-align: middle; }
 .ap-mtabs [role=tab][data-on=true]::before { background: var(--reality); }
 .ap .ap-stale { opacity: .55; }
@@ -411,7 +467,7 @@ export function activate(api) {
       require: { advRun: 'advgen.running', master: 'advgen.master', ...Object.fromEntries(BASE.map(([k, r]) => [k, r])) },
       optional: {
         running: 'pattern.running', bgRun: 'source.background_run', presetOp: 'action.store',
-        select: 'pattern.select', ...Object.fromEntries(CLASSIC.map(([k, r]) => [k, r])),
+        select: 'pattern.select', ...Object.fromEntries([...CLASSIC, ...DWELL].map(([k, r]) => [k, r])),
       },
       // A modulator is one entry carrying all six roles (RFC-066); no minimum.
       instances: { mods: { min: 0, roles: Object.fromEntries(MOD.map(([k, r]) => [k, r])) } },
@@ -698,24 +754,63 @@ function mountCard(api, el, fields) {
   const pIn = s('path', { class: 'curve' }), pOut = s('path', { class: 'curve' });
   const play = h('div', { class: 'ap-play', hidden: '' });
   const SV = strokeValue;
+  const dw = (f) => (f ? Math.max(0, val(f)) : 0);
   const strokeNow = () => strokeGeom({
     lo: fracOf(F.depthMin, val(F.depthMin)), hi: fracOf(F.depthMax, val(F.depthMax)),
     sIn: unitOf(F.speedIn, val(F.speedIn)), sOut: unitOf(F.speedOut, val(F.speedOut)),
     aIn: unitOf(F.accelIn, val(F.accelIn)), aOut: unitOf(F.accelOut, val(F.accelOut)),
+    dt: dw(F.dwellTrough), dc: dw(F.dwellCrest),
   }, SL);
+  const DRIVEN = [...BASE, ...DWELL].filter(([k]) => F[k]);
+  // A dwell: its flat (solid ends, a dotted middle fading out and back in when cut), a
+  // thin guide at its end, and a plus at its bound while it is 0.
+  const FADE = [0.8, 0.5, 0.2, 0.2, 0.5, 0.8];
+  const dwells = [['trough', F.dwellTrough, 'Add trough dwell'], ['crest', F.dwellCrest, 'Add crest dwell']]
+    .filter(([, f]) => f).map(([which, f, l]) => {
+      const path = s('path', { class: 'curve', 'data-dwell': which });
+      const dots = FADE.map((o) => s('line', { class: 'cut', 'data-dwell': which, 'stroke-opacity': o }));
+      const guide = s('line', { class: 'vguide thin', 'data-dwell': which, y1: SL.YT, y2: SL.YB });
+      const plus = h('button', { type: 'button', class: 'ap-plus', 'aria-label': l, title: l });
+      plus.addEventListener('pointerdown', (e) => e.stopPropagation());
+      plus.addEventListener('click', () => { ed.preview(f, DWELL_SPAWN); ed.commit(f); });
+      return { which, f, path, dots, guide, plus };
+    });
   const stroke = makeEditor(api, {
     W: 1000, H: 240, cls: 'ap-stroke',
-    decor: [...ticks, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'stroke · shape' }), play],
+    decor: [...ticks, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'stroke · shape' }),
+      ...dwells.map((d) => d.plus), play],
     svgKids: [
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YT, y2: SL.YT }),
-      s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YB, y2: SL.YB }), pIn, pOut],
+      s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YB, y2: SL.YB }), pIn, pOut,
+      ...dwells.flatMap((d) => [d.guide, d.path, ...d.dots])],
     geom: strokeNow,
-    lines: (g) => (g.ok ? [g.inC, g.outC].map((c) => Array.from({ length: 49 }, (_, i) => { const p = bez(c, i / 48); return [p.x, p.y]; })) : []),
+    lines: (g) => (g.ok ? [...[g.inC, g.outC].map((c) => Array.from({ length: 49 }, (_, i) => { const p = bez(c, i / 48); return [p.x, p.y]; })),
+      ...dwells.map((d) => g.flat[d.which]).filter(([a, b]) => b > a).map(([a, b, y]) => [[a, y], [b, y]]),
+      ...dwells.filter((d) => val(d.f) > 0).map((d) => g.pill[d.which].x).map((x) => [[x, SL.YT], [x, SL.YB]])] : []),
     draw(g) {
-      const intent = BASE.some(([k]) => draft.has(F[k].uid) || /^(pending|overdue)$/.test(api.status(F[k])));
+      const intent = DRIVEN.some(([k]) => draft.has(F[k].uid) || /^(pending|overdue)$/.test(api.status(F[k])));
       for (const [p, c] of [[pIn, g.inC], [pOut, g.outC]]) {
         p.setAttribute('d', g.ok ? cpath(c) : '');
         p.classList.toggle('intent', intent);
+      }
+      for (const d of dwells) {
+        const [a, b, y] = g.ok ? g.flat[d.which] : [0, 0, 0];
+        const cut = g.ok && g.cut[d.which], wd = b - a;
+        // Cut: solid over the outer 30 % each side, the middle 40 % in six dotted runs fading out and in.
+        d.path.setAttribute('d', wd <= 0 ? '' : cut ? 'M' + a + ' ' + y + ' H' + (a + 0.3 * wd) + ' M' + (b - 0.3 * wd) + ' ' + y + ' H' + b
+          : 'M' + a + ' ' + y + ' H' + b);
+        d.path.classList.toggle('intent', intent);
+        d.dots.forEach((l, i) => {
+          l.toggleAttribute('hidden', !cut);
+          for (const [k, v] of [['x1', a + (0.3 + i * 0.4 / 6) * wd], ['x2', a + (0.3 + (i + 1) * 0.4 / 6) * wd], ['y1', y], ['y2', y]]) l.setAttribute(k, v);
+          l.classList.toggle('intent', intent);
+        });
+        const p = g.ok ? g.pill[d.which] : null;
+        d.guide.toggleAttribute('hidden', !p);
+        if (p) { d.guide.setAttribute('x1', p.x); d.guide.setAttribute('x2', p.x); }
+        d.plus.hidden = !p || val(d.f) > 0;
+        d.plus.disabled = !!api.gate(d.f);
+        if (p) { d.plus.style.left = (p.x / 10) + '%'; d.plus.style.top = (p.y / 240 * 100) + '%'; }
       }
     },
     handles: [
@@ -729,13 +824,17 @@ function mountCard(api, el, fields) {
         value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked && f.max * period()), text: (v) => 'out v' + num(v) },
       { key: 'ain', field: F.accelIn, label: 'In accel', shape: 'diamond', at: (g) => g.ok && g.aIn, value: SV.accelIn, text: (v) => 'a' + num(v) },
       { key: 'aout', field: F.accelOut, label: 'Out accel', shape: 'diamond', at: (g) => g.ok && g.aOut, value: SV.accelOut, text: (v) => 'a' + num(v) },
+      { key: 'trough', field: F.dwellTrough, label: 'Trough dwell', at: (g) => g.ok && g.p.dt > 0 && g.pill.trough,
+        value: SV.dwellTrough, text: (v) => 'dwell ' + num(v) },
+      { key: 'crest', field: F.dwellCrest, label: 'Crest dwell', at: (g) => g.ok && g.p.dc > 0 && g.pill.crest,
+        value: SV.dwellCrest, text: (v) => 'dwell ' + num(v) },
     ],
   }, ed);
   updaters.push(stroke.render);
 
   // ---- rhythm modifier: one tab per modulator, ordered by the control it rides
-  const order = new Map(BASE.map(([k], i) => [F[k].uid, i]));
-  const labelOf = new Map([[F.master.uid, 'Speed'], ...BASE.map(([k, , l]) => [F[k].uid, l])]);
+  const order = new Map(DRIVEN.map(([k], i) => [F[k].uid, i]));
+  const labelOf = new Map([[F.master.uid, 'Speed'], ...DRIVEN.map(([k, , l]) => [F[k].uid, l])]);
   const mods = (F.mods || []).map((m) => ({ m, t: api.modTarget(m.amount) }))
     .sort((a, b) => (order.get(a.t) ?? 99) - (order.get(b.t) ?? 99));
   let rhythm = null;
@@ -859,12 +958,19 @@ function mountCard(api, el, fields) {
     while (trace.length && trace[0][0] < now - WAVE_MS) trace.shift();
     waveLine.setAttribute('points', trace.map(([t, v]) => ((t - now + WAVE_MS) / WAVE_MS * 1000).toFixed(1) + ',' + (60 - v * 56).toFixed(1)).join(' '));
     // Playhead: the live position on the half it is travelling (depth window shares).
+    // The half is the told target's side (no target role: the position's own
+    // direction), and it holds while the position sits at a bound, so a hold parks
+    // there through settle jitter and an early successor.
     const p = share(pos);
     const g = strokeNow();
     if (p != null && g.ok && g.span > 0) {
-      if (lastU != null && p !== lastU) dir = p > lastU ? 1 : -1;
-      lastU = p;
       const u2 = clamp((p - g.p.lo) / g.span, 0, 1);
+      const t = tgt !== pos ? share(tgt) : null;
+      if (u2 > 0.02 && u2 < 0.98) {
+        if (t != null) dir = t >= (g.p.lo + g.p.hi) / 2 ? 1 : -1;
+        else if (lastU != null && p !== lastU) dir = p > lastU ? 1 : -1;
+      }
+      lastU = p;
       const pt = atDepth(dir > 0 ? g.inC : g.outC, dir > 0 ? u2 : 1 - u2);
       play.hidden = false;
       play.style.left = (pt.x / 10) + '%';
@@ -879,7 +985,7 @@ function mountCard(api, el, fields) {
   updaters.push(() => { if (!raf && running()) raf = requestAnimationFrame(tick); });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
-  const baseNums = h('div', { class: 'ap-nums' }, ...BASE.map(([k, , l]) => numCtl(F[k], l)));
+  const baseNums = h('div', { class: 'ap-nums' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
   numRows.push(baseNums);
   const tools = [inputsBtn(), linkBtn()];
   const presets = F.presetOp ? presetRow(api, F, updaters, tools) : h('div', { class: 'ap-row' }, ...tools);
@@ -1008,7 +1114,7 @@ function presetRow(api, F, updaters, tools) {
   del.addEventListener('click', () => { if (pick() != null) run(STORE_OP.delete, pick()).then(() => { sel.value = ''; draw(); }); });
   // Reset: every driven control and modulator to its catalog default. Master, run and mode stay.
   reset.addEventListener('click', () => {
-    const fs = [...BASE.map(([k]) => F[k]), ...(F.mods || []).flatMap((m) => MOD.map(([k]) => m[k]))];
+    const fs = [...[...BASE, ...DWELL].map(([k]) => F[k]).filter(Boolean), ...(F.mods || []).flatMap((m) => MOD.map(([k]) => m[k]))];
     for (const f of fs) if (f.dflt != null && Number(f.dflt) !== Number(api.value(f))) api.write(f, Number(f.dflt));
   });
 

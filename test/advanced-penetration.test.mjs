@@ -32,10 +32,17 @@
  *              persisted; the strip above stays; handles keep the keys
  *   mod tabs   the switch writes amount 0 and restores it; the trash resets
  *              all six in one intent; a plus spawns a hold as a vertical pill
+ *   dwell      RFC-095: a plus at each bound spawns DWELL_SPAWN (key 46 for
+ *              the crest), a vertical pill drags it longer and the flat is
+ *              drawn, past DWELL_CAP it is cut (dotted middle), dragged to 0
+ *              it collapses; the second enabled_mask grays and ungrays them;
+ *              the plan strip reads the owner and hold on a hold sample and
+ *              stays live through it
  *
  * Live mode (--live): against valencesim, the deep drag (echo and numeric
  * twin), the link rescale (one intent, keys 2, 5, 6, echoed), Advanced
- * running with its playhead and told-wave, and both SOURCE_CONFLICT
+ * running with its playhead and told-wave, a 0.5 crest dwell (plan style
+ * hold, the playhead parked at the deep bound), and both SOURCE_CONFLICT
  * refusals; skips (exit 0) unless the sim carries advgen.*.
  * --shot <png> saves the card, and each item's shot beside it.
  *
@@ -52,7 +59,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKE
 import { toHex } from '../../Valence/clients/js/sha256.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
-import { linkRescale, linkSpan, linkPartner } from '../plugins/factory/advanced-penetration/index.js';
+import { linkRescale, linkSpan, linkPartner, DWELL_CAP } from '../plugins/factory/advanced-penetration/index.js';
 
 const args = process.argv.slice(2);
 const LIVE = args.includes('--live');
@@ -123,6 +130,7 @@ function fakeHub(ws) {
     const e = ENTRIES.find((x) => x.id === id);
     if (e && e.layout) send(FRAME.STATE, id, encodePacked(e));
   };
+  hub.push = pushState;
   ws.onMessage((msg) => {
     if (typeof msg === 'string') return;
     for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
@@ -402,6 +410,53 @@ if (LIVE) {
     await page.locator('main.pane .ap').first().screenshot({ path: SHOT });
     console.log('  screenshot: ' + SHOT);
   }
+  // RFC-095: a 0.5 crest dwell holds at the deep bound for half a stroke (the two moving halves).
+  const crest = numIn(page, 'Crest dwell');
+  const depthKeep = [await numIn(page, 'Max depth').inputValue(), await numIn(page, 'Min depth').inputValue()];
+  await typeIn(numIn(page, 'Max depth'), 50);
+  await typeIn(numIn(page, 'Min depth'), 0);
+  await setRange(speed, 80);
+  await typeIn(crest, 0.5);
+  ok('live: the sim holds the 0.5 crest dwell', await page.waitForFunction(() => {
+    const e = document.querySelector('main.pane .ap .ap-h[data-key="crest"]');
+    return e && e.getAttribute('aria-valuenow') === '0.5' && !/pending|overdue|fault/.test(e.dataset.status);
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false));
+  await page.waitForTimeout(1500);
+  const rec = await page.evaluate(() => new Promise((res) => {
+    const out = [], t0 = performance.now();
+    const tick = () => {
+      const e = document.querySelector('main.pane .ap .ap-play'), m = document.querySelector('.rail-swap .plan-mode');
+      out.push([performance.now() - t0, m ? m.textContent.trim() : '', e.hidden ? null : parseFloat(e.style.left), e.hidden ? null : parseFloat(e.style.top)]);
+      if (performance.now() - t0 < 8000) setTimeout(tick, 10); else res(out);
+    };
+    tick();
+  }));
+  // Runs of samples whose plan style reads hold, and the moving time between them.
+  const runs = [];
+  rec.forEach(([t, m], i) => {
+    const hold = /hold$/.test(m), prev = i && /hold$/.test(rec[i - 1][1]);
+    if (hold && !prev) runs.push({ a: t, b: t, at: [] });
+    if (hold) { runs[runs.length - 1].b = t; runs[runs.length - 1].at.push(rec[i].slice(2)); }
+  });
+  const whole = runs.slice(1, -1);
+  const holdMs = whole.map((r) => r.b - r.a), moveMs = runs.slice(1).map((r, i) => r.a - runs[i].b);
+  const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+  const ratio = avg(holdMs) / avg(moveMs);
+  ok('live: the plan style reads hold during the dwell', runs.length >= 3, [...new Set(rec.map(([, m]) => m))]);
+  ok('live: each hold lasts about half a stroke (hold / moving time)', whole.length >= 1 && ratio > 0.35 && ratio < 0.65,
+    { holdMs: holdMs.map(Math.round), moveMs: moveMs.map(Math.round), ratio: +ratio.toFixed(2) });
+  const deepTop = Math.min(...rec.filter((r) => r[3] != null).map((r) => r[3]));
+  const parked = whole.every((r) => r.at.slice(3, -3).every(([l, t]) => t != null && Math.abs(t - deepTop) < 1.5
+    && Math.abs(l - r.at[3][0]) < 0.5));
+  ok('live: the playhead parks at the deep bound through each hold', parked,
+    { deepTop, runs: whole.map((r) => [...new Set(r.at.slice(3, -3).map((q) => q.join(',')))]) });
+  if (SHOT) {
+    await page.waitForFunction(() => /hold$/.test(document.querySelector('.rail-swap .plan-mode')?.textContent || ''), null, { timeout: 3000, polling: 5 }).catch(() => {});
+    await page.locator('main.pane .ap').first().screenshot({ path: shot('9-live-hold') });
+  }
+  await typeIn(crest, 0);
+  await typeIn(numIn(page, 'Max depth'), depthKeep[0]);
+  await typeIn(numIn(page, 'Min depth'), depthKeep[1]);
   await tab('Classic');
   await runBtn().click();
   ok('live: Classic refused while Advanced runs: stop Advanced first', await page.waitForFunction(() => {
@@ -464,7 +519,8 @@ if (LIVE) {
     ok('map: handles are labeled by value', /^deep \d/.test(await tagOf(handle(page, 'deep'))) && /^in v\d/.test(await tagOf(handle(page, 'vin')))
       && /^a\d/.test(await tagOf(handle(page, 'ain'))));
     const mtabs = await page.$$eval('main.pane .ap .ap-mtabs [role=tab]', (bs) => bs.map((b) => b.textContent));
-    ok('map: one rhythm tab per driven control, in base order', mtabs.join() === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel', mtabs);
+    ok('map: one rhythm tab per driven control, in base order, the dwells last', mtabs.join()
+      === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel,Crest dwell,Trough dwell', mtabs);
     ok('map: Advanced has its own Start, background_run beside it', /Start pattern/.test(await page.locator('main.pane .ap .ap-run:visible').textContent())
       && await page.locator('main.pane .ap .ap-sw:visible', { hasText: 'Run in background' }).isVisible());
     ok('map: the Advanced Start binds advgen.running', !(await page.locator('main.pane .ap .ap-run:visible').isDisabled()));
@@ -743,7 +799,7 @@ if (LIVE) {
       for (const ed of document.querySelectorAll('main.pane .ap .ap-ed:is(.ap-stroke, .ap-stair)')) {
         if (!ed.offsetParent) continue;
         const pts = [];
-        for (const p of ed.querySelectorAll('path.curve')) {
+        for (const p of ed.querySelectorAll('path.curve[d]:not([d=""])')) {
           const m = p.getScreenCTM(), L = p.getTotalLength();
           for (let s = 0; s <= L; s += 1) { const q = p.getPointAtLength(s); pts.push([m.a * q.x + m.c * q.y + m.e, m.b * q.x + m.d * q.y + m.f]); }
         }
@@ -885,6 +941,111 @@ if (LIVE) {
       && tw[0].val[AMT.key] === 0 && tw[0].val[HOLD.key] === 0, tw);
     ok('mod trash: hidden again, the switch off', (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'hidden'
       && (await sw.getAttribute('aria-checked')) === 'false');
+    await ctx.close();
+  }
+
+  {
+    // ---- RFC-095 dwells on the stroke picture
+    const { ctx, page } = await open();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const CREST = settingOf('pattern-advanced', 'dwell_crest'), TROUGH = settingOf('pattern-advanced', 'dwell_trough');
+    const MASK2 = uidOf(ADV, ADV.layout.filter((f) => f.role === 'meta.enabled_mask')[1].name);
+    const plus = (w) => page.locator('main.pane .ap .ap-stroke .ap-plus[aria-label="Add ' + w + ' dwell"]');
+    const flat = (w) => page.locator('main.pane .ap .ap-stroke path[data-dwell="' + w + '"]');
+    const flatW = (w) => flat(w).evaluate((p) => p.getBBox().width);
+    const cutDots = (w) => page.$$eval('main.pane .ap .ap-stroke line.cut[data-dwell="' + w + '"]', (ls) => ls.filter((l) => !l.hasAttribute('hidden')).length);
+    const plotW = 960 - 70;
+    await numIn(page, 'Max depth').fill('85');
+    await numIn(page, 'Max depth').press('Enter');
+    await page.waitForTimeout(250);
+    ok('dwell: at 0, a plus at each bound, no dwell pill, no flat', await plus('crest').isVisible() && await plus('trough').isVisible()
+      && !(await handle(page, 'crest').count()) && !(await handle(page, 'trough').count()) && (await flat('crest').getAttribute('d')) === '');
+    ok('dwell: the numeric twins carry both dwells', await numIn(page, 'Crest dwell').isVisible() && await numIn(page, 'Trough dwell').isVisible());
+
+    // The second enabled_mask gates settings 8 and 9 (SPEC §8.8): clear grays both, set ungrays them.
+    hub.values[MASK2] = 0;
+    hub.push(ADV.id);
+    await page.waitForTimeout(250);
+    ok('mask: the second enabled_mask grays both dwells', await plus('crest').isDisabled() && await numIn(page, 'Trough dwell').isDisabled()
+      && !(await numIn(page, 'Max depth').isDisabled()));
+    hub.values[MASK2] = 0b11;
+    hub.push(ADV.id);
+    await page.waitForTimeout(250);
+    ok('mask: set, the second enabled_mask ungrays them', !(await plus('crest').isDisabled()) && !(await numIn(page, 'Trough dwell').isDisabled()));
+
+    let n = hub.intents.length;
+    await plus('crest').click();
+    await page.waitForTimeout(250);
+    ok('dwell: the crest plus writes key 46 at ' + 0.25 + ' strokes, one intent', hub.intents.length - n === 1
+      && hub.intents[n].ch === CREST.ch && CREST.key === 46 && Math.abs(hub.intents[n].val[46] - 0.25) < 1e-6, hub.intents.slice(n));
+    const pill = handle(page, 'crest');
+    ok('dwell: a vertical pill on a guide, the plus gone, the flat drawn to scale', (await pill.getAttribute('data-shape')) === 'vpill'
+      && !(await plus('crest').isVisible()) && Math.abs(await flatW('crest') / plotW - 0.25 / 1.25) < 0.01, await flatW('crest'));
+    await plus('trough').click();
+    await page.waitForTimeout(250);
+    if (SHOT) await page.locator('main.pane .ap .ap-stroke').screenshot({ path: shot('7-dwell-short') });
+    const w0 = await flatW('crest');
+    const bw = (await page.locator('main.pane .ap .ap-stroke').boundingBox()).width;
+    let dw = (await dragBy(page, pill, 0.015 * bw, 0)).filter((i) => CREST.key in i.val);
+    const v1 = dw.length && dw[0].val[CREST.key];
+    ok('dwell: dragging the pill right lengthens the crest dwell, one write', dw.length === 1 && v1 > 0.25 && v1 < 0.5, dw);
+    ok('dwell: the flat follows, still whole', (await flatW('crest')) > w0 && (await cutDots('crest')) === 0, [w0, await flatW('crest')]);
+    dw = (await dragBy(page, pill, 0.25 * bw, 0)).filter((i) => CREST.key in i.val);
+    const v2 = dw.length && dw[0].val[CREST.key];
+    ok('dwell: past the cap the value keeps growing, the flat holds the cap, its middle dotted', dw.length === 1 && v2 > 1
+      && Math.abs(await flatW('crest') - DWELL_CAP * plotW) < 1 && (await cutDots('crest')) === 6, { v2, w: await flatW('crest') });
+    if (SHOT) await page.locator('main.pane .ap .ap-stroke').screenshot({ path: shot('7-dwell-cut') });
+    const labelHits = await page.evaluate(() => {
+      const ed = document.querySelector('main.pane .ap .ap-stroke'), pts = [];
+      for (const p of ed.querySelectorAll('path.curve[d]:not([d=""])')) {
+        const m = p.getScreenCTM(), L = p.getTotalLength();
+        for (let s = 0; s <= L; s += 1) { const q = p.getPointAtLength(s); pts.push([m.a * q.x + m.c * q.y + m.e, m.b * q.x + m.d * q.y + m.f]); }
+      }
+      return [...ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')].filter((t) => t.textContent).map((t) => {
+        const r = t.getBoundingClientRect();
+        return { tag: t.textContent, n: pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length, bg: t.classList.contains('bg') };
+      }).filter((h) => h.n || h.bg);
+    });
+    ok('dwell: labels clear of the line and the flats', labelHits.length === 0, labelHits);
+    dw = (await dragBy(page, pill, -0.6 * bw, 0)).filter((i) => CREST.key in i.val);
+    ok('dwell: dragged back to 0 it collapses, the plus returns', dw.length === 1 && dw[0].val[CREST.key] === 0
+      && await plus('crest').isVisible() && !(await handle(page, 'crest').count()) && (await flat('crest').getAttribute('d')) === '', dw);
+    n = hub.intents.length;
+    await page.click('main.pane .ap .og-btn:has-text("Reset")');
+    await page.waitForTimeout(300);
+    ok('dwell: preset Reset returns the trough dwell to its default', hub.intents.slice(n).some((i) => i.val[TROUGH.key] === 0));
+    const mtab = page.locator('main.pane .ap .ap-mtab', { has: page.locator('[role=tab]', { hasText: 'Crest dwell' }) });
+    ok('dwell: the Crest dwell modifier tab carries the switch and the trash', (await mtab.locator('.ap-mon').count()) === 1
+      && (await mtab.locator('.ap-mtrash').count()) === 1);
+    await mtab.locator('[role=tab]').click();
+    ok('dwell: its tab draws the modifier graph', await page.locator('main.pane .ap .ap-stair:visible').count() === 1);
+
+    // The plan strip: a hold sample reads the owner and hold, and stays live past the stall window.
+    // Owned by another session (the rail shows the plan strip only then): Advanced, held by session 9.
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(300);
+    hub.values['4:owner0'] = 9;
+    hub.push(4);
+    const PLAN = byName('plan-strip');
+    const plan = (o) => { for (const [k, v] of Object.entries(o)) hub.values[uidOf(PLAN, k)] = v; hub.push(PLAN.id); };
+    const strip = page.locator('.rail-swap .plan-strip');
+    plan({ flags: 1, style: 1, start_norm: 0.1, end_norm: 0.85, cur_norm: 0.5, duration_us: 400000, elapsed_us: 100000 });
+    await page.waitForTimeout(150);
+    const lit = await strip.evaluate((e) => e.classList.contains('on'));
+    await page.waitForTimeout(1800);
+    ok('plan: a moving sample lights the strip, and with no successor dims after the stall window', lit
+      && !(await strip.evaluate((e) => e.classList.contains('on'))));
+    plan({ flags: 1, style: 4, start_norm: 0.85, end_norm: 0.85, cur_norm: 0.85, duration_us: 5000000, elapsed_us: 1000000 });
+    await page.waitForTimeout(300);
+    const mode = (await page.locator('.rail-swap .plan-mode').textContent()).trim();
+    ok('plan: a hold sample reads the owner and hold', mode === 'Advanced · hold', mode);
+    await page.waitForTimeout(2000);
+    ok('plan: a hold stays live with no new sample inside its duration (no stall)', await strip.evaluate((e) => e.classList.contains('on')));
+    if (SHOT) await page.locator('.rail-swap').screenshot({ path: shot('8-plan-hold') });
+    plan({ flags: 0, style: 0, start_norm: 0, end_norm: 0, cur_norm: 0, duration_us: 0, elapsed_us: 0 });
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(250);
     await ctx.close();
   }
 

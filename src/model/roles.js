@@ -116,6 +116,9 @@ export const ROLE = {
   advgenSpeedOut: 'advgen.speed_out',
   advgenAccelIn: 'advgen.accel_in',
   advgenAccelOut: 'advgen.accel_out',
+  // RFC-095: optional holds at the deep and shallow bounds
+  advgenDwellCrest: 'advgen.dwell_crest',
+  advgenDwellTrough: 'advgen.dwell_trough',
 
   // RFC-066: one modulator per entry, attached by its entry's mod_target
   modAmount: 'mod.amount',
@@ -212,6 +215,8 @@ export const ROLE_LABEL = {
   [ROLE.advgenSpeedOut]: 'Out speed',
   [ROLE.advgenAccelIn]: 'In accel',
   [ROLE.advgenAccelOut]: 'Out accel',
+  [ROLE.advgenDwellCrest]: 'Crest dwell',
+  [ROLE.advgenDwellTrough]: 'Trough dwell',
 
   [ROLE.modAmount]: 'Amount',
   [ROLE.modRise]: 'Rise',
@@ -334,8 +339,8 @@ export const AXIS_HERO_SPEC = {
 
 /**
  * RENDERING §10 `generator-advanced` (RFC-081, RFC-066): the master run/stop
- * and the seven base controls are essential; every complete modulator rides
- * along, no minimum. The same bindings as the factory substitute
+ * and the seven base controls are essential, the two dwells (RFC-095)
+ * optional; every complete modulator rides along, no minimum. The same bindings as the factory substitute
  * (plugins/factory/advanced-penetration), so the fallback never claims what
  * the substitute would decline.
  */
@@ -353,6 +358,8 @@ export const ADVGEN_SPEC = {
   optional: {
     bgRun: ROLE.sourceBackgroundRun,
     presetOp: ROLE.actionStore,
+    dwellCrest: ROLE.advgenDwellCrest,
+    dwellTrough: ROLE.advgenDwellTrough,
   },
   instances: {
     mods: {

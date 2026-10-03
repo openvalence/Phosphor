@@ -245,19 +245,22 @@ function categoryLabel(entry) {
 // ---------------------------------------------------------------------------
 
 /**
- * Find the enabled_mask field of a layout by ROLE, not by name.
+ * Every enabled_mask field of a layout, in layout order, found by ROLE, not
+ * by name (SPEC §8.8: "one or more bitfield8 fields"). Mask k gates setting
+ * fields 8k..8k+7.
  *
  * `meta.enabled_mask` is registry vocabulary, so this works on a machine that
  * calls its mask something else entirely. If a hub ships a mask without the
  * role we simply do not gate — graying nothing is a safe failure; graying the
- * WRONG control because we pattern-matched a name would not be.
+ * WRONG control because we pattern-matched a name would not be. A setting
+ * field past the last mask's eighth bit is likewise ungated.
  */
-function findMaskField(layout) {
-  if (!layout) return null;
-  return layout.find((f) => f.role === ROLE.enabledMask) || null;
+function findMaskFields(layout) {
+  return layout ? layout.filter((f) => f.role === ROLE.enabledMask) : [];
 }
 
-function makeField(entry, f, settingIndex, maskField) {
+function makeField(entry, f, settingIndex, masks) {
+  const maskField = settingIndex == null ? null : masks[settingIndex >> 3] || null;
   const readOnly = f.settingKey == null || entry.settingChannel == null;
   const out = {
     uid: entry.id + ':' + f.name,
@@ -307,10 +310,10 @@ function makeField(entry, f, settingIndex, maskField) {
     bits: f.bits || null,
     settingKey: readOnly ? null : f.settingKey,
     writeChannel: readOnly ? null : entry.settingChannel,
-    // RFC-009 item 3: bit i of the mask gates the i-th SETTING-annotated field
-    // of this layout, in layout order. Read-only fields do not consume a bit.
+    // RFC-009 item 3: bit i of mask k gates the (8k+i)-th SETTING-annotated
+    // field of this layout, in layout order. Read-only fields do not consume a bit.
     maskFieldName: (!readOnly && maskField) ? maskField.name : null,
-    maskBit: readOnly ? null : settingIndex,
+    maskBit: readOnly ? null : settingIndex & 7,
     readOnly,
   };
   out.archetype = resolveArchetype(out);
@@ -432,14 +435,14 @@ export function buildSettingsModel(entries) {
   // UI, not by the generic settings renderer.
   for (const entry of entries) {
     if (!entry.layout) continue;
-    const maskField = findMaskField(entry.layout);
+    const masks = findMaskFields(entry.layout);
     let settingIndex = 0;
     for (const f of entry.layout) {
-      // The mask itself is machinery, not a setting. It gates other fields; it
-      // is never drawn.
-      if (maskField && f === maskField) continue;
+      // A mask is machinery, not a setting. It gates other fields; it is
+      // never drawn.
+      if (masks.includes(f)) continue;
       const isSetting = f.settingKey != null && entry.settingChannel != null;
-      const field = makeField(entry, f, isSetting ? settingIndex : null, maskField);
+      const field = makeField(entry, f, isSetting ? settingIndex : null, masks);
       // COUNT BEFORE SKIPPING. The enabled_mask's bit i gates the i-th
       // SETTING-annotated field in layout order (RFC-009 item 3) — a rank the
       // client chose not to draw does not remove the field from the hub's own

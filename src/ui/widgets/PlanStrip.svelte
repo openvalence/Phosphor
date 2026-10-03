@@ -57,7 +57,7 @@
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
   import { railOwnerName } from '../../model/actions.js';
-  import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
+  import { CH_CONTROL_OWNER, LIMITS, UNIT_ID } from '../../../../Valence/clients/js/index.js';
   import { onTheme } from '../../model/theme.js';
 
   // shown: RailWidget keeps this mounted under the jog tape and flips
@@ -165,10 +165,22 @@
     return [...ids];
   }
 
+  // A timed hold (SPEC §9.6: span within segment_dwell_span, duration live)
+  // may publish nothing new while it holds: it counts as streaming until its
+  // own remaining time has run out, so a long dwell never reads as a stall.
+  const MS_PER = { [UNIT_ID.us]: 1e-3, [UNIT_ID.ms]: 1, [UNIT_ID.s]: 1e3 };
+  function holding(now) {
+    const d = fields && fields.duration, e = fields && fields.elapsed;
+    const k = d && e && d.unitId === e.unitId ? MS_PER[d.unitId] : null;
+    if (!k || !haveSpan || Math.abs(endPct - startPct) > LIMITS.segment_dwell_span) return false;
+    if (!(durVal > 0) || !(elapsedVal < durVal)) return false;
+    return now - (machine.sampleTs[d.channelId] || 0) < (durVal - elapsedVal) * k;
+  }
+
   function pollActivity() {
     const ids = claimedChannelIds();
     const now = Date.now();
-    const fresh = ids.some((id) => (now - (machine.sampleTs[id] || 0)) < FRESH_MS);
+    const fresh = ids.some((id) => (now - (machine.sampleTs[id] || 0)) < FRESH_MS) || holding(now);
     if (fresh) {
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
       isActive = true;

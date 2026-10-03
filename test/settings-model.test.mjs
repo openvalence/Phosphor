@@ -296,6 +296,26 @@ ok('mask bit clear -> field grayed', !isFieldEnabled(byName.get('travel_hi'), sa
 ok('the mask field itself is never drawn as a control',
    !model.fields.some((f) => f.role === ROLE.enabledMask));
 
+// SPEC §8.8 "one or more bitfield8 fields": mask k bit i gates setting 8k+i.
+{
+  const knobs = Array.from({ length: 10 }, (_, i) => lf('k' + i, PACKED.u8, { settingKey: i + 1, min: 0, max: 9 }));
+  const twoMasks = buildSettingsModel([{
+    id: 0x0218, name: 'twomask', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 0,
+    category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control', settingChannel: 0x0298,
+    layout: [...knobs.slice(0, 8), lf('m1', PACKED.bitfield8, { role: ROLE.enabledMask }),
+      ...knobs.slice(8), lf('m2', PACKED.bitfield8, { role: ROLE.enabledMask })],
+    schema: null,
+  }]);
+  const k = (i) => twoMasks.fields.find((f) => f.name === 'k' + i);
+  const s2 = { m1: 0xff, m2: 0b10 };
+  ok('two masks: the first gates fields 0-7', [0, 1, 2, 3, 4, 5, 6, 7].every((i) => isFieldEnabled(k(i), s2)));
+  ok('two masks: the second mask grays field 8 (its bit 0 clear)', !isFieldEnabled(k(8), s2));
+  ok('two masks: the second mask opens field 9 (its bit 1 set)', isFieldEnabled(k(9), s2));
+  ok('two masks: a clear first mask leaves fields 8 and 9 on the second',
+     !isFieldEnabled(k(0), { m1: 0, m2: 0b11 }) && isFieldEnabled(k(8), { m1: 0, m2: 0b11 }));
+  ok('two masks: neither mask is drawn', !twoMasks.fields.some((f) => f.role === ROLE.enabledMask));
+}
+
 // ---- claim: action verbs are discovered by role ---------------------------
 ok('an action.* schema field becomes an action', model.actions.length === 1,
    'found ' + model.actions.length);

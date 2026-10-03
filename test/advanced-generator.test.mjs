@@ -116,9 +116,15 @@ ok('RFC-093: advgen.mode is never bound', !('mode' in (claim(catalog(1, { select
 {
   const entries = decodeCatalog(advgenCatalog().bytes);
   const c = claim(entries);
-  const base = new Set(['master', 'depthMax', 'depthMin', 'speedIn', 'speedOut', 'accelIn', 'accelOut'].map((k) => c && c[k].uid));
-  ok('the reference catalog with its due roles claims six modulators', !!c && c.mods.length === 6);
-  ok('... each riding a base control', !!c && c.mods.every((m) => base.has(modTargetUid(entries, m.channelId))));
+  const base = new Set(['master', 'depthMax', 'depthMin', 'speedIn', 'speedOut', 'accelIn', 'accelOut',
+    'dwellCrest', 'dwellTrough'].map((k) => c && c[k] && c[k].uid));
+  ok('the reference catalog with its due roles claims eight modulators', !!c && c.mods.length === 8);
+  ok('... each riding a base control or a dwell', !!c && c.mods.every((m) => base.has(modTargetUid(entries, m.channelId))));
+  // RFC-095: the dwells are optional bindings.
+  ok('RFC-095: both dwells bind by role', !!c && c.dwellCrest?.role === ROLE.advgenDwellCrest
+    && c.dwellTrough?.role === ROLE.advgenDwellTrough);
+  const noDwell = claim(decodeCatalog(advgenCatalog({ drop: [ROLE.advgenDwellCrest, ROLE.advgenDwellTrough] }).bytes));
+  ok('RFC-095: absent dwell roles decline nothing', !!noDwell && !noDwell.dwellCrest && !noDwell.dwellTrough);
   // The hub emits the roles itself since Nucleus val-091.38..42.
   const real = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
   ok('the recorded catalog claims (its own advgen/mod roles)', claim(real) !== null);

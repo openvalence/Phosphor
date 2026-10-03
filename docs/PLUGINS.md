@@ -295,9 +295,27 @@ Shipped:
   `mod.rest`) are reached on the graph: at 0, a gray guide and a plus sit at
   the corner where the hold would start; the plus spawns it at one stroke
   with a vertical pill on the guide, and dragging the pill back to 0
-  collapses it. Crest and trough dwell are not drawn yet (RFC-095). The
+  collapses it. The dwells' modulators get tabs like the other six. The
   registry names no role for a store op's slot and name, so it tells them
   apart by schema type.
+
+  **Dwells** (RFC-095, optional `advgen.dwell_crest` and
+  `advgen.dwell_trough`; absent, nothing is drawn and nothing declines).
+  The stroke reads trough flat, in half, crest flat, out half, left to
+  right. A dwell's clock is one stroke, the two moving halves, so a flat is
+  drawn to scale beside them until it would pass `DWELL_CAP` (25 %) of the
+  plot; past it the flat is drawn at the cap with its middle 40 % as dots
+  fading out and back in. At 0, a thin guide and a plus sit at the bound
+  (the trough start, the deep turn); the plus writes `DWELL_SPAWN` (0.25
+  strokes) and a vertical pill rides the guide at the flat's end, off the
+  curve. Dragging the pill right lengthens the dwell: under the cap the
+  pill follows the pointer, past it the flat holds the cap and the value
+  keeps growing toward the plot's right edge, where it asks for the
+  field's own max (the UI sets none). Dragging back to the bound collapses
+  it to 0 and the plus returns. The numeric twins carry both dwells behind
+  the Inputs toggle, and preset Reset returns them to their defaults. The
+  playhead follows the told target's half and holds while the position
+  sits at a bound, so through a hold it parks on that bound.
 
 ## Testing
 

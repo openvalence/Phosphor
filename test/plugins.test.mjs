@@ -37,6 +37,7 @@ import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
 import {
   snap, halfTime, speedInAt, speedOutAt, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
+  dwellAt, DWELL_CAP,
   linkedInAt, linkedOutAt, linkSpan, linkPartner, linkRescale, placeLabels, densify,
 } from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
@@ -512,8 +513,15 @@ console.log('(g) factory plugins: Advanced Penetration substitutes the pattern c
   ok('claims on the recorded catalog', !!w);
   ok('neither built-in renders beside it', !a.widgets.some((x) => BUILTINS.some((b) => b.id === x.id)));
   ok('pattern-panel essentials ride along (select claimed)', !!w && !!w.fields.select && a.claimed.has(w.fields.select.uid));
-  ok('all six modulators claimed, ascending by channel id', !!w && w.fields.mods.length === 6
+  ok('all eight modulators claimed, ascending by channel id', !!w && w.fields.mods.length === 8
     && w.fields.mods.every((x, i, l) => !i || l[i - 1].channelId < x.channelId));
+  ok('RFC-095: both dwells bound as optional roles', !!w && w.fields.dwellCrest?.role === 'advgen.dwell_crest'
+    && w.fields.dwellTrough?.role === 'advgen.dwell_trough' && !Object.values(spec.spec.require).some((r) => /dwell/.test(r)));
+  {
+    const nd = load({ drop: ['advgen.dwell_crest', 'advgen.dwell_trough'] });
+    const x = nd.widgets.find(isAp);
+    ok('RFC-095: absent dwell roles decline nothing', !!x && !x.fields.dwellCrest && !x.fields.dwellTrough);
+  }
   for (const r of ['advgen.running', 'advgen.master', 'advgen.depth_max', 'advgen.depth_min', 'advgen.speed_in',
     'advgen.speed_out', 'advgen.accel_in', 'advgen.accel_out']) {
     const b = load({ drop: [r] });
@@ -590,6 +598,27 @@ console.log('(h) editor geometry');
   ok('any stroke spans the plot: the time axis never stretches', [{ ...p, hi: 0.95 }, { ...p, sIn: 0.05 }, { ...p, aOut: 1 }]
     .every((q) => { const h = strokeGeom(q, L); return near(h.x0, L.X0) && near(h.x2, L.XR); }));
   ok('playhead: a depth share maps onto the half', near(atDepth(g.inC, 0.5).y, (g.ylo + g.yhi) / 2, 1e-6));
+
+  // RFC-095 dwells: trough flat first, crest flat after the deep turn, on the moving halves' clock.
+  const W = L.XR - L.X0;
+  const dg = strokeGeom({ ...p, dt: 0.2, dc: 0.1 }, L);
+  ok('dwell: flats to scale, one stroke = the two moving halves', near((dg.x0 - dg.xt) / dg.mw, 0.2) && near((dg.xc - dg.x1) / dg.mw, 0.1)
+    && near(dg.xt, L.X0) && near(dg.x2, L.XR) && !dg.cut.trough && !dg.cut.crest);
+  ok('dwell: the halves keep their ratio', near((dg.x1 - dg.x0) / (dg.x2 - dg.xc), halfTime(0.7, 0.5, 0.4) / halfTime(0.7, 0.25, 0.6)));
+  ok('dwell: speed, accel and dwell handles invert with flats in the picture',
+    snap(spd, strokeValue.speedIn(spd, dg, dg.vIn.x)) === 50 && snap(spd, strokeValue.speedOut(spd, dg, dg.vOut.x)) === 25
+    && snap(pct, strokeValue.accelOut(pct, dg, dg.aOut.x)) === 60
+    && near(dwellAt('trough', dg, dg.pill.trough.x), 0.2) && near(dwellAt('crest', dg, dg.pill.crest.x), 0.1));
+  const thr = DWELL_CAP / (1 - DWELL_CAP);   // the lone dwell whose flat is exactly the cap
+  ok('dwell: a flat at the cap is whole, past it is cut at the cap', !strokeGeom({ ...p, dc: thr - 0.01 }, L).cut.crest
+    && (({ cut, x1, xc }) => cut.crest && near(xc - x1, DWELL_CAP * W))(strokeGeom({ ...p, dc: thr + 0.01 }, L)));
+  const big = strokeGeom({ ...p, dt: 5, dc: 8 }, L);
+  ok('dwell: two long dwells both cut, the stroke still spans the plot', big.cut.trough && big.cut.crest && near(big.x2, L.XR)
+    && near(big.x0 - big.xt, DWELL_CAP * W) && near(big.xc - big.x1, DWELL_CAP * W));
+  ok('dwell: a cut pill keeps its value at the grab point, 0 at the flat start, more to the right',
+    near(dwellAt('crest', big, big.pill.crest.x), 8) && dwellAt('crest', big, big.x1) === 0
+    && dwellAt('crest', big, big.pill.crest.x + 40) > 8 && dwellAt('trough', big, big.pill.trough.x - 40) < 5);
+  ok('dwell: no UI maximum: the right edge asks for more than any field holds', dwellAt('trough', dg, L.XR + 10) === Infinity);
 
   const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152 };
   const c = { amount: 50, rise: 3, hold: 2, fall: 4, rest: 1, phase: 12 };
