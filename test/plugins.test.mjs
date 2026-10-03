@@ -13,6 +13,10 @@
  *       arriving over the (fake) listener reaches submitMotion;
  *   (e) submitMotion's router sends a samples STREAM when the catalog has one
  *       and the hub grants it, and the command.position setpoint otherwise;
+ *   (e2) the segments lookahead door: latch, role lookup, shared lazy grant,
+ *       hub-time stamps less the declared latency, late clip, the 10 ms floor,
+ *       the 100 us grid, half the horizon (250, 500, 1000); streamGate's
+ *       order and railOwners;
  *   (g) every factory plugin validates and activates; Advanced Penetration
  *       substitutes both pattern built-ins on the recorded catalog
  *       (RENDERING §10.2) and every way it can fail (a missing essential
@@ -21,17 +25,21 @@
  *   (h) the editor geometry: speed and accel to half width and curvature and
  *       back, handle position to field value on the step grid and bounds;
  *       the speed link's rescale, span and partner rounding; label placement
- *       clear of a line and of a neighbor.
+ *       clear of a line and of a neighbor;
+ *   (i) the producer lock: another plugin's motion is refused until the
+ *       holder's last sent segment ends plus MOTION_HOLD_MS, and its gate
+ *       says so.
  *
  * Run: node test/plugins.test.mjs
  */
 
 import { readFileSync } from 'node:fs';
-import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes } from '../src/model/motion.js';
-import { createPluginHost, validateManifest } from '../src/plugins/host.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate } from '../src/model/motion.js';
+import { railOwners, railOwnerName } from '../src/model/actions.js';
+import { createPluginHost, validateManifest, MOTION_HOLD_MS } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -410,6 +418,203 @@ console.log('(e) motion door routing');
   held = '';
   d5(0.3); await tick();
   ok('after the operator resumes, input flows', d5(0.3, 50).ok && s5.sent.length === 1);
+}
+
+// ---- (e2) the lookahead door: submit.segments (ph-smvd.2, RFC-087, RFC-059) --
+console.log('(e2) segments lookahead door, streamGate, railOwners');
+{
+  const segSt = motionStream(entries, STREAM_KIND.segments);
+  const CH = segSt.entry.id;
+  const [TN, DN, EV] = [segSt.target.name, segSt.duration.name,
+    segSt.entry.layout.find((f) => f.role === 'input.end_velocity').name];
+  const H = 50_000_000;            // hub now, us
+  const UNIT = LIMITS.segment_t_off_unit_us;
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  function fakeSeg({ grant = true, horizon = 250, latency = 1000 } = {}) {
+    const s = {
+      sent: [], asked: [], throwCode: '',
+      state: { sessionId: 3, grantedPublishes: new Map() },
+      hubNowUs: () => H,
+      publish(w) {
+        s.asked.push(w);
+        return Promise.resolve().then(() => {
+          if (!grant) return [];
+          s.state.grantedPublishes.set(w[0][0], { channel: w[0][0], rate: w[0][1], scheduleLatencyUs: latency, scheduleHorizonMs: horizon });
+          return [{ channel: w[0][0] }];
+        });
+      },
+      publishSegment(ch, recs, o) {
+        if (s.throwCode) throw new PublishError(s.throwCode, ch, 'test');
+        s.sent.push({ ch, recs, anchor: o.anchor, offs: o.offsetsUs });
+        return { seq: 0, n: recs.length };
+      },
+      publishSamples() { throw new Error('samples path used'); },
+    };
+    return s;
+  }
+  const T = 10_000;                // client now(), ms
+  function segDoor(s, { ents = entries, halted = '' } = {}) {
+    const out = { set: [], log: [] };
+    const d = createMotionDoor({
+      session: () => s, entries: () => ents, now: () => T, halted: () => halted,
+      setpoint: (n) => { out.set.push(n); return { ok: true }; },
+      log: (level, msg) => out.log.push({ level, msg }),
+    });
+    return { d, out };
+  }
+  const seg = (dt, dur, norm = 0.5) => ({ atMs: T + dt, norm, durationMs: dur });
+  const starts = (b) => b.offs.map((o) => b.anchor + o);
+
+  const sh = fakeSeg();
+  ok('latched: refused with the latch words, nothing asked', (({ d }) => {
+    const r = d.segments([seg(20, 100)]);
+    return !r.ok && r.sent === 0 && r.reason === 'paused, resume to continue' && !sh.asked.length;
+  })(segDoor(sh, { halted: 'paused, resume to continue' })));
+  {
+    const smpOnly = entries.filter((e) => e.id !== CH);
+    const { d, out } = segDoor(fakeSeg(), { ents: smpOnly });
+    const r = d.segments([seg(20, 100)]);
+    ok('no segments STREAM: refused by name, never a samples or setpoint fallback',
+      !r.ok && r.reason === 'hub has no segments STREAM' && !out.set.length);
+  }
+  ok('no session: not connected', (({ d }) => d.segments([seg(20, 100)]).reason === 'not connected')(segDoor(null)));
+
+  const s1 = fakeSeg();
+  const { d: d1, out: o1 } = segDoor(s1);
+  d1(0.5, 100);
+  const w = d1.segments([seg(20, 100)]);
+  ok('the grant is shared with submit: one ask, the wish [ch, maxRateHz || 50]', !w.ok && w.reason === 'waiting for the stream grant'
+    && s1.asked.length === 1 && s1.asked[0][0][0] === CH && s1.asked[0][0][1] === (segSt.entry.maxRateHz || 50));
+  await tick();
+  const e0 = d1.segments([]);
+  ok('an empty list warms the grant: ok, sent 0, the rate, nothing published', e0.ok && e0.sent === 0 && e0.rateHz === s1.asked[0][0][1] && !s1.sent.length);
+  ok('a bad segment is refused whole', ['atMs', 'norm'].every((k) => d1.segments([{ ...seg(20, 100), [k]: NaN }]).reason === 'bad segment')
+    && d1.segments([seg(20, 0)]).reason === 'bad segment' && d1.segments([seg(60, 50), seg(20, 50)]).reason === 'bad segment'
+    && !s1.sent.length);
+
+  const r1 = d1.segments([seg(20, 100, 0.25), seg(120, 100, 0.75), seg(220, 100, 0.5)]);
+  const b1 = s1.sent[0];
+  ok('stamp = execution start - schedule_latency_us (RFC-059), in hub time', b1 && b1.anchor === H + 20_000 - 1000, b1 && b1.anchor);
+  ok('half of 250 ms: the third start (219 ms) waits', r1.ok && r1.sent === 2 && b1.recs.length === 2 && r1.rateHz === 50);
+  ok('records: target, duration in ms, end velocity unspecified', b1.recs[0][TN] === 0.25 && b1.recs[0][DN] === 100
+    && b1.recs[0][EV] === LIMITS.segment_end_vel_unspecified / 1000 && b1.recs[1][TN] === 0.75);
+  ok('offsets on the 100 us grid', b1.offs[0] === 0 && b1.offs[1] === 100_000);
+  ok('the path is logged once', o1.log.filter((l) => /segments STREAM.*250 ms.*1000 us/.test(l.msg)).length === 1);
+
+  for (const horizon of [250, 500, 1000]) {
+    const s = fakeSeg({ horizon });
+    const { d } = segDoor(s);
+    d.segments([]); await tick();
+    const tiles = Array.from({ length: 120 }, (_, i) => seg(i * 12, 12, (i % 2) * 1));
+    const r = d.segments(tiles);
+    const b = s.sent[0];
+    const st = starts(b);
+    const cap = Math.min(LIMITS.bundle_max_samples, Math.floor((LIMITS.min_transport_payload - 6) / (2 + recordBytes(segSt.entry.layout))));
+    const inReach = tiles.filter((x, i) => i && (H + (x.atMs - T) * 1000 - 1000) - H <= horizon * 500).length + 1;
+    ok('horizon ' + horizon + ': every start within half of it, at most ' + cap + ' per bundle, sent = packed',
+      st.every((u) => u - H <= horizon * 500) && b.recs.length === Math.min(cap, inReach) && r.sent === b.recs.length
+      && b.offs.every((o) => o % UNIT === 0), r.sent + ' of ' + inReach);
+  }
+
+  const s2 = fakeSeg();
+  const { d: d2 } = segDoor(s2);
+  d2.segments([]); await tick();
+  const r2 = d2.segments([seg(-30, 100), seg(70, 50)]);
+  const b2 = s2.sent[0];
+  ok('a late start is clipped to hub now + latency keeping its end', b2.anchor === H && b2.recs[0][DN] === 69 && b2.offs[1] === 69_000 && r2.sent === 2,
+    JSON.stringify(b2));
+  const r3 = d2.segments([seg(-95, 100), seg(5, 5), seg(10, 100)]);
+  const b3 = s2.sent[1];
+  ok('under 10 ms left (clipped or short) is consumed, not packed, and counted in sent',
+    r3.ok && r3.sent === 3 && b3.recs.length === 1 && b3.anchor === H + 9000);
+  const r4 = d2.segments([seg(20, 50), seg(20, 50), seg(70, 50)]);
+  ok('a start colliding on the grid is consumed', r4.sent === 3 && s2.sent[2].recs.length === 2 && s2.sent[2].offs[1] === 50_000);
+  const r5 = d2.segments([seg(20, 50), seg(70, 5)]);
+  ok('a consumed item after the last packed one is not counted', r5.sent === 1);
+  const r6 = d2.segments([seg(20.04, 33.37), seg(53.41, 40)]);
+  ok('t_off rounds to 100 us', s2.sent.at(-1).offs[1] === 33_400 && r6.sent === 2, s2.sent.at(-1).offs);
+  const n0 = s2.sent.length;
+  const r7 = d2.segments([seg(200, 100)]);
+  ok('nothing in reach: ok, sent 0, nothing published', r7.ok && r7.sent === 0 && s2.sent.length === n0);
+  d2.segments([seg(20, 70_000, 1.5)]);
+  ok('target clamped to 1, duration clamped to its type range', s2.sent.at(-1).recs[0][TN] === 1 && s2.sent.at(-1).recs[0][DN] === 65535);
+
+  s2.throwCode = 'RATE_EXCEEDED';
+  const { d: d3, out: o3 } = segDoor(s2);
+  const r8 = d3.segments([seg(20, 50)]);
+  d3.segments([seg(20, 50)]);
+  ok('a PublishError returns its code with the rate, logged once', !r8.ok && r8.sent === 0 && r8.reason === 'RATE_EXCEEDED'
+    && r8.rateHz === 50 && o3.log.filter((l) => /RATE_EXCEEDED/.test(l.msg)).length === 1);
+
+  const s4 = fakeSeg({ grant: false });
+  const { d: d4 } = segDoor(s4);
+  d4.segments([]); await tick();
+  ok('a refused grant reads publish refused, asked once', d4.segments([seg(20, 50)]).reason === 'publish refused' && s4.asked.length === 1);
+
+  // streamGate: the first that applies, in order.
+  const all = { live: false, roles: 0, access: 1, halted: 'e-stop latched', running: true,
+    owners: [{ name: 'Advanced', session: 9 }], self: 3, busy: 'motion input in use by x' };
+  const order = [];
+  let g = { ...all };
+  for (const fix of [{ live: true }, { roles: 1 }, { halted: '' }, { running: false }, { owners: [{ name: '', session: 3 }] }, { busy: '' }]) {
+    order.push(streamGate(g));
+    g = { ...g, ...fix };
+  }
+  order.push(streamGate(g));
+  ok('streamGate order: link, tier, latch, generator, owner, busy, clear', JSON.stringify(order) === JSON.stringify(['no hub link',
+    'session not authorized', 'e-stop latched', 'stop the pattern first', 'rail owned by Advanced', 'motion input in use by x', '']), order);
+  ok('streamGate: an unlabeled foreign owner still gates', streamGate({ ...g, owners: [{ name: '', session: 4 }] }) === 'rail owned by another session');
+
+  const ownerEntry = entries.find((e) => e.id === CH_CONTROL_OWNER);
+  const smp = { src0: 1, owner0: 7, src1: 2, owner1: 0, src2: 9, owner2: 8, src3: 0, owner3: 0 };
+  ok('railOwners: every owned pair, labeled through options', JSON.stringify(railOwners(ownerEntry, smp))
+    === JSON.stringify([{ name: ownerEntry.layout[0].options[1], session: 7 }, { name: '', session: 8 }]));
+  ok('railOwnerName keeps its meaning: the first labeled pair, else empty', railOwnerName(ownerEntry, smp) === ownerEntry.layout[0].options[1]
+    && railOwnerName(ownerEntry, { ...smp, owner0: 0 }) === '' && railOwners(ownerEntry, null).length === 0);
+}
+
+// ---- (i) the producer lock (ph-smvd.2) -------------------------------------
+console.log('(i) one motion producer at a time');
+{
+  let now = 0;
+  const durField = model.byRole.get('input.duration')[0];
+  const segs = [];
+  const { host, calls } = makeHost({
+    now: () => now,
+    submitSegments: (list) => { segs.push(list); return { ok: true, sent: list.length, rateHz: 50 }; },
+    gate: (f, busy) => streamGate({ live: true, roles: 1, access: 1, busy }),
+  });
+  const apis = {};
+  for (const n of ['alpha', 'beta']) {
+    host.add({ ...gaugeManifest, name: n, permissions: ['motion'] }, { activate(a) { apis[n] = a; } });
+  }
+  let spy = null;
+  host.add({ ...gaugeManifest, name: 'nomotion' }, { activate(a) { spy = a; } });
+  let pe = null;
+  try { spy.submitSegments([]); } catch (e) { pe = e; }
+  ok('submitSegments without "motion" throws PermissionError', pe && pe.name === 'PermissionError' && !segs.length);
+
+  const { alpha: A, beta: B } = apis;
+  ok('an empty list never takes the lock', A.submitSegments([]).ok && B.submitSegments([{ atMs: 0, norm: 0, durationMs: 50 }]).ok);
+  now = 600;
+  const ra = A.submitSegments([{ atMs: 700, norm: 0.2, durationMs: 200 }, { atMs: 900, norm: 0.8, durationMs: 100 }]);
+  ok('the holder sends', ra.ok && ra.sent === 2);
+  now = 1499;
+  const n0 = segs.length;
+  const rb = B.submitSegments([{ atMs: 1500, norm: 0.5, durationMs: 50 }]);
+  const rm = B.submitMotion(0.5, 100);
+  ok('another plugin is refused until the last sent end + MOTION_HOLD_MS, without reaching the door',
+    !rb.ok && rb.sent === 0 && rb.reason === 'motion input in use by alpha' && !rm.ok && rm.reason === rb.reason
+    && segs.length === n0 && !calls.motion.length);
+  ok('gate shows the busy words to the other plugin only', B.gate(durField) === 'motion input in use by alpha' && A.gate(durField) === '');
+  now = 1500;
+  ok('released at the end + 500 ms', B.submitMotion(0.5, 100).ok && calls.motion.length === 1);
+  now = 2099;
+  ok('submitMotion holds for its duration + 500 ms', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).reason === 'motion input in use by beta'
+    && A.gate(durField) === 'motion input in use by beta');
+  now = 2100;
+  ok('... then frees it', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).ok && B.gate(durField) === 'motion input in use by alpha');
+  ok('MOTION_HOLD_MS is 500', MOTION_HOLD_MS === 500);
 }
 
 // ---- (f) tier-2 replace mode (ph-vdk.29, DESIGN §3 "renders instead") -----

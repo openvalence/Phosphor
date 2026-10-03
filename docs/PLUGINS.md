@@ -98,7 +98,7 @@ settings cards, render instead (item 5).
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
-| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only) | experimental |
+| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first`, `rail owned by <source>`, `motion input in use by <plugin>` | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
 | `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
@@ -108,6 +108,7 @@ settings cards, render instead (item 5).
 | `registerHero` returning `withdraw()` | removes that hero (a device that went away); a saved placement of it stays inert | experimental |
 | `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
+| `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs}]`, `atMs` the `performance.now()` instant the machine starts each, ascending; advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
@@ -136,9 +137,27 @@ RFC-087): one segment `{input.target, input.duration}` with the end velocity
 `unspecified`, started at hub now plus the grant's `schedule_latency_us`
 (RFC-059; no lead constant in Phosphor) and held inside the grant's schedule
 horizon. Each new bundle supersedes the not-yet-started tail, so a newer line
-or a seek needs no flush. `bundleHead` (src/model/motion.js) packs a timed
-list to the horizon, 32 records and one transport payload, for a lookahead
-source once the API carries one.
+or a seek needs no flush.
+
+`submitSegments(list)` is the lookahead door (RFC-087), segments STREAM only,
+never a fallback. The host owns every timing fact: it reads hub now and
+`performance.now()` together, converts each execution start to hub time and
+stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
+latency). A start already past the earliest executable instant is clipped
+there, keeping its end; anything left under 10 ms is consumed, not sent.
+Offsets round to 100 us. One bundle carries what starts within HALF the
+granted horizon (RFC-014's SHOULD, kept by RFC-087), at most 32 records and
+one transport payload, end velocity `unspecified`. `sent` counts the leading
+items done with through the last one packed; offer each once and advance by
+it, and a later bundle supersedes from its first start. An empty list warms
+the grant and takes nothing.
+
+**One producer.** An ok `submitSegments` with `sent > 0` holds the motion
+input for its plugin until the latest sent end plus `MOTION_HOLD_MS` (500);
+an ok `submitMotion` until now plus its duration plus 500. Another plugin's
+`submitMotion` or `submitSegments` meanwhile returns `{ok: false, sent: 0,
+reason: 'motion input in use by <plugin>'}` without reaching the door, and its
+`gate` on a motion-input field says the same.
 
 ## Manifest (`manifest.json`, beside the module)
 

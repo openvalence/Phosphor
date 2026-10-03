@@ -22,6 +22,9 @@ export const API_VERSION = 1;
 
 export const KINDS = ['widget', 'adapter', 'theme'];
 
+/** How long past its last sent motion a plugin keeps the motion input (ph-smvd.2). */
+export const MOTION_HOLD_MS = 500;
+
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const PERM_RE = /^(intent|motion|net\.listen:([1-9][0-9]{0,4}))$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -66,12 +69,15 @@ class PermissionError extends Error {
  *   status(field)                 -> confirmed|pending|overdue|fault
  *   write(field, value, payload)  -> routes to the right shadow entry point,
  *                                    behind the host-rendered confirm
- *   gate(field)                   -> '' or why the field cannot be written (law 3)
+ *   gate(field, busy)             -> '' or why the field cannot be written (law 3);
+ *                                    `busy` is the producer lock's words for this plugin
  *   stale(field)                  -> '' or the stale reason in words (law 8)
  *   reason(field)                 -> '' or the last refusal of the field's write
  *   modTarget(field)              -> uid of the field this modulator rides, or null
  *   storeSlots(field)             -> Promise<slot records | null> for an action.store writer
  *   submitMotion(norm, durationMs)-> {ok, reason?}
+ *   submitSegments(list)          -> {ok, sent, rateHz?, reason?} (motion.js submit.segments)
+ *   now()                         -> ms clock of submitSegments' atMs (default performance.now)
  *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
  *   prefs                         -> Storage-like {getItem, setItem} or null
@@ -81,6 +87,12 @@ export function createPluginHost(deps) {
   /** name -> record */
   const plugins = new Map();
   const listeners = new Set();
+  const now = deps.now || (() => performance.now());
+  // One motion producer at a time: interleaved inputs from two plugins would
+  // share one stream source on the hub.
+  let lock = { name: '', until: -Infinity };
+  const busyFor = (name) => (lock.name && lock.name !== name && now() < lock.until
+    ? 'motion input in use by ' + lock.name : '');
 
   function changed() {
     for (const fn of listeners) {
@@ -137,7 +149,7 @@ export function createPluginHost(deps) {
       value: (field) => (field ? deps.display(field, deps.sample(field.channelId)) : undefined),
       status: (field) => (field ? deps.status(field) : 'confirmed'),
       age: (field) => (field ? deps.sampleAge(field.channelId) : Infinity),
-      gate: (field) => (field && deps.gate ? deps.gate(field) : ''),
+      gate: (field) => (field && deps.gate ? deps.gate(field, busyFor(name)) : ''),
       stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
       reason: (field) => (field && deps.reason ? deps.reason(field) : ''),
       modTarget: (field) => (field && deps.modTarget ? deps.modTarget(field) : null),
@@ -145,7 +157,25 @@ export function createPluginHost(deps) {
 
       // ---- write: the shadow entry points, gated by the manifest ----
       write: (field, value, payload) => { need(rec, 'intent'); return deps.write(field, value, payload); },
-      submitMotion: (norm, durationMs) => { need(rec, 'motion'); return deps.submitMotion(norm, durationMs); },
+      submitMotion: (norm, durationMs) => {
+        need(rec, 'motion');
+        const busy = busyFor(name);
+        if (busy) return { ok: false, sent: 0, reason: busy };
+        const r = deps.submitMotion(norm, durationMs);
+        if (r && r.ok) lock = { name, until: now() + (durationMs || 0) + MOTION_HOLD_MS };
+        return r;
+      },
+      submitSegments: (list) => {
+        need(rec, 'motion');
+        const busy = busyFor(name);
+        if (busy) return { ok: false, sent: 0, reason: busy };
+        const r = deps.submitSegments(list);
+        if (r && r.ok && r.sent > 0) {
+          const end = Math.max(...list.slice(0, r.sent).map((x) => x.atMs + x.durationMs));
+          lock = { name, until: end + MOTION_HOLD_MS };
+        }
+        return r;
+      },
 
       // ---- contributions ----
       registerHero: (def) => {
