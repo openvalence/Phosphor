@@ -600,12 +600,15 @@
     overflow: hidden;
   }
   /* position: a pane's absolutely positioned descendants (sr-only labels)
-     must scroll with it, never overflow the non-scrolling column. */
+     must scroll with it, never overflow the non-scrolling column.
+     scrollbar-gutter: a scrollbar that comes and goes changes the grid's
+     columns, which changes the content's height: a flicker loop. */
   .content {
     position: relative;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .rail {
@@ -835,6 +838,7 @@
     flex-direction: column;
     padding: var(--caret-h) var(--gap) 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     overscroll-behavior: contain;
     background: var(--bg);
   }
