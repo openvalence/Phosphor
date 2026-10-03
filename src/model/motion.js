@@ -76,6 +76,42 @@ const TYPE_MAX = { [PACKED.u8]: 255, [PACKED.i8]: 127, [PACKED.u16]: 65535, [PAC
 /** A lookahead segment shorter than this is consumed, never packed (ph-smvd.2). */
 export const SEG_FLOOR_MS = 10;
 
+/**
+ * The door's hub clock: the offset of the least-RTT CLOCK exchange among the
+ * session's last CLOCK_KEEP (SPEC §7.1), never the newest exchange alone.
+ *
+ * Constraints:
+ * - An exchange's offset error is up to half its RTT's asymmetry; the session
+ *   library adopts every exchange, so each 10 s resync moved the stamps by
+ *   RTT/2 (localhost RTT 1 to 16 ms). The filter belongs in Valence's
+ *   clients/js syncClock; this stays until it lands there.
+ * - CLOCK_KEEP x the 10 s resync bounds the age of the chosen offset, so
+ *   client-to-hub drift (tens of ppm) stays under 2 ms.
+ * - A close voids every kept exchange (a new WELCOME may be a new boot_id);
+ *   until one lands the session's own offset is used.
+ * - First use and every 'live' fire CLOCK_BURST sequential exchanges, so the
+ *   filter has a choice before the first resync.
+ * - A session without on() or syncClock() (a test fake) reads hubNowUs().
+ */
+export const CLOCK_KEEP = 4, CLOCK_BURST = 4;
+const clocks = new WeakMap(); // session -> kept {offsetUs, rttUs}
+export function filteredHubNowUs(s) {
+  if (typeof s.on !== 'function' || typeof s.syncClock !== 'function') return s.hubNowUs();
+  let kept = clocks.get(s);
+  if (!kept) {
+    kept = [];
+    clocks.set(s, kept);
+    const burst = async () => { for (let i = 0; i < CLOCK_BURST; i++) if (!(await s.syncClock())) return; };
+    s.on('clock', (c) => { kept.push(c); if (kept.length > CLOCK_KEEP) kept.shift(); });
+    s.on('close', () => { kept.length = 0; });
+    s.on('live', () => { burst().catch(() => {}); });
+    burst().catch(() => {});
+  }
+  if (!kept.length) return s.hubNowUs();
+  const best = kept.reduce((a, b) => (b.rttUs < a.rttUs ? b : a));
+  return s.hubNowUs() - s.state.clockOffsetUs + best.offsetUs;
+}
+
 /** The reported latch in words, '' when motion may flow. */
 export function latchWords(s) {
   return !s ? '' : s.estopLatched ? 'e-stop latched' : s.paused ? 'paused, resume to continue' : '';
@@ -217,7 +253,7 @@ export function createMotionDoor(deps) {
     if (st.duration) {
       const lead = grant.scheduleLatencyUs || 0;
       noteSegments(ch, grant);
-      const now = s.hubNowUs();
+      const now = filteredHubNowUs(s);
       const { head } = bundleHead([{ atUs: now + lead, rec: record(st, norm, durationMs) }],
         now, grant.scheduleHorizonMs, recordBytes(st.entry.layout));
       if (!head.length) throw new Error('schedule_latency_us ' + lead + ' lies past the ' + grant.scheduleHorizonMs + ' ms horizon');
@@ -228,7 +264,7 @@ export function createMotionDoor(deps) {
     // SPEC §5.4: a samples-kind t_base is the instant the sample DESCRIBES, and
     // "reach X over I ms" describes now + I, capped at max_future_schedule_ms.
     const leadMs = durationMs > 0 ? Math.min(durationMs, LIMITS.max_future_schedule_ms) : 0;
-    s.publishSamples(ch, record(st, norm), { anchor: (s.hubNowUs() + leadMs * 1000) >>> 0 });
+    s.publishSamples(ch, record(st, norm), { anchor: (filteredHubNowUs(s) + leadMs * 1000) >>> 0 });
   }
 
   function submit(norm, durationMs) {
@@ -298,7 +334,7 @@ export function createMotionDoor(deps) {
       prev = x.atMs;
     }
 
-    const hubNow = s.hubNowUs();
+    const hubNow = filteredHubNowUs(s);
     const p = now();
     const lat = grant.scheduleLatencyUs || 0;
     const unit = LIMITS.segment_t_off_unit_us;

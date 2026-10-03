@@ -40,7 +40,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, filteredHubNowUs, CLOCK_KEEP, CLOCK_BURST } from '../src/model/motion.js';
 import { railOwners, railOwnerName } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
@@ -569,6 +569,31 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     ok('a hub NACK on the segments channel refuses the next call once with its name; an older one or another channel never',
       before.ok && other.ok && !r.ok && r.sent === 0 && r.reason === 'SOURCE_CONFLICT' && again.ok && s.sent.length === 3,
       JSON.stringify([before, other, r, again]));
+  }
+
+  {
+    // The door's hub clock: least-RTT of the last CLOCK_KEEP exchanges (SPEC §7.1).
+    const ls = {}, fired = [];
+    const s = {
+      state: { clockOffsetUs: 7000 },
+      hubNowUs: () => H + s.state.clockOffsetUs,
+      on: (n, cb) => { (ls[n] ||= []).push(cb); },
+      clock(offsetUs, rttUs) { s.state.clockOffsetUs = offsetUs; for (const cb of ls.clock || []) cb({ offsetUs, rttUs }); },
+      syncClock() { const n = fired.push(1); return Promise.resolve().then(() => (n <= CLOCK_BURST ? (s.clock(5000 + n, 9000), {}) : null)); },
+    };
+    const before = filteredHubNowUs(s);
+    await tick(); await tick(); await tick(); await tick(); await tick();
+    ok('first use fires CLOCK_BURST sequential exchanges, the raw offset until one lands', before === H + 7000 && fired.length === CLOCK_BURST, fired.length);
+    s.clock(2000, 1000);
+    s.clock(9000, 15000);
+    ok('stamps ride the least-RTT exchange, not the newest', filteredHubNowUs(s) === H + 2000, filteredHubNowUs(s) - H);
+    for (let i = 0; i < CLOCK_KEEP; i++) s.clock(4000, 3000);
+    ok('the chosen exchange ages out after CLOCK_KEEP newer ones', filteredHubNowUs(s) === H + 4000, filteredHubNowUs(s) - H);
+    for (const cb of ls.close) cb({});
+    s.state.clockOffsetUs = 123;
+    ok('a close voids the kept exchanges: the session offset again', filteredHubNowUs(s) === H + 123);
+    const s2 = { ...fakeSeg(), hubNowUs: () => 42 };
+    ok('a session without on() or syncClock() reads hubNowUs()', filteredHubNowUs(s2) === 42);
   }
 
   // streamGate: the first that applies, in order.
