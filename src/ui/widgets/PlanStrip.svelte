@@ -62,7 +62,10 @@
 
   // shown: RailWidget keeps this mounted under the jog tape and flips
   // visibility (ph-e82.21); hidden, the draw loop stops.
-  let { shown = true } = $props();
+  // edge0, edge1: the lane fractions where plan 0 and plan 1 sit, the rail's
+  // window band in its own frame (edge1 < edge0 when flipped). A plan never
+  // draws past them.
+  let { shown = true, edge0 = 0, edge1 = 1 } = $props();
 
   /** Per-field sample lookup — every role-claimed field carries its own
       channelId, so a claim spread across multiple channels still reads the
@@ -246,6 +249,7 @@
       ctx.strokeStyle = cLine;
       ctx.lineWidth = 1;
       ctx.strokeRect(0.5, 0.5, cssW - 1, h - 1);
+      const at = (n) => (edge0 + n * (edge1 - edge0)) * cssW;
 
       const from = startPct != null ? startPct : curPct;
       const to = endPct != null ? endPct : curPct;
@@ -267,13 +271,13 @@
         const age = now - gBorn[gi];
         if (age > GHOST_FADE_MS) continue;
         const f2 = 1 - age / GHOST_FADE_MS;
-        const ga = gFrom[gi] * cssW, gb = gTo[gi] * cssW;
+        const ga = at(gFrom[gi]), gb = at(gTo[gi]);
         ctx.fillStyle = `color-mix(in srgb, ${cIntent} ${Math.round(16 * f2 * f2)}%, transparent)`;
         ctx.fillRect(Math.min(ga, gb), h * 0.5 - 1.5, Math.max(1, Math.abs(gb - ga)), 3);
       }
 
       // Current span, glowing gradient toward the "to" end.
-      const x0 = dispFrom * cssW, x1 = dispTo * cssW;
+      const x0 = at(dispFrom), x1 = at(dispTo);
       const lo = Math.min(x0, x1), hi = Math.max(x0, x1);
       const grad = ctx.createLinearGradient(x0, 0, x1, 0);
       grad.addColorStop(0, `color-mix(in srgb, ${cIntent} 12%, transparent)`);
@@ -283,7 +287,7 @@
 
       // Sweep head at the live setpoint, if the channel reports one.
       if (curPct != null) {
-        const hx = curPct * cssW;
+        const hx = at(curPct);
         ctx.save();
         ctx.shadowColor = cIntent;
         ctx.shadowBlur = reduced ? 0 : 7;

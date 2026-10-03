@@ -52,9 +52,16 @@
  *            clears; no Fix button in the status slot; Force Home is never
  *            inline, only in the Home popover
  * ph-e82.21, at 1280x720:
- *   owner    a foreign-owned control-owner pair: with the hub's source
- *            labels the plan strip reads the owner and a SOURCE_CONFLICT
- *            reads "rail owned by" it; without labels, "plan" and the code
+ *   owner    a running generator on a foreign-owned control-owner pair: with
+ *            the hub's source labels the plan strip reads the owner and a
+ *            SOURCE_CONFLICT reads "rail owned by" it; without labels, "plan"
+ *            and the code
+ *   jog      idle with a foreign-held slot, the tape is live and a tap writes
+ *            inside the window, past it clamps to the edge; Classic running
+ *            swaps in the plan strip and a tap writes nothing; paused, the
+ *            tape is disabled with its reason; under Override a tap past the
+ *            window writes unclamped; the plan draws inside the window band
+ *            (100..400 on a 500 rail: 20 % to 80 %), a point past it at the edge
  *   axis     axis.flipped draws the rail reversed: the carriage marker for
  *            travel minus p sits where p sat unflipped, the endcaps swap,
  *            and a tape tap writes the value the reversed axis gives; Flip
@@ -692,8 +699,9 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   CATALOGS[k] = { bytes, etag: catalogEtag(bytes, LIMITS.etag_bytes) };
 }
 {
-  const flipE = byRole('axis.flipped'), planE = byRole('plan.current');
-  const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER };
+  const flipE = byRole('axis.flipped'), planE = byRole('plan.current'), runE = byRole('pattern.running');
+  const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER,
+    [runE.id]: stateOf(runE, { 'pattern.running': 1 }) };
   for (const [catalog, plan, refusal] of [['unlabeled', /^plan/, /SOURCE_CONFLICT/], ['labeled', /^Pattern/, /rail owned by Pattern/]]) {
     const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
     const mode = (await page.locator('.rail-swap .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
@@ -704,6 +712,73 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     await page.waitForTimeout(600);
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok('owner (' + catalog + '): a SOURCE_CONFLICT names the owner from the labels, else the code', refusal.test(banner), JSON.stringify(banner));
+    await ctx.close();
+  }
+}
+
+// ---- the jog tape: live at idle inside the window, the plan strip only while a generator runs --
+{
+  const cfgE = byRole('window.min'), runE = byRole('pattern.running'), planE = byRole('plan.current');
+  const cfg = stateOf(cfgE, { 'window.min': 100, 'window.max': 400, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
+  const tapAt = async (page, f) => {
+    const t = await page.locator('.rail-hero .rail-tape-track').boundingBox();
+    await page.mouse.click(t.x + t.width * f, t.y + t.height / 2);
+    await page.waitForTimeout(400);
+  };
+  // Idle and homed, a foreign session still holding a slot it no longer drives.
+  {
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+      states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER } });
+    const tape = page.locator('.rail-hero .rail-tape-track');
+    ok('jog: idle, the tape shows and is live', await tape.isVisible() && await tape.getAttribute('aria-disabled') === 'false');
+    await tapAt(page, 0.5);
+    await tapAt(page, 0.97);
+    const [mid, edge] = wire.values;
+    ok('jog: a tap writes a move inside the window, past it clamps to the edge',
+      wire.writes.length === 2 && mid > 100 && mid < 400 && edge === 400, JSON.stringify(wire.values));
+    await page.locator('.topstrip .btn-pause').click();
+    await page.waitForTimeout(300);
+    const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
+    ok('jog: paused, the tape is disabled with its reason', await tape.getAttribute('aria-disabled') === 'true'
+      && reason === 'Paused: Override to jog', reason);
+    await page.locator('.topstrip .dock .ovr .btn-override').click();
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
+    await page.waitForTimeout(300);
+    await tapAt(page, 0.97);
+    ok('jog: under Override a tap past the window writes unclamped', wire.writes.length === 3 && wire.values[2] > 400,
+      JSON.stringify(wire.values));
+    await ctx.close();
+  }
+  // Classic running: the plan strip, drawn in the window band, and no tape write.
+  {
+    const plan = (o) => stateOf(planE, o);
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', reducedMotion: 'reduce',
+      states: { [cfgE.id]: cfg, [runE.id]: stateOf(runE, { 'pattern.running': 1 }),
+        [planE.id]: plan({ 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }) } });
+    ok('jog: Classic running shows the plan strip over the tape', await page.locator('.rail-swap .plan-strip').isVisible()
+      && !await page.locator('.rail-hero .rail-tape-track').isVisible());
+    const box = await page.locator('.rail-swap').boundingBox();
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.75);
+    await page.waitForTimeout(400);
+    ok('jog: Classic running, a tap on the rail row writes nothing', wire.writes.length === 0, JSON.stringify(wire.values));
+    // The lit columns of the lane's middle row, as fractions of its width.
+    const lit = () => page.evaluate(() => {
+      const c = document.querySelector('.rail-swap .plan-lane canvas');
+      const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+      const edge = Math.ceil(2 * devicePixelRatio);
+      let a = -1, b = -1;
+      for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
+      return [a / c.width, b / c.width];
+    });
+    await page.waitForTimeout(1200);
+    const whole = await lit();
+    ok('plan: 0..1 on a 100..400 window of a 500 rail draws from 20 % to 80 %',
+      Math.abs(whole[0] - 0.2) < 0.01 && Math.abs(whole[1] - 0.8) < 0.01, JSON.stringify(whole));
+    wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, plan({ 'plan.start': 0.5, 'plan.end': 1.5, 'plan.current': 0.75 }))));
+    await page.waitForTimeout(2400);
+    const past = await lit();
+    ok('plan: an end past the window draws at the window edge', Math.abs(past[0] - 0.5) < 0.01 && Math.abs(past[1] - 0.8) < 0.01,
+      JSON.stringify(past));
     await ctx.close();
   }
 }
