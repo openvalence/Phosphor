@@ -24,7 +24,7 @@
 //   mid-play holds and the video plays on.
 // - Composition follows the card's own box: full >= 960, handheld 264..959,
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
-// - Handheld takes data-narrow (a three-row transport, no volume slider) when
+// - Handheld takes data-narrow (a three-row transport) when
 //   the two-row transport overflows at the card's width, measured on a width
 //   change and on a Look change (the Offset label's box), never on a state
 //   change, so the Look scale moves the switch with the text. Its button
@@ -40,7 +40,8 @@
 //   never picture-in-picture or element fullscreen (law 1: nothing may cover the strip).
 // - The hover bar acts through the controller (toggle, seek) like the transport: it never
 //   calls the video's play() or pause() or sets currentTime. Volume and mute are the video's
-//   own, stored as prefs audio. Its fullscreen is the shell's page fullscreen, bare (the stop
+//   own, stored as prefs audio; the bar holds the card's only mute and volume. Its fullscreen
+//   is the shell's page fullscreen, bare (the stop
 //   pair stays): a page mount only (opts.fullscreen), asked by the cancelable
 //   'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
@@ -79,7 +80,6 @@ export const COPY = Object.freeze({
   offset: 'Offset',
   offsetTip: 'Machine later (+) or earlier (-)',
   invert: 'Invert',
-  mute: 'Mute',
   volume: 'Volume',
   speed: 'Stroke speed',
   speedOver: 'Past the input speed limit',
@@ -578,24 +578,22 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: 6px; }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
-  grid-template-columns: auto 16ch auto auto auto minmax(auto, 1fr) auto minmax(60px, 110px);
-  grid-template-areas: "play time motion off inv speed mute vol"; }
-.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content minmax(50px, 90px);
+  grid-template-columns: auto 16ch auto auto auto minmax(auto, 1fr);
+  grid-template-areas: "play time motion off inv speed"; }
+.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content;
   grid-template-rows: var(--tap) var(--tap);
-  grid-template-areas: "play time speed mute vol" "motion off off inv inv"; }
+  grid-template-areas: "play time speed speed" "motion off off inv"; }
 .fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: var(--tap) var(--tap) var(--tap);
-  grid-template-areas: "play time time" "motion off off" "inv speed mute"; }
-.fsp[data-comp=handheld][data-narrow] .fsp-vol { display: none; }
+  grid-template-areas: "play time time" "motion off off" "inv speed speed"; }
 .fsp[data-comp=handheld][data-narrow] .fsp-time { font-size: .7rem; }
 .fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; grid-template-areas: "play time"; }
-.fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed, .fsp-mute, .fsp-vol) { display: none; }
+.fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed) { display: none; }
 .fsp-play { grid-area: play; min-width: 72px; }
 .fsp-time { grid-area: time; font: .8rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-motion { grid-area: motion; }
 .fsp-inv { grid-area: inv; }
-.fsp-mute { grid-area: mute; }
 .fsp-off { grid-area: off; display: flex; align-items: center; gap: 6px; min-height: var(--tap); }
 .fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--tap); display: grid; align-items: center; }
 .fsp-off input { width: 7ch; min-height: var(--tap); font-family: var(--mono); }
@@ -604,7 +602,6 @@ export const CSS = `
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
-.fsp-vol { grid-area: vol; min-width: 0; margin: 0; }
 .fsp-slot[data-tone=intent] { border-left-color: var(--intent); }
 .fsp-anbox { grid-area: an; min-width: 0; min-height: 0; display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
@@ -819,12 +816,9 @@ export function createPlayer(api) {
     const speedBar = h('i');
     const speedTxt = h('span');
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
-    const mute = btn('fsp-mute', COPY.mute);
-    const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
-    mute.addEventListener('click', () => setMuted(!video.muted));
-    const tr = h('div', { class: 'fsp-tr' }, play, time, motion, off, inv, speed, mute, vol);
+    const tr = h('div', { class: 'fsp-tr' }, play, time, motion, off, inv, speed);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       src, stage, tlbox, lib, anbox, meter, status, tr);
@@ -859,10 +853,8 @@ export function createPlayer(api) {
     stage.append(hov);
     hbPlay.addEventListener('click', () => ctl.toggle());
     hbMute.addEventListener('click', () => setMuted(!video.muted));
-    for (const v of [vol, hbVol]) {
-      v.addEventListener('input', () => { video.volume = clamp(+v.value, 0, 1); if (video.volume > 0) video.muted = false; });
-      v.addEventListener('change', saveAudio);
-    }
+    hbVol.addEventListener('input', () => { video.volume = clamp(+hbVol.value, 0, 1); if (video.volume > 0) video.muted = false; });
+    hbVol.addEventListener('change', saveAudio);
     // Shown on pointer movement, hidden after HOVER_IDLE_MS idle and on leave, kept while the pointer
     // rests on the bar or drags the seek. A touch on the hidden bar's video shows it without toggling.
     let idle = 0, drag = null, tapShow = false;
@@ -969,9 +961,7 @@ export function createPlayer(api) {
       if (document.activeElement !== hbVol) hbVol.value = String(video.muted ? 0 : video.volume);
       motion.setAttribute('aria-pressed', String(st.motion));
       inv.setAttribute('aria-pressed', String(st.T.invert));
-      mute.setAttribute('aria-pressed', String(video.muted));
       if (document.activeElement !== offIn && !offDrag) offIn.value = String(st.T.offsetMs);
-      if (document.activeElement !== vol) vol.value = String(video.volume);
       root.dataset.view = st.view;
       tabP.setAttribute('aria-selected', String(st.view === 'player'));
       tabL.setAttribute('aria-selected', String(st.view === 'library'));

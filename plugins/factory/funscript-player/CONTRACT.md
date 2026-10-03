@@ -586,7 +586,8 @@ played and buffered fill, a time tooltip), Play/Pause, Mute, volume, the
 time and, with `opts.fullscreen`, Fullscreen. Shown on pointer movement,
 hidden after `HOVER_IDLE_MS` idle and on pointer leave; not drawn under 130
 px of stage height. Play/Pause is `ctl.toggle()`, a seek `ctl.seek(ms)`;
-volume and mute set the video's own and store pref `audio`. Keys on the
+volume and mute set the video's own and store pref `audio`; they are the
+card's only mute and volume (the transport has none). Keys on the
 card root: Space and K toggle, J/L 10 s, arrows 5 s, M mute, F fullscreen.
 Fullscreen dispatches `phosphor-page-fullscreen` (bubbles, cancelable,
 `detail: {on}`) from the card; the shell's `preventDefault()` is the

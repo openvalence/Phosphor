@@ -291,7 +291,7 @@ FULL
 +------------------------------------------------+--------------------+
 | status slot 20, one line, aria-live                                  |
 | transport var(--tap): Play | time | Motion | Offset | Invert |        |
-|   speed meter | Mute, volume                                          |
+|   speed meter (mute and volume: the hover bar)                       |
 +----------------------------------------------------------------------+
 ```
 
@@ -301,12 +301,11 @@ FULL
   transport in two fixed rows. Their button columns are `max-content`
   and the speed reading's floor is 10ch (`20000 mm/s`), so a label never
   squeezes: an `auto` column shrank a button to its 40 px min-width and
-  cut `Mute` at 426 to 433 px without ever overflowing. Where the rows
+  cut a label at 426 to 433 px without ever overflowing. Where the rows
   overflow the card (measured on a width change and on a Look change; at
-  or under 480 px at the default Look, 572 at 1.4), `data-narrow` gives
+  or under 358 px at the default Look, 440 at 1.4), `data-narrow` gives
   three fixed rows, Play and time /
-  Motion and Offset / Invert, speed and Mute, and drops the volume slider
-  (the device's own volume stays). A 390 px phone's 326 px card spilled
+  Motion and Offset / Invert and speed. A 390 px phone's 326 px card spilled
   101 px before this. The floor scales with the Look while the tier
   thresholds stay the shell's px: at Look 1.4 the source row (tabs and
   Open files) needs 304 px and cuts `Open files` below it.
@@ -359,8 +358,8 @@ FULL
   controller the transport uses (`toggle`, `seek`): Play prerolls, a seek
   holds and glides; the bar never calls the video's `play()` or `pause()`
   or sets `currentTime`. Volume and mute are the video's own, stored in
-  pref `audio` (`phosphor.funscript.audio`), shared with the transport's
-  Mute and slider. The bar is its own size container: under 130 px of stage
+  pref `audio` (`phosphor.funscript.audio`); they are the card's only
+  mute and volume (the transport has none). The bar is its own size container: under 130 px of stage
   height it is not drawn (the analyzer's handheld thumbnail), under 440 px
   of width the volume slider yields so the time stays whole.
 - **Media fullscreen.** The bar's Fullscreen asks the shell for page
@@ -383,7 +382,7 @@ FULL
 - **Targets.** Every control is at least `var(--tap)` (40 px floor under a
   coarse pointer, law 12).
 - **Copy** (COPY.md): Play, Pause, Open files, Library, Player, Motion,
-  Offset, Invert, Mute; the hover bar's `Play (k)`, `Pause (k)`, `Mute
+  Offset, Invert; the hover bar's `Play (k)`, `Pause (k)`, `Mute
   (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`;
   `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this

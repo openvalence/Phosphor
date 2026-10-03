@@ -955,7 +955,7 @@ if (!LIVE) {
     bad.length === 0, bad.slice(0, 6));
   console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
   // A Look change alone (no width change) re-measures the switch.
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '400px'; });
   await setLook(1.12);
   await page.waitForTimeout(100);
   const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
@@ -1422,7 +1422,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(200);
   ok('keys: k plays and pauses, j seeks back 10 s, all through the controller', kPlay && tJ < CLIP_S / 2 - 8
     && await video(page, (v) => v.paused) && (await direct()).length === 0, { kPlay, tJ, direct: await direct() });
-  // Volume and mute: the video's own, kept in prefs audio across a launch.
+  // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
+  ok('volume: one set, the hover bar\'s: the transport has no mute and no slider', await page.locator(C + ' .fsp-tr').evaluate((t) =>
+    !t.querySelector('input[type=range]') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
   await overVideo();
   await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.keyboard.press('m');
