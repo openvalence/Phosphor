@@ -267,8 +267,20 @@ const real = (sent) => sent.filter((l) => l.length);
   const fixed = parseFunscript({ actions: [{ at: 500, pos: 250 }, { at: 0, pos: -5 }, { at: 'x', pos: 1 }, { at: 1000, pos: 50 }] });
   r.ctl.load({ key: 'stash:3', title: 'Three', stream: 'http://x/3' }, fixed);
   await flush();
-  ok('parse notes in the slot', r.ctl.state.status.text === '1 invalid action dropped, 2 positions clamped' && r.ctl.state.status.tone === '',
-    r.ctl.state.status.text);
+  ok('parse notes: the first in the slot with a count of the rest, all in its notes',
+    r.ctl.state.status.text === '1 invalid action dropped (+2 more)' && r.ctl.state.status.tone === ''
+    && r.ctl.state.status.notes.join('; ') === '1 invalid action dropped; 2 positions clamped; actions sorted', r.ctl.state.status);
+  const words = (t) => t.split(/s+/).filter(Boolean).length;
+  const messy = parseFunscript({ range: 90, axes: [{ id: 'R1' }, { id: 'R0' }],
+    actions: [{ at: 0, pos: 1 }, { at: 'x', pos: 1 }, { at: 0, pos: 2 }, { at: 70000, pos: 120 }, { at: 69000, pos: 5 }] });
+  r.ctl.load({ key: 'stash:5', title: 'Five', stream: 'http://x/5' }, messy, '', [{ name: 'Five.twist.funscript' }]);
+  await flush();
+  const st = r.ctl.state.status;
+  ok('a messy script: the slot stays one fragment under 8 words, every note one fragment',
+    words(st.text) < 8 && st.notes.length === 7 && st.notes.every((n) => words(n) < 8 && !n.includes(', 1 ')), st);
+  r.ctl.load({ key: 'stash:6', title: 'Six', stream: 'http://x/6' }, parseFunscript({ actions: [{ at: 600, pos: 90 }, { at: 0, pos: 10 }, { at: 300, pos: 50 }] }));
+  await flush();
+  ok('an unsorted script names the repair in the slot', r.ctl.state.status.text === 'actions sorted', r.ctl.state.status.text);
   // script: 0 <-> 100 every 500 ms = 2 norm/s; 100 mm window: 200 mm/s
   r.ctl.load({ key: 'stash:4', title: 'Four', stream: 'http://x/4' }, script);
   await flush();

@@ -521,8 +521,20 @@ const spill = (page) => page.evaluate((c) => {
     out: shown.map((e) => [e, e.getBoundingClientRect()])
       .filter(([, r]) => r.left < o.left - 0.5 || r.top < o.top - 0.5 || r.right > o.right + 0.5 || r.bottom > o.bottom + 0.5)
       .map(([e, r]) => name(e) + ' ' + [r.left - o.left, r.top - o.top, r.right - o.right, r.bottom - o.bottom].map(Math.round).join(',')),
-    cut: shown.filter((e) => e.matches('button, output') && e.scrollWidth > e.clientWidth + 1).map(name),
+    cut: [...shown.filter((e) => e.matches('button, output') && e.scrollWidth > e.clientWidth + 1).map(name), ...speedCut()],
   };
+  // The speed reading's widest text, whatever it reads now.
+  function speedCut() {
+    const sp = root.querySelector('.fsp-speed');
+    if (!sp || !sp.getClientRects().length) return [];
+    const m = document.createElement('span');
+    m.textContent = '20000 mm/s';
+    m.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+    sp.append(m);
+    const need = m.getBoundingClientRect().width;
+    m.remove();
+    return sp.clientWidth + 0.5 < need ? ['fsp-speed ' + sp.clientWidth + ' < ' + Math.ceil(need)] : [];
+  }
 }, C);
 
 /** Display epoch ms of media ms m, from the clock's own observations around m. */
@@ -819,18 +831,39 @@ if (!LIVE) {
   const gsp = await spill(page);
   ok('glance: every control lies inside the card, no label cut', gsp.out.length === 0 && gsp.cut.length === 0, gsp);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
-  // Handheld from its floor up: the transport goes to three rows where two do not fit.
-  const sweep = [];
-  for (const w of [264, 300, 326, 360, 400, 440, 520, 700, 959]) {
-    await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
-    await page.waitForTimeout(120);
-    const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
-    const s = await spill(page);
-    sweep.push({ w, comp, out: s.out, cut: s.cut });
+  // Handheld from its floor up, every 2 px at the default Look and at 1.4: the transport goes
+  // to three rows where two do not fit, and no label or the speed reading's floor is cut.
+  // At Look 1.4 the source row (two tabs and Open files) needs 304 px: the floor scales with
+  // the Look, the tier thresholds stay the shell's px (rclass.js).
+  const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
+  const sweep = [], firstNarrow = {};
+  for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
+    await setLook(look);
+    for (let w = floor; w <= 959; w += 2) {
+      await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
+      await page.waitForTimeout(30);
+      const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
+      const s = await spill(page);
+      sweep.push({ look, w, comp, out: s.out, cut: s.cut });
+      if (comp.endsWith('narrow')) firstNarrow[look] = w;
+    }
   }
-  ok('handheld: from 264 to 959 px every control lies inside the card, no label cut',
-    sweep.every((x) => x.comp.startsWith('handheld') && !x.out.length && !x.cut.length), sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld')));
-  console.log('  [NOTE] handheld composition by width: ' + sweep.map((x) => x.w + ' ' + x.comp).join(', '));
+  const bad = sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld'));
+  ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut',
+    bad.length === 0, bad.slice(0, 6));
+  console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
+  // A Look change alone (no width change) re-measures the switch.
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
+  await setLook(1.12);
+  await page.waitForTimeout(100);
+  const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
+  await setLook(1.6);
+  await page.waitForTimeout(150);
+  const big = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
+  const bigSpill = await spill(page);
+  await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
+  ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
+    { wide, big, bigSpill });
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);

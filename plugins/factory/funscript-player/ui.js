@@ -23,7 +23,12 @@
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
 // - Handheld takes data-narrow (a three-row transport, no volume slider) when
 //   the two-row transport overflows at the card's width, measured on a width
-//   change, so the Look scale moves the switch with the text.
+//   change and on a Look change (the Offset label's box), never on a state
+//   change, so the Look scale moves the switch with the text. Its button
+//   columns are max-content: an auto column squeezes a button to its 40 px
+//   min-width, cutting the label, and never overflows.
+// - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
+//   its current text, so the switch does not move with the reading.
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
 // - --warn is a mark, never text: on a light chassis it reads 1.8:1, and it is
 //   locked (law 13). Warn text stays --tx beside a --warn bar.
@@ -68,6 +73,7 @@ export const COPY = Object.freeze({
   badFormat: 'Format not playable here',
   extra: 'Extra axes ignored: ',
   overLimit: 'Script past the input speed limit',
+  more: 'more',
   meter: 'Stroke',
 });
 
@@ -132,10 +138,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u) }) {
   const prefs = readPrefs(api);
   const state = { phase: 'empty', scene: null, script: null, T: { ...prefs.T }, motion: prefs.motion !== false,
-    status: { text: COPY.empty, tone: '' }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full' };
+    status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full' };
   let fields = null;
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
-  let info = '';         // a load fact: no script, extra axes
+  let info = [];         // load facts: no script, repairs, extra axes
   let transient = '';
   let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0;
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
@@ -261,7 +267,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     scheduler.load(null);
     peak = 0;
     why = '';
-    info = script ? '' : none || '';
+    info = !script && none ? [none] : [];
     video.src = scene.stream;
     if (scene.screenshot) video.poster = scene.screenshot; else video.removeAttribute && video.removeAttribute('poster');
     if (script) {
@@ -270,7 +276,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
         state.script = s;
         scheduler.load(s);
         peak = peakSpeed(s);
-        info = [...s.notes, extraNote(s, extra)].filter(Boolean).join(', ');
+        info = [...s.notes, extraNote(s, extra)].filter(Boolean);
         warm();
         changed();
       }, (e) => {
@@ -315,10 +321,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (transient) return { text: transient, tone: '' };
     const ceil = fields ? ceilingOf(api, fields) : {};
     if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
-    if (info) return { text: info, tone: '' };
+    if (info.length) return { text: info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
     return { text: state.scene ? '' : COPY.empty, tone: '' };
   }
-  function refresh() { state.status = status(); }
+  function refresh() { state.status = { ...status(), notes: info }; }
   function changed() { refresh(); onChange(); }
 
   const on = (ev, fn) => video.addEventListener(ev, fn);
@@ -374,6 +380,7 @@ export const CSS = `
 .fsp-btn:disabled { opacity: .4; cursor: default; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
+.fsp-src > [role=tablist] { display: flex; flex: none; gap: 4px; }
 .fsp-tab { display: none; }
 .fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
 .fsp[data-comp=handheld] .fsp-title, .fsp[data-comp=glance] .fsp-open, .fsp[data-comp=full] .fsp-lib-open { display: none; }
@@ -400,9 +407,9 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: 6px; }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
-  grid-template-columns: auto 16ch auto auto auto minmax(80px, 1fr) auto minmax(60px, 110px);
+  grid-template-columns: auto 16ch auto auto auto minmax(auto, 1fr) auto minmax(60px, 110px);
   grid-template-areas: "play time motion off inv speed mute vol"; }
-.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: auto 16ch minmax(60px, 1fr) auto minmax(50px, 90px);
+.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content minmax(50px, 90px);
   grid-template-rows: var(--tap) var(--tap);
   grid-template-areas: "play time speed mute vol" "motion off off inv inv"; }
 .fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
@@ -421,10 +428,10 @@ export const CSS = `
 .fsp-off { grid-area: off; display: flex; align-items: center; gap: 6px; min-height: var(--tap); }
 .fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--tap); display: grid; align-items: center; }
 .fsp-off input { width: 7ch; min-height: var(--tap); font-family: var(--mono); }
-.fsp-speed { grid-area: speed; position: relative; height: var(--tap); min-width: 0; display: grid; align-items: center; }
+.fsp-speed { grid-area: speed; position: relative; height: var(--tap); min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center; }
 .fsp-speed i { position: absolute; left: 0; bottom: 6px; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
-.fsp-speed span { font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
+.fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
 .fsp-vol { grid-area: vol; min-width: 0; margin: 0; }
 `;
@@ -608,12 +615,9 @@ export function createPlayer(api) {
     let library = null;
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
-    let comp = '', lastW = -1;
+    let comp = '';
     const ro = new ResizeObserver(() => {
-      const w = root.clientWidth;
-      if (w === lastW) return;
-      lastW = w;
-      const c = compositionOf(w);
+      const c = compositionOf(root.clientWidth);
       if (c !== comp) {
         comp = c;
         root.dataset.comp = c;
@@ -622,9 +626,10 @@ export function createPlayer(api) {
           fetch: (u, i) => api.net.fetch(u, i) });
       }
       root.removeAttribute('data-narrow');
-      if (c === 'handheld' && tr.scrollWidth > tr.clientWidth + 1) root.setAttribute('data-narrow', '');
+      if (c === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
     });
     ro.observe(root);
+    ro.observe(offK);
 
     let tlKey = null;
     function render() {
@@ -646,6 +651,8 @@ export function createPlayer(api) {
       empty.hidden = !!st.scene;
       setText(status, st.status.text);
       status.dataset.tone = st.status.tone;
+      const tip = st.status.notes.join('\n');
+      if (status.title !== tip) status.title = tip;
     }
     function frame() {
       const m = ctl.mediaNow();
