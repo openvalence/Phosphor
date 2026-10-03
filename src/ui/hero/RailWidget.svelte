@@ -82,6 +82,7 @@
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
   import { deferring } from '../defer.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
+  import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
 
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
@@ -155,6 +156,15 @@
   // the one way in, so override brings the tape back. Both stay mounted.
   const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples));
   const planShown = $derived(sourceOwns && !override);
+  // Another session holds a control-owner slot: the full-width plan strip.
+  // Else the planned segment, at the window's own width (ph-ryi7).
+  const foreign = $derived.by(() => {
+    const o = machine.samples[CH_CONTROL_OWNER];
+    for (let i = 0; o && o['owner' + i] !== undefined; i++) {
+      if (o['owner' + i] && o['owner' + i] !== machine.link.sessionId) return true;
+    }
+    return false;
+  });
 
   // Flip (SPEC §9.6, RFC-088): the axis.flipped setting, a bool or two-option
   // select where 1 is flipped. Drawn in the top strip beside Override
@@ -188,8 +198,6 @@
   // The tooltips carry what the rail's help line used to say (ph-i0y).
   const HINT = 'Tap or scrub to jog';
   const windowDesc = $derived(min.desc || max.desc || '');
-  let descOpen = $state(false);
-  const descId = 'rail-desc-' + Math.random().toString(36).slice(2, 8);
 
   async function toggleFlip() {
     if (!flipEnabled) return;
@@ -249,6 +257,8 @@
   const bandR = $derived(haveWindow ? Math.max(minPct, maxPct) : 1);
   /** "a–b" in screen order, left to right. */
   const ends = (fa, a, fb, b) => (flipped ? formatValue(fb, b) + '–' + formatValue(fa, a) : formatValue(fa, a) + '–' + formatValue(fb, b));
+  /** A value as a fraction of the window, plan.* units (0 at window.min). */
+  const winFrac = (v) => (v == null || !haveWindow || maxVal === minVal ? null : (v - minVal) / (maxVal - minVal));
 
   function clamp(v, a, b) {
     const lo2 = Math.min(a, b), hi2 = Math.max(a, b);
@@ -420,7 +430,7 @@
       get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
-      get flip() { return flip ? flipCtl : null; },
+      get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; },
     };
     return () => { readout = null; };
   });
@@ -938,10 +948,17 @@
   <!-- THE RAIL ROW, one fixed height, the rail's full width: the jog tape
        and the plan strip share one cell, both mounted, and planShown picks
        the visible one, so a swap remounts and moves nothing. A reason
-       renders inside the row, never as a line under it. -->
+       renders inside the tape, never as a line of its own. -->
   <div class="rail-row">
-    <div class="rail-swap" class:has-info={!!windowDesc}>
-    <div class="swap-face" class:off={!planShown}><PlanStrip shown={planShown} edge0={haveWindow ? minPct : 0} edge1={haveWindow ? maxPct : 1} /></div>
+    <div class="rail-swap">
+    <div class="swap-face" class:off={!planShown}>
+      {#if foreign}
+        <PlanStrip shown={planShown} edge0={haveWindow ? minPct : 0} edge1={haveWindow ? maxPct : 1} />
+      {:else}
+        <PlanStrip shown={planShown} segment lane={[bandL, bandR]} edge0={minPct > maxPct ? 1 : 0} edge1={minPct > maxPct ? 0 : 1}
+                   pos={fresh ? winFrac(posDisplay) : null} target={targetFresh ? winFrac(targetDisplay) : null} />
+      {/if}
+    </div>
     <div class="swap-face" class:off={planShown}>
     {#if move}
       <!-- Input tape — a live command surface. In the original this was
@@ -955,13 +972,6 @@
            the drag ends — never an optimistic local guess. -->
       <div class="rail-tape-assembly" class:drag-live={moveDragging} class:disabled={!moveEnabled}
            data-shadow={moveHeld ? STATUS.pending : statusOf(move)}>
-        <div class="rail-tape-labels"
-             title={'jog · ' + (override ? 'travel' : 'window') + (!moveEnabled && moveReason ? ' · ' + moveReason : '')}>
-          <span class="rail-tape-mode"><span class="rail-mode">jog &middot; {override ? 'travel' : 'window'}</span>{#if !moveEnabled
-            && moveReason}<span class="rail-reason">{moveReason}</span>{/if}</span>
-          <!-- The window's own precision, as the ruler and its endcaps read it (ph-tp7). -->
-          <span class="rail-tape-extent mono">{ends(min, tapeLo, max, tapeHi)}</span>
-        </div>
         <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
              tapeTrackEl above) — the whole dashed-guide width is tappable, not
              just the highlighted strip nested inside it. The strip
@@ -969,7 +979,7 @@
              where the window sits, still carries the pip, but no longer owns
              any listeners of its own (pointer events on it bubble to the
              track same as anywhere else). -->
-        <div class="rail-tape-track" bind:this={tapeTrackEl} title={HINT}
+        <div class="rail-tape-track" bind:this={tapeTrackEl} title={moveEnabled || !moveReason ? HINT : moveReason}
              role="slider" tabindex={moveEnabled ? 0 : -1}
              aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
@@ -982,7 +992,11 @@
              onkeydown={onTapeKey}>
           <div class="rail-tape live" bind:this={tapeBarEl}
                style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
-            <span class="rail-tape-micro">tap &middot; scrub</span>
+            {#if !moveEnabled && moveReason}
+              <span class="rail-tape-micro rail-reason">{moveReason}</span>
+            {:else}
+              <span class="rail-tape-micro">tap &middot; scrub</span>
+            {/if}
             {#if tapeDotFrac != null}
               <div class="rail-tape-pip" class:on={moveDragging} style="left:{tapeDotFrac * 100}%"></div>
             {/if}
@@ -993,29 +1007,13 @@
       <!-- A catalog with no role-tagged move INTENT: the window extent keeps
            the rhythm, commands nothing, and says why. -->
       <div class="rail-tape-assembly disabled" aria-disabled="true" title="No move intent on this catalog">
-        <div class="rail-tape-labels" title="jog · window · no move intent on this catalog">
-          <span class="rail-tape-mode"><span class="rail-mode">jog &middot; window</span><span class="rail-reason">no move intent on this catalog</span></span>
-          <span class="rail-tape-extent mono">{haveWindow ? ends(min, minVal, max, maxVal) : '--'}</span>
-        </div>
         <div class="rail-tape-track" title={HINT}>
           <div class="rail-tape"
-               style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"></div>
+               style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"><span class="rail-tape-micro rail-reason">no move intent on this catalog</span></div>
         </div>
       </div>
     {/if}
     </div>
-    {#if windowDesc}
-      <!-- The window's catalog description, behind the same info affordance
-           Field.svelte uses; it never takes a line of its own (ph-i0y). -->
-      <span class="info-wrap">
-        <button type="button" class="info" aria-expanded={descOpen} aria-controls={descId}
-                onclick={() => (descOpen = !descOpen)}>
-          <span class="glyph" aria-hidden="true">i</span>
-          <span class="sr-only">{descOpen ? 'Hide' : 'Show'} the stroke window description</span>
-        </button>
-        <span class="tip" id={descId} role="tooltip">{windowDesc}</span>
-      </span>
-    {/if}
     </div>
   </div>
 
@@ -1049,7 +1047,8 @@
     <canvas class="rail-canvas" bind:this={canvasEl}></canvas>
 
     {#if haveWindow}
-      <div class="rail-band" title="Drag the window or its edges"
+      <!-- The window's catalog description rides the band's own tooltip. -->
+      <div class="rail-band" title={(windowDesc ? windowDesc + '\n' : '') + 'Drag the window or its edges'}
            class:disabled={!bandEnabled}
            class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}
@@ -1114,17 +1113,15 @@
     gap: 0;
   }
 
-  /* The rail row: a fixed height whatever fills it, the rail's own width.
-     Labels line plus track, one grid cell for the tape and the plan strip
-     (PlanStrip.svelte reads --rail-row-h), so the swap never moves the rail
-     below it. */
+  /* The rail row: the track's own height whatever fills it, the rail's
+     own width, one grid cell for the tape and the plan strip, so the swap
+     never moves the rail below it. */
   .rail-row {
-    --rail-row-h: max(var(--tap), calc(18px + var(--s) * 26px));
     display: flex;
-    height: var(--rail-row-h);
+    height: calc(var(--s) * 26px);
   }
   @media (pointer: coarse) {
-    .rail-row { --rail-row-h: max(var(--tap), 58px); }
+    .rail-row { height: 40px; }
   }
   .rail-swap {
     position: relative;
@@ -1135,53 +1132,21 @@
   }
   .swap-face { grid-area: 1 / 1; min-width: 0; }
   .swap-face.off { visibility: hidden; }
-  /* The info box rides the labels line's right end; the labels make room. */
-  .has-info .rail-tape-labels, .has-info :global(.plan-labels) { padding-right: 24px; }
 
-  /* OG .rail-panel spacing: 10px vertical margin so the og-panel's 4px
-     outline-offset frame never collides with the row above or the content
-     below. Padding is the OG's two-tier recipe, not one value — the base is
-     --s-scaled (18/16/8, so the panel breathes proportionally with the global
-     control scale on a phone), and the OG's own >=761px block replaces it with
-     flat pixels. Stating only the desktop value here left mobile ~40% too
-     tight at the top. */
+  /* The rail panel: one inset on all four sides (operator 2026-10-03,
+     ph-ryi7), clear of the og-panel's 4px outline frame by
+     the 10px margin. */
   .rail-panel {
     margin: 10px 0;
-    padding: calc(var(--s) * 18px) calc(var(--s) * 16px) calc(var(--s) * 8px);
+    padding: calc(var(--s) * 12px);
     display: flex;
     flex-direction: column;
-    gap: var(--gap);
-  }
-  @media (min-width: 761px) {
-    .rail-panel { padding: 10px 20px 6px; }
+    gap: calc(var(--s) * 12px);
   }
 
   /* ---- input tape (disabled command surface) ------------------------------ */
-  /* A container: the rail places as a module too, so "narrow" is the row's
-     own width, never the window's. */
-  .rail-tape-assembly { width: 100%; container-type: inline-size; }
+  .rail-tape-assembly { width: 100%; }
   .rail-tape-assembly.disabled { opacity: 0.7; }
-  /* 14px + 4px: the 18px the rail row reserves above the track. */
-  .rail-tape-labels {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
-    height: 14px;
-    line-height: 14px;
-    margin-bottom: 4px;
-    white-space: nowrap;
-  }
-  .rail-tape-mode {
-    font-size: calc(var(--s) * 10px);
-    letter-spacing: 0.14em;
-    text-transform: lowercase;
-    color: color-mix(in srgb, var(--intent) 78%, var(--tx-mut));
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .rail-tape-extent { font-size: calc(var(--s) * 10px); color: var(--tx-ghost); }
   /* Track spans the full assembly width with dashed top/bottom guides — the
      original's "shows where full travel is even when the strip only covers
      the window" landmark. The STRIP (.rail-tape) is what actually commands;
@@ -1246,6 +1211,15 @@
     text-transform: uppercase;
     pointer-events: none;
   }
+  /* A reason reads as the hub's words, whole, in the strip's center. */
+  .rail-tape-micro.rail-reason {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--tx-mut);
+  }
   /* Scrub pip — rides under the pointer/setpoint, inside the strip's own
      local coordinate space (matches the original's tapeMm()). */
   .rail-tape-pip {
@@ -1261,15 +1235,6 @@
   }
   .rail-tape-pip.on { opacity: 1; }
   .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity .1s ease; }
-  /* The separator is the reason's own, so a narrow row drops the mode words
-     and keeps the reason whole (ph-ddx). */
-  .rail-reason { color: var(--tx-mut); }
-  .rail-reason::before { content: '\00a0·\00a0'; }
-  @container (max-width: 559px) {
-    .rail-tape-mode:has(.rail-reason) .rail-mode { display: none; }
-    .rail-reason::before { content: none; }
-  }
-
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
     position: relative;
@@ -1433,56 +1398,4 @@
     margin: 0;
   }
 
-  /* The info affordance: Field.svelte's .info box and .tip, always shown
-     here since the description has no inline line to fall back on. */
-  .info-wrap { position: absolute; top: -2px; right: 0; z-index: 2; }
-  .info {
-    position: relative;
-    width: 18px;
-    height: 18px;
-    display: grid;
-    padding: 0;
-    place-items: center;
-    border-radius: var(--r-s);
-    border: 1px solid var(--line-2);
-    color: var(--tx-mut);
-    line-height: 1;
-  }
-  .info:hover { border-color: var(--line-4); color: var(--tx); }
-  .info[aria-expanded='true'] { border-color: var(--reality); color: var(--reality); }
-  .info .glyph { font-family: var(--mono); font-size: 11px; line-height: 1; }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
-  @media (pointer: coarse) {
-    .info::before { content: ''; position: absolute; inset: -12px; }
-  }
-  .tip {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    z-index: 30;
-    width: max-content;
-    max-width: 280px;
-    padding: 8px 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--line-1);
-    border-radius: var(--r-s);
-    font-size: .72rem;
-    line-height: 1.5;
-    color: var(--tx);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .info-wrap:hover .tip, .info:focus-visible ~ .tip, .info[aria-expanded='true'] ~ .tip {
-    opacity: 1;
-    visibility: visible;
-  }
 </style>

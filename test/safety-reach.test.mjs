@@ -34,7 +34,7 @@
  *   override the strip carries one Override/Return control beside Home while
  *            a rail is mounted, absent with no rail and on a hub whose op
  *            table lacks override (law 7); paused without override the jog
- *            tape is disabled with its reason on its own label line;
+ *            tape is disabled with its reason inside the tape;
  *            Override confirms, sends override, reads Return, and the tape
  *            jogs over the whole travel; Return sends return_op, no gate;
  *            Override draws ->| and Return |<- left of the word, one button
@@ -53,15 +53,19 @@
  *            inline, only in the Home popover
  * ph-e82.21, at 1280x720:
  *   owner    a running generator on a foreign-owned control-owner pair: with
- *            the hub's source labels the plan strip reads the owner and a
+ *            the hub's source labels the strip readback reads the owner, the
+ *            rail keeps the full-width plan strip, and a
  *            SOURCE_CONFLICT reads "rail owned by" it; without labels, "plan"
  *            and the code
  *   jog      idle with a foreign-held slot, the tape is live and a tap writes
  *            inside the window, past it clamps to the edge; Classic running
- *            swaps in the plan strip and a tap writes nothing; paused, the
- *            tape is disabled with its reason; under Override a tap past the
- *            window writes unclamped; the plan draws inside the window band
- *            (100..400 on a 500 rail: 20 % to 80 %), a point past it at the edge
+ *            with no foreign owner swaps in the planned segment (ph-ryi7) and
+ *            a tap writes nothing; paused, the tape is disabled with its
+ *            reason; under Override a tap past the window writes unclamped;
+ *            the segment is the window (100..400 on a 500 rail: 20 % to
+ *            80 %), its gradient runs from the planned position to the
+ *            target, a target past it ends at the edge, and the marker is
+ *            reality while the plan streams, amber once it stalls
  *   target   ph-9kjh: the target numeral opens an entry in place, prefilled,
  *            one box at rest and typing; Enter writes the rail tap's channel
  *            and the hub's refusal reads as the tap's; past the window it
@@ -553,22 +557,13 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
   ok('override: paused without override, the jog is disabled with its reason',
     await tape.getAttribute('aria-disabled') === 'true' && /Override to jog/.test(reason), reason);
-  // ph-ddx: the reason carries its own spaced separator; on a phone-width
-  // row the mode words go first and the reason stays whole.
-  const join = async () => page.evaluate(() => {
-    const m = document.querySelector('.rail-hero .rail-tape-mode'), r = m.querySelector('.rail-reason');
-    return { sep: getComputedStyle(r, '::before').content, mode: getComputedStyle(m.querySelector('.rail-mode')).display,
-      whole: m.scrollWidth <= m.clientWidth + 0.5 };
-  });
-  const wide = await join();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(200);
-  const narrow = await join();
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await page.waitForTimeout(200);
-  ok('override: the reason joins with a spaced separator; narrow, it drops the mode words and stays whole',
-    wide.sep === '" · "' && wide.mode !== 'none' && narrow.mode === 'none' && narrow.sep === 'none' && narrow.whole,
-    JSON.stringify([wide, narrow]));
+  // ph-ryi7: the reason replaces TAP · SCRUB inside the tape; the row has no
+  // labels line, no mode words and no range text.
+  const inTape = await page.evaluate(() => ({ micro: document.querySelector('.rail-hero .rail-tape .rail-tape-micro').textContent.trim(),
+    lines: document.querySelectorAll('.rail-hero :is(.rail-tape-labels, .rail-tape-mode, .rail-tape-extent, .info-wrap)').length,
+    title: document.querySelector('.rail-hero .rail-tape-track').title }));
+  ok('override: the reason sits in the tape, the row has no labels line', inTape.micro === 'Paused: Override to jog'
+    && inTape.lines === 0 && inTape.title === 'Paused: Override to jog', JSON.stringify(inTape));
   const n = wire.ops.length;
   await ovr.click();
   await page.waitForTimeout(200);
@@ -581,9 +576,10 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const f1 = await face();
   ok('override: Return draws the arrow leaving the bar (|<-), one button width', /^M2\.5 3v10/.test(f1.d) && /L5 8l3 3$/.test(f1.d)
     && f1.iconLeft && f1.w === f0.w, JSON.stringify([f0, f1]));
+  const span = await page.evaluate(() => [document.querySelector('.rail-hero .rail-tape').getBoundingClientRect().width,
+    document.querySelector('.rail-hero .rail-tape-track').clientWidth]);
   ok('override: the tape is a jog over the whole travel',
-    await tape.getAttribute('aria-disabled') === 'false'
-    && /jog . travel/.test(await page.locator('.rail-hero .rail-tape-mode').textContent()));
+    await tape.getAttribute('aria-disabled') === 'false' && Math.abs(span[0] - span[1]) < 1, JSON.stringify(span));
   await ovr.click();
   await page.waitForTimeout(300);
   ok('override: Return sends return_op with no gate and lands in plain pause',
@@ -709,8 +705,11 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     [runE.id]: stateOf(runE, { 'pattern.running': 1 }) };
   for (const [catalog, plan, refusal] of [['unlabeled', /^plan/, /SOURCE_CONFLICT/], ['labeled', /^Pattern/, /rail owned by Pattern/]]) {
     const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
-    const mode = (await page.locator('.rail-swap .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
-    ok('owner (' + catalog + '): the plan strip names the owner from the labels, else "plan"', plan.test(mode), JSON.stringify(mode));
+    const mode = (await page.locator('.topstrip .readback .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
+    ok('owner (' + catalog + '): the strip readback names the owner from the labels, else "plan"', plan.test(mode), JSON.stringify(mode));
+    ok('owner (' + catalog + '): a foreign owner keeps the full-width plan strip, not the segment',
+      await page.locator('.rail-swap .plan-strip:not(.segment)').isVisible()
+      && await page.locator('.rail-swap .plan-strip.segment').count() === 0);
     ok('owner (' + catalog + '): the plan style rides its label, never bare (ph-kts)', / · Style \S/.test(mode), JSON.stringify(mode));
     await page.locator('.topstrip .rw-flip').click();
     await page.locator('.overlay.hazard .og-btn.confirm').click();
@@ -754,36 +753,71 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
       JSON.stringify(wire.values));
     await ctx.close();
   }
-  // Classic running: the plan strip, drawn in the window band, and no tape write.
+  // Classic running, no foreign owner: the planned segment at the window's width, and no tape write.
   {
     const plan = (o) => stateOf(planE, o);
     const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', reducedMotion: 'reduce',
       states: { [cfgE.id]: cfg, [runE.id]: stateOf(runE, { 'pattern.running': 1 }),
         [planE.id]: plan({ 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }) } });
-    ok('jog: Classic running shows the plan strip over the tape', await page.locator('.rail-swap .plan-strip').isVisible()
+    ok('jog: Classic running shows the planned segment over the tape', await page.locator('.rail-swap .plan-strip.segment').isVisible()
       && !await page.locator('.rail-hero .rail-tape-track').isVisible());
+    ok('plan: the readback rides the top strip while the source plays',
+      / · Style \S/.test((await page.locator('.topstrip .readback .plan-mode').textContent().catch(() => '')).trim()));
     const box = await page.locator('.rail-swap').boundingBox();
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.75);
     await page.waitForTimeout(400);
     ok('jog: Classic running, a tap on the rail row writes nothing', wire.writes.length === 0, JSON.stringify(wire.values));
-    // The lit columns of the lane's middle row, as fractions of its width.
+    // The lane's box and its lit columns (middle row) as fractions of the
+    // rail row; the colors about a row fraction.
     const lit = () => page.evaluate(() => {
-      const c = document.querySelector('.rail-swap .plan-lane canvas');
+      const c = document.querySelector('.rail-swap .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
+      const r = c.getBoundingClientRect(), k = r.width / c.width;
       const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
       const edge = Math.ceil(2 * devicePixelRatio);
       let a = -1, b = -1;
       for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
-      return [a / c.width, b / c.width];
+      const f = (x) => (r.left + x * k - row.left) / row.width;
+      return { box: [f(0), f(c.width)], lit: [f(a), f(b)] };
     });
+    const markerAt = (frac) => page.evaluate((fr) => {
+      const c = document.querySelector('.rail-swap .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
+      const r = c.getBoundingClientRect(), k = r.width / c.width;
+      const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+      const x = Math.round((fr * row.width + row.left - r.left) / k);
+      return [x - 1, x, x + 1].map((i) => [d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]);
+    }, frac);
+    const tok = (n) => page.evaluate((nm) => {
+      const i = document.createElement('i');
+      i.style.color = 'var(' + nm + ')';
+      document.body.append(i);
+      const m = getComputedStyle(i).color.match(/\d+/g).slice(0, 3).map(Number);
+      i.remove();
+      return m;
+    }, n);
+    // One of the three columns about the marker's center is the token.
+    const near = (px, b) => px.some((a) => a.every((v, i) => Math.abs(v - b[i]) < 40));
+    const [real, warn] = [await tok('--reality'), await tok('--warn')];
+    // Fresh samples keep the plan streaming; reduced motion redraws once a second.
+    const feed = (o) => setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, plan(o)))); } catch (e) { /* closed */ } }, 100);
+    let t = feed({ 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 });
     await page.waitForTimeout(1200);
     const whole = await lit();
-    ok('plan: 0..1 on a 100..400 window of a 500 rail draws from 20 % to 80 %',
-      Math.abs(whole[0] - 0.2) < 0.01 && Math.abs(whole[1] - 0.8) < 0.01, JSON.stringify(whole));
-    wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, plan({ 'plan.start': 0.5, 'plan.end': 1.5, 'plan.current': 0.75 }))));
-    await page.waitForTimeout(2400);
+    ok('segment: the lane is the window, 100..400 of a 500 rail at 20 % to 80 % of the row',
+      Math.abs(whole.box[0] - 0.2) < 0.01 && Math.abs(whole.box[1] - 0.8) < 0.01, JSON.stringify(whole.box));
+    ok('segment: the gradient runs from the planned position (50 %) to the planned target (80 %)',
+      Math.abs(whole.lit[0] - 0.5) < 0.01 && Math.abs(whole.lit[1] - 0.8) < 0.01, JSON.stringify(whole.lit));
+    const live = await markerAt(0.5);
+    ok('segment: the marker at the planned position is reality while the plan streams', near(live, real), JSON.stringify([live, real]));
+    clearInterval(t);
+    t = feed({ 'plan.start': 0.5, 'plan.end': 1.5, 'plan.current': 0.75 });
+    await page.waitForTimeout(1200);
     const past = await lit();
-    ok('plan: an end past the window draws at the window edge', Math.abs(past[0] - 0.5) < 0.01 && Math.abs(past[1] - 0.8) < 0.01,
-      JSON.stringify(past));
+    ok('segment: a target past the window ends at the window edge', Math.abs(past.lit[0] - 0.65) < 0.01 && Math.abs(past.lit[1] - 0.8) < 0.01,
+      JSON.stringify(past.lit));
+    clearInterval(t);
+    await page.waitForTimeout(2600);
+    const stalled = await markerAt(0.65);
+    ok('segment: a stalled plan turns the marker amber', near(stalled, warn), JSON.stringify([stalled, warn]));
     await ctx.close();
   }
 }
@@ -867,8 +901,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
       const host = document.querySelector('.spine-rail-host'), hr = host.getBoundingClientRect();
       const g = document.querySelector('.rail-ghost').getBoundingClientRect();
       const cs = getComputedStyle(host);
-      return { extent: document.querySelector('.rail-tape-extent').textContent.trim(),
-        band: document.querySelector('.rail-band-label').textContent.trim(),
+      return { band: document.querySelector('.rail-band-label').textContent.trim(),
         ghostClear: g.top >= hr.top + hr.height * 40 / 72 - 0.5, clip: cs.overflowX + ' ' + cs.overflowClipMargin };
     });
     const chip = page.locator('.topstrip .rw-flip');
@@ -906,8 +939,8 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   ok('flip icon: shares no stroke with Override or Return', ![n.d, f.d].some((d) => /M2 8h9|M13\.5 3v10|M2\.5 3v10|M5 8h9/.test(d)),
     JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
-  ok('rail heads: the row, the ruler and the axis read one precision; the unit is spaced', hd.extent === seen[0].caps.join('–')
-    && hd.band === seen[0].caps.join('–') + ' · ' + seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
+  ok('rail heads: the window label and the axis read one precision; the unit is spaced',
+    hd.band === seen[0].caps.join('–') + ' · ' + seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
   ok('rail ruler: the mid label clears the tick row; the end handles keep their glow', hd.ghostClear && /^clip .*8px/.test(hd.clip),
     JSON.stringify(hd));
   // ph-hsl: every strip glyph in one 16 px box, drawn at one 1.5 px stroke.

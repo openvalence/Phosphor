@@ -65,7 +65,17 @@
   // edge0, edge1: the lane fractions where plan 0 and plan 1 sit, the rail's
   // window band in its own frame (edge1 < edge0 when flipped). A plan never
   // draws past them.
-  let { shown = true, edge0 = 0, edge1 = 1 } = $props();
+  // lane: the lane's [left, right] in the row, as fractions.
+  // segment: the planned segment (ph-ryi7): a reality-to-intent gradient
+  // from the planned position to the planned target, and the marker.
+  // pos, target: the rail's planned position and target at its render
+  // instant, in plan units, so the marker sits over the comet and the
+  // gradient ends at the numeral's target; null falls back to plan.*.
+  // readback: the labels alone (owner, style, velocity, timing), for the
+  // top strip; no lane, drawn while `playing` (a source owns the rail). Not
+  // on plan freshness: a hub may publish the plan at rest.
+  let { shown = true, edge0 = 0, edge1 = 1, lane = [0, 1], segment = false, pos = null, target = null,
+    readback = false, playing = false } = $props();
 
   /** Per-field sample lookup — every role-claimed field carries its own
       channelId, so a claim spread across multiple channels still reads the
@@ -202,8 +212,10 @@
     const ctx = canvasEl.getContext('2d');
     const root = document.documentElement;
     const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
-    let cIntent, cWarn, cLine;
-    const readTokens = () => { cIntent = cssVar('--reality'); cWarn = cssVar('--warn'); cLine = cssVar('--line'); };
+    let cReal, cIntent, cWarn, cLine;
+    const readTokens = () => {
+      cReal = cssVar('--reality'); cIntent = cssVar('--intent'); cWarn = cssVar('--warn'); cLine = cssVar('--line');
+    };
     readTokens();
     const offTheme = onTheme(readTokens);
 
@@ -255,6 +267,30 @@
       const to = endPct != null ? endPct : curPct;
       if (from == null || to == null) return;
 
+      if (segment) {
+        // The planned position (reality) to the planned target (intent),
+        // and the marker at the position: amber while the plan is stalled
+        // or past its own duration, the two ways the hub's numbers say it
+        // could not keep the plan.
+        const xc = at(pos ?? curPct ?? from), xe = at(target ?? to);
+        if (Math.abs(xe - xc) >= 0.5) {
+          const grad = ctx.createLinearGradient(xc, 0, xe, 0);
+          grad.addColorStop(0, `color-mix(in srgb, ${cReal} 45%, transparent)`);
+          grad.addColorStop(1, `color-mix(in srgb, ${cIntent} 75%, transparent)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(Math.min(xc, xe), 1, Math.abs(xe - xc), h - 2);
+        }
+        ctx.save();
+        ctx.shadowBlur = reduced ? 0 : 6;
+        ctx.shadowColor = ctx.fillStyle = cIntent;
+        ctx.fillRect(xe - 1, 0, 2, h);
+        const late = !isActive || (durVal > 0 && elapsedVal > durVal);
+        ctx.shadowColor = ctx.fillStyle = late ? cWarn : cReal;
+        ctx.fillRect(xc - 1, -1, 2, h + 2);
+        ctx.restore();
+        return;
+      }
+
       const key = from.toFixed(4) + ':' + to.toFixed(4);
       if (dispFrom == null) { dispFrom = from; dispTo = to; lastKey = key; }
       else if (key !== lastKey) {
@@ -272,7 +308,7 @@
         if (age > GHOST_FADE_MS) continue;
         const f2 = 1 - age / GHOST_FADE_MS;
         const ga = at(gFrom[gi]), gb = at(gTo[gi]);
-        ctx.fillStyle = `color-mix(in srgb, ${cIntent} ${Math.round(16 * f2 * f2)}%, transparent)`;
+        ctx.fillStyle = `color-mix(in srgb, ${cReal} ${Math.round(16 * f2 * f2)}%, transparent)`;
         ctx.fillRect(Math.min(ga, gb), h * 0.5 - 1.5, Math.max(1, Math.abs(gb - ga)), 3);
       }
 
@@ -280,8 +316,8 @@
       const x0 = at(dispFrom), x1 = at(dispTo);
       const lo = Math.min(x0, x1), hi = Math.max(x0, x1);
       const grad = ctx.createLinearGradient(x0, 0, x1, 0);
-      grad.addColorStop(0, `color-mix(in srgb, ${cIntent} 12%, transparent)`);
-      grad.addColorStop(1, `color-mix(in srgb, ${cIntent} 55%, transparent)`);
+      grad.addColorStop(0, `color-mix(in srgb, ${cReal} 12%, transparent)`);
+      grad.addColorStop(1, `color-mix(in srgb, ${cReal} 55%, transparent)`);
       ctx.fillStyle = grad;
       ctx.fillRect(lo, 1, Math.max(2, hi - lo), h - 2);
 
@@ -289,9 +325,9 @@
       if (curPct != null) {
         const hx = at(curPct);
         ctx.save();
-        ctx.shadowColor = cIntent;
+        ctx.shadowColor = cReal;
         ctx.shadowBlur = reduced ? 0 : 7;
-        ctx.fillStyle = cIntent;
+        ctx.fillStyle = cReal;
         ctx.fillRect(hx - 0.75, 0, 1.5, h);
         ctx.restore();
       }
@@ -299,9 +335,9 @@
       // Caret at the "to" end, warn-toned once isActive (above) goes false:
       // cosmetic, not a second source of truth for "is it running".
       ctx.save();
-      ctx.shadowColor = isActive ? cIntent : cWarn;
+      ctx.shadowColor = isActive ? cReal : cWarn;
       ctx.shadowBlur = reduced ? 0 : 6;
-      ctx.fillStyle = isActive ? cIntent : cWarn;
+      ctx.fillStyle = isActive ? cReal : cWarn;
       ctx.fillRect(x1 - 1, -1, 2, h + 2);
       ctx.restore();
     }
@@ -323,84 +359,90 @@
 
 {#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}{#if p[1]}{' '}<span class="unit">{p[1]}</span>{/if}{/snippet}
 
-{#if fields && haveAnyPosition}
+{#if fields && haveAnyPosition && readback && playing}
+  <!-- The top strip's readback (ph-ryi7), one line. The style rides its
+       own label, so a style named "idle" never reads as the run state
+       (ph-kts). -->
+  <div class="plan-rb">
+    <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
+    <span class="plan-meta mono">
+      {#if fields.velocity}
+        <output>{@render vu(fields.velocity, velVal)}</output>
+      {/if}
+      {#if haveTiming}
+        {#if progressFrac != null}
+          <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
+        {/if}
+        <output>{@render vu(fields.elapsed, elapsedVal)} / {@render vu(fields.duration, durVal)}</output>
+      {:else if fields.elapsed}
+        <output>{@render vu(fields.elapsed, elapsedVal)}</output>
+      {:else if fields.duration}
+        <output>{@render vu(fields.duration, durVal)}</output>
+      {/if}
+    </span>
+  </div>
+{:else if fields && haveAnyPosition}
   <!-- Mounted by RailWidget in the rail row's fixed box, shown over the jog
-       tape while a source owns the rail: a labels line over the lane, the
-       tape's own geometry, so the swap never moves anything. `.on` follows
-       isActive (a plan streaming right now); off, the lane dims (law 8). -->
-  <div class="plan-strip" class:on={isActive}>
-    <div class="plan-labels">
-      <!-- The style rides its own label, so a style named "idle" never reads
-           as the run state (ph-kts). -->
-      <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
-      <span class="plan-meta mono">
-        {#if fields.velocity}
-          <output>{@render vu(fields.velocity, velVal)}</output>
-        {/if}
-        {#if haveTiming}
-          {#if progressFrac != null}
-            <span class="progress-track"><span class="progress-fill" style="width:{progressFrac * 100}%"></span></span>
-          {/if}
-          <output>{@render vu(fields.elapsed, elapsedVal)} / {@render vu(fields.duration, durVal)}</output>
-        {:else if fields.elapsed}
-          <output>{@render vu(fields.elapsed, elapsedVal)}</output>
-        {:else if fields.duration}
-          <output>{@render vu(fields.duration, durVal)}</output>
-        {/if}
-      </span>
-    </div>
-    <div class="plan-lane">
-      <canvas bind:this={canvasEl} role="img" aria-label="In-flight motion plan"></canvas>
+       tape while a source owns the rail, so the swap never moves anything.
+       `.on` follows isActive (a plan streaming right now); off, the lane
+       dims (law 8). -->
+  <div class="plan-strip" class:on={isActive} class:segment>
+    <div class="plan-lane" style="left:{lane[0] * 100}%; width:{Math.max(0, lane[1] - lane[0]) * 100}%">
+      <canvas bind:this={canvasEl} role="img" aria-label={segment ? 'Planned segment' : 'In-flight motion plan'}></canvas>
     </div>
   </div>
 {/if}
 
 <style>
   .plan-strip {
-    display: flex;
-    flex-direction: column;
+    position: relative;
     height: 100%;
   }
-  /* 14px + 4px, the same line RailWidget's tape labels hold. */
-  .plan-labels {
+  /* One line: numbers that do not fit wrap whole onto a clipped second. */
+  .plan-rb {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    height: 14px;
-    line-height: 14px;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    font-size: calc(var(--s) * 10px);
-  }
-  .plan-mode {
-    letter-spacing: 0.14em;
-    text-transform: lowercase;
-    color: color-mix(in srgb, var(--reality) 78%, var(--tx-mut));
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 12px;
+    height: 1.1rem;
     min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  /* HeroNumerals' .hn-label face. */
+  .plan-mode {
+    max-width: 100%;
+    font-size: .68rem;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: lowercase;
+    color: var(--tx-mut);
     overflow: hidden;
     text-overflow: ellipsis;
   }
   /* Hub text renders as sent (docs/COPY.md rule 8). */
-  .plan-owner { text-transform: none; }
+  .plan-owner { text-transform: none; color: var(--reality); }
   .plan-meta {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 0 auto;
-    color: var(--ink);
+    font-size: .75rem;
+    color: var(--tx-val);
   }
-  .unit { color: var(--ink-dim); font-size: 0.9em; }
+  .unit { color: var(--tx-mut); font-family: var(--font); font-size: .9em; }
 
   .plan-lane {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
+    position: absolute;
+    top: 0;
+    bottom: 0;
     background: var(--bg-sunken);
     border: 1px solid var(--line);
     border-radius: var(--r-s);
     box-shadow: inset 0 1px 4px rgba(var(--shade-rgb), .5);
+    transition: left .25s ease, width .25s ease;
   }
+  /* The segment sits where the tap strip sat: its border and screen. */
+  .segment .plan-lane { background: var(--screen); border-color: rgba(var(--intent-rgb), .45); }
   .plan-strip:not(.on) .plan-lane { opacity: .55; }
   .plan-lane canvas {
     position: absolute;

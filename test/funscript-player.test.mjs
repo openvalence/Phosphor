@@ -1521,7 +1521,7 @@ if (LIVE && !PB) {
   ok('live: the clip loads', await loadClip(page));
   await playBtn(page).click();
   await page.waitForTimeout(2500);
-  const plan = async () => page.evaluate(() => document.querySelector('.plan-strip')?.textContent || '');
+  const plan = async () => page.evaluate(() => document.querySelector('.topstrip .hn-primary .hn-val')?.textContent || '');
   const p1 = await plan();
   await page.waitForTimeout(5500);
   const p2 = await plan();
@@ -1531,7 +1531,7 @@ if (LIVE && !PB) {
     heatOver.length + ' stripes');
   ok('live: the status names a script past the limit', (await statusText(page)) === 'Script past the input speed limit', await statusText(page));
   ok('live: no NACK on the segments STREAM', frames.nacks.length === 0, frames.nacks);
-  ok('live: the plan strip moves', !!p1 && p1 !== p2, [p1, p2]);
+  ok('live: the planned position moves', !!p1 && p1 !== p2, [p1, p2]);
   const pauseBtn = page.locator('.topstrip .btn-pause');
   await pauseBtn.click();
   const paused = await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 2000 })

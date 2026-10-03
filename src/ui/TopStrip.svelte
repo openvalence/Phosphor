@@ -55,6 +55,7 @@
   import LinkBar from './LinkBar.svelte';
   import SafetyOp from './widgets/SafetyOp.svelte';
   import HeroNumerals from './hero/HeroNumerals.svelte';
+  import PlanStrip from './widgets/PlanStrip.svelte';
   import { railReadout } from './hero/RailWidget.svelte';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
@@ -236,6 +237,7 @@
     const cs = getComputedStyle(stripEl);
     const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
+    stripEl.style.setProperty('--prim-w', prim + 'px');
     const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
     const GAP = 6;
     const fEl = ovrEl && ovrEl.querySelector('.rw-flip'), oEl = ovrEl && ovrEl.querySelector('.safety-op');
@@ -343,6 +345,10 @@
         />
       {/if}
     </div>
+    <!-- The plan readback (ph-ryi7), on the primary label's line from the
+         secondaries rightward: out of flow, above every control's box, so
+         nothing moves when it fills. -->
+    {#if rail}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
 
     <div class="status" data-kind={slot.kind}>
       {#if slot.kind === 'refusal'}
@@ -485,6 +491,17 @@
   }
   .stacked .nums { clip-path: inset(-6px -18px -12px calc(var(--gap) * -1)); }
   .nums :global(.hn-label) { white-space: nowrap; }
+  /* The strip's top 6 px plus one label line is clear of the status slot
+     and the dock (both centered, a --tap tall). Stacked, a condition in the
+     status slot outranks it. */
+  .readback {
+    position: absolute;
+    top: 6px;
+    left: calc(var(--gap) + var(--prim-w, 0px) + 18px);
+    right: var(--gap);
+    pointer-events: none;
+  }
+  .stacked:has(.status:not([data-kind=idle])) .readback { display: none; }
 
   .status {
     flex: 1 1 0;

@@ -511,6 +511,20 @@ question in §10.8).
   clamped to the tape's domain with "clamped to window" in the status slot,
   disabled with the tape's reason wherever the tape is; the big numeral
   stays reality.
+- The rail row is the track alone (operator ruling 2026-10-03, `ph-ryi7`):
+  no mode words and no range text (the window's own label says the range,
+  and its tooltip carries the window's description); a jog reason replaces
+  TAP · SCRUB inside the tape; the panel's inset is one value on all four
+  sides. While a generator owns the rail (`railOwned`) the slot shows the
+  planned segment at the window's width: a reality-to-intent gradient from
+  the planned position to the planned target, at the rail's own render
+  instant, the marker amber while the plan is stalled or past its
+  duration. A control-owner slot held by another session keeps the
+  full-width plan strip. The plan readback (owner, style, velocity, timing)
+  rides the strip on the primary label's line, right of the numerals, while
+  a source plays or a plan streams; stacked, a status condition outranks it.
+  Seams: `src/ui/hero/RailWidget.svelte`, `src/ui/widgets/PlanStrip.svelte`,
+  `src/ui/TopStrip.svelte`.
 - Home is one control; any other home op (Force Home, where the hub offers
   it) lives in its popover, and the status slot carries no remedy button.
   While home is required (the snapshot's `home_required`, or a `NOT_HOMED`
@@ -780,3 +794,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The UI scale moves from the page footer into the right end of the bottom status row; a page with no controls has no footer; the rail and content outer edges match the hero panel's frame (`ph-5q67`). | operator (hiding the empty footer is the agent's, veto-able) |
 | 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | The target numeral takes a typed jog: the rail tape's move, clamped to the tape's domain, disabled where the tape is (`ph-9kjh`). | operator (the recess at rest, the clamp note in the slot and leaving a source-owned rail to the hub's SOURCE_CONFLICT are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | The rail row is the track alone, the panel inset equal on all sides; a generator's run shows the planned segment at the window's width, a foreign owner the plan strip; the plan readback moves into the strip (`ph-ryi7`). | operator (amber on a stalled or overrun plan, as the hub states no infeasibility, the readback while any plan streams, and the window description in the band's tooltip are the agent's, veto-able) |

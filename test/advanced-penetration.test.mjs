@@ -439,7 +439,7 @@ if (LIVE) {
   const rec = await page.evaluate(() => new Promise((res) => {
     const out = [], t0 = performance.now();
     const tick = () => {
-      const e = document.querySelector('main.pane .ap .ap-play'), m = document.querySelector('.rail-swap .plan-mode');
+      const e = document.querySelector('main.pane .ap .ap-play'), m = document.querySelector('.topstrip .readback .plan-mode');
       out.push([performance.now() - t0, m ? m.textContent.trim() : '', e.hidden ? null : parseFloat(e.style.left), e.hidden ? null : parseFloat(e.style.top)]);
       if (performance.now() - t0 < 8000) setTimeout(tick, 10); else res(out);
     };
@@ -465,7 +465,7 @@ if (LIVE) {
   ok('live: the playhead parks at the deep bound through each hold', parked,
     { deepTop, runs: whole.map((r) => [...new Set(r.at.slice(3, -3).map((q) => q.join(',')))]) });
   if (SHOT) {
-    await page.waitForFunction(() => /hold$/.test(document.querySelector('.rail-swap .plan-mode')?.textContent || ''), null, { timeout: 3000, polling: 5 }).catch(() => {});
+    await page.waitForFunction(() => /hold$/.test(document.querySelector('.topstrip .readback .plan-mode')?.textContent || ''), null, { timeout: 3000, polling: 5 }).catch(() => {});
     await page.locator('main.pane .ap').first().screenshot({ path: shot('9-live-hold') });
   }
   await typeIn(crest, 0);
@@ -1071,7 +1071,7 @@ if (LIVE) {
       && !(await strip.evaluate((e) => e.classList.contains('on'))));
     plan({ flags: 1, style: 4, start_norm: 0.85, end_norm: 0.85, cur_norm: 0.85, duration_us: 5000000, elapsed_us: 1000000 });
     await page.waitForTimeout(300);
-    const mode = (await page.locator('.rail-swap .plan-mode').textContent()).trim();
+    const mode = (await page.locator('.topstrip .readback .plan-mode').textContent()).trim();
     ok('plan: a hold sample reads the owner and hold', mode === 'Advanced · Style hold', mode);
     await page.waitForTimeout(2000);
     ok('plan: a hold stays live with no new sample inside its duration (no stall)', await strip.evaluate((e) => e.classList.contains('on')));
