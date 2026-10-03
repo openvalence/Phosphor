@@ -598,7 +598,7 @@ export const CSS = `
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
 .fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  border-left: 3px solid transparent; padding-left: 6px; }
+  border-left: 3px solid transparent; padding-left: 6px; background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
   grid-template-columns: max-content max-content max-content minmax(auto, 1fr);
