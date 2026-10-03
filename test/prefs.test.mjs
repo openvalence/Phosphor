@@ -26,12 +26,12 @@ const { formatWithUnit, setAutorange, autorange } = await import('../src/model/f
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
 
 // Load: valid fields kept, bad ones take their default; the stored copy is stamped.
-assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true });
+assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window' });
 assert.deepEqual(loadPrefs(null), { ...DEFAULTS });
 assert.deepEqual(loadPrefs('garbage'), { ...DEFAULTS });
 setPref('reconnect', false);
 assert.deepEqual(JSON.parse(mem.get(PREFS_KEY)),
-  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true });
+  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window' });
 setPref('units', 'furlongs');
 assert.equal(get(prefs).units, 'metric', 'only known unit systems');
 
@@ -110,4 +110,24 @@ assert.equal(mem.get('valence.catalog.127.0.0.1'), 'not ours');
 assert.throws(() => importBackup('{"keys":{}}'), /not a Phosphor backup/);
 assert.throws(() => importBackup('nope'));
 
-console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs, launch redial, backup');
+// Page fullscreen (ph-wb4j): the mode persists, the state never does; the
+// caret hides the bar only while fullscreen; borderless only in a desktop shell.
+const { OFF, toggle, toggleBar, osFullscreen } = await import('../src/model/fullscreen.js');
+setPref('fullscreen', 'borderless');
+assert.equal(JSON.parse(mem.get(PREFS_KEY)).fullscreen, 'borderless', 'mode persisted');
+assert.equal(loadPrefs(JSON.parse(mem.get(PREFS_KEY))).fullscreen, 'borderless', 'mode survives a launch');
+setPref('fullscreen', 'kiosk');
+assert.equal(get(prefs).fullscreen, 'window', 'unknown mode: in window');
+assert.deepEqual(toggleBar(OFF), OFF, 'no bar to hide outside fullscreen');
+const on = toggle(OFF);
+assert.deepEqual(on, { on: true, bare: false }, 'enter: the bar stays');
+const bare = toggleBar(on);
+assert.deepEqual(bare, { on: true, bare: true }, 'caret hides the bar');
+assert.deepEqual(toggleBar(bare), on, 'caret brings it back');
+assert.deepEqual(toggle(bare), OFF, 'leave from bare: everything back');
+assert.equal(osFullscreen(on, 'borderless', true), true);
+assert.equal(osFullscreen(on, 'window', true), false, 'in window never touches the window');
+assert.equal(osFullscreen(on, 'borderless', false), false, 'served page: no window to fullscreen');
+assert.equal(osFullscreen(OFF, 'borderless', true), false, 'leaving restores the window');
+
+console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs, launch redial, backup, page fullscreen');

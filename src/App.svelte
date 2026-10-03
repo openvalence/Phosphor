@@ -46,6 +46,8 @@
   import PluginsPane from './plugins/PluginsPane.svelte';
   import { pluginsUi, pluginHeroes, pluginPages } from './plugins/plugins.svelte.js';
   import { panes as shellPanes } from './shell/panes.js';
+  import { prefs, setPref } from './model/prefs.js';
+  import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -140,6 +142,26 @@
   // First run in the shell (no hub dialed at launch) opens on Hubs.
   let active = $state(SHELL && !machine.link.host ? 'shell:hubs' : 'machine');
   const current = $derived(tabs.find((t) => t.id === active) || tabs[0]);
+
+  // Page fullscreen (DESIGN §10.3): plugin pages only; any page switch
+  // leaves it. The mode persists (prefs.js), the state never does.
+  const OS_SHELL = SHELL && !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
+  let full = $state(OFF);
+  const isFull = $derived(full.on && !!current?.page);
+  const currentId = $derived(current?.id);
+  $effect(() => { currentId; untrack(() => { full = OFF; }); });
+  let osFull = false;
+  $effect(() => {
+    const want = osFullscreen({ on: isFull }, $prefs.fullscreen, OS_SHELL);
+    if (!OS_SHELL || want === osFull) return;
+    osFull = want;
+    import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
+  });
+  function onFullKey(e) {
+    if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full); }
+    // After every listener: an overlay's own Escape (F1, F3) prevents it.
+    else if (e.key === 'Escape' && full.on) setTimeout(() => { if (!e.defaultPrevented) full = OFF; });
+  }
 
   // The renderer class decides WHICH rendering of the nav mounts (rail vs tab
   // strip). RFC-062 draft: re-derived live with hysteresis, and never while a
@@ -370,7 +392,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane">
+  <main class="pane" class:full={isFull} class:bare={isFull && full.bare}>
     <div class="pane-main">
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
@@ -421,7 +443,18 @@
         <PluginsPane />
       {/if}
     </div>
-    <PageFoot page={!isDesktop}>
+    <PageFoot page={!isDesktop && !isFull}>
+      {#if current.page?.fields}
+        <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
+                onclick={() => (full = toggle(full))}>Fullscreen</button>
+        {#if OS_SHELL}
+          <select class="og-btn sm" aria-label="Fullscreen mode" title="In window / Borderless" value={$prefs.fullscreen}
+                  onchange={(e) => setPref('fullscreen', e.currentTarget.value)}>
+            <option value="window">In window</option>
+            <option value="borderless">Borderless</option>
+          </select>
+        {/if}
+      {/if}
       {#if catPage}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
@@ -443,7 +476,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} onopenlog={() => selectTab('log')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -508,11 +541,20 @@
     {@render pane()}
   {/if}
 
+  {#if isFull}
+    <button type="button" class="full-caret" class:bare={full.bare} aria-expanded={!full.bare}
+            aria-label={full.bare ? 'Show bar' : 'Hide bar'} title={full.bare ? 'Show bar' : 'Hide bar'}
+            onclick={() => (full = toggleBar(full))}>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
+    </button>
+  {/if}
   <FootStrip />
   <ConfirmLayer onreview={() => selectTab('pairing')} knocksShown={current?.id === 'pairing'} />
   <KeyHelp />
   <LookFor {tabs} go={selectTab} />
 </div>
+
+<svelte:window onkeydown={onFullKey} />
 
 <style>
   .cat-empty {
@@ -758,4 +800,48 @@
     padding-bottom: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
+
+  /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
+     The page alone in the window below the top strip, dash Open full's
+     geometry; bare, the whole window, under the stop pair and the caret. */
+  .app { --caret-h: 18px; }
+  @media (pointer: coarse) { .app { --caret-h: var(--tap); } }
+  .pane.full {
+    position: fixed;
+    inset: var(--strip-h, 0px) 0 0 0;
+    z-index: 20;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: var(--caret-h) var(--gap) 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg);
+  }
+  .pane.full.bare { top: 0; }
+  .pane.full.bare > :global(.page-foot) { display: none; }
+  /* The window's height reaches the plugin's mount. */
+  .pane.full > .pane-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+  .pane.full > .pane-main > :global(*) { flex: 1 1 auto; min-height: 0; }
+  .full-caret {
+    position: fixed;
+    top: var(--strip-h, 0px);
+    left: 50%;
+    z-index: 31;
+    transform: translateX(-50%);
+    display: grid;
+    place-items: center;
+    width: max(48px, var(--caret-h));
+    height: var(--caret-h);
+    padding: 0;
+    color: var(--ink-dim);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 var(--r-s) var(--r-s);
+  }
+  .full-caret:hover { color: var(--ink-hi); }
+  .full-caret.bare { top: 0; }
+  .full-caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .full-caret.bare svg { transform: rotate(180deg); }
 </style>

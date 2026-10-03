@@ -36,6 +36,10 @@
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
    *   off or unmounted.
+   * - `bare` (App's page fullscreen, bar hidden): the pair alone, top right,
+   *   half opacity at rest and full on any pointer activity or focus; never
+   *   hidden (RENDERING §8.4 row 11). The bar is hidden, never unmounted: the
+   *   shell's close gate lives in it.
    * - The safety-intents channel is found by spec-core identity
    *   (specSafetyAction, law 2), a role tag being one more discovery path,
    *   never the only one: a hub that never annotated it keeps its e-stop.
@@ -55,7 +59,20 @@
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. shell: the shell's window buttons (main.js), null on the
   // served page.
-  let { onopenlog = null, shell = null } = $props();
+  let { onopenlog = null, shell = null, bare = false } = $props();
+
+  let woke = $state(false);
+  $effect(() => {
+    if (!bare) return;
+    let t;
+    const wake = () => { woke = true; clearTimeout(t); t = setTimeout(() => { woke = false; }, 1500); };
+    for (const ev of ['pointermove', 'pointerdown']) window.addEventListener(ev, wake);
+    return () => {
+      clearTimeout(t);
+      woke = false;
+      for (const ev of ['pointermove', 'pointerdown']) window.removeEventListener(ev, wake);
+    };
+  });
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
   const isHomeRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.home');
@@ -209,7 +226,7 @@
   let menuEl = $state(null);
   let flipW = 0, ovrW = 0;   // kept from when each was last inline (the popover unmounts them)
   function measure() {
-    if (!stripEl || !measureEl) return;
+    if (!stripEl || !measureEl || bare) return;
     const cs = getComputedStyle(stripEl);
     const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
@@ -302,7 +319,7 @@
 <svelte:window onkeydown={onWindowKey} />
 <svelte:document onclick={onDocClick} />
 
-<div class="topstrip" bind:offsetHeight={stripH}>
+<div class="topstrip" class:bare class:woke bind:offsetHeight={stripH}>
   <LinkBar {shell} />
   <div class="strip" class:stacked role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
@@ -497,6 +514,13 @@
   }
 
   .dock { display: contents; }
+
+  /* Bare: out of flow at the window's top right, the pair alone. */
+  .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
+  .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
+  .topstrip.bare .strip { display: flex; height: auto; padding: 6px; }
+  .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity .15s; }
+  .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
   /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
   .pair {
     flex: none;
@@ -645,7 +669,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .btn, .evline { transition: none; }
+    .btn, .evline, .bare .pair { transition: none; }
     .btn.hazard { animation: none; }
   }
 </style>

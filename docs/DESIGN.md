@@ -531,6 +531,21 @@ question in §10.8).
   and never zoom the webview; Ctrl+wheel over a surface that takes the wheel
   itself never scales. Not a safety surface: the bottom-edge rule above
   binds safety controls.
+- Page fullscreen (operator ruling 2026-10-03, `ph-wb4j`): a plugin page's
+  footer carries Fullscreen (F11) and, in the desktop shell, its mode: In
+  window (default) or Borderless. In window, the page takes the whole window
+  below the top strip (the dash Open full's geometry); Borderless also puts
+  the window itself in fullscreen (Tauri `setFullscreen`), and leaving
+  restores it. A caret tab hangs centered below the strip: it hides the bar
+  and strip and stays, flipped, to bring them back. Escape or a page switch
+  leaves. With the bar hidden only the stop pair stays, top right: the
+  `stop` archetype is never hidden and reachable at every rank (RENDERING
+  §8.4 row 11; the §10 `safety-strip` pair). It is the strip's own pair
+  moved, never a copy, at full size and hit target, half opacity at rest
+  and full on hover, focus or any pointer movement. The mode persists
+  (`prefs.js` `fullscreen`), the state never does. Seams:
+  `src/model/fullscreen.js`, `isFull` in `src/App.svelte`, `bare` in
+  `src/ui/TopStrip.svelte`.
 
 ### 10.4 Full width
 
@@ -750,4 +765,5 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
 | 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
 | 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |
+| 2026-10-03 | §10.3 | Page fullscreen for plugin pages: in window or borderless, a caret hides the bar and strip, the stop pair stays top right at half opacity at rest (`ph-wb4j`). | operator (the pair's wake on pointer movement and its backing are the agent's, veto-able) |
 | 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |

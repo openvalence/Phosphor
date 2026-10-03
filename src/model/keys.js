@@ -14,6 +14,8 @@ export const KEYS = [
     { keys: 'F1', does: 'Key help', where: 'Anywhere', src: 'src/ui/KeyHelp.svelte' },
     { keys: 'F3, Ctrl+F', does: 'Look for a control', where: 'Anywhere', src: 'src/ui/LookFor.svelte' },
     { keys: 'Escape', does: 'Close dialog, menu or popover', where: 'Anywhere', src: 'src/ui/ConfirmLayer.svelte' },
+    { keys: 'F11', does: 'Fullscreen', where: 'Plugin page', src: 'src/App.svelte' },
+    { keys: 'Escape', does: 'Leave fullscreen', where: 'Fullscreen page', src: 'src/App.svelte' },
     { keys: 'Arrows', does: 'Switch page', where: 'Page tabs', src: 'src/App.svelte' },
     { keys: 'Ctrl+=, Ctrl+-', does: 'UI scale up, down', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },
     { keys: 'Ctrl+0', does: 'UI scale to 100%', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },

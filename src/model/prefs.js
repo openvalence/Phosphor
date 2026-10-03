@@ -22,12 +22,15 @@ export const PREFS_VERSION = 1;
 const HUBS_MAX = 32;
 
 export const UNITS = ['metric'];
+/** Page fullscreen (App.svelte, model/fullscreen.js): inside the window, or the window itself. */
+export const FULLSCREEN = ['window', 'borderless'];
 export const DEFAULTS = Object.freeze({
   autorange: true,    // RFC-086 SI-prefix display autoranging
   units: 'metric',
   reconnect: true,    // redial the last saved hub on launch (shell)
   telemetryHz: null,  // null = the client default; always clamped to the catalog max
   estopDatagram: true, // shell: an e-stop press also broadcasts the RFC-053 datagram (opt-out)
+  fullscreen: 'window',
 });
 
 function read(key) {
@@ -47,6 +50,7 @@ export function loadPrefs(raw = read(PREFS_KEY)) {
     reconnect: typeof p.reconnect === 'boolean' ? p.reconnect : DEFAULTS.reconnect,
     telemetryHz: p.telemetryHz != null && Number.isFinite(hz) && hz > 0 ? hz : null,
     estopDatagram: typeof p.estopDatagram === 'boolean' ? p.estopDatagram : DEFAULTS.estopDatagram,
+    fullscreen: FULLSCREEN.includes(p.fullscreen) ? p.fullscreen : DEFAULTS.fullscreen,
   };
 }
 

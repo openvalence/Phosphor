@@ -106,7 +106,9 @@ hero. The Plugins pane gives each plugin with a page a **Show tab** switch,
 persisted per plugin as `phosphor.plugins.pages.<name>` (`'1'` or `'0'`,
 in the prefs backup); absent, a factory plugin's pages show and an installed
 plugin's do not. The sidebar follows the switch at once. Host side:
-`src/plugins/host.js` `pages`, `pageShown`, `setPageShown`.
+`src/plugins/host.js` `pages`, `pageShown`, `setPageShown`. Every page gets
+the shell's Fullscreen in its footer (DESIGN §10.3); the plugin draws
+nothing for it, and a mount that fills its element's height fills the window.
 
 ## The API (v1)
 

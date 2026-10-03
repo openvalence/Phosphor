@@ -47,6 +47,8 @@ const PROBES = {
   'Global|F1': /e\.key === 'F1'/,
   'Global|F3, Ctrl+F': /key\.toLowerCase\(\) === 'f'[\s\S]*e\.key !== 'F3'/,
   'Global|Escape': /e\.key === 'Escape'/,
+  'Global|F11': /e\.key === 'F11' && current\?\.page\?\.fields/,
+  'Global|Escape|Fullscreen page': /e\.key === 'Escape' && full\.on/,
   'Global|Arrows': /onTablistKeydown[\s\S]*ArrowDown[\s\S]*ArrowRight/,
   'Global|Ctrl+=, Ctrl+-': /e\.key === '=' \|\| e\.key === '\+' \? 1 : e\.key === '-' \? -1/,
   'Global|Ctrl+0': /e\.key === '0' \? 0[\s\S]*setScale\(DEF\)/,

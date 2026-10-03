@@ -11,6 +11,12 @@
  *            in the top strip or the Plugins pane
  *   look     F3 finds it as "Funscript · Phosphor › Plugins" and goes there
  *   phone    the tab strip carries it after Plugins and it mounts the card
+ *   full     page fullscreen (ph-wb4j): the page takes the window below the
+ *            top strip; the caret hides the bar and strip, leaving only the
+ *            stop pair top right, uncovered, half opacity at rest and full on
+ *            pointer movement (RENDERING §8.4 row 11); F11 enters, F1's Escape
+ *            stays, Escape leaves; Borderless persists and sets the window's
+ *            fullscreen on enter and clears it on leave (stub IPC only)
  *
  * Run: node test/pages.test.mjs [--shots <dir>]   (no device needed)
  */
@@ -68,6 +74,12 @@ const browser = await chromium.launch();
 async function boot(viewport) {
   const ctx = await browser.newContext({ viewport });
   await ctx.addInitScript(TAURI_STUB);
+  await ctx.addInitScript(() => {
+    const inner = window.__TAURI_INTERNALS__.invoke;
+    window.__fs = [];
+    window.__TAURI_INTERNALS__.invoke = (cmd, a) => (cmd === 'plugin:window|set_fullscreen'
+      ? (window.__fs.push(a.value), Promise.resolve()) : inner(cmd, a));
+  });
   await ctx.addInitScript(([etag, bytes]) => {
     try {
       if (!sessionStorage.getItem('booted')) { sessionStorage.setItem('booted', '1'); localStorage.clear(); }
@@ -173,6 +185,68 @@ console.log('\n--- desktop 1280x800 ---');
     await page.$eval(TAB, (t) => !!t.querySelector('svg path') && !t.querySelector('.rail-name')));
   await shot(page, 'sidebar-collapsed-1280x800.png');
   await page.click('.rail-collapse');
+
+  // Page fullscreen.
+  await page.click(TAB);
+  await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+  const FS = 'main.pane .page-foot button[aria-pressed]';
+  await page.click(FS);
+  await page.waitForTimeout(200);
+  const geo = await page.evaluate(() => {
+    const p = document.querySelector('main.pane').getBoundingClientRect();
+    return [p.top, document.querySelector('.topstrip').getBoundingClientRect().bottom, p.left, p.right, p.bottom, innerWidth, innerHeight].map(Math.round);
+  });
+  ok('full: the page takes the window below the top strip', geo[0] === geo[1] && geo[2] === 0 && geo[3] === geo[5] && geo[4] === geo[6], geo.join(','));
+  ok('full: in window by default, the window untouched', (await page.evaluate(() => window.__fs.length)) === 0);
+  await shot(page, 'full-1280x800.png');
+  await page.click('.full-caret');
+  await page.waitForTimeout(300);
+  const bareState = () => page.evaluate(() => {
+    const shown = (sel) => [...document.querySelectorAll(sel)].some((el) => el.getClientRects().length > 0);
+    const pair = document.querySelector('.topstrip .pair');
+    const r = pair.getBoundingClientRect();
+    const ops = [...pair.querySelectorAll('.safety-op button')];
+    const hit = ops.every((b) => { const q = b.getBoundingClientRect(); return pair.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2)); });
+    return { bar: shown('.linkbar'), rest: shown('.topstrip :is(.nums, .status, .ops, .home-menu, .ovr)'), foot: shown('main.pane .page-foot'),
+      ops: ops.length, hit, tap: ops.every((b) => b.getBoundingClientRect().height >= 40), right: Math.round(innerWidth - r.right), top: Math.round(r.top),
+      paneTop: Math.round(document.querySelector('main.pane').getBoundingClientRect().top), opacity: getComputedStyle(pair).opacity };
+  });
+  const b1 = await bareState();
+  ok('full: the caret hides the bar, the strip and the footer', !b1.bar && !b1.rest && !b1.foot && b1.paneTop === 0, JSON.stringify(b1));
+  ok('full: the stop pair alone stays, top right, uncovered, full size', b1.ops === 2 && b1.hit && b1.tap && b1.right < 16 && b1.top < 16, JSON.stringify(b1));
+  ok('full: the pair rests at half opacity', b1.opacity === '0.5', b1.opacity);
+  await shot(page, 'full-bare-1280x800.png');
+  await page.mouse.move(300, 400);
+  await page.mouse.move(320, 420);
+  await page.waitForTimeout(300);
+  ok('full: pointer movement brings it to full opacity', (await bareState()).opacity === '1');
+  await page.waitForTimeout(1800);
+  ok('full: and back to half at rest', (await bareState()).opacity === '0.5');
+  await page.click('.full-caret');
+  await page.waitForTimeout(200);
+  ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  ok('full: Escape leaves', await page.locator('main.pane.full').count() === 0 && await page.locator('nav.rail').isVisible());
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(150);
+  ok('full: F11 enters', await page.locator('main.pane.full').count() === 1);
+  await page.keyboard.press('F1');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('full: Escape closing F1 help stays', await page.locator('main.pane.full').count() === 1);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('full: Escape leaves after F1 closed', await page.locator('main.pane.full').count() === 0);
+  await page.selectOption('main.pane .page-foot select', 'borderless');
+  await page.click(FS);
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('full: Borderless sets the window fullscreen and clears it on leave', (await page.evaluate(() => window.__fs.join(','))) === 'true,false',
+    await page.evaluate(() => window.__fs.join(',')));
+  ok('full: the mode persists', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.prefs')).fullscreen === 'borderless'));
   ok('no page errors (desktop)', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
