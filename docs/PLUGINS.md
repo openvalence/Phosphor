@@ -21,7 +21,10 @@ the protocol lacks is an RFC in Valence, not a workaround.
 
 One self-contained ES module (the shell imports it from a `blob:` URL, so
 relative imports cannot resolve; bundle your dependencies in). It exports
-`activate`:
+`activate`. A factory plugin may split into sibling modules its entry
+imports relatively, because Vite bundles them into the app; a same-named
+override in the plugins folder must still be one bundled file (ruling R-C,
+pending, docs/plugins/FUNSCRIPT.md):
 
 ```js
 export function activate(api) {
@@ -259,7 +262,7 @@ Production builds compile that path out.
 ## Factory plugins
 
 A factory plugin ships with Phosphor. It lives in `plugins/factory/<name>/`
-(manifest plus one module, the same shape as any plugin) and is listed in
+(manifest plus its modules, the same shape as any plugin) and is listed in
 `src/plugins/factory.js`, which bundles it. How it differs from an example:
 
 - **Enabled by default in the shell.** It loads before the plugins directory
@@ -343,6 +346,20 @@ Shipped:
   the Inputs toggle, and preset Reset returns them to their defaults. The
   playhead follows the told target's half and holds while the position
   sits at a bound, so through a hold it parks on that bound.
+- `plugins/factory/funscript-player/`: plays a local or Stash video and
+  drives the rail from its main (L0) funscript. One hero, `player`
+  (`absorb: false`), requires `input.target` and `input.duration`, so it
+  renders only where the hub has a segments STREAM (D1); the window, the
+  position, `limit.input.speed` and both generator run roles are optional.
+  Motion leaves only through `submitSegments`, one segment per funscript
+  span on the media clock, and every stop sends one hold; the card's Play
+  is the only start, and a latch, a running generator or another producer
+  grays it with the gate's words. Stash rides `net.fetch`, its connect card
+  in the Plugins pane and in the library's place. Operator values persist
+  through `api.prefs`; all but the Stash key are mirrored under
+  `phosphor.funscript.*` for the prefs backup. Design and decisions:
+  [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:
+  `plugins/factory/funscript-player/CONTRACT.md`.
 
 ## Testing
 
@@ -353,6 +370,11 @@ refusals, the TCode parser, and the window mapping. It also loads every
 factory plugin and checks Advanced Penetration's substitution and each way
 it falls back. `node test/advanced-penetration.test.mjs` drives it in the
 shell bundle against a fake hub (`--live` against valencesim).
+`node test/funscript-player.test.mjs --unit` (in `npm run check`) checks the
+player's contract exports, prefs and hero spec; without `--unit`
+(`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
+shell bundle against a fake hub and the fake Stash, and `--live --port P
+--http P+7` against valencesim on spare ports.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The
