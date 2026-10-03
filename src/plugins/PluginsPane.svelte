@@ -17,6 +17,7 @@
    *   follows it on the host's change event.
    */
   import { pluginsUi, setPluginEnabled, isPluginDisabled, host } from './plugins.svelte.js';
+  import CreditLine from './CreditLine.svelte';
   import '../ui/pane.css';
 
   const PERM_TEXT = {
@@ -73,6 +74,7 @@
           {/if}
         </div>
         {#if p.description}<p class="pane-note">{p.description}</p>{/if}
+        {#each p.credits as c}<p class="pane-note"><CreditLine credit={c} lead="after " /></p>{/each}
         <dl class="pane-facts">
           {#if p.kind}<dt>Kind</dt><dd>{p.kind}</dd>{/if}
           <dt>Permissions</dt>

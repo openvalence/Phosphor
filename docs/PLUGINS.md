@@ -230,6 +230,7 @@ gated on live state, so its revert could be refused too.
 | `kind` | `widget`, `adapter` or `theme` |
 | `entry` | a plain `.js`/`.mjs` file name in the plugin folder (default `index.js`); a path is refused |
 | `description` | shown in the Plugins pane; one fragment per `docs/COPY.md` |
+| `credits` | optional array of `{name, url, license}`, each a string of at most 120 characters, `url` http(s) only; shown on the Plugins row and in About's Notices, where the link is copied (the shell has no opener) |
 | `roles`, `channels` | what it binds, displayed in the pane. Informational: the claim spec is what binds |
 | `permissions` | `intent`, `motion`, `net.fetch`, `net.listen:<port>`; anything else makes the manifest invalid |
 

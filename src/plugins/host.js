@@ -50,6 +50,15 @@ export function validateManifest(m) {
   for (const k of ['roles', 'channels', 'permissions']) {
     if (m[k] != null && !Array.isArray(m[k])) errs.push(k + ' must be an array');
   }
+  if (m.credits != null) {
+    if (!Array.isArray(m.credits)) errs.push('credits must be an array');
+    else for (const c of m.credits) {
+      const ok = c && typeof c === 'object'
+        && ['name', 'url', 'license'].every((k) => c[k] == null || (typeof c[k] === 'string' && c[k].length <= 120))
+        && (c.url == null || /^https?:\/\/\S+$/.test(c.url));
+      if (!ok) errs.push('credits entries need short string name/url/license, url http(s)');
+    }
+  }
   for (const p of m.permissions || []) {
     const hit = typeof p === 'string' && PERM_RE.exec(p);
     if (!hit || (hit[2] && Number(hit[2]) > 65535)) errs.push('unknown permission "' + p + '"');
@@ -535,6 +544,7 @@ export function createPluginHost(deps) {
       roles: (r.manifest && r.manifest.roles) || [],
       channels: (r.manifest && r.manifest.channels) || [],
       permissions: (r.manifest && r.manifest.permissions) || [],
+      credits: (r.manifest && Array.isArray(r.manifest.credits) && r.manifest.credits) || [],
       source: r.source,
       status: r.status,
       error: r.error,

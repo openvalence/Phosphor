@@ -15,6 +15,8 @@
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { PROTO_VER, WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
+  import { pluginsUi } from '../plugins/plugins.svelte.js';
+  import CreditLine from '../plugins/CreditLine.svelte';
   import '../ui/pane.css';
 
   const identity = $derived(machine.link.hubIdentity);
@@ -24,6 +26,8 @@
   const etag = $derived(machine.catalog.etag || '--');
   let shellVersion = $state('--');
   getVersion().then((v) => { shellVersion = v; }).catch(() => {});
+  const PHOSPHOR = { name: 'Phosphor', url: 'https://github.com/openvalence/Phosphor/blob/main/LICENSE', license: 'CERN-OHL-S-2.0' };
+  const notices = $derived(pluginsUi.list.flatMap((p) => p.credits.map((c) => ({ key: p.key + c.name, plugin: p.name, c }))));
   const uiBuild = typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : '--';
 </script>
 
@@ -44,6 +48,13 @@
       <dt>Shell</dt><dd class:mono={shellVersion !== '--'}>{shellVersion}</dd>
       <dt>UI build</dt><dd class="mono">{uiBuild}</dd>
       <dt>Protocol</dt><dd class="mono">v{PROTO_VER} ({WS_SUBPROTOCOL})</dd>
+    </dl>
+  </section>
+  <section class="pane-sec og-screen" aria-labelledby="ab-notices">
+    <div class="pane-head"><h2 id="ab-notices">Notices</h2></div>
+    <dl class="pane-facts">
+      <dt>Phosphor</dt><dd><CreditLine credit={PHOSPHOR} /></dd>
+      {#each notices as n (n.key)}<dt>{n.plugin}</dt><dd><CreditLine credit={n.c} lead="after " /></dd>{/each}
     </dl>
   </section>
 </div>

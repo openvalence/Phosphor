@@ -5,6 +5,9 @@
   "kind": "widget",
   "entry": "index.js",
   "description": "Pattern card: stroke editor, rhythm, presets",
+  "credits": [
+    { "name": "fray-d, OSSM-Lite", "url": "https://github.com/fray-d/OSSM-Lite", "license": "CERN-OHL-S-2.0" }
+  ],
   "roles": [
     "pattern.running",
     "advgen.running",
