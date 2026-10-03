@@ -144,7 +144,8 @@ horizon. Each new bundle supersedes the not-yet-started tail, so a newer line
 or a seek needs no flush.
 
 `submitSegments(list)` is the lookahead door (RFC-087), segments STREAM only,
-never a fallback. The host owns every timing fact: it reads hub now and
+never a fallback. The host owns every timing fact: it reads hub now (from
+the least-RTT of the session's last 4 CLOCK exchanges, SPEC §7.1) and
 `performance.now()` together, converts each execution start to hub time and
 stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
 latency). A start already past the earliest executable instant is clipped
@@ -352,9 +353,10 @@ Shipped:
   renders only where the hub has a segments STREAM (D1); the window, the
   position, `limit.input.speed` and both generator run roles are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
-  span on the media clock, and every stop sends one hold; the card's Play
-  is the only start, and a latch, a running generator or another producer
-  grays it with the gate's words. Stash rides `net.fetch`, its connect card
+  span on the media clock, and every stop of its own sends one hold; a
+  gate or a hub refusal pauses it with no hold. The card's Play is the
+  only start, and a latch, a running generator or another producer grays
+  it with the gate's words. Stash rides `net.fetch`, its connect card
   in the Plugins pane and in the library's place. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Design and decisions:

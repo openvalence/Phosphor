@@ -125,10 +125,17 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
    + = machine later. Zero means the declared latency is already applied
    (RFC-059 allows a user trim whose zero is the declared value). Applied by
    one restart on release.
-7. **Hub clock.** The library resyncs from one CLOCK exchange every 10 s; on
-   WiFi an RTT spike can move the offset by RTT/2. Not filtered here: the
-   Hardware phase measures it on the P4, and a fix, if needed, is a Valence
-   bead for `clients/js` `syncClock` (SPEC §7.1), not a Phosphor stopgap.
+7. **Hub clock.** The library resyncs from one CLOCK exchange every 10 s and
+   adopts each one, so an asymmetric RTT moves the offset by up to RTT/2.
+   Measured on valencesim (localhost RTT 1 to 16 ms): plan lag against the
+   knot followed the adopted offset (slope 0.92, r 0.99), stepping at each
+   resync, and pass A's adherence spread p95 read 3.1 to 7.1 ms. The door
+   (`motion.js` `filteredHubNowUs`) stamps from the least-RTT exchange of
+   the last 4 (40 s, under 2 ms of drift at tens of ppm), fires 4 exchanges
+   on first use and on every `live`, and drops them on a close; with it
+   pass A read 1.5 ms. The filter belongs in Valence's `clients/js`
+   `syncClock` (SPEC §7.1), where every consumer shares it; the door's
+   copy goes when that lands.
 8. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
    duration rounding 0.5 ms, display map quantized to half a vsync (8 ms at
    60 Hz). Panel lag and Bluetooth audio delay are physical: the offset
@@ -146,14 +153,21 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
   3); `PluginSlot` re-runs `update()` on a latch or owner change.
 - **Mid-play.** The scheduler re-reads the gate every frame and the door
   refuses under the latch. Any gate or fatal refusal pauses the video in
-  the same frame, attempts one hold (refused harmlessly under a latch), and
-  shows the words.
+  the same frame, sends nothing, and shows the words: the rail then
+  belongs to a generator, another session, another plugin or the latch,
+  and a hold would land in their stream (on valencesim, which accepts both
+  sources, it did: G2).
+- **A refusal the gate cannot see.** A STREAM bundle has no answer, so a
+  `SOURCE_CONFLICT` from a source the gate does not show arrives as a
+  NACK after the bundle that drew it. The hub drops that bundle; the
+  player pauses on the next frame. Bundles sent inside that round trip
+  (one, measured on the fake hub) are refused the same way; none follow.
 - **Never auto-resume.** When a gate clears, Play re-enables and nothing
   restarts. The strip's Resume re-arms the hub only (SPEC §11.1); the
   card's Play is the operator's act. Design 2's continue-on-PAUSE-clear was
   rejected for that reason.
-- **Every stop is a command.** Pause, seek, a stall, a media error, a
-  hidden page, an unmount and deactivate send one hold: the script
+- **Every stop of the player's own is a command.** Pause, seek, a stall, a
+  media error, a hidden page, an unmount and deactivate send one hold: the script
   continues `min(200 ms, to the next action)` and ends at rest. A vanished
   client leaves at most half a horizon of scheduled motion, which then
   rests (RFC-058; SPEC §11.5 invariant 1).
@@ -165,7 +179,16 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
   holder's last sent segment ends plus 500 ms, so buttplug or TCode never
   interleave with the player in one stream source.
 - **Bounded output.** Targets clamp to 0..1 of the hub's window and the hub
-  clamps again; durations are the script's; feasibility is the hub's.
+  clamps again. Speed is not clamped here: durations are the script's and
+  the hub's planner holds `limit.input.speed` (valencesim: a script asking
+  8333 mm/s peaked at its 1000 mm/s limit). The meter, the heat and the
+  status slot (`Script past the input speed limit`) say so.
+- **Malformed scripts.** Unparseable JSON, no actions array, no valid
+  action, more than a million actions or an action past 24 hours are
+  refused in words with Play grayed; the 24 hour cap runs before the 60 s
+  span split, which once expanded one gap to 16.7 million knots. Repairs
+  (sorted, deduplicated, positions clamped, invalid actions dropped, long
+  spans split, `range` ignored) play and are named in the status slot.
 - **Containment.** No fullscreen, picture-in-picture or native controls
   (law 1): the strip's e-stop and pause stay on screen. No red (law 13).
 
@@ -178,7 +201,7 @@ renderer-class thresholds: full at 960 px and wider (`FULL_UP`), handheld
 ```
 FULL
 +------------------------------------------------+--------------------+
-| source bar: Library, Open files, title          | search, sort, dir  |
+| source bar: Open files, title                   | search, sort, dir  |
 | stage 16:9, object-fit contain                  | tiles, paged,      |
 |   empty: 'Open a video'                         |   never scrolled   |
 | overview 24: whole-script heat, window box,     | page n / m, N      |
@@ -192,9 +215,15 @@ FULL
 +----------------------------------------------------------------------+
 ```
 
-- **Handheld:** tabs Player | Library swap the one main region in place (a
-  view switch, never a write; the video keeps playing under the library);
-  detail 72 px; transport in exactly two fixed rows.
+- **Handheld:** tabs Player | Library (shown only here; in full the library
+  is the side column) swap the one main region in place (a view switch,
+  never a write; the video keeps playing under the library); detail 72 px;
+  transport in two fixed rows. Where those overflow the card (measured on
+  each width change, so the Look scale moves the switch; under 440 px at
+  the default scale), `data-narrow` gives three fixed rows, Play and time /
+  Motion and Offset / Invert, speed and Mute, and drops the volume slider
+  (the device's own volume stays). A 390 px phone's 326 px card spilled
+  101 px before this.
 - **Glance:** title, a 24 px stroke meter (an intent tick for the script,
   a reality tick for the measured position; ticks, not handles), Play,
   time, status. The video element stays mounted and visually hidden; the
@@ -207,13 +236,20 @@ FULL
   `telemetry.position` (as a share of `window.min/max`, drawn only when the
   window is reported, law 9; dimmed when stale, law 8) `--reality`;
   playhead, selected tile and focus `--highlight`; gates and over-cap
-  `--warn`. The reality trace is drawn at `mediaAt(t - offset)`, so a
+  `--warn`, as a mark only: the status slot's 3 px bar, the speed bar,
+  striped heat. Text stays `--tx`: `--warn` is locked (law 13) and reads
+  1.8:1 on Paper's white card. Heat past the limit is striped, not only
+  recolored, because Ember's `--intent` and `--warn` sit 13.6 Delta E
+  apart. The reality trace is drawn at `mediaAt(t - offset)`, so a
   machine in sync draws on the curve: offset can be set by eye. It is a
   scope, not a measurement (ponytail; arrival-stamped).
 - **Handles** (Advanced Penetration's vocabulary): the scrub playhead is a
   vertical pill (left-right; arrows 5 s, Shift 30 s, Home, End); range low
-  and high are horizontal pills at the detail's left edge (up-down; arrows
-  1 %, Shift 10 %). They preview in the intent look and commit on release.
+  and high are horizontal pills at the detail's left edge, high one tap to
+  the right of low so close values never stack (up-down; arrows 1 %, Shift
+  10 %). A pill's hit box stays inside the detail, which clips, and only
+  the drawn pill rides the value to the edge (a clipped box took touches
+  over 60 % of itself). They preview in the intent look and commit on release.
   Offset is a transport number field (drag 5 ms per 2 px, type, arrows 5 ms,
   Shift 50 ms). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
   captured. Space toggles Play while the card has focus.
@@ -230,8 +266,10 @@ FULL
   Offset, Invert, Mute; `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,
-  `Extra axes ignored: roll, twist`; the host's gate and door words as
-  sent.
+  `Script past the input speed limit`, `Extra axes ignored: roll,
+  twist`; the parse notes (`2 positions clamped`, `range ignored`) and
+  refusals (`script longer than 24 hours`); the host's gate and door
+  words as sent.
 - **Local files.** One `input type=file multiple` (video, audio,
   `.funscript`); `pairFiles` matches by base name; the video gets an object
   URL, revoked on replace and dispose. No drag and drop: Tauri intercepts
@@ -300,15 +338,20 @@ law 13; the card draws its own token heat).
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
   pauses the video within 100 ms with the latch words and nothing is sent
   after, clearing it does not play; `advgen.running` on grays Play; a
-  second plugin gets the busy words; identical rects across states; 40 px
-  targets under a coarse pointer; no control outside the card and no cut
-  label (full, glance, the Stash grid); no computed `--bad`; runtime copy
+  second plugin gets the busy words; `advgen.running` mid-play pauses with
+  no hold; a SOURCE_CONFLICT is drawn by exactly one bundle and no hold
+  follows; identical rects across states; 40 px targets under a coarse
+  pointer, and every slider taking touches over 85 % of its box; no
+  control outside the card and no cut label (full, glance, handheld from
+  264 to 959 px, the Stash grid); no computed `--bad`; no text in `--warn`;
+  runtime copy
   within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK in the
   status slot; Stash settings, tiles with apikey, a pick fetching the
   script with the header and playing it.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:
-  plays 8 s, asserts bundles, no NACK, the plan strip moving, the strip's
+  plays 8 s, asserts bundles, no NACK, striped heat and the over-limit
+  words (the test script peaks past valencesim's 1000 mm/s), the plan strip moving, the strip's
   Pause pauses the video and Resume leaves it paused, a seek on the
   overview plays on from the new time with bundles flowing, an Advanced
   start grays Play, and last the strip's E-stop pauses the video with the
@@ -319,15 +362,29 @@ law 13; the card draws its own token heat).
   (two sims bound one port on Windows once). A node session with a control
   token runs the real door and scheduler over a synthetic feasible script
   (60 s: strokes, a fast section, a five-knot same-direction run, a 2 s
-  hold, seeded random) with a perfect clock (pass A) and 30 fps on 60 Hz
-  jitter (pass B), including a seek, a rate change and a pause. For each observed
+  hold, seeded random) with a perfect clock (pass A) and 24 fps on 60 Hz,
+  3:2 pulldown (pass B: each frame shows 0 or 8.3 ms past its ideal instant;
+  30 fps on 60 Hz is two vsyncs per frame, a constant with no jitter),
+  including a seek, a rate change and a pause. For each observed
   plan: start = arrival - elapsed, end = start + duration, matched by
   duration and start. First bars, recorded on the epic and tightened later:
   hub adherence spread p95 at most 5 ms around its median, median at most
   30 ms (the plan strip publishes every 22 ms; design 2 read 20 to 23 ms);
   script-timeline spread p95 at most 5 ms (A) and 6 ms (B); coverage 98 %;
   seek and pause clean. The same-direction run's interior speed ratio is
-  printed; under 0.3 prints WARN for G3, never FAIL.
+  printed; under 0.3 prints WARN for G3, never FAIL. The CLOCK exchanges'
+  RTT range is printed.
+- **What the sync bars do not cover.** The script holds every chord to half
+  the hub's input speed limit. Content past it is stretched by the hub's
+  planner (`limit.input.speed`, SPEC §9.6): plans start on time but end
+  late, so the next segment hands off early and the stroke shrinks. Measured
+  on valencesim at 2 norm/s: 100 ms full-range swings planned 3.55 x their
+  commanded duration; 100 ms swings of 0.08 stretched 1.22 x in about half
+  the segments (a quintic peaks at 1.875 x its chord). The player sends as
+  authored (D11); the meter, the heat and the status slot flag it. About
+  14 ms of plan lag remains after the clock filter at 1 ms RTT; STATE
+  frames carry no hub stamp, so how much of it is the plan strip's
+  observation and how much hub lateness is not measured.
 - **Hardware phase:** the same measurement against the P4 (192.168.1.118,
   `--port 82 --http 80`, no motor), owned by that phase only.
 
@@ -372,8 +429,10 @@ law 13; the card draws its own token heat).
   in the library's place.
 - **D14** No `releaseMotion`: PUBLISH rate 0 releases no source (measured);
   the real release is G1.
-- **D15** Hub clock filtering deferred to the P4 measurement; a fix belongs
-  in Valence.
+- **D15** The door filters CLOCK (least RTT of the last 4) because the sim
+  already showed the RTT/2 error as the dominant spread term (Sync 7). The
+  owed fix is in Valence's `clients/js`; the door's copy is removed then.
+  Veto: drop the door filter and wait for Valence.
 - **D16** A hidden page, an unmount, deactivate and a link loss stop
   playback until the operator's Play; a stall holds and continues on
   `playing` (Play is still in force).
