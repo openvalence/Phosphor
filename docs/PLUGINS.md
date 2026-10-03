@@ -273,7 +273,7 @@ section (DESIGN §10.11) and appears once a hub's catalog is adopted.
 
 **CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
 carries `blob:` for this loader; drop it and every plugin shows an `import:`
-error on its row. A plugin runs under the page's policy, so `connect-src`
+error on its row. It also carries `'wasm-unsafe-eval'` (WebAssembly compile only, not `eval`): the funscript player compiles the machine's planner in a worker, and without it the analyzer reads `Kinetic: fallback` (docs/plugins/FUNSCRIPT.md, Kinetic). A plugin runs under the page's policy, so `connect-src`
 (`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
 through `net.fetch` (the `http:default` capability allows `http://**:*` and
 `https://**:*`; the `:*` is load-bearing, a URLPattern without a port
