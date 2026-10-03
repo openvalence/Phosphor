@@ -56,10 +56,16 @@
     input.focus({ preventScroll: true });
   });
 
-  function toggle(name, on = !open.has(name)) {
+  async function toggle(name, on = !open.has(name)) {
     const next = new Set(open);
     if (on) next.add(name); else next.delete(name);
     open = next;
+    if (!on) return;
+    // An opened category scrolls into view, its header kept on screen.
+    await tick();
+    const rows = box ? box.querySelectorAll('[data-group="' + CSS.escape(name) + '"]') : [];
+    rows[rows.length - 1]?.scrollIntoView({ block: 'nearest' });
+    rows[0]?.scrollIntoView({ block: 'nearest' });
   }
 
   async function show() {
@@ -101,12 +107,12 @@
     {#each rows as r, i (r.key)}
       {#if r.head}
         <button type="button" id={'gpal-r' + i} class="gpal-head" role="treeitem" aria-level="1" aria-selected={i === cur} aria-expanded={open.has(r.g.name)}
-                data-cur={i === cur ? '' : null} onclick={() => { cur = i; toggle(r.g.name); }}>
+                data-group={r.g.name} data-cur={i === cur ? '' : null} onclick={() => { cur = i; toggle(r.g.name); }}>
           <span class="gpal-caret" aria-hidden="true">{open.has(r.g.name) ? '▾' : '▸'}</span>{r.g.name}
           <span class="gpal-count">{r.g.items.length}</span>
         </button>
       {:else}
-        <button type="button" id={'gpal-r' + i} class="gpal-item" role="treeitem" aria-level={r.nested ? 2 : 1} aria-selected={i === cur} data-nested={r.nested ? '' : null}
+        <button type="button" id={'gpal-r' + i} class="gpal-item" role="treeitem" aria-level={r.nested ? 2 : 1} aria-selected={i === cur} data-nested={r.nested ? '' : null} data-group={r.group}
                 data-cur={i === cur ? '' : null} onclick={() => onpick(r.it.value)}>
           {r.it.label}{#if !r.nested}<span class="gpal-count">{r.group}</span>{/if}
         </button>
@@ -120,15 +126,15 @@
 <style>
   .gpal { position: absolute; z-index: 5; width: 280px; max-width: calc(100% - 16px); max-height: min(420px, calc(100% - 16px));
     box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 6px;
-    background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
-  .gpal input { min-height: 32px; }
+    background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
+  .gpal input { min-height: 32px; font-size: .9rem; }
   .gpal-list { overflow-y: auto; min-height: 0; }
   .gpal-head, .gpal-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 3px 8px; text-align: left;
     background: none; border: 0; border-radius: var(--radius); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
-  .gpal-head { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); }
+  .gpal-head { color: var(--tx-val); }
   .gpal-item[data-nested] { padding-left: 24px; }
   .gpal-caret { width: 10px; }
-  .gpal-count { margin-left: auto; font-size: 10px; color: var(--ink-dim); text-transform: none; letter-spacing: 0; }
+  .gpal-count { margin-left: auto; font-size: 11px; color: var(--ink-dim); }
   .gpal-head:hover, .gpal-item:hover, [data-cur] { background: var(--bg-card); color: var(--ink-hi); }
   .gpal-none { margin: 6px 8px; font-size: .8rem; color: var(--ink-dim); }
   @media (pointer: coarse) {
