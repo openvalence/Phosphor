@@ -27,11 +27,13 @@ Rules for every module:
 | scheduler | ph-smvd.4 | `clock.js`, `scheduler.js`, `test/funscript-scheduler.test.mjs`, `test/funscript-sync-live.mjs` |
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
+| interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
-no cycles: `index -> ui, prefs, library`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs`; `scheduler -> funscript`;
-`timeline -> funscript`; `library -> stash`; `stash -> funscript`.
+no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
+scheduler, stash, library, timeline, prefs, interp`; `scheduler -> funscript`;
+`timeline -> funscript`; `library -> stash`; `stash -> funscript`;
+`prefs -> interp`; `interp -> funscript`.
 
 ---
 
@@ -86,7 +88,8 @@ scheduler, stash, library, timeline, prefs`; `scheduler -> funscript`;
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000 }
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000,
+  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0} }
 // Every key but stash is also mirrored to localStorage phosphor.funscript.<key> (the prefix the prefs
 // backup carries) and read from there when api.prefs has none. stash holds the API key: never mirrored.
 ```
@@ -437,6 +440,7 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   mount(el, fields) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?} from the hero spec
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
+//   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   state }      PlayerState, read-only to everyone else
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn', notes: string[]}, view: 'player'|'library',
@@ -453,7 +457,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling), frame(mediaMs, trace), unmount() }
+  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), unmount() }
+  // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
   // ceiling: {vmax: number | null, spanMm: number | null}
   // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean}>, telemetry.position on the media axis, last 8 s
 ```
@@ -477,6 +482,30 @@ library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
 observations, marks) only while localStorage `phosphor.funscript.probe` is
 `'1'`.
+
+---
+
+## interp: `interp.js`
+
+```js
+export const STEP_MS = 40;            // the longest piece a curved span is cut into (25 segments/s, under the 50 Hz grant)
+export const MODES;                   // frozen {id -> its parameter key | null}: linear, step, smoothstep, cosine,
+                                      // catmull 'tension', hermite 'bias', monotone, pchip, akima, makima
+export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000} with steps
+export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0}
+export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it
+export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
+export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
+  // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
+  // off without spanMm); linear with both off returns `script` itself, so the scheduler runs byte-identical
+export const COPY, CSS;
+export function mountInterp(el, { value, onChange });   // -> unmount(); the settings card rows, onChange(interp) on commit
+```
+
+The controller schedules `shape(script)` and keeps it as `PlayerState.shaped`: the scheduler, posAt, preroll,
+stop, thinning, the speed meter and the heat all read the shaped Script,
+and each piece is one segment with end velocity `unspecified` and no
+`curve_family`. Tests: `test/funscript-core.test.mjs` (interp section).
 
 ---
 
