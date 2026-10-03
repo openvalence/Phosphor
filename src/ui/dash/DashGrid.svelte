@@ -269,10 +269,12 @@
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
     const held = layout.held();
     if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols, null); return; }
+    // Only stored rects stop a grow: an unplaced card (a section row) packs around the grown one.
+    const fixed = placed.filter((q) => layout.saved(q.id));
     for (const p of placed) {
       if (!fresh.delete(p.id) || !layout.saved(p.id)) continue;
       const [fw, fh] = minOf(p)(p.w, p.h);
-      const r = (p.w < fw && growWidth(placed, p.id, fw, cols)) || (p.h < fh && growHeight(placed, p.id, fh));
+      const r = (p.w < fw && growWidth(fixed, p.id, fw, cols)) || (p.h < fh && growHeight(fixed, p.id, fh));
       if (r) { layout.fit(all, cols, r); return; }
     }
   }

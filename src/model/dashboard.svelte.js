@@ -109,7 +109,13 @@ function controller(key, read, write, members) {
     arrange: (items, cols, pin = null, f = fit()) => G.place(items, read(), cols, pin, f),
     move: edit((items, cols, pin) => (hold(G.commitPin(write(), items, cols, pin, fit())), true)),
     // A repair the user did not make (DashGrid's grow to a measured floor): saved, never an undo step.
-    fit: (items, cols, pin) => { held.delete(key); hold(G.commitPin(write(), items, cols, pin, fit())); persist(); },
+    // A grow stores the grown rect alone: an unplaced card packs around it and is never written by it.
+    fit: (items, cols, grow) => {
+      const m = write();
+      if (grow) m[grow.id] = { ...m[grow.id], x: grow.x, y: grow.y, w: grow.w, h: grow.h };
+      else { held.delete(key); hold(G.commitPin(m, items, cols, null, fit())); }
+      persist();
+    },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
     setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
     // An emptied map, not a deleted key: the migration can never resurrect it.
@@ -129,7 +135,7 @@ function controller(key, read, write, members) {
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order; with
  *                                 `pin`, where the dragged item lands (grid.js place)
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
- *   fit(items, cols, pin)      -> commit a repair (a grow to the content floor); no undo step
+ *   fit(items, cols, grow)     -> commit a repair (a grow to the content floor); no undo step
  *   order(items, cols, ids)    -> commit a reading order
  *   measured(fn) / held()      -> the grid's content heights; adds waiting for them
  *   saved(id)                  -> whether `id` has a stored rect
