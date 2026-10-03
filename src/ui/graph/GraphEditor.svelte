@@ -38,7 +38,20 @@
   const HEAD = 40;
   const K_MAX = 2;
   const CATS = ['Input', 'Math', 'Logic', 'Converter'];
-  const ICON = { Input: '#', Math: '∑', Logic: '?', Converter: '≈' };
+  // Node head icons: a 16 px grid at 1.5 px, as the strip's (SafetyOp ARROW).
+  const ICON = {
+    Input: '<path d="M2 8h12"/><circle cx="6" cy="8" r="2"/>',
+    Math: '<path d="M12 3H4l4.5 5L4 13h8"/>',
+    Logic: '<path d="M3.5 3h4a5 5 0 0 1 0 10h-4z"/><path d="M1 6h2.5M1 10h2.5M12.5 8H15"/>',
+    Converter: '<path d="M2 12h4l4-8h4"/>',
+    field: '<path d="M8 2.5L13.5 8 8 13.5 2.5 8z"/>',
+    toy: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.5"/>',
+    map: '<path d="M2.5 13.5C7 13.5 9 2.5 13.5 2.5"/>',
+  };
+  /** Fit never zooms node text (11 px floor) below 9 px on screen. */
+  const FIT_K = 9 / 11;
+  /** Phosphor's own names (ops, maps) in sentence case; hub labels render as sent. */
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
   // ---- runtime state ---------------------------------------------------------
   let gen = $state(0);
@@ -164,8 +177,10 @@
     }
     const r = vp.getBoundingClientRect();
     const pad = 32;
-    const k = clampK(Math.min(1.5, (r.width - 2 * pad) / (x1 - x0), (r.height - 2 * pad) / (y1 - y0)));
-    view = { k, x: (r.width - (x1 - x0) * k) / 2 - x0 * k, y: (r.height - (y1 - y0) * k) / 2 - y0 * k };
+    const k = clampK(Math.max(FIT_K, Math.min(1.5, (r.width - 2 * pad) / (x1 - x0), (r.height - 2 * pad) / (y1 - y0))));
+    // An axis that fits is centered; one that does not starts at the graph's top-left, never its empty middle.
+    const axis = (size, lo, hi) => ((hi - lo) * k <= size - 2 * pad ? (size - (hi - lo) * k) / 2 : pad) - lo * k;
+    view = { k, x: axis(r.width, x0, x1), y: axis(r.height, y0, y1) };
     saveView();
   }
   onMount(() => { if (!R.view && R.graph.nodes.length) tick().then(fit); });
@@ -219,6 +234,7 @@
   let box = $state(null);       // {x0, y0, x1, y1} viewport px: the marquee
   let boxMode = $state(false);
   let pal = $state(null);       // {x, y, wx, wy, from?}: the add menu; `from` is a link-drag-search's socket
+  let more = $state(false);     // the compact toolbar's overflow
   let full = $state(false);
   let vpW = $state(0);
   let vpH = $state(0);
@@ -241,7 +257,9 @@
     return [side === 'out' ? x + b.w : x, y + sockY(b, side, port)];
   }
   function curve([x1, y1], [x2, y2]) {
-    const c = Math.max(40, Math.abs(x2 - x1) / 2);
+    // A link running backward exits right and re-enters left: its handles grow with the rise, clear of both nodes.
+    const back = Math.min(1, Math.max(0, (x1 + 80 - x2) / 80));
+    const c = Math.max(40, Math.abs(x2 - x1) / 2, back * Math.abs(y2 - y1) / 2);
     return 'M' + x1 + ' ' + y1 + ' C' + (x1 + c) + ' ' + y1 + ' ' + (x2 - c) + ' ' + y2 + ' ' + x2 + ' ' + y2;
   }
 
@@ -250,6 +268,7 @@
     const t = e.target;
     if (t.closest('.gpal, .gtool')) return;
     if (pal) pal = null;
+    more = false;
     const sock = t.closest('[data-sock]');
     if (sock) {
       gest = { kind: 'wire', id: sock.dataset.owner, side: sock.dataset.side, port: sock.dataset.port, px: e.clientX, py: e.clientY, moved: false, pid: e.pointerId };
@@ -392,7 +411,7 @@
   // ---- sockets: tap or Enter to wire ---------------------------------------------
   function sockName(id, side, port) {
     const b = byId.get(id);
-    const name = !b ? id : b.kind === 'node' ? info.get(id)?.label : b.kind === 'op' ? R.opLabel(b.o) : b.o.name;
+    const name = !b ? id : b.kind === 'node' ? info.get(id)?.label : b.kind === 'op' ? cap(R.opLabel(b.o)) : b.o.name;
     const p = b && b.kind === 'op' && port ? (R.insOf(b.o).find((x) => x.name === port) || {}).label : '';
     return (side === 'out' ? 'output of ' : (p ? p + ' input of ' : 'input of ')) + name;
   }
@@ -437,6 +456,7 @@
     focusBox(made[0]);
   }
   function cancel() {
+    if (more) { more = false; return true; }
     if (pal) { pal = null; return true; }
     if (wiring || kwire) { wiring = null; kwire = null; gest = null; said = 'wiring cancelled'; return true; }
     if (box) { box = null; gest = null; return true; }
@@ -497,9 +517,9 @@
     const ops = CATS.map((cat) => ({
       name: cat,
       items: Object.entries(OPS).filter(([, o]) => o.cat === cat && !(f && f.side === 'out' && o.ins.every((q) => q.fixed)))
-        .map(([kind, o]) => ({ key: 'op:' + kind, label: o.label, value: { op: kind, w: OP_W } })),
+        .map(([kind, o]) => ({ key: 'op:' + kind, label: cap(o.label), value: { op: kind, w: OP_W } })),
     }));
-    const maps = { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => ({ key: 'map' + id, label: m.label, value: { map: Number(id), w: MAP_W } })) };
+    const maps = { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => ({ key: 'map' + id, label: cap(m.label), value: { map: Number(id), w: MAP_W } })) };
     let out;
     if (!f) out = [...ops, maps, ...by(p.sources, 'Sources'), ...by(p.targets, 'Targets')];
     else if (fromMap) out = f.side === 'out' ? by(p.targets, 'Targets') : by(p.sources, 'Sources');
@@ -518,10 +538,10 @@
     R.batch(() => {
       if (v.op) {
         id = R.placeOp(v.op, x, wy);
-        said = OPS[v.op].label + ' placed';
+        said = cap(OPS[v.op].label) + ' placed';
       } else if (v.map != null) {
         id = R.placeMap(v.map, x, wy);
-        said = MAPS[v.map].label + ' placed';
+        said = cap(MAPS[v.map].label) + ' placed';
       } else {
         const r = R.place(v.ref, x, wy);
         id = r.id;
@@ -587,7 +607,7 @@
   {@const run = (void gen, R.runs(n.id))}
   {@const stale = !bp && nf.ports.out ? (void beat, R.stale(n.ref)) : ''}
   <span class="ghead">
-    <span class="gicon" aria-hidden="true">{bp ? '◎' : '◆'}</span>
+    <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON[bp ? 'toy' : 'field']}</svg>
     <span class="gname">{nf.label}</span>
     {#if run}
       <span class="gbadge" data-home={run.home} data-runs title={run.why}>{run.home}</span>
@@ -623,8 +643,8 @@
   {@const ot = R.outOf(o)}
   {@const v = liveAt(o.id)}
   <span class="ghead">
-    <span class="gicon" aria-hidden="true">{ICON[spec.cat]}</span>
-    <span class="gname">{R.opLabel(o)}</span>
+    <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON[spec.cat]}</svg>
+    <span class="gname">{cap(R.opLabel(o))}</span>
     <span class="gnum gout" title="Output this tick">{fmtT(v, ot)}</span>
   </span>
   {#if hasOpt(o)}
@@ -657,7 +677,7 @@
     </div>
     {#if !p.fixed}{@render socket(o.id, 'in', 'op', p.label, p.type, p.name, HEAD + (hasOpt(o) ? ROW_H : 0) + i * ROW_H + ROW_H / 2)}{/if}
   {/each}
-  {@render socket(o.id, 'out', 'op', R.opLabel(o), ot)}
+  {@render socket(o.id, 'out', 'op', cap(R.opLabel(o)), ot)}
 {/snippet}
 
 {#snippet mapNode(b)}
@@ -665,7 +685,7 @@
   {@const isRel = b.kind === 'rel'}
   {@const why = isRel && refOf(r.from) && refOf(r.to) ? R.home(refOf(r.from), refOf(r.to)).why : 'draft: wire a source and a target'}
   <span class="ghead">
-    <span class="gicon" aria-hidden="true">ƒ</span>
+    <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON.map}</svg>
     <span class="gname">{r.name}</span>
     <span class="gbadge" data-home={isRel ? r.home : 'draft'} title={why}>{isRel ? r.home : 'draft'}</span>
   </span>
@@ -711,16 +731,20 @@
 <div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
     <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+A)">+ Add</button>
-    <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} title="Undo (Ctrl+Z)">Undo</button>
-    <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} title="Redo (Ctrl+Shift+Z)">Redo</button>
-    <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate selected maps (Ctrl+D)">Duplicate</button>
-    <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} title="Delete selection (Delete)">Delete</button>
-    <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} title="Drag to box-select (Shift+drag)">Box select</button>
-    <button type="button" class="og-btn" onclick={fit} title="Frame all nodes">Fit</button>
-    <button type="button" class="og-btn" onclick={reset}>Reset view</button>
-    <button type="button" class="og-btn" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
-    <button type="button" class="og-btn" onclick={() => zoomBy(0.8)} aria-label="Zoom out">−</button>
-    <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} title="Fill the window (Escape exits)">Full size</button>
+    <button type="button" class="og-btn" onclick={fit} title="Frame the nodes">Fit</button>
+    <button type="button" class="og-btn gmore-btn" aria-expanded={more} onclick={() => { more = !more; }}>More</button>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="gmore" data-open={more ? '' : null} onclick={() => { more = false; }}>
+      <button type="button" class="og-btn" onclick={() => R.undo()} disabled={(void gen, !R.canUndo)} title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" class="og-btn" onclick={() => R.redo()} disabled={(void gen, !R.canRedo)} title="Redo (Ctrl+Shift+Z)">Redo</button>
+      <button type="button" class="og-btn" onclick={dup} disabled={!sel.size} title="Duplicate selected maps (Ctrl+D)">Duplicate</button>
+      <button type="button" class="og-btn" onclick={() => del()} disabled={!sel.size && !selWire} title="Delete selection (Delete)">Delete</button>
+      <button type="button" class="og-btn" aria-pressed={boxMode} onclick={() => { boxMode = !boxMode; }} title="Drag to box-select (Shift+drag)">Box select</button>
+      <button type="button" class="og-btn" onclick={reset}>Reset view</button>
+      <button type="button" class="og-btn" onclick={() => zoomBy(1.25)} aria-label="Zoom in">+</button>
+      <button type="button" class="og-btn" onclick={() => zoomBy(0.8)} aria-label="Zoom out">−</button>
+      <button type="button" class="og-btn" aria-pressed={full} onclick={() => { full = !full; }} title="Fill the window (Escape exits)">Full size</button>
+    </div>
   </div>
   <p class="gnote">
     Client edges: <span data-phase={note.ok ? 'armed' : 'disarmed'}>{note.why || 'not evaluated yet'}</span>
@@ -782,7 +806,7 @@
              data-shadow={st && st.phase === 'pending' ? 'pending' : null}
              style:left={x + 'px'} style:top={y + 'px'} style:width={b.w + 'px'}
              tabindex="0" role="group"
-             aria-label={(b.kind === 'node' ? (info.get(b.id)?.label || '') : b.kind === 'op' ? R.opLabel(b.o) + ' node' : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
+             aria-label={(b.kind === 'node' ? (info.get(b.id)?.label || '') : b.kind === 'op' ? cap(R.opLabel(b.o)) + ' node' : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
              onfocus={(e) => { if (e.target === e.currentTarget && !sel.has(b.id)) { sel = new Set([b.id]); selWire = null; } }}>
           {#if b.kind === 'node'}{@render fieldNode(b)}{:else if b.kind === 'op'}{@render opNode(b)}{:else}{@render mapNode(b)}{/if}
         </div>
@@ -813,9 +837,18 @@
 <style>
   .graph { position: relative; display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
   .graph.full { position: fixed; top: var(--strip-h, 0px); left: 0; right: 0; bottom: 0; z-index: 20; padding: 8px; background: var(--bg); }
-  .gtool { display: flex; flex-wrap: wrap; gap: 4px; }
+  .gtool { position: relative; container-type: inline-size; display: flex; flex-wrap: wrap; gap: 4px; }
   .gtool .og-btn { width: auto; min-height: 30px; padding: 2px 10px; }
-  .gtool .og-btn[aria-pressed='true'] { border-color: var(--intent); color: var(--ink-hi); }
+  .gtool .og-btn[aria-pressed='true'] { border-color: var(--highlight); color: var(--ink-hi); }
+  .gmore { display: contents; }
+  .gmore-btn { display: none; }
+  /* Under 44rem the toolbar holds one row: + Add, Fit, More. */
+  @container (max-width: 44rem) {
+    .gmore-btn { display: inline-flex; }
+    .gmore { display: none; position: absolute; z-index: 6; top: calc(100% + 4px); left: 0; flex-direction: column; gap: 4px; padding: 6px;
+      background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
+    .gmore[data-open] { display: flex; }
+  }
   /* The grid's inert preview (DashItem) is a picture: no tools until Open. */
   .graph:global([inert]) .gtool, .graph:global([inert]) .gnote { display: none; }
   .gnote { margin: 0; font-size: 11px; color: var(--ink-dim); }
@@ -827,7 +860,6 @@
     background-color: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius);
     background-image: radial-gradient(circle, var(--line-3) 1px, transparent 1.5px); }
   .gview[data-mode='box'] { cursor: crosshair; }
-  .gview:focus-visible { outline: 1px solid var(--intent); }
   .glayer { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
   .gwires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 
@@ -837,35 +869,34 @@
   .gwire[data-home='draft'], .gwire[data-home='pending'] { stroke: var(--line-4); stroke-dasharray: 3 4; }
   .gwire[data-refused] { stroke: var(--warn); }
   .gwire[data-off] { opacity: .35; }
-  .gwire[data-sel] { stroke-width: 4; }
+  .gwire[data-sel] { stroke: var(--highlight); stroke-width: 4; }
   .gwire[data-live] { animation: gflow .8s linear infinite; }
   .gwire[data-home='hub'][data-live] { stroke-dasharray: 14 4; }
   @keyframes gflow { to { stroke-dashoffset: -18; } }
   .gwire-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
-  .gval { font-size: 10px; fill: var(--ink-hi); paint-order: stroke; stroke: var(--bg-sunken); stroke-width: 3px; font-family: var(--mono); }
+  .gval { font-size: 11px; fill: var(--ink-hi); paint-order: stroke; stroke: var(--bg-sunken); stroke-width: 3px; font-family: var(--mono); }
 
   .gnode { position: absolute; box-sizing: border-box; padding: 0 8px 6px; touch-action: none; cursor: grab;
     background: var(--bg-card); color: var(--ink); border: 1px solid var(--line-3); border-radius: var(--radius); }
   .gnode[data-kind='rel'][data-home='hub'] { border-color: var(--reality); }
   .gnode[data-kind='rel'][data-home='client'] { border-color: var(--intent); }
   .gnode[data-kind='draft'] { border-style: dashed; }
-  .gnode[data-sel] { box-shadow: 0 0 0 2px var(--ink-hi); }
+  .gnode[data-sel] { box-shadow: 0 0 0 2px var(--highlight); }
   .gnode[data-off] { filter: saturate(.5) brightness(.85); }
-  .gnode:focus-visible { outline: 2px solid var(--intent); outline-offset: 2px; }
   .ghead { display: flex; align-items: center; gap: 6px; height: 40px; }
-  .gicon { color: var(--ink-dim); width: 1em; text-align: center; }
+  .gicon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-dim); }
   .gname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; color: var(--ink-hi); }
-  .gbadge { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 4px; border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink-dim); cursor: help; }
+  .gbadge { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 4px; border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink-dim); cursor: help; }
   .gbadge[data-home='hub'] { color: var(--reality); border-color: var(--reality); }
   .gbadge[data-home='client'] { color: var(--intent); border-color: var(--intent); }
-  .gline { margin: 0 0 2px; font-size: 10px; color: var(--ink-dim); overflow-wrap: anywhere; }
+  .gline { margin: 0 0 2px; font-size: 11px; color: var(--ink-dim); overflow-wrap: anywhere; }
   .gline[data-stale] { opacity: .5; }
   .gnum { font-family: var(--mono); font-size: 11px; color: var(--tx-val); }
   .gcurve { display: block; width: 100%; height: 44px; margin: 2px 0 4px; background: var(--bg-sunken); border-radius: var(--radius); }
   .gcurve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
   .gcurve circle { fill: var(--reality); }
   .gparams { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
-  .gparams label { display: flex; flex-direction: column; font-size: 9px; color: var(--ink-dim); min-width: 0; }
+  .gparams label { display: flex; flex-direction: column; font-size: 11px; color: var(--ink-dim); min-width: 0; }
   .gparams .wide { grid-column: 1 / -1; }
   .gparams .check { flex-direction: row; align-items: center; gap: 4px; }
   .gparams input:not([type='checkbox']) { min-height: 24px; min-width: 0; width: 100%; font-size: .75rem; }
@@ -875,7 +906,7 @@
   /* Op input rows: ROW_H in the script must equal --grow. */
   .graph { --grow: 28px; --vt-float: var(--reality); --vt-bool: var(--intent);
     --vt-int: color-mix(in srgb, var(--reality) 50%, var(--intent)); }
-  .grow { display: flex; align-items: center; gap: 6px; height: var(--grow); font-size: 10px; color: var(--ink-dim); }
+  .grow { display: flex; align-items: center; gap: 6px; height: var(--grow); font-size: 11px; color: var(--ink-dim); }
   .grow select { flex: 1 1 auto; min-width: 0; min-height: 22px; font-size: .75rem; }
   .grow .check { display: flex; align-items: center; gap: 4px; }
   .gfield { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
@@ -899,10 +930,10 @@
   .gsock[data-armed]::before { background: var(--intent); }
   .gconv { fill: var(--bg-sunken); stroke: var(--ink-hi); stroke-width: 1.5; }
   .gsock:hover::before, .gsock:focus-visible::before { background: var(--ink-hi); }
-  .gsock:focus-visible { outline: 2px solid var(--intent); border-radius: 50%; }
+  .gsock:focus-visible { border-radius: 50%; }
 
-  .gempty { position: absolute; inset: 40% 0 auto; margin: 0; text-align: center; font-size: .8rem; color: var(--ink-dim); pointer-events: none; }
-  .gbox { position: absolute; border: 1px dashed var(--intent); background: rgba(var(--intent-rgb), .08); pointer-events: none; }
+  .gempty { position: absolute; inset: 40% 0 auto; max-width: none; margin: 0; text-align: center; font-size: .8rem; color: var(--ink-dim); pointer-events: none; }
+  .gbox { position: absolute; border: 1px dashed var(--highlight); background: rgba(var(--highlight-rgb), .08); pointer-events: none; }
   .gcursor { position: absolute; z-index: 4; max-width: 240px; margin: 0; padding: 3px 6px; font-size: 11px; pointer-events: none;
     background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink); }
   .gcursor[data-phase='fault'] { color: var(--warn); border-color: var(--warn); }

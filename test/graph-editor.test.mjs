@@ -18,6 +18,11 @@
  *   full      full size fills the window below the top strip
  *   touch     the stored graph comes back; law 12 (40 px sockets) under a
  *             touch pointer; two fingers pinch-zoom
+ *   review    2026-10-02 design review: live inputs at 4.5:1 per theme, no
+ *             tools in the grid preview, a one-row toolbar at 390 px, an
+ *             11 px text floor Fit keeps at 9 px, sentence-case menu, opened
+ *             categories scrolled in, backward links clear of their nodes,
+ *             the hint centered, SVG head icons, --highlight for focus
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Run: node test/graph-editor.test.mjs [--shot <png>]
@@ -69,6 +74,7 @@ async function inkUnder(page, sel, ids = ['phosphor', 'ember', 'paper']) {
   }
   return out;
 }
+const scaleOf = (page) => page.locator('.glayer').evaluate((el) => Number((/scale\(([\d.]+)\)/.exec(el.style.transform) || [])[1]));
 
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
@@ -243,6 +249,8 @@ let saved = null;
 {
   const { ctx, page, errors } = await open();
   ok('the editor renders as a canvas with a toolbar', !!(await page.$('.graph .gview')) && !!(await page.$('.graph .gtool')));
+  const tops = await page.$$eval('.gtool .og-btn', (els) => els.filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().top)));
+  ok('a wide window holds all eleven tools in one row', tops.length === 11 && new Set(tops).size === 1, tops);
   await page.waitForTimeout(300);
 
   const src = await place(page, 0.15, 0.3, '', 'Sources: Motion');
@@ -432,6 +440,14 @@ let saved = null;
   ok('a drag across the grid selects no text', gridClean === true);
   const us = await page.evaluate(() => [getComputedStyle(document.body).userSelect, getComputedStyle(document.querySelector('input') || document.createElement('input')).userSelect]);
   ok('text selection is off app-wide and on in fields', us[0] === 'none' && us[1] === 'text', us);
+  const hint = await page.evaluate(() => {
+    const v = document.querySelector('.gview').getBoundingClientRect();
+    const r = document.createRange();
+    r.selectNodeContents(document.querySelector('.gempty'));
+    const t = r.getBoundingClientRect();
+    return Math.round(t.left + t.width / 2 - (v.left + v.width / 2));
+  });
+  ok('the empty-canvas hint is centered on the canvas (ph-3y4)', Math.abs(hint) < 2, hint);
   // Zoomed out so a five-node chain fits the card's canvas.
   await page.click('.gtool button[aria-label="Zoom out"]');
   await page.click('.gtool button[aria-label="Zoom out"]');
@@ -451,6 +467,14 @@ let saved = null;
   await shot('menu-categories');
   await page.keyboard.press('ArrowRight');
   ok('Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 3);
+  const mt = await page.evaluate(() => {
+    const cs = (s) => getComputedStyle(document.querySelector(s));
+    return { head: parseFloat(cs('.gpal .gpal-head').fontSize), item: parseFloat(cs('.gpal .gpal-item').fontSize),
+      search: parseFloat(cs('.gpal input').fontSize), transform: cs('.gpal .gpal-head').textTransform };
+  });
+  ok('add menu: headers in sentence case at the row size, search text near it (ph-kiq)', mt.transform === 'none' && mt.head === mt.item && mt.search <= mt.item * 1.15, mt);
+  const headInk = await inkUnder(page, '.gpal .gpal-head:not([data-cur])');
+  ok('...headers at 4.5:1 or better per theme', Object.values(headInk).every((x) => x >= 4.5), headInk);
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(100);
@@ -477,7 +501,7 @@ let saved = null;
   await page.locator('.gpal input').fill('cl');
   const found = await page.locator('.gpal .gpal-item').allTextContents();
   ok('typing searches every category and flattens the results', await page.locator('.gpal .gpal-head').count() === 0
-    && found.some((t) => /^Clamp\s*Math/.test(t.trim())) && found.some((t) => /linear clamp\s*Maps/.test(t.trim())), found);
+    && found.some((t) => /^Clamp\s*Math/.test(t.trim())) && found.some((t) => /^Linear clamp\s*Maps/.test(t.trim())), found);
   await shot('menu-search');
   await page.keyboard.press('Escape');
 
@@ -503,6 +527,24 @@ let saved = null;
   ok('Shift+A opens the menu at the pointer', !!sa && Math.abs(sa.x - (vp.x + vp.width * 0.6)) < 2 && sa.y <= vp.y + vp.height * 0.15 + 2, sa);
   await page.keyboard.press('Escape');
 
+  // An opened category below the fold scrolls into view; a long one keeps its header (ph-hui).
+  await page.mouse.click(vp.x + vp.width * 0.5, vp.y + vp.height * 0.3, { button: 'right' });
+  const inList = (sel, last) => page.evaluate(([s, last]) => {
+    const l = document.querySelector('.gpal-list').getBoundingClientRect();
+    const els = [...document.querySelectorAll(s)];
+    const e = last ? els[els.length - 1] : els[0];
+    if (!e) return null;
+    const b = e.getBoundingClientRect();
+    return b.top >= l.top - 0.5 && b.bottom <= l.bottom + 0.5;
+  }, [sel, last]);
+  await page.locator('.gpal .gpal-head', { hasText: 'Targets: Toy outputs' }).click();
+  await page.waitForTimeout(100);
+  ok('opening the last category scrolls its items into view (ph-hui)', await inList('.gpal .gpal-item[data-nested]', true));
+  await page.locator('.gpal .gpal-head', { hasText: 'Sources: Generator' }).click();
+  await page.waitForTimeout(100);
+  ok('...and a long one keeps its header on screen', await inList('.gpal .gpal-head[aria-expanded=true][data-group="Sources: Generator"]', false));
+  await page.keyboard.press('Escape');
+
   // Link-drag-search: a source's wire dropped on empty canvas near a corner.
   const src = await place(page, 0.05, 0.3, '', 'Sources: Motion');
   const S = nodeBy(page, src);
@@ -515,6 +557,9 @@ let saved = null;
     && offered.length > 0 && !offered.some((t) => /^(Value|Integer|Boolean)Input$/.test(t.trim())) && !offered.some((t) => /Sources: /.test(t))
     && offered.some((t) => /^Math/.test(t.trim())) && offered.some((t) => /Targets: /.test(t)), [...groupsOf]);
   ok('...clamped inside the editor at the corner', await inside());
+  const names = await page.$$eval('.gpal .gpal-item', (els) => els.map((e) => [e.firstChild.textContent.trim(), (e.querySelector('.gpal-count') || {}).textContent]));
+  const own = names.filter(([, g]) => ['Input', 'Math', 'Logic', 'Converter', 'Maps'].includes(g));
+  ok('op and map names share one case: sentence case (ph-kiq)', own.length > 10 && own.every(([n]) => /^[A-Z][^A-Z]*$/.test(n)), own.filter(([n]) => !/^[A-Z][^A-Z]*$/.test(n)));
   await shot('menu-link-drag-search');
   await page.locator('.gpal input').fill('thresh');
   await page.keyboard.press('Enter');
@@ -571,6 +616,51 @@ let saved = null;
   // 2026-10-02 design review, typed nodes.
   const opInk = await inkUnder(page, '.gnode .grow input:not([type=checkbox])');
   ok('op node values read as live fields, 4.5:1 or better per theme (ph-6uf)', Object.values(opInk).every((x) => x >= 4.5), opInk);
+  const icons = await page.$$eval('.gnode .ghead > .gicon', (els) => els.map((e) => [e.tagName.toLowerCase(), e.textContent.trim()]));
+  ok('node heads draw one SVG icon set, no text glyphs, no "?" (ph-2ud)', icons.length >= 6 && icons.every(([t, s]) => t === 'svg' && s === ''), icons);
+  const through = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('.gnode')].map((n) => n.getBoundingClientRect());
+    const bad = [];
+    for (const p of document.querySelectorAll('.gwire[data-link]')) {
+      const m = p.getScreenCTM();
+      const L = p.getTotalLength();
+      const pt = (t) => { const q = p.getPointAtLength(t); return new DOMPoint(q.x, q.y).matrixTransform(m); };
+      const a = pt(0), b = pt(L);
+      const ends = nodes.filter((r) => (Math.abs(a.x - r.right) < 2 && a.y >= r.top && a.y <= r.bottom) || (Math.abs(b.x - r.left) < 2 && b.y >= r.top && b.y <= r.bottom));
+      for (let i = 1; i < 80; i++) {
+        const q = pt(L * i / 80);
+        if (Math.hypot(q.x - a.x, q.y - a.y) < 6 || Math.hypot(q.x - b.x, q.y - b.y) < 6) continue;
+        if (ends.some((r) => q.x > r.left + 2 && q.x < r.right - 2 && q.y > r.top + 2 && q.y < r.bottom - 2)) { bad.push(p.dataset.wire); break; }
+      }
+    }
+    return bad;
+  });
+  ok('a backward link exits right and re-enters left, clear of its own two nodes (ph-23p)', through.length === 0, through);
+  const HL = 'rgb(1, 160, 2)';
+  await page.evaluate((c) => document.documentElement.style.setProperty('--highlight', c), HL);
+  await S.focus();
+  await page.keyboard.press('Tab');
+  const fSock = await page.evaluate(() => { const e = document.activeElement; return [e.matches(':focus-visible'), getComputedStyle(e).outlineColor, 'sock' in e.dataset]; });
+  await page.keyboard.press('Shift+Tab');
+  const fNode = await page.evaluate(() => { const e = document.activeElement; return [e.matches(':focus-visible'), getComputedStyle(e).outlineColor, e.classList.contains('gnode'), getComputedStyle(e).boxShadow]; });
+  await page.click('.gtool button:has-text("Box select")');
+  await page.waitForTimeout(250);   // .og-btn eases its border over .12s
+  const pressed = await page.locator('.gtool button:has-text("Box select")').evaluate((e) => getComputedStyle(e).borderColor);
+  await page.click('.gtool button:has-text("Box select")');
+  await page.evaluate(() => document.documentElement.style.removeProperty('--highlight'));
+  ok('focus rings, node selection and a pressed tool ride --highlight (ph-ckg)', fSock[0] && fSock[2] && fSock[1] === HL && fNode[0] && fNode[2] && fNode[1] === HL
+    && fNode[3].includes(HL) && pressed === HL, [fSock, fNode, pressed]);
+  await page.click('.gtool button:has-text("Fit")');
+  await page.waitForTimeout(100);
+  const type = await page.evaluate(() => {
+    const k = Number((/scale\(([\d.]+)\)/.exec(document.querySelector('.glayer').style.transform) || [])[1]);
+    const px = [];
+    for (const el of document.querySelectorAll('.gnode *, .gval')) {
+      if (el.matches('input, select') || [...el.childNodes].some((n) => n.nodeType === 3 && n.data.trim())) px.push(parseFloat(getComputedStyle(el).fontSize));
+    }
+    return { k, css: Math.min(...px), screen: Math.round(Math.min(...px) * k * 100) / 100 };
+  });
+  ok('node text is 11 px or more and Fit keeps it at 9 px or more on screen (ph-6e1)', type.css >= 11 && type.screen >= 9 - 0.01, type);
   if (SHOTS) {
     // Screenshot only: a taller canvas than the card gives, then Fit.
     await page.addStyleTag({ content: '.gview { min-height: 640px !important; }' });
@@ -619,6 +709,35 @@ let saved = null;
   await touch('touchEnd', 0);
   await page.waitForTimeout(100);
   ok('two fingers spreading on the canvas zoom in', await scale() > k0, [k0, await scale()]);
+
+  // Phone width: one toolbar row, the rest under More, Fit from the graph's top-left (ph-18q).
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  // The phone renderer class lays out its own grid; its card comes back as a preview.
+  const card = await page.$eval('.graph', (g) => ({ inert: g.inert })).catch(() => null);
+  if (card && card.inert) {
+    await page.locator('.dash-item:has(.graph) .dash-open').scrollIntoViewIfNeeded();
+    await page.locator('.dash-item:has(.graph) .dash-open').click();
+    await page.waitForTimeout(200);
+  }
+  ok('the editor opens at 390 px', !!(await page.$('.graph:not([inert])')), card);
+  const row = await page.$$eval('.gtool > .og-btn', (els) => els.filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().top)));
+  ok('at 390 px the toolbar is one row: + Add, Fit, More (ph-18q)', row.length === 3 && new Set(row).size === 1, row);
+  await page.click('.gtool .gmore-btn');
+  const rest = await page.$$eval('.gmore .og-btn', (els) => els.map((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.left >= 0 && b.right <= innerWidth && b.bottom <= innerHeight; }));
+  ok('...More opens the other nine tools, on screen', rest.length === 9 && rest.every(Boolean), rest);
+  await page.keyboard.press('Escape');
+  ok('...and Escape closes it, leaving the editor open', !(await page.$eval('.gmore', (e) => e.getClientRects().length)) && !!(await page.$('.graph:not([inert])')));
+  await page.click('.gtool button:has-text("Fit")');
+  await page.waitForTimeout(100);
+  if (SHOTS) await page.screenshot({ path: SHOTS + '/phone-fit.png' });
+  const phone = await page.evaluate(() => {
+    const v = document.querySelector('.gview').getBoundingClientRect();
+    const seen = [...document.querySelectorAll('.gnode')].map((n) => n.getBoundingClientRect())
+      .filter((b) => b.right > v.left && b.left < v.right && b.bottom > v.top && b.top < v.bottom);
+    return { seen: seen.length, cut: seen.filter((b) => b.left < v.left - 0.5 || b.top < v.top - 0.5).length };
+  });
+  ok('...Fit at the zoom floor starts at the graph\'s top-left: nodes in view, none cut at the left or top', await scaleOf(page) >= 1 && phone.seen > 0 && phone.cut === 0, phone);
   ok('no page errors (touch)', errors.length === 0, errors);
   await ctx.close();
 }
