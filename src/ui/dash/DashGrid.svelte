@@ -18,7 +18,8 @@
    * second instance, `resolve(key) -> title|null` names a module member this
    * view can draw. An item may carry `min(look, orientation)`, `selfLabeled`
    * and, for a nest, `retitle(name)`. Internal: `ondragout` and `target` wire a
-   * nest's subgrid to its parent.
+   * nest's subgrid to its parent; `picked` (bindable) is the selection count,
+   * so a nest's bar yields its row to its subgrid's selection.
    *
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
@@ -35,18 +36,25 @@
    *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
    *   its measured content (grid.js floorOf): the ghost shows the refusal and
    *   the live region says it, never a silent clamp. The measured height
-   *   binds only a resize that changes height, at widths no wider than it was
-   *   measured at, and never above the height the resize started from.
-   * - Content is measured per (id, orientation, presentation, cell edge),
-   *   never lowered in a session: min-content width with the title at zero
+   *   binds at widths no wider than it was measured at, and never above the
+   *   height the resize started from.
+   * - Content is measured per (id, orientation, presentation, cell edge):
+   *   min-content width, never lowered in a session, with the title at zero
    *   width (it truncates) and a nest's subgrid replaced by its widest
-   *   member's floor (the nested grid's `data-floor`), and the height at the
-   *   current width. A measure writes and restores inline styles in one
-   *   task, so nothing paints and no observer sees a size change. A committed
-   *   card under its width floor grows (grid.js growWidth, layout.fit, no
-   *   undo step); one with no room clips at its frame.
-   * - Rows are minmax(cell, auto): `h` is a floor, and a card whose content
-   *   is taller grows its rows rather than clipping a control.
+   *   member's floor (the nested grid's `data-floor`); the height as last
+   *   measured at each width the card was drawn at. A measure writes and
+   *   restores inline styles in one task, so nothing paints and no observer
+   *   sees a size change. A committed card under its floor grows when it is
+   *   measured (load, a content, look or width change), width first (grid.js
+   *   growWidth, growHeight, layout.fit, no undo step), never later because
+   *   a neighbor moved away; one with no room clips at its frame. An
+   *   unplaced card is drawn at its content height (pack `fit`), and an add
+   *   is written once measured.
+   * - Rows are one cell (ph-29r): a card's rect is its cells, so the ghost
+   *   is the committed rect and a pointer maps to a row by the cell pitch.
+   * - Edit mode changes no geometry (ph-wia): its chrome is out of flow (the
+   *   head's tools, the status slot in the toolbar row, the palette and look
+   *   popovers), so a card measures and draws the same in both modes.
    * - Under 641 CSS px every item is stacked full width (mobile is
    *   ph-e82.7's ruling); a drag there commits a reading order, never cells.
    * - `ondropkey(key, rect)` takes a palette entry dragged onto the grid in
@@ -61,16 +69,17 @@
   import {
     dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
     switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
-    layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity,
+    layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity, palette, edited,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
   import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
-    RESIZE_FLOOR, cellsFor, floorOf, growWidth } from '../../model/grid.js';
+    RESIZE_FLOOR, cellsFor, floorOf, growWidth, growHeight } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
+  import { onTheme } from '../../model/theme.js';
   import { view } from '../../model/viewport.svelte.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, onduplicate = null, resolve = null } = $props();
+    ondragout = null, target = false, ondelete = null, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -107,16 +116,19 @@
   let sel = $state([]);          // selected ids (edit mode)
   // The active layout as it was when editing began (or it became active while
   // editing): the switch guard compares against it. Layouts save on every
-  // edit, so "changes" means changes since then, which Discard can take back.
+  // edit, so "changes" means the user's edits since then (a grow to the
+  // content floor is a repair, not one), which Discard can take back.
   let baseline = $state(null);
+  let baseEdits = 0;
   let pendingSwitch = $state(null);
   let layoutText = $state('');
   $effect(() => {
     const a = layouts.active;
     const on = !given && editing;
     // untrack (T23): the snapshot reads the whole layout and must not subscribe to it.
-    untrack(() => { baseline = on ? layoutJson(a) : null; pendingSwitch = null; });
+    untrack(() => { baseline = on ? layoutJson(a) : null; baseEdits = edited(); pendingSwitch = null; });
   });
+  const changed = () => baseline !== null && edited() !== baseEdits && layoutJson() !== baseline;
   let marquee = $state(null);    // {x0, y0, x1, y1, add} client px while a marquee is drawn
   let dragMoved = false;         // the grip's click after a real drag is not a selection
 
@@ -130,13 +142,14 @@
   // Each placed item carries its entry's `look` (grid.js pack) and a setter
   // bound to THIS grid's map, so one control in two nests keeps two looks.
   const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? (pin.group ? groupPins(pin) : pin) : null);
-  const placed = $derived(layout.arrange(all, cols, live)
+  const placed = $derived(layout.arrange(all, cols, live, fitH)
     .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
   // The drop targets: where the dragged cards or the palette entry land on release.
   const ghosts = $derived(stack ? [] : live ? placed.filter((p) => (pin.group || [pin]).some((g) => g.id === p.id))
     : dropRect ? [dropRect] : []);
   const selSet = $derived(new Set(editing ? sel.filter((id) => placed.some((p) => p.id === id)) : []));
   const selItems = $derived(placed.filter((p) => selSet.has(p.id)));
+  $effect(() => { picked = selSet.size; });
   const canDup = (p) => (p.kind === 'nest' ? !given : !!onduplicate);
   const canDrop = (p) => p.kind === 'nest' || !!ondelete || !!onremove;
   const mq = $derived.by(() => {
@@ -160,7 +173,8 @@
   }
 
   // ---- content floor -------------------------------------------------------------
-  // {[keyOf]: {w, h, at}}: px needed (cell gutter included) and the width in cells `h` was measured at.
+  // {[keyOf]: {w, hs}}: px needed, cell gutter included: `w` the min-content
+  // width, `hs` {[width in cells]: height} the last height drawn at that width.
   let need = $state({});
   const dirty = new Set();
   const keyOf = (p, o) => p.id + '|' + o + '|' + ((p.look && p.look.pres) || '') + '|' + grid.cell;
@@ -180,43 +194,81 @@
     const k = Math.max(0, ...[...sub.querySelectorAll(':scope > .dash-cell')].map((c) => Number(c.dataset.floor) || 0));
     return Math.max(styled(sub, 'display', 'none', own), chrome + k * cell);
   }
-  /** {w, h} px the card in `cell` needs, gutter included; null for an opened card. */
+  /**
+   * {w, h} px the card in `cell` needs, gutter included; null for an opened
+   * card. A floated child of the body is a host's edit chrome (Home's
+   * Remove), never content: it is out while the card is measured.
+   */
   function measure(cell) {
     const it = cell.firstElementChild;
     if (!it || it.classList.contains('open')) return null;
     const [px, py] = padOf(cell);
-    return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
+    const chrome = [...(it.querySelector(':scope > .dash-body')?.children || [])].filter((c) => getComputedStyle(c).float !== 'none');
+    const was = chrome.map((c) => c.style.getPropertyValue('display'));
+    chrome.forEach((c) => c.style.setProperty('display', 'none'));
+    try {
+      return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
+    } finally {
+      chrome.forEach((c, i) => c.style.setProperty('display', was[i]));
+    }
+  }
+  /** Cells of content height at width `w`: the tallest drawn at `w` or wider (narrower only wraps more); 0 unmeasured. */
+  function tallAt(m, w) {
+    let px = 0;
+    for (const k in m.hs) if (+k >= w && m.hs[k] > px) px = m.hs[k];
+    return cellsFor(px, grid.cell);
   }
   /**
-   * The floor function for item `p` (grid.js resizeRect `min`): `from` is the
-   * rect the resize started at, `tall` true when the resize changes height.
+   * The floor function for item `p` (grid.js resizeRect `min`): its height
+   * part never above `cap`, the height a resize started from.
    */
-  const minOf = (p, from = p, tall = false) => (w, h) => {
+  const minOf = (p, cap = Infinity) => (w, h) => {
     const o = orientationOf(w, h);
     const fixed = (p.min && p.min(p.look, o)) || RESIZE_FLOOR;
     const m = need[keyOf(p, o)];
-    return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), tall && w <= m.at ? Math.min(from.h, cellsFor(m.h, grid.cell)) : 0] : []);
+    return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
-  const short = (p) => p.w < minOf(p)(p.w, p.h)[0];
-  /** Measure what changed or is new, re-clamp a resize in flight, then grow one committed card under its floor. */
+  /** grid.js pack `fit`: an item's floor height in cells at width `w`, null before it was drawn there. */
+  function fitH(it, w, h) {
+    const m = need[keyOf(it, orientationOf(w, h))];
+    return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
+  }
+  const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
+  // Ids measured since their last grow check: a card grows when its content
+  // is measured, never because a neighbor moved out of its way.
+  const fresh = new Set();
+  /**
+   * Measure what changed, is new or is drawn at a new width; re-clamp a
+   * resize in flight; write an add once measured; then grow one freshly
+   * measured card under its floor.
+   */
   function settle() {
     frame = 0;
-    if (stack || !gridEl) return;
+    // Never before the grid knows its own width: a rect placed on a stale
+    // column count would be measured and written there.
+    if (stack || !gridEl || !width || cellCount(gridEl.clientWidth, grid.cell) !== cols) return;
     let grew = false;
     for (const p of placed) {
       const el = cellEls.get(p.id);
       const k = keyOf(p, orientationOf(p.w, p.h));
-      if (!el || (need[k] && !dirty.has(p.id))) continue;
+      const o = need[k];
+      if (!el || (o && !dirty.has(p.id) && o.hs[p.w] != null)) continue;
       const m = measure(el);
       if (!m) continue;
-      const o = need[k];
-      const next = { w: Math.max(m.w, o ? o.w : 0), h: o && o.at === p.w ? Math.max(m.h, o.h) : m.h, at: p.w };
-      if (!o || next.w !== o.w || next.h !== o.h || next.at !== o.at) { need[k] = next; grew = true; }
+      fresh.add(p.id);
+      // A content change forgets the heights drawn at other widths.
+      const hs = { ...(o && !dirty.has(p.id) ? o.hs : {}), [p.w]: m.h };
+      const w = Math.max(m.w, o ? o.w : 0);
+      if (!o || w !== o.w || JSON.stringify(hs) !== JSON.stringify(o.hs)) { need[k] = { w, hs }; grew = true; }
     }
     dirty.clear();
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
+    const held = layout.held();
+    if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols, null); return; }
     for (const p of placed) {
-      const r = short(p) && growWidth(placed, p.id, minOf(p)(p.w, p.h)[0], cols);
+      if (!fresh.delete(p.id) || !layout.saved(p.id)) continue;
+      const [fw, fh] = minOf(p)(p.w, p.h);
+      const r = (p.w < fw && growWidth(placed, p.id, fw, cols)) || (p.h < fh && growHeight(placed, p.id, fh));
       if (r) { layout.fit(all, cols, r); return; }
     }
   }
@@ -227,6 +279,14 @@
     placed; grid.cell; editing; stack;
     later();
   });
+  $effect(() => {
+    // Home commits through its own controller: unplaced cards take these heights there too.
+    const l = layout;
+    l.measured(stack ? null : fitH);
+    return () => l.measured(null);
+  });
+  // The look scale resizes every font without touching the DOM.
+  $effect(() => onTheme(() => { for (const id of cellEls.keys()) dirty.add(id); later(); }));
   $effect(() => {
     // A card's content changed (catalog adoption, a presentation, an option list, a nest member's floor): measure it again.
     const top = (n) => { while (n && n.parentElement !== gridEl) n = n.parentElement; return n; };
@@ -250,26 +310,24 @@
   const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
 
-  /** Client point -> cell; rows past the grid's end are cell-sized. */
+  /** Client point -> cell: rows are one cell each, the same pitch as the columns. */
   function cellAt(clientX, clientY) {
     const r = gridEl.getBoundingClientRect();
-    const x = Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left) / grid.cell)));
-    const tracks = getComputedStyle(gridEl).gridTemplateRows.split(' ').map(parseFloat).filter(Number.isFinite);
-    let y = 0, top = r.top;
-    for (; y < tracks.length && clientY >= top + tracks[y]; y++) top += tracks[y];
-    if (y === tracks.length) y += Math.max(0, Math.floor((clientY - top) / grid.cell));
-    return { x, y };
+    return { x: Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left) / grid.cell))),
+      y: Math.max(0, Math.floor((clientY - r.top) / grid.cell)) };
   }
 
   // ---- pointer: move / resize ------------------------------------------------
-  function grabStart(id) {
+  /** `cx, cy` the press: the card keeps the grabbed cell under the pointer. */
+  function grabStart(id, cx, cy) {
     if (stack) { stackOrder = placed.map((p) => p.id); pin = { id, mode: 'stack' }; return; }
     const p = placed.find((q) => q.id === id);
     if (!p) return;
     dragMoved = false;
     stackOrder = displayList.map((q) => q.id);
+    const c = cx == null ? { x: p.x, y: p.y } : cellAt(cx, cy);
     const group = selSet.size > 1 && selSet.has(id) ? selItems.map(({ id: i, x, y, w, h }) => ({ id: i, x, y, w, h })) : null;
-    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move', ...(group ? { group, x0: p.x, y0: p.y } : {}) };
+    pin = { id, x: p.x, y: p.y, w: p.w, h: p.h, mode: 'move', gx: c.x - p.x, gy: c.y - p.y, ...(group ? { group, x0: p.x, y0: p.y } : {}) };
   }
   function resizeStart(id, edge = 'se') {
     const p = placed.find((q) => q.id === id);
@@ -306,7 +364,7 @@
   function resizeTo(id, c) {
     const p = placed.find((q) => q.id === id);
     if (!p) return;
-    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(p, pin.start, /[ns]/.test(pin.edge)));
+    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(p, pin.start.h));
     if (!pin.c || pin.c.x !== c.x || pin.c.y !== c.y) pin = { ...pin, c };
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
     const b = blocker(placed, r, id);
@@ -328,14 +386,15 @@
    */
   function moveTo(id, c, cx, cy) {
     const it = placed.find((q) => q.id === id);
-    if (c.x !== pin.x || c.y !== pin.y) dragMoved = true;
-    if (pin.group) { pin = { ...pin, x: c.x, y: c.y }; return; }
+    const x = Math.max(0, Math.min(cols - pin.w, c.x - pin.gx)), y = Math.max(0, c.y - pin.gy);
+    if (x !== pin.x || y !== pin.y) dragMoved = true;
+    if (pin.group) { pin = { ...pin, x, y }; return; }
     if (given && ondragout) {
-      const r = (gridEl.closest('.nest-body') || gridEl).getBoundingClientRect();
+      const r = (gridEl.closest('.dash-body') || gridEl).getBoundingClientRect();
       if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) {
         if (!pin.out) announce('Release to move ' + titleOf(id) + ' out of the nest');
         pin = { ...pin, out: true, cx, cy };
-        ondragout(it, cx, cy, 'move');
+        ondragout({ ...it, gx: pin.gx, gy: pin.gy }, cx, cy, 'move');
         return;
       }
       if (pin.out) ondragout(it, cx, cy, 'cancel');
@@ -347,14 +406,14 @@
       pin = { ...pin, into: nest.id, cx, cy };
       return;
     }
-    pin = { ...pin, x: c.x, y: c.y, into: null, out: false, cx, cy };
+    pin = { ...pin, x, y, into: null, out: false, cx, cy };
   }
-  /** A member dragged out of nest `nestId` (its grid's ondragout): ghost while moving, top level on release. */
+  /** A member dragged out of nest `nestId` (its grid's ondragout, `gx, gy` its grabbed cell): ghost while moving, top level on release. */
   function childOut(nestId, it, cx, cy, phase) {
     if (phase === 'cancel' || !it) { dropRect = null; return; }
     const c = cellAt(cx, cy);
     const w = Math.min(cols, it.w);
-    const r = { x: Math.min(c.x, cols - w), y: c.y, w, h: it.h };
+    const r = { x: Math.max(0, Math.min(c.x - (it.gx || 0), cols - w)), y: Math.max(0, c.y - (it.gy || 0)), w, h: it.h };
     if (phase === 'move') {
       if (!dropRect || r.x !== dropRect.x || r.y !== dropRect.y) dropRect = r;
       return;
@@ -370,7 +429,7 @@
   function pointerEnd(id) {
     if (!pin || pin.id !== id) return;
     if (pin.out) {
-      ondragout(placed.find((q) => q.id === id), pin.cx, pin.cy, 'end');
+      ondragout({ ...placed.find((q) => q.id === id), gx: pin.gx, gy: pin.gy }, pin.cx, pin.cy, 'end');
     } else if (pin.group) {
       layout.move(all, cols, groupPins(pin));
       announce(pin.group.length + ' cards moved');
@@ -481,19 +540,14 @@
     if (q) announce(titleOf(id) + ' at ' + where(q));
     refocus(id);
   }
-  /** Enter on a grip: the card's presentation picker (a [data-look] select its body draws), else say there is none. */
-  function keyLook(id) {
-    const s = cellEls.get(id)?.querySelector('[data-look] select');
-    if (!s) { announce(titleOf(id) + ' has no presentation choices'); return; }
-    s.focus();
-    try { s.showPicker(); } catch (e) { /* focused is enough where showPicker is missing */ }
-  }
+  /** Enter on a grip with no look popover in its card (DashItem opens one where there is). */
+  const keyLook = (id) => announce(titleOf(id) + ' has no presentation choices');
   /** Delete on a grip: the selection when the card is in it, else the card. */
   const keyDelete = (id) => deleteSel(selSet.has(id) ? selItems : placed.filter((p) => p.id === id));
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
-    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p, p, dh !== 0));
+    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p, p.h));
     const b = blocker(placed, r, id);
     if (b) { announce(titleOf(id) + ': blocked by ' + titleOf(b.id)); return; }
     layout.move(all, cols, { id, x: r.x, y: r.y, w: r.w, h: r.h });
@@ -554,7 +608,7 @@
     const to = e.currentTarget.value;
     e.currentTarget.value = layouts.active;
     if (to === layouts.active) return;
-    if (baseline !== null && layoutJson() !== baseline) {
+    if (changed()) {
       pendingSwitch = to;
       announce(layouts.active + ' changed while editing: keep or discard');
       return;
@@ -584,7 +638,7 @@
     try {
       const name = importLayout(layoutText);
       layoutText = '';
-      if (baseline !== null && layoutJson() !== baseline) {
+      if (changed()) {
         pendingSwitch = name;
         announce('Imported layout ' + name + ': keep or discard ' + layouts.active + ' changes');
       } else {
@@ -641,17 +695,52 @@
 
 <svelte:window onresize={() => (winW = window.innerWidth)} onkeydown={onKey} />
 
+{#snippet selbar()}
+  <div class="dash-selbar" class:over={!!given} role="group" aria-label="Selection">
+    <span class="sel-n">{selSet.size} selected</span>
+    <button type="button" class="og-btn sm" disabled={!selItems.some(canDup)} onclick={duplicateSel}
+            title={selItems.some(canDup) ? 'Place a copy' : 'Placed once per grid'}>Duplicate</button>
+    {#if selSet.size > 1}
+      <button type="button" class="og-btn sm" onclick={() => arrangeSel('left')}>Align left</button>
+      <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
+      {#if selSet.size > 2}<button type="button" class="og-btn sm" onclick={() => arrangeSel('spread')}>Spread</button>{/if}
+    {/if}
+    <button type="button" class="og-btn sm" disabled={!selItems.some(canDrop)} onclick={() => deleteSel()}>Remove</button>
+    <button type="button" class="og-btn sm" onclick={() => { sel = []; announce('Selection cleared'); }}>Clear</button>
+  </div>
+{/snippet}
+
 <div class="dash-wrap" data-density={given ? null : density()}>
   {#if !given}
-  <div class="dash-toolbar">
+  <!-- One row in both modes: the status slot swaps the hint, the selection
+       and the switch guard in place, so the grid never moves. -->
+  <div class="dash-toolbar" class:stack>
     <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active} onchange={pick}>
       {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
     </select>
     {#if editing}
+    <div class="dash-slot">
+      {#if pendingSwitch}
+        <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
+          <span class="sel-n">{layouts.active} changed while editing</span>
+          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
+          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
+          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
+        </div>
+      {:else if selSet.size}
+        {@render selbar()}
+      {:else}
+        <span class="dash-hint" title="Drag grips to move, edges to resize">Drag grips to move, edges to resize</span>
+      {/if}
+    </div>
       <div class="edit-ops" role="group" aria-label="Layout editing">
         <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
                 onclick={undoOnce}>Undo</button>
         <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
+        {#if palette.shown}
+          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
+                  onclick={() => (palette.open = !palette.open)}>Modules</button>
+        {/if}
         <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
       </div>
       <div class="dash-menu og-panel" id={menuId} popover role="group" aria-label={'Layout ' + layouts.active}
@@ -711,34 +800,12 @@
     <button type="button" class="og-btn sm edit-toggle" class:done-btn={editing} aria-pressed={editing}
             onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
   </div>
-  {#if pendingSwitch}
-    <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
-      <span class="sel-n">{layouts.active} changed while editing</span>
-      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
-      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
-      <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
-    </div>
-  {:else if editing && !selSet.size}
-    <p class="dash-hint">Drag grips to move, edges to resize</p>
-  {/if}
-  {/if}
-  {#if editing && selSet.size}
-    <div class="dash-selbar" role="group" aria-label="Selection">
-      <span class="sel-n">{selSet.size} selected</span>
-      <button type="button" class="og-btn sm" disabled={!selItems.some(canDup)} onclick={duplicateSel}
-              title={selItems.some(canDup) ? 'Place a copy' : 'Placed once per grid'}>Duplicate</button>
-      {#if selSet.size > 1}
-        <button type="button" class="og-btn sm" onclick={() => arrangeSel('left')}>Align left</button>
-        <button type="button" class="og-btn sm" onclick={() => arrangeSel('top')}>Align top</button>
-        {#if selSet.size > 2}<button type="button" class="og-btn sm" onclick={() => arrangeSel('spread')}>Spread</button>{/if}
-      {/if}
-      <button type="button" class="og-btn sm" disabled={!selItems.some(canDrop)} onclick={() => deleteSel()}>Remove</button>
-      <button type="button" class="og-btn sm" onclick={() => { sel = []; announce('Selection cleared'); }}>Clear</button>
-    </div>
+  {:else if editing && selSet.size}
+    {@render selbar()}
   {/if}
 
-  <div class="dash-grid" class:stack class:editing class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
-       style={'--cell:' + grid.cell + 'px;--cols:' + cols} role="presentation"
+  <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
+       style={'--cell:' + grid.cell + 'px;--cols:' + cols + (!given && editing && palette.shown && palette.open ? ';--reserve:' + palette.h + 'px' : '')} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
     {#each displayList as item, i (item.id)}
@@ -755,7 +822,7 @@
           selected={selSet.has(item.id)}
           clip={!stack && !pin && short(item)}
           onselect={(additive) => select(item.id, additive)}
-          ongrabstart={() => grabStart(item.id)}
+          ongrabstart={(x, y) => grabStart(item.id, x, y)}
           ongrabmove={(x, y) => pointerMove(item.id, x, y)}
           ongrabend={() => pointerEnd(item.id)}
           onresizestart={(edge) => resizeStart(item.id, edge)}
@@ -795,14 +862,23 @@
     gap: 6px;
   }
 
-  /* Wraps only below the width the whole bar needs (phone): the picker keeps
-     the first row, the edit group and the toggle follow. */
+  /* One row: the slot between the picker and the edit group swaps its
+     contents in place. Only the stacked phone grid wraps (ph-e82.7 owes
+     its ruling): the picker keeps the first row, the edit group follows. */
   .dash-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
     align-items: center;
     gap: 6px;
+  }
+  .dash-toolbar.stack { flex-wrap: wrap; justify-content: flex-end; }
+  /* ponytail: clips past ~960 px with three or more selected; a menu for
+     the align ops if that width ever edits. */
+  .dash-slot {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
   }
   .scale { display: flex; gap: 2px; }
   .view-row { align-items: center; gap: 12px; }
@@ -810,24 +886,39 @@
   .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: 5px 28px 5px 10px; margin-right: auto; }
   .edit-ops { display: flex; gap: 6px; }
   .dash-hint {
-    margin: 0;
+    min-width: 0;
     font-size: .72rem;
     color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .dash-selbar {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     font-size: .8rem;
     color: var(--ink-hi);
+    white-space: nowrap;
+  }
+  /* A nest's selection takes its bar's edit ops' place (Nest hides them
+     meanwhile): `--bleed` is how far the subgrid reaches past the nest's
+     frame, 6 px the bar's gap above the subgrid. */
+  .dash-selbar.over {
+    position: absolute;
+    z-index: 3;
+    right: var(--bleed, 0px);
+    bottom: calc(100% + 6px);
+    max-width: calc(100% - 2 * var(--bleed, 0px));
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .sel-n { margin-right: 6px; font-variant-numeric: tabular-nums; }
   .marquee {
     position: absolute;
     z-index: 2;
-    border: 1px solid var(--intent);
-    background: color-mix(in srgb, var(--intent) 12%, transparent);
+    border: 1px solid var(--highlight);
+    background: color-mix(in srgb, var(--highlight) 12%, transparent);
     pointer-events: none;
   }
 
@@ -883,19 +974,25 @@
     border-color: var(--line-4);
   }
 
-  /* Tracks are exactly one cell; the spacing lives inside .dash-cell so the
-     cell pitch IS the cell edge (test/dash-measure.test.mjs measures it). */
+  /* Tracks are exactly one cell, rows too; the spacing lives inside
+     .dash-cell so the cell pitch IS the cell edge
+     (test/dash-measure.test.mjs measures it). An empty grid keeps a few rows
+     to drop onto, in both modes, so editing never resizes a nest. The top
+     grid is the anchor the palette overlays; it reserves the palette's
+     height (`--reserve`) below its top, so the page ends past the palette
+     and no card moves. */
   .dash-grid {
     position: relative;
     display: grid;
     grid-template-columns: repeat(var(--cols), var(--cell));
-    grid-auto-rows: minmax(var(--cell), auto);
+    grid-auto-rows: var(--cell);
     min-width: 0;
+    min-height: calc(var(--cell) * 3);
   }
-  .dash-grid.stack { grid-template-columns: minmax(0, 1fr); }
-  /* Edit mode shows the cell lattice, so a drop target reads in cells; an
-     empty grid keeps a few rows to drop onto. */
-  .dash-grid.editing { min-height: calc(var(--cell) * 3); }
+  /* Top grid only: a nest's subgrid inherits --reserve and must not grow by it. */
+  .dash-grid.top { anchor-name: --dash-grid; min-height: max(calc(var(--cell) * 3), var(--reserve, 0px)); }
+  .dash-grid.stack { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
+  /* Edit mode shows the cell lattice, so a drop target reads in cells. */
   .dash-grid.editing:not(.stack) {
     background-image:
       linear-gradient(to right, var(--line-soft) 1px, transparent 1px),

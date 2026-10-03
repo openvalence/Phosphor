@@ -1,3 +1,7 @@
+<script module>
+  let seq = 0;
+</script>
+
 <script>
   /**
    * LookEditor.svelte: one placed field control's presentation and its
@@ -7,25 +11,35 @@
    * Constraints:
    * - Writes the placement's look only (grid.js setLook), never the machine.
    * - settings.js placementLook is the one rule: a refused part is named here
-   *   in words and the control keeps the catalog's value for it.
+   *   in words, in one fixed warn line, on the inputs it names
+   *   (aria-invalid); the control keeps the catalog's value for it.
    * - An emptied input clears that part back to the catalog's.
+   * - A popover, never inline (ph-wia): it takes no room in the card, so
+   *   edit mode measures and draws the card as it runs. DashItem opens it
+   *   (its head's look tool, Enter on the grip) and anchors it to the card
+   *   through the inherited `--card` anchor name.
    */
   import { placementLook, WIDGET } from '../model/settings.js';
   import { labelFor } from '../model/format.js';
 
   let { control, look = null, onchange } = $props();
 
+  const id = 'look-' + ++seq;
   const f = $derived(control.field);
   const cur = $derived(placementLook(f, look));
   const set = (patch) => onchange({ ...(look || {}), ...patch });
   const val = (e) => (e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value));
   const RANGE_PARTS = [['min', 'Min', 'min'], ['max', 'Max', 'max'], ['step', 'Step', 'step'], ['default', 'Default', 'dflt']];
+  // The parts each refusal names, by its first word (placementLook's errors).
+  const NAMES = { range: ['min', 'max'], step: ['step'], default: ['default'], toggle: ['a', 'b'] };
+  const bad = $derived(new Set(cur.errors.flatMap((e) => NAMES[e.split(' ')[0]] || [])));
+  const warn = $derived(cur.errors.join('; '));
 </script>
 
 {#if f.widget !== WIDGET.action && (control.presentations.length > 1 || cur.kind)}
-  <div class="look" role="group" aria-label={'Look of ' + labelFor(f)}>
+  <div class="look og-panel" {id} popover role="group" aria-label={'Look of ' + labelFor(f)}>
     {#if control.presentations.length > 1}
-      <select class="og-btn sm" aria-label={'Presentation of ' + labelFor(f)} value={cur.pres}
+      <select class="og-btn sm look-pres" aria-label={'Presentation of ' + labelFor(f)} value={cur.pres}
               onchange={(e) => set({ pres: e.currentTarget.value })}>
         {#each control.presentations as p (p)}<option value={p}>{p}</option>{/each}
       </select>
@@ -34,32 +48,51 @@
       {#each RANGE_PARTS as [k, label, own] (k)}
         <label>{label}
           <input type="number" step="any" value={look?.[k] ?? ''} placeholder={f[own] ?? ''}
-                 aria-label={label + ' of ' + labelFor(f)} onchange={(e) => set({ [k]: val(e) })} />
+                 aria-label={label + ' of ' + labelFor(f)} aria-invalid={bad.has(k)} aria-describedby={id + '-warn'}
+                 onchange={(e) => set({ [k]: val(e) })} />
         </label>
       {/each}
     {:else if cur.kind === 'toggle'}
       {#each [['a', 'Off writes'], ['b', 'On writes']] as [k, label] (k)}
         <label>{label}
           <input type="number" step="any" value={look?.[k] ?? ''} placeholder={cur.toggle[k]}
-                 aria-label={label + ', ' + labelFor(f)} onchange={(e) => set({ [k]: val(e) })} />
+                 aria-label={label + ', ' + labelFor(f)} aria-invalid={bad.has(k)} aria-describedby={id + '-warn'}
+                 onchange={(e) => set({ [k]: val(e) })} />
         </label>
       {/each}
     {/if}
-    {#each cur.errors as err (err)}<p class="field-reason">{err}</p>{/each}
+    {#if cur.kind}
+      <p class="look-warn" id={id + '-warn'} title={warn}>{warn}</p>
+    {/if}
   </div>
 {/if}
 
 <style>
+  /* Anchored under the card's head where anchor positioning exists; the
+     popover's centered default elsewhere. */
   .look {
-    display: flex;
-    flex-wrap: wrap;
+    position: fixed;
+    grid-template-columns: auto auto;
     align-items: center;
-    gap: 6px 10px;
-    margin-bottom: 8px;
+    gap: 6px 12px;
+    padding: 10px;
+    max-width: calc(100vw - 32px);
     font-size: .8rem;
     color: var(--ink-dim);
   }
-  .look label { display: flex; align-items: center; gap: 4px; }
+  .look:popover-open { display: grid; }
+  @supports (top: anchor(top)) {
+    .look {
+      position-anchor: var(--card);
+      inset: auto;
+      top: calc(anchor(top) + 24px);
+      left: anchor(left);
+      margin: 0;
+      position-try-fallbacks: flip-block, flip-inline;
+    }
+  }
+  .look-pres { grid-column: 1 / -1; justify-self: start; }
+  .look label { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .look input {
     width: 6em;
     padding: 4px 6px;
@@ -69,5 +102,20 @@
     color: var(--tx);
     font: inherit;
   }
-  .look .field-reason { flex-basis: 100%; margin: 0; }
+  /* A refusal is the fault color on the part it names; amber, never red (law 13). */
+  .look input[aria-invalid='true'] { border-color: var(--warn); }
+  /* One line, always there, never widening the panel: a refusal appearing
+     moves nothing. */
+  .look-warn {
+    grid-column: 1 / -1;
+    width: 0;
+    min-width: 100%;
+    height: 1.4em;
+    margin: 0;
+    color: var(--warn);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (pointer: coarse) { .look input { min-height: 40px; } }
 </style>

@@ -369,12 +369,19 @@ if (!LIVE) {
   ok('palette: the safety ops are modules', keys.some((k) => k.startsWith('safety:')), keys.filter((k) => k.startsWith('safety:')));
   ok('palette: Overview\'s summaries are modules', count('widget:telemetry') === 1);
 
-  // build: delete everything, then place from the palette
+  // build: delete everything, then place from the palette. The palette
+  // overlays the grid's top right (ph-wia); Modules puts it away so the cards
+  // under it are reached, and brings it back.
+  const paletteToggle = page.locator('.home .dash-toolbar .palette-toggle');
+  await paletteToggle.click();
+  ok('palette: Modules puts it away', await page.locator('.palette').count() === 0 && await paletteToggle.getAttribute('aria-pressed') === 'false');
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
     await page.locator('.home .home-remove').first().click();
     await page.waitForTimeout(80);
   }
   ok('build: every module deleted', (await topIds(page)).length === 0, await topIds(page));
+  await paletteToggle.click();
+  ok('palette: Modules brings it back', await page.locator('.palette').count() === 1);
   const estop = await page.locator('.topstrip .btn-estop').evaluate((el) => {
     const r = el.getBoundingClientRect();
     return !el.disabled && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight;
@@ -419,10 +426,13 @@ if (!LIVE) {
   // look (DESIGN §10.2, RFC-080 draft items 3, 4 by operator ruling): a placement
   // narrows its range above the reported value and takes another presentation.
   await editBtn(page).click();
+  await paletteToggle.click();
   await page.waitForTimeout(150);
   const cell = page.locator('.home .dash-cell[data-id="' + fieldKey + '"]');
   const fld = MODEL.fields.find((f) => f.uid === sliderUid);
   const cur = Number(await cell.locator('.field input[type=range]').inputValue());
+  // The look is a popover opened from the card head's look tool (ph-wia).
+  await cell.locator('.look-btn').click();
   const edge = cur < fld.max ? ['Min', (cur + fld.max) / 2] : ['Max', (fld.min + cur) / 2];
   await cell.locator('input[aria-label^="' + edge[0] + ' of"]').fill(String(edge[1]));
   await cell.locator('input[aria-label^="' + edge[0] + ' of"]').dispatchEvent('change');
@@ -440,6 +450,7 @@ if (!LIVE) {
 
   // an emptied home stays empty across a reload (never reseeded)
   await editBtn(page).click();
+  await paletteToggle.click();
   await page.locator('.home .dash-cell[data-id="' + nestId + '"] button', { hasText: 'Ungroup' }).click();
   for (let i = 0; i < 10 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().click();
   await page.reload();

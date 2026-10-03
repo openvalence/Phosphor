@@ -12,13 +12,23 @@
    *   that look. The search matches titles, sections and presentations.
    * - Safety ops are strip-bound: the top strip always carries them, a grid
    *   copy is optional and top level only (grid.js placeable).
+   * - An overlay on the top grid's top right corner, never in the page flow
+   *   (ph-wia): edit mode draws the grid where it runs. It grows with its
+   *   open sections and the page scrolls, never the palette; the grid
+   *   toolbar's Modules toggle (dashboard.svelte.js `palette`) puts it away
+   *   so the cards under it can be reached.
    */
   import { placeable, MODULE_MIME } from '../model/grid.js';
+  import { palette } from '../model/dashboard.svelte.js';
 
   let { entries, placed, nests = [], onadd, onremove } = $props();
 
   let q = $state('');
   let into = $state('');
+  $effect(() => {
+    palette.shown = true;
+    return () => { palette.shown = false; };
+  });
   const target = $derived(nests.some((n) => n.id === into) ? into : '');
   const sections = $derived.by(() => {
     const needle = q.trim().toLowerCase();
@@ -38,7 +48,8 @@
   }
 </script>
 
-<section class="palette surface-card" aria-label="Module palette">
+{#if palette.open}
+<section class="palette surface-card" aria-label="Module palette" bind:offsetHeight={palette.h}>
   <div class="palette-bar">
     <input class="palette-filter" type="search" placeholder="Search modules or looks" aria-label="Search modules" bind:value={q} />
     {#if nests.length}
@@ -79,10 +90,24 @@
     </details>
   {/each}
 </section>
+{/if}
 
 <style>
-  /* Grows with its open sections: the page scrolls, never the palette. */
-  .palette { padding: 8px 12px; }
+  /* Over the grid, out of flow: anchored to the top grid's top right
+     (DashGrid's --dash-grid) where anchor positioning exists, else just
+     under the grid's toolbar row. */
+  .palette {
+    position: absolute;
+    z-index: 4;
+    right: var(--gap);
+    width: min(320px, calc(100% - 2 * var(--gap)));
+    margin-top: 40px;
+    padding: 8px 12px;
+    box-shadow: 0 10px 28px rgba(var(--shade-rgb), .6);
+  }
+  @supports (top: anchor(top)) {
+    .palette { position-anchor: --dash-grid; top: anchor(top); right: anchor(right); margin: 0; }
+  }
   .palette-bar {
     display: flex;
     gap: 6px;
@@ -130,10 +155,11 @@
     overflow-wrap: anywhere;
     font-size: .85rem;
   }
+  /* Information, not a hazard: red stays the e-stop's (law 13). */
   .palette-tag {
     font-size: .72rem;
-    color: var(--bad);
-    border: 1px solid currentColor;
+    color: var(--tx-mut);
+    border: 1px solid var(--line-2);
     border-radius: var(--radius);
     padding: 1px 6px;
   }

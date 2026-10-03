@@ -32,8 +32,11 @@ const persist = () => G.saveStore(ls, $state.snapshot(layouts));
 // click on a grip that moves nothing never costs the real last change.
 let burst = null;
 let last = null;
+let edits = 0;
 /** `can` is true while there is a change to undo. */
 export const undo = $state({ can: false });
+/** Count of the user's edits this page load; a repair (a controller's `fit`) is none. */
+export const edited = () => edits;
 /** Call before writing the store directly; the edit helpers below call it themselves. */
 export function checkpoint() {
   if (burst) return;
@@ -42,7 +45,7 @@ export function checkpoint() {
 }
 const saved = (r) => {
   if (!r) return r;
-  if (burst && JSON.stringify($state.snapshot(layouts)) !== burst) { last = burst; undo.can = true; }
+  if (burst && JSON.stringify($state.snapshot(layouts)) !== burst) { last = burst; undo.can = true; edits++; }
   persist();
   return r;
 };
@@ -80,21 +83,43 @@ export const setDensity = edit((d) => G.setDensity(layouts, d));
 /** Add the layout in `text` (grid.js importLayout); returns its name, throws naming why not. */
 export const importLayout = edit((text) => G.importLayout(layouts, text));
 
+/**
+ * The module palette (Palette.svelte, a host's edit chrome over the grid):
+ * `shown` while one is mounted, `open` the toolbar's Modules toggle, so a
+ * card under the palette is one click from reach; `h` its drawn height, which
+ * the grid reserves below its own top so the page ends past the palette.
+ */
+export const palette = $state({ shown: false, open: true, h: 0 });
+
 /** Saved nests (modules), shared by every layout and view. */
 export const moduleNames = () => Object.keys(layouts.modules || {});
 export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 
+// Per view key: the content height a mounted grid measured (grid.js pack `fit`),
+// and the ids an add left unplaced until that grid has measured them.
+const fits = new Map();
+const held = new Map();
+
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
-function controller(read, write, members) {
+function controller(key, read, write, members) {
+  const fit = () => fits.get(key) || null;
+  const hold = (ids) => { if (ids.length) held.set(key, new Set([...(held.get(key) || []), ...ids])); };
   return {
-    arrange: (items, cols, pin = null) => G.place(items, read(), cols, pin),
-    move: edit((items, cols, pin) => (G.commitPin(write(), items, cols, pin), true)),
+    // `f` defaults to the registered one; a $derived passes its own, since the registry is not reactive.
+    arrange: (items, cols, pin = null, f = fit()) => G.place(items, read(), cols, pin, f),
+    move: edit((items, cols, pin) => (hold(G.commitPin(write(), items, cols, pin, fit())), true)),
     // A repair the user did not make (DashGrid's grow to a measured floor): saved, never an undo step.
-    fit: (items, cols, pin) => { G.commitPin(write(), items, cols, pin); persist(); },
+    fit: (items, cols, pin) => { held.delete(key); hold(G.commitPin(write(), items, cols, pin, fit())); persist(); },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
     setLook: edit((id, look, at) => G.setLook(write(), id, look, at)),
     // An emptied map, not a deleted key: the migration can never resurrect it.
     reset: edit(() => (G.resetMap(write(), members), true)),
+    /** The mounted grid's content height `fn(item, w, h) -> cells | null`; null unregisters. */
+    measured: (fn) => { if (fn) fits.set(key, fn); else fits.delete(key); },
+    /** Ids an add left unplaced until measured; the grid fixes them with fit(). */
+    held: () => held.get(key) || null,
+    /** True when `id` has a stored rect; an unplaced card follows its content and is never written by a grow. */
+    saved: (id) => G.positioned(read()[id]),
   };
 }
 
@@ -106,6 +131,8 @@ function controller(read, write, members) {
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
  *   fit(items, cols, pin)      -> commit a repair (a grow to the content floor); no undo step
  *   order(items, cols, ids)    -> commit a reading order
+ *   measured(fn) / held()      -> the grid's content heights; adds waiting for them
+ *   saved(id)                  -> whether `id` has a stored rect
  *   setLook(id, look, at?)     -> a placement's presentation and config (grid.js setLook)
  *   reset()                    -> forget this view's placements (nests stay)
  * Nests (DESIGN §10.6):
@@ -119,14 +146,15 @@ function controller(read, write, members) {
  *   insertModule(name)         -> place a module as a new nest; returns its id or null
  */
 export function dashboardLayout(viewId, cls = 'full') {
+  const key = cls + '.' + viewId;
   const read = () => G.viewMap(layouts, cls, viewId, false);
   const map = () => G.viewMap(layouts, cls, viewId);
   const sub = (id) => () => (G.isNest(read()[id]) ? read()[id].nest.map : {});
   const inMap = (fn) => edit((...a) => fn(map(), ...a));
   return {
-    ...controller(read, map, false),
+    ...controller(key, read, map, false),
     nests: () => G.nestsIn(read()),
-    nest: (id) => controller(sub(id), sub(id), true),
+    nest: (id) => controller(key + ' ' + id, sub(id), sub(id), true),
     addNest: inMap(G.addNest),
     nestAdd: inMap(G.nestAdd),
     nestRemove: inMap(G.nestRemove),

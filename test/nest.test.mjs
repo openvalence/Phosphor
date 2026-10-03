@@ -184,8 +184,9 @@ const geo = await nest.evaluate((cell) => {
   const top = [...cell.closest('.dash-grid').children].map((c) => c.getAttribute('data-id'));
   const scrollers = [...cell.querySelectorAll('*')].filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY)
     && el.scrollHeight > el.clientHeight + 1).length;
+  // A member's card, not its cell: the cell's gutter reaches over the frame's padding (ph-nnl).
   const outside = [...body.querySelectorAll('.dash-cell')].filter((m) => {
-    const r = m.getBoundingClientRect();
+    const r = m.firstElementChild.getBoundingClientRect();
     return r.top < surface.top - 1 || r.bottom > surface.bottom + 1 || r.left < surface.left - 1 || r.right > surface.right + 1;
   }).map((m) => m.getAttribute('data-id'));
   return { scrollers, outside, sh: body.scrollHeight, ch: body.clientHeight, members: body.querySelectorAll('.dash-cell').length, top,
@@ -235,6 +236,33 @@ await release();
 const cleared = await busy.waitFor({ state: 'detached', timeout: 3000 }).then(() => true).catch(() => false);
 ok('the count clears on echo', cleared && await own.count() === 0);
 
+// ph-sbu: an overdue write still counts, in amber, words only; a faulted one never counts.
+hub.mode = 'hold';
+await range.evaluate((el) => {
+  const step = Number(el.step) || 1, v = Number(el.value);
+  el.value = String(v + step <= Number(el.max) ? v + step : v - step);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await page.waitForTimeout(700);
+const warn = await page.evaluate(() => {
+  const p = document.body.appendChild(document.createElement('i'));
+  p.style.color = 'var(--warn)';
+  const c = getComputedStyle(p).color;
+  p.remove();
+  return c;
+});
+const tone = (loc) => loc.evaluate((el, w) => ({ text: el.textContent.trim(), amber: el.classList.contains('overdue') && getComputedStyle(el).color === w,
+  ring: getComputedStyle(el).boxShadow !== 'none' || getComputedStyle(el).borderTopStyle !== 'none' }), warn);
+const odNest = await tone(busy), odOwn = await tone(own);
+ok('overdue: the frame and the head still count it, in amber, no ring box', odNest.text === '1 in flight' && odNest.amber && !odNest.ring
+   && odOwn.text === '1 in flight' && odOwn.amber && !odOwn.ring, [odNest, odOwn]);
+await page.waitForTimeout(1800);
+const faulted = await range.evaluate((el) => el.closest('[data-shadow]')?.dataset.shadow);
+ok('a faulted write is not in flight: no count on the frame or the head', faulted === 'fault' && await busy.count() === 0 && await own.count() === 0,
+   [faulted, await busy.count(), await own.count()]);
+hub.mode = 'echo';
+hub.held.splice(0);
+
 // ---- edit flow: new nest, add, save, insert, out, ungroup --------------------
 const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
 const membersOf = (id) => page.$$eval('.dash-cell[data-id="' + id + '"] .nest-body .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
@@ -256,13 +284,13 @@ ok('Add moves a card into the nest and off the top level', (await membersOf(fres
 await nest2.locator('button:has-text("Save module")').click();
 await page.waitForTimeout(100);
 ok('Save module stores the nest by its members\' ids', JSON.stringify(Object.keys((await stored()).modules.Nest.members)) === JSON.stringify(cards.slice(0, 2)));
-await nest2.locator('.nest-body .dash-cell[data-id="' + cards[0] + '"] button:has-text("Out")').click();
+await nest2.locator('.nest-body .dash-cell[data-id="' + cards[0] + '"] button.out').click();
 await page.waitForTimeout(150);
 ok('Out returns a member to the top level', (await membersOf(fresh)).join() === cards[1] && (await topIds()).includes(cards[0]));
 await nest2.locator('select').first().selectOption(cards[0]);
 await page.waitForTimeout(150);
 ok('a member moved out can be added back (a $state delete is not a ghost)', (await membersOf(fresh)).includes(cards[0]));
-await nest2.locator('.nest-body .dash-cell[data-id="' + cards[0] + '"] button:has-text("Out")').click();
+await nest2.locator('.nest-body .dash-cell[data-id="' + cards[0] + '"] button.out').click();
 await page.waitForTimeout(150);
 await page.click('button:has-text("Layout…")');
 await page.locator('select[aria-label="Module"]').selectOption('Nest');

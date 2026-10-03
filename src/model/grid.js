@@ -36,7 +36,9 @@ export const MIN_VIEWPORT_PX = 320;
 export const SPAN_CELLS = 4;
 const SPAN_ROW = 12 * SPAN_CELLS;
 export const DEFAULT_H = 1;
-const MAX_H = 100;
+// A bound on stored garbage only, never on a card: rows are cells (ph-29r),
+// and a tall module (the advanced generator) at 12 CSS px cells is hundreds.
+const MAX_H = 2000;
 
 export const STORE_KEY = 'phosphor.layouts';
 export const SCALE_KEY = 'phosphor.scale';
@@ -91,7 +93,8 @@ function int(v, lo, hi, dflt) {
 
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-const positioned = (e) => !!(e && typeof e === 'object' && e.y != null);
+/** A map entry with a stored rect; any other item is drawn where pack() puts it. */
+export const positioned = (e) => !!(e && typeof e === 'object' && e.y != null);
 const sizeOf = (e, cols) => ({ w: int(e && e.w, 1, cols, cols), h: int(e && e.h, 1, MAX_H, DEFAULT_H) });
 const lookOf = (e) => (e && typeof e === 'object' && e.look ? { look: e.look } : {});
 const hits = (placed, r) => placed.some((p) => overlaps(r, p));
@@ -101,13 +104,16 @@ const byReading = (a, b) => a.y - b.y || a.x - b.x;
  * The first-run seed: `items` flow in order, each at the first free rect of
  * its own size around `placed` (an entry with no `w`, or no entry, fills the
  * row; `h` defaults to DEFAULT_H). place() puts an unplaced item the same way.
+ * `fit(item, w, h)` is the item's content height in cells at width `w`, or
+ * null before it was ever measured; an unplaced item is never drawn shorter.
  */
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
-export function pack(items, map, cols, placed = []) {
+export function pack(items, map, cols, placed = [], fit = null) {
   for (const it of items) {
     const e = map[it.id];
-    const { w, h } = sizeOf(e, cols);
+    const { w, h: h0 } = sizeOf(e, cols);
+    const h = Math.min(MAX_H, Math.max(h0, (fit && fit({ ...it, ...lookOf(e) }, w, h0)) || 0));
     let r = null;
     for (let y = 0; !r; y++) {
       for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
@@ -128,9 +134,10 @@ export function pack(items, map, cols, placed = []) {
  * - `pin` ({id, x, y, w, h}, or an array for a group) is the item under a
  *   drag: placed where asked, or at the first free row below when that is
  *   taken. Every other item stays exactly where it is without the pin.
+ * - `fit` sizes an unplaced item's height (pack).
  * Returns [{...item, x, y, w, h}] in reading order (y, then x).
  */
-export function place(items, map, cols, pin = null) {
+export function place(items, map, cols, pin = null, fit = null) {
   const at = (e, k) => int(e[k], 0, Infinity, 0);
   const saved = items.filter((it) => positioned(map[it.id]))
     .sort((a, b) => at(map[a.id], 'y') - at(map[b.id], 'y') || at(map[a.id], 'x') - at(map[b.id], 'x') || (a.id < b.id ? -1 : 1));
@@ -142,7 +149,7 @@ export function place(items, map, cols, pin = null) {
     while (hits(placed, r)) r.y++;
     placed.push(r);
   }
-  pack(items.filter((it) => !positioned(map[it.id])), map, cols, placed);
+  pack(items.filter((it) => !positioned(map[it.id])), map, cols, placed, fit);
   const byId = new Map(items.map((it) => [it.id, it]));
   const pins = (pin == null ? [] : [].concat(pin)).filter((p) => p && byId.has(p.id));
   if (!pins.length) return placed;
@@ -182,6 +189,17 @@ export function growWidth(placed, id, need, cols) {
   while (w < need && x + w < cols && !hits(others, { x, y: p.y, w: w + 1, h: p.h })) w++;
   while (w < need && x > 0 && !hits(others, { x: x - 1, y: p.y, w: w + 1, h: p.h })) { x--; w++; }
   return w > p.w ? { id, x, y: p.y, w, h: p.h } : null;
+}
+
+/** growWidth's twin for height: south first, then north, never past a neighbor. */
+export function growHeight(placed, id, need) {
+  const p = placed.find((q) => q.id === id);
+  if (!p || p.h >= need) return null;
+  const others = placed.filter((q) => q.id !== id);
+  let y = p.y, h = p.h;
+  while (h < need && h < MAX_H && !hits(others, { x: p.x, y, w: p.w, h: h + 1 })) h++;
+  while (h < need && h < MAX_H && y > 0 && !hits(others, { x: p.x, y: y - 1, w: p.w, h: h + 1 })) { y--; h++; }
+  return h > p.h ? { id, x: p.x, y, w: p.w, h } : null;
 }
 
 /**
@@ -305,10 +323,19 @@ export function nudgePin(placed, id, dx, dy, cols) {
 /**
  * Commit a drag or resize: write the pinned items, and every unplaced item at
  * the rect it is drawn at now, so nothing the user did not touch moves later.
+ * With `fit`, an unplaced item never measured is held: entered with no rect
+ * (so a host that lists its map's keys still draws it) until its height is
+ * known; returns the held ids.
  */
-export function commitPin(map, items, cols, pin) {
+export function commitPin(map, items, cols, pin, fit = null) {
   const ids = new Set([].concat(pin || []).map((p) => p && p.id));
-  write(map, place(items, map, cols, pin).filter((p) => ids.has(p.id) || !positioned(map[p.id])));
+  const held = [];
+  write(map, place(items, map, cols, pin, fit).filter((p) => {
+    if (ids.has(p.id) || positioned(map[p.id])) return ids.has(p.id);
+    if (fit && fit(p, p.w, p.h) == null) { held.push(p.id); map[p.id] = map[p.id] || {}; return false; }
+    return true;
+  }));
+  return held;
 }
 
 /**
