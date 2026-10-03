@@ -109,6 +109,14 @@ plugin's do not. The sidebar follows the switch at once. Host side:
 `src/plugins/host.js` `pages`, `pageShown`, `setPageShown`. Every page gets
 the shell's Fullscreen in its footer (DESIGN §10.3); the plugin draws
 nothing for it, and a mount that fills its element's height fills the window.
+A page may also ask for it (experimental): a `phosphor-page-fullscreen`
+event dispatched from inside the page (bubbles, cancelable, `detail: {on}`).
+The shell takes it only for the page on screen, and `preventDefault()` is
+its yes; `on` enters bare (bar and strip hidden, the stop pair floating),
+false leaves. Every change is announced on `window` as
+`phosphor-page-fullscreen-change` (`detail: {on}`), so a view a page draws
+for it (the funscript player's media fullscreen) ends with the shell's
+(Escape, the caret, F11, a page switch). Seam: `src/App.svelte`.
 
 ## The API (v1)
 

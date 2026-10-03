@@ -162,6 +162,18 @@
     osFull = want;
     import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
   });
+  // A page's own request (docs/PLUGINS.md, Pages): cancelable, so the page
+  // knows it was taken; on is bare at once. The change event tells it the end.
+  $effect(() => {
+    const ask = (e) => {
+      if (!current?.page?.fields) return;
+      e.preventDefault();
+      full = e.detail?.on ? { on: true, bare: true } : OFF;
+    };
+    window.addEventListener('phosphor-page-fullscreen', ask);
+    return () => window.removeEventListener('phosphor-page-fullscreen', ask);
+  });
+  $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   function onFullKey(e) {
     if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full); }
     // After every listener: an overlay's own Escape (F1, F3) prevents it.

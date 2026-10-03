@@ -264,8 +264,10 @@ Veto-able (ph-smvd.10):
   the first with a count of the rest (`1 invalid action dropped (+4
   more)`), its tooltip lists them all, one per line. A gate, a refusal or
   the over-limit words outrank them in the slot; the tooltip keeps them.
-- **Containment.** No fullscreen, picture-in-picture or native controls
-  (law 1): the strip's e-stop and pause stay on screen. No red (law 13).
+- **Containment.** No element fullscreen, picture-in-picture or native
+  controls (law 1): the strip's e-stop and pause stay on screen. Media
+  fullscreen is the shell's page fullscreen, bare, so the stop pair floats
+  over the video (Hover controls). No red (law 13).
   The analyzer's expand keeps it: the video goes to an in-card thumbnail,
   not to picture-in-picture (A2).
 
@@ -342,7 +344,35 @@ FULL
   over 60 % of itself). They preview in the intent look and commit on release.
   Offset is a transport number field (drag 5 ms per 2 px, type, arrows 5 ms,
   Shift 50 ms). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
-  captured. Space toggles Play while the card has focus.
+  captured. Keys: Hover controls.
+- **Hover controls** (ph-mcfe, ruling 2026-10-03: familiar, YouTube's
+  shape). Over the video in the card and the page: a bottom gradient bar
+  with the seek bar (played in `--highlight`, buffered lighter, a dot and a
+  time tooltip under the pointer), then Play/Pause, Mute, volume, current /
+  total time and, on the page only, Fullscreen at the right. It shows on
+  pointer movement and hides after `HOVER_IDLE_MS` (2.5 s) idle and on
+  pointer leave; it stays while the pointer rests on it, a seek drags or a
+  control holds keyboard focus. A touch on the video while it is hidden
+  shows it without toggling; a click on the video toggles Play. Keys while
+  the card has focus: Space or K play/pause, J and L 10 s back and on,
+  arrows 5 s, M mute, F fullscreen (page). Every act goes through the
+  controller the transport uses (`toggle`, `seek`): Play prerolls, a seek
+  holds and glides; the bar never calls the video's `play()` or `pause()`
+  or sets `currentTime`. Volume and mute are the video's own, stored in
+  pref `audio` (`phosphor.funscript.audio`), shared with the transport's
+  Mute and slider. The bar is its own size container: under 130 px of stage
+  height it is not drawn (the analyzer's handheld thumbnail), under 440 px
+  of width the volume slider yields so the time stays whole.
+- **Media fullscreen.** The bar's Fullscreen asks the shell for page
+  fullscreen, bare (docs/PLUGINS.md, Pages): the window holds the video
+  alone, the hover bar over it, the stop pair floating top right and the
+  caret above; the timeline, transport, analyzer and the page's Settings
+  are hidden until fullscreen ends (Escape, F, the bar's button, F11, a
+  page switch, or the caret's bar and the foot's Fullscreen). The In window
+  or Borderless mode applies as for any page. Never element fullscreen:
+  it would cover the stop pair (RENDERING §8.4 row 11). The foot's
+  Fullscreen still takes the whole page; the dash hero has no Fullscreen
+  (page fullscreen is for pages).
 - **Speed meter.** The current stroke's speed in mm/s when the window's
   unit allows, else %/s, against `limit.input.speed` with `--warn` past it.
   Display only (SPEC §9.6: limits are for display and optional
@@ -353,7 +383,9 @@ FULL
 - **Targets.** Every control is at least `var(--tap)` (40 px floor under a
   coarse pointer, law 12).
 - **Copy** (COPY.md): Play, Pause, Open files, Library, Player, Motion,
-  Offset, Invert, Mute; `Machine later (+) or earlier (-)`; `Search scenes`;
+  Offset, Invert, Mute; the hover bar's `Play (k)`, `Pause (k)`, `Mute
+  (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`;
+  `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,
   `Script past the input speed limit`, `Extra axes ignored: roll,
@@ -630,7 +662,19 @@ notice and Discard clears it and restores the stored value.
   within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK reads
   `refused: rail owned by` in the status slot; Stash settings, tiles with
   apikey, a pick fetching the
-  script with the header and playing it.
+  script with the header and playing it. Section (m), the hover bar on the
+  page at 1280 x 800: hidden at rest, shown on a pointer move, hidden after
+  `HOVER_IDLE_MS` idle and on leave; its Play prerolls through the
+  controller and its pause, seek (a press at half the bar lands at half the
+  clip, the tooltip reading that time) and the keys K, J, M likewise: every
+  `play()`, `pause()` and `currentTime` set on the video follows the
+  controller's own probe mark; volume and mute stored and back after a
+  launch; Fullscreen enters page fullscreen bare with the media flag (the
+  video alone, the stop pair on screen), Escape and F leave, the foot's
+  Fullscreen keeps the whole page; the analyzer column at
+  `clamp(320px, 40%, 560px)` at 1280 and 1920 with no row label cut; at
+  390 x 844 the bar inside the stage, the time uncut. Screenshots with
+  `--shots <dir>`.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:
   plays 8 s, asserts bundles, no NACK, striped heat and the over-limit

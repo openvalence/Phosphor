@@ -513,14 +513,15 @@ mapping, rebase and withKey, caching, every error in words;
 
 ```js
 // ui.js
-export const CSS, COPY, FULL_UP = 960, GLANCE_UP = 264;
+export const CSS, COPY, FULL_UP = 960, GLANCE_UP = 264, HOVER_IDLE_MS = 2500;
 export function createPlayer(api);   // -> Player
 export function createControl(deps);   // the controller without DOM: every boundary injected, for the node test
 export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ceilingOf(api, fields),
   localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
 // Player = {
-//   mount(el, fields) -> { update(), unmount() },
-//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec
+//   mount(el, fields, opts = {}) -> { update(), unmount() },
+//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
+//       opts.fullscreen: the hover bar offers media fullscreen (the page mount, page.js)
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
@@ -559,7 +560,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
 ```
 
 One `Player` per activation owns the single `<video>` (no `controls`,
-`playsinline`, `disablePictureInPicture`, never fullscreen), the
+`playsinline`, `disablePictureInPicture`, never element fullscreen), the
 `MediaClock`, the `Scheduler` and the rAF loop. The last mounted view hosts
 the video; when it unmounts, the player holds and pauses. The gate is read
 through `api.gate(fields.dur)` on every `update()` and every tick; a gate
@@ -576,7 +577,22 @@ library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
 observations, marks) only while localStorage `phosphor.funscript.probe` is
-`'1'`.
+`'1'`. The controller marks `play` right before `video.play()`, `stop`
+before `video.pause()` and `seek` before a `currentTime` set (`wrap` for a
+loop), so a test can prove no other path drives the video.
+
+Hover bar (ph-mcfe), in the stage of every view: the seek bar (role slider,
+played and buffered fill, a time tooltip), Play/Pause, Mute, volume, the
+time and, with `opts.fullscreen`, Fullscreen. Shown on pointer movement,
+hidden after `HOVER_IDLE_MS` idle and on pointer leave; not drawn under 130
+px of stage height. Play/Pause is `ctl.toggle()`, a seek `ctl.seek(ms)`;
+volume and mute set the video's own and store pref `audio`. Keys on the
+card root: Space and K toggle, J/L 10 s, arrows 5 s, M mute, F fullscreen.
+Fullscreen dispatches `phosphor-page-fullscreen` (bubbles, cancelable,
+`detail: {on}`) from the card; the shell's `preventDefault()` is the
+yes, and the card takes `data-media` (the stage alone; page.js hides the
+Settings section) until `phosphor-page-fullscreen-change` reads
+`{on: false}`.
 
 The trial notice `Preview: not saved` (tone `intent`, an `--intent` bar)
 follows the gate in the slot order and stands while `api.trialPending`.

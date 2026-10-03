@@ -37,7 +37,12 @@
 //   locked (law 13). Warn text stays --tx beside a --warn bar.
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
 // - The analyzer keeps the outer card rect: the video moves to an in-card thumbnail,
-//   never picture-in-picture or fullscreen (law 1: nothing may cover the strip).
+//   never picture-in-picture or element fullscreen (law 1: nothing may cover the strip).
+// - The hover bar acts through the controller (toggle, seek) like the transport: it never
+//   calls the video's play() or pause() or sets currentTime. Volume and mute are the video's
+//   own, stored as prefs audio. Its fullscreen is the shell's page fullscreen, bare (the stop
+//   pair stays): a page mount only (opts.fullscreen), asked by the cancelable
+//   'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
@@ -56,6 +61,7 @@ import { readPrefs, writePref } from './prefs.js';
 import { shape } from './interp.js';
 
 export const FULL_UP = 960;
+export const HOVER_IDLE_MS = 2500;
 export const GLANCE_UP = 264;
 const PROBE_KEY = 'phosphor.funscript.probe';
 const PROBE_RING = 5000;
@@ -103,6 +109,13 @@ export const COPY = Object.freeze({
   jump: 'jump',
   low: 'Low latency',
   lowTip: '50 ms lead, faster clock',
+  playKey: 'Play (k)',
+  pauseKey: 'Pause (k)',
+  muteKey: 'Mute (m)',
+  unmuteKey: 'Unmute (m)',
+  seek: 'Seek',
+  full: 'Fullscreen (f)',
+  fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
   on: 'On',
@@ -110,6 +123,15 @@ export const COPY = Object.freeze({
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// Hover bar icons on a 16-unit box: [filled path, stroked path].
+const ICON = {
+  play: ['M5 3l9 5-9 5z', ''],
+  pause: ['M4 3h3v10H4zM9 3h3v10H9z', ''],
+  vol: ['M2 6h3l4-3.5v11L5 10H2z', 'M11.5 5.5a3.5 3.5 0 010 5'],
+  muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
+  full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
+  unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
+};
 
 // ---- pure helpers -----------------------------------------------------------
 
@@ -245,6 +267,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     transient = '';
     why = words;
     state.phase = phase;
+    probe({ k: 'mark', t: now(), name: 'stop' });
     video.pause();
     changed();
   }
@@ -442,7 +465,11 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.ab.b != null && !loop.spec) state.ab = { a: null, b: null };
     changed();
   }
-  function seek(ms) { if (Number.isFinite(ms)) video.currentTime = Math.max(0, ms) / 1000; }
+  function seek(ms) {
+    if (!Number.isFinite(ms)) return;
+    probe({ k: 'mark', t: now(), name: 'seek' });
+    video.currentTime = Math.max(0, ms) / 1000;
+  }
 
   function status() {
     const g = gate();
@@ -600,6 +627,43 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] .fsp-tab { display: none; }
 .fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
+.fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
+.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: 20px 6px 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
+  opacity: 0; transition: opacity .2s; pointer-events: none; }
+.fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
+@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: 8px; } }
+@container (max-height: 129px) { .fsp-hb { display: none; } }
+@container (max-width: 439px) { .fsp-hb-vol { display: none; } }
+.fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 6px; cursor: pointer; touch-action: none; outline: none; }
+.fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
+.fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height .1s; }
+.fsp-hb-seek:is(:hover, [data-drag]) .fsp-hb-track { height: 5px; }
+.fsp-hb-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
+.fsp-hb-buf { background: color-mix(in srgb, var(--tx) 40%, transparent); }
+.fsp-hb-played { background: var(--highlight); }
+.fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
+  background: var(--highlight); transform: scale(0); transition: transform .1s; }
+.fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
+.fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: 2px 6px; font: .75rem var(--mono); color: var(--tx);
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }
+.fsp-hb-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.fsp-hb-b { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); padding: 0; color: var(--tx); background: none;
+  border: 0; border-radius: var(--r-s); cursor: pointer; }
+.fsp-hb-b:hover { color: var(--tx-hi); }
+.fsp-hb-b:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
+.fsp-hb-b:disabled { opacity: .4; cursor: default; }
+.fsp-hb-b svg { width: 20px; height: 20px; fill: currentColor; }
+.fsp-hb-b svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp-hb-vol { flex: 0 1 80px; min-width: 48px; height: var(--tap); margin: 0; accent-color: var(--highlight); cursor: pointer; }
+.fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 6px 0 10px; font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsp-hb-gap { flex: 1 1 0; }
+.fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
+.fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
+.fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; width: auto; height: auto; clip-path: none; justify-self: stretch;
+  visibility: visible; border-radius: 0; }
+.fsp[data-media] .fsp-stage::before { display: none; }
+.fsp[data-media] .fsp-stage:has(.fsp-hov:not([data-show])) { cursor: none; }
 `;
 
 const h = (tag, attrs = {}, ...kids) => {
@@ -611,6 +675,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export function createPlayer(api) {
   let probeRing = null;
@@ -673,8 +738,9 @@ export function createPlayer(api) {
   const onVis = () => { if (document.hidden) ctl.halt(); };
   document.addEventListener('visibilitychange', onVis);
 
-  function mount(el, fields) {
-    const view = makeView(el, fields);
+  /** opts.fullscreen: the hover bar offers page fullscreen (a page mount). */
+  function mount(el, fields, opts = {}) {
+    const view = makeView(el, fields, opts);
     views.push(view);
     view.host();
     ctl.setFields(fields);
@@ -696,7 +762,7 @@ export function createPlayer(api) {
     };
   }
 
-  function makeView(el, fields) {
+  function makeView(el, fields, opts) {
     const st = ctl.state;
     const file = h('input', { type: 'file', multiple: '', accept: 'video/*,audio/*,.funscript', hidden: '' });
     file.addEventListener('change', () => { if (file.files && file.files.length) openLocal(file.files); file.value = ''; });
@@ -712,7 +778,6 @@ export function createPlayer(api) {
 
     const empty = h('div', { class: 'fsp-empty', text: COPY.openVideo });
     const stage = h('div', { class: 'fsp-stage' }, empty);
-    stage.addEventListener('click', () => ctl.toggle());
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
     const anbox = h('div', { class: 'fsp-anbox' });
@@ -757,17 +822,100 @@ export function createPlayer(api) {
     const mute = btn('fsp-mute', COPY.mute);
     const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
-    mute.addEventListener('click', () => { video.muted = !video.muted; saveAudio(); render(); });
-    vol.addEventListener('input', () => { video.volume = clamp(+vol.value, 0, 1); });
-    vol.addEventListener('change', saveAudio);
+    const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
+    mute.addEventListener('click', () => setMuted(!video.muted));
     const tr = h('div', { class: 'fsp-tr' }, play, time, motion, off, inv, speed, mute, vol);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       src, stage, tlbox, lib, anbox, meter, status, tr);
-    root.addEventListener('keydown', (e) => {
-      if (e.key !== ' ' || e.target.closest('input, button, select, textarea, [role=slider]')) return;
+    // ---- the hover bar over the video ----
+    const icon = () => {
+      const s = document.createElementNS(SVG_NS, 'svg');
+      s.setAttribute('viewBox', '0 0 16 16');
+      s.setAttribute('aria-hidden', 'true');
+      const k = document.createElementNS(SVG_NS, 'path');
+      k.setAttribute('class', 's');
+      s.append(document.createElementNS(SVG_NS, 'path'), k);
+      return s;
+    };
+    const hbBtn = (cls) => { const b = h('button', { type: 'button', class: 'fsp-hb-b ' + cls }); b.append(icon()); return b; };
+    const setIcon = (b, [f, k], tip) => {
+      const [pf, pk] = b.firstChild.children;
+      if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
+      if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
+    };
+    const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
+    const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full');
+    hbFull.hidden = !opts.fullscreen;
+    const hbVol = h('input', { class: 'fsp-hb-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
+    const hbTime = h('span', { class: 'fsp-hb-time' });
+    const hbBuf = h('i', { class: 'fsp-hb-buf' }), hbPlayed = h('i', { class: 'fsp-hb-played' });
+    const hbTip = h('span', { class: 'fsp-hb-tip', hidden: '' });
+    const seek = h('div', { class: 'fsp-hb-seek', role: 'slider', tabindex: '0', 'aria-label': COPY.seek, 'aria-valuemin': '0' },
+      h('div', { class: 'fsp-hb-track' }, hbBuf, hbPlayed), hbTip);
+    const hb = h('div', { class: 'fsp-hb' }, seek,
+      h('div', { class: 'fsp-hb-row' }, hbPlay, hbMute, hbVol, hbTime, h('span', { class: 'fsp-hb-gap' }), hbFull));
+    const hov = h('div', { class: 'fsp-hov' }, hb);
+    stage.append(hov);
+    hbPlay.addEventListener('click', () => ctl.toggle());
+    hbMute.addEventListener('click', () => setMuted(!video.muted));
+    for (const v of [vol, hbVol]) {
+      v.addEventListener('input', () => { video.volume = clamp(+v.value, 0, 1); if (video.volume > 0) video.muted = false; });
+      v.addEventListener('change', saveAudio);
+    }
+    // Shown on pointer movement, hidden after HOVER_IDLE_MS idle and on leave, kept while the pointer
+    // rests on the bar or drags the seek. A touch on the hidden bar's video shows it without toggling.
+    let idle = 0, drag = null, tapShow = false;
+    const hide = () => { if (drag == null && !hb.matches(':hover')) hov.removeAttribute('data-show'); };
+    const poke = () => { hov.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, HOVER_IDLE_MS); };
+    stage.addEventListener('pointermove', poke);
+    stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
+    stage.addEventListener('pointerdown', (e) => { tapShow = e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
+    stage.addEventListener('click', (e) => { if (!tapShow && !e.target.closest('.fsp-hb')) ctl.toggle(); tapShow = false; });
+    const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
+    const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
+    seek.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      ctl.toggle();
+      root.focus({ preventScroll: true });
+      seek.setPointerCapture(e.pointerId);
+      drag = e.pointerId;
+      seek.setAttribute('data-drag', '');
+      ctl.seek(msAt(e.clientX));
+    });
+    seek.addEventListener('pointermove', (e) => {
+      const r = seek.getBoundingClientRect();
+      hbTip.hidden = false;
+      setText(hbTip, fmtTime(msAt(e.clientX)));
+      const w2 = hbTip.offsetWidth / 2;
+      hbTip.style.left = clamp(e.clientX - r.left, w2, r.width - w2) + 'px';
+      if (drag === e.pointerId) ctl.seek(msAt(e.clientX));
+    });
+    const endDrag = (e) => { if (drag === e.pointerId) { drag = null; seek.removeAttribute('data-drag'); } };
+    seek.addEventListener('pointerup', endDrag);
+    seek.addEventListener('pointercancel', endDrag);
+    seek.addEventListener('pointerleave', () => { if (drag == null) hbTip.hidden = true; });
+    // Media fullscreen: the shell's page fullscreen, bare, with the video alone until it ends.
+    let media = false;
+    const setMedia = (on) => { media = on; root.toggleAttribute('data-media', on); render(); };
+    const fullscreen = () => {
+      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media } });
+      if (!root.dispatchEvent(ask)) setMedia(!media);
+    };
+    const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
+    if (opts.fullscreen) window.addEventListener('phosphor-page-fullscreen-change', onFull);
+    hbFull.addEventListener('click', fullscreen);
+
+    const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
+    root.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, select, textarea, [role=slider]:not(.fsp-hb-seek)')) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if ((k === ' ' && !e.target.closest('button')) || k === 'k') ctl.toggle();
+      else if (k in KEY_SEEK) ctl.seek(Math.max(0, ctl.mediaNow() + KEY_SEEK[k]));
+      else if (k === 'm') setMuted(!video.muted);
+      else if (k === 'f' && opts.fullscreen) fullscreen();
+      else return;
+      e.preventDefault();
+      poke();
     });
     el.append(root);
 
@@ -814,6 +962,11 @@ export function createPlayer(api) {
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setText(play, act ? COPY.pause : COPY.play);
       play.disabled = !act && !ctl.canPlay();
+      setIcon(hbPlay, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
+      hbPlay.disabled = play.disabled;
+      setIcon(hbMute, video.muted ? ICON.muted : ICON.vol, video.muted ? COPY.unmuteKey : COPY.muteKey);
+      setIcon(hbFull, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : COPY.full);
+      if (document.activeElement !== hbVol) hbVol.value = String(video.muted ? 0 : video.volume);
       motion.setAttribute('aria-pressed', String(st.motion));
       inv.setAttribute('aria-pressed', String(st.T.invert));
       mute.setAttribute('aria-pressed', String(video.muted));
@@ -832,7 +985,16 @@ export function createPlayer(api) {
     function frame() {
       const m = ctl.mediaNow();
       const d = Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0;
-      setText(time, fmtTime(m) + ' / ' + fmtTime(d));
+      const tt = fmtTime(m) + ' / ' + fmtTime(d);
+      setText(time, tt);
+      setText(hbTime, tt);
+      let buf = 0;
+      for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
+      hbPlayed.style.width = (d > 0 ? clamp(m / d, 0, 1) * 100 : 0) + '%';
+      hbBuf.style.width = (d > 0 ? clamp(buf / d, 0, 1) * 100 : 0) + '%';
+      attr(seek, 'aria-valuemax', String(Math.round(d)));
+      attr(seek, 'aria-valuenow', String(Math.round(m)));
+      attr(seek, 'aria-valuetext', tt);
       if (comp !== 'glance') tl.frame(m, ctl.trace);
       if (analyzer && comp !== 'glance' && root.hasAttribute('data-an')) analyzer.frame();
       const ceil = ceilingOf(api, fields);
@@ -862,6 +1024,8 @@ export function createPlayer(api) {
       fields, render, frame, hosting,
       host() { stage.append(video); st.composition = comp || st.composition; },
       destroy() {
+        clearTimeout(idle);
+        window.removeEventListener('phosphor-page-fullscreen-change', onFull);
         ro.disconnect();
         tl.unmount();
         if (library) library.unmount();

@@ -50,7 +50,7 @@ const CONTRACT = {
     'applyT', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
-  [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
+  [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
@@ -244,6 +244,11 @@ if (UNIT || fails) {
 //   settings   the page's Settings mounts the plugin settings card without
 //              moving the card; a change there reads back in the Plugins
 //              pane and the reverse; open/closed persists ([--shots <dir>])
+//   hover      the bar over the video shows on a move and hides on idle and
+//              leave; its play, pause, seek and the keys act only through
+//              the controller; volume and mute persist; media fullscreen is
+//              page fullscreen bare with the stage alone, Escape returns; the
+//              analyzer column at 1280 and 1920 ([--shots <dir>])
 // Stash live (--stash-live <file.json>, a local {base, apiKey}, never
 // committed): only the stash section, against that real Stash, read-only,
 // under the shell CSP's img-src and media-src: every tile's screenshot
@@ -985,8 +990,10 @@ if (!LIVE) {
       .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
     ok('targets: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
     // The box is not the target where a parent clips it: probe what a touch actually hits.
-    const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].map((e) => {
+    // The hover bar's seek is a slider only while the bar shows: a pointer move shows it.
+    const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].filter((e) => e.getClientRects().length).map((e) => {
       e.scrollIntoView({ block: 'center' });
+      document.querySelector(c + ' .fsp-stage').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch' }));
       const r = e.getBoundingClientRect();
       let n = 0, hit = 0;
       for (let y = r.top + 1; y < r.bottom; y += 2) for (let x = r.left + 1; x < r.right; x += 2) {
@@ -1320,6 +1327,220 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: closed persists and unmounts the card', same(await rows(), [0, 0, 0])
     && await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'false');
   ok('page settings: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (m) the hover bar over the video, media fullscreen, the analyzer column (ph-mcfe, ph-tz5t) ----
+// The bar acts through the controller: every play(), pause() and currentTime set the video takes
+// follows the controller's own probe mark (play, stop, seek; wrap for a loop), never a bar handler.
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(m) hover bar, media fullscreen, analyzer column');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 80;
+  const { ctx, page, up, errors } = await open({ cat, hub, width: 1280 });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const IDLE = mods[P + 'ui.js'].HOVER_IDLE_MS;
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+  const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
+  const HOV = C + ' .fsp-hov', HB = C + ' .fsp-hb';
+  const shown = () => page.evaluate((s) => document.querySelector(s).hasAttribute('data-show'), HOV);
+  const opacity = () => page.evaluate((s) => +getComputedStyle(document.querySelector(s)).opacity, HB);
+  const stageBox = () => page.locator(C + ' .fsp-stage').boundingBox();
+  const overVideo = async (dx = 0) => { const b = await stageBox(); await page.mouse.move(b.x + b.width / 2 + dx, b.y + b.height / 3); };
+  const shot = async (name) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, name + '.png') }); };
+  // Every video call that does not follow the controller's matching mark.
+  const direct = () => page.evaluate(() => {
+    const r = window.__funscriptProbe || [], want = { play: ['play'], pause: ['stop'], seek: ['seek', 'wrap'] };
+    return r.map((x, i) => (x.k === 'vid' && !(r[i - 1] && r[i - 1].k === 'mark' && want[x.what].includes(r[i - 1].name)) ? x.what + '@' + i : null)).filter(Boolean);
+  });
+  const vids = (what) => page.evaluate((w) => (window.__funscriptProbe || []).filter((x) => x.k === 'vid' && x.what === w).length, what);
+  ok('hover: the page mounts the card and the clip loads', up && await toPage() && await loadClip(page));
+  await page.evaluate((c) => {
+    const v = document.querySelector(c + ' .fsp-stage video'), ring = window.__funscriptProbe;
+    const log = (what) => ring.push({ k: 'vid', what });
+    const play = v.play.bind(v), pause = v.pause.bind(v);
+    const d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+    v.play = () => { log('play'); return play(); };
+    v.pause = () => { log('pause'); return pause(); };
+    Object.defineProperty(v, 'currentTime', { configurable: true, get() { return d.get.call(v); }, set(x) { log('seek'); d.set.call(v, x); } });
+  }, C);
+  ok('hover: hidden at rest', !(await shown()) && (await opacity()) === 0);
+  await overVideo();
+  await page.waitForTimeout(350);
+  ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
+  await shot('hover-1280x800');
+  await page.waitForTimeout(IDLE + 400);
+  ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
+  await overVideo(10);
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(100);
+  ok('hover: hidden on pointer leave', !(await shown()));
+
+  // Play and pause through the bar: the controller's preroll first, one hold after.
+  const n0 = hub.bundles.length;
+  await overVideo();
+  await page.click(C + ' .fsp-hb-play');
+  await page.waitForTimeout(150);
+  const pre = hub.bundles[n0];
+  ok('hover play: the controller prerolls first (one positioning segment), the video still paused', !!pre && pre.segs.length === 1
+    && await video(page, (v) => v.paused), pre && pre.segs);
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
+  await overVideo(-10);
+  await page.click(C + ' .fsp-hb-play');
+  await page.waitForTimeout(200);
+  ok('hover pause: paused by the controller', await video(page, (v) => v.paused) && await vids('pause') >= 1
+    && await page.locator(C + ' .fsp-play').textContent() === 'Play');
+  // Seek: a press at 50 % of the bar, its tooltip reading that time first.
+  await overVideo();
+  const sk = await page.locator(C + ' .fsp-hb-seek').boundingBox();
+  await page.mouse.move(sk.x + sk.width / 2, sk.y + sk.height / 2);
+  await page.waitForTimeout(100);
+  const tip = await page.locator(C + ' .fsp-hb-tip').evaluate((e) => ({ hidden: e.hidden, text: e.textContent }));
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const at = await video(page, (v) => v.currentTime);
+  ok('hover seek: the tooltip reads the time under the pointer', !tip.hidden && /^0:1[45]\.\d$/.test(tip.text), tip);
+  ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
+  ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
+  // Keys while the player has focus: k plays (through the preroll), m mutes, j seeks back 10 s, k pauses.
+  await page.locator(C).focus();
+  await page.keyboard.press('k');
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
+  const kPlay = await video(page, (v) => !v.paused);
+  await page.keyboard.press('j');
+  await page.waitForTimeout(300);
+  const tJ = await video(page, (v) => v.currentTime);
+  await page.keyboard.press('k');
+  await page.waitForTimeout(200);
+  ok('keys: k plays and pauses, j seeks back 10 s, all through the controller', kPlay && tJ < CLIP_S / 2 - 8
+    && await video(page, (v) => v.paused) && (await direct()).length === 0, { kPlay, tJ, direct: await direct() });
+  // Volume and mute: the video's own, kept in prefs audio across a launch.
+  await overVideo();
+  await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.keyboard.press('m');
+  await page.waitForTimeout(100);
+  const audio = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.audio') || '{}'));
+  ok('volume: the bar sets the video volume, m mutes, both stored', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
+    && Math.abs(audio.vol - 0.4) < 0.01 && audio.muted === true, audio);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(600);
+  await toPage();
+  ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
+    && (await page.locator(C + ' .fsp-hb-mute').getAttribute('aria-label')) === 'Unmute (m)');
+  await page.locator(C + ' .fsp-hb-mute').evaluate((e) => e.click());
+  ok('volume: the bar mute button unmutes, its icon follows', await video(page, (v) => !v.muted)
+    && await page.locator(C + ' .fsp-hb-mute path.s').getAttribute('d') === 'M11.5 5.5a3.5 3.5 0 010 5');
+  ok('hover: Fullscreen is offered on the page', await page.locator(C + ' .fsp-hb-full').evaluate((e) => !e.hidden));
+  await loadClip(page);
+  // Media fullscreen: the shell's page fullscreen, bare, the video alone, the stop pair over it.
+  const fsLook = () => page.evaluate((c) => {
+    const r = (s) => { const e = document.querySelector(s); if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect();
+      return [b.x, b.y, b.width, b.height].map(Math.round); };
+    return { full: !!document.querySelector('main.pane.full'), bare: !!document.querySelector('main.pane.full.bare'),
+      media: !!document.querySelector(c + '[data-media]'), stage: r(c + ' .fsp-stage'), tl: r(c + ' .fsp-tlbox'), tr: r(c + ' .fsp-tr'),
+      settings: r('main.pane .fsp-page > details'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
+  }, C);
+  await overVideo();
+  await page.click(C + ' .fsp-hb-full');
+  await page.waitForTimeout(400);
+  const fs = await fsLook();
+  ok('media fullscreen: page fullscreen, bare, with the media flag', fs.full && fs.bare && fs.media, fs);
+  ok('media fullscreen: the video alone fills the window; timeline, transport and Settings hidden',
+    !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr && !fs.settings, fs);
+  ok('media fullscreen: the stop pair stays on screen (RENDERING §8.4 row 11)', !!fs.estop && !!fs.pause
+    && fs.estop[0] >= 0 && fs.estop[0] + fs.estop[2] <= fs.vw && fs.estop[1] >= 0, fs);
+  await overVideo();
+  await page.waitForTimeout(300);
+  await shot('media-1280x800');
+  ok('media fullscreen: the bar offers the way out', (await page.locator(C + ' .fsp-hb-full').getAttribute('aria-label')) === 'Exit fullscreen (f)');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const off = await fsLook();
+  ok('media fullscreen: Escape returns the page as it was', !off.full && !off.media && !!off.tl && !!off.tr && !!off.settings, off);
+  await page.locator(C).focus();
+  await page.keyboard.press('f');
+  await page.waitForTimeout(300);
+  const fKey = await fsLook();
+  await page.keyboard.press('f');
+  await page.waitForTimeout(300);
+  ok('media fullscreen: f enters and leaves', fKey.media && fKey.bare && !(await fsLook()).full, fKey);
+  await page.click('main.pane .page-foot button[title="Fullscreen, F11"]');
+  await page.waitForTimeout(300);
+  const footFull = await fsLook();
+  ok('page fullscreen from the foot stays the whole page, no media flag', footFull.full && !footFull.media && !!footFull.tl, footFull);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+
+  // The analyzer column (ph-tz5t): two fifths of the card at desktop widths, 320 to 560 px.
+  const col = async () => page.locator(C).evaluate((e) => {
+    const w = (s) => Math.round(e.querySelector(s).getBoundingClientRect().width);
+    return { card: Math.round(e.getBoundingClientRect().width), an: w('.fsp-anbox'), stage: w('.fsp-stage'),
+      cut: [...e.querySelectorAll('.fsa-k')].filter((k) => k.scrollWidth > k.clientWidth + 1).map((k) => k.textContent) };
+  });
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(400);
+  const c1280 = await col();
+  const split = (c) => Math.abs(c.an - Math.min(560, Math.max(320, 0.4 * c.card))) <= 2 && Math.abs(c.stage - c.an) <= 1 && c.cut.length === 0;
+  ok('analyzer 1280: the panel takes two fifths of the card, the thumbnail its width, no label cut', split(c1280), c1280);
+  await shot('analyzer-1280x800');
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForTimeout(500);
+  const c1920 = await col();
+  ok('analyzer 1920: the panel stops at 560 px, the graph takes the rest', split(c1920) && c1920.an === 560, c1920);
+  await shot('analyzer-1920x1080');
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(300);
+  if (SHOTS) {
+    await overVideo();
+    await page.waitForTimeout(300);
+    await shot('hover-1920x1080');
+    await page.click(C + ' .fsp-hb-full');
+    await page.waitForTimeout(400);
+    await overVideo();
+    await page.waitForTimeout(300);
+    await shot('media-1920x1080');
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => scrollTo(0, 0));
+    await overVideo();
+    await page.waitForTimeout(300);
+    await shot('hover-390x844');
+    await page.click(C + ' .fsp-hb-full').catch(() => {});
+    await page.waitForTimeout(400);
+    await overVideo();
+    await page.waitForTimeout(300);
+    await shot('media-390x844');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.click(C + ' .fsp-expand').catch(() => {});
+    await page.waitForTimeout(400);
+    await shot('analyzer-390x844');
+  }
+  // A phone: the bar fits the stage, the time readout whole (the volume slider yields first).
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => scrollTo(0, 0));
+  if (await page.locator(C + '[data-an]').count()) await page.click(C + ' .fsp-expand');
+  await overVideo();
+  await page.waitForTimeout(300);
+  const phone = await page.locator(C).evaluate((e) => {
+    const s = e.querySelector('.fsp-stage').getBoundingClientRect(), t = e.querySelector('.fsp-hb-time');
+    const out = [...e.querySelectorAll('.fsp-hb-row > *')].filter((x) => x.getClientRects().length)
+      .filter((x) => { const r = x.getBoundingClientRect(); return r.left < s.left - 0.5 || r.right > s.right + 0.5 || r.bottom > s.bottom + 0.5; });
+    return { cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent, out: out.map((x) => x.className) };
+  });
+  ok('hover 390: the bar lies inside the stage, the time readout uncut', !phone.cut && phone.out.length === 0, phone);
+  ok('hover: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
 }

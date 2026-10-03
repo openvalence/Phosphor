@@ -12,7 +12,8 @@
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted.
  * - The card keeps its height when the section opens: below the card in the
  *   page's flow, and in fullscreen the card fills all but the Settings row,
- *   the section scrolling below it.
+ *   the section scrolling below it. In media fullscreen (ui.js, data-media)
+ *   the card takes the whole page and the section is hidden.
  */
 import { readPrefs, writePref } from './prefs.js';
 
@@ -27,6 +28,9 @@ const CSS = `
 .fsp-page > details > summary:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
 .fsp-page > details[open] > summary { color: var(--highlight); border-color: var(--highlight); }
 .fsp-page > details > div { max-width: 640px; padding: 8px 0; }
+.fsp-page:has(.fsp[data-media]) { overflow: hidden; }
+.fsp-page:has(.fsp[data-media]) > .fsp-pcard { height: 100%; }
+.fsp-page:has(.fsp[data-media]) > details { display: none; }
 `;
 
 export function registerPlayerPage(api, player, spec, settings) {
@@ -48,7 +52,7 @@ export function registerPlayerPage(api, player, spec, settings) {
     det.open = readPrefs(api).settingsOpen;
     sync();
     det.addEventListener('toggle', () => { writePref(api, 'settingsOpen', det.open); sync(); });
-    const inst = player.mount(card, fields);
+    const inst = player.mount(card, fields, { fullscreen: true });
     return {
       update: () => inst.update(),
       unmount() { inst.unmount(); if (off) off(); root.remove(); },
