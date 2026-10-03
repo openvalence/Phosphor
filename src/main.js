@@ -41,6 +41,15 @@ try {
 // build, so the embedded bundle compiles this branch away entirely.
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 
+// A boot step's failure lands in the device log ring (the Log tab) so the
+// shell shows it; console.error alone is invisible in the exe.
+function bootFault(step, e) {
+  const msg = step + ' failed to load: ' + ((e && e.message) || String(e));
+  console.error(msg, e);
+  const ring = machine.events.log;
+  ring.push({ channel: null, channelName: 'plugin', at: Date.now(), body: { level: 4, tag: 'shell', message: msg } });   // 4 = error (registry log_levels)
+}
+
 async function boot() {
   // ?hub=<host> points THIS page at a hub other than its own origin. It is
   // the DEV override and the only one: `vite dev` serves from localhost, so
@@ -55,27 +64,31 @@ async function boot() {
   const hubOverride = new URLSearchParams(location.search).get('hub');
   const { host, port } = parseHost(hubOverride || location.hostname || recentHubs()[0] || '');
   if (SHELL) {
-    const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
-    const { setHttpGet } = await import('../../Valence/clients/js/index.js');
-    setHttpGet(async (url) => {
-      const r = await tauriFetch(url, { method: 'GET' });
-      return r.ok ? await r.text() : null;
-    });
+    // Each shell step fails on its own: one failed import costs that step and
+    // a log line, never the window chrome below (seen twice on 2026-10-03).
+    await Promise.all([import('@tauri-apps/plugin-http'), import('../../Valence/clients/js/index.js')])
+      .then(([{ fetch: tauriFetch }, { setHttpGet }]) => setHttpGet(async (url) => {
+        const r = await tauriFetch(url, { method: 'GET' });
+        return r.ok ? await r.text() : null;
+      }))
+      .catch((e) => bootFault('http get', e));
     // RFC-053: every e-stop press also broadcasts the ESTOP datagram on the
     // LAN, before any connect, so the first press is covered.
-    const { invoke } = await import('@tauri-apps/api/core');
-    await import('./shell/estop-udp.js')
-      .then((m) => m.installEstopDatagram({
+    await Promise.all([import('@tauri-apps/api/core'), import('./shell/estop-udp.js')])
+      .then(([{ invoke }, m]) => m.installEstopDatagram({
         invoke, isVirtual: () => !!machine.link.virtual, origin: () => machine.link.roles,
       }))
-      .catch((e) => console.error('datagram e-stop failed to load', e));
+      .catch((e) => bootFault('datagram e-stop', e));
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
     // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
     // host:port, when the reconnect preference is on (shell/settings-pane.js).
-    await import('./shell/settings-pane.js').catch((e) => console.error('saved hubs failed to load', e));
+    await import('./shell/settings-pane.js').catch((e) => bootFault('saved hubs', e));
     // Shell chrome (the window buttons at the end of the kernel's top bar)
-    // is handed in from here so the served bundle never carries it.
-    return (await import('./shell/ShellStrip.svelte')).default;
+    // is handed in from here so the served bundle never carries it. One
+    // retry: a chunk fetch that fails on a cold start usually succeeds at once.
+    return import('./shell/ShellStrip.svelte')
+      .catch(() => import('./shell/ShellStrip.svelte'))
+      .then((m) => m.default);
   }
   if (host) connect({ host, port });
   return null;
@@ -89,5 +102,5 @@ if (SHELL) import('./plugins/buttplug.js').then((m) => m.loadButtplug()).catch((
 // The page mounts whatever boot() does: a failed shell import costs the
 // window controls, never the strip's e-stop.
 boot()
-  .catch((e) => { console.error('shell chrome failed to load', e); return null; })
+  .catch((e) => { bootFault('shell chrome', e); return null; })
   .then((shell) => mount(App, { target: document.getElementById('app'), props: { shell } }));
