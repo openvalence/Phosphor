@@ -374,7 +374,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const ab = await facts(page);
   ok('about: UI build, protocol and the catalog etag', ab['ui build'] && ab['ui build'] !== '--' && ab.protocol === 'v1 (valence.v1)' && ab['catalog etag'] === ETAG.toLowerCase(), JSON.stringify(ab));
   const notices = await page.$eval('section[aria-labelledby="ab-notices"]', (s) => s.innerText.replace(/\s+/g, ' '));
-  ok('about: Notices list Phosphor and the plugin credit', /Phosphor Phosphor · CERN-OHL-S-2\.0/.test(notices) && /advanced-penetration after fray-d, OSSM-Lite · CERN-OHL-S-2\.0/.test(notices), notices);
+  ok('about: Notices list Phosphor and the plugin credit', /Phosphor Phosphor · Apache-2\.0/.test(notices) && /advanced-penetration after fray-d, OSSM-Lite · CERN-OHL-S-2\.0/.test(notices), notices);
   // ph-7mw: an absent value is one glyph in the body face, never mono.
   const nilFaces = () => page.$$eval('main.pane dl.pane-facts dd', (ds) => [...new Set(ds.filter((d) => d.textContent.trim() === '--')
     .map((d) => getComputedStyle(d).fontFamily + ' ' + getComputedStyle(d).fontWeight))]);

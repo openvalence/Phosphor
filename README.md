@@ -119,3 +119,9 @@ Doctrine lives in `.claude/rules/`; volatile truth lives on the dev board
 
 Design rulings: [`docs/DESIGN.md`](docs/DESIGN.md).
 The builder (home page, controls, nests, layouts; 2026-09-26): [`docs/DESIGN.md` §10](docs/DESIGN.md#10-the-builder-operator-rulings-2026-09-26).
+
+## Licensing
+
+Apache-2.0 ([`LICENSE`](LICENSE)), except the Advanced Penetration plugin
+(`plugins/factory/advanced-penetration/`, a port of fray-d's OSSM-Lite), which
+stays CERN-OHL-S-2.0 as its own component. Third-party notices: [`NOTICE.md`](NOTICE.md).

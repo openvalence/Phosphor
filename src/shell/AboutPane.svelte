@@ -26,7 +26,7 @@
   const etag = $derived(machine.catalog.etag || '--');
   let shellVersion = $state('--');
   getVersion().then((v) => { shellVersion = v; }).catch(() => {});
-  const PHOSPHOR = { name: 'Phosphor', url: 'https://github.com/openvalence/Phosphor/blob/main/LICENSE', license: 'CERN-OHL-S-2.0' };
+  const PHOSPHOR = { name: 'Phosphor', url: 'https://github.com/openvalence/Phosphor/blob/main/LICENSE', license: 'Apache-2.0' };
   const notices = $derived(pluginsUi.list.flatMap((p) => p.credits.map((c) => ({ key: p.key + c.name, plugin: p.name, c }))));
   const uiBuild = typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : '--';
 </script>
