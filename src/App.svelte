@@ -152,6 +152,11 @@
   $effect(() => { currentId; untrack(() => { full = OFF; }); });
   let osFull = false;
   $effect(() => {
+    const show = () => { if (full.bare) full = toggleBar(full); };
+    window.addEventListener('phosphor-close-ask', show);
+    return () => window.removeEventListener('phosphor-close-ask', show);
+  });
+  $effect(() => {
     const want = osFullscreen({ on: isFull }, $prefs.fullscreen, OS_SHELL);
     if (!OS_SHELL || want === osFull) return;
     osFull = want;

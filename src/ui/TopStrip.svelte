@@ -62,6 +62,8 @@
   let { onopenlog = null, shell = null, bare = false } = $props();
 
   let woke = $state(false);
+  // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
+  const held = $derived(!!(machine.safety && (machine.safety.estopLatched || machine.safety.paused)));
   $effect(() => {
     if (!bare) return;
     let t;
@@ -319,7 +321,7 @@
 <svelte:window onkeydown={onWindowKey} />
 <svelte:document onclick={onDocClick} />
 
-<div class="topstrip" class:bare class:woke bind:offsetHeight={stripH}>
+<div class="topstrip" class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
   <div class="strip" class:stacked role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>

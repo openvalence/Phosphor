@@ -37,6 +37,8 @@
 
   function ask() {
     asking = true;
+    // App un-hides a fullscreen page's bar so the popover is visible.
+    window.dispatchEvent(new CustomEvent('phosphor-close-ask'));
     serverRunning = false;
     invoke('bp_status').then((st) => { serverRunning = !!(st && st.running); }).catch(() => {});
   }
