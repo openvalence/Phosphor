@@ -11,6 +11,8 @@
  *            in the top strip or the Plugins pane
  *   look     F3 finds it as "Funscript · Phosphor › Plugins" and goes there
  *   phone    the tab strip carries it after Plugins and it mounts the card
+ *   fill     the player page (registered `fill`) fills the content pane to
+ *            its bottom with nothing scrolling; other pages keep their flow
  *   full     page fullscreen (ph-wb4j): the page takes the window below the
  *            top strip; the caret hides the bar and strip, leaving only the
  *            stop pair top right, uncovered, half opacity at rest and full on
@@ -123,10 +125,17 @@ console.log('\n--- desktop 1280x800 ---');
   const widths = await page.evaluate(() => [document.querySelector('main.pane .fsp').getBoundingClientRect().width,
     document.querySelector('main.pane .pane-main').getBoundingClientRect().width]);
   ok('mount: the page mounts the player card full width', widths[1] > 0 && widths[0] >= widths[1] - 2, widths.map(Math.round).join(' of '));
+  // fill (ph-yuce): the page's column reaches the content pane's bottom and right, nothing scrolls.
+  const fill = await page.evaluate(() => {
+    const ct = document.querySelector('.content'), c = ct.getBoundingClientRect(), f = document.querySelector('main.pane .fsp').getBoundingClientRect();
+    return [c.bottom - f.bottom, c.right - f.right, ct.scrollHeight - ct.clientHeight].map(Math.round);
+  });
+  ok('fill: the page fills the content pane, nothing scrolls', fill.every((v) => Math.abs(v) <= 1), fill.join(','));
   await shot(page, 'sidebar-page-1280x800.png');
 
   // F3 finds it by label and path.
   await page.click('[data-tab-id="machine"]');
+  ok('fill: other pages keep their flow', await page.locator('main.pane.fill').count() === 0);
   await page.keyboard.press('F3');
   await page.fill('.lf-q', 'Funscript');
   const hits = await page.$$eval('.lf-list li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ').trim()));

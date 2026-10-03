@@ -416,7 +416,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} use:scrollshade={isFull}>
+  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
     <div class="pane-main">
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
@@ -836,6 +836,9 @@
     padding-bottom: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
+  /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
+     the content pane's whole height, as in page fullscreen. Desktop only. */
+  .content > .pane.fill:not(.full) { height: 100%; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      The page alone in the window below the top strip, dash Open full's
@@ -857,8 +860,8 @@
   .pane.full.bare { top: 0; }
   .pane.full.bare > :global(.page-foot) { display: none; }
   /* The window's height reaches the plugin's mount. */
-  .pane.full > .pane-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-  .pane.full > .pane-main > :global(*) { flex: 1 1 auto; min-height: 0; }
+  .content > .pane.fill > .pane-main, .pane.full > .pane-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+  .content > .pane.fill > .pane-main > :global(*), .pane.full > .pane-main > :global(*) { flex: 1 1 auto; min-height: 0; }
   .full-caret {
     position: fixed;
     top: var(--strip-h, 0px);

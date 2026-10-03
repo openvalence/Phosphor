@@ -487,6 +487,7 @@ export function createPluginHost(deps) {
           label: p.def.label.trim(),
           icon: p.def.icon || null,
           spec: p.def.spec || {},
+          fill: !!p.def.fill,
           mediaFullscreen: !!p.def.mediaFullscreen,
           plugin: rec.manifest.name,
           slot: p,

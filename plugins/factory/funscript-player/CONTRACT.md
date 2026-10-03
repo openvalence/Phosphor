@@ -720,7 +720,8 @@ export function activate(api);   // -> deactivate()
 //                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
 //   api.registerSettings((el) => mountConnect + mountInterp + mountPlay, one unmount for the three);
-//   registerPlayerPage(api, player, HERO.spec, that same function);   // page.js: the card, then a Settings section mounting it
+//   registerPlayerPage(api, player, HERO.spec, that same function);   // page.js: the card, then a Settings section mounting it;
+//     registered fill and mediaFullscreen (docs/PLUGINS.md, Pages): the card takes the pane, the section at most half
 //   return () => player.dispose();
 
 // prefs.js

@@ -1409,7 +1409,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   const TAB = '[data-tab-id="plugin:funscript-player:player"]', SUM = C + ' .fsp-set';
   const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
   const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-interp', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > .fsp-psec ' + s).length));
-  const cardBox = () => page.locator(C).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top - e.closest('.pane-main').getBoundingClientRect().top, r.height].map(Math.round).join(','); });
+  const cardBox = () => page.locator(C).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top - e.closest('.pane-main').getBoundingClientRect().top, r.height].map(Math.round); });
   // The viewport, and the whole page region (card and section) on a viewport tall enough to hold it.
   const pageShot = async (name) => {
     if (!SHOTS) return;
@@ -1430,7 +1430,11 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.click(SUM);
   await page.waitForTimeout(200);
   ok('page settings: Settings mounts the plugin settings card (connect, curve, playback)', same(await rows(), [1, 1, 1]), await rows());
-  ok('page settings: the card stays put', (await cardBox()) === before, before + ' -> ' + await cardBox());
+  const after = await cardBox();
+  const sec = await page.evaluate(() => { const s = document.querySelector('main.pane .fsp-psec');
+    return { h: s.clientHeight, page: s.parentElement.clientHeight, scrolls: s.scrollHeight > s.clientHeight + 1 }; });
+  ok('page settings: the card keeps its top and yields height; the section at most half the page, scrolling within (fill)',
+    after[0] === before[0] && after[1] < before[1] && sec.h <= sec.page / 2 + 1 && sec.scrolls, { before, after, sec });
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');

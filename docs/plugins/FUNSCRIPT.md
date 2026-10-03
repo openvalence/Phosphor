@@ -303,6 +303,13 @@ FULL
   draws them only where the bar cannot (glance, and the handheld analyzer's
   thumbnail, three rows as before). The source row is 24 px with a compact
   Open files. Under a coarse pointer both rows are `var(--tap)` (law 12).
+- **Page fill** (`ph-yuce`): the page registers `fill` (docs/PLUGINS.md,
+  Pages), so on the desktop it is a column filling the content pane: the
+  stage row grows (the video contained, letterboxed in the stage's dark),
+  the strip, timeline and status keep their fixed heights, the library
+  column keeps 320 px. An open Settings section takes at most half the page
+  and scrolls within; the card yields height above it but never under
+  340 px (a 120 px stage). The phone layout is not filled.
 - **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
   library column's edge, `Library`: it closes the column and the player
   takes the width, open again from the card's edge; a view switch kept in

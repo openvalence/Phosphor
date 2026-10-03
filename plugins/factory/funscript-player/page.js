@@ -1,7 +1,7 @@
 /**
  * page.js -- the funscript player's sidebar page (docs/PLUGINS.md, Pages):
- * the same card as the hero, full width under Plugins, and the plugin's
- * settings card in a section below it.
+ * the same card as the hero, filling the content pane (`fill`), and the
+ * plugin's settings card in a section below it.
  *
  * Constraints:
  * - No second implementation: the page mounts through the player's own
@@ -11,8 +11,9 @@
  * - The section mounts the registerSettings function itself, on open, so it
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted. Its
  *   button is the timeline's (ui.js opts.settings), open kept in settingsOpen.
- * - The page is a column: the card takes what the open section leaves, the
- *   section at most half the page, scrolling within. In media fullscreen
+ * - The page is a column: the card takes what the open section leaves, never
+ *   under 340 px (a 120 px stage over the fixed rows), the section at most half
+ *   the page, scrolling within. In media fullscreen
  *   (ui.js, data-media) the card takes the whole page and the section is hidden.
  * - mediaFullscreen: the hover bar offers fullscreen and its mode, so the
  *   shell's footer offers neither.
@@ -22,14 +23,14 @@ import { readPrefs, writePref } from './prefs.js';
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { height: 100%; display: flex; flex-direction: column; gap: 4px; }
-.fsp-page > .fsp-pcard { flex: 1 1 auto; min-height: 0; }
+.fsp-page { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.fsp-page > .fsp-pcard { flex: 1 1 auto; min-height: min(100%, 340px); }
 .fsp-page > .fsp-psec { flex: 0 1 auto; max-height: 50%; max-width: 640px; overflow-y: auto; padding: 8px 0; }
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 
 export function registerPlayerPage(api, player, spec, settings) {
-  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, mediaFullscreen: true, mount(el, fields) {
+  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, mount(el, fields) {
     const style = Object.assign(document.createElement('style'), { textContent: CSS });
     const card = Object.assign(document.createElement('div'), { className: 'fsp-pcard' });
     const sec = Object.assign(document.createElement('div'), { className: 'fsp-psec' });

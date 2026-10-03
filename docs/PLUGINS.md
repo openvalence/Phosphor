@@ -114,7 +114,12 @@ gets no footer button (F11 still works); its mode control dispatches
 `phosphor-page-fullscreen-mode` (`detail: {mode: 'window' | 'borderless'}`)
 and the shell stores pref `fullscreen`. The desktop shell keeps
 `<html data-fullscreen-mode>` at the current mode; absent, there is no
-Borderless.
+Borderless. A page registered with `fill: true` (experimental, `ph-yuce`)
+is laid out as a column filling the desktop content pane's width and
+height (`main.pane.fill`, the page fullscreen geometry in place): a mount
+whose root is `height: 100%` gets a definite height and no bottom gap.
+Other pages keep their flow; the phone layout scrolls the window and is
+not filled.
 A page may also ask for it (experimental): a `phosphor-page-fullscreen`
 event dispatched from inside the page (bubbles, cancelable, `detail: {on}`).
 The shell takes it only for the page on screen, and `preventDefault()` is
@@ -154,7 +159,7 @@ for it (the funscript player's media fullscreen) ends with the shell's
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
-| `registerPage({id, label, icon, spec, mount, mediaFullscreen})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
+| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 
