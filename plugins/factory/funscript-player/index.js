@@ -8,8 +8,10 @@
  *   segments STREAM the hero declines and nothing renders (D1, law 7).
  * - absorb false: the claimed fields stay in the generic tree.
  * - deactivate disposes the player, which sends its one hold.
+ * - planEl and planDur feed the automatic latency compensation only; without
+ *   them it stays at 0.
  */
-import { createPlayer } from './ui.js';
+import { createPlayer, mountPlay } from './ui.js';
 import { mountConnect } from './library.js';
 import { mountInterp } from './interp.js';
 import { readPrefs, writePref } from './prefs.js';
@@ -22,7 +24,8 @@ export const HERO = Object.freeze({
   spec: {
     require: { target: 'input.target', dur: 'input.duration' },
     optional: { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
-      vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running' },
+      vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
+      planEl: 'plan.elapsed', planDur: 'plan.duration' },
   },
 });
 
@@ -32,7 +35,8 @@ export function activate(api) {
   api.registerSettings((el) => {
     const a = mountConnect(el, { api });
     const b = mountInterp(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); } });
-    return () => { a(); b(); };
+    const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p) });
+    return () => { a(); b(); c(); };
   });
   return () => player.dispose();
 }

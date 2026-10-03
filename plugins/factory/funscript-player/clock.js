@@ -21,8 +21,9 @@
 //   into the stamps. STEP_MS stays: below one vsync it would step on every cadence slip.
 // - A loop runs the clock in unrolled media time (createLoop): lap L adds L x (b - a), so the
 //   map stays one affine line across the wrap and the landing frame's seek delay is a residual.
-//   A wrap counts only after wrap() and only on a backward jump; a user seek is the caller's
-//   reset().
+//   A wrap counts only after wrap() and only on a frame in the section's first half: wrap() is
+//   due within WRAP_EARLY_MS of b, so that frame has landed. It needs no frame before the wrap
+//   (a loop set at the playhead wraps at once). A user seek is the caller's seeked().
 
 export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 25, FALLBACK_AFTER_MS = 250;
 export const LOW = Object.freeze({ window: 8, slew: 15, fallbackMs: 100 });
@@ -113,12 +114,12 @@ export function loopSpec(a, b, count = 0, durationMs = Infinity) {
  * The caller seeks to wrap()'s ms when due(mediaMs) and feeds the clock unroll(mediaMs).
  */
 export function createLoop() {
-  let spec = null, pending = false, last = NaN;
+  let spec = null, pending = false;
   const loop = {
     lap: 0,
     get spec() { return spec; },
     set(s) { spec = s || null; loop.reset(); },
-    reset() { loop.lap = 0; pending = false; last = NaN; },
+    reset() { loop.lap = 0; pending = false; },
     /** The section still repeats after this lap. */
     more() { return !!spec && (spec.count === 0 || loop.lap < spec.count - 1); },
     due(mediaMs) { return !pending && loop.more() && mediaMs >= spec.b - WRAP_EARLY_MS && mediaMs < spec.b + 1000; },
@@ -128,8 +129,7 @@ export function createLoop() {
     /** Wrap pending: true while the seek it started has not landed (the caller skips its stop on it). */
     get wrapping() { return pending; },
     unroll(mediaMs) {
-      if (pending && spec && mediaMs < last - (spec.b - spec.a) / 2) { loop.lap++; pending = false; }
-      last = mediaMs;
+      if (pending && spec && mediaMs < spec.b - (spec.b - spec.a) / 2) { loop.lap++; pending = false; }
       return spec ? mediaMs + loop.lap * (spec.b - spec.a) : mediaMs;
     },
   };

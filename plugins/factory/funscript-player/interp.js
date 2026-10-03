@@ -238,6 +238,12 @@ export const CSS = `
 .fsp-interp select:focus-visible, .fsp-interp input:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
 .fsp-interp output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
 .fsp-interp input:disabled { opacity: .4; }
+.fsp-interp input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }
+.fsp-interp input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
+.fsp-interp input[type=range]::-moz-range-track { height: 2px; background: var(--line-2); }
+.fsp-interp input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 20px; margin-top: -9px; border-radius: 4.5px;
+  border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+.fsp-interp input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
 `;
 
 const fmt = { tension: (v) => v.toFixed(2), bias: (v) => (v > 0 ? '+' : '') + v.toFixed(2),

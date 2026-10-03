@@ -37,9 +37,15 @@
 //   never picture-in-picture or fullscreen (law 1: nothing may cover the strip).
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
+// - The scheduler loads the shaped Script with the parsed one as its actions: home finds
+//   its gaps in the file's actions, never in interp.js's pieces.
+// - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
+//   seek resets the loop's lap; one while playing restarts with the seek transition.
+// - With a loop the clock runs in unrolled media time; everything shown is folded back.
+// - Changing the loop while playing holds and re-anchors: the unrolled clock cannot jump.
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed } from './funscript.js';
-import { createMediaClock, frameSource } from './clock.js';
+import { createMediaClock, frameSource, createLoop, loopSpec, LOW, FALLBACK_AFTER_MS } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
 import { createStash } from './stash.js';
 import { mountLibrary } from './library.js';
@@ -81,6 +87,25 @@ export const COPY = Object.freeze({
   overLimit: 'Script past the input speed limit',
   more: 'more',
   meter: 'Stroke',
+  playHeading: 'Playback',
+  loop: 'Loop',
+  loopTip: 'Loop the whole video',
+  loopCount: 'Loop count',
+  forever: 'forever',
+  home: 'Auto-home',
+  homeTip: 'Home in long gaps while playing',
+  homeAfter: 'Home after',
+  homePoint: 'Home point',
+  homeSpeed: 'Home speed',
+  seekMs: 'Seek glide',
+  seekTip: 'Glide to a seek target',
+  jump: 'jump',
+  low: 'Low latency',
+  lowTip: '50 ms lead, faster clock',
+  auto: 'Auto latency',
+  autoTip: 'Offset from the plan strip',
+  on: 'On',
+  off: 'Off',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -138,13 +163,14 @@ export function extraNote(script, extra = []) {
  * ended, seeking, currentTime, duration, playbackRate, src, poster,
  * addEventListener); clock (MediaClock); scheduler; submit (Seg[] ->
  * SegResult, the probe-wrapped api.submitSegments); now; probe(entry);
- * onChange(); revoke(url).
+ * onChange(); revoke(url); loop (clock.js createLoop).
  */
 export function createControl({ api, video, clock, scheduler, submit, now = () => performance.now(),
-  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u) }) {
+  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop() }) {
   const prefs = readPrefs(api);
   const state = { phase: 'empty', scene: null, script: null, shaped: null, T: { ...prefs.T }, motion: prefs.motion !== false,
-    status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full' };
+    status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full',
+    ab: { a: null, b: null }, play: prefs.play };
   let fields = null;
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
   let info = [];         // load facts: no script, repairs, extra axes
@@ -152,12 +178,39 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0;
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
   let interp = prefs.interp;
+  let seekT = 0;        // the seek transition the next restart carries
+  let planAge = Infinity, planEl = NaN, latAt = -Infinity;
   const trace = [];
   scheduler.setTransform(state.T);
 
   const gate = () => (state.motion && fields && fields.dur ? api.gate(fields.dur) || '' : '');
   const active = () => state.phase === 'playing' || state.phase === 'preroll';
-  const mediaNow = () => (state.phase === 'playing' && clock.ready ? clock.mediaAt(now()) : video.currentTime * 1000);
+  /** Unrolled loop time back to media time. */
+  const fold = (u) => (loop.spec && loop.lap ? u - loop.lap * (loop.spec.b - loop.spec.a) : u);
+  const mediaNow = () => (state.phase === 'playing' && clock.ready ? fold(clock.mediaAt(now())) : video.currentTime * 1000);
+  const durMs = () => (Number.isFinite(video.duration) ? video.duration * 1000 : state.script ? state.script.durationMs : Infinity);
+  /** A plan role's value in ms from its unit. */
+  const msOf = (f) => { const v = Number(api.value(f)); return f.unit === 'us' ? v / 1000 : f.unit === 's' ? v * 1000 : v; };
+
+  /** A-B points, else the whole video when the loop pref is on. A change while playing holds and re-anchors. */
+  function setLoopSpec() {
+    const { a, b } = state.ab, p = state.play;
+    const d = durMs();
+    const spec = b != null ? loopSpec(a, b, p.loopCount, d) : p.loop && Number.isFinite(d) ? loopSpec(0, d, p.loopCount, d) : null;
+    const was = loop.spec;
+    if (JSON.stringify(spec) === JSON.stringify(was)) return;
+    if (state.phase === 'playing') hold();
+    loop.set(spec);
+    scheduler.setLoop(spec);
+  }
+  function applyPlay() {
+    const p = state.play;
+    scheduler.setHome(p.home ? { afterMs: p.homeAfterMs, point: p.homePoint, speed: p.homeSpeed } : null);
+    scheduler.setLatency({ low: p.lowLatency, auto: p.autoLatency });
+    if (clock.tune) clock.tune(p.lowLatency ? LOW : {});
+    setLoopSpec();
+    if (state.phase === 'playing' && clock.ready) restart = true;
+  }
   const here = () => {
     if (!fields || !fields.pos || api.stale(fields.pos)) return null;
     return windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi));
@@ -183,6 +236,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   function stop(phase, words = '', yieldRail = false) {
     if (yieldRail) sentSince = false;
     if (state.phase === 'playing') hold();
+    if (loop.wrapping) loop.reset();
     pre = null;
     buffering = false;
     transient = '';
@@ -241,14 +295,19 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
         else if (now() >= pre.playAt) start();
       }
     } else if (state.phase === 'playing' && state.motion && clock.ready && !buffering) {
-      if (restart) { scheduler.restart(clock); restart = false; }
+      if (restart) { scheduler.restart(clock, seekT); restart = false; seekT = 0; }
       const r = scheduler.tick(clock);
       if (r.sent > 0) sentSince = true;
       if (r.fatal) stop('held', r.reason, true);
       else transient = r.ok ? '' : r.reason;
+      observePlan();
+    }
+    if (state.phase === 'playing' && !video.seeking && loop.due(video.currentTime * 1000)) {
+      probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
+      video.currentTime = loop.wrap() / 1000;
     }
     if (state.phase === 'playing' && clock.ready && fields && fields.pos) {
-      const m = clock.mediaAt(now() - state.T.offsetMs);
+      const m = fold(clock.mediaAt(now() - state.T.offsetMs + scheduler.compMs));
       if (Number.isFinite(m)) {
         trace.push({ m, u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
           stale: !!api.stale(fields.pos), p: planShare() });
@@ -260,8 +319,18 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     refresh();
   }
 
+  /** One plan strip sample per new STATE (its age drops) to the scheduler's compensation. */
+  function observePlan() {
+    if (!fields || !fields.planEl || !fields.planDur) return;
+    const age = api.age(fields.planEl), el = msOf(fields.planEl);
+    if (age < planAge || el !== planEl) scheduler.observePlan(now() - age, el, msOf(fields.planDur));
+    planAge = age; planEl = el;
+    if (now() - latAt >= 500) { latAt = now(); probe({ k: 'lat', t: latAt, lag: scheduler.lagMs, comp: scheduler.compMs }); }
+  }
+
   function onFrame(mediaMs, displayMs) {
     if (state.phase !== 'playing' || buffering || video.paused || video.seeking) return;
+    mediaMs = loop.unroll(mediaMs);
     probe({ k: 'obs', m: mediaMs, d: displayMs });
     const prev = lastM;
     lastM = mediaMs;
@@ -282,7 +351,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const next = s ? shape(s, interp, { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi }) : null;
     if (next === state.shaped) return;
     state.shaped = next;
-    scheduler.load(next);
+    scheduler.load(next, s);
     peak = next ? peakSpeed(next) : 0;
     if (state.phase === 'playing' && clock.ready) restart = true;
   }
@@ -293,8 +362,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (url) revoke(url);
     url = String(scene.key).startsWith('file:') ? scene.stream : null;
     const my = ++seq;
-    Object.assign(state, { scene, script: null, shaped: null, phase: 'ready' });
+    Object.assign(state, { scene, script: null, shaped: null, phase: 'ready', ab: { a: null, b: null } });
     scheduler.load(null);
+    loop.set(null);
+    scheduler.setLoop(null);
     peak = 0;
     why = '';
     info = !script && none ? [none] : [];
@@ -305,6 +376,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
         if (my !== seq) return;
         state.script = s;
         reshape();
+        setLoopSpec();
         info = [...s.notes, extraNote(s, extra)].filter(Boolean);
         warm();
         changed();
@@ -340,6 +412,21 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     changed();
   }
   function setView(v) { state.view = v; writePref(api, 'view', v); changed(); }
+  /** The play prefs (prefs.js 'play'), stored and in force. */
+  function setPlay(p) {
+    writePref(api, 'play', { ...state.play, ...p });
+    state.play = readPrefs(api).play;
+    applyPlay();
+    changed();
+  }
+  /** One A-B press: sets A at the playhead, then B (the loop starts), then clears. */
+  function markAB() {
+    const m = mediaNow(), { a, b } = state.ab;
+    state.ab = a == null ? { a: m, b: null } : b == null && m > a ? { a, b: m } : { a: null, b: null };
+    setLoopSpec();
+    if (state.ab.b != null && !loop.spec) state.ab = { a: null, b: null };
+    changed();
+  }
   function seek(ms) { if (Number.isFinite(ms)) video.currentTime = Math.max(0, ms) / 1000; }
 
   function status() {
@@ -365,14 +452,24 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     else if (active()) stop('ready');
   });
   on('ended', () => { if (state.phase === 'playing') { state.phase = 'ready'; sentSince = false; changed(); } });
-  on('waiting', () => { if (state.phase === 'playing') { hold(); buffering = true; changed(); } });
-  on('playing', () => { if (state.phase === 'playing') { buffering = false; resetClock(); changed(); } });
-  on('seeking', () => { if (state.phase === 'playing') hold(); trace.length = 0; });
+  on('waiting', () => { if (state.phase === 'playing' && !loop.wrapping) { hold(); buffering = true; changed(); } });
+  on('playing', () => { if (state.phase === 'playing' && !loop.wrapping) { buffering = false; resetClock(); changed(); } });
+  on('seeking', () => {
+    if (loop.wrapping) return;
+    if (state.phase === 'playing') { hold(); seekT = state.play.seekMs; }
+    trace.length = 0;
+    const was = loop.spec;
+    scheduler.setLoop(loop.seeked(video.currentTime * 1000));
+    if (was && !loop.spec) { state.ab = { a: null, b: null }; changed(); }
+  });
+  on('durationchange', () => setLoopSpec());
   on('ratechange', () => { if (state.phase === 'playing') hold(); });
   on('error', () => { if (state.scene) stop('error', COPY.badFormat); });
+  applyPlay();
 
   return {
-    state, trace, play, tick, onFrame, load, setMotion, setT, setView, seek, mediaNow, here,
+    state, trace, play, tick, onFrame, load, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
+    get low() { return !!state.play.lowLatency; },
     pause: () => { if (active()) stop('ready'); },
     toggle: () => (active() ? stop('ready') : play()),
     halt: () => { if (active()) stop('held'); },
@@ -528,7 +625,7 @@ export function createPlayer(api) {
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
   const views = [];
   const ctl = createControl({ api, video, clock, scheduler, submit, probe, onChange: () => views.forEach((v) => v.render()) });
-  const stopFrames = frameSource(video, ctl.onFrame);
+  const stopFrames = frameSource(video, ctl.onFrame, undefined, () => (ctl.low ? LOW.fallbackMs : FALLBACK_AFTER_MS));
 
   let stash = null, stashId = '';
   const getStash = () => {
@@ -663,6 +760,7 @@ export function createPlayer(api) {
       zoomMs,
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
       onExpand: (on) => expand(on),
+      onLoop: () => ctl.markAB(),
       onSeek: (ms) => ctl.seek(ms),
       onScrub: (phase, ms) => ctl.seek(ms),
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
@@ -671,7 +769,7 @@ export function createPlayer(api) {
     function expand(on) {
       root.toggleAttribute('data-an', on);
       tl.setExpanded(on);
-      if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => st.script, T: () => st.T });
+      if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => st.shaped || st.script, T: () => st.T });
     }
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
@@ -696,6 +794,7 @@ export function createPlayer(api) {
       const ceil = ceilingOf(api, fields);
       const key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm];
       if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, ceil, st.script); }
+      tl.setLoop(st.ab);
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setText(play, act ? COPY.pause : COPY.play);
       play.disabled = !act && !ctl.canPlay();
@@ -768,6 +867,66 @@ export function createPlayer(api) {
       video.load();
     },
     setInterp(v) { ctl.setInterp(v); },
+    setPlay(v) { ctl.setPlay(v); },
     get state() { return ctl.state; },
   };
+}
+
+// ---- the settings card's playback rows -------------------------------------
+
+export const PLAY_CSS = `
+.fsp-pset { display: grid; grid-template-columns: 12ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: 4px 8px; align-items: center; margin-top: 8px; }
+.fsp-pset h4 { grid-column: 1 / -1; margin: 0; font-size: .85rem; color: var(--tx-mut); font-weight: 600; }
+.fsp-pset label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsp-pset input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
+.fsp-pset input:focus-visible, .fsp-pset button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
+.fsp-pset button { justify-self: start; min-height: var(--tap); min-width: calc(var(--tap) * 2); padding: 0 10px; background: none; color: var(--tx);
+  border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
+.fsp-pset button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp-pset output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
+.fsp-pset input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }
+.fsp-pset input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
+.fsp-pset input[type=range]::-moz-range-track { height: 2px; background: var(--line-2); }
+.fsp-pset input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 20px; margin-top: -9px; border-radius: 4.5px;
+  border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+.fsp-pset input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+`;
+
+// [key, label, tip, min, max, step, format]: ranges are prefs.js's repairs.
+const PLAY_ROWS = [
+  ['loop', COPY.loop, COPY.loopTip],
+  ['loopCount', COPY.loopCount, '', 0, 99, 1, (v) => (v ? v + 'x' : COPY.forever)],
+  ['home', COPY.home, COPY.homeTip],
+  ['homeAfterMs', COPY.homeAfter, '', 1000, 60000, 500, (v) => (v / 1000).toFixed(1) + ' s'],
+  ['homePoint', COPY.homePoint, '', 0, 1, 0.05, (v) => Math.round(v * 100) + ' %'],
+  ['homeSpeed', COPY.homeSpeed, '', 0.05, 2, 0.05, (v) => Math.round(v * 100) + ' %/s'],
+  ['seekMs', COPY.seekMs, COPY.seekTip, 0, 3000, 50, (v) => (v ? v + ' ms' : COPY.jump)],
+  ['lowLatency', COPY.low, COPY.lowTip],
+  ['autoLatency', COPY.auto, COPY.autoTip],
+];
+
+/** Settings card rows for the play prefs, one var(--tap) row each; -> unmount(). onChange(partial) on commit. */
+export function mountPlay(el, { value, onChange }) {
+  let v = { ...value };
+  const root = h('div', { class: 'fsp-pset', role: 'group', 'aria-label': COPY.playHeading }, h('style', { text: PLAY_CSS }),
+    h('h4', { text: COPY.playHeading }));
+  const draws = PLAY_ROWS.map(([key, label, tip, min, max, step, fmt]) => {
+    const lab = h('label', { text: label, ...(tip ? { title: tip } : {}) });
+    const out = h('output');
+    if (min == null) {
+      const b = h('button', { type: 'button', 'aria-label': label, ...(tip ? { title: tip } : {}) });
+      b.addEventListener('click', () => { v = { ...v, [key]: !v[key] }; draw(); onChange({ [key]: v[key] }); });
+      root.append(lab, b, out);
+      return () => { b.setAttribute('aria-pressed', String(!!v[key])); setText(b, v[key] ? COPY.on : COPY.off); };
+    }
+    const i = h('input', { type: 'range', min: String(min), max: String(max), step: String(step), 'aria-label': label });
+    i.addEventListener('input', () => setText(out, fmt(+i.value)));
+    i.addEventListener('change', () => { v = { ...v, [key]: +i.value }; draw(); onChange({ [key]: v[key] }); });
+    root.append(lab, i, out);
+    return () => { if (document.activeElement !== i) i.value = String(v[key]); setText(out, fmt(v[key])); };
+  });
+  const draw = () => draws.forEach((d) => d());
+  el.append(root);
+  draw();
+  return () => root.remove();
 }

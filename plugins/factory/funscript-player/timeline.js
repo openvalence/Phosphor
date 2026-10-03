@@ -26,6 +26,8 @@
 // - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
 // - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
 //   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
+// - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
+//   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
 
 import { posAt, indexAfter, heat, fmtTime } from './funscript.js';
 
@@ -47,6 +49,10 @@ export const COPY = Object.freeze({
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
   analyzer: 'Analyzer',
+  abGlyph: 'A-B',
+  abStart: 'Set loop start',
+  abEnd: 'Set loop end',
+  abClear: 'Clear loop',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -122,6 +128,8 @@ export const CSS = `
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .fsp-ov rect.bin { fill: var(--intent); }
 .fsp-ov rect.bin.over { fill: var(--warn); }
+.fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
+.fsp-dt line.ab { stroke: var(--highlight); stroke-width: 1; stroke-dasharray: 3 3; }
 .fsp-ov rect.win { fill: rgba(var(--highlight-rgb), .08); stroke: var(--highlight); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
@@ -145,6 +153,7 @@ export const CSS = `
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
 .fsp-zoom { position: absolute; right: 0; top: 0; display: flex; z-index: 1; }
 .fsp-zoom button { width: var(--tap); height: var(--tap); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
+.fsp-zoom .fsp-ab { font-size: .72rem; }
 .fsp-zoom button:hover, .fsp-zoom button:focus-visible { color: var(--highlight); outline: none; }
 .fsp-zoom button:disabled { opacity: .35; cursor: default; }
 .fsp-zoom button[aria-pressed=true] { color: var(--highlight); }
@@ -166,8 +175,8 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null }) {
-  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [];
+export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null }) {
+  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null };
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -175,7 +184,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const ovSvg = s('svg', { viewBox: '0 0 ' + HEAT_BINS + ' 24', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const bins = s('g');
   const win = s('rect', { class: 'win', y: '0', height: '24' });
-  ovSvg.append(bins, win);
+  const abBand = s('rect', { class: 'ab', y: '0', height: '24' });
+  ovSvg.append(bins, abBand, win);
   const scrub = h('div', { class: 'fsp-scrub', role: 'slider', tabindex: '0', 'aria-label': COPY.scrub,
     'aria-orientation': 'horizontal', 'aria-valuemin': '0' });
   const ov = h('div', { class: 'fsp-ov', role: 'group', 'aria-label': COPY.overview }, ovSvg, scrub);
@@ -216,7 +226,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
   const real = s('g');
-  dtSvg.append(rgLo, rgHi, rawLine, curve, real);
+  const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
+  dtSvg.append(rgLo, rgHi, abA, abB, rawLine, curve, real);
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
@@ -226,6 +237,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const icon = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
   icon.append(s('path', { d: 'M9.5 2.5h4v4M13.5 2.5l-5 5M6.5 13.5h-4v-4M2.5 13.5l5-5' }));
   zAn.append(icon);
+  const zAB = h('button', { type: 'button', class: 'fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
+  zAB.hidden = !onLoop;
+  zAB.addEventListener('click', () => onLoop && onLoop());
   zAn.hidden = !onExpand;
   zAn.addEventListener('click', () => onExpand && onExpand(zAn.getAttribute('aria-pressed') !== 'true'));
   const pills = ['lo', 'hi'].map((key) => {
@@ -265,7 +279,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAn));
+    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn));
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
   el.append(root);
@@ -308,6 +322,16 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     scrub.hidden = !script;
     ph.style.left = scrub.style.left;
     ph.hidden = !script;
+    const ax = (t) => String(((t - from) / zoom) * 1000);
+    abBand.setAttribute('x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
+    abBand.setAttribute('width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
+    for (const [line, t] of [[abA, ab.a], [abB, ab.b]]) {
+      line.style.display = t == null ? 'none' : '';
+      if (t != null) { line.setAttribute('x1', ax(t)); line.setAttribute('x2', ax(t)); }
+    }
+    const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
+    if (zAB.title !== tip) { zAB.title = tip; zAB.setAttribute('aria-label', tip); }
+    zAB.setAttribute('aria-pressed', String(ab.b != null));
   }
 
   return {
@@ -325,6 +349,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       draw();
     },
     setExpanded(on) { zAn.setAttribute('aria-pressed', String(!!on)); },
+    /** {a, b} media ms, either null: what the A-B button has set. */
+    setLoop(x) { if (x && (x.a !== ab.a || x.b !== ab.b)) { ab = { a: x.a, b: x.b }; draw(); } },
     unmount() { root.remove(); },
   };
 }

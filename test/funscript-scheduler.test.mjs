@@ -380,6 +380,11 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   lp.wrap(); lp.unroll(2990); lp.unroll(1000);
   ok('createLoop: count 3 stops repeating after lap 2', lp.lap === 2 && !lp.more() && !lp.due(2990));
   ok('createLoop: a user seek past b clears the loop, before b keeps it at lap 0', lp.seeked(1500) === L && lp.lap === 0 && lp.seeked(3200) === null && !lp.more());
+  const l2 = createLoop();
+  l2.set(L);
+  l2.wrap();
+  ok('createLoop: a loop set at the playhead wraps before any frame; the landing still counts a lap',
+    l2.unroll(1020) === 3020 && l2.lap === 1 && !l2.wrapping);
 }
 {
   // Auto-home: a 20 s gap after 1000 ms, home 0.5 after 5 s at 0.25 norm/s.

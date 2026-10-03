@@ -21,6 +21,7 @@
  *      node test/funscript-player.test.mjs [--shot out.png]
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
+ *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
  */
 import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
@@ -50,7 +51,7 @@ const CONTRACT = {
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
-    'windowShare', 'ceilingOf', 'localScene', 'extraNote'],
+    'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
@@ -155,13 +156,13 @@ if (index) {
   ok('one hero, id player, title, absorb false, cells', !!h && h.id === 'player' && h.title === 'Funscript player'
     && h.absorb === false && same(h.cells, { h: [16, 12], v: [8, 16] }));
   ok('spec requires input.target and input.duration', !!h && same(h.spec.require, { target: 'input.target', dur: 'input.duration' }));
-  ok('spec binds the six optional roles', !!h && same(h.spec.optional, { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
-    vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running' }));
+  ok('spec binds the eight optional roles', !!h && same(h.spec.optional, { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
+    vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running', planEl: 'plan.elapsed', planDur: 'plan.duration' }));
   if (h) {
     const claim = (entries) => claimAll(buildSettingsModel(entries).byRole, [{ id: 'p', spec: h.spec, absorb: false }]);
     const w = claim(ENTRIES).widgets[0];
     ok('claims on the valencesim fixture, dur on the segments STREAM', !!w && w.fields.dur.channelId === SEG_CH);
-    ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun'].every((k) => w.fields[k]));
+    ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun', 'planEl', 'planDur'].every((k) => w.fields[k]));
     ok('absorb false claims nothing away', claim(ENTRIES).claimed.size === 0);
     ok('declines without a segments STREAM (D1)', claim(ENTRIES.filter((e) => e.id !== SEG_CH)).widgets.length === 0);
   }
@@ -262,14 +263,16 @@ const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 const { cbMap, cbUint, cbF32, cbBstr, cbTstr, cbArray, cbDecodeFull } = await import('../../Valence/clients/js/cbor.js');
 const { decodePacked, encodePacked } = await import('../../Valence/clients/js/catalog.js');
-const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } = await import('../../Valence/clients/js/frames.js');
+const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK, NACK_NAME } = await import('../../Valence/clients/js/frames.js');
 const { CORE_CHANNEL } = await import('../../Valence/clients/js/generated/registry_vocab.js');
 const { toHex } = await import('../../Valence/clients/js/sha256.js');
 const { buildShellPage, TAURI_STUB } = await import('./shell-build.mjs');
 const { advgenCatalog } = await import('./fixtures/advgen-roles-catalog.mjs');
 const { startFakeStash } = await import('./fixtures/fake-stash.mjs');
 
-const LIVE = args.includes('--live');
+const PB = args.includes('--live-playback');
+const LIVE = args.includes('--live') || PB;
+const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
 const SHOT = args.includes('--shot') ? args[args.indexOf('--shot') + 1] : null;
 const SIM_PORT = args.includes('--port') ? parseInt(args[args.indexOf('--port') + 1], 10) : 8882;
 const SIM_HTTP = args.includes('--http') ? parseInt(args[args.indexOf('--http') + 1], 10) : SIM_PORT + 7;
@@ -288,7 +291,7 @@ const CH = { config: 0x1000, motion: 0x1100, advgen: 0x1210, segments: 0x2101 };
 
 // ---- generated media: a 30 fps VP8 clip with a tone, never committed ---------
 const TMP = mkdtempSync(join(tmpdir(), 'fsp-'));
-const CLIP_S = 30;
+const CLIP_S = PB ? 60 : 30;
 let VIDEO = null;
 try {
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30:duration=' + CLIP_S,
@@ -305,7 +308,10 @@ try {
 // The script: each span a distinct length (300..597 ms) between alternating
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
-for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
+// --live-playback: 400..697 ms spans of 25..75 (inside the sim's speed limit, so plans keep their durations) and a
+// gap from the last action at or before 20 s to 34 s for auto-home.
+if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: k % 2 ? 75 : 25 }); at += 400 + ((k * 37) % 298); }
+else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 /** The knot k whose span (k-1 -> k) lasts durMs at this rate, or -1. */
 function knotOf(durMs, rate = 1) {
@@ -746,8 +752,16 @@ if (!LIVE) {
   ok('seek: one hold first', !!hold && hold.segs.length === 1 && hold.segs[0].dur <= 200);
   ok('seek: the next bundle starts at now (clipped to the earliest start)', !!resumed && clipped(resumed.segs[0]),
     resumed && (resumed.segs[0].exec - resumed.arrival) / 1000);
+  // The seek transition (prefs play.seekMs, 500 by default): one glide from now to where the script will be.
+  const glide = resumed && resumed.segs[0];
+  const { posAt: posAtS, parseFunscript: parseS } = mods[P + 'funscript.js'];
+  const sc15 = parseS(SCRIPT);
+  const near = glide ? Math.min(...Array.from({ length: 81 }, (_, i) => Math.abs(posAtS(sc15, 15300 + 10 * i) - glide.norm))) : NaN;
+  ok('seek: a 500 ms glide to the script 500 ms on', !!glide && Math.abs(glide.dur - 500) <= 1 && near < 0.01, glide && { dur: glide.dur, near });
   const later = after.slice(hi + 1).flatMap((b) => b.segs).filter((s) => !clipped(s));
-  ok('seek: its knots lie past 15 s', later.length > 2 && later.every((s) => ACTIONS[knotOf(s.dur) - 1]?.at >= 14000));
+  const knots = later.filter((s) => knotOf(s.dur) > 0);
+  ok('seek: then the script: one joining span, its knots past 15 s', later.length > 2 && later.length - knots.length <= 1
+    && knots.every((s) => ACTIONS[knotOf(s.dur) - 1].at >= 14000), { later: later.length, knots: knots.length });
 
   // ---- offset ----
   const asked1 = (await probeSegs(page, skew)).length;
@@ -1191,7 +1205,292 @@ if (!LIVE && !args.includes('--stash-live')) {
   await ctx.close();
 }
 
-if (LIVE) {
+// ---- (h) playback wiring: the A-B loop wraps with no hold and the schedule tiles across the seam ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(h) playback');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 15;
+  const { ctx, page, up, errors } = await open({ cat, hub });
+  ok('playback: the card renders and the clip loads', up && await toCard(page) && await loadClip(page));
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
+  const ab = page.locator(C + ' .fsp-ab');
+  ok('A-B: the first press reads Set loop start', (await ab.getAttribute('title')) === 'Set loop start');
+  await ab.click();
+  await page.waitForTimeout(3000);
+  await ab.click();
+  const n0 = hub.bundles.length;
+
+  ok('A-B: the second press starts the loop, the button pressed and reading Clear loop',
+    (await ab.getAttribute('aria-pressed')) === 'true' && (await ab.getAttribute('title')) === 'Clear loop');
+  const band = await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width'));
+  ok('A-B: the section is a band on the heat', band > 0, band);
+  await page.waitForTimeout(7000);
+  const wraps = await page.evaluate(() => (window.__funscriptProbe || []).filter((x) => x.k === 'mark' && x.name === 'wrap').length);
+  const vt = await video(page, (v) => ({ t: v.currentTime, paused: v.paused }));
+  ok('loop: the video wrapped at least twice and plays inside the section', wraps >= 2 && !vt.paused && vt.t >= 2 && vt.t <= 6, { wraps, vt });
+  const after = hub.bundles.slice(n0 + 2);
+  const holds = after.filter((b) => b.segs.length === 1 && b.segs[0].dur <= 200 && clipped(b.segs[0]));
+  ok('loop: no hold at a wrap', holds.length === 0, holds.length);
+  const sched = schedule(after).filter((x) => x.exec < hubUs() - 300000);
+  // A clock step on a wrap's landing frame restarts: its first start is clipped to now, inside the previous span (a cut, not a hole).
+  const d = sched.slice(1).map((x, i) => (x.exec - (sched[i].exec + sched[i].dur * 1000)) / 1000);
+  const holes = d.filter((g) => g > 30);
+  ok('loop: no hole in the schedule across any seam (none past 30 ms)', sched.length > 10 && holes.length === 0,
+    { n: sched.length, holes, cuts: d.filter((g) => g < -2).map(Math.round) });
+  await ab.click();
+  await page.waitForTimeout(300);
+  ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('title')) === 'Set loop start'
+    && await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width')) === 0);
+  ok('playback: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (p) live playback (--live-playback): valencesim plays the 60 s script with a 14 s gap ----
+// Auto latency on from the start; a seek with the glide; auto-home in the gap; an A-B loop;
+// low latency on; a Preview tuning write the sim marks, then Discard. Prints the numbers as
+// one 'PB-RESULT' JSON line; the stored-value recheck after a sim restart is the caller's.
+if (PB) {
+  console.log('(p) live playback: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
+  const { createSession, PRIORITY } = await import('../../Valence/clients/js/index.js');
+  const { tuningGroups } = mods[P + 'analyzer.js'];
+  const { parseFunscript: parseS, posAt: posS } = mods[P + 'funscript.js'];
+  const sc = parseS(SCRIPT);
+  const probeSess = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp pb probe',
+    autoReconnect: false, catalogStore: { load: () => null, save() {}, clear() {} } });
+  await new Promise((res) => { setTimeout(res, 5000); probeSess.on('live', res); probeSess.connect(); });
+  for (let i = 0; i < 50 && !probeSess.catalog; i++) await sleep(100);
+  const cat0 = probeSess.catalog || [];
+  try { probeSess.close(); } catch (e) { /* gone */ }
+  const segEntry = cat0.find((e) => e.dirName === 'c2h' && (e.layout || []).some((f) => f.role === 'input.duration'));
+  if (!segEntry) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  const byRole = (r) => { for (const e of cat0) for (const f of e.layout || []) if (f.role === r && e.dirName !== 'c2h') return { e, f }; return null; };
+  const posR = byRole('telemetry.position'), loR = byRole('window.min'), hiR = byRole('window.max');
+  const slider = tuningGroups(buildSettingsModel(cat0)).flatMap((g) => g.fields).find((f) => f.widget === 'slider');
+  const slEntry = cat0.find((e) => e.id === slider.channelId);
+  const markF = slEntry.layout.find((f) => f.role === 'meta.trial_pending');
+  const bit = slEntry.layout.filter((f) => f.settingKey != null).findIndex((f) => f.name === slider.name);
+  const obs = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp pb observer', autoReconnect: false,
+    catalogStore: { load: () => null, save() {}, clear() {} },
+    subscriptions: [...new Set([posR.e.id, loR.e.id, hiR.e.id, slEntry.id])].map((ch) => [ch, ch === posR.e.id ? 50 : 0, PRIORITY.normal]) });
+  const last = {}, posLog = [];
+  obs.on('state', (ch, smp) => {
+    last[ch] = smp;
+    if (ch === posR.e.id && last[loR.e.id] && last[hiR.e.id]) {
+      const lo = last[loR.e.id][loR.f.name], hi = last[hiR.e.id][hiR.f.name];
+      posLog.push({ at: performance.timeOrigin + performance.now(), u: (smp[posR.f.name] - lo) / (hi - lo) });   // samples arrive in their units
+    }
+  });
+  await new Promise((res) => { setTimeout(res, 5000); obs.on('live', res); obs.connect(); });
+  await sleep(500);
+
+  const frames = { bundles: 0, nacks: [] };
+  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: true };
+  const { ctx, page, up, errors } = await open({ width: 1280, prefs: { 'phosphor.funscript.play': PLAY }, onPage: (pg) => pg.on('websocket', (ws) => {
+    ws.on('framesent', ({ payload }) => {
+      if (typeof payload === 'string') return;
+      for (const { header } of parseFrames(new Uint8Array(payload))) if (header.type === FRAME.STREAM) frames.bundles++;
+    });
+    ws.on('framereceived', ({ payload }) => {
+      if (typeof payload === 'string') return;
+      for (const { header, payload: p } of parseFrames(new Uint8Array(payload))) {
+        if (header.type === FRAME.NACK) frames.nacks.push({ ch: header.channel, code: cbDecodeFull(p).get(K.code) });
+      }
+    });
+  }) });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const R = { sim: { etag: cat0.etag || null } };
+  const shot = async (name, el = null) => { if (SHOTS) await (el ? page.locator(el).first() : page).screenshot({ path: join(SHOTS, name) }); };
+  /** The viewport with the card's top at the top, and the card alone. */
+  const cardShot = async (name) => {
+    if (!SHOTS) return;
+    await page.locator(C).evaluate((e) => e.scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(150);
+    await shot(name + '.png');
+    await shot(name + '-card.png', C);
+  };
+  ok('pb: the shell adopted the sim, the card renders, the 60 s clip loads', up && await toCard(page) && await loadClip(page));
+  const skew = await epochSkew(page);
+  const origin = await page.evaluate(() => performance.timeOrigin);
+  const nodeAt = (atMs) => origin + atMs - skew;   // a page performance.now() instant in node epoch ms
+  /** The largest change between consecutive position samples over [a, b) node epoch ms. */
+  const maxStep = (a, b) => { const p = posLog.filter((x) => x.at >= a && x.at < b); return p.length > 1 ? Math.max(...p.slice(1).map((x, i) => Math.abs(x.u - p[i].u))) : NaN; };
+  const tStart = performance.timeOrigin + performance.now();
+  const pnow = () => page.evaluate(() => performance.now());
+  const since = (t0, k) => page.evaluate(([a, b]) => (window.__funscriptProbe || []).filter((x) => x.k === b && x.t >= a), [t0, k]);
+  const media = () => video(page, (v) => v.currentTime * 1000);
+  const lead = (segs) => Math.max(...segs.flatMap((x) => x.list.map((s) => s.atMs - x.t)));
+  /** The client schedule after supersedes: each send drops what it held from its first start on. */
+  const sched = (segs) => { let out = []; for (const x of segs) if (x.ok && x.list.length) out = [...out.filter((s) => s.atMs < x.list[0].atMs), ...x.list]; return out; };
+  const holes = (s) => s.slice(1).map((x, i) => x.atMs - (s[i].atMs + s[i].durationMs)).filter((d) => d > 30).map(Math.round);
+  const latOf = async (t0) => {
+    const l = await since(t0, 'lat');
+    const lagged = l.filter((x) => Number.isFinite(x.lag));
+    const conv = lagged.find((x) => x.comp !== 0 && Math.abs(Math.max(-100, Math.min(100, x.lag)) - x.comp) < 2);
+    return { samples: l.length, firstLagS: lagged.length ? +((lagged[0].t - t0) / 1000).toFixed(1) : null,
+      convergedS: conv ? +((conv.t - t0) / 1000).toFixed(1) : null, lag: lagged.length ? +lagged.at(-1).lag.toFixed(2) : null,
+      comp: l.length ? +l.at(-1).comp.toFixed(2) : null, comps: [...new Set(l.map((x) => +x.comp.toFixed(1)))] };
+  };
+
+  // ---- 1: play, low latency off, auto compensation ----
+  let t0 = await pnow();
+  await playBtn(page).click();
+  await page.waitForTimeout(13000);
+  await cardShot('player-1280x800');
+  let segs = await since(t0, 'seg');
+  const segNacks = () => frames.nacks.filter((n) => n.ch === segEntry.id).length;
+  const us = posLog.map((p) => p.u);
+  R.normal = { bundles: frames.bundles, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks(),
+    measured: [+Math.min(...us).toFixed(3), +Math.max(...us).toFixed(3)], maxStep: +maxStep(tStart + 2000, Infinity).toFixed(4) };
+  ok('pb normal: bundles flow, the lead within half the horizon, no NACK on the segments STREAM, the machine strokes',
+    frames.bundles > 20 && R.normal.maxLeadMs <= 127 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
+  ok('pb normal: auto compensation measures a lag and converges on it', R.normal.lat.lag != null && R.normal.lat.convergedS != null, R.normal.lat);
+
+  // ---- 2: a seek with the glide ----
+  t0 = await pnow();
+  await video(page, (v) => { v.currentTime = 16; });
+  await page.waitForTimeout(1500);
+  segs = await since(t0, 'seg');
+  const marks = await since(t0, 'mark');
+  const glideX = segs.find((x) => x.list.length && Math.abs(x.list[0].durationMs - 500) <= 1);
+  const g = glideX && glideX.list[0];
+  const near = g ? Math.min(...Array.from({ length: 61 }, (_, i) => Math.abs(posS(sc, 16300 + 10 * i) - g.norm))) : NaN;
+  R.seek = { hold: marks.some((m) => m.name === 'hold'), glideMs: g ? +g.durationMs.toFixed(1) : null, glideSentAfterMs: glideX ? Math.round(glideX.t - t0) : null,
+    normErr: +near.toFixed(4), joinMs: glideX && glideX.list[1] ? +(glideX.list[1].atMs - (g.atMs + g.durationMs)).toFixed(3) : null };
+  ok('pb seek: one hold, then a 500 ms glide to the script 500 ms on, the next span joins its end', R.seek.hold && R.seek.glideMs === 500
+    && near < 0.01 && (R.seek.joinMs == null || Math.abs(R.seek.joinMs) < 0.01), R.seek);
+
+  // ---- 3: auto-home in the 14 s gap ----
+  const gapA = SCRIPT.actions.filter((a) => a.at <= 20000).at(-1).at, gapB = 34000;
+  await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').currentTime > 35.5, C, { timeout: 30000 }).catch(() => {});
+  segs = await since(t0, 'seg');
+  const homeSegs = segs.flatMap((x) => x.list).filter((s) => Math.abs(s.norm - 0.5) < 0.002);
+  const homeAt = homeSegs.length ? nodeAt(homeSegs[0].atMs) : NaN;
+  const homeEnd = homeSegs.length ? nodeAt(homeSegs.at(-1).atMs + homeSegs.at(-1).durationMs) : NaN;
+  const atHome = posLog.filter((p) => p.at > homeAt + (homeSegs[0] ? homeSegs[0].durationMs : 0) + 300 && p.at < homeEnd - 300).map((p) => p.u);
+  R.home = { gapMs: [gapA, gapB], segs: homeSegs.length, moveInMs: homeSegs[0] ? Math.round(homeSegs[0].durationMs) : null,
+    holdMs: homeSegs[1] ? Math.round(homeSegs[1].durationMs) : null, measured: atHome.length ? +median(atHome).toFixed(4) : null, samples: atHome.length,
+    worst: atHome.length ? +Math.max(...atHome.map((u) => Math.abs(u - 0.5))).toFixed(4) : null };
+  ok('pb home: a move to the point and a wait there in the gap, the machine measured at the point', homeSegs.length >= 2
+    && atHome.length > 10 && Math.abs(median(atHome) - 0.5) < 0.01, R.home);
+
+  // ---- 4: an A-B loop ----
+  const ab = page.locator(C + ' .fsp-ab');
+  await ab.click();
+  const a0 = await media();
+  await page.waitForTimeout(4000);
+  t0 = await pnow();
+  const n0 = segNacks(), tLoop = performance.timeOrigin + performance.now();
+  await ab.click();
+  const b0 = await media();
+  await page.waitForTimeout(13000);
+  segs = await since(t0, 'seg');
+  const wrapT = (await since(t0, 'mark')).filter((m) => m.name === 'wrap').map((m) => m.t);
+  const wraps = wrapT.length;
+
+  const sc2 = sched(segs.filter((x) => x.t > t0 + 300));
+  // A wrap's seek lands late by more than STEP_MS: the clock steps and the restart re-sends the seam span later by that much.
+  const shifts = [];
+  segs.filter((x) => x.t > t0 + 300 && x.list.length).forEach((x, i, all) => {
+    const q = x.list[0];
+    const prev = all.slice(0, i).flatMap((y) => y.list).filter((p) => Math.abs(p.durationMs - q.durationMs) < 0.5 && Math.abs(p.norm - q.norm) < 1e-4 && p.atMs !== q.atMs && Math.abs(p.atMs - q.atMs) < 200);
+    if (prev.length && q.atMs < x.t - 2) shifts.push(+(q.atMs - prev.at(-1).atMs).toFixed(1));
+  });
+  const tEnd = await media();
+  R.loop = { a: Math.round(a0), b: Math.round(b0), wraps, holes: holes(sc2), cuts: sc2.slice(1).map((x, i) => x.atMs - (sc2[i].atMs + sc2[i].durationMs)).filter((d) => d < -2).map(Math.round),
+    stepMs: shifts, segNacks: segNacks() - n0, maxStep: +maxStep(tLoop, performance.timeOrigin + performance.now()).toFixed(4), maxStepPlaying: R.normal.maxStep, t: Math.round(tEnd) };
+  ok('pb loop: wraps at least twice, no hole in the schedule, no NACK, the rail never jumps', wraps >= 2 && R.loop.holes.length === 0 && R.loop.segNacks === 0
+    && R.loop.maxStep <= R.normal.maxStep * 1.5 + 0.01 && tEnd >= a0 - 100 && tEnd <= b0 + 100, R.loop);
+  await ab.click();
+
+  // ---- 5: low latency on (the settings card), compensation again ----
+  await playBtn(page).click();
+  const setRow = async (fn) => {
+    await page.click('[data-tab-id="plugins"]');
+    await page.waitForSelector('.fsp-pset', { timeout: 5000 });
+    await fn(page.locator('.fsp-pset'));
+    await page.waitForTimeout(200);
+  };
+  const toggle = (label) => setRow((el) => el.locator('button[aria-label="' + label + '"]').click());
+  await toggle('Low latency');
+  await toCard(page);
+  await video(page, (v) => { v.currentTime = 2; });
+  await page.waitForTimeout(300);
+  t0 = await pnow();
+  const nb = frames.bundles, nn = segNacks();
+  await playBtn(page).click();
+  await page.waitForTimeout(10000);
+  segs = (await since(t0, 'seg')).filter((x) => x.t > t0 + 2500);
+  R.low = { bundles: frames.bundles - nb, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks() - nn };
+  ok('pb low latency: every offer within 50 ms, bundles flow, compensation converges, no NACK',
+    R.low.maxLeadMs <= 52 && R.low.bundles > 10 && R.low.lat.convergedS != null && R.low.segNacks === 0, R.low);
+
+  // ---- 6: a Preview tuning write the sim marks, then Discard ----
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(600);
+  await cardShot('analyzer-1280x800');
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  const stored = last[slEntry.id][slider.name];
+  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  await sl.scrollIntoViewIfNeeded();
+  await sl.focus();
+  await sl.press('ArrowRight');
+  await page.waitForTimeout(800);
+  const trialV = last[slEntry.id][slider.name], trialMark = (last[slEntry.id][markF.name] >> bit) & 1;
+  const notice = (await statusText(page)) === 'Preview: not saved';
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.waitForTimeout(800);
+  const backV = last[slEntry.id][slider.name], backMark = (last[slEntry.id][markF.name] >> bit) & 1;
+  R.preview = { channel: '0x' + slEntry.id.toString(16), field: slider.name, label: slider.label, stored, trial: trialV, trialMark, notice, reverted: backV, markAfter: backMark };
+  ok('pb preview: the sim STATE shows the trial value and its mark, then the stored value and no mark after Discard',
+    trialV !== stored && trialMark === 1 && notice && backV === stored && backMark === 0, R.preview);
+  await playBtn(page).click();
+  await page.locator(C + ' .fsp-expand').click();
+
+  // ---- screenshots: the interpolation preview, then the phone width ----
+  if (SHOTS) {
+    await setRow(async () => {
+      await page.selectOption('.fsp-interp select', 'makima');
+      await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '120'; i.dispatchEvent(new Event('change')); });
+    });
+    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await shot('settings-1280x800.png');
+    await toCard(page);
+    await video(page, (v) => { v.currentTime = 9; });
+    await page.waitForTimeout(800);
+    await cardShot('interp-preview-1280x800');
+    await shot('interp-preview-timeline-1280.png', C + ' .fsp-tlbox');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(800);
+    await toCard(page);
+    await page.waitForTimeout(500);
+    await cardShot('player-390x844');
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(600);
+    await cardShot('analyzer-390x844');
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(300);
+    await shot('interp-preview-timeline-390.png', C + ' .fsp-tlbox');
+    await setRow(async () => {});
+    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await shot('settings-390x844.png');
+    await page.selectOption('.fsp-interp select', 'linear');
+    await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '0'; i.dispatchEvent(new Event('change')); });
+  }
+  await toggle('Low latency');
+  ok('pb: no page error', errors.length === 0, errors.slice(0, 3));
+  R.nacks = Object.entries(frames.nacks.reduce((o, n) => { const k = '0x' + n.ch.toString(16) + ' ' + (NACK_NAME[n.code] || n.code); o[k] = (o[k] || 0) + 1; return o; }, {}));
+  console.log('PB-RESULT ' + JSON.stringify(R));
+  try { obs.close(); } catch (e) { /* gone */ }
+  await ctx.close();
+}
+
+if (LIVE && !PB) {
   console.log('(f) live: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
   const { createSession } = await import('../../Valence/clients/js/index.js');
   const sess = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp probe',
