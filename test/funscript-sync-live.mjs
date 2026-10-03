@@ -5,7 +5,9 @@
  * scheduler over a synthetic feasible script, and reads back the hub's plan strip.
  *
  *   pass A   a perfect clock
- *   pass B   30 fps frames on a 60 Hz vsync at a random phase, fed through observe()
+ *   pass B   24 fps frames on a 60 Hz vsync (3:2 pulldown) at a random phase, fed through
+ *            observe(): each frame shows 0 or 8.3 ms past its ideal instant, real jitter
+ *            (30 fps on 60 Hz is exactly two vsyncs, a constant offset, no jitter)
  *   each     play, a seek, a rate change to 1.5, a pause (one hold), resume, stop
  *
  * For each observed plan: start = arrival - plan.elapsed (the least delayed sample),
@@ -102,6 +104,8 @@ const US = { us: 1e-3, ms: 1, s: 1000 };
 const ms = (f, sm) => reportedValue(f, sm) * (US[f.unit] || 1);
 const nacks = [];
 s.on('nack', (...x) => nacks.push(x));
+const clocks = [];
+s.on('clock', (c) => clocks.push(c));
 
 if (HORIZON) {
   const f = model.fields.find((x) => x.name === 'schedule_horizon');
@@ -146,7 +150,8 @@ const vmax = 0.5 * val(lim.v) / (val(lim.hi) - val(lim.lo));
 const { script: S, runChord } = script(vmax > 0 ? vmax : 0.5);
 console.log('script: ' + S.at.length + ' actions, chords held to ' + (vmax > 0 ? vmax.toFixed(2) : '0.50 (no limit reported)') + ' norm/s');
 
-const VSYNC = 1000 / 60;
+const VSYNC = 1000 / 60, FRAME = 1000 / 24;
+const median = (a) => { const s = a.slice().sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
 
 async function pass(name, frames) {
   const sent = [];
@@ -178,18 +183,19 @@ async function pass(name, frames) {
     supersede();
     truth = { T0: performance.now(), m0, rate, q: 0 };
     if (frames) {
-      const k0 = Math.ceil(m0 / (1000 / 30));
-      const r = Array.from({ length: 60 }, (_, j) => { const pts = ((k0 + j) * 1000) / 30; return shownOf(pts) - truth.T0 - (pts - m0) / rate; });
-      truth.q = q(r, 0.5);
+      // The clock's own estimator: an even ring's median averages its two middle residuals.
+      const k0 = Math.ceil(m0 / FRAME);
+      const r = Array.from({ length: 60 }, (_, j) => { const pts = (k0 + j) * FRAME; return shownOf(pts) - truth.T0 - (pts - m0) / rate; });
+      truth.q = median(r);
     }
     if (!frames) { clock.anchor(m0, truth.T0, rate); sch.restart(clock); return; }
-    k = Math.ceil(m0 / (1000 / 30));
+    k = Math.ceil(m0 / FRAME);
     waitAnchor = true;
   }
   function feed() {
     const t = performance.now();
     for (;;) {
-      const pts = (k * 1000) / 30;
+      const pts = k * FRAME;
       const shown = shownOf(pts);
       if (shown > t) return;
       k++;
@@ -301,8 +307,11 @@ try {
   await sleep(1000);
   t = performance.now();
   const b = await pass('B', true);
-  judge('pass B (30 fps on 60 Hz)', b, t, performance.now(), 6);
+  judge('pass B (24 fps 3:2 on 60 Hz)', b, t, performance.now(), 6);
   ok('no NACK', nacks.length === 0, nacks.length ? JSON.stringify(nacks[0]).slice(0, 80) : '');
+  const rtts = clocks.map((c) => c.rttUs / 1000), offs = clocks.map((c) => c.offsetUs / 1000);
+  console.log('  [INFO] CLOCK: ' + clocks.length + ' exchanges, RTT ' + Math.min(...rtts).toFixed(1) + '..' + Math.max(...rtts).toFixed(1)
+    + ' ms, offset spread ' + (Math.max(...offs) - Math.min(...offs)).toFixed(1) + ' ms (the door stamps from the least-RTT kept)');
 } finally {
   s.close();
 }
