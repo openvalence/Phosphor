@@ -985,7 +985,7 @@ export function createPlayer(api) {
       attr(seek, 'aria-valuemax', String(Math.round(d)));
       attr(seek, 'aria-valuenow', String(Math.round(m)));
       attr(seek, 'aria-valuetext', tt);
-      if (comp !== 'glance') tl.frame(m, ctl.trace);
+      if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && root.hasAttribute('data-an') ? analyzer.kinetic : null);
       if (analyzer && comp !== 'glance' && root.hasAttribute('data-an')) analyzer.frame();
       const ceil = ceilingOf(api, fields);
       if (st.script) {

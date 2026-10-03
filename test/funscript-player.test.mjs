@@ -52,12 +52,14 @@ const CONTRACT = {
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
-  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
+  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
-    'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'mountAnalyzer'],
+    'KIN_MAX_SAMPLES', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'kinText', 'mountAnalyzer'],
+  [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'UNSPEC', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
+    'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
     'createMotionDoor', 'bundleHead', 'motionStream'],
@@ -209,6 +211,31 @@ if (an) {
   ok('lagOf declines a flat trace, a short one and stale points',
     an.lagOf(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.lagOf(tr.slice(0, 10), sc, T) === null
       && an.lagOf(tr.map((x) => ({ ...x, stale: true })), sc, T) === null);
+  const kn = mods[P + 'kinetic/kinetic.js'];
+  if (kn) {
+    const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
+    ok('Kinetic: the Tuning rows bind kinetic_tuning by member name, an _ms row to its _us member times 1000',
+      same(tuned.map((t) => t[0]).sort(), kn.TUNING.map((t) => t[0]).filter((n) => n !== 'overshoot_guard').sort())
+        && tuned.find((t) => t[0] === 'settle_grace_us')[3] === 20000, tuned.map((t) => t[0]));
+    const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true };
+    const sg = kn.segmentsOf(sc, Tk);
+    ok('Kinetic: a preroll to the first knot arriving at media 0, then one segment per span at its start, after T',
+      sg.segs.length === sc.at.length && sg.segs[0][0] === 2 * kn.LEAD_MS && sg.segs[0][2] === kn.PREROLL_MS
+        && sg.segs[1][0] === 2 * kn.LEAD_MS + kn.PREROLL_MS && sg.segs[1][1] === Math.round(applyT(sc.pos[1], Tk) * 1e4)
+        && sg.t0 === 30 - 2 * kn.LEAD_MS - kn.PREROLL_MS && sg.steps === Math.ceil(2 * kn.LEAD_MS + kn.PREROLL_MS + sc.durationMs + kn.TAIL_MS),
+      sg.segs.slice(0, 2));
+    const k = await kn.instantiate();
+    const it = kn.renderCore(k, { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], ...sg, every: 5 });
+    let r;
+    do r = it.next(); while (!r.done);
+    const at = (ms) => r.value.pos[Math.round((ms - sg.t0) / 5)];
+    const want = (ms) => 100 + 300 * applyT(posAt(sc, ms - 30), Tk);
+    ok('Kinetic: the render lands on every knot of a feasible script within 1 mm on the media axis, the first after the preroll',
+      sc.at.every((t) => Math.abs(at(t + 30) - want(t + 30)) < 1) && r.value.accepted === sg.segs.length, [kn.versionOf(k), at(5030), want(5030)]);
+    ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
+      === 'Kinetic: wasm  3 anomalies  guard 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
+      && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
+  }
 }
 
 if (UNIT || fails) {
@@ -296,6 +323,8 @@ const HORIZON_MS = 250;
 const KEY = 'test-key-1';
 // Fixture channel ids, test-side only (registry.yaml / valencesim catalog).
 const CH = { config: 0x1000, motion: 0x1100, advgen: 0x1210, segments: 0x2101 };
+// The limits and rail the analyzer's Kinetic render needs (the tuning fixture declares no defaults).
+const KIN_VALUES = { [CH.config + ':max_rail']: 500, '12288:input_speed': 1000, '12288:input_accel': 50000, '12288:input_jerk': 2000000 };
 
 // ---- generated media: a 30 fps VP8 clip with a tone, never committed ---------
 const TMP = mkdtempSync(join(tmpdir(), 'fsp-'));
@@ -1095,6 +1124,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   hub.values[CH.config + ':window_min'] = 0;
   hub.values[CH.config + ':window_max'] = 100;
   hub.values[CH.motion + ':pos_10um'] = 15;
+  Object.assign(hub.values, KIN_VALUES);
   const { ctx, page, up, errors } = await open({ cat: tc, hub, coarse: true });
   ok('analyzer: the shell adopts the tuning fixture and the card renders', up && await toCard(page));
   ok('analyzer: the clip loads', await loadClip(page));
@@ -1191,6 +1221,44 @@ if (!LIVE && !args.includes('--stash-live')) {
   const revert = hub.intents.at(-1);
   ok('Discard reverts: settings-trial op 2, the notice clears', !!revert && revert.ch === CH_TRIAL && revert.value[1] === 2
     && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
+  // ---- Kinetic: the machine's own planner renders the preview in a worker ----
+  const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
+    return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '' }; }, C);
+  const kinUp = await page.waitForFunction((c) => /^Kinetic: wasm {2}\d+ anomalies/.test(document.querySelector(c + ' .fsa-kin').textContent)
+    && (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
+  const k0 = await kinRead();
+  ok('Kinetic: the analyzer renders through kinetic.wasm in a worker: the status word, the flag readouts, the line in the detail',
+    kinUp && /^nucleus [0-9a-f]{12} kinetic /.test(k0.tip), k0.text + ' | ' + k0.tip.replace(/\n/g, ', '));
+  const shot = async (name) => {
+    if (!SHOT) return;
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.locator(C).evaluate((e) => e.scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, name) });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  };
+  await shot('analyzer-kinetic.png');
+  const nK = hub.intents.length;
+  const speedIn = (v, ev) => page.evaluate(([c, v, ev]) => {
+    const row = [...document.querySelectorAll(c + ' .fsa-row')].find((r) => r.querySelector('.fsa-k').textContent === 'Input speed');
+    const i = row.querySelector('input[type=range]');
+    const was = i.value;
+    i.value = String(v);
+    for (const e of ev) i.dispatchEvent(new Event(e, { bubbles: true }));
+    return was;
+  }, [C, v, ev]);
+  const speedWas = await speedIn(100, ['input']);
+  const kinRe = await page.waitForFunction(([c, p]) => (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '') !== p, [C, k0.pts], { timeout: 10000 })
+    .then(() => true, () => false);
+  await page.waitForTimeout(300);
+  const k1 = await kinRead();
+  ok('Kinetic: a tuning drag (Input speed 100 mm/s, nothing written yet) re-renders through the planner',
+    kinRe && k1.text !== k0.text && hub.intents.length === nK, [k0.text, k1.text, hub.intents.length - nK]);
+  await shot('analyzer-kinetic-retuned.png');
+  await speedIn(speedWas, ['input', 'change']);
+  await page.waitForTimeout(300);
+  await modeBtn('Discard').click();
+  await page.waitForTimeout(400);
   // ---- handheld: the same card rect open or shut, the thumbnail in the source row ----
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
   await page.waitForTimeout(300);
@@ -1216,6 +1284,67 @@ if (!LIVE && !args.includes('--stash-live')) {
   await ctx.close();
 }
 
+// ---- (k) Kinetic under the shell's CSP: the worker, a 60 s render at 1 ms, supersede, the fallback ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(k) Kinetic and the CSP');
+  const scriptSrc = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
+    .app.security.csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('script-src '));
+  const PLUG = new URL('../plugins/factory/funscript-player/', import.meta.url);
+  const PROBE = `import { createKinetic, segmentsOf } from '/p/kinetic/kinetic.js';
+    import { parseFunscript } from '/p/funscript.js';
+    const actions = [];
+    for (let at = 0, k = 0; at <= 60000; at += 250 + (k * 37) % 300, k++) actions.push({ at, pos: k % 2 ? 90 : 10 });
+    const sg = segmentsOf(parseFunscript({ actions }), { offsetMs: 0, lo: 0, hi: 1, invert: false });
+    const q = { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], segs: sg.segs, steps: 60000, stepMs: 1, every: 1 };
+    try {
+      const kin = createKinetic();
+      const version = await kin.ready;
+      const first = kin.render(q), t = performance.now(), r = await kin.render(q);
+      window.__k = { version, superseded: (await first) === null, wall: performance.now() - t, ms: r.ms, n: r.pos.length, plans: r.plans };
+    } catch (e) { window.__k = { error: String(e && e.message || e) }; }`;
+  const probe = async (src) => {
+    const ctx = await browser.newContext();
+    await ctx.route('http://kinetic.test/**', (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (p === '/') return route.fulfill({ contentType: 'text/html', headers: { 'Content-Security-Policy': src },
+        body: '<!doctype html><script type="module" src="/probe.js"></script>' });
+      if (p === '/probe.js') return route.fulfill({ contentType: 'text/javascript', body: PROBE });
+      return route.fulfill({ contentType: 'text/javascript', body: readFileSync(new URL(p.slice(3), PLUG)) });
+    });
+    const page = await ctx.newPage();
+    await page.goto('http://kinetic.test/');
+    const r = await page.waitForFunction(() => window.__k, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => null);
+    await ctx.close();
+    return r;
+  };
+  const allowed = await probe(scriptSrc);
+  ok('CSP: under the shell\'s script-src the blob worker compiles kinetic.wasm and renders 60 s at 1 ms, a newer render superseding',
+    !!allowed && !allowed.error && allowed.n === 60000 && allowed.superseded && allowed.plans > 100, allowed);
+  if (allowed && allowed.ms != null) console.log('  [NOTE] 60 s at 1 ms in the worker: ' + allowed.ms.toFixed(1) + ' ms (' + allowed.wall.toFixed(1) + ' ms to the page)');
+  const refused = await probe(scriptSrc.replace(" 'wasm-unsafe-eval'", ''));
+  ok('CSP: without \'wasm-unsafe-eval\' the compile is refused (the source is load-bearing)', !!refused && !!refused.error, refused);
+  // The shell's inline module script stands in for Tauri's hashed one with 'unsafe-inline'.
+  const tc = tuningCatalog();
+  tc.entries = decodeCatalog(tc.bytes);
+  const hub = makeHub(tc);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  Object.assign(hub.values, KIN_VALUES);
+  const csp = "script-src 'self' 'unsafe-inline' blob:";
+  const { ctx, page, up, errors } = await open({ cat: tc, hub, onPage: (p) => p.route(PAGE + '/', (r) => r.fulfill({ status: 200,
+    contentType: 'text/html', headers: { 'Content-Security-Policy': csp }, body: SHELL })) });
+  ok('fallback: the shell loads under a CSP without \'wasm-unsafe-eval\'', up && await toCard(page) && await loadClip(page));
+  await page.locator(C + ' .fsp-expand').click();
+  const fb = await page.waitForFunction((c) => document.querySelector(c + ' .fsa-kin').textContent === 'Kinetic: fallback', C, { timeout: 10000 })
+    .then(() => true, () => false);
+  const fbPts = await page.locator(C + ' .fsp-dt .kin').getAttribute('points');
+  const fbInt = await page.locator(C + ' .fsp-dt .int').getAttribute('points');
+  ok('fallback: the analyzer says Kinetic: fallback, draws no render, keeps the shaped curve', fb && !fbPts && !!fbInt, { fb, fbPts });
+  ok('fallback: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
 // ---- (h) playback wiring: the A-B loop wraps with no hold and the schedule tiles across the seam ----
 if (!LIVE && !args.includes('--stash-live')) {
   console.log('(h) playback');
@@ -1225,6 +1354,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   hub.values[CH.config + ':window_min'] = 0;
   hub.values[CH.config + ':window_max'] = 100;
   hub.values[CH.motion + ':pos_10um'] = 15;
+  Object.assign(hub.values, KIN_VALUES);
   const { ctx, page, up, errors } = await open({ cat, hub });
   ok('playback: the card renders and the clip loads', up && await toCard(page) && await loadClip(page));
   await playBtn(page).click();

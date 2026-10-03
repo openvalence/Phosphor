@@ -24,6 +24,8 @@
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
 // - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
+// - frame's kin (the analyzer's Kinetic render, display only) draws --intent under the script curve:
+//   the machine's own planner, rendered ahead.
 // - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
 //   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
@@ -68,6 +70,17 @@ export function curvePoints(script, fromMs, toMs, W, H, T = T0) {
     pts.push(x(script.at[i]) + ',' + y(script.pos[i]));
   }
   pts.push(x(toMs) + ',' + y(posAt(script, toMs)));
+  return pts.join(' ');
+}
+
+/** A Kinetic render ({t0, dtMs, pos mm, lo, hi}) as polyline points from fromMs to toMs, at most 2000. */
+export function kinPoints(r, fromMs, toMs, W, H) {
+  if (!r || !r.pos || !(toMs > fromMs) || !(r.hi > r.lo)) return '';
+  const n = r.pos.length, j0 = clamp(Math.floor((fromMs - r.t0) / r.dtMs), 0, n), j1 = clamp(Math.ceil((toMs - r.t0) / r.dtMs) + 1, 0, n);
+  const stride = Math.max(1, Math.ceil((j1 - j0) / 2000)), pts = [];
+  for (let j = j0; j < j1; j += stride) {
+    pts.push(((r.t0 + j * r.dtMs - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - (r.pos[j] - r.lo) / (r.hi - r.lo) * H).toFixed(1));
+  }
   return pts.join(' ');
 }
 
@@ -143,6 +156,7 @@ export const CSS = `
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
+.fsp-dt .kin { stroke: var(--intent); stroke-width: 1.25; opacity: .8; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
@@ -176,7 +190,7 @@ const s = (tag, attrs = {}) => {
 };
 
 export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null }) {
-  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null };
+  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -225,9 +239,10 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
+  const kinLine = s('polyline', { class: 'kin' });
   const real = s('g');
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
-  dtSvg.append(rgLo, rgHi, abA, abB, rawLine, curve, real);
+  dtSvg.append(rgLo, rgHi, abA, abB, rawLine, kinLine, curve, real);
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
@@ -298,6 +313,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     curve.setAttribute('points', curvePoints(script, from, to, 1000, 100, Te));
     rawLine.setAttribute('points', raw && raw !== script ? curvePoints(raw, from, to, 1000, 100, Te) : '');
     curve.classList.toggle('draft', !!preview);
+    kinLine.setAttribute('points', kinPoints(kin, from, to, 1000, 100));
     real.replaceChildren(...traceLines(trace.map((x) => ({ m: x.m, u: x.p })), from, to, 1000, 100).map((l) => s('polyline', {
       class: 'plan', points: l.points })), ...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
       class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));
@@ -343,9 +359,10 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       drawHeat();
       draw();
     },
-    frame(mediaMs, tr) {
+    frame(mediaMs, tr, kr) {
       m = Number.isFinite(mediaMs) ? mediaMs : 0;
       trace = tr || [];
+      kin = kr || null;
       draw();
     },
     setExpanded(on) { zAn.setAttribute('aria-pressed', String(!!on)); },

@@ -11,7 +11,9 @@ Rules for every module:
   never the kernel. Pure modules touch no DOM, and no module touches the
   DOM or `window` at import time: `test/funscript-player.test.mjs` imports
   every one under node.
-- Bind by registry role only. Channel ids appear in tests and fixtures only.
+- Bind by registry role only (one exception: `kinetic/kinetic.js` binds the
+  Tuning rows by `kinetic_tuning` member name, FUNSCRIPT.md K2). Channel ids
+  appear in tests and fixtures only.
 - Comments state constraints (C-12), American English (C-11).
 - UI copy is one fragment under eight words, no ". " (docs/COPY.md). Each UI
   module exports a frozen `COPY` of every literal it renders.
@@ -29,11 +31,13 @@ Rules for every module:
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
 | interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
 | analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
+| kinetic | ph-ge35 | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin`, `test/kinetic-trace.test.mjs`, `test/kinetic-pin.mjs`, `test/fixtures/kinetic_trace.json`; the render glue in `analyzer.js`, `timeline.js`; sections (c2) and (k) of `test/funscript-player.test.mjs` |
 | integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funscript, scheduler`; `scheduler -> funscript`;
+scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funscript, scheduler, kinetic`;
+`kinetic -> scheduler, bytes`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
 `prefs -> interp`; `interp -> funscript`.
 
@@ -540,6 +544,7 @@ export function mountPlay(el, { value, onChange });   // -> unmount(); the setti
 export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 8000, MIN_SPAN = 0.05;
 export const CSS, COPY;
 export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
+export function kinPoints(render, fromMs, toMs, W, H);        // -> 'x,y ...', at most 2000; '' without pos
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
   clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
@@ -552,7 +557,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), setExpanded(on), setLoop({a, b}), unmount() }
+  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setExpanded(on), setLoop({a, b}), unmount() }
+  // kin: the analyzer's Kinetic render (analyzer.kinetic) or null, drawn --intent under the script curve
   // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
   // ceiling: {vmax: number | null, spanMm: number | null}
   // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
@@ -605,6 +611,7 @@ follows the gate in the slot order and stands while `api.trialPending`.
 ```js
 export const TUNING = 'Tuning', LIMIT_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk'];
 export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
+export const KIN_MAX_SAMPLES = 200000;   // a render keeps at most this many display samples (every >= EVERY)
 export const CSS, COPY;
 export function tuningGroups(model);   // -> [{name, fields}]: writable slider, stepper, toggle, segmented and
   // select fields of every group whose first ' / ' segment is 'Tuning' (RFC-094), named by the rest; then
@@ -612,8 +619,11 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
+export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  guard 250 ms'
 export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the shaped Script), T(): the player's
-  // -> { frame(), mode: 'live'|'preview', unmount() }
+  // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, unmount() }
+  // kinetic: the latest render of script() through kinetic.wasm with limit.input.*, geometry.max_travel and
+  // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
 ```
 
 The expand button on the detail opens it in place: the outer card rect is
@@ -622,11 +632,46 @@ the video moves to an in-card thumbnail (full: the analyzer column's width,
 `clamp(320px, 40%, 560px)` of the card, by 180 at the top right; handheld:
 one tap high in the source row), never picture-in-picture (law 1).
 Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
-(or the last refusal); then the rows, one `var(--tap)` each, in a list that
+(or the last refusal); a 20 px Kinetic line (`kinText`, the version, the render time and
+the anomaly kinds in its tooltip); then the rows, one `var(--tap)` each, in a list that
 scrolls inside its box. Live writes through `api.write`; Preview through
 `api.writeTrial`, Apply `api.commitTrial()`, Discard `api.revertTrial()`;
 Preview is the default and is grayed on a hub without `action.trial`. A
 segmented field of more than two options renders as a select.
+
+---
+
+## kinetic: `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin`
+
+```js
+// bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
+export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, UNSPEC = -32768;
+export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (52 B), Nucleus tools/kinetic-wasm/README.md
+export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
+export const ANOMALIES;   // kinetic::AnomalyType names by value ('' for none and the retired 7)
+export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, type, value]]: by member name, an
+  // _ms field to its _us member times 1000; non-numbers skipped
+export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }
+  // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
+  // segment per span at pad + at[k-1]; t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
+export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},
+  // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS}; yields every
+  // 8192 steps; returns KineticRender. Self-contained: the worker runs its source.
+export async function instantiate(b64 = WASM);   // -> the exports, _initialize() called
+export function versionOf(k);                    // -> kinetic_version(), 'nucleus <sha12> kinetic <x.y.z>'
+export function createKinetic();   // -> { ready: Promise<version>, render(q) -> Promise<KineticRender | {error}
+  // | null>, close() }: one Worker from a blob URL; null when a newer render superseded it, {error} when the
+  // planner refused the limits or the window; ready and render reject once the worker or the compile fails
+
+// KineticRender, one sample every `every` 1 ms steps:
+{ pos: Float32Array /* position_mm */, vel: Float32Array /* velocity_mm_s */, acc: Float32Array /* accel_mm_s2 */,
+  flags: Uint8Array /* ORed over the samples' steps */, anomalies: Uint32Array(32) /* steps with bit k */,
+  counts: Uint32Array(5) /* steps with FLAGS[b] */, accepted, refused, plans, ms /* worker render time */ }
+```
+
+`kinetic.pin` holds `nucleus <sha>`, `version <kinetic_version()>` and
+`bytes <n>`; `test/kinetic-pin.mjs` checks bytes.js against it and, with
+emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
 
 ---
 

@@ -18,13 +18,20 @@
 // - Rows are var(--tap) high and the head rows fixed; the list scrolls inside
 //   its own box, so a state change moves nothing.
 // - lagOf is a scope, not a measurement: telemetry arrives on its own cadence.
+// - The motion preview is the machine's own planner (kinetic/kinetic.js), fed the shaped script, the
+//   limits and window by role and the Tuning rows as shown (a drag's draft included); every change
+//   re-renders and a newer render supersedes. When the worker fails the line reads 'Kinetic: fallback'
+//   and nothing is drawn over the shaped curve and the heat's chord-speed ceiling (the JS picture).
+// - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
+import { createKinetic, segmentsOf, tuningOf, ANOMALIES, EVERY } from './kinetic/kinetic.js';
 
 export const TUNING = 'Tuning';
 export const LIMIT_ROLES = Object.freeze(['limit.input.speed', 'limit.input.accel', 'limit.input.jerk']);
 export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
+export const KIN_MAX_SAMPLES = 200000;
 const CONTROLS = new Set(['slider', 'stepper', 'toggle', 'segmented', 'select']);
 const TRIAL_ROLE = 'action.trial';
 
@@ -43,6 +50,13 @@ export const COPY = Object.freeze({
   empty: 'No tuning controls on this hub',
   trial: 'Preview: not saved',
   noTrial: 'hub has no trial writes',
+  kinWasm: 'Kinetic: wasm',
+  kinFallback: 'Kinetic: fallback',
+  noLimits: 'no limits, window or rail',
+  anomalies: 'anomalies',
+  clamped: 'clamped',
+  guard: 'guard',
+  shaped: 'shaped',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -100,7 +114,7 @@ export function fmtValue(f, v) {
 }
 
 export const CSS = `
-.fsa { height: 100%; min-height: 0; display: grid; gap: 4px; grid-template-rows: var(--tap) 20px minmax(0, 1fr); }
+.fsa { height: 100%; min-height: 0; display: grid; gap: 4px; grid-template-rows: var(--tap) 20px 20px minmax(0, 1fr); }
 .fsa-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .fsa-head .fsp-btn { padding: 0 8px; }
 .fsa-head .fsa-gap { flex: 1 1 0; }
@@ -141,9 +155,20 @@ const h = (tag, attrs = {}, ...kids) => {
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 
+/** The Kinetic readout: the status word, the anomaly count and each flag's nonzero time, or the refusal. */
+export function kinText(state, r) {
+  if (state !== 'wasm') return COPY.kinFallback;
+  if (!r) return COPY.kinWasm;
+  if (r.error) return COPY.kinWasm + '  ' + r.error;
+  const s = (n) => (n < 1000 ? n + ' ms' : (n / 1000).toFixed(1) + ' s');
+  const a = r.anomalies.reduce((x, y) => x + y, 0);
+  return [COPY.kinWasm, a + ' ' + COPY.anomalies, ...[[COPY.clamped, 3], [COPY.guard, 2], [COPY.shaped, 1]]
+    .filter(([, b]) => r.counts[b]).map(([w, b]) => w + ' ' + s(r.counts[b]))].join('  ');
+}
+
 /**
  * deps: api; trace() -> the player's trace [{m, u, p, stale}]; script() -> Script | null; T() -> the transform.
- * -> { frame(), get mode(), unmount() }
+ * -> { frame(), get mode(), get kinetic() (the latest render or null), unmount() }
  */
 export function mountAnalyzer(el, { api, trace = () => [], script = () => null, T = () => ({ offsetMs: 0, lo: 0, hi: 1, invert: false }) }) {
   const capable = () => !!api.field(TRIAL_ROLE);
@@ -157,9 +182,36 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   const modes = h('span', { class: 'fsa-head', role: 'group', 'aria-label': COPY.preview }, bLive, bPrev);
   const head = h('div', { class: 'fsa-head' }, modes, h('span', { class: 'fsa-gap' }), bApply, bDiscard);
   const lag = h('output', { class: 'fsa-lag' });
+  const kinEl = h('output', { class: 'fsa-lag fsa-kin' });
   const list = h('div', { class: 'fsa-list' });
-  const root = h('div', { class: 'fsa' }, head, lag, list);
+  const root = h('div', { class: 'fsa' }, head, lag, kinEl, list);
   el.append(root);
+
+  let kin = null, kinState = 'wasm', kinKey = '', kinSc = null, kinR = null, version = '';
+  const kinFail = () => { kinState = 'fallback'; kinR = null; };
+  try {
+    kin = createKinetic();
+    kin.ready.then((v) => { version = v; }, kinFail);
+  } catch { kinFail(); }
+  const shown = (it) => Number(it.draft != null ? it.draft : api.value(it.f));
+  /** Re-render through the worker when the script, T, a limit, the window or a shown Tuning value changed. */
+  function kinetic() {
+    const sc = script(), t = T();
+    if (kinState !== 'wasm' || !sc || !sc.at.length) return;
+    const v = (role) => { const it = rows.find((x) => x.f.role === role); return it ? shown(it) : Number(api.value(api.field(role))); };
+    const limits = { vmax: v('limit.input.speed'), amax: v('limit.input.accel'), jmax: v('limit.input.jerk'), rail: v('geometry.max_travel'), horizonMs: 0 };
+    const win = [v('window.min'), v('window.max')];
+    if (!Object.values(limits).slice(0, 4).every((x) => x > 0) || !(win[1] > win[0])) { kinR = { error: COPY.noLimits }; kinSc = null; return; }
+    const tuning = tuningOf(rows.map((it) => [it.f, shown(it)]));
+    const key = JSON.stringify([limits, win, tuning, t]);
+    if (sc === kinSc && key === kinKey) return;
+    kinSc = sc; kinKey = key;
+    const { segs, t0, steps } = segmentsOf(sc, t);
+    const every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
+    kin.render({ limits, window: win, tuning, segs, steps, stepMs: 1, every }).then((r) => {
+      if (r) kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1] };
+    }, kinFail);
+  }
 
   const fail = (r) => { if (r && r.ok === false) note = r.error || ''; };
   const setMode = (m) => { mode = m; note = ''; frame(); };
@@ -265,12 +317,18 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       lagText = COPY.lag + ' ' + fmt(lagOf(tr, sc, t, 'u')) + '  ' + COPY.plan + ' ' + fmt(lagOf(tr, sc, t, 'p'));
     }
     setText(lag, note || lagText);
+    kinetic();
+    setText(kinEl, kinText(kinState, kinR));
+    const tip = kinR && kinR.anomalies ? [version, Math.round(kinR.ms) + ' ms', ...[...kinR.anomalies].map((n, b) => (n && ANOMALIES[b] ? ANOMALIES[b] + ' ' + n : ''))
+      .filter(Boolean)].join('\n') : version;
+    if (kinEl.title !== tip) kinEl.title = tip;
   }
 
   frame();
   return {
     frame,
     get mode() { return mode; },
-    unmount() { root.remove(); },
+    get kinetic() { return kinR && kinR.pos ? kinR : null; },
+    unmount() { if (kin) kin.close(); root.remove(); },
   };
 }

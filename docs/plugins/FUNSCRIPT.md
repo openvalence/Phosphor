@@ -35,6 +35,7 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, curve, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
 | interp | `interp.js` | ten curves between actions, smoothing and a slew limit; the settings card's curve rows (Interpolation) |
 | analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
+| kinetic | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin` | the machine's planner (Nucleus kinetic.wasm, pinned) in a Worker: the analyzer's motion preview (Kinetic) |
 
 Order: core, host and stash start at once; scheduler follows core's
 signatures (not its code); player-ui codes against all contracts; plugin
@@ -633,11 +634,92 @@ it; rects unchanged across Live, Preview and a pending trial; collapse
 restores the card. `--live`: on valencesim a Preview write raises the
 notice and Discard clears it and restores the stored value.
 
+## Kinetic (ph-ge35)
+
+Operator ruling 2026-10-03: the player loads the machine's own planner and
+renders the motion async, so tuning runs against a deterministic system that
+behaves the same on the machine, without rendering anything on the hub.
+
+- **What runs where.** Nucleus `tools/kinetic-wasm` compiles the P4's
+  `MotionArbiter.cpp`, `kinetic.hpp` and the vendored Ruckig (the same
+  sources, not a model) into one standalone `kinetic.wasm`, zero imports.
+  The plugin carries it base64 in `kinetic/bytes.js`: an override copy is one
+  file (R-C) and `connect-src` refuses a plugin's fetch, so the module is the
+  artifact everywhere (dev, the shell, an override). `kinetic/kinetic.js`
+  starts one Worker from a blob URL per open analyzer, instantiates the wasm
+  once and answers render requests; the page thread never runs the planner.
+- **Input.** The shaped script's segments (`segmentsOf`) as the host sends
+  them: one per span, end velocity `unspecified`, no curve family, each
+  submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
+  a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
+  (`limit.input.*`), the rail (`geometry.max_travel`) and the window
+  (`window.min`, `window.max`) by role; the Tuning rows by `kinetic_tuning`
+  member name (K2). The values are the ones the analyzer shows: in Preview
+  the hub's trial values, during a drag the draft, before anything is
+  written. Any change re-renders; a newer render supersedes the older, which
+  frees its handle at its next 8192-step chunk.
+- **Output.** 1 ms steps, kept every 5 ms (more on scripts past 1000 s, at
+  most `KIN_MAX_SAMPLES`): `position_mm` (what an on-time LP core renders),
+  velocity and accel, the flags ORed per kept sample, and counts over every
+  step. The detail draws the position `--intent` under the script curve; the
+  analyzer's Kinetic line reads `Kinetic: wasm  n anomalies` and each nonzero
+  flag time: `clamped`, `guard` (the fallback bit: the Ruckig guard or a
+  stretched deadline) and `shaped` (Blend spent amplitude or shape). Its
+  tooltip holds the version string, the render time and the anomaly kinds.
+- **What it replaces.** There was no JS planner model. The analyzer's only
+  picture of the machine was the shaped script itself (interp.js `shape()`
+  through `applyT`, the intent curve) with the limit judged by chord speed
+  against `limit.input.speed` (timeline.js `heatLevels`, the speed meter's
+  `strokeSpeed`). That stays the card's picture, and the analyzer's fallback.
+- **Fallback.** When the worker cannot start or the compile is refused, the
+  line reads `Kinetic: fallback` and nothing is drawn over the shaped curve
+  and the heat. A planner refusal is not a fallback: `Kinetic: wasm  window
+  refused`; without the limits, window or rail: `no limits, window or rail`.
+- **Pin rule.** `kinetic/kinetic.pin` names the Nucleus commit, the
+  `kinetic_version()` string (`nucleus <sha12> kinetic <x.y.z>`) and the
+  size. The bytes are "the machine" only for firmware built from that
+  commit; a `-dirty` build is never vendored. Bump with `node
+  test/kinetic-pin.mjs --write` (Nucleus clean at the new commit, emsdk at
+  `../.tools/emsdk` or `$EMSDK`); a plain run checks bytes.js against the
+  pin and, when Nucleus HEAD is the pin, rebuilds and byte-compares.
+- **Determinism.** `test/kinetic-trace.test.mjs` (in `npm run check`)
+  replays Nucleus' native fixture (`test/fixtures/kinetic_trace.json`,
+  copied from Nucleus c9e9aee, unchanged through the pin) through bytes.js:
+  600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP; `renderCore`
+  on the same segments returns the same `position_mm` at all 50,000 steps
+  before the fixture's tuning change.
+- **CSP.** Compiling wasm needs `'wasm-unsafe-eval'` in `script-src`
+  (PLUGINS.md); section (k) shows the compile refused without it.
+- **Measured** 2026-10-03 (Chromium, section (k)): 60 s at 1 ms with every
+  sample kept, 11 to 16 ms in the worker, 16 to 23 ms to the page; the 30 s
+  test clip in the analyzer, 3 ms. The shell bundle grows by 202,022 B raw,
+  about 79 KB gzipped (the wasm is 151,394 B); the hub-served build carries
+  no factory plugin and does not grow (`npm run build:only`: no wasm in it).
+- **What it is not.** The emitter is ideal and the tick exact: the board's
+  task jitter and edge quantization are absent (Nucleus
+  tools/kinetic-wasm/README.md).
+
+Decisions (veto-able):
+
+- **K1** bytes.js only, no separate `.wasm` file: one artifact for every
+  load path, and a second copy could only drift. Cost: base64's third in the
+  shell bundle (79 KB gzipped against 58 KB for the raw wasm).
+- **K2** The Tuning rows bind `kinetic_tuning` by member name (the 0x3120
+  card's fields carry the struct's names; an `_ms` row binds its `_us`
+  member): the contract's one binding that is not a role. `overshoot_guard`
+  has no row on valencesim and keeps the factory value; `schedule_horizon`
+  is not bound (the render uses 250 ms). Veto: registry roles for the
+  tuning members, an RFC.
+- **K3** The render starts from rest at 0 mm with a preroll, not from the
+  measured position: the same script renders the same motion every time.
+- **K4** It renders only while the analyzer is open.
+
 ## Tests
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,
   `test/funscript-scheduler.test.mjs`, `test/funscript-stash.test.mjs`,
-  and the host sections (e2), (i), (j) of `test/plugins.test.mjs`. Items:
+  `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (i),
+  (j) of `test/plugins.test.mjs`. Items:
   CONTRACT.md, per module.
 - **Browser, `npm run check:funscript` in `test:browser`:**
   `test/funscript-player.test.mjs`, the shell bundle against a fake hub on
