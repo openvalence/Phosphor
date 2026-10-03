@@ -20,7 +20,7 @@
  * Run: node test/buttplug-bridge.test.mjs
  */
 
-import { createPluginHost } from '../src/plugins/host.js';
+import { createPluginHost, MOTION_HOLD_MS } from '../src/plugins/host.js';
 import * as bp from '../src/plugins/buttplug.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { createMotionDoor } from '../src/model/motion.js';
@@ -110,6 +110,7 @@ console.log('(d) hub presence');
 console.log('(e) paused: refused with a reason, resumed only by the operator');
 {
   let held = 'paused, resume to continue';
+  let clock = 0;   // the host's producer lock reads this
   const wire = [];
   const door = createMotionDoor({
     session: () => null, entries: () => [], log: () => {}, halted: () => held,
@@ -120,7 +121,7 @@ console.log('(e) paused: refused with a reason, resumed only by the operator');
   const host = createPluginHost({
     model: () => null, sample: () => undefined, sampleAge: () => Infinity,
     display: () => undefined, status: () => 'confirmed', write: () => {},
-    submitMotion: door, registerTheme: () => {}, prefs: null,
+    submitMotion: door, registerTheme: () => {}, prefs: null, now: () => clock,
     listenTcp: async (port, fn) => { onLine = fn; return () => {}; },
     log: (name, level, msg) => logs.push({ name, level, msg }),
   });
@@ -141,7 +142,10 @@ console.log('(e) paused: refused with a reason, resumed only by the operator');
   held = '';
   handlers.get('bp://motion')({ payload: { position: 0.5, ms: 50 } });
   onLine('L075I50');
-  ok('after the operator resumes, both flow', JSON.stringify(wire) === '[0.5,0.75]', JSON.stringify(wire));
+  ok('after the operator resumes, the first producer flows and holds the input', JSON.stringify(wire) === '[0.5]', JSON.stringify(wire));
+  clock += 50 + MOTION_HOLD_MS;
+  onLine('L075I50');
+  ok('the other flows once the hold lapses', JSON.stringify(wire) === '[0.5,0.75]', JSON.stringify(wire));
 }
 
 console.log('(f) no event plugin: degraded, logged once, never thrown');
