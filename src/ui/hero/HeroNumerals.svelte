@@ -131,10 +131,11 @@
   let editEl = $state(null);
   let btnEl = $state(null);
   let noteT = null;
-  const editW = $derived(Math.max(commandedText.length, 4));
+  let editW = $state(0);
 
   async function openEdit() {
     if (jogWhy) return;
+    editW = btnEl.getBoundingClientRect().width;
     editing = true;
     await tick();
     editEl.value = targetFresh && targetVal != null && isFinite(targetVal) ? targetVal.toFixed(commandedPrecision) : '';
@@ -181,7 +182,7 @@
       <span class="hn-label">{labelFor(targetField).toLowerCase()}</span>
       {#if editing}
         <input class="hn-val mono hn-intent hn-entry" type="number" step="any" bind:this={editEl}
-               style="width:{editW}ch" aria-label={'Jog target, ' + (unitOf(targetField) || 'position')}
+               style="width:{editW}px" aria-label={'Jog target, ' + (unitOf(targetField) || 'position')}
                onkeydown={onEditKey} onblur={() => closeEdit(false)} />
       {:else}
         <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl}
