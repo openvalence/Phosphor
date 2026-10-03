@@ -203,10 +203,12 @@
       {#each RAMP as k (k)}<i style="background:var({k})" title={k}></i>{/each}
     </div>
     <div class="ratios" data-testid="theme-ratios">
-      <span class="ratio"><span class="rk">Text</span> <span class="mono">{ratio(d.ratios.text)}</span></span>
-      <span class="ratio"><span class="rk">Labels</span> <span class="mono">{ratio(d.ratios.labels)}</span></span>
-      <span class="ratio"><span class="rk">Reality</span> <span class="mono">{ratio(d.ratios.reality)}</span></span>
-      <span class="near" data-testid="theme-near" title={near}>{near}</span>
+      <div class="ratio-grid">
+        <span class="ratio"><span class="rk">Text</span> <span class="mono">{ratio(d.ratios.text)}</span></span>
+        <span class="ratio"><span class="rk">Labels</span> <span class="mono">{ratio(d.ratios.labels)}</span></span>
+        <span class="ratio"><span class="rk">Reality</span> <span class="mono">{ratio(d.ratios.reality)}</span></span>
+        <span class="near" data-testid="theme-near" title={near}>{near}</span>
+      </div>
     </div>
   </section>
 
@@ -350,20 +352,24 @@
   .knob-row output { text-align: right; color: var(--tx-val); font-size: .74rem; }
 
   .ramp { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); height: 18px; border: 1px solid var(--line-1); }
-  /* Three fixed lines at every width, nothing wraps or clips: each ratio a
-     label over its number, then the safety hue note across the slot. */
-  .ratios {
+  /* A fixed slot that never wraps or clips: each ratio a label over its
+     number, then the safety hue note across the slot. Its shape follows the
+     slot's width only, never the digits: under 15em the three ratios cannot
+     sit side by side and take one line each. */
+  .ratios { container-type: inline-size; line-height: 1.45; font-size: .74rem; color: var(--tx-val); }
+  .ratio-grid {
     display: grid;
     grid-template-columns: repeat(3, max-content) minmax(0, 1fr);
     column-gap: 20px;
     height: calc(3 * 1.45em);
-    line-height: 1.45;
-    font-size: .74rem;
-    color: var(--tx-val);
   }
   .ratio { display: flex; flex-direction: column; white-space: nowrap; }
   .rk { color: var(--tx-mut); }
   .near { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @container (max-width: 15em) {
+    .ratio-grid { grid-template-columns: max-content minmax(0, 1fr); column-gap: 8px; height: calc(4 * 1.45em); }
+    .ratio { display: contents; }
+  }
 
   .adv summary { display: flex; align-items: center; gap: 10px; min-height: var(--tap); cursor: pointer; }
   .adv summary h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }

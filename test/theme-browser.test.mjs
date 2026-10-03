@@ -267,20 +267,27 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   await ctx.close();
 }
 
-// ---- 1b. phones: the readout never wraps, Advanced rows keep one height ------
-for (const width of [320, 390]) {
-  console.log('\n--- theme, phone ' + width + ' ---');
-  const { ctx, page, errors } = await boot({ width, height: 844 });
+// ---- 1b. phones and the 200 px floor: the readout never wraps or clips, ---------
+// Advanced rows keep one height
+for (const [width, height] of [[200, 390], [320, 568], [390, 844]]) {
+  console.log('\n--- theme, ' + width + 'x' + height + ' ---');
+  const { ctx, page, errors } = await boot({ width, height });
   await openTab(page, 'display');
   const rd = await page.$eval('[data-testid="theme-ratios"]', (el) => {
     const box = el.getBoundingClientRect();
     const tops = [...el.querySelectorAll('.ratio')].map((c) => c.getBoundingClientRect().top);
     const whole = [...el.querySelectorAll('.ratio > span')].every((s) => s.scrollWidth <= s.clientWidth + 0.5
       && s.getBoundingClientRect().right <= box.right + 0.5);
-    return { tops, whole, lines: Math.round(box.height / parseFloat(getComputedStyle(el).lineHeight)) };
+    return { tops, whole, lines: Math.round(box.height / parseFloat(getComputedStyle(el).lineHeight)),
+      sideways: document.documentElement.scrollWidth > innerWidth };
   });
-  ok(width + ': the three ratios share one row, every word and number whole (ph-eqs)', spread(rd.tops) < 0.5 && rd.whole && rd.lines === 3,
-    JSON.stringify(rd));
+  if (width < 264) {
+    ok(width + ': the ratios take one line each, nothing clips or scrolls sideways (ph-eqs)', rd.whole && rd.lines === 4 && !rd.sideways,
+      JSON.stringify(rd));
+  } else {
+    ok(width + ': the three ratios share one row, every word and number whole (ph-eqs)', spread(rd.tops) < 0.5 && rd.whole
+      && rd.lines === 3 && !rd.sideways, JSON.stringify(rd));
+  }
   await page.click('.adv summary');
   await page.waitForTimeout(100);
   const r = await rows(page);

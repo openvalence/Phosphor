@@ -69,14 +69,16 @@ watermarks), never a label. A guarded step moves toward the extreme; a
 mid-gray chassis no extreme can clear is moved away from the middle until
 one does.
 
-The editor's readout is a fixed three-line slot that never wraps or clips,
-down to a 320 px phone: the live ratios (text, labels, reality), each a
-label over its number, against the worst of the three surfaces text sits
-on, then a note naming any accent that reads as a safety color, e.g.
-"Intent near safety amber": its OKLCH hue within 20 degrees of `--warn` or
-`--bad`, chroma 0.05 or more (`nearSafety`). Accents are not guarded: they
-are the user's pick, and the readout is how the user sees a weak one or a
-safety look-alike. No preset trips either (`test/theme.test.mjs`).
+The editor's readout is a fixed slot that never wraps or clips: the live
+ratios (text, labels, reality), each a label over its number, against the
+worst of the three surfaces text sits on, then a note naming any accent
+that reads as a safety color, e.g. "Intent near safety amber": its OKLCH
+hue within 20 degrees of `--warn` or `--bad`, chroma 0.05 or more
+(`nearSafety`). Accents are not guarded: they are the user's pick, and the
+readout is how the user sees a weak one or a safety look-alike. No preset
+trips either (`test/theme.test.mjs`). The slot's shape follows its width,
+never the digits: three lines, or four (one ratio per line) where the slot
+is under 15em, as at the 200 px floor.
 
 `color-scheme` follows the chassis.
 
