@@ -39,7 +39,7 @@
    * like the reference — do not split them into dimmed spans.
    */
   import { unitOf, precisionFor, labelFor } from '../../model/format.js';
-  import { freshness, staleReason } from '../../model/machine.svelte.js';
+  import { machine, freshness, staleReason } from '../../model/machine.svelte.js';
 
   let {
     posField = null,
@@ -116,7 +116,7 @@
   const lagText = $derived(padNumeral(lagVal, padIntDigits, lagPrecision));
 </script>
 
-<div class="hero-numerals" class:stale={!fresh} title={staleTitle}>
+<div class="hero-numerals" class:stale={!fresh} class:virtual={!!machine.link.virtual} title={staleTitle}>
   <div class="hn-item hn-primary">
     <span class="hn-label">
       <svg class="hn-reticle" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -211,6 +211,10 @@
     color: var(--intent);
     text-shadow: none;
   }
+
+  /* Virtual (DESIGN §10.10): a frozen snapshot measured nothing, so the
+     reality voice becomes the intent family, unlit (ph-6n0). */
+  .hero-numerals.virtual { --reality: var(--intent); --reality-rgb: var(--intent-rgb); --glow-reality: none; }
 
   .hero-numerals.stale .hn-primary .hn-val {
     color: var(--tx-ghost);

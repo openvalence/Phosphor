@@ -30,6 +30,8 @@
 
   const status = $derived(statusOf(action));
   const sh = $derived(shadowOf(action));
+  // A virtual hub measured nothing: its echo is not reality (DESIGN §10.10).
+  const virtual = $derived(!!machine.link.virtual);
 
   let draft = $state({});
 
@@ -75,13 +77,20 @@
     status === 'pending' ? 'waiting for the machine'
     : status === 'overdue' ? 'still waiting for the machine'
     : status === 'fault' ? sh && sh.error
-    : glow ? 'confirmed' + (action.options && sh.applied != null ? ': ' + opLabel(sh.applied) : '')
+    : glow ? (virtual ? 'virtual' : 'confirmed') + (action.options && sh.applied != null ? ': ' + opLabel(sh.applied) : '')
     : ''
   );
 </script>
 
-<div class="field action" data-uid={action.uid} data-shadow={status} data-glow={glow || undefined} onanimationend={glowEnd}>
-  <span class="field-label">{labelFor(action)}</span>
+<div class="field action" data-uid={action.uid} data-shadow={status} data-glow={glow || undefined}
+     data-virtual={virtual || undefined} onanimationend={glowEnd}>
+  <!-- One fixed line in the head row for the ladder, else the gate (laws 3,
+       5), as Field carries it: no state changes the card's height. -->
+  <div class="field-head">
+    <span class="field-label">{labelFor(action)}</span>
+    <span class="state" class:why={!statusText} role="status"
+          title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
+  </div>
   {#if action.desc}<p class="hint">{action.desc}</p>{/if}
 
   {#each (action.payload || []).filter((p) => p.type !== CBOR_FIELD.bstr_t) as p (p.key)}
@@ -109,22 +118,48 @@
               title={reasonFor(op.value) || undefined} onclick={() => press(op.value)}>{op.label}</button>
     {/each}
   </div>
-  <!-- One fixed line for the ladder, else the gate (laws 3, 5): no state
-       changes the card's height. -->
-  <p class="hint state" class:why={!statusText} role="status"
-     title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</p>
 </div>
 
 <style>
   .action { display: flex; flex-direction: column; gap: 6px; }
-  .field-label { color: var(--ink); font-size: .85rem; }
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  /* Field's label face (.76rem, 500, --tx-mut). */
+  .field-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+    font-size: .76rem;
+    font-weight: 500;
+    color: var(--tx-mut);
+    text-transform: lowercase;
+    letter-spacing: .04em;
+  }
   .ops { display: flex; flex-wrap: wrap; gap: 6px; }
-  .ops button { min-height: var(--tap); padding: 0 14px; text-transform: capitalize; }
+  /* Hub labels render as sent (COPY rule 8). */
+  .ops button { min-height: var(--tap); padding: 0 14px; }
   .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
   .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
-  .state { min-height: 1.45em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .why { color: var(--ink-faint); }
+  /* Field's .ladder slot: basis 0, one clipped 14 px line. */
+  .state {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 14px;
+    line-height: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-mut));
+  }
+  .why { color: var(--tx-ghost); }
+  .action[data-shadow='pending'] .state { color: var(--intent); }
   .action[data-shadow='fault'] .state { color: var(--warn); }
   .action[data-shadow='overdue'] .state { color: var(--warn); }
+  /* Virtual (DESIGN §10.10): the afterglow in the intent family. */
+  .action[data-virtual] { --reality: var(--intent); --reality-rgb: var(--intent-rgb); }
 </style>

@@ -47,7 +47,8 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull, head, concatBytes } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK, CBOR_FIELD, SETTING_FLAG } from '../../Valence/clients/js/frames.js';
 import { createSession, catalogEtag, toHex } from '../../Valence/clients/js/index.js';
-import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
+import { buildSettingsModel, placeableControls, WIDGET } from '../src/model/settings.js';
+import { precisionFor } from '../src/model/format.js';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
@@ -289,8 +290,15 @@ const LADDER = {
   bitfield: MODEL.fields.find((f) => f.uid === XS + ':lamp_bits'),
 };
 const ARM = MODEL.fields.find((f) => f.uid === XS + ':arm');
+// ph-0h8: a writable f32 with a fractional step, shown in a stepper.
+const F32 = MODEL.fields.find((f) => !f.readOnly && f.type === PACKED.f32 && f.step > 0 && f.step < 1 && f.min != null && f.max != null);
+// ph-62w: a merged min/max pair; ph-z5o: the longest advanced toggle label.
+const RANGE = placeableControls(MODEL).find((c) => c.field && c.field.widget === WIDGET.range);
+const LONG = MODEL.fields.filter((f) => f.advanced && !f.readOnly && f.widget === WIDGET.toggle && f.channelId !== XS)
+  .sort((a, b) => b.label.length - a.label.length)[0];
 const MORE = [...(SMALL ? ['numeral@' + SMALL.uid] : []),
-  ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid];
+  ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid,
+  ...(F32 ? ['stepper@' + F32.uid] : []), ...(RANGE ? ['range@' + RANGE.key] : []), ...(LONG ? ['toggle@' + LONG.uid] : [])];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 if (!LIVE) {
@@ -364,6 +372,17 @@ const wearsBad = (sel) => page.evaluate((sel) => {
     return [s.boxShadow, s.color, s.borderTopColor].some((v) => v.includes(bad));
   });
 }, sel);
+/** A token's computed color, e.g. tokColor('--intent'). */
+const tokColor = (name) => page.evaluate((name) => {
+  const p = document.body.appendChild(document.createElement('span'));
+  p.style.color = 'var(' + name + ')';
+  const c = getComputedStyle(p).color;
+  p.remove();
+  return c;
+}, name);
+/** End a field's afterglow now: the at-rest look. */
+const finishGlow = (loc) => loc.evaluate((f) => f.getAnimations().filter((a) => (a.animationName || '').startsWith('fx-glow'))
+  .forEach((a) => a.finish()));
 
 if (!LIVE) {
   for (const p of WRITERS) {
@@ -463,12 +482,30 @@ if (!LIVE) {
     const [read, want] = await xdrive(p);
     ok(p + ': pending while the hub holds the echo', await xwait(p, 'pending', 1000));
     ok(p + ': pending names itself in words', (await xladder(p)).includes('waiting'), await xladder(p));
+    const c0 = xcell(p);
+    const segPaint = () => c0.locator('[role=radio][aria-checked=true]').evaluate((b) => {
+      const s = getComputedStyle(b);
+      return { color: s.color, shadow: s.boxShadow };
+    });
+    if (p === 'segmented') {
+      await sleep(200);
+      const pnt = await segPaint();
+      ok('segmented: the commanded option wears intent until the echo, unlit (ph-ufb)',
+        pnt.color === await tokColor('--intent') && pnt.shadow === 'none', pnt);
+    }
     await sameH('pending');
     ok(p + ': overdue past 500 ms', await xwait(p, 'overdue', 1500));
     await sameH('overdue');
     await release();
     ok(p + ': confirmed on the echo, in words', await xwait(p, 'confirmed') && (await xladder(p)) === 'confirmed', await xladder(p));
     ok(p + ': the control shows the applied value', await read() === want, [await read(), want]);
+    if (p === 'segmented') {
+      await finishGlow(c0);
+      await sleep(250);
+      const pnt = await segPaint();
+      ok('segmented: at rest the chosen option is plain reality, no glow (ph-ufb)',
+        pnt.color === await tokColor('--reality') && pnt.shadow === 'none', pnt);
+    }
     hub.mode = 'silent';
     await xdrive(p);
     ok(p + ': fault when the echo never comes', await xwait(p, 'fault', 4000));
@@ -532,6 +569,67 @@ if (!LIVE) {
     ok(p + ': ...and no gate reason, because nothing is gated', await cell(p).locator('.ladder[data-slot=gate]').count() === 0);
   }
 
+  const chipFace = (sel) => page.$eval(sel, (el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, shadow: s.boxShadow }; });
+  const bareChip = await chipFace('.cell[data-pres=bar] .field-value');
+  const typedChip = await chipFace('.cell[data-pres=slider] .field-value.typeable');
+  ok('a read-only value is bare digits; only the typeable chip wears the recess (ph-5y6)',
+    bareChip.bg === 'rgba(0, 0, 0, 0)' && bareChip.shadow === 'none' && typedChip.bg !== 'rgba(0, 0, 0, 0)'
+    && typedChip.shadow.includes('inset'), [bareChip, typedChip]);
+
+  console.log('\n[stepper] the value at the precision of the step (ph-0h8)');
+  if (F32) {
+    const v = F32.min + (F32.max - F32.min) * 0.37;
+    hub.values[F32.channelId + ':' + F32.name] = v;
+    hub.push(F32.channelId);
+    await sleep(200);
+    const shown = await page.locator('.cell[data-pres="stepper@' + F32.uid + '"] .og-num').inputValue();
+    ok('stepper: an f32 reads at the precision of its step, not its float noise', shown === Math.fround(v).toFixed(precisionFor(F32)),
+      [shown, Math.fround(v)]);
+  } else ok('the fixture has a writable f32 with a fractional step', false);
+
+  console.log('\n[range] the chip of the pair in the head row; its echo lights the afterglow (ph-62w)');
+  if (RANGE) {
+    const rg = page.locator('.cell[data-pres="range@' + RANGE.key + '"] .field');
+    ok('range: the value chip rides the head row', await rg.evaluate((f) => {
+      const h = f.querySelector('.field-head').getBoundingClientRect(), c = f.querySelector('.field-head .field-value');
+      const r = c && c.getBoundingClientRect();
+      return !!r && r.top >= h.top - 0.5 && r.bottom <= h.bottom + 0.5 && !f.querySelector(':scope > .field-value');
+    }));
+    hub.mode = 'hold';
+    // No scroll: the drag checks below aim the mouse at the first row.
+    await rg.locator('input.range-hi').evaluate((el) => el.focus({ preventScroll: true }));
+    await page.keyboard.press('ArrowLeft');
+    ok('range: pending while the hub holds the echo', await page.waitForFunction((k) =>
+      document.querySelector('.cell[data-pres="range@' + k + '"] .field').dataset.shadow === 'pending', RANGE.key, { timeout: 1000 })
+      .then(() => true).catch(() => false));
+    ok('in flight: the model counts the pair as one write in flight (ph-sbu)',
+      (await page.evaluate((k) => window.__inFlight([k]), RANGE.key)).n === 1);
+    await release();
+    ok('range: the echo says confirmed and lights the afterglow', await page.waitForFunction((k) => {
+      const f = document.querySelector('.cell[data-pres="range@' + k + '"] .field');
+      return f.dataset.shadow === 'confirmed' && !!f.dataset.glow && f.querySelector('.ladder').textContent === 'confirmed';
+    }, RANGE.key, { timeout: 3000 }).then(() => true).catch(() => false), await rg.locator('.ladder').textContent());
+    hub.mode = 'echo';
+  } else ok('the fixture has a min/max pair', false);
+
+  console.log('\n[head] a narrow label ellipsizes on one line, its tag after it (ph-z5o)');
+  if (LONG) {
+    const lc = page.locator('.cell[data-pres="toggle@' + LONG.uid + '"]');
+    const h0 = await lc.locator('.field-head').evaluate((e) => e.getBoundingClientRect().height);
+    await lc.evaluate((c) => { c.style.width = '150px'; });
+    await sleep(50);
+    const head = await lc.evaluate((c) => {
+      const f = c.querySelector('.field').getBoundingClientRect(), h = c.querySelector('.field-head').getBoundingClientRect();
+      const t = c.querySelector('.tag.adv').getBoundingClientRect(), x = c.querySelector('.field-label-text');
+      return { h: h.height, tagIn: t.right <= f.right + 0.5 && t.top >= h.top - 0.5 && t.bottom <= h.bottom + 0.5,
+        cut: x.scrollWidth > x.clientWidth, title: x.title };
+    });
+    await lc.evaluate((c) => { c.style.width = ''; });
+    ok('a narrow head stays one line', Math.abs(head.h - h0) < 0.5, [h0, head.h]);
+    ok('...the label ellipsizes with its full text in the title, the adv tag in the row',
+      head.cut && head.tagIn && head.title === LONG.label, head);
+  } else ok('the fixture has an advanced toggle', false);
+
   // Every transient has one fixed home (laws 3, 5, 8): the field's box and
   // its control's box are the same idle, pending, overdue, confirmed, fault,
   // grayed and stale.
@@ -546,8 +644,11 @@ if (!LIVE) {
   await drive('slider');
   ok('a write is pending', await waitShadow('slider', 'pending', 1000));
   await same('pending');
+  const fl = () => page.evaluate((u) => window.__inFlight([u]), FIELD.uid);
+  ok('in flight: pending counts, not overdue (ph-sbu)', JSON.stringify(await fl()) === '{"n":1,"overdue":false}', await fl());
   ok('...then overdue', await waitShadow('slider', 'overdue', 1500));
   await same('overdue');
+  ok('in flight: overdue counts and says so', JSON.stringify(await fl()) === '{"n":1,"overdue":true}', await fl());
   await release();
   ok('...then confirmed', await waitShadow('slider', 'confirmed'));
   await same('confirmed');
@@ -572,6 +673,8 @@ if (!LIVE) {
   await drive('slider');
   ok('a refused write faults', await waitShadow('slider', 'fault', 1500));
   await same('at fault, its reason in the slot');
+  ok('in flight: a refused write is not in flight (ph-sbu)',
+    (await page.evaluate((u) => window.__inFlight([u]), FIELD.uid)).n === 0);
   hub.mode = 'echo';
 
   // The write-feedback effect (docs/EFFECTS.md, ph-vdk.62): the ring and the
@@ -928,9 +1031,9 @@ if (!LIVE) {
     await act.locator('.ops button').first().click();
     ok('action: pending on the press', await actWait('pending', 1000));
     ok('action: overdue past 500 ms with no echo', await actWait('overdue', 1500));
-    ok('action: overdue names itself in words', /still waiting/.test(await act.locator('.hint.state').textContent()));
+    ok('action: overdue names itself in words', /still waiting/.test(await act.locator('.state').textContent()));
     ok('action: fault when the echo never comes', await actWait('fault', 3000));
-    ok('action: fault gives the reason', (await act.locator('.hint.state').textContent()).includes(NO_ANSWER));
+    ok('action: fault gives the reason', (await act.locator('.state').textContent()).includes(NO_ANSWER));
     ok('action: the fault wears amber, never the e-stop red', !(await wearsBad('.cell .field.action')));
     // The silent intent's session timeout lands about 1 s after the fault; a newer press must not feel it.
     hub.mode = 'hold';
@@ -951,7 +1054,7 @@ if (!LIVE) {
     const num = a.locator('.payload input[type=number]');
     if (await num.count()) await num.first().fill('23');
     await a.locator('.ops button').first().click();
-    const confirmed = await a.locator('.hint.state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 })
+    const confirmed = await a.locator('.state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 })
       .then(() => true).catch(() => false);
     ok('the press reaches confirmed', confirmed);
     ok('the status text never carries the secret', !(await a.textContent()).includes(SECRET));
