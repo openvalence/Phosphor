@@ -149,7 +149,7 @@ await page.goto('http://127.0.0.1:' + PORT + '/');
 await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
 await page.waitForTimeout(400);
 
-// A category page with at least three cards, one of them holding a writable range.
+// A category page with at least two group cards, one of them holding a writable range.
 const tabs = page.locator('nav.rail [role=tab]');
 let tab = -1, viewKey = '', cards = [];
 for (let i = 1; i < await tabs.count() && tab < 0; i++) {
@@ -161,9 +161,9 @@ for (let i = 1; i < await tabs.count() && tab < 0; i++) {
     const ids = [...g.children].map((c) => c.getAttribute('data-id'));
     return { key: g.getAttribute('data-view'), ids, range: !!g.querySelector('input[type=range]:not([disabled])') };
   });
-  if (r && r.range && r.ids.length >= 3) { tab = i; viewKey = r.key; cards = r.ids; }
+  if (r && r.range && r.ids.filter((id) => id.startsWith('group:')).length >= 2) { tab = i; viewKey = r.key; cards = r.ids; }
 }
-ok('found a category page with three or more cards and a writable range', tab > 0, viewKey + ' ' + cards.length);
+ok('found a category page with two or more group cards and a writable range', tab > 0, viewKey + ' ' + cards.length);
 if (tab < 0) { await browser.close(); srv.close(); process.exit(1); }
 
 // Every card into one short nest, through the stored layout; scroll and

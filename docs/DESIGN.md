@@ -347,9 +347,10 @@ never here (C-2). The phases landed on 2026-10-01 in these commits:
 Rulings still owed are marked OPEN below (`ph-e82.7`; the relationship
 question in §10.8).
 
-### 10.1 The home page replaces Overview
+### 10.1 The Dash (the home page) replaces Overview
 
-- The home page is a user-arranged grid. It replaces the Overview tab
+- The home page, named **Dash** in the sidebar, the F3 index and the copy
+  (§10.11), is a user-arranged grid. It replaces the Overview tab
   (`src/App.svelte`: the `machine` tab and `machineItems`).
 - Everything that lived only on Overview becomes a module or is deleted with
   C-9 proof: hero-rank leftovers, telemetry, card-zone heroes, loose actions.
@@ -663,6 +664,33 @@ connected, then merge the setting changes onto the machine, ticked per item.
 - Layouts, plugins and theme are client state: edits made while virtual are
   already saved.
 
+### 10.11 Navigation: three tiers (operator ruling 2026-10-02, RFC-094)
+
+The sidebar draws the registry's `ui_nav_tiers` in order, each as one
+section, and never a grouping of its own (RENDERING §3; Valence RFC-094,
+LANDED 0c33da4). Tier and category ids come from the generated vocabulary
+(`UI_CATEGORY_TIER`, `UI_NAV_TIER`); labels are ours.
+
+| Tier | Section label | Holds |
+|---|---|---|
+| 1 `machine` | Machine | Dash, then the hub's tier-1 categories in registry order (Generator, Motion, Limits, Hardware, System, Other, Setup when emitted). Vendor and untaught ids are tier 1. |
+| 2 `link` | Valence | Pairing, Link (the protocol view), Log, then the hub's tier-2 categories (Network, Session) when emitted. Shown once a catalog is adopted. |
+| 3 `client` | Phosphor | Display and Plugins, then the shell's panes (Hubs, Server, Settings, Merge, About). The shell's Settings hosts the Display editor, so the shell draws Settings and no Display. |
+
+- Subgroups (Motion's Tuning, System's Library) are sections and drill-in
+  pages of their category (RENDERING §11), not sidebar rows. A group is
+  promoted by its whole field count, shown or not, so the advanced toggle
+  never moves a page.
+- Category 1 reads "Generator", the protocol view reads "Link", the built
+  home page reads "Dash". Tab ids are storage keys and do not follow the
+  labels: `machine` (the Dash layout), `valence` (Link), `cat<id>`.
+- Icons: one table, `src/ui/navIcons.js`, keyed by `ui_categories` id and by
+  our pane ids; an untaught or vendor id, or an unknown pane, draws the
+  `other` icon. 16 px, open paths, 1.5 stroke, currentColor, the flip and
+  override glyphs' style. Expanded and collapsed rails draw the same icon.
+- The served page shows the Phosphor section with Display and Plugins; shell
+  panes and the shell shading stay shell-only.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -680,3 +708,4 @@ connected, then merge the setting changes onto the machine, ticked per item.
 | 2026-10-02 | §10.3 | RFC-085: the strip's mandatory pair is e-stop plus pause, each one two-state control (hold-to-release, Halted, Halt label without `estop_cuts_power`); stop, hold and every clear button retired; modules are one per pair (`ph-e82.12`). | operator (RFC-085 ruling) |
 | 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |
 | 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
+| 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |

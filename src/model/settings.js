@@ -550,8 +550,8 @@ export function buildSettingsModel(entries) {
   //
   // SPEC 8.8: a CATEGORY SPANS CHANNELS. Two channels sharing a category merge
   // into one tab. That is what lets 20 tuning knobs live across three channels
-  // (each capped at 8 settings by its bitfield8 mask) and still present as a
-  // single Tuning tab. Keying the map on the category NUMBER is what makes the
+  // (each capped at 8 settings by its bitfield8 mask) and still present as one
+  // Tuning section of one tab. Keying the map on the category NUMBER is what makes the
   // merge happen; keying it on the channel would draw three unrelated tabs.
   const catMap = new Map();
   const place = (field) => {

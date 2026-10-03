@@ -447,7 +447,7 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   for (let i = 0; i < await tabs.count(); i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(150);
-    for (const t of await page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]').all()) await t.click();
+    for (const b = page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]'); await b.count();) await b.first().click();
     await page.waitForTimeout(150);
     bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .page-foot, .cat-empty) *'));
   }

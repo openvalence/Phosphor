@@ -162,8 +162,7 @@ ok('...and back', (await terseOn()) === terseWas);
 // live — both at once is the duplicate truth the density pass exists to stop.
 const fieldTabs = await page.$$('nav.rail [role="tab"]');
 const tabText = await Promise.all(fieldTabs.map(async (t) => (await t.textContent()).trim().toLowerCase()));
-const fieldTab = tabText.findIndex((t) => t.includes('tuning'));
-await fieldTabs[fieldTab >= 0 ? fieldTab : tabText.findIndex((t) => t.includes('motion'))].click();
+await fieldTabs[tabText.findIndex((t) => t.includes('motion'))].click();
 // The affordance only renders in TERSE, so it has to be measured there. A
 // display:none element reports an all-zero rect, which would make the
 // centering check below pass without measuring anything.

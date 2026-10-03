@@ -38,7 +38,8 @@
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
-  import { UI_CATEGORY } from '../../Valence/clients/js/index.js';
+  import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
+  import { navIcon } from './ui/navIcons.js';
   import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
   import { withoutClaimed } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -95,33 +96,40 @@
   // strip, below); 'card' heroes are home modules and category-page cards.
   const instrumentHeroes = $derived(heroes.widgets.filter((h) => h.zone === 'instrument'));
 
-  // Nav: the machine's categories, plus our own fixed views. The fixed ones are
-  // about the LINK and the BROWSER rather than the machine, which is why they
-  // are the only hardcoded entries in the page.
-  // Tab id 'machine' is the home grid's storage view id (Home.svelte).
-  const machineTabs = $derived([
-    { id: 'machine', label: 'Home' },
-    ...categories.map((c) => ({ id: 'cat' + c.key, label: c.label, cat: c })),
-  ]);
-  const consoleTabs = $derived([
+  // Nav: the registry's three tiers in order (RENDERING §3, RFC-094), each a
+  // section: the machine's categories by their registry tier, plus our own
+  // fixed views placed by tier membership (DESIGN §10.11). The fixed ones are
+  // the only hardcoded entries in the page. Tab ids are storage keys: 'machine'
+  // is the Dash's layout view id (Home.svelte), 'valence' the Link pane's.
+  const ready = $derived(machine.catalog.ready);
+  const tierOf = (c) => (c.known && UI_CATEGORY_TIER[c.id]) || UI_NAV_TIER.machine;
+  const catTabs = (tier) => categories.filter((c) => tierOf(c) === tier)
+    .map((c) => ({ id: 'cat' + c.key, label: c.label, cat: c }));
+  const machineTabs = $derived([{ id: 'machine', label: 'Dash' }, ...catTabs(UI_NAV_TIER.machine)]);
+  const linkTabs = $derived(ready ? [
     { id: 'pairing', label: 'Pairing' },
-    { id: 'valence', label: 'Valence' },
+    { id: 'valence', label: 'Link' },
     { id: 'log', label: 'Log' },
-    { id: 'display', label: 'Display' },
-    ...(pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }] : []),
-  ]);
-  // Phosphor: the shell's own panes (shell/panes.js), the shell's menu. In the
-  // shell the nav stands before any catalog, since Hubs is how one arrives.
-  const phosphorTabs = $derived(SHELL
+    ...catTabs(UI_NAV_TIER.link),
+  ] : []);
+  // The shell's Settings pane hosts the Display pane's editor, so the shell
+  // draws one of the two. Shell panes (shell/panes.js) stand before any
+  // catalog, since Hubs is how one arrives.
+  const shellPaneTabs = $derived(SHELL
     ? $shellPanes.map((p) => ({ id: 'shell:' + p.id, label: p.label, pane: p }))
     : []);
-  const ready = $derived(machine.catalog.ready);
-  const tabs = $derived([...machineTabs, ...(ready ? consoleTabs : []), ...phosphorTabs]);
-  const navSections = $derived([
-    { label: 'Machine', tabs: machineTabs },
-    ...(ready ? [{ label: 'Console', tabs: consoleTabs }] : []),
-    ...(phosphorTabs.length ? [{ label: 'Phosphor', tabs: phosphorTabs, shell: true }] : []),
+  const clientTabs = $derived([
+    ...(ready && !shellPaneTabs.some((t) => t.pane.id === 'settings') ? [{ id: 'display', label: 'Display' }] : []),
+    ...(ready && pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }] : []),
+    ...shellPaneTabs,
   ]);
+  const TIER_LABEL = { [UI_NAV_TIER.machine]: 'Machine', [UI_NAV_TIER.link]: 'Valence', [UI_NAV_TIER.client]: 'Phosphor' };
+  const navSections = $derived([
+    { tier: UI_NAV_TIER.machine, tabs: machineTabs },
+    { tier: UI_NAV_TIER.link, tabs: linkTabs },
+    { tier: UI_NAV_TIER.client, tabs: clientTabs, shell: SHELL },
+  ].filter((s) => s.tabs.length).map((s) => ({ ...s, label: TIER_LABEL[s.tier] })));
+  const tabs = $derived(navSections.flatMap((s) => s.tabs.map((t) => ({ ...t, section: s.label }))));
 
   // First run in the shell (no hub dialed at launch) opens on Hubs.
   let active = $state(SHELL && !machine.link.host ? 'shell:hubs' : 'machine');
@@ -181,9 +189,8 @@
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
   }
 
-  // Rail collapse is a browser preference. Collapsed entries show a two-glyph
-  // abbreviation DERIVED from the machine's own label — never an icon table,
-  // which would be device knowledge dressed as art.
+  // Rail collapse is a browser preference. Icons come from the registry
+  // category id or our own pane id (ui/navIcons.js), never a device label.
   let railMini = $state(loadRailPref());
   function loadRailPref() {
     try { return localStorage.getItem('sd32.navMini') === '1'; } catch (e) { return false; }
@@ -192,10 +199,6 @@
     railMini = !railMini;
     try { localStorage.setItem('sd32.navMini', railMini ? '1' : '0'); } catch (e) { /* private mode */ }
   }
-  function glyph(label) {
-    return (label || '?').slice(0, 2).toUpperCase();
-  }
-
   // WAI-ARIA tabs pattern: roving tabindex (only the active tab is in the Tab
   // order; ArrowUp/Down or Left/Right move focus AND selection between tabs
   // within the strip, so a plain Tab key leaves the whole tablist in one
@@ -266,7 +269,7 @@
         hidden++;
         return false;
       });
-      if (fields.length) groups.push({ ...g, fields });
+      if (fields.length) groups.push({ ...g, fields, total: g.fields.length });
     }
     return { groups, hidden, diag, adv, diagAll };
   });
@@ -459,7 +462,7 @@
                         class:on={current && current.id === t.id}
                         title={t.label}
                         onclick={() => selectTab(t.id)}>
-                  <span class="rail-glyph mono" aria-hidden="true">{glyph(t.label)}</span>
+                  <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
                   {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
                 </button>
               {/each}
@@ -618,12 +621,19 @@
 
   .rail-glyph {
     flex: 0 0 auto;
+    display: grid;
+    place-items: center;
     width: 24px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .04em;
     color: var(--ink-faint);
-    text-align: center;
+  }
+  .rail-glyph svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .rail-name {
     overflow: hidden;

@@ -264,7 +264,7 @@ for (const id of ['slate', 'ink', 'paper']) {
   for (let i = 0; i < await tabs.count(); i++) {
     await tabs.nth(i).click();
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    for (const b = page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]'); await b.count();) await b.first().click();
     await page.waitForTimeout(150);
     bad.push(...await page.evaluate(lowContrast, 'main.pane :is(.field, .page-foot, .cat-empty) *'));
   }

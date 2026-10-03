@@ -23,6 +23,8 @@ import {
 import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment } from '../src/model/format.js';
 import { readFileSync } from 'node:fs';
+import { NAV_ICONS, navIcon } from '../src/ui/navIcons.js';
+import { UI_CATEGORY_NAME } from '../../Valence/clients/js/generated/registry_vocab.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, actionTag, isUnattended } from '../src/model/actions.js';
 import {
   PACKED, CHANNEL_CLASS, UI_CATEGORY, UI_RANK, UI_ARCHETYPE,
@@ -301,7 +303,7 @@ ok('the mask field itself is never drawn as a control',
   const knobs = Array.from({ length: 10 }, (_, i) => lf('k' + i, PACKED.u8, { settingKey: i + 1, min: 0, max: 9 }));
   const twoMasks = buildSettingsModel([{
     id: 0x0218, name: 'twomask', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 0,
-    category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control', settingChannel: 0x0298,
+    category: UI_CATEGORY.generator, categoryKnown: true, categoryName: 'generator', settingChannel: 0x0298,
     layout: [...knobs.slice(0, 8), lf('m1', PACKED.bitfield8, { role: ROLE.enabledMask }),
       ...knobs.slice(8), lf('m2', PACKED.bitfield8, { role: ROLE.enabledMask })],
     schema: null,
@@ -606,7 +608,7 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
 {
   const gen = buildSettingsModel([{
     id: 0x0220, name: 'gen', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0,
-    priority: 1, category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control',
+    priority: 1, category: UI_CATEGORY.generator, categoryKnown: true, categoryName: 'generator',
     settingChannel: 0x0292,
     layout: [
       lf('go', PACKED.u8, { min: 0, max: 1, settingKey: 1, role: ROLE.patternRunning }),
@@ -799,7 +801,7 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const sf = (name, type, key, extra = {}) => lf(name, type, { settingKey: key, group: 'Kit', ...extra });
   const kit = buildSettingsModel([
     { id: 0x0d10, name: 'kit', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 1,
-      category: UI_CATEGORY.tuning, categoryKnown: true, categoryName: 'tuning', settingChannel: 0x0d90,
+      category: UI_CATEGORY.motion, categoryKnown: true, categoryName: 'motion', settingChannel: 0x0d90,
       layout: [
         sf('mode', PACKED.u8, 1, { options: ['none', 'low', 'high'] }),
         sf('preset', PACKED.u8, 2, { options: ['a', 'b', 'c', 'd', 'e', 'f'] }),
@@ -851,6 +853,17 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('a secret schema payload field reaches the action as secret',
      act && act.payload.find((p) => p.name === 'pass').secret === true
        && act.payload.find((p) => p.name === 'ssid').secret === false);
+}
+
+// ---- DESIGN §10.11: one nav icon per registry category, `other` for the rest
+{
+  const other = NAV_ICONS[UI_CATEGORY.other];
+  ok('every registry category has its own nav icon',
+     Object.keys(UI_CATEGORY_NAME).every((id) => NAV_ICONS[id] && (NAV_ICONS[id] !== other || +id === UI_CATEGORY.other)));
+  ok('an untaught or vendor category id draws the `other` icon',
+     navIcon({ cat: { id: 0x64, known: false } }) === other && navIcon({ cat: { id: 9, known: false } }) === other);
+  ok('a pane draws its own icon; an unknown pane draws `other`',
+     navIcon({ id: 'valence' }) === NAV_ICONS.valence && navIcon({ id: 'x', pane: { id: 'nope' } }) === other);
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

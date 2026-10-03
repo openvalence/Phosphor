@@ -98,7 +98,7 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
   const f = (name, rank, extra = {}) => ({ name, type: PACKED.u8, typeName: 'u8', unit: '', scale: 1, rank, ...extra });
   const entries = [{
     id: 0x0f00, name: 'synthetic', cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 1,
-    category: UI_CATEGORY.control, categoryKnown: true, categoryName: 'control', settingChannel: null, schema: null,
+    category: UI_CATEGORY.generator, categoryKnown: true, categoryName: 'generator', settingChannel: null, schema: null,
     layout: [
       f('c_one', UI_RANK.control), f('d_one', UI_RANK.detail), f('h_one', UI_RANK.hero),
       f('a_one', UI_RANK.advanced), f('g_one', UI_RANK.diagnostic), f('x_one', UI_RANK.hidden),

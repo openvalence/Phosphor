@@ -199,8 +199,8 @@ Plugins pane prints the real path). On start the Rust command `plugins_list`
 reads each folder (manifest up to 64 KiB, module up to 2 MiB); JS imports the
 module text from a `blob:` URL. Enable state is a localStorage list
 (`phosphor.plugins.disabled`); plugins are enabled by default once installed.
-Restart the app to pick up a new or changed plugin. The Plugins tab is a Console tab, so
-like the rest of the nav it appears once a hub's catalog is adopted.
+Restart the app to pick up a new or changed plugin. The Plugins tab sits in the sidebar's Phosphor
+section (DESIGN §10.11) and appears once a hub's catalog is adopted.
 
 **CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
 carries `blob:` for this loader; drop it and every plugin shows an `import:`

@@ -832,7 +832,7 @@ if (!ONLY || ONLY === 'builder') {
       await page.waitForTimeout(200);
       const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
         ids: [...el.children].map((c) => c.getAttribute('data-id')).filter(Boolean) })).catch(() => null);
-      if (g && g.ids.length >= 3) { tab = i; key = g.key; ids = g.ids; }
+      if (g && g.ids.length >= 2) { tab = i; key = g.key; ids = g.ids; }
     }
     const store = { active: 'Default', modules: {}, layouts: { Default: { opts: { density: 'compact' }, [key]: {
       'nest:1': { x: 0, y: 0, w: 20, h: 6, nest: { title: 'Folded', scroll: true, collapsed: true, map: { [ids[0]]: null } } },
@@ -870,7 +870,7 @@ if (!ONLY || ONLY === 'phosphor') {
       const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
       await page.goto('http://127.0.0.1:' + PORT + '/');
       const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
-      scen(tag + ': the served page has no Phosphor group', up && !(await page.$('[data-tab-id^="shell:"], .rail-sec.shell')));
+      scen(tag + ': the served page has no shell panes', up && !(await page.$('[data-tab-id^="shell:"], .rail-sec.shell')));
       await ctx.close();
     }
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: phone });

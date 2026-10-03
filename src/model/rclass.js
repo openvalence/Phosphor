@@ -64,7 +64,9 @@ export function promotes(cls, n) {
  * One category's page tree under a class: every group, in catalog order, as
  * an inline section or a promoted drill-in page. Reachable content is the
  * same set of fields for every class (RENDERING §12); only the flag moves.
+ * A group's `total` (every field, shown or not) decides, when given, so the
+ * advanced toggle never promotes or demotes a group under the reader.
  */
 export function projectGroups(groups, cls) {
-  return groups.map((g) => ({ group: g, drill: promotes(cls, g.fields.length) }));
+  return groups.map((g) => ({ group: g, drill: promotes(cls, g.total ?? g.fields.length) }));
 }

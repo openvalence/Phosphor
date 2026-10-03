@@ -78,7 +78,7 @@ async function run(label, contextOpts, shots) {
     // tabs the catalog produced are actually usable.
     const tabNames = await page.$$eval('nav.tabs button', (b) => b.map((x) => x.textContent.trim()));
     const settingsTab = tabNames.findIndex((t) =>
-      !['Machine', 'Pairing', 'Valence', 'Log', 'Display'].includes(t));
+      !['Dash', 'Pairing', 'Link', 'Log', 'Display'].includes(t));
     if (settingsTab >= 0) {
       await page.$$eval('nav.tabs button', (b, i) => b[i].click(), settingsTab);
       await page.waitForTimeout(400);
@@ -143,7 +143,7 @@ async function groundTruthRoundTrip() {
     await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForSelector('nav.tabs button', { timeout: 25000 });
     const names = await page.$$eval('nav.tabs button', (b) => b.map((x) => x.textContent.trim()));
-    const i = names.findIndex((t) => !['Machine', 'Pairing', 'Valence', 'Log', 'Display'].includes(t));
+    const i = names.findIndex((t) => !['Dash', 'Pairing', 'Link', 'Log', 'Display'].includes(t));
     if (i >= 0) {
       await page.$$eval('nav.tabs button', (b, n) => b[n].click(), i);
       await page.waitForTimeout(500);

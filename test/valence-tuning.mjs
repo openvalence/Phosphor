@@ -7,12 +7,13 @@
  * third-party client is as capable as the hosted UI. If every knob reads and
  * round-trips here, the HTTP writer has nothing left that is exclusively its own.
  *
- * ALSO CHECKS THE THING THAT MAKES THEM ONE UI: all three STATE channels must
- * declare the SAME `category` (tuning). SPEC §8.8 — "a category spans channels;
- * two channels in the same category merge into one tab" — is what lets 20 knobs
- * exist across three channels (each capped at 8 by its bitfield8 enabled_mask)
- * while rendering as a single Tuning tab. Get the category wrong and a generic
- * client draws three unrelated tabs.
+ * ALSO CHECKS THE THING THAT MAKES THEM ONE UI: the chase and waveform STATE
+ * channels must declare the SAME `category` (motion, subgroup Tuning, RFC-094;
+ * the limits card is commissioning, category setup, RFC-079). SPEC §8.8 — "a
+ * category spans channels; two channels in the same category merge into one
+ * tab" — is what lets the knobs exist across channels (each capped at 8 by its
+ * bitfield8 enabled_mask) while rendering as one Tuning section. Get the
+ * category wrong and a generic client draws unrelated tabs.
  *
  * SAFETY: sends only 0x3120, restores every value it touches (including after a
  * failed assertion), and never touches motion, home, pattern or safety.
@@ -94,8 +95,8 @@ async function main() {
 
   // ---- the one-tab invariant --------------------------------------------
   const cm = s.channelMap;
-  const cats = [CH_LIMITS, CH_CHASE, CH_WAVE].map((c) => cm.get(c) && cm.get(c).category);
-  ok('all three share ONE category (renders as one tab, SPEC §8.8)',
+  const cats = [CH_CHASE, CH_WAVE].map((c) => cm.get(c) && cm.get(c).category);
+  ok('chase and waveform share ONE category (renders as one tab, SPEC §8.8)',
      cats[0] != null && cats.every((c) => c === cats[0]), 'category=' + JSON.stringify(cats));
   const writers = [CH_LIMITS, CH_CHASE, CH_WAVE].map((c) => cm.get(c) && cm.get(c).settingChannel);
   ok('all three name ONE settingChannel (0x3120)',

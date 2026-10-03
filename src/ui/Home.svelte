@@ -1,6 +1,6 @@
 <script>
   /**
-   * Home.svelte: the home page (DESIGN §10.1). An ADDITIONAL surface: the
+   * Home.svelte: the Dash, the built home page (DESIGN §10.1). An ADDITIONAL surface: the
    * derived category pages keep every field reachable without it
    * (RENDERING §12), so nothing here is the only path to a field.
    *
@@ -152,7 +152,7 @@
 
 {#snippet body(item)}
   {#if editing && builder}
-    <button type="button" class="og-btn sm home-remove" aria-label={'Remove ' + item.title + ' from home'}
+    <button type="button" class="og-btn sm home-remove" aria-label={'Remove ' + item.title + ' from Dash'}
             onclick={() => remove(item.id, false)}>Remove</button>
   {/if}
   {#if item.control}

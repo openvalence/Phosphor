@@ -6,8 +6,9 @@
    * - F3 and Ctrl+F are bound here, on the window, with preventDefault so the
    *   webview's find bar never opens. Escape closes and returns focus.
    * - The index is built at open time from what App already holds (`tabs`:
-   *   category pages with their groups and heroes, the console and shell
-   *   panes) plus the saved home layout (dashboard.svelte.js); no store.
+   *   category pages with their groups and heroes, the Valence and Phosphor
+   *   panes, each with its tier's `section`) plus the saved Dash layout
+   *   (dashboard.svelte.js); no store.
    * - A jump switches page through `go` (App's selectTab), reveals a hidden
    *   advanced or diagnostic field or a drill-in group with the page's own
    *   buttons, focuses the control and asks its Field for the locate sweep.
@@ -34,13 +35,12 @@
   let opener = null;
 
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  const sectionOf = (t) => (t.id === 'machine' || t.cat ? 'Machine' : t.pane ? 'Phosphor' : 'Console');
   const esc = (s) => CSS.escape(s);
 
   function build() {
     const out = [];
     for (const t of tabs) {
-      out.push({ label: t.label, path: sectionOf(t), go: () => goTab(t.id) });
+      out.push({ label: t.label, path: t.section, go: () => goTab(t.id) });
       if (!t.cat) continue;
       for (const g of t.cat.groups) {
         const path = t.label + (g.name ? ' › ' + g.name : '');
@@ -67,13 +67,13 @@
       const add = (key, nest) => {
         const b = baseKey(key);
         const label = names.get(b) || MODULES[b];
-        const path = 'Home' + (nest ? ' › ' + nest.title : '');
+        const path = 'Dash' + (nest ? ' › ' + nest.title : '');
         if (label) out.push({ label, path, go: () => goCell('machine', key, nest && nest.id) });
         else if (/^(uid|role):/.test(b)) out.push({ label: b.replace(/^\w+:/, ''), path, inert: true });
       };
       for (const k of Object.keys(map)) if (!isNest(map[k]) && !k.startsWith('home:')) add(k, null);
       for (const n of nestsIn(map)) {
-        out.push({ label: n.title, path: 'Home', go: () => goCell('machine', n.id) });
+        out.push({ label: n.title, path: 'Dash', go: () => goCell('machine', n.id) });
         for (const k of n.keys) add(k, n);
       }
     }

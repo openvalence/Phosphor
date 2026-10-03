@@ -271,7 +271,7 @@ async function harvestDerived(page) {
   for (const id of cats) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    for (const b = page.locator('main.pane .adv-toggle[aria-expanded="false"]'); await b.count();) await b.first().click();
     await page.waitForTimeout(100);
     await collect();
     const drills = await page.locator('main.pane .drill-open').count();
@@ -305,7 +305,7 @@ if (!LIVE) {
 
   const labels = await page.$$eval('nav.rail [role=tab]', (els) => els.map((e) => e.getAttribute('title')));
   ok('no Overview tab', !labels.includes('Overview'), labels);
-  ok('the first machine tab is Home', labels[0] === 'Home', labels[0]);
+  ok('the first machine tab is Dash', labels[0] === 'Dash', labels[0]);
 
   ok('an unbuilt home shows what Overview showed', JSON.stringify(await topTitles(page)) === JSON.stringify(BEFORE.full.map((c) => c.title)),
     await topTitles(page));
@@ -321,7 +321,7 @@ if (!LIVE) {
   for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
-    for (const b of await page.locator('main.pane .adv-toggle[aria-expanded="false"]').all()) await b.click();
+    for (const b = page.locator('main.pane .adv-toggle[aria-expanded="false"]'); await b.count();) await b.first().click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
   }
@@ -550,7 +550,7 @@ if (!LIVE) {
   const hh = await open(390, 844);
   ok('catalog adopted', hh.up);
   const hl = await hh.page.$$eval('nav.tabs [role=tab]', (els) => els.map((e) => e.textContent.trim()));
-  ok('no Overview tab', !hl.includes('Overview') && hl[0] === 'Home', hl);
+  ok('no Overview tab', !hl.includes('Overview') && hl[0] === 'Dash', hl);
   ok('the home is today\'s auto-built page', JSON.stringify(await topTitles(hh.page)) === JSON.stringify(BEFORE.handheld.map((c) => c.title)),
     await topTitles(hh.page));
   await editBtn(hh.page).click();
