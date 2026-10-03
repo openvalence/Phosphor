@@ -33,7 +33,8 @@ console.log('parse');
   const t = parseFunscript(JSON.stringify({ version: '1.0', actions: [{ at: 10, pos: 20 }] }));
   ok('text input', t.at.length === 1 && near(t.pos[0], 0.2) && t.durationMs === 10 && t.name === '');
   const u = parseFunscript(acts([300, 30], [100, 10], [200, 20]));
-  ok('unsorted is sorted', [...u.at].join() === '100,200,300' && near(u.pos[0], 0.1) && near(u.pos[2], 0.3));
+  ok('unsorted is sorted and noted', [...u.at].join() === '100,200,300' && near(u.pos[0], 0.1) && near(u.pos[2], 0.3)
+    && u.notes.join() === 'actions sorted', u.notes.join('; '));
   const d = parseFunscript(acts([100, 10], [0, 0], [100, 90], [100, 70]));
   ok('duplicate at keeps the last', [...u.at].length === 3 && [...d.at].join() === '0,100' && near(d.pos[1], 0.7));
   ok('duplicates noted', d.notes.includes('2 duplicates dropped'), d.notes.join('; '));

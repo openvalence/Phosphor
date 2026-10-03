@@ -3,7 +3,8 @@
 //
 // Constraints:
 // - 'range ignored' is noted only when `range` is a number other than 100: 100 is the identity.
-// - Further notes: 'N invalid actions dropped', 'N long spans split'.
+// - Further notes: 'N invalid actions dropped', 'N long spans split', 'actions sorted'.
+//   Every repair is noted; none is silent.
 // - Refused in words, before any expansion: more than MAX_ACTIONS actions, or a
 //   last action past MAX_SCRIPT_MS (a 1e12 ms gap split into 60 s spans was
 //   16.7 million knots; 1e13 threw the engine's 'Invalid array length').
@@ -40,7 +41,8 @@ export function parseFunscript(input, name = '') {
   }
   if (!raw.length) fail('no actions');
   if (raw.some((a) => a.at > MAX_SCRIPT_MS)) fail('script longer than 24 hours');
-  if (raw.some((a, i) => i && a.at < raw[i - 1].at)) raw.sort((x, y) => x.at - y.at);   // stable
+  const unsorted = raw.some((a, i) => i && a.at < raw[i - 1].at);
+  if (unsorted) raw.sort((x, y) => x.at - y.at);   // stable
 
   const keep = [];
   let dups = 0;
@@ -72,6 +74,7 @@ export function parseFunscript(input, name = '') {
   if (dups) notes.push(count(dups, 'duplicate', 'dropped'));
   if (clamped) notes.push(count(clamped, 'position', 'clamped'));
   if (split) notes.push(count(split, 'long span', 'split'));
+  if (unsorted) notes.push('actions sorted');
   if (typeof doc.range === 'number' && doc.range !== 100) notes.push('range ignored');
 
   const ignored = Array.isArray(doc.axes)
