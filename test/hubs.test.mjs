@@ -5,6 +5,7 @@
  * - The Scan is UDP first, Bluetooth fallback (operator ruling 2026-10-02 on
  *   RFC-046): two LAN replies list as two LAN rows and no BLE scan starts; an
  *   empty LAN result starts the BLE scan exactly once and its hit lists BLE.
+ * - Scan Bluetooth works on its own beside LAN rows (restated 2026-10-03).
  * - A hub found both ways is one row, connecting over LAN (found.js).
  * - ph-dwy: a remembered hub on 8282 redials 8282 at launch; the host field
  *   keeps the dialed port; a LAN reply moves a saved hub, port included, and
@@ -206,6 +207,20 @@ console.log('\n--- Scan: an empty LAN result falls back to Bluetooth once ---');
   ok('the Bluetooth scan ran exactly once', (await page.evaluate(() => window.__bleScans)) === 1);
   ok('its hit lists marked BLE with the advertised pairing flag', r[0].via === 'BLE' && /nucleus-p4/.test(r[0].text)
     && /pairing open/.test(r[0].text) && /AA:BB:CC:DD:EE:01/.test(r[0].text), r[0].via + ': ' + r[0].text);
+  ok('no page errors', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
+console.log('\n--- Scan Bluetooth on its own: a config-mode hub beside a WiFi hub ---');
+{
+  const { ctx, page, errors } = await boot({ shell_host: '10.0.0.9', shell_mode: 'ws', 'phosphor.prefs': JSON.stringify({ v: 1, reconnect: false }) }, [LAN_A, LAN_B]);
+  await scanBtn(page).click();
+  await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="hp-find"] .rows li').length === 2, null, { timeout: 5000 });
+  await page.locator('section[aria-labelledby="hp-find"] button', { hasText: /^Scan Bluetooth$/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="hp-find"] .rows li').length === 3, null, { timeout: 8000 });
+  const r = await foundRows(page);
+  ok('the button runs one Bluetooth scan after a LAN hit', (await page.evaluate(() => window.__bleScans)) === 1);
+  ok('its row appends after the LAN rows, marked BLE', r.map((x) => x.via).join() === 'LAN,LAN,BLE', r.map((x) => x.via).join(' | '));
   ok('no page errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }

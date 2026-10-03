@@ -190,8 +190,11 @@ Nucleus's own board for the sim side).
   ruling 2026-10-02 on RFC-046; no mDNS, RFC-072 ruling 2026-10-01). The
   §13.8 probe lists every reply; only an empty LAN result runs the BLE scan.
   One row per hub, marked `LAN` or `BLE`; a hub found both ways is one row
-  keyed by `hub_instance_id`, connecting over LAN. Scan Bluetooth stays for a
-  hub that is BLE only (config mode, SPEC §13.4.1).
+  keyed by `hub_instance_id`, connecting over LAN. Restated 2026-10-03:
+  "Bluetooth as an in-UI backup and a second scan after LAN fails." Scan
+  runs the 1.5 s LAN probe, then on no reply the BLE scan, appending its
+  rows; Scan Bluetooth stays as the manual backup for a config-mode hub
+  (BLE only, SPEC §13.4.1) beside a WiFi hub. The launch probe is LAN only.
 - The UI kernel stays publishable as the community "webui framework" project
   regardless of §8's outcome.
 
