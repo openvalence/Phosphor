@@ -22,11 +22,6 @@
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
-// Contract additions, additive (the integrator reconciles):
-// - createControl, localScene, extraNote, compositionOf, windowShare,
-//   clampOffset and ceilingOf are exported for test/funscript-ui.test.mjs.
-// - mountTimeline gets zoomMs and onZoom (timeline.js header).
-// - The library gets prefs as {get, set} over readPrefs/writePref and fetch as api.net.fetch.
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf } from './funscript.js';
 import { createMediaClock, frameSource } from './clock.js';

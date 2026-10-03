@@ -8,7 +8,6 @@
  *   prefix the prefs backup carries (src/model/prefs.js BACKUP_KEY), and
  *   read from there when api.prefs has none (a restored backup). 'stash'
  *   holds the Stash API key: never mirrored, so never in a backup file.
- *   Contract deviation (the contract names api.prefs only), reported on ph-smvd.6.
  * - No DOM or window at import time: node imports this module.
  */
 

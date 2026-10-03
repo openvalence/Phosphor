@@ -13,9 +13,7 @@
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
-// Contract additions, additive (the integrator reconciles):
-// - mountTimeline's options also take zoomMs (the starting window) and
-//   onZoom(ms), so zoom persists as the prefs key zoomMs.
+// - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
 
 import { posAt, indexAfter, heat, fmtTime } from './funscript.js';
 

@@ -6,8 +6,8 @@
 //   so every span stamped from the map tiles with its neighbors.
 // - A correction is subtracted from every residual in the ring, so the ring always holds
 //   residuals against the current map and one offset is never corrected twice.
-// - The step test reads the median of the LAST 8 residuals (the contract's "within 8
-//   observations"); the 32-wide median would need 17 frames to see a jump.
+// - The step test reads the median of the LAST 8 residuals: the 32-wide median would need 17
+//   frames to see a jump.
 // - observe() before the first anchor does nothing: only the caller anchors.
 // - A whole-median correction before the ring fills that moves the map more than STEP_MS
 //   also returns 'step': the first frames after play() often land tens of ms off the anchor

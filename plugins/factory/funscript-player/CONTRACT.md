@@ -87,6 +87,8 @@ scheduler, stash, library, timeline, prefs`; `scheduler -> funscript`;
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
   stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000 }
+// Every key but stash is also mirrored to localStorage phosphor.funscript.<key> (the prefix the prefs
+// backup carries) and read from there when api.prefs has none. stash holds the API key: never mirrored.
 ```
 
 Wire record on valencesim and Nucleus (0x2101 `motion-segment`, found by
@@ -108,9 +110,13 @@ export const AXES;                  // frozen {suffix -> axis}: '' and 'stroke' 
 export function parseFunscript(input, name = '');   // input: string | object -> Script
   // throws Error('not a funscript') (bad JSON, no actions array) | Error('no actions') (none survive)
   // keeps finite at >= 0 and finite pos; stable sort; duplicate at keeps the last; pos clamped 0..100, /100;
-  // inverted: pos = 1 - pos; range ignored (noted); an `axes` array (multi-axis) is listed in `ignored`
-export function axisOf(fileName);   // -> {base: string, axis: string} | null (null when not *.funscript)
-export function pairFiles(files);   // Array<{name, type?}> -> {video, script, extra: []}
+  // inverted (exactly true): pos = 1 - pos; a numeric range other than 100 is noted 'range ignored';
+  // an `axes` array (multi-axis) is listed in `ignored`. Further notes: 'N invalid actions dropped',
+  // 'N long spans split'; thin() adds 'N actions thinned'.
+export function axisOf(fileName);   // -> {base: string, axis: string} | null (null when not *.funscript);
+                                    // directory parts are stripped
+export function pairFiles(files);   // Array<{name, type?}> -> {video, script, extra: []}; media by MIME type,
+                                    // else by file extension
   // video: the first video or audio file; script: the L0 script of the same base (case-insensitive),
   // else the first L0 script; every other *.funscript goes to extra (named, never driven)
 export function posAt(script, tMs);       // -> 0..1, linear between actions (the authored meaning); holds outside
@@ -133,7 +139,7 @@ between knots, indexAfter edges, thin keeps reversals, heat bins, fmtTime.
 
 ```js
 // clock.js
-export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 40, FALLBACK_AFTER_MS = 250;
+export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 25, FALLBACK_AFTER_MS = 250;
 export function createMediaClock();   // -> MediaClock
 // MediaClock = {
 //   ready: boolean,                        false until the first anchor
@@ -143,7 +149,11 @@ export function createMediaClock();   // -> MediaClock
 //   observe(mediaMs, displayMs) -> '' | 'step',
 //       residual r = displayMs - displayAt(mediaMs), median of the last CLOCK_WINDOW. Until the ring
 //       fills after an anchor, correct by the whole median; then by at most SLEW_MS_PER_S x elapsed s.
-//       |median| > STEP_MS after 8 observations re-anchors there and returns 'step'.
+//       |median of the last 8| > STEP_MS re-anchors there and returns 'step'; so does a whole-median
+//       correction past STEP_MS before the ring fills. STEP_MS sits between one 60 Hz vsync (slewed)
+//       and one dropped 30 fps frame (stepped). A correction is subtracted from every residual.
+//       The caller anchors and observes only frames whose media time advances past the last one
+//       seen since the reset: after play() or a seek the first frame repeats for several vsyncs.
 //   displayAt(mediaMs) -> performance.now() ms the frame is SHOWN (NaN before ready),
 //   mediaAt(displayMs) -> media ms (NaN before ready) }
 export function frameSource(video, onFrame, now = () => performance.now());   // -> stop()
@@ -155,13 +165,15 @@ export function frameSource(video, onFrame, now = () => performance.now());   //
 export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PREROLL_SKIP = 0.05, OFFER_MAX = 32;
 export const TRANSIENT;   // frozen Set: 'waiting for the stream grant', 'NO_CLOCK', 'NOT_SENT', 'RATE_EXCEEDED'
 export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (T.hi - T.lo)
-export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'}
+export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
+                                                           // at rate 1; the caller scales it by the rate
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
+// log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.
 // Scheduler = {
 //   load(script | null),        resets the cursor; with null every call returns {ok: true, sent: 0}
 //   setTransform(T),            takes effect at the next restart
-//   restart(clock),             cursor = max(1, indexAfter(script, mediaAt(now) - T.offsetMs)); the
+//   restart(clock),             cursor = max(1, indexAfter(script, mediaAt(now - T.offsetMs))); the
 //                               in-progress span goes first with its start in the past (the host clips it)
 //   tick(clock) -> TickResult,  skips spans whose end passed (skipped++), offers up to OFFER_MAX segments
 //                               from the cursor, advances by result.sent only.
@@ -169,9 +181,11 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               durationMs = (at[k] - at[k-1]) / clock.rate, norm = applyT(pos[k], T).
 //                               A TRANSIENT reason is fatal false (retry next tick); RATE_EXCEEDED first
 //                               re-thins the unsent script at 1000 / rateHz ms, once per rate. Any other
-//                               reason is fatal true.
+//                               reason is fatal true. The thinning covers the unsent tail from knot
+//                               cursor - 1 on; a restart drops it.
 //   stop(clock) -> TickResult,  one hold: atMs = now(), d = min(STOP_MS, ms to the next action),
-//                               norm = applyT(posAt(script, media now + d * rate), T), durationMs = d;
+//                               norm = applyT(posAt(script, m + d * rate), T), durationMs = d,
+//                               m = mediaAt(now - T.offsetMs);
 //                               it has no successor, so it ends at rest
 //   preroll(mediaMs, hereNorm) -> Seg | null,
 //                               hereNorm: 0..1 | null. null when |hereNorm - target| <= PREROLL_SKIP;
@@ -201,7 +215,9 @@ sync measurement against valencesim (FUNSCRIPT.md, Tests).
 
 ```js
 export const SEG_FLOOR_MS = 10;
-// createMotionDoor(deps): call shape unchanged; deps gain optional now() (default () => performance.now()).
+export function latchWords(safety);   // -> 'e-stop latched' | 'paused, resume to continue' | ''
+// createMotionDoor(deps): call shape unchanged; deps gain optional now() (default () => performance.now())
+// and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
 // The returned submit function gains a member:
 submit.segments(list);   // Seg[] -> SegResult
 export function streamGate({ live, roles, access, halted, running, owners, self, busy });   // -> words | ''
@@ -212,6 +228,12 @@ export function streamGate({ live, roles, access, halted, running, owners, self,
 1. `deps.halted()` non-empty: `{ok: false, sent: 0, reason}`; nothing sent.
 2. `st = motionStream(entries, STREAM_KIND.segments)`; none:
    `'hub has no segments STREAM'`. Never a setpoint fallback.
+   A STREAM bundle has no answer, so a hub NACK on that channel (for
+   example `SOURCE_CONFLICT` while a generator owns the rail, SPEC §11.4)
+   comes back through `deps.lastNack(ch)`: the first call per channel takes
+   the baseline, and a newer record refuses the next call once with its
+   name, `{ok: false, sent: 0, reason: name}`. It is not TRANSIENT, so the
+   player pauses and shows it.
 3. No session: `'not connected'`.
 4. The grant, through one inner `grantFor(s, st)` shared with `submit` (same
    `asked` map): `'waiting for the stream grant'` while in flight,
@@ -240,7 +262,8 @@ export function streamGate({ live, roles, access, halted, running, owners, self,
 `streamGate` (pure) returns the first that applies: `'no hub link'`,
 `'session not authorized'` (roles below access), `halted`,
 `'stop the pattern first'` (running), `'rail owned by <label>'` (the first
-owner whose session differs from `self`), `busy`, else `''`.
+owner whose session differs from `self`; `'rail owned by another session'`
+when it has no label), `busy`, else `''`.
 
 The existing `submit` stamps `now + lat` (execution at now + 2 x lat): flagged
 on the host bead for its owner, not changed by this work.
@@ -248,7 +271,8 @@ on the host bead for its owner, not changed by this work.
 ### `src/model/actions.js`
 
 ```js
-export function railOwners(ownerEntry, ownerSample);   // -> Array<{name: string, session: number}>
+export function railOwners(ownerEntry, ownerSample);   // -> Array<{name: string, session: number}>, every
+                                                       // owned pair, name '' when the source has no label
 // railOwnerName keeps its meaning, now railOwners(...)[0]?.name || ''. Append-only hunk:
 // Phosphor main carries uncommitted edits in this file.
 ```
@@ -264,9 +288,11 @@ export function submitSegments(list);   // -> motionDoor.segments(list); one add
 ```js
 // validateManifest: PERM_RE = /^(intent|motion|net\.fetch|net\.listen:([1-9][0-9]{0,4}))$/   (ruling R-A)
 export const MOTION_HOLD_MS = 500;
+export function isHubUrl(u, host, port);   // deps.isHub's rule, exported for the node test
 api.submitSegments(list);   // need('motion'); producer lock; -> SegResult
-api.gate(field);            // unchanged signature; appends 'motion input in use by <plugin>' on a c2h STREAM
-                            // field when another plugin holds the lock (plugins.svelte.js computes the rest)
+api.gate(field);            // unchanged signature; calls deps.gate(field, busy), busy the lock's words
+                            // 'motion input in use by <plugin>' for every plugin but the holder, or '';
+                            // streamGate places it last (plugins.svelte.js computes the rest)
 api.net.fetch(url, init);   // -> Promise<Response>; need('net.fetch'). Throws Error('net.fetch: http or https only'),
                             // Error('net.fetch: the hub is reached through Valence') when deps.isHub(u),
                             // Error('net.fetch needs the shell') without deps.fetch; else deps.fetch(u.href, init)
@@ -327,7 +353,8 @@ rules.
 
 ```js
 // stash.js
-export const SCENES_QUERY;   // GraphQL text: findScenes(filter, scene_filter) selecting what Scene needs
+export const SCENES_QUERY;   // GraphQL text: findScenes(filter, scene_filter) selecting what Scene needs,
+                             // plus files.basename: the title of an untitled scene, else 'Scene <id>'
 export const SORTS;          // [['date','Date'], ['created_at','Added'], ['title','Title'], ['rating','Rating'],
                              //  ['interactive_speed','Speed']]
 export const COPY;
@@ -347,15 +374,20 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 
 // library.js
 export const CSS, COPY;
-export function mountLibrary(el, { getStash, prefs, onPick, onLocal });   // -> { refresh(), unmount() }
-  // getStash: () -> StashClient | null; prefs: {get(k), set(k, v)}; onPick(scene); onLocal(FileList)
-export function mountConnect(el, { api, onSaved });   // -> unmount()
+export function fitGrid(W, H);   // -> {cols, rows, perPage}: tiles 150..300 px wide that fit, at least one
+export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch });   // -> { refresh(), unmount() }
+  // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
+  // prefs: {get(k), set(k, v)}; onPick(scene); onLocal(FileList); fetch: api.net.fetch, for the Test of
+  // the connect card shown in its place (without it, Test stores the fields and tests getStash())
+export function mountConnect(el, { api, onSaved, client });   // -> unmount(); client(v) -> StashClient
+  // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
 `mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; Open files), a tile grid that never scrolls (per
-page = cols x rows fitted by a ResizeObserver), and a foot row (Previous
-page, `page n / m`, Next page, `N scenes`). Tiles are buttons: a fixed 16:9
+debounce; sort; direction; Open files, `.fsp-lib-open`, which the player's
+full layout hides because its source row carries one), a tile grid that
+never scrolls (per page = cols x rows fitted by a ResizeObserver), and a
+foot row (`‹` Previous page, `page n / m`, `›` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
 box with a lazy screenshot, a one-line title, `duration · speed`. With no
 base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
@@ -376,8 +408,11 @@ mapping, rebase and withKey, caching, every error in words;
 
 ```js
 // ui.js
-export const CSS, COPY;
+export const CSS, COPY, FULL_UP = 960, GLANCE_UP = 264;
 export function createPlayer(api);   // -> Player
+export function createControl(deps);   // the controller without DOM: every boundary injected, for the node test
+export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ceilingOf(api, fields),
+  localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
 // Player = {
 //   mount(el, fields) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?} from the hero spec
@@ -388,11 +423,15 @@ export function createPlayer(api);   // -> Player
 //   composition: 'full'|'handheld'|'glance' }
 
 // timeline.js
-export const ZOOMS = [5000, 10000, 20000, 60000];
+export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 8000, MIN_SPAN = 0.05;
 export const CSS, COPY;
 export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function seekAt(x, W, durationMs);                     // -> ms
-export function mountTimeline(el, { onSeek, onScrub, onRange });
+export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
+  clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom });
+  // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
+  // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
   // -> { setScript(script, T, ceiling), frame(mediaMs, trace), unmount() }
   // ceiling: {vmax: number | null, spanMm: number | null}
@@ -403,7 +442,9 @@ One `Player` per activation owns the single `<video>` (no `controls`,
 `playsinline`, `disablePictureInPicture`, never fullscreen), the
 `MediaClock`, the `Scheduler` and the rAF loop. The last mounted view hosts
 the video; when it unmounts, the player holds and pauses. The gate is read
-through `api.gate(fields.dur)` on every `update()` and every tick. Probe:
+through `api.gate(fields.dur)` on every `update()` and every tick. The
+library is mounted with `prefs` as `{get, set}` over `readPrefs` and
+`writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
 observations, marks) only while localStorage `phosphor.funscript.probe` is
 `'1'`.
@@ -414,6 +455,7 @@ observations, marks) only while localStorage `phosphor.funscript.probe` is
 
 ```js
 // index.js
+export const HERO;               // the frozen registration below without mount, so node checks the spec
 export function activate(api);   // -> deactivate()
 //   const player = createPlayer(api);
 //   api.registerHero({ id: 'player', title: 'Funscript player', absorb: false,
@@ -432,10 +474,11 @@ export function writePref(api, key, value);
 ```
 
 `manifest.json`: kind `widget`, permissions `["motion", "net.fetch"]`, no
-`intent` (the player writes no field). It joins `src/plugins/factory.js`
-only after the host accepts `net.fetch`, because test (g) validates every
-factory manifest. `test/funscript-player.test.mjs` is today a stub that
-imports every module and checks every export named here; the plugin
-builder grows it into the fake-hub browser test (`npm run check:funscript`,
-in `test:browser`) with `--live --port P --http P+7` against valencesim on
-spare ports. `package.json` is edited by the plugin builder only.
+`intent` (the player writes no field). It is listed in
+`src/plugins/factory.js` because the host accepts `net.fetch` (ruling R-A,
+pending: a veto reverts the host's `net.fetch` and the FACTORY entry
+together, since test (g) validates every factory manifest).
+`test/funscript-player.test.mjs`: `--unit` (in `npm run check`) checks every
+export named here, the prefs and the hero spec; the default run is the
+fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
+--port P --http P+7` runs the card against valencesim on spare ports.

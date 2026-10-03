@@ -6,8 +6,6 @@
 // - Every Stash fact is a marked ASSUMPTION An (docs/plugins/FUNSCRIPT.md, Stash). Check them all with
 //   `node test/funscript-stash.test.mjs --live <base> --key <key>`.
 // - Errors are Error(words) from COPY only; the key never reaches a message or a log (this module logs nothing).
-//
-// Readings of CONTRACT.md that the integrator reconciles:
 // - SCENES_QUERY also selects files.basename (A4): the title of a scene Stash left untitled.
 // - toScene sets funscript null when Stash reports interactive false (Stash builds the path regardless).
 // - rebase keeps a base path prefix (a reverse proxy at /stash) unless the URL already carries it.

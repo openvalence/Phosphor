@@ -6,8 +6,8 @@
 //   end. The cursor advances by SegResult.sent only: each span is sent once.
 // - Never resumes, never sends a safety op: tick, stop and preroll are the only motion.
 // - setTransform is pending until restart; preroll reads the pending T (the one Play runs with).
-// - restart and stop read the machine's script time as mediaAt(now - offsetMs), the contract's
-//   mediaAt(now) - offsetMs with the offset (wall ms) scaled by rate; equal at rate 1.
+// - restart and stop read the machine's script time as mediaAt(now - offsetMs): the offset is
+//   wall ms, so it scales with the rate.
 // - RATE_EXCEEDED thins only the unsent tail from knot cursor-1 on, so the knot already sent
 //   keeps its time and the tiling holds. A restart drops the thinning.
 // - log(msg, level) is api.log's shape; a repeated reason is logged once.

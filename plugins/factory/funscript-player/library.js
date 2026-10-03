@@ -8,8 +8,6 @@
 // - Tokens only: highlight is the picked tile and focus, warn an error; no red (law 13).
 // - getStash() is read on every refresh and must return the same client until base or key change
 //   (the client holds the caches), and a client once a Save stored a base.
-//
-// Readings of CONTRACT.md that the integrator reconciles:
 // - mountLibrary takes an optional `fetch` (api.net.fetch) for the Test of the connect card it shows
 //   in its place. Without it, that Test stores the fields and tests getStash().
 // - mountConnect takes an optional `client(v)` that builds the client its Test asks.

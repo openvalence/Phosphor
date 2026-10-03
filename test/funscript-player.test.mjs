@@ -41,14 +41,16 @@ const CONTRACT = {
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
     'applyT', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
-  [P + 'library.js']: ['CSS', 'COPY', 'mountLibrary', 'mountConnect'],
-  [P + 'ui.js']: ['CSS', 'COPY', 'createPlayer'],
-  [P + 'timeline.js']: ['ZOOMS', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'mountTimeline'],
+  [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
+  [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
+    'windowShare', 'ceilingOf', 'localScene', 'extraNote'],
+  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
+    'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
-  [P + 'index.js']: ['activate'],
-  '../src/model/motion.js': ['SEG_FLOOR_MS', 'streamGate', 'createMotionDoor', 'bundleHead', 'motionStream'],
+  [P + 'index.js']: ['HERO', 'activate'],
+  '../src/model/motion.js': ['SEG_FLOOR_MS', 'latchWords', 'streamGate', 'createMotionDoor', 'bundleHead', 'motionStream'],
   '../src/model/actions.js': ['railOwners', 'railOwnerName'],
-  '../src/plugins/host.js': ['MOTION_HOLD_MS', 'createPluginHost', 'validateManifest'],
+  '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],
 };
 
 // ---- (a) every module exports what CONTRACT.md names ------------------------

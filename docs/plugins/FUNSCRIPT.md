@@ -103,10 +103,11 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 2. **Jitter and drift.** Residual = observed display time minus
    `displayAt`, median over 32 frames. Until 32 frames after an anchor,
    correct by the whole median; then slew at most 5 ms/s (audio-clock drift
-   is 0.01 to 0.1 ms/s). A median past 40 ms re-anchors and restarts the
-   schedule. Without rVFC frames for 250 ms (audio only, hidden video,
-   glance) the clock reads `currentTime` on rAF; that bias is the offset's
-   to trim.
+   is 0.01 to 0.1 ms/s). A median of the last 8 past 25 ms, or a settling
+   correction past 25 ms, re-anchors and restarts the schedule. Only a
+   frame that advances the media time anchors or observes. Without rVFC
+   frames for 250 ms (audio only, hidden video, glance) the clock reads
+   `currentTime` on rAF; that bias is the offset's to trim.
 3. **Tiling.** Span k becomes `atMs = displayAt(at[k-1]) + offset`,
    `durationMs = (at[k] - at[k-1]) / rate`, `norm = applyT(pos[k])`. All
    spans come from one map, so each start is the previous end and the hub
@@ -344,8 +345,10 @@ law 13; the card draws its own token heat).
   (design 3, SPEC §9.6 clauses 2 and 5). Design 1's client PCHIP end
   velocities are the veto alternative; if the live test shows stop-start at
   same-direction knots (G3), the first fix is a Nucleus bead.
-- **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 40 ms step. Design 2's
-  EMA is weaker on outliers; design 3's per-frame anchor breaks tiling.
+- **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 25 ms step (between
+  one 60 Hz vsync, slewed, and one dropped 30 fps frame, stepped: a 40 ms
+  step slewed a dropped frame out over 6 s). Design 2's EMA is weaker on
+  outliers; design 3's per-frame anchor breaks tiling.
 - **D6** One map, spans tile, each sent once; every change is a restart that
   supersedes.
 - **D7** Stop is a hold `min(200 ms, next action)` ending at rest, never the

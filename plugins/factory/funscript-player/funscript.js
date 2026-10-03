@@ -1,9 +1,9 @@
 // funscript.js -- funscript parse, validate, interpolate, heat, axes; pure, no DOM, no imports
 // Contract: CONTRACT.md, module core (ph-smvd.1). Callers read a Script's arrays; never mutate them.
 //
-// Readings of CONTRACT.md that the integrator reconciles:
+// Constraints:
 // - 'range ignored' is noted only when `range` is a number other than 100: 100 is the identity.
-// - Extra notes beyond the contract's examples: 'N invalid actions dropped', 'N long spans split'.
+// - Further notes: 'N invalid actions dropped', 'N long spans split'.
 // - thin(): extrema are slope-sign changes, so hold corners count. Each leg keeps its farthest
 //   extremum; a leg shorter than minGapMs absorbs the next reversal instead of committing, so the
 //   stroke survives at a slower period. The last action replaces a kept point closer than minGapMs

@@ -14,8 +14,8 @@
  * - The STREAM door finds its channel by class, direction, stream_kind and the
  *   input.target role (SPEC §9.6, RFC-071); a layout field's name is only the
  *   key the catalog itself hands back for encoding, never matched.
- * - Beyond CONTRACT.md (ph-smvd.2): `latchWords(safety)` is the one wording of
- *   the reported latch, shared by the shadow's door and the plugin gate.
+ * - `latchWords(safety)` is the one wording of the reported latch, shared by
+ *   the shadow's door and the plugin gate.
  */
 
 import { ROLE } from './roles.js';
