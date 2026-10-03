@@ -1242,6 +1242,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   const holes = d.filter((g) => g > 30);
   ok('loop: no hole in the schedule across any seam (none past 30 ms)', sched.length > 10 && holes.length === 0,
     { n: sched.length, holes, cuts: d.filter((g) => g < -2).map(Math.round) });
+  if (SHOT) await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'timeline-ab.png') });
   await ab.click();
   await page.waitForTimeout(300);
   ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('title')) === 'Set loop start'

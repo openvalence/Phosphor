@@ -371,9 +371,8 @@ Shipped:
   `in' = in / k`, `out' = out / k`, `k = min(2, 100 / master)`, the three keys
   in one intent (halves rounded to the pair with the least period error).
   At master 100 or 0 nothing is written and the tooltip says what to do.
-  Switching it off writes nothing. The rescale keeps the physical stroke
-  only while the hub's master is a linear rate scale (the registry note:
-  "percent of its own range").
+  Switching it off writes nothing. The rescale keeps the physical stroke:
+  the hub's speed is master % x half % x the input ceiling, linear in both.
 
   **Modifier tabs.** Each tab carries an enable switch on the left (the
   host's `og-switch`, compact; off writes `mod.amount` 0, RFC-066's no

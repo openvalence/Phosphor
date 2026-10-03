@@ -20,9 +20,9 @@
 //   holds 1/in + 1/out (the stroke period at a fixed master) and moves the
 //   peak; both halves go out in the same tick, one intent. Linking rescales
 //   master x k, each half / k (k = min(2, max / master)) in one intent so the
-//   halves have room; the physical speeds master x half are unchanged only
-//   while the hub's master is a linear rate scale (registry: "percent of its
-//   own range"). Unlinking writes nothing.
+//   halves have room; the hub's speed is master % x half % x the input
+//   ceiling, linear in both, so the physical stroke is unchanged. Unlinking
+//   writes nothing.
 // - Handle shape is its drag axis, everywhere in this card: a dot moves any
 //   direction, a vertical pill left-right only, a horizontal pill up-down
 //   only. The accel diamond and the offset triangle are markers that move
