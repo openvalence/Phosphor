@@ -401,6 +401,16 @@ function mergeColor(fields) {
 /** Every composite one card group draws as a single control: §11 ranges, §8.2 row 16 colors. */
 const mergeComposites = (fields) => mergeColor(mergeRangePairs(fields));
 
+/**
+ * A group string as {section, title}: the first " / " splits the section from
+ * the card title; none is a card with no section (DESIGN §10.11, Valence
+ * RFC-096 draft). The wire string is unchanged; `name` stays the card's key.
+ */
+export function splitGroup(name) {
+  const i = name.indexOf(' / ');
+  return i < 0 ? { section: '', title: name } : { section: name.slice(0, i), title: name.slice(i + 3) };
+}
+
 // ---------------------------------------------------------------------------
 // The model
 // ---------------------------------------------------------------------------
@@ -578,7 +588,7 @@ export function buildSettingsModel(entries) {
     const gname = field.group || '';
     const bucket = field.diagnostic ? cat.diagGroups : cat.groups;
     if (!bucket.has(gname)) {
-      bucket.set(gname, { name: gname, diagnostic: field.diagnostic, fields: [] });
+      bucket.set(gname, { name: gname, ...splitGroup(gname), diagnostic: field.diagnostic, fields: [] });
     }
     bucket.get(gname).fields.push(field);
     return true;
@@ -596,17 +606,20 @@ export function buildSettingsModel(entries) {
 
   // Tabs in registry order (RENDERING §12). An unrecognized or vendor id sorts
   // where `other` does (§3), keeping its own tab and label; never dropped.
-  // Within a tab, catalog declaration order, diagnostic groups last (§9).
+  // Within a tab, catalog declaration order, diagnostic groups last (§9);
+  // cards with no section first, then each section's cards together, sections
+  // in order of first appearance (DESIGN §10.11).
   const rankOf = (c) => (c.known ? c.id : UI_CATEGORY.other);
   const categories = [...catMap.values()]
     .sort((a, b) => (rankOf(a) - rankOf(b)) || (a.id - b.id))
-    .map(({ diagGroups, ...c }) => ({
-      ...c,
+    .map(({ diagGroups, ...c }) => {
       // A peak drawn on its live twin leaves its group.
-      groups: [...c.groups.values(), ...diagGroups.values()]
+      const groups = [...c.groups.values(), ...diagGroups.values()]
         .map((g) => ({ ...g, fields: mergeComposites(g.fields.filter((f) => !f.companionOf)) }))
-        .filter((g) => g.fields.length),
-    }));
+        .filter((g) => g.fields.length);
+      const order = [...new Set(['', ...groups.map((g) => g.section)])];
+      return { ...c, groups: groups.sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section)) };
+    });
 
   return { categories, actions, looseActions, byRole, fields };
 }

@@ -150,6 +150,8 @@ await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
 await page.waitForTimeout(400);
 
 // A category page with at least two group cards, one of them holding a writable range.
+// A section header row (DESIGN §10.11) is not a card: it never joins a nest.
+const notSection = (id) => !id.startsWith('section:');
 const tabs = page.locator('nav.rail [role=tab]');
 let tab = -1, viewKey = '', cards = [];
 for (let i = 1; i < await tabs.count() && tab < 0; i++) {
@@ -158,7 +160,7 @@ for (let i = 1; i < await tabs.count() && tab < 0; i++) {
   const r = await page.evaluate(() => {
     const g = document.querySelector('.dash-grid[data-view]');
     if (!g) return null;
-    const ids = [...g.children].map((c) => c.getAttribute('data-id'));
+    const ids = [...g.children].map((c) => c.getAttribute('data-id')).filter((id) => !id.startsWith('section:'));
     return { key: g.getAttribute('data-view'), ids, range: !!g.querySelector('input[type=range]:not([disabled])') };
   });
   if (r && r.range && r.ids.filter((id) => id.startsWith('group:')).length >= 2) { tab = i; viewKey = r.key; cards = r.ids; }
@@ -181,7 +183,7 @@ const nest = page.locator('.dash-cell[data-id="nest:1"]');
 const geo = await nest.evaluate((cell) => {
   const body = cell.querySelector('.nest-body');
   const surface = cell.querySelector(':scope > .dash-item > .dash-body').getBoundingClientRect();
-  const top = [...cell.closest('.dash-grid').children].map((c) => c.getAttribute('data-id'));
+  const top = [...cell.closest('.dash-grid').children].map((c) => c.getAttribute('data-id')).filter((id) => !id.startsWith('section:'));
   const scrollers = [...cell.querySelectorAll('*')].filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowY)
     && el.scrollHeight > el.clientHeight + 1).length;
   const outside = [...body.querySelectorAll('.dash-cell')].filter((m) => {
@@ -236,7 +238,8 @@ const cleared = await busy.waitFor({ state: 'detached', timeout: 3000 }).then(()
 ok('the count clears on echo', cleared && await own.count() === 0);
 
 // ---- edit flow: new nest, add, save, insert, out, ungroup --------------------
-const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
+const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')))
+  .then((ids) => ids.filter(notSection));
 const membersOf = (id) => page.$$eval('.dash-cell[data-id="' + id + '"] .nest-body .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
 const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
 await page.click('button:has-text("Edit layout")');

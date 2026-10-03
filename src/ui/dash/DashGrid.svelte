@@ -9,7 +9,8 @@
    * [{id, title, snippet, kind?, fields?}], `id` a STABLE string (law 10),
    * `snippet` rendered as the body (handed the placed item, which adds x, y,
    * w, h, `look` and `setLook(look)`), `fields` (or `group.fields`) counted on a
-   * nest's frame while in flight. Nests stored in the view are drawn as
+   * nest's frame while in flight. An item of `kind` 'section' is a header row:
+   * its `title` as text, no card, no grip. Nests stored in the view are drawn as
    * items; an item that is a member of a nest is drawn inside it, not at the
    * top level. With `layout` (a dashboardLayout().nest(id) controller) this
    * is a nest's own subgrid: no toolbar, no nests inside.
@@ -150,6 +151,9 @@
     const byId = new Map(placed.map((p) => [p.id, p]));
     return stackOrder.map((id) => byId.get(id)).filter(Boolean);
   });
+  // Card numbers in display order; a section row takes none.
+  const pidx = $derived(new Map(displayList.filter((p) => p.kind !== 'section')
+    .map((p, n) => [p.id, String(n + 1).padStart(2, '0')])));
 
   let gridEl;
   /** @type {Map<string, HTMLElement>} */
@@ -741,32 +745,36 @@
        style={'--cell:' + grid.cell + 'px;--cols:' + cols} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
-    {#each displayList as item, i (item.id)}
+    {#each displayList as item (item.id)}
       <div class="dash-cell" data-id={item.id} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
            style={stack ? '' : 'grid-column:' + (item.x + 1) + ' / span ' + item.w + ';grid-row:' + (item.y + 1) + ' / span ' + item.h}>
-        <DashItem
-          {item}
-          w={item.w}
-          h={item.h}
-          pidx={String(i + 1).padStart(2, '0')}
-          {editing}
-          {stack}
-          dragging={pin?.id === item.id || !!pin?.group?.some((g) => g.id === item.id)}
-          selected={selSet.has(item.id)}
-          clip={!stack && !pin && short(item)}
-          onselect={(additive) => select(item.id, additive)}
-          ongrabstart={() => grabStart(item.id)}
-          ongrabmove={(x, y) => pointerMove(item.id, x, y)}
-          ongrabend={() => pointerEnd(item.id)}
-          onresizestart={(edge) => resizeStart(item.id, edge)}
-          onresizemove={(x, y) => pointerMove(item.id, x, y)}
-          onresizeend={() => pointerEnd(item.id)}
-          onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
-          onkeyresize={(dw, dh) => keyResize(item.id, dw, dh)}
-          onkeylook={() => keyLook(item.id)}
-          onkeydelete={() => keyDelete(item.id)}
-          onremove={onremove && placeable(item.kind, false) ? () => onremove(item.id) : null}
-        />
+        {#if item.kind === 'section'}
+          <h2 class="dash-section" title={item.title}><span>{item.title}</span></h2>
+        {:else}
+          <DashItem
+            {item}
+            w={item.w}
+            h={item.h}
+            pidx={pidx.get(item.id)}
+            {editing}
+            {stack}
+            dragging={pin?.id === item.id || !!pin?.group?.some((g) => g.id === item.id)}
+            selected={selSet.has(item.id)}
+            clip={!stack && !pin && short(item)}
+            onselect={(additive) => select(item.id, additive)}
+            ongrabstart={() => grabStart(item.id)}
+            ongrabmove={(x, y) => pointerMove(item.id, x, y)}
+            ongrabend={() => pointerEnd(item.id)}
+            onresizestart={(edge) => resizeStart(item.id, edge)}
+            onresizemove={(x, y) => pointerMove(item.id, x, y)}
+            onresizeend={() => pointerEnd(item.id)}
+            onkeymove={(dx, dy) => keyMove(item.id, dx, dy)}
+            onkeyresize={(dw, dh) => keyResize(item.id, dw, dh)}
+            onkeylook={() => keyLook(item.id)}
+            onkeydelete={() => keyDelete(item.id)}
+            onremove={onremove && placeable(item.kind, false) ? () => onremove(item.id) : null}
+          />
+        {/if}
       </div>
     {/each}
     {#each ghosts as ghost (ghost.id || 'drop')}
@@ -940,6 +948,32 @@
   .dash-cell {
     padding: var(--dash-cell-pad, 7px);
     min-width: 0;
+  }
+  /* A section's header row (DESIGN §10.11): text and a hairline on the page,
+     never a band or a third tint, in the card titles' type step. The label
+     sits on the row's floor, over the cards it heads. */
+  .dash-section {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    height: 100%;
+    font-size: var(--dash-title-size, .8rem);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-hi);
+  }
+  .dash-section > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dash-section::after {
+    content: '';
+    flex: 1 1 0;
+    margin-bottom: .55em;
+    border-bottom: 1px solid var(--line-2);
   }
   /* Density (per layout): cells keep their size; the gutter, the card padding
      and the card label shrink. Read by DashItem through the inherited tokens.

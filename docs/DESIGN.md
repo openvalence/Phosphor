@@ -687,6 +687,21 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   pages of their category (RENDERING §11), not sidebar rows. A group is
   promoted by its whole field count, shown or not, so the advanced toggle
   never moves a page.
+- Sections (operator ruling 2026-10-02; Valence RFC-096 draft, a
+  presentation choice under RFC-080). A group string's first " / " splits
+  it into a section and a card title: `Tuning / Planner` is the Planner
+  card in section Tuning; an unprefixed group is a card with no section.
+  The wire string is RENDERING §3's free-text subgroup, unchanged, and stays
+  the card's key. A page draws its cards with no section first, then each
+  section's cards together, sections in order of first appearance; catalog
+  order holds within each, diagnostic cards last (collapsed by default,
+  RENDERING §9). One header row heads a section's run: text and a hairline
+  on the page in the card titles' type step, never a band or a third tint
+  (§10.6), a top-level grid row with no grip and no number. Each card is
+  still promoted on its own (glance, handheld); the header stays. Seams:
+  `splitGroup` and pass 3 in `src/model/settings.js`, `settingItems` in
+  `src/App.svelte`, `.dash-section` in `src/ui/dash/DashGrid.svelte`
+  (`ph-efai`).
 - Category 1 reads "Generator", the protocol view reads "Link", the built
   home page reads "Dash". Tab ids are storage keys and do not follow the
   labels: `machine` (the Dash layout), `valence` (Link), `cat<id>`.
@@ -715,3 +730,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |
 | 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
+| 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |

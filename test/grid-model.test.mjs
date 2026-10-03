@@ -242,6 +242,7 @@ console.log('nests');
      !placeable('field', false, true) && placeable('field', true, true) && placeable('composite', false, true) && placeable(undefined, false, true));
   ok('a nest never nests, either way', placeable('nest', false) && !placeable('nest', true) && !placeable('nest', true, true));
   ok('a safety op is top level only (law 11; ph-e82.15)', placeable('safety', false) && !placeable('safety', true) && placeable('safety', false, true));
+  ok('a section header row is top level only (DESIGN §10.11)', placeable('section', false) && !placeable('section', true));
 
   const st = memStorage();
   const s = loadStore(st);
