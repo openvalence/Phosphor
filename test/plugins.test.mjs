@@ -96,6 +96,17 @@ ok('stroke-gauge manifest validates', validateManifest(gaugeManifest).length ===
 ok('tcode-adapter manifest validates', validateManifest(tcodeManifest).length === 0, validateManifest(tcodeManifest).join('; '));
 ok('unknown permission is rejected', validateManifest({ ...gaugeManifest, permissions: ['socket'] }).length === 1);
 ok('wrong api version is rejected', validateManifest({ ...gaugeManifest, api: 2 }).length === 1);
+{
+  const cr = { name: 'fray-d, OSSM-Lite', url: 'https://github.com/fray-d/OSSM-Lite', license: 'CERN-OHL-S-2.0' };
+  ok('credits: accepted; a non-http url, a non-array or a long field is rejected',
+    validateManifest({ ...gaugeManifest, credits: [cr] }).length === 0
+    && validateManifest({ ...gaugeManifest, credits: [{ ...cr, url: 'javascript:alert(1)' }] }).length === 1
+    && validateManifest({ ...gaugeManifest, credits: [{ ...cr, url: 'file:///c:/x' }] }).length === 1
+    && validateManifest({ ...gaugeManifest, credits: cr }).length === 1
+    && validateManifest({ ...gaugeManifest, credits: [{ ...cr, name: 'x'.repeat(121) }] }).length === 1);
+  const apm = JSON.parse(readFileSync(new URL('../plugins/factory/advanced-penetration/manifest.json', import.meta.url), 'utf8'));
+  ok('advanced-penetration credits fray-d, OSSM-Lite', apm.credits?.[0]?.name === 'fray-d, OSSM-Lite' && apm.credits[0].license === 'CERN-OHL-S-2.0');
+}
 
 // ---- (a) the widget plugin claims its fields ------------------------------
 console.log('(a) widget plugin claims by role');
