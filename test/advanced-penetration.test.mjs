@@ -611,7 +611,7 @@ if (LIVE) {
     await page.click('main.pane .ap .og-btn:has-text("Delete")');
     const dlg = page.locator('[role=alertdialog]');
     ok('presets: delete asks the host confirm first', await dlg.isVisible().catch(() => false) && hub.intents.length === n3);
-    await dlg.locator('button.danger').click();
+    await dlg.locator('button.confirm').click();
     await page.waitForTimeout(400);
     ok('presets: delete sent after the confirm', hub.intents.slice(n3).some((i) => i.ch === cmd && i.val[1] === 3 && i.val[2] === 1));
     const n4 = hub.intents.length;

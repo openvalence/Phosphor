@@ -4,14 +4,17 @@
    * §10.3): the page's own controls left, the UI scale right, on every page.
    *
    * Constraints:
-   * - ONE fixed height at every renderer class and pointer. It never wraps;
-   *   page controls too wide for the window scroll sideways in their own
-   *   slot, and the scale group never moves.
+   * - Rows of one fixed height. Nothing in it scrolls (ph-dj9): page controls
+   *   too wide to sit beside the scale take a row of their own, and wrap
+   *   within it where the window is narrower still. A page's rows never
+   *   change with a state change: every label is one width in both states
+   *   and the count holds a fixed slot.
    * - Desktop: sticky at bottom 0 as the last child of a page at least as
    *   tall as `.content` (App.svelte `.pane`), so it sits at the bottom edge
    *   and the scroll area ends above it.
    * - `page` (the page itself scrolls): fixed to the viewport's bottom, and
-   *   `.app` reserves its height so the last card and FootStrip end above it.
+   *   `.app` reserves its measured height so the last card and FootStrip end
+   *   above it.
    * - Owns env(safe-area-inset-bottom) as padding under the row; never the
    *   top inset (webui.md T22).
    * - Every label is one width in both states, so a flip moves nothing; the
@@ -30,6 +33,13 @@
   let scale = $state(currentTheme().look.scale);
   $effect(() => onTheme((t) => { scale = t.look.scale; }));
   const pct = $derived(Math.round(scale / DEF * 100));
+
+  let footH = $state(0);
+  $effect(() => {
+    if (!page || !footH) return;
+    document.documentElement.style.setProperty('--page-foot-reserve', footH + 'px');
+    return () => document.documentElement.style.removeProperty('--page-foot-reserve');
+  });
 
   /** One 10% step of the default, snapped to the decade, inside the knob's range. */
   function target(dir) {
@@ -67,7 +77,7 @@
 
 <svelte:window {onkeydown} />
 
-<footer class="page-foot" class:page aria-label="Page controls">
+<footer class="page-foot" class:page bind:offsetHeight={footH} aria-label="Page controls">
   <div class="foot-page">{@render children?.()}</div>
   <div class="foot-scale" role="group" aria-label="UI scale">
     <button type="button" class="og-btn sm" aria-label="Smaller" title="Smaller, Ctrl+-"
@@ -94,13 +104,15 @@
     z-index: 15;
     flex: none;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    height: calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px));
+    column-gap: 6px;
+    min-height: calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px));
     margin-top: var(--gap);
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--bg);
-    border-top: 1px solid var(--line-0);
+    /* An inset rule, not a border: each row is exactly --page-foot-h. */
+    box-shadow: inset 0 1px 0 var(--line-0);
     /* Never the scroll anchor: below the cards, it would turn a card-set
        change above it into a scroll jump. */
     overflow-anchor: none;
@@ -113,32 +125,40 @@
     padding-left: var(--gap);
     padding-right: var(--gap);
   }
-  :global(.app:has(.page-foot.page)) { padding-bottom: calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px)); }
+  :global(.app:has(.page-foot.page)) {
+    padding-bottom: var(--page-foot-reserve, calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px)));
+  }
   .foot-page {
     flex: 1 1 auto;
     min-width: 0;
-    height: 100%;
+    min-height: var(--page-foot-h);
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
+    align-content: center;
+    gap: 4px 6px;
   }
-  .foot-page::-webkit-scrollbar { display: none; }
   .foot-page :global(button) { flex: none; color: var(--ink-dim); }
-  .foot-page :global(.adv-toggle[aria-expanded='true']) { color: var(--ink); border-color: var(--line-3); }
-  /* Reserved width, so the count appearing never moves the controls. */
+  /* On is the reality on-state an active control wears (style.css .og-btn.on). */
+  .foot-page :global(.adv-toggle[aria-expanded='true']) {
+    color: var(--reality);
+    border-color: var(--reality);
+    box-shadow: var(--glow-reality);
+  }
+  /* A fixed slot ("100 in flight"), so a count appearing or growing never
+     moves the controls or adds a row. */
   .foot-page :global(.cat-busy) {
     flex: none;
     margin-left: auto;
-    min-width: 11ch;
+    width: 13ch;
+    overflow: hidden;
+    white-space: nowrap;
     text-align: right;
     font-size: .76rem;
     color: var(--intent);
   }
 
-  .foot-scale { flex: none; display: flex; align-items: center; gap: 4px; }
+  .foot-scale { flex: none; display: flex; align-items: center; gap: 4px; height: var(--page-foot-h); margin-left: auto; }
   .foot-scale button { min-width: 30px; padding: 0; color: var(--ink-dim); }
   .foot-scale svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .foot-scale output { min-width: 4ch; text-align: center; font-size: .76rem; color: var(--ink-dim); }

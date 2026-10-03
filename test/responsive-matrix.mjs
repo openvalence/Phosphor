@@ -360,12 +360,16 @@ function stripCheck() {
     const b = el.getBoundingClientRect();
     if (b.width > 0 && b.height > 0 && b.bottom >= innerHeight - 1) out.push(['strip', 'fixed bar at the bottom edge: ' + el.className]);
   }
-  // ph-vdk.60.12: the page footer is one 48 px bar, whole, at every size,
-  // scrolled to the end as at the top.
+  // ph-vdk.60.12: the page footer is whole at every size, scrolled to the
+  // end as at the top: one 48 px row where its controls fit beside the
+  // scale, more rows where they do not (ph-dj9), never a scroller.
   const foot = document.querySelector('main.pane .page-foot');
   const fb = foot && foot.getBoundingClientRect();
-  if (fb && !(Math.abs(fb.height - 48) < 0.5 && fb.top >= -0.5 && fb.bottom <= innerHeight + 0.5 && fb.left >= -0.5 && fb.right <= innerWidth + 0.5)) {
+  if (fb && !(fb.height >= 47.5 && fb.top >= -0.5 && fb.bottom <= innerHeight + 0.5 && fb.left >= -0.5 && fb.right <= innerWidth + 0.5)) {
     out.push(['strip', 'page footer ' + [fb.left, fb.top, fb.width, fb.height].map(Math.round).join(',') + ' scrolled to the end']);
+  }
+  if (foot && [foot, ...foot.querySelectorAll('*')].some((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX))) {
+    out.push(['strip', 'page footer scrolls sideways']);
   }
   const app = document.querySelector('.app').getBoundingClientRect();
   if (Math.abs(app.width - document.documentElement.clientWidth) > 1) out.push(['strip', '.app ' + Math.round(app.width) + 'px wide in a ' + document.documentElement.clientWidth + 'px window']);

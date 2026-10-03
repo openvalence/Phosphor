@@ -9,10 +9,16 @@
    *   below the top strip, so the stop stays reachable. Fixed size whatever
    *   the class; only the panel's list scrolls.
    * - Two columns on `full`, one otherwise.
+   * - A shell-only binding (its `src` under src/shell) is listed in the shell
+   *   only; the served page has no such control.
    */
   import { tick } from 'svelte';
   import { KEYS } from '../model/keys.js';
   import { view } from '../model/viewport.svelte.js';
+
+  const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+  const GROUPS = KEYS.map((g) => ({ ...g, items: g.items.filter((k) => SHELL || !k.src.startsWith('src/shell/')) }))
+    .filter((g) => g.items.length);
 
   let open = $state(false);
   let panel = $state(null);
@@ -59,7 +65,7 @@
       </div>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="kh-list" class:two={view.cls === 'full'} tabindex="0" aria-label="Key table">
-        {#each KEYS as g (g.group)}
+        {#each GROUPS as g (g.group)}
           <section>
             <h3>{g.group}</h3>
             <dl>
@@ -103,7 +109,8 @@
     box-shadow: 0 8px 40px rgba(var(--shade-rgb), .6);
   }
   .kh-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  h2 { margin: 0; font-size: 1rem; color: var(--ink-hi); }
+  /* The panes' heading face (pane.css .pane-head h2). */
+  h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
   .kh-close { min-height: var(--tap); padding: 0 16px; }
   .kh-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   .kh-list.two { columns: 2; column-gap: calc(var(--gap) * 2); }
@@ -117,13 +124,14 @@
   }
   dl {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 3px 10px;
     margin: 0;
     font-size: .8rem;
   }
   dt, dd { margin: 0; min-width: 0; }
-  kbd { font-family: var(--mono); font-size: .74rem; color: var(--intent); }
+  /* Key names are text, never a state color: intent means commanded (ph-gz8). */
+  kbd { font-family: var(--mono); font-size: .74rem; color: var(--tx-hi); white-space: nowrap; }
   dd { color: var(--ink); }
   .kh-where { display: block; font-size: .7rem; color: var(--ink-dim); }
   @media (prefers-reduced-motion: no-preference) {

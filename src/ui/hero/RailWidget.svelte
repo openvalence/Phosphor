@@ -70,6 +70,7 @@
    * work off whatever `[lo, hi]` and unit the catalog reports instead of an
    * assumed 0-999mm rail.
    */
+  import { untrack } from 'svelte';
   import { machine, getSession, freshness } from '../../model/machine.svelte.js';
   import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
   import { railOwned } from '../../model/actions.js';
@@ -174,9 +175,17 @@
     if (!flipEnabled) return machine.link.phase !== 'live' ? 'no hub link' : 'Not writable now';
     return flipped ? 'Flipped: home at right' : 'Normal: home at left';
   });
+  // The chip's afterglow, lit per echo as Field.svelte lights its own.
+  let flipGlow = $state(0);
+  $effect(() => {
+    const sh = shadowOf(flip);
+    if (flipStatus !== STATUS.confirmed) flipGlow = 0;
+    else if (sh && sh.settled) flipGlow = untrack(() => flipGlow) === 1 ? 2 : 1;
+  });
   const flipCtl = {
     get on() { return flipped; }, get enabled() { return flipEnabled; }, get status() { return flipStatus; },
-    get text() { return flipText; }, toggle: () => toggleFlip(),
+    get text() { return flipText; }, get glow() { return flipGlow; }, glowEnd: () => { flipGlow = 0; },
+    toggle: () => toggleFlip(),
   };
   // The tooltips carry what the rail's help line used to say (ph-i0y).
   const HINT = 'Tap or scrub to jog';
@@ -189,9 +198,7 @@
     const on = !flipped;
     const ok = await askConfirm({
       title: on ? 'Flip the rail' : 'Unflip the rail',
-      body: 'Home moves to the ' + (on ? 'extended end, at right' : 'retracted end, at left') + ', and the hub mirrors '
-        + 'the window and every target. The hub refuses this while a source owns the rail, while unhomed, under '
-        + 'override or in motion.',
+      body: 'Home moves to the ' + (on ? 'right' : 'left') + ' end',
       confirmLabel: on ? 'Flip' : 'Unflip',
     });
     if (ok) writeSetting(flip, on ? 1 : 0);
@@ -781,7 +788,7 @@
 
   const bandLabel = $derived(
     haveWindow
-      ? ends(min, minVal, max, maxVal) + ' · ' + formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + unitOf(min)
+      ? ends(min, minVal, max, maxVal) + ' · ' + formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + (unitOf(min) ? ' ' + unitOf(min) : '')
       : ''
   );
 
@@ -952,9 +959,10 @@
            data-shadow={moveHeld ? STATUS.pending : statusOf(move)}>
         <div class="rail-tape-labels"
              title={'jog · ' + (override ? 'travel' : 'window') + (!moveEnabled && moveReason ? ' · ' + moveReason : '')}>
-          <span class="rail-tape-mode">jog &middot; {override ? 'travel' : 'window'}{#if !moveEnabled && moveReason}<span
-            class="rail-reason"> &middot; {moveReason}</span>{/if}</span>
-          <span class="rail-tape-extent mono">{ends(move, tapeLo, move, tapeHi)}</span>
+          <span class="rail-tape-mode"><span class="rail-mode">jog &middot; {override ? 'travel' : 'window'}</span>{#if !moveEnabled
+            && moveReason}<span class="rail-reason">{moveReason}</span>{/if}</span>
+          <!-- The window's own precision, as the ruler and its endcaps read it (ph-tp7). -->
+          <span class="rail-tape-extent mono">{ends(min, tapeLo, max, tapeHi)}</span>
         </div>
         <!-- The TRACK is the hit-test surface now (bug #3 fix, see the note by
              tapeTrackEl above) — the whole dashed-guide width is tappable, not
@@ -988,7 +996,7 @@
            the rhythm, commands nothing, and says why. -->
       <div class="rail-tape-assembly disabled" aria-disabled="true" title="No move intent on this catalog">
         <div class="rail-tape-labels" title="jog · window · no move intent on this catalog">
-          <span class="rail-tape-mode">jog &middot; window<span class="rail-reason"> &middot; no move intent on this catalog</span></span>
+          <span class="rail-tape-mode"><span class="rail-mode">jog &middot; window</span><span class="rail-reason">no move intent on this catalog</span></span>
           <span class="rail-tape-extent mono">{haveWindow ? ends(min, minVal, max, maxVal) : '--'}</span>
         </div>
         <div class="rail-tape-track" title={HINT}>
@@ -1253,7 +1261,14 @@
   }
   .rail-tape-pip.on { opacity: 1; }
   .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity .1s ease; }
+  /* The separator is the reason's own, so a narrow row drops the mode words
+     and keeps the reason whole (ph-ddx). */
   .rail-reason { color: var(--tx-mut); }
+  .rail-reason::before { content: '\00a0·\00a0'; }
+  @media (max-width: 599px) {
+    .rail-tape-mode:has(.rail-reason) .rail-mode { display: none; }
+    .rail-reason::before { content: none; }
+  }
 
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
@@ -1263,7 +1278,10 @@
     border: 1px solid var(--line-1);
     border-radius: var(--r-s);
     box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .6);
-    overflow: hidden;
+    /* Clipped 8 px out, the window handles' glow radius: a handle at either
+       end keeps its whole glow (ph-hjo). */
+    overflow: clip;
+    overflow-clip-margin: 8px;
     touch-action: none;
     cursor: crosshair;
   }
@@ -1278,11 +1296,13 @@
   }
   .rail-endcap.lo { left: 4px; }
   .rail-endcap.hi { right: 4px; }
+  /* The mid label rides the endcaps' line, clear of the tick row (ph-hjo). */
   .rail-ghost {
     position: absolute;
-    left: 50%; top: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 0.72rem;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
     opacity: 0.5;
     pointer-events: none;
@@ -1321,7 +1341,7 @@
     height: calc(var(--s) * 9px);
     transform: translateY(-50%);
     pointer-events: none;
-    background: repeating-linear-gradient(135deg, rgba(255, 71, 87, .22) 0 3px, rgba(255, 71, 87, .03) 3px 7px);
+    background: repeating-linear-gradient(135deg, rgba(var(--bad-rgb), .22) 0 3px, rgba(var(--bad-rgb), .03) 3px 7px);
     transition: clip-path .25s ease;
     z-index: 1;
   }

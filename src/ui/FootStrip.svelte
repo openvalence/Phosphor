@@ -17,6 +17,11 @@
    *
    * No props — reads the one machine spine directly. Wire it in bare:
    *   <FootStrip />
+   *
+   * Constraints:
+   * - A value never moves its neighbors: each holds a slot sized to its
+   *   widest honest reading (--w, in ch of the mono face) (ph-rt1).
+   * - Phones get a grid of whole facts, never a ragged wrap.
    */
   import { machine } from '../model/machine.svelte.js';
   import { since, clock } from '../model/format.js';
@@ -60,18 +65,18 @@
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">
-    <span class="fact"><span class="k">reconnects</span><span class="v mono">{machine.stats.reconnects}</span></span>
-    <span class="fact"><span class="k">state pushes</span><span class="v mono">{machine.stats.statePushes}</span></span>
-    <span class="fact"><span class="k">clock offset</span><span class="v mono">{clockOffset}</span></span>
-    <span class="fact"><span class="k">clock rtt</span><span class="v mono">{clockRtt}</span></span>
-    <span class="fact"><span class="k">catalog etag</span><span class="v mono" title={machine.catalog.etag || '--'}>{etagShort}</span></span>
-    <span class="fact"><span class="k">deadman</span><span class="v mono">{deadman}</span></span>
-    <span class="fact"><span class="k">last rx</span><span class="v mono">{rxAge}</span></span>
+    <span class="fact"><span class="k">reconnects</span><span class="v mono" style="--w: 4ch">{machine.stats.reconnects}</span></span>
+    <span class="fact"><span class="k">state pushes</span><span class="v mono" style="--w: 8ch">{machine.stats.statePushes}</span></span>
+    <span class="fact"><span class="k">clock offset</span><span class="v mono" style="--w: 13ch">{clockOffset}</span></span>
+    <span class="fact"><span class="k">clock rtt</span><span class="v mono" style="--w: 10ch">{clockRtt}</span></span>
+    <span class="fact"><span class="k">catalog etag</span><span class="v mono" style="--w: 10ch" title={machine.catalog.etag || undefined}>{etagShort}</span></span>
+    <span class="fact"><span class="k">deadman</span><span class="v mono" style="--w: 8ch">{deadman}</span></span>
+    <span class="fact"><span class="k">last rx</span><span class="v mono" style="--w: 8ch">{rxAge}</span></span>
     <button type="button" class="fact fact-btn" onclick={() => (sessionMs = !sessionMs)}
             title={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
-      <span class="k">session</span><span class="v mono">{sessionAge}</span>
+      <span class="k">session</span><span class="v mono" style="--w: 12ch">{sessionAge}</span>
     </button>
-    <span class="fact"><span class="k">ui build</span><span class="v mono">{buildId}</span></span>
+    <span class="fact"><span class="k">ui build</span><span class="v mono" style="--w: 10ch">{buildId}</span></span>
   </div>
 </footer>
 
@@ -127,8 +132,10 @@
     font-size: 11px;
   }
   .v {
+    min-width: var(--w);
     color: var(--ink-dim);
     font-size: 11px;
+    white-space: nowrap;
   }
 
   /* Desktop: one row that scrolls sideways, never three rows taken from a
@@ -146,5 +153,10 @@
      reaches the floor. */
   @media (pointer: coarse) {
     .fact-btn { min-height: 40px; align-items: center; }
+  }
+  /* Phones: a grid of key-over-value cells, every fact in its column. */
+  @media (max-width: 959px) {
+    .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 104px), 1fr)); gap: 6px 14px; }
+    .facts .fact { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
   }
 </style>
