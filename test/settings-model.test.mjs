@@ -590,9 +590,11 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      model.looseActions.some((a) => a.role === 'action.service'));
 }
 {
-  // A real hub's bytes: safety and home (both persistent) plus the preset
-  // store's CRUD verb, which is uncategorized and so rides Overview until a
-  // generator-advanced widget claims it (ph-vdk.11).
+  // A real hub's bytes: safety and home (both persistent), settings-trial's
+  // commit/revert op (RFC-099; only the sender's own trials, which the generic
+  // renderer never makes) plus the preset store's CRUD verb, which is
+  // uncategorized and so rides Overview until a generator-advanced widget
+  // claims it (ph-vdk.11).
   const real = buildSettingsModel(decodeCatalog(new Uint8Array(readFileSync(
     new URL('./fixtures/valencesim-catalog.bin', import.meta.url)))));
   const generic = real.categories.flatMap((c) => c.groups.flatMap((g) => g.fields))
@@ -600,6 +602,8 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   const drawn = generic.map((f) => f.role).concat(real.looseActions.map((a) => a.role));
   ok('fixture hub: safety/home verbs are not duplicated onto settings tabs',
      !drawn.some((r) => r !== 'action.store'), drawn.join(',') || 'none');
+  ok('fixture hub: the settings-trial verb is never a generic trigger',
+     real.actions.some((a) => a.role === 'action.trial') && !drawn.includes('action.trial'), drawn.join(',') || 'none');
   ok('fixture hub: the preset store verb is reachable exactly once',
      drawn.filter((r) => r === 'action.store').length === 1, drawn.join(',') || 'none');
 }

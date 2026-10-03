@@ -19,6 +19,15 @@
 //   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
+// - The playhead is one bar: its grip rides the heat at the bottom and its line runs up
+//   through the detail at the same x, so the detail window holds m at the share m / duration.
+// - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
+//   the hub's own command, under the script's.
+// - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
+// - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
+//   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
+// - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
+//   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
 
 import { posAt, indexAfter, heat, fmtTime } from './funscript.js';
 
@@ -39,6 +48,11 @@ export const COPY = Object.freeze({
   zoomOut: 'Zoom out',
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
+  analyzer: 'Analyzer',
+  abGlyph: 'A-B',
+  abStart: 'Set loop start',
+  abEnd: 'Set loop end',
+  abClear: 'Clear loop',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -106,13 +120,16 @@ export function zoomStep(ms, dir) {
 }
 
 export const CSS = `
-.fsp-tl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fsp-tl { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fsp-ph { position: absolute; top: 0; bottom: 12px; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .fsp-ov rect.bin { fill: var(--intent); }
 .fsp-ov rect.bin.over { fill: var(--warn); }
+.fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
+.fsp-dt line.ab { stroke: var(--highlight); stroke-width: 1; stroke-dasharray: 3 3; }
 .fsp-ov rect.win { fill: rgba(var(--highlight-rgb), .08); stroke: var(--highlight); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
@@ -120,11 +137,12 @@ export const CSS = `
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
+.fsp-dt .raw { stroke: var(--line-4); stroke-width: 1; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
-.fsp-dt .ph { stroke: var(--highlight); stroke-width: 1.5; }
+.fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
@@ -135,8 +153,11 @@ export const CSS = `
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
 .fsp-zoom { position: absolute; right: 0; top: 0; display: flex; z-index: 1; }
 .fsp-zoom button { width: var(--tap); height: var(--tap); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
+.fsp-zoom .fsp-ab { font-size: .72rem; }
 .fsp-zoom button:hover, .fsp-zoom button:focus-visible { color: var(--highlight); outline: none; }
 .fsp-zoom button:disabled { opacity: .35; cursor: default; }
+.fsp-zoom button[aria-pressed=true] { color: var(--highlight); }
+.fsp-zoom svg { position: static; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; vertical-align: middle; }
 `;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -154,8 +175,8 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000 }) {
-  let script = null, T = T0, ceiling = null, preview = null, m = 0, trace = [];
+export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null }) {
+  let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null };
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -163,7 +184,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const ovSvg = s('svg', { viewBox: '0 0 ' + HEAT_BINS + ' 24', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const bins = s('g');
   const win = s('rect', { class: 'win', y: '0', height: '24' });
-  ovSvg.append(bins, win);
+  const abBand = s('rect', { class: 'ab', y: '0', height: '24' });
+  ovSvg.append(bins, abBand, win);
   const scrub = h('div', { class: 'fsp-scrub', role: 'slider', tabindex: '0', 'aria-label': COPY.scrub,
     'aria-orientation': 'horizontal', 'aria-valuemin': '0' });
   const ov = h('div', { class: 'fsp-ov', role: 'group', 'aria-label': COPY.overview }, ovSvg, scrub);
@@ -201,14 +223,25 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const dtSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const rgLo = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
+  const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
   const real = s('g');
-  dtSvg.append(rgLo, rgHi, curve, real, s('line', { class: 'ph', x1: '500', x2: '500', y1: '0', y2: '100' }));
+  const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
+  dtSvg.append(rgLo, rgHi, abA, abB, rawLine, curve, real);
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
+  const zAn = h('button', { type: 'button', class: 'fsp-expand', title: COPY.analyzer, 'aria-label': COPY.analyzer, 'aria-pressed': 'false' });
+  const icon = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  icon.append(s('path', { d: 'M9.5 2.5h4v4M13.5 2.5l-5 5M6.5 13.5h-4v-4M2.5 13.5l5-5' }));
+  zAn.append(icon);
+  const zAB = h('button', { type: 'button', class: 'fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
+  zAB.hidden = !onLoop;
+  zAB.addEventListener('click', () => onLoop && onLoop());
+  zAn.hidden = !onExpand;
+  zAn.addEventListener('click', () => onExpand && onExpand(zAn.getAttribute('aria-pressed') !== 'true'));
   const pills = ['lo', 'hi'].map((key) => {
     const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key],
       'aria-orientation': 'vertical', 'aria-valuemin': '0', 'aria-valuemax': '100', 'data-key': key });
@@ -246,8 +279,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn));
-  const root = h('div', { class: 'fsp-tl' }, ov, dt);
+    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn));
+  const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
+  const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
   el.append(root);
 
   const eff = () => (preview ? { ...T, ...preview } : T);
@@ -260,10 +294,12 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
 
   function draw() {
     const d = dur(), Te = eff();
-    const from = m - zoom / 2, to = m + zoom / 2;
+    const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
     curve.setAttribute('points', curvePoints(script, from, to, 1000, 100, Te));
+    rawLine.setAttribute('points', raw && raw !== script ? curvePoints(raw, from, to, 1000, 100, Te) : '');
     curve.classList.toggle('draft', !!preview);
-    real.replaceChildren(...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
+    real.replaceChildren(...traceLines(trace.map((x) => ({ m: x.m, u: x.p })), from, to, 1000, 100).map((l) => s('polyline', {
+      class: 'plan', points: l.points })), ...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
       class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       line.setAttribute('y1', String(100 - v * 100));
@@ -284,11 +320,24 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     scrub.setAttribute('aria-valuenow', String(Math.round(m)));
     scrub.setAttribute('aria-valuetext', fmtTime(m));
     scrub.hidden = !script;
+    ph.style.left = scrub.style.left;
+    ph.hidden = !script;
+    const ax = (t) => String(((t - from) / zoom) * 1000);
+    abBand.setAttribute('x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
+    abBand.setAttribute('width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
+    for (const [line, t] of [[abA, ab.a], [abB, ab.b]]) {
+      line.style.display = t == null ? 'none' : '';
+      if (t != null) { line.setAttribute('x1', ax(t)); line.setAttribute('x2', ax(t)); }
+    }
+    const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
+    if (zAB.title !== tip) { zAB.title = tip; zAB.setAttribute('aria-label', tip); }
+    zAB.setAttribute('aria-pressed', String(ab.b != null));
   }
 
   return {
-    setScript(sc, t, ceil) {
+    setScript(sc, t, ceil, rawSc) {
       script = sc || null;
+      raw = rawSc || null;
       T = t || T0;
       ceiling = ceil || null;
       drawHeat();
@@ -299,6 +348,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       trace = tr || [];
       draw();
     },
+    setExpanded(on) { zAn.setAttribute('aria-pressed', String(!!on)); },
+    /** {a, b} media ms, either null: what the A-B button has set. */
+    setLoop(x) { if (x && (x.a !== ab.a || x.b !== ab.b)) { ab = { a: x.a, b: x.b }; draw(); } },
     unmount() { root.remove(); },
   };
 }

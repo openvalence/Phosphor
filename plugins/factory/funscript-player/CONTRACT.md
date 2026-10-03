@@ -27,11 +27,15 @@ Rules for every module:
 | scheduler | ph-smvd.4 | `clock.js`, `scheduler.js`, `test/funscript-scheduler.test.mjs`, `test/funscript-sync-live.mjs` |
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
+| interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
+| analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
+| integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
-no cycles: `index -> ui, prefs, library`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs`; `scheduler -> funscript`;
-`timeline -> funscript`; `library -> stash`; `stash -> funscript`.
+no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
+scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funscript, scheduler`; `scheduler -> funscript`;
+`timeline -> funscript`; `library -> stash`; `stash -> funscript`;
+`prefs -> interp`; `interp -> funscript`.
 
 ---
 
@@ -86,7 +90,12 @@ scheduler, stash, library, timeline, prefs`; `scheduler -> funscript`;
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000 }
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000,
+  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0},
+  play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
+         seekMs: 500, lowLatency: false, autoLatency: false} }
+// play repairs: loopCount 0..99 integer (0 = forever), homeAfterMs 1000..60000 step 500, homePoint 0..1,
+// homeSpeed 0.05..2 norm/s, seekMs 0..3000 step 50 (0 = jump).
 // Every key but stash is also mirrored to localStorage phosphor.funscript.<key> (the prefix the prefs
 // backup carries) and read from there when api.prefs has none. stash holds the API key: never mirrored.
 ```
@@ -159,10 +168,24 @@ export function createMediaClock();   // -> MediaClock
 //       seen since the reset: after play() or a seek the first frame repeats for several vsyncs.
 //   displayAt(mediaMs) -> performance.now() ms the frame is SHOWN (NaN before ready),
 //   mediaAt(displayMs) -> media ms (NaN before ready) }
-export function frameSource(video, onFrame, now = () => performance.now());   // -> stop()
+export function frameSource(video, onFrame, now = () => performance.now(), fallbackMs = () => FALLBACK_AFTER_MS);   // -> stop()
   // onFrame(mediaMs, displayMs). requestVideoFrameCallback when present: (md.mediaTime * 1000,
   // md.expectedDisplayTime). A rAF loop reports (video.currentTime * 1000, now()) only while no
-  // rVFC frame came for FALLBACK_AFTER_MS (audio only, hidden video, glance).
+  // rVFC frame came for fallbackMs() (audio only, hidden video, glance).
+// Playback (ph-smvd.12):
+export const LOW = {window: 8, slew: 15, fallbackMs: 100}, WRAP_EARLY_MS = 34;
+// createMediaClock({window = CLOCK_WINDOW, slew = SLEW_MS_PER_S} = {}); MediaClock gains tune({window, slew})
+//   (LOW, or {} for the defaults), in force at once.
+export function loopSpec(a, b, count = 0, durationMs = Infinity);   // -> {a, b, count} | null
+  // media ms; null when b - a < 1000 or count is 1; b bounded by durationMs. count 0 = forever, N = the
+  // a..b section plays N times in all, then plays on.
+export function createLoop();   // -> Loop, the video side of a loop
+// Loop = { lap, spec, set(spec | null), reset(), more(), wrapping,
+//   due(mediaMs) -> true from b - WRAP_EARLY_MS to b + 1000 while the section still repeats and no wrap is pending,
+//   wrap() -> a: marks a wrap pending; the caller seeks there,
+//   unroll(mediaMs) -> mediaMs + lap x (b - a); a frame in the section's first half while a wrap is pending counts a lap
+//       (no frame before the wrap is needed: a loop set at the playhead wraps at once),
+//   seeked(mediaMs) -> spec | null: lap 0 again; a landing at or past b clears the loop }
 
 // scheduler.js
 export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PREROLL_SKIP = 0.05, OFFER_MAX = 32;
@@ -196,7 +219,67 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               PREROLL_STROKE_MS * |delta|}, target = applyT(posAt(script, mediaMs), T),
 //                               delta = 1 when hereNorm is null. The caller submits it and plays at its end.
 //   cursor: number, skipped: number }
+//
+// Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform,
+// home or loop change is pending until restart; preroll reads the pending ones.
+export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
+export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
+export function withHome(script, home, actions = script);   // home: {afterMs, point: 0..1 script space, speed: norm/s} | null -> Script copy
+  // A gap of at least afterMs + move in + move out gets knots: (t0 + afterMs, the line), +move in at point,
+  // (t1 - move out, point), then the next action at its time. move(d) = max(HOME_MIN_MS, |d| / speed s).
+  // Before the first action the gap runs from 0 (a knot (0, pos[0]) is added); after the last, one move
+  // home after afterMs. null returns the script itself. actions: the parsed Script whose actions define
+  // the gaps when script is a shaped copy (interp.js; every action is one of its knots); the copy's knots
+  // inside a homed gap after afterMs are replaced.
+// Scheduler gains:
+//   load(script | null, actions = script)   actions as in withHome
+//   setHome(home | null), setLoop(loopSpec | null)   pending until restart
+//   setLatency({low, auto})     in force at once. low: the offer stops at atMs > now + LEAD_LOW_MS.
+//                               auto: when |clamp(lagMs, +-COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
+//                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
+//   restart(clock, transitionMs = 0)   transitionMs > 0 (a seek): the first segment is {atMs: now,
+//                               norm: applyT(script at mediaAt(now + transitionMs - offset)), durationMs:
+//                               transitionMs}; the span holding that instant follows from its end, the knots
+//                               inside are passed over
+//   observePlan(arrivalMs, elapsedMs, durationMs)   one plan strip sample (plan.elapsed, plan.duration in ms;
+//                               arrival in performance.now() ms, now() - api.age(field)). Samples of one
+//                               duration within 15 ms of one start are one plan, start = the least
+//                               arrival - elapsed; a closed plan matches the sent segment of its duration
+//                               (+-1 ms) with the nearest atMs within LAG_MATCH_MS, sent at least 2 ms ahead
+//                               and not superseded; its lag is start - atMs
+//   lagMs                       median of the last LAG_WINDOW lags, NaN under LAG_MIN; compMs: applied
+// With a loop the clock runs in unrolled media time (createLoop.unroll) and the cursor walks lap 0 to b,
+// then the knots inside (a, b) once per lap, then the last lap plays on: the seam span is the last knot
+// before b to the first after a, (at[iA] - at[iB-1]) + (b - a) long.
 ```
+
+Playback wiring (ph-smvd.13), done by `ui.js` and `index.js`; the scheduler
+and clock do none of it:
+
+- Hero spec optional has `planEl: 'plan.elapsed', planDur: 'plan.duration'`;
+  each playing tick a new sample (its `api.age` dropped, or its elapsed
+  changed) goes to `observePlan(now() - api.age(planEl), elapsed ms,
+  duration ms)`, converted from the field's unit (us, ms, s).
+- `scheduler.load(shaped, state.script)`: home finds its gaps in the file's
+  actions, never in the shaped pieces.
+- Prefs `play` map to `setHome(home ? {afterMs, point, speed} : null)`,
+  `setLatency({low: lowLatency, auto: autoLatency})`, `clock.tune(low ? LOW : {})`,
+  `frameSource(..., () => low ? LOW.fallbackMs : FALLBACK_AFTER_MS)`, and a
+  `seeked` restart as `restart(clock, seekMs)`; every other restart passes 0.
+- Loop: `loop.set(loopSpec(a, b, loopCount, video.duration * 1000))` and
+  `setLoop(loop.spec)` (a, b the timeline's A-B points, else 0 and the
+  duration while `play.loop`). `onFrame` feeds the clock `loop.unroll(mediaMs)`; each tick
+  `if (loop.due(video.currentTime * 1000)) video.currentTime = loop.wrap() / 1000`.
+  The `seeking`, `waiting` and `playing` a wrap starts are not a stop: no
+  hold, no clock reset (the clock steps on the landing frame when the seek
+  took over `STEP_MS`). Any other seek calls `loop.seeked(ms)`, then
+  `setLoop(loop.spec)` and a seek restart; one that clears the loop clears
+  the A-B points. A loop change while playing holds and re-anchors (lap 0).
+- Displayed media time (the time readout, the playhead, the trace) is the
+  unrolled clock folded back by `lap x (b - a)`; the trace reads the machine's
+  script time at `mediaAt(now - T.offsetMs + compMs)`.
+- The probe (localStorage `phosphor.funscript.probe`) adds `{k: 'mark', name:
+  'wrap', lap}` per wrap and `{k: 'lat', t, lag, comp}` every 500 ms while playing.
 
 The cadence: the player calls `tick` once per animation frame while
 playing; nothing else submits motion.
@@ -228,7 +311,8 @@ export function filteredHubNowUs(s, nowMs = performance.now());
 // and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
 // The returned submit function gains a member:
 submit.segments(list);   // Seg[] -> SegResult
-export function streamGate({ live, roles, access, halted, running, owners, self, busy });   // -> words | ''
+export function streamGate({ live, roles, access, halted, running, busy });   // -> words | ''
+export function conflictWords(reason, owners, self);   // -> 'refused: rail owned by <label>' for SOURCE_CONFLICT, else reason
 ```
 
 `segments(list)`, in order:
@@ -270,9 +354,13 @@ export function streamGate({ live, roles, access, halted, running, owners, self,
 
 `streamGate` (pure) returns the first that applies: `'no hub link'`,
 `'session not authorized'` (roles below access), `halted`,
-`'stop the pattern first'` (running), `'rail owned by <label>'` (the first
-owner whose session differs from `self`; `'rail owned by another session'`
-when it has no label), `busy`, else `''`.
+`'stop the pattern first'` (running), `busy`, else `''`. It never reads
+control-owner (main's rail ruling, 6052b5f, operator 2026-10-03): a slot
+stays held for its session's life, so a foreign stream holding the rail is
+the hub's `SOURCE_CONFLICT` to say. `conflictWords` (pure) turns that code
+into `'refused: rail owned by <label>'`, the first labeled owner whose
+session differs from `self` (`'another source'` when none is labeled); any
+other reason passes through.
 
 The existing `submit` stamps `now + lat` (execution at now + 2 x lat): flagged
 on the host bead for its owner, not changed by this work.
@@ -284,6 +372,8 @@ export function railOwners(ownerEntry, ownerSample);   // -> Array<{name: string
                                                        // owned pair, name '' when the source has no label
 // railOwnerName keeps its meaning, now railOwners(...)[0]?.name || ''. Append-only hunk:
 // Phosphor main carries uncommitted edits in this file.
+export function railOwned(byRole, samples);   // -> boolean: pattern.running or advgen.running on (main's 6052b5f,
+                                              // copied exactly); never control-owner
 ```
 
 ### `src/model/shadow.svelte.js`
@@ -319,13 +409,15 @@ finds no transport name on the API object.
 
 ### `src/plugins/plugins.svelte.js`
 
-- `deps.submitSegments`, `deps.now = () => performance.now()`.
+- `deps.submitSegments`: the shadow's, with a refused result's `reason`
+  through `conflictWords` over `railOwners` (the `control-owner` entry and
+  its sample) and the link's session id. `deps.now = () => performance.now()`.
 - `gate(field)`: BEFORE the read-only branch, when the field's entry is a
   c2h STREAM, return `streamGate` over: `live` (link phase), `roles`,
   `access` (the entry's), `halted` (the shadow's halted words), `running`
-  (any field of role `pattern.running` or `advgen.running` reads nonzero),
-  `owners` (`railOwners` over the `control-owner` entry and its sample, found
-  the way `railOwnerName`'s callers find it), `self` (the link's session id).
+  (`railOwned(byRole, samples)`: `pattern.running` or `advgen.running` on).
+  Never an owner rung: a foreign-held slot leaves Play live and the hub
+  answers.
   Today such a field reads `'read-only: ...'`.
 - `deps.fetch`: in the shell `(u, i) => import('@tauri-apps/plugin-http').then((m) => m.fetch(u, i))`,
   in vite dev `window.fetch` (ruling R-A).
@@ -347,7 +439,9 @@ CSP: `img-src 'self' data: blob: http: https:`; add
 
 `test/plugins.test.mjs`: (e2) the segments door, every step above, against
 a fake session with grants of latency 1000 us and horizons 250, 500 and
-1000; `streamGate` order; `railOwners`. (i) the producer lock with an
+1000; `streamGate` order; a foreign-held slot never grays Play, a running
+generator does, a `SOURCE_CONFLICT` reads `refused: rail owned by <label>`
+with no lock taken; `railOwners`. (i) the producer lock with an
 injected `now`; `submitSegments` without `motion` throws `PermissionError`;
 `gate` shows the busy words to the other plugin only. (j) `net.fetch`
 permission, scheme and hub refusals, init passed through, and a static CSP
@@ -424,12 +518,20 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
   localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
 // Player = {
 //   mount(el, fields) -> { update(), unmount() },
-//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?} from the hero spec
+//       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
+//   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
+//   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
 //   state }      PlayerState, read-only to everyone else
+// createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get low.
+export const PLAY_CSS;
+export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
+  // Loop, Loop count, Auto-home, Home after, Home point, Home speed, Seek glide, Low latency, Auto latency;
+  // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
-//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn', notes: string[]}, view: 'player'|'library',
-//   composition: 'full'|'handheld'|'glance' }
+//   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
+//   composition: 'full'|'handheld'|'glance', ab: {a, b} (media ms | null, runtime only), play: Prefs.play }
 
 // timeline.js
 export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 8000, MIN_SPAN = 0.05;
@@ -438,13 +540,20 @@ export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
   clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom });
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop });
+  // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
+  // onLoop(): the A-B button (hidden without it); setLoop({a, b}) draws the points: a --highlight band on
+  // the heat, dashed lines in the detail; the button's tooltip reads the next press (start, end, clear).
+  // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
+  // detail at the same x; the detail window is [m - s x zoom, m + (1 - s) x zoom], s = m / duration.
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling), frame(mediaMs, trace), unmount() }
+  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace), setExpanded(on), setLoop({a, b}), unmount() }
+  // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
   // ceiling: {vmax: number | null, spanMm: number | null}
-  // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean}>, telemetry.position on the media axis, last 8 s
+  // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
+  //   media axis, last 8 s; p is plan.current as a window share (null when stale or absent), drawn under the script
 ```
 
 One `Player` per activation owns the single `<video>` (no `controls`,
@@ -453,7 +562,10 @@ One `Player` per activation owns the single `<video>` (no `controls`,
 the video; when it unmounts, the player holds and pauses. The gate is read
 through `api.gate(fields.dur)` on every `update()` and every tick; a gate
 or a fatal refusal pauses and sends no hold (the rail is not the player's
-to command then). The status slot reads, first that applies: a fatal
+to command then). While preroll waits for its segment's end, each tick
+calls `submit([])` so the preroll bundle's NACK (`refused: rail owned by
+<label>`) ends it before the video starts; Play re-enables, nothing
+retries. The status slot reads, first that applies: a fatal
 refusal or media error, the gate, Positioning, Buffering, a transient
 refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
 past `limit.input.speed`), then the first parse note or extra-axes note with
@@ -463,6 +575,62 @@ library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
 observations, marks) only while localStorage `phosphor.funscript.probe` is
 `'1'`.
+
+The trial notice `Preview: not saved` (tone `intent`, an `--intent` bar)
+follows the gate in the slot order and stands while `api.trialPending`.
+
+---
+
+## analyzer: `analyzer.js`
+
+```js
+export const TUNING = 'Tuning', LIMIT_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk'];
+export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
+export const CSS, COPY;
+export function tuningGroups(model);   // -> [{name, fields}]: writable slider, stepper, toggle, segmented and
+  // select fields of every group whose first ' / ' segment is 'Tuning' (RFC-094), named by the rest; then
+  // writable fields sharing a write channel with those (the kinetic ceilings); then limit.input.* by role
+export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
+  // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
+export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
+export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the shaped Script), T(): the player's
+  // -> { frame(), mode: 'live'|'preview', unmount() }
+```
+
+The expand button on the detail opens it in place: the outer card rect is
+unchanged (the tl box carries the stage's 16:9 spacer), the library leaves,
+the video moves to an in-card thumbnail (full: 320 x 180 at the top right;
+handheld: one tap high in the source row), never picture-in-picture (law 1).
+Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
+(or the last refusal); then the rows, one `var(--tap)` each, in a list that
+scrolls inside its box. Live writes through `api.write`; Preview through
+`api.writeTrial`, Apply `api.commitTrial()`, Discard `api.revertTrial()`;
+Preview is the default and is grayed on a hub without `action.trial`. A
+segmented field of more than two options renders as a select.
+
+---
+
+## interp: `interp.js`
+
+```js
+export const STEP_MS = 40;            // the longest piece a curved span is cut into (25 segments/s, under the 50 Hz grant)
+export const MODES;                   // frozen {id -> its parameter key | null}: linear, step, smoothstep, cosine,
+                                      // catmull 'tension', hermite 'bias', monotone, pchip, akima, makima
+export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000} with steps
+export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0}
+export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it
+export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
+export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
+  // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
+  // off without spanMm); linear with both off returns `script` itself, so the scheduler runs byte-identical
+export const COPY, CSS;
+export function mountInterp(el, { value, onChange });   // -> unmount(); the settings card rows, onChange(interp) on commit
+```
+
+The controller schedules `shape(script)` and keeps it as `PlayerState.shaped`: the scheduler, posAt, preroll,
+stop, thinning, the speed meter and the heat all read the shaped Script,
+and each piece is one segment with end velocity `unspecified` and no
+`curve_family`. Tests: `test/funscript-core.test.mjs` (interp section).
 
 ---
 
@@ -477,9 +645,10 @@ export function activate(api);   // -> deactivate()
 //     cells: { h: [16, 12], v: [8, 16] },
 //     spec: { require: { target: 'input.target', dur: 'input.duration' },
 //             optional: { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
-//                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running' } },
+//                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
+//                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
-//   api.registerSettings((el) => mountConnect(el, { api }));
+//   api.registerSettings((el) => mountConnect + mountInterp + mountPlay, one unmount for the three);
 //   return () => player.dispose();
 
 // prefs.js
@@ -488,12 +657,15 @@ export function readPrefs(api);        // -> Prefs, each key merged over its def
 export function writePref(api, key, value);
 ```
 
-`manifest.json`: kind `widget`, permissions `["motion", "net.fetch"]`, no
-`intent` (the player writes no field). It is listed in
+`manifest.json`: kind `widget`, permissions `["motion", "net.fetch", "intent"]`
+(`intent` for the analyzer's tuning writes; R-D superseded). It is listed in
 `src/plugins/factory.js` because the host accepts `net.fetch` (ruling R-A,
 pending: a veto reverts the host's `net.fetch` and the FACTORY entry
 together, since test (g) validates every factory manifest).
 `test/funscript-player.test.mjs`: `--unit` (in `npm run check`) checks every
 export named here, the prefs and the hero spec; the default run is the
 fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
---port P --http P+7` runs the card against valencesim on spare ports.
+--port P --http P+7` runs the card against valencesim on spare ports, and
+`--live-playback --port P --http P+7 [--shots dir]` plays a 60 s clip there
+with auto latency, a seek glide, auto-home in a 14 s gap, an A-B loop, low
+latency and a Preview write, printing one `PB-RESULT` JSON line.

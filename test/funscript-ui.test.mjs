@@ -9,7 +9,8 @@
  *                  start; tiled segments; a gate pauses in the same tick with one
  *                  hold and never auto-resumes; Pause is one hold then silence;
  *                  waiting holds and continues on playing; a fatal refusal holds
- *                  with its words; a transient preroll retries; a stray play is
+ *                  with its words; a refusal during preroll ends it with its
+ *                  words and offers Play; a transient preroll retries; a stray play is
  *                  paused; Motion off sends nothing and ignores the gate
  *
  * Run: node test/funscript-ui.test.mjs
@@ -246,6 +247,23 @@ const real = (sent) => sent.filter((l) => l.length);
   r.frame();
   const last = real(r.sent).at(-1);
   ok('transient preroll: retried next frame', last.length === 1 && last[0].durationMs > 400, last);
+}
+
+{
+  // The preroll bundle's SOURCE_CONFLICT NACK arrives after it went out: Positioning ends with the words, Play again, no retry.
+  const r = rig();
+  r.ctl.load({ key: 'stash:1', title: 'One', stream: 'http://x/1' }, long);
+  await flush();
+  r.ctl.play();
+  const n = real(r.sent).length;
+  r.st.refuse = 'refused: rail owned by Pattern';
+  r.frame();
+  ok('preroll refusal: held with the words before the video starts', r.ctl.state.phase === 'held' && r.video.plays === 0
+    && r.ctl.state.status.text === 'refused: rail owned by Pattern' && r.ctl.state.status.tone === 'warn', r.ctl.state.status);
+  r.st.refuse = null;
+  for (let i = 0; i < 100; i++) r.frame();
+  ok('preroll refusal: Play offered, nothing sent, no auto-retry', r.ctl.canPlay() && real(r.sent).length === n
+    && r.video.paused && r.ctl.state.phase === 'held');
 }
 
 {

@@ -16,7 +16,9 @@
  *   (e2) the segments lookahead door: latch, role lookup, shared lazy grant,
  *       hub-time stamps less the declared latency, late clip, the 10 ms floor,
  *       the 100 us grid, half the horizon (250, 500, 1000); streamGate's
- *       order and railOwners;
+ *       order; a foreign-held control-owner slot never grays Play, a running
+ *       generator does, and a SOURCE_CONFLICT reads "refused: rail owned by"
+ *       its owner with no lock taken; railOwners;
  *   (g) every factory plugin validates and activates; Advanced Penetration
  *       substitutes both pattern built-ins on the recorded catalog
  *       (RENDERING §10.2) and every way it can fail (a missing essential
@@ -43,8 +45,8 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
-import { railOwners, railOwnerName } from '../src/model/actions.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
+import { railOwners, railOwnerName, railOwned } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
@@ -610,21 +612,44 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   }
 
   // streamGate: the first that applies, in order.
-  const all = { live: false, roles: 0, access: 1, halted: 'e-stop latched', running: true,
-    owners: [{ name: 'Advanced', session: 9 }], self: 3, busy: 'motion input in use by x' };
+  const all = { live: false, roles: 0, access: 1, halted: 'e-stop latched', running: true, busy: 'motion input in use by x' };
   const order = [];
   let g = { ...all };
-  for (const fix of [{ live: true }, { roles: 1 }, { halted: '' }, { running: false }, { owners: [{ name: '', session: 3 }] }, { busy: '' }]) {
+  for (const fix of [{ live: true }, { roles: 1 }, { halted: '' }, { running: false }, { busy: '' }]) {
     order.push(streamGate(g));
     g = { ...g, ...fix };
   }
   order.push(streamGate(g));
-  ok('streamGate order: link, tier, latch, generator, owner, busy, clear', JSON.stringify(order) === JSON.stringify(['no hub link',
-    'session not authorized', 'e-stop latched', 'stop the pattern first', 'rail owned by Advanced', 'motion input in use by x', '']), order);
-  ok('streamGate: an unlabeled foreign owner still gates', streamGate({ ...g, owners: [{ name: '', session: 4 }] }) === 'rail owned by another session');
+  ok('streamGate order: link, tier, latch, generator, busy, clear', JSON.stringify(order) === JSON.stringify(['no hub link',
+    'session not authorized', 'e-stop latched', 'stop the pattern first', 'motion input in use by x', '']), order);
 
+  // The rail ruling (main 6052b5f): control-owner never grays Play, a running generator does, the hub's NACK names the owner.
   const ownerEntry = entries.find((e) => e.id === CH_CONTROL_OWNER);
   const smp = { src0: 1, owner0: 7, src1: 2, owner1: 0, src2: 9, owner2: 8, src3: 0, owner3: 0 };
+  const label = ownerEntry.layout[0].options[1];
+  const [patF] = model.byRole.get(ROLE.patternRunning), [advF] = model.byRole.get(ROLE.advgenRunning);
+  const idle = { [CH_CONTROL_OWNER]: smp };
+  const playGate = (samples) => streamGate({ live: true, roles: 1, access: 1, running: railOwned(model.byRole, samples) });
+  ok('a foreign-held control-owner slot does not gray Play', playGate(idle) === '');
+  ok('a running generator does: pattern.running or advgen.running', playGate({ ...idle, [patF.channelId]: { [patF.name]: 1 } })
+    === 'stop the pattern first' && playGate({ ...idle, [advF.channelId]: { [advF.name]: 1 } }) === 'stop the pattern first');
+  {
+    const refusal = { ok: false, sent: 0, reason: 'SOURCE_CONFLICT' };
+    const { host } = makeHost({
+      submitSegments: (list) => (list.length ? { ...refusal, reason: conflictWords(refusal.reason, railOwners(ownerEntry, smp), 3) } : { ok: true, sent: 0 }),
+      gate: (f, busy) => streamGate({ live: true, roles: 1, access: 1, running: false, busy }),
+    });
+    let P = null;
+    host.add({ ...gaugeManifest, name: 'player', permissions: ['motion'] }, { activate(a) { P = a; } });
+    const durField = model.byRole.get('input.duration')[0];
+    const r = P.submitSegments([{ atMs: 0, norm: 0.5, durationMs: 50 }]);
+    ok('a SOURCE_CONFLICT NACK reads refused: rail owned by <name>, takes no lock, leaves Play clear',
+      !r.ok && r.reason === 'refused: rail owned by ' + label && P.gate(durField) === '', JSON.stringify(r));
+  }
+  ok('conflictWords: a labeled foreign owner only, else another source; other reasons pass',
+    conflictWords('SOURCE_CONFLICT', [{ name: 'Pattern', session: 3 }, { name: '', session: 8 }], 3) === 'refused: rail owned by another source'
+    && conflictWords('RATE_EXCEEDED', railOwners(ownerEntry, smp), 3) === 'RATE_EXCEEDED');
+
   ok('railOwners: every owned pair, labeled through options', JSON.stringify(railOwners(ownerEntry, smp))
     === JSON.stringify([{ name: ownerEntry.layout[0].options[1], session: 7 }, { name: '', session: 8 }]));
   ok('railOwnerName keeps its meaning: the first labeled pair, else empty', railOwnerName(ownerEntry, smp) === ownerEntry.layout[0].options[1]

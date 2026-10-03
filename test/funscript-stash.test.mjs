@@ -5,9 +5,11 @@
  * string, then createStash against test/fixtures/fake-stash.mjs (node http on 127.0.0.1): the
  * request shape and header, the mapping, both caches, and every error in words.
  *
- * Live: `node test/funscript-stash.test.mjs --live <base> --key <key>` prints what assumptions
- * A1..A9 (stash.js) need from a real Stash and exits nonzero when one fails. It never runs in check.
+ * Live: `node test/funscript-stash.test.mjs --live <file.json>` (a local, never committed
+ * {"base", "apiKey"}) or `--live <base> --key <key>` checks assumptions A1..A9 (stash.js) against a
+ * real Stash, read-only (GraphQL queries and GET), and exits nonzero when one fails. Never in check.
  */
+import { readFileSync } from 'node:fs';
 import {
   SCENES_QUERY, SORTS, COPY, normalizeBase, rebase, withKey, toScene, createStash,
 } from '../plugins/factory/funscript-player/stash.js';
@@ -23,9 +25,14 @@ const rejects = async (p) => { try { await p; return ''; } catch (e) { return e.
 
 const argv = process.argv.slice(2);
 if (argv[0] === '--live') {
-  const base = argv[1], key = argv[argv.indexOf('--key') + 1] || '';
-  if (!base || argv.indexOf('--key') < 0) { console.log('usage: --live <base> --key <key>'); process.exit(2); }
-  await live(normalizeBase(base), key);
+  let base = argv[1], key = argv[argv.indexOf('--key') + 1] || '';
+  if (base && /\.json$/i.test(base)) ({ base, apiKey: key } = JSON.parse(readFileSync(base, 'utf8')));
+  else if (argv.indexOf('--key') < 0) base = '';
+  if (!base) { console.log('usage: --live <file.json> | --live <base> --key <key>'); process.exit(2); }
+  // Stash writes the key into paths.stream; nothing printed may carry it.
+  const log = console.log;
+  if (key) console.log = (...a) => log(...a.map((x) => String(x).split(key).join('***')));
+  await live(normalizeBase(base), key || '');
   console.log(fails ? '\nFAIL -- ' + fails + ' assumption(s) do not hold' : '\nPASS -- every Stash assumption holds');
   process.exit(fails ? 1 : 0);
 }
@@ -62,6 +69,7 @@ ok('toScene shape', sc.key === 'stash:7' && sc.id === '7' && sc.title === 'my cl
 ok('toScene keys media, not the funscript', sc.stream === 'http://me:1/scene/7/stream?apikey=K'
   && sc.screenshot === 'http://me:1/scene/7/screenshot?t=5&apikey=K' && sc.funscript === 'http://me:1/scene/7/funscript');
 const bare = toScene({ id: '9', paths: { stream: '/scene/9/stream' }, interactive: false }, 'http://me:1', '');
+ok('toScene reads speed 0 as unknown', toScene({ ...raw, interactive_speed: 0 }, 'http://me:1', '').speed === null);
 ok('toScene with nothing optional', bare.title === 'Scene 9' && bare.date === null && bare.rating === null && bare.durationMs === null
   && bare.screenshot === null && bare.funscript === null && bare.studio === null && bare.performers.length === 0
   && bare.stream === 'http://me:1/scene/9/stream');
@@ -190,6 +198,8 @@ async function live(base, key) {
   let pg;
   try { pg = await st.scenes({ page: 1, perPage: 5 }); ok('A3 + A4 findScenes with the Boolean filter and the full selection', true, pg.count + ' interactive scenes'); }
   catch (e) { ok('A3 + A4 findScenes with the Boolean filter and the full selection', false, e.message); return; }
+  const bogus = await post('query($f: FindFilterType) { findScenes(filter: $f) { count } }', { f: { sort: 'no_such_sort', per_page: 1 } });
+  ok('A8 an unknown sort key is refused, so a pass below means the key exists', !!(bogus.body && bogus.body.errors));
   for (const [s] of SORTS) {
     for (const d of ['ASC', 'DESC']) {
       try { await st.scenes({ page: 1, perPage: 1, sort: s, direction: d }); ok('A8 sort ' + s + ' ' + d, true); }
@@ -208,12 +218,26 @@ async function live(base, key) {
     const s = await st.script(sc0);
     ok('A7 the funscript with the ApiKey header parses', true, s.at.length + ' actions, notes: ' + (s.notes.join(', ') || 'none'));
   } catch (e) { ok('A7 the funscript with the ApiKey header parses', false, e.message); }
-  const bare = await fetch(sc0.stream.replace(/[?&]apikey=[^&]*/, ''), { headers: { Range: 'bytes=0-1' } }).then((r) => r.status, () => 0);
-  console.log('  stream without the key answers ' + bare + (key ? ' (401 means the key is required and A2 matters)' : ''));
+  const unkeyed = (u) => fetch(u.replace(/[?&]apikey=[^&]*/, ''), { redirect: 'manual', headers: { Range: 'bytes=0-1' } })
+    .then((r) => r.status + (r.headers.get('location') ? ' to ' + r.headers.get('location') : ''), () => '0');
+  console.log('  without the key: stream ' + await unkeyed(sc0.stream) + ', screenshot ' + await unkeyed(sc0.screenshot)
+    + ', funscript ' + await unkeyed(sc0.funscript) + (key ? ' (a 302 to /login means the key is required and A2 matters)' : ''));
+  const pre = await fetch(base + '/graphql', { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173',
+    'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'apikey,content-type' } }).catch(() => null);
+  console.log('  CORS preflight from the vite dev origin: ' + (pre ? pre.status + ', allow-origin ' + pre.headers.get('access-control-allow-origin')
+    + ', allow-headers ' + pre.headers.get('access-control-allow-headers') : 'no answer'));
   const sr = await fetch(sc0.stream, { headers: { Range: 'bytes=0-1023' } }).catch((e) => ({ status: 0, headers: new Headers(), e }));
   ok('A2 + A5 the keyed stream answers a Range', sr.status === 206, 'status ' + sr.status + ', ' + sr.headers.get('content-type')
     + ', accept-ranges ' + sr.headers.get('accept-ranges'));
   console.log('  A5 container: ' + sr.headers.get('content-type') + ' (WebView2 plays mp4 H.264/AAC and WebM)');
+  const every = await post('{ findScenes(filter: { per_page: -1 }, scene_filter: { interactive: true }) { scenes { files { format video_codec audio_codec } } } }');
+  const tally = {};
+  for (const s of (every.body && every.body.data ? every.body.data.findScenes.scenes : [])) {
+    const f = s.files[0] || {};
+    const k = f.format + ' ' + f.video_codec + '/' + (f.audio_codec || '-');
+    tally[k] = (tally[k] || 0) + 1;
+  }
+  console.log('  A5 primary files by container and codec: ' + JSON.stringify(tally));
   if (sr.body) await sr.body.cancel().catch(() => {});
   const ss = await fetch(sc0.screenshot).then((r) => r.status + ' ' + r.headers.get('content-type'), (e) => e.message);
   ok('A2 the keyed screenshot loads', /^200 image\//.test(ss), ss);

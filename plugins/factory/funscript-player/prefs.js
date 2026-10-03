@@ -11,6 +11,8 @@
  * - No DOM or window at import time: node imports this module.
  */
 
+import { INTERP, cleanInterp } from './interp.js';
+
 export const PREFS = deepFreeze({
   T: { offsetMs: 0, lo: 0, hi: 1, invert: false },
   motion: true,
@@ -19,6 +21,11 @@ export const PREFS = deepFreeze({
   lib: { q: '', sort: 'date', direction: 'DESC' },
   view: 'player',
   zoomMs: 10000,
+  interp: INTERP,
+  // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
+  // seekMs 0 = jump; lowLatency and autoLatency per scheduler.js setLatency.
+  play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,
+    seekMs: 500, lowLatency: false, autoLatency: false },
 });
 
 const MIRROR = 'phosphor.funscript.';
@@ -63,6 +70,9 @@ const REPAIR = {
   lib: (l) => ({ ...l, sort: l.sort || PREFS.lib.sort, direction: l.direction === 'ASC' ? 'ASC' : 'DESC' }),
   view: (v) => (v === 'library' ? v : 'player'),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
+  interp: cleanInterp,
+  play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),
+    homePoint: clamp(p.homePoint, 0, 1), homeSpeed: clamp(p.homeSpeed, 0.05, 2), seekMs: clamp(Math.round(p.seekMs / 50) * 50, 0, 3000) }),
 };
 
 /** Merged over the key's default and repaired. */

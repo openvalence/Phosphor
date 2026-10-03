@@ -123,7 +123,10 @@ nothing for it, and a mount that fills its element's height fills the window.
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
-| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first`, `rail owned by <source>`, `motion input in use by <plugin>` | experimental |
+| `writeTrial(field, value)` | a setting applied live and not stored until `commitTrial()` (Valence RFC-099, SPEC §9.3); same shadow lifecycle as `write`. `{ok: false, error}` on a hub without settings-trial or a field that is not a setting. Needs `intent` | experimental |
+| `commitTrial()` / `revertTrial()` | a Promise of `{ok, error?}`: store, or put back, every trial value this client holds. Needs `intent` | experimental |
+| `trialPending` | read-only property: true while any client holds a trial value on this hub, from the machine's `meta.trial_pending` fields | experimental |
+| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first` (a generator runs), `motion input in use by <plugin>`. A foreign-held control-owner slot never gates; a stream holding the rail is the hub's `SOURCE_CONFLICT`, which `submitSegments` returns as `refused: rail owned by <source>` | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
 | `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
@@ -186,6 +189,14 @@ an ok `submitMotion` until now plus its duration plus 500. Another plugin's
 `submitMotion` or `submitSegments` meanwhile returns `{ok: false, sent: 0,
 reason: 'motion input in use by <plugin>'}` without reaching the door, and its
 `gate` on a motion-input field says the same.
+
+**Trial writes.** The hub keeps each trial key's stored value and owns the
+undo: `revertTrial()`, a closed tab and a lost link all put it back, and
+nothing reaches the machine's flash until `commitTrial()`. A key one client
+has on trial refuses every other client's write, trial or not, with
+`TRIAL_CONFLICT` (it lands in `reason(field)`). The flip, the schedule horizon
+and the chase interval are refused as trials on the reference hub: each is
+gated on live state, so its revert could be refused too.
 
 ## Manifest (`manifest.json`, beside the module)
 
@@ -410,13 +421,20 @@ Shipped:
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
   renders only where the hub has a segments STREAM (D1); the window, the
-  position, `limit.input.speed` and both generator run roles are optional.
+  position, `limit.input.speed`, both generator run roles and the plan
+  strip's elapsed and duration (automatic latency) are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
   span on the media clock, and every stop of its own sends one hold; a
   gate or a hub refusal pauses it with no hold. The card's Play is the
   only start, and a latch, a running generator or another producer grays
   it with the gate's words. Stash rides `net.fetch`, its connect card
-  in the Plugins pane and in the library's place. Operator values persist
+  in the Plugins pane and in the library's place. The detail's expand
+  button opens the analyzer in the card's own box: the hub's Tuning
+  controls (and `limit.input.*`), written Live through `api.write` or as a
+  Preview through `api.writeTrial` with Apply and Discard, so the manifest
+  declares `intent`. Its settings card holds the Stash connect card, the
+  motion curve and the playback rows (loop, auto-home, seek glide, low and
+  automatic latency); the detail's A-B button loops a section. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
   Plugins (`page.js`), mounts the same card full width. Design and decisions:
@@ -436,7 +454,8 @@ shell bundle against a fake hub (`--live` against valencesim).
 player's contract exports, prefs and hero spec; without `--unit`
 (`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
 shell bundle against a fake hub and the fake Stash, and `--live --port P
---http P+7` against valencesim on spare ports.
+--http P+7` against valencesim on spare ports; `--live-playback` there plays
+loop, auto-home, the seek glide, both latency settings and a Preview write.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The

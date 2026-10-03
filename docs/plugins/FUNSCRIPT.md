@@ -15,10 +15,10 @@ Decisions below.
 
 | id | flag | what | without it |
 |---|---|---|---|
-| R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), and Stash is not known to answer a CORS preflight |
+| R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), although Stash answers the preflight (v0.31.1, measured 2026-10-03: allow-origin `*`, allow-headers `Apikey, Content-Type`) |
 | R-B | config | CSP `media-src 'self' blob: http: https:` and `img-src` + `http: https:`; http capability + `https://**:*` (`:*`: any port) | `media-src` falls back to `default-src 'self'`: not even a local file (blob:) plays in the shell |
 | R-C | CANON FLAG, PLUGINS.md "manifest plus one module" | a multi-module factory plugin; Vite bundles the siblings; an override copy in the plugins folder must be bundled into one file first | the plugin builder inlines the modules into `index.js` at the end (the import graph has no cycles and no import-time side effects) |
-| R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`) | — |
+| R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`). Superseded for `intent` by the analyzer (ph-smvd.11, A1): it writes tuning | — |
 
 When ruled, R-A and R-C become rows in DESIGN.md's Amendments table and
 sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
@@ -32,7 +32,9 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
 | player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, transport, status slot, layout tiers |
 | stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
-| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
+| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, curve, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
+| interp | `interp.js` | ten curves between actions, smoothing and a slew limit; the settings card's curve rows (Interpolation) |
+| analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
 
 Order: core, host and stash start at once; scheduler follows core's
 signatures (not its code); player-ui codes against all contracts; plugin
@@ -92,6 +94,57 @@ action gap, `input.end_velocity` at its `unspecified` sentinel, no
 `curve_family`, no client feasibility. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
+## Interpolation
+
+`interp.js` (ph-smvd.10) bends the content between actions before the
+scheduler sees it. Linear is the default, and with smoothing and slew off
+`shape()` returns the parsed Script itself: everything above holds byte for
+byte. Any other setting cuts each action gap into pieces of at most 40 ms
+(`STEP_MS`, 25 segments/s, under the 50 Hz grant), keeps every action,
+merges collinear pieces back, and schedules that Script; preroll, stop,
+thinning, the speed meter and the heat read it too. Each piece is still one
+segment with end velocity `unspecified` and no `curve_family`.
+
+| mode | rule | parameter | leaves its two actions |
+|---|---|---|---|
+| Linear | the authored meaning | | no |
+| Step | hold, then the move in the last piece | | no |
+| Smoothstep | `3u^2 - 2u^3`, at rest on every action | | no |
+| Cosine | `(1 - cos(pi u)) / 2`, at rest on every action | | no |
+| Catmull-Rom | cardinal: `(1 - tension)(y[k+1] - y[k-1]) / (t[k+1] - t[k-1])` | tension 0..1 | yes |
+| Hermite | Kochanek-Bartels bias: `((1 + b) d_in + (1 - b) d_out) / 2` | bias -1..1 | yes |
+| Monotone | Fritsch-Carlson | | no |
+| PCHIP | Fritsch-Butland, MultiFunPlayer's rule | | no |
+| Akima | Akima 1970 | | slightly |
+| Makima | MATLAB makima, MultiFunPlayer's rule, symmetric second phantom | | slightly |
+
+The cubic modes start and end the script at rest; every value is clamped to
+0..1. After any mode, a smoothing window (a centered box, 0 to 500 ms, no
+lag) and then a slew limit (0 to 2000 mm/s, causal, over the window's length
+in mm times the Range share; off without the length) apply. Prefs key
+`interp`, mirrored as `phosphor.funscript.interp`: `{mode, tension, bias,
+smoothMs, slewMmS}`; the controls sit on the plugin's settings card. The
+detail view draws the shaped curve as intent and the file's actions muted
+under it.
+
+Veto-able (ph-smvd.10):
+
+- **I1** Dense knots, not `end_velocity` plus `c1_cubic` (the MFP notes'
+  exact mapping): that needs an end velocity in the host packer and covers
+  PCHIP and Makima only; dense knots cover every mode with no host or wire
+  change. Cost: up to 25 segments/s where a script had 2 to 6, and a
+  `RATE_EXCEEDED` thins back to extrema, toward linear.
+- **I2** Step is offered (the notes advise against it): its jump is the
+  last piece, 20 to 40 ms, shaped by the hub's speed limit or the slew limit.
+- **I3** The slew limit is a content transform the operator sets, like
+  Range; `limit.input.speed` on the hub stays the bound (SPEC §9.6). Off by
+  default.
+- **I4** Makima uses the symmetric second phantom, not MFP's `pm2`: it
+  matches MFP from the third span on (tested) and rests on the first action.
+- **I5** The slew limit reads the window length when the script loads, the
+  hero's fields change or the Range commits; a window resize alone does not
+  reshape.
+
 ## Sync
 
 1. **Three clocks, one map.** Media time is the master. One affine map
@@ -114,7 +167,8 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
    hands off at each successor's start (SPEC §9.6). Per-frame re-anchoring
    (design 3) was rejected: it puts plus or minus half a vsync of jitter
    into every stamp and breaks the tiling.
-4. **Events.** `playing` and `seeked` anchor on the next frame and restart;
+4. **Events.** `playing` and `seeked` anchor on the next frame and restart (a
+   seek while playing restarts with the glide, Playback; a loop wrap is no seek);
    `ratechange` anchors at the new rate and restarts; `pause`, `seeking`,
    `waiting`, `error`, a hidden page and an unmount send one hold; `ended`
    sends nothing (the last segment ends at rest).
@@ -160,10 +214,12 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 - **The gate.** `api.gate(fields.dur)` on the segments field returns, in
   order: `no hub link`, `session not authorized`, the latch words
   (`e-stop latched`, `paused, resume to continue`), `stop the pattern first`
-  (`pattern.running` or `advgen.running` reads on), `rail owned by <label>`
-  (control-owner shows a source owned by another session), `motion input in
-  use by <plugin>`. Play is grayed with the words in the status slot (law
-  3); `PluginSlot` re-runs `update()` on a latch or owner change.
+  (`pattern.running` or `advgen.running` reads on, `railOwned`), `motion
+  input in use by <plugin>`. Play is grayed with the words in the status
+  slot (law 3); `PluginSlot` re-runs `update()` on a latch or owner change.
+  Control-owner is never read (rail ruling, operator 2026-10-03): a slot
+  stays held for its session's life, so a foreign stream is the hub's
+  `SOURCE_CONFLICT` to say.
 - **Mid-play.** The scheduler re-reads the gate every frame and the door
   refuses under the latch. Any gate or fatal refusal pauses the video in
   the same frame, sends nothing, and shows the words: the rail then
@@ -173,7 +229,10 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 - **A refusal the gate cannot see.** A STREAM bundle has no answer, so a
   `SOURCE_CONFLICT` from a source the gate does not show arrives as a
   NACK after the bundle that drew it. The hub drops that bundle; the
-  player pauses on the next frame. Bundles sent inside that round trip
+  player pauses on the next frame (during preroll an empty call each frame
+  surfaces it before the video starts) and the status slot reads `refused:
+  rail owned by <label>` (`another source` when the hub labels none). Play
+  re-enables; nothing retries. Bundles sent inside that round trip
   (one, measured on the fake hub) are refused the same way; none follow.
 - **Never auto-resume.** When a gate clears, Play re-enables and nothing
   restarts. The strip's Resume re-arms the hub only (SPEC §11.1); the
@@ -207,6 +266,8 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
   the over-limit words outrank them in the slot; the tooltip keeps them.
 - **Containment.** No fullscreen, picture-in-picture or native controls
   (law 1): the strip's e-stop and pause stay on screen. No red (law 13).
+  The analyzer's expand keeps it: the video goes to an in-card thumbnail,
+  not to picture-in-picture (A2).
 
 ## The card (player-ui)
 
@@ -220,10 +281,11 @@ FULL
 | source bar: Open files, title                   | search, sort, dir  |
 | stage 16:9, object-fit contain                  | tiles, paged,      |
 |   empty: 'Open a video'                         |   never scrolled   |
-| overview 24: whole-script heat, window box,     | page n / m, N      |
-|   vertical-pill scrub (40 px hit)               |                    |
-| detail 96: automation curve (intent), reality   |                    |
-|   trace, fixed center playhead, range pills     |                    |
+| detail 96: automation curve (intent), reality   | page n / m, N      |
+|   trace, plan, range pills, zoom, Analyzer      |                    |
+| overview 24: whole-script heat, window box,     |                    |
+|   vertical-pill scrub (40 px hit); its line     |                    |
+|   runs up through the detail: one playhead bar  |                    |
 +------------------------------------------------+--------------------+
 | status slot 20, one line, aria-live                                  |
 | transport var(--tap): Play | time | Motion | Offset | Invert |        |
@@ -269,7 +331,10 @@ FULL
   machine in sync draws on the curve: offset can be set by eye. It is a
   scope, not a measurement (ponytail; arrival-stamped).
 - **Handles** (Advanced Penetration's vocabulary): the scrub playhead is a
-  vertical pill (left-right; arrows 5 s, Shift 30 s, Home, End); range low
+  vertical pill on the heat, the bottom band, whose line runs up through
+  the detail as one bar (left-right; arrows 5 s, Shift 30 s, Home, End;
+  the detail window holds the playhead at the same share of its width as
+  the heat, so the two never disagree); range low
   and high are horizontal pills at the detail's left edge, high one tap to
   the right of low so close values never stack (up-down; arrows 1 %, Shift
   10 %). A pill's hit box stays inside the detail, which clips, and only
@@ -317,34 +382,216 @@ Pages and scripts are cached for the session. Load: hold, fetch and parse
 the funscript, set `video.src` to the direct stream and the poster to the
 screenshot. A scene without a script loads video only, Play stays grayed.
 
-Assumptions (each marked `ASSUMPTION An` in `stash.js`; verified by
-`node test/funscript-stash.test.mjs --live <base> --key <key>` once the
-operator gives a URL and key):
+Assumptions (each marked `ASSUMPTION An` in `stash.js`). Verdicts from the
+operator's Stash v0.31.1 on the LAN, 2026-10-03, read-only (queries and
+GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
+<file.json>` (a local `{base, apiKey}`, never committed; or `--live <base>
+--key <key>`) and, in the browser, `node test/funscript-player.test.mjs
+--stash-live <file.json>`.
 
-- **A1** GraphQL at `<base>/graphql`, POST JSON, header `ApiKey: <key>`;
-  no session cookie is used.
-- **A2** Media URLs (`stream`, `screenshot`) accept `?apikey=<key>`.
-- **A3** `SceneFilterType.interactive` is a plain Boolean (design 2 read
-  Stash's develop schema 2026-10-02). The brief's
-  `{value: true, modifier: EQUALS}` form would fail validation.
-- **A4** findScenes returns `count` and `scenes { id title date rating100
-  interactive interactive_speed files { duration width height } paths {
-  screenshot stream funscript } studio { name } performers { name } tags {
-  name } }`; `files[].duration` is in seconds.
-- **A5** `paths.stream` is the original file, direct and Range-capable;
-  WebView2 plays mp4 (H.264/AAC) and WebM, not every HEVC or MKV.
-- **A6** `paths.*` carry Stash's own idea of its host; the client rebases
-  them onto the configured base.
-- **A7** `paths.funscript` (`<base>/scene/<id>/funscript`) serves the main
-  script JSON with the ApiKey header; Stash serves no multi-axis companions.
-- **A8** Sort keys `date`, `created_at`, `title`, `rating`,
-  `interactive_speed` exist; direction is ASC or DESC.
-- **A9** `{ version { version } }` exists for Test.
+- **A1** verified. GraphQL at `<base>/graphql`, POST JSON, header
+  `ApiKey: <key>`; no cookie needed; no key or a wrong key is 401. CORS
+  answers any origin (the vite dev path works).
+- **A2** verified. `?apikey=<key>` opens `stream`, `screenshot` and
+  `funscript`; without it each is a 302 to `/login`. Stash already writes
+  the key into `paths.stream` (not `screenshot`); `withKey` replaces it.
+- **A3** verified. `interactive` is a Boolean: `{value, modifier}` is
+  refused with `cannot use map as Boolean`.
+- **A4** verified. The selection answers as written (plus
+  `files { basename }`); `duration` is seconds. Every title on this server
+  is empty, so the basename fallback is the title in practice; four scenes
+  carry two files, `files[0]` is the primary. `interactive_speed` is 0 on
+  three scripted scenes Stash never measured: the client reads 0 as
+  unknown.
+- **A5** verified. `stream` is the original file, 206 to a Range, with
+  `accept-ranges: bytes`. Primary files: WebM VP8/VP9 114, MP4 H.264 65,
+  MP4 AV1 8, Matroska VP9 with PCM audio 1 (the one Chromium may refuse).
+  In the browser harness, under the shell CSP's `img-src` and `media-src`
+  (`http: https:` covers a LAN Stash; the shell's origin is
+  `http://tauri.localhost`, so no mixed content), every tile's screenshot
+  loads and a scene plays from its direct stream.
+- **A6** verified. `paths.*` are absolute and carry the host the request
+  used; rebasing onto the base is then a no-op, kept for a proxy.
+- **A7** verified. `paths.funscript` serves the main script (text/plain
+  JSON) to the ApiKey header; `ScenePathsType` has no companion path
+  (`screenshot preview stream webp vtt sprite funscript
+  interactive_heatmap caption`).
+- **A8** verified. All five keys sort both ways; an unknown key is refused
+  (`invalid sort`), so a pass is meaningful.
+- **A9** verified. `{ version { version } }` answers `v0.31.1`.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
 `currentTime` at the seek point, which the clock would need to model),
 markers, write-back (play count), Stash's heatmap PNG (its red ramp breaks
 law 13; the card draws its own token heat).
+
+## Playback (ph-smvd.12)
+
+Loop, auto-home, seek transition and latency, in `clock.js` and
+`scheduler.js`; signatures and the card's wiring (ph-smvd.13) in CONTRACT.md,
+module scheduler. MFP's behavior for each: FUNSCRIPT-MFP-NOTES.md. Prefs
+key `play`. Each choice below is veto-able.
+
+- **Loop without a gap.** MFP treats a loop as a seek (a hold, a re-anchor,
+  a 4 s chase). Here the clock runs in unrolled media time (lap L adds
+  L x (b - a)), so the map stays one line across the wrap and the scheduler
+  stamps the next lap before the video jumps. The seam is one span from the
+  last knot before b to the first after a: the rail never jumps, and that
+  span departs from the authored line (which would jump from the script at
+  b to the script at a). The video is sent back `WRAP_EARLY_MS` (one 30 fps
+  frame) before b, so a whole-media loop never reaches `ended`; the seek's
+  landing delay is a clock residual, stepped past 25 ms. A-B points are the
+  timeline's runtime state, not prefs (they belong to one video); a seek
+  past b clears them, as MFP does. Count 0 plays forever; N plays the
+  section N times, then plays on.
+- **Auto-home only while playing.** A gap of `homeAfterMs` plus both moves
+  follows the line for `homeAfterMs`, moves to the point at `homeSpeed`,
+  waits, and returns to land on the next action at its time; after the last
+  action, one move home. These are knots in the scheduler's copy of the
+  script, so they tile and ride `submitSegments` like any span; the gaps
+  are the file's actions, never the shaped pieces (interp.js). Off by
+  default (MFP: on, but never inside the script while playing): it is
+  motion nobody authored. A pause stays a hold ending at rest; homing while
+  paused would be motion the operator did not start.
+- **Seek transition.** MFP bends the output for 4 s with a per-sample
+  chase, which segments cannot carry. A seek here is one segment from now
+  to where the script will be `seekMs` later, then the script from that
+  instant: knots keep their times, the tiling holds, and the knots inside
+  the delay are passed over. 500 ms by default, 0 jumps as before. The
+  hub's input speed limit still bounds a short delay.
+- **Low latency** (off by default). RFC-087 item 3 names no 100 ms horizon:
+  a low-latency segments client stamps 50 ms ahead under the same 250 ms
+  horizon. So the setting caps the offer at `LEAD_LOW_MS` (50), narrows the
+  clock ring to 8 frames and raises the slew to 15 ms/s (a display-latency
+  change followed in about 0.9 s instead of 2.7), and lets the rAF fallback
+  take over after 100 ms without a frame. It does not move the alignment:
+  stamps are absolute, so a lookahead player's felt latency is the offset,
+  not the lead. What it costs is stall tolerance (about 105 ms down to 30)
+  and more vsync jitter in the stamps; the CPU cost is nil in a page, where
+  the rAF loop already runs every frame (MFP's precise sleep has no
+  analog).
+- **Automatic compensation** (off by default). The scheduler reads the plan
+  strip the way `test/funscript-sync-live.mjs` does (start = arrival -
+  `plan.elapsed`, the least of a plan's samples), matches each plan to the
+  sent segment of its duration, and takes the median of the last 32 start
+  minus `atMs`. It is measured against the stamp, so applying it changes
+  nothing it measures: no loop to hunt. It is applied as `T.offsetMs -
+  compMs`, by one restart, when it moves 2 ms or more, bounded to 100 ms.
+  Its known bias: the arrival includes the STATE frame's one-way transport,
+  and the 14 ms floor on the sim (Tests, what the sync bars do not cover) is not split between hub
+  lateness and observation, so it can make the machine early by that much.
+  It sits on top of the declared `schedule_latency_us` (RFC-059 forbids
+  bidding that down) and beside the operator's offset.
+
+The card (ph-smvd.13):
+
+- **Controls.** The plugin's settings card carries nine Playback rows under
+  the curve rows: Loop (the whole video), Loop count (`forever` at 0), Auto-home,
+  Home after, Home point, Home speed (%/s), Seek glide (`jump` at 0), Low
+  latency, Auto latency; toggles read On or Off in a fixed box, sliders wear
+  the analyzer's vertical-pill thumb. A change applies at once: home and the
+  loop at the next restart (a playing card restarts), latency in force.
+- **A-B.** One button in the detail's cluster, `A-B`: the first press sets A
+  at the playhead, the second B (the loop starts; B at the playhead wraps at
+  once), the third clears. The section is a selection: a `--highlight` band
+  on the heat and dashed lines in the detail. With no B the Loop row loops
+  the whole video.
+- **Plan strip.** `plan.elapsed` and `plan.duration` are optional hero
+  roles; each new STATE (its age drops) is one `observePlan` sample.
+- **Shown time** is the unrolled clock folded back, so the readout, the
+  playhead and the trace stay in media time across laps.
+- **Measured** on valencesim 0.1.7-p4hub (etag d8c8e522322810a2, a private
+  `--state`, spare ports; `--live-playback`, 2026-10-03): with auto latency on,
+  the lag median came after 6 s of play and compensation settled at
+  14.55 ms (lag 14.44 ms) in one step, the sim's known floor; the lead
+  stayed within 125.6 ms (half the 250 ms horizon). A seek to 16 s while
+  playing sent one hold, then a 500 ms glide 109 ms later
+  whose target sat on the script 500 ms on (error under 0.0001). Auto-home in the
+  14.2 s gap moved in over 400 ms
+  (the 400 ms floor: the line there was close to the point), held 8012 ms, and
+  the measured position read 0.5 of the window (160 samples, every one
+  within 0.001). An A-B loop of 4.05 s wrapped 4
+  times with no hole in the schedule and no NACK; on two of the three wraps the seek
+  landed late enough to step the clock, so the seam span was re-sent 48.9 ms later
+  (a cut, not a hole; an adaptive wrap lead is open), and the largest position change between samples was 0.0883 of the
+  window against 0.0935 in plain play. Low latency kept every offer within
+  49.5 ms with 19 bundles in 7.5 s and no NACK; compensation held
+  14.55 ms (lag 14.26 ms).
+
+## Analyzer (ph-smvd.11)
+
+The expand button on the detail (Blender's maximize glyph, tooltip
+`Analyzer`) turns the heat into a tuning bench, after the archived
+SlopDrive-32 slopsim graph page: the script with the hub's plan
+(`plan.current`, `--intent` at reduced weight) and the measured position
+(`telemetry.position`, `--reality`) overlaid on a taller detail, a lag
+readout, and every tuning control the hub exposes. The card's outer rect
+does not move: in full the library column becomes the analyzer under a
+320 x 180 thumbnail of the video; in handheld the thumbnail sits one tap
+high in the source row and the analyzer takes the lower 55 % of the
+timeline's box. Collapsing restores the card as it was.
+
+- **Controls.** Bound by the catalog, never by channel: the writable
+  fields of every group whose first segment is the registry's `Tuning`
+  subgroup (RFC-094; on valencesim: motion behavior, streaming, sample
+  streams, curve, infeasible moves, settling), the writable fields that
+  share a write channel with those (the kinetic ceiling overrides), and
+  `limit.input.*` by role. Each row draws the field's derived
+  presentation: slider (a vertical-pill thumb, one write on release),
+  stepper, toggle, two-option segmented, else a select. A 3 px bar shows
+  the write ladder (`--intent` pending, `--warn` overdue or fault); the
+  gate, the refusal or the stale words ride the row tooltip.
+- **Live or Preview.** Live writes through `api.write`. Preview (the
+  default where the hub declares `action.trial`) writes through
+  `api.writeTrial`; Apply is `api.commitTrial()`, Discard
+  `api.revertTrial()`. `Preview: not saved` stands in the status slot,
+  with an `--intent` bar, while `api.trialPending` (any client's trial),
+  outranked only by a refusal and the gate. A mode switch writes nothing.
+- **Lag.** `Lag n ms` is the shift that best lays the measured position
+  over the script (after Offset, Range and Invert), `Plan n ms` the same
+  for `plan.current`, both over the trace's last 8 s, every 500 ms,
+  between -100 and 400 ms. A scope like the trace, not a measurement:
+  telemetry arrives on its own cadence (ph-smvd.12's compensation is the
+  measured path).
+
+Decisions (veto-able):
+
+- **A1** The manifest declares `intent`: the analyzer is a writer, so R-D's
+  reason no longer holds. Veto: the analyzer shows values read-only and
+  the tuning stays on the settings page.
+- **A2** Pushback on the brief: no Document Picture-in-Picture or
+  `requestPictureInPicture`. Both open an always-on-top OS window that can
+  sit over the top strip, which law 1 and Containment forbid; the brief's
+  own fallback, an in-card thumbnail, is the only path. Veto: a ruling that
+  amends law 1 for a floating video, then the PiP call where available.
+- **A3** No host Field presentations: the plugin API has no member that
+  mounts a host field, so the rows are the plugin's own controls over
+  `api.value`, `api.status`, `api.gate`, `api.reason` and `api.stale`,
+  without Field.svelte's afterglow. The host member (`mountField(el, field,
+  {write})`, a write override for trials) is a host bead. Veto: wait for it.
+- **A4** Preview is the default on a trial-capable hub, so an exploratory
+  drag is never stored by accident; the mode is not persisted.
+- **A5** Diagnostics stay on the settings page: the analyzer lists the
+  writable fields only (the archived page's anomaly counts are readouts the
+  generic renderer already shows).
+- **A6** A trace point's plan share treats `plan.current` as a window share
+  (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
+  the field's own min and max when it declares them.
+
+Tests: `--unit` (c2) checks the groups on the recording itself (valencesim
+0.1.7-p4hub, etag d8c8e522322810a2: `Tuning / ` groups, `trial_mask` and
+settings-trial) and on a model with the `Tuning` prefix stripped
+(limit.input.* only), and lagOf on a synthetic 42 ms and 14 ms
+lag. The browser run (g), under a coarse pointer: the playhead bar spans
+the detail and the heat at the grip's x and the time's share; expand keeps
+the outer rect (full and handheld) with the video in the thumbnail and
+the library out; one row per field; 40 px targets, nothing outside the
+card; a Live write is a durable INTENT on the field's write channel, a
+Preview write the same with `trial`; the notice stands while the hub marks
+the trial; Apply sends settings-trial op 1, Discard op 2, each clearing
+it; rects unchanged across Live, Preview and a pending trial; collapse
+restores the card. `--live`: on valencesim a Preview write raises the
+notice and Discard clears it and restores the stored value.
 
 ## Tests
 
@@ -371,8 +618,9 @@ law 13; the card draws its own token heat).
   control outside the card and no cut label (full, glance, handheld from
   264 to 959 px, the Stash grid); no computed `--bad`; no text in `--warn`;
   runtime copy
-  within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK in the
-  status slot; Stash settings, tiles with apikey, a pick fetching the
+  within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK reads
+  `refused: rail owned by` in the status slot; Stash settings, tiles with
+  apikey, a pick fetching the
   script with the header and playing it.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:
@@ -382,6 +630,22 @@ law 13; the card draws its own token heat).
   overview plays on from the new time with bundles flowing, an Advanced
   start grays Play, and last the strip's E-stop pauses the video with the
   latch words and nothing is sent after.
+- **Playback, browser (h):** on the fake hub the A-B button reads its next
+  press, the second press starts the loop with a band on the heat, the video
+  wraps at least twice inside the section with no hold, the schedule has no
+  hole past 30 ms across any seam, and the third press clears it. Section
+  (a)'s seek checks expect the glide: one hold, a 500 ms segment to the
+  script 500 ms on, then one joining span and the knots.
+- **Live playback:** `--live-playback --port P --http P+7 [--shots dir]`
+  against valencesim on spare ports with a private `--state`: a 60 s clip
+  and script (400 to 697 ms spans of 25 to 75, inside the sim's speed limit,
+  so plans keep their durations, and a 14 s gap), auto latency on, a seek
+  glide, auto-home, an A-B loop, low latency through the settings card, and a
+  Preview write the sim must show with its trial mark and then drop on
+  Discard; one `PB-RESULT` JSON line. After it the caller restarts the sim on
+  the same `--state`: the previewed field must read its stored value
+  (Playback, measured; Chase gain: stored 0.9, trial 0.95,
+  after the restart 0.9, no pb.cfg written).
 - **The sync measurement:** `node test/funscript-sync-live.mjs --port P
   --http P+7 [--horizon 250|500|1000]`, never in `check`, skips when no sim
   answers or the hub has no segments STREAM, prints the hub_instance_id
@@ -455,7 +719,8 @@ law 13; the card draws its own token heat).
 - **D9** One producer per session; the hold ends 500 ms after the holder's
   last sent segment (design 3), not a flat 1 or 2 s.
 - **D10** Offset, Range and Invert are client content transforms in global
-  prefs; the window is never written; no `intent` permission (R-D).
+  prefs; the window is never written; they need no `intent` (the
+  analyzer's tuning writes do, A1).
 - **D11** Speed meter and heat are display only.
 - **D12** Thinning only after `RATE_EXCEEDED` (design 3).
 - **D13** Stash: direct streams only, Boolean filter per A3 (design 2's
@@ -472,7 +737,7 @@ law 13; the card draws its own token heat).
   playback until the operator's Play; a stall holds and continues on
   `playing` (Play is still in force).
 - **D17** Local files by file input only; no drag and drop.
-- **D18** Funscript literal semantics: linear between actions for display,
+- **D18** Funscript literal semantics: linear between actions by default (Interpolation),
   `range` ignored, `inverted` honored, only L0 drives the rail, other axes
   named in the status.
 - **D19** Library pages, never scrolls (DESIGN §10.6); the library is a side
@@ -483,6 +748,28 @@ law 13; the card draws its own token heat).
   and the plan strip (start = arrival - elapsed, 2 to 9 samples per plan on
   a 22 ms cadence) cannot resolve 2 ms. Veto: a hub-stamped plan start
   event, then 2 ms.
+- **P1** (ph-smvd.13) One A-B button that cycles start, end, clear, not two
+  buttons or draggable points on the heat: one 40 px target fits the
+  detail's cluster beside the range pills at 264 px. Veto: A and B pills on
+  the heat (a drag vocabulary the heat does not have yet).
+- **P2** A loop change while playing holds and re-anchors at lap 0: the
+  unrolled clock cannot jump laps, so pressing B costs one hold (at most
+  200 ms) before the wrap. Veto: keep the lap and re-base the clock (more
+  state, same motion).
+- **P3** The playback controls sit on the settings card, not the transport:
+  the transport has no free fixed column at 264 px, and these are set once
+  per session, not per scene. Veto: a transport Loop toggle in the
+  handheld third row.
+- **P4** The fixture re-record brought settings-trial's commit/revert op to
+  the Home page as a generic loose action (an Actions card). The settings
+  model now keeps `action.trial` out of the generic triggers: the op acts
+  only on the sender's own trials, the generic renderer makes none, and the
+  analyzer's Apply and Discard are its only callers. Veto: a generic trial
+  verb, after RENDERING says how a trial value is marked (RFC-099 left it open).
+- **P5** `createLoop` counts a lap on a frame in the section's first half
+  while a wrap is pending, not on a backward jump from the last frame: a
+  loop set at the playhead wraps before any frame, and the jump rule never
+  fired (found by browser section (h)).
 
 ## Protocol gaps and risks
 

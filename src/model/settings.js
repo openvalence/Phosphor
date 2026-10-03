@@ -602,7 +602,9 @@ export function buildSettingsModel(entries) {
   // field. Uncategorized ones are `looseActions`: a home module and the
   // `other` overflow page (RENDERING §3; App.svelte). The
   // persistent region's verbs (safety, home) are drawn there, never twice.
-  const looseActions = actions.filter((a) => !isPersistentAction(a) && !place(a));
+  // settings-trial's op (RFC-099) is never a generic trigger: it acts only on
+  // the sender's own trials, and the generic renderer makes none.
+  const looseActions = actions.filter((a) => !isPersistentAction(a) && a.role !== 'action.trial' && !place(a));
 
   // Tabs in registry order (RENDERING §12). An unrecognized or vendor id sorts
   // where `other` does (§3), keeping its own tab and label; never dropped.

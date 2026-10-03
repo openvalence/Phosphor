@@ -11,11 +11,13 @@
  * Run: node test/funscript-scheduler.test.mjs
  */
 import {
-  createMediaClock, frameSource, CLOCK_WINDOW, FALLBACK_AFTER_MS,
+  createMediaClock, frameSource, CLOCK_WINDOW, FALLBACK_AFTER_MS, LOW, createLoop, loopSpec, WRAP_EARLY_MS,
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
+  withHome, HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS,
 } from '../plugins/factory/funscript-player/scheduler.js';
+import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
 
 let fails = 0;
@@ -333,6 +335,190 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
     'shortest ' + minDur + ' ms');
   ok('thinned once per rate', logs.filter((m) => /thinned/.test(m)).length === 1);
   ok('the thinned spans still tile', after.slice(1).every((g, i) => near(after[i].atMs + after[i].durationMs, g.atMs, 1e-9)));
+}
+
+// ---- (d) playback: loop, home, seek transition, latency ----------------------
+console.log('(d) playback');
+const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent[i].atMs + sent[i].durationMs - g.atMs)));
+{
+  // A-B loop over 1000..3000 played 3 times: the clock runs in unrolled media time.
+  const s = parseFunscript({ actions: [0, 500, 1200, 1700, 2400, 2900, 3500, 4000].map((at, i) => ({ at, pos: i % 2 ? 90 : 10 })) });
+  const L = loopSpec(1000, 3000, 3, s.durationMs);
+  let t = 0;
+  const now = () => t;
+  const host = fakeHost(now);
+  const sch = createScheduler({ submit: host.submit, now });
+  const clock = createMediaClock();
+  clock.anchor(0, t, 1);
+  sch.load(s); sch.setLoop(L); sch.restart(clock);
+  while (clock.mediaAt(t) <= 4000 + 2 * 2000 + 500) { sch.tick(clock); t += VSYNC; }
+  const ends = host.sent.map((g) => clock.mediaAt(g.atMs + g.durationMs));
+  ok('loop: spans tile across both seams within 0.001 ms', tiles(host.sent) <= 0.001, 'max ' + tiles(host.sent).toExponential(1));
+  const seams = host.sent.filter((g) => near(g.durationMs, 1200 - 2900 + 2000, 1e-9));
+  ok('loop: each seam is one span, last knot before b to the first after a (no jump, no gap)', seams.length === 2
+    && seams.every((g) => near(g.norm, s.pos[2], 1e-6)), seams.length + ' seams');
+  ok('loop: three plays of a..b, then the tail to the last action', host.sent.length === 5 + 4 + 6 && near(ends.at(-1), 4000 + 4000, 1e-6),
+    host.sent.length + ' spans, last end ' + ends.at(-1).toFixed(1));
+  const fh = fakeHost(now);
+  const fe = createScheduler({ submit: fh.submit, now });
+  const fc = createMediaClock();
+  t = 0;
+  fe.load(s); fe.setLoop(loopSpec(1000, 3000, 0, s.durationMs));
+  fc.anchor(1000 + 2000 * 7 + 300, t, 1);   // lap 7, 300 ms into the section
+  fe.restart(fc);
+  fe.tick(fc);
+  const g0 = fh.sent[0];
+  ok('loop forever: a restart 300 ms into lap 7 sends its in-progress span 1200 -> 1700 first, its start 100 ms back',
+    g0 && near(g0.atMs, -100, 1e-9) && near(g0.durationMs, 500, 1e-9) && near(g0.norm, s.pos[3], 1e-6), JSON.stringify(g0));
+  ok('loopSpec: under 1 s or a count of 1 is no loop, b bounded by the duration', loopSpec(0, 900) === null
+    && loopSpec(0, 5000, 1) === null && loopSpec(0, 9e9, 0, 4000).b === 4000);
+  const lp = createLoop();
+  lp.set(L);
+  ok('createLoop: due near b, not past b + 1 s, wrap returns a', !lp.due(2000) && lp.due(3000 - WRAP_EARLY_MS) && !lp.due(4100) && lp.wrap() === 1000 && lp.wrapping);
+  const u = [2990, 1010, 1040].map((m) => lp.unroll(m));
+  ok('createLoop: the landing frame after wrap() counts a lap; unrolled time continues', lp.lap === 1 && u[1] === 3010 && u[2] === 3040 && !lp.wrapping);
+  lp.wrap(); lp.unroll(2990); lp.unroll(1000);
+  ok('createLoop: count 3 stops repeating after lap 2', lp.lap === 2 && !lp.more() && !lp.due(2990));
+  ok('createLoop: a user seek past b clears the loop, before b keeps it at lap 0', lp.seeked(1500) === L && lp.lap === 0 && lp.seeked(3200) === null && !lp.more());
+  const l2 = createLoop();
+  l2.set(L);
+  l2.wrap();
+  ok('createLoop: a loop set at the playhead wraps before any frame; the landing still counts a lap',
+    l2.unroll(1020) === 3020 && l2.lap === 1 && !l2.wrapping);
+}
+{
+  // Auto-home: a 20 s gap after 1000 ms, home 0.5 after 5 s at 0.25 norm/s.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 10 }, { at: 1000, pos: 90 }, { at: 21000, pos: 30 }, { at: 21400, pos: 80 }] });
+  const H = { afterMs: 5000, point: 0.5, speed: 0.25 };
+  const h = withHome(s, H);
+  const k = (t) => h.at.indexOf(t);
+  const line = 0.9 + (0.3 - 0.9) * (5000 / 20000);
+  ok('home: the gap follows the line for afterMs, then moves to the point at speed', k(6000) > 0 && near(h.pos[k(6000)], line, 1e-6)
+    && near(h.at[k(6000) + 1], 6000 + Math.abs(0.5 - line) * 4000, 1e-3) && near(h.pos[k(6000) + 1], 0.5, 1e-6));
+  ok('home: it waits at the point and returns to land on the next action at its time', near(h.at[k(21000) - 1], 21000 - 0.2 * 4000, 1e-3)
+    && near(h.pos[k(21000) - 1], 0.5, 1e-6) && near(h.pos[k(21000)], 0.3, 1e-6));
+  ok('home: a 400 ms gap is not homed', h.at[h.at.length - 3] === 21400);
+  ok('home: after the last action one move home', near(h.at.at(-2), 26400, 1e-9) && near(h.at.at(-1), 26400 + Math.max(HOME_MIN_MS, 0.3 * 4000), 1e-3)
+    && near(h.pos.at(-1), 0.5, 1e-6));
+  ok('home: knots stay strictly increasing; the shown script is untouched', h.at.every((v, i) => !i || v > h.at[i - 1]) && s.at.length === 4);
+  const late = withHome(parseFunscript({ actions: [{ at: 12000, pos: 100 }, { at: 12300, pos: 0 }] }), H);
+  ok('home: before the first action the gap runs from 0', late.at[0] === 0 && late.at.includes(5000) && near(late.pos[late.at.indexOf(5000) + 1], 0.5, 1e-6));
+  ok('home: off is the script itself', withHome(s, null) === s);
+  // A shaped copy (interp.js): 40 ms pieces between the same actions. The gaps come from the actions.
+  const dense = { at: [], pos: [] };
+  for (let i = 1; i < s.at.length; i++) {
+    for (let t = s.at[i - 1]; t < s.at[i]; t += 40) { dense.at.push(t); dense.pos.push(posAt(s, t)); }
+  }
+  dense.at.push(s.at.at(-1)); dense.pos.push(s.pos.at(-1));
+  const shaped = { ...s, at: Float64Array.from(dense.at), pos: Float32Array.from(dense.pos) };
+  const hs = withHome(shaped, H, s);
+  ok('home: a shaped copy is homed in the action gap, its pieces kept up to afterMs and from the next action on',
+    hs.at.includes(5960) && near(hs.at[hs.at.indexOf(6000) + 1], h.at[k(6000) + 1], 1e-3) && !hs.at.includes(10000)
+    && hs.at.includes(21040) && hs.at.every((v, i) => !i || v > hs.at[i - 1]) && withHome(shaped, H).at.length > hs.at.length);
+  const r = play(s, {});
+  let t = 0;
+  const host = fakeHost(() => t);
+  const sch = createScheduler({ submit: host.submit, now: () => t });
+  const clock = createMediaClock();
+  clock.anchor(0, 0, 1);
+  sch.load(s); sch.setHome(H); sch.restart(clock);
+  while (t < 28000) { sch.tick(clock); t += VSYNC; }
+  ok('home: the scheduler sends the homed knots as plain tiled segments', host.sent.length === h.at.length - 1 && tiles(host.sent) <= 0.001
+    && host.sent.some((g) => near(g.norm, 0.5, 1e-6)) && r.host.sent.length === 3, host.sent.length + ' spans');
+  ok('home: preroll reads the pending home', near(sch.preroll(15000, null).norm, 0.5, 1e-6));
+}
+{
+  // Seek transition: a restart at media 1400 with 500 ms moves to the script's position at 1900.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 1000, pos: 100 }, { at: 1600, pos: 0 }, { at: 2000, pos: 100 }, { at: 3000, pos: 0 }] });
+  let t = 7000;
+  const host = fakeHost(() => t);
+  const sch = createScheduler({ submit: host.submit, now: () => t });
+  const clock = createMediaClock();
+  sch.load(s);
+  clock.anchor(1400, t, 1);
+  sch.restart(clock, 500);
+  sch.tick(clock);
+  const [a, b] = host.calls[0];
+  ok('seek: one segment from now over the delay to the script position delay ahead', a.atMs === 7000 && a.durationMs === 500 && near(a.norm, posAt(s, 1900), 1e-6));
+  ok('seek: the next span starts at its end and keeps its knot', b.atMs === 7500 && near(b.atMs + b.durationMs, clock.displayAt(2000), 1e-9) && near(b.norm, 1, 1e-6));
+  while (t < 10000) { sch.tick(clock); t += VSYNC; }
+  ok('seek: the knots inside the delay are passed over, the rest tile', tiles(host.sent) <= 0.001 && host.sent.length === 3, host.sent.length + ' sent');
+  const plain = createScheduler({ submit: fakeHost(() => t).submit, now: () => t });
+  plain.load(s); clock.anchor(1400, t, 1); plain.restart(clock, 0);
+  ok('seek: delay 0 is the plain restart (the in-progress span first)', plain.cursor === 2);
+  const r2 = createScheduler({ submit: fakeHost(() => t).submit, now: () => t });
+  r2.load(s); clock.anchor(1400, t, 2); r2.restart(clock, 500);
+  ok('seek: the delay is wall ms, so rate 2 aims 1000 media ms ahead', r2.cursor === 4);
+}
+{
+  // Latency: a hub that starts every plan 14 ms late (+-1.5 ms) is compensated once 8 plans match.
+  const s = strokes(9, 20);
+  let t = 1000;
+  const r = rng(11);
+  const host = fakeHost(() => t);
+  const logs = [];
+  const sch = createScheduler({ submit: host.submit, now: () => t, log: (m) => logs.push(m) });
+  const clock = createMediaClock();
+  clock.anchor(0, t, 1);
+  sch.load(s); sch.setLatency({ auto: true }); sch.restart(clock);
+  const LAG = 14;
+  const late = new Map();
+  let nextSample = t;
+  while (clock.mediaAt(t) < 20000) {
+    sch.tick(clock);
+    if (t >= nextSample) {
+      // The plan strip every 50 ms: the running plan's elapsed, arriving 0..6 ms after the hub read it.
+      nextSample += 50;
+      const g = host.sent.findLast((x) => { if (!late.has(x)) late.set(x, LAG + (r() * 3 - 1.5)); return x.atMs + late.get(x) <= t; });
+      if (g && g.atMs + late.get(g) + g.durationMs > t) sch.observePlan(t + r() * 6, t - (g.atMs + late.get(g)), g.durationMs);
+    }
+    t += VSYNC;
+  }
+  ok('compensation: the median lag converges on the synthetic 14 ms (plus the least transport)', near(sch.lagMs, LAG, 2.5)
+    && near(sch.compMs, sch.lagMs, COMP_STEP_MS), 'lag ' + sch.lagMs.toFixed(2) + ' ms, comp ' + sch.compMs.toFixed(2));
+  const a = host.sent.at(-1), m = clock.mediaAt(a.atMs + sch.compMs);
+  ok('compensation: sends lead their knot by the applied amount', s.at.some((x) => near(x, m, 1e-6)), 'media ' + m.toFixed(3));
+  ok('compensation: applied by restart, logged', logs.some((x) => /compensation/.test(x)));
+  sch.setLatency({ auto: false });
+  sch.tick(clock);
+  ok('compensation: off returns the offset to the trim alone', sch.compMs === 0);
+  const fresh = createScheduler({ submit: () => ({ ok: true, sent: 0 }), now: () => 0 });
+  for (let i = 0; i < LAG_MIN - 1; i++) fresh.observePlan(i * 100, 0, 50);
+  ok('compensation: no lag reads before ' + LAG_MIN + ' plans match', Number.isNaN(fresh.lagMs));
+}
+{
+  // Low latency: the offer never reaches past LEAD_LOW_MS; the clock tunes to LOW.
+  const s = strokes(12, 5, [20, 60]);
+  let t = 0;
+  const calls = [];
+  const sch = createScheduler({ submit: (l) => { calls.push({ t, l }); return { ok: true, sent: l.length, rateHz: 50 }; }, now: () => t });
+  const clock = createMediaClock();
+  clock.anchor(0, 0, 1);
+  sch.load(s); sch.setLatency({ low: true }); sch.restart(clock);
+  while (t < 3000) { sch.tick(clock); t += VSYNC; }
+  ok('low latency: every offered start lies within ' + LEAD_LOW_MS + ' ms', calls.length > 10 && calls.every(({ t: c, l }) => l.every((g) => g.atMs <= c + LEAD_LOW_MS)));
+  // A display latency change of 12 ms after the ring fills: LOW slews it out 3 x faster.
+  const settle = (c) => {
+    c.anchor(0, 0, 1);
+    let k = 1;
+    for (; k <= 64; k++) c.observe(k * 33, k * 33);
+    const from = k * 33;
+    for (; c.displayAt(k * 33) - k * 33 < 11 && k < 2000; k++) c.observe(k * 33, k * 33 + 12);
+    return k * 33 - from;
+  };
+  const dflt = settle(createMediaClock()), fast = settle(createMediaClock(LOW));
+  ok('low latency: a 12 ms display change is followed at least 2.5 x sooner', fast * 2.5 <= dflt, fast + ' ms vs ' + dflt + ' ms');
+  const c = createMediaClock(LOW);
+  c.tune({});
+  ok('tune({}) restores the default filter', settle(c) === dflt);
+}
+{
+  const fake = (seed = {}) => ({ prefs: { get: (k) => seed[k] ?? null, set: () => {} } });
+  ok('prefs: play defaults (loop off, home off, seek 500 ms, latency off)', JSON.stringify(readPrefs(fake()).play) === JSON.stringify(PREFS.play)
+    && PREFS.play.seekMs === 500 && !PREFS.play.home && !PREFS.play.autoLatency && Object.isFrozen(PREFS.play));
+  const p = readPrefs(fake({ play: { loopCount: 3.6, homeAfterMs: 120000, homePoint: 2, homeSpeed: 0, seekMs: 777, lowLatency: 'y' } })).play;
+  ok('prefs: play values repaired to their ranges', p.loopCount === 4 && p.homeAfterMs === 60000 && p.homePoint === 1 && p.homeSpeed === 0.05
+    && p.seekMs === 800 && p.lowLatency === false, JSON.stringify(p));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

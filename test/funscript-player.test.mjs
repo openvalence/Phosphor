@@ -6,6 +6,9 @@
  *   (b) prefs      defaults, repair of malformed values, the backup mirror
  *   (c) hero       the spec claims on the valencesim fixture and declines
  *                  without a segments STREAM; the factory entry
+ *   (c2) analyzer  the Tuning groups by catalog and role on the tuning
+ *                  fixture (the recording with RFC-094 groups and RFC-099
+ *                  settings-trial patched in), lagOf
  * Browser sections (default, `npm run check:funscript`; needs ffmpeg on
  * PATH): see the header of the browser half below.
  *
@@ -17,11 +20,14 @@
  * Run: node test/funscript-player.test.mjs --unit
  *      node test/funscript-player.test.mjs [--shot out.png]
  *      node test/funscript-player.test.mjs --live --port P --http P+7
+ *      node test/funscript-player.test.mjs --stash-live <file.json>
+ *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
  */
 import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { claimAll } from '../src/model/roles.js';
+import * as CB from '../../Valence/clients/js/cbor.js';
 
 const args = process.argv.slice(2);
 const UNIT = args.includes('--unit');
@@ -37,20 +43,25 @@ const P = '../plugins/factory/funscript-player/';
 const CONTRACT = {
   [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
     'indexAfter', 'speedAt', 'peakSpeed', 'thin', 'heat', 'fmtTime'],
-  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'createMediaClock', 'frameSource'],
+  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'LOW', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
+    'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
-    'applyT', 'strokeSpeed', 'createScheduler'],
+    'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
+    'applyT', 'strokeSpeed', 'withHome', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
-    'windowShare', 'ceilingOf', 'localScene', 'extraNote'],
+    'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
+  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
+  [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
+    'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'mountAnalyzer'],
   [P + 'index.js']: ['HERO', 'activate'],
-  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate',
+  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
     'createMotionDoor', 'bundleHead', 'motionStream'],
-  '../src/model/actions.js': ['railOwners', 'railOwnerName'],
+  '../src/model/actions.js': ['railOwners', 'railOwnerName', 'railOwned'],
   '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],
 };
 
@@ -80,8 +91,8 @@ const problems = host && host.validateManifest ? host.validateManifest(manifest)
 const RA = !problems.includes(NET_FETCH_PENDING);
 ok('manifest validates' + (RA ? '' : ' but for net.fetch (R-A pending)'), problems.filter((p) => p !== NET_FETCH_PENDING).length === 0,
   problems.join('; ') || undefined);
-ok('manifest declares motion and net.fetch, never intent',
-  manifest.permissions.includes('motion') && manifest.permissions.includes('net.fetch') && !manifest.permissions.includes('intent'));
+ok('manifest declares motion, net.fetch and intent (the analyzer writes tuning)',
+  ['motion', 'net.fetch', 'intent'].every((p) => manifest.permissions.includes(p)));
 
 // ---- (b) prefs ----------------------------------------------------------------
 console.log('(b) prefs');
@@ -96,7 +107,9 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000 };
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000,
+    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 },
+    play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));
@@ -107,6 +120,8 @@ if (prefs) {
   const t = readPrefs(fakeApi({ T: { offsetMs: 512, lo: 0.2, hi: 0.8, invert: true } })).T;
   ok('offset clamps to 500, a valid range and invert survive', same(t, { offsetMs: 500, lo: 0.2, hi: 0.8, invert: true }), t);
   ok('offset rounds to its 5 ms step', readPrefs(fakeApi({ T: { offsetMs: -12 } })).T.offsetMs === -10);
+  const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999 } })).interp;
+  ok('interp: an unknown mode is linear, ranges clamp', same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0 }), ip);
   ok('an array is not an object pref', same(readPrefs(fakeApi({ audio: [1, 2] })).audio, want.audio));
   const a = fakeApi();
   writePref(a, 'T', { offsetMs: 45, lo: 0.1, hi: 0.9, invert: false });
@@ -129,18 +144,25 @@ console.log('(c) hero spec');
 const index = mods[P + 'index.js'];
 const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
 const SEG_CH = 0x2101;   // valencesim motion-segment (registry 0x2101), test-side only
+// Tuning fixture, test-side ids: the recording (valencesim 0.1.7-p4hub) carries RFC-094 'Tuning / '
+// groups, trial_mask (meta.trial_pending) on the waveform STATE and settings-trial (core 0x16, RFC-099).
+const CH_WAVE = 0x1122, CH_TRIAL = 0x16;
+function tuningCatalog() {
+  const bytes = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+  return { bytes, etag: readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim() };
+}
 if (index) {
   const h = index.HERO;   // activate itself creates the <video>: the browser half drives it
   ok('one hero, id player, title, absorb false, cells', !!h && h.id === 'player' && h.title === 'Funscript player'
     && h.absorb === false && same(h.cells, { h: [16, 12], v: [8, 16] }));
   ok('spec requires input.target and input.duration', !!h && same(h.spec.require, { target: 'input.target', dur: 'input.duration' }));
-  ok('spec binds the six optional roles', !!h && same(h.spec.optional, { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
-    vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running' }));
+  ok('spec binds the eight optional roles', !!h && same(h.spec.optional, { pos: 'telemetry.position', lo: 'window.min', hi: 'window.max',
+    vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running', planEl: 'plan.elapsed', planDur: 'plan.duration' }));
   if (h) {
     const claim = (entries) => claimAll(buildSettingsModel(entries).byRole, [{ id: 'p', spec: h.spec, absorb: false }]);
     const w = claim(ENTRIES).widgets[0];
     ok('claims on the valencesim fixture, dur on the segments STREAM', !!w && w.fields.dur.channelId === SEG_CH);
-    ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun'].every((k) => w.fields[k]));
+    ok('every optional role binds there', !!w && ['pos', 'lo', 'hi', 'vmax', 'patRun', 'advRun', 'planEl', 'planDur'].every((k) => w.fields[k]));
     ok('absorb false claims nothing away', claim(ENTRIES).claimed.size === 0);
     ok('declines without a segments STREAM (D1)', claim(ENTRIES.filter((e) => e.id !== SEG_CH)).widgets.length === 0);
   }
@@ -151,6 +173,42 @@ if (index) {
   const f = factory && factory.FACTORY.find((x) => x.manifest.name === 'funscript-player');
   if (RA) ok('listed in FACTORY with its manifest', !!f && same(f.manifest, manifest) && f.module.activate === (index && index.activate));
   else ok('not in FACTORY while net.fetch is refused (test (g) validates every entry)', !f);
+}
+
+// ---- (c2) the analyzer: Tuning groups by catalog and role, lagOf ----------------
+console.log('(c2) analyzer');
+const an = mods[P + 'analyzer.js'];
+if (an) {
+  const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
+  const names = tg.map((g) => g.name);
+  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Settling'];
+  ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
+    same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
+      && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);
+  const fs = tg.flatMap((g) => g.fields);
+  ok('only writable controls, no readout', fs.length > 15 && fs.every((f) => !f.readOnly && f.writeChannel != null
+    && ['slider', 'stepper', 'toggle', 'segmented', 'select'].includes(f.widget)), fs.length);
+  ok('limit.input.* by role, nothing else from its group',
+    same(tg.find((g) => g.name === 'Machine-driven limits').fields.map((f) => f.role).sort(), [...an.LIMIT_ROLES].sort()));
+  const untuned = buildSettingsModel(ENTRIES);
+  for (const c of untuned.categories) for (const g of c.groups) g.name = String(g.name || '').replace(/^Tuning \/ /, '');
+  ok('a catalog without Tuning groups offers limit.input.* only',
+    same(an.tuningGroups(untuned).map((g) => g.name), ['Machine-driven limits']));
+  ok('analyzer.js names no channel id', !/0x[0-9a-f]{3,}/i.test(readFileSync(new URL(P + 'analyzer.js', import.meta.url), 'utf8')));
+  const { parseFunscript, posAt } = mods[P + 'funscript.js'];
+  const { applyT } = mods[P + 'scheduler.js'];
+  const acts = [];
+  for (let at = 0, k = 0; at <= 10000; at += 300 + (k * 53) % 200, k++) acts.push({ at, pos: k % 2 ? 90 : 10 });
+  const sc = parseFunscript({ actions: acts });
+  const T = { offsetMs: 0, lo: 0.1, hi: 0.9, invert: false };
+  const tr = [];
+  for (let m = 2000; m <= 9000; m += 16) tr.push({ m, u: applyT(posAt(sc, m - 42), T), p: applyT(posAt(sc, m - 14), T), stale: false });
+  ok('lagOf finds a 42 ms measured lag and a 14 ms plan lag within a step',
+    Math.abs(an.lagOf(tr, sc, T, 'u') - 42) <= an.LAG_STEP_MS && Math.abs(an.lagOf(tr, sc, T, 'p') - 14) <= an.LAG_STEP_MS,
+    [an.lagOf(tr, sc, T, 'u'), an.lagOf(tr, sc, T, 'p')]);
+  ok('lagOf declines a flat trace, a short one and stale points',
+    an.lagOf(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.lagOf(tr.slice(0, 10), sc, T) === null
+      && an.lagOf(tr.map((x) => ({ ...x, stale: true })), sc, T) === null);
 }
 
 if (UNIT || fails) {
@@ -183,6 +241,10 @@ if (UNIT || fails) {
 //              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
 //              script with the ApiKey header and playing
+// Stash live (--stash-live <file.json>, a local {base, apiKey}, never
+// committed): only the stash section, against that real Stash, read-only,
+// under the shell CSP's img-src and media-src: every tile's screenshot
+// loads, and a picked scene's stream plays and drives the fake hub.
 // Live (--live): valencesim on spare ports plays 8 s: bundles, no NACK, the
 // plan strip moving, the strip's Pause pauses the video and Resume leaves it
 // paused, a seek plays on from the new time, an Advanced start grays Play,
@@ -201,17 +263,23 @@ const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 const { cbMap, cbUint, cbF32, cbBstr, cbTstr, cbArray, cbDecodeFull } = await import('../../Valence/clients/js/cbor.js');
 const { decodePacked, encodePacked } = await import('../../Valence/clients/js/catalog.js');
-const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } = await import('../../Valence/clients/js/frames.js');
+const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK, NACK_NAME } = await import('../../Valence/clients/js/frames.js');
 const { CORE_CHANNEL } = await import('../../Valence/clients/js/generated/registry_vocab.js');
 const { toHex } = await import('../../Valence/clients/js/sha256.js');
 const { buildShellPage, TAURI_STUB } = await import('./shell-build.mjs');
 const { advgenCatalog } = await import('./fixtures/advgen-roles-catalog.mjs');
 const { startFakeStash } = await import('./fixtures/fake-stash.mjs');
 
-const LIVE = args.includes('--live');
+const PB = args.includes('--live-playback');
+const LIVE = args.includes('--live') || PB;
+const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
 const SHOT = args.includes('--shot') ? args[args.indexOf('--shot') + 1] : null;
 const SIM_PORT = args.includes('--port') ? parseInt(args[args.indexOf('--port') + 1], 10) : 8882;
 const SIM_HTTP = args.includes('--http') ? parseInt(args[args.indexOf('--http') + 1], 10) : SIM_PORT + 7;
+const STASH_LIVE = args.includes('--stash-live') ? JSON.parse(readFileSync(args[args.indexOf('--stash-live') + 1], 'utf8')) : null;
+// The shell's media directives (tauri.conf.json), served with the page under --stash-live.
+const CSP_MEDIA = STASH_LIVE && JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
+  .app.security.csp.split(';').map((d) => d.trim()).filter((d) => /^(img|media)-src /.test(d)).join('; ');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 const PAUSE_BIT = 0x08;   // registry: safety word bit3
@@ -223,7 +291,7 @@ const CH = { config: 0x1000, motion: 0x1100, advgen: 0x1210, segments: 0x2101 };
 
 // ---- generated media: a 30 fps VP8 clip with a tone, never committed ---------
 const TMP = mkdtempSync(join(tmpdir(), 'fsp-'));
-const CLIP_S = 30;
+const CLIP_S = PB ? 60 : 30;
 let VIDEO = null;
 try {
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30:duration=' + CLIP_S,
@@ -240,7 +308,10 @@ try {
 // The script: each span a distinct length (300..597 ms) between alternating
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
-for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
+// --live-playback: 400..697 ms spans of 25..75 (inside the sim's speed limit, so plans keep their durations) and a
+// gap from the last action at or before 20 s to 34 s for auto-home.
+if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: k % 2 ? 75 : 25 }); at += 400 + ((k * 37) % 298); }
+else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 /** The knot k whose span (k-1 -> k) lasts durMs at this rate, or -1. */
 function knotOf(durMs, rate = 1) {
@@ -260,6 +331,7 @@ const unwrap = (u32, near) => near + ((u32 - (near >>> 0)) | 0);
 function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
   const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null, nackStream: 0 };
   const entry = (id) => cat.entries.find((e) => e.id === id);
+  hub.intents = [];
   const valuesOf = (e) => Object.fromEntries(e.layout.map((f) => [f.name,
     hub.values[e.id + ':' + f.name] ?? (f.role === 'meta.enabled_mask' ? 0xff : Number(f.default) || 0)]));
   hub.send = (type, ch, payload, seq = 0) => { try { hub.socket.send(Buffer.from(encodeFrame(type, ch, payload, seq))); } catch (e) { /* closed */ } };
@@ -336,6 +408,19 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           }
           hub.bundles.push({ ch: header.channel, arrival, segs, latch: hub.latch });
           if (hub.nackStream) hub.send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(hub.nackStream)]]), header.seq);
+        } else if (t === FRAME.INTENT) {
+          const q = cbDecodeFull(payload);
+          const ch = q.get(K.channel_id), val = q.get(K.value) || new Map(), trial = q.get(K.trial) === true;
+          hub.intents.push({ ch, value: Object.fromEntries(val), trial });
+          const st = cat.entries.find((e) => e.settingChannel === ch && e.layout);
+          if (st) for (const [k, v] of val) { const f = st.layout.find((x) => x.settingKey === k); if (f) hub.values[st.id + ':' + f.name] = v; }
+          if (ch === CH_TRIAL) hub.values[CH_WAVE + ':trial_mask'] = 0;
+          else if (trial) hub.values[CH_WAVE + ':trial_mask'] = 1;
+          const enc = (v) => (typeof v === 'boolean' ? CB.cbBool(v) : Number.isInteger(v) ? (v < 0 ? CB.cbInt(v) : cbUint(v)) : cbF32(v));
+          hub.send(FRAME.ECHO, ch, cbMap([[K.intent_id, cbUint(q.get(K.intent_id))],
+            [K.applied, cbMap([...val].sort((a, b) => a[0] - b[0]).map(([k, v]) => [k, enc(v)]))]].sort((a, b) => a[0] - b[0])), header.seq);
+          if (st) hub.state(st.id);
+          if (entry(CH_WAVE)) hub.state(CH_WAVE);
         } else if (t === FRAME.PING) {
           hub.send(FRAME.PONG, header.channel, payload);
         }
@@ -355,7 +440,7 @@ const srv = createServer((q, s) => {
       .catch(() => { s.writeHead(502); s.end('{}'); });
     return;
   }
-  s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL);
+  s.writeHead(200, { 'Content-Type': 'text/html', ...(CSP_MEDIA ? { 'Content-Security-Policy': CSP_MEDIA } : {}) }); s.end(SHELL);
 });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PAGE = 'http://127.0.0.1:' + srv.address().port;
@@ -559,9 +644,10 @@ const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bj
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
 
 if (!LIVE) {
-  console.log('(d) the card on a fake hub');
   const cat = advgenCatalog();
   cat.entries = decodeCatalog(cat.bytes);
+  if (!STASH_LIVE) {
+  console.log('(d) the card on a fake hub');
   {
     const noseg = advgenCatalog({ drop: ['input.duration'] });
     noseg.entries = decodeCatalog(noseg.bytes);
@@ -666,8 +752,16 @@ if (!LIVE) {
   ok('seek: one hold first', !!hold && hold.segs.length === 1 && hold.segs[0].dur <= 200);
   ok('seek: the next bundle starts at now (clipped to the earliest start)', !!resumed && clipped(resumed.segs[0]),
     resumed && (resumed.segs[0].exec - resumed.arrival) / 1000);
+  // The seek transition (prefs play.seekMs, 500 by default): one glide from now to where the script will be.
+  const glide = resumed && resumed.segs[0];
+  const { posAt: posAtS, parseFunscript: parseS } = mods[P + 'funscript.js'];
+  const sc15 = parseS(SCRIPT);
+  const near = glide ? Math.min(...Array.from({ length: 81 }, (_, i) => Math.abs(posAtS(sc15, 15300 + 10 * i) - glide.norm))) : NaN;
+  ok('seek: a 500 ms glide to the script 500 ms on', !!glide && Math.abs(glide.dur - 500) <= 1 && near < 0.01, glide && { dur: glide.dur, near });
   const later = after.slice(hi + 1).flatMap((b) => b.segs).filter((s) => !clipped(s));
-  ok('seek: its knots lie past 15 s', later.length > 2 && later.every((s) => ACTIONS[knotOf(s.dur) - 1]?.at >= 14000));
+  const knots = later.filter((s) => knotOf(s.dur) > 0);
+  ok('seek: then the script: one joining span, its knots past 15 s', later.length > 2 && later.length - knots.length <= 1
+    && knots.every((s) => ACTIONS[knotOf(s.dur) - 1].at >= 14000), { later: later.length, knots: knots.length });
 
   // ---- offset ----
   const asked1 = (await probeSegs(page, skew)).length;
@@ -745,13 +839,13 @@ if (!LIVE) {
   hub.set(CH.advgen, 'running', 0);
   await page.waitForTimeout(400);
 
-  // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a generator the gate did not see) ----
+  // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a stream or generator the gate does not read) ----
   hub.nackStream = NACK.SOURCE_CONFLICT;
   const nRef = hub.bundles.length, hRef = await holdMarks();
   await playBtn(page).click();
-  const refused = await page.waitForFunction((c) => /SOURCE_CONFLICT/.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
+  const refused = await page.waitForFunction((c) => /refused: rail owned by /.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
     .then(() => true).catch(() => false);
-  ok('refusal: a SOURCE_CONFLICT NACK shows its name in the status slot', refused, await statusText(page));
+  ok('refusal: a SOURCE_CONFLICT NACK reads "refused: rail owned by" its owner in the status slot', refused, await statusText(page));
   ok('refusal: the video pauses and Play is offered again', await video(page, (v) => v.paused) && !(await playBtn(page).isDisabled()));
   await page.waitForTimeout(300);
   const nAfter = hub.bundles.length;
@@ -815,7 +909,7 @@ if (!LIVE) {
   }, C);
   const badCopy = texts.filter((t) => !copyOk(t) && !/^[\d:.\s/]+$/.test(t));
   ok('copy: every rendered string is one short fragment (docs/COPY.md)', badCopy.length === 0, badCopy);
-  const tables = Object.entries(mods).filter(([, m]) => m.COPY).flatMap(([p, m]) => Object.values(m.COPY).map((t) => [p.replace(P, ''), t]));
+  const tables = Object.entries(mods).filter(([, m]) => m.COPY).flatMap(([p, m]) => Object.values(m.COPY).flatMap((t) => (typeof t === 'string' ? [t] : Object.values(t))).map((t) => [p.replace(P, ''), t]));
   const badTables = tables.filter(([, t]) => !copyOk(t.trim()));
   ok('copy: every COPY table entry is one short fragment', tables.length > 20 && badTables.length === 0, badTables);
 
@@ -909,10 +1003,15 @@ if (!LIVE) {
     await c2.close();
   }
 
+  }
+
   // ---- stash ----
-  console.log('(e) Stash');
+  console.log('(e) Stash' + (STASH_LIVE ? ' live' : ''));
   {
-    const stash = await startFakeStash({ key: KEY, video: VIDEO });
+    const stash = STASH_LIVE ? { url: STASH_LIVE.base.replace(/\/+$/, ''), seen: null, close: async () => {} }
+      : await startFakeStash({ key: KEY, video: VIDEO });
+    const SK = STASH_LIVE ? STASH_LIVE.apiKey : KEY;
+    const hide = (t) => String(t).split(SK).join('***');
     const h3 = makeHub(cat);
     const { ctx: c3, page: p3 } = await open({ cat, hub: h3 });
     await toCard(p3);
@@ -921,38 +1020,477 @@ if (!LIVE) {
     const url = p3.locator(C + ' .fsp-connect input[type=url]');
     ok('stash: with no base the connect card fills the library', await url.isVisible().catch(() => false));
     await url.fill(stash.url);
-    await p3.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await p3.locator(C + ' .fsp-connect input[type=password]').fill(SK);
     await p3.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
-    const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: 5000 }).then(() => true).catch(() => false);
-    ok('stash: Save shows interactive tiles', tiles);
+    const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: STASH_LIVE ? 15000 : 5000 }).then(() => true).catch(() => false);
+    ok('stash: Save shows interactive tiles', tiles, STASH_LIVE ? await p3.locator(C + ' .fsp-n').textContent() : undefined);
+    if (STASH_LIVE) {
+      const shots = await p3.waitForFunction((c) => {
+        const t = document.querySelectorAll(c + ' .fsp-tile');
+        const imgs = [...document.querySelectorAll(c + ' .fsp-tile img')];
+        return imgs.length === t.length && imgs.every((i) => i.complete && i.naturalWidth > 0) && t.length;
+      }, C, { timeout: 20000 }).then((h) => h.jsonValue()).catch(() => 0);
+      ok('stash live: every tile on the page shows its screenshot under the CSP', shots > 0, shots + ' tiles; ' + CSP_MEDIA);
+    }
     await p3.waitForTimeout(300);
     const ssp = await spill(p3);
     ok('stash: the grid and its pager lie inside the card, no label cut', ssp.out.length === 0 && ssp.cut.length === 0, ssp);
     if (SHOT) { await p3.waitForTimeout(500); await p3.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'stash-grid.png') }); }
     const src = await p3.locator(C + ' .fsp-tile img').first().getAttribute('src').catch(() => '');
-    ok('stash: tile screenshots are rebased and keyed with apikey', src.startsWith(stash.url) && src.includes('apikey=' + KEY), src);
-    const gql = stash.seen.find((r) => r.path.startsWith('/graphql'));
-    ok('stash: GraphQL carries the ApiKey header', !!gql && gql.headers.apikey === KEY);
+    ok('stash: tile screenshots are rebased and keyed with apikey', src.startsWith(stash.url) && src.includes('apikey=' + SK), hide(src));
+    if (stash.seen) {
+      const gql = stash.seen.find((r) => r.path.startsWith('/graphql'));
+      ok('stash: GraphQL carries the ApiKey header', !!gql && gql.headers.apikey === KEY);
+    }
     await p3.locator(C + ' .fsp-tile').first().click();
     await p3.waitForTimeout(800);
-    const fs = stash.seen.find((r) => /\/scene\/\d+\/funscript/.test(r.path));
-    ok('stash: a pick fetches the script with the ApiKey header', !!fs && fs.headers.apikey === KEY, fs && fs.headers);
+    if (stash.seen) {
+      const fs = stash.seen.find((r) => /\/scene\/\d+\/funscript/.test(r.path));
+      ok('stash: a pick fetches the script with the ApiKey header', !!fs && fs.headers.apikey === KEY, fs && fs.headers);
+    } else {
+      const ready = await p3.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 15000 })
+        .then(() => true).catch(() => false);
+      ok('stash live: the picked scene script loads and Play wakes', ready, await statusText(p3).catch(() => ''));
+    }
     const vsrc = await p3.locator(C + ' .fsp-stage video').getAttribute('src');
-    ok('stash: the video streams from the rebased URL with apikey', !!vsrc && vsrc.startsWith(stash.url) && vsrc.includes('apikey=' + KEY), vsrc);
+    ok('stash: the video streams from the rebased URL with apikey', !!vsrc && vsrc.startsWith(stash.url) && vsrc.includes('apikey=' + SK), hide(vsrc));
     const n3 = h3.bundles.length;
     await playBtn(p3).click();
     const played3 = await video(p3, (v) => new Promise((r) => { const t0 = v.currentTime; setTimeout(() => r(!v.paused && v.currentTime > t0), 3000); }));
-    ok('stash: the picked scene plays and drives the hub', played3 && h3.bundles.length > n3 + 3, { played: played3, bundles: h3.bundles.length - n3 });
+    ok('stash: the picked scene plays and drives the hub', played3 && h3.bundles.length > n3 + (STASH_LIVE ? 0 : 3), { played: played3, bundles: h3.bundles.length - n3 });
+    if (STASH_LIVE) {
+      // A real script may open on one long span; the middle carries strokes.
+      const n4 = h3.bundles.length;
+      const mid = await video(p3, (v) => new Promise((r) => { v.currentTime = v.duration / 2; const t0 = v.currentTime;
+        setTimeout(() => r({ playing: !v.paused && v.currentTime > t0, t: Math.round(v.currentTime) }), 3000); }));
+      ok('stash live: a seek to the middle plays on and keeps the hub fed', mid.playing && h3.bundles.length > n4 + 3,
+        { ...mid, bundles: h3.bundles.length - n4 });
+    }
     await playBtn(p3).click();
-    ok('stash: the key never sits in the backup prefix', !(await p3.evaluate(() => Object.keys(localStorage)
-      .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes('test-key-1')))));
+    ok('stash: the key never sits in the backup prefix', !(await p3.evaluate((sk) => Object.keys(localStorage)
+      .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes(sk)), SK)));
     clearInterval(h3.timer);
     await c3.close();
     await stash.close();
   }
 }
 
-if (LIVE) {
+// ---- (g) the analyzer on the tuning fixture: playhead, expand, Live and Preview writes, the notice ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(g) analyzer');
+  const tc = tuningCatalog();
+  tc.entries = decodeCatalog(tc.bytes);
+  const groups = mods[P + 'analyzer.js'].tuningGroups(buildSettingsModel(tc.entries));
+  const hub = makeHub(tc);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 15;
+  const { ctx, page, up, errors } = await open({ cat: tc, hub, coarse: true });
+  ok('analyzer: the shell adopts the tuning fixture and the card renders', up && await toCard(page));
+  ok('analyzer: the clip loads', await loadClip(page));
+  // ---- playhead ----
+  await video(page, (v) => { v.currentTime = 15; });
+  await page.waitForTimeout(400);
+  const bar = await page.evaluate((c) => {
+    const q = (s) => document.querySelector(c + ' ' + s).getBoundingClientRect();
+    const ph = q('.fsp-ph'), dt = q('.fsp-dt'), ov = q('.fsp-ov'), sc = q('.fsp-scrub');
+    return { top: ph.top - dt.top, bottom: ph.bottom - (ov.top + ov.height / 2), dx: ph.left + ph.width / 2 - (sc.left + sc.width / 2),
+      share: (ph.left + ph.width / 2 - ov.left) / ov.width, heatBelow: ov.top >= dt.bottom };
+  }, C);
+  ok('playhead: one bar from the detail top down to the grip on the heat, the heat at the bottom',
+    Math.abs(bar.top) <= 1 && Math.abs(bar.bottom) <= 1 && Math.abs(bar.dx) <= 1 && bar.heatBelow, bar);
+  ok('playhead: at 15 s it sits at that share of the script in both bands',
+    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01, bar.share);
+  // ---- expand ----
+  // Rects relative to the card: a click or a scrollIntoView may scroll the page.
+  const look = () => page.locator(C).evaluate((e) => {
+    const o = e.getBoundingClientRect();
+    const r = (s) => { const x = e.querySelector(s); if (!x || !x.getClientRects().length) return null;
+      const b = x.getBoundingClientRect(); return { x: b.x - o.x, y: b.y - o.y, width: b.width, height: b.height }; };
+    return { card: o.width + 'x' + o.height, stage: r('.fsp-stage'), an: r('.fsa'), lib: r('.fsp-libbox'),
+      video: !!e.querySelector('.fsp-stage video'), dt: r('.fsp-dt') };
+  });
+  const before = await look();
+  const expandBtn = page.locator(C + ' .fsp-expand');
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const open1 = await look();
+  ok('expand: the outer card rect is identical', open1.card === before.card, [before.card, open1.card]);
+  ok('expand: the video moves to a corner thumbnail, the analyzer in, the library out, the detail taller',
+    open1.video && open1.stage.width <= 321 && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
+      && open1.dt.height > before.dt.height, open1);
+  ok('expand: the button reads pressed', (await expandBtn.getAttribute('aria-pressed')) === 'true');
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer.png') });
+  const labels = await page.$$eval(C + ' .fsa-row .fsa-k', (els) => els.map((e) => e.textContent));
+  ok('analyzer: one row per tuning control the catalog groups', labels.length === groups.flatMap((g) => g.fields).length,
+    { rows: labels.length, fields: groups.flatMap((g) => g.fields).length });
+  const small = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa :is(button, input, select), ' + c + ' .fsp-expand')]
+    .map((e) => [e.textContent || e.getAttribute('aria-label') || e.tagName, e.getBoundingClientRect()])
+    .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
+  ok('analyzer: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
+  const outside = await page.evaluate((c) => {
+    const card = document.querySelector(c).getBoundingClientRect(), list = document.querySelector(c + ' .fsa-list').getBoundingClientRect();
+    return [...document.querySelectorAll(c + ' .fsa :is(button, input, select, output)')].filter((e) => {
+      const r = e.getBoundingClientRect(), box = e.closest('.fsa-list') ? list : card;
+      return r.width > 0 && (r.left < box.left - 0.5 || r.right > box.right + 0.5 || (box === card && (r.top < card.top - 0.5 || r.bottom > card.bottom + 0.5)));
+    }).map((e) => e.textContent || e.getAttribute('aria-label'));
+  }, C);
+  ok('analyzer: every control lies inside the card, rows inside their list', outside.length === 0, outside);
+  // ---- writes ----
+  const slider = groups.flatMap((g) => g.fields).find((f) => f.widget === 'slider');
+  const nudge = async () => {
+    const i = page.locator(C + ' .fsa-row input[type=range]').first();
+    await i.scrollIntoViewIfNeeded();
+    await i.focus();
+    await i.press('ArrowRight');
+    await page.waitForTimeout(400);
+    return hub.intents.filter((x) => x.ch !== CH_TRIAL).at(-1);
+  };
+  const modeBtn = (t) => page.locator(C + ' .fsa-head .fsp-btn', { hasText: new RegExp('^' + t + '$') });
+  const aRects = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa > *, ' + c + ' .fsa-head > *, ' + c + ' > :not(style)')]
+    .filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(), o = document.querySelector(c).getBoundingClientRect();
+      return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join(','); }), C);
+  ok('modes: Preview is the default on a trial-capable hub', (await modeBtn('Preview').getAttribute('aria-pressed')) === 'true');
+  await modeBtn('Live').click();
+  const r0 = await aRects();
+  const live = await nudge();
+  ok('Live: a tuning write reaches api.write: a durable INTENT on the field\'s write channel',
+    !!live && live.ch === slider.writeChannel && live.trial === false && slider.settingKey in live.value, live);
+  await modeBtn('Preview').click();
+  const n0 = hub.intents.length;
+  const prev = await nudge();
+  ok('Preview: a tuning write reaches writeTrial: the same INTENT with trial', hub.intents.length > n0 && !!prev
+    && prev.ch === slider.writeChannel && prev.trial === true, prev);
+  const notice = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 2000 })
+    .then(() => true).catch(() => false);
+  ok('Preview: the notice stands in the status slot while trialPending', notice, await statusText(page));
+  ok('Preview: Apply and Discard are offered', !(await modeBtn('Apply').isDisabled()) && !(await modeBtn('Discard').isDisabled()));
+  const r1 = await aRects();
+  ok('layout: Live, Preview and a pending trial share every rect', JSON.stringify(r0) === JSON.stringify(r1), r0.filter((x, i) => x !== r1[i]));
+  await modeBtn('Apply').click();
+  await page.waitForTimeout(400);
+  const commit = hub.intents.at(-1);
+  ok('Apply commits: settings-trial op 1', !!commit && commit.ch === CH_TRIAL && commit.value[1] === 1, commit);
+  ok('Apply: the notice clears with the mark', (await statusText(page)) !== 'Preview: not saved', await statusText(page));
+  await nudge();
+  await page.waitForTimeout(300);
+  ok('Preview: a second trial raises the notice again', (await statusText(page)) === 'Preview: not saved', await statusText(page));
+  await modeBtn('Discard').click();
+  await page.waitForTimeout(400);
+  const revert = hub.intents.at(-1);
+  ok('Discard reverts: settings-trial op 2, the notice clears', !!revert && revert.ch === CH_TRIAL && revert.value[1] === 2
+    && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
+  // ---- handheld: the same card rect open or shut, the thumbnail in the source row ----
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
+  await page.waitForTimeout(300);
+  const hOpen = await look();
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const hShut = await look();
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  ok('handheld: the outer card rect is identical open or shut, the thumbnail one tap high, the analyzer in',
+    hOpen.card === hShut.card && hOpen.stage.height <= 50 && !!hOpen.an && hOpen.an.height > 100 && hOpen.dt.height > 40, { hOpen, hShut });
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer-handheld.png') });
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
+  await page.waitForTimeout(300);
+  // ---- collapse ----
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const shut = await look();
+  ok('collapse: the card, the stage and the library come back as they were',
+    shut.card === before.card && JSON.stringify(shut.stage) === JSON.stringify(before.stage) && !shut.an && !!shut.lib, shut);
+  ok('analyzer: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (h) playback wiring: the A-B loop wraps with no hold and the schedule tiles across the seam ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(h) playback');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 15;
+  const { ctx, page, up, errors } = await open({ cat, hub });
+  ok('playback: the card renders and the clip loads', up && await toCard(page) && await loadClip(page));
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
+  const ab = page.locator(C + ' .fsp-ab');
+  ok('A-B: the first press reads Set loop start', (await ab.getAttribute('title')) === 'Set loop start');
+  await ab.click();
+  await page.waitForTimeout(3000);
+  await ab.click();
+  const n0 = hub.bundles.length;
+
+  ok('A-B: the second press starts the loop, the button pressed and reading Clear loop',
+    (await ab.getAttribute('aria-pressed')) === 'true' && (await ab.getAttribute('title')) === 'Clear loop');
+  const band = await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width'));
+  ok('A-B: the section is a band on the heat', band > 0, band);
+  await page.waitForTimeout(7000);
+  const wraps = await page.evaluate(() => (window.__funscriptProbe || []).filter((x) => x.k === 'mark' && x.name === 'wrap').length);
+  const vt = await video(page, (v) => ({ t: v.currentTime, paused: v.paused }));
+  ok('loop: the video wrapped at least twice and plays inside the section', wraps >= 2 && !vt.paused && vt.t >= 2 && vt.t <= 6, { wraps, vt });
+  const after = hub.bundles.slice(n0 + 2);
+  const holds = after.filter((b) => b.segs.length === 1 && b.segs[0].dur <= 200 && clipped(b.segs[0]));
+  ok('loop: no hold at a wrap', holds.length === 0, holds.length);
+  const sched = schedule(after).filter((x) => x.exec < hubUs() - 300000);
+  // A clock step on a wrap's landing frame restarts: its first start is clipped to now, inside the previous span (a cut, not a hole).
+  const d = sched.slice(1).map((x, i) => (x.exec - (sched[i].exec + sched[i].dur * 1000)) / 1000);
+  const holes = d.filter((g) => g > 30);
+  ok('loop: no hole in the schedule across any seam (none past 30 ms)', sched.length > 10 && holes.length === 0,
+    { n: sched.length, holes, cuts: d.filter((g) => g < -2).map(Math.round) });
+  await ab.click();
+  await page.waitForTimeout(300);
+  ok('A-B: the third press clears it', (await ab.getAttribute('aria-pressed')) === 'false' && (await ab.getAttribute('title')) === 'Set loop start'
+    && await page.locator(C + ' .fsp-ov rect.ab').evaluate((r) => +r.getAttribute('width')) === 0);
+  ok('playback: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (p) live playback (--live-playback): valencesim plays the 60 s script with a 14 s gap ----
+// Auto latency on from the start; a seek with the glide; auto-home in the gap; an A-B loop;
+// low latency on; a Preview tuning write the sim marks, then Discard. Prints the numbers as
+// one 'PB-RESULT' JSON line; the stored-value recheck after a sim restart is the caller's.
+if (PB) {
+  console.log('(p) live playback: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
+  const { createSession, PRIORITY } = await import('../../Valence/clients/js/index.js');
+  const { tuningGroups } = mods[P + 'analyzer.js'];
+  const { parseFunscript: parseS, posAt: posS } = mods[P + 'funscript.js'];
+  const sc = parseS(SCRIPT);
+  const probeSess = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp pb probe',
+    autoReconnect: false, catalogStore: { load: () => null, save() {}, clear() {} } });
+  await new Promise((res) => { setTimeout(res, 5000); probeSess.on('live', res); probeSess.connect(); });
+  for (let i = 0; i < 50 && !probeSess.catalog; i++) await sleep(100);
+  const cat0 = probeSess.catalog || [];
+  try { probeSess.close(); } catch (e) { /* gone */ }
+  const segEntry = cat0.find((e) => e.dirName === 'c2h' && (e.layout || []).some((f) => f.role === 'input.duration'));
+  if (!segEntry) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
+  const byRole = (r) => { for (const e of cat0) for (const f of e.layout || []) if (f.role === r && e.dirName !== 'c2h') return { e, f }; return null; };
+  const posR = byRole('telemetry.position'), loR = byRole('window.min'), hiR = byRole('window.max');
+  const slider = tuningGroups(buildSettingsModel(cat0)).flatMap((g) => g.fields).find((f) => f.widget === 'slider');
+  const slEntry = cat0.find((e) => e.id === slider.channelId);
+  const markF = slEntry.layout.find((f) => f.role === 'meta.trial_pending');
+  const bit = slEntry.layout.filter((f) => f.settingKey != null).findIndex((f) => f.name === slider.name);
+  const obs = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp pb observer', autoReconnect: false,
+    catalogStore: { load: () => null, save() {}, clear() {} },
+    subscriptions: [...new Set([posR.e.id, loR.e.id, hiR.e.id, slEntry.id])].map((ch) => [ch, ch === posR.e.id ? 50 : 0, PRIORITY.normal]) });
+  const last = {}, posLog = [];
+  obs.on('state', (ch, smp) => {
+    last[ch] = smp;
+    if (ch === posR.e.id && last[loR.e.id] && last[hiR.e.id]) {
+      const lo = last[loR.e.id][loR.f.name], hi = last[hiR.e.id][hiR.f.name];
+      posLog.push({ at: performance.timeOrigin + performance.now(), u: (smp[posR.f.name] - lo) / (hi - lo) });   // samples arrive in their units
+    }
+  });
+  await new Promise((res) => { setTimeout(res, 5000); obs.on('live', res); obs.connect(); });
+  await sleep(500);
+
+  const frames = { bundles: 0, nacks: [] };
+  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: true };
+  const { ctx, page, up, errors } = await open({ width: 1280, prefs: { 'phosphor.funscript.play': PLAY }, onPage: (pg) => pg.on('websocket', (ws) => {
+    ws.on('framesent', ({ payload }) => {
+      if (typeof payload === 'string') return;
+      for (const { header } of parseFrames(new Uint8Array(payload))) if (header.type === FRAME.STREAM) frames.bundles++;
+    });
+    ws.on('framereceived', ({ payload }) => {
+      if (typeof payload === 'string') return;
+      for (const { header, payload: p } of parseFrames(new Uint8Array(payload))) {
+        if (header.type === FRAME.NACK) frames.nacks.push({ ch: header.channel, code: cbDecodeFull(p).get(K.code) });
+      }
+    });
+  }) });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const R = { sim: { etag: cat0.etag || null } };
+  const shot = async (name, el = null) => { if (SHOTS) await (el ? page.locator(el).first() : page).screenshot({ path: join(SHOTS, name) }); };
+  /** The viewport with the card's top at the top, and the card alone. */
+  const cardShot = async (name) => {
+    if (!SHOTS) return;
+    await page.locator(C).evaluate((e) => e.scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(150);
+    await shot(name + '.png');
+    await shot(name + '-card.png', C);
+  };
+  ok('pb: the shell adopted the sim, the card renders, the 60 s clip loads', up && await toCard(page) && await loadClip(page));
+  const skew = await epochSkew(page);
+  const origin = await page.evaluate(() => performance.timeOrigin);
+  const nodeAt = (atMs) => origin + atMs - skew;   // a page performance.now() instant in node epoch ms
+  /** The largest change between consecutive position samples over [a, b) node epoch ms. */
+  const maxStep = (a, b) => { const p = posLog.filter((x) => x.at >= a && x.at < b); return p.length > 1 ? Math.max(...p.slice(1).map((x, i) => Math.abs(x.u - p[i].u))) : NaN; };
+  const tStart = performance.timeOrigin + performance.now();
+  const pnow = () => page.evaluate(() => performance.now());
+  const since = (t0, k) => page.evaluate(([a, b]) => (window.__funscriptProbe || []).filter((x) => x.k === b && x.t >= a), [t0, k]);
+  const media = () => video(page, (v) => v.currentTime * 1000);
+  const lead = (segs) => Math.max(...segs.flatMap((x) => x.list.map((s) => s.atMs - x.t)));
+  /** The client schedule after supersedes: each send drops what it held from its first start on. */
+  const sched = (segs) => { let out = []; for (const x of segs) if (x.ok && x.list.length) out = [...out.filter((s) => s.atMs < x.list[0].atMs), ...x.list]; return out; };
+  const holes = (s) => s.slice(1).map((x, i) => x.atMs - (s[i].atMs + s[i].durationMs)).filter((d) => d > 30).map(Math.round);
+  const latOf = async (t0) => {
+    const l = await since(t0, 'lat');
+    const lagged = l.filter((x) => Number.isFinite(x.lag));
+    const conv = lagged.find((x) => x.comp !== 0 && Math.abs(Math.max(-100, Math.min(100, x.lag)) - x.comp) < 2);
+    return { samples: l.length, firstLagS: lagged.length ? +((lagged[0].t - t0) / 1000).toFixed(1) : null,
+      convergedS: conv ? +((conv.t - t0) / 1000).toFixed(1) : null, lag: lagged.length ? +lagged.at(-1).lag.toFixed(2) : null,
+      comp: l.length ? +l.at(-1).comp.toFixed(2) : null, comps: [...new Set(l.map((x) => +x.comp.toFixed(1)))] };
+  };
+
+  // ---- 1: play, low latency off, auto compensation ----
+  let t0 = await pnow();
+  await playBtn(page).click();
+  await page.waitForTimeout(13000);
+  await cardShot('player-1280x800');
+  let segs = await since(t0, 'seg');
+  const segNacks = () => frames.nacks.filter((n) => n.ch === segEntry.id).length;
+  const us = posLog.map((p) => p.u);
+  R.normal = { bundles: frames.bundles, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks(),
+    measured: [+Math.min(...us).toFixed(3), +Math.max(...us).toFixed(3)], maxStep: +maxStep(tStart + 2000, Infinity).toFixed(4) };
+  ok('pb normal: bundles flow, the lead within half the horizon, no NACK on the segments STREAM, the machine strokes',
+    frames.bundles > 20 && R.normal.maxLeadMs <= 127 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
+  ok('pb normal: auto compensation measures a lag and converges on it', R.normal.lat.lag != null && R.normal.lat.convergedS != null, R.normal.lat);
+
+  // ---- 2: a seek with the glide ----
+  t0 = await pnow();
+  await video(page, (v) => { v.currentTime = 16; });
+  await page.waitForTimeout(1500);
+  segs = await since(t0, 'seg');
+  const marks = await since(t0, 'mark');
+  const glideX = segs.find((x) => x.list.length && Math.abs(x.list[0].durationMs - 500) <= 1);
+  const g = glideX && glideX.list[0];
+  const near = g ? Math.min(...Array.from({ length: 61 }, (_, i) => Math.abs(posS(sc, 16300 + 10 * i) - g.norm))) : NaN;
+  R.seek = { hold: marks.some((m) => m.name === 'hold'), glideMs: g ? +g.durationMs.toFixed(1) : null, glideSentAfterMs: glideX ? Math.round(glideX.t - t0) : null,
+    normErr: +near.toFixed(4), joinMs: glideX && glideX.list[1] ? +(glideX.list[1].atMs - (g.atMs + g.durationMs)).toFixed(3) : null };
+  ok('pb seek: one hold, then a 500 ms glide to the script 500 ms on, the next span joins its end', R.seek.hold && R.seek.glideMs === 500
+    && near < 0.01 && (R.seek.joinMs == null || Math.abs(R.seek.joinMs) < 0.01), R.seek);
+
+  // ---- 3: auto-home in the 14 s gap ----
+  const gapA = SCRIPT.actions.filter((a) => a.at <= 20000).at(-1).at, gapB = 34000;
+  await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').currentTime > 35.5, C, { timeout: 30000 }).catch(() => {});
+  segs = await since(t0, 'seg');
+  const homeSegs = segs.flatMap((x) => x.list).filter((s) => Math.abs(s.norm - 0.5) < 0.002);
+  const homeAt = homeSegs.length ? nodeAt(homeSegs[0].atMs) : NaN;
+  const homeEnd = homeSegs.length ? nodeAt(homeSegs.at(-1).atMs + homeSegs.at(-1).durationMs) : NaN;
+  const atHome = posLog.filter((p) => p.at > homeAt + (homeSegs[0] ? homeSegs[0].durationMs : 0) + 300 && p.at < homeEnd - 300).map((p) => p.u);
+  R.home = { gapMs: [gapA, gapB], segs: homeSegs.length, moveInMs: homeSegs[0] ? Math.round(homeSegs[0].durationMs) : null,
+    holdMs: homeSegs[1] ? Math.round(homeSegs[1].durationMs) : null, measured: atHome.length ? +median(atHome).toFixed(4) : null, samples: atHome.length,
+    worst: atHome.length ? +Math.max(...atHome.map((u) => Math.abs(u - 0.5))).toFixed(4) : null };
+  ok('pb home: a move to the point and a wait there in the gap, the machine measured at the point', homeSegs.length >= 2
+    && atHome.length > 10 && Math.abs(median(atHome) - 0.5) < 0.01, R.home);
+
+  // ---- 4: an A-B loop ----
+  const ab = page.locator(C + ' .fsp-ab');
+  await ab.click();
+  const a0 = await media();
+  await page.waitForTimeout(4000);
+  t0 = await pnow();
+  const n0 = segNacks(), tLoop = performance.timeOrigin + performance.now();
+  await ab.click();
+  const b0 = await media();
+  await page.waitForTimeout(13000);
+  segs = await since(t0, 'seg');
+  const wrapT = (await since(t0, 'mark')).filter((m) => m.name === 'wrap').map((m) => m.t);
+  const wraps = wrapT.length;
+
+  const sc2 = sched(segs.filter((x) => x.t > t0 + 300));
+  // A wrap's seek lands late by more than STEP_MS: the clock steps and the restart re-sends the seam span later by that much.
+  const shifts = [];
+  segs.filter((x) => x.t > t0 + 300 && x.list.length).forEach((x, i, all) => {
+    const q = x.list[0];
+    const prev = all.slice(0, i).flatMap((y) => y.list).filter((p) => Math.abs(p.durationMs - q.durationMs) < 0.5 && Math.abs(p.norm - q.norm) < 1e-4 && p.atMs !== q.atMs && Math.abs(p.atMs - q.atMs) < 200);
+    if (prev.length && q.atMs < x.t - 2) shifts.push(+(q.atMs - prev.at(-1).atMs).toFixed(1));
+  });
+  const tEnd = await media();
+  R.loop = { a: Math.round(a0), b: Math.round(b0), wraps, holes: holes(sc2), cuts: sc2.slice(1).map((x, i) => x.atMs - (sc2[i].atMs + sc2[i].durationMs)).filter((d) => d < -2).map(Math.round),
+    stepMs: shifts, segNacks: segNacks() - n0, maxStep: +maxStep(tLoop, performance.timeOrigin + performance.now()).toFixed(4), maxStepPlaying: R.normal.maxStep, t: Math.round(tEnd) };
+  ok('pb loop: wraps at least twice, no hole in the schedule, no NACK, the rail never jumps', wraps >= 2 && R.loop.holes.length === 0 && R.loop.segNacks === 0
+    && R.loop.maxStep <= R.normal.maxStep * 1.5 + 0.01 && tEnd >= a0 - 100 && tEnd <= b0 + 100, R.loop);
+  await ab.click();
+
+  // ---- 5: low latency on (the settings card), compensation again ----
+  await playBtn(page).click();
+  const setRow = async (fn) => {
+    await page.click('[data-tab-id="plugins"]');
+    await page.waitForSelector('.fsp-pset', { timeout: 5000 });
+    await fn(page.locator('.fsp-pset'));
+    await page.waitForTimeout(200);
+  };
+  const toggle = (label) => setRow((el) => el.locator('button[aria-label="' + label + '"]').click());
+  await toggle('Low latency');
+  await toCard(page);
+  await video(page, (v) => { v.currentTime = 2; });
+  await page.waitForTimeout(300);
+  t0 = await pnow();
+  const nb = frames.bundles, nn = segNacks();
+  await playBtn(page).click();
+  await page.waitForTimeout(10000);
+  segs = (await since(t0, 'seg')).filter((x) => x.t > t0 + 2500);
+  R.low = { bundles: frames.bundles - nb, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks() - nn };
+  ok('pb low latency: every offer within 50 ms, bundles flow, compensation converges, no NACK',
+    R.low.maxLeadMs <= 52 && R.low.bundles > 10 && R.low.lat.convergedS != null && R.low.segNacks === 0, R.low);
+
+  // ---- 6: a Preview tuning write the sim marks, then Discard ----
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(600);
+  await cardShot('analyzer-1280x800');
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  const stored = last[slEntry.id][slider.name];
+  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  await sl.scrollIntoViewIfNeeded();
+  await sl.focus();
+  await sl.press('ArrowRight');
+  await page.waitForTimeout(800);
+  const trialV = last[slEntry.id][slider.name], trialMark = (last[slEntry.id][markF.name] >> bit) & 1;
+  const notice = (await statusText(page)) === 'Preview: not saved';
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.waitForTimeout(800);
+  const backV = last[slEntry.id][slider.name], backMark = (last[slEntry.id][markF.name] >> bit) & 1;
+  R.preview = { channel: '0x' + slEntry.id.toString(16), field: slider.name, label: slider.label, stored, trial: trialV, trialMark, notice, reverted: backV, markAfter: backMark };
+  ok('pb preview: the sim STATE shows the trial value and its mark, then the stored value and no mark after Discard',
+    trialV !== stored && trialMark === 1 && notice && backV === stored && backMark === 0, R.preview);
+  await playBtn(page).click();
+  await page.locator(C + ' .fsp-expand').click();
+
+  // ---- screenshots: the interpolation preview, then the phone width ----
+  if (SHOTS) {
+    await setRow(async () => {
+      await page.selectOption('.fsp-interp select', 'makima');
+      await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '120'; i.dispatchEvent(new Event('change')); });
+    });
+    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await shot('settings-1280x800.png');
+    await toCard(page);
+    await video(page, (v) => { v.currentTime = 9; });
+    await page.waitForTimeout(800);
+    await cardShot('interp-preview-1280x800');
+    await shot('interp-preview-timeline-1280.png', C + ' .fsp-tlbox');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(800);
+    await toCard(page);
+    await page.waitForTimeout(500);
+    await cardShot('player-390x844');
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(600);
+    await cardShot('analyzer-390x844');
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(300);
+    await shot('interp-preview-timeline-390.png', C + ' .fsp-tlbox');
+    await setRow(async () => {});
+    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await shot('settings-390x844.png');
+    await page.selectOption('.fsp-interp select', 'linear');
+    await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '0'; i.dispatchEvent(new Event('change')); });
+  }
+  await toggle('Low latency');
+  ok('pb: no page error', errors.length === 0, errors.slice(0, 3));
+  R.nacks = Object.entries(frames.nacks.reduce((o, n) => { const k = '0x' + n.ch.toString(16) + ' ' + (NACK_NAME[n.code] || n.code); o[k] = (o[k] || 0) + 1; return o; }, {}));
+  console.log('PB-RESULT ' + JSON.stringify(R));
+  try { obs.close(); } catch (e) { /* gone */ }
+  await ctx.close();
+}
+
+if (LIVE && !PB) {
   console.log('(f) live: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
   const { createSession } = await import('../../Valence/clients/js/index.js');
   const sess = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp probe',
@@ -1032,6 +1570,29 @@ if (LIVE) {
     await run.click();
     await page.waitForTimeout(500);
   } else ok('live: the pattern card renders', false);
+  // The analyzer on the sim's own Tuning groups: a Preview write is a trial the hub marks, Discard puts it back.
+  await toCard(page);
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(400);
+  const liveRows = await page.locator(C + ' .fsa-row').count();
+  ok('live: the analyzer lists the sim\'s tuning controls', liveRows > 10, liveRows);
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  const v0 = await sl.inputValue();
+  await sl.scrollIntoViewIfNeeded();
+  await sl.focus();
+  await sl.press('ArrowRight');
+  const marked = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 3000 })
+    .then(() => true).catch(() => false);
+  ok('live: a Preview write is a trial the sim marks: the notice stands', marked, await statusText(page));
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  const cleared = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent !== 'Preview: not saved', C, { timeout: 3000 })
+    .then(() => true).catch(() => false);
+  await page.waitForTimeout(600);
+  ok('live: Discard reverts: the notice clears and the stored value returns', cleared && (await sl.inputValue()) === v0,
+    { cleared, v0, now: await sl.inputValue() });
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(300);
   // Last: the strip's E-stop latches the spare sim until its operator release, so nothing runs after it.
   await toCard(page);
   await playBtn(page).click();

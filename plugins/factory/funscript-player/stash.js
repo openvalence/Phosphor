@@ -3,11 +3,12 @@
 //
 // Constraints:
 // - Every request goes through the injected fetch (api.net.fetch in the plugin, a fake in tests).
-// - Every Stash fact is a marked ASSUMPTION An (docs/plugins/FUNSCRIPT.md, Stash). Check them all with
-//   `node test/funscript-stash.test.mjs --live <base> --key <key>`.
+// - Every Stash fact is a marked ASSUMPTION An (docs/plugins/FUNSCRIPT.md, Stash, verdicts on v0.31.1). Recheck
+//   them after a Stash upgrade with `node test/funscript-stash.test.mjs --live <file.json>`.
 // - Errors are Error(words) from COPY only; the key never reaches a message or a log (this module logs nothing).
 // - SCENES_QUERY also selects files.basename (A4): the title of a scene Stash left untitled.
 // - toScene sets funscript null when Stash reports interactive false (Stash builds the path regardless).
+// - toScene reads interactive_speed 0 as unknown (null): Stash reports 0 for a scripted scene it never measured.
 // - rebase keeps a base path prefix (a reverse proxy at /stash) unless the URL already carries it.
 // - script() of a scene without a funscript rejects 'no script for this scene'.
 
@@ -100,7 +101,7 @@ export function toScene(raw, base, key) {
     stream: withKey(rebase(p.stream, base), key),
     // ASSUMPTION A7: paths.funscript serves the main (L0) script JSON with the ApiKey header; no companions.
     funscript: raw.interactive === false ? null : rebase(p.funscript, base),
-    speed: num(raw.interactive_speed),
+    speed: num(raw.interactive_speed) || null,
     studio: (raw.studio && raw.studio.name) || null,
     performers: names(raw.performers),
     tags: names(raw.tags),

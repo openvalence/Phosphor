@@ -20,14 +20,15 @@ import {
   writeSetting, runAction, sendCommand, submitMotion, submitSegments, displayValue, statusOf, shadowOf,
 } from '../model/shadow.svelte.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
-import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners } from '../model/actions.js';
-import { streamGate, latchWords } from '../model/motion.js';
-import { ROLE } from '../model/roles.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
+import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
-import { LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
+import {
+  LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
+} from '../../../Valence/clients/js/index.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -67,13 +68,6 @@ async function write(field, value, payload) {
   return writeSetting(field, value);
 }
 
-// A generator owns the rail while it runs (SPEC §11.4); reported values only.
-function generatorRunning() {
-  const byRole = machine.catalog.model && machine.catalog.model.byRole;
-  return [ROLE.patternRunning, ROLE.advgenRunning].some((r) => ((byRole && byRole.get(r)) || [])
-    .some((f) => { const smp = machine.samples[f.channelId]; return !!(smp && smp[f.name]); }));
-}
-
 // Law 3: the reasons Field.svelte and ActionField.svelte name, in their order.
 // A c2h STREAM field is motion input: streamGate's reasons, `busy` last.
 function gate(field, busy = '') {
@@ -81,9 +75,7 @@ function gate(field, busy = '') {
   if (se && se.cls === CHANNEL_CLASS.STREAM && se.dirName === 'c2h') {
     return streamGate({
       live: machine.link.phase === 'live', roles: machine.link.roles, access: se.access,
-      halted: latchWords(machine.safety), running: generatorRunning(),
-      owners: railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]),
-      self: machine.link.sessionId, busy,
+      halted: latchWords(machine.safety), running: railOwned(machine.catalog.model?.byRole, machine.samples), busy,
     });
   }
   if (machine.link.phase !== 'live') return 'no hub link';
@@ -117,6 +109,19 @@ async function storeSlots(field) {
   return slots;
 }
 
+// RFC-099: the hub keeps a trial unstored iff it declares settings-trial.
+const trialCapable = () => (machine.catalog.entries || []).some((e) => e.id === CH_SETTINGS_TRIAL);
+// The ops act on this session's own trials; the op key is the channel's one field.
+const TRIAL_ACTION = { channelId: CH_SETTINGS_TRIAL, key: 1, label: 'Trial' };
+// Any session's trial, as the machine reports it on its meta.trial_pending fields.
+function trialPending() {
+  for (const e of machine.catalog.entries || []) {
+    const smp = e.layout && machine.samples[e.id];
+    if (smp && e.layout.some((f) => f.role === FIELD_ROLE.meta_trial_pending && smp[f.name])) return true;
+  }
+  return false;
+}
+
 async function listenTcp(port, onLine) {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
@@ -148,13 +153,22 @@ export const host = createPluginHost({
   display: displayValue,
   status: statusOf,
   write,
+  trialCapable,
+  writeTrial: (field, value) => writeSetting(field, value, { trial: true }),
+  trialOp: (op) => runAction(TRIAL_ACTION, TRIAL_OP[op]),
+  trialPending,
   gate,
   stale: (field) => staleReason(freshness(field.channelId)) || '',
   reason: (field) => (shadowOf(field) || {}).error || '',
   modTarget,
   storeSlots,
   submitMotion,
-  submitSegments,
+  // A SOURCE_CONFLICT NACK names the foreign owner: the gate never reads control-owner.
+  submitSegments: (list) => {
+    const r = submitSegments(list);
+    return r.ok ? r : { ...r, reason: conflictWords(r.reason,
+      railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]), machine.link.sessionId) };
+  },
   now: () => performance.now(),
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,

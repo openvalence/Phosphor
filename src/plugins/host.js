@@ -79,6 +79,10 @@ class PermissionError extends Error {
  *   status(field)                 -> confirmed|pending|overdue|fault
  *   write(field, value, payload)  -> routes to the right shadow entry point,
  *                                    behind the host-rendered confirm
+ *   trialCapable()                -> the hub declares settings-trial (RFC-099)
+ *   writeTrial(field, value)      -> the setting shadow's trial write
+ *   trialOp('commit'|'revert')    -> Promise<{ok, error?}>, this session's trials
+ *   trialPending()                -> some meta.trial_pending bit is set
  *   gate(field, busy)             -> '' or why the field cannot be written (law 3);
  *                                    `busy` is the producer lock's words for this plugin
  *   stale(field)                  -> '' or the stale reason in words (law 8)
@@ -169,6 +173,26 @@ export function createPluginHost(deps) {
 
       // ---- write: the shadow entry points, gated by the manifest ----
       write: (field, value, payload) => { need(rec, 'intent'); return deps.write(field, value, payload); },
+      // RFC-099: live, never stored until commitTrial(); revertTrial() or this
+      // client's session ending puts the stored value back.
+      writeTrial: (field, value) => {
+        need(rec, 'intent');
+        if (!deps.trialCapable || !deps.trialCapable()) return { ok: false, error: 'hub has no trial writes' };
+        if (!field || field.readOnly || field.writeChannel == null) return { ok: false, error: 'not a setting' };
+        return deps.writeTrial(field, value);
+      },
+      commitTrial: () => {
+        need(rec, 'intent');
+        if (!deps.trialCapable || !deps.trialCapable()) return Promise.resolve({ ok: false, error: 'hub has no trial writes' });
+        return deps.trialOp('commit');
+      },
+      revertTrial: () => {
+        need(rec, 'intent');
+        if (!deps.trialCapable || !deps.trialCapable()) return Promise.resolve({ ok: false, error: 'hub has no trial writes' });
+        return deps.trialOp('revert');
+      },
+      // Any session's trial: the machine's meta.trial_pending fields, not this client's memory.
+      get trialPending() { return !!(deps.trialPending && deps.trialPending()); },
       submitMotion: (norm, durationMs) => {
         need(rec, 'motion');
         const busy = busyFor(name);
