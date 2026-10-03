@@ -36,7 +36,9 @@
  *            table lacks override (law 7); paused without override the jog
  *            tape is disabled with its reason on its own label line;
  *            Override confirms, sends override, reads Return, and the tape
- *            jogs over the whole travel; Return sends return_op, no gate
+ *            jogs over the whole travel; Return sends return_op, no gate;
+ *            Override draws ->| and Return |<- left of the word, one button
+ *            width in both states (ph-vdk.60.14)
  * ph-vdk.43 (RFC-088), on glance, handheld and full:
  *   flip     a catalog tagging axis.flipped gets one Flip toggle in the top
  *            strip beside Override (ph-e82.21; in the Home popover where the
@@ -492,6 +494,10 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const ovr = page.locator('.topstrip .dock .ovr .btn-override');
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
+  const face = async () => ({ d: await ovr.locator('svg.arrow path').getAttribute('d'), w: (await ovr.boundingBox()).width,
+    iconLeft: await ovr.evaluate((b) => b.querySelector('svg').getBoundingClientRect().right <= b.querySelector('.lbl').getBoundingClientRect().left) });
+  const f0 = await face();
+  ok('override: the arrow runs into the bar (->|), left of the word', /^M2 8h9/.test(f0.d) && /M13\.5 3v10$/.test(f0.d) && f0.iconLeft, JSON.stringify(f0));
   ok('override: one control in the strip, beside Home', await ovr.count() === 1
     && await page.locator('.topstrip .dock button.home-btn', { hasText: /home/i }).count() === 1);
   ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
@@ -509,6 +515,9 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await page.waitForTimeout(300);
   ok('override: sends override and reads Return', wire.ops.at(-1) === SAFETY_OP.override && await lbl() === 'Return',
     wire.ops.slice(n).join() + ' / ' + await lbl());
+  const f1 = await face();
+  ok('override: Return draws the arrow leaving the bar (|<-), one button width', /^M2\.5 3v10/.test(f1.d) && /L5 8l3 3$/.test(f1.d)
+    && f1.iconLeft && f1.w === f0.w, JSON.stringify([f0, f1]));
   ok('override: the tape is a jog over the whole travel',
     await tape.getAttribute('aria-disabled') === 'false'
     && /jog . travel/.test(await page.locator('.rail-hero .rail-tape-mode').textContent()));

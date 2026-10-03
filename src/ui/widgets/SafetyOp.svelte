@@ -46,8 +46,13 @@
     estop: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     resume: '<polygon points="6 4 20 12 6 20 6 4"/>',
-    override: '<path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/>',
-    return: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
+  };
+  // Override and Return, from the operator's sketch (2026-10-02), drawn like
+  // Flip's (TopStrip.svelte) on a 16 px grid at 1.5 px: an arrow running
+  // into the limit bar, and one leaving it.
+  const ARROW = {
+    override: '<path d="M2 8h9M8 5l3 3-3 3M13.5 3v10"/>',
+    return: '<path d="M2.5 3v10M5 8h9M8 5L5 8l3 3"/>',
   };
   // Per pair: the snapshot bit that is its second state, and its second op.
   const PAIR = {
@@ -155,8 +160,13 @@
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
           oncontextmenu={(e) => { if (isEstop && latched) e.preventDefault(); }}>
     <span class="row">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-           stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
+      {#if isOverride}
+        <svg class="ico arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">{@html ARROW[icon]}</svg>
+      {:else}
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
+      {/if}
       <span class="lbls"><span class="lbl">{label}</span><span class="ghost" aria-hidden="true">{LABELS[latched ? 0 : 1]}</span></span>
     </span>
     <small class="state" class:hint={status === hint} role="status">{status}</small>
@@ -199,6 +209,7 @@
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .row { display: flex; align-items: center; gap: 4px; }
   .ico { width: 14px; height: 14px; }
+  .ico.arrow { width: 16px; height: 16px; }
   .lbls, .hints { display: grid; }
   .lbls > *, .hints > * { grid-area: 1 / 1; }
   .ghost { visibility: hidden; }
