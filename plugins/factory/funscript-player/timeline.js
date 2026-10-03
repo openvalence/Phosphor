@@ -19,6 +19,11 @@
 //   --warn are 13.6 Delta E apart.
 // - Every box has a fixed height (CSS); a state change swaps no geometry.
 // - zoomMs is the starting window; onZoom(ms) persists it as the prefs key zoomMs.
+// - The playhead is one bar: its grip rides the heat at the bottom and its line runs up
+//   through the detail at the same x, so the detail window holds m at the share m / duration.
+// - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
+//   the hub's own command, under the script's.
+// - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
 // - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
 //   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
 
@@ -41,6 +46,7 @@ export const COPY = Object.freeze({
   zoomOut: 'Zoom out',
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
+  analyzer: 'Analyzer',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -108,7 +114,8 @@ export function zoomStep(ms, dir) {
 }
 
 export const CSS = `
-.fsp-tl { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fsp-tl { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fsp-ph { position: absolute; top: 0; bottom: 12px; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
@@ -127,7 +134,7 @@ export const CSS = `
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
-.fsp-dt .ph { stroke: var(--highlight); stroke-width: 1.5; }
+.fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
@@ -140,6 +147,8 @@ export const CSS = `
 .fsp-zoom button { width: var(--tap); height: var(--tap); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
 .fsp-zoom button:hover, .fsp-zoom button:focus-visible { color: var(--highlight); outline: none; }
 .fsp-zoom button:disabled { opacity: .35; cursor: default; }
+.fsp-zoom button[aria-pressed=true] { color: var(--highlight); }
+.fsp-zoom svg { position: static; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; vertical-align: middle; }
 `;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -157,7 +166,7 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000 }) {
+export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [];
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
@@ -207,12 +216,18 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
   const real = s('g');
-  dtSvg.append(rgLo, rgHi, rawLine, curve, real, s('line', { class: 'ph', x1: '500', x2: '500', y1: '0', y2: '100' }));
+  dtSvg.append(rgLo, rgHi, rawLine, curve, real);
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
+  const zAn = h('button', { type: 'button', class: 'fsp-expand', title: COPY.analyzer, 'aria-label': COPY.analyzer, 'aria-pressed': 'false' });
+  const icon = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  icon.append(s('path', { d: 'M9.5 2.5h4v4M13.5 2.5l-5 5M6.5 13.5h-4v-4M2.5 13.5l5-5' }));
+  zAn.append(icon);
+  zAn.hidden = !onExpand;
+  zAn.addEventListener('click', () => onExpand && onExpand(zAn.getAttribute('aria-pressed') !== 'true'));
   const pills = ['lo', 'hi'].map((key) => {
     const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key],
       'aria-orientation': 'vertical', 'aria-valuemin': '0', 'aria-valuemax': '100', 'data-key': key });
@@ -250,8 +265,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn));
-  const root = h('div', { class: 'fsp-tl' }, ov, dt);
+    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAn));
+  const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
+  const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
   el.append(root);
 
   const eff = () => (preview ? { ...T, ...preview } : T);
@@ -264,11 +280,12 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
 
   function draw() {
     const d = dur(), Te = eff();
-    const from = m - zoom / 2, to = m + zoom / 2;
+    const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
     curve.setAttribute('points', curvePoints(script, from, to, 1000, 100, Te));
     rawLine.setAttribute('points', raw && raw !== script ? curvePoints(raw, from, to, 1000, 100, Te) : '');
     curve.classList.toggle('draft', !!preview);
-    real.replaceChildren(...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
+    real.replaceChildren(...traceLines(trace.map((x) => ({ m: x.m, u: x.p })), from, to, 1000, 100).map((l) => s('polyline', {
+      class: 'plan', points: l.points })), ...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
       class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       line.setAttribute('y1', String(100 - v * 100));
@@ -289,6 +306,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     scrub.setAttribute('aria-valuenow', String(Math.round(m)));
     scrub.setAttribute('aria-valuetext', fmtTime(m));
     scrub.hidden = !script;
+    ph.style.left = scrub.style.left;
+    ph.hidden = !script;
   }
 
   return {
@@ -305,6 +324,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       trace = tr || [];
       draw();
     },
+    setExpanded(on) { zAn.setAttribute('aria-pressed', String(!!on)); },
     unmount() { root.remove(); },
   };
 }

@@ -368,7 +368,11 @@ Shipped:
   gate or a hub refusal pauses it with no hold. The card's Play is the
   only start, and a latch, a running generator or another producer grays
   it with the gate's words. Stash rides `net.fetch`, its connect card
-  in the Plugins pane and in the library's place. Operator values persist
+  in the Plugins pane and in the library's place. The detail's expand
+  button opens the analyzer in the card's own box: the hub's Tuning
+  controls (and `limit.input.*`), written Live through `api.write` or as a
+  Preview through `api.writeTrial` with Apply and Discard, so the manifest
+  declares `intent`. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Design and decisions:
   [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:

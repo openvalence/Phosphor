@@ -6,6 +6,9 @@
  *   (b) prefs      defaults, repair of malformed values, the backup mirror
  *   (c) hero       the spec claims on the valencesim fixture and declines
  *                  without a segments STREAM; the factory entry
+ *   (c2) analyzer  the Tuning groups by catalog and role on the tuning
+ *                  fixture (the recording with RFC-094 groups and RFC-099
+ *                  settings-trial patched in), lagOf
  * Browser sections (default, `npm run check:funscript`; needs ffmpeg on
  * PATH): see the header of the browser half below.
  *
@@ -23,6 +26,9 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { claimAll } from '../src/model/roles.js';
+import * as CB from '../../Valence/clients/js/cbor.js';
+import * as SHA from '../../Valence/clients/js/sha256.js';
+import * as FR from '../../Valence/clients/js/frames.js';
 
 const args = process.argv.slice(2);
 const UNIT = args.includes('--unit');
@@ -51,6 +57,8 @@ const CONTRACT = {
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
+  [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
+    'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'mountAnalyzer'],
   [P + 'index.js']: ['HERO', 'activate'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
     'createMotionDoor', 'bundleHead', 'motionStream'],
@@ -84,8 +92,8 @@ const problems = host && host.validateManifest ? host.validateManifest(manifest)
 const RA = !problems.includes(NET_FETCH_PENDING);
 ok('manifest validates' + (RA ? '' : ' but for net.fetch (R-A pending)'), problems.filter((p) => p !== NET_FETCH_PENDING).length === 0,
   problems.join('; ') || undefined);
-ok('manifest declares motion and net.fetch, never intent',
-  manifest.permissions.includes('motion') && manifest.permissions.includes('net.fetch') && !manifest.permissions.includes('intent'));
+ok('manifest declares motion, net.fetch and intent (the analyzer writes tuning)',
+  ['motion', 'net.fetch', 'intent'].every((p) => manifest.permissions.includes(p)));
 
 // ---- (b) prefs ----------------------------------------------------------------
 console.log('(b) prefs');
@@ -137,6 +145,33 @@ console.log('(c) hero spec');
 const index = mods[P + 'index.js'];
 const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
 const SEG_CH = 0x2101;   // valencesim motion-segment (registry 0x2101), test-side only
+// Tuning fixture, test-side ids: the recording's retired tuning category (9) becomes motion (2)
+// with RFC-094 'Tuning / ' groups, the waveform STATE gains trial_mask (meta.trial_pending) and
+// settings-trial (core 0x16, RFC-099) joins. Built in memory; nothing generated is committed.
+const CH_WAVE = 0x1122, CH_TRIAL = 0x16;
+function cborOf(v) {
+  if (v instanceof Map) return CB.cbMap([...v.entries()].sort((a, b) => a[0] - b[0]).map(([k, x]) => [k, cborOf(x)]));
+  if (Array.isArray(v)) return CB.cbArray(v.map(cborOf));
+  if (v instanceof Uint8Array) return CB.cbBstr(v);
+  if (typeof v === 'string') return CB.cbTstr(v);
+  if (typeof v === 'boolean') return CB.cbBool(v);
+  if (v === null) return CB.cbNull();
+  if (!Number.isInteger(v)) return CB.cbF32(v);
+  return v < 0 ? CB.cbInt(v) : CB.cbUint(v);
+}
+function tuningCatalog() {
+  const entries = CB.cbDecodeFull(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
+  for (const e of entries) {
+    if (e.get(10) !== 9) continue;
+    e.set(10, 2);
+    for (const f of e.get(8) || []) if (f.has(11)) f.set(11, 'Tuning / ' + f.get(11));
+  }
+  entries.find((e) => e.get(1) === CH_WAVE).get(8).push(new Map([[1, 'trial_mask'], [2, 7], [3, 'flag'], [4, 1], [13, 'meta.trial_pending']]));
+  entries.push(new Map([[1, CH_TRIAL], [2, 'settings-trial'], [3, 2], [4, 1], [5, 1], [6, 5], [7, 1], [9, new Map([[1, new Map([
+    [1, 'op'], [2, 0], [3, ''], [10, ['reserved', 'commit', 'revert']], [13, 'action.trial'], [17, [1, 1, 1]]])]])]]));
+  const bytes = cborOf(entries);
+  return { bytes, etag: SHA.toHex(SHA.catalogEtag(bytes, FR.LIMITS.etag_bytes)) };
+}
 if (index) {
   const h = index.HERO;   // activate itself creates the <video>: the browser half drives it
   ok('one hero, id player, title, absorb false, cells', !!h && h.id === 'player' && h.title === 'Funscript player'
@@ -159,6 +194,40 @@ if (index) {
   const f = factory && factory.FACTORY.find((x) => x.manifest.name === 'funscript-player');
   if (RA) ok('listed in FACTORY with its manifest', !!f && same(f.manifest, manifest) && f.module.activate === (index && index.activate));
   else ok('not in FACTORY while net.fetch is refused (test (g) validates every entry)', !f);
+}
+
+// ---- (c2) the analyzer: Tuning groups by catalog and role, lagOf ----------------
+console.log('(c2) analyzer');
+const an = mods[P + 'analyzer.js'];
+if (an) {
+  const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
+  const names = tg.map((g) => g.name);
+  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Settling'];
+  ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
+    same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
+      && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);
+  const fs = tg.flatMap((g) => g.fields);
+  ok('only writable controls, no readout', fs.length > 15 && fs.every((f) => !f.readOnly && f.writeChannel != null
+    && ['slider', 'stepper', 'toggle', 'segmented', 'select'].includes(f.widget)), fs.length);
+  ok('limit.input.* by role, nothing else from its group',
+    same(tg.find((g) => g.name === 'Machine-driven limits').fields.map((f) => f.role).sort(), [...an.LIMIT_ROLES].sort()));
+  ok('the recording without Tuning groups offers limit.input.* only',
+    same(an.tuningGroups(buildSettingsModel(ENTRIES)).map((g) => g.name), ['Machine-driven limits']));
+  ok('analyzer.js names no channel id', !/0x[0-9a-f]{3,}/i.test(readFileSync(new URL(P + 'analyzer.js', import.meta.url), 'utf8')));
+  const { parseFunscript, posAt } = mods[P + 'funscript.js'];
+  const { applyT } = mods[P + 'scheduler.js'];
+  const acts = [];
+  for (let at = 0, k = 0; at <= 10000; at += 300 + (k * 53) % 200, k++) acts.push({ at, pos: k % 2 ? 90 : 10 });
+  const sc = parseFunscript({ actions: acts });
+  const T = { offsetMs: 0, lo: 0.1, hi: 0.9, invert: false };
+  const tr = [];
+  for (let m = 2000; m <= 9000; m += 16) tr.push({ m, u: applyT(posAt(sc, m - 42), T), p: applyT(posAt(sc, m - 14), T), stale: false });
+  ok('lagOf finds a 42 ms measured lag and a 14 ms plan lag within a step',
+    Math.abs(an.lagOf(tr, sc, T, 'u') - 42) <= an.LAG_STEP_MS && Math.abs(an.lagOf(tr, sc, T, 'p') - 14) <= an.LAG_STEP_MS,
+    [an.lagOf(tr, sc, T, 'u'), an.lagOf(tr, sc, T, 'p')]);
+  ok('lagOf declines a flat trace, a short one and stale points',
+    an.lagOf(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.lagOf(tr.slice(0, 10), sc, T) === null
+      && an.lagOf(tr.map((x) => ({ ...x, stale: true })), sc, T) === null);
 }
 
 if (UNIT || fails) {
@@ -276,6 +345,7 @@ const unwrap = (u32, near) => near + ((u32 - (near >>> 0)) | 0);
 function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
   const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null, nackStream: 0 };
   const entry = (id) => cat.entries.find((e) => e.id === id);
+  hub.intents = [];
   const valuesOf = (e) => Object.fromEntries(e.layout.map((f) => [f.name,
     hub.values[e.id + ':' + f.name] ?? (f.role === 'meta.enabled_mask' ? 0xff : Number(f.default) || 0)]));
   hub.send = (type, ch, payload, seq = 0) => { try { hub.socket.send(Buffer.from(encodeFrame(type, ch, payload, seq))); } catch (e) { /* closed */ } };
@@ -352,6 +422,19 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           }
           hub.bundles.push({ ch: header.channel, arrival, segs, latch: hub.latch });
           if (hub.nackStream) hub.send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(hub.nackStream)]]), header.seq);
+        } else if (t === FRAME.INTENT) {
+          const q = cbDecodeFull(payload);
+          const ch = q.get(K.channel_id), val = q.get(K.value) || new Map(), trial = q.get(K.trial) === true;
+          hub.intents.push({ ch, value: Object.fromEntries(val), trial });
+          const st = cat.entries.find((e) => e.settingChannel === ch && e.layout);
+          if (st) for (const [k, v] of val) { const f = st.layout.find((x) => x.settingKey === k); if (f) hub.values[st.id + ':' + f.name] = v; }
+          if (ch === CH_TRIAL) hub.values[CH_WAVE + ':trial_mask'] = 0;
+          else if (trial) hub.values[CH_WAVE + ':trial_mask'] = 1;
+          const enc = (v) => (typeof v === 'boolean' ? CB.cbBool(v) : Number.isInteger(v) ? (v < 0 ? CB.cbInt(v) : cbUint(v)) : cbF32(v));
+          hub.send(FRAME.ECHO, ch, cbMap([[K.intent_id, cbUint(q.get(K.intent_id))],
+            [K.applied, cbMap([...val].sort((a, b) => a[0] - b[0]).map(([k, v]) => [k, enc(v)]))]].sort((a, b) => a[0] - b[0])), header.seq);
+          if (st) hub.state(st.id);
+          if (entry(CH_WAVE)) hub.state(CH_WAVE);
         } else if (t === FRAME.PING) {
           hub.send(FRAME.PONG, header.channel, payload);
         }
@@ -832,7 +915,7 @@ if (!LIVE) {
   }, C);
   const badCopy = texts.filter((t) => !copyOk(t) && !/^[\d:.\s/]+$/.test(t));
   ok('copy: every rendered string is one short fragment (docs/COPY.md)', badCopy.length === 0, badCopy);
-  const tables = Object.entries(mods).filter(([, m]) => m.COPY).flatMap(([p, m]) => Object.values(m.COPY).map((t) => [p.replace(P, ''), t]));
+  const tables = Object.entries(mods).filter(([, m]) => m.COPY).flatMap(([p, m]) => Object.values(m.COPY).flatMap((t) => (typeof t === 'string' ? [t] : Object.values(t))).map((t) => [p.replace(P, ''), t]));
   const badTables = tables.filter(([, t]) => !copyOk(t.trim()));
   ok('copy: every COPY table entry is one short fragment', tables.length > 20 && badTables.length === 0, badTables);
 
@@ -998,6 +1081,136 @@ if (!LIVE) {
   }
 }
 
+// ---- (g) the analyzer on the tuning fixture: playhead, expand, Live and Preview writes, the notice ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(g) analyzer');
+  const tc = tuningCatalog();
+  tc.entries = decodeCatalog(tc.bytes);
+  const groups = mods[P + 'analyzer.js'].tuningGroups(buildSettingsModel(tc.entries));
+  const hub = makeHub(tc);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  hub.values[CH.motion + ':pos_10um'] = 15;
+  const { ctx, page, up, errors } = await open({ cat: tc, hub, coarse: true });
+  ok('analyzer: the shell adopts the tuning fixture and the card renders', up && await toCard(page));
+  ok('analyzer: the clip loads', await loadClip(page));
+  // ---- playhead ----
+  await video(page, (v) => { v.currentTime = 15; });
+  await page.waitForTimeout(400);
+  const bar = await page.evaluate((c) => {
+    const q = (s) => document.querySelector(c + ' ' + s).getBoundingClientRect();
+    const ph = q('.fsp-ph'), dt = q('.fsp-dt'), ov = q('.fsp-ov'), sc = q('.fsp-scrub');
+    return { top: ph.top - dt.top, bottom: ph.bottom - (ov.top + ov.height / 2), dx: ph.left + ph.width / 2 - (sc.left + sc.width / 2),
+      share: (ph.left + ph.width / 2 - ov.left) / ov.width, heatBelow: ov.top >= dt.bottom };
+  }, C);
+  ok('playhead: one bar from the detail top down to the grip on the heat, the heat at the bottom',
+    Math.abs(bar.top) <= 1 && Math.abs(bar.bottom) <= 1 && Math.abs(bar.dx) <= 1 && bar.heatBelow, bar);
+  ok('playhead: at 15 s it sits at that share of the script in both bands',
+    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01, bar.share);
+  // ---- expand ----
+  // Rects relative to the card: a click or a scrollIntoView may scroll the page.
+  const look = () => page.locator(C).evaluate((e) => {
+    const o = e.getBoundingClientRect();
+    const r = (s) => { const x = e.querySelector(s); if (!x || !x.getClientRects().length) return null;
+      const b = x.getBoundingClientRect(); return { x: b.x - o.x, y: b.y - o.y, width: b.width, height: b.height }; };
+    return { card: o.width + 'x' + o.height, stage: r('.fsp-stage'), an: r('.fsa'), lib: r('.fsp-libbox'),
+      video: !!e.querySelector('.fsp-stage video'), dt: r('.fsp-dt') };
+  });
+  const before = await look();
+  const expandBtn = page.locator(C + ' .fsp-expand');
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const open1 = await look();
+  ok('expand: the outer card rect is identical', open1.card === before.card, [before.card, open1.card]);
+  ok('expand: the video moves to a corner thumbnail, the analyzer in, the library out, the detail taller',
+    open1.video && open1.stage.width <= 321 && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
+      && open1.dt.height > before.dt.height, open1);
+  ok('expand: the button reads pressed', (await expandBtn.getAttribute('aria-pressed')) === 'true');
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer.png') });
+  const labels = await page.$$eval(C + ' .fsa-row .fsa-k', (els) => els.map((e) => e.textContent));
+  ok('analyzer: one row per tuning control the catalog groups', labels.length === groups.flatMap((g) => g.fields).length,
+    { rows: labels.length, fields: groups.flatMap((g) => g.fields).length });
+  const small = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa :is(button, input, select), ' + c + ' .fsp-expand')]
+    .map((e) => [e.textContent || e.getAttribute('aria-label') || e.tagName, e.getBoundingClientRect()])
+    .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
+  ok('analyzer: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
+  const outside = await page.evaluate((c) => {
+    const card = document.querySelector(c).getBoundingClientRect(), list = document.querySelector(c + ' .fsa-list').getBoundingClientRect();
+    return [...document.querySelectorAll(c + ' .fsa :is(button, input, select, output)')].filter((e) => {
+      const r = e.getBoundingClientRect(), box = e.closest('.fsa-list') ? list : card;
+      return r.width > 0 && (r.left < box.left - 0.5 || r.right > box.right + 0.5 || (box === card && (r.top < card.top - 0.5 || r.bottom > card.bottom + 0.5)));
+    }).map((e) => e.textContent || e.getAttribute('aria-label'));
+  }, C);
+  ok('analyzer: every control lies inside the card, rows inside their list', outside.length === 0, outside);
+  // ---- writes ----
+  const slider = groups.flatMap((g) => g.fields).find((f) => f.widget === 'slider');
+  const nudge = async () => {
+    const i = page.locator(C + ' .fsa-row input[type=range]').first();
+    await i.scrollIntoViewIfNeeded();
+    await i.focus();
+    await i.press('ArrowRight');
+    await page.waitForTimeout(400);
+    return hub.intents.filter((x) => x.ch !== CH_TRIAL).at(-1);
+  };
+  const modeBtn = (t) => page.locator(C + ' .fsa-head .fsp-btn', { hasText: new RegExp('^' + t + '$') });
+  const aRects = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa > *, ' + c + ' .fsa-head > *, ' + c + ' > :not(style)')]
+    .filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(), o = document.querySelector(c).getBoundingClientRect();
+      return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join(','); }), C);
+  ok('modes: Preview is the default on a trial-capable hub', (await modeBtn('Preview').getAttribute('aria-pressed')) === 'true');
+  await modeBtn('Live').click();
+  const r0 = await aRects();
+  const live = await nudge();
+  ok('Live: a tuning write reaches api.write: a durable INTENT on the field\'s write channel',
+    !!live && live.ch === slider.writeChannel && live.trial === false && slider.settingKey in live.value, live);
+  await modeBtn('Preview').click();
+  const n0 = hub.intents.length;
+  const prev = await nudge();
+  ok('Preview: a tuning write reaches writeTrial: the same INTENT with trial', hub.intents.length > n0 && !!prev
+    && prev.ch === slider.writeChannel && prev.trial === true, prev);
+  const notice = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 2000 })
+    .then(() => true).catch(() => false);
+  ok('Preview: the notice stands in the status slot while trialPending', notice, await statusText(page));
+  ok('Preview: Apply and Discard are offered', !(await modeBtn('Apply').isDisabled()) && !(await modeBtn('Discard').isDisabled()));
+  const r1 = await aRects();
+  ok('layout: Live, Preview and a pending trial share every rect', JSON.stringify(r0) === JSON.stringify(r1), r0.filter((x, i) => x !== r1[i]));
+  await modeBtn('Apply').click();
+  await page.waitForTimeout(400);
+  const commit = hub.intents.at(-1);
+  ok('Apply commits: settings-trial op 1', !!commit && commit.ch === CH_TRIAL && commit.value[1] === 1, commit);
+  ok('Apply: the notice clears with the mark', (await statusText(page)) !== 'Preview: not saved', await statusText(page));
+  await nudge();
+  await page.waitForTimeout(300);
+  ok('Preview: a second trial raises the notice again', (await statusText(page)) === 'Preview: not saved', await statusText(page));
+  await modeBtn('Discard').click();
+  await page.waitForTimeout(400);
+  const revert = hub.intents.at(-1);
+  ok('Discard reverts: settings-trial op 2, the notice clears', !!revert && revert.ch === CH_TRIAL && revert.value[1] === 2
+    && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
+  // ---- handheld: the same card rect open or shut, the thumbnail in the source row ----
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
+  await page.waitForTimeout(300);
+  const hOpen = await look();
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const hShut = await look();
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  ok('handheld: the outer card rect is identical open or shut, the thumbnail one tap high, the analyzer in',
+    hOpen.card === hShut.card && hOpen.stage.height <= 50 && !!hOpen.an && hOpen.an.height > 100 && hOpen.dt.height > 40, { hOpen, hShut });
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer-handheld.png') });
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
+  await page.waitForTimeout(300);
+  // ---- collapse ----
+  await expandBtn.click();
+  await page.waitForTimeout(300);
+  const shut = await look();
+  ok('collapse: the card, the stage and the library come back as they were',
+    shut.card === before.card && JSON.stringify(shut.stage) === JSON.stringify(before.stage) && !shut.an && !!shut.lib, shut);
+  ok('analyzer: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
 if (LIVE) {
   console.log('(f) live: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
   const { createSession } = await import('../../Valence/clients/js/index.js');
@@ -1078,6 +1291,29 @@ if (LIVE) {
     await run.click();
     await page.waitForTimeout(500);
   } else ok('live: the pattern card renders', false);
+  // The analyzer on the sim's own Tuning groups: a Preview write is a trial the hub marks, Discard puts it back.
+  await toCard(page);
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(400);
+  const liveRows = await page.locator(C + ' .fsa-row').count();
+  ok('live: the analyzer lists the sim\'s tuning controls', liveRows > 10, liveRows);
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  const v0 = await sl.inputValue();
+  await sl.scrollIntoViewIfNeeded();
+  await sl.focus();
+  await sl.press('ArrowRight');
+  const marked = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 3000 })
+    .then(() => true).catch(() => false);
+  ok('live: a Preview write is a trial the sim marks: the notice stands', marked, await statusText(page));
+  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  const cleared = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent !== 'Preview: not saved', C, { timeout: 3000 })
+    .then(() => true).catch(() => false);
+  await page.waitForTimeout(600);
+  ok('live: Discard reverts: the notice clears and the stored value returns', cleared && (await sl.inputValue()) === v0,
+    { cleared, v0, now: await sl.inputValue() });
+  await page.locator(C + ' .fsp-expand').click();
+  await page.waitForTimeout(300);
   // Last: the strip's E-stop latches the spare sim until its operator release, so nothing runs after it.
   await toCard(page);
   await playBtn(page).click();

@@ -13,11 +13,14 @@
     "window.max",
     "limit.input.speed",
     "pattern.running",
-    "advgen.running"
+    "advgen.running",
+    "plan.current",
+    "meta.trial_pending"
   ],
   "channels": [],
   "permissions": [
     "motion",
-    "net.fetch"
+    "net.fetch",
+    "intent"
   ]
 }

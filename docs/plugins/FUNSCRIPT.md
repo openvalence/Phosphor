@@ -18,7 +18,7 @@ Decisions below.
 | R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), although Stash answers the preflight (v0.31.1, measured 2026-10-03: allow-origin `*`, allow-headers `Apikey, Content-Type`) |
 | R-B | config | CSP `media-src 'self' blob: http: https:` and `img-src` + `http: https:`; http capability + `https://**` | `media-src` falls back to `default-src 'self'`: not even a local file (blob:) plays in the shell |
 | R-C | CANON FLAG, PLUGINS.md "manifest plus one module" | a multi-module factory plugin; Vite bundles the siblings; an override copy in the plugins folder must be bundled into one file first | the plugin builder inlines the modules into `index.js` at the end (the import graph has no cycles and no import-time side effects) |
-| R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`) | — |
+| R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`). Superseded for `intent` by the analyzer (ph-smvd.11, A1): it writes tuning | — |
 
 When ruled, R-A and R-C become rows in DESIGN.md's Amendments table and
 sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
@@ -263,6 +263,8 @@ Veto-able (ph-smvd.10):
   the over-limit words outrank them in the slot; the tooltip keeps them.
 - **Containment.** No fullscreen, picture-in-picture or native controls
   (law 1): the strip's e-stop and pause stay on screen. No red (law 13).
+  The analyzer's expand keeps it: the video goes to an in-card thumbnail,
+  not to picture-in-picture (A2).
 
 ## The card (player-ui)
 
@@ -276,10 +278,11 @@ FULL
 | source bar: Open files, title                   | search, sort, dir  |
 | stage 16:9, object-fit contain                  | tiles, paged,      |
 |   empty: 'Open a video'                         |   never scrolled   |
-| overview 24: whole-script heat, window box,     | page n / m, N      |
-|   vertical-pill scrub (40 px hit)               |                    |
-| detail 96: automation curve (intent), reality   |                    |
-|   trace, fixed center playhead, range pills     |                    |
+| detail 96: automation curve (intent), reality   | page n / m, N      |
+|   trace, plan, range pills, zoom, Analyzer      |                    |
+| overview 24: whole-script heat, window box,     |                    |
+|   vertical-pill scrub (40 px hit); its line     |                    |
+|   runs up through the detail: one playhead bar  |                    |
 +------------------------------------------------+--------------------+
 | status slot 20, one line, aria-live                                  |
 | transport var(--tap): Play | time | Motion | Offset | Invert |        |
@@ -325,7 +328,10 @@ FULL
   machine in sync draws on the curve: offset can be set by eye. It is a
   scope, not a measurement (ponytail; arrival-stamped).
 - **Handles** (Advanced Penetration's vocabulary): the scrub playhead is a
-  vertical pill (left-right; arrows 5 s, Shift 30 s, Home, End); range low
+  vertical pill on the heat, the bottom band, whose line runs up through
+  the detail as one bar (left-right; arrows 5 s, Shift 30 s, Home, End;
+  the detail window holds the playhead at the same share of its width as
+  the heat, so the two never disagree); range low
   and high are horizontal pills at the detail's left edge, high one tap to
   the right of low so close values never stack (up-down; arrows 1 %, Shift
   10 %). A pill's hit box stays inside the detail, which clips, and only
@@ -474,6 +480,81 @@ key `play`. Each choice below is veto-able.
   It sits on top of the declared `schedule_latency_us` (RFC-059 forbids
   bidding that down) and beside the operator's offset.
 
+## Analyzer (ph-smvd.11)
+
+The expand button on the detail (Blender's maximize glyph, tooltip
+`Analyzer`) turns the heat into a tuning bench, after the archived
+SlopDrive-32 slopsim graph page: the script with the hub's plan
+(`plan.current`, `--intent` at reduced weight) and the measured position
+(`telemetry.position`, `--reality`) overlaid on a taller detail, a lag
+readout, and every tuning control the hub exposes. The card's outer rect
+does not move: in full the library column becomes the analyzer under a
+320 x 180 thumbnail of the video; in handheld the thumbnail sits one tap
+high in the source row and the analyzer takes the lower 55 % of the
+timeline's box. Collapsing restores the card as it was.
+
+- **Controls.** Bound by the catalog, never by channel: the writable
+  fields of every group whose first segment is the registry's `Tuning`
+  subgroup (RFC-094; on valencesim: motion behavior, streaming, sample
+  streams, curve, infeasible moves, settling), the writable fields that
+  share a write channel with those (the kinetic ceiling overrides), and
+  `limit.input.*` by role. Each row draws the field's derived
+  presentation: slider (a vertical-pill thumb, one write on release),
+  stepper, toggle, two-option segmented, else a select. A 3 px bar shows
+  the write ladder (`--intent` pending, `--warn` overdue or fault); the
+  gate, the refusal or the stale words ride the row tooltip.
+- **Live or Preview.** Live writes through `api.write`. Preview (the
+  default where the hub declares `action.trial`) writes through
+  `api.writeTrial`; Apply is `api.commitTrial()`, Discard
+  `api.revertTrial()`. `Preview: not saved` stands in the status slot,
+  with an `--intent` bar, while `api.trialPending` (any client's trial),
+  outranked only by a refusal and the gate. A mode switch writes nothing.
+- **Lag.** `Lag n ms` is the shift that best lays the measured position
+  over the script (after Offset, Range and Invert), `Plan n ms` the same
+  for `plan.current`, both over the trace's last 8 s, every 500 ms,
+  between -100 and 400 ms. A scope like the trace, not a measurement:
+  telemetry arrives on its own cadence (ph-smvd.12's compensation is the
+  measured path).
+
+Decisions (veto-able):
+
+- **A1** The manifest declares `intent`: the analyzer is a writer, so R-D's
+  reason no longer holds. Veto: the analyzer shows values read-only and
+  the tuning stays on the settings page.
+- **A2** Pushback on the brief: no Document Picture-in-Picture or
+  `requestPictureInPicture`. Both open an always-on-top OS window that can
+  sit over the top strip, which law 1 and Containment forbid; the brief's
+  own fallback, an in-card thumbnail, is the only path. Veto: a ruling that
+  amends law 1 for a floating video, then the PiP call where available.
+- **A3** No host Field presentations: the plugin API has no member that
+  mounts a host field, so the rows are the plugin's own controls over
+  `api.value`, `api.status`, `api.gate`, `api.reason` and `api.stale`,
+  without Field.svelte's afterglow. The host member (`mountField(el, field,
+  {write})`, a write override for trials) is a host bead. Veto: wait for it.
+- **A4** Preview is the default on a trial-capable hub, so an exploratory
+  drag is never stored by accident; the mode is not persisted.
+- **A5** Diagnostics stay on the settings page: the analyzer lists the
+  writable fields only (the archived page's anomaly counts are readouts the
+  generic renderer already shows).
+- **A6** A trace point's plan share treats `plan.current` as a window share
+  (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
+  the field's own min and max when it declares them.
+
+Tests: `--unit` (c2) checks the groups on a tuning fixture (the recording
+with its retired tuning category moved under motion as `Tuning / ` groups,
+a `trial_mask` and settings-trial patched in, in memory) and on the plain
+recording (limit.input.* only), and lagOf on a synthetic 42 ms and 14 ms
+lag. The browser run (g), under a coarse pointer: the playhead bar spans
+the detail and the heat at the grip's x and the time's share; expand keeps
+the outer rect (full and handheld) with the video in the thumbnail and
+the library out; one row per field; 40 px targets, nothing outside the
+card; a Live write is a durable INTENT on the field's write channel, a
+Preview write the same with `trial`; the notice stands while the hub marks
+the trial; Apply sends settings-trial op 1, Discard op 2, each clearing
+it; rects unchanged across Live, Preview and a pending trial; collapse
+restores the card. `--live`: on valencesim a Preview write raises the
+notice and Discard clears it and restores the stored value.
+
 ## Tests
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,
@@ -584,7 +665,8 @@ key `play`. Each choice below is veto-able.
 - **D9** One producer per session; the hold ends 500 ms after the holder's
   last sent segment (design 3), not a flat 1 or 2 s.
 - **D10** Offset, Range and Invert are client content transforms in global
-  prefs; the window is never written; no `intent` permission (R-D).
+  prefs; the window is never written; they need no `intent` (the
+  analyzer's tuning writes do, A1).
 - **D11** Speed meter and heat are display only.
 - **D12** Thinning only after `RATE_EXCEEDED` (design 3).
 - **D13** Stash: direct streams only, Boolean filter per A3 (design 2's

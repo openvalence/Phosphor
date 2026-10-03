@@ -33,6 +33,10 @@
 // - --warn is a mark, never text: on a light chassis it reads 1.8:1, and it is
 //   locked (law 13). Warn text stays --tx beside a --warn bar.
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
+// - The analyzer keeps the outer card rect: the video moves to an in-card thumbnail,
+//   never picture-in-picture or fullscreen (law 1: nothing may cover the strip).
+// - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
+//   outranked only by a refusal and the gate.
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed } from './funscript.js';
 import { createMediaClock, frameSource } from './clock.js';
@@ -40,6 +44,7 @@ import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js'
 import { createStash } from './stash.js';
 import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
+import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { shape } from './interp.js';
 
@@ -157,6 +162,13 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (!fields || !fields.pos || api.stale(fields.pos)) return null;
     return windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi));
   };
+  /** plan.current as a window share (the plan roles are window-relative), or null. */
+  const planShare = () => {
+    const f = api.field && api.field('plan.current');
+    const v = f && !api.stale(f) ? Number(api.value(f)) : NaN;
+    if (!Number.isFinite(v)) return null;
+    return f.min != null && f.max > f.min ? clamp((v - f.min) / (f.max - f.min), 0, 1) : clamp(v, 0, 1);
+  };
 
   function hold() {
     if (sentSince && clock.ready) {
@@ -239,7 +251,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       const m = clock.mediaAt(now() - state.T.offsetMs);
       if (Number.isFinite(m)) {
         trace.push({ m, u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
-          stale: !!api.stale(fields.pos) });
+          stale: !!api.stale(fields.pos), p: planShare() });
       }
     }
     const cur = mediaNow();
@@ -334,6 +346,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const g = gate();
     if (why) return { text: why, tone: 'warn' };
     if (g && state.scene) return { text: g, tone: 'warn' };
+    if (api.trialPending) return { text: AN_COPY.trial, tone: 'intent' };
     if (state.phase === 'preroll') return { text: COPY.positioning, tone: '' };
     if (buffering) return { text: COPY.buffering, tone: '' };
     if (transient) return { text: transient, tone: '' };
@@ -453,6 +466,27 @@ export const CSS = `
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
 .fsp-vol { grid-area: vol; min-width: 0; margin: 0; }
+.fsp-slot[data-tone=intent] { border-left-color: var(--intent); }
+.fsp-anbox { grid-area: an; min-width: 0; min-height: 0; display: none; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox { position: relative; min-height: 0; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 128px; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
+.fsp[data-an][data-comp=full] { grid-template-rows: var(--tap) calc(180px - var(--tap) - 4px) minmax(0, 1fr) 20px var(--tap);
+  grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
+.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 2 + 4px);
+  grid-template-areas: "src" "tl" "st" "tr"; }
+.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 3 + 8px); }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: 104px; }
+.fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
+.fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
+.fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
+.fsp[data-an][data-comp=handheld] .fsp-stage::before { display: none; }
+.fsp[data-an][data-comp=handheld] .fsp-tab { display: none; }
+.fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox) { visibility: visible; }
+.fsp[data-an] .fsp-empty { font-size: .7rem; }
 `;
 
 const h = (tag, attrs = {}, ...kids) => {
@@ -568,6 +602,7 @@ export function createPlayer(api) {
     stage.addEventListener('click', () => ctl.toggle());
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
+    const anbox = h('div', { class: 'fsp-anbox' });
     const tickI = h('i', { class: 'fsp-tick int' });
     const tickR = h('i', { class: 'fsp-tick real' });
     const meter = h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, tickI, tickR);
@@ -614,8 +649,8 @@ export function createPlayer(api) {
     vol.addEventListener('change', saveAudio);
     const tr = h('div', { class: 'fsp-tr' }, play, time, motion, off, inv, speed, mute, vol);
 
-    const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS }),
-      src, stage, tlbox, lib, meter, status, tr);
+    const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
+      src, stage, tlbox, lib, anbox, meter, status, tr);
     root.addEventListener('keydown', (e) => {
       if (e.key !== ' ' || e.target.closest('input, button, select, textarea, [role=slider]')) return;
       e.preventDefault();
@@ -627,11 +662,17 @@ export function createPlayer(api) {
     const tl = mountTimeline(tlbox, {
       zoomMs,
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
+      onExpand: (on) => expand(on),
       onSeek: (ms) => ctl.seek(ms),
       onScrub: (phase, ms) => ctl.seek(ms),
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
     });
-    let library = null;
+    let library = null, analyzer = null;
+    function expand(on) {
+      root.toggleAttribute('data-an', on);
+      tl.setExpanded(on);
+      if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => st.script, T: () => st.T });
+    }
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
     let comp = '';
@@ -678,6 +719,7 @@ export function createPlayer(api) {
       const d = Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0;
       setText(time, fmtTime(m) + ' / ' + fmtTime(d));
       if (comp !== 'glance') tl.frame(m, ctl.trace);
+      if (analyzer && comp !== 'glance' && root.hasAttribute('data-an')) analyzer.frame();
       const ceil = ceilingOf(api, fields);
       if (st.script) {
         const sp = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm);
@@ -708,6 +750,7 @@ export function createPlayer(api) {
         ro.disconnect();
         tl.unmount();
         if (library) library.unmount();
+        if (analyzer) analyzer.unmount();
         root.remove();
       },
     };
