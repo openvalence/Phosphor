@@ -7,7 +7,8 @@
    *   webview's find bar never opens. Escape closes and returns focus.
    * - The index is built at open time from what App already holds (`tabs`:
    *   category pages with their groups and heroes, the Valence and Phosphor
-   *   panes, each with its tier's `section`) plus the saved Dash layout
+   *   panes, each with its tier's `section`, a plugin page with its own
+   *   `path`) plus the saved Dash layout
    *   (dashboard.svelte.js); no store.
    * - A jump switches page through `go` (App's selectTab), reveals a hidden
    *   advanced or diagnostic field or a drill-in group with the page's own
@@ -40,7 +41,7 @@
   function build() {
     const out = [];
     for (const t of tabs) {
-      out.push({ label: t.label, path: t.section, go: () => goTab(t.id) });
+      out.push({ label: t.label, path: t.path || t.section, go: () => goTab(t.id) });
       if (!t.cat) continue;
       for (const g of t.cat.groups) {
         const path = t.label + (g.name ? ' › ' + g.name : '');

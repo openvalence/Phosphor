@@ -181,6 +181,11 @@ export function pluginHeroes() {
   return host.heroes().map((h) => ({ ...h, component: PluginSlot, host }));
 }
 
+/** Shown plugin pages, mounted through PluginSlot like a hero. */
+export function pluginPages() {
+  return host.pages().map((p) => ({ ...p, component: PluginSlot, host }));
+}
+
 /** The operator's choice, not the status: an enabled plugin may be in error. */
 export function isPluginDisabled(name) {
   return disabledSet().has(name);

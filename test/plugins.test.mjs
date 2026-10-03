@@ -31,7 +31,10 @@
  *       says so;
  *   (j) net.fetch: the permission, http(s) only, the hub's origins refused,
  *       init passed through; the shell's CSP and http capability, read
- *       statically (the real shell verifies them, C-8).
+ *       statically (the real shell verifies them, C-8);
+ *   (k) plugin pages: registerPage's checks, the Show tab pref per plugin
+ *       (factory on, installed off, in the backup), the hero mount path, the
+ *       funscript player's page.
  *
  * Run: node test/plugins.test.mjs
  */
@@ -39,10 +42,10 @@
 import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
-import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
+import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName } from '../src/model/actions.js';
-import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl } from '../src/plugins/host.js';
+import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -836,6 +839,66 @@ console.log('(g) factory plugins: Advanced Penetration substitutes the pattern c
   ok('... and the next pass renders the built-ins', builtins(pass(c.m, c.host)) && !pass(c.m, c.host).widgets.some(isAp));
   a.host.setEnabled('advanced-penetration', false);
   ok('disabled: the built-ins claim', builtins(pass(a.m, a.host)) && !pass(a.m, a.host).widgets.some(isAp));
+}
+
+// ---- (k) plugin pages: registration and the Show tab pref ------------------
+console.log('(k) plugin pages');
+{
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const store = new Map();
+  const prefs = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)),
+    get length() { return store.size; }, key: (i) => [...store.keys()][i] };
+  const { host } = makeHost({ prefs });
+  const mounted = [];
+  let withdraw = null;
+  const paged = { activate(api) {
+    withdraw = api.registerPage({ id: 'deck', label: 'Deck', spec: { require: { p: ROLE.telemetryPosition } },
+      mount(el, f) { mounted.push(f); return { update() {}, unmount() {} }; } });
+  } };
+  const m = (name) => ({ ...gaugeManifest, name });
+  host.add(m('fac'), paged, { source: 'factory' });
+  host.add(m('inst'), paged, { source: 'C:/plugins/inst' });
+  const ids = () => host.pages().map((p) => p.id);
+  ok('a factory plugin page shows by default, an installed one does not', same(ids(), ['plugin:fac:deck']), ids());
+  ok('the Plugins pane snapshot carries pages and the switch state',
+    same(host.list().map((p) => [p.name, p.pages.map((x) => x.label), p.pageShown]), [['fac', ['Deck'], true], ['inst', ['Deck'], false]]));
+  ok('a page is not a hero: the claim pass never sees it', host.heroes().length === 0);
+  host.setPageShown('inst', true);
+  host.setPageShown('fac', false);
+  ok('Show tab persists per plugin under ' + PAGES_KEY + '<name>',
+    store.get(PAGES_KEY + 'inst') === '1' && store.get(PAGES_KEY + 'fac') === '0' && same(ids(), ['plugin:inst:deck']), ids());
+  const { exportBackup } = await import('../src/model/prefs.js');
+  ok('the prefs backup carries the Show tab keys', Object.keys(JSON.parse(exportBackup(prefs)).keys).includes(PAGES_KEY + 'inst'));
+  const pg = host.pages()[0];
+  ok('a page carries label, icon fallback, spec and its plugin', pg.label === 'Deck' && pg.icon === null && pg.plugin === 'inst'
+    && pg.spec.require.p === ROLE.telemetryPosition);
+  const h = host.mountHero(pg, {}, claimRoles(model.byRole, pg.spec));
+  ok('it mounts through the hero path with its resolved fields', !!h && mounted.length === 1 && mounted[0].p.role === ROLE.telemetryPosition);
+  host.setEnabled('inst', false);
+  ok('disabling the plugin drops its page and keeps the switch', ids().length === 0 && store.get(PAGES_KEY + 'inst') === '1');
+  host.setEnabled('inst', true);
+  ok('re-enabling restores it', same(ids(), ['plugin:inst:deck']));
+  withdraw();
+  ok('withdraw() removes the page', ids().length === 0);
+  const refused = (...defs) => {
+    const { host: hb } = makeHost();
+    hb.add(m('bad'), { activate(api) { for (const d of defs) api.registerPage({ id: 'p', label: 'P', mount() {}, ...d }); } }, { source: 'factory' });
+    return hb.list()[0].status === 'error' && hb.pages().length === 0;
+  };
+  ok('a valid page registers', !refused({}));
+  ok('a label over 24 characters, a blank label, a non-path icon and a bad id are refused',
+    refused({ label: 'x'.repeat(25) }) && refused({ label: '  ' }) && refused({ icon: '<script>' }) && refused({ id: 'Bad Id' }));
+  ok('a taken id is refused and the plugin rolls back', refused({}, { label: 'Q' }));
+  const { host: ht } = makeHost();
+  ht.add(m('boom'), { activate(api) { api.registerPage({ id: 'p', label: 'P', mount() { throw new Error('boom'); } }); } }, { source: 'factory' });
+  ht.mountHero(ht.pages()[0], {}, {});
+  ok('a page whose mount throws is dropped and the error recorded', ht.pages().length === 0 && /boom/.test(ht.list()[0].error));
+  const { registerPlayerPage, PAGE_ICON } = await import('../plugins/factory/funscript-player/page.js');
+  const { HERO } = await import('../plugins/factory/funscript-player/index.js');
+  let def = null;
+  registerPlayerPage({ registerPage: (d) => { def = d; } }, { mount: (el, f) => ({ el, f }) }, HERO.spec);
+  ok('the funscript page: Funscript, its own icon, the hero spec, the player mount', !!def && def.id === 'player'
+    && def.label === 'Funscript' && def.icon === PAGE_ICON && def.spec === HERO.spec && def.mount('E', 'F').el === 'E');
 }
 
 // ---- (h) the editor geometry: field values to handles and back ------------

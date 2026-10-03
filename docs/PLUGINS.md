@@ -88,6 +88,26 @@ binding its spec cannot express (a conditional essential) is checked in
 `mount`, which throws: the hero is dropped and the built-in, or the
 settings cards, render instead (item 5).
 
+**Pages.** `api.registerPage({id, label, icon, spec, mount})` gives a plugin a
+tab of its own: listed indented under Plugins in the sidebar's Phosphor
+section, selectable like any tab, found by F3 as `<label> · Phosphor ›
+Plugins`, its page region the plugin's to fill full width. `mount(el,
+fields)` is a hero's mount, returning `{update, unmount}`, and PluginSlot
+drives it the same way, so a plugin that already has a hero passes that
+hero's mount and the card and the page are two views of one instance. `spec`
+is optional and resolves like a hero's but **claims nothing**: a page never
+takes a field from a card or the generic tree. A spec the hub cannot meet
+leaves the tab in place with the note `Not on this hub`. `id` follows the
+name rule, `label` is one Blender-terse word or two (at most 24 characters;
+docs/COPY.md), `icon` is one SVG path `d` on a 16-unit viewBox drawn open
+at 1.5 stroke (src/ui/navIcons.js's style; absent, the Plugins glyph).
+Registering returns `withdraw()`; a page whose mount throws is dropped like a
+hero. The Plugins pane gives each plugin with a page a **Show tab** switch,
+persisted per plugin as `phosphor.plugins.pages.<name>` (`'1'` or `'0'`,
+in the prefs backup); absent, a factory plugin's pages show and an installed
+plugin's do not. The sidebar follows the switch at once. Host side:
+`src/plugins/host.js` `pages`, `pageShown`, `setPageShown`.
+
 ## The API (v1)
 
 | member | what | status |
@@ -115,6 +135,7 @@ settings cards, render instead (item 5).
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
+| `registerPage({id, label, icon, spec, mount})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 
@@ -393,7 +414,8 @@ Shipped:
   it with the gate's words. Stash rides `net.fetch`, its connect card
   in the Plugins pane and in the library's place. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
-  `phosphor.funscript.*` for the prefs backup. Design and decisions:
+  `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
+  Plugins (`page.js`), mounts the same card full width. Design and decisions:
   [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:
   `plugins/factory/funscript-player/CONTRACT.md`.
 

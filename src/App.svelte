@@ -41,10 +41,10 @@
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
   import { navIcon } from './ui/navIcons.js';
   import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
-  import { withoutClaimed } from './model/roles.js';
+  import { withoutClaimed, claimRoles } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
-  import { pluginsUi, pluginHeroes } from './plugins/plugins.svelte.js';
+  import { pluginsUi, pluginHeroes, pluginPages } from './plugins/plugins.svelte.js';
   import { panes as shellPanes } from './shell/panes.js';
   import './ui/select.css';
 
@@ -118,9 +118,15 @@
   const shellPaneTabs = $derived(SHELL
     ? $shellPanes.map((p) => ({ id: 'shell:' + p.id, label: p.label, pane: p }))
     : []);
+  // Plugin pages sit indented under Plugins (docs/PLUGINS.md, Pages). A
+  // page's spec resolves without claiming; null fields: the hub lacks a role.
+  const pageTabs = $derived((pluginsUi.gen, pluginPages()).map((p) => ({
+    id: p.id, label: p.label, sub: true, path: 'Phosphor › Plugins',
+    page: { ...p, fields: model ? claimRoles(model.byRole, p.spec) : null },
+  })));
   const clientTabs = $derived([
     ...(ready && !shellPaneTabs.some((t) => t.pane.id === 'settings') ? [{ id: 'display', label: 'Display' }] : []),
-    ...(ready && pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }] : []),
+    ...(ready && pluginsUi.active ? [{ id: 'plugins', label: 'Plugins' }, ...pageTabs] : []),
     ...shellPaneTabs,
   ]);
   const TIER_LABEL = { [UI_NAV_TIER.machine]: 'Machine', [UI_NAV_TIER.link]: 'Valence', [UI_NAV_TIER.client]: 'Phosphor' };
@@ -397,6 +403,12 @@
             {/if}
           </p>
         {/if}
+      {:else if current.page}
+        {#if current.page.fields}
+          <current.page.component fields={current.page.fields} hero={current.page} />
+        {:else}
+          <p class="cat-empty">Not on this hub</p>
+        {/if}
       {:else if current.id === 'pairing'}
         <PairingPane />
       {:else if current.id === 'valence'}
@@ -461,7 +473,7 @@
             <div class="rail-sec" class:shell={sec.shell}>
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
-                <button role="tab" class="rail-tab" data-tab-id={t.id}
+                <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
                         aria-selected={current && current.id === t.id}
                         tabindex={current && current.id === t.id ? 0 : -1}
                         class:on={current && current.id === t.id}
@@ -614,6 +626,8 @@
     white-space: nowrap;
   }
   .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
+  /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
+  .rail:not(.mini) .rail-tab.sub { padding-left: 24px; }
   .rail-tab.on {
     color: var(--ink-hi);
     background: var(--bg-card);

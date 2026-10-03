@@ -28,6 +28,10 @@ export const MOTION_HOLD_MS = 500;
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const PERM_RE = /^(intent|motion|net\.fetch|net\.listen:([1-9][0-9]{0,4}))$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const PATH_RE = /^[MmZzLlHhVvCcSsQqTtAa0-9eE.,\s+-]{1,2000}$/;
+
+/** A plugin's Show tab switch, per plugin, '1' or '0'; absent, a factory plugin's pages show. */
+export const PAGES_KEY = 'phosphor.plugins.pages.';
 
 /**
  * Validate a manifest. Returns a list of problems; empty means valid.
@@ -111,7 +115,7 @@ export function createPluginHost(deps) {
   function record(manifest, source) {
     return {
       manifest, source, status: 'loaded', error: null,
-      heroes: [], settings: null, closers: [], deactivate: null,
+      heroes: [], pages: [], settings: null, closers: [], deactivate: null,
     };
   }
 
@@ -209,6 +213,29 @@ export function createPluginHost(deps) {
           changed();
         };
       },
+      // A tab under Plugins in the sidebar. `mount` is a hero's mount; `spec`
+      // resolves without claiming, so a page never takes a field from a card.
+      registerPage: (def) => {
+        if (!def || typeof def.id !== 'string' || !NAME_RE.test(def.id) || typeof def.mount !== 'function') {
+          throw new Error('registerPage needs {id, label, mount}');
+        }
+        if (typeof def.label !== 'string' || !def.label.trim() || def.label.length > 24) {
+          throw new Error('registerPage: label must be 1 to 24 characters');
+        }
+        if (def.icon != null && !(typeof def.icon === 'string' && PATH_RE.test(def.icon))) {
+          throw new Error('registerPage: icon must be one SVG path d on a 16-unit viewBox');
+        }
+        if (rec.pages.some((p) => p.def.id === def.id)) throw new Error('registerPage: id "' + def.id + '" is taken');
+        const slot = { def, failed: false };
+        rec.pages.push(slot);
+        if (rec.status === 'active') changed();
+        return () => {
+          const i = rec.pages.indexOf(slot);
+          if (i < 0) return;
+          rec.pages.splice(i, 1);
+          changed();
+        };
+      },
       registerSettings: (mount) => {
         if (typeof mount !== 'function') throw new Error('registerSettings needs a mount function');
         rec.settings = mount;
@@ -302,6 +329,7 @@ export function createPluginHost(deps) {
   function activate(rec) {
     rec.error = null;
     rec.heroes = [];
+    rec.pages = [];
     rec.settings = null;
     rec.status = 'activating';
     const api = makeApi(rec);
@@ -317,6 +345,7 @@ export function createPluginHost(deps) {
       // Roll back whatever it registered before throwing: a half-activated
       // plugin must not keep claims on fields the generic tree then loses.
       rec.heroes = [];
+      rec.pages = [];
       rec.settings = null;
       closeAll(rec);
       rec.status = 'error';
@@ -337,6 +366,7 @@ export function createPluginHost(deps) {
     closeAll(rec);
     rec.deactivate = null;
     rec.heroes = [];
+    rec.pages = [];
     rec.settings = null;
     rec.status = 'disabled';
   }
@@ -389,6 +419,43 @@ export function createPluginHost(deps) {
           cells: h.def.cells || null,
           plugin: rec.manifest.name,
           slot: h,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** The operator's Show tab choice; absent, a factory plugin's pages show and an installed one's do not. */
+  function pageShown(name) {
+    let v = null;
+    try { v = deps.prefs && deps.prefs.getItem(PAGES_KEY + name); } catch (e) { /* private mode */ }
+    if (v === '1' || v === '0') return v === '1';
+    const rec = plugins.get(name);
+    return !!rec && rec.source === 'factory';
+  }
+
+  function setPageShown(name, on) {
+    try { if (deps.prefs) deps.prefs.setItem(PAGES_KEY + name, on ? '1' : '0'); } catch (e) { /* private mode */ }
+    changed();
+  }
+
+  /**
+   * Shown pages of active plugins, shaped as heroes so mountHero, updateHero,
+   * unmountHero and PluginSlot drive them unchanged. Id `plugin:<name>:<page id>`.
+   */
+  function pages() {
+    const out = [];
+    for (const rec of plugins.values()) {
+      if (rec.status !== 'active' || !pageShown(rec.manifest.name)) continue;
+      for (const p of rec.pages) {
+        if (p.failed) continue;
+        out.push({
+          id: 'plugin:' + rec.manifest.name + ':' + p.def.id,
+          label: p.def.label.trim(),
+          icon: p.def.icon || null,
+          spec: p.def.spec || {},
+          plugin: rec.manifest.name,
+          slot: p,
         });
       }
     }
@@ -448,12 +515,14 @@ export function createPluginHost(deps) {
       status: r.status,
       error: r.error,
       heroes: r.heroes.map((h) => ({ id: h.def.id, failed: h.failed })),
+      pages: r.pages.map((p) => ({ id: p.def.id, label: p.def.label, failed: p.failed })),
+      pageShown: pageShown(key),
       hasSettings: !!r.settings,
     }));
   }
 
   return {
-    add, remove, setEnabled, heroes, mountHero, updateHero, unmountHero, mountSettings, list,
+    add, remove, setEnabled, heroes, pages, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   };
 }

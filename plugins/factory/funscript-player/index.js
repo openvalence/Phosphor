@@ -11,6 +11,7 @@
  */
 import { createPlayer } from './ui.js';
 import { mountConnect } from './library.js';
+import { registerPlayerPage } from './page.js';
 
 export const HERO = Object.freeze({
   id: 'player',
@@ -28,5 +29,6 @@ export function activate(api) {
   const player = createPlayer(api);
   api.registerHero({ ...HERO, mount: (el, fields) => player.mount(el, fields) });
   api.registerSettings((el) => mountConnect(el, { api }));
+  registerPlayerPage(api, player, HERO.spec);
   return () => player.dispose();
 }

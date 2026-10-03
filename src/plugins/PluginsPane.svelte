@@ -13,6 +13,8 @@
    * - The switch shows the operator's choice (plugins.svelte.js's disabled
    *   set, persisted); the status chip shows what the host made of it.
    * - Plugin faults read amber: red is the hazard color.
+   * - Show tab is the host's per-plugin page pref (PAGES_KEY); the sidebar
+   *   follows it on the host's change event.
    */
   import { pluginsUi, setPluginEnabled, isPluginDisabled, host } from './plugins.svelte.js';
   import '../ui/pane.css';
@@ -85,6 +87,17 @@
             <dt>Cards</dt>
             <dd>{#each p.heroes as h}<span class="chip" class:failed={h.failed}>{h.id}{h.failed ? ' (failed)' : ''}</span>{/each}</dd>
           {/if}
+          {#if p.pages.length}
+            <dt>Page</dt>
+            <dd class="page-row">
+              {#each p.pages as pg}<span class="chip" class:failed={pg.failed}>{pg.label}{pg.failed ? ' (failed)' : ''}</span>{/each}
+              <label class="og-switch">
+                <input type="checkbox" role="switch" checked={p.pageShown}
+                       onchange={(e) => host.setPageShown(p.key, e.currentTarget.checked)} />
+                <span class="track"></span>Show tab
+              </label>
+            </dd>
+          {/if}
           {#if !origin && p.source}<dt>Source</dt><dd class="mono src">{p.source}</dd>{/if}
         </dl>
         <div class="err-row">
@@ -115,6 +128,7 @@
   .chip.status[data-status='active'] { color: var(--reality); border-color: var(--reality); }
   .chip.failed, .chip.status[data-status='error'], .chip.status[data-status='invalid'] { color: var(--warn); border-color: var(--warn); }
   .og-switch { font-size: .78rem; min-height: 30px; }
+  .page-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .perms { margin: 0; padding-left: 16px; }
   .src { font-size: .7rem; color: var(--tx-mut); }
   .err-row { display: flex; align-items: flex-start; gap: 8px; }

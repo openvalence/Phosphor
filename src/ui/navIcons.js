@@ -42,8 +42,9 @@ export const NAV_ICONS = {
   about: CIRCLE(8, 8, 5.75) + 'M8 7.25V11M8 5h.01',
 };
 
-/** The icon for an App.svelte tab: its category's, else its pane's, else `other`. */
+/** The icon for an App.svelte tab: a plugin page's own or Plugins', its category's, else its pane's, else `other`. */
 export function navIcon(tab) {
+  if (tab.page) return tab.page.icon || NAV_ICONS.plugins;
   const key = tab.cat ? (tab.cat.known ? tab.cat.id : UI_CATEGORY.other) : tab.pane ? tab.pane.id : tab.id;
   return NAV_ICONS[key] ?? NAV_ICONS[UI_CATEGORY.other];
 }
