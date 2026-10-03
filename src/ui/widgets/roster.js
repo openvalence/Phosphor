@@ -8,7 +8,8 @@
  * - LOCKED (role below the store's access floor, or NACK ACCESS_DENIED) is
  *   never reported as empty: the slots may be full and this session cannot
  *   see them.
- * - EMPTY is only what the hub said: NACK CHUNK_UNAVAILABLE (SPEC §8.7).
+ * - EMPTY is only what the hub said: NACK CHUNK_UNAVAILABLE, or a slot past
+ *   the roster's count (SPEC §8.7).
  * - Item payloads stay opaque (SPEC §8.7); only the item envelope is read.
  */
 import { cbDecodeFull, BLOB_K, BLOB_ERROR, NACK } from '../../../../Valence/clients/js/index.js';
@@ -45,22 +46,37 @@ export function slotFrom(slot, res, err) {
 }
 
 /**
+ * The roster's item count: field 1 of the registered layout
+ * {generation u16, count u8, capacity u8} (SPEC §8.7), read by position.
+ * Null while the roster has no sample.
+ */
+export function rosterCount(roster, sample) {
+  const f = roster && roster.layout && roster.layout[1];
+  const v = f && sample ? sample[f.name] : undefined;
+  return Number.isInteger(v) ? v : null;
+}
+
+/**
  * Read every slot, one at a time (the hub runs one blob transfer per session).
  * `onSlot(record)` fires per answer; slots not yet answered stay PENDING in the
- * caller's array. A locked store issues no request at all.
+ * caller's array. A locked store issues no request at all. With the roster's
+ * `count`, slots after the count-th item read EMPTY unasked: an empty slot
+ * costs the hub one NACK CHUNK_UNAVAILABLE.
  *
  * @param {(o: Object) => Promise<Object>} fetchBlob session.fetchBlob
  * @param {Object} storeEntry a STORE-class catalog entry (`.store`, `.access`)
- * @param {{role: number, signal?: AbortSignal, onSlot: Function}} o
+ * @param {{role: number, count?: number|null, signal?: AbortSignal, onSlot: Function}} o
  */
-export async function enumerateStore(fetchBlob, storeEntry, { role, signal, onSlot }) {
+export async function enumerateStore(fetchBlob, storeEntry, { role, count = null, signal, onSlot }) {
   const n = storeEntry.store.capacity | 0;
   if (storeLocked(storeEntry, role)) {
     for (let slot = 0; slot < n; slot++) onSlot({ slot, state: SLOT.locked });
     return;
   }
+  let found = 0;
   for (let slot = 0; slot < n; slot++) {
     if (signal && signal.aborted) return;
+    if (count != null && found >= count) { onSlot({ slot, state: SLOT.empty }); continue; }
     let rec;
     try {
       rec = slotFrom(slot, await fetchBlob({ storeId: storeEntry.store.storeId, slot, signal }));
@@ -69,6 +85,7 @@ export async function enumerateStore(fetchBlob, storeEntry, { role, signal, onSl
       rec = slotFrom(slot, null, err);
     }
     if (signal && signal.aborted) return;
+    if (rec.state === SLOT.item) found++;
     onSlot(rec);
   }
 }

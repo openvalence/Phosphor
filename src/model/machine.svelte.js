@@ -513,18 +513,24 @@ export function connect(opts = {}) {
     // mixing classes in a SUBSCRIBE is legal; the only real constraint is the
     // per-frame wish count, which subscribeInBatches() sizes from the hub's
     // own advertised cap. See that function's header for the corrected story.
-    const lim = machine.link.limits.max_subscriptions;
-    const { removed, fresh, dropped } = regrow(prev, entries, held, {
-      maxSubs: lim, telemetryIds: telemetryChannelIds(machine.catalog.model), skip: HELLO_IDS, reserved: HELLO_WISHES.length,
-    });
+    const removed = grow(prev, entries);
     // RFC-077: survivors keep their samples, grants, shadows and confirms; a
     // vanished channel's go, so its placements resolve to nothing (inert, law 10).
     for (const id of removed) { delete machine.samples[id]; delete machine.sampleTs[id]; delete machine.grants[id]; }
-    machine.link.subsDropped = dropped;
     adopted = true;
+  });
+
+  // Wishes only what this session's tier may read; returns the vanished ids.
+  function grow(prev, entries) {
+    const { removed, fresh, dropped } = regrow(prev, entries, held, {
+      maxSubs: machine.link.limits.max_subscriptions, telemetryIds: telemetryChannelIds(machine.catalog.model),
+      skip: HELLO_IDS, reserved: HELLO_WISHES.length, role: machine.link.roles,
+    });
+    machine.link.subsDropped = dropped;
     for (const w of fresh) held.add(w[0]);
     if (fresh.length) subscribeInBatches(fresh);
-  });
+    return removed;
+  }
 
   session.on('grant', (grants) => {
     for (const g of grants || []) {
@@ -541,6 +547,8 @@ export function connect(opts = {}) {
   // already correct; this makes the rest of the page agree with it.
   session.on('pairGrant', (g) => {
     if (g && g.role != null) machine.link.roles = g.role | 0;
+    // The raised tier reaches channels the first wish skipped (0x000A, 0x000D).
+    if (adopted) grow(machine.catalog.entries, machine.catalog.entries);
   });
 
   session.on('live', () => {

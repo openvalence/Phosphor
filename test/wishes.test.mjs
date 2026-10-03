@@ -51,6 +51,14 @@ ok('HELLO ids are not wished twice', !capped.wishes.some((w) => w[0] === 0x0003)
 ok('the HELLO slots count against the cap', capped.wishes.length === 3 && capped.dropped === 2, JSON.stringify(capped));
 ok('shedding drops the least important first', !capped.wishes.some((w) => w[0] === 0x1002));
 
+console.log('\naccess (ph-rpir)');
+{
+  const cfg = { ...ch(0x000a, 0), access: 2 };
+  const ids = (role) => subscriptionWishes([...entries, cfg], { role }).wishes.map((w) => w[0]);
+  ok('a configure entry is not wished at control', !ids(1).includes(0x000a) && ids(1).includes(0x1003));
+  ok('a configure entry is wished at configure', ids(2).includes(0x000a));
+}
+
 console.log('\nlive catalog growth (RFC-077)');
 {
   const rec = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));

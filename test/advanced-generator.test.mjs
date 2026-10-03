@@ -14,7 +14,7 @@
 
 import { buildSettingsModel, modTargetUid } from '../src/model/settings.js';
 import { claimRoles, ROLE, ADVGEN_SPEC } from '../src/model/roles.js';
-import { SLOT, pendingSlots, enumerateStore, storeOfRoster, rosterOfStore } from '../src/ui/widgets/roster.js';
+import { SLOT, pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount } from '../src/ui/widgets/roster.js';
 import {
   PACKED, CHANNEL_CLASS, UI_RANK, VALUE_ASPECT, VALUE_SCOPE, ACCESS, NACK,
   BLOB_K, BlobError, BLOB_ERROR, cbMap, cbTstr, cbUint, decodeCatalog,
@@ -164,6 +164,25 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   await enumerateStore(deny, STORE, { role: ACCESS.control, onSlot: (r) => seen.push(r.state) });
   ok('NACK ACCESS_DENIED reads as locked', seen[0] === SLOT.locked);
   ok('any other refusal reads as an error, never empty', seen.slice(1).every((s) => s === SLOT.error));
+}
+{
+  // ph-rpir: the roster's count stops the sweep; an empty slot costs the hub a NACK.
+  const big = { ...STORE, store: { ...STORE.store, capacity: 24 } };
+  const asked = [];
+  const fetchSome = ({ slot }) => { asked.push(slot);
+    return [3, 7].includes(slot) ? Promise.resolve({ slot, generation: 1, bytes: itemBytes(slot, 'P' + slot) })
+      : Promise.reject(new BlobError(BLOB_ERROR.UNAVAILABLE, { ns: 1, storeId: 9, slot }, 'NACK')); };
+  const none = [];
+  await enumerateStore(fetchSome, big, { role: ACCESS.control, count: 0, onSlot: (r) => none.push(r.state) });
+  ok('count 0: no BLOB_REQ, every slot EMPTY', asked.length === 0 && none.length === 24 && none.every((s) => s === SLOT.empty));
+  const two = [];
+  await enumerateStore(fetchSome, big, { role: ACCESS.control, count: 2, onSlot: (r) => { two[r.slot] = r.state; } });
+  ok('count 2 of 24: stops after the second item, the rest EMPTY',
+     asked.length === 8 && two[3] === SLOT.item && two[7] === SLOT.item && two.length === 24
+     && two.filter((s) => s === SLOT.empty).length === 22, JSON.stringify(asked));
+  const roster = { layout: [{ name: 'generation' }, { name: 'count' }, { name: 'capacity' }] };
+  ok('rosterCount reads field 1 by position, null with no sample',
+     rosterCount(roster, { generation: 5, count: 2, capacity: 24 }) === 2 && rosterCount(roster, undefined) === null);
 }
 {
   const roster = { id: 0x7801, cls: CHANNEL_CLASS.STATE, storeId: 9 };

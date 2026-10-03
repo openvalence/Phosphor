@@ -13,7 +13,7 @@
    */
   import { untrack } from 'svelte';
   import { machine, getSession } from '../../model/machine.svelte.js';
-  import { SLOT, pendingSlots, enumerateStore, storeLocked } from './roster.js';
+  import { SLOT, pendingSlots, enumerateStore, storeLocked, rosterCount } from './roster.js';
 
   let { store, roster = null, item = null } = $props();
 
@@ -32,9 +32,12 @@
     slots = pendingSlots(store);
     const s = getSession();
     if (!s || !live || locked) return;
+    const count = roster ? rosterCount(roster, machine.samples[roster.id]) : null;
+    // A granted roster not yet sampled: its arrival re-runs this.
+    if (count == null && roster && machine.grants[roster.id]) return;
     const c = (ctl = new AbortController());
     enumerateStore(s.fetchBlob, store, {
-      role: machine.link.roles, signal: c.signal,
+      role: machine.link.roles, count, signal: c.signal,
       onSlot: (r) => { if (ctl === c) slots[r.slot] = r; },
     });
   }

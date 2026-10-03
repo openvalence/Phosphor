@@ -23,12 +23,13 @@ import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
-import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
+import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
 } from '../../../Valence/clients/js/index.js';
+import { STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -60,7 +61,11 @@ async function write(field, value, payload) {
   if (!field) return { ok: false, error: 'no field' };
   if (field.widget === WIDGET.action) {
     if (needsConfirm(field, value) && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
-    return runAction(field, value, payload || null);
+    const roster = rosterOf(field);
+    const before = roster && machine.samples[roster.id];
+    const r = await runAction(field, value, payload || null);
+    if (roster && r && r.ok && value !== STORE_OP.load) storeOpRoster.set(roster.id, before);
+    return r;
   }
   if (field.isIntentField) return sendCommand(field, value);
   const from = displayValue(field, machine.samples[field.channelId]);
@@ -97,15 +102,32 @@ const entryOf = (id) => (machine.catalog.entries || []).find((e) => e.id === id)
 // RFC-066: the modulator entry's mod_target, as a uid (settings.js).
 const modTarget = (field) => modTargetUid(machine.catalog.entries || [], field.channelId);
 
+const storeOf = (field) => storeOfRoster(machine.catalog.entries || [], entryOf(field.channelId));
+const rosterOf = (field) => rosterOfStore(machine.catalog.entries || [], storeOf(field));
+
+// A store op's ECHO lands before the hub's roster push, so a read right after
+// one waits for the roster to move instead of trusting the old count.
+const storeOpRoster = new Map();   // roster id -> its sample before the op
+
 // RFC-070: the writer's store_id names the STORE; slots read as roster.js
 // reads them (pending, locked and empty stay distinct). Null when unlinked.
 async function storeSlots(field) {
-  const store = storeOfRoster(machine.catalog.entries || [], entryOf(field.channelId));
+  const store = storeOf(field);
   if (!store) return null;
   const slots = pendingSlots(store);
   const s = getSession();
   if (!s || machine.link.phase !== 'live') return slots;
-  await enumerateStore(s.fetchBlob, store, { role: machine.link.roles, onSlot: (r) => { slots[r.slot] = r; } });
+  const roster = rosterOf(field);
+  if (roster && storeOpRoster.has(roster.id)) {
+    const before = storeOpRoster.get(roster.id);
+    storeOpRoster.delete(roster.id);
+    // ponytail: a 20 ms poll capped at 1 s; a reactive wait if this ever shows.
+    for (let i = 0; i < 50 && machine.samples[roster.id] === before; i++) await new Promise((r) => setTimeout(r, 20));
+  }
+  const count = roster ? rosterCount(roster, machine.samples[roster.id]) : null;
+  // A granted roster not yet sampled: stay pending, the caller reads again.
+  if (count == null && roster && machine.grants[roster.id]) return slots;
+  await enumerateStore(s.fetchBlob, store, { role: machine.link.roles, count, onSlot: (r) => { slots[r.slot] = r; } });
   return slots;
 }
 

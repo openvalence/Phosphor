@@ -58,15 +58,18 @@ const TELEMETRY_ROLES = new Set([ROLE.telemetryPosition, ROLE.telemetryTarget, R
  * rate preference (prefs.js telemetryRate, default TELEMETRY_HZ) instead of
  * MAX_SUBSCRIBE_HZ, always within the channel's max_rate_hz. `skip` holds the
  * ids already wished in HELLO, whose slots `reserved` counts against the cap.
+ * `role` (the session's tier) drops entries whose `access` is above it: the hub
+ * would answer each with NACK ACCESS_DENIED.
  *
  * @returns {{wishes: Array, dropped: number}}
  */
-export function subscriptionWishes(entries, { maxSubs, telemetryIds, skip = new Set(), reserved = 0, pref } = {}) {
+export function subscriptionWishes(entries, { maxSubs, telemetryIds, skip = new Set(), reserved = 0, pref, role = null } = {}) {
   const wishes = [];
   for (const e of entries) {
     if (e.dir !== 0) continue;                       // h2c only; we do not publish
     if (skip.has(e.id)) continue;                    // wished in HELLO
     if (e.cls !== CHANNEL_CLASS.STATE && e.cls !== CHANNEL_CLASS.EVENT) continue;
+    if (role != null && (e.access | 0) > role) continue;
     // EVENTs are edge-driven; a rate on them is meaningless. On-change STATE
     // channels advertise 0 and mean it.
     let rate = (e.cls === CHANNEL_CLASS.EVENT || !e.maxRateHz)
