@@ -27,8 +27,6 @@ import { decodeCatalog } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel } from '../src/model/settings.js';
 import { claimAll } from '../src/model/roles.js';
 import * as CB from '../../Valence/clients/js/cbor.js';
-import * as SHA from '../../Valence/clients/js/sha256.js';
-import * as FR from '../../Valence/clients/js/frames.js';
 
 const args = process.argv.slice(2);
 const UNIT = args.includes('--unit');
@@ -145,32 +143,12 @@ console.log('(c) hero spec');
 const index = mods[P + 'index.js'];
 const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
 const SEG_CH = 0x2101;   // valencesim motion-segment (registry 0x2101), test-side only
-// Tuning fixture, test-side ids: the recording's retired tuning category (9) becomes motion (2)
-// with RFC-094 'Tuning / ' groups, the waveform STATE gains trial_mask (meta.trial_pending) and
-// settings-trial (core 0x16, RFC-099) joins. Built in memory; nothing generated is committed.
+// Tuning fixture, test-side ids: the recording (valencesim 0.1.7-p4hub) carries RFC-094 'Tuning / '
+// groups, trial_mask (meta.trial_pending) on the waveform STATE and settings-trial (core 0x16, RFC-099).
 const CH_WAVE = 0x1122, CH_TRIAL = 0x16;
-function cborOf(v) {
-  if (v instanceof Map) return CB.cbMap([...v.entries()].sort((a, b) => a[0] - b[0]).map(([k, x]) => [k, cborOf(x)]));
-  if (Array.isArray(v)) return CB.cbArray(v.map(cborOf));
-  if (v instanceof Uint8Array) return CB.cbBstr(v);
-  if (typeof v === 'string') return CB.cbTstr(v);
-  if (typeof v === 'boolean') return CB.cbBool(v);
-  if (v === null) return CB.cbNull();
-  if (!Number.isInteger(v)) return CB.cbF32(v);
-  return v < 0 ? CB.cbInt(v) : CB.cbUint(v);
-}
 function tuningCatalog() {
-  const entries = CB.cbDecodeFull(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
-  for (const e of entries) {
-    if (e.get(10) !== 9) continue;
-    e.set(10, 2);
-    for (const f of e.get(8) || []) if (f.has(11)) f.set(11, 'Tuning / ' + f.get(11));
-  }
-  entries.find((e) => e.get(1) === CH_WAVE).get(8).push(new Map([[1, 'trial_mask'], [2, 7], [3, 'flag'], [4, 1], [13, 'meta.trial_pending']]));
-  entries.push(new Map([[1, CH_TRIAL], [2, 'settings-trial'], [3, 2], [4, 1], [5, 1], [6, 5], [7, 1], [9, new Map([[1, new Map([
-    [1, 'op'], [2, 0], [3, ''], [10, ['reserved', 'commit', 'revert']], [13, 'action.trial'], [17, [1, 1, 1]]])]])]]));
-  const bytes = cborOf(entries);
-  return { bytes, etag: SHA.toHex(SHA.catalogEtag(bytes, FR.LIMITS.etag_bytes)) };
+  const bytes = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
+  return { bytes, etag: readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim() };
 }
 if (index) {
   const h = index.HERO;   // activate itself creates the <video>: the browser half drives it
@@ -211,8 +189,10 @@ if (an) {
     && ['slider', 'stepper', 'toggle', 'segmented', 'select'].includes(f.widget)), fs.length);
   ok('limit.input.* by role, nothing else from its group',
     same(tg.find((g) => g.name === 'Machine-driven limits').fields.map((f) => f.role).sort(), [...an.LIMIT_ROLES].sort()));
-  ok('the recording without Tuning groups offers limit.input.* only',
-    same(an.tuningGroups(buildSettingsModel(ENTRIES)).map((g) => g.name), ['Machine-driven limits']));
+  const untuned = buildSettingsModel(ENTRIES);
+  for (const c of untuned.categories) for (const g of c.groups) g.name = String(g.name || '').replace(/^Tuning \/ /, '');
+  ok('a catalog without Tuning groups offers limit.input.* only',
+    same(an.tuningGroups(untuned).map((g) => g.name), ['Machine-driven limits']));
   ok('analyzer.js names no channel id', !/0x[0-9a-f]{3,}/i.test(readFileSync(new URL(P + 'analyzer.js', import.meta.url), 'utf8')));
   const { parseFunscript, posAt } = mods[P + 'funscript.js'];
   const { applyT } = mods[P + 'scheduler.js'];
