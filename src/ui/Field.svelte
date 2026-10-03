@@ -17,7 +17,7 @@
   import { untrack } from 'svelte';
   import { machine, freshness, staleReason } from '../model/machine.svelte.js';
   import { WIDGET, READ_ONLY_PRESENTATIONS, isFieldEnabled, reportedValue } from '../model/settings.js';
-  import { writeSetting, displayValue, statusOf, shadowOf } from '../model/shadow.svelte.js';
+  import { writeSetting, displayValue, statusOf, shadowOf, partsOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { deferring } from './defer.js';
@@ -60,13 +60,15 @@
   // while a request is outstanding).
   const STATUS_RANK = { fault: 3, overdue: 2, pending: 1, confirmed: 0 };
   const worstStatus = (a, b) => (STATUS_RANK[a] >= STATUS_RANK[b] ? a : b);
-  const status = $derived(
-    field.widget === WIDGET.range ? worstStatus(statusOf(field.lo), statusOf(field.hi))
-    : field.widget === WIDGET.color ? [field.r, field.g, field.b].map(statusOf).reduce(worstStatus)
-    : statusOf(field)
-  );
+  const parts = $derived(partsOf(field));
+  const status = $derived(parts.map(statusOf).reduce(worstStatus));
   const fresh = $derived(freshness(field.channelId));
-  const sh = $derived(shadowOf(field));
+  // A composite's echo is either part's echo; its fault words are the faulted part's.
+  const shs = $derived(parts.map(shadowOf).filter(Boolean));
+  const settled = $derived(shs.some((s) => s.settled));
+  const faultWhy = $derived((shs.find((s) => s.status === 'fault') || {}).error);
+  // A virtual hub measured nothing: its echo is not reality (DESIGN §10.10).
+  const virtual = $derived(!!machine.link.virtual);
 
   // Three independent reasons a control may be unusable, and they are NOT
   // interchangeable — the operator needs to know which one applies.
@@ -139,6 +141,14 @@
     if (field.min != null) n = Math.max(field.min, n);
     if (field.max != null) n = Math.min(field.max, n);
     commit(Math.round(n * 1e6) / 1e6);
+  }
+
+  // A number input shows the value at the field's precision, never the f32 noise.
+  const inputNum = (v) => (typeof v === 'number' && isFinite(v) ? v.toFixed(precisionFor(field)) : v ?? '');
+  // An emptied box writes nothing and shows the value again.
+  function commitTyped(el) {
+    if (el.value.trim() === '') el.value = inputNum(shown);
+    else commitNumber(Number(el.value));
   }
 
   // ---- RENDERING §11: dual-thumb range (a merged min/max role pair) -------
@@ -337,7 +347,7 @@
   let glow = $state(0);
   $effect(() => {
     if (status !== 'confirmed') glow = 0;
-    else if (sh && sh.settled) glow = untrack(() => glow) === 1 ? 2 : 1;
+    else if (settled) glow = untrack(() => glow) === 1 ? 2 : 1;
   });
   const glowEnd = (e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) glow = 0; };
 
@@ -392,13 +402,13 @@
   // full text rides in the title.
   const slot = $derived(
     held ? { kind: 'pending', text: 'sends on release' }
-    : status === 'fault' ? { kind: 'fault', text: (sh && sh.error) || 'refused' }
+    : status === 'fault' ? { kind: 'fault', text: faultWhy || 'refused' }
     : status === 'pending' ? { kind: 'pending', text: 'waiting for the machine' }
     : status === 'overdue' ? { kind: 'overdue', text: 'still waiting for the machine' }
     : outOfRange ? { kind: 'range', text: 'out of range ('
         + formatWithUnit(field, field.min) + ' to ' + formatWithUnit(field, field.max) + ')' }
     : reason ? { kind: 'gate', text: reason }
-    : glow ? { kind: 'confirmed', text: 'confirmed' }
+    : glow ? (virtual ? { kind: 'virtual', text: 'virtual' } : { kind: 'confirmed', text: 'confirmed' })
     : { kind: '', text: '' }
   );
 
@@ -544,7 +554,7 @@
 
 <div class="field" data-uid={field.uid} data-shadow={held ? 'pending' : status} data-defer={held ? '' : undefined}
      data-widget={pres} data-orient={orientation}
-     data-glow={glow || undefined} onanimationend={glowEnd} onlocate={locate}
+     data-glow={glow || undefined} data-virtual={virtual || undefined} onanimationend={glowEnd} onlocate={locate}
      style="--fx-f: {fxF}"
      class:disabled={!enabled && !field.readOnly}
      class:readonly={field.readOnly || displayOnly}
@@ -553,7 +563,7 @@
   <div class="field-head">
     <span class="field-label-group">
       <label class="field-label" id={labelId} for={LABELABLE.has(pres) ? domId : undefined} data-uid={field.uid}>
-        {labelFor(field)}
+        <span class="field-label-text" title={labelFor(field)}>{labelFor(field)}</span>
         {#if field.advanced}<span class="tag adv" title="Advanced setting">adv</span>{/if}
         {#if field.flagBits.restart_required}<span class="tag warn" title="Takes effect after restart">restart</span>{/if}
       </label>
@@ -592,12 +602,16 @@
       <span class="field-value typeable" class:disabled={!enabled} class:held={!!held}>
         <input type="number" class="chip-num"
                min={field.min} max={field.max} step={step}
-               value={shown ?? ''} disabled={!enabled}
+               value={inputNum(shown)} disabled={!enabled}
                style="width: {chipChars}ch"
                aria-label={'exact value for ' + labelFor(field)}
-               onchange={(e) => commitNumber(Number(e.currentTarget.value))} />
+               onchange={(e) => commitTyped(e.currentTarget)} />
         <span class="unit">{unitOf(field)}</span>
       </span>
+    {:else if isRange}
+      <output class="field-value" class:held={!!held}>
+        {formatWithUnit(field.lo, shownLo)} &ndash; {formatWithUnit(field.hi, shownHi)}
+      </output>
     {:else if showValueChip}
       <output class="field-value" class:readout={READ_ONLY_PRESENTATIONS.has(pres)} for={domId}
               class:stale={fresh && fresh.stale} title={staleReason(fresh)}>
@@ -725,9 +739,6 @@
              aria-label={'maximum ' + field.label}
              oninput={(e) => dragWrite('hi', Number(e.currentTarget.value))} />
     </div>
-    <output class="field-value range-readout mono" class:held={!!held}>
-      {formatWithUnit(field.lo, shownLo)} &ndash; {formatWithUnit(field.hi, shownHi)}
-    </output>
 
   {:else if pres === WIDGET.color}
     <div class="color-row">
@@ -761,8 +772,8 @@
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>&minus;</button>
       <input id={domId} type="number" class="og-num"
              min={field.min} max={field.max} step={step}
-             value={value ?? ''} disabled={!enabled}
-             onchange={(e) => commit(Number(e.currentTarget.value))} />
+             value={inputNum(value)} disabled={!enabled}
+             onchange={(e) => commitTyped(e.currentTarget)} />
       <button type="button" disabled={!enabled} aria-label="increase {labelFor(field)}"
               onclick={() => stepClick(1)} onpointerdown={() => holdStart(1)} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>+</button>
@@ -910,18 +921,14 @@
   .range-track { left: 0; right: 0; background: var(--line-2); }
   .range-fill { background: var(--reality); box-shadow: 0 0 6px rgba(var(--reality-rgb), .35); }
 
-  .field-value.range-readout {
-    display: block;
-    width: fit-content;
-    margin-top: 2px;
-  }
-
   /* Quiet label voice — same recipe as the hero numerals' .hn-label. Size
      matches the OG stylesheet's base `label` rule (.76rem, Chakra Petch 500,
-     tx-mut) verified against og-ref/style.css. Wraps anywhere: the label
-     gives way before the value chip can overflow the page. */
+     tx-mut) verified against og-ref/style.css. One line: the text ellipsizes
+     before the value chip can overflow, and its tags stay after it (ph-z5o). */
   .field-label {
-    overflow-wrap: anywhere;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
     font-family: var(--font);
     font-size: .76rem;
     font-weight: 500;
@@ -930,8 +937,21 @@
     letter-spacing: .04em;
   }
 
+  /* One visible line that still wraps anywhere underneath: its min-content
+     stays one glyph, so a long label never raises a card's measured floor
+     (DashGrid min-content). */
+  .field-label-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    min-width: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
   .tag {
     display: inline-block;
+    flex: none;
     margin-left: 6px;
     padding: 1px 5px;
     font-size: .62rem;
@@ -1082,13 +1102,9 @@
     border: 0;
   }
 
-  /* Ground-truth readout: same recess recipe as the editable .og-num value
-     input (var(--screen), inset shadow + hairline border, Martian Mono at a
-     narrower width), written locally because this is an <output>, not an
-     input — the global .og-num utility targets editable controls. Recess
-     verified verbatim against the OG stylesheet's .num (inset 0 2px 5px
-     rgba(0,0,0,.6)) — the old flat 1px inset ring read shallow next to it.
-     Size/padding verified against the OG's .field-val chip (.76rem, 1px 6px). */
+  /* The value chip. A read value is bare digits; only a typeable chip wears
+     the recess, so editable looks editable and read-only does not (ph-5y6).
+     The transparent border keeps both the same height. */
   .field-value {
     display: inline-flex;
     align-items: center;
@@ -1097,11 +1113,9 @@
     font-weight: var(--num-wght);
     font-size: .76rem;
     color: var(--tx-val);
-    background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
-    border: 1px solid var(--line-1);
+    border: 1px solid transparent;
     border-radius: var(--r-s);
-    padding: 1px 6px;
+    padding: 1px 0;
   }
   /* Unit suffix — OG's .field-val em: Chakra Petch (not mono), tx-ghost,
      .64rem literal (not a relative em) so it stays legible at the chip's
@@ -1127,8 +1141,8 @@
     text-shadow: none;
   }
 
-  /* Typeable chip (slider archetype). The recess comes from .field-value; the
-     input inside carries no chrome of its own. Two rules it MUST win against:
+  /* Typeable chip (slider archetype): the recess (OG .num, inset 0 2px 5px);
+     the input inside carries no chrome of its own. Two rules it MUST win against:
      the full-width control rule further down, which is written for controls
      that own their whole row, and the design system's deliberate removal of
      native spinners (style.css: nudge/trim buttons cover the increment
@@ -1136,6 +1150,9 @@
      control. Width is set inline from the field's published bounds. */
   .field-value.typeable {
     padding: 0 6px 0 5px;
+    background: var(--screen);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
+    border-color: var(--line-1);
   }
   .field-value .chip-num {
     display: inline-block;
@@ -1243,10 +1260,7 @@
     cursor: not-allowed;
   }
 
-  /* Stepper (indicator's writable neighbor): a compact centered value flanked
-     by nudges. The value box does NOT stretch — a 9-position control reading
-     as a full-bleed text field is what made it look emptier than the slider it
-     replaced. */
+  /* Stepper: the value box fills between the nudges, digits centered. */
   .stepper {
     display: flex;
     align-items: stretch;
@@ -1359,7 +1373,16 @@
   .ladder[data-slot='fault'] { color: var(--warn); }
   .ladder[data-slot='gate'] { color: var(--tx-ghost); }
   /* The word fades with the afterglow (style.css --ga). */
-  .ladder[data-slot='confirmed'] { color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-mut)); }
+  .ladder:is([data-slot='confirmed'], [data-slot='virtual']) { color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-mut)); }
+
+  /* Virtual (DESIGN §10.10): nothing was measured, so the field's reality
+     accents, afterglow included, speak in the intent family (ph-6n0). */
+  .field[data-virtual] { --reality: var(--intent); --reality-rgb: var(--intent-rgb); }
+
+  /* The chosen option: a plain reality border at rest, intent while its write
+     is out; the glow is the echo's alone (ph-ufb). */
+  .og-seg button.active { box-shadow: none; }
+  .field:is([data-shadow='pending'], [data-shadow='overdue']) .og-seg button.active { color: var(--intent); }
 
   /* ---- builder presentations (DESIGN §10.2) -------------------------------- */
   .knob {

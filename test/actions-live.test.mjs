@@ -182,7 +182,7 @@ async function checkActions(tag, w, h, touch) {
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .payload input[type=text]').fill('phlive');
   await card.locator('.field.action .ops button', { hasText: 'save' }).click();
-  const savedLine = card.locator('.field.action .hint.state', { hasText: 'confirmed' });
+  const savedLine = card.locator('.field.action .state', { hasText: 'confirmed' });
   const savedOk = await savedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   ok(tag + ': save press reaches confirmed (post-ECHO)', savedOk, null, savedOk ? await savedLine.textContent() : '(timed out -- see comment above)');
   await page.waitForTimeout(300);
@@ -197,7 +197,7 @@ async function checkActions(tag, w, h, touch) {
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .payload input[type=text]').fill('');
   await card.locator('.field.action .ops button', { hasText: 'load' }).click();
-  const loadedLine = card.locator('.field.action .hint.state', { hasText: 'confirmed' });
+  const loadedLine = card.locator('.field.action .state', { hasText: 'confirmed' });
   const loadedOk = await loadedLine.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   ok(tag + ': load press reaches confirmed (post-ECHO)', loadedOk, null, loadedOk ? await loadedLine.textContent() : '(timed out)');
   await page.waitForTimeout(400);
@@ -206,7 +206,7 @@ async function checkActions(tag, w, h, touch) {
 
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .ops button', { hasText: 'delete' }).click();
-  await card.locator('.field.action .hint.state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 }).catch(() => {});
+  await card.locator('.field.action .state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(300);
   const rosterAfterDelete = wire.seen.samples.get(0x1220);
   ok(tag + ': roster count restored after delete (cleanup left no residue)',
@@ -232,7 +232,9 @@ async function checkPatternPanel(tag, w, h, touch) {
 
   const card = dashItem(page, 'Pattern');
   const runBtn = card.locator('.run-btn');
-  const bgBtn = card.locator('.bg-btn');
+  // background_run is the shared switch (ph-6a2): click the switch, read its input.
+  const bgBtn = card.locator('.field[data-widget=toggle] .og-switch');
+  const bgIn = card.locator('.field[data-widget=toggle] input[role=switch]');
 
   // Fresh boot defaults speed/depth/stroke to 0%: a "running" generator with
   // no amplitude legitimately produces no motion. Max the three amplitude
@@ -266,14 +268,14 @@ async function checkPatternPanel(tag, w, h, touch) {
   await overlay.locator('button', { hasText: 'Cancel' }).click();
   await page.waitForTimeout(300);
   ok(tag + ': Cancel snaps the switch back off (no write sent)',
-    (await bgBtn.getAttribute('aria-checked')) === 'false' && !wire.seen.samples.get(0x1200)?.background_run);
+    (await bgIn.getAttribute('aria-checked')) === 'false' && !wire.seen.samples.get(0x1200)?.background_run);
 
   await bgBtn.click();
   await page.locator('.overlay button', { hasText: 'Confirm' }).click();
-  await page.waitForFunction(() => document.querySelector('.bg-btn')?.getAttribute('aria-checked') === 'true', { timeout: 4000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector('.pattern-hero .field[data-widget=toggle] input[role=switch]')?.getAttribute('aria-checked') === 'true', { timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(300);
   ok(tag + ': Confirm sends the write and the applied value echoes',
-    (await bgBtn.getAttribute('aria-checked')) === 'true' && !!wire.seen.samples.get(0x1200)?.background_run);
+    (await bgIn.getAttribute('aria-checked')) === 'true' && !!wire.seen.samples.get(0x1200)?.background_run);
 
   // Unattended: open a second, independent UI session as the OBSERVER, then
   // make the owner leave -- unload (closer to a real dropped tab than an
@@ -287,8 +289,8 @@ async function checkPatternPanel(tag, w, h, touch) {
   // Cleanup: stop the generator and background_run through the observer so
   // the sim is left as found for the next viewport pass / operator.
   const obsCard = dashItem(observer.page, 'Pattern');
-  const obsBg = obsCard.locator('.bg-btn');
-  if ((await obsBg.getAttribute('aria-checked').catch(() => null)) === 'true') { await obsBg.click(); await observer.page.waitForTimeout(200); }
+  const obsBg = obsCard.locator('.field[data-widget=toggle] input[role=switch]');
+  if ((await obsBg.getAttribute('aria-checked').catch(() => null)) === 'true') { await obsCard.locator('.field[data-widget=toggle] .og-switch').click(); await observer.page.waitForTimeout(200); }
   await obsCard.locator('.run-btn').click().catch(() => {});
   await observer.page.waitForTimeout(300);
   await observer.page.screenshot({ path: join(OUT, 'pattern-' + tag + '.png') }).catch(() => {});
