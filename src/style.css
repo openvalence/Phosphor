@@ -80,8 +80,8 @@
   --tx:       #C3C8D1;   /* body */
   --tx-val:   #A8AEB9;   /* nominal numerals (quiet) */
   --tx-mut:   #666C78;   /* labels */
-  --tx-ghost: #4D525C;   /* hints, ruler numerals */
-  --tx-faint: #2C3037;   /* index numerals, watermarks */
+  --tx-ghost: #5C626C;   /* hints, ruler numerals, chrome keys: 3:1 floor */
+  --tx-faint: #2C3037;   /* index numerals, watermarks: decorative, never a label */
   --ink:       var(--tx);        /* TEXT — see the collision note above */
   --ink-hi:    var(--tx-hi);
   --ink-dim:   var(--tx-mut);
@@ -102,6 +102,11 @@
   --bad-rgb:  255,71,87;
   --shade-rgb: 0,0,0;
   --estop:   var(--bad);
+  /* The safety colors as TEXT: the same hue at the lightness that reads
+     4.5:1 on every surface (model/theme.js, per chassis; a dark chassis keeps
+     the raw color). Glows, fills and borders stay --warn and --bad. */
+  --warn-ink: var(--warn);
+  --bad-ink:  var(--bad);
   --good:    var(--reality);
 
   --reality-rgb:     77,166,255;
@@ -681,12 +686,12 @@ select:focus { outline: none; border-color: var(--highlight); }
 }
 .og-btn.primary { border-color: var(--reality); color: var(--reality); }
 .og-btn.primary:hover { box-shadow: var(--glow-reality); }
-.og-btn.danger { border-color: var(--bad); color: var(--bad); }
+.og-btn.danger { border-color: var(--bad); color: var(--bad-ink); }
 .og-btn.danger:hover { box-shadow: 0 0 10px rgba(var(--bad-rgb),.2); }
 /* Running is AMBER, never red — --bad is reserved for hazard/e-stop. */
 .og-btn.running {
   border-color: var(--warn);
-  color: var(--warn);
+  color: var(--warn-ink);
   box-shadow: var(--glow-warn);
   letter-spacing: .14em;
 }
