@@ -18,7 +18,7 @@
 import {
   buildSettingsModel, isFieldEnabled, WIDGET, resolveWidget, surfacedFields,
   placeableControls, offeredPresentations, minCells, orientationOf, READ_ONLY_PRESENTATIONS,
-  CROSS_ARCHETYPE, placementLook, resetsToDefault,
+  CROSS_ARCHETYPE, placementLook, resetsToDefault, splitGroup,
 } from '../src/model/settings.js';
 import { claimRoles, claimAll, withoutClaimed, ROLE, AXIS_HERO_SPEC } from '../src/model/roles.js';
 import { labelFor, unitOf, precisionFor, statTag, hubSecToWallMs, wallMsToHubSec, armMoment, staleMoment } from '../src/model/format.js';
@@ -864,6 +864,35 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
      navIcon({ cat: { id: 0x64, known: false } }) === other && navIcon({ cat: { id: 9, known: false } }) === other);
   ok('a pane draws its own icon; an unknown pane draws `other`',
      navIcon({ id: 'valence' }) === NAV_ICONS.valence && navIcon({ id: 'x', pane: { id: 'nope' } }) === other);
+}
+
+// ---- DESIGN §10.11: " / " in a group names a section (Valence RFC-096 draft)
+{
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  ok('a prefixed group splits into section and card title',
+     eq(splitGroup('Upkeep / Belts'), { section: 'Upkeep', title: 'Belts' }));
+  ok('an unprefixed group is a card with no section',
+     eq(splitGroup('Belts'), { section: '', title: 'Belts' }) && eq(splitGroup(''), { section: '', title: '' }));
+  ok('two separators keep the first split', eq(splitGroup('A / B / C'), { section: 'A', title: 'B / C' }));
+  ok('a slash without its spaces is not a separator', eq(splitGroup('In/out'), { section: '', title: 'In/out' }));
+
+  const ch = (id, rank, groups) => ({
+    id, name: 'sec' + id, cls: CHANNEL_CLASS.STATE, dir: 0, access: 0, maxRateHz: 0, priority: 1,
+    category: 0x70, categoryKnown: false, categoryName: 'shop', categoryLabel: 'Shop', settingChannel: null, rank,
+    layout: groups.map((g, i) => lf('f' + id + '_' + i, PACKED.u8, { group: g, rank })),
+    schema: null,
+  });
+  const page = buildSettingsModel([
+    ch(0x0a01, UI_RANK.detail, ['Upkeep / Belts', 'Loose']),
+    ch(0x0a02, UI_RANK.diagnostic, ['Upkeep / Hours', 'Probe']),
+    ch(0x0a03, UI_RANK.detail, ['', 'Upkeep / Oil', 'Feed / Rate']),
+  ]).categories[0].groups;
+  ok('cards with no section first, then each section together, diagnostic last within it',
+     eq(page.map((g) => g.name + (g.diagnostic ? '*' : '')),
+        ['Loose', '', 'Probe*', 'Upkeep / Belts', 'Upkeep / Oil', 'Upkeep / Hours*', 'Feed / Rate']),
+     page.map((g) => g.name).join(', '));
+  ok('a card carries its section and title; its name stays the wire string',
+     eq(page.map((g) => [g.section, g.title]).slice(3, 5), [['Upkeep', 'Belts'], ['Upkeep', 'Oil']]));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

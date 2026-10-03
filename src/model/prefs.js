@@ -27,6 +27,7 @@ export const DEFAULTS = Object.freeze({
   units: 'metric',
   reconnect: true,    // redial the last saved hub on launch (shell)
   telemetryHz: null,  // null = the client default; always clamped to the catalog max
+  estopDatagram: true, // shell: an e-stop press also broadcasts the RFC-053 datagram (opt-out)
 });
 
 function read(key) {
@@ -45,6 +46,7 @@ export function loadPrefs(raw = read(PREFS_KEY)) {
     units: UNITS.includes(p.units) ? p.units : DEFAULTS.units,
     reconnect: typeof p.reconnect === 'boolean' ? p.reconnect : DEFAULTS.reconnect,
     telemetryHz: p.telemetryHz != null && Number.isFinite(hz) && hz > 0 ? hz : null,
+    estopDatagram: typeof p.estopDatagram === 'boolean' ? p.estopDatagram : DEFAULTS.estopDatagram,
   };
 }
 

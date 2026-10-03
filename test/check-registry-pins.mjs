@@ -117,6 +117,15 @@ checkPin(
   'discovery.rs MAGIC vs registry udp_discovery.magic ("' + registryValues.udp_magic + '")',
 );
 
+// src-tauri/src/estop_udp.rs -- the RFC-053 datagram e-stop rides the same port.
+checkPin(
+  'src-tauri/src/estop_udp.rs',
+  /const PORT: u16 = (\d+);/,
+  (m) => m[1],
+  registryValues.udp_port,
+  'estop_udp.rs PORT vs registry udp_discovery.port',
+);
+
 // src/shell/ble-ws.js -- BLE UUIDs. Not codegen output (see file banner); gated here.
 checkPin(
   'src/shell/ble-ws.js',
@@ -162,7 +171,7 @@ checkPin(
 
 console.log('registry-pins check');
 console.log('  registry : ' + REGISTRY);
-console.log('  pins     : 7 (2 Rust, 5 JS)');
+console.log('  pins     : 8 (3 Rust, 5 JS)');
 
 if (!failures.length) {
   console.log('\nPASS — every hand-copied registry pin matches registry.yaml.');

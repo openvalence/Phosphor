@@ -20,8 +20,9 @@
  * Channel ids 0x0009/0x000A/0x000B are SPEC-CORE (CHANNEL-GRID.md), the same
  * standing as CH_SAFETY — not device knowledge.
  *
- * Run: node test/pairing-roundtrip.mjs [--sim <path to valencesim.exe>]
- *      (starts its own sim on :82)
+ * Run: node test/pairing-roundtrip.mjs [--sim <path to valencesim.exe>] [--port 8784] [--http 8785]
+ *      (starts its own sim on those ports with a throwaway --state, never
+ *      82/80; refuses to run if something already answers on --port)
  *
  * NEEDS THE DEVICE TWIN, not Valence Bench: bench grants `configure` to every
  * session by construction (hub/bench/README.md), so every assertion below
@@ -29,7 +30,9 @@
  * is absent -- tracked as ph-3gi until Nucleus lands sim/valencesim.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createSession, ACCESS, PRIORITY } from '../../Valence/clients/js/index.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -42,25 +45,38 @@ const ok = (name, cond, extra) => {
 const CH_ADMIN = 0x0009, CH_PENDING = 0x000A, CH_PAIR_EVENTS = 0x000B;
 
 const argv = process.argv.slice(2);
-const simIdx = argv.indexOf('--sim');
-const SIM_EXE = simIdx >= 0
-  ? argv[simIdx + 1]
-  : new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, '');
+const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
+const SIM_EXE = argOf('--sim',
+  new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, ''));
+const PORT = Number(argOf('--port', 8784));
+const HTTP = Number(argOf('--http', 8785));
 
 if (!existsSync(SIM_EXE)) {
   console.log('[SKIP] pairing-roundtrip: no device twin at ' + SIM_EXE +
     ' -- Nucleus has not landed sim/valencesim yet (ph-3gi). Pass --sim <path> to run it.');
   process.exit(2);
 }
+const answers = await new Promise((resolve) => {
+  const ws = new WebSocket('ws://127.0.0.1:' + PORT + '/');
+  const t = setTimeout(() => { try { ws.close(); } catch (e) { /* */ } resolve(false); }, 1000);
+  ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
+  ws.onerror = () => { clearTimeout(t); resolve(false); };
+});
+if (answers) {
+  console.log('[FAIL] something already answers on :' + PORT + '; this test needs its own fresh sim (--port).');
+  process.exit(1);
+}
 
+const STATE_DIR = mkdtempSync(join(tmpdir(), 'pairing-roundtrip-'));
 const sim = spawn(SIM_EXE,
-  ['machine', '--headless', '--duration', '120', '--pairing-window'],
+  ['machine', '--headless', '--no-mdns', '--duration', '120', '--pairing-window',
+    '--port', String(PORT), '--http', String(HTTP), '--state', join(STATE_DIR, 'sim')],
   { stdio: 'ignore' });
 await sleep(2500);
 
 function mkSession(name, instByte, extra = {}) {
   return createSession({
-    host: '127.0.0.1', port: 82, clientKind: 'webui', clientName: name,
+    host: '127.0.0.1', port: PORT, clientKind: 'webui', clientName: name,
     instanceId: new Uint8Array(8).fill(instByte), autoReconnect: false, ...extra,
   });
 }
@@ -77,7 +93,7 @@ const nextPairGrant = (s, label, ms = 5000) => new Promise((resolve, reject) => 
 try {
   // ---- mode (c): first knock in the presence window -------------------------
   const a1 = mkSession('pairing op (pre)', 0xA1);
-  await connectAndWelcome(a1, 'A1');
+  const wA1 = await connectAndWelcome(a1, 'A1');
   const grantA = nextPairGrant(a1, 'A push-to-pair');
   a1.sendPairReq();
   const gA = await grantA;
@@ -95,6 +111,18 @@ try {
   const wA2 = await connectAndWelcome(a2, 'A2');
   ok('token reconnect lands at configure (ledger rung, not the bare floor)',
      (wA2.roles | 0) === ACCESS.configure, 'roles=' + wA2.roles);
+  // A voluntary GOODBYE ends a session (SPEC §6.9). One that parked STALE
+  // instead is REATTACHED by A2's HELLO: A1's grants kept, A2's wishes
+  // ignored (RFC-042 path B), so A2 then has to ask for them.
+  const fresh = wA2.sessionId !== wA1.sessionId;
+  ok("A1's GOODBYE ended its session: A2 is a fresh session, not a reattach", fresh,
+     fresh ? '' : 'reattached ' + wA2.sessionId + ' (Nucleus val-6ol)');
+  if (fresh) {
+    ok('configure-tier HELLO wishes are granted at the token tier',
+       a2.state.grants.has(CH_PENDING) && a2.state.grants.has(CH_PAIR_EVENTS), 'granted=' + [...a2.state.grants.keys()]);
+  } else {
+    a2.subscribe([[CH_PENDING, 1.0, PRIORITY.normal], [CH_PAIR_EVENTS, 1.0, PRIORITY.normal]]);
+  }
 
   let pending = null, knockEvt = null;
   a2.on('state', (ch, sample) => { if (ch === CH_PENDING) pending = sample; });
@@ -112,7 +140,7 @@ try {
   const grantB = nextPairGrant(b1, 'B approve', 8000);
   b1.sendPairReq();
   await sleep(1200);
-  ok('knock parked: pending-pairing STATE updated at the operator', pending != null,
+  ok('knock parked: pending-pairing STATE lists it at the operator', !!pending && pending.count > 0,
      pending ? JSON.stringify(pending).slice(0, 120) : 'no sample');
   ok('knocked EVENT broadcast on pairing-events', knockEvt != null,
      knockEvt ? JSON.stringify(knockEvt).slice(0, 120) : 'none');
@@ -148,6 +176,8 @@ try {
 }
 
 sim.kill();
+await sleep(300);
+rmSync(STATE_DIR, { recursive: true, force: true });
 console.log('\n' + (fails ? 'FAILURES: ' + fails
   : 'ALL PASS — knock-and-approve + push-to-pair round trips proven'));
 process.exit(fails ? 1 : 0);

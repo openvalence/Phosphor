@@ -26,6 +26,11 @@
  *              category page, every painted box is --bg-card or --bg-sunken,
  *              and none sits directly in a box of its own token; nothing in
  *              the pane scrolls on its own (ph-e82.22)
+ *   sections   a " / " group is a card under its section's one header row:
+ *              Motion's Tuning holds the eleven former Tuning cards, System's
+ *              Library its presets card; the header paints no tint, and the
+ *              advanced toggle moves neither it nor anything above it
+ *              (DESIGN §10.11)
  *
  * Live mode (--live): the build-and-reload check against a running valencesim
  * (catalog fetched, not seeded). Skips (exit 0) when no sim answers.
@@ -326,6 +331,56 @@ if (!LIVE) {
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
   }
   ok('surfaces: every category page reads as cards and nests only', catFaults.length === 0, catFaults);
+
+  // sections (DESIGN §10.11; Valence RFC-096 draft): every toggle is open here.
+  const sectionRuns = () => page.evaluate(() => {
+    const cells = [...document.querySelectorAll('main.pane .dash-grid[data-view] > .dash-cell')];
+    const runs = [];
+    for (const c of cells) {
+      const h = c.querySelector(':scope > .dash-section');
+      if (h) runs.push({ head: h.textContent.trim(), cards: [] });
+      else if (runs.length) runs.at(-1).cards.push(c.querySelector('.dash-title')?.textContent.trim());
+    }
+    return runs;
+  });
+  const cellGeo = () => page.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => Object.fromEntries(els.map((c) => {
+    const r = c.getBoundingClientRect();
+    return [c.dataset.id, [r.x, r.y, r.width, r.height].map(Math.round)];
+  })));
+  await page.click('nav.rail [role=tab][title="System"]');
+  await page.waitForTimeout(150);
+  ok('sections: System shows a Library section over its Pattern presets card',
+     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }]), await sectionRuns());
+  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.waitForTimeout(150);
+  const TUNING = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Settling',
+    'Active plan', 'Planner', 'Anomalies', 'Plan time', 'Stream ingress'];
+  ok('sections: Motion shows one Tuning section header with its eleven cards under it',
+     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Tuning', cards: TUNING }]), await sectionRuns());
+  const headTint = await page.$eval('main.pane .dash-section', (h) => {
+    const out = [];
+    for (let el = h; el && !el.matches('main.pane'); el = el.parentElement) {
+      const c = getComputedStyle(el).backgroundColor;
+      if (!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(c)) out.push(el.tagName.toLowerCase() + '.' + el.className + ' ' + c);
+    }
+    return out;
+  });
+  ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
+  const geo0 = await cellGeo();
+  const advBtn = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' });
+  await advBtn.click();
+  await page.waitForTimeout(200);
+  const geoHidden = await cellGeo();
+  await advBtn.click();
+  await page.waitForTimeout(200);
+  const geoBack = await cellGeo();
+  const headId = Object.keys(geo0).find((id) => id.startsWith('section:'));
+  const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
+  ok('sections: the advanced toggle moves neither the header nor any card above it',
+     still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
+  ok('sections: no card changes column or width, and the round trip lands where it began',
+     Object.keys(geoHidden).every((id) => geoHidden[id][0] === geo0[id][0] && geoHidden[id][2] === geo0[id][2])
+     && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 

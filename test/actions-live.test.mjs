@@ -9,6 +9,10 @@
  * like test/valence-sim.mjs) as ground truth against what the built page
  * renders.
  *
+ * The raw session mints its own /uitoken: the sim's floor is `watch`, and a
+ * watch session's write on a control-floor channel is refused NOT_CONTROLLER
+ * (SPEC §11.4 step 4) before any source ownership is consulted (ph-mk0).
+ *
  * SKIPS CLEANLY (exit 0, reason printed) when no sim answers on --port: this
  * is a live instrument, not part of `check` or `test:browser`.
  *
@@ -25,6 +29,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createSession } from '../../Valence/clients/js/index.js';
+import { acquireToken } from '../../Valence/clients/js/credentials.js';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
@@ -91,6 +96,7 @@ async function wireSession(extraSubs = []) {
   const s = createSession({
     host: HOST, port: PORT, clientKind: 'webui', clientName: 'actions-live wire watcher',
     autoReconnect: false, catalogStore, subscriptions: extraSubs,
+    token: (h) => acquireToken(h + ':' + HTTP),
   });
   s.on('state', (ch, sample) => seen.samples.set(ch, sample));
   await new Promise((resolve, reject) => {
@@ -132,12 +138,14 @@ const dashItem = (page, title) => page.locator('.dash-item', { has: page.locator
 const browser = await chromium.launch();
 
 // =============================================================================
-// Check 1 -- generic actions (ph-vdk.3): pattern-presets-cmd's action.preset
-// (save/load/delete/rename, 24 slots) is the one non-persistent verb this
-// catalog advertises (no has_drive machine-admin here).
+// Check 1 -- generic actions (ph-vdk.3): pattern-presets-cmd's action.store op
+// (save/load/delete/rename, RFC-067) is the one non-persistent verb this
+// catalog advertises (no has_drive machine-admin here). The generator widget
+// that claims it draws it through the generic ActionField, wherever that card
+// lands, so the card is found by the verb, not by a title.
 // =============================================================================
 async function checkActions(tag, w, h, touch) {
-  console.log('\n[' + tag + '] generic actions (action.preset)');
+  console.log('\n[' + tag + '] generic actions (action.store)');
   const { ctx, page, up } = await openApp(browser, { w, h, touch, hub: HOST + ':' + PORT });
   ok(tag + ': page adopted the live catalog', up);
   if (!up) { await closeApp(ctx, page); return; }
@@ -145,9 +153,9 @@ async function checkActions(tag, w, h, touch) {
   const wire = await wireSession([[0x1200, 0, 1], [0x1220, 0, 1], [0x1210, 0, 1]]);
   await sleep(300);
 
-  const card = dashItem(page, 'Actions');
+  const card = page.locator('.dash-item', { has: page.locator('.field.action .ops button', { hasText: 'save' }) });
   const ops = card.locator('.field.action .ops button');
-  ok(tag + ': Actions card renders one button per preset op (save/load/delete/rename)',
+  ok(tag + ': the preset verbs render one button per op (save/load/delete/rename)',
     await ops.count() === 4, null, await ops.allTextContents());
 
   // Choosing a pattern tile is its own, unrelated wire proof (it writes
@@ -162,13 +170,9 @@ async function checkActions(tag, w, h, touch) {
   const selAfterPick = wire.seen.samples.get(0x1200)?.pattern;
   ok(tag + ': choosing a pattern tile writes pattern-state.pattern on the wire', selAfterPick === pickIdx, selAfterPick, pickIdx);
 
-  // What action.preset actually snapshots is the ADVANCED generator config
-  // (0x1210 base controls, valence-sim.mjs's own established fixture behavior),
-  // not the basic 7-name selector above. Phosphor has no UI for that channel
-  // yet (ph-vdk.11, a separate open bead: "requires the list/roster
-  // archetype"), so the round trip is set up and observed over the wire --
-  // the UI's job here is only to press save/load/delete correctly, which is
-  // exactly what this proves end to end.
+  // A preset snapshots the ADVANCED generator config (0x1210 base controls),
+  // not the basic 7-name selector above. The marker is set and read on the
+  // raw session so the page's only job is pressing save/load/delete.
   const rosterBefore = wire.seen.samples.get(0x1220);
   const countBefore = rosterBefore ? rosterBefore.count : 0;
   // A load starts nothing (RFC-093: advgen.running is the writer's alone).
@@ -204,9 +208,14 @@ async function checkActions(tag, w, h, touch) {
   ok(tag + ': load recalls the saved preset on the wire (0x1210 in_speed back to what was saved)',
     wire.seen.samples.get(0x1210)?.in_speed === 77, wire.seen.samples.get(0x1210)?.in_speed, 77);
 
+  // A store delete is destructive (SPEC §8.8, RFC-063): it waits on the confirm.
   await card.locator('.field.action .payload input[type=number]').fill(String(SLOT));
   await card.locator('.field.action .ops button', { hasText: 'delete' }).click();
-  await card.locator('.field.action .state', { hasText: 'confirmed' }).waitFor({ timeout: 4000 }).catch(() => {});
+  const delConfirm = page.locator('.overlay[role=alertdialog] button.confirm');
+  ok(tag + ': delete asks first (destructive)', await delConfirm.waitFor({ timeout: 3000 }).then(() => true).catch(() => false));
+  await delConfirm.click().catch(() => {});
+  await card.locator('.field.action .state', { hasText: 'confirmed: delete' }).waitFor({ timeout: 4000 }).catch(() => {});
+
   await page.waitForTimeout(300);
   const rosterAfterDelete = wire.seen.samples.get(0x1220);
   ok(tag + ': roster count restored after delete (cleanup left no residue)',
@@ -263,8 +272,9 @@ async function checkPatternPanel(tag, w, h, touch) {
   const overlay = page.locator('.overlay');
   const overlayShown = await overlay.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
   const overlayBody = overlayShown ? (await overlay.locator('#overlay-body').textContent()).trim() : '';
+  const bgDesc = (wire.s.channelMap.get(0x1200)?.layout || []).find((f) => f.role === 'source.background_run')?.desc;
   ok(tag + ': enabling background_run opens the confirm overlay with the catalog desc',
-    overlayShown && /Keep the pattern running after its session disconnects/.test(overlayBody), null, overlayBody);
+    overlayShown && !!bgDesc && overlayBody === bgDesc, bgDesc, overlayBody);
   await overlay.locator('button', { hasText: 'Cancel' }).click();
   await page.waitForTimeout(300);
   ok(tag + ': Cancel snaps the switch back off (no write sent)',

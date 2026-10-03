@@ -488,6 +488,16 @@ question in §10.8).
   `safety:pause`). A second e-stop on the grid is fine; the strip's copy is
   the one that cannot go. Override/return is not a module: it is the rail's
   (SPEC §11.1).
+- In the shell, every e-stop press also broadcasts the RFC-053 ESTOP datagram
+  (the SPEC §5.5 frame) on every IPv4 interface to the §13.8 port: beside the
+  session's own estop, never instead of it, over the whole §11.2 repeat
+  budget, since a datagram's sender cannot see the latch. Opt-out, default on
+  (RFC-053 item 3; Settings > Connection). Every hub on the segment that
+  honors RFC-053 latches, not only the connected one; a Virtual Valence
+  session never broadcasts. A press needs a live link to reach the hook,
+  because the strip disables the e-stop without one. Seams:
+  `noteEstopPress` (`src/model/actions.js`, runAction's first call),
+  `src/shell/estop-udp.js`, `src-tauri/src/estop_udp.rs` (`ph-y4er`).
 - Order, operator ruling 2026-10-02 (`ph-e82.21`): the e-stop is outermost
   at the far right, then Pause, Override, Flip and Home inward. Flip (SPEC
   §9.6) rides the strip beside Override, not the rail row, so the jog tape
@@ -687,6 +697,21 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   pages of their category (RENDERING §11), not sidebar rows. A group is
   promoted by its whole field count, shown or not, so the advanced toggle
   never moves a page.
+- Sections (operator ruling 2026-10-02; Valence RFC-096 draft, a
+  presentation choice under RFC-080). A group string's first " / " splits
+  it into a section and a card title: `Tuning / Planner` is the Planner
+  card in section Tuning; an unprefixed group is a card with no section.
+  The wire string is RENDERING §3's free-text subgroup, unchanged, and stays
+  the card's key. A page draws its cards with no section first, then each
+  section's cards together, sections in order of first appearance; catalog
+  order holds within each, diagnostic cards last (collapsed by default,
+  RENDERING §9). One header row heads a section's run: text and a hairline
+  on the page in the card titles' type step, never a band or a third tint
+  (§10.6), a top-level grid row with no grip and no number. Each card is
+  still promoted on its own (glance, handheld); the header stays. Seams:
+  `splitGroup` and pass 3 in `src/model/settings.js`, `settingItems` in
+  `src/App.svelte`, `.dash-section` in `src/ui/dash/DashGrid.svelte`
+  (`ph-efai`).
 - Category 1 reads "Generator", the protocol view reads "Link", the built
   home page reads "Dash". Tab ids are storage keys and do not follow the
   labels: `machine` (the Dash layout), `valence` (Link), `cat<id>`.
@@ -715,3 +740,5 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |
 | 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
+| 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
+| 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |

@@ -24,11 +24,16 @@
  * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
  * destructive toggle's confirm (ph-vdk.60.5). A Shift-drag of the slider or
  * knob writes once, on release, never on a cancel, with the ring pending and
- * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider).
+ * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider). Through a
+ * placement look (RFC-080 by ruling, ph-huv): a two-valued toggle on a
+ * three-option field writes B then A, and a narrowed slider marks a reported
+ * value outside its range, each up the same ladder.
  *
  * Live mode (--live): the same page against a running valencesim; one
- * slider-class field driven through slider, knob and stepper, each value
- * confirmed on a second, raw session (C-8). Skips (exit 0) when no sim answers.
+ * slider-class field driven through slider, knob and stepper, the two-valued
+ * toggle pressed to B and back to A, and the narrowed slider, each value
+ * confirmed on a second, raw session (C-8), which then puts every value back.
+ * Skips (exit 0) when no sim answers.
  *
  * Run: node test/control-contract.test.mjs
  *      node test/control-contract.test.mjs --live [--host 127.0.0.1] [--port 8882] [--http 8880]
@@ -47,6 +52,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull, head, concatBytes } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK, CBOR_FIELD, SETTING_FLAG } from '../../Valence/clients/js/frames.js';
 import { createSession, catalogEtag, toHex } from '../../Valence/clients/js/index.js';
+import { acquireToken } from '../../Valence/clients/js/credentials.js';
 import { buildSettingsModel, placeableControls, WIDGET } from '../src/model/settings.js';
 import { precisionFor } from '../src/model/format.js';
 
@@ -296,8 +302,18 @@ const F32 = MODEL.fields.find((f) => !f.readOnly && f.type === PACKED.f32 && f.s
 const RANGE = placeableControls(MODEL).find((c) => c.field && c.field.widget === WIDGET.range);
 const LONG = MODEL.fields.filter((f) => f.advanced && !f.readOnly && f.widget === WIDGET.toggle && f.channelId !== XS)
   .sort((a, b) => b.label.length - a.label.length)[0];
+// Placement looks (RFC-080 by ruling, ph-huv), drawn through Control: a toggle
+// writing options 1 and 2 of a three-option field, and a slider narrowed to
+// the middle half of another field's range, on its step grid.
+const TWO = CHOICES.find((f) => f.options.length >= 3);
+const NARROW = MODEL.fields.find((f) => !f.readOnly && !f.role && f.channelId !== XS && f.uid !== FIELD.uid
+  && f.widget === WIDGET.slider && f.step);
+const onGrid = (f, frac) => f.min + Math.round((f.max - f.min) * frac / f.step) * f.step;
+const [NLO, NHI] = [onGrid(NARROW, 0.25), onGrid(NARROW, 0.75)];
+const TWO_KEY = 'toggle@' + TWO.uid + '@a=1;b=2';
+const NARROW_KEY = 'slider@' + NARROW.uid + '@min=' + NLO + ';max=' + NHI;
 const MORE = [...(SMALL ? ['numeral@' + SMALL.uid] : []),
-  ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid,
+  ...Object.entries(LADDER).filter(([, f]) => f).map(([p, f]) => p + '@' + f.uid), 'toggle@' + ARM.uid, TWO_KEY, NARROW_KEY,
   ...(F32 ? ['stepper@' + F32.uid] : []), ...(RANGE ? ['range@' + RANGE.key] : []), ...(LONG ? ['toggle@' + LONG.uid] : [])];
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
@@ -1060,14 +1076,78 @@ if (!LIVE) {
     ok('the status text never carries the secret', !(await a.textContent()).includes(SECRET));
     ok('the secret draft is cleared after the press', await pw.first().inputValue() === '');
   }
+
+  // The same ladder through a placement look (RFC-080 by ruling, ph-huv).
+  console.log('\n[look] a two-valued toggle and a narrowed range');
+  const until = async (fn, ms = 3000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await sleep(20); } return false; };
+  const lk = (key) => page.locator('.cell[data-pres="' + key + '"] .field');
+  const lkIs = (key, want, re) => async () => await lk(key).getAttribute('data-shadow') === want
+    && (!re || re.test(await lk(key).locator('.ladder').textContent()));
+  const lkSlot = (key) => lk(key).locator('.ladder').textContent();
+  const wroteTo = (f) => { const w = hub.log.filter((x) => x.ch === f.writeChannel).at(-1); const kv = w && w.val.find(([k]) => k === f.settingKey); return kv && kv[1]; };
+
+  hub.mode = 'echo';
+  const tg = lk(TWO_KEY), tgBox = tg.locator('input[type=checkbox]');
+  await setReported(TWO, 1);
+  ok('two-valued toggle: off while the machine reports A', !(await tgBox.isChecked()));
+  hub.mode = 'hold';
+  await tg.locator('.og-switch').click();
+  ok('two-valued toggle: pending in words', await until(lkIs(TWO_KEY, 'pending', /waiting/), 1000), await lkSlot(TWO_KEY));
+  ok('two-valued toggle: overdue past 500 ms', await until(lkIs(TWO_KEY, 'overdue'), 1500));
+  await release();
+  ok('two-valued toggle: the press writes B', wroteTo(TWO) === 2, wroteTo(TWO));
+  ok('two-valued toggle: confirmed on the echo, on at B', await until(lkIs(TWO_KEY, 'confirmed')) && await tgBox.isChecked());
+  hub.mode = 'echo';
+  await tg.locator('.og-switch').click();
+  ok('two-valued toggle: a second press writes A and confirms off', await until(async () => wroteTo(TWO) === 1
+    && await lkIs(TWO_KEY, 'confirmed')() && !(await tgBox.isChecked())), wroteTo(TWO));
+  hub.mode = 'silent';
+  await tg.locator('.og-switch').click();
+  ok('two-valued toggle: fault when the echo never comes, in words', await until(lkIs(TWO_KEY, 'fault', new RegExp(NO_ANSWER)), 4000),
+    await lkSlot(TWO_KEY));
+  hub.mode = 'nack';
+  const tgWas = await tgBox.isChecked();
+  await tg.locator('.og-switch').click();
+  ok('two-valued toggle: fault on a NACK, the code in words', await until(lkIs(TWO_KEY, 'fault', /INVALID_VALUE/), 1500), await lkSlot(TWO_KEY));
+  ok('two-valued toggle: ...and the switch shows the machine again', await until(async () => await tgBox.isChecked() === tgWas));
+
+  hub.mode = 'echo';
+  const nr = lk(NARROW_KEY), nrIn = nr.locator('input[type=range]');
+  const nrSet = (v) => nrIn.evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const onStep = (a, b) => Math.abs(a - b) <= NARROW.step / 2;
+  ok('narrowed: the slider spans the placement range', onStep(Number(await nrIn.getAttribute('min')), NLO)
+    && onStep(Number(await nrIn.getAttribute('max')), NHI), [await nrIn.getAttribute('min'), await nrIn.getAttribute('max'), NLO, NHI]);
+  await setReported(NARROW, NARROW.min);
+  ok('narrowed: a reported value outside the range is marked in the slot, never pinned',
+    /out of range/.test(await lkSlot(NARROW_KEY)) && onStep(Number(await nr.locator('.chip-num').inputValue()), NARROW.min),
+    [await lkSlot(NARROW_KEY), await nr.locator('.chip-num').inputValue()]);
+  hub.mode = 'hold';
+  const nMid = NLO + Math.round((NHI - NLO) / 2 / NARROW.step) * NARROW.step;
+  await nrSet(nMid);
+  ok('narrowed: pending in words', await until(lkIs(NARROW_KEY, 'pending', /waiting/), 1000), await lkSlot(NARROW_KEY));
+  ok('narrowed: overdue past 500 ms', await until(lkIs(NARROW_KEY, 'overdue'), 1500));
+  await release();
+  ok('narrowed: confirmed on the echo, the written value inside the range', await until(lkIs(NARROW_KEY, 'confirmed'))
+    && onStep(wroteTo(NARROW), nMid) && wroteTo(NARROW) >= NLO - NARROW.step / 2 && wroteTo(NARROW) <= NHI + NARROW.step / 2,
+    [wroteTo(NARROW), nMid]);
+  hub.mode = 'silent';
+  await nrSet(NLO);
+  ok('narrowed: fault when the echo never comes, in words', await until(lkIs(NARROW_KEY, 'fault', new RegExp(NO_ANSWER)), 4000),
+    await lkSlot(NARROW_KEY));
+  hub.mode = 'nack';
+  await nrSet(NHI);
+  ok('narrowed: fault on a NACK, the code in words', await until(lkIs(NARROW_KEY, 'fault', /INVALID_VALUE/), 1500), await lkSlot(NARROW_KEY));
+  hub.mode = 'echo';
 } else {
   // ---- live: each presentation confirmed on a second, raw session (C-8) ------
+  // The raw session holds a /uitoken only to put back what this pass wrote.
   const cache = new Map();
   const seen = new Map();
   const wire = createSession({
     host: HOST, port: SIM_PORT, clientKind: 'webui', clientName: 'control-contract wire watcher', autoReconnect: false,
     catalogStore: { load: (h) => cache.get(h) || null, save: (h, e, b) => cache.set(h, { etag: e, bytes: b }), clear: (h) => cache.delete(h) },
-    subscriptions: [[STATE_CH, 0, 1]],
+    subscriptions: [...new Set([STATE_CH, TWO.channelId, NARROW.channelId])].map((ch) => [ch, 0, 1]),
+    token: (h) => acquireToken(h + ':' + SIM_HTTP),
   });
   wire.on('state', (ch, sample) => seen.set(ch, sample));
   await new Promise((resolve, reject) => {
@@ -1075,15 +1155,46 @@ if (!LIVE) {
     wire.on('live', () => { clearTimeout(t); resolve(); });
     wire.connect();
   });
+  const wireVal = (f) => seen.get(f.channelId) && seen.get(f.channelId)[f.name];
+  const found = Object.fromEntries([FIELD, TWO, NARROW].map((f) => [f.uid, wireVal(f)]));
+  const wireSees = async (f, want, eq = (a, b) => a === b) => {
+    for (let i = 0; i < 40 && !eq(wireVal(f), want); i++) await sleep(50);
+    return eq(wireVal(f), want);
+  };
+  const tg = page.locator('.cell[data-pres="' + TWO_KEY + '"] .field');
+  const press = () => tg.locator('.og-switch').click();
+  if (wireVal(TWO) === 2) { await press(); await wireSees(TWO, 1); }   // start from off
+  for (const [want, ab] of [[2, 'B'], [1, 'A']]) {
+    await press();
+    ok('two-valued toggle: a press shows ' + ab + ' applied on the second session', await wireSees(TWO, want), wireVal(TWO));
+    let agrees = false;
+    for (let i = 0; i < 40 && !agrees; i++) { agrees = await tg.locator('input[type=checkbox]').isChecked() === (want === 2); if (!agrees) await sleep(50); }
+    ok('two-valued toggle: ...and the switch agrees', agrees);
+  }
+  const nr = page.locator('.cell[data-pres="' + NARROW_KEY + '"] .field');
+  const nMid = NLO + Math.round((NHI - NLO) / 2 / NARROW.step) * NARROW.step;
+  await nr.locator('input[type=range]').evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, nMid);
+  ok('narrowed: the second session sees the value written inside the placement range',
+    await wireSees(NARROW, nMid, (a, b) => Math.abs(a - b) <= NARROW.step / 2), wireVal(NARROW));
   for (const p of WRITERS) {
     const want = await drive(p);
-    const settled = await cell(p).locator('.ladder', { hasText: 'confirmed' }).waitFor({ timeout: 4000 })
-      .then(() => true).catch(() => false);
+    // The slot's text, not its visibility: below ~345 px the slider's slot is
+    // 0 px wide (ph-46yw), which is a layout bead, not this contract.
+    let settled = false;
+    for (let i = 0; i < 80 && !settled; i++) {
+      settled = await shadowOf(p) === 'confirmed' && near(await current(), want);
+      if (!settled) await sleep(50);
+    }
     ok(p + ': the page reaches confirmed (post-ECHO)', settled, await ladderOf(p));
     let onWire;
     for (let i = 0; i < 40; i++) { onWire = seen.get(STATE_CH) && seen.get(STATE_CH)[FIELD.name]; if (near(onWire, want)) break; await sleep(50); }
     ok(p + ': the second session sees ' + FIELD.name + ' = ' + want, near(onWire, want), onWire);
     await sleep(1000);
+  }
+  for (const f of [FIELD, TWO, NARROW]) {
+    if (found[f.uid] == null) continue;
+    await wire.sendIntent(f.writeChannel, { [f.settingKey]: found[f.uid] })
+      .catch((e) => ok('restore ' + f.uid + ' to ' + found[f.uid], false, e.message));
   }
   try { wire.close(); } catch (e) { /* */ }
   await sleep(300);

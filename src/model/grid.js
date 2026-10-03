@@ -518,10 +518,11 @@ export const FIELDS_NESTS_ONLY = false;
 /**
  * May a control of `kind` sit at the top level or in a nest? A nest never
  * nests. A safety op is top level only: the strip's own copy is the one that
- * cannot go, and a grid copy stays where the eye finds it.
+ * cannot go, and a grid copy stays where the eye finds it. A section header
+ * row (DESIGN §10.11) heads the page's cards, so it stays top level too.
  */
 export function placeable(kind, inNest, nestsOnly = FIELDS_NESTS_ONLY) {
-  if (kind === 'nest' || kind === 'safety') return !inNest;
+  if (kind === 'nest' || kind === 'safety' || kind === 'section') return !inNest;
   return inNest || !nestsOnly || kind !== 'field';
 }
 

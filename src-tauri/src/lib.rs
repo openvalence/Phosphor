@@ -1,6 +1,7 @@
 #[cfg(desktop)]
 mod buttplug;
 mod discovery;
+mod estop_udp;
 mod plugins;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -11,6 +12,7 @@ pub fn run() {
     .manage(plugins::TcpListeners::default())
     .invoke_handler(tauri::generate_handler![
       discovery::discover_hubs,
+      estop_udp::estop_broadcast,
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,

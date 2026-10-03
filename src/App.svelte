@@ -84,7 +84,7 @@
     const loose = model.looseActions.filter((a) => !heroes.claimed.has(a.uid));
     const strays = cards.filter((h) => homeOf(h) == null);
     if (loose.length || strays.length) {
-      const groups = loose.length ? [{ name: 'Actions', diagnostic: false, fields: loose }] : [];
+      const groups = loose.length ? [{ name: 'Actions', title: 'Actions', diagnostic: false, fields: loose }] : [];
       const other = cats.find((c) => c.known && c.id === UI_CATEGORY.other);
       if (other) { other.groups = [...other.groups, ...groups]; other.heroes = [...other.heroes, ...strays]; }
       else cats.push({ key: 'other', id: UI_CATEGORY.other, label: 'Other', known: true, writable: true, groups, heroes: strays });
@@ -320,17 +320,22 @@
    * different machine without scrambling either layout.
    */
   // RENDERING §11 per class: a group past the class's density budget is a
-  // card that opens its own page, never a hidden one.
+  // card that opens its own page, never a hidden one. A section's cards
+  // follow one header row (settings.js orders them together, DESIGN §10.11).
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
       ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
-    ...projectGroups(visibleGroups.groups, view.cls).map(({ group: g, drill: promoted }) => ({
-      id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
-      title: g.name || (g.diagnostic ? 'Diagnostics' : 'Settings'),
-      snippet: promoted ? drillCard : groupCard,
-      group: g,
-      promoted,
-    })),
+    ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
+      ...(g.section && g.section !== all[i - 1]?.group.section
+        ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
+      {
+        id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
+        title: g.title || (g.diagnostic ? 'Diagnostics' : 'Settings'),
+        snippet: promoted ? drillCard : groupCard,
+        group: g,
+        promoted,
+      },
+    ]),
   ]);
   // The open drill-in page, while its group is still promoted under this
   // class; `full` shows every section inline instead.
