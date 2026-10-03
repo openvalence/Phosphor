@@ -10,6 +10,15 @@
    * plane (docs/http-plane-retirement.md) and machine.stats does not carry it,
    * so showing it would mean fabricating a number nobody sent.
    *
+   * ONE ROW, ALWAYS (operator 2026-10-03, ph-wt7r): the row never wraps. Every
+   * value holds a fixed slot (--w, ch of the mono face) and shows a compact
+   * form; the exact reading is the cell's title. Below the width where every
+   * cell fits, whole cells drop in this fixed order, first to go first
+   * (the @media rules below, breakpoints measured): clock offset, clock rtt,
+   * deadman, state pushes, session, reconnects, last rx; under 442 px the
+   * "LINK" label goes too. The scale control and "UI build:etag" (screenshot
+   * debugging) never drop.
+   *
    * Read-only and quiet on purpose: the one control is the UI scale at the
    * right end (ScaleControl) and the session clock toggle; the rest only
    * tells the operator what the Valence link is doing. Ground truth applies
@@ -20,12 +29,11 @@
    *   <FootStrip />
    *
    * Constraints:
-   * - A live value never moves its neighbors: each holds a slot sized to
-   *   its widest honest reading (--w, in ch of the mono face) (ph-rt1).
-   * - Phones get a grid of whole facts, never a ragged wrap.
+   * - A live value never moves its neighbors: each holds a fixed slot (--w,
+   *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
    */
   import { machine } from '../model/machine.svelte.js';
-  import { since, clock } from '../model/format.js';
+  import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
 
   // A page full of "since" readouts needs its own clock, or the age freezes
@@ -41,12 +49,12 @@
   });
   function ageLabel(ms, _tick) { return since(ms); }
 
-  const etagShort = $derived(
-    machine.catalog.etag && machine.catalog.etag.length ? machine.catalog.etag.slice(0, 10) : '--'
-  );
-  const deadman = $derived(machine.link.deadmanMs ? machine.link.deadmanMs + ' ms' : '--');
-  const clockOffset = $derived(machine.stats.clockOffsetUs != null ? machine.stats.clockOffsetUs + ' µs' : '--');
-  const clockRtt = $derived(machine.stats.clockRttUs != null ? machine.stats.clockRttUs + ' µs' : '--');
+  const etag = $derived(machine.catalog.etag || '');
+  const deadmanMs = $derived(machine.link.deadmanMs);
+  const deadman = $derived(deadmanMs ? deadmanMs / 1000 + ' s' : '--');
+  const offsetUs = $derived(machine.stats.clockOffsetUs);
+  const rttUs = $derived(machine.stats.clockRttUs);
+  const usTitle = (us) => (us != null ? us + ' µs' : undefined);
   const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
 
   // Session age off machine.link.since, which the link sets when the phase
@@ -67,18 +75,17 @@
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">
-    <span class="fact"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{machine.stats.reconnects}</span></span>
-    <span class="fact"><span class="k">state pushes</span><span class="v mono" style="--w: 7ch">{machine.stats.statePushes}</span></span>
-    <span class="fact"><span class="k">clock offset</span><span class="v mono" style="--w: 13ch">{clockOffset}</span></span>
-    <span class="fact"><span class="k">clock rtt</span><span class="v mono" style="--w: 8ch">{clockRtt}</span></span>
-    <span class="fact"><span class="k">catalog etag</span><span class="v mono" title={machine.catalog.etag || undefined}>{etagShort}</span></span>
-    <span class="fact"><span class="k">deadman</span><span class="v mono" >{deadman}</span></span>
-    <span class="fact"><span class="k">last rx</span><span class="v mono" style="--w: 7ch">{rxAge}</span></span>
-    <button type="button" class="fact fact-btn" onclick={() => (sessionMs = !sessionMs)}
+    <span class="fact d6" title="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
+    <span class="fact d4" title="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
+    <span class="fact d1" title={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
+    <span class="fact d2" title={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
+    <span class="fact d3" title={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
+    <span class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
+    <span class="fact" title="UI build {buildId}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{buildId}:{etag ? etag.slice(0, 10) : '--'}</span></span>
+    <button type="button" class="fact fact-btn d5" onclick={() => (sessionMs = !sessionMs)}
             title={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
-      <span class="k">session</span><span class="v mono" style="--w: 11ch">{sessionAge}</span>
+      <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
     </button>
-    <span class="fact"><span class="k">ui build</span><span class="v mono">{buildId}</span></span>
   </div>
   <ScaleControl />
 </footer>
@@ -87,8 +94,10 @@
   .footstrip {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px 14px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    white-space: nowrap;
+    gap: 12px;
     padding: 8px var(--gap);
     background: var(--bg-raised);
     border-top: 1px solid var(--line);
@@ -105,13 +114,15 @@
 
   .facts {
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px 12px;
+    flex-wrap: nowrap;
+    gap: 9px;
     min-width: 0;
+    overflow: hidden;
     flex: 1 1 auto;
   }
 
   .fact {
+    flex: none;
     display: inline-flex;
     align-items: baseline;
     gap: 5px;
@@ -135,16 +146,13 @@
     font-size: 11px;
   }
   .v {
-    min-width: var(--w, 0);
+    flex: none;
+    width: var(--w, auto);
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--ink-dim);
     font-size: 11px;
     white-space: nowrap;
-  }
-
-  /* Desktop: whole facts in rows, never a sideways scroller (ph-rt1); one
-     row from about 1520 px, two below it. */
-  @media (min-width: 960px) {
-    .footstrip { flex-wrap: nowrap; }
   }
 
   /* Touch: a clickable fact grows a real 40px hit box. An invisible
@@ -156,9 +164,23 @@
   @media (pointer: coarse) {
     .fact-btn { min-height: 40px; align-items: center; }
   }
-  /* Phones: a grid of key-over-value cells, every fact in its column. */
-  @media (max-width: 959px) {
-    .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 104px), 1fr)); gap: 6px 14px; }
-    .facts .fact { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
-  }
+
+  /* The drop order (header): d1 goes first, d7 last. */
+  /* Breakpoints = measured width where the cells left still fit, plus 7 px;
+     coarse pointers carry the 40 px scale buttons, so they drop earlier. */
+  @media (max-width: 1271px) { .d1 { display: none; } }
+  @media (pointer: coarse) and (max-width: 1319px) { .d1 { display: none; } }
+  @media (max-width: 1091px) { .d2 { display: none; } }
+  @media (pointer: coarse) and (max-width: 1139px) { .d2 { display: none; } }
+  @media (max-width: 962px) { .d3 { display: none; } }
+  @media (pointer: coarse) and (max-width: 1010px) { .d3 { display: none; } }
+  @media (max-width: 855px) { .d4 { display: none; } }
+  @media (pointer: coarse) and (max-width: 903px) { .d4 { display: none; } }
+  @media (max-width: 722px) { .d5 { display: none; } }
+  @media (pointer: coarse) and (max-width: 770px) { .d5 { display: none; } }
+  @media (max-width: 606px) { .d6 { display: none; } }
+  @media (pointer: coarse) and (max-width: 654px) { .d6 { display: none; } }
+  @media (max-width: 494px) { .d7 { display: none; } }
+  @media (pointer: coarse) and (max-width: 542px) { .d7 { display: none; } }
+  @media (max-width: 441px) { .fs-label { display: none; } }
 </style>

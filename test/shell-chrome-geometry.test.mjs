@@ -57,6 +57,7 @@ import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Vale
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
+import { compact } from '../src/model/format.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -128,16 +129,40 @@ const fsMove = await page.evaluate(() => {
   return out;
 });
 ok('footstrip: a value growing or shrinking moves no neighbor', fsMove.every((s) => s === fsMove[0]), JSON.stringify(fsMove));
-for (const fw of [1280, 1024]) {
-  await page.setViewportSize({ width: fw, height: 800 });
-  await page.waitForTimeout(200);
-  const fs = await page.evaluate(() => ({ out: [...document.querySelectorAll('.footstrip .fact')].filter((f) => f.getBoundingClientRect().right > innerWidth + 0.5)
-    .map((f) => f.textContent.trim().replace(/\s+/g, ' ')), scrollers: [...document.querySelectorAll('.footstrip, .footstrip *')]
-    .filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
-    rows: new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().top))).size }));
-  ok('footstrip: at ' + fw + ' every link fact is on screen, no sideways scroller', fs.out.length === 0 && fs.scrollers === 0,
-    JSON.stringify(fs));
+// ph-wt7r: the status row is one line, always. Every visible cell is on one
+// top, the scale control is on it too at the right end, nothing scrolls, and
+// at 1280 and up no cell has dropped.
+const footRow = () => page.evaluate(() => {
+  const f = document.querySelector('.footstrip'), fb = f.getBoundingClientRect();
+  const shown = [...f.querySelectorAll('.fact')].filter((c) => c.offsetParent);
+  const sc = f.querySelector('.foot-scale').getBoundingClientRect();
+  return { h: Math.round(fb.height), shown: shown.length, tops: new Set(shown.map((c) => Math.round(c.getBoundingClientRect().top))).size,
+    out: shown.filter((c) => c.getBoundingClientRect().right > innerWidth + 0.5).length,
+    scaleRight: Math.round(fb.right - sc.right), scaleMid: Math.round(sc.top + sc.height / 2 - (fb.top + fb.height / 2)),
+    scrollers: [...f.querySelectorAll(':scope, :scope *')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
+    wide: f.scrollWidth > f.clientWidth };
+});
+let fsH = null;
+for (const [fw, fh] of [[390, 844], [1280, 800], [1440, 900], [1920, 1080]]) {
+  await page.setViewportSize({ width: fw, height: fh });
+  await page.waitForTimeout(250);
+  const r = await footRow();
+  fsH ??= r.h;
+  ok('footstrip: at ' + fw + ' one row, the scale control on it at the right end, no scroller',
+    r.tops === 1 && r.h === fsH && r.out === 0 && r.scrollers === 0 && !r.wide && Math.abs(r.scaleMid) <= 2 && r.scaleRight <= 14 && r.shown >= 1, JSON.stringify(r));
+  if (fw >= 1280) ok('footstrip: at ' + fw + ' every cell shows', r.shown === 8, JSON.stringify(r));
 }
+// Compact forms, exact value in the title; UI build and catalog etag are one cell.
+await page.setViewportSize({ width: 1440, height: 900 });
+const cells = await page.evaluate(() => [...document.querySelectorAll('.footstrip .fact')].map((c) =>
+  ({ k: c.querySelector('.k').textContent, v: c.querySelector('.v').textContent, t: c.title })));
+const cell = (k) => cells.find((c) => c.k === k);
+const pushes = cell('state pushes');
+ok('footstrip: counters are compact with the exact count on hover', cell('reconnects').v === '0' && cell('reconnects').t === '0 reconnects'
+  && /^\d+ state pushes$/.test(pushes.t) && pushes.v === compact(parseInt(pushes.t, 10)), JSON.stringify([cell('reconnects'), pushes]));
+ok('footstrip: UI build and catalog etag are one cell "build:etag"', cells.filter((c) => /^ui$|etag|build/.test(c.k)).length === 1 && cell('ui')
+  && /^\S+:\S+$/.test(cell('ui').v) && /^UI build \S+, catalog etag \S+$/.test(cell('ui').t), JSON.stringify(cell('ui')));
+ok('footstrip: no raw microsecond or millisecond readout in a cell', cells.every((c) => !/ (µs|ms)$/.test(c.v)), JSON.stringify(cells.map((c) => c.v)));
 
 // ---- phone: the page scrolls; the strip sticks, the tabs park under it --------
 await page.setViewportSize({ width: 420, height: 800 });
@@ -154,8 +179,8 @@ const stripBottom = await page.evaluate(() => document.querySelector('.topstrip'
 ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
    'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
 ok('phone: nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
-const fsCols = await page.evaluate(() => [...new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().left)))]);
-ok('phone: the link facts sit in grid columns (ph-rt1)', fsCols.length <= 4, JSON.stringify(fsCols));
+const fsPhone = await footRow();
+ok('phone: the status row is still one line (ph-wt7r)', fsPhone.tops === 1 && fsPhone.h === fsH && !fsPhone.wide, JSON.stringify(fsPhone));
 
 // ---- the real shell bundle: the sidebar's Phosphor section (ph-e82.16) ------
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

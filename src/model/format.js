@@ -309,6 +309,23 @@ export function uptime(sec) {
   return m + 'm ' + Math.floor(sec % 60) + 's';
 }
 
+/** Counter -> at most 3 significant digits and a k/M/G suffix: 999, 3.25k, 55.1k, 1.20M. */
+export function compact(n) {
+  if (n == null || !isFinite(n)) return '--';
+  let x = Math.abs(n), i = 0;
+  while (x >= 999.5 && i < 3) { x /= 1000; i++; }
+  if (!i) return String(n);
+  const r = Number(x.toPrecision(3));
+  return (n < 0 ? '-' : '') + r.toFixed(r < 10 ? 2 : r < 100 ? 1 : 0) + 'kMG'[i - 1];
+}
+
+/** Microseconds -> "-1605.299 s": three decimals, compact past 10000 s. */
+export function seconds(us) {
+  if (us == null || !isFinite(us)) return '--';
+  const s = us / 1e6;
+  return (Math.abs(s) < 1e4 ? s.toFixed(3) : compact(s)) + ' s';
+}
+
 /** Bytes -> KB/MB with one decimal. */
 export function bytes(n) {
   if (n == null || !isFinite(n)) return '--';

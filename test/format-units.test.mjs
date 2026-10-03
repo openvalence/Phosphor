@@ -11,7 +11,7 @@
  */
 
 import {
-  formatParts, formatWithUnit, unitOf, setAutorange, hubSecToWallMs, wallMsToHubSec, setHubClock,
+  formatParts, formatWithUnit, unitOf, setAutorange, compact, seconds, hubSecToWallMs, wallMsToHubSec, setHubClock,
 } from '../src/model/format.js';
 import { UNIT_ID } from '../../Valence/clients/js/index.js';
 
@@ -75,6 +75,13 @@ ok('formatParts renders a hub stamp as wall time with no unit',
    formatParts(hs, upS + 60)[1] === '' && formatParts(hs, upS + 60)[0] === new Date(ref.wallMs + 60e3).toLocaleString());
 setHubClock(() => null);
 ok('...and as raw hub seconds when the clock is unknown', formatWithUnit(hs, 42) === '42 hub s', formatWithUnit(hs, 42));
+
+console.log('\nstatus row (ph-wt7r)');
+const cc = [[0, '0'], [999, '999'], [1000, '1.00k'], [3250, '3.25k'], [55100, '55.1k'], [123456, '123k'], [999499, '999k'], [999500, '1.00M'], [1.2e6, '1.20M'], [-5000, '-5.00k']];
+ok('compact: 3 significant digits, k/M/G', cc.every(([n, w]) => compact(n) === w), cc.map(([n]) => compact(n)).join(' '));
+ok('compact: absent stays --', compact(null) === '--' && compact(NaN) === '--');
+ok('seconds: three decimals, signed', seconds(-1605299174) === '-1605.299 s' && seconds(118598) === '0.119 s' && seconds(0) === '0.000 s');
+ok('seconds: compact past 10000 s, absent stays --', seconds(2e10) === '20.0k s' && seconds(null) === '--', seconds(2e10));
 
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- unit ids, autorange, hub time');
 process.exit(fails ? 1 : 0);
