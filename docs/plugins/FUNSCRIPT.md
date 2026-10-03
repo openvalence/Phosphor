@@ -32,7 +32,9 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
 | player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, transport, status slot, layout tiers |
 | stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
-| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
+| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, curve, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
+| interp | `interp.js` | ten curves between actions, smoothing and a slew limit; the settings card's curve rows (Interpolation) |
+| analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
 
 Order: core, host and stash start at once; scheduler follows core's
 signatures (not its code); player-ui codes against all contracts; plugin
@@ -165,7 +167,8 @@ Veto-able (ph-smvd.10):
    hands off at each successor's start (SPEC §9.6). Per-frame re-anchoring
    (design 3) was rejected: it puts plus or minus half a vsync of jitter
    into every stamp and breaks the tiling.
-4. **Events.** `playing` and `seeked` anchor on the next frame and restart;
+4. **Events.** `playing` and `seeked` anchor on the next frame and restart (a
+   seek while playing restarts with the glide, Playback; a loop wrap is no seek);
    `ratechange` anchors at the new rate and restarts; `pause`, `seeking`,
    `waiting`, `error`, a hidden page and an unmount send one hold; `ended`
    sends nothing (the last segment ends at rest).
@@ -425,7 +428,7 @@ law 13; the card draws its own token heat).
 ## Playback (ph-smvd.12)
 
 Loop, auto-home, seek transition and latency, in `clock.js` and
-`scheduler.js`; signatures and the wiring the card owes in CONTRACT.md,
+`scheduler.js`; signatures and the card's wiring (ph-smvd.13) in CONTRACT.md,
 module scheduler. MFP's behavior for each: FUNSCRIPT-MFP-NOTES.md. Prefs
 key `play`. Each choice below is veto-able.
 
@@ -479,6 +482,41 @@ key `play`. Each choice below is veto-able.
   lateness and observation, so it can make the machine early by that much.
   It sits on top of the declared `schedule_latency_us` (RFC-059 forbids
   bidding that down) and beside the operator's offset.
+
+The card (ph-smvd.13):
+
+- **Controls.** The plugin's settings card carries nine Playback rows under
+  the curve rows: Loop (the whole video), Loop count (`forever` at 0), Auto-home,
+  Home after, Home point, Home speed (%/s), Seek glide (`jump` at 0), Low
+  latency, Auto latency; toggles read On or Off in a fixed box, sliders wear
+  the analyzer's vertical-pill thumb. A change applies at once: home and the
+  loop at the next restart (a playing card restarts), latency in force.
+- **A-B.** One button in the detail's cluster, `A-B`: the first press sets A
+  at the playhead, the second B (the loop starts; B at the playhead wraps at
+  once), the third clears. The section is a selection: a `--highlight` band
+  on the heat and dashed lines in the detail. With no B the Loop row loops
+  the whole video.
+- **Plan strip.** `plan.elapsed` and `plan.duration` are optional hero
+  roles; each new STATE (its age drops) is one `observePlan` sample.
+- **Shown time** is the unrolled clock folded back, so the readout, the
+  playhead and the trace stay in media time across laps.
+- **Measured** on valencesim 0.1.7-p4hub (etag d8c8e522322810a2, a private
+  `--state`, spare ports; `--live-playback`, 2026-10-03): with auto latency on,
+  the lag median came after 6 s of play and compensation settled at
+  14.55 ms (lag 14.44 ms) in one step, the sim's known floor; the lead
+  stayed within 125.6 ms (half the 250 ms horizon). A seek to 16 s while
+  playing sent one hold, then a 500 ms glide 109 ms later
+  whose target sat on the script 500 ms on (error under 0.0001). Auto-home in the
+  14.2 s gap moved in over 400 ms
+  (the 400 ms floor: the line there was close to the point), held 8012 ms, and
+  the measured position read 0.5 of the window (160 samples, every one
+  within 0.001). An A-B loop of 4.05 s wrapped 4
+  times with no hole in the schedule and no NACK; on two of the three wraps the seek
+  landed late enough to step the clock, so the seam span was re-sent 48.9 ms later
+  (a cut, not a hole; an adaptive wrap lead is open), and the largest position change between samples was 0.0883 of the
+  window against 0.0935 in plain play. Low latency kept every offer within
+  49.5 ms with 19 bundles in 7.5 s and no NACK; compensation held
+  14.55 ms (lag 14.26 ms).
 
 ## Analyzer (ph-smvd.11)
 
@@ -540,10 +578,10 @@ Decisions (veto-able):
   (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
   the field's own min and max when it declares them.
 
-Tests: `--unit` (c2) checks the groups on a tuning fixture (the recording
-with its retired tuning category moved under motion as `Tuning / ` groups,
-a `trial_mask` and settings-trial patched in, in memory) and on the plain
-recording (limit.input.* only), and lagOf on a synthetic 42 ms and 14 ms
+Tests: `--unit` (c2) checks the groups on the recording itself (valencesim
+0.1.7-p4hub, etag d8c8e522322810a2: `Tuning / ` groups, `trial_mask` and
+settings-trial) and on a model with the `Tuning` prefix stripped
+(limit.input.* only), and lagOf on a synthetic 42 ms and 14 ms
 lag. The browser run (g), under a coarse pointer: the playhead bar spans
 the detail and the heat at the grip's x and the time's share; expand keeps
 the outer rect (full and handheld) with the video in the thumbnail and
@@ -592,6 +630,22 @@ notice and Discard clears it and restores the stored value.
   overview plays on from the new time with bundles flowing, an Advanced
   start grays Play, and last the strip's E-stop pauses the video with the
   latch words and nothing is sent after.
+- **Playback, browser (h):** on the fake hub the A-B button reads its next
+  press, the second press starts the loop with a band on the heat, the video
+  wraps at least twice inside the section with no hold, the schedule has no
+  hole past 30 ms across any seam, and the third press clears it. Section
+  (a)'s seek checks expect the glide: one hold, a 500 ms segment to the
+  script 500 ms on, then one joining span and the knots.
+- **Live playback:** `--live-playback --port P --http P+7 [--shots dir]`
+  against valencesim on spare ports with a private `--state`: a 60 s clip
+  and script (400 to 697 ms spans of 25 to 75, inside the sim's speed limit,
+  so plans keep their durations, and a 14 s gap), auto latency on, a seek
+  glide, auto-home, an A-B loop, low latency through the settings card, and a
+  Preview write the sim must show with its trial mark and then drop on
+  Discard; one `PB-RESULT` JSON line. After it the caller restarts the sim on
+  the same `--state`: the previewed field must read its stored value
+  (Playback, measured; Chase gain: stored 0.9, trial 0.95,
+  after the restart 0.9, no pb.cfg written).
 - **The sync measurement:** `node test/funscript-sync-live.mjs --port P
   --http P+7 [--horizon 250|500|1000]`, never in `check`, skips when no sim
   answers or the hub has no segments STREAM, prints the hub_instance_id
@@ -694,6 +748,28 @@ notice and Discard clears it and restores the stored value.
   and the plan strip (start = arrival - elapsed, 2 to 9 samples per plan on
   a 22 ms cadence) cannot resolve 2 ms. Veto: a hub-stamped plan start
   event, then 2 ms.
+- **P1** (ph-smvd.13) One A-B button that cycles start, end, clear, not two
+  buttons or draggable points on the heat: one 40 px target fits the
+  detail's cluster beside the range pills at 264 px. Veto: A and B pills on
+  the heat (a drag vocabulary the heat does not have yet).
+- **P2** A loop change while playing holds and re-anchors at lap 0: the
+  unrolled clock cannot jump laps, so pressing B costs one hold (at most
+  200 ms) before the wrap. Veto: keep the lap and re-base the clock (more
+  state, same motion).
+- **P3** The playback controls sit on the settings card, not the transport:
+  the transport has no free fixed column at 264 px, and these are set once
+  per session, not per scene. Veto: a transport Loop toggle in the
+  handheld third row.
+- **P4** The fixture re-record brought settings-trial's commit/revert op to
+  the Home page as a generic loose action (an Actions card). The settings
+  model now keeps `action.trial` out of the generic triggers: the op acts
+  only on the sender's own trials, the generic renderer makes none, and the
+  analyzer's Apply and Discard are its only callers. Veto: a generic trial
+  verb, after RENDERING says how a trial value is marked (RFC-099 left it open).
+- **P5** `createLoop` counts a lap on a frame in the section's first half
+  while a wrap is pending, not on a backward jump from the last frame: a
+  loop set at the playhead wraps before any frame, and the jump rule never
+  fired (found by browser section (h)).
 
 ## Protocol gaps and risks
 

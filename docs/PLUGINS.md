@@ -362,7 +362,8 @@ Shipped:
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
   renders only where the hub has a segments STREAM (D1); the window, the
-  position, `limit.input.speed` and both generator run roles are optional.
+  position, `limit.input.speed`, both generator run roles and the plan
+  strip's elapsed and duration (automatic latency) are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
   span on the media clock, and every stop of its own sends one hold; a
   gate or a hub refusal pauses it with no hold. The card's Play is the
@@ -372,7 +373,9 @@ Shipped:
   button opens the analyzer in the card's own box: the hub's Tuning
   controls (and `limit.input.*`), written Live through `api.write` or as a
   Preview through `api.writeTrial` with Apply and Discard, so the manifest
-  declares `intent`. Operator values persist
+  declares `intent`. Its settings card holds the Stash connect card, the
+  motion curve and the playback rows (loop, auto-home, seek glide, low and
+  automatic latency); the detail's A-B button loops a section. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Design and decisions:
   [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:
@@ -391,7 +394,8 @@ shell bundle against a fake hub (`--live` against valencesim).
 player's contract exports, prefs and hero spec; without `--unit`
 (`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
 shell bundle against a fake hub and the fake Stash, and `--live --port P
---http P+7` against valencesim on spare ports.
+--http P+7` against valencesim on spare ports; `--live-playback` there plays
+loop, auto-home, the seek glide, both latency settings and a Preview write.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The
