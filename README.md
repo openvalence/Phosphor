@@ -61,6 +61,9 @@ its first half):
 
 `npm run test:browser` runs the Playwright suites, still with no device:
 
+`npm run check` and `npm run test:browser` run their suites in parallel (`SUITES_PARALLEL` sets the width, default 8);
+`check:serial` and `test:browser:serial` are the one-at-a-time chains and the suite lists the runner reads.
+
 | command | needs |
 |---|---|
 | `npm run check:shell` | Playwright (bundled), no device |
