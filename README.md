@@ -40,9 +40,18 @@ npm run dev                  # then open /?hub=<hub-ip> to drive a real hub
 npm run build                # runs the checks, then dist/index.html + .gz
 npm run build:only           # skip the checks
 
+npm run sidecar              # once, before any shell build: see below
 npm run tauri dev            # the shell, live-reloading against vite
 npm run tauri build          # bundled installers under src-tauri/target/release/bundle/
 ```
+
+The desktop shell bundles valencesim (the Nucleus host simulator) as Virtual
+Valence's sidecar. `npm run sidecar` copies it from
+`../Nucleus/sim/valencesim/build/` (or `npm run sidecar -- <path>`) to
+`src-tauri/binaries/valencesim-<host triple>[.exe]`, the name
+`bundle.externalBin` wants; that folder is gitignored. Without it every
+Rust build stops in tauri-build with a "resource path
+`binaries/valencesim-<triple>` doesn't exist" error: run `npm run sidecar`.
 
 ### Tests
 

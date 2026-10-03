@@ -497,7 +497,7 @@ question in §10.8).
   budget, since a datagram's sender cannot see the latch. Opt-out, default on
   (RFC-053 item 3; Settings > Connection). Every hub on the segment that
   honors RFC-053 latches, not only the connected one; a Virtual Valence
-  session never broadcasts. A press needs a live link to reach the hook,
+  session never broadcasts, the sidecar sim included. A press needs a live link to reach the hook,
   because the strip disables the e-stop without one. Seams:
   `noteEstopPress` (`src/model/actions.js`, runAction's first call),
   `src/shell/estop-udp.js`, `src-tauri/src/estop_udp.rs` (`ph-y4er`).
@@ -724,9 +724,31 @@ connected, then merge the setting changes onto the machine, ticked per item.
   `connect()` rides it, so every pane, the builder, plugins, the graph and the
   strip work unchanged (the Prime Rule, §2). It validates and clamps writes,
   latches the safety ops and arbitrates sources; nothing moves and telemetry
-  holds at its snapshot. It never sends a `hub_instance_id`.
+  holds at its snapshot. It never sends a `hub_instance_id`. Sim on a saved
+  hub is always this replay.
+- **The sidecar** (desktop shell; operator ruling 2026-10-03, `ph-wrml`):
+  the built-in machine is valencesim, the Nucleus host simulator, bundled as
+  a Tauri sidecar (`bundle.externalBin`, `src-tauri/src/virtual_sim.rs`). It
+  is a full hub: patterns, Kinetic, telemetry, and it moves. Connect starts it
+  on two free ports, dialed on loopback, with a state prefix under the app
+  data dir (presets, settings, pairings and its `hub_instance_id` persist).
+  It starts homed (`--homed`, ready to move) and with the pairing window open
+  (`--pairing-window`, the sim's stand-in for the PAIR button tap), so the
+  shell's knock lands as push-to-pair and nobody waits on an approval no one
+  can give; on later runs the window is harmless. Discovery, mDNS and the
+  RFC-053 datagram are always off: it never broadcasts. **(planned)** its WS
+  port binds loopback only; today valencesim binds it on every interface
+  (`ph-zruk`). The shell waits for its banner, and the normal WS connect
+  dials it like a LAN hub; the
+  session is not marked virtual and is recorded in the vault like any hub.
+  Only its origin sets it apart: never saved, never the reconnect target, no
+  RFC-053 datagram. Any disconnect stops it, and the shell kills it on exit.
+  Its stdout lands in the Log tab as `sim` lines. Without a sidecar (mobile,
+  a build without it) the built-in machine is the replay above.
 - **Picker**: the Hubs pane lists Virtual Valence last, always, marked
-  virtual; alone it runs the built-in machine (the valencesim fixture). Each
+  virtual; alone it runs the built-in machine (the sidecar on desktop, read
+  `Virtual Valence · sim <version>` with a Stop while it runs; else the
+  valencesim fixture replayed). Each
   saved hub with a vault record offers Sim. Never auto-connected, never saved,
   never the reconnect target.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
@@ -734,7 +756,7 @@ connected, then merge the setting changes onto the machine, ticked per item.
   `virtual`. The strip stays rendered and acts on the virtual hub.
   **(planned)** the strip's status slot carries a standing
   `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
-- **Merge** (`src/model/merge.js`, the Merge pane): a virtual ECHO on a
+- **Merge** (`src/model/merge.js`, the Merge pane): a replay's ECHO on a
   `setting_key` field stages (machine key, field uid) to the applied value;
   never a secret, never `pattern.running` or `advgen.running` (a merge never
   starts motion). With the same machine live, each staged field shows the
@@ -820,3 +842,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The planned target, lag and speed stack vertically beside the big numeral, one row each, at every width but a handheld strip; the 1280 px side-by-side form clipped speed (`ph-pmor`). | operator (the row font one step down so three rows fit the numeral's box is the agent's, veto-able) |
 | 2026-10-03 | §10.3 | A page registered `mediaFullscreen` (the funscript player) offers Fullscreen and In window / Borderless in its own hover bar; the footer offers neither (`ph-n4t7`). | operator (the event and html attribute seam are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | Page fill is a page property: a plugin page registered `fill` (the funscript player first) fills the desktop content pane's width and height, no bottom gap; other pages keep their flow (`ph-yuce`). | operator (desktop only, the 340 px card floor and the half-page Settings cap are the agent's, veto-able) |
+| 2026-10-03 | §10.10 | Virtual Valence in the desktop shell is the real valencesim run as a Tauri sidecar: a full hub that moves, dialed like a LAN hub; Sim on a saved hub stays the replay (`ph-wrml`). | operator ("yeah sidecar"; the ports, `--homed`, discovery off and no datagram are the agent's, veto-able) |

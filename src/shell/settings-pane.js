@@ -6,7 +6,8 @@
  * Constraints:
  * - A hub is recorded only on a LIVE WS session; a BLE address is not a
  *   dialable endpoint, and a BLE session that hops to WS is recorded then.
- *   A virtual session is never recorded (virtual.svelte.js).
+ *   A virtual session, the sidecar sim's included, is never recorded
+ *   (virtual.svelte.js).
  * - The redial dials the saved host AND port exactly (ph-dwy).
  */
 import { get, toStore } from 'svelte/store';
@@ -19,6 +20,7 @@ import SettingsPane from './SettingsPane.svelte';
 import ServerPane from './ServerPane.svelte';
 import AboutPane from './AboutPane.svelte';
 import MergePane from './MergePane.svelte';
+import { onSim } from './virtual.svelte.js';
 
 // hubs.svelte.js's keys, read only: the transport last chosen, and the port-less
 // host saved before this file existed.
@@ -28,7 +30,7 @@ if (target) connect(target);
 
 toStore(() => machine.link.phase).subscribe((phase) => {
   const l = machine.link;
-  if (phase === 'live' && !l.virtual && l.dialed === endpointLabel(l.host, l.port, null)) {
+  if (phase === 'live' && !l.virtual && !onSim() && l.dialed === endpointLabel(l.host, l.port, null)) {
     rememberHub({ identity: l.hubIdentity, host: l.host, port: l.port });
   }
 });

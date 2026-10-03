@@ -74,9 +74,9 @@ async function boot() {
       .catch((e) => bootFault('http get', e));
     // RFC-053: every e-stop press also broadcasts the ESTOP datagram on the
     // LAN, before any connect, so the first press is covered.
-    await Promise.all([import('@tauri-apps/api/core'), import('./shell/estop-udp.js')])
-      .then(([{ invoke }, m]) => m.installEstopDatagram({
-        invoke, isVirtual: () => !!machine.link.virtual, origin: () => machine.link.roles,
+    await Promise.all([import('@tauri-apps/api/core'), import('./shell/estop-udp.js'), import('./shell/virtual.svelte.js')])
+      .then(([{ invoke }, m, v]) => m.installEstopDatagram({
+        invoke, isVirtual: () => !!machine.link.virtual || v.onSim(), origin: () => machine.link.roles,
       }))
       .catch((e) => bootFault('datagram e-stop', e));
     // NO baked-in host: discovery IS the shell's front door (operator ruling,

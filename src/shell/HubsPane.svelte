@@ -16,7 +16,8 @@
    *   time; status lines are fixed slots.
    * - Saved hubs are prefs.js's; a hub is saved once it is live over WiFi.
    * - Virtual Valence (virtual.svelte.js) is always the last row, marked
-   *   virtual; Sim opens it on a saved hub's vault record.
+   *   virtual; Sim opens it on a saved hub's vault record. On desktop its
+   *   Connect starts the sidecar sim, which reads its version and offers Stop.
    */
   import HostEntry from '../ui/HostEntry.svelte';
   import { advFlags } from './ble-adv.js';
@@ -26,7 +27,7 @@
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
   import { since, endpointLabel } from '../model/format.js';
   import { hasMachine, BUILTIN_KEY } from '../model/vault.js';
-  import { openVirtual } from './virtual.svelte.js';
+  import { openVirtual, sim, onSim } from './virtual.svelte.js';
   import '../ui/pane.css';
 
   let now = $state(Date.now());
@@ -54,6 +55,8 @@
   });
   const dialedWs = (host, port) => link.phase !== 'idle' && link.dialed === endpointLabel(host, port, null);
   const onVirtual = (key) => link.phase !== 'idle' && !!link.virtual && link.virtual.key === key;
+  const builtinMeta = $derived(sim.info ? sim.info.host + ':' + sim.info.port
+    : onVirtual(BUILTIN_KEY) ? 'built-in machine · nothing moves' : 'built-in machine');
   const discoveryText = $derived(hubs.finding ? 'Searching LAN'
     : hubs.scanning ? 'Scanning Bluetooth'
       : hubs.note);
@@ -64,7 +67,7 @@
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
       <dt>Hub</dt><dd class:mono={!!link.dialed}>{link.dialed || '--'}</dd>
-      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
+      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : onSim() ? 'Virtual (sidecar sim)' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
       <dt>Link</dt><dd>{link.phase}</dd>
       <dt>Bluetooth wire</dt><dd class:mono={!!hubs.stats}>{hubs.stats || '--'}</dd>
     </dl>
@@ -106,12 +109,16 @@
         {/each}
         <li class="virtual">
           <span class="who">
-            <span class="name">Virtual Valence<span class="mark virt">virtual</span></span>
-            <span class="meta mono" title="built-in machine · nothing moves">built-in machine · nothing moves</span>
+            <span class="name">Virtual Valence{sim.info ? ' · sim ' + sim.info.version : ''}<span class="mark virt">virtual</span></span>
+            <span class="meta mono" title={builtinMeta}>{builtinMeta}</span>
           </span>
-          <span class="seen mono">{onVirtual(BUILTIN_KEY) ? 'connected' : 'in page'}</span>
+          <span class="seen mono">{onSim() || onVirtual(BUILTIN_KEY) ? 'connected' : 'built in'}</span>
           <span class="acts">
-            <button type="button" class="og-btn sm" disabled={onVirtual(BUILTIN_KEY)} onclick={() => openVirtual()}>Connect</button>
+            {#if sim.info}
+              <button type="button" class="og-btn sm" onclick={disconnect}>Stop</button>
+            {:else}
+              <button type="button" class="og-btn sm" disabled={onVirtual(BUILTIN_KEY)} onclick={() => openVirtual()}>Connect</button>
+            {/if}
           </span>
         </li>
       </ul>

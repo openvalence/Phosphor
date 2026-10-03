@@ -38,7 +38,8 @@
     "test:bp-sim": "node test/buttplug-estop-sim.mjs",
     "test:browser": "node test/run-suites.mjs browser",
     "test:browser:serial": "npm run check:shell && npm run check:dash && npm run check:responsive && npm run check:safety && npm run check:contract && npm run check:home && npm run check:nest && npm run check:a11y && npm run check:builder && npm run check:advpen && npm run check:panes && npm run check:hubs && npm run check:graph && npm run check:theme && npm run check:keys && npm run check:virtual && npm run check:funscript && npm run check:pages",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sidecar": "node tools/sidecar.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.4",

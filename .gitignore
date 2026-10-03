@@ -6,6 +6,9 @@ dist/
 # Rust / Tauri build output
 src-tauri/target/
 
+# The valencesim sidecar, copied in by `npm run sidecar` (tools/sidecar.mjs).
+src-tauri/binaries/
+
 # Tauri regenerates the whole mobile project from tauri.conf.json:
 #   npx tauri android init
 # Nothing in here is hand-maintained, so it is not carried across.

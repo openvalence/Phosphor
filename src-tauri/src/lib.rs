@@ -3,13 +3,20 @@ mod buttplug;
 mod discovery;
 mod estop_udp;
 mod plugins;
+#[cfg(desktop)]
+mod virtual_sim;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+  let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_blec::init())
-    .manage(plugins::TcpListeners::default())
+    .manage(plugins::TcpListeners::default());
+  #[cfg(desktop)]
+  let builder = builder
+    .plugin(tauri_plugin_shell::init())
+    .manage(virtual_sim::Sim::default());
+  builder
     .invoke_handler(tauri::generate_handler![
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
@@ -56,6 +63,10 @@ pub fn run() {
       buttplug::bp_clients,
       #[cfg(desktop)]
       buttplug::bp_client_disconnect,
+      #[cfg(desktop)]
+      virtual_sim::virtual_start,
+      #[cfg(desktop)]
+      virtual_sim::virtual_stop,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -72,6 +83,12 @@ pub fn run() {
       }
       Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while running tauri application")
+    .run(|_app, _event| {
+      #[cfg(desktop)]
+      if let tauri::RunEvent::Exit = _event {
+        virtual_sim::stop_on_exit(_app);
+      }
+    });
 }

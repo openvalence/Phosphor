@@ -8,7 +8,10 @@
  * and a setting write stages. Then the same hub_instance_id comes up as "the
  * real machine" (Playwright's fake hub): the Merge pane lists the row with
  * the hub's value and the staged one, pre-ticked; Apply sends one intent,
- * the hub echoes, the row settles and staging empties.
+ * the hub echoes, the row settles and staging empties. Last, the desktop
+ * sidecar: with virtual_start stubbed, Virtual Valence's Connect dials the
+ * returned loopback endpoint as a LAN hub, the row reads the sim's version
+ * and offers Stop, nothing is remembered, and Stop calls virtual_stop.
  *
  * Run: node test/virtual.test.mjs [--shots <dir>]   (no device needed)
  */
@@ -50,10 +53,11 @@ rec.flush();
 const SEED = Object.fromEntries(mem);
 
 // ---- the real machine: a fake hub with the same hub_instance_id --------------
-const wire = { opens: 0, intents: [], snaps: new Map() };
+const wire = { opens: 0, urls: [], intents: [], snaps: new Map() };
 for (const e of ENTRIES) if (e.layout && e.cls === CHANNEL_CLASS.STATE) wire.snaps.set(e.id, defaultSnapshot(e));
 function fakeHub(ws) {
   wire.opens++;
+  wire.urls.push(ws.url());
   const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
   ws.onMessage((msg) => {
     if (typeof msg === 'string') return;
@@ -117,6 +121,18 @@ await ctx.addInitScript(([seed, etag, bytes, id]) => {
   } catch (e) { /* no storage */ }
 }, [SEED, ETAG, toHex(CAT), ID]);
 await ctx.addInitScript(TAURI_STUB);
+// The sidecar's two commands (src-tauri/src/virtual_sim.rs); every other command still rejects.
+const SIM = { host: '127.0.0.1', port: 47999, http: 48000, version: '9.9.9-test', etag: 'ab' };
+await ctx.addInitScript((sim) => {
+  const base = window.__TAURI_INTERNALS__.invoke;
+  window.__simCalls = [];
+  window.__TAURI_INTERNALS__.invoke = (cmd, args, opts) => {
+    if (cmd === 'virtual_start' || cmd === 'virtual_stop') window.__simCalls.push(cmd);
+    if (cmd === 'virtual_start') return Promise.resolve(sim);
+    if (cmd === 'virtual_stop') return Promise.resolve(null);
+    return base(cmd, args, opts);
+  };
+}, SIM);
 await ctx.routeWebSocket(/./, fakeHub);
 const page = await ctx.newPage();
 const errors = [];
@@ -215,6 +231,24 @@ ok('one intent, the staged value, on the setting channel',
   JSON.stringify(wire.intents));
 ok('staging is empty', await page.evaluate((id) => !JSON.parse(localStorage.getItem('phosphor.merge') || '{}')[id], ID));
 ok('the hub value now reads the applied one', await until(async () => (await row.locator('.old').innerText()) === '9'));
+
+console.log('virtual: the desktop sidecar');
+await openTab('shell:hubs');
+const vrow = () => page.locator('.pane-list.rows').first().locator('li.virtual');
+await vrow().getByRole('button', { name: 'Connect' }).click();
+ok('Connect starts the sidecar', await until(() => page.evaluate(() => window.__simCalls.join() === 'virtual_start')),
+  await page.evaluate(() => window.__simCalls.join()));
+ok('...and dials its endpoint like a LAN hub', await until(async () => wire.urls.at(-1)?.startsWith('ws://127.0.0.1:47999') && (await chip()) === 'live'),
+  wire.urls.at(-1) + ' ' + await chip());
+ok('the row reads the sim version', (await vrow().locator('.name').innerText()).includes('Virtual Valence · sim 9.9.9-test'),
+  await vrow().locator('.name').innerText());
+ok('the row offers Stop', await vrow().getByRole('button', { name: 'Stop' }).isVisible());
+const simKept = await page.evaluate(() => [localStorage.getItem('shell_port'), JSON.parse(localStorage.getItem('phosphor.hubs')).map((h) => h.port).join()]);
+ok('the sim endpoint is never remembered', simKept[0] !== '47999' && simKept[1] === '82', JSON.stringify(simKept));
+await vrow().getByRole('button', { name: 'Stop' }).click();
+ok('Stop calls virtual_stop', await until(() => page.evaluate(() => window.__simCalls.join() === 'virtual_start,virtual_stop')),
+  await page.evaluate(() => window.__simCalls.join()));
+ok('...and the row is back to Connect', await until(() => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
 ok('no page errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();
