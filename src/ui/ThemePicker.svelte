@@ -21,9 +21,10 @@
    * - Driven by theme.js (presets, KNOBS, TOKENS, LOCKED), never a local
    *   list: a new knob or token appears here without an edit.
    * - Safety colors render locked, never editable (RENDERING law 13).
-   * - Nothing shifts: the ratio readout, the active name and both status
-   *   lines are fixed slots; Advanced is closed by default and never scrolls
-   *   on its own.
+   * - Nothing shifts: the ratio readout (each ratio a label over its number,
+   *   then the safety hue note), the active name, the status line and every
+   *   Advanced row are fixed slots; a refused pin speaks in its own row.
+   *   Advanced is closed by default and never scrolls on its own.
    * - No <select>: test/console-panes.test.mjs reads units as a fact.
    * - The class readout is measured, never configured (RENDERING §12.1).
    */
@@ -34,6 +35,7 @@
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
   import { setPref } from '../model/prefs.js';
+  import { formatWithUnit } from '../model/format.js';
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
   import './pane.css';
@@ -49,19 +51,24 @@
     ['intent', 'Intent', 'Requested, not yet confirmed'],
     ['highlight', 'Highlight', 'Focus, selection, hover'],
   ];
+  // The host's value-and-unit rule (format.js), never a local one.
+  const unit = (u) => (v) => formatWithUnit({ unit: u, step: Number.isInteger(v) ? 1 : 0.1 }, v);
+  const pct = (v) => unit('%')(Math.round(v * 100));
   const KNOB_COPY = {
-    hue: ['Hue', 'Chassis hue', (v) => v + '°'],
-    tint: ['Tint', 'Chassis color strength', (v) => Math.round(v * 100) + '%'],
-    brightness: ['Brightness', 'Page lightness', (v) => Math.round(v * 100) + '%'],
-    contrast: ['Contrast', 'Ramp spread', (v) => Math.round(v * 100) + '%'],
-    glow: ['Glow', 'Glow strength', (v) => Math.round(v * 100) + '%'],
-    radius: ['Radius', 'Corner radius', (v) => v + ' px'],
-    scale: ['Scale', 'Control scale', (v) => Math.round(v / KNOBS.look.scale[3] * 100) + '%'],
+    hue: ['Hue', 'Chassis hue', unit('°')],
+    tint: ['Tint', 'Chassis color strength', pct],
+    brightness: ['Brightness', 'Page lightness', pct],
+    contrast: ['Contrast', 'Ramp spread', pct],
+    glow: ['Glow', 'Glow strength', pct],
+    radius: ['Radius', 'Corner radius', unit('px')],
+    scale: ['Scale', 'Control scale', (v) => pct(v / KNOBS.look.scale[3])],
     numWeight: ['Numerals', 'Readout numeral weight', (v) => String(v)],
-    motion: ['Motion', 'Echo afterglow; 0 holds still', (v) => (v ? v + ' s' : 'still')],
+    motion: ['Motion', 'Echo afterglow; 0 holds still', (v) => (v ? unit('s')(v) : 'still')],
   };
   const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
     '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
+
+  const near = $derived(ACCENTS.filter(([k]) => d.near[k]).map(([k, label]) => label + ' near safety ' + d.near[k]).join(' · '));
 
   const setAccent = (k, v) => editTheme((t) => { t.accents[k] = v.toUpperCase(); });
   const setKnob = (g, k, v) => editTheme((t) => { t[g][k] = v; });
@@ -78,12 +85,11 @@
   }
 
   // ---- advanced: pinned tokens ----
-  let advNote = $state('');
+  let refused = $state(null);
   function pin(k, raw) {
     const v = raw.trim();
-    if (v && !validOverride(k, v)) { advNote = 'Not a single CSS value: ' + k; return; }
-    advNote = '';
-    editTheme((t) => { if (v) t.overrides[k] = v; else delete t.overrides[k]; });
+    refused = v && !validOverride(k, v) ? k : null;
+    if (!refused) editTheme((t) => { if (v) t.overrides[k] = v; else delete t.overrides[k]; });
   }
 
   // ---- export / import ----
@@ -196,9 +202,12 @@
     <div class="ramp" aria-hidden="true">
       {#each RAMP as k (k)}<i style="background:var({k})" title={k}></i>{/each}
     </div>
-    <p class="ratios mono" data-testid="theme-ratios">
-      Text {ratio(d.ratios.text)} · Labels {ratio(d.ratios.labels)} · Reality {ratio(d.ratios.reality)}
-    </p>
+    <div class="ratios" data-testid="theme-ratios">
+      <span class="ratio"><span class="rk">Text</span> <span class="mono">{ratio(d.ratios.text)}</span></span>
+      <span class="ratio"><span class="rk">Labels</span> <span class="mono">{ratio(d.ratios.labels)}</span></span>
+      <span class="ratio"><span class="rk">Reality</span> <span class="mono">{ratio(d.ratios.reality)}</span></span>
+      <span class="near" data-testid="theme-near" title={near}>{near}</span>
+    </div>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-look">
@@ -218,13 +227,14 @@
   <section class="pane-sec og-panel" aria-labelledby="tp-adv">
     <details class="adv">
       <summary><h2 id="tp-adv">Advanced</h2><span class="pane-note">{Object.keys(theme.overrides).length} pinned</span></summary>
-      <p class="pane-status" role="status" data-phase={advNote ? 'fault' : null}>{advNote}</p>
       <ul class="tokens">
         {#each TOKENS as k (k)}
+          {@const v = refused === k ? 'Not a single CSS value' : d.base[k]}
           <li class:pinned={k in theme.overrides}>
             <span class="mono tk">{k}</span>
-            <span class="mono derived">{d.base[k]}</span>
-            <input class="og-num mono" placeholder="Derived" aria-label={'Pin ' + k} spellcheck="false"
+            <span class="mono derived" id={'tp-v' + k} data-phase={refused === k ? 'fault' : null} title={v}>{v}</span>
+            <input class="og-num mono" placeholder="Derived" aria-label={'Pin ' + k} aria-describedby={'tp-v' + k}
+                   aria-invalid={refused === k} spellcheck="false"
                    value={theme.overrides[k] ?? ''} onchange={(e) => pin(k, e.currentTarget.value)} />
             <button type="button" class="og-btn sm" disabled={!(k in theme.overrides)} aria-label={'Reset ' + k}
                     onclick={() => pin(k, '')}>Reset</button>
@@ -271,7 +281,7 @@
     <p class="pane-note">Display only</p>
   </section>
 
-  <section class="pane-sec og-screen" aria-labelledby="tp-class">
+  <section class="pane-sec og-panel" aria-labelledby="tp-class">
     <div class="pane-head"><h2 id="tp-class">Renderer class</h2></div>
     <dl class="pane-facts">
       <dt>Class</dt><dd class="cls">{view.cls}</dd>
@@ -340,15 +350,29 @@
   .knob-row output { text-align: right; color: var(--tx-val); font-size: .74rem; }
 
   .ramp { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); height: 18px; border: 1px solid var(--line-1); }
-  /* Two lines reserved: a phone wraps the readout, a desktop never shifts. */
-  .ratios { margin: 0; height: calc(2 * 1.45em); line-height: 1.45; font-size: .74rem; color: var(--tx-val); }
+  /* Three fixed lines at every width, nothing wraps or clips: each ratio a
+     label over its number, then the safety hue note across the slot. */
+  .ratios {
+    display: grid;
+    grid-template-columns: repeat(3, max-content) minmax(0, 1fr);
+    column-gap: 20px;
+    height: calc(3 * 1.45em);
+    line-height: 1.45;
+    font-size: .74rem;
+    color: var(--tx-val);
+  }
+  .ratio { display: flex; flex-direction: column; white-space: nowrap; }
+  .rk { color: var(--tx-mut); }
+  .near { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .adv summary { display: flex; align-items: center; gap: 10px; min-height: var(--tap); cursor: pointer; }
   .adv summary h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
   .tokens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .72rem; }
   .tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
   .tokens .tk { flex: 0 0 18ch; color: var(--tx-val); overflow-wrap: anywhere; }
-  .tokens .derived { flex: 1 1 14ch; min-width: 0; color: var(--tx-mut); overflow-wrap: anywhere; }
+  /* One line per row: a long value ellipsizes and rides its title. */
+  .tokens .derived { flex: 1 1 14ch; min-width: 0; color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tokens .derived[data-phase='fault'] { color: var(--warn-ink); }
   .tokens li.pinned .tk { color: var(--highlight); }
   .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: 4px 6px; font-size: .72rem; }
 

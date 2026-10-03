@@ -69,12 +69,14 @@ watermarks), never a label. A guarded step moves toward the extreme; a
 mid-gray chassis no extreme can clear is moved away from the middle until
 one does.
 
-The editor shows the live ratios (text, labels, reality) against the worst
-of the three surfaces text sits on, in a fixed slot. Accents are not
-guarded: they are the user's pick, and the readout is how the user sees a
-weak one. `nearSafety` names an accent whose OKLCH hue sits within 20
-degrees of `--warn` or `--bad` (chroma 0.05 or more); no preset trips it
-(`test/theme.test.mjs`).
+The editor's readout is a fixed three-line slot that never wraps or clips,
+down to a 320 px phone: the live ratios (text, labels, reality), each a
+label over its number, against the worst of the three surfaces text sits
+on, then a note naming any accent that reads as a safety color, e.g.
+"Intent near safety amber": its OKLCH hue within 20 degrees of `--warn` or
+`--bad`, chroma 0.05 or more (`nearSafety`). Accents are not guarded: they
+are the user's pick, and the readout is how the user sees a weak one or a
+safety look-alike. No preset trips either (`test/theme.test.mjs`).
 
 `color-scheme` follows the chassis.
 
@@ -93,9 +95,9 @@ degrees of `--warn` or `--bad` (chroma 0.05 or more); no preset trips it
 Any themeable token may be pinned to an explicit CSS value; a pin wins over
 the derived value, the hi-vis set included. The Advanced section lists every
 token (`TOKENS`, generated from the derivation, so a new token cannot be
-missed) with its derived value, a field and a reset. A value holding `;`,
-`{`, `}`, `<`, `>`, `\` or a newline is refused: it could leave its
-declaration.
+missed) with its derived value (one line; the whole value rides its title),
+a field and a reset. A value holding `;`, `{`, `}`, `<`, `>`, `\` or a
+newline is refused, in its own row: it could leave its declaration.
 
 ## Not themeable
 
