@@ -362,13 +362,13 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.press('section[aria-labelledby="hp-saved"] .nick input', 'Enter');
   await page.$eval('section[aria-labelledby="hp-saved"] .nick input', (el) => el.dispatchEvent(new Event('change')));
   ok('hubs: a nickname saves to prefs.js', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.hubs'))[0].nickname === 'bench'));
-  await page.click('button:has-text("Find on WiFi")');
+  await page.click('section[aria-labelledby="hp-find"] button:text-is("Scan")');
   await page.waitForSelector('section[aria-labelledby="hp-find"] .rows li', { timeout: 5000 });
   const found = await page.$eval('section[aria-labelledby="hp-find"] .rows li', (l) => l.textContent.replace(/\s+/g, ' '));
   ok('hubs: a discovery row carries name, endpoint, identity, pairing mark and last seen',
     /bench hub/.test(found) && /10\.0\.0\.5:82/.test(found) && /fw 1\.2\.3/.test(found) && /id 00112233aabbccdd/.test(found) && /pairing open/.test(found) && /seen \d+s ago/.test(found), found);
   const findBox = await page.$eval('section[aria-labelledby="hp-find"]', (el) => el.getBoundingClientRect().height);
-  await page.click('button:has-text("Find on WiFi")');
+  await page.click('section[aria-labelledby="hp-find"] button:text-is("Scan")');
   await page.waitForTimeout(300);
   ok('hubs: finding again keeps the row in place', await page.$$eval('section[aria-labelledby="hp-find"] .rows li', (ls) => ls.length) === 1
     && findBox === await page.$eval('section[aria-labelledby="hp-find"]', (el) => el.getBoundingClientRect().height));

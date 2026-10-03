@@ -1,38 +1,54 @@
 /**
- * hubs.svelte.js -- the shell's discovery and transport: UDP discovery, BLE
- * scan, the WS or BLE connect, and the BLE-to-WS upgrade. Module state, so it
- * outlives HubsPane.svelte, which only renders it. SHELL ONLY.
+ * hubs.svelte.js -- the shell's discovery and transport: the Scan, the WS or
+ * BLE connect, and the BLE-to-WS upgrade. Module state, so it outlives
+ * HubsPane.svelte, which only renders it. SHELL ONLY.
  *
  * Constraints:
  * - Shell code, not kernel UI: it may know transports and addresses, but it
  *   NEVER touches machine state; it only picks which transport the one
  *   kernel session rides (DOCTRINE: everything through Valence).
+ * - The Scan is UDP first, Bluetooth fallback (operator ruling 2026-10-02 on
+ *   RFC-046): the SPEC 13.8 probe runs and lists every reply; only an empty
+ *   LAN result runs the BLE scan. No mDNS (RFC-072 ruling, 2026-10-01). The
+ *   launch probe is LAN only: it never raises a Bluetooth permission prompt.
+ * - A LAN reply carrying a saved hub's hub_instance_id moves that saved
+ *   endpoint, port included. Discovery never adds a saved hub: a hub is saved
+ *   once it is live over WiFi (settings-pane.js).
  * - BLE sessions have no HTTP sideband, so no /uitoken: they land at watch
  *   tier by design. Control arrives with the WS upgrade.
  * - A live BLE session hops to WS once, automatically, when WELCOME offers
  *   an endpoint (SPEC 13.1 SHOULD). It hops only after a probe socket
  *   opens, and falls back to BLE if the WS session is not live in time.
- * - shell_mode and shell_host keep their names: settings-pane.js reads them.
+ * - shell_mode and shell_host keep their names, and shell_host stays a bare
+ *   host: settings-pane.js reads both. The dialed port rides in shell_port
+ *   (ph-dwy).
  */
 import { untrack } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { startScan, stopScan, checkPermissions } from '@mnlphlp/plugin-blec';
 import { WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
-import { machine, connect, disconnect } from '../model/machine.svelte.js';
+import { machine, connect, disconnect, hostLabel } from '../model/machine.svelte.js';
+import { savedHubs } from '../model/prefs.js';
 import { makeBleWebSocket, BLE_SERVICE, MTU_FLOOR, bleStats, holdForMigration, releaseHeld } from './ble-ws.js';
-import { advFlags, upgradeTarget } from './ble-adv.js';
+import { upgradeTarget, advFlags } from './ble-adv.js';
+import { mergeFound, learnBleId } from './found.js';
 
 const stored = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
 
+// The endpoint the operator last dialed, as the host field shows it.
+function lastDialed() {
+  const host = stored('shell_host');
+  return host ? hostLabel(host, Number(stored('shell_port')) || undefined) : '';
+}
+
 class Hubs {
   // No baked-in address: discovery is the front door. The field remembers
-  // only a host the operator themselves connected to before.
-  manualHost = stored('shell_host') || '';
+  // only an endpoint the operator themselves dialed before.
+  manualHost = lastDialed();
   mode = $state(stored('shell_mode') || 'ws');
   note = $state('');
   scanning = $state(false);
-  ble = $state([]);
   finding = $state(false);
   found = $state([]);
   stats = $state('');
@@ -48,10 +64,22 @@ export const hubs = new Hubs();
 // so a fallback cannot loop. The manual button stays for a retry.
 let upgradeTried = false;
 let upgrading = false;
+// BLE address -> hub_instance_id, learned from a live BLE session's WELCOME:
+// an advertisement carries no identity (SPEC 13.4).
+const bleIds = new Map();
 
 $effect.root(() => {
   $effect(() => {
     if (hubs.target && !upgradeTried) { upgradeTried = true; untrack(upgrade); }
+  });
+  $effect(() => {
+    const id = hubs.mode === 'ble' && machine.link.phase === 'live' && machine.link.hubIdentity?.hub_instance_id;
+    const dev = hubs.bleDev;
+    if (!id || !dev) return;
+    untrack(() => {
+      bleIds.set(dev.address, id);
+      hubs.found = learnBleId(hubs.found, dev.address, id);
+    });
   });
   // BLE wire counters, polled: bleStats is a plain module object (the bridge
   // is not reactive code), so a 1 Hz sample into $state is the honest view.
@@ -66,56 +94,69 @@ $effect.root(() => {
   });
 });
 
-// Upsert by key in first-seen order, stamping seenAt: a row never moves or
-// vanishes while the pane is open (a hub that stops answering keeps its last
-// seen time).
-function upsert(list, items, key, now = Date.now()) {
-  const out = list.slice();
-  for (const it of items) {
-    const i = out.findIndex((x) => key(x) === key(it));
-    if (i < 0) out.push({ ...it, seenAt: now }); else out[i] = { ...it, seenAt: now };
-  }
-  return out;
-}
-const foundKey = (f) => f.hub_instance_id || f.ip + ':' + f.ws_port;
-
-// SPEC 13.8 UDP discovery, the WS-side front door (operator ruling
-// 2026-07-28). The Rust command owns the socket and the dedupe.
+const LAN_SCAN_MS = 1500;
+const BLE_SCAN_MS = 6000;
 const DISCOVERY_PORT = 22096; // for the empty-result line only; discovery.rs is the home
-export async function findHubs() {
-  if (hubs.finding) return;
+
+// A saved hub answering from another endpoint (a moved lease): its saved row
+// follows, port included.
+function followMoves(replies) {
+  const at = new Map(replies.filter((r) => r.hub_instance_id).map((r) => [r.hub_instance_id, r]));
+  savedHubs.update((a) => a.map((h) => {
+    const r = at.get(h.id);
+    return r && (r.ip !== h.host || r.ws_port !== h.port) ? { ...h, host: r.ip, port: r.ws_port } : h;
+  }));
+}
+
+/** The Scan: the UDP probe, then Bluetooth only when the LAN gave nothing. */
+export async function scanHubs({ ble = true } = {}) {
+  if (hubs.finding || hubs.scanning) return;
   hubs.finding = true;
   hubs.note = '';
-  try {
-    const got = await invoke('discover_hubs', { timeoutMs: 2500 });
-    hubs.found = upsert(hubs.found, got, foundKey);
-    hubs.note = got.length ? got.length + ' hub' + (got.length === 1 ? '' : 's') + ' answered' : 'No hubs answered on UDP ' + DISCOVERY_PORT;
-  } catch (e) {
-    hubs.note = 'Discovery failed: ' + e;
-  } finally {
-    hubs.finding = false;
+  let got = [];
+  let failed = null;
+  try { got = await invoke('discover_hubs', { timeoutMs: LAN_SCAN_MS }); } catch (e) { failed = e; }
+  hubs.finding = false;
+  if (got.length) {
+    hubs.found = mergeFound(hubs.found, got, 'LAN', { bleIds });
+    followMoves(got);
+    hubs.note = got.length + ' on LAN';
+    return;
   }
+  hubs.note = failed ? 'LAN discovery failed: ' + failed : 'No LAN reply on UDP ' + DISCOVERY_PORT;
+  if (ble) await startBle();
 }
-// With no remembered hub there is nothing else to try, so probe once at launch.
-if (!hubs.manualHost) findHubs();
+// With no remembered endpoint there is nothing else to try, so probe once at launch.
+if (!hubs.manualHost) scanHubs({ ble: false });
 
-export async function scan() {
-  if (hubs.scanning) { await stopScan().catch(() => {}); hubs.scanning = false; return; }
-  hubs.note = '';
+async function startBle() {
   try {
     await checkPermissions(true);
     hubs.scanning = true;
+    let seen = 0;
     await startScan((devices) => {
       // A Valence hub advertises the service UUID in its primary payload
-      // (fw: ValenceBlePort). Match on that, never on the name.
-      hubs.ble = upsert(hubs.ble, devices.filter((d) =>
-        (d.services || []).some((s) => String(s).toLowerCase() === BLE_SERVICE)), (d) => d.address);
-    }, 6000);
-    setTimeout(() => { hubs.scanning = false; }, 6100);
+      // (SPEC 13.4). Match on that, never on the name.
+      const mine = devices.filter((d) => (d.services || []).some((s) => String(s).toLowerCase() === BLE_SERVICE));
+      seen += mine.length;
+      hubs.found = mergeFound(hubs.found, mine, 'BLE', { bleIds });
+    }, BLE_SCAN_MS);
+    setTimeout(() => {
+      hubs.scanning = false;
+      if (!seen) hubs.note = 'No hub on Bluetooth';
+    }, BLE_SCAN_MS + 100);
   } catch (e) {
     hubs.scanning = false;
-    hubs.note = 'Scan failed: ' + e;
+    hubs.note = 'Bluetooth scan failed: ' + e;
   }
+}
+
+/** Scan Bluetooth on demand, LAN or not: a hub in config mode is BLE only (SPEC 13.4.1). */
+export async function scan() {
+  if (hubs.scanning) { await stopScan().catch(() => {}); hubs.scanning = false; return; }
+  if (hubs.finding) return;
+  hubs.note = '';
+  await startBle();
 }
 
 export function pickBle(dev) {
@@ -138,12 +179,14 @@ async function connectBle(dev) {
 export function connectWs(host, port) {
   if (!host || !host.trim()) { hubs.note = 'Enter a hub address'; return; }
   host = host.trim();
+  port = port || 82;
   disconnect();
   hubs.mode = 'ws';
   store('shell_mode', 'ws');
   store('shell_host', host);
+  store('shell_port', String(port));
   hubs.note = '';
-  connect({ host, port: port || 82 });
+  connect({ host, port });
 }
 
 const WS_PROBE_MS = 3000;

@@ -9,16 +9,19 @@
    * - The link ladder reads machine.link only: connecting and handshaking
    *   are pending, retrying is overdue, failed is the fault, live settles.
    *   Text always rides the color (RENDERING law 5); faults read amber.
-   * - Rows never move: discovery and scan results keep first-seen order and
-   *   their last-seen time (hubs.svelte.js upsert); status lines are fixed
-   *   slots.
+   * - Scan is UDP first, Bluetooth fallback (hubs.svelte.js). Found rows are
+   *   one list, one row per hub (found.js), marked LAN or BLE by the path that
+   *   found it; a row with both connects over LAN.
+   * - Rows never move: found rows keep first-seen order and their last-seen
+   *   time; status lines are fixed slots.
    * - Saved hubs are prefs.js's; a hub is saved once it is live over WiFi.
    * - Virtual Valence (virtual.svelte.js) is always the last row, marked
    *   virtual; Sim opens it on a saved hub's vault record.
    */
   import HostEntry from '../ui/HostEntry.svelte';
   import { advFlags } from './ble-adv.js';
-  import { hubs, findHubs, scan, pickBle, connectWs, upgrade } from './hubs.svelte.js';
+  import { hubs, scanHubs, scan, pickBle, connectWs, upgrade } from './hubs.svelte.js';
+  import { foundVia } from './found.js';
   import { machine, disconnect, retryNow } from '../model/machine.svelte.js';
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
   import { since, endpointLabel } from '../model/format.js';
@@ -51,7 +54,7 @@
   });
   const dialedWs = (host, port) => link.phase !== 'idle' && link.dialed === endpointLabel(host, port, null);
   const onVirtual = (key) => link.phase !== 'idle' && !!link.virtual && link.virtual.key === key;
-  const discoveryText = $derived(hubs.finding ? 'Searching WiFi'
+  const discoveryText = $derived(hubs.finding ? 'Searching LAN'
     : hubs.scanning ? 'Scanning Bluetooth'
       : hubs.note);
 </script>
@@ -117,7 +120,7 @@
   <section class="pane-sec og-panel" aria-labelledby="hp-find">
     <div class="pane-head"><h2 id="hp-find">Find a hub</h2></div>
     <div class="row">
-      <button type="button" class="og-btn" disabled={hubs.finding} onclick={findHubs}>Find on WiFi</button>
+      <button type="button" class="og-btn" disabled={hubs.finding || hubs.scanning} title="LAN first, then Bluetooth" onclick={() => scanHubs()}>Scan</button>
       <button type="button" class="og-btn" class:on={hubs.scanning} aria-pressed={hubs.scanning} onclick={scan}>
         {hubs.scanning ? 'Stop Bluetooth scan' : 'Scan Bluetooth'}
       </button>
@@ -125,41 +128,26 @@
     <HostEntry value={hubs.manualHost} onpick={connectWs} recent={false} />
     <p class="pane-status" role="status" data-phase={hubs.finding || hubs.scanning ? 'pending' : null} title={discoveryText}>{discoveryText}</p>
 
-    <h3 class="sub">On WiFi</h3>
     {#if !hubs.found.length}
       <p class="pane-empty">None found yet</p>
     {:else}
       <ul class="pane-list rows">
-        {#each hubs.found as f (f.hub_instance_id || f.ip + ':' + f.ws_port)}
+        {#each hubs.found as f (f.key)}
+          {@const adv = f.ble && advFlags(f.ble)}
+          {@const live = !!f.lan && dialedWs(f.lan.ip, f.lan.ws_port)}
           <li>
             <span class="who">
-              <span class="name">{f.hub_name || 'hub'}{#if f.pairing_window_open}<span class="mark">pairing open</span>{/if}</span>
-              <span class="meta mono" title={f.ip + ':' + f.ws_port}>{f.ip}:{f.ws_port} · fw {f.fw_version || '?'}{f.hub_instance_id ? ' · id ' + f.hub_instance_id : ''}</span>
+              <span class="name">{f.lan?.hub_name || f.ble?.name || 'hub'}{#each foundVia(f) as v (v)}<span class="mark via">{v}</span>{/each}{#if adv?.configMode}<span class="mark setup">needs setup</span>{/if}{#if f.lan?.pairing_window_open || adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
+              {#if f.lan}
+                <span class="meta mono" title={f.lan.ip + ':' + f.lan.ws_port}>{f.lan.ip}:{f.lan.ws_port} · fw {f.lan.fw_version || '?'}{f.lan.hub_instance_id ? ' · id ' + f.lan.hub_instance_id : ''}</span>
+              {:else}
+                <span class="meta mono" title={f.ble.address}>{f.ble.address}{f.ble.rssi ? ' · ' + f.ble.rssi + ' dBm' : ''}{adv?.ws ? ' · WiFi offered' : ''}</span>
+              {/if}
             </span>
-            <span class="seen mono">{dialedWs(f.ip, f.ws_port) ? 'connected' : 'seen ' + ago(f.seenAt, now)}</span>
+            <span class="seen mono">{live ? 'connected' : 'seen ' + ago(f.seenAt, now)}</span>
             <span class="acts">
-              <button type="button" class="og-btn sm" disabled={dialedWs(f.ip, f.ws_port)} onclick={() => connectWs(f.ip, f.ws_port)}>Connect</button>
-            </span>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-
-    <h3 class="sub">On Bluetooth</h3>
-    {#if !hubs.ble.length}
-      <p class="pane-empty">None found yet</p>
-    {:else}
-      <ul class="pane-list rows">
-        {#each hubs.ble as h (h.address)}
-          {@const adv = advFlags(h)}
-          <li>
-            <span class="who">
-              <span class="name">{h.name || 'hub'}{#if adv?.configMode}<span class="mark setup">needs setup</span>{/if}{#if adv?.pairing}<span class="mark">pairing open</span>{/if}</span>
-              <span class="meta mono" title={h.address}>{h.address}{h.rssi ? ' · ' + h.rssi + ' dBm' : ''}{adv?.ws ? ' · WiFi offered' : ''}</span>
-            </span>
-            <span class="seen mono">{'seen ' + ago(h.seenAt, now)}</span>
-            <span class="acts">
-              <button type="button" class="og-btn sm" onclick={() => pickBle(h)}>Connect</button>
+              <button type="button" class="og-btn sm" disabled={live}
+                      onclick={() => (f.lan ? connectWs(f.lan.ip, f.lan.ws_port) : pickBle(f.ble))}>Connect</button>
             </span>
           </li>
         {/each}
@@ -171,7 +159,6 @@
 <style>
   .row { display: flex; flex-wrap: wrap; gap: 8px; }
   .count { font-size: .75rem; color: var(--tx-mut); }
-  .sub { margin: 4px 0 0; font-size: .7rem; font-weight: 500; text-transform: uppercase; letter-spacing: .1em; color: var(--tx-mut); }
   /* Every row is the same two-line box: who on the left, last seen and the
      actions on the right. */
   .rows > li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; min-height: 58px; }
@@ -184,6 +171,7 @@
   .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
   .mark.virt { border-color: var(--warn); color: var(--warn); }
+  .mark.via { border-color: var(--line); color: var(--tx-mut); }
   .nick input {
     width: 100%;
     min-height: 30px;

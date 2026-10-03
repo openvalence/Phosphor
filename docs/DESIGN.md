@@ -186,6 +186,12 @@ Nucleus's own board for the sim side).
   (SPEC §13.8 UDP discovery -- `src-tauri/src/discovery.rs` -- + manual host entry; **not
   mDNS**, corrected from the original SlopDeck-era text), and whatever the
   embedded-UI ruling (§8) leaves to it.
+- **Hubs pane Scan: UDP discovery first, Bluetooth fallback** (operator
+  ruling 2026-10-02 on RFC-046; no mDNS, RFC-072 ruling 2026-10-01). The
+  §13.8 probe lists every reply; only an empty LAN result runs the BLE scan.
+  One row per hub, marked `LAN` or `BLE`; a hub found both ways is one row
+  keyed by `hub_instance_id`, connecting over LAN. Scan Bluetooth stays for a
+  hub that is BLE only (config mode, SPEC §13.4.1).
 - The UI kernel stays publishable as the community "webui framework" project
   regardless of §8's outcome.
 

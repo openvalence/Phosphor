@@ -32,7 +32,9 @@ const REPLY_BYTES: usize = 4 + 4 + HUB_NAME_BYTES + 8 + 1 + 2 + FW_VERSION_BYTES
 pub struct Hub {
     pub ip: String,
     pub hub_name: String,
-    pub hub_instance_id: String, // 16 lowercase hex digits, the session's form; a u64 does not survive JSON's f64
+    // 16 lowercase hex digits, the session's form (a u64 does not survive
+    // JSON's f64); empty when the reply carries 0, a hub with no durable id.
+    pub hub_instance_id: String,
     pub proto_ver: u8,
     pub ws_port: u16,
     pub fw_version: String,
@@ -75,7 +77,7 @@ fn decode_reply(buf: &[u8], nonce: u32, ip: String) -> Option<Hub> {
     Some(Hub {
         ip,
         hub_name,
-        hub_instance_id: format!("{:016x}", inst),
+        hub_instance_id: if inst == 0 { String::new() } else { format!("{:016x}", inst) },
         proto_ver,
         ws_port,
         fw_version,
@@ -127,6 +129,14 @@ fn probe_loop(
     Ok(())
 }
 
+fn dedupe_key(h: &Hub) -> String {
+    if h.hub_instance_id.is_empty() {
+        format!("{}:{}", h.ip, h.ws_port)
+    } else {
+        h.hub_instance_id.clone()
+    }
+}
+
 fn probe_lan(timeout_ms: u32) -> Result<Vec<Hub>, String> {
     let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(|e| e.to_string())?;
     sock.set_broadcast(true).map_err(|e| e.to_string())?;
@@ -140,8 +150,9 @@ fn probe_lan(timeout_ms: u32) -> Result<Vec<Hub>, String> {
     probe_loop(&sock, &probe, (Ipv4Addr::BROADCAST, PORT), timeout_ms, |b, ip| {
         if let Some(h) = decode_reply(b, nonce, ip.to_string()) {
             // Dedupe on the durable identity, first IP seen wins (the reason
-            // 13.8 carries hub_instance_id at all).
-            if !found.iter().any(|e| e.hub_instance_id == h.hub_instance_id) {
+            // 13.8 carries hub_instance_id at all); a hub with none keys on
+            // its endpoint, so two of them stay two rows.
+            if !found.iter().any(|e| dedupe_key(e) == dedupe_key(&h)) {
                 found.push(h);
             }
         }
@@ -202,6 +213,16 @@ mod tests {
                 pairing_window_open: true,
             }
         );
+    }
+
+    #[test]
+    fn zero_id_is_no_identity_and_keys_on_the_endpoint() {
+        let mut b = synth(7);
+        b[40..48].copy_from_slice(&0u64.to_le_bytes());
+        let a = decode_reply(&b, 7, "10.0.0.5".into()).unwrap();
+        let c = decode_reply(&b, 7, "10.0.0.6".into()).unwrap();
+        assert_eq!(a.hub_instance_id, "");
+        assert_ne!(dedupe_key(&a), dedupe_key(&c));
     }
 
     #[test]
