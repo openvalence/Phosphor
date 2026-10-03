@@ -155,3 +155,19 @@ export function confirmCopy(item, value) {
   const title = item && item.options ? optionLabel(item, value).replace(/_/g, ' ') : labelFor(item);
   return { title, body: (item && item.desc) || '' };
 }
+
+/**
+ * Every owned control-owner pair (SPEC §11.4), in slot order: the source's
+ * label through its `options` ('' when the catalog labels none) and the
+ * owning session. railOwnerName is the first labeled one.
+ */
+export function railOwners(ownerEntry, ownerSample) {
+  const layout = (ownerEntry && ownerEntry.layout) || [];
+  const out = [];
+  for (let k = 0; ownerSample && k + 1 < layout.length; k += 2) {
+    const src = layout[k], owner = layout[k + 1];
+    const session = ownerSample[owner.name];
+    if (session) out.push({ name: (src.options && src.options[ownerSample[src.name]]) || '', session });
+  }
+  return out;
+}

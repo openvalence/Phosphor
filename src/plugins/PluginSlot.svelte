@@ -13,6 +13,7 @@
   import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
   import { displayValue, statusOf } from '../model/shadow.svelte.js';
+  import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
 
   let { fields, hero } = $props();
   const host = $derived(hero.host);
@@ -40,8 +41,8 @@
 
   $effect(() => {
     // Subscribe to every claimed field's reported value and write status,
-    // instance lists (claimRoles `instances`) included, and to the link
-    // facts api.gate and api.stale read.
+    // instance lists (claimRoles `instances`) included, and to the link,
+    // latch and rail-owner facts api.gate and api.stale read.
     const watch = (f) => {
       if (!f || !f.uid) return;
       displayValue(f, machine.samples[f.channelId]);
@@ -53,7 +54,8 @@
       if (Array.isArray(f)) for (const m of f) for (const j in m) watch(m[j]);
       else watch(f);
     }
-    void machine.link.phase; void machine.link.roles; void machine.link.stale;
+    void machine.link.phase; void machine.link.roles; void machine.link.stale; void machine.link.sessionId;
+    void machine.safety; void machine.samples[CH_CONTROL_OWNER];
     const i = inst;
     untrack(() => host.updateHero(i));
   });

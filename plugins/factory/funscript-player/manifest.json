@@ -1,0 +1,23 @@
+{
+  "name": "funscript-player",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "widget",
+  "entry": "index.js",
+  "description": "Video and funscript player with Stash",
+  "roles": [
+    "input.target",
+    "input.duration",
+    "telemetry.position",
+    "window.min",
+    "window.max",
+    "limit.input.speed",
+    "pattern.running",
+    "advgen.running"
+  ],
+  "channels": [],
+  "permissions": [
+    "motion",
+    "net.fetch"
+  ]
+}

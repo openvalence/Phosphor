@@ -13,19 +13,21 @@
  * See: docs/PLUGINS.md, src/plugins/host.js
  */
 
-import { createPluginHost } from './host.js';
+import { createPluginHost, isHubUrl } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
 import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
 import {
-  writeSetting, runAction, sendCommand, submitMotion, displayValue, statusOf, shadowOf,
+  writeSetting, runAction, sendCommand, submitMotion, submitSegments, displayValue, statusOf, shadowOf,
 } from '../model/shadow.svelte.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
-import { needsConfirm, settingNeedsConfirm, confirmCopy } from '../model/actions.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners } from '../model/actions.js';
+import { streamGate, latchWords } from '../model/motion.js';
+import { ROLE } from '../model/roles.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
-import { LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -65,8 +67,25 @@ async function write(field, value, payload) {
   return writeSetting(field, value);
 }
 
+// A generator owns the rail while it runs (SPEC §11.4); reported values only.
+function generatorRunning() {
+  const byRole = machine.catalog.model && machine.catalog.model.byRole;
+  return [ROLE.patternRunning, ROLE.advgenRunning].some((r) => ((byRole && byRole.get(r)) || [])
+    .some((f) => { const smp = machine.samples[f.channelId]; return !!(smp && smp[f.name]); }));
+}
+
 // Law 3: the reasons Field.svelte and ActionField.svelte name, in their order.
-function gate(field) {
+// A c2h STREAM field is motion input: streamGate's reasons, `busy` last.
+function gate(field, busy = '') {
+  const se = entryOf(field.channelId);
+  if (se && se.cls === CHANNEL_CLASS.STREAM && se.dirName === 'c2h') {
+    return streamGate({
+      live: machine.link.phase === 'live', roles: machine.link.roles, access: se.access,
+      halted: latchWords(machine.safety), running: generatorRunning(),
+      owners: railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]),
+      self: machine.link.sessionId, busy,
+    });
+  }
   if (machine.link.phase !== 'live') return 'no hub link';
   const s = getSession();
   if (field.widget === WIDGET.action) {
@@ -116,6 +135,12 @@ async function listenTcp(port, onLine) {
   };
 }
 
+// The shell's HTTP plugin answers without CORS; vite dev uses the page's fetch.
+async function shellFetch(url, init) {
+  const { fetch } = await import('@tauri-apps/plugin-http');
+  return fetch(url, init);
+}
+
 export const host = createPluginHost({
   model: () => machine.catalog.model,
   sample: (ch) => machine.samples[ch],
@@ -129,8 +154,12 @@ export const host = createPluginHost({
   modTarget,
   storeSlots,
   submitMotion,
+  submitSegments,
+  now: () => performance.now(),
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
+  fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
+  isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
   log: logLine,
 });

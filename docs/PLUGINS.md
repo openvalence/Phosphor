@@ -21,7 +21,10 @@ the protocol lacks is an RFC in Valence, not a workaround.
 
 One self-contained ES module (the shell imports it from a `blob:` URL, so
 relative imports cannot resolve; bundle your dependencies in). It exports
-`activate`:
+`activate`. A factory plugin may split into sibling modules its entry
+imports relatively, because Vite bundles them into the app; a same-named
+override in the plugins folder must still be one bundled file (ruling R-C,
+pending, docs/plugins/FUNSCRIPT.md):
 
 ```js
 export function activate(api) {
@@ -98,7 +101,7 @@ settings cards, render instead (item 5).
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
-| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only) | experimental |
+| `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first`, `rail owned by <source>`, `motion input in use by <plugin>` | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
 | `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
@@ -108,7 +111,9 @@ settings cards, render instead (item 5).
 | `registerHero` returning `withdraw()` | removes that hero (a device that went away); a saved placement of it stays inert | experimental |
 | `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
+| `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs}]`, `atMs` the `performance.now()` instant the machine starts each, ascending; advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
+| `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
@@ -136,9 +141,28 @@ RFC-087): one segment `{input.target, input.duration}` with the end velocity
 `unspecified`, started at hub now plus the grant's `schedule_latency_us`
 (RFC-059; no lead constant in Phosphor) and held inside the grant's schedule
 horizon. Each new bundle supersedes the not-yet-started tail, so a newer line
-or a seek needs no flush. `bundleHead` (src/model/motion.js) packs a timed
-list to the horizon, 32 records and one transport payload, for a lookahead
-source once the API carries one.
+or a seek needs no flush.
+
+`submitSegments(list)` is the lookahead door (RFC-087), segments STREAM only,
+never a fallback. The host owns every timing fact: it reads hub now (from
+the kept CLOCK exchange with the least RTT/2 plus age x 50 ppm, SPEC §7.1) and
+`performance.now()` together, converts each execution start to hub time and
+stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
+latency). A start already past the earliest executable instant is clipped
+there, keeping its end; anything left under 10 ms is consumed, not sent.
+Offsets round to 100 us. One bundle carries what starts within HALF the
+granted horizon (RFC-014's SHOULD, kept by RFC-087), at most 32 records and
+one transport payload, end velocity `unspecified`. `sent` counts the leading
+items done with through the last one packed; offer each once and advance by
+it, and a later bundle supersedes from its first start. An empty list warms
+the grant and takes nothing.
+
+**One producer.** An ok `submitSegments` with `sent > 0` holds the motion
+input for its plugin until the latest sent end plus `MOTION_HOLD_MS` (500);
+an ok `submitMotion` until now plus its duration plus 500. Another plugin's
+`submitMotion` or `submitSegments` meanwhile returns `{ok: false, sent: 0,
+reason: 'motion input in use by <plugin>'}` without reaching the door, and its
+`gate` on a motion-input field says the same.
 
 ## Manifest (`manifest.json`, beside the module)
 
@@ -165,7 +189,7 @@ source once the API carries one.
 | `entry` | a plain `.js`/`.mjs` file name in the plugin folder (default `index.js`); a path is refused |
 | `description` | shown in the Plugins pane; one fragment per `docs/COPY.md` |
 | `roles`, `channels` | what it binds, displayed in the pane. Informational: the claim spec is what binds |
-| `permissions` | `intent`, `motion`, `net.listen:<port>`; anything else makes the manifest invalid |
+| `permissions` | `intent`, `motion`, `net.fetch`, `net.listen:<port>`; anything else makes the manifest invalid |
 
 Validation lives in one place, `src/plugins/host.js` `validateManifest`. An
 invalid manifest is listed with its problems and its code is never run.
@@ -182,7 +206,9 @@ opening its own WebSocket. Install plugins you would install as any program.
 Reading needs no permission. `intent` covers every settings/action/command
 write, `motion` covers motion input, and `net.listen:<port>` opens a TCP
 listener on **127.0.0.1 only** (`src-tauri/src/plugins.rs`; a LAN bind would
-be an unauthenticated control path, `ph-vdk.28`).
+be an unauthenticated control path, `ph-vdk.28`). `net.fetch` reaches HTTP(S)
+services that are not the machine; the hub's own origins are refused, so it
+never becomes a side channel around Valence (DESIGN §2).
 
 Every call into plugin code (activate, deactivate, mount, update, unmount,
 settings, TCP line callbacks) is wrapped: a throw is recorded on the plugin,
@@ -205,9 +231,14 @@ section (DESIGN §10.11) and appears once a hub's catalog is adopted.
 **CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
 carries `blob:` for this loader; drop it and every plugin shows an `import:`
 error on its row. A plugin runs under the page's policy, so `connect-src`
-(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; loopback TCP
-is `net.listenTcp`. Plugin files come through the `plugins_list` command, so
-no asset-protocol scope is involved.
+(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
+through `net.fetch` (the `http:default` capability allows `http://**` and
+`https://**`) and loopback TCP through `net.listenTcp`. `img-src` and
+`media-src` take `blob:`, `http:` and `https:`, so a plugin plays a local file
+from an object URL or media from a library by URL (ruling R-B); `media-src`
+otherwise falls back to `default-src 'self'` and nothing plays. Plugin files
+come through the `plugins_list` command, so no asset-protocol scope is
+involved.
 
 **The hub-served page never loads plugins.** A hub serves one file and
 nothing else. For development only, a `vite dev` build accepts
@@ -232,7 +263,7 @@ Production builds compile that path out.
 ## Factory plugins
 
 A factory plugin ships with Phosphor. It lives in `plugins/factory/<name>/`
-(manifest plus one module, the same shape as any plugin) and is listed in
+(manifest plus its modules, the same shape as any plugin) and is listed in
 `src/plugins/factory.js`, which bundles it. How it differs from an example:
 
 - **Enabled by default in the shell.** It loads before the plugins directory
@@ -350,6 +381,21 @@ Shipped:
   the Inputs toggle, and preset Reset returns them to their defaults. The
   playhead follows the told target's half and holds while the position
   sits at a bound, so through a hold it parks on that bound.
+- `plugins/factory/funscript-player/`: plays a local or Stash video and
+  drives the rail from its main (L0) funscript. One hero, `player`
+  (`absorb: false`), requires `input.target` and `input.duration`, so it
+  renders only where the hub has a segments STREAM (D1); the window, the
+  position, `limit.input.speed` and both generator run roles are optional.
+  Motion leaves only through `submitSegments`, one segment per funscript
+  span on the media clock, and every stop of its own sends one hold; a
+  gate or a hub refusal pauses it with no hold. The card's Play is the
+  only start, and a latch, a running generator or another producer grays
+  it with the gate's words. Stash rides `net.fetch`, its connect card
+  in the Plugins pane and in the library's place. Operator values persist
+  through `api.prefs`; all but the Stash key are mirrored under
+  `phosphor.funscript.*` for the prefs backup. Design and decisions:
+  [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:
+  `plugins/factory/funscript-player/CONTRACT.md`.
 
 ## Testing
 
@@ -360,6 +406,11 @@ refusals, the TCode parser, and the window mapping. It also loads every
 factory plugin and checks Advanced Penetration's substitution and each way
 it falls back. `node test/advanced-penetration.test.mjs` drives it in the
 shell bundle against a fake hub (`--live` against valencesim).
+`node test/funscript-player.test.mjs --unit` (in `npm run check`) checks the
+player's contract exports, prefs and hero spec; without `--unit`
+(`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
+shell bundle against a fake hub and the fake Stash, and `--live --port P
+--http P+7` against valencesim on spare ports.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The

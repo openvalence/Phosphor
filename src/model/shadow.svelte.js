@@ -80,7 +80,7 @@
 import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
-import { motionTarget, createMotionDoor } from './motion.js';
+import { motionTarget, createMotionDoor, latchWords } from './motion.js';
 import { noteEstopPress } from './actions.js';
 import { NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
@@ -430,11 +430,8 @@ const LOG_LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, nam
 const motionDoor = createMotionDoor({
   session: getSession,
   entries: () => machine.catalog.entries,
-  halted: () => {
-    const s = machine.safety;
-    return !s ? '' : s.estopLatched ? 'e-stop latched'
-      : s.paused ? 'paused, resume to continue' : '';
-  },
+  halted: () => latchWords(machine.safety),
+  lastNack: (ch) => machine.events.nacks.findLast((n) => n.channel === ch) || null,
   setpoint: (norm) => {
     const t = motionTarget(machine.catalog.model, machine.samples, norm);
     if (!t.field) return { ok: false, reason: t.reason };
@@ -465,6 +462,11 @@ const motionDoor = createMotionDoor({
  */
 export function submitMotion(norm, durationMs) {
   return motionDoor(norm, durationMs);
+}
+
+/** The RFC-087 lookahead door (motion.js submit.segments): [{atMs, norm, durationMs}] -> {ok, sent, rateHz, reason}. */
+export function submitSegments(list) {
+  return motionDoor.segments(list);
 }
 
 // ---------------------------------------------------------------------------
