@@ -564,6 +564,7 @@ question in §10.8).
   both sides, so the pane's outer edges line up with the hero card's.
   The content always reserves its scrollbar track (`ph-i7ln`): a scrollbar
   appearing would drop a grid column and loop.
+  That track is 4 px and sits past the hero frame on the right (`ph-p6a2`).
 - Page fullscreen (operator ruling 2026-10-03, `ph-wb4j`): a plugin page's
   footer carries Fullscreen (F11) and, in the desktop shell, its mode: In
   window (default) or Borderless. In window, the page takes the whole window

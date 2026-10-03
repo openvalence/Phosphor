@@ -593,8 +593,11 @@
     gap: var(--gap);
     padding-top: var(--gap);
     /* The hero panel's frame (style.css .og-panel: a 4px offset, 1px outline)
-       reaches 5px past its box; the rail and the content reach it too. */
-    margin: 0 -5px;
+       reaches 5px past its box; the rail and the content reach it too, and
+       the content's scrollbar track sits past it on the right. --track must
+       fit the .app padding left past the hero frame. */
+    --track: 4px;
+    margin: 0 calc(-5px - var(--track)) 0 -5px;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
@@ -602,13 +605,16 @@
   /* position: a pane's absolutely positioned descendants (sr-only labels)
      must scroll with it, never overflow the non-scrolling column.
      scrollbar-gutter: a scrollbar that comes and goes changes the grid's
-     columns, which changes the content's height: a flicker loop. */
+     columns, which changes the content's height: a flicker loop. Width and
+     color auto let style.css's 4px ::-webkit-scrollbar (--track) apply. */
   .content {
     position: relative;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
+    scrollbar-width: auto;
+    scrollbar-color: auto;
   }
 
   .rail {
