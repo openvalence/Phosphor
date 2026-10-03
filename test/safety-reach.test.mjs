@@ -52,9 +52,10 @@
  *            clears; no Fix button in the status slot; Force Home is never
  *            inline, only in the Home popover
  * ph-e82.21, at 1280x720:
- *   owner    a foreign-owned control-owner pair: with the hub's source
- *            labels the plan strip reads the owner and a SOURCE_CONFLICT
- *            reads "rail owned by" it; without labels, "plan" and the code
+ *   owner    a running generator on a foreign-owned control-owner pair: with
+ *            the hub's source labels the plan strip reads the owner and a
+ *            SOURCE_CONFLICT reads "rail owned by" it; without labels, "plan"
+ *            and the code
  *   axis     axis.flipped draws the rail reversed: the carriage marker for
  *            travel minus p sits where p sat unflipped, the endcaps swap,
  *            and a tape tap writes the value the reversed axis gives; Flip
@@ -624,8 +625,9 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   CATALOGS[k] = { bytes, etag: catalogEtag(bytes, LIMITS.etag_bytes) };
 }
 {
-  const flipE = byRole('axis.flipped'), planE = byRole('plan.current');
-  const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER };
+  const flipE = byRole('axis.flipped'), planE = byRole('plan.current'), runE = byRole('pattern.running');
+  const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER,
+    [runE.id]: stateOf(runE, { 'pattern.running': 1 }) };
   for (const [catalog, plan, refusal] of [['unlabeled', /^plan/, /SOURCE_CONFLICT/], ['labeled', /^Pattern/, /rail owned by Pattern/]]) {
     const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
     const mode = (await page.locator('.rail-swap .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();

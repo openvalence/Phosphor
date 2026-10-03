@@ -160,10 +160,12 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 - **The gate.** `api.gate(fields.dur)` on the segments field returns, in
   order: `no hub link`, `session not authorized`, the latch words
   (`e-stop latched`, `paused, resume to continue`), `stop the pattern first`
-  (`pattern.running` or `advgen.running` reads on), `rail owned by <label>`
-  (control-owner shows a source owned by another session), `motion input in
-  use by <plugin>`. Play is grayed with the words in the status slot (law
-  3); `PluginSlot` re-runs `update()` on a latch or owner change.
+  (`pattern.running` or `advgen.running` reads on, `railOwned`), `motion
+  input in use by <plugin>`. Play is grayed with the words in the status
+  slot (law 3); `PluginSlot` re-runs `update()` on a latch or owner change.
+  Control-owner is never read (rail ruling, operator 2026-10-03): a slot
+  stays held for its session's life, so a foreign stream is the hub's
+  `SOURCE_CONFLICT` to say.
 - **Mid-play.** The scheduler re-reads the gate every frame and the door
   refuses under the latch. Any gate or fatal refusal pauses the video in
   the same frame, sends nothing, and shows the words: the rail then
@@ -173,7 +175,10 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 - **A refusal the gate cannot see.** A STREAM bundle has no answer, so a
   `SOURCE_CONFLICT` from a source the gate does not show arrives as a
   NACK after the bundle that drew it. The hub drops that bundle; the
-  player pauses on the next frame. Bundles sent inside that round trip
+  player pauses on the next frame (during preroll an empty call each frame
+  surfaces it before the video starts) and the status slot reads `refused:
+  rail owned by <label>` (`another source` when the hub labels none). Play
+  re-enables; nothing retries. Bundles sent inside that round trip
   (one, measured on the fake hub) are refused the same way; none follow.
 - **Never auto-resume.** When a gate clears, Play re-enables and nothing
   restarts. The strip's Resume re-arms the hub only (SPEC §11.1); the
@@ -371,8 +376,9 @@ law 13; the card draws its own token heat).
   control outside the card and no cut label (full, glance, handheld from
   264 to 959 px, the Stash grid); no computed `--bad`; no text in `--warn`;
   runtime copy
-  within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK in the
-  status slot; Stash settings, tiles with apikey, a pick fetching the
+  within the COPY rules; glance at 220 px; a SOURCE_CONFLICT NACK reads
+  `refused: rail owned by` in the status slot; Stash settings, tiles with
+  apikey, a pick fetching the
   script with the header and playing it.
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:

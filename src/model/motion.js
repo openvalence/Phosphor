@@ -382,15 +382,26 @@ export function createMotionDoor(deps) {
 
 /**
  * Why a motion-input STREAM field cannot take input now (law 3), first that
- * applies, or ''. `owners` is railOwners output; `self` this session's id;
- * `busy` the host's producer-lock words. Reported values only.
+ * applies, or ''. `running` is railOwned (a generator); `busy` the host's
+ * producer-lock words. Reported values only. Never read control-owner here:
+ * a slot stays held for its session's life, so a foreign stream holding the
+ * rail is the hub's SOURCE_CONFLICT to say (conflictWords names it).
  */
-export function streamGate({ live, roles, access, halted, running, owners, self, busy }) {
+export function streamGate({ live, roles, access, halted, running, busy }) {
   if (!live) return 'no hub link';
   if ((roles | 0) < (access | 0)) return 'session not authorized';
   if (halted) return halted;
   if (running) return 'stop the pattern first';
-  const o = (owners || []).find((x) => x.session !== self);
-  if (o) return 'rail owned by ' + (o.name || 'another session');
   return busy || '';
+}
+
+/**
+ * A segments refusal in the operator's words: SOURCE_CONFLICT names the first
+ * labeled owner whose session is not `self` (`owners` is railOwners output);
+ * any other reason passes through.
+ */
+export function conflictWords(reason, owners, self) {
+  if (reason !== 'SOURCE_CONFLICT') return reason;
+  const o = (owners || []).find((x) => x.session !== self && x.name);
+  return 'refused: rail owned by ' + (o ? o.name : 'another source');
 }

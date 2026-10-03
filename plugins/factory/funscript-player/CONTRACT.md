@@ -228,7 +228,8 @@ export function filteredHubNowUs(s, nowMs = performance.now());
 // and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
 // The returned submit function gains a member:
 submit.segments(list);   // Seg[] -> SegResult
-export function streamGate({ live, roles, access, halted, running, owners, self, busy });   // -> words | ''
+export function streamGate({ live, roles, access, halted, running, busy });   // -> words | ''
+export function conflictWords(reason, owners, self);   // -> 'refused: rail owned by <label>' for SOURCE_CONFLICT, else reason
 ```
 
 `segments(list)`, in order:
@@ -270,9 +271,13 @@ export function streamGate({ live, roles, access, halted, running, owners, self,
 
 `streamGate` (pure) returns the first that applies: `'no hub link'`,
 `'session not authorized'` (roles below access), `halted`,
-`'stop the pattern first'` (running), `'rail owned by <label>'` (the first
-owner whose session differs from `self`; `'rail owned by another session'`
-when it has no label), `busy`, else `''`.
+`'stop the pattern first'` (running), `busy`, else `''`. It never reads
+control-owner (main's rail ruling, 6052b5f, operator 2026-10-03): a slot
+stays held for its session's life, so a foreign stream holding the rail is
+the hub's `SOURCE_CONFLICT` to say. `conflictWords` (pure) turns that code
+into `'refused: rail owned by <label>'`, the first labeled owner whose
+session differs from `self` (`'another source'` when none is labeled); any
+other reason passes through.
 
 The existing `submit` stamps `now + lat` (execution at now + 2 x lat): flagged
 on the host bead for its owner, not changed by this work.
@@ -284,6 +289,8 @@ export function railOwners(ownerEntry, ownerSample);   // -> Array<{name: string
                                                        // owned pair, name '' when the source has no label
 // railOwnerName keeps its meaning, now railOwners(...)[0]?.name || ''. Append-only hunk:
 // Phosphor main carries uncommitted edits in this file.
+export function railOwned(byRole, samples);   // -> boolean: pattern.running or advgen.running on (main's 6052b5f,
+                                              // copied exactly); never control-owner
 ```
 
 ### `src/model/shadow.svelte.js`
@@ -319,13 +326,15 @@ finds no transport name on the API object.
 
 ### `src/plugins/plugins.svelte.js`
 
-- `deps.submitSegments`, `deps.now = () => performance.now()`.
+- `deps.submitSegments`: the shadow's, with a refused result's `reason`
+  through `conflictWords` over `railOwners` (the `control-owner` entry and
+  its sample) and the link's session id. `deps.now = () => performance.now()`.
 - `gate(field)`: BEFORE the read-only branch, when the field's entry is a
   c2h STREAM, return `streamGate` over: `live` (link phase), `roles`,
   `access` (the entry's), `halted` (the shadow's halted words), `running`
-  (any field of role `pattern.running` or `advgen.running` reads nonzero),
-  `owners` (`railOwners` over the `control-owner` entry and its sample, found
-  the way `railOwnerName`'s callers find it), `self` (the link's session id).
+  (`railOwned(byRole, samples)`: `pattern.running` or `advgen.running` on).
+  Never an owner rung: a foreign-held slot leaves Play live and the hub
+  answers.
   Today such a field reads `'read-only: ...'`.
 - `deps.fetch`: in the shell `(u, i) => import('@tauri-apps/plugin-http').then((m) => m.fetch(u, i))`,
   in vite dev `window.fetch` (ruling R-A).
@@ -347,7 +356,9 @@ CSP: `img-src 'self' data: blob: http: https:`; add
 
 `test/plugins.test.mjs`: (e2) the segments door, every step above, against
 a fake session with grants of latency 1000 us and horizons 250, 500 and
-1000; `streamGate` order; `railOwners`. (i) the producer lock with an
+1000; `streamGate` order; a foreign-held slot never grays Play, a running
+generator does, a `SOURCE_CONFLICT` reads `refused: rail owned by <label>`
+with no lock taken; `railOwners`. (i) the producer lock with an
 injected `now`; `submitSegments` without `motion` throws `PermissionError`;
 `gate` shows the busy words to the other plugin only. (j) `net.fetch`
 permission, scheme and hub refusals, init passed through, and a static CSP
@@ -453,7 +464,10 @@ One `Player` per activation owns the single `<video>` (no `controls`,
 the video; when it unmounts, the player holds and pauses. The gate is read
 through `api.gate(fields.dur)` on every `update()` and every tick; a gate
 or a fatal refusal pauses and sends no hold (the rail is not the player's
-to command then). The status slot reads, first that applies: a fatal
+to command then). While preroll waits for its segment's end, each tick
+calls `submit([])` so the preroll bundle's NACK (`refused: rail owned by
+<label>`) ends it before the video starts; Play re-enables, nothing
+retries. The status slot reads, first that applies: a fatal
 refusal or media error, the gate, Positioning, Buffering, a transient
 refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
 past `limit.input.speed`), then the first parse note or extra-axes note with

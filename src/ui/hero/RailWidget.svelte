@@ -71,7 +71,6 @@
    * assumed 0-999mm rail.
    */
   import { machine, getSession, freshness } from '../../model/machine.svelte.js';
-  import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
   import { railOwned } from '../../model/actions.js';
   import { isFieldEnabled, reportedValue } from '../../model/settings.js';
   import { askConfirm } from '../confirm.svelte.js';
@@ -150,11 +149,10 @@
     : latch.paused && !latch.override ? 'Paused: Override to jog' : '');
   const moveEnabled = $derived(moveAllowed && !jogBlock);
 
-  // The rail row shows the plan strip over the tape while a source owns the
+  // The rail row shows the plan strip over the tape while a generator owns the
   // rail: a jog never takes it from a source (SPEC §11.4), and override is
   // the one way in, so override brings the tape back. Both stay mounted.
-  const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples,
-    machine.samples[CH_CONTROL_OWNER], machine.link.sessionId));
+  const sourceOwns = $derived(railOwned(machine.catalog.model?.byRole, machine.samples));
   const planShown = $derived(sourceOwns && !override);
 
   // Flip (SPEC §9.6, RFC-088): the axis.flipped setting, a bool or two-option

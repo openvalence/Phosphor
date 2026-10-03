@@ -20,9 +20,8 @@ import {
   writeSetting, runAction, sendCommand, submitMotion, submitSegments, displayValue, statusOf, shadowOf,
 } from '../model/shadow.svelte.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
-import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners } from '../model/actions.js';
-import { streamGate, latchWords } from '../model/motion.js';
-import { ROLE } from '../model/roles.js';
+import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
+import { streamGate, conflictWords, latchWords } from '../model/motion.js';
 import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
@@ -67,13 +66,6 @@ async function write(field, value, payload) {
   return writeSetting(field, value);
 }
 
-// A generator owns the rail while it runs (SPEC §11.4); reported values only.
-function generatorRunning() {
-  const byRole = machine.catalog.model && machine.catalog.model.byRole;
-  return [ROLE.patternRunning, ROLE.advgenRunning].some((r) => ((byRole && byRole.get(r)) || [])
-    .some((f) => { const smp = machine.samples[f.channelId]; return !!(smp && smp[f.name]); }));
-}
-
 // Law 3: the reasons Field.svelte and ActionField.svelte name, in their order.
 // A c2h STREAM field is motion input: streamGate's reasons, `busy` last.
 function gate(field, busy = '') {
@@ -81,9 +73,7 @@ function gate(field, busy = '') {
   if (se && se.cls === CHANNEL_CLASS.STREAM && se.dirName === 'c2h') {
     return streamGate({
       live: machine.link.phase === 'live', roles: machine.link.roles, access: se.access,
-      halted: latchWords(machine.safety), running: generatorRunning(),
-      owners: railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]),
-      self: machine.link.sessionId, busy,
+      halted: latchWords(machine.safety), running: railOwned(machine.catalog.model?.byRole, machine.samples), busy,
     });
   }
   if (machine.link.phase !== 'live') return 'no hub link';
@@ -154,7 +144,12 @@ export const host = createPluginHost({
   modTarget,
   storeSlots,
   submitMotion,
-  submitSegments,
+  // A SOURCE_CONFLICT NACK names the foreign owner: the gate never reads control-owner.
+  submitSegments: (list) => {
+    const r = submitSegments(list);
+    return r.ok ? r : { ...r, reason: conflictWords(r.reason,
+      railOwners(entryOf(CH_CONTROL_OWNER), machine.samples[CH_CONTROL_OWNER]), machine.link.sessionId) };
+  },
   now: () => performance.now(),
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,

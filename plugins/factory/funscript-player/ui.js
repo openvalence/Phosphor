@@ -220,7 +220,12 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (g && active()) stop('held', '', true);
     else if (state.phase === 'preroll') {
       if (pre.playAt == null) prerollStep();
-      else if (now() >= pre.playAt) start();
+      else {
+        // The preroll bundle's NACK arrives later; an empty call surfaces it before the video starts.
+        const r = submit([]);
+        if (!r.ok && !TRANSIENT.has(r.reason)) stop('held', r.reason);
+        else if (now() >= pre.playAt) start();
+      }
     } else if (state.phase === 'playing' && state.motion && clock.ready && !buffering) {
       if (restart) { scheduler.restart(clock); restart = false; }
       const r = scheduler.tick(clock);

@@ -95,18 +95,16 @@ export function isUnattended(byRole, samples, ownerSample) {
 }
 
 /**
- * Does a source own the rail (SPEC §11.4)? A running pattern, or a
- * control-owner slot held by a session other than `self` (this session's own
- * point move owns a slot too). Reported values only.
+ * Does a source own the rail (SPEC §11.4)? A generator owns it from start to
+ * stop (RFC-093): pattern.running or advgen.running, reported values only.
+ * Never read control-owner here: a slot stays held for its session's life
+ * (a stopped generator, a finished jog or stream), so it cannot say the rail
+ * is busy now. A stream holding the rail is the hub's SOURCE_CONFLICT to say.
  */
-// ponytail: any foreign owner counts; per-source once source ids are registry vocabulary.
-export function railOwned(byRole, samples, ownerSample, self) {
-  if (isOn(samples, firstOf(byRole, FIELD_ROLE.pattern_running))) return true;
-  for (let i = 0; ownerSample && ownerSample['owner' + i] !== undefined; i++) {
-    const o = ownerSample['owner' + i];
-    if (o && o !== self) return true;
-  }
-  return false;
+// ponytail: generators only; a live stream joins once source ids are registry vocabulary.
+export function railOwned(byRole, samples) {
+  return isOn(samples, firstOf(byRole, FIELD_ROLE.pattern_running))
+    || isOn(samples, firstOf(byRole, FIELD_ROLE.advgen_running));
 }
 
 /**

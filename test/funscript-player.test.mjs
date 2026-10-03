@@ -48,9 +48,9 @@ const CONTRACT = {
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'index.js']: ['HERO', 'activate'],
-  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate',
+  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
     'createMotionDoor', 'bundleHead', 'motionStream'],
-  '../src/model/actions.js': ['railOwners', 'railOwnerName'],
+  '../src/model/actions.js': ['railOwners', 'railOwnerName', 'railOwned'],
   '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],
 };
 
@@ -745,13 +745,13 @@ if (!LIVE) {
   hub.set(CH.advgen, 'running', 0);
   await page.waitForTimeout(400);
 
-  // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a generator the gate did not see) ----
+  // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a stream or generator the gate does not read) ----
   hub.nackStream = NACK.SOURCE_CONFLICT;
   const nRef = hub.bundles.length, hRef = await holdMarks();
   await playBtn(page).click();
-  const refused = await page.waitForFunction((c) => /SOURCE_CONFLICT/.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
+  const refused = await page.waitForFunction((c) => /refused: rail owned by /.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
     .then(() => true).catch(() => false);
-  ok('refusal: a SOURCE_CONFLICT NACK shows its name in the status slot', refused, await statusText(page));
+  ok('refusal: a SOURCE_CONFLICT NACK reads "refused: rail owned by" its owner in the status slot', refused, await statusText(page));
   ok('refusal: the video pauses and Play is offered again', await video(page, (v) => v.paused) && !(await playBtn(page).isDisabled()));
   await page.waitForTimeout(300);
   const nAfter = hub.bundles.length;
