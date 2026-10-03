@@ -77,38 +77,48 @@ const TYPE_MAX = { [PACKED.u8]: 255, [PACKED.i8]: 127, [PACKED.u16]: 65535, [PAC
 export const SEG_FLOOR_MS = 10;
 
 /**
- * The door's hub clock: the offset of the least-RTT CLOCK exchange among the
- * session's last CLOCK_KEEP (SPEC §7.1), never the newest exchange alone.
+ * The door's hub clock: the offset of the kept CLOCK exchange (SPEC §7.1)
+ * with the least error bound, RTT/2 plus its age times CLOCK_DRIFT, never
+ * the newest exchange alone.
  *
  * Constraints:
  * - An exchange's offset error is up to half its RTT's asymmetry; the session
- *   library adopts every exchange, so each 10 s resync moved the stamps by
- *   RTT/2 (localhost RTT 1 to 16 ms). The filter belongs in Valence's
- *   clients/js syncClock; this stays until it lands there.
- * - CLOCK_KEEP x the 10 s resync bounds the age of the chosen offset, so
- *   client-to-hub drift (tens of ppm) stays under 2 ms.
+ *   library adopts every exchange. On valencesim the error is one-sided (the
+ *   hub stamps t1 when its tick reads the frame): offset = truth + RTT/2 within
+ *   0.5 ms over RTT 1 to 17 ms, so a slow exchange stamps every segment up to
+ *   8 ms late. The filter belongs in Valence's clients/js syncClock; this stays
+ *   until it lands there.
+ * - Selection is by bound, never by count: an exchange leaves only when
+ *   CLOCK_KEEP newer ones arrived (32 x the 10 s resync), so a fast one
+ *   stays chosen until a fresher one's bound beats its age.
+ * - CLOCK_DRIFT is an assumed client-to-hub rate error (two crystals); on
+ *   one host it is 0, so a fast exchange may stay chosen for minutes.
+ * - First use and every 'live' fire CLOCK_HUNT exchanges at random gaps up
+ *   to CLOCK_HUNT_GAP_MS: back-to-back ones phase-lock to the hub's tick
+ *   (20 of 20 at 14 to 18 ms on valencesim). The door's first use is its
+ *   warm call, before Play.
  * - A close voids every kept exchange (a new WELCOME may be a new boot_id);
  *   until one lands the session's own offset is used.
- * - First use and every 'live' fire CLOCK_BURST sequential exchanges, so the
- *   filter has a choice before the first resync.
  * - A session without on() or syncClock() (a test fake) reads hubNowUs().
  */
-export const CLOCK_KEEP = 4, CLOCK_BURST = 4;
-const clocks = new WeakMap(); // session -> kept {offsetUs, rttUs}
-export function filteredHubNowUs(s) {
+export const CLOCK_KEEP = 32, CLOCK_HUNT = 16, CLOCK_HUNT_GAP_MS = 250, CLOCK_DRIFT = 50e-6;
+const clocks = new WeakMap(); // session -> kept {offsetUs, rttUs, atMs}
+export function filteredHubNowUs(s, nowMs = performance.now()) {
   if (typeof s.on !== 'function' || typeof s.syncClock !== 'function') return s.hubNowUs();
   let kept = clocks.get(s);
   if (!kept) {
     kept = [];
     clocks.set(s, kept);
-    const burst = async () => { for (let i = 0; i < CLOCK_BURST; i++) if (!(await s.syncClock())) return; };
-    s.on('clock', (c) => { kept.push(c); if (kept.length > CLOCK_KEEP) kept.shift(); });
+    const gap = () => new Promise((r) => setTimeout(r, Math.random() * CLOCK_HUNT_GAP_MS));
+    const hunt = async () => { for (let i = 0; i < CLOCK_HUNT; i++) { await gap(); if (!(await s.syncClock())) return; } };
+    s.on('clock', (c) => { kept.push({ atMs: performance.now(), ...c }); if (kept.length > CLOCK_KEEP) kept.shift(); });
     s.on('close', () => { kept.length = 0; });
-    s.on('live', () => { burst().catch(() => {}); });
-    burst().catch(() => {});
+    s.on('live', () => { hunt().catch(() => {}); });
+    hunt().catch(() => {});
   }
   if (!kept.length) return s.hubNowUs();
-  const best = kept.reduce((a, b) => (b.rttUs < a.rttUs ? b : a));
+  const bound = (k) => k.rttUs / 2 + (nowMs - k.atMs) * 1000 * CLOCK_DRIFT;
+  const best = kept.reduce((a, b) => (bound(b) < bound(a) ? b : a));
   return s.hubNowUs() - s.state.clockOffsetUs + best.offsetUs;
 }
 
@@ -326,6 +336,8 @@ export function createMotionDoor(deps) {
     if (grant === 'refused') return { ok: false, sent: 0, reason: 'publish refused' };
     if (grant === 'pending') return { ok: false, sent: 0, reason: 'waiting for the stream grant' };
     const rateHz = grant.rate;
+    const hubNow = filteredHubNowUs(s);
+    const p = now();
     if (!list || !list.length) return { ok: true, sent: 0, rateHz };
     let prev = -Infinity;
     for (const x of list) {
@@ -334,8 +346,6 @@ export function createMotionDoor(deps) {
       prev = x.atMs;
     }
 
-    const hubNow = filteredHubNowUs(s);
-    const p = now();
     const lat = grant.scheduleLatencyUs || 0;
     const unit = LIMITS.segment_t_off_unit_us;
     const packed = []; // {atUs: stamp, rec, i: list index}

@@ -40,7 +40,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, filteredHubNowUs, CLOCK_KEEP, CLOCK_BURST } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl } from '../src/plugins/host.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
@@ -572,23 +572,33 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   }
 
   {
-    // The door's hub clock: least-RTT of the last CLOCK_KEEP exchanges (SPEC §7.1).
-    const ls = {}, fired = [];
+    // The door's hub clock: the kept exchange with the least RTT/2 + age x drift (SPEC §7.1).
+    const ls = {}, fired = [], at = [];
     const s = {
       state: { clockOffsetUs: 7000 },
       hubNowUs: () => H + s.state.clockOffsetUs,
       on: (n, cb) => { (ls[n] ||= []).push(cb); },
-      clock(offsetUs, rttUs) { s.state.clockOffsetUs = offsetUs; for (const cb of ls.clock || []) cb({ offsetUs, rttUs }); },
-      syncClock() { const n = fired.push(1); return Promise.resolve().then(() => (n <= CLOCK_BURST ? (s.clock(5000 + n, 9000), {}) : null)); },
+      clock(offsetUs, rttUs, atMs) { s.state.clockOffsetUs = offsetUs; for (const cb of ls.clock || []) cb({ offsetUs, rttUs, ...(atMs != null && { atMs }) }); },
+      syncClock() { at.push(performance.now()); const n = fired.push(1); return Promise.resolve().then(() => (s.clock(5000 + n, 9000), {})); },
     };
     const before = filteredHubNowUs(s);
-    await tick(); await tick(); await tick(); await tick(); await tick();
-    ok('first use fires CLOCK_BURST sequential exchanges, the raw offset until one lands', before === H + 7000 && fired.length === CLOCK_BURST, fired.length);
-    s.clock(2000, 1000);
-    s.clock(9000, 15000);
-    ok('stamps ride the least-RTT exchange, not the newest', filteredHubNowUs(s) === H + 2000, filteredHubNowUs(s) - H);
-    for (let i = 0; i < CLOCK_KEEP; i++) s.clock(4000, 3000);
-    ok('the chosen exchange ages out after CLOCK_KEEP newer ones', filteredHubNowUs(s) === H + 4000, filteredHubNowUs(s) - H);
+    for (let i = 0; i < CLOCK_HUNT * CLOCK_HUNT_GAP_MS / 20 + 10 && fired.length < CLOCK_HUNT; i++) await new Promise((r) => setTimeout(r, 20));
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    ok('first use hunts CLOCK_HUNT exchanges at random gaps, the raw offset until one lands',
+      before === H + 7000 && fired.length === CLOCK_HUNT && new Set(gaps.map((g) => Math.round(g / 10))).size > 1, fired.length + ' ' + gaps.map(Math.round));
+    // The refutation's case: a fast hunt exchange, then slower resyncs, must not move the stamp.
+    const t0 = performance.now();
+    s.clock(2000, 1000, t0);
+    s.clock(9000, 15000, t0);
+    ok('stamps ride the least-bound exchange, not the newest', filteredHubNowUs(s, t0) === H + 2000, filteredHubNowUs(s, t0) - H);
+    for (let i = 0; i < 10; i++) s.clock(4000, 3000, t0);
+    ok('a fast exchange is not evicted by a count of newer slower ones', filteredHubNowUs(s, t0) === H + 2000, filteredHubNowUs(s, t0) - H);
+    s.clock(4500, 3000, t0 + 10_000);
+    ok('a fresh slower exchange does not displace a fast one 10 s old', filteredHubNowUs(s, t0 + 10_000) === H + 2000, filteredHubNowUs(s, t0 + 10_000) - H);
+    s.clock(4700, 3000, t0 + 30_000);
+    ok('a fast exchange yields once its drift bound passes a fresh one', filteredHubNowUs(s, t0 + 30_000) === H + 4700, filteredHubNowUs(s, t0 + 30_000) - H);
+    for (let i = 0; i < CLOCK_KEEP; i++) s.clock(6000, 5000, t0 + 30_000);
+    ok('CLOCK_KEEP newer exchanges evict the rest', filteredHubNowUs(s, t0 + 30_000) === H + 6000, filteredHubNowUs(s, t0 + 30_000) - H);
     for (const cb of ls.close) cb({});
     s.state.clockOffsetUs = 123;
     ok('a close voids the kept exchanges: the session offset again', filteredHubNowUs(s) === H + 123);

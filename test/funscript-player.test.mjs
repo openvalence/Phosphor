@@ -48,7 +48,7 @@ const CONTRACT = {
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'index.js']: ['HERO', 'activate'],
-  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_BURST', 'filteredHubNowUs', 'latchWords', 'streamGate',
+  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate',
     'createMotionDoor', 'bundleHead', 'motionStream'],
   '../src/model/actions.js': ['railOwners', 'railOwnerName'],
   '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],

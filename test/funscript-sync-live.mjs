@@ -16,7 +16,9 @@
  * on the epic, tightened later): adherence median <= 30 ms, spread p95 <= 5 ms around it;
  * script-timeline spread p95 <= 5 ms (A), 6 ms (B); coverage 98 % of segments >= 50 ms that
  * were neither clipped nor superseded;
- * no plan from a superseded segment after the seek, none between the hold's end and resume.
+ * no plan from a superseded segment after the seek (each change lands while one is pending,
+ * so the check is never vacuous), none between the hold's end and resume; the adherence
+ * medians of the pass's first and second halves within 2 ms (a CLOCK choice that steps).
  * The same-direction run's interior speed ratio is printed; under 0.3 is WARN (G3), never FAIL.
  *
  * Constraints:
@@ -214,13 +216,21 @@ async function pass(name, frames) {
       await sleep(4);
     }
   }
+  // Each seek, rate change and pause lands while a sent segment is still pending,
+  // so the superseded check has something to supersede.
+  async function pending() {
+    for (let i = 0; i < 500 && !sent.some((g) => g.atMs > performance.now() + 20); i++) await play(4);
+  }
   const marks = {};
   begin(0, 1);
   await play(16000);
+  await pending();
   begin(25000, 1);
   await play(5000);
+  await pending();
   begin(mediaNow(), 1.5);
   await play(5000);
+  await pending();
   const mp = mediaNow();
   supersede();
   const hold = sch.stop(clock);
@@ -280,8 +290,13 @@ function judge(name, r, from, to, spreadBar) {
   ok(name + ': coverage >= 98 % of segments >= 50 ms', cov >= 0.98, (cov * 100).toFixed(1) + ' % of ' + due.length);
   const stale = r.sent.filter((g) => g.superseded
     && plans.some((p) => Math.abs(p.dur - g.durationMs) <= 1 && Math.abs(p.start - g.atMs - med) <= 10));
-  ok(name + ': seek, rate change and pause clean (no superseded segment plays)', stale.length === 0,
-    stale.length + ' of ' + r.sent.filter((g) => g.superseded).length + ' superseded played');
+  const sup = r.sent.filter((g) => g.superseded).length;
+  ok(name + ': seek, rate change and pause clean (no superseded segment plays)', stale.length === 0 && sup > 0,
+    stale.length + ' of ' + sup + ' superseded played');
+  // A mid-play change of the chosen CLOCK exchange steps every later stamp.
+  const byTime = matched.slice().sort((x, y) => x.p.start - y.p.start).map((x) => x.p.start - x.g.atMs);
+  const h = byTime.length >> 1, step = Math.abs(q(byTime.slice(0, h), 0.5) - q(byTime.slice(h), 0.5));
+  ok(name + ': adherence holds its level (first half vs second half median) <= 2 ms', step <= 2, step.toFixed(2) + ' ms');
   ok(name + ': pause sends one hold', r.hold.ok && r.hold.sent === 1, r.hold.reason);
   const during = plans.filter((p) => p.start > r.marks.holdEnd + 2 && p.start < r.marks.resume);
   ok(name + ': pause clean (nothing between the hold\'s end and resume)', during.length === 0, during.length + ' plans');
@@ -311,7 +326,7 @@ try {
   ok('no NACK', nacks.length === 0, nacks.length ? JSON.stringify(nacks[0]).slice(0, 80) : '');
   const rtts = clocks.map((c) => c.rttUs / 1000), offs = clocks.map((c) => c.offsetUs / 1000);
   console.log('  [INFO] CLOCK: ' + clocks.length + ' exchanges, RTT ' + Math.min(...rtts).toFixed(1) + '..' + Math.max(...rtts).toFixed(1)
-    + ' ms, offset spread ' + (Math.max(...offs) - Math.min(...offs)).toFixed(1) + ' ms (the door stamps from the least-RTT kept)');
+    + ' ms, offset spread ' + (Math.max(...offs) - Math.min(...offs)).toFixed(1) + ' ms (the door stamps from the least-bound kept)');
 } finally {
   s.close();
 }
