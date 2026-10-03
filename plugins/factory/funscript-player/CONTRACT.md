@@ -104,11 +104,13 @@ records and one `min_transport_payload` (29 of this layout).
 
 ```js
 export const MAX_SPAN_MS = 60000;   // a longer span is split along its line (u16 ms duration, with margin)
+export const MAX_SCRIPT_MS = 86400000, MAX_ACTIONS = 1000000;   // past either, refused before any expansion
 export const AXES;                  // frozen {suffix -> axis}: '' and 'stroke' -> 'L0', surge L1, sway L2,
                                     // twist R0, roll R1, pitch R2, vib V0, valve A0, suck A1, lube A2;
                                     // bare TCode ids map to themselves
 export function parseFunscript(input, name = '');   // input: string | object -> Script
   // throws Error('not a funscript') (bad JSON, no actions array) | Error('no actions') (none survive)
+  //   | Error('more than a million actions') | Error('script longer than 24 hours') (an action past MAX_SCRIPT_MS)
   // keeps finite at >= 0 and finite pos; stable sort; duplicate at keeps the last; pos clamped 0..100, /100;
   // inverted (exactly true): pos = 1 - pos; a numeric range other than 100 is noted 'range ignored';
   // an `axes` array (multi-axis) is listed in `ignored`. Further notes: 'N invalid actions dropped',
@@ -122,6 +124,7 @@ export function pairFiles(files);   // Array<{name, type?}> -> {video, script, e
 export function posAt(script, tMs);       // -> 0..1, linear between actions (the authored meaning); holds outside
 export function indexAfter(script, tMs);  // -> first i with at[i] > tMs; n when none (binary search)
 export function speedAt(script, tMs);     // -> |chord speed| in norm/s of the span holding tMs; 0 outside
+export function peakSpeed(script);        // -> the fastest chord in norm/s
 export function thin(script, minGapMs);   // -> Script keeping first, last and local extrema, minGapMs apart
 export function heat(script, bins, fromMs = 0, toMs = script.durationMs);
   // -> Float32Array, time-weighted mean |speed| per bin in norm/s (raw; the view scales it)
@@ -214,8 +217,11 @@ sync measurement against valencesim (FUNSCRIPT.md, Tests).
 ### `src/model/motion.js`
 
 ```js
-export const SEG_FLOOR_MS = 10;
+export const SEG_FLOOR_MS = 10, CLOCK_KEEP = 4, CLOCK_BURST = 4;
 export function latchWords(safety);   // -> 'e-stop latched' | 'paused, resume to continue' | ''
+export function filteredHubNowUs(s);  // -> hub now from the least-RTT of the session's last CLOCK_KEEP
+                                      // CLOCK exchanges; CLOCK_BURST on first use and on 'live'; a close
+                                      // voids them; hubNowUs() for a session without on() or syncClock()
 // createMotionDoor(deps): call shape unchanged; deps gain optional now() (default () => performance.now())
 // and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
 // The returned submit function gains a member:
@@ -241,7 +247,8 @@ export function streamGate({ live, roles, access, halted, running, owners, self,
 5. An empty list: `{ok: true, sent: 0, rateHz}` (warms the grant; acquires no source).
 6. Any item without finite `atMs`, finite `norm` and `durationMs > 0`, or
    with `atMs` descending: `'bad segment'`.
-7. `hubNow = s.hubNowUs(); p = deps.now(); lat = grant.scheduleLatencyUs || 0`.
+7. `hubNow = filteredHubNowUs(s); p = deps.now(); lat = grant.scheduleLatencyUs || 0`
+   (`submit` stamps from it too).
    Per item: execution start `E = hubNow + (atMs - p) * 1000`, end
    `X = E + durationMs * 1000`. `E < hubNow + lat` moves to `hubNow + lat`
    keeping `X`; then `X - E < SEG_FLOOR_MS * 1000` is consumed, not packed.
@@ -442,7 +449,12 @@ One `Player` per activation owns the single `<video>` (no `controls`,
 `playsinline`, `disablePictureInPicture`, never fullscreen), the
 `MediaClock`, the `Scheduler` and the rAF loop. The last mounted view hosts
 the video; when it unmounts, the player holds and pauses. The gate is read
-through `api.gate(fields.dur)` on every `update()` and every tick. The
+through `api.gate(fields.dur)` on every `update()` and every tick; a gate
+or a fatal refusal pauses and sends no hold (the rail is not the player's
+to command then). The status slot reads, first that applies: a fatal
+refusal or media error, the gate, Positioning, Buffering, a transient
+refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
+past `limit.input.speed`), then the parse notes and extra axes, joined. The
 library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock

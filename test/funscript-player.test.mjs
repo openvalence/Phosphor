@@ -35,8 +35,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const P = '../plugins/factory/funscript-player/';
 const CONTRACT = {
-  [P + 'funscript.js']: ['MAX_SPAN_MS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt', 'indexAfter',
-    'speedAt', 'thin', 'heat', 'fmtTime'],
+  [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
+    'indexAfter', 'speedAt', 'peakSpeed', 'thin', 'heat', 'fmtTime'],
   [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'createMediaClock', 'frameSource'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
     'applyT', 'strokeSpeed', 'createScheduler'],
@@ -48,7 +48,8 @@ const CONTRACT = {
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'index.js']: ['HERO', 'activate'],
-  '../src/model/motion.js': ['SEG_FLOOR_MS', 'latchWords', 'streamGate', 'createMotionDoor', 'bundleHead', 'motionStream'],
+  '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_BURST', 'filteredHubNowUs', 'latchWords', 'streamGate',
+    'createMotionDoor', 'bundleHead', 'motionStream'],
   '../src/model/actions.js': ['railOwners', 'railOwnerName'],
   '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],
 };
@@ -713,9 +714,19 @@ if (!LIVE) {
   await page.waitForTimeout(1000);
   ok('latch: clearing it plays nothing, Play is offered', await video(page, (v) => v.paused) && !(await playBtn(page).isDisabled()));
 
-  // ---- the generator gate ----
+  // ---- the generator gate, mid-play: paused, and no hold into the rail the generator now owns ----
+  const holdMarks = () => page.evaluate(() => (window.__funscriptProbe || []).filter((x) => x.k === 'mark' && x.name === 'hold').length);
+  await playBtn(page).click();
+  await page.waitForTimeout(2500);
+  ok('gates: playing before the generator starts', await video(page, (v) => !v.paused));
+  const n5 = hub.bundles.length, h5 = await holdMarks(), pushedAt = hubUs();
   hub.set(CH.advgen, 'running', 1);
+  const gatedIn = await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 2000, polling: 5 })
+    .then(() => (hubUs() - pushedAt) / 1000).catch(() => Infinity);
   await page.waitForTimeout(400);
+  const lateGen = hub.bundles.slice(n5).filter((b) => b.arrival - pushedAt > 60000);
+  ok('gates: advgen.running mid-play pauses within 100 ms, sends no hold, nothing after',
+    gatedIn <= 100 && (await holdMarks()) === h5 && lateGen.length === 0, { gatedIn, holds: (await holdMarks()) - h5, late: lateGen.length });
   ok('gates: advgen.running grays Play with its words', await playBtn(page).isDisabled()
     && (await statusText(page)) === 'stop the pattern first', await statusText(page));
   rects.gated = await chrome(page);
@@ -724,7 +735,7 @@ if (!LIVE) {
 
   // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a generator the gate did not see) ----
   hub.nackStream = NACK.SOURCE_CONFLICT;
-  const nRef = hub.bundles.length;
+  const nRef = hub.bundles.length, hRef = await holdMarks();
   await playBtn(page).click();
   const refused = await page.waitForFunction((c) => /SOURCE_CONFLICT/.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
     .then(() => true).catch(() => false);
@@ -733,7 +744,9 @@ if (!LIVE) {
   await page.waitForTimeout(300);
   const nAfter = hub.bundles.length;
   await page.waitForTimeout(600);
-  ok('refusal: nothing more is sent after it', hub.bundles.length === nAfter && nAfter > nRef, [nRef, nAfter, hub.bundles.length]);
+  // A STREAM has no answer: the bundle that drew the NACK went out first, and the hub dropped it.
+  ok('refusal: one bundle draws it, no hold follows, nothing after', nAfter - nRef === 1 && hub.bundles.length === nAfter
+    && (await holdMarks()) === hRef, { before: nAfter - nRef, after: hub.bundles.length - nAfter, holds: (await holdMarks()) - hRef });
   rects.refused = await chrome(page);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'refusal.png') });
   hub.nackStream = 0;

@@ -6,11 +6,12 @@
 //   per animation frame, one preroll segment before Play, one hold on a stop.
 //   Never a safety op, never resume.
 // - The gate is api.gate(fields.dur), read on every update() and every frame.
-//   A gate or a fatal refusal pauses the video in that same call and sends at
-//   most one hold. Nothing here ever plays except the operator's Play; a
-//   'play' the player did not start is paused at once.
-// - A hold is sent only while segments went out since the last restart, so a
-//   stop is exactly one hold and silence after.
+//   A gate or a fatal refusal pauses the video in that same call and sends
+//   nothing: the rail is another source's, latched, gone or refusing, so a
+//   hold would land in someone else's stream. Nothing here ever plays except
+//   the operator's Play; a 'play' the player did not start is paused at once.
+// - A hold is sent only for the player's own stops, and only while segments
+//   went out since the last restart, so a stop is one hold and silence after.
 // - A pause or gate during preroll cancels the video start and sends nothing:
 //   the preroll segment already ends at rest within PREROLL_MIN_MS +
 //   PREROLL_STROKE_MS.
@@ -23,7 +24,7 @@
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
 // - The probe exists only while localStorage phosphor.funscript.probe is '1'.
 
-import { parseFunscript, pairFiles, posAt, fmtTime, axisOf } from './funscript.js';
+import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed } from './funscript.js';
 import { createMediaClock, frameSource } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
 import { createStash } from './stash.js';
@@ -61,6 +62,7 @@ export const COPY = Object.freeze({
   buffering: 'Buffering',
   badFormat: 'Format not playable here',
   extra: 'Extra axes ignored: ',
+  overLimit: 'Script past the input speed limit',
   meter: 'Stroke',
 });
 
@@ -130,7 +132,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
   let info = '';         // a load fact: no script, extra axes
   let transient = '';
-  let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0;
+  let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0;
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
   const trace = [];
   scheduler.setTransform(state.T);
@@ -152,8 +154,9 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     resetClock();
   }
   function resetClock() { clock.reset(); lastM = NaN; }
-  /** Every stop: one hold when owed, the video paused in the same call. */
-  function stop(phase, words = '') {
+  /** Every stop: one hold when owed (never on a yield), the video paused in the same call. */
+  function stop(phase, words = '', yieldRail = false) {
+    if (yieldRail) sentSince = false;
     if (state.phase === 'playing') hold();
     pre = null;
     buffering = false;
@@ -203,7 +206,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 
   function tick() {
     const g = gate();
-    if (g && active()) stop('held');
+    if (g && active()) stop('held', '', true);
     else if (state.phase === 'preroll') {
       if (pre.playAt == null) prerollStep();
       else if (now() >= pre.playAt) start();
@@ -211,7 +214,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       if (restart) { scheduler.restart(clock); restart = false; }
       const r = scheduler.tick(clock);
       if (r.sent > 0) sentSince = true;
-      if (r.fatal) stop('held', r.reason);
+      if (r.fatal) stop('held', r.reason, true);
       else transient = r.ok ? '' : r.reason;
     }
     if (state.phase === 'playing' && clock.ready && fields && fields.pos) {
@@ -251,6 +254,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const my = ++seq;
     Object.assign(state, { scene, script: null, phase: 'ready' });
     scheduler.load(null);
+    peak = 0;
     why = '';
     info = script ? '' : none || '';
     video.src = scene.stream;
@@ -260,7 +264,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
         if (my !== seq) return;
         state.script = s;
         scheduler.load(s);
-        info = extraNote(s, extra);
+        peak = peakSpeed(s);
+        info = [...s.notes, extraNote(s, extra)].filter(Boolean).join(', ');
         warm();
         changed();
       }, (e) => {
@@ -303,6 +308,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.phase === 'preroll') return { text: COPY.positioning, tone: '' };
     if (buffering) return { text: COPY.buffering, tone: '' };
     if (transient) return { text: transient, tone: '' };
+    const ceil = fields ? ceilingOf(api, fields) : {};
+    if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
     if (info) return { text: info, tone: '' };
     return { text: state.scene ? '' : COPY.empty, tone: '' };
   }
@@ -329,7 +336,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     halt: () => { if (active()) stop('held'); },
     canPlay,
     setFields(f) { fields = f; warm(); changed(); },
-    update() { if (gate() && active()) stop('held'); else changed(); },
+    update() { if (gate() && active()) stop('held', '', true); else changed(); },
     dispose() {
       if (active()) stop('held');
       if (url) revoke(url);

@@ -149,18 +149,20 @@ const real = (sent) => sent.filter((l) => l.length);
   ok('playing: segments flow after the anchor', segs.length > 2, segs.length);
   ok('playing: spans tile', segs.every((s, i) => i === 0 || near(segs[i - 1].atMs + segs[i - 1].durationMs, s.atMs, 1e-6)), segs);
 
-  // A gate mid-play: paused in the same tick, one hold, then silence; never auto-resumes.
+  // A gate mid-play: paused in the same tick, nothing sent (the rail is not the player's); never auto-resumes.
   const before = real(r.sent).length;
-  r.st.gate = 'paused, resume to continue';
+  r.st.gate = 'stop the pattern first';
   r.frame();
   const after = real(r.sent).slice(before);
   ok('gate: paused in the same tick', r.video.paused && r.ctl.state.phase === 'held');
-  ok('gate: exactly one hold', after.length === 1 && after[0].length === 1 && after[0][0].durationMs <= STOP_MS, after);
+  ok('gate: no hold into a rail another source owns', after.length === 0, after);
+  r.st.gate = 'paused, resume to continue';
+  r.ctl.update();
   ok('gate: the words in the slot, warn', r.ctl.state.status.text === 'paused, resume to continue' && r.ctl.state.status.tone === 'warn');
   ok('gate: Play grayed', !r.ctl.canPlay());
   r.st.gate = '';
   for (let i = 0; i < 30; i++) r.frame();
-  ok('gate cleared: nothing restarts, nothing sent', r.video.paused && r.ctl.state.phase === 'held' && real(r.sent).length === before + 1);
+  ok('gate cleared: nothing restarts, nothing sent', r.video.paused && r.ctl.state.phase === 'held' && real(r.sent).length === before);
   ok('gate cleared: Play enabled, slot clear', r.ctl.canPlay() && r.ctl.state.status.text === '');
 }
 
@@ -227,13 +229,14 @@ const real = (sent) => sent.filter((l) => l.length);
   r.fields.pos.v = 0;
   r.ctl.play();
   r.frame();
-  r.st.refuse = 'publish refused';
+  r.st.refuse = 'SOURCE_CONFLICT';
   r.frame();
   ok('fatal refusal: paused, held, the words', r.video.paused && r.ctl.state.phase === 'held'
-    && r.ctl.state.status.text === 'publish refused' && r.ctl.state.status.tone === 'warn');
+    && r.ctl.state.status.text === 'SOURCE_CONFLICT' && r.ctl.state.status.tone === 'warn');
+  const nf = r.sent.length;
   r.st.refuse = null;
   for (let i = 0; i < 5; i++) r.frame();
-  ok('fatal refusal: no auto-resume', r.video.paused);
+  ok('fatal refusal: no hold after it, no auto-resume', r.video.paused && r.sent.length === nf, r.sent.slice(nf));
 
   r.fields.pos.v = 100;
   r.st.refuse = 'waiting for the stream grant';
@@ -256,6 +259,24 @@ const real = (sent) => sent.filter((l) => l.length);
   ok('Motion off: video plays, nothing sent', !r.video.paused && r.sent.length === 0, r.sent);
   r.ctl.setMotion(true);
   ok('Motion on mid-play: paused, Play prerolls later', r.video.paused && r.ctl.state.phase === 'ready' && r.motion.get('motion') === true);
+}
+
+{
+  // Repairs and the speed limit reach the status slot.
+  const r = rig();
+  const fixed = parseFunscript({ actions: [{ at: 500, pos: 250 }, { at: 0, pos: -5 }, { at: 'x', pos: 1 }, { at: 1000, pos: 50 }] });
+  r.ctl.load({ key: 'stash:3', title: 'Three', stream: 'http://x/3' }, fixed);
+  await flush();
+  ok('parse notes in the slot', r.ctl.state.status.text === '1 invalid action dropped, 2 positions clamped' && r.ctl.state.status.tone === '',
+    r.ctl.state.status.text);
+  // script: 0 <-> 100 every 500 ms = 2 norm/s; 100 mm window: 200 mm/s
+  r.ctl.load({ key: 'stash:4', title: 'Four', stream: 'http://x/4' }, script);
+  await flush();
+  r.fields.lo = { v: 0, unitId: 0 }; r.fields.hi = { v: 100, unitId: 0 }; r.fields.vmax = { v: 150, unitId: 1 };
+  r.ctl.update();
+  ok('over the speed limit: words in the slot, warn', r.ctl.state.status.text === COPY.overLimit && r.ctl.state.status.tone === 'warn');
+  r.ctl.setT({ lo: 0, hi: 0.7 });
+  ok('a range that brings it under clears it', r.ctl.state.status.text === '' && r.ctl.canPlay(), r.ctl.state.status.text);
 }
 
 console.log(fails ? '\nFAIL -- ' + fails + ' check(s)' : '\nPASS -- funscript card logic');
