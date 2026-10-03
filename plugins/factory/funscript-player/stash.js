@@ -133,7 +133,8 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
       let res;
       // The host's own refusals (api.net.fetch: scheme, hub origin, no shell) keep their words.
       try { res = await fetch(url, ac ? { ...init, signal: ac.signal } : init); } catch (e) {
-        fail(/^net\.fetch/.test(e && e.message) ? e.message : COPY.noAnswer);
+        const m = (e && e.message) || '';
+        fail(/^net\.fetch/.test(m) ? m : COPY.noAnswer + (m ? ' (' + scrub(m).slice(0, 80) + ')' : ''));
       }
       if (res.status === 401 || res.status === 403) fail(COPY.badKey);
       if (!res.ok) fail(COPY.refused + res.status);

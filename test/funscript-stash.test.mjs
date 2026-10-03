@@ -162,7 +162,7 @@ try {
     base: fake.url, key: KEY, timeoutMs: 30 });
   ok('the timeout aborts the request', say(await rejects(abortable.version())) === 'no answer from Stash' && signalled);
   const dead = createStash({ fetch: () => Promise.reject(new TypeError('fetch failed ' + KEY)), base: 'http://127.0.0.1:1', key: KEY });
-  ok('a refused connection: no answer from Stash', say(await rejects(dead.version())) === 'no answer from Stash');
+  ok('a refused connection: no answer from Stash, with the cause, key scrubbed', say(await rejects(dead.version())) === 'no answer from Stash (fetch failed ***)');
   const hub = createStash({ fetch: async () => { throw new Error('net.fetch: the hub is reached through Valence'); }, base: fake.url, key: KEY });
   ok('the host refusal keeps its words', say(await rejects(hub.version())) === 'net.fetch: the hub is reached through Valence');
   ok('the key reaches no error message', errs.every((m) => !m.includes(KEY)));

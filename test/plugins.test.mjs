@@ -712,7 +712,8 @@ console.log('(j) net.fetch, CSP and the http capability');
     csp['media-src'] === "'self' blob: http: https:" && csp['img-src'] === "'self' data: blob: http: https:"
     && csp['connect-src'] === "'self' ipc: http://ipc.localhost ws:", JSON.stringify(csp));
   const cap = json('../src-tauri/capabilities/default.json').permissions.find((p) => p.identifier === 'http:default');
-  ok('the http capability allows http and https', ['http://**', 'https://**'].every((u) => cap.allow.some((a) => a.url === u)));
+  ok('the http capability allows http and https on any port (a pattern without :* matches only the default port)',
+    ['http://**:*', 'https://**:*'].every((u) => cap.allow.some((a) => a.url === u)));
 }
 
 // ---- (f) tier-2 replace mode (ph-vdk.29, DESIGN §3 "renders instead") -----

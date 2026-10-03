@@ -253,8 +253,10 @@ section (DESIGN §10.11) and appears once a hub's catalog is adopted.
 carries `blob:` for this loader; drop it and every plugin shows an `import:`
 error on its row. A plugin runs under the page's policy, so `connect-src`
 (`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
-through `net.fetch` (the `http:default` capability allows `http://**` and
-`https://**`) and loopback TCP through `net.listenTcp`. `img-src` and
+through `net.fetch` (the `http:default` capability allows `http://**:*` and
+`https://**:*`; the `:*` is load-bearing, a URLPattern without a port
+matches only the scheme's default port, so `http://**` refused Stash on
+30198) and loopback TCP through `net.listenTcp`. `img-src` and
 `media-src` take `blob:`, `http:` and `https:`, so a plugin plays a local file
 from an object URL or media from a library by URL (ruling R-B); `media-src`
 otherwise falls back to `default-src 'self'` and nothing plays. Plugin files

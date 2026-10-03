@@ -16,7 +16,7 @@ Decisions below.
 | id | flag | what | without it |
 |---|---|---|---|
 | R-A | CANON FLAG, DESIGN §2 "no HTTP backdoors" | `api.net.fetch(url, init)`, permission `net.fetch`, through the shell's tauri-plugin-http; refuses the connected hub's own origins, so it never becomes a machine path | no Stash: the CSP refuses a plugin's page fetch (`connect-src`), and Stash is not known to answer a CORS preflight |
-| R-B | config | CSP `media-src 'self' blob: http: https:` and `img-src` + `http: https:`; http capability + `https://**` | `media-src` falls back to `default-src 'self'`: not even a local file (blob:) plays in the shell |
+| R-B | config | CSP `media-src 'self' blob: http: https:` and `img-src` + `http: https:`; http capability + `https://**:*` (`:*`: any port) | `media-src` falls back to `default-src 'self'`: not even a local file (blob:) plays in the shell |
 | R-C | CANON FLAG, PLUGINS.md "manifest plus one module" | a multi-module factory plugin; Vite bundles the siblings; an override copy in the plugins folder must be bundled into one file first | the plugin builder inlines the modules into `index.js` at the end (the import graph has no cycles and no import-time side effects) |
 | R-D | pushback on the computed task | permissions `motion` + `net.fetch`, not `intent`: the player writes no field, and declaring an unused permission defeats the honesty model. The manifest gets no `panes` key: the schema has none; registration is code (`registerHero`, `registerSettings`) | — |
 
