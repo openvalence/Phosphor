@@ -10,10 +10,11 @@
  *              each is refused while the other runs, the owner named from
  *              control-owner's labels (stop Advanced first, and the reverse)
  *   handles    a held deep drag writes once on release, pending on the
- *              handle, then the echo; snapped and bounded; the numeric twin
- *              shows the same field; a refusal reads on the handle; speed
- *              and accel handles write the right direction; shift+arrow
- *              nudges ten steps in one write
+ *              handle and in words in the plot's note, then the echo;
+ *              snapped and bounded; the numeric twin shows the same field;
+ *              a refusal reads on the handle and the note; speed and accel
+ *              handles write the right direction; shift+arrow nudges ten
+ *              steps in one write
  *   rhythm     the amp fader and a step handle write their fields in whole
  *              strokes; the staircase follows the echo
  *   presets    a dropdown of named slots; choose loads, Save prompts a name
@@ -26,8 +27,8 @@
  *   link       off by default; on from 40/100/100 writes 80/50/50 in one
  *              intent; a linked drag moves the peak and holds 1/in + 1/out;
  *              unlink writes nothing; at master 100 nothing, and the tooltip
- *   labels     no handle label on the stroke or staircase line, none backed,
- *              in five base states
+ *   labels     no handle label on the stroke, the staircase or a guide line,
+ *              none backed, in six base states
  *   inputs     the toggle right of the preset box, hidden by default and
  *              persisted; the strip above stays; handles keep the keys
  *   mod tabs   the switch writes amount 0 and restores it; the trash resets
@@ -38,6 +39,15 @@
  *              it collapses; the second enabled_mask grays and ungrays them;
  *              the plan strip reads the owner and hold on a hold sample and
  *              stays live through it
+ *   review     (2026-10-02) Speed wears the host's field ring: pending,
+ *              overdue and the echo move no box, overdue is amber and never
+ *              calmer than pending; a handle label holds its place through
+ *              the ladder; a plus sits clear of labels, marks and the curve;
+ *              modifier graph texts never overlap at 390 and 844 wide, the
+ *              amp handle inside; focus, selection and pressed wear
+ *              --highlight (focus ring 3:1 on Paper), handles and tabs
+ *              hover; one case per role; the unit as the host draws it; one
+ *              switch design; tabs never truncate; the wave says stopped
  *
  * Live mode (--live): against valencesim, the deep drag (echo and numeric
  * twin), the link rescale (one intent, keys 2, 5, 6, echoed), Advanced
@@ -60,6 +70,7 @@ import { toHex } from '../../Valence/clients/js/sha256.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
 import { linkRescale, linkSpan, linkPartner, DWELL_CAP } from '../plugins/factory/advanced-penetration/index.js';
+import { THEMES } from '../src/model/theme.js';
 
 const args = process.argv.slice(2);
 const LIVE = args.includes('--live');
@@ -265,20 +276,21 @@ const browser = await chromium.launch();
 
 // Every intent the page sends, decoded off the socket (fake hub and live alike).
 const wire = [];
-async function open({ disabled = false, roles = 2, coarse = false, inputs = true } = {}) {
+async function open({ disabled = false, roles = 2, coarse = false, inputs = true, size = null, theme = null } = {}) {
   hub.roles = roles;
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: SHOT ? 2400 : 1000 }, hasTouch: coarse });
+  const ctx = await browser.newContext({ viewport: size || { width: 1440, height: SHOT ? 2400 : 1000 }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   if (LIVE) await ctx.addInitScript(HTTP_STUB);
-  await ctx.addInitScript(([etag, bytes, live, disabled, port, inputs]) => {
+  await ctx.addInitScript(([etag, bytes, live, disabled, port, inputs, theme]) => {
     try {
       if (inputs && !sessionStorage.getItem('ap.seeded')) { localStorage.setItem('phosphor.advpen.inputs', '1'); sessionStorage.setItem('ap.seeded', '1'); }
       if (!live) localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
       if (live) localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:' + port, host: '127.0.0.1', port }]));
       else localStorage.setItem('shell_host', '127.0.0.1');
       localStorage.setItem('phosphor.plugins.disabled', JSON.stringify(disabled ? ['advanced-penetration'] : []));
+      if (theme) localStorage.setItem('phosphor.theme', JSON.stringify(theme));
     } catch (e) { /* none */ }
-  }, [ETAG, toHex(CAT), LIVE, disabled, SIM_PORT, inputs]);
+  }, [ETAG, toHex(CAT), LIVE, disabled, SIM_PORT, inputs, theme]);
   if (!LIVE) await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   page.on('websocket', (ws) => ws.on('framesent', ({ payload }) => {
@@ -291,7 +303,9 @@ async function open({ disabled = false, roles = 2, coarse = false, inputs = true
   }));
   page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) ok('no page error', false, String(e)); });
   await page.goto('http://127.0.0.1:' + srv.address().port + '/');
-  const up = await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).then(() => true).catch(() => false);
+  // A phone width has no rail: its category tabs carry the same ids.
+  const up = await page.waitForSelector(size ? '[role=tab][data-tab-id^="cat"]' : 'nav.rail [role=tab]', { timeout: 15000 })
+    .then(() => true).catch(() => false);
   await page.waitForTimeout(600);
   return { ctx, page, up };
 }
@@ -516,8 +530,11 @@ if (LIVE) {
     const keys = await page.$$eval('main.pane .ap .ap-stroke .ap-h:not([hidden])', (hs) => hs.map((e) => e.dataset.key));
     ok('map: the stroke editor carries deep, shallow, in v, out v and both accel diamonds',
       ['deep', 'shallow', 'vin', 'vout', 'ain', 'aout'].every((k) => keys.includes(k)), keys);
-    ok('map: handles are labeled by value', /^deep \d/.test(await tagOf(handle(page, 'deep'))) && /^in v\d/.test(await tagOf(handle(page, 'vin')))
-      && /^a\d/.test(await tagOf(handle(page, 'ain'))));
+    const forms = {};
+    for (const k of ['deep', 'shallow', 'vin', 'vout', 'ain', 'aout']) forms[k] = await tagOf(handle(page, k));
+    ok('map: one label form, name then value (deep, shallow, in, out, in accel, out accel)', /^deep \d+$/.test(forms.deep)
+      && /^shallow \d+$/.test(forms.shallow) && /^in \d+$/.test(forms.vin) && /^out \d+$/.test(forms.vout)
+      && /^in accel \d+$/.test(forms.ain) && /^out accel \d+$/.test(forms.aout), forms);
     const mtabs = await page.$$eval('main.pane .ap .ap-mtabs [role=tab]', (bs) => bs.map((b) => b.textContent));
     ok('map: one rhythm tab per driven control, in base order, the dwells last', mtabs.join()
       === 'Max depth,Min depth,In speed,Out speed,In accel,Out accel,Crest dwell,Trough dwell', mtabs);
@@ -534,11 +551,14 @@ if (LIVE) {
     ok('drag: one write per release, never one per move', sent.length === 1 && wrote.length === 1, sent);
     ok('drag: snapped to the step, inside the bounds', wrote.length === 1 && Number.isInteger(wrote[0].val[MAXD.key])
       && wrote[0].val[MAXD.key] > 10 && wrote[0].val[MAXD.key] <= 100, wrote[0] && wrote[0].val);
-    ok('drag: pending on the handle, in words', (await deep.getAttribute('data-status')) === 'pending' && /waiting/.test(await tagOf(deep)), await tagOf(deep));
+    const strokeNote = page.locator('main.pane .ap .ap-stroke + .ap-note');
+    const v = wrote[0] && wrote[0].val[MAXD.key];
+    ok('drag: pending on the handle, in words in the plot\'s note', (await deep.getAttribute('data-status')) === 'pending'
+      && (await strokeNote.textContent()) === 'deep ' + v + ' · waiting' && (await tagOf(deep)) === 'deep ' + v, [await strokeNote.textContent(), await tagOf(deep)]);
     await release();
     await page.waitForTimeout(250);
-    const v = wrote[0] && wrote[0].val[MAXD.key];
-    ok('drag: the echo confirms on the handle', (await deep.getAttribute('data-status')) === 'confirmed' && (await tagOf(deep)) === 'deep ' + v, await tagOf(deep));
+    ok('drag: the echo confirms on the handle, the note clears', (await deep.getAttribute('data-status')) === 'confirmed' && (await tagOf(deep)) === 'deep ' + v
+      && (await strokeNote.textContent()) === '', await tagOf(deep));
     ok('unify: the numeric twin shows the same field', Number(await numIn(page, 'Max depth').inputValue()) === v);
     ok('drag: the handle moved up with the value', (await deep.boundingBox()).y < y0 - 20);
 
@@ -547,8 +567,9 @@ if (LIVE) {
     await dragBy(page, deep, 0, 30);
     await page.waitForTimeout(250);
     hub.mode = 'echo';
-    ok('refusal: amber ladder and the word on the handle', (await deep.getAttribute('data-status')) === 'fault' && /refused/.test(await tagOf(deep))
-      && (await tagOf(deep)).startsWith('deep ' + v), await tagOf(deep));
+    ok('refusal: amber on the handle, the word in the note, the label keeps the value', (await deep.getAttribute('data-status')) === 'fault'
+      && /^deep \d+ · refused$/.test(await strokeNote.textContent()) && (await strokeNote.getAttribute('data-slot')) === 'fault'
+      && (await tagOf(deep)) === 'deep ' + v, [await strokeNote.textContent(), await tagOf(deep)]);
 
     // ---- speed and accel handles
     const vin = handle(page, 'vin');
@@ -803,6 +824,13 @@ if (LIVE) {
           const m = p.getScreenCTM(), L = p.getTotalLength();
           for (let s = 0; s <= L; s += 1) { const q = p.getPointAtLength(s); pts.push([m.a * q.x + m.c * q.y + m.e, m.b * q.x + m.d * q.y + m.f]); }
         }
+        // The guides (0 and 100, the stair's top, axis and track) are lines a label keeps off too.
+        for (const l of ed.querySelectorAll('line:is(.guide, .grid):not([hidden])')) {
+          const m = l.getScreenCTM(), [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((a) => +l.getAttribute(a));
+          const a = [m.a * x1 + m.c * y1 + m.e, m.b * x1 + m.d * y1 + m.f], b = [m.a * x2 + m.c * y2 + m.e, m.b * x2 + m.d * y2 + m.f];
+          const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
+          for (let i = 0; i <= n; i++) pts.push([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n]);
+        }
         for (const t of ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')) {
           if (!t.textContent) continue;
           const r = t.getBoundingClientRect();
@@ -812,12 +840,13 @@ if (LIVE) {
       }
       return hits;
     });
-    const STATES = [null, [85, 0, 100, 50, 40, 40], [50, 30, 20, 100, 0, 100], [100, 0, 1, 100, 100, 0], [30, 25, 100, 5, 0, 0]];
+    // The review state (shallow 10 just above the 0 guide) among them.
+    const STATES = [null, [85, 0, 100, 50, 40, 40], [50, 30, 20, 100, 0, 100], [100, 0, 1, 100, 100, 0], [30, 25, 100, 5, 0, 0], [85, 10, 70, 45, 30, 60]];
     for (const st of STATES) {
       if (st) for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, st[i]);
       await page.waitForTimeout(200);
       const hits = await onLine();
-      ok('labels: none on the stroke or staircase line, none backed (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
+      ok('labels: none on the stroke, the staircase or a guide, none backed (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
       if (SHOT && st && st[0] === 85) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
     }
     await page.click('main.pane .ap .ap-mtabs [role=tab]:has-text("Max depth")');
@@ -884,14 +913,15 @@ if (LIVE) {
     const sw = tab.locator('.ap-mon'), trash = tab.locator('.ap-mtrash');
     const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(250); };
     const order = await tab.evaluate((t) => [...t.children].map((c) => c.className || c.getAttribute('role')).join());
-    ok('mod tab: switch left, name with its dot, trash right', order === 'ap-mon,tab,ap-mtrash', order);
-    ok('mod tab: at the defaults, off and no trash', (await sw.getAttribute('aria-checked')) === 'false'
+    ok('mod tab: the host switch left, name with its dot, trash right', order === 'og-switch ap-mon,tab,ap-mtrash', order);
+    const isOn = () => sw.locator('input[role=switch]').isChecked();
+    ok('mod tab: at the defaults, off and no trash', !(await isOn())
       && (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'hidden');
     let n = hub.intents.length;
     await sw.click();
     await page.waitForTimeout(250);
     ok('mod switch: on with nothing kept writes 100', hub.intents.length - n === 1 && hub.intents[n].val[AMT.key] === 100
-      && (await sw.getAttribute('aria-checked')) === 'true', hub.intents.slice(n));
+      && await isOn(), hub.intents.slice(n));
     await typeIn('Amp', 60);
     n = hub.intents.length;
     await sw.click();
@@ -910,7 +940,7 @@ if (LIVE) {
       && !(await handle(page, 'hold').count()) && !(await handle(page, 'rest').count()));
     const guides = await page.$$eval('main.pane .ap .ap-stair:not([hidden]) line.vguide', (ls) => ls.filter((l) => l.closest('.ap-mview').isConnected)
       .map((l) => [+l.getAttribute('y1'), +l.getAttribute('y2')]));
-    ok('holds: gray guides span the plot, the top gap equal to the bottom one', guides.length === 2 && guides.every(([a, b]) => a === 170 - b), guides);
+    ok('holds: gray guides span the plot, the top gap equal to the bottom one', guides.length === 2 && guides.every(([a, b]) => a === 180 - b), guides);
     if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('5-holds-plus') });
     n = hub.intents.length;
     await plusMin.click();
@@ -940,7 +970,7 @@ if (LIVE) {
     ok('mod trash: one intent with all six keys at their defaults', tw.length === 1 && MODKEYS.every((key) => key in tw[0].val)
       && tw[0].val[AMT.key] === 0 && tw[0].val[HOLD.key] === 0, tw);
     ok('mod trash: hidden again, the switch off', (await trash.evaluate((e) => getComputedStyle(e).visibility)) === 'hidden'
-      && (await sw.getAttribute('aria-checked')) === 'false');
+      && !(await isOn()));
     await ctx.close();
   }
 
@@ -1047,6 +1077,238 @@ if (LIVE) {
     await page.locator('main.pane .ap .ap-run:visible').click();
     await page.waitForTimeout(250);
     await ctx.close();
+  }
+
+  // ---- review fixes (2026-10-02 design review) -----------------------------
+  // The review's state: deep 85, shallow 10, in 70, out 45, accel 30/60, a 0.5 crest dwell, a Max depth rhythm.
+  const MD = byName('pattern-adv-mod-depth1');
+  const REVIEW = { [uidOf(ADV, 'master')]: 60, [uidOf(ADV, 'max_depth')]: 85, [uidOf(ADV, 'min_depth')]: 10, [uidOf(ADV, 'in_speed')]: 70,
+    [uidOf(ADV, 'out_speed')]: 45, [uidOf(ADV, 'in_accel')]: 30, [uidOf(ADV, 'out_accel')]: 60, [uidOf(ADV, 'dwell_crest')]: 0.5,
+    [uidOf(ADV, 'dwell_trough')]: 0, [uidOf(MD, 'amount')]: 40, [uidOf(MD, 'in_wait')]: 2, [uidOf(MD, 'in_step')]: 1, [uidOf(MD, 'out_step')]: 2 };
+  /** The hub at the catalog defaults, then `vals` on top. */
+  const hubAt = (vals = {}) => {
+    for (const k of Object.keys(hub.values)) if ([ADV.id, MD.id].some((id) => k.startsWith(id + ':')) && !k.endsWith(':running')) delete hub.values[k];
+    Object.assign(hub.values, vals);
+  };
+  /** A token's computed color, through a probe. */
+  const tok = (page, name) => page.evaluate((n) => {
+    const p = document.createElement('i'); p.style.color = 'var(' + n + ')'; document.body.append(p);
+    const c = getComputedStyle(p).color; p.remove(); return c;
+  }, name);
+  /** WCAG contrast of two computed rgb() colors. */
+  const contrast = (a, b) => {
+    const lum = (c) => c.match(/[\d.]+/g).slice(0, 3).map(Number).map((v) => v / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+
+  {
+    // ph-rvq: Speed wears the host's field ring; pending, overdue and the echo move no box. ph-8qc: a label holds its place.
+    hubAt(REVIEW);
+    const { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const ctl = page.locator('main.pane .ap .ap-ctl').first();
+    // Boxes against the card's own top, so a pane scroll is not a move.
+    const boxes = () => page.evaluate(() => {
+      const o = document.querySelector('main.pane .ap').getBoundingClientRect();
+      return ['.ap-ctl', 'select[aria-label="Preset"]', '.ap-stroke', '.ap-run', '.ap-wave'].map((s) => {
+        const r = document.querySelector('main.pane .ap ' + s).getBoundingClientRect();
+        return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join();
+      }).join(' | ');
+    });
+    // The ring's three 1 px shadows, in style.css order: amber, intent, reality.
+    const look = () => ctl.evaluate((f) => {
+      const n = f.querySelector('.ap-note'), cs = getComputedStyle(f);
+      const a = [...getComputedStyle(f, '::after').boxShadow.matchAll(/rgba?\(([^)]+)\)/g)].slice(0, 3)
+        .map((m) => { const v = m[1].split(/[\s,/]+/).map(Number); return v.length > 3 ? v[3] : 1; });
+      return { st: f.dataset.shadow, amber: a[0], intent: a[1], reality: a[2], note: n.textContent, color: getComputedStyle(n).color,
+        border: cs.borderTopStyle + ' ' + cs.borderTopWidth };
+    });
+    const [INTENT, WARN] = [await tok(page, '--intent'), await tok(page, '--warn')];
+    const b0 = await boxes(), rest = await look();
+    hub.mode = 'hold';
+    await setRange(page.locator('main.pane .ap input[type=range][aria-label="Speed"]'), 30);
+    await page.waitForTimeout(400);
+    const b1 = await boxes(), pend = await look();
+    if (SHOT) await ctl.screenshot({ path: shot('r1-speed-pending') });
+    await page.waitForTimeout(900);
+    const b2 = await boxes(), over = await look();
+    if (SHOT) await ctl.screenshot({ path: shot('r1-speed-overdue') });
+    await release();
+    await page.waitForTimeout(400);
+    const b3 = await boxes(), done = await look();
+    ok('speed: pending, overdue and the echo move no box (the control, the preset row, the plots, Start)', b1 === b0 && b2 === b0 && b3 === b0, [b0, b1, b2, b3]);
+    ok('speed: no state draws a border on the borderless control', [rest, pend, over, done].every((s) => /^none|0px$/.test(s.border)),
+      [rest.border, pend.border, over.border]);
+    ok('speed: pending wears the field ring in intent and says waiting in intent', pend.st === 'pending' && pend.intent > 0.2
+      && pend.note === 'waiting' && pend.color === INTENT, pend);
+    ok('speed: overdue turns the ring and the words amber, never calmer than pending', over.st === 'overdue' && over.amber > 0.3
+      && over.amber >= pend.intent && over.note === 'still waiting' && over.color === WARN, over);
+    ok('speed: the echo lights the afterglow and says confirmed', done.st === 'confirmed' && done.reality > 0.2 && done.note === 'confirmed', done);
+    // ph-e31: the value then the unit, the host's Field chip (format.js): no space glyph, a 3 px gap, padded off the edge.
+    const unit = await ctl.locator('output').evaluate((o) => ({ text: o.firstChild.textContent, unit: o.querySelector('.unit')?.textContent,
+      gap: getComputedStyle(o.querySelector('.unit')).marginLeft, pad: getComputedStyle(o).paddingRight }));
+    ok('unit: Speed reads the value, then the unit 3 px off, inside a padded chip', unit.text === '30' && unit.unit === '%' && unit.gap === '3px'
+      && unit.pad === '6px', unit);
+
+    // ph-8qc: the deep label holds its place through pending, overdue and the echo; the words ride the note.
+    const deep = handle(page, 'deep');
+    const tagBox = () => deep.locator('.ap-tag').evaluate((t) => { const r = t.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(); });
+    const note = page.locator('main.pane .ap .ap-stroke + .ap-note');
+    hub.mode = 'hold';
+    await dragBy(page, deep, 0, -30);
+    const t1 = await tagBox(), n1 = await note.textContent();
+    ok('handles: pending draws no box around a handle', (await deep.evaluate((e) => getComputedStyle(e).borderTopStyle)) === 'none'
+      && (await deep.getAttribute('data-status')) === 'pending');
+    await page.waitForTimeout(900);
+    const t2 = await tagBox(), n2 = await note.textContent(), s2 = await note.getAttribute('data-slot');
+    await release();
+    await page.waitForTimeout(300);
+    const t3 = await tagBox(), n3 = await note.textContent();
+    ok('labels: a handle label holds its place through pending, overdue and the echo', t1 === t2 && t2 === t3, [t1, t2, t3]);
+    ok('labels: the ladder words ride the plot\'s note, amber once overdue, cleared by the echo', /^deep \d+ · waiting$/.test(n1)
+      && /^deep \d+ · still waiting$/.test(n2) && s2 === 'overdue' && n3 === '', [n1, n2, n3]);
+
+    // ph-97t: the told-wave says stopped, and clears it while Advanced runs.
+    const idle = page.locator('main.pane .ap .ap-wave .ap-idle');
+    const stopped = await idle.isVisible() && (await idle.textContent()) === 'stopped';
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(300);
+    const running = !(await idle.isVisible());
+    await page.locator('main.pane .ap .ap-run:visible').click();
+    await page.waitForTimeout(300);
+    const again = await idle.isVisible(), b4 = await boxes();
+    ok('wave: stopped reads "stopped" on a flat line, running clears it, nothing moves', stopped && running && again && b4 === b0,
+      { stopped, running, again, b0, b4 });
+    await ctx.close();
+  }
+
+  {
+    // ph-ojt: a dwell plus never sits on a label, a handle or the curve (catalog defaults, then the review state).
+    const plusClear = (page) => page.evaluate(() => {
+      const ed = document.querySelector('main.pane .ap .ap-stroke');
+      const R = (e) => e.getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const dots = [...ed.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map((i) => [i.parentElement.getAttribute('aria-label'), R(i)]);
+      const tags = [...ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')].filter((t) => t.textContent).map((t) => [t.textContent, R(t)]);
+      const marks = [...ed.querySelectorAll('.ap-h:not([hidden])')].map((h) => {
+        const r = R(h), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        return [h.dataset.key, { left: x - 10, right: x + 10, top: y - 10, bottom: y + 10 }];
+      });
+      const pts = [];
+      for (const p of ed.querySelectorAll('path.curve[d]:not([d=""])')) {
+        const m = p.getScreenCTM(), L = p.getTotalLength();
+        for (let s = 0; s <= L; s += 1) { const q = p.getPointAtLength(s); pts.push([m.a * q.x + m.c * q.y + m.e, m.b * q.x + m.d * q.y + m.f]); }
+      }
+      return { n: dots.length, hits: dots.flatMap(([l, d]) => [...tags.filter(([, t]) => hit(d, t)).map(([t]) => l + ' x ' + t),
+        ...marks.filter(([, m]) => hit(d, m)).map(([k]) => l + ' x handle ' + k),
+        ...(pts.some(([x, y]) => x >= d.left && x <= d.right && y >= d.top && y <= d.bottom) ? [l + ' x curve'] : [])]) };
+    });
+    hubAt();
+    let { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const atDefaults = await plusClear(page);
+    if (SHOT) await page.locator('main.pane .ap .ap-stroke').screenshot({ path: shot('r2-plus-defaults') });
+    ok('plus: at the catalog defaults both pluses sit clear of the labels, the handles and the curve', atDefaults.n === 2 && atDefaults.hits.length === 0, atDefaults);
+    await ctx.close();
+    hubAt(REVIEW);
+    ({ ctx, page } = await open({ inputs: false, theme: THEMES.find((t) => t.id === 'paper') }));
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const atReview = await plusClear(page);
+    ok('plus: in the review state the trough plus sits clear of the in-accel diamond and its label', atReview.n === 1 && atReview.hits.length === 0, atReview);
+
+    // ph-ckg, ph-1fo on Paper: focus, selection and pressed wear --highlight; the focus ring clears 3:1; handles and tabs hover.
+    const HL = await tok(page, '--highlight'), LINE4 = await tok(page, '--line-4');
+    const card = await page.locator('main.pane .ap').first().evaluate((e) => getComputedStyle(e.closest('.surface-card') || document.body).backgroundColor);
+    const css = (sel, prop, pseudo = null) => page.locator(sel).first().evaluate((e, [p, ps]) => getComputedStyle(e, ps)[p], [prop, pseudo]);
+    const sel = [await css('main.pane .ap-tabs button[aria-selected=true]', 'borderTopColor'),
+      await css('main.pane .ap .ap-mtab:has([aria-selected=true])', 'borderTopColor')];
+    ok('highlight: the open tab and the open modifier tab wear --highlight', sel.every((c) => c === HL), [sel, HL]);
+    await page.locator('main.pane .ap .ap-inputs').click();
+    await page.waitForTimeout(150);
+    ok('highlight: a pressed tool wears --highlight', (await css('main.pane .ap .ap-inputs[aria-pressed=true]', 'borderTopColor')) === HL);
+    await page.locator('main.pane .ap .ap-inputs').click();
+    await handle(page, 'deep').focus();
+    await page.keyboard.press('Shift');
+    const ring = { w: await css('main.pane .ap .ap-h[data-key="deep"]', 'outlineWidth', '::after'),
+      s: await css('main.pane .ap .ap-h[data-key="deep"]', 'outlineStyle', '::after'),
+      c: await css('main.pane .ap .ap-h[data-key="deep"]', 'outlineColor', '::after') };
+    ok('focus: a handle wears the house ring, 2 px solid --highlight, at least 3:1 on the Paper card', ring.w === '2px' && ring.s === 'solid'
+      && ring.c === HL && contrast(ring.c, card) >= 3, { ...ring, card, ratio: +contrast(ring.c, card).toFixed(2) });
+    if (SHOT) await page.locator('main.pane .ap .ap-stroke').screenshot({ path: shot('r3-focus-paper') });
+    await handle(page, 'vin').hover();
+    await page.waitForTimeout(100);
+    ok('hover: a handle shows a 1 px --highlight ring', (await css('main.pane .ap .ap-h[data-key="vin"]', 'outlineWidth', '::after')) === '1px'
+      && (await css('main.pane .ap .ap-h[data-key="vin"]', 'outlineColor', '::after')) === HL);
+    const mt = page.locator('main.pane .ap .ap-mtab').nth(2);
+    const restB = await mt.evaluate((e) => getComputedStyle(e).borderTopColor);
+    await mt.hover();
+    await page.waitForTimeout(100);
+    const hovB = await mt.evaluate((e) => getComputedStyle(e).borderTopColor);
+    ok('hover: a modifier tab takes the house hover edge (--line-4)', restB !== hovB && hovB === LINE4, [restB, hovB, LINE4]);
+
+    // ph-ytq: one case per role, as the shell dresses it.
+    const tt = async (s) => css(s, 'textTransform');
+    const cases = { tab: await tt('main.pane .ap-tabs button'), mtab: await tt('main.pane .ap .ap-mtab [role=tab]'), run: await tt('main.pane .ap .ap-run'),
+      head: await tt('main.pane .ap h4'), label: await tt('main.pane .ap .ap-ctl label > span') };
+    ok('case: controls sentence case, the section head uppercase, field labels lowercase', cases.tab === 'none' && cases.mtab === 'none'
+      && cases.run === 'none' && cases.head === 'uppercase' && cases.label === 'lowercase', cases);
+
+    // ph-avq: the modifier switch is the host's og-switch track, compact.
+    const sw = await page.evaluate(() => {
+      const t = (s) => { const e = document.querySelector(s), cs = getComputedStyle(e); return { w: e.offsetWidth, r: cs.borderTopLeftRadius, c: cs.borderTopColor }; };
+      return { mod: t('main.pane .ap .ap-mtab .og-switch.ap-mon .track'), bg: t('main.pane .ap .ap-sw .track') };
+    });
+    ok('switch: the modifier switch is the og-switch track, compact, on in --reality', sw.mod.r === sw.bg.r && sw.mod.w < sw.bg.w
+      && sw.mod.c === await tok(page, '--reality'), sw);
+    await ctx.close();
+  }
+
+  {
+    // ph-baq, ph-1tl: the modifier graph at phone widths; ph-20a: no tab truncates at desktop widths.
+    hubAt(REVIEW);
+    for (const [w, h] of [[390, 844], [844, 390], [1280, 800], [1920, 1080]]) {
+      const { ctx, page, up } = await open({ inputs: false, size: { width: w, height: h } });
+      await toPatternPage(page);
+      await toAdvanced(page);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => {
+        const ed = document.querySelector('main.pane .ap .ap-stair'), b = ed.getBoundingClientRect();
+        const R = (e) => e.getBoundingClientRect();
+        const hit = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom;
+        const texts = [...[...ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')].filter((t) => t.textContent),
+          ...ed.querySelectorAll(':scope > .ap-seg:not([hidden])')].map((t) => [t.textContent, R(t)]);
+        const clash = texts.flatMap(([s, a], i) => texts.slice(i + 1).filter(([, c]) => hit(a, c)).map(([u]) => s + ' x ' + u));
+        const amp = R(ed.querySelector('.ap-h[data-key="amp"]'));
+        const spans = [...document.querySelectorAll('main.pane .ap .ap-mtab [role=tab] > span')];
+        const lh = (e) => parseFloat(getComputedStyle(e).lineHeight);
+        const tabs = [...document.querySelectorAll('main.pane .ap .ap-mtab')].map(R);
+        const sel = document.querySelector('main.pane .ap .ap-mtab:has([aria-selected=true])');
+        return { clash, ampIn: amp.left >= b.left && amp.right <= b.right && amp.top >= b.top && amp.bottom <= b.bottom,
+          cut: spans.filter((s) => s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1).map((s) => s.textContent),
+          lines: Math.max(...spans.map((s) => Math.round(s.clientHeight / lh(s)))),
+          hint: getComputedStyle(document.querySelector('main.pane .ap .ap-hint')).display,
+          head: (() => { const rg = document.createRange(); rg.selectNodeContents(document.querySelector('main.pane .ap h4'));
+            return new Set([...rg.getClientRects()].map((q) => Math.round(q.top))).size; })(),
+          paired: tabs.length > 1 && Math.round(tabs[0].top) === Math.round(tabs[1].top),
+          gap: Math.round(b.top - R(sel).bottom) };
+      });
+      const tag = w + 'x' + h;
+      if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('r4-rhythm-' + tag) });
+      ok('stair ' + tag + ': no two texts overlap, the amp handle inside the plot', up && r.clash.length === 0 && r.ampIn, r);
+      ok('tabs ' + tag + ': no modifier tab name truncates' + (w >= 1280 ? ', each on one line' : ''), r.cut.length === 0
+        && (w < 1280 || r.lines === 1), r);
+      if (w === 390) {
+        ok('narrow 390: the heading on one line, the hint dropped, the tabs paired, the graph close under them', r.head === 1
+          && r.hint === 'none' && r.paired && r.gap < 260, r);
+      }
+      await ctx.close();
+    }
+    hubAt();
   }
 
   {

@@ -595,6 +595,14 @@ console.log('(h) editor geometry');
   ok('labels: a neighbor flips side rather than overlap', !(ra.x < rb.x + 60 && rb.x < ra.x + 60 && ra.y < rb.y + 14 && rb.y < ra.y + 14) && !two[1].bg, two);
   const boxed = placeLabels([{ x: 20, y: 20, w: 60, h: 14 }], [densify([[0, 0], [40, 40]]), densify([[0, 40], [40, 0]]), densify([[0, 20], [40, 20]]), densify([[20, 0], [20, 40]])], [], 40, 40);
   ok('labels: no clear side, the clearest wears a backing', boxed[0].bg);
+  // Boxed in at the near gap by two guides and two posts: one label height further out, unbacked.
+  const fence = [[[0, 82], [400, 82]], [[0, 118], [400, 118]], [[165, 85], [165, 115]], [[235, 85], [235, 115]]].map((l) => densify(l));
+  const out = placeLabels([{ x: 200, y: 100, w: 60, h: 14 }], fence, [[200, 100]], 400, 200)[0];
+  ok('labels: boxed in at the near gap, a label steps one label height out, unbacked', !out.bg && out.dy === -36 && out.dx === -30, out);
+  // A mark's own clearance (a plus dot) holds a label further off than a handle's default 8 px.
+  const offMark = (r) => placeLabels([{ x: 100, y: 100, w: 40, h: 14 }], [], [[100, 100], r], 400, 200)[0];
+  ok('labels: a mark with a clearance radius keeps a label off it', offMark([100, 66]).dy < 0 && offMark([100, 66, 14]).dy > 0,
+    [offMark([100, 66]), offMark([100, 66, 14])]);
   ok('any stroke spans the plot: the time axis never stretches', [{ ...p, hi: 0.95 }, { ...p, sIn: 0.05 }, { ...p, aOut: 1 }]
     .every((q) => { const h = strokeGeom(q, L); return near(h.x0, L.X0) && near(h.x2, L.XR); }));
   ok('playhead: a depth share maps onto the half', near(atDepth(g.inC, 0.5).y, (g.ylo + g.yhi) / 2, 1e-6));
