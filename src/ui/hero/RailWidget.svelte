@@ -430,7 +430,7 @@
       get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
-      get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; },
+      get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; }, jog,
     };
     return () => { readout = null; };
   });
@@ -877,6 +877,13 @@
     if (value == null || !move || !moveEnabled) return;
     sendCommand(move, clamp(value, tapeLo, tapeHi));
   }
+  // The one jog handle: the strip's typed target (HeroNumerals) moves only
+  // through the tape's own send, gate and domain.
+  const jog = {
+    send: requestMove,
+    get enabled() { return moveEnabled; }, get reason() { return moveReason; },
+    get lo() { return tapeLo; }, get hi() { return tapeHi; }, get windowed() { return haveWindow && !override; },
+  };
 
   function onTapePointerDown(e) {
     if (!moveEnabled) return;

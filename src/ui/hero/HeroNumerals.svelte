@@ -39,15 +39,13 @@
    * like the reference — do not split them into dimmed spans.
    *
    * THE TARGET NUMERAL TAKES A TYPED JOG (operator 2026-10-03, ph-9kjh).
-   * Enter sends `sendCommand(move, v)`, the rail tape's own call, clamped to
-   * the tape's own domain; the tape's gate disables it with the tape's words.
-   * Never a second wire path, never a wider domain than the tape's.
+   * Enter goes through `jog`, RailWidget's one jog handle: the tape's own
+   * send, clamped to the tape's own domain; the tape's gate disables it with
+   * the tape's words. Never a second wire path, never a wider domain.
    */
   import { tick } from 'svelte';
   import { unitOf, precisionFor, labelFor } from '../../model/format.js';
-  import { machine, freshness, staleReason, getSession } from '../../model/machine.svelte.js';
-  import { sendCommand, displayValue } from '../../model/shadow.svelte.js';
-  import { claimRoles, AXIS_HERO_SPEC } from '../../model/roles.js';
+  import { machine, freshness, staleReason } from '../../model/machine.svelte.js';
 
   let {
     posField = null,
@@ -63,6 +61,8 @@
     // posField): sizes the zero-pad width below. RailWidget forwards its
     // derived `hi`; absent, pad width falls back to 3 integer digits.
     extentHi = null,
+    // RailWidget's jog handle {send, enabled, reason, lo, hi, windowed}; null: no rail.
+    jog = null,
     // (text) => void: the strip's status slot takes the clamp note; '' clears.
     onnote = null,
   } = $props();
@@ -125,26 +125,7 @@
   const lagPrecision = $derived(targetField ? Math.max(1, precisionFor(targetField)) : Math.max(1, precisionFor(posField)));
   const lagText = $derived(padNumeral(lagVal, padIntDigits, lagPrecision));
 
-  // ---- typed jog: RailWidget's moveReason/jogBlock and tapeLo/tapeHi, restated.
-  // ponytail: restated, not shared; change both together until RailWidget exports its jog.
-  const axis = $derived(machine.catalog.model?.byRole ? claimRoles(machine.catalog.model.byRole, AXIS_HERO_SPEC) : null);
-  const move = $derived(axis && axis.move);
-  const jogWhy = $derived.by(() => {
-    void machine.link.roles;
-    if (!move) return 'no move intent on this catalog';
-    if (machine.link.phase !== 'live') return 'no hub link';
-    const session = getSession();
-    if (!session || !session.isLive || !session.canUse(move.channelId, move.key, 0)) return 'session not authorized';
-    const latch = machine.safety;
-    return !latch ? '' : latch.estopLatched ? 'E-stop latched' : latch.paused && !latch.override ? 'Paused: Override to jog' : '';
-  });
-  const jogSpan = $derived.by(() => {
-    const lo = axis?.min?.min ?? 0, hi = extentHi ?? lo;
-    const a = axis && displayValue(axis.min, machine.samples[axis.min.channelId]);
-    const b = axis && displayValue(axis.max, machine.samples[axis.max.channelId]);
-    const win = !machine.safety?.override && Number.isFinite(a) && Number.isFinite(b) && hi > lo;
-    return win ? { lo: Math.min(a, b), hi: Math.max(a, b), word: 'window' } : { lo, hi, word: 'travel' };
-  });
+  const jogWhy = $derived(jog?.enabled ? '' : jog?.reason || 'no move intent on this catalog');
 
   let editing = $state(false);
   let editEl = $state(null);
@@ -169,10 +150,10 @@
     e.preventDefault();
     const typed = parseFloat(editEl.value);
     if (isFinite(typed) && !jogWhy) {
-      const v = Math.min(jogSpan.hi, Math.max(jogSpan.lo, typed));
-      sendCommand(move, v);
+      const v = Math.min(Math.max(jog.lo, jog.hi), Math.max(Math.min(jog.lo, jog.hi), typed));
+      jog.send(v);
       clearTimeout(noteT);
-      onnote?.(v !== typed ? 'clamped to ' + jogSpan.word : '');
+      onnote?.(v !== typed ? 'clamped to ' + (jog.windowed ? 'window' : 'travel') : '');
       if (v !== typed) noteT = setTimeout(() => onnote?.(''), 4000);
     }
     closeEdit(true);

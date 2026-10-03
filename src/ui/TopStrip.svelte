@@ -341,7 +341,7 @@
           posField={rail.posField} velField={rail.velField} targetField={rail.targetField}
           posVal={rail.posVal} speedVal={rail.speedVal} targetVal={rail.targetVal}
           moving={rail.moving} fresh={rail.fresh} targetFresh={rail.targetFresh}
-          extentHi={rail.extentHi} onnote={(t) => (jogNote = t)}
+          extentHi={rail.extentHi} jog={rail.jog} onnote={(t) => (jogNote = t)}
         />
       {/if}
     </div>
