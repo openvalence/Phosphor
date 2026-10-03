@@ -278,6 +278,16 @@ let saved = null;
   ok('the edge and the node positions persist in the local graph store', st && st.rels.length === 1 && st.nodes.length === 2);
   const mapInk = await inkUnder(page, '.gnode .gparams input:not([type=checkbox])');
   ok('map node fields read as live values, 4.5:1 or better per theme (ph-6uf)', Object.values(mapInk).every((x) => x >= 4.5), mapInk);
+  const ladderInk = await page.evaluate(() => {
+    const p = document.querySelector('.gnode[data-kind=rel] .gline[data-phase=disarmed]');
+    const d = document.createElement('i');
+    d.style.color = 'var(--warn)';
+    document.body.append(d);
+    const warn = getComputedStyle(d).color;
+    d.remove();
+    return p ? [getComputedStyle(p).color, warn] : null;
+  });
+  ok('a map node\'s disarmed ladder line is amber, not --ink-dim (ph-3pl)', !!ladderInk && ladderInk[0] === ladderInk[1], ladderInk);
 
   // refuse: the toy's own output into a map, the map's output back into the toy.
   const mapLabel = await place(page, 0.45, 0.65, 'linear', 'Maps');

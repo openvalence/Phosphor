@@ -852,8 +852,6 @@
   /* The grid's inert preview (DashItem) is a picture: no tools until Open. */
   .graph:global([inert]) .gtool, .graph:global([inert]) .gnote { display: none; }
   .gnote { margin: 0; font-size: 11px; color: var(--ink-dim); }
-  [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn); }
-  [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
   .gsr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
 
   .gview { position: relative; flex: 1 1 auto; min-height: 320px; overflow: hidden; touch-action: none; cursor: grab;
@@ -891,6 +889,9 @@
   .gbadge[data-home='client'] { color: var(--intent); border-color: var(--intent); }
   .gline { margin: 0 0 2px; font-size: 11px; color: var(--ink-dim); overflow-wrap: anywhere; }
   .gline[data-stale] { opacity: .5; }
+  /* After .gline: a ladder line wears its phase (law 5); refusals, faults, disarmed reasons amber (law 13). */
+  [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn); }
+  [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
   .gnum { font-family: var(--mono); font-size: 11px; color: var(--tx-val); }
   .gcurve { display: block; width: 100%; height: 44px; margin: 2px 0 4px; background: var(--bg-sunken); border-radius: var(--radius); }
   .gcurve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
