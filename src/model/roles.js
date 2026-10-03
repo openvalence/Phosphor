@@ -86,6 +86,8 @@ export const ROLE = {
   planElapsed: 'plan.elapsed',
   planDuration: 'plan.duration',
   planStyle: 'plan.style',
+  // RFC-100: how the planner bent the plan (registry plan_flags).
+  planFlags: 'plan.flags',
 
   // machinery
   enabledMask: 'meta.enabled_mask',

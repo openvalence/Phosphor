@@ -42,7 +42,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND, PLAN_FLAG, planFlagNames } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
@@ -281,6 +281,17 @@ console.log('(d) TCode adapter');
   ok('a TCP line reaches submitMotion with its duration, (0.25, 200)', eq(calls.motion, [[0.25, 200]]));
   host.setEnabled('tcode-adapter', false);
   ok('disabling closes the listener', closed >= 1);
+}
+
+// ---- plan.flags (RFC-100): the recorded plan strip names how a plan bent ---
+console.log('plan.flags');
+{
+  const [f] = model.byRole.get(ROLE.planFlags) || [];
+  const [s] = model.byRole.get(ROLE.planStart) || [];
+  ok('plan.flags rides the plan strip beside plan.start', !!f && !!s && f.channelId === s.channelId);
+  ok('its bit labels are the registry words in bit order', !!f && f.bits.slice(0, 4).join() === planFlagNames(0x0f).join());
+  ok('a clean plan names nothing; any set bit names its word',
+    planFlagNames(0).length === 0 && planFlagNames(PLAN_FLAG.stretched | PLAN_FLAG.clamped).join() === 'stretched,clamped');
 }
 
 // ---- motion target mapping (the model half of the adapter) ------------------

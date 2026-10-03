@@ -511,7 +511,10 @@ question in §10.8).
   opens an entry in place, and Enter sends the rail tape's own move,
   clamped to the tape's domain with "clamped to window" in the status slot,
   disabled with the tape's reason wherever the tape is; the big numeral
-  stays reality.
+  stays reality. The planned target, lag and speed stack in one column
+  beside it, in that order, each row "label value unit" on one line (operator
+  ruling 2026-10-03, `ph-pmor`): it never grows the strip and is hidden only
+  on a handheld stacked strip.
 - The rail row is the track alone (operator ruling 2026-10-03, `ph-ryi7`):
   no mode words and no range text (the window's own label says the range,
   and its tooltip carries the window's description); a jog reason replaces
@@ -519,7 +522,7 @@ question in §10.8).
   sides. While a generator owns the rail (`railOwned`) the slot shows the
   planned segment at the window's width: a reality-to-intent gradient from
   the planned position to the planned target, at the rail's own render
-  instant, the marker amber while the plan is stalled or past its
+  instant, the marker amber while `plan.flags` names a bent plan (RFC-100; the readback's tooltip says which: shaped, stretched, fallback, clamped), else while the plan is stalled or past its
   duration. A control-owner slot held by another session keeps the
   full-width plan strip. The plan readback (owner, style, velocity, timing)
   rides the strip on the primary label's line, right of the numerals, while
@@ -813,3 +816,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-03 | §10.3 | The bottom status row is one line always, with fixed-width compact values, the exact value on hover, one UI build:etag cell and ordered cell drops (`ph-wt7r`). | operator |
 | 2026-10-03 | §10.3 | The rail row is the track alone, the panel inset equal on all sides; a generator's run shows the planned segment at the window's width, a foreign owner the plan strip; the plan readback moves into the strip (`ph-ryi7`). | operator (amber on a stalled or overrun plan, as the hub states no infeasibility, the readback while any plan streams, and the window description in the band's tooltip are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | Recess shadows replace scrollbars as the scroll affordance; scrollbars become a pref, off by default, asked once by the guided onboarding (`ph-inh5`). | operator (the 1 px lip on the shade, the page footer casting its own shade and the toggle's home in Legibility are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | The planned target, lag and speed stack vertically beside the big numeral, one row each, at every width but a handheld strip; the 1280 px side-by-side form clipped speed (`ph-pmor`). | operator (the row font one step down so three rows fit the numeral's box is the agent's, veto-able) |

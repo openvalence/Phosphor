@@ -57,7 +57,7 @@
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
   import { railOwnerName, foreignOwner } from '../../model/actions.js';
-  import { CH_CONTROL_OWNER, LIMITS, UNIT_ID } from '../../../../Valence/clients/js/index.js';
+  import { CH_CONTROL_OWNER, LIMITS, UNIT_ID, planFlagNames } from '../../../../Valence/clients/js/index.js';
   import { onTheme } from '../../model/theme.js';
 
   // shown: RailWidget keeps this mounted under the jog tape and flips
@@ -102,7 +102,7 @@
       optional: {
         start: ROLE.planStart, end: ROLE.planEnd, position: ROLE.planCurrent,
         velocity: ROLE.planVelocity, elapsed: ROLE.planElapsed, duration: ROLE.planDuration,
-        style: ROLE.planStyle,
+        style: ROLE.planStyle, flags: ROLE.planFlags,
       },
     });
     // None of the span/position roles resolved: this hub has not annotated
@@ -145,6 +145,9 @@
     !!(fields && fields.elapsed && fields.duration) && elapsedVal != null && durVal != null);
 
   const styleVal = $derived(fields && fields.style ? fieldValue(fields.style) : undefined);
+  // RFC-100: how the planner bent the plan, in the registry's words; any
+  // word at all means the plan could not run as commanded.
+  const bent = $derived(fields && fields.flags ? planFlagNames(fieldValue(fields.flags) ?? 0) : []);
   // The source holding the rail, in the hub's own words; '' reads "plan".
   const owner = $derived(railOwnerName(machine.catalog.entries.find((e) => e.id === CH_CONTROL_OWNER),
     machine.samples[CH_CONTROL_OWNER]));
@@ -271,9 +274,9 @@
 
       if (segment) {
         // The planned position (reality) to the planned target (intent),
-        // and the marker at the position: amber while the plan is stalled
-        // or past its own duration, the two ways the hub's numbers say it
-        // could not keep the plan.
+        // and the marker at the position: amber while plan.flags says the
+        // planner bent the plan (RFC-100), else while the plan is stalled or
+        // past its own duration, for a hub that declares no plan.flags.
         const xc = at(pos ?? curPct ?? from), xe = at(target ?? to);
         if (Math.abs(xe - xc) >= 0.5) {
           const grad = ctx.createLinearGradient(xc, 0, xe, 0);
@@ -286,7 +289,7 @@
         ctx.shadowBlur = reduced ? 0 : 6;
         ctx.shadowColor = ctx.fillStyle = cIntent;
         ctx.fillRect(xe - 1, 0, 2, h);
-        const late = !isActive || (durVal > 0 && elapsedVal > durVal);
+        const late = bent.length > 0 || !isActive || (durVal > 0 && elapsedVal > durVal);
         ctx.shadowColor = ctx.fillStyle = late ? cWarn : cReal;
         ctx.fillRect(xc - 1, -1, 2, h + 2);
         ctx.restore();
@@ -365,7 +368,7 @@
   <!-- The top strip's readback (ph-ryi7), one line. The style rides its
        own label, so a style named "idle" never reads as the run state
        (ph-kts). -->
-  <div class="plan-rb">
+  <div class="plan-rb" title={bent.length ? bent.join(', ') : undefined}>
     <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if by}{' · owned by '}<span class="plan-owner">{by}</span>{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
     <span class="plan-meta mono">
       {#if fields.velocity}
