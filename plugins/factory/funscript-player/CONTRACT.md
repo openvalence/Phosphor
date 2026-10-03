@@ -601,8 +601,9 @@ export function mountAnalyzer(el, { api, trace, script, T });   // trace(), scri
 
 The expand button on the detail opens it in place: the outer card rect is
 unchanged (the tl box carries the stage's 16:9 spacer), the library leaves,
-the video moves to an in-card thumbnail (full: 320 x 180 at the top right;
-handheld: one tap high in the source row), never picture-in-picture (law 1).
+the video moves to an in-card thumbnail (full: the analyzer column's width,
+`clamp(320px, 40%, 560px)` of the card, by 180 at the top right; handheld:
+one tap high in the source row), never picture-in-picture (law 1).
 Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
 (or the last refusal); then the rows, one `var(--tap)` each, in a list that
 scrolls inside its box. Live writes through `api.write`; Preview through

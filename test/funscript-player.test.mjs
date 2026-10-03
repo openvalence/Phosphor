@@ -1119,8 +1119,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(300);
   const open1 = await look();
   ok('expand: the outer card rect is identical', open1.card === before.card, [before.card, open1.card]);
-  ok('expand: the video moves to a corner thumbnail, the analyzer in, the library out, the detail taller',
-    open1.video && open1.stage.width <= 321 && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
+  ok('expand: the video moves to a thumbnail over the analyzer column (two fifths of the card), the analyzer in, the library out, the detail taller',
+    open1.video && open1.stage.width >= 319 && Math.abs(open1.stage.width - open1.an.width) <= 1 && open1.an.width >= Math.min(559, 0.38 * parseFloat(open1.card))
+      && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
       && open1.dt.height > before.dt.height, open1);
   ok('expand: the button reads pressed', (await expandBtn.getAttribute('aria-pressed')) === 'true');
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer.png') });

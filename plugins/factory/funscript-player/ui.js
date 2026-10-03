@@ -586,8 +586,9 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 128px; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
-.fsp[data-an][data-comp=full] { grid-template-rows: var(--tap) calc(180px - var(--tap) - 4px) minmax(0, 1fr) 20px var(--tap);
+.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--tap) calc(180px - var(--tap) - 4px) minmax(0, 1fr) 20px var(--tap);
   grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
+.fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 2 + 4px);
   grid-template-areas: "src" "tl" "st" "tr"; }
 .fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 3 + 8px); }

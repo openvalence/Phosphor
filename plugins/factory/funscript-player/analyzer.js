@@ -1,7 +1,5 @@
 // analyzer.js -- the expanded heat: lag readout and the hub's Tuning controls, Live or Preview
 // Contract: CONTRACT.md, module player-ui (ph-smvd.11); design: docs/plugins/FUNSCRIPT.md (Analyzer).
-// After the archived SlopDrive-32 slopsim graph page (its tune panel and follow
-// metrics) re-bound to Valence roles and catalog groups; no code carried over.
 //
 // Constraints:
 // - Binds by the catalog only: writable fields of every group whose first
@@ -14,7 +12,7 @@
 // - A slider writes once on release; a drag previews in the intent look. Without a
 //   catalog step it moves in hundredths of its range.
 // - A segmented field of more than two options takes the select presentation:
-//   three 40 px buttons do not fit the control column of a 320 px panel.
+//   three 40 px buttons do not fit the control column of a panel at its 320 px floor.
 // - The ladder is a 3 px bar per row: --intent pending, --warn overdue or
 //   fault; the reason and the gate ride the row tooltip. No red (law 13).
 // - Rows are var(--tap) high and the head rows fixed; the list scrolls inside

@@ -528,13 +528,15 @@ The card (ph-smvd.13):
 ## Analyzer (ph-smvd.11)
 
 The expand button on the detail (Blender's maximize glyph, tooltip
-`Analyzer`) turns the heat into a tuning bench, after the archived
-SlopDrive-32 slopsim graph page: the script with the hub's plan
+`Analyzer`) turns the heat into a tuning bench: the script with the hub's plan
 (`plan.current`, `--intent` at reduced weight) and the measured position
 (`telemetry.position`, `--reality`) overlaid on a taller detail, a lag
 readout, and every tuning control the hub exposes. The card's outer rect
-does not move: in full the library column becomes the analyzer under a
-320 x 180 thumbnail of the video; in handheld the thumbnail sits one tap
+does not move: in full the library column becomes the analyzer column,
+two fifths of the card held between 320 and 560 px (`clamp(320px, 40%,
+560px)`, ph-tz5t: at 1280 a 320 px column squeezed its row labels to
+`Overshoot ...`), the graph taking the rest, under a 180 px tall thumbnail
+of the video at the column's width; in handheld the thumbnail sits one tap
 high in the source row and the analyzer takes the lower 55 % of the
 timeline's box. Collapsing restores the card as it was.
 
@@ -579,8 +581,8 @@ Decisions (veto-able):
 - **A4** Preview is the default on a trial-capable hub, so an exploratory
   drag is never stored by accident; the mode is not persisted.
 - **A5** Diagnostics stay on the settings page: the analyzer lists the
-  writable fields only (the archived page's anomaly counts are readouts the
-  generic renderer already shows).
+  writable fields only (anomaly counts are readouts the generic renderer
+  already shows).
 - **A6** A trace point's plan share treats `plan.current` as a window share
   (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
   the field's own min and max when it declares them.
