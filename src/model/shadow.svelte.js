@@ -81,6 +81,7 @@ import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor } from './motion.js';
+import { noteEstopPress } from './actions.js';
 import { NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
@@ -370,6 +371,7 @@ export function writeSetting(field, value) {
  * @returns {Promise<{ok: boolean, error?: string, applied?: Object}>}
  */
 export async function runAction(action, value = 1, extraFields = null) {
+  noteEstopPress(action, value);
   const shadowKey = keyOf('act', action.channelId, action.key);
   const sh = ensureShadow(shadowKey, action.channelId, labelFor(action));
   const seq = begin(sh, value);

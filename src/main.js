@@ -13,7 +13,7 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
-import { connect, parseHost, recentHubs } from './model/machine.svelte.js';
+import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme } from './model/theme.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 
@@ -61,6 +61,14 @@ async function boot() {
       const r = await tauriFetch(url, { method: 'GET' });
       return r.ok ? await r.text() : null;
     });
+    // RFC-053: every e-stop press also broadcasts the ESTOP datagram on the
+    // LAN, before any connect, so the first press is covered.
+    const { invoke } = await import('@tauri-apps/api/core');
+    await import('./shell/estop-udp.js')
+      .then((m) => m.installEstopDatagram({
+        invoke, isVirtual: () => !!machine.link.virtual, origin: () => machine.link.roles,
+      }))
+      .catch((e) => console.error('datagram e-stop failed to load', e));
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
     // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
     // host:port, when the reconnect preference is on (shell/settings-pane.js).

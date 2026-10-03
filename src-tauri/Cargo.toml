@@ -31,6 +31,10 @@ tauri-plugin-blec = "0.12"
 # named here only to enable net + io-util, and time for the buttplug
 # server's timed scan and client rate (src/buttplug.rs).
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "time"] }
+# Every IPv4 interface's address and prefix for the datagram e-stop
+# (src/estop_udp.rs, RFC-053): std has no interface list. The ButtplugIO fork
+# already builds this version.
+if-addrs = "0.14"
 
 # Embedded buttplug server (src/buttplug.rs, docs/BUTTPLUG.md): path deps on the
 # fork beside this repo, branch `valence`. Desktop only; Android is its own

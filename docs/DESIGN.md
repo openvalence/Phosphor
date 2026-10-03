@@ -488,6 +488,16 @@ question in §10.8).
   `safety:pause`). A second e-stop on the grid is fine; the strip's copy is
   the one that cannot go. Override/return is not a module: it is the rail's
   (SPEC §11.1).
+- In the shell, every e-stop press also broadcasts the RFC-053 ESTOP datagram
+  (the SPEC §5.5 frame) on every IPv4 interface to the §13.8 port: beside the
+  session's own estop, never instead of it, over the whole §11.2 repeat
+  budget, since a datagram's sender cannot see the latch. Opt-out, default on
+  (RFC-053 item 3; Settings > Connection). Every hub on the segment that
+  honors RFC-053 latches, not only the connected one; a Virtual Valence
+  session never broadcasts. A press needs a live link to reach the hook,
+  because the strip disables the e-stop without one. Seams:
+  `noteEstopPress` (`src/model/actions.js`, runAction's first call),
+  `src/shell/estop-udp.js`, `src-tauri/src/estop_udp.rs` (`ph-y4er`).
 - Order, operator ruling 2026-10-02 (`ph-e82.21`): the e-stop is outermost
   at the far right, then Pause, Override, Flip and Home inward. Flip (SPEC
   §9.6) rides the strip beside Override, not the rail row, so the jog tape
@@ -731,3 +741,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
 | 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
+| 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |

@@ -49,6 +49,29 @@ export function isPersistentAction(action) {
   return PERSISTENT_TAGS.has(actionTag(action));
 }
 
+// The shell's datagram e-stop (RFC-053, src/shell/estop-udp.js). The served
+// page never sets a hook, so there noteEstopPress does nothing.
+let estopPressHook = null;
+
+/** Shell only: called on every e-stop assertion, before the intent leaves. */
+export function setEstopPressHook(fn) {
+  estopPressHook = typeof fn === 'function' ? fn : null;
+}
+
+/**
+ * runAction's first call: fires the hook when this invocation asserts the
+ * e-stop (law 2: op identity). Never throws: the session's own estop must
+ * leave whatever the hook does.
+ */
+export function noteEstopPress(action, value) {
+  if (!estopPressHook || !action || action.channelId !== CH_SAFETY_INTENTS || value !== SAFETY_OP.estop) return;
+  try {
+    estopPressHook();
+  } catch (e) {
+    console.error('e-stop datagram hook failed', e);
+  }
+}
+
 /** Must pressing this op go through the confirm layer first? */
 export function needsConfirm(action, value) {
   if (!action) return false;

@@ -59,6 +59,10 @@
       <input type="checkbox" role="switch" checked={$prefs.reconnect} onchange={(e) => setPref('reconnect', e.currentTarget.checked)} />
       <span class="track"></span>Reconnect to the last hub on launch
     </label>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={$prefs.estopDatagram} onchange={(e) => setPref('estopDatagram', e.currentTarget.checked)} />
+      <span class="track"></span>Broadcast e-stop to every hub on the LAN
+    </label>
     <label class="rate">
       <span>Telemetry rate, Hz</span>
       <input type="number" class="og-num" min="1" step="1" placeholder="auto" value={$prefs.telemetryHz ?? ''}
