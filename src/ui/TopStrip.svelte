@@ -31,7 +31,8 @@
    * - The numeral's glow paints to the strip's edges, never past them: the
    *   numerals cell clips at the strip box, not at its own.
    * - The status slot shows ONE thing, by priority: link fault, unattended
-   *   (RENDERING §10.1 rule 3), refusal, latch notice, latest safety edge,
+   *   (RENDERING §10.1 rule 3), refusal, the typed jog's clamp note, latch
+   *   notice, latest safety edge,
    *   virtual hub.
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
@@ -142,6 +143,8 @@
     failed: 'Failed' };
   const unattended = $derived(isUnattended(machine.catalog.model && machine.catalog.model.byRole,
     machine.samples, machine.samples[CH_CONTROL_OWNER]));
+  // HeroNumerals' typed-jog note ("clamped to window"); it clears its own.
+  let jogNote = $state('');
   const slot = $derived.by(() => {
     const link = machine.link;
     const latch = machine.safety;
@@ -152,6 +155,7 @@
     }
     if (unattended) return { kind: 'unattended', text: 'Unattended: no session in control' };
     if (lastRefusal.at) return { kind: 'refusal' };
+    if (jogNote) return { kind: 'notice', text: jogNote };
     if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
@@ -335,7 +339,7 @@
           posField={rail.posField} velField={rail.velField} targetField={rail.targetField}
           posVal={rail.posVal} speedVal={rail.speedVal} targetVal={rail.targetVal}
           moving={rail.moving} fresh={rail.fresh} targetFresh={rail.targetFresh}
-          extentHi={rail.extentHi}
+          extentHi={rail.extentHi} onnote={(t) => (jogNote = t)}
         />
       {/if}
     </div>

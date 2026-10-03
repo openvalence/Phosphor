@@ -505,6 +505,12 @@ question in §10.8).
   at the far right, then Pause, Override, Flip and Home inward. Flip (SPEC
   §9.6) rides the strip beside Override, not the rail row, so the jog tape
   spans the rail edge for edge.
+- The hero's target numeral takes a typed jog (operator ruling 2026-10-03,
+  `ph-9kjh`): it wears the typeable-chip recess at rest, a click or Enter
+  opens an entry in place, and Enter sends the rail tape's own move,
+  clamped to the tape's domain with "clamped to window" in the status slot,
+  disabled with the tape's reason wherever the tape is; the big numeral
+  stays reality.
 - Home is one control; any other home op (Force Home, where the hub offers
   it) lives in its popover, and the status slot carries no remedy button.
   While home is required (the snapshot's `home_required`, or a `NOT_HOMED`
@@ -767,3 +773,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |
 | 2026-10-03 | §10.3 | Page fullscreen for plugin pages: in window or borderless, a caret hides the bar and strip, the stop pair stays top right at half opacity at rest (`ph-wb4j`). | operator (the pair's wake on pointer movement and its backing are the agent's, veto-able) |
 | 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | The target numeral takes a typed jog: the rail tape's move, clamped to the tape's domain, disabled where the tape is (`ph-9kjh`). | operator (the recess at rest, the clamp note in the slot and leaving a source-owned rail to the hub's SOURCE_CONFLICT are the agent's, veto-able) |

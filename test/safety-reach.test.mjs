@@ -62,6 +62,11 @@
  *            tape is disabled with its reason; under Override a tap past the
  *            window writes unclamped; the plan draws inside the window band
  *            (100..400 on a 500 rail: 20 % to 80 %), a point past it at the edge
+ *   target   ph-9kjh: the target numeral opens an entry in place, prefilled,
+ *            one box at rest and typing; Enter writes the rail tap's channel
+ *            and the hub's refusal reads as the tap's; past the window it
+ *            clamps and the slot says so; Escape writes nothing; paused, it
+ *            is disabled with the tape's reason
  *   axis     axis.flipped draws the rail reversed: the carriage marker for
  *            travel minus p sits where p sat unflipped, the endcaps swap,
  *            and a tape tap writes the value the reversed axis gives; Flip
@@ -781,6 +786,62 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
       JSON.stringify(past));
     await ctx.close();
   }
+}
+
+// ---- ph-9kjh: type a target into the hero numeral, the rail tap's jog --------
+{
+  const cfgE = byRole('window.min'), tgtE = byRole('telemetry.target');
+  const cfg = stateOf(cfgE, { 'window.min': 100, 'window.max': 400, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
+  const tgt = stateOf(tgtE, { 'telemetry.target': 250, 'telemetry.position': 250 });
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+    states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER } });
+  const tick = setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, tgtE.id, tgt))); } catch (e) { /* closed */ } }, 30);
+  await page.waitForTimeout(600);
+  const btn = page.locator('.topstrip button.hn-entry'), entry = page.locator('.topstrip input.hn-entry');
+  const banner = async () => (await page.locator('.topstrip .recovery .st-text').textContent({ timeout: 2000 }).catch(() => '')).trim();
+  const dismiss = async () => { await page.locator('.topstrip .recovery .st-dismiss').click().catch(() => {}); await page.waitForTimeout(100); };
+  const t = await page.locator('.rail-hero .rail-tape-track').boundingBox();
+  await page.mouse.click(t.x + t.width * 0.5, t.y + t.height / 2);
+  await page.waitForTimeout(400);
+  const tapCh = wire.writes[0], tapWords = await banner();
+  await dismiss();
+  ok('target: at rest a button that says it is typeable', await btn.getAttribute('title') === 'Click to type a target'
+    && await btn.getAttribute('aria-disabled') === 'false');
+  const rest = await btn.boundingBox();
+  await btn.click();
+  const typing = await entry.boundingBox().catch(() => null);
+  ok('target: a click opens the entry prefilled, in the same box', await entry.inputValue() === '250.0' && !!typing
+    && ['x', 'y', 'width', 'height'].every((k) => Math.abs(rest[k] - typing[k]) < 0.5), JSON.stringify([rest, typing]));
+  await entry.fill('200');
+  await entry.press('Enter');
+  await page.waitForTimeout(400);
+  ok("target: Enter writes the rail tap's channel, the typed value", wire.writes.length === 2 && wire.writes[1] === tapCh
+    && wire.values[1] === 200 && await entry.count() === 0, JSON.stringify(wire.values));
+  const words = await banner();
+  ok("target: the hub's refusal reads as the tap's", !!tapWords && words === tapWords, JSON.stringify([tapWords, words]));
+  await dismiss();
+  await btn.click();
+  await entry.fill('450');
+  await entry.press('Enter');
+  await page.waitForTimeout(400);
+  await dismiss();
+  const note = (await page.locator('.topstrip .status .st-text').textContent().catch(() => '')).trim();
+  ok('target: past the window clamps to the edge and the slot says so', wire.values[2] === 400 && note === 'clamped to window',
+    JSON.stringify([wire.values, note]));
+  await btn.click();
+  await entry.fill('300');
+  await entry.press('Escape');
+  await page.waitForTimeout(300);
+  ok('target: Escape writes nothing and hands focus back', wire.writes.length === 3 && await entry.count() === 0
+    && await btn.evaluate((b) => b === document.activeElement));
+  await page.locator('.topstrip .btn-pause').click();
+  await page.waitForTimeout(300);
+  const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
+  await btn.click({ force: true });
+  ok("target: paused, disabled with the tape's reason", await btn.getAttribute('aria-disabled') === 'true'
+    && await btn.getAttribute('title') === reason && reason === 'Paused: Override to jog' && await entry.count() === 0, reason);
+  clearInterval(tick);
+  await ctx.close();
 }
 
 // ---- ph-e82.21: a flipped axis draws reversed --------------------------------

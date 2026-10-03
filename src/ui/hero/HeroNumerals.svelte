@@ -37,9 +37,17 @@
    * precision" means anywhere else. Leading zeros are plain text (no
    * per-character opacity trick) so they read as one solid numeral, exactly
    * like the reference — do not split them into dimmed spans.
+   *
+   * THE TARGET NUMERAL TAKES A TYPED JOG (operator 2026-10-03, ph-9kjh).
+   * Enter sends `sendCommand(move, v)`, the rail tape's own call, clamped to
+   * the tape's own domain; the tape's gate disables it with the tape's words.
+   * Never a second wire path, never a wider domain than the tape's.
    */
+  import { tick } from 'svelte';
   import { unitOf, precisionFor, labelFor } from '../../model/format.js';
-  import { machine, freshness, staleReason } from '../../model/machine.svelte.js';
+  import { machine, freshness, staleReason, getSession } from '../../model/machine.svelte.js';
+  import { sendCommand, displayValue } from '../../model/shadow.svelte.js';
+  import { claimRoles, AXIS_HERO_SPEC } from '../../model/roles.js';
 
   let {
     posField = null,
@@ -55,6 +63,8 @@
     // posField): sizes the zero-pad width below. RailWidget forwards its
     // derived `hi`; absent, pad width falls back to 3 integer digits.
     extentHi = null,
+    // (text) => void: the strip's status slot takes the clamp note; '' clears.
+    onnote = null,
   } = $props();
 
   /** Integer-part pad width derived from the widget's own extent, e.g.
@@ -114,6 +124,59 @@
   );
   const lagPrecision = $derived(targetField ? Math.max(1, precisionFor(targetField)) : Math.max(1, precisionFor(posField)));
   const lagText = $derived(padNumeral(lagVal, padIntDigits, lagPrecision));
+
+  // ---- typed jog: RailWidget's moveReason/jogBlock and tapeLo/tapeHi, restated.
+  // ponytail: restated, not shared; change both together until RailWidget exports its jog.
+  const axis = $derived(machine.catalog.model?.byRole ? claimRoles(machine.catalog.model.byRole, AXIS_HERO_SPEC) : null);
+  const move = $derived(axis && axis.move);
+  const jogWhy = $derived.by(() => {
+    void machine.link.roles;
+    if (!move) return 'no move intent on this catalog';
+    if (machine.link.phase !== 'live') return 'no hub link';
+    const session = getSession();
+    if (!session || !session.isLive || !session.canUse(move.channelId, move.key, 0)) return 'session not authorized';
+    const latch = machine.safety;
+    return !latch ? '' : latch.estopLatched ? 'E-stop latched' : latch.paused && !latch.override ? 'Paused: Override to jog' : '';
+  });
+  const jogSpan = $derived.by(() => {
+    const lo = axis?.min?.min ?? 0, hi = extentHi ?? lo;
+    const a = axis && displayValue(axis.min, machine.samples[axis.min.channelId]);
+    const b = axis && displayValue(axis.max, machine.samples[axis.max.channelId]);
+    const win = !machine.safety?.override && Number.isFinite(a) && Number.isFinite(b) && hi > lo;
+    return win ? { lo: Math.min(a, b), hi: Math.max(a, b), word: 'window' } : { lo, hi, word: 'travel' };
+  });
+
+  let editing = $state(false);
+  let editEl = $state(null);
+  let btnEl = $state(null);
+  let noteT = null;
+  const editW = $derived(Math.max(commandedText.length, 4));
+
+  async function openEdit() {
+    if (jogWhy) return;
+    editing = true;
+    await tick();
+    editEl.value = targetFresh && targetVal != null && isFinite(targetVal) ? targetVal.toFixed(commandedPrecision) : '';
+    editEl.select();
+  }
+  async function closeEdit(refocus) {
+    editing = false;
+    if (refocus) { await tick(); btnEl?.focus(); }
+  }
+  function onEditKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); closeEdit(true); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const typed = parseFloat(editEl.value);
+    if (isFinite(typed) && !jogWhy) {
+      const v = Math.min(jogSpan.hi, Math.max(jogSpan.lo, typed));
+      sendCommand(move, v);
+      clearTimeout(noteT);
+      onnote?.(v !== typed ? 'clamped to ' + jogSpan.word : '');
+      if (v !== typed) noteT = setTimeout(() => onnote?.(''), 4000);
+    }
+    closeEdit(true);
+  }
 </script>
 
 <div class="hero-numerals" class:stale={!fresh} class:virtual={!!machine.link.virtual} title={staleTitle}>
@@ -135,7 +198,14 @@
   {#if targetField}
     <div class="hn-item hn-secondary">
       <span class="hn-label">{labelFor(targetField).toLowerCase()}</span>
-      <span class="hn-val mono hn-intent">{commandedText}</span>
+      {#if editing}
+        <input class="hn-val mono hn-intent hn-entry" type="number" step="any" bind:this={editEl}
+               style="width:{editW}ch" aria-label={'Jog target, ' + (unitOf(targetField) || 'position')}
+               onkeydown={onEditKey} onblur={() => closeEdit(false)} />
+      {:else}
+        <button type="button" class="hn-val mono hn-intent hn-entry" bind:this={btnEl} style="width:{editW}ch"
+                aria-disabled={!!jogWhy} title={jogWhy || 'Click to type a target'} onclick={openEdit}>{commandedText}</button>
+      {/if}
     </div>
 
     <!-- "lag" has no role of its own (roles.js: it is target - position,
@@ -211,6 +281,28 @@
     color: var(--intent);
     text-shadow: none;
   }
+
+  /* The typeable target wears Field.svelte's typeable-chip recess at rest and
+     while typing, one box for both, so editable looks editable and the swap
+     moves nothing. */
+  .hn-entry {
+    box-sizing: content-box;
+    margin: 0;
+    padding: 0 6px 0 5px;
+    font-size: 1.35rem;
+    line-height: 1.2;
+    text-align: left;
+    background: var(--screen);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-s);
+    cursor: text;
+    appearance: textfield;
+  }
+  .hn-entry:hover:not([aria-disabled='true'], :focus) { border-color: var(--line-4); }
+  .hn-entry:focus-visible, input.hn-entry:focus { outline: none; border-color: var(--highlight); }
+  .hn-entry[aria-disabled='true'] { opacity: .45; cursor: default; }
+  .hn-entry::-webkit-inner-spin-button, .hn-entry::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
   /* Virtual (DESIGN §10.10): a frozen snapshot measured nothing, so the
      reality voice becomes the intent family, unlit (ph-6n0). */
