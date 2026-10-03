@@ -338,12 +338,13 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 
 // ---- the card ---------------------------------------------------------------
 
+// The stage row keeps a floor: on a category page the card has intrinsic height and a bare 1fr is 0.
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px;
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--tap) minmax(0, 1fr) 124px 20px var(--tap);
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--tap) minmax(240px, 1fr) 124px 20px var(--tap);
   grid-template-areas: "src lib" "stage lib" "tl lib" "st st" "tr tr"; }
 .fsp[data-comp=handheld] { --fsp-detail: 72px; grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
+  grid-template-rows: var(--tap) minmax(160px, 1fr) 100px 20px calc(var(--tap) * 2 + 4px);
   grid-template-areas: "src" "stage" "tl" "st" "tr"; }
 .fsp[data-comp=glance] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
