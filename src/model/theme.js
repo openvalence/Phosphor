@@ -10,7 +10,9 @@
  *
  * Constraints:
  * - Safety colors are never themeable (RENDERING law 13). LOCKED names them;
- *   no preset, knob, override, import or plugin theme can reach them.
+ *   no preset, knob, override, import or plugin theme can reach them. Their
+ *   text inks (--warn-ink, --bad-ink) keep the locked hue and only take the
+ *   lightness the chassis needs to read; they are LOCKED too.
  * - The default chassis reproduces style.css's :root neutrals
  *   (test/theme.test.mjs); style.css stays the paint before this file runs.
  * - Pure until applyTheme(): node tests import it with no DOM.
@@ -77,7 +79,7 @@ const mix = (a, t, f) => a.map((v) => v + (t - v) * f);
 const SURF = { '--bg': '#08090B', '--bg-raised': '#0D0F13', '--bg-card': '#111318', '--bg-sunken': '#040507', '--shell-bg': '#020203' };
 const RAMP = {
   '--line-0': '#121419', '--line-1': '#1D2026', '--line-2': '#272B31', '--line-3': '#33373E', '--line-4': '#454A54',
-  '--tx-hi': '#ECEFF4', '--tx': '#C3C8D1', '--tx-val': '#A8AEB9', '--tx-mut': '#666C78', '--tx-ghost': '#4D525C', '--tx-faint': '#2C3037',
+  '--tx-hi': '#ECEFF4', '--tx': '#C3C8D1', '--tx-val': '#A8AEB9', '--tx-mut': '#666C78', '--tx-ghost': '#5C626C', '--tx-faint': '#2C3037',
 };
 const HIVIS = { '--tx': '#E4E8EF', '--tx-val': '#C9CFD9', '--tx-mut': '#8A919D', '--tx-ghost': '#7A808C' };
 const MORE = { ...HIVIS, '--line-1': '#2A2F36' };
@@ -111,6 +113,8 @@ export const LOCKED = {
   '--bad-rgb': 'safety color (law 13)',
   '--estop': 'safety color (law 13)',
   '--glow-warn': 'safety color (law 13)',
+  '--warn-ink': 'safety color (law 13)',
+  '--bad-ink': 'safety color (law 13)',
   '--tap': 'touch floor (law 12)',
   '--range-hit': 'touch floor (law 12)',
   '--slider-thumb-w': 'touch floor (law 12)',
@@ -128,6 +132,35 @@ export const LOCKED = {
 };
 /** The safety swatches the editor shows locked. */
 export const SAFETY = ['--warn', '--bad', '--estop'];
+/** style.css's locked values; test/theme.test.mjs holds them equal. */
+const SAFETY_HEX = { amber: '#F5B94D', red: '#FF4757' };
+
+/**
+ * 'amber' or 'red' when an accent's OKLCH hue sits within 20 degrees of that
+ * safety color, else null. A near-gray has no hue to confuse.
+ */
+export function nearSafety(hex) {
+  const [, C, h] = toOklch(hex);
+  if (C < 0.05) return null;
+  for (const [name, s] of Object.entries(SAFETY_HEX)) {
+    const d = Math.abs(h - toOklch(s)[2]) % 360;
+    if (Math.min(d, 360 - d) < 20) return name;
+  }
+  return null;
+}
+
+/** A safety color as text: its own hue at the nearest lightness that reads 4.5:1 on every surface. */
+function safetyInk(hex, surfaces, dark) {
+  const worst = (c) => Math.min(...surfaces.map((s) => contrast(c, s)));
+  if (worst(hex) >= 4.5) return hex;
+  const [L, C, h] = toOklch(hex);
+  let lo = L, hi = dark ? 1 : 0;
+  for (let n = 0; n < 24; n++) {
+    const mid = (lo + hi) / 2;
+    if (worst(fromOklch(mid, C, h)) >= 4.5) hi = mid; else lo = mid;
+  }
+  return fromOklch(hi, C, h);
+}
 
 // ---- presets ------------------------------------------------------------------
 const preset = (id, name, reality, intent, chassis = {}, extra = {}) => ({
@@ -142,14 +175,14 @@ export const THEMES = [
   preset('phosphor', 'Phosphor', '#4DA6FF', '#A78BFA'),
   preset('tracer', 'Tracer', '#52E88C', '#E85CFF'),
   preset('synth', 'Synth', '#FF5CA8', '#5CE8FF'),
-  preset('ember', 'Ember', '#FF8A4D', '#FFD24D'),
+  preset('ember', 'Ember', '#FF8A4D', '#4CCEFE'),
   preset('arctic', 'Arctic', '#7DE8FF', '#C4B5FD'),
   preset('vapor', 'Vapor', '#B78BFF', '#FF8BD1'),
   preset('ultra', 'Ultra', '#8B7BFF', '#4DFFC4'),
   preset('sakura', 'Sakura', '#FFA8C5', '#A8D8FF'),
   preset('stealth', 'Stealth', '#D8DEE8', '#8A93A6'),
   preset('slate', 'Slate', '#5CC8FF', '#9D8BFA', { hue: 245, tint: 2.4, brightness: 0.2, contrast: 1 }),
-  preset('ink', 'Warm ink', '#FFB45C', '#E8A0FF', { hue: 60, tint: 1.8, brightness: 0.15, contrast: 1.05 }),
+  preset('ink', 'Warm ink', '#66D5BA', '#E8A0FF', { hue: 60, tint: 1.8, brightness: 0.15, contrast: 1.05 }),
   preset('paper', 'Paper', '#1A66C8', '#6A3FC8', { hue: 263, tint: 1, brightness: 0.97, contrast: 1 }),
 ];
 export const DEFAULT_THEME = THEMES[0];
@@ -170,9 +203,10 @@ function accentPalette(a, dark = true) {
 
 /**
  * The neutral ramp for one chassis over one reference set, contrast-guarded.
- * Text runs toward whichever extreme reads stronger on the weaker of --bg
- * and --bg-card; a mid-gray chassis where neither clears the floor is moved
- * away from the middle until one does.
+ * Text runs toward whichever extreme reads stronger on the weakest surface
+ * text sits on (--bg, --bg-card, --bg-sunken; --bg-raised lies between); a
+ * mid-gray chassis where neither clears the floor is moved away from the
+ * middle until one does.
  */
 function neutrals(ch, refs) {
   const dh = ch.hue - KNOBS.chassis.hue[3];
@@ -180,7 +214,7 @@ function neutrals(ch, refs) {
   const attempt = (Lb) => {
     const out = {}, g = {};
     for (const [k, hex] of Object.entries(SURF)) out[k] = color(hex, Lb + (REF[hex][0] - BG[0]) * ch.contrast);
-    const worst = (hex) => Math.min(contrast(hex, out['--bg']), contrast(hex, out['--bg-card']));
+    const worst = (hex) => Math.min(contrast(hex, out['--bg']), contrast(hex, out['--bg-card']), contrast(hex, out['--bg-sunken']));
     const ext = worst('#FFFFFF') >= worst('#000000') ? 1 : 0;
     const rampL = (k) => Lb + g[k] * (ext - Lb);
     for (const [k, hex] of Object.entries(refs)) {
@@ -200,14 +234,17 @@ function neutrals(ch, refs) {
     };
     guard('--tx', 4.5);
     guard('--tx-mut', 3);
+    // Ghost is the quietest step that still labels chrome; --tx-faint is never text.
+    guard('--tx-ghost', 3);
     // The ramp keeps its order after the guard moved a step.
     if ('--tx-hi' in g) g['--tx-hi'] = Math.max(g['--tx-hi'], g['--tx']);
+    if ('--tx-mut' in g) g['--tx-mut'] = Math.max(g['--tx-mut'], g['--tx-ghost']);
     if ('--tx-val' in g) g['--tx-val'] = Math.max(g['--tx-val'], g['--tx-mut']);
     guard('--tx-hi', 4.5);
     for (const k of Object.keys(g)) out[k] = color(refs[k], rampL(k));
     // Recess shadows: black on a dark chassis, a tinted gray on a light one.
     out['--shade-rgb'] = ext ? '0,0,0' : hexToRgb(fromOklch(Lb * 0.55, BG[1] * ch.tint, BG[2] + dh)).join(',');
-    return { out, dark: ext === 1, ok: passes('--tx', 4.5) && passes('--tx-mut', 3) };
+    return { out, dark: ext === 1, ok: passes('--tx', 4.5) && passes('--tx-mut', 3) && passes('--tx-ghost', 3) };
   };
   let Lb = clamp(BG[0] + ch.brightness - KNOBS.chassis.brightness[3], 0, 1);
   for (let n = 0; ; n++) {
@@ -234,8 +271,9 @@ const ALIASES = {
 
 /**
  * Every derived token for a theme: `base` (the :root set), `hivis` and `more`
- * (the high-legibility and prefers-contrast sets), `palette` for canvases,
- * `dark`, and the live text `ratios` with overrides applied.
+ * (the high-legibility and prefers-contrast sets), `ink` (the safety text
+ * colors), `palette` for canvases, `dark`, and, with overrides applied, the
+ * live text `ratios` and `near` (accent -> the safety color it reads as).
  */
 export function deriveTokens(theme) { return derive(normalizeTheme(theme)); }
 
@@ -272,8 +310,16 @@ function derive(t) {
   // Against the worst of the three surfaces text sits on.
   const surf = ['--bg', '--bg-card', '--bg-sunken'].map(hex).filter(Boolean);
   const ratio = (k) => (hex(k) && surf.length ? +Math.min(...surf.map((b) => contrast(hex(k), b))).toFixed(2) : null);
+  const inkOn = ['--bg', '--bg-raised', '--bg-card', '--bg-sunken'].map((k) => hex(k) || n[k]);
+  const near = {};
+  for (const k of ['reality', 'intent', 'highlight']) {
+    const v = hex('--' + k);
+    const s = v && !(k === 'highlight' && v === hex('--reality')) && nearSafety(v);
+    if (s) near[k] = s;
+  }
   return {
-    base, hivis, more, palette: p, dark,
+    base, hivis, more, palette: p, dark, near,
+    ink: { '--warn-ink': safetyInk(SAFETY_HEX.amber, inkOn, dark), '--bad-ink': safetyInk(SAFETY_HEX.red, inkOn, dark) },
     ratios: { text: ratio('--tx'), labels: ratio('--tx-mut'), reality: ratio('--reality') },
     brackets: brackets({ ...n, ...Object.fromEntries(Object.entries(t.overrides).filter(([, v]) => HEX.test(v))) }),
   };
@@ -381,7 +427,7 @@ const decl = (m) => Object.entries(m).map(([k, v]) => k + ':' + v + ';').join(''
 export function themeCss(theme) {
   const t = normalizeTheme(theme);
   const d = derive(t);
-  return ':root:root{' + decl(d.base) + '--og-brackets:' + d.brackets + ';color-scheme:' + (d.dark ? 'dark' : 'light') + '}'
+  return ':root:root{' + decl(d.base) + decl(d.ink) + '--og-brackets:' + d.brackets + ';color-scheme:' + (d.dark ? 'dark' : 'light') + '}'
     + '@media (prefers-contrast: more){:root:root{' + decl(d.more) + '}}'
     + ':root:root.hivis{' + decl(d.hivis) + '}'
     + (Object.keys(t.overrides).length ? ':root:root:root{' + decl(t.overrides) + '}' : '');

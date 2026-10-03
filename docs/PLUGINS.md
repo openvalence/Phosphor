@@ -267,12 +267,33 @@ Shipped:
   `api.write`; arrows nudge, Shift by ten. The stroke picture's x axis is the
   share of one stroke's time, so the curve always spans the plot, mid-drag
   included. A handle's shape is its drag axis: a dot moves any direction, a
-  vertical pill left-right only, a horizontal pill up-down only. Each label
-  sits beside its handle on the side square to the curve's tangent, flips
-  when a neighbor would overlap, and wears a backing only when no side is
-  clear. The numeric rows hide behind an Inputs toggle right of the preset
-  box (default hidden, `phosphor.advpen.inputs`); hidden, they are not
-  rendered and the handles carry the arrow keys.
+  vertical pill left-right only, a horizontal pill up-down only. A label
+  reads name then value (`deep 85`, `shallow 10`, `in 70`, `out 45`,
+  `in accel 30`, `out accel 60`, `dwell 0.5`, `amp 40`, `offset 0`). It
+  sits beside its handle on the side square to the curve's tangent, clear
+  of every drawn line (the stroke, the 0 and 100 guides, the modifier
+  graph's top guide, amp axis and offset track), of the handles and of a
+  plus's dot; it tries one and two label heights further out before giving
+  up, the most hemmed-in label places first, a three-word label with no
+  clear side drops its side word (`accel 100`, the half shows the side),
+  and only then does a label wear a backing. The numeric rows hide behind
+  an Inputs toggle right of the preset box (default hidden,
+  `phosphor.advpen.inputs`); hidden, they are not rendered and the handles
+  carry the arrow keys.
+
+  **The ladder, the house way.** The master and Classic sliders are host
+  fields: `.field` with `data-shadow` (style.css GROUND TRUTH, the ring
+  and line of docs/EFFECTS.md, the afterglow on each echo) and the host's
+  value chip, value then unit (format.js `formatParts`). Start, the preset
+  select and Run in background's track carry `data-shadow`, the inset ring
+  of a surface without one. A handle shows its state by color only; the
+  words ride the plot's one-line note (`deep 51 · waiting`, amber for
+  `still waiting` and `refused`), never the label, so no state change
+  moves a label or a box. Focus, the open tab and a pressed tool wear
+  `--highlight` (a handle's focus ring is the house 2 px outline, its
+  hover 1 px); tabs hover with the house edge (`--line-4`). Controls are
+  sentence case, the section head is the shell's uppercase head, field
+  labels the shell's lowercase.
 
   **The in/out link** (chain toggle beside it, off by default,
   `phosphor.advpen.speedLink`). Linked, an edit holds `1/in + 1/out`, the
@@ -287,17 +308,28 @@ Shipped:
   only while the hub's master is a linear rate scale (the registry note:
   "percent of its own range").
 
-  **Modifier tabs.** Each tab carries an enable switch on the left (off
-  writes `mod.amount` 0, RFC-066's no modulation, and keeps the amount in
-  the card to restore; on with none kept writes 100) and a trash on the
-  right, shown once any of the six values leaves its catalog default, which
-  writes all six defaults in one intent. At min and at max (`mod.hold`,
-  `mod.rest`) are reached on the graph: at 0, a gray guide and a plus sit at
-  the corner where the hold would start; the plus spawns it at one stroke
-  with a vertical pill on the guide, and dragging the pill back to 0
-  collapses it. The dwells' modulators get tabs like the other six. The
-  registry names no role for a store op's slot and name, so it tells them
-  apart by schema type.
+  **Modifier tabs.** Each tab carries an enable switch on the left (the
+  host's `og-switch`, compact; off writes `mod.amount` 0, RFC-066's no
+  modulation, and keeps the amount in the card to restore; on with none
+  kept writes 100) and a trash on the right, shown once any of the six
+  values leaves its catalog default, which writes all six defaults in one
+  intent. A tab name wraps to a second line before it truncates. At min and
+  at max (`mod.hold`, `mod.rest`) are reached on the graph: at 0, a gray
+  guide and a plus sit at the corner where the hold would start, the plus
+  off the corner so it never covers the corner's handle; the plus spawns
+  it at one stroke with a vertical pill on the guide, and dragging the pill
+  back to 0 collapses it. A segment caption wider than its segment shows
+  its number only, else nothing, and one a label cannot avoid yields the
+  same way. The amp axis sits at least half a handle in from the plot's
+  edge and the staircase half a handle and a gap past it, so the amp
+  handle stays inside at any width; the offset label sits under the
+  track. The dwells'
+  modulators get tabs like the other six. The registry names no role for a
+  store op's slot and name, so it tells them apart by schema type.
+
+  **Narrow** (the card under 480 px, a phone or a two-cell placement): the
+  hint and the depth ticks drop and the modifier tabs pair up. The
+  told-wave shows a flat line and `stopped` while Advanced is stopped.
 
   **Dwells** (RFC-095, optional `advgen.dwell_crest` and
   `advgen.dwell_trough`; absent, nothing is drawn and nothing declines).
@@ -306,10 +338,12 @@ Shipped:
   drawn to scale beside them until it would pass `DWELL_CAP` (25 %) of the
   plot; past it the flat is drawn at the cap with its middle 40 % as dots
   fading out and back in. At 0, a thin guide and a plus sit at the bound
-  (the trough start, the deep turn); the plus writes `DWELL_SPAWN` (0.25
+  (the trough start, the deep turn), centered where the pill will ride, off
+  the curve and the diamonds; the plus writes `DWELL_SPAWN` (0.25
   strokes) and a vertical pill rides the guide at the flat's end, off the
-  curve. Dragging the pill right lengthens the dwell: under the cap the
-  pill follows the pointer, past it the flat holds the cap and the value
+  curve, in the plus's place. Dragging the pill right lengthens the
+  dwell: under the cap the pill follows the pointer, past it the flat
+  holds the cap and the value
   keeps growing toward the plot's right edge, where it asks for the
   field's own max (the UI sets none). Dragging back to the bound collapses
   it to 0 and the plus returns. The numeric twins carry both dwells behind

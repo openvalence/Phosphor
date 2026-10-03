@@ -58,9 +58,9 @@ An unconnected input uses the node's own editable value.
 | Boolean | Input | (value) | bool | |
 | Math | Math | A, B (unary ops: A) | float | Add, Subtract, Multiply, Divide, Power, Minimum, Maximum, Absolute, Round, Floor, Ceil, Modulo, Square root, Sine, Cosine |
 | Clamp | Math | Value, Min, Max | float | |
-| Map Range | Math | Value, From min, From max, To min, To max; Clamp switch | float | |
+| Map range | Math | Value, From min, From max, To min, To max; Clamp switch | float | |
 | Compare | Logic | A, B, Epsilon (equal and not equal only) | bool | Less than, Less or equal, Equal, Not equal, Greater or equal, Greater than |
-| Boolean Math | Logic | A, B (Not: A) | bool | And, Or, Not, Xor, Nand, Nor |
+| Boolean math | Logic | A, B (Not: A) | bool | And, Or, Not, Xor, Nand, Nor |
 | Switch | Logic | Switch (bool), False, True | its type | type dropdown: float, int, bool |
 | Gate | Logic | Value, Open (bool) | float | |
 | Threshold | Converter | Value, On above, Off below | bool | |
@@ -96,6 +96,11 @@ Blender's flow (`src/ui/graph/GraphPalette.svelte`):
 - Categories are listed collapsed, one header each: Input, Math, Logic,
   Converter, Maps, then Sources and Targets by group (catalog categories,
   Toy inputs, App commands, Toy outputs, Accessory fields, Machine fields).
+  Headers sit at the row size in sentence case. Phosphor's own names (op
+  nodes, maps) are in sentence case: "Map range", "Linear clamp"; hub labels
+  render as sent. A map node keeps its stored name.
+- Opening a category scrolls its items into view; a long one keeps its
+  header on screen.
 - Typing in the search box searches every category and flattens the results.
 - Focus stays in the search box: Up and Down walk headers and items, Right
   and Left open and close a header, Enter places an item or toggles a header,
@@ -107,6 +112,25 @@ Blender's flow (`src/ui/graph/GraphPalette.svelte`):
   Place and wire are one undo step.
 - The menu is clamped inside the editor by its measured size, and re-clamped
   whenever its content resizes.
+
+## The view
+
+- Node text is 11 px or more. Fit frames the graph at a zoom that keeps it
+  at 9 px or more on screen (`FIT_K`, under a coarse pointer the zoom floor
+  of 1). An axis the graph overflows at that zoom starts at the graph's
+  top-left with 32 px padding instead of centering on its empty middle.
+- The toolbar holds one row. Under 44rem of width it shows + Add, Fit and
+  More; More drops the other tools below it (Escape, a pick or the canvas
+  closes it).
+- In a dash grid the editor is a still preview (DESIGN 10.6): no toolbar and
+  no edges line until Open.
+- A link whose target sits left of its source exits right and re-enters
+  left: its handles grow with half the rise, so the wire clears both nodes.
+- Node heads carry one stroked SVG icon set (16 px grid, 1.5 px): Input a
+  set value, Math a sigma, Logic a gate, Converter a step to a ramp, a field
+  a diamond, a toy a target, a map a transfer curve.
+- Focus rings, node and wire selection, the marquee and a pressed tool use
+  `--highlight` (docs/THEMES.md).
 
 ## Undo and keys
 

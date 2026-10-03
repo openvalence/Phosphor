@@ -173,7 +173,25 @@ const staged = await until(async () => {
 });
 ok('the echoed write staged for the machine', staged,
   await page.evaluate(() => localStorage.getItem('phosphor.merge')));
+// ph-6n0: a virtual hub measured nothing; its echo is never the reality voice.
+const intentRgb = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--intent-rgb')
+  .trim().split(/\s*,\s*/).map(Number).join());
+if (field) {
+  ok('a virtual echo says virtual in the slot, never confirmed',
+    await until(async () => (await field.locator('.ladder').textContent()) === 'virtual', 3000), await field.locator('.ladder').textContent());
+  const glowRgb = await field.evaluate((f) => [...getComputedStyle(f, '::after').boxShadow.matchAll(/rgba?\(([^)]+)\)/g)][2][1]
+    .split(/[\s,/]+/).slice(0, 3).map(Number).join());
+  ok('...and its afterglow wears the intent family', glowRgb === await intentRgb(), glowRgb);
+}
 await openTab('machine');
+const hn = await page.locator('.hero-numerals .hn-primary .hn-val').evaluate((el) => {
+  const s = getComputedStyle(el), p = document.body.appendChild(document.createElement('i'));
+  p.style.color = 'var(--intent)';
+  const intent = getComputedStyle(p).color;
+  p.remove();
+  return { color: s.color, intent, shadow: s.textShadow };
+});
+ok('the hero numerals speak in intent, unlit, over the virtual snapshot', hn.color === hn.intent && hn.shadow === 'none', JSON.stringify(hn));
 if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-virtual.png') });
 await openTab('shell:merge');
 ok('Merge says writes stage while virtual', (await page.locator('.mp .pane-status').innerText()).startsWith('Writes stage for Bench'));

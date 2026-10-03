@@ -3,7 +3,11 @@
  * fake hub (ph-vdk.64): a chassis change moves computed --bg, a canvas that
  * paints neutrals repaints, the editor's fixed slots hold still, a pinned
  * token wins, the safety colors never move, and the Look scale applies live
- * under a grid scale step (ph-vdk.66).
+ * under a grid scale step (ph-vdk.66). Review 2026-10-02: the readout names
+ * an accent on a safety hue in its fixed slot and never wraps at 390 px,
+ * Advanced rows hold one height, every Display section is one surface, knob
+ * units follow format.js, safety text reads on the light chassis, and chrome
+ * keys clear 3:1.
  *
  * Build first (`npm run build:only`).
  * Run: node test/theme-browser.test.mjs [shots-dir]
@@ -16,7 +20,8 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
-import { deriveTokens, THEMES } from '../src/model/theme.js';
+import { deriveTokens, THEMES, contrast } from '../src/model/theme.js';
+import { formatWithUnit } from '../src/model/format.js';
 
 const SHOTS = process.argv[2] || null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -68,11 +73,14 @@ function fakeHub(ws) {
  * In-page WCAG audit: every element with its own text under `sel`, its color
  * blended by its ancestors' opacity over the first opaque background behind
  * it. Inactive controls are exempt (WCAG 1.4.3), and so is a stale value,
- * dimmed on purpose (law 8). Returns the failures in words.
+ * dimmed on purpose (law 8). Returns the failures in words. `[sel, floor]`
+ * holds every match to one floor instead (3 for chrome keys).
  */
-const lowContrast = (sel) => {
-  const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+const lowContrast = (arg) => {
+  const [sel, floor] = Array.isArray(arg) ? arg : [arg, 0];
+  const parse = (c) => { const s = /color\(srgb ([^)]+)\)/.exec(c); const m = s || /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
+    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); const k = s ? 255 : 1;
+    return [p[0] * k, p[1] * k, p[2] * k, p.length > 3 ? p[3] : 1]; };
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor);
@@ -90,7 +98,7 @@ const lowContrast = (sel) => {
     const l1 = lum([0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a))), l2 = lum(bg);
     const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
     const px = parseFloat(cs.fontSize);
-    const need = px >= 24 || (Number(cs.fontWeight) >= 700 && px >= 18.66) ? 3 : 4.5;
+    const need = floor || (px >= 24 || (Number(cs.fontWeight) >= 700 && px >= 18.66) ? 3 : 4.5);
     if (ratio < need) out.push((el.className || el.tagName) + ' "' + el.textContent.trim().slice(0, 24) + '" ' + ratio.toFixed(2));
   }
   return out;
@@ -98,6 +106,14 @@ const lowContrast = (sel) => {
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  -- ' + extra : '')); if (!c) fails++; };
+/** Chrome keys: the top bar's chip labels, the foot strip's keys, the rail tape's words and end numerals. */
+const KEYS = '.linkbar .chip-lbl, .footstrip .k, .footstrip .fs-label, .rail-tape-micro, .rail-endcap';
+const spread = (a) => Math.max(...a) - Math.min(...a);
+/** Advanced rows as [top within the list, height]: a scroll moves none of them. */
+const rows = (page) => page.$$eval('.tokens li', (ls) => ls.map((l) => {
+  const r = l.getBoundingClientRect();
+  return [r.top - l.parentElement.getBoundingClientRect().top, r.height];
+}));
 
 const browser = await chromium.launch();
 async function boot(viewport, seed = {}) {
@@ -166,14 +182,26 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   ok('default: computed --bg is the default chassis', await hexOf(page, '--bg') === def['--bg'], await hexOf(page, '--bg'));
   ok('default: computed --tx is the default chassis', await hexOf(page, '--tx') === def['--tx']);
   const warn0 = await css(page, '--warn'), bad0 = await css(page, '--bad');
+  const keyLow = await page.evaluate(lowContrast, [KEYS, 3]);
+  ok('chrome keys clear 3:1 (ph-7tt)', keyLow.length === 0 && await page.$$eval(KEYS, (els) => els.length) > 5, keyLow.slice(0, 4).join(' | '));
+  ok('a dark chassis draws safety text in the raw colors (ph-632)',
+    await hexOf(page, '--warn-ink') === await hexOf(page, '--warn') && await hexOf(page, '--bad-ink') === await hexOf(page, '--bad'));
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-phosphor.png') });
   const before = await canvasSums(page);
   ok('home: a canvas is painting', before.some((s) => s > 0), before.length + ' canvases');
 
   await openTab(page, 'display');
   if (SHOTS) await paneShot(page, 'display-default.png');
+  ok('display: every section is one surface, og-panel (ph-cpg)', await page.$$eval('.theme-picker > section',
+    (ss) => ss.length > 5 && ss.every((s) => s.classList.contains('og-panel') && !s.classList.contains('og-screen'))));
+  const outs = await page.$$eval('.theme-picker .knob-row output', (os) => os.map((o) => o.textContent.trim()));
+  const host = (unit, v) => formatWithUnit({ unit, step: 1 }, v);
+  ok('display: knob readouts join value and unit as format.js does (ph-e31)', outs.includes(host('%', 100)) && outs.includes(host('px', 2))
+    && outs.includes(host('°', 263)) && !outs.some((t) => /\d[^\d\s.]/.test(t)), outs.join(', '));
   const box = () => page.$eval('[data-testid="theme-ratios"]', (el) => { const r = el.getBoundingClientRect(); return [r.top, r.height]; });
+  const near = async () => (await page.textContent('[data-testid="theme-near"]')).trim();
   const [top0, h0] = await box();
+  ok('readout: no safety note on the default accents', await near() === '');
   await setKnob(page, 'chassis.brightness', 0.3);
   await setKnob(page, 'chassis.hue', 200);
   await setKnob(page, 'chassis.tint', 3);
@@ -188,11 +216,34 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   const [top1, h1] = await box();
   ok('chassis: the ratio readout holds its slot', Math.abs(top1 - top0) < 0.5 && Math.abs(h1 - h0) < 0.5, top0 + '/' + h0 + ' -> ' + top1 + '/' + h1);
   ok('chassis: the ratio readout reads a live ratio', /Text \d+\.\d:1/.test(await page.textContent('[data-testid="theme-ratios"]')));
+  await page.$eval('input[aria-label="Intent color"]', (el) => { el.value = '#ffd24d'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(100);
+  ok('readout: an accent on the safety amber is named (ph-76i)', await near() === 'Intent near safety amber', await near());
+  const [top2, h2] = await box();
+  ok('readout: the note lands in the fixed slot', Math.abs(top2 - top0) < 0.5 && Math.abs(h2 - h0) < 0.5, top0 + '/' + h0 + ' -> ' + top2 + '/' + h2);
+  await page.click('[data-theme-id="ember"]');
+  await page.waitForTimeout(100);
+  ok('readout: Ember reads no safety note (ph-76i)', await near() === '', await near());
   ok('safety: --warn and --bad never move', await css(page, '--warn') === warn0 && await css(page, '--bad') === bad0);
 
   await page.click('.adv summary');
   await page.waitForTimeout(100);
   if (SHOTS) await paneShot(page, 'display-custom-advanced.png');
+  const r0 = await rows(page);
+  ok('advanced: every row is one height (ph-l6t)', spread(r0.map((r) => r[1])) < 0.5, r0.map((r) => r[1]).join(','));
+  const gap = await page.evaluate(() => document.querySelector('.tokens li').getBoundingClientRect().top
+    - document.querySelector('.adv summary').getBoundingClientRect().bottom);
+  ok('advanced: no blank gap under the header', gap >= 0 && gap < 8, gap.toFixed(1) + ' px');
+  const cell = (k) => page.$eval('#tp-v' + k, (el) => [el.getBoundingClientRect().height, el.scrollWidth > el.clientWidth, el.title]);
+  const [glowH, cut, glowTitle] = await cell('--glow-reality');
+  ok('advanced: a long value is one line, whole in its title', glowH === (await cell('--bg'))[0] && cut && glowTitle.startsWith('0 0 18px'), glowH + ' ' + glowTitle);
+  await page.fill('input[aria-label="Pin --radius"]', '1px;color:red');
+  await page.press('input[aria-label="Pin --radius"]', 'Enter');
+  await page.waitForTimeout(100);
+  ok('advanced: a refused pin speaks in its own row', /Not a single CSS value/.test(await page.textContent('#tp-v--radius'))
+    && await page.getAttribute('input[aria-label="Pin --radius"]', 'aria-invalid') === 'true');
+  const r1 = await rows(page);
+  ok('advanced: the refusal moves no row', r1.every((r, i) => Math.abs(r[0] - r0[i][0]) < 0.5 && Math.abs(r[1] - r0[i][1]) < 0.5));
   await page.fill('input[aria-label="Pin --bg-card"]', '#203040');
   await page.press('input[aria-label="Pin --bg-card"]', 'Enter');
   await page.waitForTimeout(100);
@@ -212,6 +263,36 @@ const canvasSums = (page) => page.$$eval('canvas', (cs) => cs.map((c) => {
   ok('home: a canvas repainted under the new theme', after.some((s, i) => s !== before[i]), before.join(',') + ' -> ' + after.join(','));
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-slate.png') });
 
+  ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// ---- 1b. phones and the 200 px floor: the readout never wraps or clips, ---------
+// Advanced rows keep one height
+for (const [width, height] of [[200, 390], [320, 568], [390, 844]]) {
+  console.log('\n--- theme, ' + width + 'x' + height + ' ---');
+  const { ctx, page, errors } = await boot({ width, height });
+  await openTab(page, 'display');
+  const rd = await page.$eval('[data-testid="theme-ratios"]', (el) => {
+    const box = el.getBoundingClientRect();
+    const tops = [...el.querySelectorAll('.ratio')].map((c) => c.getBoundingClientRect().top);
+    const whole = [...el.querySelectorAll('.ratio > span')].every((s) => s.scrollWidth <= s.clientWidth + 0.5
+      && s.getBoundingClientRect().right <= box.right + 0.5);
+    return { tops, whole, lines: Math.round(box.height / parseFloat(getComputedStyle(el).lineHeight)),
+      sideways: document.documentElement.scrollWidth > innerWidth };
+  });
+  if (width < 264) {
+    ok(width + ': the ratios take one line each, nothing clips or scrolls sideways (ph-eqs)', rd.whole && rd.lines === 4 && !rd.sideways,
+      JSON.stringify(rd));
+  } else {
+    ok(width + ': the three ratios share one row, every word and number whole (ph-eqs)', spread(rd.tops) < 0.5 && rd.whole
+      && rd.lines === 3 && !rd.sideways, JSON.stringify(rd));
+  }
+  await page.click('.adv summary');
+  await page.waitForTimeout(100);
+  const r = await rows(page);
+  ok(width + ': every Advanced row is one height (ph-l6t)', spread(r.map((x) => x[1])) < 0.5,
+    Math.min(...r.map((x) => x[1])) + '..' + Math.max(...r.map((x) => x[1])));
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -255,6 +336,26 @@ for (const id of ['slate', 'ink', 'paper']) {
   await page.waitForTimeout(600);
   const scheme = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
   ok(id + ': color-scheme matches the chassis', scheme === (deriveTokens(t).dark ? 'dark' : 'light'), scheme);
+  const keyLow = await page.evaluate(lowContrast, [KEYS, 3]);
+  ok(id + ': chrome keys clear 3:1 (ph-7tt)', keyLow.length === 0, keyLow.slice(0, 4).join(' | '));
+  const inkLow = [];
+  for (const ink of ['--warn-ink', '--bad-ink']) {
+    for (const s of ['--bg', '--bg-raised', '--bg-card', '--bg-sunken']) {
+      const r = contrast(await hexOf(page, ink), await hexOf(page, s));
+      if (r < 4.5) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
+    }
+  }
+  ok(id + ': safety text reads 4.5:1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
+  const btn = await page.evaluate(() => Object.fromEntries(['running', 'danger'].map((c) => {
+    const b = document.createElement('button');
+    b.className = 'og-btn ' + c;
+    document.body.appendChild(b);
+    const v = getComputedStyle(b).color;
+    b.remove();
+    return [c, v];
+  })));
+  const inkRgb = async (k) => 'rgb(' + (await hexOf(page, k)).slice(1).match(/../g).map((x) => parseInt(x, 16)).join(', ') + ')';
+  ok(id + ': running and danger buttons write in the inks', btn.running === await inkRgb('--warn-ink') && btn.danger === await inkRgb('--bad-ink'), JSON.stringify(btn));
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-' + id + '.png') });
   await openTab(page, 'display');
   if (SHOTS) await paneShot(page, 'display-' + id + '.png');

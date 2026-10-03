@@ -11,7 +11,9 @@
    * - Tab is trapped inside the card; Escape cancels from anywhere. Focus
    *   returns to the control that opened it.
    * - Copy is whatever the caller passed from the catalog; this file adds only
-   *   the two button words.
+   *   the two button words, and never re-cases the title.
+   * - The confirm button is neutral: red is the e-stop's and Home required's
+   *   alone (DESIGN §10.3), and neither ever asks first (law 14).
    * - No knock prompt while `knocksShown`: the Pairing pane's own rows carry
    *   approve and deny, and a second prompt over them would only cover them.
    */
@@ -79,7 +81,7 @@
       <p id="overlay-body">{confirmUi.req.body}</p>
       <div class="acts">
         <button type="button" class="og-btn" data-autofocus onclick={() => answerConfirm(false)}>Cancel</button>
-        <button type="button" class="og-btn danger" onclick={() => answerConfirm(true)}>
+        <button type="button" class="og-btn confirm" onclick={() => answerConfirm(true)}>
           {confirmUi.req.confirmLabel || 'Confirm'}
         </button>
       </div>
@@ -125,12 +127,14 @@
     margin: 0;
     font-size: 1rem;
     color: var(--ink-hi);
-    text-transform: capitalize;
   }
+  /* Sentence case: catalog labels arrive lowercase (docs/COPY.md rule 3). */
+  h2::first-letter { text-transform: uppercase; }
   p { margin: 0; color: var(--ink); font-size: .9rem; }
   p:empty { display: none; }
   .acts { display: flex; gap: 8px; justify-content: flex-end; }
   .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 16px; }
+  .acts .confirm { border-color: var(--line-4); color: var(--ink-hi); }
   @media (prefers-reduced-motion: no-preference) {
     .overlay { animation: rise .14s ease-out; }
   }

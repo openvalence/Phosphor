@@ -15,12 +15,14 @@
   const model = $derived(machine.catalog.model);
   const field = $derived(model && model.fields.find((f) => f.uid === uid));
   // `more`: extra cells, each one presentation of another field ('pres@uid'),
+  // or of a placeable composite by its key ('range@role:window.min+role:window.max'),
   // or a placement with a look ('pres@uid@min=1;max=9' or '...@a=1;b=2'),
   // drawn through Control as the home draws it.
   const extra = $derived(model ? more.map((m) => {
     const [p, u, l] = m.split('@');
     const look = l ? { pres: p, ...Object.fromEntries(l.split(';').map((kv) => kv.split('='))) } : null;
-    return { key: m, pres: p, look, field: model.fields.find((f) => f.uid === u) };
+    return { key: m, pres: p, look, field: model.fields.find((f) => f.uid === u)
+      || (placeableControls(model).find((c) => c.key === u) || {}).field };
   }).filter((x) => x.field) : []);
   const control = $derived(model && placeableControls(model).find((c) => c.field && c.field.uid === uid));
   const act = $derived.by(() => {

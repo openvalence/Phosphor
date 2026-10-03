@@ -260,6 +260,22 @@ console.log('\n[help] F1 key help');
   ok('full: two columns', await page.locator('.kh-list').evaluate((el) => getComputedStyle(el).columnCount) === '2');
   ok('focus moves into the panel', await page.evaluate(() => !!document.activeElement.closest('.kh')));
   ok('the panel lists every group', (await page.locator('.kh h3').allTextContents()).join() === KEYS.map((g) => g.group).join());
+  // ph-gz8, ph-0wf: key names in text ink (never intent), each on one line;
+  // no shell-only row on the served page; the panes' heading face.
+  const kh = await page.evaluate(() => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--tx-hi)';
+    document.body.append(probe);
+    const hi = getComputedStyle(probe).color;
+    probe.remove();
+    const kbds = [...document.querySelectorAll('.kh kbd')];
+    const h2 = getComputedStyle(document.querySelector('.kh h2'));
+    return { ink: kbds.every((k) => getComputedStyle(k).color === hi), wrapped: kbds.filter((k) => k.getClientRects().length > 1
+      || k.getBoundingClientRect().height > parseFloat(getComputedStyle(k).lineHeight || '0') * 1.5).map((k) => k.textContent),
+      shellRow: /Close Phosphor/.test(document.querySelector('.kh').textContent), head: h2.fontWeight + ' ' + h2.textTransform };
+  });
+  ok('key names in text ink, each on one line', kh.ink && kh.wrapped.length === 0, JSON.stringify(kh));
+  ok('no shell-only row on the served page; the panes\' heading face', !kh.shellRow && kh.head === '500 uppercase', JSON.stringify(kh));
   const list = page.locator('.kh-list');
   const panelBox = await page.locator('.kh').boundingBox();
   ok('only the panel scrolls; the panel keeps its size',

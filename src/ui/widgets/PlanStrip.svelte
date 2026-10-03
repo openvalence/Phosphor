@@ -53,7 +53,7 @@
    * list, so a planner that gains or retires a style needs no change here.
    */
   import { machine } from '../../model/machine.svelte.js';
-  import { formatParts, optionLabel } from '../../model/format.js';
+  import { formatParts, optionLabel, labelFor } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
   import { railOwnerName } from '../../model/actions.js';
@@ -317,7 +317,7 @@
   });
 </script>
 
-{#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}<span class="unit">{p[1]}</span>{/snippet}
+{#snippet vu(f, v)}{@const p = formatParts(f, v)}{p[0]}{#if p[1]}{' '}<span class="unit">{p[1]}</span>{/if}{/snippet}
 
 {#if fields && haveAnyPosition}
   <!-- Mounted by RailWidget in the rail row's fixed box, shown over the jog
@@ -326,7 +326,9 @@
        isActive (a plan streaming right now); off, the lane dims (law 8). -->
   <div class="plan-strip" class:on={isActive}>
     <div class="plan-labels">
-      <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + optionLabel(fields.style, styleVal)}{/if}</span>
+      <!-- The style rides its own label, so a style named "idle" never reads
+           as the run state (ph-kts). -->
+      <span class="plan-mode">{#if owner}<span class="plan-owner">{owner}</span>{:else}plan{/if}{#if fields.style}{' · ' + labelFor(fields.style) + ' ' + optionLabel(fields.style, styleVal)}{/if}</span>
       <span class="plan-meta mono">
         {#if fields.velocity}
           <output>{@render vu(fields.velocity, velVal)}</output>
@@ -384,7 +386,7 @@
     flex: 0 0 auto;
     color: var(--ink);
   }
-  .unit { color: var(--ink-dim); font-size: 0.9em; margin-left: 1px; }
+  .unit { color: var(--ink-dim); font-size: 0.9em; }
 
   .plan-lane {
     position: relative;

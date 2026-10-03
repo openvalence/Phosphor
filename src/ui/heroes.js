@@ -85,6 +85,7 @@ const HEROES = [
   },
   {
     id: 'advanced-generator',
+    title: 'Advanced generator',
     zone: 'card',
     component: AdvancedGeneratorWidget,
     spec: ADVGEN_SPEC,

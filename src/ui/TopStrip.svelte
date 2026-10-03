@@ -250,6 +250,10 @@
   }
   // Home's icon (Lucide, MIT; the OG ui.js ICONS entry).
   const HOME_ICON = '<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>';
+  // Flip: a swap over the rail, home's stop at the end it sits (left normal,
+  // right flipped). Two heads and a level bar, never a twin of Override's
+  // ->| or Return's |<- (ph-wq9).
+  const FLIP_ICON = (on) => 'M4 4h8M10 2l2 2-2 2M12 8H4M6 6L4 8l2 2M2 13h12' + (on ? 'M14 10.5v5' : 'M2 10.5v5');
 
   let busy = $state({});
   async function fire(op) {
@@ -268,7 +272,7 @@
 </script>
 
 {#snippet homeFace()}
-  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
        stroke-linejoin="round" aria-hidden="true">{@html HOME_ICON}</svg>
   <span class="lbl">{homeOp ? displayLabel(homeOp.label) : 'More'}</span>
   <svg class="caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>
@@ -282,14 +286,16 @@
   </button>
 {/snippet}
 
-{#snippet flipButton()}
-  <!-- Icon only, the state in words in the tooltip: home's end is the bar,
-       left retracted, right extended (operator sketch 2026-10-02). -->
-  <button type="button" class="rw-flip" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
-          data-shadow={flip.status} title={flip.text} onclick={toggleFlip}>
-    <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
-      {#if flip.on}<path d="M13 3v10M10 8H2M5 5L2 8l3 3"/>{:else}<path d="M3 3v10M6 8h8M11 5l3 3-3 3"/>{/if}
-    </svg>
+{#snippet flipButton(labeled)}
+  <!-- The state in words in the tooltip; in the Home popover the word rides
+       the icon like its labeled neighbors. -->
+  <!-- The ladder wears the fields' ring outside the box (docs/EFFECTS.md A,
+       ph-vdk.65), never the inset one. -->
+  <button type="button" class="rw-flip field" class:labeled aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
+          data-shadow={flip.status} data-glow={flip.glow || undefined} title={flip.text} onclick={toggleFlip}
+          onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
+    <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d={FLIP_ICON(flip.on)}/></svg>
+    {#if labeled}<span class="lbl">Flip</span>{/if}
   </button>
 {/snippet}
 
@@ -357,7 +363,7 @@
           {#if menuOpen}
             <div class="menu-pop" role="group" aria-label="Home and machine ops">
               {#each ops as op (op.key)}{@render opButton(op)}{/each}
-              {#if flipInMenu}{@render flipButton()}{/if}
+              {#if flipInMenu}{@render flipButton(true)}{/if}
               {#if ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
             </div>
           {/if}
@@ -365,7 +371,7 @@
       {/if}
       {#if (flip && !flipInMenu) || (hasOverride && !ovrInMenu)}
         <div class="ovr" bind:this={ovrEl}>
-          {#if flip && !flipInMenu}{@render flipButton()}{/if}
+          {#if flip && !flipInMenu}{@render flipButton(false)}{/if}
           {#if hasOverride && !ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
         </div>
       {/if}
@@ -481,7 +487,7 @@
     color: var(--ink-dim);
   }
   [data-kind='fault'] .st-text, .recovery .st-text,
-  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn-ink, var(--warn)); }
 
   .recovery {
     display: flex;
@@ -503,8 +509,10 @@
 
   .home-menu { position: relative; }
   .home-btn { gap: 6px; }
-  .home-btn .ico { width: 14px; height: 14px; }
-  .home-btn .caret { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+  /* One icon box and one drawn stroke for every strip glyph (ph-hsl): 16 px,
+     1.5 px, so a 24-grid icon draws at 2.25 and a 16-grid one at 1.5. */
+  .home-btn .ico { width: 16px; height: 16px; }
+  .home-btn .caret { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.8; }
   .home-btn[aria-expanded='true'] { border-color: var(--line-4); }
   /* Overlay: out of flow under its button, above the rail; moves nothing.
      Opens toward the pair, mirrored with the dock. */
@@ -540,11 +548,12 @@
     border-radius: var(--r-s);
     color: var(--ink);
   }
-  .rw-flip .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .rw-flip .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .rw-flip.labeled { width: auto; gap: 6px; justify-content: flex-start; padding: 0 12px; font-weight: 500; font-size: .72rem; }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
-  .rw-flip:is([data-shadow='overdue'], [data-shadow='fault']) { color: var(--warn); }
+  .rw-flip:is([data-shadow='overdue'], [data-shadow='fault']) { color: var(--warn-ink, var(--warn)); }
 
   /* Home required (DESIGN §10.3): the safety red, pulsing; still at rest
      under reduced motion (law 12). */
@@ -621,7 +630,11 @@
   }
   .evline:hover { border-color: var(--line-4); }
   .evline.stale { opacity: .55; }
-  .evkind { text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; }
+  /* Sentence case, and the event word keeps its width longest: the age and
+     the tags yield first (ph-44q). */
+  .evkind { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .evkind::first-letter { text-transform: uppercase; }
+  .evage, .evtag { flex: 0 1000 auto; min-width: 0; overflow: hidden; }
   .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); }
   .evtag {
     font-family: var(--mono);

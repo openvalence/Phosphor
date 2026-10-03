@@ -27,7 +27,9 @@
 //   direction, a vertical pill left-right only, a horizontal pill up-down
 //   only. The accel diamond and the offset triangle are markers that move
 //   left-right.
-// - A label sits beside its handle, clear of the drawn line (placeLabels).
+// - A label sits beside its handle, clear of the drawn lines (placeLabels).
+// - A write's state moves no box and no label: the ladder's words ride a
+//   one-line note slot, the look rides the host's data-shadow (style.css).
 // - mod.shape is not claimed: it stays a Tier-0 field until a hub emits it.
 // - Dwells (RFC-095) are optional: the trough flat leads the stroke at the
 //   left, the crest flat follows the deep turn, each to scale on the stroke's
@@ -59,6 +61,7 @@ export const DWELL_CAP = 0.25;                     // share of the plot a flat t
 export const DWELL_SPAWN = 0.25;                   // strokes a plus writes
 const DWELL_OFF = 36;                              // viewBox units: a dwell pill sits this far off its bound
 const LADDER = { pending: 'waiting', overdue: 'still waiting', fault: 'refused' };
+const RANK = { pending: 1, overdue: 2, fault: 3 };
 const KEYS = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 'min', End: 'max' };
 
 // ---- geometry (pure; test/plugins.test.mjs drives it) ----------------------
@@ -323,29 +326,39 @@ function normalAt(lines, x, y) {
 }
 /**
  * Labels in px. items: {x, y, w, h} (handle center, label size); lines:
- * densified polylines; marks: handle centers. A label tries the eight sides
- * of its handle, squarest to the line's local tangent first; it takes the
- * first inside the box, clear of the lines, of other handles and of labels
- * already placed, then of the plot's own text (fixed, {x, y, w, h}), which
- * yields first. None clear: the clearest, with a backing (bg).
+ * densified polylines; marks: [x, y, clearance px (default 8)], the handles
+ * and any control on the plot. A label tries the eight sides of its handle,
+ * squarest to the line's local tangent first, at gap G, then the eight again
+ * one and two label heights further out; it takes the first inside the box,
+ * clear of the lines, of the marks and of labels already placed, then of the
+ * plot's own text (fixed, {x, y, w, h}), which yields first. The label with
+ * the fewest open sides places first. None clear: the clearest, with a
+ * backing (bg).
  */
 export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
-  const pts = lines.flat(), placed = [];
-  return items.map((it) => {
+  const pts = lines.flat(), placed = [], out = [];
+  const all = items.map((it) => {
     const n = normalAt(lines, it.x, it.y);
-    const cands = COMPASS.map(([ux, uy]) => {
-      const r = { x: it.x + ux * (G + it.w / 2) - it.w / 2, y: it.y + uy * (G + it.h / 2) - it.h / 2, w: it.w, h: it.h };
+    const ring = (gap) => COMPASS.map(([ux, uy]) => {
+      const r = { x: it.x + ux * (gap + it.w / 2) - it.w / 2, y: it.y + uy * (gap + it.h / 2) - it.h / 2, w: it.w, h: it.h };
       return { r, pref: Math.abs(ux * n[0] + uy * n[1]) / Math.hypot(ux, uy), line: away(pts, r),
-        mark: away(marks.filter((m) => m[0] !== it.x || m[1] !== it.y), r), free: !placed.some((q) => overlaps(r, q)),
+        mark: marks.every((m) => (m[0] === it.x && m[1] === it.y) || away([m], r) > (m[2] || 8)),
         text: !fixed.some((q) => overlaps(r, q)), inside: r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H };
     }).sort((a, b) => b.pref - a.pref);
-    const clear = (c) => c.inside && c.free && c.line > 1.5 && c.mark > 8;
+    return [...ring(G), ...ring(G + it.h), ...ring(G + 2 * it.h)];
+  });
+  const open = (c) => c.inside && c.line > 1.5 && c.mark;
+  // The label with the fewest open sides picks first (a stable sort: ties keep handle order).
+  for (const [i] of all.map((c, i) => [i, c.filter(open).length]).sort((a, b) => a[1] - b[1])) {
+    const cands = all[i].map((c) => ({ ...c, free: !placed.some((q) => overlaps(c.r, q)) }));
+    const clear = (c) => open(c) && c.free;
     let pick = cands.find((c) => clear(c) && c.text) || cands.find(clear);
     const bg = !pick;
     if (!pick) pick = [...cands].sort((a, b) => (b.free - a.free) || (b.inside - a.inside) || (b.line - a.line))[0];
     placed.push(pick.r);
-    return { dx: pick.r.x - it.x, dy: pick.r.y - it.y, bg };
-  });
+    out[i] = { dx: pick.r.x - items[i].x, dy: pick.r.y - items[i].y, bg };
+  }
+  return out;
 }
 
 // ---- DOM helpers -----------------------------------------------------------
@@ -355,43 +368,52 @@ const CSS = `
 .ap [hidden] { display: none !important; }
 .ap-tabs { display: grid; grid-template-columns: 1fr 1fr; }
 .ap-tabs button, .ap-mtab { min-height: var(--tap); background: none; border: 1px solid var(--line); color: var(--tx-mut);
-  font: inherit; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+  font: 500 .82rem/1.2 var(--font); }
 .ap-tabs button { cursor: pointer; }
-.ap-tabs button[aria-selected=true], .ap-mtab:has([aria-selected=true]) { color: var(--reality); border-color: var(--reality); }
+.ap-tabs button:hover, .ap-mtab:hover { border-color: var(--line-4); color: var(--tx); }
+.ap-tabs button[aria-selected=true], .ap-mtab:has([aria-selected=true]) { color: var(--highlight); border-color: var(--highlight); }
 .ap-mtab { display: flex; align-items: stretch; min-width: 0; }
-.ap-mtab button { background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0 6px; }
-.ap-mtab [role=tab] { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ap-mon { flex: none; display: grid; place-items: center; }
-.ap-mon::before { content: ''; width: 22px; height: 12px; border-radius: 6px; border: 1px solid var(--line-2); box-sizing: border-box;
-  background: radial-gradient(circle at 5px 50%, var(--tx-mut) 3px, transparent 3.5px); }
-.ap-mon[aria-checked=true]::before { border-color: var(--reality); background: radial-gradient(circle at 15px 50%, var(--reality) 3px, transparent 3.5px); }
+.ap-mtab > button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0 6px; }
+.ap-mtab [role=tab] { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ap-mtab [role=tab] > span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow-wrap: anywhere; text-align: center; }
+.ap-mon { flex: none; padding: 0 6px; gap: 0; }
+.ap-mon .track { width: 28px; height: 16px; }
+.ap-mon .track::after { width: 10px; height: 10px; }
+.ap-mon input:checked + .track::after { transform: translateX(12px); }
+.ap-mon:has(input:disabled) { cursor: default; opacity: .4; }
 .ap-mtrash { flex: none; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-mtrash svg, .ap-tool svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .ap-mtab button:disabled { cursor: default; opacity: .4; }
-.ap [data-status=pending] { border-style: dashed; }
-.ap [data-status=overdue], .ap [data-status=fault] { border-color: var(--warn); }
 .ap-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ap-row > select, .ap-row > input { flex: 1 1 180px; min-height: var(--tap); }
 .ap-row .og-btn, .ap-run { min-height: var(--tap); }
-.ap-run { flex: 1 1 200px; letter-spacing: .08em; text-transform: uppercase; }
+.ap-run { flex: 1 1 200px; }
 .ap-ctl { display: flex; flex-direction: column; }
-.ap-ctl label { display: flex; justify-content: space-between; gap: 8px; color: var(--tx); font-size: .85rem; }
-.ap-ctl output { font-family: var(--mono); color: var(--tx-val); }
+.ap-ctl label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+:is(.ap-ctl label, .ap-num) > span { font: 500 .76rem var(--font); color: var(--tx-mut); text-transform: lowercase; letter-spacing: .04em; }
+.ap-ctl output { display: inline-flex; align-items: center; padding: 1px 6px; font: var(--num-wght) .76rem var(--mono); font-variation-settings: 'wdth' 90;
+  color: var(--tx-val); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
+  border: 1px solid var(--line-1); border-radius: var(--r-s); }
+.ap-ctl .unit { margin-left: 3px; font: 500 .64rem var(--font); color: var(--tx-ghost); }
 .ap-ctl input[type=range] { margin: 6px 0; }
-.ap-note { margin: 0; min-height: 1.1em; font-size: .74rem; color: var(--ink-dim); }
-.ap [data-status=fault] > .ap-note, .ap-ed + .ap-note:not(:empty) { color: var(--warn); }
+.ap-note { margin: 0; height: 1.45em; line-height: 1.45; font-size: .74rem; color: var(--ink-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-note[data-slot=pending] { color: var(--intent); }
+.ap-note:is([data-slot=overdue], [data-slot=fault]) { color: var(--warn); }
+.ap-note[data-slot=confirmed] { color: color-mix(in srgb, var(--reality) calc(var(--ga, 0) * 100%), var(--tx-mut)); }
 .ap-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px 10px; }
-.ap-num { display: flex; flex-direction: column; gap: 2px; font-size: .72rem; color: var(--tx-mut); }
+.ap-num { display: flex; flex-direction: column; gap: 2px; }
 .ap-num input { font-family: var(--mono); }
 .ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
+.ap-num:is([data-status=overdue], [data-status=fault]) input { border-color: var(--warn); }
 .ap-row .ap-tool { flex: none; width: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
-.ap-row .ap-tool[aria-pressed=true] { color: var(--reality); border-color: var(--reality); }
-.ap-num[data-status=overdue] input, .ap-num[data-status=fault] input { border-color: var(--warn); }
-.ap-cap { display: flex; justify-content: space-between; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
+.ap-row .ap-tool[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
+.ap-cap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
 .ap-ed { position: relative; width: 100%; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; }
 .ap-ed svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ap-stroke { height: 240px; }
-.ap-stair { height: 170px; }
+.ap-stair { height: 180px; }
 .ap-wave { height: 64px; touch-action: auto; }
 .ap-ed path, .ap-ed line, .ap-ed polyline { fill: none; vector-effect: non-scaling-stroke; }
 .ap-ed .curve { stroke: var(--reality); stroke-width: 2; }
@@ -402,16 +424,18 @@ const CSS = `
 .ap-ed .vguide.thin { stroke-width: 1; }
 .ap-ed .cut { stroke: var(--reality); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 0 6; }
 .ap-ed .cut.intent { stroke: var(--intent); }
-.ap-plus { position: absolute; width: var(--tap); height: var(--tap); margin: 0; padding: 0; background: none; border: 0; cursor: pointer;
-  transform: translate(6px, 8px); color: var(--tx-mut); z-index: 2; }
-.ap-plus::after { content: '+'; position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; display: grid; place-items: center;
-  border: 1px solid var(--line-2); border-radius: 50%; background: var(--bg-card); font: 600 14px/1 var(--mono); }
-.ap-plus:hover, .ap-plus:focus-visible { color: var(--reality); outline: none; }
-.ap-plus:is(:hover, :focus-visible)::after { border-color: var(--reality); }
+.ap-plus { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); padding: 0;
+  display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--tx-mut); z-index: 2; }
+.ap-stair .ap-plus { margin: 0; padding: 4px; place-items: start; transform: translate(6px, 8px); }   /* off its corner handle: never over it */
+.ap-plus > i { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 50%;
+  background: var(--bg-card); font: 600 14px/1 var(--mono); pointer-events: none; }
+.ap-plus:is(:hover, :focus-visible) { color: var(--highlight); outline: none; }
+.ap-plus:hover > i { border-color: var(--highlight); }
+.ap-plus:focus-visible > i { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
 .ap-ed .told { stroke: var(--intent); stroke-width: 1.5; }
 .ap-ax { position: absolute; left: 4px; transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
-.ap-seg { position: absolute; bottom: 20px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
+.ap-seg { position: absolute; bottom: 30px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
 .ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
   border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--bg-card); box-sizing: border-box; }
@@ -419,7 +443,8 @@ const CSS = `
 .ap-h[data-shape=hpill]::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
 .ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--hc, var(--reality)); background: none; }
-.ap-h:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--reality-rgb), .35); }
+.ap-h:not(.off):hover::after { outline: 1px solid var(--highlight); outline-offset: 2px; }
+.ap-h:focus-visible::after { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .ap-h:is([data-status=draft], [data-status=pending]) { --hc: var(--intent); }
 .ap-h:is([data-status=draft], [data-status=pending]):not([data-shape=tri])::after { border-style: dashed; }
 .ap-h:is([data-status=overdue], [data-status=fault]) { --hc: var(--warn); }
@@ -430,11 +455,15 @@ const CSS = `
 .ap-tag.bg { background: color-mix(in srgb, var(--bg-card) 85%, transparent); }
 .ap-tag:empty { display: none; }
 .ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--bg-card); box-sizing: border-box; pointer-events: none; z-index: 1; }
-.ap h4 { margin: 0; font-size: .85rem; color: var(--tx); font-weight: 600; }
-.ap-sub { margin: 0; font-size: .72rem; color: var(--tx-mut); }
+.ap h4 { margin: 0; font: 500 .8rem var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); white-space: nowrap; }
+.ap-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 4px; }
-.ap-mtabs [role=tab]::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--line-2); vertical-align: middle; }
+.ap-mtabs [role=tab]::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
 .ap-mtabs [role=tab][data-on=true]::before { background: var(--reality); }
+.ap-narrow :is(.ap-hint, .ap-ax) { display: none; }
+.ap-narrow .ap-mtabs { grid-template-columns: 1fr 1fr; }
+.ap-narrow .ap-mtabs [role=tab]::before { display: none; }
+.ap-idle { position: absolute; left: 8px; top: 4px; font: .7rem var(--mono); color: var(--tx-mut); }
 .ap .ap-stale { opacity: .55; }
 `;
 
@@ -452,8 +481,20 @@ const s = (tag, attrs = {}) => {
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   return e;
 };
+/** A plus that spawns a hold: a touch-sized button around an 18 px dot, the dot a label keeps off. */
+function plusBtn(label, spawn) {
+  const b = h('button', { type: 'button', class: 'ap-plus', 'aria-label': label, title: label }, h('i', { text: '+', 'aria-hidden': 'true' }));
+  b.addEventListener('pointerdown', (e) => e.stopPropagation());
+  b.addEventListener('click', spawn);
+  return b;
+}
 const on = (v) => v === true || Number(v) === 1;
 const num = (v) => String(+Number(v).toFixed(2));
+/** A one-line note slot: the gate, else the words (the ladder's by default), styled by its state. */
+function say(note, gate, st, words = LADDER[st]) {
+  note.textContent = note.title = gate || words || '';
+  note.dataset.slot = gate ? 'gate' : words ? st : '';
+}
 const cpath = (c) => 'M' + c[0] + ' ' + c[1] + ' C' + c.slice(2).join(' ');
 
 export function activate(api) {
@@ -485,7 +526,7 @@ function makeEditor(api, o, ed) {
   const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
   let drag = null;
   const { val } = ed;
-  const geom = () => o.geom(val, drag ? drag.g0 : null);
+  const geom = () => o.geom(val, drag ? drag.g0 : null, box);
   // axis: 'x' (default) left-right, 'y' up-down, 'xy' any; the shape says which (header).
   const hs = o.handles.filter((d) => d.field).map((d) => {
     const shape = d.shape || (d.axis === 'y' ? 'hpill' : d.axis === 'xy' ? 'dot' : 'vpill');
@@ -547,28 +588,32 @@ function makeEditor(api, o, ed) {
 
   function render() {
     const g = geom();
-    o.draw(g, val);
-    let gate = '';
+    o.draw(g, val, box);
+    let gate = '', worst = '';
+    const who = [];
     for (const hd of hs) {
       const f = hd.field;
       const p = hd.at(g);
       hd.el.hidden = !p;
       const fg = api.gate(f);
       gate = gate || fg;
+      const st = ed.has(f) ? 'draft' : api.status(f);
+      const v = val(f);
+      if ((RANK[st] || 0) > (RANK[worst] || 0)) { worst = st; who.length = 0; }
+      if (st === worst) who.push(hd.text(v) || hd.label.toLowerCase() + ' ' + num(v));
       if (!p) continue;
       hd.el.style.left = (p.x / o.W * 100) + '%';
       hd.el.style.top = (p.y / o.H * 100) + '%';
-      const st = ed.has(f) ? 'draft' : api.status(f);
       hd.el.dataset.status = st;
       hd.el.classList.toggle('off', !!fg);
       hd.el.setAttribute('aria-disabled', String(!!fg));
-      const v = val(f);
       hd.el.setAttribute('aria-valuenow', String(v));
       hd.el.setAttribute('aria-valuemin', String(f.min));
       hd.el.setAttribute('aria-valuemax', String(f.max));
-      hd.tag.textContent = hd.text(v) + (LADDER[st] ? ' · ' + LADDER[st] : '');
+      hd.tag.textContent = hd.text(v);
     }
-    note.textContent = gate;
+    // The ladder in words rides the note, never a tag, so no state change can move a label.
+    say(note, gate, worst, worst && who.join(', ') + ' · ' + LADDER[worst]);
     box.classList.toggle('ap-stale', hs.some((hd) => api.stale(hd.field)));
     labels(g);
   }
@@ -581,22 +626,39 @@ function makeEditor(api, o, ed) {
     const marks = shown.map((hd) => px([hd.at(g).x, hd.at(g).y]));
     const tagged = shown.filter((hd) => hd.tag.textContent);
     const lines = o.lines(g).map((l) => densify(l.map(px)));
-    const items = tagged.map((hd) => {
+    const measure = () => tagged.map((hd) => {
       const [x, y] = px([hd.at(g).x, hd.at(g).y]);
       return { x, y, w: hd.tag.offsetWidth, h: hd.tag.offsetHeight };
     });
     // Client rects in layout px: a UI scale (zoom or transform) divides out.
     const b0 = box.getBoundingClientRect(), z = b0.width / bw || 1;
-    const fixed = [...box.querySelectorAll(':scope > :is(.ap-seg, .ap-cap, .ap-ax):not([hidden])')].map((e) => {
+    const rel = (e) => {
       const r = e.getBoundingClientRect();
       return { x: (r.left - b0.left) / z, y: (r.top - b0.top) / z, w: r.width / z, h: r.height / z };
-    });
-    placeLabels(items, lines, marks, bw, bh, fixed).forEach((r, i) => {
+    };
+    const fixed = [...box.querySelectorAll(':scope > :is(.ap-seg, .ap-cap, .ap-ax):not([hidden])')].map(rel);
+    // A plus is a control: a label keeps off its dot like off a handle.
+    const dots = [...box.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map(rel).map((q) => [q.x + q.w / 2, q.y + q.h / 2, q.w / 2 + 2]);
+    let items = measure(), res = placeLabels(items, lines, [...marks, ...dots], bw, bh, fixed);
+    // No clear side: a three-word label drops its first word (the side, which its half shows) and all place again.
+    if (res.some((r, i) => r.bg && /^\S+ \S+ \S+$/.test(tagged[i].tag.textContent))) {
+      res.forEach((r, i) => { if (r.bg) tagged[i].tag.textContent = tagged[i].tag.textContent.replace(/^\S+ (?=\S+ \S+$)/, ''); });
+      items = measure();
+      res = placeLabels(items, lines, [...marks, ...dots], bw, bh, fixed);
+    }
+    const placed = res.map((r, i) => {
       const t = tagged[i].tag;
       t.style.left = 'calc(50% + ' + r.dx.toFixed(1) + 'px)';
       t.style.top = 'calc(50% + ' + r.dy.toFixed(1) + 'px)';
       t.classList.toggle('bg', r.bg);
+      return { x: items[i].x + r.dx, y: items[i].y + r.dy, w: items[i].w, h: items[i].h };
     });
+    // A segment caption a label could not avoid yields: its word first, then itself.
+    for (const e of box.querySelectorAll(':scope > .ap-seg:not([hidden])')) {
+      if (!placed.some((q) => overlaps(q, rel(e)))) continue;
+      e.textContent = e.dataset.n;
+      e.hidden = placed.some((q) => overlaps(q, rel(e)));
+    }
   }
   const ro = new ResizeObserver(() => render());
   ro.observe(box);
@@ -712,22 +774,35 @@ function mountCard(api, el, fields) {
     updaters.push(draw);
     return btn;
   }
-  // A full-width slider (master, the classic knobs), the ladder in words under it.
+  // A full-width slider (master, the classic knobs): the host's field ring and line
+  // (style.css .field, data-shadow), the value chip, the ladder in words under it.
   function slider(f, label) {
     const out = h('output');
     const input = h('input', { type: 'range', min: f.min ?? 0, max: f.max ?? 100, step: f.step || 1, 'aria-label': label });
     const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
-    const box = h('div', { class: 'ap-ctl' }, h('label', {}, h('span', { text: label }), out), input, note);
-    let held = false;
-    input.addEventListener('input', () => { held = true; out.textContent = num(input.value); });
+    const box = h('div', { class: 'ap-ctl field' }, h('label', {}, h('span', { text: label }), out), input, note);
+    // Value then unit, the host's Field chip (format.js formatParts).
+    const show = (v) => out.replaceChildren(num(v), ...(f.unit ? [h('span', { class: 'unit', text: f.unit })] : []));
+    let held = false, last = 'confirmed', glow = 0;
+    input.addEventListener('input', () => { held = true; show(input.value); });
     input.addEventListener('change', () => { held = false; api.write(f, Number(input.value)); });
+    // The afterglow: lit by each echo (1 and 2 alternate, so it restarts), ended by its own animation.
+    const paint = () => {
+      const st = api.status(f), gate = api.gate(f);
+      box.dataset.shadow = st;
+      if (glow) box.dataset.glow = String(glow); else delete box.dataset.glow;
+      say(note, gate, st, glow ? 'confirmed' : LADDER[st]);
+    };
+    box.addEventListener('animationend', (e) => { if (e.target === box && /^fx-glow/.test(e.animationName)) { glow = 0; paint(); } });
     updaters.push(() => {
-      const v = api.value(f), st = api.status(f), gate = api.gate(f), stale = api.stale(f);
-      box.dataset.status = st;
+      const v = api.value(f), st = api.status(f), stale = api.stale(f);
+      glow = st !== 'confirmed' || stale ? 0 : RANK[last] ? (glow === 1 ? 2 : 1) : glow;
+      last = st;
       box.classList.toggle('ap-stale', !!stale);
-      input.disabled = !!gate;
-      if (!held) { input.value = Number(v); out.textContent = num(v) + (f.unit ? ' ' + f.unit : ''); }
-      note.textContent = gate || LADDER[st] || '';
+      input.disabled = !!api.gate(f);
+      if (!held) { input.value = Number(v); show(v); }
+      box.style.setProperty('--fx-f', String(clamp((Number(input.value) - input.min) / (input.max - input.min || 1), 0, 1)));
+      paint();
     });
     return box;
   }
@@ -735,14 +810,14 @@ function mountCard(api, el, fields) {
     const sel = h('select', { 'aria-label': label });
     (f.options || []).forEach((o, i) => sel.append(h('option', { value: String(i), text: String(o).replace(/_/g, ' ') })));
     const note = h('p', { class: 'ap-note', 'aria-live': 'polite' });
-    const box = h('div', { class: 'ap-ctl' }, h('label', {}, h('span', { text: label })), sel, note);
+    const box = h('div', { class: 'ap-ctl field' }, h('label', {}, h('span', { text: label })), sel, note);
     sel.addEventListener('change', () => api.write(f, Number(sel.value)));
     updaters.push(() => {
       const st = api.status(f), gate = api.gate(f);
-      box.dataset.status = st;
+      box.dataset.shadow = st;
       sel.disabled = !!gate;
       sel.value = String(Number(api.value(f)));
-      note.textContent = gate || LADDER[st] || '';
+      say(note, gate, st);
     });
     return box;
   }
@@ -770,11 +845,11 @@ function mountCard(api, el, fields) {
       const path = s('path', { class: 'curve', 'data-dwell': which });
       const dots = FADE.map((o) => s('line', { class: 'cut', 'data-dwell': which, 'stroke-opacity': o }));
       const guide = s('line', { class: 'vguide thin', 'data-dwell': which, y1: SL.YT, y2: SL.YB });
-      const plus = h('button', { type: 'button', class: 'ap-plus', 'aria-label': l, title: l });
-      plus.addEventListener('pointerdown', (e) => e.stopPropagation());
-      plus.addEventListener('click', () => { ed.preview(f, DWELL_SPAWN); ed.commit(f); });
+      const plus = plusBtn(l, () => { ed.preview(f, DWELL_SPAWN); ed.commit(f); });
       return { which, f, path, dots, guide, plus };
     });
+  // The plot's 0 and 100 guides: lines a label keeps off, like the stroke.
+  const rails = [SL.YT, SL.YB].map((y) => [[SL.X0, y], [SL.XR, y]]);
   const stroke = makeEditor(api, {
     W: 1000, H: 240, cls: 'ap-stroke',
     decor: [...ticks, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'stroke · shape' }),
@@ -784,9 +859,9 @@ function mountCard(api, el, fields) {
       s('line', { class: 'guide', x1: SL.X0, x2: SL.XR, y1: SL.YB, y2: SL.YB }), pIn, pOut,
       ...dwells.flatMap((d) => [d.guide, d.path, ...d.dots])],
     geom: strokeNow,
-    lines: (g) => (g.ok ? [...[g.inC, g.outC].map((c) => Array.from({ length: 49 }, (_, i) => { const p = bez(c, i / 48); return [p.x, p.y]; })),
+    lines: (g) => [...rails, ...(g.ok ? [...[g.inC, g.outC].map((c) => Array.from({ length: 49 }, (_, i) => { const p = bez(c, i / 48); return [p.x, p.y]; })),
       ...dwells.map((d) => g.flat[d.which]).filter(([a, b]) => b > a).map(([a, b, y]) => [[a, y], [b, y]]),
-      ...dwells.filter((d) => val(d.f) > 0).map((d) => g.pill[d.which].x).map((x) => [[x, SL.YT], [x, SL.YB]])] : []),
+      ...dwells.filter((d) => val(d.f) > 0).map((d) => g.pill[d.which].x).map((x) => [[x, SL.YT], [x, SL.YB]])] : [])],
     draw(g) {
       const intent = DRIVEN.some(([k]) => draft.has(F[k].uid) || /^(pending|overdue)$/.test(api.status(F[k])));
       for (const [p, c] of [[pIn, g.inC], [pOut, g.outC]]) {
@@ -819,11 +894,11 @@ function mountCard(api, el, fields) {
       { key: 'shallow', field: F.depthMin, label: 'Min depth', axis: 'y', at: (g) => (g.ok ? g.shallow : { x: SL.XR, y: g.ylo }),
         value: SV.depth, text: (v) => 'shallow ' + num(v) },
       { key: 'vin', field: F.speedIn, label: 'In speed', at: (g) => g.ok && g.vIn,
-        value: (f, g, x, y) => SV.speedIn(f, g, x, y, linked && f.max * period()), text: (v) => 'in v' + num(v) },
+        value: (f, g, x, y) => SV.speedIn(f, g, x, y, linked && f.max * period()), text: (v) => 'in ' + num(v) },
       { key: 'vout', field: F.speedOut, label: 'Out speed', at: (g) => g.ok && g.vOut,
-        value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked && f.max * period()), text: (v) => 'out v' + num(v) },
-      { key: 'ain', field: F.accelIn, label: 'In accel', shape: 'diamond', at: (g) => g.ok && g.aIn, value: SV.accelIn, text: (v) => 'a' + num(v) },
-      { key: 'aout', field: F.accelOut, label: 'Out accel', shape: 'diamond', at: (g) => g.ok && g.aOut, value: SV.accelOut, text: (v) => 'a' + num(v) },
+        value: (f, g, x, y) => SV.speedOut(f, g, x, y, linked && f.max * period()), text: (v) => 'out ' + num(v) },
+      { key: 'ain', field: F.accelIn, label: 'In accel', shape: 'diamond', at: (g) => g.ok && g.aIn, value: SV.accelIn, text: (v) => 'in accel ' + num(v) },
+      { key: 'aout', field: F.accelOut, label: 'Out accel', shape: 'diamond', at: (g) => g.ok && g.aOut, value: SV.accelOut, text: (v) => 'out accel ' + num(v) },
       { key: 'trough', field: F.dwellTrough, label: 'Trough dwell', at: (g) => g.ok && g.p.dt > 0 && g.pill.trough,
         value: SV.dwellTrough, text: (v) => 'dwell ' + num(v) },
       { key: 'crest', field: F.dwellCrest, label: 'Crest dwell', at: (g) => g.ok && g.p.dc > 0 && g.pill.crest,
@@ -839,21 +914,30 @@ function mountCard(api, el, fields) {
     .sort((a, b) => (order.get(a.t) ?? 99) - (order.get(b.t) ?? 99));
   let rhythm = null;
   if (mods.length) {
-    const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152, H: 170 };
+    const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152, H: 180 };   // H - TRACK = YT: room under the track for the offset label
     let cur = 0;
     const kept = new Map();
     const tabs = h('div', { class: 'ap-mtabs', role: 'tablist' });
     const host = h('div');
     const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>';
+    // The amp handle's touch box stays inside the plot: the axis half a handle in, the stair half a handle and a gap past it.
+    const stairL = (box) => {
+      const bw = box.clientWidth, t = (box.querySelector('.ap-h') || {}).offsetWidth || 0;
+      if (!bw) return ML;
+      const u = 1000 / bw, AX = Math.max(ML.AX, (t / 2 + 1) * u);
+      return { ...ML, AX, X0: Math.max(ML.X0, AX + (t / 2 + 8) * u) };
+    };
     const views = mods.map(({ m, t }, i) => {
       const name = labelOf.get(t) || m.amount.group || 'Modulator';
-      const btn = h('button', { type: 'button', role: 'tab', text: name });
+      const btn = h('button', { type: 'button', role: 'tab' }, h('span', { text: name }));
       btn.addEventListener('click', () => { cur = i; show(); });
       // Enable: off writes amount 0 (RFC-066: no modulation) and keeps the amount here to restore.
-      const sw = h('button', { type: 'button', class: 'ap-mon', role: 'switch', 'aria-label': name + ' modifier' });
-      sw.addEventListener('click', () => {
+      const cb = h('input', { type: 'checkbox', role: 'switch', 'aria-label': name + ' modifier' });
+      const sw = h('label', { class: 'og-switch ap-mon' }, cb, h('span', { class: 'track' }));
+      cb.addEventListener('change', () => {
         const a = Number(api.value(m.amount));
         if (a > 0) { kept.set(m.amount.uid, a); api.write(m.amount, 0); } else api.write(m.amount, kept.get(m.amount.uid) ?? Math.min(100, m.amount.max ?? 100));
+        update();
       });
       // Reset: all six to the catalog defaults, one tick, one intent; a preset recovers it.
       const trash = h('button', { type: 'button', class: 'ap-mtrash', 'aria-label': 'Reset ' + name + ' modifier', title: 'Reset to defaults' });
@@ -865,32 +949,38 @@ function mountCard(api, el, fields) {
       const segs = ['to min', 'at min', 'to max', 'at max'].map((w) => h('span', { class: 'ap-seg', 'data-w': w }));
       // A hold (at min, at max) is reached on the graph: a guide at its end, a plus at its corner while it is 0.
       const vg = [0, 1].map(() => s('line', { class: 'vguide', y1: ML.H - ML.TRACK, y2: ML.TRACK }));
-      const plus = [[m.hold, 'Add at min'], [m.rest, 'Add at max']].map(([f, l]) => {
-        const b = h('button', { type: 'button', class: 'ap-plus', 'aria-label': l, title: l });
-        b.addEventListener('pointerdown', (e) => e.stopPropagation());
-        b.addEventListener('click', () => { ed.preview(f, 1); ed.commit(f); });
-        return b;
-      });
+      const plus = [[m.hold, 'Add at min'], [m.rest, 'Add at max']].map(([f, l]) => plusBtn(l, () => { ed.preview(f, 1); ed.commit(f); }));
+      const top = s('line', { class: 'guide', y1: ML.YT, y2: ML.YT });
+      const axis = s('line', { class: 'grid', y1: ML.YT, y2: ML.YB });
+      const track = s('line', { class: 'grid', y1: ML.TRACK, y2: ML.TRACK });
       const cyc = makeEditor(api, {
         W: 1000, H: ML.H, cls: 'ap-stair',
         decor: [...segs, ...plus, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'modifier · cycle' })],
-        svgKids: [...vg, s('line', { class: 'guide', x1: ML.X0, x2: ML.XR, y1: ML.YT, y2: ML.YT }),
-          s('line', { class: 'grid', x1: ML.AX, x2: ML.AX, y1: ML.YT, y2: ML.YB }),
-          s('line', { class: 'grid', x1: ML.X0, x2: ML.XR, y1: ML.TRACK, y2: ML.TRACK }), fill, stair],
-        geom: (val, g0) => stairGeom(Object.fromEntries(MOD.map(([k]) => [k, Math.max(0, val(m[k]))])),
-          m.amount.max || 100, ML, g0 && g0.k),
-        lines: (g) => [[[ML.X0, ML.YT], ...g.bars.flatMap((y, i) => [[ML.X0 + g.k * i, y], [ML.X0 + g.k * (i + 1), y]])]],
-        draw(g, val) {
-          let d = 'M' + ML.X0 + ' ' + ML.YT;
-          g.bars.forEach((y, i) => { d += ' V' + y + ' H' + (ML.X0 + g.k * (i + 1)); });
+        svgKids: [...vg, top, axis, track, fill, stair],
+        // A value not yet reported reads 0, never NaN geometry.
+        geom: (val, g0, box) => stairGeom(Object.fromEntries(MOD.map(([k]) => [k, Math.max(0, val(m[k]) || 0)])),
+          m.amount.max || 100, g0 ? g0.L : stairL(box), g0 && g0.k),
+        // The staircase, its top guide, the amp axis and the offset track: lines a label keeps off.
+        lines: (g) => [[[g.L.X0, g.L.YT], ...g.bars.flatMap((y, i) => [[g.L.X0 + g.k * i, y], [g.L.X0 + g.k * (i + 1), y]])],
+          [[g.L.X0, g.L.YT], [g.L.XR, g.L.YT]], [[g.L.AX, g.L.YT], [g.L.AX, g.L.YB]], [[g.L.X0, g.L.TRACK], [g.L.XR, g.L.TRACK]]],
+        draw(g, val, box) {
+          const L = g.L, px = box.clientWidth / 1000;
+          let d = 'M' + L.X0 + ' ' + L.YT;
+          g.bars.forEach((y, i) => { d += ' V' + y + ' H' + (L.X0 + g.k * (i + 1)); });
           stair.setAttribute('d', d);
-          fill.setAttribute('d', g.bars.length ? 'M' + g.rise.x + ' ' + ML.YT + ' H' + g.hold.x + ' V' + g.low + ' H' + g.rise.x + ' Z' : '');
-          const xs = [ML.X0, g.rise.x, g.hold.x, g.fall.x, g.rest.x];
+          fill.setAttribute('d', g.bars.length ? 'M' + g.rise.x + ' ' + L.YT + ' H' + g.hold.x + ' V' + g.low + ' H' + g.rise.x + ' Z' : '');
+          for (const [e, a, b] of [[top, L.X0, L.XR], [axis, L.AX, L.AX], [track, L.X0, L.XR]]) { e.setAttribute('x1', a); e.setAttribute('x2', b); }
+          const xs = [L.X0, g.rise.x, g.hold.x, g.fall.x, g.rest.x];
           const n = [m.rise, m.hold, m.fall, m.rest].map((f) => num(val(f)));
+          // A caption wider than its segment drops its word, then itself.
           segs.forEach((e, j) => {
+            const w = (xs[j + 1] - xs[j]) * px;
             e.style.left = ((xs[j] + xs[j + 1]) / 2 / 10) + '%';
+            e.dataset.n = n[j];
             e.textContent = e.dataset.w + ' ' + n[j];
             e.hidden = !Number(n[j]);
+            if (!e.hidden && e.offsetWidth > w) e.textContent = n[j];
+            if (!e.hidden) e.hidden = e.offsetWidth > w;
           });
           [g.hold, g.rest].forEach((p, j) => { vg[j].setAttribute('x1', p.x); vg[j].setAttribute('x2', p.x); });
           [[m.hold, g.hold], [m.rest, g.rest]].forEach(([f, p], j) => {
@@ -915,9 +1005,9 @@ function mountCard(api, el, fields) {
       updaters.push(() => {
         const a = Number(api.value(m.amount)), gate = api.gate(m.amount);
         btn.dataset.on = String(a > 0);
-        sw.setAttribute('aria-checked', String(a > 0));
+        cb.checked = a > 0;
         sw.title = a > 0 ? 'Modifier on' : 'Modifier off';
-        sw.disabled = !!gate;
+        cb.disabled = !!gate;
         const dirty = MOD.some(([k]) => m[k].dflt != null && val(m[k]) !== Number(m[k].dflt));
         trash.style.visibility = dirty ? '' : 'hidden';
         trash.disabled = MOD.some(([k]) => api.gate(m[k]));
@@ -931,16 +1021,19 @@ function mountCard(api, el, fields) {
     };
     show();
     rhythm = h('section', { class: 'ap-rhythm' },
-      h('div', { class: 'ap-cap' }, h('h4', { text: 'Rhythm modifier' }), h('span', { text: 'vary a control across strokes' })),
+      h('div', { class: 'ap-cap' }, h('h4', { text: 'Rhythm modifier' }), h('span', { class: 'ap-hint explain', text: 'vary a control across strokes' })),
       tabs, host);
   }
 
   // ---- wave · told: the commanded target while running, from the shadow
   // ponytail: sampled per frame from api.value, not the source timeline (webui T18); a scope, not a measurement.
   const waveLine = s('polyline', { class: 'told' });
-  const wave = h('div', { class: 'ap-ed ap-wave' }, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'wave · told' }));
+  // Stopped: a flat dim line and the word, never a blank box.
+  const flat = s('line', { class: 'guide', x1: 0, x2: 1000, y1: 32, y2: 32 });
+  const idle = h('span', { class: 'ap-idle', text: 'stopped' });
+  const wave = h('div', { class: 'ap-ed ap-wave' }, idle, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'wave · told' }));
   const waveSvg = s('svg', { viewBox: '0 0 1000 64', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
-  waveSvg.append(waveLine);
+  waveSvg.append(flat, waveLine);
   wave.prepend(waveSvg);
   const tgt = api.field('telemetry.target') || api.field('telemetry.position');
   const pos = api.field('telemetry.position');
@@ -980,9 +1073,18 @@ function mountCard(api, el, fields) {
   let raf = 0;
   // Only the advanced source plays this curve; Classic running is not drawn on it.
   const running = () => on(api.value(F.advRun));
-  const tick = () => { frame(); raf = running() ? requestAnimationFrame(tick) : 0; if (!raf) { play.hidden = true; trace.length = 0; } };
+  const tick = () => {
+    frame();
+    raf = running() ? requestAnimationFrame(tick) : 0;
+    if (!raf) { play.hidden = true; trace.length = 0; waveLine.setAttribute('points', ''); }
+  };
   loops.push(() => cancelAnimationFrame(raf));
-  updaters.push(() => { if (!raf && running()) raf = requestAnimationFrame(tick); });
+  updaters.push(() => {
+    const r = running();
+    idle.hidden = r;
+    flat.toggleAttribute('hidden', r);
+    if (!raf && r) raf = requestAnimationFrame(tick);
+  });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
   const baseNums = h('div', { class: 'ap-nums' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
@@ -1001,21 +1103,22 @@ function mountCard(api, el, fields) {
       const r = on(api.value(f)), st = api.status(f), gate = api.gate(f);
       run.textContent = r ? 'Stop pattern' : 'Start pattern';
       run.setAttribute('aria-pressed', String(r));
-      run.dataset.status = st;
+      run.dataset.shadow = st;
       run.disabled = !!gate;
       const why = api.reason(f);
-      note.textContent = gate || (st === 'fault' && /SOURCE_CONFLICT/.test(why) ? ownerText(other) : st === 'fault' ? why : LADDER[st])
-        || api.stale(f) || '';
+      say(note, gate, st, (st === 'fault' && /SOURCE_CONFLICT/.test(why) ? ownerText(other) : st === 'fault' ? why : LADDER[st])
+        || api.stale(f));
     });
     return h('div', {}, row, note);
   };
   // §10.1 rule 1: background_run sits beside each run/stop; one field, two views.
   function bgSwitch() {
     const cb = h('input', { type: 'checkbox' });
-    const sw = h('label', { class: 'og-switch ap-sw' }, cb, h('span', { class: 'track' }), h('span', { text: 'Run in background' }));
+    const track = h('span', { class: 'track' });
+    const sw = h('label', { class: 'og-switch ap-sw' }, cb, track, h('span', { text: 'Run in background' }));
     cb.addEventListener('change', () => { Promise.resolve(api.write(F.bgRun, cb.checked ? 1 : 0)).finally(() => update()); });
     updaters.push(() => {
-      sw.dataset.status = api.status(F.bgRun);
+      track.dataset.shadow = api.status(F.bgRun);
       cb.checked = on(api.value(F.bgRun));
       cb.disabled = !!api.gate(F.bgRun);
     });
@@ -1046,6 +1149,11 @@ function mountCard(api, el, fields) {
     runRow(F.running, F.advRun)) : null;
 
   const root = h('div', { class: 'ap' }, h('style', { text: CSS }));
+  // Narrow (a phone, a two-cell placement): the hint drops, the modifier tabs pair up.
+  // The class flips a frame later, so its own reflow never re-enters this observer.
+  const fit = new ResizeObserver(() => requestAnimationFrame(() => root.classList.toggle('ap-narrow', root.clientWidth < 480)));
+  fit.observe(root);
+  loops.push(() => fit.disconnect());
   if (classic) {
     // A view switch, never a write: the running source opens first.
     let view = on(api.value(F.running)) && !on(api.value(F.advRun)) ? 'classic' : 'advanced';
@@ -1145,8 +1253,8 @@ function presetRow(api, F, updaters, tools) {
     save.disabled = reset.disabled = !!gate || !live;
     del.disabled = !!gate || !live || pick() == null;
     ok.disabled = !!gate || !name.value || !(slots || []).some((r) => r.state === 'empty');
-    box.dataset.status = st;
-    note.textContent = gate || LADDER[st] || (asking && !(slots || []).some((r) => r.state === 'empty') ? 'store full' : '');
+    sel.dataset.shadow = st;
+    say(note, gate, st, LADDER[st] || (asking && !(slots || []).some((r) => r.state === 'empty') ? 'store full' : ''));
   }
   name.addEventListener('input', gateRow);
   // A first read before the link was live came back all pending: read again once it is.

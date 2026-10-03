@@ -1,10 +1,11 @@
 /**
  * theme.test.mjs -- the theme engine with no browser (ph-vdk.64): the
  * default chassis reproduces style.css, the contrast guard holds over the
- * whole knob space, pinned overrides win and safety tokens cannot be pinned,
- * the old theme keys migrate, plugins may register either shape, every
- * :root token is themeable or named not themeable, and the backup carries
- * the new keys.
+ * whole knob space, the safety inks read on every chassis and no preset
+ * accent sits on a safety hue, pinned overrides win and safety tokens cannot
+ * be pinned, the old theme keys migrate, plugins may register either shape,
+ * every :root token is themeable or named not themeable, and the backup
+ * carries the new keys.
  *
  * Run: node test/theme.test.mjs
  */
@@ -62,8 +63,10 @@ ok('the nine original presets keep the default chassis', T.THEMES.slice(0, 9).ev
 
 // ---- contrast guard over the knob space ----------------------------------------
 console.log('contrast guard');
-const worst = (d, k) => Math.min(T.contrast(d.base[k], d.base['--bg']), T.contrast(d.base[k], d.base['--bg-card']));
-let floor = { tx: Infinity, mut: Infinity, at: '' }, order = 0, n = 0;
+const SURFS = ['--bg', '--bg-raised', '--bg-card', '--bg-sunken'];
+const worstOn = (d, hex, surfs = SURFS) => Math.min(...surfs.map((s) => T.contrast(hex, d.base[s])));
+const worst = (d, k) => worstOn(d, d.base[k]);
+let floor = { tx: Infinity, mut: Infinity, ghost: Infinity, ink: Infinity, at: '' }, order = 0, n = 0;
 for (let b = 0; b <= 1.0001; b += 0.05) {
   for (const c of [0.5, 0.75, 1, 1.5, 2]) {
     for (const [hue, tint] of [[263, 1], [30, 4], [140, 4], [300, 0]]) {
@@ -71,19 +74,41 @@ for (let b = 0; b <= 1.0001; b += 0.05) {
       const tx = worst(d, '--tx'), mut = worst(d, '--tx-mut');
       if (tx < floor.tx) floor = { ...floor, tx, at: [b.toFixed(2), c, hue].join('/') };
       if (mut < floor.mut) floor.mut = mut;
+      floor.ghost = Math.min(floor.ghost, worst(d, '--tx-ghost'));
+      floor.ink = Math.min(floor.ink, ...Object.values(d.ink).map((h) => worstOn(d, h)));
       const hi = worst(d, '--tx-hi');
       if (hi < 4.5 || hi < tx * 0.99) order++;
       n++;
     }
   }
 }
-ok('--tx never under 4.5:1 on --bg or --bg-card (' + n + ' chassis)', floor.tx >= 4.5, floor.tx.toFixed(2) + ' at ' + floor.at);
+ok('--tx never under 4.5:1 on any surface (' + n + ' chassis)', floor.tx >= 4.5, floor.tx.toFixed(2) + ' at ' + floor.at);
 ok('--tx-mut never under 3:1', floor.mut >= 3, floor.mut.toFixed(2));
 ok('--tx-hi clears 4.5:1 and never reads weaker than --tx', order === 0, order + ' inversions');
+ok('--tx-ghost never under 3:1: chrome keys (ph-7tt)', floor.ghost >= 3, floor.ghost.toFixed(2));
+ok('--warn-ink and --bad-ink never under 4.5:1 on any surface (ph-632)', floor.ink >= 4.5, floor.ink.toFixed(2));
 const light = T.deriveTokens(T.THEMES.find((t) => t.id === 'paper'));
 ok('the light preset is light and says so', light.dark === false && T.themeCss(T.THEMES.find((t) => t.id === 'paper')).includes('color-scheme:light'));
 ok('the light preset clears 4.5:1 for text and reality on every surface', light.ratios.text >= 4.5 && light.ratios.reality >= 4.5,
   JSON.stringify(light.ratios));
+
+// ---- safety colors: inks and the accent hue check -------------------------------
+console.log('safety');
+ok('a dark chassis keeps the raw safety colors as text', D.ink['--warn-ink'] === root['--warn'] && D.ink['--bad-ink'] === root['--bad'],
+  JSON.stringify(D.ink));
+const hueOff = (a, b) => { const x = Math.abs(T.toOklch(a)[2] - T.toOklch(b)[2]) % 360; return Math.min(x, 360 - x); };
+ok('the light chassis inks keep the safety hue and read 4.5:1', ['--warn', '--bad'].every((k) => hueOff(light.ink[k + '-ink'], root[k]) < 2
+  && worstOn(light, light.ink[k + '-ink']) >= 4.5 && light.ink[k + '-ink'] !== root[k]), JSON.stringify(light.ink));
+ok('an accent on the safety amber or red is named', T.nearSafety('#FFD24D') === 'amber' && T.nearSafety('#FFB45C') === 'amber'
+  && T.nearSafety('#FF3B4E') === 'red');
+ok('a gray or a distinct hue is not', T.nearSafety('#A09A90') === null && T.nearSafety('#FF8A4D') === null && T.nearSafety('#4CCEFE') === null);
+const clash = T.THEMES.flatMap((t) => ['reality', 'intent'].filter((k) => T.nearSafety(t.accents[k])).map((k) => t.id + '.' + k));
+ok('no preset accent sits on a safety hue (ph-76i)', clash.length === 0, clash.join(', '));
+const pinnedIntent = T.deriveTokens({ ...T.DEFAULT_THEME, overrides: { '--intent': '#FFD24D' } });
+ok('the check follows a pinned accent', pinnedIntent.near.intent === 'amber' && !('reality' in pinnedIntent.near), JSON.stringify(pinnedIntent.near));
+const amberReality = T.deriveTokens({ ...T.DEFAULT_THEME, accents: { reality: '#FFB45C', intent: '#A78BFA', highlight: null } });
+ok('a highlight that follows reality is not named twice', amberReality.near.reality === 'amber' && !('highlight' in amberReality.near),
+  JSON.stringify(amberReality.near));
 
 // ---- overrides ------------------------------------------------------------------
 console.log('overrides');
@@ -96,7 +121,9 @@ const pcss = T.themeCss(pinned);
 ok('the pinned block comes last at the highest specificity', pcss.lastIndexOf(':root:root:root{--bg:#123456;}') === pcss.length - ':root:root:root{--bg:#123456;}'.length
   && pcss.indexOf(':root:root.hivis{') < pcss.indexOf(':root:root:root{'));
 ok('the ratio readout follows a pinned value', T.deriveTokens(pinned).ratios.text !== D.ratios.text);
-ok('no theme CSS names a safety token', !/--warn|--bad|--estop/.test(T.themeCss({ ...T.DEFAULT_THEME, overrides: { '--warn': '#000000' } })));
+const lockedCss = T.themeCss({ ...T.DEFAULT_THEME, overrides: { '--warn': '#000000', '--warn-ink': '#00FF00' } });
+ok('no theme CSS sets a safety color', !/[{;]--(warn|bad|estop|glow-warn|warn-rgb|bad-rgb):/.test(lockedCss) && !lockedCss.includes('#00FF00'));
+ok('the safety inks cannot be pinned', !('--warn-ink' in T.normalizeTheme({ overrides: { '--warn-ink': '#00FF00', '--bad-ink': '#00FF00' } }).overrides));
 
 // ---- token set coverage ------------------------------------------------------------
 console.log('token set');

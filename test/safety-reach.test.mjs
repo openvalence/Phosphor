@@ -313,6 +313,25 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const text = await line.textContent({ timeout: 5000 }).catch(() => '');
   ok(tag + ': strip shows the latest edge with its unread count',
     /estop cleared/.test(text) && /\d+ s ago/.test(text) && /2 new/.test(text), JSON.stringify(text.trim()));
+  // ph-44q: sentence case (no Title Case), and the event word is cut last:
+  // the age and the count yield their width first.
+  const cut = await line.evaluate((el) => {
+    const k = el.querySelector('.evkind'), a = el.querySelector('.evage');
+    return { tt: getComputedStyle(k).textTransform, first: getComputedStyle(k, '::first-letter').textTransform,
+      kindCut: k.scrollWidth > k.clientWidth + 0.5, ageW: a.getBoundingClientRect().width };
+  });
+  ok(tag + ': the edge reads in sentence case and its word yields last', cut.tt === 'none' && cut.first === 'uppercase'
+    && (!cut.kindCut || cut.ageW < 1), JSON.stringify(cut));
+  // The status slot at its narrowest: squeeze the line and the word still wins.
+  const squeezed = await line.evaluate((el) => {
+    el.style.maxWidth = '150px';
+    const k = el.querySelector('.evkind'), a = el.querySelector('.evage');
+    const r = { kindFull: k.scrollWidth <= k.clientWidth + 0.5, ageW: Math.round(a.getBoundingClientRect().width) };
+    el.style.maxWidth = '';
+    return r;
+  });
+  ok(tag + ': squeezed, the age gives way before the event word', squeezed.ageW < 30 && (squeezed.kindFull || squeezed.ageW < 1),
+    JSON.stringify(squeezed));
   await line.click();
   await page.waitForTimeout(300);
   const sel = await page.locator('.logpane [role=tab][aria-selected=true]').textContent().catch(() => '');
@@ -442,6 +461,20 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   await pause.click(); await settle();
   ok(tag + ': pause sends pause and reads Resume', wire.ops.join() === String(SAFETY_OP.pause) && await lbl(pause) === 'Resume',
     wire.ops.join() + ' / ' + await lbl(pause));
+  // ph-vdk.65: the pair wears the fields' ring outside its box, lit by the
+  // echo, never the inset ring.
+  const ring = await page.evaluate(async () => {
+    const op = document.querySelector('.topstrip .btn-pause').closest('.safety-op');
+    const lit = { glow: op.dataset.glow || '', after: getComputedStyle(op, '::after').boxShadow };
+    op.setAttribute('data-shadow', 'pending');
+    await new Promise((r) => setTimeout(r, 400));
+    const cs = getComputedStyle(op, '::after');
+    const pending = { own: getComputedStyle(op).boxShadow, after: cs.boxShadow, top: cs.top };
+    op.setAttribute('data-shadow', 'confirmed');
+    return { field: op.classList.contains('field'), lit, pending };
+  });
+  ok(tag + ': the pair wears the fields\' ring outside its box, lit by the echo', ring.field && !!ring.lit.glow
+    && ring.pending.own === 'none' && /167, 139, 250, 0\.[1-9]/.test(ring.pending.after) && ring.pending.top === '-3px', JSON.stringify(ring));
   await pause.click(); await settle();
   ok(tag + ': a second press sends resume, no gate', wire.ops.at(-1) === SAFETY_OP.resume && await lbl(pause) === 'Pause',
     wire.ops.join());
@@ -506,12 +539,28 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
   ok('override: paused without override, the jog is disabled with its reason',
     await tape.getAttribute('aria-disabled') === 'true' && /Override to jog/.test(reason), reason);
+  // ph-ddx: the reason carries its own spaced separator; on a phone-width
+  // row the mode words go first and the reason stays whole.
+  const join = async () => page.evaluate(() => {
+    const m = document.querySelector('.rail-hero .rail-tape-mode'), r = m.querySelector('.rail-reason');
+    return { sep: getComputedStyle(r, '::before').content, mode: getComputedStyle(m.querySelector('.rail-mode')).display,
+      whole: m.scrollWidth <= m.clientWidth + 0.5 };
+  });
+  const wide = await join();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  const narrow = await join();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForTimeout(200);
+  ok('override: the reason joins with a spaced separator; narrow, it drops the mode words and stays whole',
+    wide.sep === '" · "' && wide.mode !== 'none' && narrow.mode === 'none' && narrow.sep === 'none' && narrow.whole,
+    JSON.stringify([wide, narrow]));
   const n = wire.ops.length;
   await ovr.click();
   await page.waitForTimeout(200);
   ok('override: confirm-gated, nothing sent before the confirm', wire.ops.length === n
     && await page.locator('.overlay.hazard[role=alertdialog]').count() === 1);
-  await page.locator('.overlay.hazard .og-btn.danger').click();
+  await page.locator('.overlay.hazard .og-btn.confirm').click();
   await page.waitForTimeout(300);
   ok('override: sends override and reads Return', wire.ops.at(-1) === SAFETY_OP.override && await lbl() === 'Return',
     wire.ops.slice(n).join() + ' / ' + await lbl());
@@ -546,18 +595,35 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     const n = up ? await (await reach()).count() : 0;
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
-    ok(cls + ': Flip is an icon, no text, its state in the tooltip', await flip.locator('svg path').count() === 1
-      && (await flip.textContent()).trim() === '' && await flip.getAttribute('title') === 'Normal: home at left'
-      && await flip.getAttribute('aria-pressed') === 'false', await flip.getAttribute('title'));
+    // Inline it is an icon alone; in the Home popover the word rides it (ph-wq9).
+    const inMenu = await flip.evaluate((el) => !!el.closest('.menu-pop'));
+    ok(cls + ': Flip is an icon (worded in the Home popover), its state in the tooltip', await flip.locator('svg path').count() === 1
+      && (await flip.textContent()).trim() === (inMenu ? 'Flip' : '') && await flip.getAttribute('title') === 'Normal: home at left'
+      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([inMenu, await flip.textContent(), await flip.getAttribute('title')]));
     await flip.click();
     await page.waitForTimeout(200);
     const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
+    // ph-xej, ph-it5: a sentence-case title as written, one fragment, and a
+    // neutral confirm button (red is the e-stop's, DESIGN §10.3).
+    const dlg = await page.evaluate(() => {
+      const o = document.querySelector('.overlay.hazard');
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--bad)';
+      document.body.append(probe);
+      const bad = getComputedStyle(probe).color;
+      probe.remove();
+      const c = getComputedStyle(o.querySelector('.og-btn.confirm'));
+      return { title: o.querySelector('h2').textContent.trim(), tt: getComputedStyle(o.querySelector('h2')).textTransform,
+        body: o.querySelector('p').textContent.trim(), red: c.color === bad || c.borderTopColor === bad };
+    });
+    ok(cls + ': the confirm has a sentence-case title, a one-fragment body and a neutral button', dlg.title === 'Flip the rail'
+      && dlg.tt === 'none' && !/\. /.test(dlg.body) && dlg.body.split(/\s+/).length <= 8 && !dlg.red, JSON.stringify(dlg));
     await page.locator('.overlay.hazard .og-btn').first().click();
     await page.waitForTimeout(300);
     ok(cls + ': a press asks first; Cancel sends nothing', asked && wire.writes.length === 0, wire.writes.join());
     await (await reach()).click();
     await page.waitForTimeout(200);
-    await page.locator('.overlay.hazard .og-btn.danger').click();
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
     await page.waitForTimeout(600);
     const text = (await (await reach()).getAttribute('title')).trim();
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
@@ -630,8 +696,9 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
     const mode = (await page.locator('.rail-swap .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
     ok('owner (' + catalog + '): the plan strip names the owner from the labels, else "plan"', plan.test(mode), JSON.stringify(mode));
+    ok('owner (' + catalog + '): the plan style rides its label, never bare (ph-kts)', / · Style \S/.test(mode), JSON.stringify(mode));
     await page.locator('.topstrip .rw-flip').click();
-    await page.locator('.overlay.hazard .og-btn.danger').click();
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
     await page.waitForTimeout(600);
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok('owner (' + catalog + '): a SOURCE_CONFLICT names the owner from the labels, else the code', refusal.test(banner), JSON.stringify(banner));
@@ -656,33 +723,63 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     const x = await page.evaluate(() => { const p = window.__railProbe.filter((f) => f[4] && f[5] != null); return p.length ? p.at(-1)[5] : null; });
     clearInterval(tick);
     const caps = await page.locator('.rail-endcap').allTextContents();
+    // ph-tp7, ph-hjo: one precision for the window, a spaced unit, the mid
+    // label clear of the tick row, and the handles' glow unclipped.
+    const heads = await page.evaluate(() => {
+      const host = document.querySelector('.spine-rail-host'), hr = host.getBoundingClientRect();
+      const g = document.querySelector('.rail-ghost').getBoundingClientRect();
+      const cs = getComputedStyle(host);
+      return { extent: document.querySelector('.rail-tape-extent').textContent.trim(),
+        band: document.querySelector('.rail-band-label').textContent.trim(),
+        ghostClear: g.top >= hr.top + hr.height * 40 / 72 - 0.5, clip: cs.overflowX + ' ' + cs.overflowClipMargin };
+    });
     const chip = page.locator('.topstrip .rw-flip');
     const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').getAttribute('d'),
       text: (await chip.textContent()).trim(), w: (await chip.boundingBox()).width };
+    const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
+      const w = s.getBoundingClientRect().width;
+      return { w: Math.round(w * 100) / 100, px: Math.round(parseFloat(getComputedStyle(s).strokeWidth) * w / s.viewBox.baseVal.width * 100) / 100,
+        at: s.closest('button').className.split(' ')[0] };
+    }));
     const strip = await page.locator('.rail-hero .rail-tape').boundingBox();
     await page.mouse.click(strip.x + strip.width * 0.25, strip.y + strip.height / 2);
     await page.waitForTimeout(400);
     const sent = wire.values.at(-1);
     // A write in flight dims the icon in the same box.
     await chip.click();
-    await page.locator('.overlay.hazard .og-btn.danger').click();
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
     face.waitW = await chip.evaluate((el) => (el.dataset.shadow === 'pending' || el.dataset.shadow === 'overdue' || el.dataset.shadow === 'fault'
       ? el.getBoundingClientRect().width : null));
-    seen[flipped] = { x, caps: caps.map((c) => c.trim()), sent, face };
+    face.ring = await chip.evaluate((el) => el.classList.contains('field') && getComputedStyle(el).boxShadow === 'none'
+      && getComputedStyle(el, '::after').top === '-3px');
+    seen[flipped] = { x, caps: caps.map((c) => c.trim()), sent, face, icons, heads };
     await ctx.close();
   }
   ok('axis: the marker for travel minus p sits where p sat unflipped', seen[0].x != null && Math.abs(seen[1].x - seen[0].x) < 1,
     JSON.stringify(seen));
   ok('axis: flipped, the endcaps read travel then 0', seen[0].caps.join() === [...seen[1].caps].reverse().join()
     && parseFloat(seen[1].caps[0]) > parseFloat(seen[1].caps[1]), JSON.stringify([seen[0].caps, seen[1].caps]));
-  // The bar is home's end: left normal (|->), right flipped (<-|).
+  // A two-headed swap over a level rail, home's stop at its end: left
+  // normal, right flipped; never Override's ->| or Return's |<- (ph-wq9).
   const [n, f] = [seen[0].face, seen[1].face];
-  ok('flip icon: normal is a bar at left, arrow right; flipped a bar at right, arrow left',
-    /^M3 3v10/.test(n.d) && /l3 3-3 3$/.test(n.d) && /^M13 3v10/.test(f.d) && /L2 8l3 3$/.test(f.d), JSON.stringify([n.d, f.d]));
+  const heads = (d) => d.includes('M10 2l2 2-2 2') && d.includes('M6 6L4 8l2 2') && d.includes('M2 13h12');
+  ok('flip icon: a swap over the rail, the stop left normal and right flipped',
+    heads(n.d) && heads(f.d) && /M2 10\.5v5$/.test(n.d) && /M14 10\.5v5$/.test(f.d), JSON.stringify([n.d, f.d]));
+  ok('flip icon: shares no stroke with Override or Return', ![n.d, f.d].some((d) => /M2 8h9|M13\.5 3v10|M2\.5 3v10|M5 8h9/.test(d)),
+    JSON.stringify([n.d, f.d]));
+  const hd = seen[0].heads;
+  ok('rail heads: the row, the ruler and the axis read one precision; the unit is spaced', hd.extent === seen[0].caps.join('–')
+    && hd.band === seen[0].caps.join('–') + ' · ' + seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
+  ok('rail ruler: the mid label clears the tick row; the end handles keep their glow', hd.ghostClear && /^clip .*8px/.test(hd.clip),
+    JSON.stringify(hd));
+  // ph-hsl: every strip glyph in one 16 px box, drawn at one 1.5 px stroke.
+  ok('strip icons: one box, one drawn stroke', seen[0].icons.length >= 4 && seen[0].icons.every((i) => i.w === 16 && Math.abs(i.px - 1.5) < 0.05),
+    JSON.stringify(seen[0].icons));
   ok('flip icon: no text, the state in words in the tooltip', !n.text && !f.text
     && n.title === 'Normal: home at left' && f.title === 'Flipped: home at right', JSON.stringify([n.title, f.title]));
   ok('flip icon: one chip width normal, flipped and waiting', n.w === f.w && [n.waitW, f.waitW].every((v) => v == null || v === n.w),
     JSON.stringify([n.w, f.w, n.waitW, f.waitW]));
+  ok('flip chip: the ladder rides the fields\' ring outside its box (ph-vdk.65)', n.ring && f.ring, JSON.stringify([n.ring, f.ring]));
   // Wire units are the move field's own scale: compare the two taps' ratio.
   ok('axis: a tap a quarter in writes the reversed axis value (3x the unflipped)', seen[0].sent > 0 && Math.abs(seen[1].sent / seen[0].sent - 3) < 0.02,
     JSON.stringify([seen[0].sent, seen[1].sent]));

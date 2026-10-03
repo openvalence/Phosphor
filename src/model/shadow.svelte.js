@@ -522,3 +522,24 @@ export function anyPending() {
   }
   return false;
 }
+
+/** The written fields behind one control: a range's two ends, a color's three channels, else the field. */
+export function partsOf(field) {
+  return field.widget === WIDGET.range ? [field.lo, field.hi]
+    : field.widget === WIDGET.color ? [field.r, field.g, field.b] : [field];
+}
+
+/**
+ * Controls among `fields` with a write in flight, and whether any is overdue.
+ * In flight is pending or overdue; a refused write has landed and never
+ * counts (ph-sbu).
+ */
+export function inFlight(fields) {
+  let n = 0, overdue = false;
+  for (const f of fields) {
+    const st = partsOf(f).map(statusOf);
+    if (st.some((s) => s === STATUS.pending || s === STATUS.overdue)) n++;
+    if (st.includes(STATUS.overdue)) overdue = true;
+  }
+  return { n, overdue };
+}
