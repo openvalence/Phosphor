@@ -125,5 +125,5 @@
   .sp-pane :global(.sp-note) { margin: 0; color: var(--tx-mut); font-size: .75rem; }
   .sp-pane :global(.sp-ladder) { margin: 0; font-size: .75rem; color: var(--ink-dim); }
   .sp-pane :global(.sp-ladder[data-phase='pending']) { color: var(--intent); }
-  .sp-pane :global(.sp-ladder[data-phase='overdue']), .sp-pane :global(.sp-ladder[data-phase='fault']) { color: var(--warn); }
+  .sp-pane :global(.sp-ladder[data-phase='overdue']), .sp-pane :global(.sp-ladder[data-phase='fault']) { color: var(--warn-ink, var(--warn)); }
 </style>

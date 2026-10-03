@@ -4,7 +4,8 @@
    * from. SHELL ONLY: settings-pane.js registers it with panes.js.
    *
    * Constraints:
-   * - Shows what the hub sent and `--` for anything it did not.
+   * - Shows what the hub sent and `--` for anything it did not, always in
+   *   the body face: mono is for a value, never for its absence (ph-7mw).
    * - The generated vocab carries no registry version, only the protocol
    *   major and the WS subprotocol; those are what is shown.
    */
@@ -32,15 +33,15 @@
     <dl class="pane-facts about">
       <dt>Hub</dt><dd>{hubName}</dd>
       <dt>Product</dt><dd>{identity?.product || '--'}</dd>
-      <dt>Firmware</dt><dd class="mono">{identity?.fw_version || '--'}</dd>
-      <dt>Endpoint</dt><dd class="mono">{machine.link.dialed || '--'}</dd>
-      <dt>Catalog etag</dt><dd class="mono">{etag}</dd>
+      <dt>Firmware</dt><dd class:mono={!!identity?.fw_version}>{identity?.fw_version || '--'}</dd>
+      <dt>Endpoint</dt><dd class:mono={!!machine.link.dialed}>{machine.link.dialed || '--'}</dd>
+      <dt>Catalog etag</dt><dd class:mono={etag !== '--'}>{etag}</dd>
     </dl>
   </section>
   <section class="pane-sec og-screen" aria-labelledby="ab-build">
     <div class="pane-head"><h2 id="ab-build">Phosphor</h2></div>
     <dl class="pane-facts">
-      <dt>Shell</dt><dd class="mono">{shellVersion}</dd>
+      <dt>Shell</dt><dd class:mono={shellVersion !== '--'}>{shellVersion}</dd>
       <dt>UI build</dt><dd class="mono">{uiBuild}</dd>
       <dt>Protocol</dt><dd class="mono">v{PROTO_VER} ({WS_SUBPROTOCOL})</dd>
     </dl>

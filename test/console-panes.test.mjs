@@ -149,6 +149,14 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   // ---- Pairing -------------------------------------------------------------
   await openTab(page, 'pairing');
   await page.waitForFunction(() => /configure/.test(document.querySelector('.pane-facts dd')?.textContent || ''), null, { timeout: 15000 });
+  // ph-09o: every section title sits on the page above its card, flush with
+  // the card's edge; an empty status slot is one line, not a hole.
+  const titles = await page.$$eval('main.pane .pane-sec', (ss) => ss.filter((s) => s.querySelector(':scope > .pane-head:first-child'))
+    .map((s) => { const h = s.querySelector(':scope > .pane-head').getBoundingClientRect(), r = s.getBoundingClientRect();
+      return { above: h.bottom <= r.top - 4, flush: Math.abs(h.left - r.left) < 0.5 }; }));
+  const slots = await page.$$eval('main.pane .pane-status', (ps) => ps.map((p) => p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)));
+  ok('pairing: section titles sit above their cards, flush with the edge', titles.length >= 3 && titles.every((t) => t.above && t.flush), JSON.stringify(titles));
+  ok('pairing: a status slot is one line', slots.length > 0 && slots.every((n) => Math.abs(n - 1) < 0.05), JSON.stringify(slots));
   const knockRows = () => page.$$eval('.knocks > li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
   const knocksBox = () => page.$eval('.knocks', (el) => el.getBoundingClientRect().height);
   const k0 = await knockRows();
@@ -231,6 +239,19 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await page.waitForTimeout(100);
   const atEnd = await page.$eval('#lp-feed-log', (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 4);
   ok('log: following keeps the newest line in view', atEnd);
+  ok('log: following is said once, on its toggle (ph-0gp)', !/Following/.test(await page.textContent('.logpane .pane-status')));
+  if (label !== 'phone') {
+    const tw = await page.$$eval('.logpane [role=tab]', (els) => els.map((e) => Math.round(e.getBoundingClientRect().width * 10) / 10));
+    ok('log: the source tabs are one width (ph-0gp)', Math.max(...tw) - Math.min(...tw) < 1, tw.join(' '));
+  }
+  // ph-632: warn text rides --warn-ink, the theme's ink for amber text.
+  const ink = await page.evaluate(() => {
+    document.documentElement.style.setProperty('--warn-ink', 'rgb(1, 2, 3)');
+    const c = getComputedStyle(document.querySelector('#lp-feed-log .line.lvl-warn .text')).color;
+    document.documentElement.style.removeProperty('--warn-ink');
+    return c;
+  });
+  ok('log: a warn line\'s text rides --warn-ink (ph-632)', ink === 'rgb(1, 2, 3)', ink);
 
   await page.selectOption('.logpane select >> nth=0', { label: 'warn and above' });
   await page.waitForTimeout(100);
@@ -350,12 +371,19 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await openTab(page, 'shell:about');
   const ab = await facts(page);
   ok('about: UI build, protocol and the catalog etag', ab['ui build'] && ab['ui build'] !== '--' && ab.protocol === 'v1 (valence.v1)' && ab['catalog etag'] === ETAG.toLowerCase(), JSON.stringify(ab));
+  // ph-7mw: an absent value is one glyph in the body face, never mono.
+  const nilFaces = () => page.$$eval('main.pane dl.pane-facts dd', (ds) => [...new Set(ds.filter((d) => d.textContent.trim() === '--')
+    .map((d) => getComputedStyle(d).fontFamily + ' ' + getComputedStyle(d).fontWeight))]);
+  const nilAbout = await nilFaces();
+  ok('about: every absent value is one glyph in one face, never mono', nilAbout.length <= 1 && !nilAbout.some((f) => /Mono/.test(f)), JSON.stringify(nilAbout));
 
   // ---- Hubs ------------------------------------------------------------------------
   await openTab(page, 'shell:hubs');
   const hubStatus = () => page.$eval('section[aria-labelledby="hp-link"] .pane-status', (el) => [el.dataset.phase, el.textContent.trim(), el.getBoundingClientRect().height]);
   const live = await hubStatus();
   ok('hubs: the link ladder settles on live', live[0] === 'settled' && /Live on 127\.0\.0\.1:82/.test(live[1]), live.join(' / '));
+  const nilHubs = await nilFaces();
+  ok('hubs: every absent value is one glyph in one face, never mono (ph-7mw)', nilHubs.length <= 1 && !nilHubs.some((f) => /Mono/.test(f)), JSON.stringify(nilHubs));
   const saved = await page.$$eval('section[aria-labelledby="hp-saved"] li:not(.virtual)', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ')));
   ok('hubs: saved hubs list here with the connected one marked', saved.length === 1 && /connected/.test(saved[0]), saved.join(' | '));
   await page.fill('section[aria-labelledby="hp-saved"] .nick input', 'bench');

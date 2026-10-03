@@ -60,10 +60,10 @@
   <section class="pane-sec og-panel" aria-labelledby="hp-link">
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
-      <dt>Hub</dt><dd class="mono">{link.dialed || '--'}</dd>
+      <dt>Hub</dt><dd class:mono={!!link.dialed}>{link.dialed || '--'}</dd>
       <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
       <dt>Link</dt><dd>{link.phase}</dd>
-      <dt>Bluetooth wire</dt><dd class="mono">{hubs.stats || '--'}</dd>
+      <dt>Bluetooth wire</dt><dd class:mono={!!hubs.stats}>{hubs.stats || '--'}</dd>
     </dl>
     <div class="row">
       <button type="button" class="og-btn" disabled={idle} onclick={disconnect}>Disconnect</button>
@@ -183,7 +183,7 @@
   .acts { display: flex; gap: 6px; }
   .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
-  .mark.virt { border-color: var(--warn); color: var(--warn); }
+  .mark.virt { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
   .nick input {
     width: 100%;
     min-height: 30px;
