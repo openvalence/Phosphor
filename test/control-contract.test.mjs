@@ -622,7 +622,7 @@ if (!LIVE) {
       const f = c.querySelector('.field').getBoundingClientRect(), h = c.querySelector('.field-head').getBoundingClientRect();
       const t = c.querySelector('.tag.adv').getBoundingClientRect(), x = c.querySelector('.field-label-text');
       return { h: h.height, tagIn: t.right <= f.right + 0.5 && t.top >= h.top - 0.5 && t.bottom <= h.bottom + 0.5,
-        cut: x.scrollWidth > x.clientWidth, title: x.title };
+        cut: x.scrollHeight > x.clientHeight + 1 || x.scrollWidth > x.clientWidth, title: x.title };
     });
     await lc.evaluate((c) => { c.style.width = ''; });
     ok('a narrow head stays one line', Math.abs(head.h - h0) < 0.5, [h0, head.h]);

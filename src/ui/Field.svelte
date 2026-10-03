@@ -937,11 +937,16 @@
     letter-spacing: .04em;
   }
 
+  /* One visible line that still wraps anywhere underneath: its min-content
+     stays one glyph, so a long label never raises a card's measured floor
+     (DashGrid min-content). */
   .field-label-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .tag {
