@@ -10,7 +10,8 @@
    * plane (docs/http-plane-retirement.md) and machine.stats does not carry it,
    * so showing it would mean fabricating a number nobody sent.
    *
-   * Read-only and quiet on purpose: this bar never offers a control, only
+   * Read-only and quiet on purpose: the one control is the UI scale at the
+   * right end (ScaleControl) and the session clock toggle; the rest only
    * tells the operator what the Valence link is doing. Ground truth applies
    * here too — every value is `--` until the machine (or the session itself)
    * has actually produced it.
@@ -25,6 +26,7 @@
    */
   import { machine } from '../model/machine.svelte.js';
   import { since, clock } from '../model/format.js';
+  import ScaleControl from './ScaleControl.svelte';
 
   // A page full of "since" readouts needs its own clock, or the age freezes
   // the instant this component last happened to re-render.
@@ -78,6 +80,7 @@
     </button>
     <span class="fact"><span class="k">ui build</span><span class="v mono">{buildId}</span></span>
   </div>
+  <ScaleControl />
 </footer>
 
 <style>
@@ -139,7 +142,7 @@
   }
 
   /* Desktop: whole facts in rows, never a sideways scroller (ph-rt1); one
-     row from about 1280 px, two below it. */
+     row from about 1520 px, two below it. */
   @media (min-width: 960px) {
     .footstrip { flex-wrap: nowrap; }
   }

@@ -528,15 +528,20 @@ question in §10.8).
   T22). Safety colors stay unthemeable in the new chrome (law 13).
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
-  area on every page, never scrolled, the scroll ending above it; it owns
-  the bottom safe-area inset. Left, a category page's own controls (the
-  advanced and diagnostic toggles, Reset, the in-flight count); right, the
-  UI scale: the theme's look scale as a percentage of its default (the
-  default reads 100%), minus and plus in 10% steps, Reset only off 100% in
-  a held slot. Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel act on the same value
-  and never zoom the webview; Ctrl+wheel over a surface that takes the wheel
-  itself never scales. Not a safety surface: the bottom-edge rule above
-  binds safety controls.
+  area on every page with page controls (the advanced and diagnostic
+  toggles, Reset, the in-flight count, Fullscreen), never scrolled, the
+  scroll ending above it; a page with none has no footer. It owns the
+  bottom safe-area inset. The UI scale is not in it (operator ruling
+  2026-10-03, `ph-5q67`): it is the right end of the shell's bottom status
+  row (`src/ui/ScaleControl.svelte` in `FootStrip`), compact, on every page.
+  The theme's look scale as a percentage of its default (the default reads
+  100%), minus and plus in 10% steps, Reset only off 100% in a held slot.
+  Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel act on the same value and never zoom
+  the webview; Ctrl+wheel over a surface that takes the wheel itself never
+  scales. Not a safety surface: the bottom-edge rule above binds safety
+  controls. On desktop the rail and the content reach the hero panel's
+  frame (its 4 px outline offset plus the 1 px line, 5 px past its box) on
+  both sides, so the pane's outer edges line up with the hero card's.
 - Page fullscreen (operator ruling 2026-10-03, `ph-wb4j`): a plugin page's
   footer carries Fullscreen (F11) and, in the desktop shell, its mode: In
   window (default) or Borderless. In window, the page takes the whole window
@@ -772,5 +777,6 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
 | 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |
 | 2026-10-03 | §10.3 | Page fullscreen for plugin pages: in window or borderless, a caret hides the bar and strip, the stop pair stays top right at half opacity at rest (`ph-wb4j`). | operator (the pair's wake on pointer movement and its backing are the agent's, veto-able) |
+| 2026-10-03 | §10.3 | The UI scale moves from the page footer into the right end of the bottom status row; a page with no controls has no footer; the rail and content outer edges match the hero panel's frame (`ph-5q67`). | operator (hiding the empty footer is the agent's, veto-able) |
 | 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | The target numeral takes a typed jog: the rail tape's move, clamped to the tape's domain, disabled where the tape is (`ph-9kjh`). | operator (the recess at rest, the clamp note in the slot and leaving a source-owned rail to the hub's SOURCE_CONFLICT are the agent's, veto-able) |

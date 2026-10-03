@@ -30,7 +30,9 @@
  * (ph-vdk.60.12), at 1280x800 and 390x844: absent on the home, one 48 px box
  * on every category page with page controls, it and its controls hold still
  * for 30 frames across each toggle both ways, and scrolled to its end the
- * last card ends above it.
+ * last card ends above it. The UI scale (ph-5q67) is the right end of the
+ * FootStrip status row on every page, and on desktop the rail and the content
+ * reach the hero panel frame on both sides.
  *
  * Then the REAL shell bundle (shell-build.mjs, stub Tauri runtime, no hub):
  * the sidebar ends in a Phosphor section holding the shell's panes, which the
@@ -420,9 +422,10 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
 }
 
 // ---- ph-vdk.60.12: the category page footer ----------------------------------
-// One fixed box on every page; the home's carries the UI scale alone; 30
+// One fixed box on every page with page controls, none on the home; 30
 // still frames across each toggle, both ways; scrolled to its end, the last
-// card ends above it. Then the UI scale (1280 only): the readout is the
+// card ends above it. Then the UI scale, which lives in the FootStrip status
+// row (1280 only): right-aligned there, the row's height unchanged by it, the readout is the
 // theme's, +/- step it, Reset shows only off 100% and moves nothing, and
 // Ctrl+=, Ctrl+0 and Ctrl+wheel scale --s without zooming the page, except
 // over a surface that takes the wheel itself.
@@ -442,9 +445,19 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   const footBox = () => fp.evaluate(() => { const r = document.querySelector('main.pane .page-foot')?.getBoundingClientRect();
     return r ? [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(',') : null; });
   const homeBox = await footBox();
-  ok(tag + ': the home footer carries the UI scale alone', !!homeBox && await fp.locator('.page-foot .foot-page > *').count() === 0
-    && await fp.locator('.page-foot .foot-scale output').count() === 1, homeBox);
-  const boxes = new Set([homeBox]), shifts = [], under = [], clipped = [], onState = [];
+  ok(tag + ': the home has no page footer; the UI scale is in the status row', (!homeBox || homeBox.endsWith(',0'))
+    && await fp.locator('.footstrip .foot-scale output').count() === 1 && await fp.locator('.page-foot .foot-scale').count() === 0, homeBox);
+  const sbox = () => fp.evaluate(() => { const f = document.querySelector('.footstrip').getBoundingClientRect(), s = document.querySelector('.footstrip .foot-scale').getBoundingClientRect();
+    return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - s.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 }; });
+  const sb0 = await sbox();
+  ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
+  if (w >= 960) {
+    const edges = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), p = r('.hero-strip .og-panel'), a = r('nav.rail'), c = r('.content');
+      return [a.left - p.left, p.right - c.right].map((v) => Math.round(v * 10) / 10); });
+    // style.css .og-panel: outline 1px at a 4px offset, so the panel's frame reaches 5px past its box.
+    ok(tag + ': the rail and the content reach the hero panel frame on both sides', edges[0] === -5 && edges[1] === -5, edges.join(' / '));
+  }
+  const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
   for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
     await fp.click('[data-tab-id="' + id + '"]');
@@ -454,6 +467,8 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
       return f && [...[f, ...f.children].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(','); })];
     });
     if (!box) continue;
+    if (box[0].endsWith(',0')) { if ((await sbox()).strip !== sb0.strip) rowMoved.push(id); continue; }
+    if ((await sbox()).strip !== sb0.strip) rowMoved.push(id);
     pages++;
     boxes.add(box[0]);
     // ph-dj9: nothing in the footer scrolls; every shown control is whole
@@ -507,9 +522,10 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     if (!(end.last <= end.top + 0.5)) under.push(id + ' ' + JSON.stringify(end));
   }
   const [, , , fh] = [...boxes][0]?.split(',').map(Number) || [];
+  ok(tag + ': the status row is one box on every page', rowMoved.length === 0, rowMoved.join(' '));
   ok(tag + ': pages with page controls carry the footer', pages > 1, pages + ' pages');
-  if (w >= 960) ok(tag + ': one footer box on every page and the home, 48 px tall', boxes.size === 1 && fh === 48, [...boxes].join(' / '));
-  else ok(tag + ': the home footer is one 48 px row; a page\'s is whole rows of it', fh === 48
+  if (w >= 960) ok(tag + ': one footer box on every page with page controls, 48 px tall', boxes.size === 1 && fh === 48, [...boxes].join(' / '));
+  else ok(tag + ': a page\'s footer is whole 48 px rows', fh === 48
     && [...boxes].every((b) => +b.split(',')[3] >= 48), [...boxes].join(' / '));
   ok(tag + ': nothing in the footer scrolls; every control whole inside it and the window (ph-dj9)', clipped.length === 0,
     clipped.slice(0, 2).join(' / '));
@@ -520,30 +536,30 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   ok(tag + ': scrolled to its end, the last card ends above the footer', under.length === 0, under.join(' / '));
   if (w >= 960) {
     const look = () => fp.evaluate(() => ({ s: getComputedStyle(document.documentElement).getPropertyValue('--s').trim(),
-      out: document.querySelector('.page-foot .foot-scale output').textContent.trim(),
-      reset: getComputedStyle(document.querySelector('.page-foot .reset')).visibility,
+      out: document.querySelector('.footstrip .foot-scale output').textContent.trim(),
+      reset: getComputedStyle(document.querySelector('.footstrip .reset')).visibility,
       theme: JSON.parse(localStorage.getItem('phosphor.theme') || '{}').look?.scale,
       dpr: devicePixelRatio, zoom: visualViewport.scale }));
     const s0 = await look();
     ok(tag + ': the readout is the theme default at 100%, no Reset', s0.out === '100%' && s0.reset === 'hidden', JSON.stringify(s0));
-    // A step rescales every rem in the footer, its labels too; the footer's
-    // box and the scale group's right edge hold.
+    // A step rescales every rem on the page; the status row's box and the
+    // scale group's right edge hold.
     const frames = await fp.evaluate(async () => {
-      const box = () => [document.querySelector('.page-foot').getBoundingClientRect(), document.querySelector('.page-foot .foot-scale').getBoundingClientRect()]
+      const box = () => [document.querySelector('.footstrip').getBoundingClientRect(), document.querySelector('.footstrip .foot-scale').getBoundingClientRect()]
         .map((r, i) => (i ? [r.right] : [r.left, r.top, r.width, r.height]).map((v) => Math.round(v)).join(',')).join(' | ');
       const out = [box()];
-      document.querySelector('.page-foot [aria-label=Larger]').click();
+      document.querySelector('.footstrip [aria-label=Larger]').click();
       for (let n = 0; n < 30; n++) { await new Promise((r) => requestAnimationFrame(r)); out.push(box()); }
       return out;
     });
     const s1 = await look();
     ok(tag + ': + steps 10% and persists in the theme', s1.out === '110%' && Math.abs(s1.theme - 1.12 * 1.1) < 1e-9, JSON.stringify(s1));
-    ok(tag + ': Reset shows off 100%; the footer and the scale group hold still for 30 frames', s1.reset === 'visible'
+    ok(tag + ': Reset shows off 100%; the status row and the scale group hold still for 30 frames', s1.reset === 'visible'
       && frames.every((f) => f === frames[0]), frames.find((f) => f !== frames[0]) || '');
     // At one scale, Reset's slot is the same hidden or shown.
     const flip = await fp.evaluate(() => {
-      const r = document.querySelector('.page-foot .reset');
-      const box = () => [...document.querySelectorAll('.page-foot .foot-page, .page-foot .foot-scale > *')]
+      const r = document.querySelector('.footstrip .reset');
+      const box = () => [...document.querySelectorAll('.footstrip .foot-scale > *')]
         .map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.width].map(Math.round).join(','); }).join(' | ');
       const a = box();
       r.classList.add('off');
@@ -552,10 +568,10 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
       return [a, b, getComputedStyle(r).visibility];
     });
     ok(tag + ': Reset showing or hidden moves nothing', flip[0] === flip[1] && flip[2] === 'visible', JSON.stringify(flip));
-    await fp.locator('.page-foot [aria-label=Smaller]').click();
-    await fp.locator('.page-foot [aria-label=Smaller]').click();
+    await fp.locator('.footstrip [aria-label=Smaller]').click();
+    await fp.locator('.footstrip [aria-label=Smaller]').click();
     ok(tag + ': - steps down', (await look()).out === '90%', (await look()).out);
-    await fp.locator('.page-foot .reset').click();
+    await fp.locator('.footstrip .reset').click();
     const s2 = await look();
     ok(tag + ': Reset restores 100% and the default --s, and hides', s2.out === '100%' && s2.reset === 'hidden' && s2.s === s0.s,
       JSON.stringify(s2));

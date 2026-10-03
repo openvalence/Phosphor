@@ -17,9 +17,9 @@ export const KEYS = [
     { keys: 'F11', does: 'Fullscreen', where: 'Plugin page', src: 'src/App.svelte' },
     { keys: 'Escape', does: 'Leave fullscreen', where: 'Fullscreen page', src: 'src/App.svelte' },
     { keys: 'Arrows', does: 'Switch page', where: 'Page tabs', src: 'src/App.svelte' },
-    { keys: 'Ctrl+=, Ctrl+-', does: 'UI scale up, down', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },
-    { keys: 'Ctrl+0', does: 'UI scale to 100%', where: 'Anywhere', src: 'src/ui/PageFoot.svelte' },
-    { keys: 'Ctrl+wheel', does: 'UI scale', where: 'Off canvases and sliders', src: 'src/ui/PageFoot.svelte' },
+    { keys: 'Ctrl+=, Ctrl+-', does: 'UI scale up, down', where: 'Anywhere', src: 'src/ui/ScaleControl.svelte' },
+    { keys: 'Ctrl+0', does: 'UI scale to 100%', where: 'Anywhere', src: 'src/ui/ScaleControl.svelte' },
+    { keys: 'Ctrl+wheel', does: 'UI scale', where: 'Off canvases and sliders', src: 'src/ui/ScaleControl.svelte' },
   ] },
   { group: 'Safety', items: [
     { keys: 'Enter, Space', does: 'Fire stop, pause or override', where: 'Focused safety op', src: 'src/ui/widgets/SafetyOp.svelte' },

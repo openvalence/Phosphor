@@ -580,6 +580,9 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap);
     padding-top: var(--gap);
+    /* The hero panel's frame (style.css .og-panel: a 4px offset, 1px outline)
+       reaches 5px past its box; the rail and the content reach it too. */
+    margin: 0 -5px;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;

@@ -365,7 +365,7 @@ function stripCheck() {
   // scale, more rows where they do not (ph-dj9), never a scroller.
   const foot = document.querySelector('main.pane .page-foot');
   const fb = foot && foot.getBoundingClientRect();
-  if (fb && !(fb.height >= 47.5 && fb.top >= -0.5 && fb.bottom <= innerHeight + 0.5 && fb.left >= -0.5 && fb.right <= innerWidth + 0.5)) {
+  if (fb && fb.height > 0 && !(fb.height >= 47.5 && fb.top >= -0.5 && fb.bottom <= innerHeight + 0.5 && fb.left >= -0.5 && fb.right <= innerWidth + 0.5)) {
     out.push(['strip', 'page footer ' + [fb.left, fb.top, fb.width, fb.height].map(Math.round).join(',') + ' scrolled to the end']);
   }
   if (foot && [foot, ...foot.querySelectorAll('*')].some((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX))) {
