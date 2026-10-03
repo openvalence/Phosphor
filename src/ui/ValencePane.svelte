@@ -260,5 +260,5 @@
     letter-spacing: .06em;
     font-weight: 500;
   }
-  td.mismatch { color: var(--warn); font-weight: 600; }
+  td.mismatch { color: var(--warn-ink, var(--warn)); font-weight: 600; }
 </style>

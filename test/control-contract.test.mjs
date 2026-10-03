@@ -519,7 +519,7 @@ if (!LIVE) {
   ok('toggle: Cancel writes nothing and the switch shows the machine again',
     await armBox.isChecked() === was && await arm.getAttribute('data-shadow') === 'confirmed');
   await arm.locator('.og-switch').click();
-  await dialog.locator('button.danger').click();
+  await dialog.locator('button.confirm').click();
   ok('toggle: Confirm writes, and the echo settles it', await page.waitForFunction((u) =>
     document.querySelector('.cell[data-pres="toggle@' + u + '"] input[type=checkbox]').checked !== undefined
     && document.querySelector('.cell[data-pres="toggle@' + u + '"] .field').dataset.shadow === 'confirmed', ARM.uid,

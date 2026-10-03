@@ -28,6 +28,9 @@
    * - The subline carries live state only (docs/COPY.md rule 5); what a
    *   press does is the tooltip. Override and Return carry neither
    *   (operator 2026-10-02).
+   * - The ladder wears the fields' ring (docs/EFFECTS.md A: `.field` in
+   *   style.css), 3 px outside the box, with the echo's afterglow; never the
+   *   inset ring, which shrank the box's face (ph-vdk.65).
    */
   import { machine, getSession, estopLabel } from '../../model/machine.svelte.js';
   import { runAction } from '../../model/shadow.svelte.js';
@@ -62,7 +65,7 @@
   };
   const OVERRIDE_COPY = {
     title: 'Override',
-    body: 'Lifts the travel window and soft limits until Return; hardware protection stays',
+    body: 'Lifts the window and soft limits until Return',
     confirmLabel: 'Override',
   };
 
@@ -96,15 +99,22 @@
 
   let phase = $state('');   // '' | pending | overdue | confirmed | fault
   let error = $state('');
+  // The afterglow: 1 and 2 alternate per echo so a fast echo still restarts
+  // it; a press puts it out; its own animationend ends it.
+  let glow = $state(0);
+  let lastGlow = 0;
+  const glowEnd = (e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) glow = 0; };
   async function fire(value) {
     if (why || phase === 'pending' || phase === 'overdue') return;
     if (needsConfirm(action, value) && !(await askConfirm(OVERRIDE_COPY))) return;
     phase = 'pending';
+    glow = 0;
     const t = setTimeout(() => { if (phase === 'pending') phase = 'overdue'; }, OVERDUE_MS);
     const r = await runAction(action, value);
     clearTimeout(t);
     phase = r.ok ? 'confirmed' : 'fault';
     error = r.error || '';
+    if (r.ok) glow = lastGlow = lastGlow === 1 ? 2 : 1;
   }
 
   // ---- hold to release ------------------------------------------------------
@@ -153,7 +163,8 @@
   );
 </script>
 
-<div class="safety-op" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase}>
+<div class="safety-op field" data-shadow={phase === 'confirmed' || !phase ? 'confirmed' : phase} data-glow={glow || undefined}
+     onanimationend={glowEnd}>
   <button type="button" class="btn {pair.cls}" class:latched class:holding
           disabled={!!why} title={status && status !== hint ? status : tip || undefined} aria-pressed={latched}
           {onclick} {onkeydown} {onkeyup}
@@ -164,7 +175,7 @@
         <svg class="ico arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
              stroke-linejoin="round" aria-hidden="true">{@html ARROW[icon]}</svg>
       {:else}
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
              stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
       {/if}
       <span class="lbls"><span class="lbl">{label}</span><span class="ghost" aria-hidden="true">{LABELS[latched ? 0 : 1]}</span></span>
@@ -208,8 +219,8 @@
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   .row { display: flex; align-items: center; gap: 4px; }
-  .ico { width: 14px; height: 14px; }
-  .ico.arrow { width: 16px; height: 16px; }
+  /* The strip's one icon box and drawn stroke (TopStrip.svelte, ph-hsl). */
+  .ico { width: 16px; height: 16px; }
   .lbls, .hints { display: grid; }
   .lbls > *, .hints > * { grid-area: 1 / 1; }
   .ghost { visibility: hidden; }
@@ -217,13 +228,13 @@
   .state, .hints small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   /* Never widens the box: no intrinsic width, stretched to the button. */
   .state { contain: inline-size; align-self: stretch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-  [data-shadow='overdue'] .state { color: var(--warn); }
-  [data-shadow='fault'] .state { color: var(--warn); }
+  [data-shadow='overdue'] .state { color: var(--warn-ink, var(--warn)); }
+  [data-shadow='fault'] .state { color: var(--warn-ink, var(--warn)); }
 
   /* The e-stop's only hazard cue at rest is the stripe wash in the safety red
      (law 13: never themeable); latched it reads Halted on a solid border. */
   .btn-estop {
-    background-image: repeating-linear-gradient(135deg, rgba(255, 71, 87, .09) 0 5px, rgba(255, 71, 87, .012) 5px 10px);
+    background-image: repeating-linear-gradient(135deg, rgba(var(--bad-rgb), .09) 0 5px, rgba(var(--bad-rgb), .012) 5px 10px);
   }
   .btn-estop:not(:disabled):hover, .btn-estop:not(:disabled):active, .btn-estop.latched { border-color: var(--bad); }
   .btn-estop.latched .lbl { color: var(--bad); }

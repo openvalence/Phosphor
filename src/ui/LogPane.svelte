@@ -212,12 +212,13 @@
     const f = feeds[tab];
     const live = lists[tab] || [];
     const filtered = tab === 'log' && (minLevel >= 0 || tagFilter)
-      ? ' · ' + shown.log.length + ' of ' + (f.snap || live).length + ' shown' : '';
+      ? shown.log.length + ' of ' + (f.snap || live).length + ' shown' : '';
     if (!f.follow) {
       const n = newSince(live, f.snap || []);
-      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + filtered;
+      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + (filtered ? ' · ' + filtered : '');
     }
-    return 'Following' + filtered;
+    // Following is the toggle's own word; the slot only adds what it lacks.
+    return filtered;
   });
 
   function onTabKey(e) {
@@ -292,8 +293,9 @@
 
 <style>
   .logpane { gap: 8px; }
-  /* Wrap rather than squeeze: a tab never clips its label or count. */
-  .tabs button { flex: 1 0 auto; }
+  /* One width per tab; wrap rather than squeeze, so a tab never clips its
+     label or count. */
+  .tabs button { flex: 1 1 0; min-width: max-content; }
   .count { color: var(--ink-faint); font-size: .68rem; margin-left: 4px; }
 
   .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -329,7 +331,7 @@
   }
   .line time { color: var(--ink-faint); font-size: .68rem; flex: 0 0 auto; }
   .line .text { color: var(--ink); overflow-wrap: anywhere; }
-  .line.lvl-warn .text { color: var(--warn); }
+  .line.lvl-warn .text { color: var(--warn-ink, var(--warn)); }
   /* Reconciliation states (ph-vdk.14), neither a hazard: an out-of-order
      edge dims; a synthesized diagnostic reads as muted italic. */
   .line.superseded { opacity: .55; }
@@ -346,7 +348,7 @@
     letter-spacing: .03em;
     flex: 0 0 auto;
   }
-  .chip.lvl-warn, .chip.lvl-error, .chip.lvl-fatal { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+  .chip.lvl-warn, .chip.lvl-error, .chip.lvl-fatal { color: var(--warn-ink, var(--warn)); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
   .chip.tag { text-transform: none; }
 
   .kv { font-family: var(--mono); font-size: .68rem; color: var(--ink-faint); flex: 0 0 auto; }

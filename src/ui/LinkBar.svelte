@@ -15,6 +15,9 @@
    *   page has no shell chrome.
    * - Reads machine.* and the catalog's own role-tagged fields, never a
    *   device fact the machine did not send.
+   * - Every chip value is mono; only a chip that reports measured liveness
+   *   (phase, rx) may wear the reality tone. No tooltip repeats its text
+   *   (docs/COPY.md rule 4): the name carries one only while ellipsized.
    */
   import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
@@ -92,10 +95,21 @@
       : render.fps + ' fps · ' + render.delayMs + ' ms · ' + render.heldPct + '% held'
         + (Math.abs(render.skewMs || 0) > 2 ? ' · skew ' + render.skewMs + ' ms' : '')
   );
+  // The client's own frame health: warn when degraded, never the reality
+  // tone, which is the machine's liveness (ph-51k).
   const renderTone = $derived(
-    render.fps == null ? 'dim'
-      : (render.heldPct > 10 || render.fps < 30 || Math.abs(render.skewMs || 0) > 2) ? 'warn' : 'good'
+    render.fps != null && (render.heldPct > 10 || render.fps < 30 || Math.abs(render.skewMs || 0) > 2) ? 'warn' : 'dim'
   );
+
+  /** The full name as a tooltip only while the bar ellipsizes it. */
+  function fullTitle(el) {
+    void title;
+    const set = () => { el.title = el.scrollWidth > el.clientWidth + 0.5 ? el.textContent : ''; };
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    set();
+    return () => ro.disconnect();
+  }
 
   // ===========================================================================
   // Activity heatmap — rows = live telemetry series discovered by ROLE, plus a
@@ -251,7 +265,7 @@
 <header class="linkbar" class:shell={!!Shell} data-tauri-drag-region="deep">
   <div class="header-left">
     <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
-    <span class="wordmark" {title}>{title}</span>
+    <span class="wordmark" {@attach fullTitle}>{title}</span>
   </div>
 
   <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
@@ -259,20 +273,20 @@
        tail, before the hub name ellipsizes. -->
   <div class="chips pinned">
     <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
-      <span class="chip-dot"></span>{phaseInfo.label}
+      <span class="chip-dot"></span><span class="mono">{phaseInfo.label}</span>
     </span>
     <span class="chip">
-      <span class="chip-lbl">tier</span>{tierLabel}
+      <span class="chip-lbl">tier</span><span class="mono">{tierLabel}</span>
     </span>
   </div>
   <div class="chips opt">
     <span class="chip chip-opt" class:tone-warn={!!machine.link.virtual}
-          title={machine.link.virtual ? 'Virtual: nothing moves' : fwLabel ? ('firmware ' + fwLabel) : ''}>
+          title={machine.link.virtual ? 'Virtual: nothing moves' : undefined}>
       <span class="chip-lbl">hub</span>
       <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
     </span>
     <span class="chip chip-opt">
-      <span class="chip-lbl">catalog</span>{catalogLabel}
+      <span class="chip-lbl">catalog</span><span class="mono">{catalogLabel}</span>
     </span>
     <span class="chip chip-opt tone-{renderTone}"
           title="FPS · jitter buffer · held frames · clock skew">
@@ -402,10 +416,10 @@
   /* Tone rides the text color plus a tinted border: the border tint is the
      second, non-color-dependent channel. */
   .chip.tone-good { border-color: color-mix(in srgb, var(--good) 45%, var(--chip-line)); color: var(--good); }
-  .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn); }
+  .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn-ink, var(--warn)); }
   .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad); }
   .chip.tone-good .mono { color: var(--good); }
-  .chip.tone-warn .mono { color: var(--warn); }
+  .chip.tone-warn .mono { color: var(--warn-ink, var(--warn)); }
   .chip.tone-bad  .mono { color: var(--bad); }
 
   /* Narrow viewports shed chips from the tail. Marked by class, not

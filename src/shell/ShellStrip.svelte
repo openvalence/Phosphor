@@ -14,7 +14,8 @@
    * - The bar around it is the drag region; these buttons opt out on their
    *   own (Tauri drag.js).
    * - Close: the X and every OS close request open ONE popover (RENDERING §9
-   *   overlay: it covers, never shifts); only a held Close quits
+   *   overlay: it covers, never shifts) below the whole top strip, never over
+   *   the e-stop or pause (laws 1, 11); only a held Close quits
    *   (close-confirm.js). Never red: law 13 keeps red for hazards.
    */
   import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -121,7 +122,7 @@
     color: var(--intent);
   }
   /* Flush at the bar's right edge, the bar's full height. */
-  .sb-win { position: relative; flex: none; display: flex; align-self: stretch; }
+  .sb-win { flex: none; display: flex; align-self: stretch; }
   .sb-wbtn {
     display: grid;
     place-items: center;
@@ -135,10 +136,11 @@
   .sb-wbtn:hover, .sb-wbtn[aria-expanded='true'] { color: var(--ink-hi); background: var(--line-soft); }
   .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }
 
-  /* Overlay: out of flow under the X, above the strip; moves nothing. */
+  /* Overlay: out of flow at the X's edge, under the strip (TopStrip's
+     --strip-h), so the safety pair stays uncovered; moves nothing. */
   .sb-pop {
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: var(--strip-h);
     right: 0;
     z-index: 40;
     width: max-content;

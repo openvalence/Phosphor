@@ -157,9 +157,9 @@
   .state { font-size: .75rem; color: var(--tx-mut); }
   li[data-phase='settled'] .state { color: var(--reality); }
   li[data-phase='pending'] .state { color: var(--intent); }
-  li[data-phase='fault'] .state { color: var(--warn); }
+  li[data-phase='fault'] .state { color: var(--warn-ink, var(--warn)); }
   .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--line); border-radius: var(--r-s); color: var(--tx-mut); }
-  .mark.warn { border-color: var(--warn); color: var(--warn); }
+  .mark.warn { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
   @media (pointer: coarse) { .mrows input[type=checkbox] { width: 28px; height: 28px; } }
   /* Phones: the state drops under the values so the tick keeps its size. */
   @media (max-width: 480px) {

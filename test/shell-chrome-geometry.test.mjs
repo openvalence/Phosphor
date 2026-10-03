@@ -78,11 +78,13 @@ const geom = () => page.evaluate(() => {
   const strip = document.querySelector('.topstrip').getBoundingClientRect();
   const lb = document.querySelector('.linkbar').getBoundingClientRect();
   const app = document.querySelector('.app').getBoundingClientRect();
+  // The page footer is the one bar ruled onto the bottom edge (DESIGN §10.3);
+  // it renders once a hub answers (a live hub on :82 makes this page live).
   const bottomFixed = [...document.querySelectorAll('body *')].filter((el) => {
     const cs = getComputedStyle(el);
     const b = el.getBoundingClientRect();
-    return cs.position === 'fixed' && cs.pointerEvents !== 'none' && b.height > 0 && b.bottom >= innerHeight - 1;
-  }).length;
+    return cs.position === 'fixed' && cs.pointerEvents !== 'none' && b.height > 0 && b.bottom >= innerHeight - 1 && !el.matches('.page-foot');
+  }).map((el) => el.tagName.toLowerCase() + '.' + el.className).join(' ');
   return { stripTop: strip.top, stripL: strip.left, stripW: strip.width, lbTop: lb.top,
            appH: app.height, vw: document.documentElement.clientWidth, vh: innerHeight, bottomFixed,
            scrolls: document.scrollingElement.scrollHeight > innerHeight + 2 };
@@ -95,12 +97,45 @@ ok('no shell: strip spans the window', Math.abs(g.stripL) < 1 && Math.abs(g.stri
 ok('no shell: LinkBar is the strip\'s first row', Math.abs(g.lbTop - g.stripTop) < 1);
 ok('no shell: desktop column is exactly one viewport', Math.abs(g.appH - g.vh) < 2, g.appH + ' vs ' + g.vh);
 ok('no shell: page does not scroll', !g.scrolls);
-ok('nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
+ok('nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
 // ph-wks: the notch inset must not depend on html.hivis.
 const inset = await page.evaluate(() => [document.documentElement.classList.contains('hivis'),
   getComputedStyle(document.documentElement).getPropertyValue('--chrome-inset-top').trim()]);
 ok('--chrome-inset-top is defined without html.hivis', !inset[0] && inset[1] !== '', JSON.stringify(inset));
 ok('served page: no shell chrome at all', await page.evaluate(() => !document.querySelector('.shell, .rail-sec.shell, [data-tab-id^="shell:"]')));
+// ph-632: the status slot's amber text rides --warn-ink (the theme's ink for
+// warn text on its chassis), never --warn itself.
+const warnInk = await page.evaluate(() => {
+  document.documentElement.style.setProperty('--warn-ink', 'rgb(1, 2, 3)');
+  const t = document.querySelector('.strip .status[data-kind=fault] .st-text');
+  const c = t && getComputedStyle(t).color;
+  document.documentElement.style.removeProperty('--warn-ink');
+  return c;
+});
+ok('status slot: warn text rides --warn-ink', warnInk === 'rgb(1, 2, 3)', warnInk);
+// ph-rt1: a link value growing or shrinking moves no neighbor.
+const fsMove = await page.evaluate(() => {
+  const vs = [...document.querySelectorAll('.footstrip .v')];
+  const x = () => vs.map((v) => Math.round(v.getBoundingClientRect().left)).join(',');
+  const v = vs[2], t = v.textContent, out = [x()];
+  v.textContent = '144739249 µs';
+  out.push(x());
+  v.textContent = '1 µs';
+  out.push(x());
+  v.textContent = t;
+  return out;
+});
+ok('footstrip: a value growing or shrinking moves no neighbor', fsMove.every((s) => s === fsMove[0]), JSON.stringify(fsMove));
+for (const fw of [1280, 1024]) {
+  await page.setViewportSize({ width: fw, height: 800 });
+  await page.waitForTimeout(200);
+  const fs = await page.evaluate(() => ({ out: [...document.querySelectorAll('.footstrip .fact')].filter((f) => f.getBoundingClientRect().right > innerWidth + 0.5)
+    .map((f) => f.textContent.trim().replace(/\s+/g, ' ')), scrollers: [...document.querySelectorAll('.footstrip, .footstrip *')]
+    .filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
+    rows: new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().top))).size }));
+  ok('footstrip: at ' + fw + ' every link fact is on screen, no sideways scroller', fs.out.length === 0 && fs.scrollers === 0,
+    JSON.stringify(fs));
+}
 
 // ---- phone: the page scrolls; the strip sticks, the tabs park under it --------
 await page.setViewportSize({ width: 420, height: 800 });
@@ -116,7 +151,9 @@ ok('phone scrolled: strip stays at the top', Math.abs(g.stripTop) < 1, 'top=' + 
 const stripBottom = await page.evaluate(() => document.querySelector('.topstrip').getBoundingClientRect().bottom);
 ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
    'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
-ok('phone: nothing fixed to the bottom edge', g.bottomFixed === 0, g.bottomFixed + ' element(s)');
+ok('phone: nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
+const fsCols = await page.evaluate(() => [...new Set([...document.querySelectorAll('.footstrip .fact')].map((f) => Math.round(f.getBoundingClientRect().left)))]);
+ok('phone: the link facts sit in grid columns (ph-rt1)', fsCols.length <= 4, JSON.stringify(fsCols));
 
 // ---- the real shell bundle: the sidebar's Phosphor section (ph-e82.16) ------
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -297,6 +334,24 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await hp.waitForTimeout(300);
   const idle = await heights(hp);
   ok(tag + ': a long hub name ellipsizes in one bar row', idle.nameClipped, JSON.stringify(idle));
+  // ph-51k: one value face across the chips, the reality tone only on a
+  // chip that reports liveness, and no tooltip that repeats its text.
+  const chips = await hp.evaluate(() => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--reality)';
+    document.body.append(probe);
+    const real = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = [...document.querySelectorAll('.linkbar .chip')].filter((c) => c.getBoundingClientRect().width > 0);
+    const faces = new Set(cs.flatMap((c) => [...c.querySelectorAll(':scope > span:not(.chip-lbl):not(.chip-dot)')]
+      .map((v) => getComputedStyle(v).fontFamily)));
+    const word = document.querySelector('.linkbar .wordmark');
+    return { faces: [...faces], real: cs.filter((c) => getComputedStyle(c).color === real).map((c) => c.textContent.trim().split(/\s+/)[0]),
+      word: word.title === word.textContent, titles: cs.map((c) => c.title).filter(Boolean) };
+  });
+  ok(tag + ': chip values share one face; reality only on liveness chips; no repeated tooltip', chips.faces.length === 1
+    && chips.real.every((t) => /^(live|rx)$/i.test(t)) && chips.word && !chips.titles.some((t) => /firmware|0\.0\.0-fixture/.test(t)),
+    JSON.stringify(chips));
   ok(tag + ': the tape carries the jog hint as its tooltip', await hp.locator('.rail-tape-track[title*="scrub"]').count() === 1);
 
   // ph-e82.21: nothing moves for 30 frames across each safety and pattern
@@ -389,7 +444,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   const homeBox = await footBox();
   ok(tag + ': the home footer carries the UI scale alone', !!homeBox && await fp.locator('.page-foot .foot-page > *').count() === 0
     && await fp.locator('.page-foot .foot-scale output').count() === 1, homeBox);
-  const boxes = new Set([homeBox]), shifts = [], under = [];
+  const boxes = new Set([homeBox]), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
   for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
     await fp.click('[data-tab-id="' + id + '"]');
@@ -401,6 +456,18 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     if (!box) continue;
     pages++;
     boxes.add(box[0]);
+    // ph-dj9: nothing in the footer scrolls; every shown control is whole
+    // inside the footer and the window.
+    const clip = await fp.evaluate(() => {
+      const f = document.querySelector('main.pane .page-foot'), fr = f.getBoundingClientRect();
+      const scrollers = [f, ...f.querySelectorAll('*')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length;
+      const out = [...f.querySelectorAll('button, output, .cat-busy')].filter((e) => getComputedStyle(e).visibility === 'visible')
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.left < fr.left - 0.5 || r.right > fr.right + 0.5 || r.top < fr.top - 0.5
+          || r.bottom > fr.bottom + 0.5 || r.right > innerWidth + 0.5; })
+        .map((e) => e.textContent.trim() || e.getAttribute('aria-label'));
+      return { scrollers, out };
+    });
+    if (clip.scrollers || clip.out.length) clipped.push(id + ' ' + JSON.stringify(clip));
     for (let i = 0; i < await fp.locator('main.pane .page-foot .adv-toggle').count(); i++) {
       for (let k = 0; k < 2; k++) {
         flips++;
@@ -414,6 +481,17 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
         }, i);
         const moved = f.filter((x) => x !== f[0]);
         if (moved.length) shifts.push(id + ' toggle ' + i + ': ' + f[0] + ' -> ' + moved[0]);
+        // ph-eo0: on wears the reality on-state, off does not.
+        const st = await fp.evaluate((i) => {
+          const t = document.querySelectorAll('main.pane .page-foot .adv-toggle')[i];
+          const probe = document.createElement('i');
+          probe.style.color = 'var(--reality)';
+          document.body.append(probe);
+          const real = getComputedStyle(probe).color;
+          probe.remove();
+          return [t.getAttribute('aria-expanded'), getComputedStyle(t).borderTopColor === real && getComputedStyle(t).color === real];
+        }, i);
+        if ((st[0] === 'true') !== st[1]) onState.push(id + ' toggle ' + i + ' ' + JSON.stringify(st));
       }
     }
     const end = await fp.evaluate(async () => {
@@ -430,7 +508,13 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   }
   const [, , , fh] = [...boxes][0]?.split(',').map(Number) || [];
   ok(tag + ': pages with page controls carry the footer', pages > 1, pages + ' pages');
-  ok(tag + ': one footer box on every page and the home, 48 px tall', boxes.size === 1 && fh === 48, [...boxes].join(' / '));
+  if (w >= 960) ok(tag + ': one footer box on every page and the home, 48 px tall', boxes.size === 1 && fh === 48, [...boxes].join(' / '));
+  else ok(tag + ': the home footer is one 48 px row; a page\'s is whole rows of it', fh === 48
+    && [...boxes].every((b) => +b.split(',')[3] >= 48), [...boxes].join(' / '));
+  ok(tag + ': nothing in the footer scrolls; every control whole inside it and the window (ph-dj9)', clipped.length === 0,
+    clipped.slice(0, 2).join(' / '));
+  ok(tag + ': an on toggle wears the reality on-state, an off one does not (ph-eo0)', flips > 0 && onState.length === 0,
+    onState.slice(0, 2).join(' / '));
   ok(tag + ': footer and its controls hold still for 30 frames across every toggle', flips > 0 && shifts.length === 0,
     flips + ' flips; ' + shifts.slice(0, 2).join(' / '));
   ok(tag + ': scrolled to its end, the last card ends above the footer', under.length === 0, under.join(' / '));
@@ -636,21 +720,32 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
   await fctx.close();
 }
 
-// ---- the shell's close popover (ph-e82.17) -----------------------------------
-{
-  const cctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+// ---- the shell's close popover (ph-e82.17, ph-i7e) ---------------------------
+// Below the whole top strip at the X's edge: it never covers the e-stop or
+// pause (laws 1, 11), at desktop and phone width.
+for (const [w, h] of [[1280, 800], [390, 844], [1440, 900]]) {
+  const tag = 'close ' + w + 'x' + h;
+  const cctx = await browser.newContext({ viewport: { width: w, height: h } });
   await cctx.addInitScript(TAURI_STUB);
   const cp = await cctx.newPage();
   await cp.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloaded' });
   await cp.waitForSelector('.linkbar.shell .sb-wbtn[aria-label=Close]', { timeout: 15000 });
-  const box = (sel) => cp.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, right: r.right, h: r.height }; }, sel);
+  const box = (sel) => cp.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, h: r.height }; }, sel);
   const bar0 = await box('.linkbar'), strip0 = await box('.strip');
-  ok('shell: the window buttons sit inside the one-row bar', !!bar0 && Math.abs((await box('.sb-win')).h - bar0.h) < 0.5, JSON.stringify(bar0));
+  ok(tag + ': the window buttons sit inside the one-row bar', !!bar0 && Math.abs((await box('.sb-win')).h - bar0.h) < 0.5, JSON.stringify(bar0));
   await cp.click('.sb-wbtn[aria-label=Close]');
   const pop = await box('.sb-pop'), x = await box('.sb-wbtn[aria-label=Close]'), bar1 = await box('.linkbar'), strip1 = await box('.strip');
-  ok('close: the popover opens anchored under the X', !!pop && Math.abs(pop.top - x.bottom) < 1.5 && Math.abs(pop.right - x.right) < 1.5,
-    JSON.stringify([pop, x]));
-  ok('close: the bar and the strip do not move', bar1.h === bar0.h && strip1.top === strip0.top, JSON.stringify([bar0, bar1, strip0, strip1]));
+  const top = await box('.topstrip');
+  ok(tag + ': the popover opens below the strip at the X\'s edge', !!pop && pop.top >= top.bottom - 0.5 && Math.abs(pop.right - x.right) < 1.5,
+    JSON.stringify([pop, x, top]));
+  const clear = await cp.evaluate(() => ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((s) => {
+    const b = document.querySelector(s).getBoundingClientRect(), p = document.querySelector('.sb-pop').getBoundingClientRect();
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    return !(p.left < b.right && p.right > b.left && p.top < b.bottom && p.bottom > b.top) && !!hit && !!hit.closest(s);
+  }));
+  ok(tag + ': the e-stop and pause stay uncovered', clear.every(Boolean), JSON.stringify(clear));
+  ok(tag + ': the bar and the strip do not move', bar1.h === bar0.h && strip1.top === strip0.top, JSON.stringify([bar0, bar1, strip0, strip1]));
+  if (w !== 1440) { await cctx.close(); continue; }
   ok('close: the hold button has focus, reads Close, never red', await cp.evaluate(() => {
     const b = document.activeElement;
     return b.classList.contains('sb-hold') && /close/i.test(b.textContent) && !/255, 71, 87/.test(getComputedStyle(b).color + getComputedStyle(b).borderColor);
