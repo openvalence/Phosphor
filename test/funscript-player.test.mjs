@@ -196,7 +196,7 @@ const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 const { cbMap, cbUint, cbF32, cbBstr, cbTstr, cbArray, cbDecodeFull } = await import('../../Valence/clients/js/cbor.js');
 const { decodePacked, encodePacked } = await import('../../Valence/clients/js/catalog.js');
-const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } = await import('../../Valence/clients/js/frames.js');
+const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS, NACK } = await import('../../Valence/clients/js/frames.js');
 const { CORE_CHANNEL } = await import('../../Valence/clients/js/generated/registry_vocab.js');
 const { toHex } = await import('../../Valence/clients/js/sha256.js');
 const { buildShellPage, TAURI_STUB } = await import('./shell-build.mjs');
@@ -253,7 +253,7 @@ const hubUs = () => Math.round((performance.timeOrigin + performance.now()) * 10
 const unwrap = (u32, near) => near + ((u32 - (near >>> 0)) | 0);
 
 function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
-  const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null };
+  const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null, nackStream: 0 };
   const entry = (id) => cat.entries.find((e) => e.id === id);
   const valuesOf = (e) => Object.fromEntries(e.layout.map((f) => [f.name,
     hub.values[e.id + ':' + f.name] ?? (f.role === 'meta.enabled_mask' ? 0xff : Number(f.default) || 0)]));
@@ -330,6 +330,7 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
             segs.push({ exec: stamp + LAT_US, norm: r[tgt.name], dur: r[dur.name], arrival });
           }
           hub.bundles.push({ ch: header.channel, arrival, segs, latch: hub.latch });
+          if (hub.nackStream) hub.send(FRAME.NACK, header.channel, cbMap([[K.code, cbUint(hub.nackStream)]]), header.seq);
         } else if (t === FRAME.PING) {
           hub.send(FRAME.PONG, header.channel, payload);
         }
@@ -570,6 +571,9 @@ if (!LIVE) {
   ok('preroll: the video starts at its end', await video(page, (v) => !v.paused && v.currentTime > 0.05));
   await page.waitForTimeout(3500);
   rects.playing = await chrome(page);
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT });
+  if (process.env.FSP_DEBUG) console.log(await page.locator(C).evaluate((e) => [e, e.parentElement, e.parentElement.parentElement, ...e.children]
+    .map((x) => x.className + ' ' + JSON.stringify(x.getBoundingClientRect()) + ' ' + getComputedStyle(x).overflow)));
 
   // ---- timing ----
   const played = hub.segs(1);
@@ -697,8 +701,24 @@ if (!LIVE) {
   hub.set(CH.advgen, 'running', 0);
   await page.waitForTimeout(400);
 
+  // ---- a hub refusal: SOURCE_CONFLICT on the segments STREAM (a generator the gate did not see) ----
+  hub.nackStream = NACK.SOURCE_CONFLICT;
+  const nRef = hub.bundles.length;
+  await playBtn(page).click();
+  const refused = await page.waitForFunction((c) => /SOURCE_CONFLICT/.test(document.querySelector(c + ' > .fsp-slot').textContent), C, { timeout: 4000 })
+    .then(() => true).catch(() => false);
+  ok('refusal: a SOURCE_CONFLICT NACK shows its name in the status slot', refused, await statusText(page));
+  ok('refusal: the video pauses and Play is offered again', await video(page, (v) => v.paused) && !(await playBtn(page).isDisabled()));
+  await page.waitForTimeout(300);
+  const nAfter = hub.bundles.length;
+  await page.waitForTimeout(600);
+  ok('refusal: nothing more is sent after it', hub.bundles.length === nAfter && nAfter > nRef, [nRef, nAfter, hub.bundles.length]);
+  rects.refused = await chrome(page);
+  if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'refusal.png') });
+  hub.nackStream = 0;
+
   // ---- layout ----
-  for (const s of ['ready', 'preroll', 'playing', 'paused', 'held', 'gated']) {
+  for (const s of ['ready', 'preroll', 'playing', 'paused', 'held', 'gated', 'refused']) {
     const r = sameChrome(rects.empty, rects[s]);
     ok('layout: chrome rects in ' + s + ' match empty', r.ok, r.diff.slice(0, 4));
   }
@@ -742,7 +762,6 @@ if (!LIVE) {
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
   ok('no page error', errors.length === 0, errors.slice(0, 3));
-  if (SHOT) await page.locator(C).screenshot({ path: SHOT });
   clearInterval(hub.timer);
   await ctx.close();
 

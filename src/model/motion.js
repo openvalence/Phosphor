@@ -168,7 +168,8 @@ export function bundleHead(segs, nowUs, horizonMs, bytesPerRecord) {
  *
  * @param {Object} deps {session() -> session|null, entries() -> catalog
  *   entries, setpoint(norm) -> {ok, reason}, log(level, msg),
- *   halted?() -> reason string, '' when motion may flow}
+ *   halted?() -> reason string, '' when motion may flow, lastNack?(ch) ->
+ *   the newest NACK record {name} the link saw on ch, or null}
  * @returns {(norm: number, durationMs?: number) => {ok: boolean, reason?: string}}
  */
 export function createMotionDoor(deps) {
@@ -176,6 +177,7 @@ export function createMotionDoor(deps) {
   const now = deps.now || (() => performance.now());
   let path = '';
   let lastCode = '';
+  const nackSeen = new Map(); // channel -> the newest NACK record already accounted for
   const note = (p, msg) => { if (p !== path) { path = p; deps.log('info', msg); } };
   const noteSegments = (ch, grant) => note('segments:' + ch, 'motion input: segments STREAM 0x' + ch.toString(16)
     + ', horizon ' + grant.scheduleHorizonMs + ' ms, lead ' + (grant.scheduleLatencyUs || 0) + ' us');
@@ -265,6 +267,10 @@ export function createMotionDoor(deps) {
    *   execution start minus the grant's latency, never a constant.
    * - A late start is clipped to the earliest executable instant keeping its
    *   end; the end velocity always rides `unspecified` (SPEC §9.6, RFC-058).
+   * - A STREAM bundle has no answer: the hub's NACK on the channel (e.g.
+   *   SOURCE_CONFLICT while a generator owns the rail) arrives later through
+   *   `deps.lastNack(ch)`, and the next call refuses once with its name. The
+   *   first call per channel only takes the baseline.
    * @returns {{ok: boolean, sent: number, rateHz?: number, reason?: string}}
    */
   submit.segments = function segments(list) {
@@ -272,6 +278,12 @@ export function createMotionDoor(deps) {
     if (held) return { ok: false, sent: 0, reason: held };
     const st = motionStream(deps.entries(), STREAM_KIND.segments);
     if (!st) return { ok: false, sent: 0, reason: 'hub has no segments STREAM' };
+    const nk = deps.lastNack ? deps.lastNack(st.entry.id) : null;
+    if (!nackSeen.has(st.entry.id)) nackSeen.set(st.entry.id, nk);
+    else if (nk && nk !== nackSeen.get(st.entry.id)) {
+      nackSeen.set(st.entry.id, nk);
+      return { ok: false, sent: 0, reason: nk.name || 'refused by the hub' };
+    }
     const s = deps.session();
     if (!s) return { ok: false, sent: 0, reason: 'not connected' };
     const grant = grantFor(s, st);

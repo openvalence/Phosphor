@@ -456,10 +456,11 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     return s;
   }
   const T = 10_000;                // client now(), ms
-  function segDoor(s, { ents = entries, halted = '' } = {}) {
+  function segDoor(s, { ents = entries, halted = '', nacks = [] } = {}) {
     const out = { set: [], log: [] };
     const d = createMotionDoor({
       session: () => s, entries: () => ents, now: () => T, halted: () => halted,
+      lastNack: (ch) => nacks.findLast((n) => n.channel === ch) || null,
       setpoint: (n) => { out.set.push(n); return { ok: true }; },
       log: (level, msg) => out.log.push({ level, msg }),
     });
@@ -553,6 +554,22 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   const { d: d4 } = segDoor(s4);
   d4.segments([]); await tick();
   ok('a refused grant reads publish refused, asked once', d4.segments([seg(20, 50)]).reason === 'publish refused' && s4.asked.length === 1);
+
+  {
+    const nacks = [{ channel: CH, name: 'SOURCE_CONFLICT' }];
+    const s = fakeSeg();
+    const { d } = segDoor(s, { nacks });
+    d.segments([]); await tick();
+    const before = d.segments([seg(20, 50)]);
+    nacks.push({ channel: CH + 1, name: 'ACCESS_DENIED' });
+    const other = d.segments([seg(20, 50)]);
+    nacks.push({ channel: CH, name: 'SOURCE_CONFLICT' });
+    const r = d.segments([seg(20, 50)]);
+    const again = d.segments([seg(20, 50)]);
+    ok('a hub NACK on the segments channel refuses the next call once with its name; an older one or another channel never',
+      before.ok && other.ok && !r.ok && r.sent === 0 && r.reason === 'SOURCE_CONFLICT' && again.ok && s.sent.length === 3,
+      JSON.stringify([before, other, r, again]));
+  }
 
   // streamGate: the first that applies, in order.
   const all = { live: false, roles: 0, access: 1, halted: 'e-stop latched', running: true,

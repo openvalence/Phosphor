@@ -429,6 +429,7 @@ const motionDoor = createMotionDoor({
   session: getSession,
   entries: () => machine.catalog.entries,
   halted: () => latchWords(machine.safety),
+  lastNack: (ch) => machine.events.nacks.findLast((n) => n.channel === ch) || null,
   setpoint: (norm) => {
     const t = motionTarget(machine.catalog.model, machine.samples, norm);
     if (!t.field) return { ok: false, reason: t.reason };
