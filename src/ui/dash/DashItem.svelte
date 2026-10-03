@@ -1,23 +1,7 @@
 <script module>
-  import { statusOf, STATUS } from '../../model/shadow.svelte.js';
-  import { WIDGET } from '../../model/settings.js';
+  import { inFlight } from '../../model/shadow.svelte.js';
 
   let seq = 0;
-  const partsOf = (f) => (f.widget === WIDGET.range ? [f.lo, f.hi] : f.widget === WIDGET.color ? [f.r, f.g, f.b] : [f]);
-  /**
-   * Controls among `fields` with a write in flight, and whether any is
-   * overdue: pending and overdue count, a refused write never does (ph-sbu).
-   * Planned: shadow.svelte.js inFlight (fix/fields) replaces this twin.
-   */
-  export function inFlight(fields) {
-    let n = 0, overdue = false;
-    for (const f of fields) {
-      const st = partsOf(f).map(statusOf);
-      if (st.some((s) => s === STATUS.pending || s === STATUS.overdue)) n++;
-      if (st.includes(STATUS.overdue)) overdue = true;
-    }
-    return { n, overdue };
-  }
 </script>
 
 <script>

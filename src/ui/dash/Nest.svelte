@@ -23,7 +23,7 @@
    *   stored cells, under the top grid's columns.
    */
   import DashGrid from './DashGrid.svelte';
-  import { inFlight } from './DashItem.svelte';
+  import { inFlight } from '../../model/shadow.svelte.js';
 
   let { item, parent, editing = false, candidates = [], announce = () => {}, ondropkey = null,
     ondragout = null, target = false } = $props();
