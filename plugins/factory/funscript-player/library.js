@@ -102,6 +102,25 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 
+// The column scrolls where the card is shorter than the connect form needs; the shell's style.css
+// draws the recess from these attributes and hides the scrollbar (src/ui/scrollshade.js is the contract).
+function shade(node) {
+  const mark = () => {
+    node.toggleAttribute('data-shade-top', node.scrollTop > 0);
+    node.toggleAttribute('data-shade-bottom', node.scrollTop + node.clientHeight < node.scrollHeight - 1);
+  };
+  const ro = new ResizeObserver(mark);
+  ro.observe(node);
+  ro.observe(node.firstElementChild);
+  node.setAttribute('data-shade', '');
+  node.addEventListener('scroll', mark, { passive: true });
+  return () => {
+    ro.disconnect();
+    node.removeEventListener('scroll', mark);
+    for (const a of ['data-shade', 'data-shade-top', 'data-shade-bottom']) node.removeAttribute(a);
+  };
+}
+
 const two = (n) => String(n).padStart(2, '0');
 function clockText(ms) {
   const s = Math.round(ms / 1000), hr = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
@@ -137,6 +156,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
     body,
     h('div', { class: 'fsp-lib-foot' }, prev, pageOut, next, countOut));
   el.append(root);
+  const unshade = shade(el);
 
   const save = () => prefs.set('lib', { ...lib });
   const say = (text, tone = '') => { note.textContent = text; note.dataset.tone = tone; };
@@ -268,6 +288,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
       clearTimeout(typing);
       clearTimeout(sizing);
       ro.disconnect();
+      unshade();
       if (connectOff) connectOff();
       root.remove();
     },

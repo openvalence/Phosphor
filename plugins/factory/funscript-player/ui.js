@@ -584,7 +584,8 @@ export const CSS = `
 .fsp-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .fsp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-mut); font-size: .85rem; pointer-events: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
-.fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow: hidden; }
+.fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.fsp[data-comp=full] .fsp-lib { min-height: 400px; }
 .fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 5 / 2; }
 .fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
