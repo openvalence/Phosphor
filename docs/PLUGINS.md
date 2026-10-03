@@ -101,6 +101,9 @@ settings cards, render instead (item 5).
 | `catalog()` | the whole settings model (categories, `byRole`, `fields`, `actions`) for channel-bound plugins | **freeze candidate** |
 | `write(field, value)` | routes to `writeSetting` / `sendCommand` / `runAction` by field shape. Needs `intent` | **freeze candidate** |
 | `write`'s third argument `payload` and its confirm | an action's other schema keys, `{key: value}`. The host renders the confirm first (`source.background_run` enable, a confirm-tagged or destructive op, an `action.store` delete) and a cancel resolves `{ok: false, error: 'canceled'}` | experimental |
+| `writeTrial(field, value)` | a setting applied live and not stored until `commitTrial()` (Valence RFC-099, SPEC §9.3); same shadow lifecycle as `write`. `{ok: false, error}` on a hub without settings-trial or a field that is not a setting. Needs `intent` | experimental |
+| `commitTrial()` / `revertTrial()` | a Promise of `{ok, error?}`: store, or put back, every trial value this client holds. Needs `intent` | experimental |
+| `trialPending` | read-only property: true while any client holds a trial value on this hub, from the machine's `meta.trial_pending` fields | experimental |
 | `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first` (a generator runs), `motion input in use by <plugin>`. A foreign-held control-owner slot never gates; a stream holding the rail is the hub's `SOURCE_CONFLICT`, which `submitSegments` returns as `refused: rail owned by <source>` | experimental |
 | `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
@@ -163,6 +166,14 @@ an ok `submitMotion` until now plus its duration plus 500. Another plugin's
 `submitMotion` or `submitSegments` meanwhile returns `{ok: false, sent: 0,
 reason: 'motion input in use by <plugin>'}` without reaching the door, and its
 `gate` on a motion-input field says the same.
+
+**Trial writes.** The hub keeps each trial key's stored value and owns the
+undo: `revertTrial()`, a closed tab and a lost link all put it back, and
+nothing reaches the machine's flash until `commitTrial()`. A key one client
+has on trial refuses every other client's write, trial or not, with
+`TRIAL_CONFLICT` (it lands in `reason(field)`). The flip, the schedule horizon
+and the chase interval are refused as trials on the reference hub: each is
+gated on live state, so its revert could be refused too.
 
 ## Manifest (`manifest.json`, beside the module)
 

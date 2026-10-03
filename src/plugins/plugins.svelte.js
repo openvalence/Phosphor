@@ -26,7 +26,9 @@ import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
-import { LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
+import {
+  LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
+} from '../../../Valence/clients/js/index.js';
 
 const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
 const DISABLED_KEY = 'phosphor.plugins.disabled';
@@ -107,6 +109,19 @@ async function storeSlots(field) {
   return slots;
 }
 
+// RFC-099: the hub keeps a trial unstored iff it declares settings-trial.
+const trialCapable = () => (machine.catalog.entries || []).some((e) => e.id === CH_SETTINGS_TRIAL);
+// The ops act on this session's own trials; the op key is the channel's one field.
+const TRIAL_ACTION = { channelId: CH_SETTINGS_TRIAL, key: 1, label: 'Trial' };
+// Any session's trial, as the machine reports it on its meta.trial_pending fields.
+function trialPending() {
+  for (const e of machine.catalog.entries || []) {
+    const smp = e.layout && machine.samples[e.id];
+    if (smp && e.layout.some((f) => f.role === FIELD_ROLE.meta_trial_pending && smp[f.name])) return true;
+  }
+  return false;
+}
+
 async function listenTcp(port, onLine) {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
@@ -138,6 +153,10 @@ export const host = createPluginHost({
   display: displayValue,
   status: statusOf,
   write,
+  trialCapable,
+  writeTrial: (field, value) => writeSetting(field, value, { trial: true }),
+  trialOp: (op) => runAction(TRIAL_ACTION, TRIAL_OP[op]),
+  trialPending,
   gate,
   stale: (field) => staleReason(freshness(field.channelId)) || '',
   reason: (field) => (shadowOf(field) || {}).error || '',

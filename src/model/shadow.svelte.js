@@ -189,9 +189,7 @@ async function flush(channelId) {
   if (!q.pending.size) return;
 
   const session = getSession();
-  const entries = [...q.pending.entries()]; // [key, {value, shadowKey}]
-  const fields = {};
-  for (const [k, rec] of entries) fields[k] = rec.value;
+  const all = [...q.pending.entries()]; // [key, {value, shadowKey, seq, trial}]
   q.pending.clear();
   q.lastSentAt = Date.now();
 
@@ -200,18 +198,27 @@ async function flush(channelId) {
     return sh && sh.seq === rec.seq ? sh : null;
   };
   if (!session || !session.isLive) {
-    for (const [, rec] of entries) {
+    for (const [, rec] of all) {
       const sh = mine(rec);
       if (sh) fail(sh, 'no link');
     }
     return;
   }
+  // RFC-099: a trial write and a durable one never share an intent.
+  for (const trial of [false, true]) {
+    const entries = all.filter(([, rec]) => !!rec.trial === trial);
+    if (entries.length) await sendQueued(session, channelId, entries, trial, mine);
+  }
+}
 
+async function sendQueued(session, channelId, entries, trial, mine) {
+  const fields = {};
+  for (const [k, rec] of entries) fields[k] = rec.value;
   try {
     // sendIntent encodes each value using the CBOR type the catalog publishes
     // for that key — no local type table, so a machine whose field is a float
     // where ours is an int is encoded correctly without any client change.
-    const echo = await session.sendIntent(channelId, fields);
+    const echo = await session.sendIntent(channelId, fields, trial ? { trial: true } : {});
     const applied = (echo && echo.applied) || {};
     for (const [k, rec] of entries) {
       const sh = mine(rec);
@@ -337,13 +344,15 @@ function begin(sh, value) {
  *
  * @param {Object} field a field from buildSettingsModel (must not be readOnly)
  * @param {number|string|boolean} value the value the operator chose
+ * @param {{trial?: boolean}} [o] trial: applied live, not stored until a
+ *        settings-trial commit (RFC-099). Only for a hub that declares it.
  */
-export function writeSetting(field, value) {
+export function writeSetting(field, value, o = {}) {
   if (!field || field.readOnly || field.writeChannel == null) return;
   const shadowKey = keyOf('set', field.writeChannel, field.settingKey);
   const sh = ensureShadow(shadowKey, field.writeChannel, labelFor(field));
   const seq = begin(sh, value);
-  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq });
+  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq, trial: !!o.trial });
   schedule(field.writeChannel);
 }
 
