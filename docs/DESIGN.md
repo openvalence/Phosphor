@@ -586,9 +586,14 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   scrolling or folding nest, and a module that takes its own pointer and
   wheel (the node editor) is a still preview in the grid with Open (operator
   ruling 2026-10-02, `ph-e82.22`). Opened, the region fills the card body
-  to the window bottom (`ph-e82.13.10`). A nest with its contents is
-  saveable as a reusable module; members the current catalog lacks stay
-  inert.
+  to the window bottom (`ph-e82.13.10`). A click in the preview engages it
+  in place (operator ruling 2026-10-03, `ph-n18c`, `src/ui/engage.js`): the
+  wheel, drags and keys go to the editor, and the card wears the focus ring
+  (`--highlight`) tapering out. A pointerdown or wheel outside, or Escape,
+  disengages without consuming the event; until engaged the wheel scrolls the
+  page. The toolbar stays Open-only, so engaging never moves the canvas. A
+  nest with its contents is saveable as a reusable module; members the
+  current catalog lacks stay inert.
 - The node editor's typed nodes, chains and add menu: [GRAPH.md](GRAPH.md).
 - A nest's frame carries the in-flight count (RENDERING §9, law 9), though
   every member is in view. A card's head carries its own group's count after
@@ -745,3 +750,4 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
 | 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
 | 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |
+| 2026-10-03 | §10.6 | Click to engage the node editor in its grid card, outside pointerdown, wheel or Escape to leave, focus-ring glow while engaged (`ph-n18c`). | operator (the click-not-pointerdown trigger and Open-only toolbar are the agent's, veto-able) |

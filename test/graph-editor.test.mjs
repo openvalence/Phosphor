@@ -199,6 +199,20 @@ async function open({ coarse = false, seed = null, before = null } = {}) {
   const drawn = () => page.$eval('.graph', (g) => [...g.querySelectorAll('.gtool, .gnote')].map((e) => e.getClientRects().length));
   const tools = await drawn();
   ok('the preview draws no toolbar and no edges line until Open (ph-eg2)', tools.length === 2 && tools.every((n) => n === 0), tools);
+  // A click engages it in place with the focus ring, tools still Open-only; a wheel outside lets go (ph-n18c).
+  const [gx, gy] = await center(page.locator('.dash-item:has(.graph) .gview'));
+  await page.mouse.click(gx, gy);
+  await page.waitForTimeout(50);
+  const eng = () => page.$eval('.graph', (g) => ({ live: !g.inert, ring: getComputedStyle(g.closest('.dash-item')).outlineStyle }));
+  const on = await eng();
+  if (SHOTS) await page.screenshot({ path: SHOTS + '/engaged-' + previews + '.png' });
+  ok('a click in the preview engages it in place, ringed, no tools', on.live && on.ring === 'solid' && (await drawn()).every((n) => n === 0), on);
+  const [rx, ry] = await center(page.locator('nav.rail'));
+  await page.mouse.move(rx, ry);
+  await page.mouse.wheel(0, 40);
+  await page.waitForTimeout(50);
+  const off = await eng();
+  ok('...a wheel outside disengages it', !off.live && off.ring !== 'solid', off);
   if (before) await before(page);
   await page.locator('.dash-item:has(.graph) .dash-open').click();
   ok('Open makes it live, full window below the strip', await page.$eval('.graph', (g) => !g.inert && getComputedStyle(g.closest('.dash-item')).position === 'fixed'));

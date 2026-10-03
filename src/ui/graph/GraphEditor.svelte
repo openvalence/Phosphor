@@ -849,8 +849,8 @@
       background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
     .gmore[data-open] { display: flex; }
   }
-  /* The grid's inert preview (DashItem) is a picture: no tools until Open. */
-  .graph:global([inert]) .gtool, .graph:global([inert]) .gnote { display: none; }
+  /* In a grid card (DashItem) the tools wait for Open, engaged or not: the canvas never jumps. */
+  .graph:global([data-preview]) .gtool, .graph:global([data-preview]) .gnote { display: none; }
   .gnote { margin: 0; font-size: 11px; color: var(--ink-dim); }
   .gsr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
 

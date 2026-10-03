@@ -14,7 +14,8 @@
    * (a nest's body is the sunken one). A body holding an application region
    * (role=application: it takes its own pointer and wheel, as the node editor
    * does) is a still preview in the grid, inert, with Open showing it full
-   * window below the top strip; nothing in a grid scrolls or zooms on its own.
+   * window below the top strip. A click in the body engages it in place
+   * (ph-n18c, ui/engage.js); until then the wheel scrolls the page.
    *
    * Purely presentational + interaction capture. It knows nothing about
    * other items, ordering, or persistence -- that all lives in DashGrid,
@@ -39,6 +40,7 @@
    * Enter on the grip, anchored to this card (`--card`).
    */
   import { untrack } from 'svelte';
+  import { engage } from '../engage.js';
 
   let {
     item,
@@ -97,7 +99,10 @@
     return () => mo.disconnect();
   });
   let open = $state(false);
-  $effect(() => { if (app) app.inert = !open; });
+  let engaged = $state(false);
+  $effect(() => { if (app) return engage(bodyEl, (v) => (engaged = v)); });
+  // data-preview: the region is in the grid, not opened (it hides its own tools).
+  $effect(() => { if (app) { app.inert = !(open || engaged); app.toggleAttribute('data-preview', !open); } });
   const closeOnEscape = (e) => { if (open && e.key === 'Escape' && !e.defaultPrevented) open = false; };
   // Tools in the head's right end, the grip last: the title yields this much.
   const tools = $derived((look ? 1 : 0) + (item.selfLabeled && item.setLook ? 1 : 0) + (onremove ? 1 : 0));
@@ -175,7 +180,7 @@
 
 <svelte:window onkeydown={closeOnEscape} />
 
-<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip bind:this={itemEl}
+<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip class:engaged bind:this={itemEl}
      style={'anchor-name:' + anchor + ';--card:' + anchor + ';--tools:' + tools}>
   {#if editing || !bare}
   <div class="dash-head card-head" class:over={bare}>
@@ -247,7 +252,8 @@
   </div>
   {/if}
 
-  <div class={'dash-body ' + (item.kind === 'nest' ? 'surface-nest' : 'surface-card')} bind:this={bodyEl}>
+  <div class={'dash-body ' + (item.kind === 'nest' ? 'surface-nest' : 'surface-card')} bind:this={bodyEl}
+       title={app && !open && !engaged ? 'Click to edit here; click outside to leave' : null}>
     <!-- The item is passed back to its own snippet so a CALLER can share one
          snippet across many items and switch on the item's payload. Snippets
          are declared statically in a template and cannot be manufactured per
@@ -339,6 +345,11 @@
     opacity: 0.92;
   }
 
+  /* Engaged in place: the focus ring, tapering out. Static, no transition. */
+  .dash-item.engaged:not(.open) {
+    outline: 2px solid var(--highlight);
+    box-shadow: 0 0 18px 4px rgba(var(--highlight-rgb), .35);
+  }
   /* Selection is highlight; intent means commanded (THEMES). */
   .dash-item.selected { outline: 2px solid var(--highlight); }
   /* An item with `retitle` (a nest) names itself in place, in edit mode, at
