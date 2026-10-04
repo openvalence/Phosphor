@@ -52,7 +52,7 @@ for (const [sel, set] of [['html.hivis', D.hivis], [':root {\n    --tx', D.more]
   ok((sel === 'html.hivis' ? 'hi-vis' : 'prefers-contrast') + ' set reproduces style.css', Object.keys(want).length > 0 && bad.length === 0, bad.join(', '));
 }
 ok('accents reproduce :root', D.base['--reality'] === root['--reality'] && D.base['--intent'] === root['--intent']);
-ok('highlight defaults to reality', D.base['--highlight'] === D.base['--reality'] && D.base['--highlight-rgb'] === D.base['--reality-rgb']);
+ok('the default highlight is its own color, not the reality fallback (2026-10-04)', D.base['--highlight'] !== D.base['--reality'] && D.base['--highlight'] === root['--highlight']);
 ok('default chassis is dark', D.dark === true && T.themeCss(T.DEFAULT_THEME).includes('color-scheme:dark'));
 ok('OKLCH round trip is exact on the references', ['#08090B', '#ECEFF4', '#4DA6FF'].every((h) => T.fromOklch(...T.toOklch(h)) === h));
 for (const t of T.THEMES.slice(0, 9)) {

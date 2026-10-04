@@ -172,7 +172,8 @@ const preset = (id, name, reality, intent, chassis = {}, extra = {}) => ({
 });
 
 export const THEMES = [
-  preset('phosphor', 'Phosphor', '#4DA6FF', '#A78BFA'),
+  // A highlight of its own (2026-10-04): with the reality fallback the planner line and the heat ramp's top read as the position trace.
+  preset('phosphor', 'Phosphor', '#4DA6FF', '#A78BFA', {}, { highlight: '#FF5CB3' }),
   preset('tracer', 'Tracer', '#52E88C', '#E85CFF'),
   preset('synth', 'Synth', '#FF5CA8', '#5CE8FF'),
   preset('ember', 'Ember', '#FF8A4D', '#4CCEFE'),

@@ -93,7 +93,7 @@
      highlight = focus, selection, hover emphasis; never a state */
   --reality: #4DA6FF;
   --intent:  #A78BFA;
-  --highlight: #4DA6FF;
+  --highlight: #FF5CB3;
   --warn:    #F5B94D;   /* never themed: safety */
   --bad:     #FF4757;   /* never themed: safety */
   /* The same two safety colors as rgb triples, for tints and glows; never
@@ -112,7 +112,7 @@
   --reality-rgb:     77,166,255;
   --intent-rgb:      167,139,250;
   --intent-deep-rgb: 142,118,213;
-  --highlight-rgb:   77,166,255;
+  --highlight-rgb:   255,92,179;
   --glow-reality: 0 0 18px rgba(var(--reality-rgb),.5), 0 0 42px rgba(var(--reality-rgb),.16);
   --glow-intent:  0 0 14px rgba(var(--intent-deep-rgb),.16);
   --glow-warn:    0 0 18px rgba(var(--warn-rgb),.5), 0 0 42px rgba(var(--warn-rgb),.16);
