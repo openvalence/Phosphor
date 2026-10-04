@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- macOS kills an app that touches these without a usage string (TCC). -->
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>Phosphor scans for a Valence hub over Bluetooth when the network scan finds none.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Phosphor finds and talks to Valence hubs on your local network.</string>
+</dict>
+</plist>
