@@ -1,5 +1,6 @@
 # Phosphor bundles for Windows, macOS and Linux, each with its valencesim
-# sidecar, plus a Flatpak built from the Linux .deb. docs/BUILD.md is the map.
+# sidecar, plus an MSIX from the Windows build and a Flatpak built from the
+# Linux .deb. docs/BUILD.md is the map.
 # A v* tag also opens a draft release holding every bundle.
 name: build
 
@@ -133,6 +134,19 @@ jobs:
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/dmg/*.dmg
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/deb/*.deb
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/appimage/*.AppImage
+
+      # Unsigned on purpose: the Store signs on submission. tools/msix/identity.json
+      # holds the Partner Center identity (docs/BUILD.md, MSIX).
+      - name: MSIX (Windows)
+        if: runner.os == 'Windows'
+        working-directory: Phosphor
+        run: node tools/msix/pack.mjs --exe-dir src-tauri/target/${{ matrix.triple }}/release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'Windows'
+        with:
+          name: phosphor-x86_64.msix
+          if-no-files-found: error
+          path: Phosphor/src-tauri/target/msix/phosphor-x86_64.msix
 
   flatpak:
     needs: bundle

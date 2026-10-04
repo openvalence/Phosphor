@@ -33,6 +33,67 @@ npm run sidecar
 npx tauri build --bundles nsis
 ```
 
+## Windows MSIX (Microsoft Store)
+
+The Store is the Windows distribution target: listing and signing are free
+there, and an MSIX installs, updates and uninstalls cleanly. The NSIS
+installer stays for direct downloads.
+
+`node tools/msix/pack.mjs` turns a release build into
+`src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npx tauri build` and
+`npm run sidecar` first, and the Windows SDK's `makeappx.exe` (the newest
+`Windows Kits\10\bin\<version>\x64` that has it). The package is a full-trust
+desktop app (`runFullTrust`), so the sidecar, UDP broadcast, loopback and
+Bluetooth behave as in the NSIS install. The layout holds `phosphor.exe`,
+the sidecar as `valencesim.exe` beside it (where Tauri looks for it, as in
+the NSIS install), four tile and logo PNGs from `src-tauri/icons` under
+`Assets/`, and the manifest filled from `tools/msix/AppxManifest.xml`.
+The package version is the `tauri.conf.json` version plus `.0`; the Store
+reserves the fourth field.
+
+- WebView2 is not bundled. Windows 11 and current Windows 10 ship it; the
+  NSIS installer's bootstrapper has no MSIX equivalent.
+- App data: files under `%APPDATA%` and `%LOCALAPPDATA%` that already exist
+  (an earlier NSIS install's `com.phosphor.app`) are read and written in
+  place; new ones go to `%LOCALAPPDATA%\Packages\<family name>\LocalCache` and
+  leave with the package.
+
+### Store identity
+
+`tools/msix/identity.json` holds the three identity strings. The committed
+values are placeholders. Once the Partner Center account exists and the name
+"Phosphor" is reserved, Partner Center > the app > Product management >
+Product identity lists them: copy `Package/Identity/Name` to `name`,
+`Package/Identity/Publisher` to `publisher` and
+`Package/Properties/PublisherDisplayName` to `publisherDisplay`. Nothing else
+changes. Submissions upload the unsigned CI package; the Store signs it.
+
+### Local test install
+
+```sh
+node tools/msix/pack.mjs --test-sign
+```
+
+On first use, `--test-sign` creates a self-signed certificate whose Subject
+equals the placeholder `publisher`, and leaves `test.pfx` and `test.cer` in
+`src-tauri/target/msix/` (never committed; `cargo clean` deletes them, so
+trust the new `.cer` after one). Windows installs only packages whose signer
+is trusted machine-wide. Run once, from an elevated PowerShell:
+
+```powershell
+Import-Certificate -FilePath src-tauri\target\msix\test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Then double-click the `.msix` or run `Add-AppxPackage src-tauri\target\msix\phosphor-x86_64.msix`.
+The current user's TrustedPeople store is not enough (0x800B0109). Without
+admin but with Developer Mode on, `Add-AppxPackage -Register src-tauri\target\msix\layout\AppxManifest.xml`
+installs the unsigned layout in place; a rebuild replaces that folder, so
+copy it elsewhere first. `Get-AppxPackage OpenValence.Phosphor | Remove-AppxPackage`
+uninstalls either one.
+
+winget comes later: a manifest in `microsoft/winget-pkgs` can point at the
+Store listing once it is live.
+
 ## macOS (the M4 Air, aarch64)
 
 Untested: nothing here has run on a Mac yet. The sim builds clean with Clang
@@ -171,7 +232,7 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 
 | job | runner | produces (artifact) |
 |---|---|---|
-| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`) |
+| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`) and unsigned MSIX (`phosphor-x86_64.msix`) |
 | `aarch64-apple-darwin` | macos-latest | `.dmg` holding the ad-hoc signed `.app` (`phosphor-aarch64-apple-darwin`) |
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 | `.deb` and `.AppImage` (`phosphor-x86_64-unknown-linux-gnu`) |
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
