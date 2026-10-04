@@ -1,6 +1,13 @@
 {
  "full": [
   {
+   "title": "Machine",
+   "uids": [
+    "4144:home_speed"
+   ],
+   "actions": []
+  },
+  {
    "title": "Telemetry",
    "uids": [],
    "actions": []
@@ -44,6 +51,13 @@
   }
  ],
  "handheld": [
+  {
+   "title": "Machine",
+   "uids": [
+    "4144:home_speed"
+   ],
+   "actions": []
+  },
   {
    "title": "Telemetry",
    "uids": [],
