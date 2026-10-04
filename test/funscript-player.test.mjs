@@ -1431,8 +1431,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   const topRgb = top >= 0 && st[2 * top] ? st[2 * top][1] : [255, 0, 0];
   ok('B: the heat is one gradient run per action span (consecutive equal colors merged), hard edges, no blur across actions',
     want.length > 20 && pairs === want.length && hard, { pairs, want: want.length, hard });
-  ok('B: the fastest span reads --highlight and red never dominates it (law 13)',
-    topRgb[0] <= Math.max(topRgb[1], topRgb[2]) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, highlight: band.highlight, ups: want[top] && want[top].ups });
+  // Law 13 reserves the red HUE (about 345..15 degrees) for hazards; a pink or
+  // magenta highlight has a dominant red channel and is not red.
+  const hue = ([r, g, b]) => { const M = Math.max(r, g, b), m = Math.min(r, g, b), d = M - m; if (!d) return -1;
+    const h = M === r ? ((g - b) / d) % 6 : M === g ? (b - r) / d + 2 : (r - g) / d + 4; return ((h * 60) + 360) % 360; };
+  const topHue = hue(topRgb);
+  ok('B: the fastest span reads --highlight and its hue is never the hazard red (law 13)',
+    !(topHue >= 345 || (topHue >= 0 && topHue <= 15)) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, hue: topHue, highlight: band.highlight, ups: want[top] && want[top].ups });
   // ---- C: Makima clips at Scale 1; Auto fits the planner's own render into the window ----
   const clampedMs = (t) => { const m = / clamped (\d+(?:\.\d+)?) (ms|s)/.exec(t); return m ? +m[1] * (m[2] === 's' ? 1000 : 1) : 0; };
   const t1 = await kinText();
