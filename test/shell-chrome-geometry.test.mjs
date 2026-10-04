@@ -190,7 +190,7 @@ await sp.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloa
 await sp.waitForSelector('nav.rail .rail-sec.shell [role=tab]', { timeout: 15000 });
 await sp.waitForTimeout(300);
 const rect = (sel) => sp.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, width: r.width }; }, sel);
-const PANES = ['Hubs', 'Server', 'Settings', 'About'];
+const PANES = ['Hubs', 'ButtplugIO', 'Settings', 'About'];
 
 const sec = await sp.evaluate(() => {
   const secs = [...document.querySelectorAll('nav.rail .rail-sec')];

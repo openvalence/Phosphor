@@ -18,6 +18,7 @@
   import { pluginsUi } from '../plugins/plugins.svelte.js';
   import CreditLine from '../plugins/CreditLine.svelte';
   import '../ui/pane.css';
+  import BP_LICENSE from '../../../ButtplugIO/LICENSE?raw';
 
   const identity = $derived(machine.link.hubIdentity);
   const nameField = $derived(machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0]);
@@ -27,6 +28,9 @@
   let shellVersion = $state('--');
   getVersion().then((v) => { shellVersion = v; }).catch(() => {});
   const PHOSPHOR = { name: 'Phosphor', url: 'https://github.com/openvalence/Phosphor/blob/main/LICENSE', license: 'Apache-2.0' };
+  // BSD-3-Clause: binaries must carry the copyright, conditions and disclaimer.
+  // The embedded ButtplugIO server ships in every build, so its license text ships here.
+  const BUTTPLUG = { name: 'ButtplugIO (buttplug, Nonpolynomial Labs, LLC)', url: 'https://github.com/buttplugio/buttplug/blob/master/LICENSE', license: 'BSD-3-Clause' };
   const notices = $derived(pluginsUi.list.flatMap((p) => p.credits.map((c) => ({ key: p.key + c.name, plugin: p.name, c }))));
   const uiBuild = typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : '--';
 </script>
@@ -54,7 +58,13 @@
     <div class="pane-head"><h2 id="ab-notices">Notices</h2></div>
     <dl class="pane-facts">
       <dt>Phosphor</dt><dd><CreditLine credit={PHOSPHOR} /></dd>
+      <dt>ButtplugIO</dt><dd><CreditLine credit={BUTTPLUG} /><details class="lic"><summary>License text</summary><pre>{BP_LICENSE}</pre></details></dd>
       {#each notices as n (n.key)}<dt>{n.plugin}</dt><dd><CreditLine credit={n.c} lead="after " /></dd>{/each}
     </dl>
   </section>
 </div>
+
+<style>
+  .lic { margin-top: 6px; }
+  .lic pre { white-space: pre-wrap; font-size: 0.8em; opacity: 0.8; }
+</style>

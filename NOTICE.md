@@ -18,7 +18,7 @@ Third-party software Phosphor depends on directly:
 | if-addrs | MIT OR BSD-3-Clause | interface list for the datagram e-stop |
 | Playwright | Apache-2.0 | dev only |
 | Valence JS client (`../Valence/clients/js`) | MIT | protocol client, imported by relative path |
-| ButtplugIO fork (`../ButtplugIO`, embedded server) | BSD-3-Clause; its Joycon support carries Joycon-rs, Apache-2.0 | buttplug server |
+| ButtplugIO fork (`../ButtplugIO`, embedded server), Copyright (c) 2016-2023 Nonpolynomial Labs, LLC | BSD-3-Clause; its Joycon support carries Joycon-rs, Apache-2.0 | buttplug server; the full license text ships in every binary under About > Notices |
 
 Apache-2.0 section 4(d): the NOTICE content of Phosphor is this file. Retain it,
 and the copyright notices above, in any redistribution of Phosphor or a work

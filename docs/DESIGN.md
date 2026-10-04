@@ -780,7 +780,7 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 |---|---|---|
 | 1 `machine` | Machine | Dash, then the hub's tier-1 categories in registry order (Generator, Motion, Limits, Hardware, System, Other, Setup when emitted). Vendor and untaught ids are tier 1. |
 | 2 `link` | Valence | Pairing, Link (the protocol view), Log, then the hub's tier-2 categories (Network, Session) when emitted. Shown once a catalog is adopted. |
-| 3 `client` | Phosphor | Display and Plugins, then the shell's panes (Hubs, Server, Settings, Merge, About). The shell's Settings hosts the Display editor, so the shell draws Settings and no Display. |
+| 3 `client` | Phosphor | Display and Plugins, then the shell's panes (Hubs, ButtplugIO, Settings, Merge, About). The shell's Settings hosts the Display editor, so the shell draws Settings and no Display. |
 
 - Subgroups (Motion's Tuning, System's Library) are sections and drill-in
   pages of their category (RENDERING §11), not sidebar rows. A group is

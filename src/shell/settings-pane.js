@@ -36,7 +36,7 @@ toStore(() => machine.link.phase).subscribe((phase) => {
 });
 
 registerPane({ id: 'hubs', label: 'Hubs', component: HubsPane });
-registerPane({ id: 'server', label: 'Server', component: ServerPane });
+registerPane({ id: 'server', label: 'ButtplugIO', component: ServerPane });
 registerPane({ id: 'settings', label: 'Settings', component: SettingsPane });
 registerPane({ id: 'merge', label: 'Merge', component: MergePane });
 registerPane({ id: 'about', label: 'About', component: AboutPane });
