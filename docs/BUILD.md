@@ -53,6 +53,15 @@ npx tauri build --bundles app,dmg
 
 A local build is never quarantined, so it opens directly. A CI build is
 ad-hoc signed, not notarized: after copying `Phosphor.app` out of the `.dmg`,
+
+Every macOS build is ad-hoc signed by Tauri (`bundle.macOS.signingIdentity` `-`)
+so the signature identifier is the bundle identifier. Without that, the linker's
+own ad-hoc stamp names the binary `phosphor-<hash>`, macOS keys the Local
+Network and Bluetooth permissions by that name, and the grant shown under
+`com.phosphor.app` in System Settings never applies to the running process:
+the LAN scan and every Rust-side request silently fail (measured on the M4
+Air, 2026-10-04). `codesign -dv Phosphor.app` must print
+`Identifier=com.phosphor.app`.
 open it once with either
 
 ```sh

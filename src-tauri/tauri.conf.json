@@ -28,6 +28,7 @@
     }
   },
   "bundle": {
+    "macOS": { "signingIdentity": "-" },
     "active": true,
     "targets": "all",
     "externalBin": ["binaries/valencesim"],
