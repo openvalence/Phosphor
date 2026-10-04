@@ -158,6 +158,75 @@ console.log('(b) frame source');
   ok('without rVFC, rAF reports after 250 ms', g2.length === 1 && g2[0][0] === 1000);
   stop2();
 }
+{
+  // WebKit's rVFC metadata, shaped like each suspect: the guards fall back to the callback's now
+  // and currentTime, and warn once with the raw fields.
+  const warns = [], warn0 = console.warn;
+  console.warn = (m) => warns.push(m);
+  let t = 0, vfc = null;
+  globalThis.requestAnimationFrame = () => 1;
+  globalThis.cancelAnimationFrame = () => {};
+  const src = (video) => {
+    const got = [];
+    const stop = frameSource(video, (m, d) => got.push([m, d]), () => t);
+    const at = (pn, cb, md) => { t = pn; const f = vfc; vfc = null; f(cb, md); };
+    return { got, at, stop };
+  };
+  const vid = (o) => ({ paused: false, currentTime: 10, duration: 37, playbackRate: 1, readyState: 4,
+    requestVideoFrameCallback: (f) => { vfc = f; return 1; }, cancelVideoFrameCallback: () => {}, ...o });
+  const a = src(vid());
+  a.at(5000, 5000, { mediaTime: 10.01, expectedDisplayTime: 5016 });
+  ok('sane metadata: (mediaTime x 1000, expectedDisplayTime), no warning', a.got[0][0] === 10010 && a.got[0][1] === 5016 && !warns.length);
+  a.at(5033, 5033, { mediaTime: 10.043, expectedDisplayTime: 5033 + 9e6 });
+  ok('expectedDisplayTime 9e6 ms off the document origin: stamped at the callback\'s now', a.got[1][0] === 10043 && a.got[1][1] === 5033);
+  ok('the first trip warns once with the raw fields and the frame deltas',
+    warns.length === 1 && ['now=5033', 'perfNow=5033', 'expectedDisplayTime=9005033', 'mediaTime=10.043', 'currentTime=10', 'duration=37',
+      'playbackRate=1', 'readyState=4', 'dNow=33', 'dEdt=9000017', 'userAgent='].every((k) => warns[0].includes(k)), warns[0]);
+  a.at(5066, 5066, { mediaTime: 10.076, expectedDisplayTime: 5066 + 9e6 });
+  ok('later trips stay quiet', warns.length === 1);
+  a.stop();
+  const b = src(vid());
+  b.at(600000, 600000, { mediaTime: 10.01, expectedDisplayTime: 600.016 });
+  ok('expectedDisplayTime in seconds: stamped at the callback\'s now', b.got[0][1] === 600000);
+  b.at(600033, 600033 + 9e6, { mediaTime: 10.043, expectedDisplayTime: 600049 + 9e6 });
+  ok('the callback\'s now on another origin: stamped at performance.now()', b.got[1][1] === 600033);
+  b.stop();
+  const c = src(vid());
+  c.at(1000, 1000, { mediaTime: NaN, expectedDisplayTime: 1016 });
+  c.at(1033, 1033, { mediaTime: 10043, expectedDisplayTime: 1049 });
+  c.at(1066, 1066, { mediaTime: 40, expectedDisplayTime: 1082 });
+  ok('NaN mediaTime, mediaTime in ms, mediaTime past the duration: currentTime instead',
+    c.got.every(([m]) => m === 10000), JSON.stringify(c.got));
+  c.stop();
+  const d = src(vid({ duration: Infinity, currentTime: 5 }));
+  d.at(1000, 1000, { mediaTime: 5010, expectedDisplayTime: 1016 });
+  ok('mediaTime in ms with an Infinity duration: currentTime instead', d.got[0][0] === 5000);
+  d.stop();
+
+  // The runaway end to end: off-origin frames into the clock, read at performance.now().
+  const ev = vid({ currentTime: 0 }), clock = createMediaClock(), e = src(ev);
+  for (let k = 0; k < 600; k++) {
+    const pn = 1000 + k * 33.367, mt = k * 33.367 / 1000;
+    ev.currentTime = mt;
+    e.at(pn, pn, { mediaTime: mt, expectedDisplayTime: pn + 9e6 + 16 });
+    const [m, ds] = e.got[k];
+    if (!clock.ready) clock.anchor(m, ds, NaN); else clock.observe(m, ds);
+  }
+  const end = 1000 + 599 * 33.367;
+  ok('a 9e6 ms origin offset no longer runs the clock away: mediaAt(now) within one frame of the media',
+    Math.abs(clock.mediaAt(end) - 599 * 33.367) <= 34 && clock.rate === 1, clock.mediaAt(end).toFixed(1) + ' ms');
+  e.stop();
+
+  warns.length = 0;
+  const f = createMediaClock();
+  f.anchor(0, 0, Infinity);
+  ok('an Infinity playbackRate anchors at rate 1', f.rate === 1);
+  for (let k = 1; k <= CLOCK_WINDOW; k++) f.observe(k * 33, k * 33);
+  f.observe(33 * 33, 33 * 33 + 200);   // one frame 200 ms late: the settled map leads it
+  const lead = f.mediaAt(33 * 33 + 200 + 100) - (33 * 33 + 100);
+  ok('mediaAt never leads the last frame by more than one frame, and warns once', lead <= 34 && warns.length === 1, lead.toFixed(1) + ' ms; ' + warns[0]);
+  console.warn = warn0;
+}
 
 // ---- (c) scheduler -----------------------------------------------------------
 console.log('(c) scheduler');

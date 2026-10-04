@@ -288,6 +288,16 @@ Veto-able (ph-smvd.10):
    60 Hz). Panel lag and Bluetooth audio delay are physical: the offset
    trims them; the Hardware phase measures them with a photodiode and the
    scope.
+11. **Untrusted frame metadata** (ph-epej). WebKit reports rVFC's
+   `expectedDisplayTime` off the document time origin, and the map
+   extrapolated the gap into media time (the readout ran hours past a 37 s
+   video). The wall side is the callback's `now` (`performance.now()` when
+   they differ by over a frame); `expectedDisplayTime` counts only within
+   100 ms of it. A `mediaTime` that is not finite, over 1 s from
+   `currentTime` or outside the duration yields to `currentTime`.
+   `mediaAt()` never leads the last frame by more than one frame, and the
+   readout never passes the duration. The first trip logs one warning with
+   the raw fields. Sane metadata (Chromium) passes unchanged.
 
 ## Safety
 

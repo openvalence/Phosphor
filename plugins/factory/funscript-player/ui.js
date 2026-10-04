@@ -224,7 +224,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   const active = () => state.phase === 'playing' || state.phase === 'preroll';
   /** Unrolled loop time back to media time. */
   const fold = (u) => (loop.spec && loop.lap ? u - loop.lap * (loop.spec.b - loop.spec.a) : u);
-  const mediaNow = () => (state.phase === 'playing' && clock.ready ? fold(clock.mediaAt(now())) : video.currentTime * 1000);
+  /** Never past durMs(): the hover readout and the seek keys read it. */
+  const mediaNow = () => Math.min(durMs(), state.phase === 'playing' && clock.ready ? fold(clock.mediaAt(now())) : video.currentTime * 1000);
   const durMs = () => (Number.isFinite(video.duration) ? video.duration * 1000 : state.script ? state.script.durationMs : Infinity);
   /** A plan role's value in ms from its unit. */
   const msOf = (f) => { const v = Number(api.value(f)); return f.unit === 'us' ? v / 1000 : f.unit === 's' ? v * 1000 : v; };

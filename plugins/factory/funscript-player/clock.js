@@ -14,6 +14,12 @@
 //   frame, and segments already stamped from the old map would leave a hole.
 // - STEP_MS sits between one 60 Hz vsync (16.7 ms, slewed) and one dropped 30 fps frame
 //   (33 ms, stepped): slewing a dropped frame out at 5 ms/s lagged the video for 6 s.
+// - frameSource never anchors on expectedDisplayTime's origin: WebKit reports it on another
+//   time base. It is used only within EDT_MS of the callback's now (itself within one frame of
+//   performance.now()), else the frame is stamped at that now; a mediaTime outside currentTime
+//   +-MEDIA_MS or [0, duration] is replaced by currentTime. mediaAt() never leads the last
+//   observed frame by more than FRAME_MS: no drift accumulates past it whatever its source.
+//   displayAt() is not capped: a clamped span would break the tiling above.
 // - frameSource's rAF fallback reports only while the video is not paused: a paused
 //   currentTime against a running now() would read as a step on every frame.
 // - LOW (the low latency setting) narrows the ring and raises the slew: the map follows a
@@ -29,6 +35,11 @@ export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 25, FALLBACK_AFTER_
 export const LOW = Object.freeze({ window: 8, slew: 15, fallbackMs: 100 });
 export const WRAP_EARLY_MS = 34;   // one 30 fps frame: a whole-media loop wraps before 'ended'
 const STEP_WINDOW = 8;
+const FRAME_MS = 34;    // one 30 fps frame
+const EDT_MS = 100;     // an expectedDisplayTime farther than this from the callback's now is on another origin
+const MEDIA_MS = 1000;  // a mediaTime farther than this from currentTime is in another unit
+
+const warn = (what, raw) => console.warn('funscript clock guard, ' + what + ': ' + Object.entries(raw).map(([k, v]) => k + '=' + v).join(' '));
 
 const median = (a) => {
   const s = a.slice().sort((x, y) => x - y);
@@ -37,7 +48,7 @@ const median = (a) => {
 };
 
 export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PER_S } = {}) {
-  let m0 = 0, c0 = 0, ring = [], lastAt = 0, filled = false;
+  let m0 = 0, c0 = 0, ring = [], lastAt = 0, lastM = 0, filled = false, cAnchor = 0, warned = false;
   const clock = {
     ready: false,
     rate: 1,
@@ -47,8 +58,8 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
       if (ring.length >= win) { ring = ring.slice(-win); filled = true; }
     },
     anchor(mediaMs, displayMs, rate = clock.rate) {
-      m0 = mediaMs; c0 = displayMs; clock.rate = rate > 0 ? rate : 1;
-      ring = []; filled = false; lastAt = displayMs; clock.ready = true;
+      m0 = mediaMs; c0 = displayMs; clock.rate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+      ring = []; filled = false; lastAt = cAnchor = displayMs; lastM = mediaMs; clock.ready = true;
     },
     reset() { clock.ready = false; ring = []; filled = false; },
     observe(mediaMs, displayMs) {
@@ -57,7 +68,7 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
       if (ring.length > win) ring.shift();
       if (ring.length === win) filled = true;
       const dt = Math.max(0, displayMs - lastAt) / 1000;
-      lastAt = displayMs;
+      lastAt = displayMs; lastM = mediaMs;
       if (ring.length >= STEP_WINDOW && Math.abs(median(ring.slice(-STEP_WINDOW))) > STEP_MS) {
         clock.anchor(mediaMs, displayMs, clock.rate);
         return 'step';
@@ -70,19 +81,40 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
       return !filled && Math.abs(corr) > STEP_MS ? 'step' : '';
     },
     displayAt(mediaMs) { return clock.ready ? c0 + (mediaMs - m0) / clock.rate : NaN; },
-    mediaAt(displayMs) { return clock.ready ? m0 + (displayMs - c0) * clock.rate : NaN; },
+    mediaAt(displayMs) {
+      if (!clock.ready) return NaN;
+      const m = m0 + (displayMs - c0) * clock.rate, cap = lastM + (displayMs - lastAt) * clock.rate + FRAME_MS;
+      if (!(m > cap)) return m;
+      if (!warned) {
+        warned = true;
+        warn('the map ran ahead of the last frame', { at: displayMs, m, lastM, lastAt, m0, c0, rate: clock.rate, corrSinceAnchor: c0 - cAnchor, ring: ring.length });
+      }
+      return cap;
+    },
   };
   return clock;
 }
 
 /** fallbackMs: () => ms without an rVFC frame before rAF reports currentTime (LOW.fallbackMs or the default). */
 export function frameSource(video, onFrame, now = () => performance.now(), fallbackMs = () => FALLBACK_AFTER_MS) {
-  let stopped = false, lastFrame = now(), vfcId = 0, rafId = 0;
+  let stopped = false, lastFrame = now(), vfcId = 0, rafId = 0, warned = false, prev = null;
   const vfc = typeof video.requestVideoFrameCallback === 'function';
-  const onVfc = (_t, md) => {
+  const onVfc = (t, md) => {
     if (stopped) return;
-    lastFrame = now();
-    onFrame(md.mediaTime * 1000, md.expectedDisplayTime);
+    const pn = now(), edt = md.expectedDisplayTime, raw = md.mediaTime * 1000, ct = video.currentTime * 1000;
+    lastFrame = pn;
+    const wall = Math.abs(t - pn) <= FRAME_MS ? t : pn;
+    const disp = Math.abs(edt - wall) < EDT_MS ? edt : wall;
+    const m = Math.abs(raw - ct) <= MEDIA_MS && raw >= 0 && !(raw > video.duration * 1000) ? raw : ct;
+    if (!warned && (wall !== t || disp !== edt || m !== raw)) {
+      warned = true;
+      warn('a frame callback reported off-origin or off-unit times', { now: t, perfNow: pn, expectedDisplayTime: edt,
+        presentationTime: md.presentationTime, mediaTime: md.mediaTime, currentTime: video.currentTime, duration: video.duration,
+        playbackRate: video.playbackRate, readyState: video.readyState, dNow: prev && t - prev.t, dEdt: prev && edt - prev.edt,
+        dMedia: prev && raw - prev.raw, userAgent: globalThis.navigator && navigator.userAgent });
+    }
+    prev = { t, edt, raw };
+    onFrame(m, disp);
     vfcId = video.requestVideoFrameCallback(onVfc);
   };
   const onRaf = () => {
