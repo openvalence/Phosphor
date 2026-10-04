@@ -11,8 +11,8 @@
 // - Homed and with the pairing window open at boot (the sim has no PAIR
 //   button): the shell's knock lands as push-to-pair, and the pairing
 //   persists in the state prefix.
-// - The WS port binds 0.0.0.0: valencesim has no bind flag yet (planned,
-//   ph-zruk: loopback only, the flag passed here). /uitoken binds 127.0.0.1.
+// - Loopback only: --bind 127.0.0.1 for the WS port; /uitoken binds
+//   127.0.0.1 on its own. The page mints at the returned `http` port.
 // - The rx channel is drained for the child's whole life: an undrained pipe
 //   blocks the sim's stdout, and its hub loop with it.
 // - Killed on RunEvent::Exit (lib.rs). The shell plugin's own exit kill
@@ -50,7 +50,7 @@ fn two_ports() -> std::io::Result<(u16, u16)> {
 
 fn sim_args(port: u16, http: u16, state: &str) -> Vec<String> {
   [
-    "--port", &port.to_string(), "--http", &http.to_string(), "--state", state,
+    "--port", &port.to_string(), "--bind", "127.0.0.1", "--http", &http.to_string(), "--state", state,
     "--homed", "--pairing-window", "--no-discovery", "--no-mdns", "--no-estop-udp",
   ]
     .iter()
@@ -177,6 +177,12 @@ mod tests {
   }
 
   #[test]
+  fn sim_listens_on_loopback_only() {
+    let a = sim_args(1, 2, "s");
+    assert!(a.windows(2).any(|w| w[0] == "--bind" && w[1] == "127.0.0.1"), "{a:?}");
+  }
+
+  #[test]
   fn ports_are_two_and_free() {
     let (a, b) = two_ports().unwrap();
     assert!(a != 0 && b != 0 && a != b);
@@ -213,6 +219,14 @@ mod tests {
       }
     }
     let ws = std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+    // A bound-to-all listener would also take a connect on a non-loopback
+    // local address; loopback-only refuses it.
+    let lan = std::net::UdpSocket::bind("0.0.0.0:0")
+      .and_then(|u| u.connect("192.0.2.1:9").and(u.local_addr()))
+      .ok()
+      .map(|a| a.ip())
+      .filter(|ip| !ip.is_loopback() && !ip.is_unspecified());
+    let lan_refused = lan.map(|ip| std::net::TcpStream::connect_timeout(&(ip, port).into(), Duration::from_secs(1)).is_err());
     let _ = child.kill();
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&dir);
@@ -220,5 +234,6 @@ mod tests {
     assert!(!version.is_empty() && etag.len() >= 16, "{version} {etag}");
     assert!(ready, "no /uitoken line after the banner");
     assert!(ws, "WS port {port} not listening once ready");
+    assert_ne!(lan_refused, Some(false), "WS port {port} answers on {lan:?}");
   }
 }

@@ -736,10 +736,10 @@ connected, then merge the setting changes onto the machine, ticked per item.
   (`--pairing-window`, the sim's stand-in for the PAIR button tap), so the
   shell's knock lands as push-to-pair and nobody waits on an approval no one
   can give; on later runs the window is harmless. Discovery, mDNS and the
-  RFC-053 datagram are always off: it never broadcasts. **(planned)** its WS
-  port binds loopback only; today valencesim binds it on every interface
-  (`ph-zruk`). The shell waits for its banner, and the normal WS connect
-  dials it like a LAN hub; the
+  RFC-053 datagram are always off: it never broadcasts. Both ports bind
+  loopback only (`--bind 127.0.0.1`; `/uitoken` always does), and the session
+  mints at the returned HTTP port. The shell waits for its banner, and the
+  normal WS connect dials it like a LAN hub; the
   session is not marked virtual and is recorded in the vault like any hub.
   Only its origin sets it apart: never saved, never the reconnect target, no
   RFC-053 datagram. Any disconnect stops it, and the shell kills it on exit.

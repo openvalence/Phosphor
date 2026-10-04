@@ -422,11 +422,12 @@ export function connect(opts = {}) {
   s = createSession({
     host: _host,
     port: opts.port || 82,
+    http: opts.http,
     clientKind: 'webui',
     clientName: opts.clientName || 'Phosphor',
     instanceId: getInstanceId(),
     // The virtual hub grants its tier to every session; there is no /uitoken to ask.
-    token: opts.virtual ? null : (h) => acquireToken(h),
+    token: opts.virtual ? null : (h, origin) => acquireToken(origin),
     catalogStore: opts.catalogStore,
     subscriptions: HELLO_WISHES,
     autoReconnect: true,

@@ -65,7 +65,7 @@ async function openSim() {
   disconnect();
   hubs.mode = 'ws';
   hubs.note = '';
-  connect({ host: info.host, port: info.port });
+  connect({ host: info.host, port: info.port, http: info.http });
   sim.info = info;
   return true;
 }

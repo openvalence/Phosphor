@@ -229,7 +229,7 @@
         : 'Refused: ' + n.name + (n.detail ? ', ' + n.detail : ''));
   }
   function onPairGrant(g) {
-    if (g.token) setPairedToken(getSession().host, g.token);
+    if (g.token) setPairedToken(getSession().origin, g.token);
     const roleName = g.role != null ? (ACCESS_NAME[g.role] || String(g.role)) : 'a higher tier';
     finishClaim('settled', 'Paired at ' + roleName);
   }

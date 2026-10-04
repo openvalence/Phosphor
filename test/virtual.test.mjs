@@ -126,8 +126,10 @@ const SIM = { host: '127.0.0.1', port: 47999, http: 48000, version: '9.9.9-test'
 await ctx.addInitScript((sim) => {
   const base = window.__TAURI_INTERNALS__.invoke;
   window.__simCalls = [];
+  window.__fetches = [];
   window.__TAURI_INTERNALS__.invoke = (cmd, args, opts) => {
     if (cmd === 'virtual_start' || cmd === 'virtual_stop') window.__simCalls.push(cmd);
+    if (cmd === 'plugin:http|fetch') window.__fetches.push(args && args.clientConfig && args.clientConfig.url);
     if (cmd === 'virtual_start') return Promise.resolve(sim);
     if (cmd === 'virtual_stop') return Promise.resolve(null);
     return base(cmd, args, opts);
@@ -240,6 +242,8 @@ ok('Connect starts the sidecar', await until(() => page.evaluate(() => window.__
   await page.evaluate(() => window.__simCalls.join()));
 ok('...and dials its endpoint like a LAN hub', await until(async () => wire.urls.at(-1)?.startsWith('ws://127.0.0.1:47999') && (await chip()) === 'live'),
   wire.urls.at(-1) + ' ' + await chip());
+ok('...and mints at its http port', await until(() => page.evaluate(() => window.__fetches.includes('http://127.0.0.1:48000/uitoken'))),
+  await page.evaluate(() => window.__fetches.join()));
 ok('the row reads the sim version', (await vrow().locator('.name').innerText()).includes('Virtual Valence · sim 9.9.9-test'),
   await vrow().locator('.name').innerText());
 ok('the row offers Stop', await vrow().getByRole('button', { name: 'Stop' }).isVisible());
