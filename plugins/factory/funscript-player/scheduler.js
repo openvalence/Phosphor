@@ -29,8 +29,12 @@
 //   whose successor is not yet scheduled. A span ends at its knot's slope (knotSlope); the seek
 //   transition at the chord it lands in. Stop, preroll and home end at 0: nothing is scheduled
 //   after them, and a hub coasts a moving end before it brakes.
+// - No segment repeats the previous target within DWELL_SPAN while the line moves on: the hub reads
+//   that as a hold and zeroes its end velocity (SPEC 9.6 dwell rule), a stop mid-stroke. So the
+//   knots run through dwellMerge, and a restart that changes only timing never re-sends a span the
+//   hub holds: the first unsent span joins the end of what was sent and absorbs the shift.
 
-import { posAt, indexAfter, speedAt, thin } from './funscript.js';
+import { posAt, indexAfter, speedAt, thin, MAX_SPAN_MS } from './funscript.js';
 
 export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PREROLL_SKIP = 0.05, OFFER_MAX = 32;
 export const TRANSIENT = Object.freeze(new Set(['waiting for the stream grant', 'NO_CLOCK', 'NOT_SENT', 'RATE_EXCEEDED']));
@@ -39,6 +43,8 @@ export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, 
 // Registry limits.segment_handoff_k (SPEC 9.6): the hub bounds a handoff to k x the lesser adjoining chord,
 // but only once the successor is scheduled. A plugin imports nothing outside its folder, so it is restated.
 export const HANDOFF_K = 1.5;
+// Registry limits.segment_dwell_span (SPEC 9.6), restated the same way: a target within it of the previous one is a hold.
+export const DWELL_SPAN = 0.02;
 
 const T0 = Object.freeze({ offsetMs: 0, lo: 0, hi: 1, invert: false });
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -63,6 +69,25 @@ export function knotSlope(t, p, j, n, vel = null) {
   const m = vel ? vel(j) : (a + b) / 2;
   if (!(a * b > 0) || !(m * a > 0)) return 0;
   return Math.sign(a) * Math.min(Math.abs(m), HANDOFF_K * Math.min(Math.abs(a), Math.abs(b)));
+}
+
+/**
+ * The script without the knots a hub would read as holds: a knot that moves on in the same direction but less
+ * than DWELL_SPAN (through T) past the last kept knot. Ends, flat knots, reversals and knots the curve rests on
+ * (vel packs as 0, so the hub zeroes nothing) stay; vel follows.
+ */
+export function dwellMerge(script, T) {
+  const { at, pos, vel } = script, n = at.length, s = Math.abs(T.hi - T.lo);
+  const keep = [0];
+  for (let j = 1; j < n - 1; j++) {
+    const i = keep[keep.length - 1], a = pos[j] - pos[i];
+    const rests = vel && Math.abs(vel[j]) * 1000 * s < 5e-4;
+    if (!(a * (pos[j + 1] - pos[j]) > 0 && Math.abs(a) * s < DWELL_SPAN * 1.05 && !rests && at[j + 1] - at[i] <= MAX_SPAN_MS)) keep.push(j);
+  }
+  if (n > 1) keep.push(n - 1);
+  if (keep.length === n) return script;
+  return { ...script, at: Float64Array.from(keep, (j) => at[j]), pos: Float32Array.from(keep, (j) => pos[j]),
+    vel: vel ? Float64Array.from(keep, (j) => vel[j]) : null };
 }
 
 /** A script slope (pos per media ms) as a Seg's endVel: norm/s through T and the clock rate. */
@@ -107,7 +132,7 @@ function timeline(src, loop) {
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} }) {
   let script = null, src = null, tl = null, T = T0, next = T0, thinnedFor = 0, thinFrom = Infinity, lastReason = '';
   let nextHome = null, loop = null, nextLoop = null, low = false, auto = false, comp = 0;
-  let lead = null, joinAt = null;
+  let lead = null, joinAt = null, lastEnd = null, builtFor = null, builtKey = '';
   const sentLog = [], lags = [];
   let plan = null;
   const sch = { cursor: 0, skipped: 0 };
@@ -116,10 +141,12 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
   const off = () => T.offsetMs - comp;
   const scriptNow = (clock) => clock.mediaAt(now() - off());
 
+  const keyOf = () => JSON.stringify([T.lo, T.hi, T.invert, loop]);
   function build() {
-    src = script;
+    src = script && dwellMerge(script, T);
     tl = src ? timeline(src, loop) : null;
     thinnedFor = 0; thinFrom = Infinity;
+    builtFor = script; builtKey = keyOf();
   }
   function posV(u) {
     const j = tl.after(u);
@@ -174,7 +201,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     load(s) {
       script = s || null;
       build();
-      sch.cursor = 1; sch.skipped = 0; lastReason = ''; lead = null; joinAt = null;
+      sch.cursor = 1; sch.skipped = 0; lastReason = ''; lead = null; joinAt = null; lastEnd = null;
     },
     setTransform(t) { next = { ...T0, ...t }; },
     /** {point: 0..1 of the script, speed: norm/s} | null; afterMs is the caller's. */
@@ -196,20 +223,29 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     },
     /** transitionMs > 0 (a seek): one segment to where the script is transitionMs from now, then on. */
     restart(clock, transitionMs = 0) {
+      const was = { script: builtFor, key: builtKey, sentTo: sch.cursor, end: lastEnd, clean: !lead && !thinnedFor };
       T = next; loop = nextLoop;
       build();
-      lead = null; joinAt = null;
-      supersede(now());
+      lead = null; joinAt = null; lastEnd = null;
       if (!script) return;
       const u = clock.ready ? scriptNow(clock) : NaN;
       if (!Number.isFinite(u)) { sch.cursor = 1; return; }
+      const k = Math.max(1, tl.after(u)), j = was.sentTo;
+      // Timing only (same knots, the sent schedule still running): the first unsent span joins its end.
+      const shift = !(transitionMs > 0) && was.clean && was.script === script && was.key === builtKey && j > k && j < tl.n
+        && was.end > now() ? clock.displayAt(tl.t(j - 1)) + off() - was.end : NaN;
+      if (Math.abs(shift) <= (tl.t(j) - tl.t(j - 1)) / clock.rate / 2) {
+        sch.cursor = j; joinAt = lastEnd = was.end;
+        return;
+      }
+      supersede(now());
       if (transitionMs > 0) {
         const t = now(), uEnd = clock.mediaAt(t + transitionMs - off());
         const k = tl.after(uEnd), chord = k > 0 && k < tl.n ? (tl.p(k) - tl.p(k - 1)) / (tl.t(k) - tl.t(k - 1)) : 0;
         lead = { atMs: t, norm: applyT(posV(uEnd), T), durationMs: transitionMs, endVel: wireVel(chord, T, clock.rate) };
         sch.cursor = Math.max(1, k);
         joinAt = t + transitionMs;
-      } else sch.cursor = Math.max(1, tl.after(u));
+      } else sch.cursor = k;
     },
     tick(clock) {
       if (!src) return done();
@@ -240,6 +276,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
         let k = r.sent;
         if (lead && k > 0) { lead = null; k--; }
         if (k > 0) { sch.cursor += k; joinAt = null; }
+        if (r.sent > 0) lastEnd = list[r.sent - 1].atMs + list[r.sent - 1].durationMs;
       } else if (r.reason === 'RATE_EXCEEDED' && r.rateHz > 0 && (r.rateHz !== thinnedFor || tl.idx(sch.cursor - 1) < thinFrom)) rethin(r.rateHz);
       return result(r);
     },
@@ -248,7 +285,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       if (!clock.ready) return result({ ok: false, reason: 'NO_CLOCK' });
       const t = now();
       supersede(t);
-      lead = null; joinAt = null;
+      lead = null; joinAt = null; lastEnd = null;
       const m = scriptNow(clock);
       const k = tl.after(m);
       const d = k < tl.n ? Math.min(STOP_MS, (tl.t(k) - m) / clock.rate) : STOP_MS;
@@ -256,6 +293,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     },
     preroll(mediaMs, hereNorm) {
       if (!script) return null;
+      lastEnd = null;
       const target = applyT(posAt(script, mediaMs), next);
       const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
       if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;
@@ -264,6 +302,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     /** One move to the home point, |delta| / speed s and at least HOME_MIN_MS; null when off or already there. */
     home(hereNorm) {
       if (!script || !nextHome || !(nextHome.speed > 0)) return null;
+      lastEnd = null;
       const target = applyT(nextHome.point, next);
       const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
       if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;

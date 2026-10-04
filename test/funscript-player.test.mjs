@@ -47,7 +47,7 @@ const CONTRACT = {
     'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
     'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
-    'HANDOFF_K', 'applyT', 'knotSlope', 'wireVel', 'strokeSpeed', 'createScheduler'],
+    'HANDOFF_K', 'DWELL_SPAN', 'dwellMerge', 'applyT', 'knotSlope', 'wireVel', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
@@ -358,11 +358,11 @@ try {
 // The script: each span a distinct length (300..597 ms) between alternating
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
-// --live-playback: 400..697 ms spans over 25, 45, 75, 55 (inside the sim's speed limit, so plans keep their durations;
-// every other knot is a reversal) and a gap from the last action at or before 20 s to 34 s that plays as one span
-// (home is a pause behavior).
-const PB_POS = [25, 45, 75, 55];
-if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % 4] }); at += 400 + ((k * 37) % 298); }
+// --live-playback: 400..697 ms spans over a staircase 20..80 and back in steps of 15 (inside the sim's speed limit,
+// so plans keep their durations; a reversal only at either end) and a gap from the last action at or before 20 s
+// to 34 s that plays as one span (home is a pause behavior).
+const PB_POS = [20, 35, 50, 65, 80, 65, 50, 35];
+if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % PB_POS.length] }); at += 400 + ((k * 37) % 298); }
 else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 /** The knot k whose span (k-1 -> k) lasts durMs at this rate, or -1. */
@@ -1827,6 +1827,38 @@ if (PB) {
     return { knots: out.length, nonReversal: nr.length, medianFrac: +median(nr.map((x) => x.frac)).toFixed(3),
       restNonReversal: nr.filter((x) => x.frac < 0.05).length, reversalsAtRest: out.filter((x) => x.rev && x.frac < 0.05).length };
   }
+  /**
+   * Over [a, b) node epoch ms: the holds, runs of |plan.velocity| under 2 % of their plan's peak lasting over
+   * 40 ms (each sample stands for one strip period) that come within 25 ms of no reversal knot. Plans are named
+   * by duration (knotOf); a run touching an unnamed plan (a clipped or joined span) is not judged.
+   */
+  function holdsOf(a, b) {
+    const s = planLog.filter((x) => x.at >= a && x.at < b), plans = [];
+    const period = median(s.slice(1).map((x, i) => x.at - s[i].at));
+    for (const x of s) {
+      const p = plans.at(-1);
+      if (p && Math.abs(p.dur - x.dur) < 0.5 && Math.abs(p.start - x.start) < 15) { p.xs.push(x); p.peak = Math.max(p.peak, x.v); }
+      else plans.push({ start: x.start, dur: x.dur, k: knotOf(x.dur), xs: [x], peak: x.v });
+    }
+    const rev = (j) => j <= 0 || j >= ACTIONS.length - 1 || (ACTIONS[j].pos - ACTIONS[j - 1].pos) * (ACTIONS[j + 1].pos - ACTIONS[j].pos) <= 0;
+    const out = [];
+    let run = null;
+    const close = () => {
+      if (run && !run.unnamed && !run.rev && run.b - run.a + period > 40) out.push({ ms: Math.round(run.b - run.a + period), knot: run.k });
+      run = null;
+    };
+    for (const p of plans) {
+      for (const x of p.xs) {
+        if (!(x.v < 0.02 * p.peak)) { close(); continue; }
+        run = run || { a: x.at, unnamed: false, rev: false, k: p.k };
+        run.b = x.at;
+        run.unnamed ||= p.k < 1;
+        run.rev ||= p.k >= 1 && ((x.at - p.start < 25 && rev(p.k - 1)) || (p.start + p.dur - x.at < 25 && rev(p.k)));
+      }
+    }
+    close();
+    return { holds: out.length, longestMs: Math.max(0, ...out.map((h) => h.ms)), totalMs: out.reduce((n, h) => n + h.ms, 0), at: out.slice(0, 8) };
+  }
   const tStart = performance.timeOrigin + performance.now();
   const pnow = () => page.evaluate(() => performance.now());
   const since = (t0, k) => page.evaluate(([a, b]) => (window.__funscriptProbe || []).filter((x) => x.k === b && x.t >= a), [t0, k]);
@@ -1860,6 +1892,8 @@ if (PB) {
   R.knots = knotVel(tStart + 2000, performance.timeOrigin + performance.now());
   ok('pb knots: the plan carries its velocity through every knot that is not a reversal (end velocity on the wire)',
     R.knots.nonReversal >= 5 && R.knots.restNonReversal === 0, R.knots);
+  R.holds = holdsOf(tStart + 2000, performance.timeOrigin + performance.now());
+  ok('pb holds: on the staircase no plan holds over 40 ms outside a reversal (the hub dwell rule never fires)', !!planF && R.holds.holds === 0, R.holds);
 
   // ---- 2: a seek with the glide ----
   t0 = await pnow();

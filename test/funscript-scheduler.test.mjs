@@ -15,7 +15,7 @@ import {
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
-  HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS,
+  HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS, DWELL_SPAN, dwellMerge,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
@@ -338,6 +338,49 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
   ok('the thinned spans still tile', after.slice(1).every((g, i) => near(after[i].atMs + after[i].durationMs, g.atMs, 1e-9)));
 }
 
+{
+  // The hub's dwell rule (SPEC 9.6) zeroes the end velocity of a target within DWELL_SPAN of the previous one.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 20 }, { at: 300, pos: 21 }, { at: 600, pos: 40 }, { at: 900, pos: 40 },
+    { at: 1200, pos: 41 }, { at: 1500, pos: 30 }, { at: 1800, pos: 31 }] });
+  const m = dwellMerge(s, T0);
+  ok('dwellMerge drops a small step that moves on; keeps the ends, a hold and a reversal', JSON.stringify([...m.at]) === '[0,600,900,1200,1500,1800]', [...m.at].join());
+  ok('dwellMerge reads the step through T: 5 points at hi - lo 0.3 is a hold', dwellMerge(parseFunscript({ actions: [{ at: 0, pos: 0 },
+    { at: 300, pos: 5 }, { at: 600, pos: 50 }] }), { ...T0, lo: 0.3, hi: 0.6 }).at.length === 2 && dwellMerge(s, { ...T0, hi: 0.01 }) !== s);
+  const big = strokes(4);
+  ok('dwellMerge returns the script itself when no knot is a hold', dwellMerge(big, T0) === big);
+  // Shaped pieces: no two consecutive targets within DWELL_SPAN while the line moves on.
+  const sent = play(shape(big, { mode: 'makima' })).host.sent;
+  const rep = sent.slice(1).filter((g, i) => Math.abs(g.norm - sent[i].norm) < DWELL_SPAN && g.endVel !== 0).length;
+  ok('shaped (makima): no segment repeats the previous target within DWELL_SPAN while moving', rep === 0, rep + ' of ' + sent.length);
+}
+{
+  // A restart that changes only timing keeps what the hub holds: re-sending the in-progress span repeats its target.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 400, pos: 30 }, { at: 800, pos: 60 }, { at: 1200, pos: 90 }, { at: 1600, pos: 50 }] });
+  let t = 1000;
+  const host = fakeHost(() => t);
+  const sch = createScheduler({ submit: host.submit, now: () => t });
+  const clock = createMediaClock();
+  clock.anchor(0, t, 1);
+  sch.load(s); sch.restart(clock);
+  while (clock.mediaAt(t) < 700) { sch.tick(clock); t += VSYNC; }
+  const before = host.sent.length, lastEnd = host.sent.at(-1).atMs + host.sent.at(-1).durationMs;
+  clock.anchor(clock.mediaAt(t), t + 30, 1);   // a 30 ms clock step
+  sch.restart(clock);
+  while (host.sent.length === before && clock.mediaAt(t) < 1200) { sch.tick(clock); t += VSYNC; }
+  const j = host.sent[before];
+  ok('timing-only restart: nothing re-sent, the next span joins the old end and absorbs the step', before === 3 && j && j.atMs === lastEnd
+    && near(j.durationMs, 400 + 30, 1e-9) && near(j.norm, 0.5, 1e-6), j && j.atMs - lastEnd + ' / ' + (j && j.durationMs));
+  const re = createScheduler({ submit: host.submit, now: () => t });
+  re.load(s); re.restart(clock);
+  while (clock.mediaAt(t) < 1000) { re.tick(clock); t += VSYNC; }
+  const n0 = host.sent.length;
+  re.setTransform({ ...T0, lo: 0.1 });
+  re.restart(clock);
+  re.tick(clock);
+  ok('a restart that changes the knots re-sends the in-progress span', host.sent[n0] && near(host.sent[n0].norm, applyT(0.9, { ...T0, lo: 0.1 }), 1e-6)
+    && host.sent[n0].atMs < t);
+}
+
 // ---- (d) playback: loop, home, seek transition, latency ----------------------
 console.log('(d) playback');
 const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent[i].atMs + sent[i].durationMs - g.atMs)));
@@ -451,12 +494,13 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
   const st = ev({}, shape(s, { mode: 'step' }));
   ok('step: every knot ends at rest', st.length > 6 && st.every((v) => v === 0));
-  const sm = shape(s, { mode: 'smoothstep' }), smv = ev({}, sm);
-  const actionEv = smv.filter((v, i) => s.at.includes(sm.at[i + 1]));
+  // The sent spans follow dwellMerge's knots, not every shaped one.
+  const sm = shape(s, { mode: 'smoothstep' }), smv = ev({}, sm), smk = dwellMerge(sm, T0);
+  const actionEv = smv.filter((v, i) => s.at.includes(smk.at[i + 1]));
   ok('smoothstep: at rest on every action (packs as 0), moving between', actionEv.length === 6 && actionEv.every((v) => Math.abs(v) < 5e-4)
     && smv.some((v) => Math.abs(v) > 0.5), actionEv.join());
-  const cr = shape(s, { mode: 'catmull' }), crv = ev({}, cr);
-  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[cr.at.indexOf(500) - 1], 0.85, 1e-3), crv[cr.at.indexOf(500) - 1]);
+  const cr = shape(s, { mode: 'catmull' }), crv = ev({}, cr), crk = dwellMerge(cr, T0);
+  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[crk.at.indexOf(500) - 1], 0.85, 1e-3), crv[crk.at.indexOf(500) - 1]);
   const t = 50, o = createScheduler({ submit: () => ({ ok: true, sent: 1 }), now: () => t });
   o.load(s); o.setHome({ point: 0.5, speed: 0.3 });
   ok('preroll and home end at rest', o.preroll(700, 0).endVel === 0 && o.home(0).endVel === 0);

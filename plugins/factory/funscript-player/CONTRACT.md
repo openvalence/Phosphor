@@ -201,6 +201,10 @@ export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (
 export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
                                                            // at rate 1; the caller scales it by the rate
 export const HANDOFF_K = 1.5;   // registry limits.segment_handoff_k, restated (a plugin imports nothing outside its folder)
+export const DWELL_SPAN = 0.02;   // registry limits.segment_dwell_span, restated: a target within it of the previous is a hold
+export function dwellMerge(script, T);   // -> the script without a knot that moves on in the same direction less than
+  // DWELL_SPAN x |hi - lo| past the last kept one (ends, flat knots, reversals and knots whose vel packs as 0 stay);
+  // the script itself when none goes. The scheduler and kinetic.segmentsOf run on it.
 export function knotSlope(t, p, j, n, vel = null);   // knot j's slope, pos per media ms, over accessors t(j), p(j):
   // 0 at either end, at a reversal and beside a hold; else vel(j) or the mean of the two chords, of their sign
   // and at most HANDOFF_K x the lesser
@@ -212,7 +216,10 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //   load(script | null),        resets the cursor; with null every call returns {ok: true, sent: 0}
 //   setTransform(T),            takes effect at the next restart
 //   restart(clock),             cursor = max(1, indexAfter(script, mediaAt(now - T.offsetMs))); the
-//                               in-progress span goes first with its start in the past (the host clips it)
+//                               in-progress span goes first with its start in the past (the host clips it).
+//                               Same knots, no transition and the sent schedule still running: nothing sent
+//                               is re-sent; the first unsent span starts at the last sent end and absorbs the
+//                               shift when it is at most half that span (FUNSCRIPT.md Sync 5)
 //   tick(clock) -> TickResult,  skips spans whose end passed (skipped++), offers up to OFFER_MAX segments
 //                               from the cursor, advances by result.sent only.
 //                               Span k (knot k-1 -> k): atMs = clock.displayAt(at[k-1]) + T.offsetMs,

@@ -175,7 +175,14 @@ Veto-able (ph-smvd.10):
    sends nothing (the last segment ends at rest).
 5. **Restart is a supersede.** The in-progress span goes first with its
    start in the past (the host clips it, keeping the knot time), then the
-   window. The hub drops everything it held from that `t_base` on.
+   window. The hub drops everything it held from that `t_base` on. A restart
+   that changes only timing (a clock step, the compensation) while the sent
+   schedule still runs is the exception: re-sending the in-progress span
+   repeats the target the hub just took, and the hub's dwell rule (SPEC §9.6,
+   `segment_dwell_span` 0.02) reads a repeated target as a hold, zeroes its
+   end velocity and stops the machine mid-stroke. So nothing sent is re-sent:
+   the first unsent span starts at the end of what was sent and absorbs the
+   shift, when the shift is at most half that span.
 6. **Offset.** One global trim, -500 to +500 ms in 5 ms steps (Shift 50),
    + = machine later. Zero means the declared latency is already applied
    (RFC-059 allows a user trim whose zero is the declared value). Applied by
@@ -220,7 +227,18 @@ Veto-able (ph-smvd.10):
    Measured on valencesim (live-playback, 400 to 697 ms spans): non-reversal
    knots at rest 9 of 10, median plan speed 1 % of the span peak, before;
    0 of 9, median 86 %, after.
-9. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
+9. **No knot reads as a hold.** For the dwell rule (5) the scheduler runs on
+   `dwellMerge(script, T)`: a knot that moves on in the same direction but
+   less than 0.02 of the window (through Range) past the last kept knot is
+   dropped, so its neighbors make one span through it. Ends, flat knots,
+   reversals and knots the curve rests on stay. It matters most under a
+   curve mode, whose 40 ms pieces near a turn move less than that. Measured
+   on the machine's planner (Nucleus kinetic-wasm, the sim's limits),
+   before: a 1-4 point random walk dwell-zeroed 36 knots and stopped at 37
+   of 79 that are not reversals; 30 ms clock steps every 1.5-4.5 s stopped
+   the staircase at 9 knots; makima on the staircase dwell-zeroed 1140 of
+   1439 pieces. After: none.
+10. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
    duration rounding 0.5 ms, display map quantized to half a vsync (8 ms at
    60 Hz). Panel lag and Bluetooth audio delay are physical: the offset
    trims them; the Hardware phase measures them with a photodiode and the

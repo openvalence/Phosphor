@@ -11,7 +11,7 @@
 // - TUNING mirrors kinetic_tuning (52 B) by member name; a catalog field binds by that name, and a
 //   name ending _ms binds its _us member times 1000. A member no field names keeps the factory value.
 
-import { applyT, knotSlope, wireVel } from '../scheduler.js';
+import { applyT, knotSlope, wireVel, dwellMerge } from '../scheduler.js';
 import { WASM } from './bytes.js';
 
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
@@ -41,11 +41,12 @@ export function tuningOf(pairs) {
 /**
  * The script as the render's segments [startMs, pos_e4, durMs, endVelE3, family] on the engine clock, and
  * t0, the media ms of engine 0: a preroll to the first knot arriving at media 0, then one segment per span.
- * Each span ends at the scheduler's endVel at rate 1 (knotSlope, wireVel), packed as the host packs it.
+ * The scheduler's knots (dwellMerge); each span ends at its endVel at rate 1 (knotSlope, wireVel), packed as the host packs it.
  * The preroll is submitted LEAD_MS in: the window set parks and reseeds on the first tick, dropping
  * anything queued before it.
  */
 export function segmentsOf(script, T) {
+  script = dwellMerge(script, T);
   const pad = 2 * LEAD_MS + PREROLL_MS, { at, pos } = script;
   const e4 = (n) => Math.round(clamp(applyT(n, T), 0, 1) * 10000);
   const t = (j) => at[j], p = (j) => pos[j], vel = script.vel ? (j) => script.vel[j] : null;
