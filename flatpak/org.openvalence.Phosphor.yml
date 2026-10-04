@@ -33,11 +33,14 @@ modules:
         path: org.openvalence.Phosphor.desktop
       - type: file
         path: org.openvalence.Phosphor.metainfo.xml
+      - type: file
+        path: org.openvalence.Phosphor.svg
     build-commands:
       - ar -x phosphor.deb
       - tar -xf data.tar.gz
       # Tauri resolves the sidecar beside its own binary: both stay in /app/bin.
       - install -Dm755 -t /app/bin usr/bin/phosphor usr/bin/valencesim
       - install -Dm644 usr/share/icons/hicolor/128x128/apps/phosphor.png /app/share/icons/hicolor/128x128/apps/org.openvalence.Phosphor.png
+      - install -Dm644 org.openvalence.Phosphor.svg /app/share/icons/hicolor/scalable/apps/org.openvalence.Phosphor.svg
       - install -Dm644 -t /app/share/applications org.openvalence.Phosphor.desktop
       - install -Dm644 -t /app/share/metainfo org.openvalence.Phosphor.metainfo.xml
