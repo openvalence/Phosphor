@@ -27,6 +27,10 @@
   import { createCloseGate, closeConsequences, HOLD_MS } from './close-confirm.js';
 
   const win = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM) ? null : getCurrentWindow();
+  // macOS: the maximize button is the true fullscreen (its own Space), the
+  // operator's ruling 2026-10-04; elsewhere it stays the OS maximize.
+  const MAC = import.meta.env.TAURI_ENV_PLATFORM === 'darwin';
+  const maximize = async () => (MAC ? win.setFullscreen(!(await win.isFullscreen())) : win.toggleMaximize());
 
   let asking = $state(false);
   let holding = $state(false);
@@ -91,7 +95,7 @@
     <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
     </button>
-    <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={() => win.toggleMaximize()}>
+    <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={maximize}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
     </button>
     <button class="sb-wbtn" bind:this={xEl} aria-label="Close" title="Close" aria-haspopup="dialog"
