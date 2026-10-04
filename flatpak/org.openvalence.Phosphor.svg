@@ -1,29 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <filter id="bloom-wide" filterUnits="userSpaceOnUse" x="-512" y="-512" width="1024" height="1024"><feGaussianBlur stdDeviation="40"/></filter>
-    <filter id="bloom" filterUnits="userSpaceOnUse" x="-512" y="-512" width="1024" height="1024"><feGaussianBlur stdDeviation="16"/></filter>
-    <radialGradient id="core" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#FFFFFF"/><stop offset="0.35" stop-color="#BFE0FF"/><stop offset="1" stop-color="#4DA6FF"/>
-    </radialGradient>
-    <radialGradient id="elec" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#FFFFFF"/><stop offset="0.4" stop-color="#DCD0FF"/><stop offset="1" stop-color="#A78BFA"/>
-    </radialGradient>
-    <g id="electron">
-      <circle r="86" fill="#A78BFA" fill-opacity="0.5" filter="url(#bloom-wide)"/>
-      <circle r="62" fill="#A78BFA" fill-opacity="0.8" filter="url(#bloom)"/>
-      <circle r="78" fill="#111318"/>
-      <circle r="54" fill="url(#elec)"/>
-    </g>
+    <mask id="gap" maskUnits="userSpaceOnUse" x="-512" y="-528" width="1024" height="1024">
+      <rect x="-512" y="-528" width="1024" height="1024" fill="#fff"/>
+      <g fill="#000"><circle cy="-300" r="84"/><circle cx="259.81" cy="150" r="84"/><circle cx="-259.81" cy="150" r="84"/></g>
+    </mask>
+    <clipPath id="well"><circle r="370"/></clipPath>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="22"/></filter>
   </defs>
-  <rect width="1024" height="1024" rx="168" fill="#111318"/>
+  <rect width="1024" height="1024" rx="225" fill="#111318"/>
+  <rect x="5" y="5" width="1014" height="1014" rx="220" fill="none" stroke="#1D2026" stroke-width="10"/>
   <g transform="translate(512 528)">
-    <circle r="300" fill="none" stroke="#A78BFA" stroke-opacity="0.35" stroke-width="72" filter="url(#bloom)"/>
-    <circle r="300" fill="none" stroke="#A78BFA" stroke-opacity="0.75" stroke-width="44"/>
-    <circle r="160" fill="#4DA6FF" fill-opacity="0.5" filter="url(#bloom-wide)"/>
-    <circle r="124" fill="#4DA6FF" fill-opacity="0.8" filter="url(#bloom)"/>
-    <circle r="108" fill="url(#core)"/>
-    <use href="#electron" y="-300"/>
-    <use href="#electron" x="259.81" y="150"/>
-    <use href="#electron" x="-259.81" y="150"/>
+
+    <circle r="300" fill="none" stroke="#A78BFA" stroke-width="44" mask="url(#gap)"/>
+    <circle r="108" fill="#4DA6FF"/>
+    <circle r="56" fill="#8CC6FF"/>
+    <g fill="#C4B5FD"><circle cy="-300" r="58"/><circle cx="259.81" cy="150" r="58"/><circle cx="-259.81" cy="150" r="58"/></g>
   </g>
 </svg>
