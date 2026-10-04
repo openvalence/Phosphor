@@ -47,7 +47,7 @@ const CONTRACT = {
     'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
     'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
-    'applyT', 'strokeSpeed', 'createScheduler'],
+    'HANDOFF_K', 'applyT', 'knotSlope', 'wireVel', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
@@ -58,7 +58,7 @@ const CONTRACT = {
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'kinText', 'mountAnalyzer'],
-  [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'UNSPEC', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
+  [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
@@ -217,7 +217,7 @@ if (an) {
     ok('Kinetic: the Tuning rows bind kinetic_tuning by member name, an _ms row to its _us member times 1000',
       same(tuned.map((t) => t[0]).sort(), kn.TUNING.map((t) => t[0]).filter((n) => n !== 'overshoot_guard').sort())
         && tuned.find((t) => t[0] === 'settle_grace_us')[3] === 20000, tuned.map((t) => t[0]));
-    const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true };
+    const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true }, T0k = { offsetMs: 0, lo: 0, hi: 1, invert: false };
     const sg = kn.segmentsOf(sc, Tk);
     ok('Kinetic: a preroll to the first knot arriving at media 0, then one segment per span at its start, after T',
       sg.segs.length === sc.at.length && sg.segs[0][0] === 2 * kn.LEAD_MS && sg.segs[0][2] === kn.PREROLL_MS
@@ -232,6 +232,19 @@ if (an) {
     const want = (ms) => 100 + 300 * applyT(posAt(sc, ms - 30), Tk);
     ok('Kinetic: the render lands on every knot of a feasible script within 1 mm on the media axis, the first after the preroll',
       sc.at.every((t) => Math.abs(at(t + 30) - want(t + 30)) < 1) && r.value.accepted === sg.segs.length, [kn.versionOf(k), at(5030), want(5030)]);
+    // The preview submits the wire's end velocity: through a knot that is not a reversal the planner keeps moving.
+    const mono = parseFunscript({ actions: [0, 20, 40, 60, 80, 20].map((pos, i) => ({ at: i * 500, pos })) });
+    const ms = kn.segmentsOf(mono, T0k), knotV = (segs) => {
+      const it2 = kn.renderCore(k, { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], ...ms, segs, every: 1 });
+      let q;
+      do q = it2.next(); while (!q.done);
+      return [500, 1000, 1500].map((m) => Math.abs(q.value.vel[Math.round(m - ms.t0)]));
+    };
+    const after = knotV(ms.segs), before = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], -32768, x[4]] : x)));
+    ok('Kinetic: each span ends at the endVel e3 of its knot (40 %/s here, 0 at the reversal, the end and the preroll)',
+      same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, 0, 0]), ms.segs.map((x) => x[3]));
+    ok('Kinetic: a knot that is not a reversal keeps its speed (120 mm/s), unspecified stopped there',
+      after.every((v) => Math.abs(v - 120) < 12) && before.every((v) => v < 12), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
       === 'Kinetic: wasm  3 anomalies  guard 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
@@ -345,9 +358,11 @@ try {
 // The script: each span a distinct length (300..597 ms) between alternating
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
-// --live-playback: 400..697 ms spans of 25..75 (inside the sim's speed limit, so plans keep their durations) and a
-// gap from the last action at or before 20 s to 34 s that plays as one span (home is a pause behavior).
-if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: k % 2 ? 75 : 25 }); at += 400 + ((k * 37) % 298); }
+// --live-playback: 400..697 ms spans over 25, 45, 75, 55 (inside the sim's speed limit, so plans keep their durations;
+// every other knot is a reversal) and a gap from the last action at or before 20 s to 34 s that plays as one span
+// (home is a pause behavior).
+const PB_POS = [25, 45, 75, 55];
+if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % 4] }); at += 400 + ((k * 37) % 298); }
 else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 /** The knot k whose span (k-1 -> k) lasts durMs at this rate, or -1. */
@@ -1735,12 +1750,22 @@ if (PB) {
   const slEntry = cat0.find((e) => e.id === slider.channelId);
   const markF = slEntry.layout.find((f) => f.role === 'meta.trial_pending');
   const bit = slEntry.layout.filter((f) => f.settingKey != null).findIndex((f) => f.name === slider.name);
+  // The plan's velocity at each knot (plan.velocity, plan.elapsed, plan.duration on one channel).
+  const pm = buildSettingsModel(cat0), pf = (r) => (pm.byRole.get(r) || [])[0] || null;
+  const planF0 = { vel: pf('plan.velocity'), el: pf('plan.elapsed'), dur: pf('plan.duration') };
+  const planF = Object.values(planF0).every((f) => f && f.channelId === planF0.vel.channelId) ? planF0 : null;
+  const planMs = (f, smp) => smp[f.name] * ({ us: 1e-3, ms: 1, s: 1000 }[f.unit] || 1);
   const obs = createSession({ host: '127.0.0.1', port: SIM_PORT, clientKind: 'webui', clientName: 'fsp pb observer', autoReconnect: false,
     catalogStore: { load: () => null, save() {}, clear() {} },
-    subscriptions: [...new Set([posR.e.id, loR.e.id, hiR.e.id, slEntry.id])].map((ch) => [ch, ch === posR.e.id ? 50 : 0, PRIORITY.normal]) });
-  const last = {}, posLog = [];
+    subscriptions: [...new Set([posR.e.id, loR.e.id, hiR.e.id, slEntry.id, ...(planF ? [planF.vel.channelId] : [])])]
+      .map((ch) => [ch, ch === posR.e.id || (planF && ch === planF.vel.channelId) ? 50 : 0, PRIORITY.normal]) });
+  const last = {}, posLog = [], planLog = [];
   obs.on('state', (ch, smp) => {
     last[ch] = smp;
+    if (planF && ch === planF.vel.channelId) {
+      const at = performance.timeOrigin + performance.now(), el = planMs(planF.el, smp), dur = planMs(planF.dur, smp);
+      if (dur > 0 && Number.isFinite(el)) planLog.push({ at, start: at - el, dur, v: Math.abs(smp[planF.vel.name]) });
+    }
     if (ch === posR.e.id && last[loR.e.id] && last[hiR.e.id]) {
       const lo = last[loR.e.id][loR.f.name], hi = last[hiR.e.id][hiR.f.name];
       posLog.push({ at: performance.timeOrigin + performance.now(), u: (smp[posR.f.name] - lo) / (hi - lo) });   // samples arrive in their units
@@ -1780,6 +1805,28 @@ if (PB) {
   const nodeAt = (atMs) => origin + atMs - skew;   // a page performance.now() instant in node epoch ms
   /** The largest change between consecutive position samples over [a, b) node epoch ms. */
   const maxStep = (a, b) => { const p = posLog.filter((x) => x.at >= a && x.at < b); return p.length > 1 ? Math.max(...p.slice(1).map((x, i) => Math.abs(x.u - p[i].u))) : NaN; };
+  /**
+   * Over [a, b) node epoch ms: each knot between two whole plans (named by duration, knotOf), its least |plan.velocity|
+   * within 25 ms of the second plan's start as a share of the first plan's peak. Under 5 % counts as at rest.
+   */
+  function knotVel(a, b) {
+    const s = planLog.filter((x) => x.at >= a && x.at < b), plans = [], out = [];
+    for (const x of s) {
+      const p = plans.at(-1);
+      if (p && Math.abs(p.dur - x.dur) < 0.5 && Math.abs(p.start - x.start) < 15) p.v.push(x.v);
+      else plans.push({ start: x.start, dur: x.dur, v: [x.v] });
+    }
+    for (let i = 1; i < plans.length; i++) {
+      const k = knotOf(plans[i].dur), j = k - 1;
+      if (k < 2 || knotOf(plans[i - 1].dur) !== j) continue;
+      const peak = Math.max(...plans[i - 1].v), near = s.filter((x) => Math.abs(x.at - plans[i].start) <= 25).map((x) => x.v);
+      if (!near.length || !(peak > 0)) continue;
+      out.push({ rev: (ACTIONS[j].pos - ACTIONS[j - 1].pos) * (ACTIONS[k].pos - ACTIONS[j].pos) <= 0, frac: Math.min(...near) / peak });
+    }
+    const nr = out.filter((x) => !x.rev);
+    return { knots: out.length, nonReversal: nr.length, medianFrac: +median(nr.map((x) => x.frac)).toFixed(3),
+      restNonReversal: nr.filter((x) => x.frac < 0.05).length, reversalsAtRest: out.filter((x) => x.rev && x.frac < 0.05).length };
+  }
   const tStart = performance.timeOrigin + performance.now();
   const pnow = () => page.evaluate(() => performance.now());
   const since = (t0, k) => page.evaluate(([a, b]) => (window.__funscriptProbe || []).filter((x) => x.k === b && x.t >= a), [t0, k]);
@@ -1810,6 +1857,9 @@ if (PB) {
   ok('pb normal: bundles flow, the lead within half the horizon, no NACK on the segments STREAM, the machine strokes',
     frames.bundles > 20 && R.normal.maxLeadMs <= 127 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
   ok('pb normal: auto compensation measures a lag and converges on it', R.normal.lat.lag != null && R.normal.lat.convergedS != null, R.normal.lat);
+  R.knots = knotVel(tStart + 2000, performance.timeOrigin + performance.now());
+  ok('pb knots: the plan carries its velocity through every knot that is not a reversal (end velocity on the wire)',
+    R.knots.nonReversal >= 5 && R.knots.restNonReversal === 0, R.knots);
 
   // ---- 2: a seek with the glide ----
   t0 = await pnow();

@@ -562,6 +562,12 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
   ok('a start colliding on the grid is consumed', r4.sent === 3 && s2.sent[2].recs.length === 2 && s2.sent[2].offs[1] === 50_000);
   const r5 = d2.segments([seg(20, 50), seg(70, 5)]);
   ok('a consumed item after the last packed one is not counted', r5.sent === 1);
+  const ev = (dt, v) => ({ ...seg(dt, 100), endVel: v });
+  const rv = d2.segments([ev(20, 1.25), ev(40, -1e6), ev(60, 0), ev(80, null)]);
+  const bv = s2.sent.at(-1), evTop = 32767 / 1000;
+  ok('endVel packs on input.end_velocity in norm/s, sign kept, 0 a real zero, clamped short of the sentinel; absent stays unspecified',
+    rv.ok && rv.sent === 4 && JSON.stringify(bv.recs.map((r) => r[EV])) === JSON.stringify([1.25, -evTop, 0, LIMITS.segment_end_vel_unspecified / 1000]), bv.recs.map((r) => r[EV]));
+  ok('a non-finite endVel is a bad segment', d2.segments([ev(20, NaN)]).reason === 'bad segment' && d2.segments([ev(20, Infinity)]).reason === 'bad segment');
   const r6 = d2.segments([seg(20.04, 33.37), seg(53.41, 40)]);
   ok('t_off rounds to 100 us', s2.sent.at(-1).offs[1] === 33_400 && r6.sent === 2, s2.sent.at(-1).offs);
   const n0 = s2.sent.length;

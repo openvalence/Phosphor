@@ -57,6 +57,7 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
   ignored: string[],          // other axes seen ('R0', 'roll', ...), never driven
   notes: string[],            // terse facts: 'range ignored', '3 duplicates dropped', '12 positions clamped'
   metadata: object | null,    // the file's metadata object, untouched
+  vel?: Float64Array | null,  // shape() only: the curve's slope at each knot, pos per ms; null when a filter moved the knots
 }
 
 // Transform T: client content transforms, global (prefs key 'T').
@@ -67,7 +68,9 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 // Seg: the ONLY motion currency between the player and the host.
 { atMs: number,               // performance.now() ms at which the machine STARTS EXECUTING it
   norm: number,               // 0..1 across the hub's stroke window (submitMotion's meaning)
-  durationMs: number }        // > 0, wall ms
+  durationMs: number,         // > 0, wall ms
+  endVel?: number }           // velocity at its end, norm/s (input.end_velocity, SPEC 9.6); absent: unspecified, which
+                              // the hub resolves to rest without a scheduled successor
 
 // SegResult: api.submitSegments(list)
 { ok: true,  sent: number, rateHz: number }             // sent = leading items consumed (packed, or dropped as short or colliding)
@@ -197,6 +200,11 @@ export const TRANSIENT;   // frozen Set: 'waiting for the stream grant', 'NO_CLO
 export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (T.hi - T.lo)
 export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
                                                            // at rate 1; the caller scales it by the rate
+export const HANDOFF_K = 1.5;   // registry limits.segment_handoff_k, restated (a plugin imports nothing outside its folder)
+export function knotSlope(t, p, j, n, vel = null);   // knot j's slope, pos per media ms, over accessors t(j), p(j):
+  // 0 at either end, at a reversal and beside a hold; else vel(j) or the mean of the two chords, of their sign
+  // and at most HANDOFF_K x the lesser
+export function wireVel(slope, T, rate = 1);   // -> norm/s: slope x 1000 x rate x (hi - lo), negated under invert
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
 // log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.
@@ -208,7 +216,8 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //   tick(clock) -> TickResult,  skips spans whose end passed (skipped++), offers up to OFFER_MAX segments
 //                               from the cursor, advances by result.sent only.
 //                               Span k (knot k-1 -> k): atMs = clock.displayAt(at[k-1]) + T.offsetMs,
-//                               durationMs = (at[k] - at[k-1]) / clock.rate, norm = applyT(pos[k], T).
+//                               durationMs = (at[k] - at[k-1]) / clock.rate, norm = applyT(pos[k], T),
+//                               endVel = wireVel(knotSlope(knot k, script.vel), T, clock.rate).
 //                               A TRANSIENT reason is fatal false (retry next tick); RATE_EXCEEDED first
 //                               re-thins the unsent script at 1000 / rateHz ms, once per rate. Any other
 //                               reason is fatal true. The thinning covers the unsent tail from knot
@@ -216,12 +225,13 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //   stop(clock) -> TickResult,  one hold: atMs = now(), d = min(STOP_MS, ms to the next action),
 //                               norm = applyT(posAt(script, m + d * rate), T), durationMs = d,
 //                               m = mediaAt(now - T.offsetMs);
-//                               it has no successor, so it ends at rest
+//                               it has no successor, so it ends at rest: endVel 0
 //   preroll(mediaMs, hereNorm) -> Seg | null,
 //                               hereNorm: 0..1 | null. null when |hereNorm - target| <= PREROLL_SKIP;
 //                               else {atMs: now(), norm: target, durationMs: PREROLL_MIN_MS +
 //                               PREROLL_STROKE_MS * |delta|}, target = applyT(posAt(script, mediaMs), T),
-//                               delta = 1 when hereNorm is null. The caller submits it and plays at its end.
+//                               delta = 1 when hereNorm is null, endVel 0 (the video start is not
+//                               scheduled). The caller submits it and plays at its end.
 //   cursor: number, skipped: number }
 //
 // Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform or
@@ -233,15 +243,16 @@ export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, 
 //   home(hereNorm) -> Seg | null   the pause home (never a knot while playing): null when off or when
 //                               |hereNorm - target| <= PREROLL_SKIP; else {atMs: now(), norm: target,
 //                               durationMs: max(HOME_MIN_MS, |delta| / speed s)}, target = applyT(point, T),
-//                               delta = 1 when hereNorm is null. The caller submits it once a pause has
-//                               lasted afterMs
+//                               delta = 1 when hereNorm is null, endVel 0. The caller submits it once a
+//                               pause has lasted afterMs
 //   setLoop(loopSpec | null)    pending until restart
 //   setLatency({low, auto})     in force at once. low: the offer stops at atMs > now + LEAD_LOW_MS.
 //                               auto: when |clamp(lagMs, +-COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
 //                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
 //   restart(clock, transitionMs = 0)   transitionMs > 0 (a seek): the first segment is {atMs: now,
 //                               norm: applyT(script at mediaAt(now + transitionMs - offset)), durationMs:
-//                               transitionMs}; the span holding that instant follows from its end, the knots
+//                               transitionMs, endVel: wireVel(the chord of the span it lands in)}; that span
+//                               follows from its end, the knots
 //                               inside are passed over
 //   observePlan(arrivalMs, elapsedMs, durationMs)   one plan strip sample (plan.elapsed, plan.duration in ms;
 //                               arrival in performance.now() ms, now() - api.age(field)). Samples of one
@@ -651,7 +662,7 @@ segmented field of more than two options renders as a select.
 
 ```js
 // bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
-export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, UNSPEC = -32768;
+export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
 export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (52 B), Nucleus tools/kinetic-wasm/README.md
 export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
 export const ANOMALIES;   // kinetic::AnomalyType names by value ('' for none and the retired 7)
@@ -659,7 +670,8 @@ export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, typ
   // _ms field to its _us member times 1000; non-numbers skipped
 export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }
   // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
-  // segment per span at pad + at[k-1]; t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
+  // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 packed as the host packs it (the
+  // preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
 export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},
   // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS}; yields every
   // 8192 steps; returns KineticRender. Self-contained: the worker runs its source.
@@ -693,14 +705,15 @@ export function cleanInterp(v);       // -> a well-formed interp; prefs.js repai
 export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
 export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
   // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
-  // off without spanMm); linear with both off returns `script` itself, so the scheduler runs byte-identical
+  // off without spanMm); linear with both off returns `script` itself, so the scheduler runs byte-identical;
+  // vel: the mode's slope at each kept knot (step 0), null when smoothing or slew is on
 export const COPY, CSS;
 export function mountInterp(el, { value, onChange });   // -> unmount(); the settings card rows, onChange(interp) on commit
 ```
 
 The controller schedules `shape(script)` and keeps it as `PlayerState.shaped`: the scheduler, posAt, preroll,
 stop, thinning, the speed meter and the heat all read the shaped Script,
-and each piece is one segment with end velocity `unspecified` and no
+and each piece is one segment ending at its knot's slope (scheduler endVel) and no
 `curve_family`. Tests: `test/funscript-core.test.mjs` (interp section).
 
 ---

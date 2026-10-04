@@ -91,8 +91,8 @@ A larger hub horizon (500, 1000 for poor WiFi) widens the lead to 250 or
 everything from its `t_base` (RFC-087 item 5).
 
 Content goes as authored (SPEC §9.6 clauses 2, 4, 5): one segment per
-action gap, `input.end_velocity` at its `unspecified` sentinel, no
-`curve_family`, no client feasibility. Dense scripts are sent as authored
+action gap carrying the knot's end velocity (Sync item 8), no
+`curve_family`, no client feasibility past the handoff bound. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
 ## Interpolation
@@ -103,8 +103,9 @@ scheduler sees it. Linear is the default, and with smoothing and slew off
 byte. Any other setting cuts each action gap into pieces of at most 40 ms
 (`STEP_MS`, 25 segments/s, under the 50 Hz grant), keeps every action,
 merges collinear pieces back, and schedules that Script; preroll, stop,
-thinning, the speed meter and the heat read it too. Each piece is still one
-segment with end velocity `unspecified` and no `curve_family`.
+thinning, the speed meter and the heat read it too. Each piece is one
+segment ending at the curve's own slope at its knot (`vel`, Sync item 8)
+and no `curve_family`.
 
 | mode | rule | parameter | leaves its two actions |
 |---|---|---|---|
@@ -130,10 +131,9 @@ under it.
 
 Veto-able (ph-smvd.10):
 
-- **I1** Dense knots, not `end_velocity` plus `c1_cubic` (the MFP notes'
-  exact mapping): that needs an end velocity in the host packer and covers
-  PCHIP and Makima only; dense knots cover every mode with no host or wire
-  change. Cost: up to 25 segments/s where a script had 2 to 6, and a
+- **I1** Dense knots, not sparse spans declared `c1_cubic` (the MFP notes'
+  exact mapping): that covers PCHIP and Makima only; dense knots, each
+  ending at the curve's slope, cover every mode with no curve family. Cost: up to 25 segments/s where a script had 2 to 6, and a
   `RATE_EXCEEDED` thins back to extrema, toward linear.
 - **I2** Step is offered (the notes advise against it): its jump is the
   last piece, 20 to 40 ms, shaped by the hub's speed limit or the slew limit.
@@ -204,7 +204,23 @@ Veto-able (ph-smvd.10):
    mid-play. The filter belongs in Valence's `clients/js` `syncClock`
    (SPEC §7.1), where every consumer shares it; the door's copy goes when
    that lands.
-8. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
+8. **End velocity on the wire** (ph-t9go). Every segment carries
+   `input.end_velocity` (SPEC §9.6 item 5). Left `unspecified`, the hub
+   resolves a knot to rest whenever its successor is not yet scheduled
+   (RFC-058), and at a 125 ms lead that is every span over 125 ms: the
+   carriage stopped at each knot (chunky on silicon). Span k ends at knot
+   k's slope: the shaped curve's own (`interp.js` `vel`, step 0) or, for
+   linear and filtered curves, the mean of the two chords; 0 at a reversal,
+   beside a hold and at the ends; never past `segment_handoff_k` (1.5) x
+   the lesser chord, the bound the hub applies only once the successor is
+   scheduled, so a slow span never has to arrive fast. In norm/s: slope x
+   1000 x rate x (hi - lo), negated under invert. The seek glide ends at
+   the chord it lands in; stop, preroll and home end at 0, since nothing is
+   scheduled after them and a hub coasts a moving end before it brakes.
+   Measured on valencesim (live-playback, 400 to 697 ms spans): non-reversal
+   knots at rest 9 of 10, median plan speed 1 % of the span peak, before;
+   0 of 9, median 86 %, after.
+9. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
    duration rounding 0.5 ms, display map quantized to half a vsync (8 ms at
    60 Hz). Panel lag and Bluetooth audio delay are physical: the offset
    trims them; the Hardware phase measures them with a photodiode and the
@@ -673,7 +689,7 @@ behaves the same on the machine, without rendering anything on the hub.
   starts one Worker from a blob URL per open analyzer, instantiates the wasm
   once and answers render requests; the page thread never runs the planner.
 - **Input.** The shaped script's segments (`segmentsOf`) as the host sends
-  them: one per span, end velocity `unspecified`, no curve family, each
+  them: one per span ending at the same end velocity, no curve family, each
   submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
@@ -861,10 +877,9 @@ Decisions (veto-able):
   ambiguous across the call). The existing `submitMotion` segment stamp
   (`now + latency`, executing at now + 2 x latency) is flagged for its
   owner, not changed here.
-- **D4** As authored: end velocity unspecified, no `curve_family`
-  (design 3, SPEC §9.6 clauses 2 and 5). Design 1's client PCHIP end
-  velocities are the veto alternative; if the live test shows stop-start at
-  same-direction knots (G3), the first fix is a Nucleus bead.
+- **D4** As authored: the knot's end velocity (Sync item 8), no
+  `curve_family` (SPEC §9.6 clauses 2 and 5). `unspecified` was the first
+  ruling; it stopped at same-direction knots on silicon (G3, ph-t9go).
 - **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 25 ms step (between
   one 60 Hz vsync, slewed, and one dropped 30 fps frame, stepped: a 40 ms
   step slewed a dropped frame out over 6 s). Design 2's EMA is weaker on
@@ -945,10 +960,11 @@ Decisions (veto-able):
   machine); on valencesim an Advanced start and a segments bundle were each
   accepted while the other owned the rail. The player's generator gate is a
   client stopgap.
-- **G3 (hub behavior, measured by the sync test)** With an unspecified end
-  velocity and no successor scheduled when a long span starts, the hub
-  resolves rest (RFC-058): a slow same-direction run may stop at each
-  knot. Reversals, most funscript actions, are unaffected.
+- **G3 (closed, ph-t9go)** With an unspecified end velocity and no
+  successor scheduled when a long span starts, the hub resolves rest
+  (RFC-058): same-direction knots stopped. The player sends the end
+  velocity (Sync item 8); `--live-playback` checks no non-reversal knot
+  rests.
 - A live segments grant makes Nucleus refuse its horizon setting
   (INTERLOCK) until the session ends; `submitMotion` already does the same.
 - The shell's CSP is not present in the browser tests: R-B is verified in

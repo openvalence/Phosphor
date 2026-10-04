@@ -140,8 +140,9 @@ export function unspecified(f) {
  * The c2h STREAM of `kind` that takes motion input: it carries `input.target`
  * in unit normalized (SPEC §9.6, RFC-071), and a segments STREAM also
  * `input.duration` in a time unit. A STREAM without the role is some other
- * input, never motion.
- * @returns {{entry: Object, target: Object, duration?: Object}|null}
+ * input, never motion. `endVel` is the segments layout's `input.end_velocity`
+ * field when it has one (normalized span per second, SPEC §9.6).
+ * @returns {{entry: Object, target: Object, duration?: Object, endVel?: Object}|null}
  */
 export function motionStream(entries, kind = STREAM_KIND.samples) {
   for (const e of entries || []) {
@@ -151,21 +152,26 @@ export function motionStream(entries, kind = STREAM_KIND.samples) {
     if (!target || target.unitId !== UNIT_ID.normalized) continue;
     if (kind !== STREAM_KIND.segments) return { entry: e, target };
     const duration = layout.find((f) => f.role === FIELD_ROLE.input_duration && f.unitId in TIME_SCALE);
-    if (duration) return { entry: e, target, duration };
+    const endVel = layout.find((f) => f.role === FIELD_ROLE.input_end_velocity);
+    if (duration) return { entry: e, target, duration, endVel };
   }
   return null;
 }
 
-/** One motion-input record: every field at its sentinel, then the ones we have. */
-function record(st, norm, durationMs) {
+/** Field f's largest magnitude in physical units; Infinity for a type without one. */
+const topOf = (f) => (f.type in TYPE_MAX ? TYPE_MAX[f.type] / (f.scale || 1) : Infinity);
+
+/**
+ * One motion-input record: every field at its sentinel, then the ones we have.
+ * `endVel` (norm/s) is clamped to the field's range, so it never packs as the
+ * sentinel; absent (null or undefined) it stays `unspecified`.
+ */
+function record(st, norm, durationMs, endVel) {
   const out = {};
   for (const f of st.entry.layout) out[f.name] = unspecified(f);
   out[st.target.name] = Math.min(1, Math.max(0, norm));
-  if (st.duration) {
-    const d = st.duration;
-    const top = d.type in TYPE_MAX ? TYPE_MAX[d.type] / (d.scale || 1) : Infinity;
-    out[d.name] = Math.min(top, Math.max(0, durationMs || 0) * TIME_SCALE[d.unitId]);
-  }
+  if (st.duration) out[st.duration.name] = Math.min(topOf(st.duration), Math.max(0, durationMs || 0) * TIME_SCALE[st.duration.unitId]);
+  if (st.endVel && endVel != null) out[st.endVel.name] = Math.min(topOf(st.endVel), Math.max(-topOf(st.endVel), endVel));
   return out;
 }
 
@@ -301,8 +307,9 @@ export function createMotionDoor(deps) {
   }
 
   /**
-   * The RFC-087 lookahead door: `list` is [{atMs, norm, durationMs}], atMs the
-   * now() instant the machine STARTS executing each, ascending. Sends what
+   * The RFC-087 lookahead door: `list` is [{atMs, norm, durationMs, endVel?}],
+   * atMs the now() instant the machine STARTS executing each, ascending, endVel
+   * the velocity at its end in norm/s (absent: `unspecified`). Sends what
    * starts within half the granted horizon in one bundle; `sent` counts the
    * leading items through the last one packed (an item before it may have been
    * consumed as too short or colliding), so the caller advances by it.
@@ -312,7 +319,8 @@ export function createMotionDoor(deps) {
    * - Execution = stamp + schedule_latency_us (RFC-059): the stamp is the
    *   execution start minus the grant's latency, never a constant.
    * - A late start is clipped to the earliest executable instant keeping its
-   *   end; the end velocity always rides `unspecified` (SPEC §9.6, RFC-058).
+   *   end and its end velocity. `unspecified` leaves the knot to the hub,
+   *   which resolves it to rest without a successor (SPEC §9.6, RFC-058).
    * - A STREAM bundle has no answer: the hub's NACK on the channel (e.g.
    *   SOURCE_CONFLICT while a generator owns the rail) arrives later through
    *   `deps.lastNack(ch)`, and the next call refuses once with its name. The
@@ -342,7 +350,7 @@ export function createMotionDoor(deps) {
     let prev = -Infinity;
     for (const x of list) {
       if (!x || !Number.isFinite(x.atMs) || !Number.isFinite(x.norm) || !Number.isFinite(x.durationMs)
-        || x.durationMs <= 0 || x.atMs < prev) return { ok: false, sent: 0, reason: 'bad segment', rateHz };
+        || x.durationMs <= 0 || x.atMs < prev || (x.endVel != null && !Number.isFinite(x.endVel))) return { ok: false, sent: 0, reason: 'bad segment', rateHz };
       prev = x.atMs;
     }
 
@@ -362,7 +370,7 @@ export function createMotionDoor(deps) {
       const off = Math.round((stamp - s0) / unit) * unit;
       if (off <= lastOff) continue;
       lastOff = off;
-      packed.push({ atUs: s0 + off, rec: record(st, x.norm, (end - e) / 1000), i });
+      packed.push({ atUs: s0 + off, rec: record(st, x.norm, (end - e) / 1000, x.endVel), i });
     }
     const { head } = bundleHead(packed, hubNow, grant.scheduleHorizonMs / 2, recordBytes(st.entry.layout));
     if (!head.length) return { ok: true, sent: 0, rateHz };

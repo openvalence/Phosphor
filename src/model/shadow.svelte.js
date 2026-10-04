@@ -473,7 +473,7 @@ export function submitMotion(norm, durationMs) {
   return motionDoor(norm, durationMs);
 }
 
-/** The RFC-087 lookahead door (motion.js submit.segments): [{atMs, norm, durationMs}] -> {ok, sent, rateHz, reason}. */
+/** The RFC-087 lookahead door (motion.js submit.segments): [{atMs, norm, durationMs, endVel?}] -> {ok, sent, rateHz, reason}. */
 export function submitSegments(list) {
   return motionDoor.segments(list);
 }

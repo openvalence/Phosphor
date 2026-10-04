@@ -36,6 +36,8 @@
 //   their two knots.
 // - Order: mode, then smoothing (a centered box over the piecewise-linear curve, no lag), then slew (causal:
 //   a reversal past the limit arrives late and short). Slew needs the rail length; without it slew is off.
+// - shape() carries `vel`, the mode's own slope at each kept knot (pos per ms; 0 for step), only while no
+//   filter moved the knots off the curve; otherwise null and the scheduler reads the knots' chords.
 // - Pure, no DOM at import time; mountInterp touches the DOM only when called.
 
 import { posAt, indexAfter, MAX_SPAN_MS } from './funscript.js';
@@ -195,6 +197,8 @@ export function shape(script, interp, ctx = {}) {
   let y = Float64Array.from(tt, (t, j) => (j === tt.length - 1 ? pos[n - 1] : f(t)));
   if (I.smoothMs) y = smooth(tt, y, I.smoothMs);
   if (perMs) slew(tt, y, perMs);
+  const H = 0.01;
+  const d = I.smoothMs || perMs ? null : Float64Array.from(tt, (t) => (I.mode === 'step' ? 0 : (f(t + H) - f(t - H)) / (2 * H)));
   // Merge: a knot is dropped only while one line from the last kept knot passes within MERGE_EPS of
   // every dropped knot (the slope cone of each one, intersected).
   const keep = [0];
@@ -209,7 +213,7 @@ export function shape(script, interp, ctx = {}) {
   if (tt.length > 1) keep.push(tt.length - 1);
   const A = Float64Array.from(keep, (k) => tt[k]);
   return { ...script, at: A, pos: Float32Array.from(keep, (k) => clamp(y[k], 0, 1)), durationMs: A[A.length - 1],
-    ignored: [...script.ignored], notes: [...script.notes] };
+    vel: d && Float64Array.from(keep, (k) => d[k]), ignored: [...script.ignored], notes: [...script.notes] };
 }
 
 // ---- controls: the settings card --------------------------------------------

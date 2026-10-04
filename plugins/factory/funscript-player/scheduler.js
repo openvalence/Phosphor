@@ -25,6 +25,10 @@
 //   no feedback loop. It includes the STATE frame's one-way transport, which it cannot see.
 // - The low latency lead caps the offer at LEAD_LOW_MS (RFC-087 item 3: a low-latency client
 //   stamps 50 ms ahead under the same horizon); it shrinks the stall tolerance to about 30 ms.
+// - Every segment carries endVel (SPEC 9.6 item 5): `unspecified` resolves to rest at every knot
+//   whose successor is not yet scheduled. A span ends at its knot's slope (knotSlope); the seek
+//   transition at the chord it lands in. Stop, preroll and home end at 0: nothing is scheduled
+//   after them, and a hub coasts a moving end before it brakes.
 
 import { posAt, indexAfter, speedAt, thin } from './funscript.js';
 
@@ -32,6 +36,9 @@ export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PRER
 export const TRANSIENT = Object.freeze(new Set(['waiting for the stream grant', 'NO_CLOCK', 'NOT_SENT', 'RATE_EXCEEDED']));
 export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
 export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
+// Registry limits.segment_handoff_k (SPEC 9.6): the hub bounds a handoff to k x the lesser adjoining chord,
+// but only once the successor is scheduled. A plugin imports nothing outside its folder, so it is restated.
+export const HANDOFF_K = 1.5;
 
 const T0 = Object.freeze({ offsetMs: 0, lo: 0, hi: 1, invert: false });
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -44,6 +51,22 @@ const median = (a) => {
 export function applyT(norm, T) {
   return T.lo + (T.invert ? 1 - norm : norm) * (T.hi - T.lo);
 }
+
+/**
+ * Knot j's slope in pos per media ms over accessors t(j), p(j) of n knots: 0 at either end, at a reversal
+ * and beside a hold; else vel(j) (the shaped curve's own) or the mean of the two chords, of their sign and
+ * at most HANDOFF_K x the lesser.
+ */
+export function knotSlope(t, p, j, n, vel = null) {
+  if (!(j > 0 && j < n - 1)) return 0;
+  const a = (p(j) - p(j - 1)) / (t(j) - t(j - 1)), b = (p(j + 1) - p(j)) / (t(j + 1) - t(j));
+  const m = vel ? vel(j) : (a + b) / 2;
+  if (!(a * b > 0) || !(m * a > 0)) return 0;
+  return Math.sign(a) * Math.min(Math.abs(m), HANDOFF_K * Math.min(Math.abs(a), Math.abs(b)));
+}
+
+/** A script slope (pos per media ms) as a Seg's endVel: norm/s through T and the clock rate. */
+export const wireVel = (slope, T, rate = 1) => slope * 1000 * rate * (T.invert ? -1 : 1) * (T.hi - T.lo);
 
 /** Display only (SPEC §9.6): the authored chord speed scaled by the range. */
 export function strokeSpeed(script, mediaMs, T, spanMm) {
@@ -105,6 +128,8 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     const t0 = tl.t(j - 1), t1 = tl.t(j);
     return tl.p(j - 1) + (tl.p(j) - tl.p(j - 1)) * ((u - t0) / (t1 - t0));
   }
+  /** Knot j's endVel at this rate; the shaped curve's own slope (src.vel) when it has one. */
+  const endVelAt = (j, rate) => wireVel(knotSlope(tl.t, tl.p, j, tl.n, src.vel ? (i) => src.vel[tl.idx(i)] : null), T, rate);
   function supersede(t) {
     for (let i = sentLog.length - 1; i >= 0; i--) if (sentLog[i].atMs >= t) sentLog.splice(i, 1);
   }
@@ -127,7 +152,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     at.set(src.at.subarray(0, c)); at.set(tail.at, c);
     pos.set(src.pos.subarray(0, c)); pos.set(tail.pos, c);
     log('motion: thinned to ' + rateHz + ' Hz, ' + (src.at.length - at.length) + ' actions dropped', 'info');
-    src = { ...src, at, pos };
+    src = { ...src, at, pos, vel: null };
     tl = timeline(src, loop);
     sch.cursor = Math.max(1, tl.after(tPrev));
     thinnedFor = rateHz; thinFrom = c;
@@ -180,8 +205,9 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       if (!Number.isFinite(u)) { sch.cursor = 1; return; }
       if (transitionMs > 0) {
         const t = now(), uEnd = clock.mediaAt(t + transitionMs - off());
-        lead = { atMs: t, norm: applyT(posV(uEnd), T), durationMs: transitionMs };
-        sch.cursor = Math.max(1, tl.after(uEnd));
+        const k = tl.after(uEnd), chord = k > 0 && k < tl.n ? (tl.p(k) - tl.p(k - 1)) / (tl.t(k) - tl.t(k - 1)) : 0;
+        lead = { atMs: t, norm: applyT(posV(uEnd), T), durationMs: transitionMs, endVel: wireVel(chord, T, clock.rate) };
+        sch.cursor = Math.max(1, k);
         joinAt = t + transitionMs;
       } else sch.cursor = Math.max(1, tl.after(u));
     },
@@ -204,7 +230,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
         const atMs = join ? joinAt : clock.displayAt(tl.t(k - 1)) + o;
         if (low && atMs > t + LEAD_LOW_MS) break;
         list.push({ atMs, norm: applyT(tl.p(k), T),
-          durationMs: join ? clock.displayAt(tl.t(k)) + o - joinAt : (tl.t(k) - tl.t(k - 1)) / clock.rate });
+          durationMs: join ? clock.displayAt(tl.t(k)) + o - joinAt : (tl.t(k) - tl.t(k - 1)) / clock.rate, endVel: endVelAt(k, clock.rate) });
       }
       if (!list.length) return done();
       const r = submit(list);
@@ -226,14 +252,14 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       const m = scriptNow(clock);
       const k = tl.after(m);
       const d = k < tl.n ? Math.min(STOP_MS, (tl.t(k) - m) / clock.rate) : STOP_MS;
-      return result(submit([{ atMs: t, norm: applyT(posV(m + d * clock.rate), T), durationMs: d }]));
+      return result(submit([{ atMs: t, norm: applyT(posV(m + d * clock.rate), T), durationMs: d, endVel: 0 }]));
     },
     preroll(mediaMs, hereNorm) {
       if (!script) return null;
       const target = applyT(posAt(script, mediaMs), next);
       const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
       if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;
-      return { atMs: now(), norm: target, durationMs: PREROLL_MIN_MS + PREROLL_STROKE_MS * delta };
+      return { atMs: now(), norm: target, durationMs: PREROLL_MIN_MS + PREROLL_STROKE_MS * delta, endVel: 0 };
     },
     /** One move to the home point, |delta| / speed s and at least HOME_MIN_MS; null when off or already there. */
     home(hereNorm) {
@@ -241,7 +267,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       const target = applyT(nextHome.point, next);
       const delta = Number.isFinite(hereNorm) ? Math.abs(hereNorm - target) : 1;
       if (Number.isFinite(hereNorm) && delta <= PREROLL_SKIP) return null;
-      return { atMs: now(), norm: target, durationMs: Math.max(HOME_MIN_MS, delta * 1000 / nextHome.speed) };
+      return { atMs: now(), norm: target, durationMs: Math.max(HOME_MIN_MS, delta * 1000 / nextHome.speed), endVel: 0 };
     },
   });
   // Object.assign would copy a getter's value once: these stay live.

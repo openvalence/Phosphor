@@ -19,6 +19,7 @@ import {
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
+import { shape } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -422,6 +423,7 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   sch.tick(clock);
   const [a, b] = host.calls[0];
   ok('seek: one segment from now over the delay to the script position delay ahead', a.atMs === 7000 && a.durationMs === 500 && near(a.norm, posAt(s, 1900), 1e-6));
+  ok('seek: the transition ends at the chord it lands in (1600 -> 2000: 2.5 norm/s)', near(a.endVel, 2.5, 1e-9), a.endVel);
   ok('seek: the next span starts at its end and keeps its knot', b.atMs === 7500 && near(b.atMs + b.durationMs, clock.displayAt(2000), 1e-9) && near(b.norm, 1, 1e-6));
   while (t < 10000) { sch.tick(clock); t += VSYNC; }
   ok('seek: the knots inside the delay are passed over, the rest tile', tiles(host.sent) <= 0.001 && host.sent.length === 3, host.sent.length + ' sent');
@@ -431,6 +433,33 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   const r2 = createScheduler({ submit: fakeHost(() => t).submit, now: () => t });
   r2.load(s); clock.anchor(1400, t, 2); r2.restart(clock, 500);
   ok('seek: the delay is wall ms, so rate 2 aims 1000 media ms ahead', r2.cursor === 4);
+}
+{
+  // End velocity (SPEC 9.6 item 5): knot k's slope rides span k, in norm/s through T and the rate.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }, { at: 1500, pos: 100 },
+    { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 3000, pos: 80 }] });
+  const ev = (o, sc = s) => play(sc, o).host.sent.map((g) => g.endVel);
+  const lin = ev();
+  ok('linear: the mean of the two chords (0.85), bounded to 1.5 x the lesser (0.45), 0 at a reversal, beside a hold and at the end',
+    lin.length === 6 && near(lin[0], 0.85, 1e-6) && near(lin[1], 0.45, 1e-6) && lin.slice(2).every((v) => v === 0), lin.join());
+  const tr = ev({ rate: 2 }).map((v, i) => v / lin[i]), inv = play(s, { rate: 1 });
+  ok('rate 2 doubles it', near(tr[0], 2, 1e-9) && near(tr[1], 2, 1e-9));
+  const T = { ...T0, lo: 0.2, hi: 0.6, invert: true };
+  const sch = createScheduler({ submit: inv.host.submit, now: inv.now });
+  sch.load(s); sch.setTransform(T); inv.clock.anchor(0, inv.now(), 1); sch.restart(inv.clock); sch.tick(inv.clock);
+  const g = inv.host.calls.at(-1);
+  ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
+  const st = ev({}, shape(s, { mode: 'step' }));
+  ok('step: every knot ends at rest', st.length > 6 && st.every((v) => v === 0));
+  const sm = shape(s, { mode: 'smoothstep' }), smv = ev({}, sm);
+  const actionEv = smv.filter((v, i) => s.at.includes(sm.at[i + 1]));
+  ok('smoothstep: at rest on every action (packs as 0), moving between', actionEv.length === 6 && actionEv.every((v) => Math.abs(v) < 5e-4)
+    && smv.some((v) => Math.abs(v) > 0.5), actionEv.join());
+  const cr = shape(s, { mode: 'catmull' }), crv = ev({}, cr);
+  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[cr.at.indexOf(500) - 1], 0.85, 1e-3), crv[cr.at.indexOf(500) - 1]);
+  const t = 50, o = createScheduler({ submit: () => ({ ok: true, sent: 1 }), now: () => t });
+  o.load(s); o.setHome({ point: 0.5, speed: 0.3 });
+  ok('preroll and home end at rest', o.preroll(700, 0).endVel === 0 && o.home(0).endVel === 0);
 }
 {
   // Latency: a hub that starts every plan 14 ms late (+-1.5 ms) is compensated once 8 plans match.
