@@ -7,8 +7,12 @@
 // - Display only: nothing here submits motion or writes a field.
 // - Intent (--intent) is the script as commanded after T; reality (--reality)
 //   is telemetry.position as a window share, drawn only where reported
-//   (law 9) and dimmed where stale (law 8); --highlight is the playhead and
-//   focus; --warn marks heat past the input speed limit. No red (law 13).
+//   (law 9) and dimmed where stale (law 8); --highlight is the playhead, focus
+//   and the Kinetic line; --warn marks heat past the input speed limit. No red (law 13).
+// - The heat is the funscript speed heatmap: one hard-edged color run per action span
+//   of the file's actions by |dpos| / dt (units/s, pos 0..100), from the chassis dark
+//   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
+//   law 13 keeps red for hazards.
 // - The wheel is never captured: zoom is two buttons.
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
@@ -26,17 +30,20 @@
 // - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
 // - onSettings(on), a page mount's, puts Settings at the cluster's right end; the button holds
 //   its own pressed state from settingsOpen, the page being its only other writer.
-// - frame's kin (the analyzer's Kinetic render, display only) draws --intent under the script curve:
+// - frame's kin (the analyzer's Kinetic render, display only) draws --highlight under the script curve:
 //   the machine's own planner, rendered ahead.
-// - setScript's script is the shaped one (interp.js): the intent curve and the heat are what is
-//   commanded. raw, when it is another Script, is the file's actions, drawn muted under it.
+// - setScript's script is the shaped one (interp.js shape(), display only: the hub draws its own curve
+//   through the wire's tangents). raw, when it is another Script, is the file's actions, drawn muted under
+//   it; the heat reads raw.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
 
-import { posAt, indexAfter, heat, fmtTime } from './funscript.js';
+import { posAt, indexAfter, fmtTime } from './funscript.js';
 
 export const ZOOMS = [5000, 10000, 20000, 60000];
 export const HEAT_BINS = 200;
+// Heat speeds, units/s: --bg-sunken at rest, --reality at HEAT_MID_UPS, --highlight from HEAT_TOP_UPS up.
+export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;
 export const TRACE_MS = 8000;
 export const MIN_SPAN = 0.05;
 const SEEK_KEYS = { ArrowLeft: -5000, ArrowRight: 5000 };
@@ -111,17 +118,28 @@ export function traceLines(trace, fromMs, toMs, W, H) {
   return out.filter((l) => l.pts.length > 1).map((l) => ({ points: l.pts.join(' '), stale: l.stale }));
 }
 
+/** A speed in units/s as a CSS color: --bg-sunken at rest, through --reality to --highlight, mixed in oklab. */
+export function heatColor(ups) {
+  const mix = (a, b, u) => 'color-mix(in oklab, var(' + b + ') ' + Math.round(u * 100) + '%, var(' + a + '))';
+  return !(ups > 0) ? 'var(--bg-sunken)' : ups < HEAT_MID_UPS ? mix('--bg-sunken', '--reality', ups / HEAT_MID_UPS)
+    : ups < HEAT_TOP_UPS ? mix('--reality', '--highlight', (ups - HEAT_MID_UPS) / (HEAT_TOP_UPS - HEAT_MID_UPS)) : 'var(--highlight)';
+}
+
 /**
- * Heat bins (norm/s) as 0..1 levels. With a ceiling {vmax mm/s, spanMm} a
- * level is the bin's mm/s over vmax and `over` marks a bin past it; without
- * one, levels scale to the loudest bin and nothing is over.
+ * The heat as color runs [{from, to (ms), ups, color, over}]: one per action span, equal neighbors merged (ups
+ * their fastest), the lead-in before the first action at rest. With a ceiling {vmax mm/s, spanMm} a span is
+ * over when its chord speed through T's Range passes vmax.
  */
-export function heatLevels(bins, T = T0, ceiling = null) {
-  const cap = ceiling && ceiling.vmax > 0 && ceiling.spanMm > 0 ? ceiling.vmax / (ceiling.spanMm * (T.hi - T.lo)) : 0;
-  let max = 0;
-  for (const v of bins) max = Math.max(max, v);
-  const den = cap || max || 1;
-  return Array.from(bins, (v) => ({ level: clamp(v / den, 0, 1), over: !!cap && v > cap }));
+export function heatStops(script, T = T0, ceiling = null) {
+  const { at, pos } = script, out = [];
+  const cap = ceiling && ceiling.vmax > 0 && ceiling.spanMm > 0 ? ceiling.vmax / (ceiling.spanMm * (T.hi - T.lo)) * 100 : Infinity;
+  const put = (from, to, ups) => {
+    const color = heatColor(ups), over = ups > cap, last = out[out.length - 1];
+    if (last && last.color === color && last.over === over) { last.to = to; last.ups = Math.max(last.ups, ups); } else out.push({ from, to, ups, color, over });
+  };
+  if (at.length && at[0] > 0) put(0, at[0], 0);
+  for (let k = 1; k < at.length; k++) put(at[k - 1], at[k], Math.abs(pos[k] - pos[k - 1]) * 1e5 / (at[k] - at[k - 1]));
+  return out;
 }
 
 /** T with key ('lo' | 'hi') moved to v, kept in 0..1 and MIN_SPAN from its partner. */
@@ -142,7 +160,6 @@ export const CSS = `
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.fsp-ov rect.bin { fill: var(--intent); }
 .fsp-ov rect.bin.over { fill: var(--warn); }
 .fsp-ov rect.ab { fill: rgba(var(--highlight-rgb), .22); }
 .fsp-dt line.ab { stroke: var(--highlight); stroke-width: 1; stroke-dasharray: 3 3; }
@@ -159,7 +176,7 @@ export const CSS = `
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
-.fsp-dt .kin { stroke: var(--intent); stroke-width: 1.25; opacity: .8; }
+.fsp-dt .kin { stroke: var(--highlight); stroke-width: 1.25; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
@@ -178,6 +195,7 @@ export const CSS = `
 `;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+let heatIds = 0;
 const h = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -200,10 +218,15 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
 
   // ---- overview: heat, window box, vertical-pill scrub (left-right)
   const ovSvg = s('svg', { viewBox: '0 0 ' + HEAT_BINS + ' 24', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+  const gid = 'fsp-heat-' + ++heatIds;
+  const grad = s('linearGradient', { id: gid, x1: '0', x2: '1', y1: '0', y2: '0' });
+  const defs = s('defs');
+  defs.append(grad);
+  const band = s('rect', { class: 'heat', width: String(HEAT_BINS), height: '24', fill: 'url(#' + gid + ')' });
   const bins = s('g');
   const win = s('rect', { class: 'win', y: '0', height: '24' });
   const abBand = s('rect', { class: 'ab', y: '0', height: '24' });
-  ovSvg.append(bins, abBand, win);
+  ovSvg.append(defs, band, bins, abBand, win);
   const scrub = h('div', { class: 'fsp-scrub', role: 'slider', tabindex: '0', 'aria-label': COPY.scrub,
     'aria-orientation': 'horizontal', 'aria-valuemin': '0' });
   const ov = h('div', { class: 'fsp-ov', role: 'group', 'aria-label': COPY.overview }, ovSvg, scrub);
@@ -317,9 +340,10 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const eff = () => (preview ? { ...T, ...preview } : T);
 
   function drawHeat() {
-    bins.replaceChildren(...(script ? heatLevels(heat(script, HEAT_BINS), T, ceiling) : []).flatMap((b, i) => (b.over
-      ? [0, 6, 12, 18].map((y) => s('rect', { class: 'bin over', x: String(i), y: String(y), width: '1', height: '3' }))
-      : [s('rect', { class: 'bin', x: String(i), y: '0', width: '1', height: '24', 'fill-opacity': (0.08 + 0.92 * b.level).toFixed(3) })])));
+    const d = dur(), runs = script && d > 0 ? heatStops(raw || script, T, ceiling) : [];
+    grad.replaceChildren(...runs.flatMap((b) => [b.from, b.to].map((t) => s('stop', { offset: String(t / d), style: 'stop-color: ' + b.color }))));
+    bins.replaceChildren(...runs.filter((b) => b.over).flatMap((b) => [0, 6, 12, 18].map((y) => s('rect', { class: 'bin over',
+      x: String(b.from / d * HEAT_BINS), y: String(y), width: String((b.to - b.from) / d * HEAT_BINS), height: '3' }))));
   }
 
   function draw() {

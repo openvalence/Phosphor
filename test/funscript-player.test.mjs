@@ -52,8 +52,8 @@ const CONTRACT = {
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
-  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints', 'seekAt', 'heatLevels',
-    'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
+  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints',
+    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
   [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'wire', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
@@ -365,6 +365,15 @@ const PB_POS = [20, 35, 50, 65, 80, 65, 50, 35];
 if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % PB_POS.length] }); at += 400 + ((k * 37) % 298); }
 else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
+// A real-shaped script for the heat and Scale (v): slow full strokes, flicks at the top (Makima overshoots there),
+// a hold, a buzz, medium strokes, fast strokes. [until ms, span ms, positions cycled].
+const REAL_ACTIONS = [];
+for (let at = 0, k = 0, s = 0, SECS = [[6000, 900, [0, 100]], [10000, 260, [0, 100, 70, 100]], [12000, 1000, [50]], [15000, 110, [40, 62]],
+  [21000, 420, [0, 100, 30, 100]], [25000, 190, [10, 95]], [29400, 700, [20, 80]]]; s < SECS.length; s++) {
+  const [until, span, cyc] = SECS[s];
+  for (let j = 0; at < until; j++, k++, at += span + ((k * 37) % Math.max(1, span >> 2))) REAL_ACTIONS.push({ at: Math.round(at), pos: cyc[j % cyc.length] });
+}
+const REAL_SCRIPT = { version: '1.0', inverted: false, range: 100, actions: REAL_ACTIONS };
 /** The knot k whose span (k-1 -> k) lasts durMs at this rate, or -1. */
 function knotOf(durMs, rate = 1) {
   let best = -1, err = Infinity;
@@ -593,10 +602,10 @@ const playBtn = (page) => {
   return { click: () => l.evaluate((e) => e.click()), isDisabled: () => l.isDisabled(),
     textContent: () => l.getAttribute('aria-label').then((t) => t.replace(/ \(k\)$/, '')) };
 };
-async function loadClip(page) {
+async function loadClip(page, script = SCRIPT) {
   await page.setInputFiles(C + ' .fsp-src input[type=file]', [
     { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
-    { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) },
+    { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(script)) },
   ]);
   return page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).then(() => true).catch(() => false);
 }
@@ -1361,6 +1370,62 @@ if (!LIVE && !args.includes('--stash-live')) {
   const fbInt = await page.locator(C + ' .fsp-dt .int').getAttribute('points');
   ok('fallback: the analyzer says Kinetic: fallback, draws no render, keeps the shaped curve', fb && !fbPts && !!fbInt, { fb, fbPts });
   ok('fallback: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (v) the planner line and the speed heat (ph-rsb5): the real-shaped script under Makima ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(v) planner line, speed heat');
+  const tc = tuningCatalog();
+  tc.entries = decodeCatalog(tc.bytes);
+  const hub = makeHub(tc);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  Object.assign(hub.values, KIN_VALUES);
+  const { ctx, page, up, errors } = await open({ cat: tc, hub, width: 1280, prefs: { 'phosphor.funscript.interp': { mode: 'makima' } } });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const onPage = up && await page.click('[data-tab-id="plugin:funscript-player:player"]').then(() => page.waitForSelector(C, { timeout: 5000 }))
+    .then(() => true, () => false);
+  ok('visuals: the page mounts the card and the real-shaped clip loads', onPage && await loadClip(page, REAL_SCRIPT));
+  await page.locator(C + ' .fsp-expand').click();
+  const kinText = () => page.evaluate((c) => document.querySelector(c + ' .fsa-kin').textContent, C);
+  const rendered = await page.waitForFunction((c) => /^Kinetic: wasm {2}\d+ anomalies/.test(document.querySelector(c + ' .fsa-kin').textContent)
+    && (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
+  await video(page, (v) => { v.currentTime = 7.5; });
+  await page.waitForTimeout(600);
+  if (SHOT) {
+    await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-analyzer-1280x800.png') });
+    await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-timeline.png') });
+  }
+  // ---- A: the planner's line is --highlight, the script curve keeps --intent, the readout carries the swatch ----
+  const col = await page.evaluate((c) => {
+    const q = (s) => document.querySelector(c + ' ' + s);
+    const tok = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const x = getComputedStyle(i).color; i.remove(); return x; };
+    return { kin: getComputedStyle(q('.fsp-dt .kin')).stroke, int: getComputedStyle(q('.fsp-dt .int')).stroke,
+      swatch: getComputedStyle(q('.fsa-kin'), '::before').backgroundColor, highlight: tok('var(--highlight)'), intent: tok('var(--intent)') };
+  }, C);
+  ok('A: the Kinetic line strokes --highlight, the script curve keeps --intent, the Kinetic readout carries a --highlight swatch (the legend)',
+    rendered && col.kin === col.highlight && col.int === col.intent && col.swatch === col.highlight && col.highlight !== col.intent, col);
+  // ---- B: one hard-edged color run per action span, dark to --reality to --highlight, no red ----
+  const fsm = mods[P + 'funscript.js'], tlm = mods[P + 'timeline.js'];
+  const want = tlm.heatStops ? tlm.heatStops(fsm.parseFunscript(REAL_SCRIPT), { offsetMs: 0, lo: 0, hi: 1, invert: false }) : [];
+  const band = await page.evaluate((c) => {
+    const px = (v) => { const cv = document.createElement('canvas'); cv.width = cv.height = 1; const x = cv.getContext('2d');
+      x.fillStyle = v; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+    const tok = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const x = getComputedStyle(i).color; i.remove(); return px(x); };
+    return { stops: [...document.querySelectorAll(c + ' .fsp-ov linearGradient stop')].map((s) => [+s.getAttribute('offset'), px(getComputedStyle(s).stopColor)]),
+      highlight: tok('var(--highlight)') };
+  }, C);
+  const st = band.stops, pairs = st.length / 2;
+  const hard = st.every((s, i) => (i % 2 ? i + 1 >= st.length || Math.abs(st[i + 1][0] - s[0]) < 1e-6 : same(st[i + 1] && st[i + 1][1], s[1])));
+  const top = want.length ? want.reduce((a, b, i) => (b.ups > want[a].ups ? i : a), 0) : -1;
+  const topRgb = top >= 0 && st[2 * top] ? st[2 * top][1] : [255, 0, 0];
+  ok('B: the heat is one gradient run per action span (consecutive equal colors merged), hard edges, no blur across actions',
+    want.length > 20 && pairs === want.length && hard, { pairs, want: want.length, hard });
+  ok('B: the fastest span reads --highlight and red never dominates it (law 13)',
+    topRgb[0] <= Math.max(topRgb[1], topRgb[2]) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, highlight: band.highlight, ups: want[top] && want[top].ups });
+  ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
 }

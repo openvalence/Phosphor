@@ -107,7 +107,8 @@ mode's overshoot reaches the hub, within 1.5 x the lesser chord), and no
 `curve_family`: the hub draws the curve between actions. Smoothing and
 slew move each action to the filtered curve's value there and send the
 chord rule. The drawn curve (`shape()`, pieces of at most 40 ms,
-`STEP_MS`) is display only: the detail view, the heat and the speed meter.
+`STEP_MS`) is display only: the detail view and the speed meter (the heat
+reads the file's actions, Look).
 
 | mode | rule | parameter | leaves its two actions |
 |---|---|---|---|
@@ -377,10 +378,10 @@ FULL
   text and icons only; empty, loading, error and refusal states render
   inside the same boxes. The browser test asserts identical rects across
   states.
-- **Look.** Script curve, heat and intent tick `--intent`; measured
+- **Look.** Script curve and intent tick `--intent`; measured
   `telemetry.position` (as a share of `window.min/max`, drawn only when the
   window is reported, law 9; dimmed when stale, law 8) `--reality`;
-  playhead, selected tile and focus `--highlight`; gates and over-cap
+  playhead, selected tile, focus and the analyzer's Kinetic line `--highlight`; gates and over-cap
   `--warn`, as a mark only: the status slot's 3 px bar, the speed bar,
   striped heat. Text stays `--tx`: `--warn` is locked (law 13) and reads
   1.8:1 on Paper's white card. Muted text (title, the Offset label, zoom
@@ -391,6 +392,19 @@ FULL
   sit 13.6 Delta E apart. The reality trace is drawn at `mediaAt(t - offset)`, so a
   machine in sync draws on the curve: offset can be set by eye. It is a
   scope, not a measurement (ponytail; arrival-stamped).
+- **Heat** (ph-rsb5): the speed heatmap funscript users know. Each span
+  between two of the file's actions is painted at its stroke speed,
+  `|dpos| / dt` in units/s (pos 0..100), as one hard-edged run of a
+  full-height band: no blur across actions (one SVG linearGradient with a
+  stop pair per run, equal neighbors merged). The ramp runs through the
+  theme, mixed in oklab: `--bg-sunken` at rest, `--reality` at 200 units/s
+  (`HEAT_MID_UPS`), `--highlight` from 400 units/s (`HEAT_TOP_UPS`) up.
+  Never red: RENDERING law 13 keeps red for hazards, so the common
+  black-blue-green-yellow-red ramp is out. The heat ignores Range and
+  Scale (the file's own speeds, as other players show them); a run whose
+  chord speed through the Range passes `limit.input.speed` is striped
+  `--warn` over it. Under the default theme `--highlight` is `--reality`,
+  so the top half of the ramp is one color there.
 - **Handles** (Advanced Penetration's vocabulary): the scrub playhead is a
   vertical pill on the heat, the bottom band, whose line runs up through
   the detail as one bar (left-right; arrows 5 s, Shift 30 s, Home, End;
@@ -659,6 +673,10 @@ timeline's box. Collapsing restores the card as it was.
   between -100 and 400 ms. A scope like the trace, not a measurement:
   telemetry arrives on its own cadence (ph-smvd.12's compensation is the
   measured path).
+- **Legend.** The detail's lines: the shaped script curve `--intent` (2 px),
+  the file's actions muted (`--line-4`) under it, `plan.current` `--intent`
+  at reduced weight, the measured position `--reality`, and the Kinetic
+  preview `--highlight`, named by the swatch before the Kinetic readout.
 
 Decisions (veto-able):
 
@@ -713,8 +731,9 @@ behaves the same on the machine, without rendering anything on the hub.
   artifact everywhere (dev, the shell, an override). `kinetic/kinetic.js`
   starts one Worker from a blob URL per open analyzer, instantiates the wasm
   once and answers render requests; the page thread never runs the planner.
-- **Input.** The shaped script's segments (`segmentsOf`) as the host sends
-  them: one per span ending at the same end velocity, no curve family, each
+- **Input.** The wire Script's segments (`ctl.wire`, interp.js `wire()`,
+  through `segmentsOf`) as the host sends them: one per span ending at the
+  same end velocity, no curve family, each
   submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
@@ -726,7 +745,7 @@ behaves the same on the machine, without rendering anything on the hub.
 - **Output.** 1 ms steps, kept every 5 ms (more on scripts past 1000 s, at
   most `KIN_MAX_SAMPLES`): `position_mm` (what an on-time LP core renders),
   velocity and accel, the flags ORed per kept sample, and counts over every
-  step. The detail draws the position `--intent` under the script curve; the
+  step. The detail draws the position `--highlight` under the script curve; the
   analyzer's Kinetic line reads `Kinetic: wasm  n anomalies` and each nonzero
   flag time: `clamped`, `guard` (the fallback bit: the Ruckig guard or a
   stretched deadline) and `shaped` (Blend spent amplitude or shape). Its
@@ -734,7 +753,7 @@ behaves the same on the machine, without rendering anything on the hub.
 - **What it replaces.** There was no JS planner model. The analyzer's only
   picture of the machine was the shaped script itself (interp.js `shape()`
   through `applyT`, the intent curve) with the limit judged by chord speed
-  against `limit.input.speed` (timeline.js `heatLevels`, the speed meter's
+  against `limit.input.speed` (timeline.js `heatStops`, the speed meter's
   `strokeSpeed`). That stays the card's picture, and the analyzer's fallback.
 - **Fallback.** When the worker cannot start or the compile is refused, the
   line reads `Kinetic: fallback` and nothing is drawn over the shaped curve

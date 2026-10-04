@@ -561,12 +561,17 @@ export function mountPlay(el, { value, onChange });   // -> unmount(); the setti
 
 // timeline.js
 export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 8000, MIN_SPAN = 0.05;
+export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;          // heat speeds, units/s: --reality, then --highlight
 export const CSS, COPY;
 export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function kinPoints(render, fromMs, toMs, W, H);        // -> 'x,y ...', at most 2000; '' without pos
 export function seekAt(x, W, durationMs);                     // -> ms
-export function heatLevels(bins, T, ceiling), traceLines(trace, fromMs, toMs, W, H),
-  clampRange(T, key, v), zoomStep(ms, dir);                   // pure, node-tested
+export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mix in oklab to --reality at HEAT_MID_UPS,
+  // on to --highlight at HEAT_TOP_UPS and above; never red (law 13)
+export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, color, over}]: one run per action span by
+  // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
+  // the chord speed through T's Range past ceiling.vmax
+export function traceLines(trace, fromMs, toMs, W, H), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested
 export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop, onSettings, settingsOpen });
   // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
   // onSettings(on): the Settings button at the cluster's right end (hidden without it), pressed from settingsOpen.
@@ -578,8 +583,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
   // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setExpanded(on), setLoop({a, b}), unmount() }
-  // kin: the analyzer's Kinetic render (analyzer.kinetic) or null, drawn --intent under the script curve
-  // script: the shaped Script (intent curve, heat); raw: the parsed one, drawn muted when it differs
+  // kin: the analyzer's Kinetic render (analyzer.kinetic) or null, drawn --highlight under the script curve
+  // script: the shaped Script (intent curve, display only); raw: the parsed one, drawn muted when it differs; the heat
+  // is heatStops(raw or script) as one linearGradient of hard stops over the overview, over-limit runs striped --warn
   // ceiling: {vmax: number | null, spanMm: number | null}
   // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
   //   media axis, last 8 s; p is plan.current as a window share (null when stale or absent), drawn under the script
@@ -656,7 +662,8 @@ the video moves to an in-card thumbnail (full: the analyzer column's width,
 `clamp(320px, 40%, 560px)` of the card, by 180 at the top right; handheld:
 one tap high in the source row), never picture-in-picture (law 1).
 Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
-(or the last refusal); a 20 px Kinetic line (`kinText`, the version, the render time and
+(or the last refusal); a 20 px Kinetic line (`kinText` after a `--highlight` swatch, the legend of the
+timeline's Kinetic line; the version, the render time and
 the anomaly kinds in its tooltip); then the rows, one `var(--tap)` each, in a list that
 scrolls inside its box. Live writes through `api.write`; Preview through
 `api.writeTrial`, Apply `api.commitTrial()`, Discard `api.revertTrial()`;

@@ -18,11 +18,12 @@
 // - Rows are var(--tap) high and the head rows fixed; the list scrolls inside
 //   its own box, so a state change moves nothing.
 // - lagOf is a scope, not a measurement: telemetry arrives on its own cadence.
-// - The motion preview is the machine's own planner (kinetic/kinetic.js), fed the shaped script, the
-//   limits and window by role and the Tuning rows as shown (a drag's draft included); every change
-//   re-renders and a newer render supersedes. When the worker fails the line reads 'Kinetic: fallback'
-//   and nothing is drawn over the shaped curve and the heat's chord-speed ceiling (the JS picture).
-// - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step.
+// - The motion preview is the machine's own planner (kinetic/kinetic.js), fed the wire Script (interp.js
+//   wire(), one segment per action), the limits and window by role and the Tuning rows as shown (a drag's
+//   draft included); every change re-renders and a newer render supersedes. When the worker fails the line
+//   reads 'Kinetic: fallback' and nothing is drawn over the shaped curve and the heat (the JS picture).
+// - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step; the readout's
+//   --highlight swatch is the legend of the timeline's Kinetic line.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -119,6 +120,7 @@ export const CSS = `
 .fsa-head .fsp-btn { padding: 0 8px; }
 .fsa-head .fsa-gap { flex: 1 1 0; }
 .fsa-lag { height: 20px; line-height: 20px; font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: middle; background: var(--highlight); }
 .fsa-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--r-s); }
 .fsa-g { height: 20px; line-height: 20px; padding: 0 6px; font-size: .72rem; color: var(--tx-mut); background: var(--bg-sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-row { position: relative; height: var(--tap); display: grid; align-items: center; gap: 6px; padding: 0 6px 0 9px;

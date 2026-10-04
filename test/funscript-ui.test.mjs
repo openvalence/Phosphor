@@ -3,7 +3,7 @@
  * (ph-smvd.5): timeline.js's pure drawing math and ui.js's controller over
  * a fake video element, a fake host API, the real media clock and the real
  * scheduler. No DOM, no network.
- *   (a) timeline   curvePoints, seekAt, traceLines, heatLevels, clampRange, zoomStep
+ *   (a) timeline   curvePoints, seekAt, traceLines, heatStops, heatColor, clampRange, zoomStep
  *   (b) helpers    compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote
  *   (c) control    nothing before Play but the grant warm-up; preroll then video
  *                  start; tiled segments; a gate pauses in the same tick with one
@@ -18,7 +18,7 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { curvePoints, seekAt, traceLines, heatLevels, clampRange, zoomStep, ZOOMS }
+import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS }
   from '../plugins/factory/funscript-player/timeline.js';
 import { createControl, compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
@@ -29,6 +29,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // 0, 100, 0, 100 ... every 500 ms for 10 s
 const script = parseFunscript({ actions: Array.from({ length: 21 }, (_, i) => ({ at: i * 500, pos: i % 2 ? 100 : 0 })) }, 'test');
@@ -50,10 +51,20 @@ console.log('(a) timeline');
   ok('trace: a null u is a gap, a stale change a new line', lines.length === 3 && !lines[0].stale && lines[2].stale
     && lines[0].points === '0.0,100.0 100.0,0.0' && lines[2].points.startsWith('400.0,50.0'), lines);
   ok('trace: outside the window is dropped', traceLines(tr, 250, 450, 1000, 100).length === 1);
-  const hb = heatLevels(Float32Array.from([1, 2, 4]));
-  ok('heat: scaled to the loudest bin without a ceiling', near(hb[2].level, 1) && near(hb[0].level, 0.25) && !hb.some((b) => b.over));
-  const hc = heatLevels(Float32Array.from([1, 2, 4]), { ...T0, hi: 0.5 }, { vmax: 100, spanMm: 100 });
-  ok('heat: a ceiling scales by the range and marks over', near(hc[1].level, 1) && !hc[1].over && hc[2].over && near(hc[0].level, 0.5), hc);
+  // 0 -> 100 in 500 ms (200 units/s), a 1 s hold, 100 -> 0 in 250 ms (400), 0 -> 30 in 300 ms (100), from a 200 ms lead-in.
+  const hs = parseFunscript({ actions: [{ at: 200, pos: 0 }, { at: 700, pos: 100 }, { at: 1700, pos: 100 }, { at: 1950, pos: 0 }, { at: 2250, pos: 30 }] });
+  const runs = heatStops(hs);
+  ok('heat: one run per action span at |dpos| / dt in units/s, the lead-in at rest',
+    runs.length === 5 && same(runs.map((r) => [r.from, r.to, Math.round(r.ups)]), [[0, 200, 0], [200, 700, 200], [700, 1700, 0], [1700, 1950, 400], [1950, 2250, 100]]), runs);
+  ok('heat: the ramp is chassis dark, --reality at HEAT_MID_UPS, --highlight from HEAT_TOP_UPS, never a hex or red',
+    heatColor(0) === 'var(--bg-sunken)' && heatColor(HEAT_MID_UPS) === 'color-mix(in oklab, var(--highlight) 0%, var(--reality))'
+    && heatColor(HEAT_MID_UPS / 2) === 'color-mix(in oklab, var(--reality) 50%, var(--bg-sunken))' && heatColor(HEAT_TOP_UPS) === 'var(--highlight)'
+    && heatColor(9999) === 'var(--highlight)' && runs.every((r) => !/#|red|--bad|--estop|--warn/.test(r.color)));
+  const merged = heatStops(parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 100 }, { at: 1000, pos: 0 }, { at: 1250, pos: 100 }] }));
+  ok('heat: equal neighbors merge into one run, the next speed starts a hard edge', merged.length === 2 && merged[0].to === 1000 && merged[1].from === 1000, merged);
+  const hc = heatStops(hs, { ...T0, hi: 0.5 }, { vmax: 150, spanMm: 100 });
+  ok('heat: a ceiling through the Range marks the spans past it (mm/s = units/s x span x Range / 100)',
+    same(hc.map((r) => r.over), [false, false, false, true, false]), hc.map((r) => r.over));
   ok('range: lo kept MIN_SPAN under hi', near(clampRange({ lo: 0, hi: 0.5 }, 'lo', 0.9).lo, 0.45));
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000
