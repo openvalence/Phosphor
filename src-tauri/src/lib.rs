@@ -7,6 +7,17 @@ mod plugins;
 mod virtual_sim;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// The webview's own errors (window.onerror, unhandled rejections, console.error)
+/// land in the log plugin's file so a field failure is readable without devtools.
+#[tauri::command]
+fn js_log(level: String, msg: String) {
+  match level.as_str() {
+    "error" => log::error!(target: "webview", "{msg}"),
+    "warn" => log::warn!(target: "webview", "{msg}"),
+    _ => log::info!(target: "webview", "{msg}"),
+  }
+}
+
 pub fn run() {
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
@@ -18,6 +29,7 @@ pub fn run() {
     .manage(virtual_sim::Sim::default());
   builder
     .invoke_handler(tauri::generate_handler![
+      js_log,
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
       plugins::plugins_list,
