@@ -19,6 +19,16 @@ fn js_log(level: String, msg: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  // NVIDIA's proprietary driver cannot back WebKitGTK's DMABUF renderer: the
+  // window stays blank on X11 and the Wayland connection dies with protocol
+  // error 71 (measured on a Quadro RTX 5000, driver 610, 2026-10-04). Must be
+  // set before GTK initializes; an explicit value in the environment wins.
+  #[cfg(target_os = "linux")]
+  if std::path::Path::new("/proc/driver/nvidia").exists()
+    && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+  {
+    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+  }
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_blec::init())
