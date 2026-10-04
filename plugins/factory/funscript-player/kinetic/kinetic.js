@@ -59,7 +59,8 @@ export function segmentsOf(script, T) {
 /**
  * q: {limits: {vmax, amax, jmax, rail, horizonMs}, window: [lo, hi] mm, tuning: tuningOf(), segs,
  * steps, stepMs = 1, every = 1, leadMs = LEAD_MS}. Yields between chunks; returns position_mm,
- * velocity_mm_s and accel_mm_s2 every `every` steps, the flags ORed over each, and counts over every step.
+ * velocity_mm_s, accel_mm_s2 and raw (the plan's p, a window share before the window clamp: overshoot
+ * included) every `every` steps, the flags ORed over each, and counts over every step.
  */
 export function* renderCore(k, q) {
   const L = q.limits, h = k.kinetic_create(L.vmax, L.amax, L.jmax, L.rail, L.horizonMs || 0);
@@ -76,7 +77,7 @@ export function* renderCore(k, q) {
     }
     k.kinetic_set_tuning(h, tb);
     const step = q.stepMs || 1, every = Math.max(1, q.every | 0), lead = q.leadMs ?? 125, n = Math.ceil(q.steps / every);
-    const pos = new Float32Array(n), vel = new Float32Array(n), acc = new Float32Array(n), flags = new Uint8Array(n);
+    const pos = new Float32Array(n), vel = new Float32Array(n), acc = new Float32Array(n), raw = new Float32Array(n), flags = new Uint8Array(n);
     const anomalies = new Uint32Array(32), counts = new Uint32Array(5), segs = q.segs;
     let next = 0, accepted = 0, refused = 0;
     for (let i = 0; i < q.steps; i++) {
@@ -86,13 +87,16 @@ export function* renderCore(k, q) {
       }
       k.kinetic_step(h, step / 1000, out);
       const j = (i / every) | 0, f = dv.getUint8(out + 58);
-      if (i % every === 0) { pos[j] = dv.getFloat32(out + 44, true); vel[j] = dv.getFloat32(out + 36, true); acc[j] = dv.getFloat32(out + 40, true); }
+      if (i % every === 0) {
+        pos[j] = dv.getFloat32(out + 44, true); vel[j] = dv.getFloat32(out + 36, true); acc[j] = dv.getFloat32(out + 40, true);
+        raw[j] = dv.getFloat64(out + 8, true);
+      }
       flags[j] |= f;
       for (let b = 0; b < 5; b++) if ((f >> b) & 1) counts[b]++;
       for (let a = dv.getUint32(out + 52, true); a; a &= a - 1) anomalies[31 - Math.clz32(a & -a)]++;
       if ((i & 8191) === 8191) yield i;
     }
-    return { pos, vel, acc, flags, anomalies, counts, accepted, refused, plans: dv.getUint32(out + 60, true) };
+    return { pos, vel, acc, raw, flags, anomalies, counts, accepted, refused, plans: dv.getUint32(out + 60, true) };
   } finally {
     k.free(out);
     k.free(tb);
@@ -135,7 +139,7 @@ onmessage = async (e) => {
       const r = it.next();
       if (r.done) {
         const v = r.value;
-        postMessage({ id: q.id, ms: performance.now() - t, ...v }, [v.pos.buffer, v.vel.buffer, v.acc.buffer, v.flags.buffer]);
+        postMessage({ id: q.id, ms: performance.now() - t, ...v }, [v.pos.buffer, v.vel.buffer, v.acc.buffer, v.raw.buffer, v.flags.buffer]);
         return;
       }
       await new Promise((go) => setTimeout(go));

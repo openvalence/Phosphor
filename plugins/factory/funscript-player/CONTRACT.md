@@ -98,7 +98,7 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
   stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
-  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0},
+  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false},
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, lowLatency: false, autoLatency: false} }
 // play repairs: loopCount 0..99 integer (0 = forever), homeAfterMs 1000..60000 step 500, homePoint 0..1,
@@ -548,9 +548,13 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
+//   scale,               the gain in force (Auto's fit or interp.scale), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
-//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), get low and get wire.
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), get low and get wire;
+//   Auto Scale: get scale, get fit (under scaleAuto the wire at scale 1 for the analyzer to measure, else null),
+//   fitKinetic(sc, extent) (the analyzer's measure of fit; sets the gain to interp.fitGain(extent)). Under
+//   scaleAuto a load, a mode, parameter, filter or Range change first sets fitGain(curveExtent(script)).
 export const PLAY_CSS;
 export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
   // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Low latency, Auto latency;
@@ -642,6 +646,7 @@ follows the gate in the slot order and stands while `api.trialPending`.
 export const TUNING = 'Tuning', LIMIT_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk'];
 export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
 export const KIN_MAX_SAMPLES = 200000;   // a render keeps at most this many display samples (every >= EVERY)
+export const WIDE_AT = 0.25, WIDE_SPAN = 0.5;   // the wall-free measure: window share p sits at WIDE_AT + p x WIDE_SPAN
 export const CSS, COPY;
 export function tuningGroups(model);   // -> [{name, fields}]: writable slider, stepper, toggle, segmented and
   // select fields of every group whose first ' / ' segment is 'Tuning' (RFC-094), named by the rest; then
@@ -649,11 +654,17 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
+export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> max |p - 0.5| in script units of a wall-free render's
+  // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_* and T's Range
 export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  guard 250 ms'
-export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the wire Script, ctl.wire), T(): the player's
-  // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, unmount() }
+export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
+  // T(): the player's; fit(): ctl.fit
+  // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
   // kinetic: the latest render of script() through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
+  // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle
+  // half of a window twice as wide (pos_e4 and endVelE3 through WIDE_*), the wall guards out of reach: extent is
+  // wideExtent over the script's span; null without rail room for that window or on a refusal
 ```
 
 The expand button on the detail opens it in place: the outer card rect is
@@ -697,6 +708,7 @@ export function createKinetic();   // -> { ready: Promise<version>, render(q) ->
 
 // KineticRender, one sample every `every` 1 ms steps:
 { pos: Float32Array /* position_mm */, vel: Float32Array /* velocity_mm_s */, acc: Float32Array /* accel_mm_s2 */,
+  raw: Float32Array /* the plan's p, a window share before the window clamp */,
   flags: Uint8Array /* ORed over the samples' steps */, anomalies: Uint32Array(32) /* steps with bit k */,
   counts: Uint32Array(5) /* steps with FLAGS[b] */, accepted, refused, plans, ms /* worker render time */ }
 ```
@@ -713,9 +725,14 @@ emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
 export const STEP_MS = 40;            // the longest piece shape() cuts a curved span into (display only)
 export const MODES;                   // frozen {id -> its parameter key | null}: linear, step, smoothstep, cosine,
                                       // catmull 'tension', hermite 'bias', monotone, pchip, akima, makima
-export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000} with steps
-export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0}
+export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000, scale 0.25..1}
+                                      // with steps
+export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0,
+                                      // scale: 1, scaleAuto: false}
 export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it
+export function fitGain(e);           // -> the largest scale on the 0.01 grid (>= 0.25) keeping an excursion e (max |p - 0.5|
+                                      // at scale 1) in 0..1; 1 when e <= 0.5
+export function curveExtent(script, interp);   // -> max |p - 0.5| of the mode's curve before the clamp and the filters
 export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
 export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
   // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
@@ -723,8 +740,12 @@ export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script
 export function wire(script, interp, ctx);     // -> Script the scheduler sends: the actions' own knots; vel the mode's
   // slope at each (cubic modes; 0 for step, smoothstep, cosine); with smoothing or slew each action takes the filtered
   // curve's value and vel is null; linear with both off returns `script` itself, so the scheduler runs byte-identical
+  // shape() and wire() first move every action about the window center, p' = 0.5 + (p - 0.5) x interp.scale (the
+  // controller passes Auto's gain as scale); at 1 nothing moves
 export const COPY, CSS;
-export function mountInterp(el, { value, onChange });   // -> unmount(); the settings card rows, onChange(interp) on commit
+export function mountInterp(el, { value, onChange, gain });   // -> unmount(); the settings card rows, onChange(interp)
+  // on commit; Scale: Auto toggle, slider and typed value 0.25..1 (manual), or the readout 'auto 0.87' from gain()
+  // (polled at 4 Hz) with the slider disabled (Auto)
 ```
 
 The controller schedules `wire(script)` (`ctl.wire`, the Kinetic preview's script too): one segment per action,
@@ -748,7 +769,7 @@ export function activate(api);   // -> deactivate()
 //                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
 //                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
-//   api.registerSettings((el) => mountConnect + mountInterp + mountPlay, one unmount for the three);
+//   api.registerSettings((el) => mountConnect + mountInterp (gain: player.scale) + mountPlay, one unmount for the three);
 //   registerPlayerPage(api, player, HERO.spec, that same function);   // page.js: the card, then a Settings section mounting it;
 //     registered fill and mediaFullscreen (docs/PLUGINS.md, Pages): the card takes the pane, the section at most half
 //   return () => player.dispose();

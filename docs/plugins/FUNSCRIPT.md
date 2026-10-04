@@ -128,9 +128,46 @@ The cubic modes start and end the script at rest; every value is clamped to
 lag) and then a slew limit (0 to 2000 mm/s, causal, over the window's length
 in mm times the Range share; off without the length) apply. Prefs key
 `interp`, mirrored as `phosphor.funscript.interp`: `{mode, tension, bias,
-smoothMs, slewMmS}`; the controls sit on the plugin's settings card. The
+smoothMs, slewMmS, scale, scaleAuto}`; the controls sit on the plugin's settings card
+(and the page's Settings section, the same card). The
 detail view draws the shaped curve as intent and the file's actions muted
 under it.
+
+**Scale** (ph-6e36). The overshooting modes (Catmull-Rom, Hermite, Akima,
+Makima) reach past an action, so a stroke that touches the window's end is
+cut there by the hub: its wall guard trims the end velocity and the clamp
+holds the position (RFC-100 `clamped`). Scale moves every action about the
+window center before the mode, `p' = 0.5 + (p - 0.5) x g`, g 0.25 to 1.00
+(default 1.00, `scale`): the wire (still one segment per action, the
+tangents scaled with it), the drawn curve and the Kinetic preview all run
+on the moved actions. The row: an Auto toggle (`Fit the curve to the
+window`), the slider (`Scale`) and a typed value; under Auto the slider
+grays and the value reads the gain in force, `auto 0.92`. Auto
+(`scaleAuto`) takes `g = min(1, 0.5 / max|p - 0.5|)` on the 0.01 grid
+(`fitGain`), in script units, so the curve fits the Range (the whole
+window at the default Range):
+
+- at once from the drawn curve before its clamp (`curveExtent`), on a load
+  and on a mode, parameter, filter or Range change;
+- then from the machine's planner when its measure lands (analyzer.js
+  `fit`): the wire at scale 1 rendered by Kinetic with the same mm geometry
+  in the middle half of a window twice as wide, so the wall guards never
+  bend it and the excursion is the hub's own quintic through the tangents.
+  The guards are why the preview's own render cannot be measured: at the
+  real window they already trimmed the overshoot (Makima on the test's
+  script: excursion 0.5000 at the window, 0.5407 wall-free). A card frames
+  its analyzer while Auto is on, shown or not; without rail room for the
+  doubled window, in glance or in the fallback the curve's estimate stays.
+
+Measured on the browser test's real-shaped script (window 0-100 mm, 1000
+mm/s, 50000 mm/s2): Makima clamps 7 ms and trims 12 end velocities at
+scale 1; Auto picks 0.92 (the curve alone says 0.82) and the render clamps
+0 ms with no end velocity trimmed. Akima 0.94, Catmull-Rom 0.91, Hermite
+(bias 0) 0.78; the monotone modes and Linear stay at 1.
+
+- **I6** Auto measures in script units against the Range, not the window:
+  a narrow Range scales an overshoot the window would still hold. Veto:
+  fit the window (the Range's center then moves with it).
 
 Veto-able (ph-smvd.10):
 

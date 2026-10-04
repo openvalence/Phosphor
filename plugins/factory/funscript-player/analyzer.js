@@ -24,6 +24,10 @@
 //   reads 'Kinetic: fallback' and nothing is drawn over the shaped curve and the heat (the JS picture).
 // - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step; the readout's
 //   --highlight swatch is the legend of the timeline's Kinetic line.
+// - fit() (Auto Scale): once the preview is current, one more render of that Script measures the planner's
+//   own excursion with the walls out of reach: the same mm geometry in the middle half of a window twice as
+//   wide, so the window guards (end velocity cut, clamp) never bend it. Without the rail room for that window
+//   the measure is null and the controller keeps its curve estimate.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -33,6 +37,8 @@ export const TUNING = 'Tuning';
 export const LIMIT_ROLES = Object.freeze(['limit.input.speed', 'limit.input.accel', 'limit.input.jerk']);
 export const LAG_MIN_MS = -100, LAG_MAX_MS = 400, LAG_STEP_MS = 2, LAG_MIN_POINTS = 30, LAG_EVERY_MS = 500;
 export const KIN_MAX_SAMPLES = 200000;
+/** A wall-free measure render puts the window's share p at WIDE_AT + p x WIDE_SPAN of a window twice as wide. */
+export const WIDE_AT = 0.25, WIDE_SPAN = 0.5;
 const CONTROLS = new Set(['slider', 'stepper', 'toggle', 'segmented', 'select']);
 const TRIAL_ROLE = 'action.trial';
 
@@ -157,6 +163,17 @@ const h = (tag, attrs = {}, ...kids) => {
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 
+/**
+ * A wall-free render's widest excursion from the Range center, script units: raw (window shares of the wide
+ * window, one every dtMs from media t0) over [fromMs, toMs], back through WIDE_* and T's Range.
+ */
+export function wideExtent(raw, t0, dtMs, fromMs, toMs, T) {
+  const span = T.hi - T.lo, j0 = Math.max(0, Math.ceil((fromMs - t0) / dtMs)), j1 = Math.min(raw.length, Math.floor((toMs - t0) / dtMs) + 1);
+  let e = 0;
+  for (let j = j0; j < j1; j++) e = Math.max(e, Math.abs(((raw[j] - WIDE_AT) / WIDE_SPAN - T.lo) / span - 0.5));
+  return e;
+}
+
 /** The Kinetic readout: the status word, the anomaly count and each flag's nonzero time, or the refusal. */
 export function kinText(state, r) {
   if (state !== 'wasm') return COPY.kinFallback;
@@ -169,10 +186,12 @@ export function kinText(state, r) {
 }
 
 /**
- * deps: api; trace() -> the player's trace [{m, u, p, stale}]; script() -> Script | null; T() -> the transform.
- * -> { frame(), get mode(), get kinetic() (the latest render or null), unmount() }
+ * deps: api; trace() -> the player's trace [{m, u, p, stale}]; script() -> Script | null; T() -> the transform;
+ * fit() -> the Script to measure for Auto Scale (the wire at scale 1) or null.
+ * -> { frame(), get mode(), get kinetic() (the latest render or null), get fit() ({sc, extent} | null), unmount() }
  */
-export function mountAnalyzer(el, { api, trace = () => [], script = () => null, T = () => ({ offsetMs: 0, lo: 0, hi: 1, invert: false }) }) {
+export function mountAnalyzer(el, { api, trace = () => [], script = () => null, T = () => ({ offsetMs: 0, lo: 0, hi: 1, invert: false }),
+  fit = () => null }) {
   const capable = () => !!api.field(TRIAL_ROLE);
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [];
@@ -189,7 +208,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   const root = h('div', { class: 'fsa' }, head, lag, kinEl, list);
   el.append(root);
 
-  let kin = null, kinState = 'wasm', kinKey = '', kinSc = null, kinR = null, version = '';
+  let kin = null, kinState = 'wasm', kinKey = '', kinSc = null, kinR = null, version = '', busy = 0, seq = 0, fitR = null;
   // The fallback's tooltip is the failure, where the version would be.
   const kinFail = (e) => { kinState = 'fallback'; kinR = null; version = String((e && e.message) || e || 'Kinetic failed'); };
   try {
@@ -207,13 +226,25 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     if (!Object.values(limits).slice(0, 4).every((x) => x > 0) || !(win[1] > win[0])) { kinR = { error: COPY.noLimits }; kinSc = null; return; }
     const tuning = tuningOf(rows.map((it) => [it.f, shown(it)]));
     const key = JSON.stringify([limits, win, tuning, t]);
-    if (sc === kinSc && key === kinKey) return;
-    kinSc = sc; kinKey = key;
-    const { segs, t0, steps } = segmentsOf(sc, t);
-    const every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
-    kin.render({ limits, window: win, tuning, segs, steps, stepMs: 1, every }).then((r) => {
-      if (r) kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1] };
-    }, kinFail);
+    const run = (s, w, map, done) => {
+      const id = busy = ++seq, { segs, t0, steps } = segmentsOf(s, t), every = Math.max(EVERY, Math.ceil(steps / KIN_MAX_SAMPLES));
+      kin.render({ limits, window: w, tuning, segs: map ? segs.map(map) : segs, steps, stepMs: 1, every }).then((r) => {
+        if (busy === id) busy = 0;
+        if (r) done(r, t0, every);
+      }, kinFail);
+    };
+    if (sc !== kinSc || key !== kinKey) {
+      kinSc = sc; kinKey = key;
+      run(sc, win, null, (r, t0, every) => { kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1] }; });
+      return;
+    }
+    const f = fit();
+    if (busy || !f || (fitR && fitR.sc === f && fitR.key === key)) return;
+    const w = win[1] - win[0], c = clamp((win[0] + win[1]) / 2, w, limits.rail - w);
+    if (!(limits.rail >= 2 * w)) { fitR = { sc: f, key, extent: null }; return; }
+    run(f, [c - w, c + w], ([a, p, d, v, fam]) => [a, Math.round(WIDE_AT * 10000 + p * WIDE_SPAN), d, Math.round(v * WIDE_SPAN), fam], (r, t0, every) => {
+      fitR = { sc: f, key, extent: r.error ? null : wideExtent(r.raw, t0, every, f.at[0] + (t.offsetMs || 0), f.at[f.at.length - 1] + (t.offsetMs || 0), t) };
+    });
   }
 
   const fail = (r) => { if (r && r.ok === false) note = r.error || ''; };
@@ -332,6 +363,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     frame,
     get mode() { return mode; },
     get kinetic() { return kinR && kinR.pos ? kinR : null; },
+    get fit() { return fitR; },
     unmount() { if (kin) kin.close(); root.remove(); },
   };
 }

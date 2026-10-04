@@ -35,7 +35,8 @@ export function activate(api) {
   api.registerHero({ ...HERO, mount: (el, fields) => player.mount(el, fields) });
   const settings = (el) => {
     const a = mountConnect(el, { api });
-    const b = mountInterp(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); } });
+    const b = mountInterp(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); },
+      gain: () => player.scale });
     const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p) });
     return () => { a(); b(); c(); };
   };

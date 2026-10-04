@@ -54,10 +54,11 @@ const CONTRACT = {
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints',
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
-  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'wire', 'COPY', 'CSS', 'mountInterp'],
+  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'fitGain', 'curveExtent', 'sample', 'shape', 'wire', 'COPY', 'CSS',
+    'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
-    'KIN_MAX_SAMPLES', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'kinText', 'mountAnalyzer'],
+    'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
@@ -110,7 +111,7 @@ if (prefs) {
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
     stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
-    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 },
+    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
@@ -122,8 +123,11 @@ if (prefs) {
   const t = readPrefs(fakeApi({ T: { offsetMs: 512, lo: 0.2, hi: 0.8, invert: true } })).T;
   ok('offset clamps to 500, a valid range and invert survive', same(t, { offsetMs: 500, lo: 0.2, hi: 0.8, invert: true }), t);
   ok('offset rounds to its 5 ms step', readPrefs(fakeApi({ T: { offsetMs: -12 } })).T.offsetMs === -10);
-  const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999 } })).interp;
-  ok('interp: an unknown mode is linear, ranges clamp', same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0 }), ip);
+  const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999, scale: 0.1, scaleAuto: 'yes' } })).interp;
+  ok('interp: an unknown mode is linear, ranges clamp, scale to 0.25, scaleAuto a boolean',
+    same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0, scale: 0.25, scaleAuto: false }), ip);
+  const ia = readPrefs(fakeApi({ interp: { mode: 'makima', scale: 0.9, scaleAuto: true } })).interp;
+  ok('interp: Scale and Auto read back (phosphor.funscript.interp scale, scaleAuto)', ia.scale === 0.9 && ia.scaleAuto === true, ia);
   ok('an array is not an object pref', same(readPrefs(fakeApi({ audio: [1, 2] })).audio, want.audio));
   const a = fakeApi();
   writePref(a, 'T', { offsetMs: 45, lo: 0.1, hi: 0.9, invert: false });
@@ -248,6 +252,10 @@ if (an) {
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
       === 'Kinetic: wasm  3 anomalies  guard 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
+    // Wide shares 0.5, 0.8, 0.225 are window shares 0.5, 1.1, -0.05; the fourth sample lies past the span.
+    const wr = Float32Array.from([0.5, 0.8, 0.225, 0.95]);
+    ok('Auto: the wall-free measure reads back through WIDE_* and the Range, over the script span only',
+      Math.abs(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0, hi: 1 }) - 0.6) < 1e-6 && Math.abs(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0.2, hi: 0.8 }) - 1) < 1e-6);
   }
 }
 
@@ -1374,9 +1382,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   await ctx.close();
 }
 
-// ---- (v) the planner line and the speed heat (ph-rsb5): the real-shaped script under Makima ----
+// ---- (v) the planner line, the speed heat and Scale (ph-rsb5, ph-6e36): the real-shaped script under Makima ----
 if (!LIVE && !args.includes('--stash-live')) {
-  console.log('(v) planner line, speed heat');
+  console.log('(v) planner line, speed heat, Scale');
   const tc = tuningCatalog();
   tc.entries = decodeCatalog(tc.bytes);
   const hub = makeHub(tc);
@@ -1425,6 +1433,29 @@ if (!LIVE && !args.includes('--stash-live')) {
     want.length > 20 && pairs === want.length && hard, { pairs, want: want.length, hard });
   ok('B: the fastest span reads --highlight and red never dominates it (law 13)',
     topRgb[0] <= Math.max(topRgb[1], topRgb[2]) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, highlight: band.highlight, ups: want[top] && want[top].ups });
+  // ---- C: Makima clips at Scale 1; Auto fits the planner's own render into the window ----
+  const clampedMs = (t) => { const m = / clamped (\d+(?:\.\d+)?) (ms|s)/.exec(t); return m ? +m[1] * (m[2] === 's' ? 1000 : 1) : 0; };
+  const t1 = await kinText();
+  await page.click(C + ' .fsp-set');
+  await page.waitForTimeout(200);
+  const autoBtn = page.locator('main.pane .fsp-psec .fsp-interp button[aria-label="Auto"]');
+  await autoBtn.click({ timeout: 3000 }).catch(() => {});
+  const fit = await page.waitForFunction((c) => {
+    const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
+    return o && /^auto 0\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
+  }, C, { timeout: 15000 }).then(() => true, () => false);
+  await page.waitForTimeout(600);
+  const t2 = await kinText();
+  const readout = await page.locator('main.pane .fsp-psec .fsp-interp .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
+  console.log('  [NOTE] clamped at Scale 1: ' + clampedMs(t1) + ' ms (' + t1 + '); with Auto: ' + clampedMs(t2) + ' ms (' + t2 + '), ' + readout);
+  ok('C: Makima on the real-shaped script clamps at Scale 1; Auto fits it (clamped 0) and reads the applied gain',
+    clampedMs(t1) > 0 && fit && clampedMs(t2) === 0 && /^auto 0\.\d\d$/.test(readout), { t1, t2, readout });
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.interp') || '{}'));
+  ok('C: Auto persists in the interp pref (phosphor.funscript.interp scaleAuto)', stored.scaleAuto === true && stored.scale === 1, stored);
+  if (SHOT) {
+    await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-auto-1280x800.png') });
+    await page.locator('main.pane .fsp-psec .fsp-interp').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-scale-row.png') }).catch(() => {});
+  }
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

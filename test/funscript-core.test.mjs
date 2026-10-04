@@ -16,7 +16,7 @@
 import {
   MAX_SPAN_MS, MAX_ACTIONS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
-import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape, wire } from '../plugins/factory/funscript-player/interp.js';
+import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape, wire, fitGain, curveExtent } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -335,6 +335,31 @@ console.log('interp');
   const c = cleanInterp({ mode: 'bogus', tension: 9, bias: -9, smoothMs: NaN, slewMmS: '5' });
   ok('cleanInterp repairs', c.mode === 'linear' && c.tension === 1 && c.bias === -1 && c.smoothMs === 0 && c.slewMmS === 0
     && cleanInterp(null).mode === 'linear' && cleanInterp({ mode: 'makima' }).mode === 'makima');
+  const cs = [cleanInterp({ scale: 3, scaleAuto: 1 }), cleanInterp({ scale: 0.1, scaleAuto: true }), cleanInterp({})];
+  ok('cleanInterp: scale clamps to 0.25..1, scaleAuto only a true boolean, defaults 1 and off',
+    cs[0].scale === 1 && cs[0].scaleAuto === false && cs[1].scale === 0.25 && cs[1].scaleAuto === true && cs[2].scale === 1 && cs[2].scaleAuto === false);
+
+  // ---- Scale: p' = 0.5 + (p - 0.5) x g on the wire and the drawn curve ----
+  const ws = wire(s, I('linear', { scale: 0.5 }));
+  ok('scale: the wire is still one knot per action, each moved about the center', ws.at === s.at && ws.pos.length === n
+    && [...s.pos].every((p, i) => near(ws.pos[i], 0.5 + (p - 0.5) * 0.5, 1e-6)));
+  ok('scale: 1 leaves linear byte-identical', wire(s, I('linear', { scale: 1 })) === s && shape(s, I('linear', { scale: 1 })) === s);
+  const wc = wire(s, I('makima', { scale: 0.8 })), w1 = wire(s, I('makima'));
+  ok('scale: a curved mode\'s tangents scale with it', [...w1.vel].every((v, i) => near(wc.vel[i], v * 0.8, 1e-6 * Math.abs(v) + 1e-12)));
+  const sc8 = shape(s, I('catmull', { scale: 0.8 })), sc1 = shape(s, I('catmull'));
+  let dev = 0;
+  for (let t = 0; t <= s.at[n - 1]; t += 7) dev = Math.max(dev, Math.abs(posAt(sc8, t) - (0.5 + (posAt(sc1, t) - 0.5) * 0.8)));
+  ok('scale: the drawn curve is the unscaled one moved about the center (where it never clamped)', dev < 2e-3, dev);
+
+  // ---- Auto: fitGain over a synthetic curve's extent ----
+  ok('fitGain: inside the window is 1; else the largest 0.01 step that fits; floored at 0.25',
+    fitGain(0.5) === 1 && fitGain(0) === 1 && fitGain(0.6) === 0.83 && 0.6 * 0.83 <= 0.5 && fitGain(10) === 0.25 && fitGain(NaN) === 1);
+  const tease = parseFunscript(acts([0, 0], [260, 100], [520, 70], [780, 100], [1040, 0], [1300, 100]));
+  const ex = curveExtent(tease, I('catmull'));
+  ok('curveExtent: catmull over a top tease passes the window, linear and the monotone modes do not',
+    ex > 0.5 && curveExtent(tease, I('linear')) === 0.5 && curveExtent(tease, I('pchip')) === 0.5 && curveExtent(tease, I('monotone')) === 0.5, ex);
+  const gt = fitGain(ex), moved = wire(tease, I('linear', { scale: gt })), exg = curveExtent(moved, I('catmull'));
+  ok('Auto from the curve: at fitGain(extent) the curve of the moved actions stays inside the window before any clamp', gt < 1 && exg <= 0.5 && exg > 0.49, { gt, exg });
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

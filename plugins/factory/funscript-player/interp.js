@@ -41,6 +41,9 @@
 // - wire() carries `vel`, the mode's slope at each action (pos per ms; 0 for step, smoothstep and cosine;
 //   null for linear), only while no filter is on. With smoothing or slew each action takes the filtered
 //   curve's value there and vel is null: the scheduler reads the knots' chords.
+// - scale moves every action about the window center, p' = 0.5 + (p - 0.5) x scale, before the mode: shape()
+//   and wire() both run on the moved actions, so the drawn curve, the wire and the Kinetic preview agree; sample()
+//   is unscaled. scaleAuto is the controller's (ui.js): it picks the scale with fitGain and passes it in.
 // - Pure, no DOM at import time; mountInterp touches the DOM only when called.
 
 import { posAt, indexAfter, MAX_SPAN_MS } from './funscript.js';
@@ -58,8 +61,9 @@ export const RANGES = Object.freeze({
   bias: Object.freeze({ min: -1, max: 1, step: 0.05 }),
   smoothMs: Object.freeze({ min: 0, max: 500, step: 10 }),
   slewMmS: Object.freeze({ min: 0, max: 2000, step: 10 }),
+  scale: Object.freeze({ min: 0.25, max: 1, step: 0.01 }),
 });
-export const INTERP = Object.freeze({ mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0 });
+export const INTERP = Object.freeze({ mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -68,7 +72,16 @@ export function cleanInterp(v) {
   const s = v && typeof v === 'object' ? v : {};
   const num = (k) => (typeof s[k] === 'number' && Number.isFinite(s[k]) ? clamp(s[k], RANGES[k].min, RANGES[k].max) : INTERP[k]);
   return { mode: Object.hasOwn(MODES, s.mode) ? s.mode : 'linear',
-    tension: num('tension'), bias: num('bias'), smoothMs: num('smoothMs'), slewMmS: num('slewMmS') };
+    tension: num('tension'), bias: num('bias'), smoothMs: num('smoothMs'), slewMmS: num('slewMmS'), scale: num('scale'),
+    scaleAuto: s.scaleAuto === true };
+}
+
+/** The actions moved about the window center by g; the script itself at 1. */
+const scaled = (script, g) => (g === 1 ? script : { ...script, pos: Float32Array.from(script.pos, (p) => 0.5 + (p - 0.5) * g) });
+
+/** The largest scale on the 0.01 grid, down to RANGES.scale.min, that keeps an excursion e (max |p - 0.5| at scale 1) in 0..1. */
+export function fitGain(e) {
+  return e > 0.5 ? clamp(Math.floor(50 / e + 1e-6) / 100, RANGES.scale.min, 1) : 1;
 }
 
 // ---- slopes, pos per ms, one per knot -----------------------------------------
@@ -140,6 +153,19 @@ function curveOf(script, I) {
   };
 }
 
+/** max |p - 0.5| of the mode's curve before its 0..1 clamp and the filters, 16 samples a span: Auto's measure without a render. */
+export function curveExtent(script, interp) {
+  const I = cleanInterp(interp), { at, pos } = script, m = CUBIC.has(I.mode) ? slopes(at, pos, I) : null;
+  let e = 0;
+  for (let i = 0; i < at.length; i++) {
+    e = Math.max(e, Math.abs(pos[i] - 0.5));
+    for (let j = 1; m && i && j < 16; j++) {
+      e = Math.max(e, Math.abs(hermite(at[i - 1], pos[i - 1], at[i], pos[i], m[i - 1], m[i], at[i - 1] + (at[i] - at[i - 1]) * j / 16) - 0.5));
+    }
+  }
+  return e;
+}
+
 const cache = new WeakMap();
 
 /** The seam: the chosen mode's value at tMs, 0..1, before smoothing and slew. Linear is posAt exactly. */
@@ -192,6 +218,7 @@ function slewOf(I, ctx) {
 export function shape(script, interp, ctx = {}) {
   if (!script) return script;
   const I = cleanInterp(interp), perMs = slewOf(I, ctx);
+  script = scaled(script, I.scale);
   if (I.mode === 'linear' && !I.smoothMs && !perMs) return script;
   const f = curveOf(script, I), { at, pos } = script, n = at.length;
   const T = [at[0]];
@@ -229,6 +256,7 @@ export function wire(script, interp, ctx = {}) {
     const d = shape(script, I, ctx);
     return { ...script, pos: Float32Array.from(script.at, (t) => posAt(d, t)), vel: null };
   }
+  script = scaled(script, I.scale);
   if (I.mode === 'linear') return script;
   const vel = CUBIC.has(I.mode) ? slopes(script.at, script.pos, I) : new Float64Array(script.at.length);
   return { ...script, vel };
@@ -247,6 +275,10 @@ export const COPY = Object.freeze({
   slewMmS: 'Slew limit',
   slewTip: 'Needs the rail length',
   off: 'off',
+  scale: 'Scale',
+  auto: 'Auto',
+  autoTip: 'Fit the curve to the window',
+  autoOut: 'auto ',
   labels: Object.freeze({ linear: 'Linear', step: 'Step', smoothstep: 'Smoothstep', cosine: 'Cosine', catmull: 'Catmull-Rom',
     hermite: 'Hermite', monotone: 'Monotone', pchip: 'PCHIP', akima: 'Akima', makima: 'Makima' }),
 });
@@ -257,7 +289,15 @@ export const CSS = `
 .fsp-interp label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-interp select, .fsp-interp input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
 .fsp-interp select { grid-column: 2 / -1; background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2); border-radius: var(--r-s); padding: 0 6px; }
-.fsp-interp select:focus-visible, .fsp-interp input:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
+.fsp-interp select:focus-visible, .fsp-interp input:focus-visible, .fsp-interp button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
+.fsp-interp .fsp-grow { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.fsp-interp .fsp-grow input { flex: 1 1 0; min-width: 0; }
+.fsp-interp button { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 0 8px; background: none; color: var(--tx);
+  border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
+.fsp-interp button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp-interp .fsp-gcell { display: grid; align-items: center; min-width: 0; }
+.fsp-interp .fsp-gcell input { width: 100%; box-sizing: border-box; background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2);
+  border-radius: var(--r-s); padding: 0 4px; font: .8rem var(--mono); text-align: right; }
 .fsp-interp output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
 .fsp-interp input:disabled { opacity: .4; }
 .fsp-interp input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }
@@ -271,8 +311,11 @@ export const CSS = `
 const fmt = { tension: (v) => v.toFixed(2), bias: (v) => (v > 0 ? '+' : '') + v.toFixed(2),
   smoothMs: (v) => (v ? v + ' ms' : COPY.off), slewMmS: (v) => (v ? v + ' mm/s' : COPY.off) };
 
-/** Settings card rows: mode, its parameter, smoothing, slew; -> unmount(). A mode swap relabels, never reflows. */
-export function mountInterp(el, { value, onChange }) {
+/**
+ * Settings card rows: mode, its parameter, smoothing, slew, Scale; -> unmount(). A mode swap relabels, never reflows.
+ * gain() -> the scale in force (the player's); Auto reads it out, polled at 4 Hz.
+ */
+export function mountInterp(el, { value, onChange, gain = () => null }) {
   let v = cleanInterp(value);
   const h = (tag, attrs = {}, ...kids) => {
     const e = document.createElement(tag);
@@ -287,15 +330,28 @@ export function mountInterp(el, { value, onChange }) {
     const input = h('input', { type: 'range', 'aria-label': COPY[key], min: String(r.min), max: String(r.max), step: String(r.step) });
     return { input, out: h('output') };
   };
-  const par = slider('tension'), sm = slider('smoothMs'), sl = slider('slewMmS');
+  const par = slider('tension'), sm = slider('smoothMs'), sl = slider('slewMmS'), sc = slider('scale');
+  sc.input.setAttribute('title', COPY.scale);
+  const auto = h('button', { type: 'button', 'aria-label': COPY.auto, title: COPY.autoTip, text: COPY.auto });
+  const typed = h('input', { type: 'number', min: String(RANGES.scale.min), max: String(RANGES.scale.max), step: String(RANGES.scale.step),
+    'aria-label': COPY.scale, title: COPY.scale });
+  const gainOut = h('output', { class: 'fsp-gain' });
   const parLabel = h('label');
   const root = h('div', { class: 'fsp-interp', role: 'group', 'aria-label': COPY.heading }, h('style', { text: CSS }),
     h('h4', { text: COPY.heading }),
     h('label', { text: COPY.mode }), sel,
     parLabel, par.input, par.out,
     h('label', { text: COPY.smoothMs }), sm.input, sm.out,
-    h('label', { text: COPY.slewMmS, title: COPY.slewTip }), sl.input, sl.out);
+    h('label', { text: COPY.slewMmS, title: COPY.slewTip }), sl.input, sl.out,
+    h('label', { text: COPY.scale, title: COPY.scale }), h('span', { class: 'fsp-grow' }, auto, sc.input), h('span', { class: 'fsp-gcell' }, typed, gainOut));
   el.append(root);
+
+  function drawGain() {
+    if (!v.scaleAuto) return;
+    const g = gain() ?? 1;
+    gainOut.value = COPY.autoOut + g.toFixed(2);
+    sc.input.value = String(g);
+  }
 
   function draw() {
     const key = MODES[v.mode];
@@ -312,6 +368,11 @@ export function mountInterp(el, { value, onChange }) {
     sm.out.value = fmt.smoothMs(v.smoothMs);
     sl.input.value = String(v.slewMmS);
     sl.out.value = fmt.slewMmS(v.slewMmS);
+    auto.setAttribute('aria-pressed', String(v.scaleAuto));
+    sc.input.disabled = typed.hidden = v.scaleAuto;
+    gainOut.hidden = !v.scaleAuto;
+    if (!v.scaleAuto) sc.input.value = typed.value = v.scale.toFixed(2);
+    drawGain();
   }
   const commit = (partial) => { v = cleanInterp({ ...v, ...partial }); draw(); onChange(v); };
   sel.addEventListener('change', () => commit({ mode: sel.value }));
@@ -321,6 +382,12 @@ export function mountInterp(el, { value, onChange }) {
     s.input.addEventListener('input', () => { s.out.value = fmt[k](+s.input.value); });
     s.input.addEventListener('change', () => commit({ [k]: +s.input.value }));
   }
+  auto.addEventListener('click', () => commit({ scaleAuto: !v.scaleAuto }));
+  sc.input.addEventListener('input', () => { typed.value = (+sc.input.value).toFixed(2); });
+  sc.input.addEventListener('change', () => commit({ scale: +sc.input.value }));
+  typed.addEventListener('change', () => { if (typed.value !== '' && Number.isFinite(+typed.value)) commit({ scale: +typed.value }); else draw(); });
   draw();
-  return () => root.remove();
+  // ponytail: polls the player's gain at 4 Hz; a player change event when a second readout needs one.
+  const poll = setInterval(drawGain, 250);
+  return () => { clearInterval(poll); root.remove(); };
 }
