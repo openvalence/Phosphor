@@ -81,12 +81,15 @@ pub fn run() {
       virtual_sim::virtual_stop,
     ])
     .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
+      // Release builds log too (file + stdout): js_log's webview errors and the
+      // sidecar lines are the only field diagnostics an operator has.
+      {
+        use tauri_plugin_log::{Target, TargetKind};
+        let mut b = tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .targets([Target::new(TargetKind::Stdout), Target::new(TargetKind::LogDir { file_name: None })]);
+        if cfg!(debug_assertions) { b = b.target(Target::new(TargetKind::Webview)); }
+        app.handle().plugin(b.build())?;
       }
       #[cfg(desktop)]
       {
