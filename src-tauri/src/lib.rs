@@ -6,7 +6,6 @@ mod plugins;
 #[cfg(desktop)]
 mod virtual_sim;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// The webview's own errors (window.onerror, unhandled rejections, console.error)
 /// land in the log plugin's file so a field failure is readable without devtools.
 #[tauri::command]
@@ -18,6 +17,7 @@ fn js_log(level: String, msg: String) {
   }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let builder = tauri::Builder::default()
     .plugin(tauri_plugin_http::init())

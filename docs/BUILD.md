@@ -139,6 +139,32 @@ flatpak install --user phosphor.flatpak
   `GDK_BACKEND=x11` on a Wayland session panics with "Failed to initialize
   GTK" unless the run adds `--socket=x11`.
 
+## Android (Pixel over adb)
+
+Android Studio's SDK with build-tools, platform-tools, cmdline-tools and NDK
+29, JDK 17 for Gradle (`JAVA_HOME` on it, whatever `java` is on PATH), and the four Rust Android targets
+(`rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`).
+Set `ANDROID_HOME`, `NDK_HOME` (the `ndk/<version>` folder) and `JAVA_HOME`.
+
+```sh
+npx tauri android init --ci
+npx tauri android build --apk --target aarch64 --debug --ci
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+```
+
+- `src-tauri/gen/android` is generated from `tauri.conf.json` and gitignored.
+  `init` never overwrites an existing project: after a config change, delete
+  `src-tauri/gen/android` and run `init` again.
+- `bundle.android.minSdkVersion` is 26, the BLE plugin's floor. Its Bluetooth
+  and location permissions merge in from the plugin's own manifest; Tauri's
+  template carries `INTERNET`. The debug app id is `com.phosphor.app.debug`.
+- No sidecar on Android: `src-tauri/tauri.android.conf.json` drops
+  `bundle.externalBin`, and Virtual Valence falls back to the catalog replay.
+- A debug APK is debug-signed (about 230 MB, symbols kept). A release needs a
+  keystore and a signing config in `gen/android/app/build.gradle.kts`, and
+  `usesCleartextTraffic` set to true there: the template allows cleartext
+  only in debug, and hubs speak plain `ws://` and `http://`.
+
 ## CI (`.github/workflows/build.yml`)
 
 Runs on every push to `main`, every pull request, every `v*` tag and by hand.
