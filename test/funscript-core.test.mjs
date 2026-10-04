@@ -16,7 +16,7 @@
 import {
   MAX_SPAN_MS, MAX_ACTIONS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
-import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape } from '../plugins/factory/funscript-player/interp.js';
+import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape, wire } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -310,6 +310,15 @@ console.log('interp');
   let vm = 0;
   for (let i = 1; i < mk.at.length; i++) vm = Math.max(vm, Math.abs(mk.pos[i] - mk.pos[i - 1]) * 100 * 1000 / (mk.at[i] - mk.at[i - 1]));
   ok('slew applies after a curved mode', vm <= 500 * (1 + 1e-6), vm.toFixed(3) + ' mm/s');
+
+  const w = wire(s, I('catmull'));
+  ok('wire: the actions themselves, linear the Script itself', w.at === s.at && w.pos === s.pos && wire(s, I('linear')) === s);
+  ok('wire: vel is the mode slope (catmull: (y[k+1] - y[k-1]) / (t[k+1] - t[k-1]))',
+    near(w.vel[1], (s.pos[2] - s.pos[0]) / (s.at[2] - s.at[0]), 1e-9) && w.vel.length === n);
+  ok('wire: step, smoothstep and cosine rest on every action', ['step', 'smoothstep', 'cosine'].every((m) => wire(s, I(m)).vel.every((v) => v === 0)));
+  const wf = wire(fast, I('makima', { slewMmS: 500 }), ctx);
+  ok('wire: under a filter each action takes the filtered value, vel null',
+    wf.at === fast.at && wf.vel === null && [...fast.at].every((t, i) => near(wf.pos[i], posAt(mk, t), 1e-6)));
 
   const sq = parseFunscript(acts([0, 0], [1000, 0], [1001, 100], [2000, 100]));
   const sm = shape(sq, I('linear', { smoothMs: 200 }));

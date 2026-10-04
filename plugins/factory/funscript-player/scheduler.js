@@ -59,16 +59,16 @@ export function applyT(norm, T) {
 }
 
 /**
- * Knot j's slope in pos per media ms over accessors t(j), p(j) of n knots: 0 at either end, at a reversal
- * and beside a hold; else vel(j) (the shaped curve's own) or the mean of the two chords, of their sign and
- * at most HANDOFF_K x the lesser.
+ * Knot j's slope in pos per media ms over accessors t(j), p(j) of n knots: 0 at either end and beside a hold;
+ * else vel(j) (the curve mode's tangent, kept at a reversal: its overshoot is the mode's) or, without vel, the
+ * mean of the two chords of their sign, 0 at a reversal; at most HANDOFF_K x the lesser chord.
  */
 export function knotSlope(t, p, j, n, vel = null) {
   if (!(j > 0 && j < n - 1)) return 0;
   const a = (p(j) - p(j - 1)) / (t(j) - t(j - 1)), b = (p(j + 1) - p(j)) / (t(j + 1) - t(j));
   const m = vel ? vel(j) : (a + b) / 2;
-  if (!(a * b > 0) || !(m * a > 0)) return 0;
-  return Math.sign(a) * Math.min(Math.abs(m), HANDOFF_K * Math.min(Math.abs(a), Math.abs(b)));
+  if (!a || !b || (!vel && (!(a * b > 0) || !(m * a > 0)))) return 0;
+  return Math.sign(m) * Math.min(Math.abs(m), HANDOFF_K * Math.min(Math.abs(a), Math.abs(b)));
 }
 
 /**

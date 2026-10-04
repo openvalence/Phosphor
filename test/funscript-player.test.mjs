@@ -18,7 +18,7 @@
  * - Channel ids appear here and in fixtures only, never in the plugin.
  *
  * Run: node test/funscript-player.test.mjs --unit
- *      node test/funscript-player.test.mjs [--shot out.png]
+ *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -54,7 +54,7 @@ const CONTRACT = {
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints', 'seekAt', 'heatLevels',
     'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
-  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'COPY', 'CSS', 'mountInterp'],
+  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'sample', 'shape', 'wire', 'COPY', 'CSS', 'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'kinText', 'mountAnalyzer'],
@@ -303,7 +303,7 @@ if (UNIT || fails) {
 // segment's execution start reads directly in the page's epoch ms
 // (performance.timeOrigin + now): both count the same wall clock.
 // =============================================================================
-const { chromium } = await import('playwright');
+const { chromium, webkit } = await import('playwright');
 const { createServer } = await import('node:http');
 const { execFileSync } = await import('node:child_process');
 const { mkdtempSync, rmSync } = await import('node:fs');
@@ -496,7 +496,7 @@ const srv = createServer((q, s) => {
 });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PAGE = 'http://127.0.0.1:' + srv.address().port;
-const browser = await chromium.launch();
+const browser = await (args.includes('--webkit') ? webkit : chromium).launch();
 
 // The shell's @tauri-apps/plugin-http commands, served by node's fetch (no
 // CORS, as in the shell). plugins_list hands over BUSY_PROBE when asked.

@@ -64,7 +64,7 @@ import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
-import { shape } from './interp.js';
+import { shape, wire } from './interp.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -207,7 +207,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
   let info = [];         // load facts: no script, repairs, extra axes
   let transient = '';
-  let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0;
+  let buffering = false, sentSince = false, restart = false, pre = null, url = null, seq = 0, peak = 0, wired = null;
   let lastM = NaN;      // the previous frame's media time; NaN after a clock reset
   let interp = prefs.interp;
   let seekT = 0;        // the seek transition the next restart carries
@@ -390,13 +390,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.motion && state.script && fields && !gate()) submit([]);
   }
 
-  /** The scheduler runs the shaped Script (interp.js): linear with no filters is the Script itself. */
+  /** The scheduler and the Kinetic preview run wire() (one knot per action); shaped is display only. */
   function reshape() {
-    const s = state.script;
-    const next = s ? shape(s, interp, { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi }) : null;
+    const s = state.script, ctx = { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi };
+    const next = s ? shape(s, interp, ctx) : null;
     if (next === state.shaped) return;
     state.shaped = next;
-    scheduler.load(next);
+    wired = s ? wire(s, interp, ctx) : null;
+    scheduler.load(wired);
     peak = next ? peakSpeed(next) : 0;
     if (state.phase === 'playing' && clock.ready) restart = true;
   }
@@ -410,6 +411,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const my = ++seq;
     Object.assign(state, { scene, script: null, shaped: null, phase: 'ready', ab: { a: null, b: null } });
     scheduler.load(null);
+    wired = null;
     loop.set(null);
     scheduler.setLoop(null);
     peak = 0;
@@ -521,6 +523,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   return {
     state, trace, play, tick, onFrame, load, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
     get low() { return !!state.play.lowLatency; },
+    get wire() { return wired; },
     pause: () => { if (active()) stop('ready'); },
     toggle: () => (active() ? stop('ready') : play()),
     halt: () => { if (active()) stop('held'); },
@@ -966,7 +969,7 @@ export function createPlayer(api) {
       root.toggleAttribute('data-an', on);
       tl.setExpanded(on);
       measure();
-      if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => st.shaped || st.script, T: () => st.T });
+      if (on && !analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => ctl.wire, T: () => st.T });
     }
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 

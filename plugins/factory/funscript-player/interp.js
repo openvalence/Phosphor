@@ -26,9 +26,11 @@
 // SOFTWARE.
 //
 // Constraints:
-// - Linear with smoothing and slew off returns the Script itself: the scheduler then runs byte-identical.
-// - Every other setting resamples each span into pieces of at most STEP_MS (original knots kept), so a
-//   span's segments stay under the grant's 50 Hz rate; collinear knots are merged back (spans <= MAX_SPAN_MS).
+// - wire() is what the scheduler sends: one knot per action, never the resampled curve (SPEC 9.6 item 5,
+//   intent not pre-chewed motion: the hub draws between knots from their end velocities). Linear with
+//   smoothing and slew off returns the Script itself, so the scheduler runs byte-identical.
+// - shape() is display only (timeline, heat, speed meter, the over-limit check): each span resampled into
+//   pieces of at most STEP_MS (original knots kept), collinear knots merged back (spans <= MAX_SPAN_MS).
 // - Cubic modes start and end the script at rest (MFP's flat phantom knots). Makima uses the symmetric
 //   phantom for its second chord, not MFP's pm2 quirk (FUNSCRIPT-MFP-NOTES.md), so it matches MFP on every
 //   span from the third on and rests at the first knot.
@@ -36,8 +38,9 @@
 //   their two knots.
 // - Order: mode, then smoothing (a centered box over the piecewise-linear curve, no lag), then slew (causal:
 //   a reversal past the limit arrives late and short). Slew needs the rail length; without it slew is off.
-// - shape() carries `vel`, the mode's own slope at each kept knot (pos per ms; 0 for step), only while no
-//   filter moved the knots off the curve; otherwise null and the scheduler reads the knots' chords.
+// - wire() carries `vel`, the mode's slope at each action (pos per ms; 0 for step, smoothstep and cosine;
+//   null for linear), only while no filter is on. With smoothing or slew each action takes the filtered
+//   curve's value there and vel is null: the scheduler reads the knots' chords.
 // - Pure, no DOM at import time; mountInterp touches the DOM only when called.
 
 import { posAt, indexAfter, MAX_SPAN_MS } from './funscript.js';
@@ -176,15 +179,19 @@ function slew(at, y, perMs) {
   }
 }
 
+/** The slew limit in pos per ms over the rail length times the Range share; 0 without the length. */
+function slewOf(I, ctx) {
+  const span = ctx.spanMm > 0 ? ctx.spanMm * ((ctx.hi ?? 1) - (ctx.lo ?? 0)) : 0;
+  return I.slewMmS > 0 && span > 0 ? I.slewMmS / span / 1000 : 0;
+}
+
 /**
  * Script -> Script with the curve as knots. ctx: {spanMm, lo, hi} (the rail length and the Range share,
  * for the slew limit in mm/s). Linear with both filters off returns `script` itself.
  */
 export function shape(script, interp, ctx = {}) {
   if (!script) return script;
-  const I = cleanInterp(interp);
-  const span = ctx.spanMm > 0 ? ctx.spanMm * ((ctx.hi ?? 1) - (ctx.lo ?? 0)) : 0;
-  const perMs = I.slewMmS > 0 && span > 0 ? I.slewMmS / span / 1000 : 0;
+  const I = cleanInterp(interp), perMs = slewOf(I, ctx);
   if (I.mode === 'linear' && !I.smoothMs && !perMs) return script;
   const f = curveOf(script, I), { at, pos } = script, n = at.length;
   const T = [at[0]];
@@ -197,8 +204,6 @@ export function shape(script, interp, ctx = {}) {
   let y = Float64Array.from(tt, (t, j) => (j === tt.length - 1 ? pos[n - 1] : f(t)));
   if (I.smoothMs) y = smooth(tt, y, I.smoothMs);
   if (perMs) slew(tt, y, perMs);
-  const H = 0.01;
-  const d = I.smoothMs || perMs ? null : Float64Array.from(tt, (t) => (I.mode === 'step' ? 0 : (f(t + H) - f(t - H)) / (2 * H)));
   // Merge: a knot is dropped only while one line from the last kept knot passes within MERGE_EPS of
   // every dropped knot (the slope cone of each one, intersected).
   const keep = [0];
@@ -213,7 +218,20 @@ export function shape(script, interp, ctx = {}) {
   if (tt.length > 1) keep.push(tt.length - 1);
   const A = Float64Array.from(keep, (k) => tt[k]);
   return { ...script, at: A, pos: Float32Array.from(keep, (k) => clamp(y[k], 0, 1)), durationMs: A[A.length - 1],
-    vel: d && Float64Array.from(keep, (k) => d[k]), ignored: [...script.ignored], notes: [...script.notes] };
+    ignored: [...script.ignored], notes: [...script.notes] };
+}
+
+/** The Script the scheduler sends: the actions' own knots with the mode's slope (vel); ctx as shape(). */
+export function wire(script, interp, ctx = {}) {
+  if (!script) return script;
+  const I = cleanInterp(interp);
+  if (I.smoothMs || slewOf(I, ctx)) {
+    const d = shape(script, I, ctx);
+    return { ...script, pos: Float32Array.from(script.at, (t) => posAt(d, t)), vel: null };
+  }
+  if (I.mode === 'linear') return script;
+  const vel = CUBIC.has(I.mode) ? slopes(script.at, script.pos, I) : new Float64Array(script.at.length);
+  return { ...script, vel };
 }
 
 // ---- controls: the settings card --------------------------------------------

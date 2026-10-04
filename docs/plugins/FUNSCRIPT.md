@@ -97,20 +97,22 @@ and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
 ## Interpolation
 
-`interp.js` (ph-smvd.10) bends the content between actions before the
-scheduler sees it. Linear is the default, and with smoothing and slew off
-`shape()` returns the parsed Script itself: everything above holds byte for
-byte. Any other setting cuts each action gap into pieces of at most 40 ms
-(`STEP_MS`, 25 segments/s, under the 50 Hz grant), keeps every action,
-merges collinear pieces back, and schedules that Script; preroll, stop,
-thinning, the speed meter and the heat read it too. Each piece is one
-segment ending at the curve's own slope at its knot (`vel`, Sync item 8)
-and no `curve_family`.
+`interp.js` (ph-smvd.10) bends the content between actions: the tangents
+the hub draws through and the curve the detail view draws. Linear is the default, and with smoothing and slew off
+`wire()` returns the parsed Script itself: everything above holds byte for
+byte. Every other setting still sends one segment per action (`wire()`,
+SPEC §9.6 item 5): the action's position over its span, ending at the
+mode's tangent there (`vel`, Sync item 8; kept at a reversal, so the
+mode's overshoot reaches the hub, within 1.5 x the lesser chord), and no
+`curve_family`: the hub draws the curve between actions. Smoothing and
+slew move each action to the filtered curve's value there and send the
+chord rule. The drawn curve (`shape()`, pieces of at most 40 ms,
+`STEP_MS`) is display only: the detail view, the heat and the speed meter.
 
 | mode | rule | parameter | leaves its two actions |
 |---|---|---|---|
 | Linear | the authored meaning | | no |
-| Step | hold, then the move in the last piece | | no |
+| Step | hold, then the move (drawn); at rest on every action on the wire | | no |
 | Smoothstep | `3u^2 - 2u^3`, at rest on every action | | no |
 | Cosine | `(1 - cos(pi u)) / 2`, at rest on every action | | no |
 | Catmull-Rom | cardinal: `(1 - tension)(y[k+1] - y[k-1]) / (t[k+1] - t[k-1])` | tension 0..1 | yes |
@@ -131,12 +133,17 @@ under it.
 
 Veto-able (ph-smvd.10):
 
-- **I1** Dense knots, not sparse spans declared `c1_cubic` (the MFP notes'
-  exact mapping): that covers PCHIP and Makima only; dense knots, each
-  ending at the curve's slope, cover every mode with no curve family. Cost: up to 25 segments/s where a script had 2 to 6, and a
-  `RATE_EXCEEDED` thins back to extrema, toward linear.
-- **I2** Step is offered (the notes advise against it): its jump is the
-  last piece, 20 to 40 ms, shaped by the hub's speed limit or the slew limit.
+- **I1** One segment per action in every mode, ending at the mode's
+  tangent, no curve family (operator ruling 2026-10-04). The 40 ms pieces
+  it replaces jittered between waveform and hold on silicon. Measured on
+  the machine's planner (Nucleus kinetic-wasm, 500 mm rail, three 60 s
+  scripts): 410-930 segments/min down to 109-143 (the action count), the
+  error at every action 1-11 mm (step aside) down to 0. Cost: between actions the hub
+  draws its quintic through the tangents, not the JS curve: 3-15 mm from it
+  where the pieces held 1-20 mm (linear's own: 11-27 mm).
+- **I2** Step is offered (the notes advise against it). On the wire it
+  rests on every action like smoothstep; a true hold-then-jump would take
+  two segments per action.
 - **I3** The slew limit is a content transform the operator sets, like
   Range; `limit.input.speed` on the hub stays the bound (SPEC §9.6). Off by
   default.
@@ -231,8 +238,8 @@ Veto-able (ph-smvd.10):
    `dwellMerge(script, T)`: a knot that moves on in the same direction but
    less than 0.02 of the window (through Range) past the last kept knot is
    dropped, so its neighbors make one span through it. Ends, flat knots,
-   reversals and knots the curve rests on stay. It matters most under a
-   curve mode, whose 40 ms pieces near a turn move less than that. Measured
+   reversals and knots the curve rests on stay. With one segment per
+   action it rarely fires. Measured
    on the machine's planner (Nucleus kinetic-wasm, the sim's limits),
    before: a 1-4 point random walk dwell-zeroed 36 knots and stopped at 37
    of 79 that are not reversals; 30 ms clock steps every 1.5-4.5 s stopped

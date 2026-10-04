@@ -280,7 +280,7 @@ and clock do none of it:
   each playing tick a new sample (its `api.age` dropped, or its elapsed
   changed) goes to `observePlan(now() - api.age(planEl), elapsed ms,
   duration ms)`, converted from the field's unit (us, ms, s).
-- `scheduler.load(shaped)`.
+- `scheduler.load(wire)`: interp.js `wire()`, one knot per action, never the shaped Script.
 - Pause home: Pause (a stop to ready from playing) or the end arms it at
   `now() + homeAfterMs`; each tick past that while ready submits
   `scheduler.home(here())` once (a transient refusal retries next tick),
@@ -550,7 +550,7 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
 //   state }      PlayerState, read-only to everyone else
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
-//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get low.
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), get low and get wire.
 export const PLAY_CSS;
 export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
   // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Low latency, Auto latency;
@@ -644,7 +644,7 @@ export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LA
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  guard 250 ms'
-export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the shaped Script), T(): the player's
+export function mountAnalyzer(el, { api, trace, script, T });   // trace(), script() (the wire Script, ctl.wire), T(): the player's
   // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, unmount() }
   // kinetic: the latest render of script() through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
@@ -703,7 +703,7 @@ emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
 ## interp: `interp.js`
 
 ```js
-export const STEP_MS = 40;            // the longest piece a curved span is cut into (25 segments/s, under the 50 Hz grant)
+export const STEP_MS = 40;            // the longest piece shape() cuts a curved span into (display only)
 export const MODES;                   // frozen {id -> its parameter key | null}: linear, step, smoothstep, cosine,
                                       // catmull 'tension', hermite 'bias', monotone, pchip, akima, makima
 export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000} with steps
@@ -712,16 +712,18 @@ export function cleanInterp(v);       // -> a well-formed interp; prefs.js repai
 export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
 export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
   // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
-  // off without spanMm); linear with both off returns `script` itself, so the scheduler runs byte-identical;
-  // vel: the mode's slope at each kept knot (step 0), null when smoothing or slew is on
+  // off without spanMm); linear with both off returns `script` itself. Display only, never sent
+export function wire(script, interp, ctx);     // -> Script the scheduler sends: the actions' own knots; vel the mode's
+  // slope at each (cubic modes; 0 for step, smoothstep, cosine); with smoothing or slew each action takes the filtered
+  // curve's value and vel is null; linear with both off returns `script` itself, so the scheduler runs byte-identical
 export const COPY, CSS;
 export function mountInterp(el, { value, onChange });   // -> unmount(); the settings card rows, onChange(interp) on commit
 ```
 
-The controller schedules `shape(script)` and keeps it as `PlayerState.shaped`: the scheduler, posAt, preroll,
-stop, thinning, the speed meter and the heat all read the shaped Script,
-and each piece is one segment ending at its knot's slope (scheduler endVel) and no
-`curve_family`. Tests: `test/funscript-core.test.mjs` (interp section).
+The controller schedules `wire(script)` (`ctl.wire`, the Kinetic preview's script too): one segment per action,
+ending at the mode's tangent through knotSlope (kept at a reversal, so the mode's overshoot reaches the hub), no
+`curve_family`; the hub draws the curve between actions (SPEC 9.6 item 5). `PlayerState.shaped` (`shape(script)`)
+is what the timeline, the heat and the speed meter draw. Tests: `test/funscript-core.test.mjs` (interp section).
 
 ---
 

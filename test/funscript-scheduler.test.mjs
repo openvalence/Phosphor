@@ -19,7 +19,7 @@ import {
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
-import { shape } from '../plugins/factory/funscript-player/interp.js';
+import { MODES, wire } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -348,10 +348,10 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
     { at: 300, pos: 5 }, { at: 600, pos: 50 }] }), { ...T0, lo: 0.3, hi: 0.6 }).at.length === 2 && dwellMerge(s, { ...T0, hi: 0.01 }) !== s);
   const big = strokes(4);
   ok('dwellMerge returns the script itself when no knot is a hold', dwellMerge(big, T0) === big);
-  // Shaped pieces: no two consecutive targets within DWELL_SPAN while the line moves on.
-  const sent = play(shape(big, { mode: 'makima' })).host.sent;
+  // A curve mode: no two consecutive targets within DWELL_SPAN while the line moves on.
+  const sent = play(wire(big, { mode: 'makima' })).host.sent;
   const rep = sent.slice(1).filter((g, i) => Math.abs(g.norm - sent[i].norm) < DWELL_SPAN && g.endVel !== 0).length;
-  ok('shaped (makima): no segment repeats the previous target within DWELL_SPAN while moving', rep === 0, rep + ' of ' + sent.length);
+  ok('makima: no segment repeats the previous target within DWELL_SPAN while moving', rep === 0, rep + ' of ' + sent.length);
 }
 {
   // A restart that changes only timing keeps what the hub holds: re-sending the in-progress span repeats its target.
@@ -492,15 +492,13 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   sch.load(s); sch.setTransform(T); inv.clock.anchor(0, inv.now(), 1); sch.restart(inv.clock); sch.tick(inv.clock);
   const g = inv.host.calls.at(-1);
   ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
-  const st = ev({}, shape(s, { mode: 'step' }));
-  ok('step: every knot ends at rest', st.length > 6 && st.every((v) => v === 0));
-  // The sent spans follow dwellMerge's knots, not every shaped one.
-  const sm = shape(s, { mode: 'smoothstep' }), smv = ev({}, sm), smk = dwellMerge(sm, T0);
-  const actionEv = smv.filter((v, i) => s.at.includes(smk.at[i + 1]));
-  ok('smoothstep: at rest on every action (packs as 0), moving between', actionEv.length === 6 && actionEv.every((v) => Math.abs(v) < 5e-4)
-    && smv.some((v) => Math.abs(v) > 0.5), actionEv.join());
-  const cr = shape(s, { mode: 'catmull' }), crv = ev({}, cr), crk = dwellMerge(cr, T0);
-  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[crk.at.indexOf(500) - 1], 0.85, 1e-3), crv[crk.at.indexOf(500) - 1]);
+  // One segment per action in every mode (SPEC 9.6 item 5): the hub draws the curve between them.
+  const per = Object.keys(MODES).filter((m) => { const g = play(wire(s, { mode: m })).host.sent; return g.length !== 6 || g.some((x, i) => x.norm !== s.pos[i + 1]); });
+  ok('every mode: one segment per action, at its position', per.length === 0, per.join());
+  ok('step, smoothstep and cosine: every action ends at rest', ['step', 'smoothstep', 'cosine'].every((m) => ev({}, wire(s, { mode: m })).every((v) => v === 0)));
+  const crv = ev({}, wire(s, { mode: 'catmull' }));
+  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[0], 0.85, 1e-6), crv[0]);
+  ok('catmull-rom: a reversal keeps its tangent (the overshoot), bounded to 1.5 x the lesser chord (-0.65 -> -0.45)', near(crv[2], -0.45, 1e-6), crv[2]);
   const t = 50, o = createScheduler({ submit: () => ({ ok: true, sent: 1 }), now: () => t });
   o.load(s); o.setHome({ point: 0.5, speed: 0.3 });
   ok('preroll and home end at rest', o.preroll(700, 0).endVel === 0 && o.home(0).endVel === 0);
