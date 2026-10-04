@@ -188,11 +188,12 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   el.append(root);
 
   let kin = null, kinState = 'wasm', kinKey = '', kinSc = null, kinR = null, version = '';
-  const kinFail = () => { kinState = 'fallback'; kinR = null; };
+  // The fallback's tooltip is the failure, where the version would be.
+  const kinFail = (e) => { kinState = 'fallback'; kinR = null; version = String((e && e.message) || e || 'Kinetic failed'); };
   try {
     kin = createKinetic();
     kin.ready.then((v) => { version = v; }, kinFail);
-  } catch { kinFail(); }
+  } catch (e) { kinFail(e); }
   const shown = (it) => Number(it.draft != null ? it.draft : api.value(it.f));
   /** Re-render through the worker when the script, T, a limit, the window or a shown Tuning value changed. */
   function kinetic() {

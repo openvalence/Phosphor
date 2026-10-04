@@ -128,6 +128,7 @@ onmessage = async (e) => {
     return;
   }
   latest = q.id;
+  if (!k) { postMessage({ id: q.id, error: 'Kinetic not ready' }); return; }
   const t = performance.now(), it = renderCore(k, q);
   try {
     for (;;) {
@@ -146,6 +147,8 @@ onmessage = async (e) => {
 /**
  * -> {ready: Promise<version>, render(q) -> Promise<result | {error} when refused | null when superseded>,
  * close()}. Rejects (ready and every render) when the worker cannot start or the wasm does not compile.
+ * A render is posted only after ready: the worker's onmessage is async, so a render sent during the
+ * init's await would run against no instance.
  */
 export function createKinetic() {
   const url = URL.createObjectURL(new Blob([SRC], { type: 'text/javascript' }));
@@ -178,7 +181,7 @@ export function createKinetic() {
       const id = ++seq;
       return new Promise((res, rej) => {
         pending = { id, res, rej };
-        w.postMessage({ ...q, id });
+        ready.then(() => { if (pending && pending.id === id) w.postMessage({ ...q, id }); }, () => {});
       });
     },
     close() { w.terminate(); if (pending) pending.res(null); pending = null; dead = dead || new Error('closed'); },
