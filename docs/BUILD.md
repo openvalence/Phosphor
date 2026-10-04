@@ -200,6 +200,26 @@ flatpak install --user phosphor.flatpak
   `GDK_BACKEND=x11` on a Wayland session panics with "Failed to initialize
   GTK" unless the run adds `--socket=x11`.
 
+### Flathub (policy constraints, docs.flathub.org/docs/for-app-authors/requirements)
+
+Flathub's generative AI policy binds the submission, and this repo is built
+with coding agents (org README, "How it's built"). Constraints:
+
+- `flatpak/org.openvalence.Phosphor.yml` is the CI manifest and was written by
+  an agent. It is never submitted. The Flathub manifest in the
+  `flathub/org.openvalence.Phosphor` repo is written by the maintainer by hand,
+  from the Flathub docs; agents may explain fields, never draft, edit or review
+  that file (manifests must not contain AI-generated or AI-assisted content,
+  disclosure does not exempt them).
+- No agent opens, automates or replies on the Flathub submission pull request,
+  and no agent writes its commit messages or description. The maintainer does
+  not request an agent review there.
+- The submission discloses the agent-generated material: the application
+  (nearly all code and docs), `flatpak/*.metainfo.xml`, `.desktop` and the
+  icon, with the approximate extent. Reviewers may reject on that basis.
+- Verification: `https://openvalence.org/.well-known/org.flathub.VerifiedApps.txt`
+  (the app id is under the openvalence.org domain).
+
 ## Android (Pixel over adb)
 
 Android Studio's SDK with build-tools, platform-tools, cmdline-tools and NDK
