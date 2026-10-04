@@ -103,7 +103,17 @@ if (SHELL) import('./plugins/buttplug.js').then((m) => m.loadButtplug()).catch((
 // field failure on any platform is readable without devtools.
 if (SHELL) {
   import('@tauri-apps/api/core').then(({ invoke }) => {
-    const send = (level, parts) => { try { invoke('js_log', { level, msg: parts.map((p) => (p instanceof Error ? (p.stack || p.message) : typeof p === 'string' ? p : JSON.stringify(p))).join(' ').slice(0, 2000) }); } catch {} };
+    // Re-entrancy guard plus a swallowed rejection: a failing js_log must never
+    // become the next console.error or unhandled rejection it would forward.
+    let busy = false;
+    const send = (level, parts) => {
+      if (busy) return;
+      busy = true;
+      try {
+        const msg = parts.map((p) => (p instanceof Error ? (p.stack || p.message) : typeof p === 'string' ? p : JSON.stringify(p))).join(' ').slice(0, 2000);
+        Promise.resolve(invoke('js_log', { level, msg })).catch(() => {}).finally(() => { busy = false; });
+      } catch { busy = false; }
+    };
     for (const level of ['error', 'warn']) { const orig = console[level].bind(console); console[level] = (...a) => { orig(...a); send(level, a); }; }
     window.addEventListener('error', (e) => send('error', ['uncaught:', e.message, e.filename + ':' + e.lineno]));
     window.addEventListener('unhandledrejection', (e) => send('error', ['unhandled rejection:', e.reason]));
