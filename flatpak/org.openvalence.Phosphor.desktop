@@ -3,6 +3,8 @@ Type=Application
 Name=Phosphor
 Comment=Valence machine control
 Exec=phosphor
+# The window's app_id is the binary name, not the app id: keep these equal.
+StartupWMClass=phosphor
 Icon=org.openvalence.Phosphor
 Terminal=false
 Categories=Utility;

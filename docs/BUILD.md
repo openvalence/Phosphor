@@ -112,21 +112,32 @@ the sim.
 
 `flatpak/org.openvalence.Phosphor.yml` packages the `.deb` (Tauri binary and
 sidecar) on the GNOME 50 runtime. GNOME, not bare freedesktop, because only the
-GNOME runtime ships webkit2gtk-4.1. It has not been run by hand: the WSL root
-lacked the space for the GNOME SDK plus a Linux Tauri build to feed it, so
-CI's `flatpak` job is its first real run.
+GNOME runtime ships webkit2gtk-4.1. Verified by hand on WSL2 Arch under WSLg,
+2026-10-04: CI's bundle and a local build both reach a live Virtual Valence
+session at control tier with the catalog adopted.
 
 By hand, with CI's `.deb` (built on ubuntu-22.04, so its glibc is older than
 any runtime's):
 
 ```sh
-sudo pacman -S --needed flatpak flatpak-builder
+sudo pacman -S --needed flatpak flatpak-builder xdg-desktop-portal xdg-desktop-portal-gtk
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 cp Phosphor_*_amd64.deb flatpak/phosphor.deb
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-flatpak flatpak/org.openvalence.Phosphor.yml
 flatpak build-bundle repo phosphor.flatpak org.openvalence.Phosphor
 flatpak install --user phosphor.flatpak
 ```
+
+- App data (logs, plugins, the sim's state) lives in
+  `~/.var/app/org.openvalence.Phosphor/data/com.phosphor.app/`, the Tauri
+  identifier nested under the Flatpak app id. A `.deb` install's
+  `~/.local/share/com.phosphor.app/` is not visible to the Flatpak.
+- The sidecar runs as `/app/bin/valencesim` inside the sandbox and exits on a
+  normal close. A hard kill of `phosphor` leaves it running in the sandbox
+  until `flatpak kill org.openvalence.Phosphor` (ph-y853).
+- `fallback-x11` grants X11 only when there is no Wayland socket: forcing
+  `GDK_BACKEND=x11` on a Wayland session panics with "Failed to initialize
+  GTK" unless the run adds `--socket=x11`.
 
 ## CI (`.github/workflows/build.yml`)
 

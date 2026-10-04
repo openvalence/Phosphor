@@ -2,9 +2,6 @@
 # builds (the Tauri binary and its valencesim sidecar). CI copies that .deb
 # here as phosphor.deb before flatpak-builder runs.
 #
-# UNTESTED by hand: CI's flatpak job is this manifest's first real run
-# (docs/BUILD.md, "Flatpak", says why).
-#
 # Runtime is GNOME, not bare freedesktop: webkit2gtk-4.1 ships only in the
 # GNOME runtime. GNOME 50 sits on freedesktop 25.08.
 #
@@ -20,10 +17,9 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
-  - --device=dri
   # Hubs over WebSocket, UDP discovery, the datagram e-stop, the sidecar on loopback.
   - --share=network
-  # Serial and HID toys through the embedded buttplug server.
+  # Serial and HID toys through the embedded buttplug server; covers the GPU (dri) too.
   - --device=all
   # BLE through BlueZ.
   - --system-talk-name=org.bluez
