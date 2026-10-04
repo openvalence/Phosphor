@@ -3,6 +3,6 @@
   <g transform="translate(512 512)">
     <circle r="300" fill="none" stroke="#A78BFA" stroke-width="100"/>
     <circle r="150" fill="#4DA6FF"/>
-    <g fill="#EDE7FF"><circle cy="-300" r="44"/><circle cx="259.81" cy="150" r="44"/><circle cx="-259.81" cy="150" r="44"/></g>
+    <g fill="#4DA6FF"><circle cy="-300" r="44"/><circle cx="259.81" cy="150" r="44"/><circle cx="-259.81" cy="150" r="44"/></g>
   </g>
 </svg>
