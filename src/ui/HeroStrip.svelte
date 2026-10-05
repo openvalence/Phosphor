@@ -30,7 +30,12 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--gap);
-    margin: var(--gap) 0;
+    /* One surface with the top bar, whose bottom border is the divider; full
+       bleed through .app's side padding like .topstrip. */
+    margin: 0 calc(var(--app-pad, var(--gap)) * -1);
+    padding: var(--gap);
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--line);
   }
 
   .hero-slot {

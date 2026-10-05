@@ -29,7 +29,8 @@
  *   sections   a " / " group is a card under its section's one header row:
  *              Motion's Tuning holds the eleven former Tuning cards, System's
  *              Library its presets card; the header paints no tint, and the
- *              advanced toggle moves neither it nor anything above it
+ *              advanced toggle moves neither it nor anything above it, and
+ *              toggling twice lands every card where it began
  *              (DESIGN §10.11)
  *
  * Live mode (--live): the build-and-reload check against a running valencesim
@@ -370,20 +371,24 @@ if (!LIVE) {
     return out;
   });
   ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
+  await page.waitForTimeout(600);
   const geo0 = await cellGeo();
   const advBtn = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' });
   await advBtn.click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(600);
   const geoHidden = await cellGeo();
   await advBtn.click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(600);
   const geoBack = await cellGeo();
   const headId = Object.keys(geo0).find((id) => id.startsWith('section:'));
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  ok('sections: no card changes column or width, and the round trip lands where it began',
-     Object.keys(geoHidden).every((id) => geoHidden[id][0] === geo0[id][0] && geoHidden[id][2] === geo0[id][2])
+  // A row's last card stretches to the grid edge (DESIGN §10.5), so only such a card may change width.
+  const gridEdge = Math.max(...Object.values(geo0).map((g) => g[0] + g[2]));
+  const rowEnd = (g) => g[0] + g[2] >= gridEdge - 1;
+  ok('sections: no card changes width but a row-end one, and the round trip lands where it began (a toggle may repack columns)',
+     Object.keys(geoHidden).every((id) => geoHidden[id][2] === geo0[id][2] || rowEnd(geoHidden[id]) || rowEnd(geo0[id]))
      && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);

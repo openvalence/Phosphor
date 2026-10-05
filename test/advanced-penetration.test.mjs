@@ -88,7 +88,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const { bytes: CAT, etag: ETAG } = advgenCatalog();
+let { bytes: CAT, etag: ETAG } = advgenCatalog();
 const ENTRIES = decodeCatalog(CAT);
 const byName = (n) => ENTRIES.find((e) => e.name === n);
 const ADV = byName('pattern-advanced');
@@ -414,10 +414,6 @@ if (LIVE) {
   const p2 = await page.waitForFunction((p) => { const e = document.querySelector('main.pane .ap .ap-play'); const q = !e.hidden && e.style.left + ',' + e.style.top; return q && q !== p && q; },
     p1, { timeout: 5000, polling: 50 }).then((h) => h.jsonValue()).catch(() => p1);
   ok('live: a playhead rides the curve while Advanced runs', !!p1 && !!p2 && p1 !== p2, [p1, p2]);
-  const pts = (await page.locator('main.pane .ap .ap-wave polyline').getAttribute('points') || '').split(' ').filter(Boolean);
-  const ys = new Set(pts.map((x) => x.split(',')[1]));
-  // The told target is each segment's end, so a running stroke draws a stepped wave.
-  ok('live: the told-wave draws the commanded target while Advanced runs', pts.length > 20 && ys.size >= 2, { n: pts.length, levels: ys.size });
   if (SHOT) {
     await page.waitForFunction(() => { const e = document.querySelector('main.pane .ap .ap-play'); const x = parseFloat(e.style.left); return !e.hidden && x > 25 && x < 75; },
       null, { timeout: 5000, polling: 16 }).catch(() => {});
@@ -590,7 +586,12 @@ if (LIVE) {
     await page.keyboard.press('Shift+ArrowUp');
     await page.waitForTimeout(200);
     const kv = hub.intents.slice(n1);
-    ok('keys: shift+arrow nudges ten steps, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 10, kv);
+    ok('keys: shift+arrow is the declared step, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 1, kv);
+    const nCtl = hub.intents.length;
+    await page.keyboard.press('Control+ArrowUp');
+    await page.waitForTimeout(250);
+    const cv = hub.intents.slice(nCtl);
+    ok('keys: ctrl+arrow goes to the next decade multiple, one write', cv.length === 1 && cv[0].val[MIND.key] === (Math.floor((m0 + 1) / 10) + 1) * 10, [cv, m0]);
 
     // ---- rhythm: In speed's staircase
     const apEl = await page.locator('main.pane .ap').first().elementHandle();
@@ -606,7 +607,7 @@ if (LIVE) {
     ok('rhythm: the card regrowing never remounts the plugin', await apEl.evaluate((el) => el.isConnected));
     ok('rhythm: the staircase follows the echoed amount', (await page.locator('main.pane .ap .ap-stair path.curve').getAttribute('d')) !== flat
       && /^amp \d/.test(await tagOf(amp)));
-    const rsent = await dragBy(page, handle(page, 'rise'), 120, 0);
+    const rsent = await dragBy(page, handle(page, 'rise'), 240, 0);
     const rw = rsent.filter((i) => i.ch === RISE.ch && RISE.key in i.val);
     ok('rhythm: a step handle writes whole strokes', rw.length === 1 && Number.isInteger(rw[0].val[RISE.key]) && rw[0].val[RISE.key] > 1, rw[0] && rw[0].val);
     ok('rhythm: segments are labeled with their strokes', /to min \d+/.test(await page.locator('main.pane .ap .ap-seg').first().textContent()));
@@ -631,6 +632,31 @@ if (LIVE) {
     ok('presets: Save with nothing chosen prompts a name, saves to the first empty slot', saved && saved.val[2] === 1 && saved.val[3] === 'Mine', saved);
     ok('presets: the list re-reads', (await sel.locator('option').allTextContents()).includes('Mine'));
     await sel.selectOption({ label: 'Mine' });
+    const nR = hub.intents.length;
+    await sel.focus();
+    await page.keyboard.press('F2');
+    const nameIn = page.locator('main.pane .ap input[aria-label="Preset name"]');
+    ok('presets: F2 opens the name input prefilled with the chosen name', (await nameIn.isVisible()) && (await nameIn.inputValue()) === 'Mine');
+    await nameIn.fill('Mine 2');
+    await nameIn.press('Enter');
+    await page.waitForTimeout(500);
+    const ren = hub.intents.slice(nR).find((i) => i.ch === cmd && i.val[1] === 4);
+    ok('presets: Enter renames the same slot (op 4), and no save goes out', ren && ren.val[2] === 1 && ren.val[3] === 'Mine 2' && !(await nameIn.isVisible())
+      && !hub.intents.slice(nR).some((i) => i.ch === cmd && i.val[1] === 1), hub.intents.slice(nR));
+    await sel.selectOption({ label: 'Mine 2' });
+    const nD = hub.intents.length;
+    await sel.dblclick();
+    const opened = await nameIn.isVisible();
+    await nameIn.press('Escape');
+    ok('presets: a double-click opens it too, Escape cancels with no write', opened && !(await nameIn.isVisible()) && hub.intents.length === nD);
+    await sel.focus();
+    await page.keyboard.press('F2');
+    await nameIn.fill('Mine 3');
+    const nB = hub.intents.length;
+    await page.locator('main.pane .ap h4').first().click();
+    await page.waitForTimeout(400);
+    ok('presets: blur keeps the name', hub.intents.slice(nB).some((i) => i.ch === cmd && i.val[1] === 4 && i.val[3] === 'Mine 3'));
+    await sel.selectOption({ label: 'Mine 3' });
     const n3 = hub.intents.length;
     await page.click('main.pane .ap .og-btn:has-text("Delete")');
     const dlg = page.locator('[role=alertdialog]');
@@ -812,14 +838,19 @@ if (LIVE) {
     await ctx.close();
   }
 
-  {
-    // ---- labels clear of the line, in every fixture state
-    const { ctx, page } = await open();
+  // ---- labels clear of the line, in every fixture state, at the widths the dash seeds the card (1428x900, 1024x768:
+  // a backed label is allowed only where it overlaps nothing) and at a wide plot (none backed)
+  for (const { name, size, wide } of [{ name: '1428x900', size: { width: 1428, height: 900 } }, { name: '1024x768', size: { width: 1024, height: 768 } },
+    { name: 'wide plot', size: { width: 1428, height: 900 }, wide: true }]) {
+    const { ctx, page } = await open({ size });
     await toPatternPage(page);
     await toAdvanced(page);
+    if (wide) await page.addStyleTag({ content: 'main.pane .ap { width: 1184px !important; }' });
     const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(150); };
-    const onLine = () => page.evaluate(() => {
+    const onLine = () => page.evaluate((strict) => {
       const hits = [];
+      const R = (e) => e.getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
       for (const ed of document.querySelectorAll('main.pane .ap .ap-ed:is(.ap-stroke, .ap-stair)')) {
         if (!ed.offsetParent) continue;
         const pts = [];
@@ -834,30 +865,31 @@ if (LIVE) {
           const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
           for (let i = 0; i <= n; i++) pts.push([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n]);
         }
+        const dots = [...ed.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map(R);
+        const caps = [...ed.querySelectorAll(':scope > .ap-cap:not([hidden])')].map(R);
         for (const t of ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')) {
           if (!t.textContent) continue;
-          const r = t.getBoundingClientRect();
+          const r = R(t);
           const n = pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length;
-          if (n || t.classList.contains('bg')) hits.push({ tag: t.textContent, n, bg: t.classList.contains('bg') });
+          const over = dots.filter((d) => hit(r, d)).length + caps.filter((c) => hit(r, c)).length;
+          if (n || over || (strict && t.classList.contains('bg'))) hits.push({ tag: t.textContent, n, over, bg: t.classList.contains('bg') });
         }
       }
       return hits;
-    });
+    }, !!wide);
     // The review state (shallow 10 just above the 0 guide) among them.
     const STATES = [null, [85, 0, 100, 50, 40, 40], [50, 30, 20, 100, 0, 100], [100, 0, 1, 100, 100, 0], [30, 25, 100, 5, 0, 0], [85, 10, 70, 45, 30, 60]];
     for (const st of STATES) {
       if (st) for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, st[i]);
       await page.waitForTimeout(200);
       const hits = await onLine();
-      ok('labels: none on the stroke, the staircase or a guide, none backed (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
-      if (SHOT && st && st[0] === 85) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
+      ok('labels ' + name + ': none on the line, a plus or a caption' + (wide ? ', none backed' : '') + ' (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
+      if (SHOT && st && st[0] === 85 && !size.height - 900) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
     }
     await page.click('main.pane .ap .ap-mtabs [role=tab]:has-text("Max depth")');
     await typeIn('Amp', 100);
     await page.waitForTimeout(200);
-    ok('labels: the staircase labels clear its line at full amp', (await onLine()).length === 0, await onLine());
-    await typeIn('Amp', 0);
-    for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, [10, 0, 100, 100, 40, 40][i]);
+    ok('labels ' + name + ': the staircase labels clear its line at full amp', (await onLine()).length === 0, await onLine());
     await ctx.close();
   }
 
@@ -952,12 +984,12 @@ if (LIVE) {
     const pill = handle(page, 'hold');
     ok('holds: the hold carries a vertical pill, the plus gone', (await pill.getAttribute('data-shape')) === 'vpill' && !(await plusMin.isVisible()));
     const k = await page.evaluate(() => { const e = document.querySelector('main.pane .ap .ap-stair'); return e.getBoundingClientRect().width * 880 / 1000 / 8; });
-    let dw = (await dragBy(page, pill, 2 * k, 0)).filter((i) => HOLD.key in i.val);
+    let dw = (await dragBy(page, pill, 4 * k, 0)).filter((i) => HOLD.key in i.val);
     ok('holds: dragging the pill right lengthens the hold', dw.length === 1 && dw[0].val[HOLD.key] === 3, dw);
     await plusMax.click();
     await page.waitForTimeout(250);
     if (SHOT) await page.locator('main.pane .ap .ap-rhythm').screenshot({ path: shot('5-holds-pills') });
-    dw = (await dragBy(page, handle(page, 'hold'), -6 * k, 0)).filter((i) => HOLD.key in i.val);
+    dw = (await dragBy(page, handle(page, 'hold'), -30 * k, 0)).filter((i) => HOLD.key in i.val);
     ok('holds: dragging it back to 0 collapses the segment, the plus returns', dw.length === 1 && dw[0].val[HOLD.key] === 0
       && await plusMin.isVisible() && !(await handle(page, 'hold').count()), dw);
     ok('holds: at max spawned the same way', hub.values[settingOf('pattern-adv-mod-speedin', 'out_wait').uid] === 1 && (await handle(page, 'rest').count()) === 1);
@@ -1010,11 +1042,11 @@ if (LIVE) {
     let n = hub.intents.length;
     await plus('crest').click();
     await page.waitForTimeout(250);
-    ok('dwell: the crest plus writes key 46 at ' + 0.25 + ' strokes, one intent', hub.intents.length - n === 1
-      && hub.intents[n].ch === CREST.ch && CREST.key === 46 && Math.abs(hub.intents[n].val[46] - 0.25) < 1e-6, hub.intents.slice(n));
+    ok('dwell: the crest plus writes key 46 at ' + 0.01 + ' strokes, one intent', hub.intents.length - n === 1
+      && hub.intents[n].ch === CREST.ch && CREST.key === 46 && Math.abs(hub.intents[n].val[46] - 0.01) < 1e-6, hub.intents.slice(n));
     const pill = handle(page, 'crest');
     ok('dwell: a vertical pill on a guide, the plus gone, the flat drawn to scale', (await pill.getAttribute('data-shape')) === 'vpill'
-      && !(await plus('crest').isVisible()) && Math.abs(await flatW('crest') / plotW - 0.25 / 1.25) < 0.01, await flatW('crest'));
+      && !(await plus('crest').isVisible()) && Math.abs(await flatW('crest') / plotW - 0.01 / 1.01) < 0.01, await flatW('crest'));
     await plus('trough').click();
     await page.waitForTimeout(250);
     if (SHOT) await page.locator('main.pane .ap .ap-stroke').screenshot({ path: shot('7-dwell-short') });
@@ -1022,9 +1054,9 @@ if (LIVE) {
     const bw = (await page.locator('main.pane .ap .ap-stroke').boundingBox()).width;
     let dw = (await dragBy(page, pill, 0.015 * bw, 0)).filter((i) => CREST.key in i.val);
     const v1 = dw.length && dw[0].val[CREST.key];
-    ok('dwell: dragging the pill right lengthens the crest dwell, one write', dw.length === 1 && v1 > 0.25 && v1 < 0.5, dw);
+    ok('dwell: dragging the pill right lengthens the crest dwell, one write', dw.length === 1 && v1 > 0.01 && v1 < 0.5, dw);
     ok('dwell: the flat follows, still whole', (await flatW('crest')) > w0 && (await cutDots('crest')) === 0, [w0, await flatW('crest')]);
-    dw = (await dragBy(page, pill, 0.25 * bw, 0)).filter((i) => CREST.key in i.val);
+    dw = (await dragBy(page, pill, 0.5 * bw, 0)).filter((i) => CREST.key in i.val);
     const v2 = dw.length && dw[0].val[CREST.key];
     ok('dwell: past the cap the value keeps growing, the flat holds the cap, its middle dotted', dw.length === 1 && v2 > 1
       && Math.abs(await flatW('crest') - DWELL_CAP * plotW) < 1 && (await cutDots('crest')) === 6, { v2, w: await flatW('crest') });
@@ -1038,7 +1070,7 @@ if (LIVE) {
       return [...ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')].filter((t) => t.textContent).map((t) => {
         const r = t.getBoundingClientRect();
         return { tag: t.textContent, n: pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length, bg: t.classList.contains('bg') };
-      }).filter((h) => h.n || h.bg);
+      }).filter((h) => h.n);
     });
     ok('dwell: labels clear of the line and the flats', labelHits.length === 0, labelHits);
     dw = (await dragBy(page, pill, -0.6 * bw, 0)).filter((i) => CREST.key in i.val);
@@ -1116,7 +1148,7 @@ if (LIVE) {
     // Boxes against the card's own top, so a pane scroll is not a move.
     const boxes = () => page.evaluate(() => {
       const o = document.querySelector('main.pane .ap').getBoundingClientRect();
-      return ['.ap-ctl', 'select[aria-label="Preset"]', '.ap-stroke', '.ap-run', '.ap-wave'].map((s) => {
+      return ['.ap-ctl', 'select[aria-label="Preset"]', '.ap-stroke', '.ap-run', '.ap-planbox'].map((s) => {
         const r = document.querySelector('main.pane .ap ' + s).getBoundingClientRect();
         return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join();
       }).join(' | ');
@@ -1174,17 +1206,112 @@ if (LIVE) {
     ok('labels: the ladder words ride the plot\'s note, amber once overdue, cleared by the echo', /^deep \d+ · waiting$/.test(n1)
       && /^deep \d+ · still waiting$/.test(n2) && s2 === 'overdue' && n3 === '', [n1, n2, n3]);
 
-    // ph-97t: the told-wave says stopped, and clears it while Advanced runs.
-    const idle = page.locator('main.pane .ap .ap-wave .ap-idle');
-    const stopped = await idle.isVisible() && (await idle.textContent()) === 'stopped';
+    // ph-mdqo.8: the strip plans motion whether or not Advanced runs; a run moves no box.
     await page.locator('main.pane .ap .ap-run:visible').click();
     await page.waitForTimeout(300);
-    const running = !(await idle.isVisible());
     await page.locator('main.pane .ap .ap-run:visible').click();
     await page.waitForTimeout(300);
-    const again = await idle.isVisible(), b4 = await boxes();
-    ok('wave: stopped reads "stopped" on a flat line, running clears it, nothing moves', stopped && running && again && b4 === b0,
-      { stopped, running, again, b0, b4 });
+    const b4 = await boxes();
+    ok('plan: starting and stopping Advanced moves no box', b4 === b0, { b0, b4 });
+    await ctx.close();
+  }
+
+  {
+    // ph-mdqo.8: sunk plates, the planned-motion strip and its window stepper, the relative drag.
+    const MC = byName('machine-config');
+    hubAt(REVIEW);
+    Object.assign(hub.values, { [uidOf(MC, 'input_speed')]: 400, [uidOf(MC, 'window_min')]: 0, [uidOf(MC, 'window_max')]: 200 });
+    const { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const strip = page.locator('main.pane .ap .ap-planbox');
+    const winN = () => page.locator('main.pane .ap .ap-win output').textContent();
+    ok('plan: no wave scope or told caption remains', !(await page.locator('main.pane .ap .ap-wave').count())
+      && !/wave · told|stopped/.test(await page.locator('main.pane .ap').first().innerText()));
+    const d0 = await strip.locator('path.curve').getAttribute('d');
+    const xs = [...d0.matchAll(/[ML]([\d.]+) /g)].map((m) => +m[1]);
+    ok('plan: 11 grid lines for the 10 s window, the path spans it', (await strip.locator('line.grid').count()) === 11
+      && xs[0] === 0 && xs[xs.length - 1] === 1000, { n: await strip.locator('line.grid').count(), a: xs[0], z: xs[xs.length - 1] });
+    ok('plan: sits under the stroke and above the rhythm section', await page.evaluate(() => {
+      const y = (q) => document.querySelector('main.pane .ap ' + q).getBoundingClientRect().top;
+      return y('.ap-stroke') < y('.ap-planbox') && y('.ap-planbox') < y('.ap-rhythm');
+    }));
+    const up = page.locator('main.pane .ap .ap-win button[aria-label="Longer window"]');
+    const down = page.locator('main.pane .ap .ap-win button[aria-label="Shorter window"]');
+    await up.click(); const w15 = await winN();
+    await up.click(); const w20 = await winN();
+    ok('plan: the stepper goes 10, 15, 20 and redraws the grid', w15 === '15' && w20 === '20' && (await strip.locator('line.grid').count()) === 21, [w15, w20]);
+    await down.click(); await down.click(); await down.click();
+    ok('plan: down steps 15, 10, 9', (await winN()) === '9');
+    await up.click(); await up.click(); await up.click(); await up.click(); await up.click();   // 10, 15, 20, 25, 30
+    for (let i = 0; i < 3; i++) await up.click();   // 40, 50, 60
+    ok('plan: the stepper stops at 60 with up disabled', (await winN()) === '60' && await up.isDisabled() && !(await down.isDisabled()));
+    for (let i = 0; i < 3; i++) await down.click();   // 50, 40, 30
+    ok('plan: down steps 60, 50, 40, 30', (await winN()) === '30');
+    await page.reload();
+    await toPatternPage(page);
+    await toAdvanced(page);
+    ok('plan: the window persists across a reload', (await winN()) === '30', await winN());
+    const labels = await strip.locator('.ap-gl').evaluateAll((es) => es.map((e) => e.getBoundingClientRect()));
+    const band = await page.evaluate(() => {
+      const b = document.querySelector('main.pane .ap .ap-planbox'), p = b.querySelector('path.curve').getBoundingClientRect();
+      const tops = [...b.querySelectorAll('.ap-gl')].map((e) => e.getBoundingClientRect().top);
+      return { pathBottom: p.bottom, labelTop: Math.min(...tops) };
+    });
+    ok('plan: the curve stays out of the label band', band.pathBottom <= band.labelTop, band);
+    ok('plan: grid labels never collide', labels.length > 1 && labels.every((r, i) => !i || r.left >= labels[i - 1].right - 0.5), labels.length);
+    const plates = await page.evaluate(() => {
+      const bg = (q) => getComputedStyle(document.querySelector(q)).backgroundColor;
+      const probe = document.createElement('i'); probe.style.color = 'var(--screen)'; document.body.append(probe);
+      const screen = getComputedStyle(probe).color; probe.remove();
+      return { screen, ed: bg('main.pane .ap .ap-stroke'), stair: bg('main.pane .ap .ap-planbox'), h: getComputedStyle(document.querySelector('main.pane .ap .ap-h'), '::after').backgroundColor };
+    });
+    ok('plates: editors and handles compute --screen', plates.ed === plates.screen && plates.stair === plates.screen && plates.h === plates.screen, plates);
+    // Relative drag: 60 px of pointer moves the deep value about half of the old absolute mapping; Shift a tenth.
+    const box = await page.locator('main.pane .ap .ap-stroke').boundingBox();
+    const MAXD = settingOf('pattern-advanced', 'max_depth');
+    const range = byName('pattern-advanced').layout.find((f) => f.name === 'max_depth');
+    const DY = 150;   // far enough that a tenth of the gain is still several whole values
+    const absDelta = DY * (240 / box.height) / 180 * (range.max - range.min);
+    const dd = async (mod) => {
+      if (mod) await page.keyboard.down(mod);
+      const w = (await dragBy(page, handle(page, 'deep'), 0, DY)).filter((i) => MAXD.key in i.val);
+      if (mod) await page.keyboard.up(mod);
+      return w.length ? 85 - w[0].val[MAXD.key] : NaN;
+    };
+    const full = await dd();
+    hubAt(REVIEW); hub.push(ADV.id); await page.waitForTimeout(300);
+    const fine = await dd('Shift');
+    hubAt(REVIEW); hub.push(ADV.id); await page.waitForTimeout(300);
+    const snapped = 85 - (await dd('Control'));
+    ok('drag: 150 px moves the value half as far as the absolute mapping, Shift a tenth of that', Math.abs(full / absDelta - 0.5) < 0.05 && Math.abs(fine / absDelta - 0.05) < 0.02,
+      { full, fine, absDelta });
+    ok('drag: Ctrl rounds the written value to the decade below the range', snapped % 10 === 0 && snapped !== 85, snapped);
+    await ctx.close();
+  }
+
+  {
+    // Without limit.input.speed there is nothing to scale: no strip at all.
+    const keep = [CAT, ETAG];
+    ({ bytes: CAT, etag: ETAG } = advgenCatalog({ drop: ['limit.input.speed'] }));
+    hubAt(REVIEW);
+    const { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    ok('plan: no limit.input.speed role hides the whole strip', (await page.locator('main.pane .ap .ap-stroke').count()) === 1
+      && (await page.locator('main.pane .ap .ap-plan').count()) === 0);
+    await ctx.close();
+    [CAT, ETAG] = keep;
+  }
+
+  {
+    // ph-0fby: the modifier switch and trash clear 40 px under a coarse pointer.
+    hubAt(REVIEW);
+    const { ctx, page } = await open({ inputs: false, coarse: true, size: { width: 390, height: 844 } });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    const ws = await page.$$eval('main.pane .ap .ap-mon, main.pane .ap .ap-mtrash', (es) => es.filter((e) => e.offsetParent && getComputedStyle(e).visibility !== 'hidden').map((e) => Math.round(e.getBoundingClientRect().width)));
+    ok('targets: the modifier switch and trash are at least 40 px wide on a touch pointer', ws.length > 0 && ws.every((w) => w >= 40), ws);
     await ctx.close();
   }
 

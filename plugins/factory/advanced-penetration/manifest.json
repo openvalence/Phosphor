@@ -35,7 +35,8 @@
     "telemetry.position",
     "telemetry.target",
     "window.min",
-    "window.max"
+    "window.max",
+    "limit.input.speed"
   ],
   "permissions": [
     "intent"
