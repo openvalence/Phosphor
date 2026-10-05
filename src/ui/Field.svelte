@@ -21,6 +21,7 @@
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
   import { askConfirm } from './confirm.svelte.js';
   import { deferring } from './defer.js';
+  import { modStep, dragGain, snap as modSnap } from '../model/nudge.js';
   import { PACKED } from '../../../Valence/clients/js/index.js';
   import {
     formatParts, formatWithUnit, unitOf, optionLabel, precisionFor, labelFor, statTag,
@@ -202,7 +203,7 @@
   }
   const rangeStep = (f) => f.step || 1;
 
-  // ---- Shift-drag (defer.js): one write, on release -------------------------
+  // ---- Alt-drag (defer.js): one write, on release -------------------------
   // `held` is the value a deferred drag will write ({side: 'v'|'lo'|'hi', n});
   // the control draws it, the ring wears pending without pulses, and a
   // cancelled pointer drops it unwritten.
@@ -212,6 +213,7 @@
   function dragStart(e) {
     drag = { id: e.pointerId, pointerType: e.pointerType };
     held = null;
+    rel = null;
     window.addEventListener('pointerup', dragEnd);
     window.addEventListener('pointercancel', dragEnd);
   }
@@ -227,8 +229,37 @@
     const h = held;
     drag = null;
     held = null;
+    rel = null;
     knobDrag = null;
     if (h && e.type === 'pointerup') WRITE[h.side](h.n);
+  }
+  // Shift or Ctrl at pointerdown on a native range: the thumb does not jump to
+  // the pointer; the drag moves the value relative to where it started
+  // (nudge.js dragGain, snap), modifiers read at every move.
+  let rel = null;
+  function relDown(e, side) {
+    dragStart(e);
+    if (!e.shiftKey && !e.ctrlKey) return;
+    const f = side === 'v' ? field : field[side];
+    const el = e.currentTarget;
+    const n = Number(side === 'v' ? value : side === 'lo' ? loValue : hiValue);
+    el.setPointerCapture(e.pointerId);
+    rel = { side, f, el, x: e.clientX, v: isFinite(n) ? n : f.min, w: el.getBoundingClientRect().width || 1 };
+  }
+  function relMove(e) {
+    if (!rel) return;
+    const { f } = rel, st = f.step || 1;
+    let n = rel.v + ((e.clientX - rel.x) / rel.w) * (f.max - f.min) * dragGain(e, 1);
+    n = f.min + Math.round((modSnap(n, e, f.min, f.max) - f.min) / st) * st;
+    n = Math.max(f.min, Math.min(f.max, n));
+    rel.el.value = n;
+    dragWrite(rel.side, n);
+  }
+  // Mouse default drags the native thumb; with a modifier the relative path owns the drag.
+  const relGuard = (e) => { if (e.shiftKey || e.ctrlKey) { e.preventDefault(); e.currentTarget.focus(); } };
+  function sliderKey(e) {
+    const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (dir && (e.shiftKey || e.ctrlKey) && enabled) { e.preventDefault(); nudge(dir, e); }
   }
   $effect(() => () => { if (drag) dragEnd({ pointerId: drag.id, type: 'pointercancel' }); });
   const heldOf = (side, v) => (held && held.side === side ? held.n : v);
@@ -299,16 +330,16 @@
     }, HOLD_MS);
   }
   function holdEnd() { clearTimeout(hold); hold = null; }
-  function stepClick(dir) {
+  function stepClick(dir, e) {
     if (repeated) { repeated = false; return; }
-    nudge(dir);
+    nudge(dir, e);
   }
   $effect(() => () => holdEnd());
 
   /** Move one step-sized tick from wherever the value currently sits. */
-  function nudge(dir) {
+  function nudge(dir, e) {
     const base = Number(value);
-    commitNumber((isFinite(base) ? base : (field.min ?? 0)) + dir * step);
+    commitNumber(modSnap((isFinite(base) ? base : (field.min ?? 0)) + dir * modStep(e, step, field.min, field.max), e, field.min, field.max));
   }
 
   const step = $derived(field.step || (precisionFor(field) === 0 ? 1 : 0.01));
@@ -443,10 +474,10 @@
 
   // ---- knob: a bounded numeric as a rotary control ---------------------------
   // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range,
-  // ten times that with Shift held (fine). Every change snaps to the step and
+  // ten times that with Shift held (fine); Ctrl snaps to the range's decade. Every change snaps to the step and
   // is an ordinary echo-confirmed write through commitNumber().
   let knobEl = $state(null);
-  const KNOB_DRAG_PX = 160;
+  const KNOB_DRAG_PX = 320;
   const KNOB_CIRC = 2 * Math.PI * 40;
   const KNOB_ARC = 0.75 * KNOB_CIRC;
   const knobFrac = $derived.by(() => {
@@ -467,15 +498,15 @@
   }
   function knobMove(e) {
     if (!knobDrag) return;
-    const span = (field.max - field.min) * (e.shiftKey ? 0.1 : 1);
+    const span = (field.max - field.min) * dragGain(e, 1);
     knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * span));
     knobDrag.y = e.clientY;
-    const n = snap(knobDrag.v);
+    const n = modSnap(snap(knobDrag.v), e, field.min, field.max);
     if (n !== knobDrag.last) { knobDrag.last = n; dragWrite('v', n); }
   }
   function knobKey(e) {
     const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: pageSteps, PageDown: -pageSteps }[e.key];
-    if (dir) { e.preventDefault(); nudge(dir); }
+    if (dir) { e.preventDefault(); nudge(dir, e); }
     else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); commitNumber(e.key === 'Home' ? field.min : field.max); }
   }
   // The wheel turns the knob only while it holds focus (a click or Tab gives
@@ -490,7 +521,7 @@
       const d = e.deltaY || e.deltaX;
       if (!d) return;
       e.preventDefault();
-      nudge((d < 0 ? 1 : -1) * (e.shiftKey ? 1 : Math.max(1, Math.round(pageSteps / 10))));
+      nudge((d < 0 ? 1 : -1) * (e.shiftKey ? 1 : Math.max(1, Math.round(pageSteps / 10))), e);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -711,7 +742,7 @@
   {:else if pres === WIDGET.slider}
     <input id={domId} type="range"
            min={field.min} max={field.max} step={step}
-           value={shown ?? field.min} disabled={!enabled} onpointerdown={dragStart}
+           value={shown ?? field.min} disabled={!enabled} onpointerdown={(e) => relDown(e, 'v')} onpointermove={relMove} onmousedown={relGuard} onkeydown={sliderKey}
            oninput={(e) => dragWrite('v', Number(e.currentTarget.value))} />
     <!-- No printed min…max caption (OG density doctrine — the slider's own
          extent plus the value chip already carry the bounds; a bounds line
@@ -730,12 +761,12 @@
            style="left: {loFrac * 100}%; right: {(1 - hiFrac) * 100}%"></div>
       <input type="range" class="range-lo" class:on-top={loFrac >= hiFrac}
              min={field.lo.min} max={field.lo.max} step={rangeStep(field.lo)}
-             value={shownLo ?? field.lo.min} disabled={!loEnabled} onpointerdown={dragStart}
+             value={shownLo ?? field.lo.min} disabled={!loEnabled} onpointerdown={(e) => relDown(e, 'lo')} onpointermove={relMove} onmousedown={relGuard}
              aria-label={'minimum ' + field.label}
              oninput={(e) => dragWrite('lo', Number(e.currentTarget.value))} />
       <input type="range" class="range-hi"
              min={field.hi.min} max={field.hi.max} step={rangeStep(field.hi)}
-             value={shownHi ?? field.hi.max} disabled={!hiEnabled} onpointerdown={dragStart}
+             value={shownHi ?? field.hi.max} disabled={!hiEnabled} onpointerdown={(e) => relDown(e, 'hi')} onpointermove={relMove} onmousedown={relGuard}
              aria-label={'maximum ' + field.label}
              oninput={(e) => dragWrite('hi', Number(e.currentTarget.value))} />
     </div>
@@ -768,14 +799,14 @@
          nudges — without them this archetype is just a text box. -->
     <div class="stepper">
       <button type="button" disabled={!enabled} aria-label="decrease {labelFor(field)}"
-              onclick={() => stepClick(-1)} onpointerdown={() => holdStart(-1)} onpointerup={holdEnd}
+              onclick={(e) => stepClick(-1, e)} onpointerdown={() => holdStart(-1)} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>&minus;</button>
       <input id={domId} type="number" class="og-num"
              min={field.min} max={field.max} step={step}
              value={inputNum(value)} disabled={!enabled}
              onchange={(e) => commitTyped(e.currentTarget)} />
       <button type="button" disabled={!enabled} aria-label="increase {labelFor(field)}"
-              onclick={() => stepClick(1)} onpointerdown={() => holdStart(1)} onpointerup={holdEnd}
+              onclick={(e) => stepClick(1, e)} onpointerdown={() => holdStart(1)} onpointerup={holdEnd}
               onpointerleave={holdEnd} onpointercancel={holdEnd} oncontextmenu={(e) => e.preventDefault()}>+</button>
     </div>
 
@@ -1501,7 +1532,7 @@
   .color-row { display: flex; align-items: center; gap: 10px; }
   .color-row input.unknown { opacity: 0; }
 
-  /* Shift-drag (defer.js): the held number in intent; the ring stays pending
+  /* Alt-drag (defer.js): the held number in intent; the ring stays pending
      but runs no pulses, since nothing is in flight. !important outranks the
      running animation. */
   .field[data-defer] { --fx-run: 0 !important; }
