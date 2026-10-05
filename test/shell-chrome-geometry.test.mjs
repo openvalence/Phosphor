@@ -566,8 +566,22 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     const half = (await rows()).length;
     await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
     ok(tag + ': the x held 0.5 s deletes nothing, held 1 s deletes', half === 3 && (await rows()).map((r) => r.replace('*', '')).join() === 'Default,Couch', half + ' / ' + JSON.stringify(await rows()));
+    // ph-mdqo.10: F2 and double-click rename; Escape reverts; Default refuses.
+    await fp.dblclick('nav.rail [data-layout="Couch"]');
+    const live = () => fp.evaluate(() => { const a = document.activeElement; return a.matches('.sub-input') ? [a.selectionStart, a.selectionEnd, a.value] : null; });
+    ok(tag + ': a double-click opens the layout name with its text selected', JSON.stringify(await live()) === '[0,5,"Couch"]', JSON.stringify(await live()));
+    await fp.keyboard.type('Sofa');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': Enter keeps the new layout name', (await rows()).join() === 'Default,Sofa*', JSON.stringify(await rows()));
+    await fp.focus('nav.rail [data-layout="Sofa"]');
+    await fp.keyboard.press('F2');
+    await fp.keyboard.type('Zed');
+    await fp.keyboard.press('Escape');
+    ok(tag + ': F2 then Escape reverts', (await rows()).join() === 'Default,Sofa*', JSON.stringify(await rows()));
+    await fp.dblclick('nav.rail [data-layout="Default"]');
+    ok(tag + ': Default refuses to rename', await fp.locator('nav.rail .sub-input').count() === 0);
     await fp.click('nav.rail [data-tab-id="machine"]');
-    ok(tag + ': Dash selects Default again', (await rows()).join() === 'Default*,Couch', JSON.stringify(await rows()));
+    ok(tag + ': Dash selects Default again', (await rows()).join() === 'Default*,Sofa', JSON.stringify(await rows()));
   }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;

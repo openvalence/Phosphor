@@ -11,11 +11,13 @@
    * - Reorder: the grip drags (pointer) or Alt+Up/Down on the row moves it;
    *   delete is the x held 1 s (pointer, or Enter/Space held). Default has
    *   neither and never moves (grid.js pins it).
+   * - F2 or a double-click renames in place (Enter or blur keeps, Escape
+   *   reverts); Default is not renamable.
    * - A layout's name is a storage key (dashboard.svelte.js); every change
    *   goes through its exported edits, never the store directly.
    */
   import { flip } from 'svelte/animate';
-  import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, dashEdit } from '../model/dashboard.svelte.js';
+  import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, renameLayout, dashEdit } from '../model/dashboard.svelte.js';
   import { isStill } from '../ui/still.svelte.js';
 
   let { dashActive = false, onpick } = $props();
@@ -40,6 +42,16 @@
     if (addLayout(n)) { adding = false; onpick(n, true); }
   }
   function focusOn(node) { node.focus(); }
+
+  let renaming = $state(null);
+  let name = $state('');
+  function startRename(n) { if (n === 'Default') return; name = n; renaming = n; }
+  function keepRename() {
+    const from = renaming, to = name.trim();
+    renaming = null;
+    if (from && to && to !== from) renameLayout(from, to);
+  }
+  function selectOn(node) { node.focus(); node.select(); }
 
   let listEl;
   function gripDown(e, name) {
@@ -83,11 +95,18 @@
   {#each names as n (n)}
     {@const on = dashActive && layouts.active === n}
     <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}>
-      <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
-              aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}
-              onkeydown={(e) => rowKey(e, n)}>
-        <span class="rail-name">{n}</span>
-      </button>
+      {#if renaming === n}
+        <input class="sub-input" aria-label={'Rename ' + n} bind:value={name} use:selectOn
+               onkeydown={(e) => { if (e.key === 'Enter') keepRename(); else if (e.key === 'Escape') renaming = null; }}
+               onblur={keepRename} />
+      {:else}
+        <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
+                aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}
+                ondblclick={() => startRename(n)}
+                onkeydown={(e) => { rowKey(e, n); if (e.key === 'F2') { e.preventDefault(); startRename(n); } }}>
+          <span class="rail-name">{n}</span>
+        </button>
+      {/if}
       {#if n !== 'Default'}
         <span class="sub-grip" aria-hidden="true" title="Drag to reorder, Alt+Up or Down" onpointerdown={(e) => gripDown(e, n)}>
           <svg viewBox="0 0 8 12"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg>
