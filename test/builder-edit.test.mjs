@@ -652,8 +652,8 @@ console.log('modes');
     const tag = w + 'x' + h + ': ';
     const { ctx, page, card, cell, stored } = await open({
       [SLIDER]: { x: 0, y: 0, w: 8, h: 3 },
-      [DEPTH]: { x: 8, y: 0, w: 5, h: 6, look: { pres: 'knob', label: true } },
-      [F2]: { x: 13, y: 0, w: 6, h: 4 },
+      [DEPTH]: { x: 8, y: 0, w: 6, h: 6, look: { pres: 'knob', label: true } },
+      [F2]: { x: 14, y: 0, w: 6, h: 4 },
       'hero:pattern': { x: 0, y: 7, w: 12, h: 8 },
       'nest:1': { x: 13, y: 7, w: 14, h: 6, nest: { title: 'Pump', map: { [F3]: { x: 0, y: 0, w: 6, h: 3 } } } },
     }, { w, h, edit: false });
@@ -691,7 +691,7 @@ console.log('modes');
     const tools = await card(SLIDER).locator('.dash-head .ico').evaluateAll((els) => els.map((e) => { const b = e.getBoundingClientRect(); return [b.width, b.height]; }));
     ok(tag + 'edit tools are icon-sized (ph-fhx)', tools.length >= 2 && tools.every(([a, b]) => a <= 24.5 && b <= 24.5), tools);
     const cut = await card(DEPTH).locator('.dash-title').evaluate((t) => ({ cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent.trim(), w: t.clientWidth }));
-    ok(tag + 'a five-cell titled card keeps its whole title in edit mode (ph-fhx)', !cut.cut, cut);
+    ok(tag + 'a six-cell titled card (look, label, remove, grip) keeps its whole title in edit mode (ph-fhx)', !cut.cut, cut);
 
     // The look popover: no room taken, anchored to its card.
     const cardBox = () => card(SLIDER).evaluate((c) => { const b = c.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); });

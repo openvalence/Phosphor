@@ -18,7 +18,7 @@
 import {
   CELL_DEVICE_PX, SCALE_STEPS, STORE_KEY,
   cellCssPx, cellCount, allowedSteps, clampScale, stepScale, place, blocker, commitPin, commitOrder,
-  loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
+  loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout, addLayout, moveLayout, layoutOrder,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
@@ -178,12 +178,35 @@ console.log('layouts');
   const back = loadStore(st);
   ok('the store survives a reload', back.active === 'Default' && back.layouts.Night['full.machine'].a.w === 20);
   ok('the absent id survives the reload', JSON.stringify(back.layouts.Default['full.machine'].ghost) === '{"x":3,"y":0,"w":4,"h":1}');
-  ok('delete the active layout falls back to another', deleteLayout(back, 'Default') && back.active === 'Night');
-  ok('the last layout cannot be deleted', !deleteLayout(back, 'Night'));
+  ok('delete the active layout falls back to Default', switchLayout(back, 'Night') && deleteLayout(back, 'Night') && back.active === 'Default');
+  ok('Default cannot be deleted', !deleteLayout(back, 'Default') && !!back.layouts.Default);
   saveScale(st, 1.25);
   ok('scale persists', loadScale(st) === 1.25);
   st.setItem('phosphor.scale', '7');
   ok('an off-list stored scale reads as 1', loadScale(st) === 1);
+}
+
+// ---- layout order: Default pinned first (ph-mdqo.9) ----
+console.log('layout order');
+{
+  const st = memStorage();
+  const s = loadStore(st);
+  ok('a fresh store lists Default alone', layoutOrder(s).join() === 'Default');
+  ok('add makes an empty active layout, last', addLayout(s, 'B') && addLayout(s, 'C') && s.active === 'C'
+     && layoutOrder(s).join() === 'Default,B,C' && Object.keys(s.layouts.C).length === 0);
+  ok('add refuses a taken or invalid name', !addLayout(s, 'B') && !addLayout(s, ' ') && !addLayout(s, '__proto__'));
+  ok('move reorders and clamps', moveLayout(s, 'C', 1) && layoutOrder(s).join() === 'Default,C,B'
+     && moveLayout(s, 'C', 99) && layoutOrder(s).join() === 'Default,B,C');
+  ok('nothing moves to slot 0', moveLayout(s, 'C', 0) && layoutOrder(s).join() === 'Default,C,B');
+  ok('Default does not move, rename or delete', !moveLayout(s, 'Default', 2) && !renameLayout(s, 'Default', 'X')
+     && !deleteLayout(s, 'Default') && layoutOrder(s).join() === 'Default,C,B');
+  ok('rename keeps the slot', renameLayout(s, 'C', 'D') && layoutOrder(s).join() === 'Default,D,B' && s.active === 'D');
+  ok('delete drops the name and the active falls back to Default', deleteLayout(s, 'D') && layoutOrder(s).join() === 'Default,B' && s.active === 'Default');
+  saveStore(st, s);
+  ok('the order survives a reload', layoutOrder(loadStore(st)).join() === 'Default,B');
+  const odd = { active: 'A', layouts: { A: {}, Default: {}, Z: {} }, modules: {}, order: ['Z', 'Gone', 'A', 'Z'] };
+  ok('a stale order heals: Default first, unknown dropped, no duplicates', layoutOrder(odd).join() === 'Default,Z,A');
+  ok('a layout missing from the order lands last', layoutOrder({ layouts: { Default: {}, N: {} }, order: [] }).join() === 'Default,N');
 }
 
 // ---- storage that throws ------------------------------------------------------
@@ -232,7 +255,7 @@ console.log('migration');
   ok('a reset per-class map wins over the legacy key', Object.keys(loadStore(reset).layouts.Default['full.machine']).length === 0);
 
   const existing = memStorage({ [STORE_KEY]: JSON.stringify({ active: 'A', layouts: { A: { 'full.v': { q: { x: 1, y: 0, w: 2, h: 1 } } } } }), 'sd32.dash.v': '{}' });
-  ok('an existing store is loaded as is, migration skipped', loadStore(existing).layouts.A['full.v'].q.x === 1 && !loadStore(existing).layouts.Default);
+  ok('an existing store is loaded as is, migration skipped, a missing Default added empty', loadStore(existing).layouts.A['full.v'].q.x === 1 && Object.keys(loadStore(existing).layouts.Default).length === 0);
 }
 
 // ---- nests and modules (ph-e82.6) ----------------------------------------------
@@ -558,6 +581,16 @@ console.log('floor');
   ok('a stored height above the measured one stands', pack([{ id: 'a' }], { a: { h: 6 } }, 40, [], fit)[0].h === 6);
   ok('the fit sees the entry\'s look', pack([{ id: 'a' }], { a: { look: { pres: 'knob' } } }, 40, [],
      (it) => (it.look && it.look.pres === 'knob' ? 7 : 1))[0].h === 7);
+  const fw = Object.assign(() => null, { w: (it) => ({ a: 10, b: 12, c: 30 }[it.id] || 0) });
+  const seeded = pack([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], { d: { w: 5 } }, 40, [], fw);
+  ok('a seeded card takes its floor width in rank order, narrow cards share a row, the last card of a row stretches',
+     JSON.stringify(seeded.map((p) => [p.id, p.x, p.y, p.w])) === '[["a",0,0,10],["b",10,0,30],["c",0,1,30],["d",30,1,5]]', JSON.stringify(seeded));
+  ok('an unmeasured floor fills the row; a floor over the grid clamps to it',
+     pack([{ id: 'a' }], {}, 40, [], Object.assign(() => null, { w: () => 0 }))[0].w === 40
+     && pack([{ id: 'a' }], {}, 8, [], fw)[0].w === 8 && pack([{ id: 'c' }], {}, 20, [], fw)[0].w === 20);
+  const sec = pack([{ id: 'a' }, { id: 'head' }, { id: 'b' }], {}, 40, [], Object.assign(() => 4, { w: (it) => (it.id === 'head' ? 0 : 10) }));
+  ok('a seed never rises above the card before it: a full-row header keeps the cards after it below',
+     JSON.stringify(sec.map((p) => [p.id, p.y])) === '[["a",0],["head",4],["b",8]]', JSON.stringify(sec));
   const held = { a: { x: 0, y: 0, w: 8, h: 3 } };
   const ids = commitPin(held, [{ id: 'a' }, { id: 'n' }, { id: 'm' }], 40, null, (it) => (it.id === 'm' ? 2 : it.id === 'a' ? 3 : null));
   ok('a commit holds an add never measured (entered, no rect), writes a measured one', JSON.stringify(ids) === '["n"]' && JSON.stringify(held.n) === '{}'
