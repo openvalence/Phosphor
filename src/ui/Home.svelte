@@ -159,7 +159,7 @@
   {:else if item.telemetry}
     <TelemetryChart />
   {:else}
-    <div class="home-fields">
+    <div class="home-fields card-body">
       {#each item.fields as f (f.uid)}
         {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
       {/each}
@@ -182,11 +182,5 @@
     flex-direction: column;
     gap: var(--gap);
     min-width: 0;
-  }
-  /* App.svelte's .card-body: columns capped at the reading measure. */
-  .home-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, min(100%, var(--measure)));
-    gap: 14px var(--gap);
   }
 </style>

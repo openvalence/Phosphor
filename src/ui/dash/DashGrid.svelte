@@ -245,9 +245,12 @@
     if (it.kind === 'section' || !(seedW.has(k) || need[k])) return 0;
     if (!seedW.has(k)) {
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      seedW.set(k, Math.max(minOf(it)(cols, 1)[0], Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell)));
+      // A hero (a category page's card) declares its own cells (host.js registerHero).
+      const declared = (it.hero && it.hero.cells && it.hero.cells.h[0]) || 0;
+      seedW.set(k, Math.max(minOf(it)(cols, 1)[0], declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell)));
     }
-    return seedW.get(k);
+    // A plugin card is an application (an editor, a player): half the row, never under its declared minimum.
+    return it.kind === 'plugin' || (it.hero && it.hero.plugin) ? Math.max(seedW.get(k), Math.ceil(cols / 2)) : seedW.get(k);
   };
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
   // Ids measured since their last grow check: a card grows when its content

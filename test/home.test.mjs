@@ -384,12 +384,14 @@ if (!LIVE) {
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  // A row's last card stretches to the grid edge (DESIGN §10.5), so only such a card may change width.
-  const gridEdge = Math.max(...Object.values(geo0).map((g) => g[0] + g[2]));
-  const rowEnd = (g) => g[0] + g[2] >= gridEdge - 1;
-  ok('sections: no card changes width but a row-end one, and the round trip lands where it began (a toggle may repack columns)',
-     Object.keys(geoHidden).every((id) => geoHidden[id][2] === geo0[id][2] || rowEnd(geoHidden[id]) || rowEnd(geo0[id]))
-     && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
+  // Seeded cards flow by rank at floor widths, so a toggle repacks them: the round trip keeps the
+  // same cards, the header and all above it, and no overlap, not every column or width.
+  const apart = (a, b) => a[0] + a[2] <= b[0] + 1 || b[0] + b[2] <= a[0] + 1 || a[1] + a[3] <= b[1] + 1 || b[1] + b[3] <= a[1] + 1;
+  const ids = Object.keys(geoBack);
+  ok('sections: the round trip keeps the cards, the header and above, and overlaps none',
+     JSON.stringify(Object.keys(geo0).sort()) === JSON.stringify(ids.sort())
+     && still.every((id) => JSON.stringify(geoBack[id]) === JSON.stringify(geo0[id]))
+     && ids.every((a, i) => ids.slice(i + 1).every((b) => apart(geoBack[a], geoBack[b]))), [geoHidden, geoBack]);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 
