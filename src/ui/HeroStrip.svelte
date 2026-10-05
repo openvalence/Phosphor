@@ -12,31 +12,41 @@
   // `accessory` is a layout snippet forwarded to the FIRST hero only — the
   // instrument hero's row carries the transport controls (OG .hero-row).
   // This strip stays ignorant of what the snippet contains.
+  import { prefs } from '../model/prefs.js';
+  import { heroBar } from './hero/heroBar.svelte.js';
+
   let { heroes, accessory = null } = $props();
+  // The rail stays mounted while hidden: railReadout() keeps feeding the numerals.
+  const collapsed = $derived(heroBar.form === 'mini' || ($prefs.railHide && $prefs.railHidden));
 </script>
 
 {#if heroes && heroes.length}
-  <div class="hero-strip">
-    {#each heroes as hero, i (hero.id)}
-      <div class="hero-slot" data-hero={hero.id}>
-        <hero.component fields={hero.fields} accessory={i === 0 ? accessory : null} />
-      </div>
-    {/each}
+  <div class="hero-strip" class:collapsed>
+    <div class="hero-inner" inert={collapsed}>
+      {#each heroes as hero, i (hero.id)}
+        <div class="hero-slot" data-hero={hero.id}>
+          <hero.component fields={hero.fields} accessory={i === 0 ? accessory : null} />
+        </div>
+      {/each}
+    </div>
   </div>
 {/if}
 
 <style>
   .hero-strip {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--gap);
+    grid-template-rows: 1fr;
+    transition: grid-template-rows var(--t-move);
     /* One surface with the top bar, whose bottom border is the divider; full
        bleed through .app's side padding like .topstrip. */
     margin: 0 calc(var(--app-pad, var(--gap)) * -1);
-    padding: var(--gap);
     background: var(--bg-raised);
     border-bottom: 1px solid var(--line);
   }
+  .hero-inner { min-height: 0; display: grid; grid-template-columns: 1fr; gap: var(--gap); padding: var(--gap); }
+  /* Collapsed: no height, no divider (the top bar's border stays). */
+  .hero-strip.collapsed { grid-template-rows: 0fr; border-bottom-width: 0; }
+  .collapsed .hero-inner { overflow: hidden; visibility: hidden; padding-block: 0; }
 
   .hero-slot {
     min-width: 0; /* let sliders/rails shrink instead of forcing horizontal scroll */

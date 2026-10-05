@@ -58,6 +58,9 @@
   import HeroNumerals from './hero/HeroNumerals.svelte';
   import PlanStrip from './widgets/PlanStrip.svelte';
   import { railReadout } from './hero/RailWidget.svelte';
+  import MiniRail from './hero/MiniRail.svelte';
+  import { heroBar } from './hero/heroBar.svelte.js';
+  import { prefs, setPref } from '../model/prefs.js';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. shell: the shell's window buttons (main.js), null on the
@@ -92,6 +95,10 @@
   );
 
   const rail = $derived(railReadout());
+  // The hide tab (Settings: Rail hide tab) and, while hidden, the mini rail.
+  const tab = $derived(!!rail && $prefs.railHide && heroBar.form === 'full');
+  const railHidden = $derived(!!rail && (heroBar.form === 'mini' || ($prefs.railHide && $prefs.railHidden)));
+  const showRail = () => setPref('railHidden', false);
   // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
   // and never on a hub whose op table lacks it (law 7).
   const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
@@ -359,7 +366,7 @@
          nothing moves when it fills. -->
     {#if rail}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
 
-    <div class="status" data-kind={slot.kind}>
+    <div class="status" class:hastab={tab || railHidden} data-kind={slot.kind}>
       {#if slot.kind === 'refusal'}
         <!-- The text is its own dismiss button: one target, no extra width. -->
         <div class="recovery" role="alert">
@@ -386,6 +393,17 @@
           <button type="button" class="btn" onclick={retryNow}>Retry</button>
         {/if}
       {/if}
+    {#if tab || railHidden}
+      <div class="railtab">
+        {#if railHidden}<MiniRail onshow={showRail} />{/if}
+        {#if tab}
+          <button type="button" class="tab" aria-label={$prefs.railHidden ? 'Show rail' : 'Hide rail'} title={$prefs.railHidden ? 'Show rail' : 'Hide rail'}
+                  aria-expanded={!$prefs.railHidden} onclick={() => setPref('railHidden', !$prefs.railHidden)}>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d={$prefs.railHidden ? 'M2.5 4.5l3.5 3.5 3.5-3.5' : 'M2.5 7.5l3.5-3.5 3.5 3.5'}/></svg>
+          </button>
+        {/if}
+      </div>
+    {/if}
     </div>
 
     <div class="dock">
@@ -553,6 +571,25 @@
   }
 
   .dock { display: contents; }
+
+  /* Rides the status slot's right end: no width of its own in the strip's budget. */
+  .status { position: relative; }
+  .status.hastab { padding-right: 56px; }
+  .railtab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 6px; }
+  .status.hastab:has(.mini) { padding-right: 126px; }
+  @media (max-width: 300px) { .railtab { display: none; } .status.hastab { padding-right: 0; } }
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    background: transparent;
+    border: 0;
+    color: var(--ink-dim);
+  }
+  .tab:hover { color: var(--ink); }
+  .tab svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
   /* Bare: out of flow at the window's top right, the pair alone. */
   .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }

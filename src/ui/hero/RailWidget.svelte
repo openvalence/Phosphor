@@ -433,6 +433,9 @@
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
       get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; }, jog,
+      // The mini rail's window and live position, as screen fractions.
+      get haveWindow() { return haveWindow; }, get bandL() { return bandL; }, get bandR() { return bandR; },
+      get posFrac() { return fresh && posDisplay != null ? pct(posDisplay) : null; },
     };
     return () => { readout = null; };
   });
