@@ -267,14 +267,14 @@
      dropping to a tighter clamp under 1024px so the hero row never wraps on
      a tablet (`webui-prerefactor` .hero-val breakpoints). */
   .hn-primary .hn-val {
-    font-size: clamp(54px, 6.2vw, 80px);
+    font-size: min(clamp(54px, 6.2vw, 80px), calc((var(--num-h, 999px) - 20px) / .95));
     line-height: 0.95;
     color: var(--reality);
     text-shadow: var(--glow-reality);
     font-variation-settings: 'wght' 500;
   }
   @media (max-width: 1023px) {
-    .hn-primary .hn-val { font-size: clamp(42px, 8.5vw, 54px); }
+    .hn-primary .hn-val { font-size: min(clamp(42px, 8.5vw, 54px), calc((var(--num-h, 999px) - 20px) / .95)); }
   }
   .hn-val.glow {
     color: var(--reality);

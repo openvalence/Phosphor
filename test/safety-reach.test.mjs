@@ -535,13 +535,13 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   })();
   CATALOGS.short = { bytes: SHORT_OPS, etag: catalogEtag(SHORT_OPS, LIMITS.etag_bytes) };
   for (const [catalog, why, rails] of [['none', 'no rail', 0], ['short', 'no override op', 1]]) {
-    const { ctx, page, up } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
+    const { ctx, page, up } = await open(browser, { w: 1280, h: 900, touch: false, catalog });
     ok('override: declines with ' + why, up && await page.locator('.rail-hero').count() === rails
       && await page.locator('.btn-override').count() === 0);
     await ctx.close();
   }
 
-  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero' });
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'hero' });
   const ovr = page.locator('.topstrip .dock .ovr .btn-override');
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
@@ -594,7 +594,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   // snapshot: every byte 0 (not flipped) but the enabled mask.
   const flipCh = cbDecodeFull(FIXTURE).find((e) => (e.get(8) || []).some((f) => f.get(13) === 'axis.flipped'));
   const states = { [flipCh.get(1)]: Uint8Array.from(flipCh.get(8), (f) => (f.get(13) === 'meta.enabled_mask' ? 0xff : 0)) };
-  for (const [w, h, touch, cls] of [[1280, 720, false, 'full'], [360, 800, true, 'handheld'], [220, 480, true, 'glance']]) {
+  for (const [w, h, touch, cls] of [[1280, 900, false, 'full'], [360, 800, true, 'handheld'], [220, 480, true, 'glance']]) {
     const { ctx, page, wire, up } = await open(browser, { w, h, touch, catalog: 'hero', states });
     const flip = page.locator('.topstrip .rw-flip');
     // Short of width, Flip rides the Home popover: open it first.
@@ -702,7 +702,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const states = { [flipE.id]: stateOf(flipE, {}), [planE.id]: stateOf(planE, {}), [CORE_CHANNEL.control_owner]: OWNER,
     [runE.id]: stateOf(runE, { 'pattern.running': 1 }) };
   for (const [catalog, plan, refusal] of [['unlabeled', /^plan/, /SOURCE_CONFLICT/], ['labeled', /^Pattern/, /rail owned by Pattern/]]) {
-    const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog, states });
+    const { ctx, page } = await open(browser, { w: 1280, h: 900, touch: false, catalog, states });
     const mode = (await page.locator('.topstrip .readback .plan-mode').textContent({ timeout: 5000 }).catch(() => '')).trim();
     ok('owner (' + catalog + '): the strip readback names the owner from the labels, else "plan"', plan.test(mode), JSON.stringify(mode));
     ok('owner (' + catalog + '): a foreign owner keeps the full-width plan strip, not the segment',
@@ -729,7 +729,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   };
   // Idle and homed, a foreign session still holding a slot it no longer drives.
   {
-    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'labeled',
       states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER } });
     const tape = page.locator('.rail-hero .rail-tape-track');
     ok('jog: idle, the tape shows and is live', await tape.isVisible() && await tape.getAttribute('aria-disabled') === 'false');
@@ -754,7 +754,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   // Classic running, no foreign owner: the planned segment at the window's width, and no tape write.
   {
     const plan = (o) => stateOf(planE, o);
-    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', reducedMotion: 'reduce',
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'hero', reducedMotion: 'reduce',
       states: { [cfgE.id]: cfg, [runE.id]: stateOf(runE, { 'pattern.running': 1 }),
         [planE.id]: plan({ 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }) } });
     ok('jog: Classic running shows the planned segment over the tape', await page.locator('.rail-swap .plan-strip.segment').isVisible()
@@ -830,7 +830,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     new DataView(own.buffer).setUint32(6, 99, true);
     te.encodeInto('MultiFunPlayer', own.subarray(70, 86));
     te.encodeInto('DESK', own.subarray(86, 118));
-    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'labeled',
       states: { [cfgE.id]: cfg, [flipE.id]: stateOf(flipE, {}), [CORE_CHANNEL.control_owner]: own,
         [planE.id]: stateOf(planE, { 'plan.start': 0, 'plan.end': 1, 'plan.current': 0.5 }) } });
     ok('stream: a foreign stream slot shows the plan strip over the tape', await page.locator('.rail-swap .plan-strip:not(.segment)').isVisible()
@@ -859,7 +859,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const cfgE = byRole('window.min'), tgtE = byRole('telemetry.target');
   const cfg = stateOf(cfgE, { 'window.min': 100, 'window.max': 400, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
   const tgt = stateOf(tgtE, { 'telemetry.target': 250, 'telemetry.position': 250 });
-  const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled',
+  const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'labeled',
     states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER } });
   const tick = setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, tgtE.id, tgt))); } catch (e) { /* closed */ } }, 30);
   await page.waitForTimeout(600);
@@ -963,7 +963,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const cfg = stateOf(cfgE, { 'window.min': 0, 'window.max': T, 'geometry.max_travel': T, 'geometry.measured_travel': T });
   // Coarse pointer, full window: both end handles stay whole and the page does not widen.
   {
-    const { ctx, page } = await open(browser, { w: 360, h: 800, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
+    const { ctx, page } = await open(browser, { w: 1280, h: 900, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
     await page.waitForTimeout(600);
     const m = await page.evaluate(() => {
       const hits = (k) => { const r = document.querySelector('.rail-band-handle.' + k).getBoundingClientRect(); let n = 0;
@@ -987,7 +987,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const seen = {};
   for (const flipped of [0, 1]) {
     const states = { [flipE.id]: stateOf(flipE, { 'axis.flipped': flipped }), [cfgE.id]: cfg };
-    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'hero', states });
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 900, touch: false, catalog: 'hero', states });
     // The hub reports travel minus position while flipped (RFC-088).
     const pos = stateOf(posE, { 'telemetry.position': flipped ? T - P : P });
     const tick = setInterval(() => { try { wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, posE.id, pos))); } catch (e) { /* closed */ } }, 30);
