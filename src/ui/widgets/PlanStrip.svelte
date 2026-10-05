@@ -53,6 +53,7 @@
    * list, so a planner that gains or retires a style needs no change here.
    */
   import { machine } from '../../model/machine.svelte.js';
+  import { isStill } from '../still.svelte.js';
   import { formatParts, optionLabel, labelFor } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
   import { norm } from '../../model/bounds.js';
@@ -224,10 +225,6 @@
     readTokens();
     const offTheme = onTheme(readTokens);
 
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let reduced = mq.matches;
-    const onMqChange = (e) => { reduced = e.matches; };
-    mq.addEventListener('change', onMqChange);
 
     let cssW = 0, cssH = 0;
     function sizeIfNeeded() {
@@ -286,7 +283,7 @@
           ctx.fillRect(Math.min(xc, xe), 1, Math.abs(xe - xc), h - 2);
         }
         ctx.save();
-        ctx.shadowBlur = reduced ? 0 : 6;
+        ctx.shadowBlur = isStill() ? 0 : 6;
         ctx.shadowColor = ctx.fillStyle = cIntent;
         ctx.fillRect(xe - 1, 0, 2, h);
         const late = bent.length > 0 || !isActive || (durVal > 0 && elapsedVal > durVal);
@@ -302,7 +299,7 @@
         pushGhost(dispFrom, dispTo, now);
         lastKey = key;
       }
-      const ease = reduced ? 1 : 0.3;
+      const ease = isStill() ? 1 : 0.3;
       dispFrom += (from - dispFrom) * ease;
       dispTo += (to - dispTo) * ease;
 
@@ -331,7 +328,7 @@
         const hx = at(curPct);
         ctx.save();
         ctx.shadowColor = cReal;
-        ctx.shadowBlur = reduced ? 0 : 7;
+        ctx.shadowBlur = isStill() ? 0 : 7;
         ctx.fillStyle = cReal;
         ctx.fillRect(hx - 0.75, 0, 1.5, h);
         ctx.restore();
@@ -341,7 +338,7 @@
       // cosmetic, not a second source of truth for "is it running".
       ctx.save();
       ctx.shadowColor = isActive ? cReal : cWarn;
-      ctx.shadowBlur = reduced ? 0 : 6;
+      ctx.shadowBlur = isStill() ? 0 : 6;
       ctx.fillStyle = isActive ? cReal : cWarn;
       ctx.fillRect(x1 - 1, -1, 2, h + 2);
       ctx.restore();
@@ -349,12 +346,11 @@
 
     let raf = null, timer = null;
     function frame() { draw(); raf = requestAnimationFrame(frame); }
-    if (reduced) { draw(); timer = setInterval(draw, 1000); }
+    if (isStill()) { draw(); timer = setInterval(draw, 1000); }
     else raf = requestAnimationFrame(frame);
 
     return () => {
       offTheme();
-      mq.removeEventListener('change', onMqChange);
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearInterval(timer);
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -444,7 +440,7 @@
     border: 1px solid var(--line);
     border-radius: var(--r-s);
     box-shadow: inset 0 1px 4px rgba(var(--shade-rgb), .5);
-    transition: left .25s ease, width .25s ease;
+    transition: left var(--t-move) var(--ease-out), width var(--t-move) var(--ease-out);
   }
   /* The segment sits where the tap strip sat: its border and screen. */
   .segment .plan-lane { background: var(--screen); border-color: rgba(var(--intent-rgb), .45); }

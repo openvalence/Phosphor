@@ -207,7 +207,7 @@
     white-space: nowrap;
     user-select: none;
     -webkit-touch-callout: none;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   /* Narrower than the strip's pair at 96px (2 x 96 + 6 + 2 x --gap): the
      op sheds the 96px floor and its text wraps; --tap still holds. */
@@ -252,8 +252,5 @@
   }
   @keyframes hold-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
-  @media (prefers-reduced-motion: reduce) {
-    .btn { transition: none; }
-    .hold { animation: none; }
-  }
+  :global(html.still) .hold { animation: none; }
 </style>

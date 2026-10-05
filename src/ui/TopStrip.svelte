@@ -655,7 +655,7 @@
   .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
   .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
   .topstrip.bare .strip { display: flex; height: auto; padding: 6px; }
-  .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity .15s; }
+  .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
   /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
   .pair {
@@ -767,7 +767,7 @@
     font-weight: 500;
     font-size: .72rem;
     white-space: nowrap;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   .btn:disabled { opacity: 0.4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
@@ -802,7 +802,7 @@
     color: var(--ink);
     overflow: hidden;
     white-space: nowrap;
-    transition: border-color .12s;
+    transition: border-color var(--t-quick);
   }
   .evline:hover { border-color: var(--line-4); }
   .evline.stale { opacity: .55; }
@@ -820,8 +820,5 @@
     padding: 0 5px;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .btn, .evline, .bare .pair { transition: none; }
-    .btn.hazard { animation: none; }
-  }
+  :global(html.still) .btn.hazard { animation: none; }
 </style>

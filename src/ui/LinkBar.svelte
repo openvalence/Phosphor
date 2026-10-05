@@ -20,6 +20,7 @@
    *   (docs/COPY.md rule 4): the name carries one only while ellipsized.
    */
   import { untrack } from 'svelte';
+  import { isStill } from './still.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
   import { bytes, since, hubTitle } from '../model/format.js';
@@ -157,10 +158,6 @@
     // changes (rare, catalog-driven), so a mid-session preference flip must
     // reach `tick()` (below, on its own setInterval) some other way — the
     // media-query listener updates this closure variable live (T25).
-    const mq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
-    let reduceMotion = mq ? mq.matches : false;
-    const onMqChange = (e) => { reduceMotion = e.matches; };
-    if (mq) mq.addEventListener('change', onMqChange);
 
     const dpr = window.devicePixelRatio || 1;
     const cssW = AG_COLS * (AG_CELL + AG_GAP);
@@ -235,7 +232,7 @@
 
     function tick() {
       const frame = rows.map(sampleFrac);
-      if (reduceMotion) {
+      if (isStill()) {
         // Freeze the scroll animation but keep painting current values: every
         // column shows the same live reading instead of a moving history, so
         // the grid holds still while still being honest about "now".
@@ -256,7 +253,7 @@
     // own ticks are untracked by construction (async, outside the scope).
     untrack(tick);
     const id = setInterval(tick, 220);
-    return () => { clearInterval(id); if (mq) mq.removeEventListener('change', onMqChange); };
+    return () => { clearInterval(id); };
   });
 </script>
 

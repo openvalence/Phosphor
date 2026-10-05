@@ -328,7 +328,7 @@
     color: var(--tx-mut);
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :global(html.still) {
     .hn-val { transition: none; }
   }
 </style>

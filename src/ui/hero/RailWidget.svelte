@@ -78,6 +78,7 @@
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
   import { heroBar } from './heroBar.svelte.js';
+  import { still, isStill } from '../still.svelte.js';
   import { ACCENT, ac } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
@@ -450,16 +451,7 @@
   // Reactive, not a one-time read: a preference toggled mid-session (T25 —
   // motion must honor a LIVE change, no reload) must reach the rAF loop
   // below, which reads this on every frame.
-  let reducedMotion = $state((typeof window !== 'undefined' && window.matchMedia)
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false);
-  $effect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => { reducedMotion = mq.matches; };
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  });
+  const reducedMotion = $derived(still.on);
 
   $effect(() => {
     if (!hostEl || !canvasEl) return;
@@ -928,6 +920,19 @@
     onTapePointerMove(e);
     e.preventDefault();
   }
+  // Display only: a ripple spreads from the pointer along the tape and lights its
+  // tick lines as it passes. Added after the jog is requested; never gates it.
+  let ripples = $state([]);
+  let rippleId = 0, rippleAt = 0;
+  function spawnRipple(e) {
+    if (isStill() || !tapeTrackEl) return;
+    const now = performance.now();
+    if (now - rippleAt < 140) return;
+    rippleAt = now;
+    const r = tapeTrackEl.getBoundingClientRect();
+    const x = vertical ? e.clientY - r.top : e.clientX - r.left;
+    ripples = [...ripples.slice(-2), { id: ++rippleId, x }];
+  }
   function onTapePointerMove(e) {
     if (!moveDragging) return;
     const raw = moveValueFromPoint(e);
@@ -941,6 +946,7 @@
     moveDragValue = v;
     moveHeld = deferring(e);
     if (!moveHeld) requestMove(v);
+    spawnRipple(e);
   }
   function onTapePointerUp(e) {
     if (!moveDragging) return;
@@ -1040,6 +1046,12 @@
              onpointerup={onTapePointerUp}
              onpointercancel={onTapePointerUp}
              onkeydown={onTapeKey}>
+          <div class="rail-ripples" aria-hidden="true">
+            {#each ripples as rp (rp.id)}
+              <span class="rail-ripple" style="left:{rp.x}px"
+                    onanimationend={() => (ripples = ripples.filter((q) => q.id !== rp.id))}></span>
+            {/each}
+          </div>
           <div class="rail-tape live" bind:this={tapeBarEl}
                style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
             {#if !moveEnabled && moveReason}
@@ -1231,7 +1243,7 @@
     justify-content: center;
     border-radius: var(--r-s);
     overflow: hidden;
-    transition: left .25s ease, width .25s ease;
+    transition: left var(--t-move) var(--ease-out), width var(--t-move) var(--ease-out);
   }
   /* Disabled (fallback: no move role, or this session may not command) —
      inert gray strip, same shape as the live one so the rhythm survives. */
@@ -1253,6 +1265,23 @@
     box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .6);
   }
   .rail-tape-assembly.drag-live .rail-tape { transition: none; }
+  .rail-ripples { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  /* A ring from the pointer: a faint glow plus the tape's tick lines, lit only where the ring passes. */
+  .rail-ripple {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 240px;
+    margin-left: -120px;
+    background:
+      repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .45) 0 1px, transparent 1px 7px),
+      radial-gradient(closest-side, rgba(var(--intent-rgb), .14), transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 42%, #000 58%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 42%, #000 58%, transparent);
+    transform-origin: center;
+    animation: rail-ripple var(--t-slow) var(--ease-out) forwards;
+  }
+  @keyframes rail-ripple { from { transform: scaleX(.15); opacity: 1; } to { transform: scaleX(1); opacity: 0; } }
+  :global(html.still) .rail-ripple { display: none; }
   .rail-tape-micro {
     font-size: max(11px, calc(var(--s) * 9px));
     letter-spacing: 0.18em;
@@ -1281,10 +1310,10 @@
     box-shadow: 0 0 10px rgba(var(--intent-rgb), .7);
     opacity: 0;
     pointer-events: none;
-    transition: opacity .1s ease, left .12s ease;
+    transition: opacity var(--t-quick), left var(--t-quick) ease;
   }
   .rail-tape-pip.on { opacity: 1; }
-  .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity .1s ease; }
+  .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity var(--t-quick); }
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
     position: relative;
@@ -1357,7 +1386,7 @@
     transform: translateY(-50%);
     pointer-events: none;
     background: repeating-linear-gradient(135deg, rgba(var(--bad-rgb), .22) 0 3px, rgba(var(--bad-rgb), .03) 3px 7px);
-    transition: clip-path .25s ease;
+    transition: clip-path var(--t-move) var(--ease-out);
     z-index: 1;
   }
 
@@ -1373,7 +1402,7 @@
     box-shadow: 0 0 14px rgba(var(--intent-deep-rgb), .16), inset 0 0 18px rgba(var(--intent-deep-rgb), .07);
     cursor: grab;
     touch-action: none;
-    transition: left .12s ease, width .12s ease;
+    transition: left var(--t-quick) ease, width var(--t-quick) ease;
   }
   .rail-band:active { cursor: grabbing; }
   .rail-band.pending { border-left-style: dashed; border-right-style: dashed; }
@@ -1437,7 +1466,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: left .12s ease;
+    transition: left var(--t-quick) ease;
   }
   /* The OG 12px zone is a mouse-era number. On a touch screen the INVISIBLE
      hit area widens to the tap floor — the 3px visible bar is unchanged, so
