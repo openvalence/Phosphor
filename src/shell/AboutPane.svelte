@@ -65,6 +65,6 @@
 </div>
 
 <style>
-  .lic { margin-top: 6px; }
+  .lic { margin-top: var(--sp-2); }
   .lic pre { white-space: pre-wrap; font-size: 0.8em; opacity: 0.8; }
 </style>
