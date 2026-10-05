@@ -110,7 +110,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
     interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   ok('PREFS is the contract shape', same(PREFS, want));
@@ -742,10 +742,37 @@ if (!LIVE) {
   const rects = { empty: await chrome(page) };
   ok('empty: the status reads No scene loaded', (await statusText(page)) === 'No scene loaded', await statusText(page));
   ok('empty: Play is grayed', await playBtn(page).isDisabled());
+  const chooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator(C + ' .fsp-stage').click()])
+    .then(() => true).catch(() => false);
+  ok('open: an empty stage is a click target for the file picker', chooser);
+  const openWhere = await page.evaluate((c) => [...document.querySelectorAll(c + ' button')].filter((b) => /Open files/.test(b.textContent))
+    .map((b) => b.closest('.fsp-lib-head') ? 'library head' : b.parentElement.className), C);
+  ok('open: Open files is in the library head, not the main bar', openWhere.length === 1 && openWhere[0] === 'library head', openWhere);
 
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);
   rects.ready = await chrome(page);
+  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand', 'fsp-snap', 'fsp-layout', 'fsp-close'];
+  const trow = await page.locator(C + ' .fsp-tr').evaluate((t, order) => {
+    const r = t.getBoundingClientRect(), card = t.parentElement.getBoundingClientRect();
+    const kids = [...t.children];
+    return { names: kids.map((e) => order.find((c) => e.classList.contains(c)) || e.className), tops: [...new Set(kids.map((e) => { const b = e.getBoundingClientRect(); return Math.round((b.top + b.bottom) / 8); }))].length,
+      outside: order.filter((c) => [...t.parentElement.querySelectorAll('.' + c)].some((e) => !t.contains(e))),
+      ovBetween: kids.indexOf(t.querySelector('.fsp-ov')), inCard: r.left >= card.left && r.right <= card.right + 0.5,
+      keyHint: t.querySelector('.fsp-expand').title };
+  }, ORDER);
+  ok('transport: .fsp-tr holds the twelve items in order, in one row', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
+  ok('transport: nothing of it sits outside the row; the graph button names its key', trow.outside.length === 0 && trow.inCard && /\(g\)/.test(trow.keyHint), trow);
+  const rt = [];
+  for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
+  ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
+  await page.locator(C + ' .fsp-layout').click();
+  const lay1 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  await page.locator(C + ' .fsp-layout').click();
+  const lay2 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  await page.locator(C + ' .fsp-layout').click();
+  const lay0 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  ok('transport: layout cycles the wave card 160, 240 px, then the default', lay1 === 160 && lay2 === 240 && lay0 === 96, [lay1, lay2, lay0]);
   ok('idle: nothing is sent before Play', hub.bundles.length === 0, hub.bundles.length);
 
   // ---- preroll, then play ----
@@ -1021,33 +1048,47 @@ if (!LIVE) {
   // reading's floor is cut. At Look 1.4 the source row (two tabs and Open files) needs 304 px: the
   // floor scales with the Look, the tier thresholds stay the shell's px (rclass.js).
   const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
-  const sweep = [];
+  const sweep = [], firstNarrow = {};
   for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
     await setLook(look);
     for (let w = floor; w <= 959; w += 2) {
       await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
       await page.waitForTimeout(30);
-      const comp = await page.locator(C).evaluate((e) => e.dataset.comp);
+      const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
       const s = await spill(page);
       sweep.push({ look, w, comp, out: s.out, cut: s.cut });
+      if (comp.endsWith('narrow')) firstNarrow[look] = w;
     }
   }
   const bad = sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld'));
   ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut',
     bad.length === 0, bad.slice(0, 6));
-  // A Look change alone (no width change) leaves every control inside the card.
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '400px'; });
+  console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
+  // A Look change alone (no width change) re-measures the switch.
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '480px'; });
+  await setLook(1.12);
+  await page.waitForTimeout(100);
+  const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
   await setLook(1.6);
   await page.waitForTimeout(150);
+  const big = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
   const bigSpill = await spill(page);
   await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
-  ok('handheld: a Look change at a fixed width keeps every control inside the card, no label cut', !bigSpill.cut.length && !bigSpill.out.length, bigSpill);
+  ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
+    { wide, big, bigSpill });
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);
     await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'handheld-326.png') });
+    await page.locator(C).evaluate((e) => { e.parentElement.style.width = '780px'; });
+    await page.waitForTimeout(150);
+    await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'handheld-780.png') });
   }
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
+  await page.locator(C + ' .fsp-close').click();
+  await page.waitForTimeout(200);
+  ok('transport: close unloads the media, the card is empty again', (await statusText(page)) === 'No scene loaded' && await playBtn(page).isDisabled()
+    && await video(page, (v) => !v.getAttribute('src')));
   ok('no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
@@ -1153,6 +1194,15 @@ if (!LIVE) {
         { ...mid, bundles: h3.bundles.length - n4 });
     }
     await playBtn(p3).click();
+    const cur = () => p3.locator(C + ' .fsp-tile').evaluateAll((t) => t.findIndex((e) => e.getAttribute('aria-current') === 'true'));
+    const i0 = await cur();
+    await p3.locator(C + ' .fsp-next').click();
+    await p3.waitForTimeout(300);
+    const i1 = await cur();
+    await p3.locator(C + ' .fsp-prev').click();
+    await p3.waitForTimeout(300);
+    const i2 = await cur();
+    ok('transport: next and prev walk the library list', i0 === 0 && i1 === 1 && i2 === 0, [i0, i1, i2]);
     ok('stash: the key never sits in the backup prefix', !(await p3.evaluate((sk) => Object.keys(localStorage)
       .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes(sk)), SK)));
     clearInterval(h3.timer);
@@ -1181,13 +1231,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   const bar = await page.evaluate((c) => {
     const q = (s) => document.querySelector(c + ' ' + s).getBoundingClientRect();
     const ph = q('.fsp-ph'), dt = q('.fsp-dt'), ov = q('.fsp-ov'), sc = q('.fsp-scrub');
-    return { top: ph.top - dt.top, bottom: ph.bottom - (ov.top + ov.height / 2), dx: ph.left + ph.width / 2 - (sc.left + sc.width / 2),
-      share: (ph.left + ph.width / 2 - ov.left) / ov.width, heatBelow: ov.top >= dt.bottom };
+    const tr = q('.fsp-tr');
+    return { top: ph.top - dt.top, bottom: ph.bottom - dt.bottom, share: (ph.left + ph.width / 2 - dt.left) / dt.width,
+      grip: (sc.left + sc.width / 2 - ov.left) / ov.width, heatInRow: ov.top >= tr.top - 1 && ov.bottom <= tr.bottom + 1 };
   }, C);
-  ok('playhead: one bar from the detail top down to the grip on the heat, the heat at the bottom',
-    Math.abs(bar.top) <= 1 && Math.abs(bar.bottom) <= 1 && Math.abs(bar.dx) <= 1 && bar.heatBelow, bar);
-  ok('playhead: at 15 s it sits at that share of the script in both bands',
-    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01, bar.share);
+  ok('playhead: one bar through the detail\'s height, the heat in the transport row', Math.abs(bar.top) <= 2 && Math.abs(bar.bottom) <= 2 && bar.heatInRow, bar);
+  ok('playhead: at 15 s the bar and the heat\'s grip sit at that share of the script',
+    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01 && Math.abs(bar.grip - bar.share) < 0.01, bar);
   // ---- expand ----
   // Rects relative to the card: a click or a scrollIntoView may scroll the page.
   const look = () => page.locator(C).evaluate((e) => {
@@ -1208,6 +1258,13 @@ if (!LIVE && !args.includes('--stash-live')) {
       && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
       && open1.dt.height > before.dt.height, open1);
   ok('expand: the button reads pressed', (await expandBtn.getAttribute('aria-pressed')) === 'true');
+  await page.locator(C).focus();
+  await page.keyboard.press('g');
+  await page.waitForTimeout(300);
+  const gOff = await page.locator(C + '[data-an]').count();
+  await page.keyboard.press('g');
+  await page.waitForTimeout(300);
+  ok('expand: g toggles the analyzer both ways', gOff === 0 && (await page.locator(C + '[data-an]').count()) === 1, gOff);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer.png') });
   const labels = await page.$$eval(C + ' .fsa-row .fsa-k', (els) => els.map((e) => e.textContent));
   ok('analyzer: one row per tuning control the catalog groups', labels.length === groups.flatMap((g) => g.fields).length,
@@ -1688,8 +1745,10 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('keys: k plays and pauses, j seeks back 10 s, all through the controller', kPlay && tJ < CLIP_S / 2 - 8
     && await video(page, (v) => v.paused) && (await direct()).length === 0, { kPlay, tJ, direct: await direct() });
   // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
-  ok('volume: one set, the hover bar\'s: the transport has no mute and no slider', await page.locator(C + ' .fsp-tr').evaluate((t) =>
-    !t.querySelector('input[type=range]') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
+  ok('volume: the transport has the slider, the hover bar the only mute', await page.locator(C + ' .fsp-tr').evaluate((t) =>
+    !!t.querySelector('input.fsp-vol') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
+  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.6'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  ok('volume: the transport slider sets the video volume', await video(page, (v) => Math.abs(v.volume - 0.6) < 0.01));
   await overVideo();
   await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.keyboard.press('m');

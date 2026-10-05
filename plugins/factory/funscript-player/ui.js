@@ -25,9 +25,16 @@
 // - Composition follows the card's own box: full >= 960, handheld 264..959,
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
 // - Motion, Offset (ms) and Invert live in the detail's control bundle (timeline.js
-//   .fsp-zoom), on a plate at its corner; the strip holds the speed reading.
-// - Play and the time live in the hover bar; the strip shows them only where the
-//   bar cannot draw (glance, the handheld analyzer's thumbnail).
+//   .fsp-zoom), on a plate at its corner; the stroke speed reading rides the detail's bottom, right of the range pills.
+// - Handheld takes data-narrow (the strip's second row) when its single row overflows at the card's width,
+//   measured on a width change, on a Look change (the elapsed readout's box) and on an analyzer toggle,
+//   never on a state change.
+// - The strip (.fsp-tr) is the one transport row, twelve items in order: prev, play, next, elapsed, the
+//   heat (timeline.js, placed here), remaining, volume, rate, graph (g), screenshot, layout, close.
+//   Handheld drops screenshot and layout and wraps to two rows when narrow; glance keeps play and the time.
+// - Prev and next walk the library's loaded list (library.js step); close unloads the media. Rate
+//   scales the stroke speed shown and checked against the input limit. Layout cycles SPLITS (pref split).
+// - Open files lives in the library head; an empty stage is a click target for it.
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
 //   its current text, so the switch does not move with the reading.
@@ -71,6 +78,9 @@ export const GLANCE_UP = 264;
 const PROBE_KEY = 'phosphor.funscript.probe';
 const PROBE_RING = 5000;
 const TRACE_MS = 8000;
+export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+// The wave card's heights the layout button cycles, px; 0 is the composition's default.
+export const SPLITS = [0, 160, 240];
 // Registry unit_ids: 0 mm, 1 mm_s.
 const UNIT_MM = 0, UNIT_MM_S = 1;
 
@@ -84,6 +94,14 @@ export const COPY = Object.freeze({
   offset: 'Offset',
   offsetTip: 'Machine later (+) or earlier (-)',
   offsetUnit: 'ms',
+  prev: 'Previous',
+  next: 'Next',
+  rate: 'Rate',
+  graph: 'Graph (g)',
+  snap: 'Screenshot',
+  layout: 'Layout',
+  close: 'Close',
+  snapFail: 'Frame not readable',
   invert: 'Invert',
   volume: 'Volume',
   speed: 'Stroke speed',
@@ -140,6 +158,12 @@ const ICON = {
   win: ['', 'M2 3.5h12v9H2zM2 6h12'],
   bdl: ['', 'M1.5 2.5h13v9h-13zM6 14h4M8 11.5V14'],
   caret: ['', 'M6.5 5l3 3-3 3'],
+  prev: ['M13 3v10L6 8z', 'M3 3v10'],
+  next: ['M3 3v10l7-5z', 'M13 3v10'],
+  graph: ['', 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8'],
+  snap: ['', 'M2 5h2.5l1-1.5h5L11.5 5H14v8H2zM8 6.5a2.2 2.2 0 100 4.4a2.2 2.2 0 000-4.4'],
+  layout: ['', 'M2 3h12v10H2zM2 9h12'],
+  close: ['', 'M4 4l8 8M12 4l-8 8'],
 };
 
 // ---- pure helpers -----------------------------------------------------------
@@ -448,6 +472,26 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     changed();
   }
 
+  /** Close: the media and its script unloaded, the card back to its empty state. */
+  function unload() {
+    if (active()) stop('ready');
+    homeAt = Infinity;
+    if (url) revoke(url);
+    url = null;
+    seq++;
+    Object.assign(state, { scene: null, script: null, shaped: null, phase: 'empty', ab: { a: null, b: null } });
+    scheduler.load(null);
+    wired = null;
+    loop.set(null);
+    scheduler.setLoop(null);
+    peak = 0;
+    why = '';
+    info = [];
+    if (video.removeAttribute) { video.removeAttribute('src'); video.removeAttribute('poster'); }
+    if (video.load) video.load();
+    changed();
+  }
+
   function setMotion(on) {
     if (on === state.motion) return;
     homeAt = Infinity;
@@ -502,7 +546,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (buffering) return { text: COPY.buffering, tone: '' };
     if (transient) return { text: transient, tone: '' };
     const ceil = fields ? ceilingOf(api, fields) : {};
-    if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
+    if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm * (video.playbackRate || 1) > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
     if (info.length) return { text: info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
     return { text: state.scene ? '' : COPY.empty, tone: '' };
   }
@@ -532,7 +576,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   applyPlay();
 
   return {
-    state, trace, play, tick, onFrame, load, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
+    state, trace, play, tick, onFrame, load, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
     get low() { return !!state.play.lowLatency; },
     get wire() { return wired; },
     /** The scale in force: Auto's fit or the operator's. */
@@ -566,14 +610,15 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px;
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-bar) 124px 20px;
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-bar) var(--fsp-detail) 20px;
   grid-template-areas: "src lib" "stage lib" "tr lib" "tl lib" "st st"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); } }
 .fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "tr" "tl" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
-.fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 3 + 4px); grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) calc(var(--fsp-detail) + 28px) 20px;
+.fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 2 + 8px); grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) var(--fsp-detail) 20px;
   grid-template-areas: "src" "stage" "tr" "tl" "st"; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) calc(var(--fsp-bar) * 2 + 4px) var(--fsp-detail) 20px; }
 .fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
@@ -585,7 +630,6 @@ export const CSS = `
 .fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
 .fsp-btn:disabled { opacity: .4; cursor: default; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.fsp-open { min-height: 0; height: var(--fsp-src); padding: 0 8px; font-size: .8rem; }
 .fsp-libcaret { display: none; flex: none; place-items: center; width: 18px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
   background: var(--bg-raised); border: 1px solid var(--line); border-right: 0; border-radius: var(--r-s) 0 0 var(--r-s); cursor: pointer; }
 @media (pointer: coarse) { .fsp-libcaret { width: var(--tap); } }
@@ -599,8 +643,8 @@ export const CSS = `
 .fsp-src > [role=tablist] { display: flex; flex: none; gap: 4px; }
 .fsp-tab { display: none; }
 .fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
-.fsp[data-comp=handheld] .fsp-title, .fsp[data-comp=glance] .fsp-open, .fsp[data-comp=full] .fsp-lib-open { display: none; }
-.fsp[data-comp=handheld][data-view=library] .fsp-open { visibility: hidden; }
+.fsp[data-comp=handheld] .fsp-title { display: none; }
+.fsp-stage:has(.fsp-empty:not([hidden])) { cursor: pointer; }
 .fsp[data-comp=glance] .fsp-title { font-size: .75rem; line-height: 20px; }
 .fsp-stage { grid-area: stage; position: relative; min-height: 0; background: var(--bg-sunken); border-radius: var(--r-s); overflow: hidden; }
 .fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
@@ -624,22 +668,34 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: 6px; background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
-  grid-template-columns: minmax(auto, 1fr); grid-template-areas: "speed"; }
+  grid-template-columns: repeat(4, max-content) minmax(60px, 1fr) max-content minmax(48px, 96px) repeat(5, max-content); }
+.fsp-tr > * { min-width: 0; }
 .fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
-.fsp:not([data-comp=glance], [data-an][data-comp=handheld]) :is(.fsp-play, .fsp-time) { display: none; }
-.fsp[data-an][data-comp=handheld] .fsp-tr { --fsp-bar: var(--tap); grid-template-columns: max-content 16ch minmax(auto, 1fr);
-  grid-template-rows: var(--tap); grid-template-areas: "play time speed"; }
-.fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; grid-template-areas: "play time"; }
+.fsp-tr .fsp-tb { display: grid; place-items: center; min-width: var(--fsp-bar); padding: 0; }
+.fsp-tb svg { width: 18px; height: 18px; fill: currentColor; }
+.fsp-tb svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp-tr .fsp-rate { min-width: 5ch; padding: 0 6px; font: .75rem var(--mono); }
+.fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
+.fsp-vol { width: 100%; height: var(--fsp-bar); margin: 0; accent-color: var(--highlight); cursor: pointer; }
+.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(40px, 1fr) max-content minmax(32px, 64px) max-content repeat(2, var(--fsp-bar)); }
+.fsp[data-comp=handheld] :is(.fsp-snap, .fsp-layout) { display: none; }
+.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(0, 1fr) max-content; grid-template-rows: repeat(2, var(--fsp-bar)); }
+.fsp[data-comp=handheld][data-narrow] .fsp-vol { grid-area: 2 / 1 / 3 / 4; }
+.fsp[data-comp=handheld][data-narrow] .fsp-rate { grid-area: 2 / 4; }
+.fsp[data-comp=handheld][data-narrow] .fsp-expand { grid-area: 2 / 5; justify-self: end; }
+.fsp[data-comp=handheld][data-narrow] .fsp-close { grid-area: 2 / 6; }
+.fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; }
+.fsp[data-comp=glance] .fsp-tr > :not(.fsp-play, .fsp-time) { display: none; }
 .fsp[data-comp=glance] .fsp-speed { display: none; }
-.fsp-play { grid-area: play; min-width: 72px; }
-.fsp-time { grid-area: time; font: .8rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-off { display: flex; align-items: center; gap: 6px; min-height: var(--fsp-bar); }
 .fsp-offu { color: var(--tx-mut); font-size: .8rem; }
 .fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--fsp-bar); display: grid; align-items: center; }
+.fsp[data-comp=handheld] .fsp-off input { width: 5ch; }
 .fsp-off input { width: 7ch; height: var(--fsp-bar); min-height: var(--fsp-bar); font-family: var(--mono); }
-.fsp-speed { grid-area: speed; position: relative; height: var(--fsp-bar); min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center; }
-.fsp-speed i { position: absolute; left: 0; bottom: 3px; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
+.fsp-speed { position: absolute; left: calc(var(--tap) * 2 + 4px); bottom: 3px; z-index: 1; height: 18px; min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center;
+  pointer-events: none; }
+.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
@@ -648,15 +704,16 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox { position: relative; min-height: 0; }
-.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 128px; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 100px; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - 4px) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
-.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--tap);
+.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src" "tl" "st" "tr"; }
-.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) + var(--fsp-detail) + 32px - var(--tap)); }
+.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--fsp-bar) * 2 + 4px); }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
@@ -808,10 +865,8 @@ export function createPlayer(api) {
     const tabL = btn('fsp-tab', COPY.library, { role: 'tab' });
     tabP.addEventListener('click', () => ctl.setView('player'));
     tabL.addEventListener('click', () => ctl.setView('library'));
-    const open = btn('fsp-open', COPY.openFiles);
-    open.addEventListener('click', () => file.click());
     const title = h('span', { class: 'fsp-title' });
-    const src = h('div', { class: 'fsp-src' }, h('span', { role: 'tablist' }, tabP, tabL), open, title, file);
+    const src = h('div', { class: 'fsp-src' }, h('span', { role: 'tablist' }, tabP, tabL), title, file);
 
     const empty = h('div', { class: 'fsp-empty', text: COPY.openVideo });
     const stage = h('div', { class: 'fsp-stage' }, empty);
@@ -823,9 +878,58 @@ export function createPlayer(api) {
     const meter = h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, tickI, tickR);
     const status = h('div', { class: 'fsp-slot', 'aria-live': 'polite' });
 
-    const play = btn('fsp-play', COPY.play);
+    const icon = () => {
+      const s = document.createElementNS(SVG_NS, 'svg');
+      s.setAttribute('viewBox', '0 0 16 16');
+      s.setAttribute('aria-hidden', 'true');
+      const k = document.createElementNS(SVG_NS, 'path');
+      k.setAttribute('class', 's');
+      s.append(document.createElementNS(SVG_NS, 'path'), k);
+      return s;
+    };
+    const hbBtn = (cls) => { const b = h('button', { type: 'button', class: 'fsp-hb-b ' + cls }); b.append(icon()); return b; };
+    const setIcon = (b, [f, k], tip) => {
+      const [pf, pk] = b.firstChild.children;
+      if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
+      if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
+    };
+    const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
+    const trBtn = (cls, ic, tip) => { const b = h('button', { type: 'button', class: 'fsp-btn fsp-tb ' + cls }); b.append(icon()); setIcon(b, ic, tip); return b; };
+    const prevB = trBtn('fsp-prev', ICON.prev, COPY.prev), nextB = trBtn('fsp-next', ICON.next, COPY.next);
+    const play = trBtn('fsp-play', ICON.play, COPY.playKey);
     play.addEventListener('click', () => ctl.toggle());
-    const time = h('output', { class: 'fsp-time' });
+    prevB.addEventListener('click', () => library && library.step(-1));
+    nextB.addEventListener('click', () => library && library.step(1));
+    const time = h('output', { class: 'fsp-el fsp-time' }), rem = h('output', { class: 'fsp-rem' });
+    const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
+    vol.addEventListener('input', () => { video.volume = clamp(+vol.value, 0, 1); if (video.volume > 0) video.muted = false; });
+    vol.addEventListener('change', () => saveAudio());
+    const rate = h('button', { type: 'button', class: 'fsp-btn fsp-rate', title: COPY.rate, 'aria-label': COPY.rate });
+    rate.addEventListener('click', () => { video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); });
+    const graph = trBtn('fsp-expand', ICON.graph, COPY.graph);
+    graph.setAttribute('aria-pressed', 'false');
+    graph.addEventListener('click', () => expand(!root.hasAttribute('data-an')));
+    const snapB = trBtn('fsp-snap', ICON.snap, COPY.snap);
+    snapB.addEventListener('click', () => {
+      if (!video.videoWidth) return;
+      const c = Object.assign(document.createElement('canvas'), { width: video.videoWidth, height: video.videoHeight });
+      try {
+        c.getContext('2d').drawImage(video, 0, 0);
+        c.toBlob((b) => {
+          if (!b) return;
+          const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(b),
+            download: ((st.scene && st.scene.title) || 'frame') + '-' + fmtTime(ctl.mediaNow()).replace(/[:.]/g, '-') + '.png' });
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }, 'image/png');
+      } catch (e) { api.log(COPY.snapFail, 'warn'); }   // a cross-origin stream taints the canvas
+    });
+    let split = readPrefs(api).split;
+    const applySplit = () => { if (split > 0) root.style.setProperty('--fsp-detail', split + 'px'); else root.style.removeProperty('--fsp-detail'); };
+    const layoutB = trBtn('fsp-layout', ICON.layout, COPY.layout);
+    layoutB.addEventListener('click', () => { split = SPLITS[(SPLITS.indexOf(split) + 1) % SPLITS.length]; writePref(api, 'split', split); applySplit(); });
+    const closeB = trBtn('fsp-close', ICON.close, COPY.close);
+    closeB.addEventListener('click', () => ctl.unload());
     const motion = btn('fsp-motion', COPY.motion);
     motion.addEventListener('click', () => ctl.setMotion(!st.motion));
     const offIn = h('input', { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
@@ -858,27 +962,12 @@ export function createPlayer(api) {
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
-    const tr = h('div', { class: 'fsp-tr' }, play, time, speed);
+    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, vol, rate, graph, snapB, layoutB, closeB);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       src, stage, tlbox, lib, anbox, meter, status, tr);
+    applySplit();
     // ---- the hover bar over the video ----
-    const icon = () => {
-      const s = document.createElementNS(SVG_NS, 'svg');
-      s.setAttribute('viewBox', '0 0 16 16');
-      s.setAttribute('aria-hidden', 'true');
-      const k = document.createElementNS(SVG_NS, 'path');
-      k.setAttribute('class', 's');
-      s.append(document.createElementNS(SVG_NS, 'path'), k);
-      return s;
-    };
-    const hbBtn = (cls) => { const b = h('button', { type: 'button', class: 'fsp-hb-b ' + cls }); b.append(icon()); return b; };
-    const setIcon = (b, [f, k], tip) => {
-      const [pf, pk] = b.firstChild.children;
-      if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
-      if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
-    };
-    const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
     const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full'), hbMode = hbBtn('fsp-hb-mode');
     hbFull.hidden = !opts.fullscreen;
     const fsMode = () => document.documentElement.dataset.fullscreenMode || '';
@@ -913,7 +1002,9 @@ export function createPlayer(api) {
     stage.addEventListener('pointermove', poke);
     stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
     stage.addEventListener('pointerdown', (e) => { tapShow = e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
-    stage.addEventListener('click', (e) => { if (!tapShow && !e.target.closest('.fsp-hb')) ctl.toggle(); tapShow = false; });
+    stage.addEventListener('click', (e) => {
+      if (!st.scene) { tapShow = false; file.click(); return; }
+      if (!tapShow && !e.target.closest('.fsp-hb')) ctl.toggle(); tapShow = false; });
     const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
     const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
     seek.addEventListener('pointerdown', (e) => {
@@ -954,6 +1045,7 @@ export function createPlayer(api) {
       if ((k === ' ' && !e.target.closest('button')) || k === 'k') ctl.toggle();
       else if (k in KEY_SEEK) ctl.seek(Math.max(0, ctl.mediaNow() + KEY_SEEK[k]));
       else if (k === 'm') setMuted(!video.muted);
+      else if (k === 'g' && comp !== 'glance') expand(!root.hasAttribute('data-an'));
       else if (k === 'f' && opts.fullscreen) fullscreen();
       else return;
       e.preventDefault();
@@ -964,9 +1056,11 @@ export function createPlayer(api) {
     let zoomMs = readPrefs(api).zoomMs;
     const tl = mountTimeline(tlbox, {
       bundle: [motion, off, inv],
+      ovHost: tr,
+      ovBefore: rem,
+      overlay: [speed],
       zoomMs,
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
-      onExpand: (on) => expand(on),
       onLoop: () => ctl.markAB(),
       onSeek: (ms) => ctl.seek(ms),
       onScrub: (phase, ms) => ctl.seek(ms),
@@ -977,7 +1071,8 @@ export function createPlayer(api) {
     let library = null, analyzer = null;
     function expand(on) {
       root.toggleAttribute('data-an', on);
-      tl.setExpanded(on);
+      graph.setAttribute('aria-pressed', String(on));
+      measure();
       if (on) anMount();
     }
     function anMount() {
@@ -987,6 +1082,10 @@ export function createPlayer(api) {
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
     let comp = '';
+    const measure = () => {
+      root.removeAttribute('data-narrow');
+      if (comp === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
+    };
     const ro = new ResizeObserver(() => {
       const c = compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -996,8 +1095,10 @@ export function createPlayer(api) {
         if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
           fetch: (u, i) => api.net.fetch(u, i) });
       }
+      measure();
     });
     ro.observe(root);
+    ro.observe(time);
 
     let tlKey = null;
     function render() {
@@ -1006,10 +1107,15 @@ export function createPlayer(api) {
       if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, ceil, st.script); }
       tl.setLoop(st.ab);
       const act = st.phase === 'playing' || st.phase === 'preroll';
-      setText(play, act ? COPY.pause : COPY.play);
+      setIcon(play, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       play.disabled = !act && !ctl.canPlay();
       setIcon(hbPlay, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       hbPlay.disabled = play.disabled;
+      prevB.disabled = !(library && library.canStep(-1));
+      nextB.disabled = !(library && library.canStep(1));
+      closeB.disabled = !st.scene;
+      setText(rate, (video.playbackRate || 1) + 'x');
+      if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
       setIcon(hbMute, video.muted ? ICON.muted : ICON.vol, video.muted ? COPY.unmuteKey : COPY.muteKey);
       setIcon(hbFull, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : COPY.full);
       const fm = fsMode();
@@ -1034,7 +1140,8 @@ export function createPlayer(api) {
       const m = ctl.mediaNow();
       const d = Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0;
       const tt = fmtTime(m) + ' / ' + fmtTime(d);
-      setText(time, tt);
+      setText(time, comp === 'glance' ? tt : fmtTime(m));
+      setText(rem, '-' + fmtTime(Math.max(0, d - m)));
       setText(hbTime, tt);
       let buf = 0;
       for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
@@ -1052,7 +1159,8 @@ export function createPlayer(api) {
       }
       const ceil = ceilingOf(api, fields);
       if (st.script) {
-        const sp = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm);
+        const sp = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm), rt = video.playbackRate || 1;
+        sp.v *= rt;
         const cap = sp.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
         setText(speedTxt, Math.round(sp.v) + ' ' + sp.unit);
         speedBar.style.width = cap ? clamp(sp.v / cap, 0, 1) * 100 + '%' : '0';
