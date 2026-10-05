@@ -484,6 +484,11 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   if (w >= 960) {
     // The sidebar is flush on the window's left edge; the gaps are rail | gap | content | gap. Scrollbars off (default):
     // the content ends one --gap from the window edge; on, the reserved 4 px track sits inside that gap (DESIGN §10.3).
+    const hb = await fp.evaluate(() => { const r = (q) => document.querySelector(q).getBoundingClientRect(), h = r('.hero-strip'), t = r('.topstrip'), k = r('.spine-rail-host');
+      const pr = document.createElement('i'); pr.style.paddingLeft = 'var(--gap)'; document.body.append(pr); const gap = parseFloat(getComputedStyle(pr).paddingLeft); pr.remove();
+      return { hl: h.left, hr: h.right, ht: h.top - t.bottom, iw: innerWidth, kl: k.left - h.left - gap, kr: h.right - k.right - gap }; });
+    ok(tag + ': the hero bar spans the window under the top bar; the rail host is inset one gap each side',
+      hb.hl === 0 && Math.abs(hb.hr - hb.iw) < 0.5 && Math.abs(hb.ht) < 0.5 && Math.abs(hb.kl) <= 0.5 && Math.abs(hb.kr) <= 0.5, JSON.stringify(hb));
     for (const on of [false, true]) {
       const edges = await fp.evaluate((on) => { document.documentElement.toggleAttribute('data-scrollbars', on);
         const a = document.querySelector('nav.rail').getBoundingClientRect(), c = document.querySelector('.content'), cb = c.getBoundingClientRect();

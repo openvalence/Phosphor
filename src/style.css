@@ -373,7 +373,8 @@ html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
 .field::after {
   content: '';
   position: absolute;
-  inset: calc(var(--sp-1) * -1);
+  --ring-off: 3px;
+  inset: calc(var(--ring-off) * -1);
   border-radius: var(--radius);
   pointer-events: none;
   box-shadow:
