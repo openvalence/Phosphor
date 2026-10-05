@@ -136,8 +136,12 @@
     }
     ongrabend && ongrabend();
   }
+  // Rename (DESIGN §10.6): F2 or a double-click opens the title's input outside edit mode; in edit mode it is always there.
+  let renaming = $state(false);
+  const renameFocus = (el) => { if (renaming) { el.focus(); el.select(); } };
   function onGrabKeyDown(e) {
     const key = e.key;
+    if (key === 'F2' && item.retitle) { e.preventDefault(); const t = itemEl.querySelector('.dash-title-edit'); t?.focus(); t?.select(); return; }
     // Enter would also click (select); it opens the look popover instead.
     if (key === 'Enter') { e.preventDefault(); keyLook(); return; }
     if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); onkeydelete && onkeydelete(); return; }
@@ -185,8 +189,9 @@
   {#if editing || !bare}
   <div class="dash-head card-head" class:over={bare}>
     {#if !bare}
-      {#if editing && item.retitle}
+      {#if (editing || renaming) && item.retitle}
         <input class="dash-title dash-title-edit" type="text" value={item.title} aria-label={'Name of ' + item.title}
+               use:renameFocus onblur={() => (renaming = false)}
                onchange={(e) => (e.currentTarget.value.trim() ? item.retitle(e.currentTarget.value) : (e.currentTarget.value = item.title))}
                onkeydown={(e) => {
                  if (e.key === 'Enter') e.currentTarget.blur();
@@ -196,7 +201,9 @@
         <!-- The title attribute is the full form of a title cut by its ellipsis;
              the count follows the title and the title yields to it. -->
         <div class="dash-name">
-          <h3 class="dash-title" data-pidx={pidx} title={item.title}>{item.title}</h3>
+          <h3 class="dash-title" data-pidx={pidx} title={item.title} tabindex={item.retitle ? 0 : null}
+              ondblclick={item.retitle ? () => (renaming = true) : null}
+              onkeydown={item.retitle ? (e) => { if (e.key === 'F2') { e.preventDefault(); renaming = true; } } : null}>{item.title}</h3>
           {#if busy.n}<span class="dash-busy" class:overdue={busy.overdue}>{busy.n} in flight</span>{/if}
         </div>
       {/if}

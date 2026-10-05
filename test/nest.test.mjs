@@ -199,6 +199,19 @@ ok('nothing in the nest scrolls on its own', geo.scrollers === 0 && geo.sh <= ge
 ok('the nest grows to fit: every member is inside its surface', geo.outside.length === 0 && geo.tall > 5 * 30, geo);
 ok('the nest offers no scroll or fold switch', await nest.locator('.nest-fold, button:has-text("Scrolling"), button:has-text("Fixed")').count() === 0);
 
+// ph-mdqo.10: a nest renames in place outside edit mode, by double-click or F2.
+const nestTitle = nest.locator(':scope > .dash-item > .dash-head .dash-title');
+const nestName = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)).layouts.Default, STORE_KEY).then((l) => Object.values(l).flatMap((m) => Object.values(m)).find((e) => e && e.nest)?.nest.title);
+await nestTitle.dblclick();
+const rn = nest.locator(':scope > .dash-item > .dash-head input.dash-title-edit');
+ok('double-click opens the name input outside edit mode, focused', await rn.count() === 1 && await rn.evaluate((el) => document.activeElement === el));
+await rn.fill('Escaped'); await rn.press('Escape');
+ok('Escape reverts and leaves no input', await rn.count() === 0 && (await nestTitle.textContent()).trim() === 'Test nest');
+await nestTitle.focus(); await page.keyboard.press('F2');
+ok('F2 on the focused title opens it too', await rn.count() === 1);
+await rn.fill('Renamed'); await rn.press('Enter');
+ok('Enter keeps the new name', await rn.count() === 0 && (await nestTitle.textContent()).trim() === 'Renamed', await nestName());
+
 // The last member with a writable range: write it while the hub holds the echo.
 const target = await nest.evaluate((cell) => {
   const withRange = [...cell.querySelectorAll('.nest-body .dash-cell')].filter((c) => c.querySelector('input[type=range]:not([disabled])'));
