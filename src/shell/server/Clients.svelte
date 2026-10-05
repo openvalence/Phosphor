@@ -34,7 +34,7 @@
 
 <style>
   .cl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
-  .cl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); }
+  .cl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); }
   .cl-name { font-weight: 600; }
   .cl-fact { color: var(--ink-dim); font-size: .72rem; }
 </style>

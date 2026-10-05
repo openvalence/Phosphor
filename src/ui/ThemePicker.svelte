@@ -318,14 +318,14 @@
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
   .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
 
-  .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+  .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   .preset { display: inline-flex; align-items: center; gap: var(--sp-1); }
   .swatch {
     display: inline-flex;
     align-items: center;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     min-height: var(--tap);
-    padding: 0 var(--sp-3) 0 var(--sp-3);
+    padding: 0 var(--sp-3) 0 var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     color: var(--ink-dim);
@@ -348,7 +348,7 @@
   .name { text-transform: uppercase; letter-spacing: .03em; }
   .del { min-width: 30px; padding: var(--sp-2); }
 
-  .accents { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-5); }
+  .accents { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); }
   .accent { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); min-width: 0; max-width: 100%; font-size: .8rem; color: var(--tx); }
   .hex { color: var(--tx-mut); font-size: .72rem; }
   .color-input {
@@ -361,11 +361,11 @@
   /* The input IS the hit box (law 12): it fills the 40 px+ box. */
   .color-input input { width: 100%; height: 100%; border: none; background: none; padding: var(--sp-1); cursor: pointer; }
 
-  .locked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); }
-  .lock { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: .72rem; color: var(--tx-mut); }
+  .locked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); }
+  .lock { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: .72rem; color: var(--tx-mut); }
   .lock i { width: 14px; height: 14px; border-radius: var(--r-s); outline: 1px dashed var(--line-3); outline-offset: 2px; }
 
-  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 calc(var(--sp-5) * 1.556); }
+  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 calc(var(--sp-5) + var(--sp-4)); }
   .knob-row { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 7ch; align-items: center; gap: var(--sp-3); font-size: .8rem; color: var(--tx-mut); }
   .knob-row output { text-align: right; color: var(--tx-val); font-size: .74rem; }
 
@@ -398,12 +398,12 @@
   .tokens .derived { flex: 1 1 14ch; min-width: 0; color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tokens .derived[data-phase='fault'] { color: var(--warn-ink); }
   .tokens li.pinned .tk { color: var(--highlight); }
-  .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: var(--sp-2) var(--sp-3); font-size: .72rem; }
+  .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: var(--sp-2) var(--sp-2); font-size: .72rem; }
 
   textarea {
     width: 100%;
     min-height: var(--tap);
-    padding: var(--sp-3) var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
     background: var(--bg-sunken);

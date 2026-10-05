@@ -373,8 +373,7 @@ html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
 .field::after {
   content: '';
   position: absolute;
-  --ring-off: 3px;
-  inset: calc(var(--ring-off) * -1);
+  inset: -3px;
   border-radius: var(--radius);
   pointer-events: none;
   box-shadow:
@@ -711,7 +710,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   width: auto;
   min-height: var(--tap);
   padding: var(--sp-3) var(--sp-4);

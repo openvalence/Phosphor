@@ -628,7 +628,8 @@
     flex-direction: column;
     background: var(--bg-raised);
     border: 1px solid var(--line-0);
-    border-radius: var(--radius);
+    border-left: 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
     /* Independent scroll for a catalog with many categories. */
     overflow-y: auto;
   }
@@ -637,7 +638,7 @@
      span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {
     align-self: flex-end;
-    margin: var(--sp-3) var(--sp-3) var(--sp-1);
+    margin: var(--sp-2) var(--sp-2) var(--sp-1);
     min-width: 28px;
     min-height: 28px;
     color: var(--ink-faint);
@@ -663,11 +664,11 @@
     flex: 1 0 auto;
     display: flex;
     flex-direction: column;
-    padding: 0 var(--sp-3) var(--sp-3);
+    padding: 0 var(--sp-2) var(--sp-2);
   }
   .rail-sec.shell {
     margin-top: auto;
-    padding: var(--sp-3);
+    padding: var(--sp-2);
     background: var(--shell-bg);
     color: var(--shell-fg);
     border: 1px solid var(--shell-border);
@@ -702,7 +703,7 @@
   }
   .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
-  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) * 1.333); }
+  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) + var(--sp-2)); }
   .rail-tab.on {
     color: var(--ink-hi);
     background: var(--bg-card);
@@ -756,7 +757,7 @@
     top: var(--strip-h, 0px);
     z-index: 15;
     margin: 0 calc(var(--app-pad) * -1);
-    padding: var(--sp-3) var(--gap);
+    padding: var(--sp-2) var(--gap);
     background: color-mix(in srgb, var(--bg) 92%, transparent);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line-0);

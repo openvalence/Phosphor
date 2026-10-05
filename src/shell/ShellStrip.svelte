@@ -121,7 +121,7 @@
 <style>
   .sb-ble {
     flex: none;
-    padding: var(--sp-1) var(--sp-3);
+    padding: var(--sp-1) var(--sp-2);
     font-size: .62rem;
     border-radius: var(--radius);
     border: 1px solid color-mix(in srgb, var(--intent) 45%, var(--line));
@@ -154,7 +154,7 @@
     padding: var(--sp-3);
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     background: var(--shell-bg);
     color: var(--shell-fg);
     border: 1px solid var(--shell-border);

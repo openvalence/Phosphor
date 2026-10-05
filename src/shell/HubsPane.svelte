@@ -174,8 +174,8 @@
   .name { font-weight: 500; }
   .meta { font-size: .72rem; color: var(--tx-mut); }
   .seen { font-size: .72rem; color: var(--tx-mut); text-align: right; }
-  .acts { display: flex; gap: var(--sp-3); }
-  .mark { margin-left: var(--sp-3); padding: 0 var(--sp-3); font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
+  .acts { display: flex; gap: var(--sp-2); }
+  .mark { margin-left: var(--sp-3); padding: 0 var(--sp-2); font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
   .mark.virt { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
   .mark.via { border-color: var(--line); color: var(--tx-mut); }

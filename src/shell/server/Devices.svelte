@@ -150,7 +150,7 @@
   .dv-conn { color: var(--ink-faint); font-size: .72rem; }
   .dv[data-on='true'] .dv-conn { color: var(--reality); }
   .dv[data-on='false'] .dv-name { color: var(--ink-dim); }
-  .dv-body { display: grid; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3) var(--sp-3) var(--sp-3); border-left: 2px solid var(--line); margin-left: var(--sp-3); }
+  .dv-body { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-3) var(--sp-3); border-left: 2px solid var(--line); margin-left: var(--sp-3); }
   .dv-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-1) var(--sp-3); margin: 0; font-size: .72rem; }
   .dv-facts dt { color: var(--ink-faint); }
   .dv-facts dd { margin: 0; overflow-wrap: anywhere; }
@@ -159,5 +159,5 @@
   .dv-table td { padding: var(--sp-1) var(--sp-3) var(--sp-1) 0; }
   .dv-sensor { min-width: 9ch; color: var(--ink-dim); }
   .dv-stale { opacity: .5; }
-  .dv-sub { margin: var(--sp-3) 0 0; color: var(--ink-dim); font-size: .72rem; }
+  .dv-sub { margin: var(--sp-2) 0 0; color: var(--ink-dim); font-size: .72rem; }
 </style>

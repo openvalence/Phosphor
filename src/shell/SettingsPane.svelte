@@ -95,7 +95,7 @@
   textarea {
     width: 100%;
     min-height: var(--tap);
-    padding: var(--sp-3) var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
     background: var(--bg-sunken);

@@ -525,7 +525,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': the shade ink comes from the theme surface, not black', !/rgba?\(0, 0, 0/.test(rs.geo.ink), rs.geo.ink.slice(0, 160));
     ok(tag + ': a shade moves no rail tab', rs.same);
     ok(tag + ': the bottom shade holds through the last 2 px (off once, back on only past 2 px)', JSON.stringify(rs.flips) === '[false,true]', JSON.stringify(rs.flips));
-    await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/rail-shade.png' });
+    await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/responsive/rail-shade.png' });
     await fp.setViewportSize({ width: w, height: h });
     await fp.waitForTimeout(200);
   }

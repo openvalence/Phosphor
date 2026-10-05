@@ -109,7 +109,7 @@
      Their buttons are .og-btn; these are the shared row, field and ladder. */
   .sp-pane :global(.sp-btn) { min-height: 40px; }
   .sp-pane :global(.sp-row) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: .78rem; color: var(--tx-mut); }
+  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
   .sp-pane :global(.sp-field input), .sp-pane :global(.sp-field select) {
     min-height: 40px;
     padding: 0 var(--sp-3);
@@ -118,7 +118,7 @@
     border-radius: var(--radius);
     color: var(--ink);
   }
-  .sp-pane :global(.sp-field select) { width: auto; padding-right: calc(var(--sp-5) * 1.556); }
+  .sp-pane :global(.sp-field select) { width: auto; padding-right: calc(var(--sp-5) + var(--sp-4)); }
   .sp-pane :global(.sp-field input[type='number']) { width: 8ch; }
   .sp-pane :global(.sp-check) { display: inline-flex; align-items: center; gap: var(--sp-3); min-height: 40px; font-size: .8rem; }
   .sp-pane :global(.sp-check input) { width: 18px; height: 18px; margin: 0; }
