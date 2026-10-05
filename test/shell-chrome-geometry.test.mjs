@@ -58,6 +58,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKE
 import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
 import { compact } from '../src/model/format.js';
+import { STORE_KEY } from '../src/model/grid.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -544,8 +545,29 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.keyboard.type('Bench');
     await fp.keyboard.press('Enter');
     ok(tag + ': Add layout creates and selects a named layout', JSON.stringify(await rows()) === '["Default","Bench*"]', JSON.stringify(await rows()));
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Couch');
+    await fp.keyboard.press('Enter');
+    // Drag Couch's grip above Bench: the order persists across a reload.
+    const center = async (q) => { const b = await fp.locator(q).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+    const rowSel = (n) => 'nav.rail .sub-row:has([data-layout="' + n + '"])';
+    await fp.hover(rowSel('Couch'));
+    const [gx, gy] = await center(rowSel('Couch') + ' .sub-grip'), [, by] = await center('nav.rail [data-layout="Bench"]');
+    await fp.mouse.move(gx, gy); await fp.mouse.down(); await fp.mouse.move(gx, by - 4, { steps: 6 }); await fp.mouse.up();
+    ok(tag + ': dragging a grip reorders the layouts', JSON.stringify(await rows()) === '["Default","Couch*","Bench"]', JSON.stringify(await rows()));
+    const stored = await fp.evaluate((k) => JSON.parse(localStorage.getItem(k) || '{}').order, STORE_KEY);
+    ok(tag + ': the order is stored', JSON.stringify(stored) === '["Default","Couch","Bench"]', JSON.stringify(stored));
+    // Hold the x: 0.5 s deletes nothing, 1 s does; Default has neither grip nor x.
+    ok(tag + ': Default has no grip and no x', await fp.locator(rowSel('Default') + ' :is(.sub-grip, .sub-x)').count() === 0);
+    await fp.hover(rowSel('Bench'));
+    if (process.env.LAYOUT_SHOT) await fp.screenshot({ path: process.env.LAYOUT_SHOT, clip: { x: 0, y: 0, width: 420, height: 800 } });
+    const [xx, xy] = await center(rowSel('Bench') + ' .sub-x');
+    await fp.mouse.move(xx, xy); await fp.mouse.down(); await fp.waitForTimeout(500); await fp.mouse.up();
+    const half = (await rows()).length;
+    await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
+    ok(tag + ': the x held 0.5 s deletes nothing, held 1 s deletes', half === 3 && (await rows()).map((r) => r.replace('*', '')).join() === 'Default,Couch', half + ' / ' + JSON.stringify(await rows()));
     await fp.click('nav.rail [data-tab-id="machine"]');
-    ok(tag + ': Dash selects Default again', JSON.stringify(await rows()) === '["Default*","Bench"]', JSON.stringify(await rows()));
+    ok(tag + ': Dash selects Default again', (await rows()).join() === 'Default*,Couch', JSON.stringify(await rows()));
   }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;

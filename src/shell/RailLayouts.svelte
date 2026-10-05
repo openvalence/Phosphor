@@ -8,14 +8,28 @@
    * Constraints:
    * - The rows are plain buttons inside App.svelte's tablist: Tab reaches them,
    *   the tablist's arrow keys skip them. Selecting one is `onpick(name)`.
+   * - Reorder: the grip drags (pointer) or Alt+Up/Down on the row moves it;
+   *   delete is the x held 1 s (pointer, or Enter/Space held). Default has
+   *   neither and never moves (grid.js pins it).
    * - A layout's name is a storage key (dashboard.svelte.js); every change
    *   goes through its exported edits, never the store directly.
    */
-  import { layouts, orderedLayoutNames, addLayout, dashEdit } from '../model/dashboard.svelte.js';
+  import { flip } from 'svelte/animate';
+  import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, dashEdit } from '../model/dashboard.svelte.js';
+  import { isStill } from '../ui/still.svelte.js';
 
   let { dashActive = false, onpick } = $props();
 
-  const names = $derived(orderedLayoutNames());
+  const HOLD_MS = 1000;
+  const stored = $derived(orderedLayoutNames());
+  // While a grip is dragged the list previews the drop.
+  let drag = $state(null);
+  const names = $derived.by(() => {
+    if (!drag) return stored;
+    const rest = stored.filter((n) => n !== drag.name);
+    rest.splice(drag.to, 0, drag.name);
+    return rest;
+  });
   let adding = $state(false);
   let draft = $state('');
 
@@ -26,16 +40,65 @@
     if (addLayout(n)) { adding = false; onpick(n, true); }
   }
   function focusOn(node) { node.focus(); }
+
+  let listEl;
+  function gripDown(e, name) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const mids = [...listEl.querySelectorAll('[data-layout]')].filter((b) => b.dataset.layout !== name)
+      .map((b) => { const r = b.getBoundingClientRect(); return r.top + r.height / 2; });
+    drag = { name, to: stored.indexOf(name) };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const move = (ev) => { drag.to = Math.max(1, mids.filter((m) => m < ev.clientY).length); };
+    const end = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', end);
+      removeEventListener('pointercancel', end);
+      if (drag.to !== stored.indexOf(name)) moveLayout(name, drag.to);
+      drag = null;
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', end);
+    addEventListener('pointercancel', end);
+  }
+  function rowKey(e, n) {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || n === 'Default') return;
+    e.preventDefault();
+    moveLayout(n, Math.max(1, stored.indexOf(n) + (e.key === 'ArrowUp' ? -1 : 1)));
+    queueMicrotask(() => listEl.querySelector('[data-layout="' + CSS.escape(n) + '"]')?.focus());
+  }
+
+  // A hold fires once, after HOLD_MS; any release or leave before that is nothing.
+  let holding = $state(null);
+  let timer = 0;
+  function holdStart(n) {
+    holdStop();
+    holding = n;
+    timer = setTimeout(() => { holding = null; deleteLayout(n); }, HOLD_MS);
+  }
+  function holdStop() { clearTimeout(timer); holding = null; }
 </script>
 
-<div class="rail-sub" role="none">
+<div class="rail-sub" role="none" bind:this={listEl}>
   {#each names as n (n)}
     {@const on = dashActive && layouts.active === n}
-    <div class="sub-row" role="none">
+    <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}>
       <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
-              aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}>
+              aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}
+              onkeydown={(e) => rowKey(e, n)}>
         <span class="rail-name">{n}</span>
       </button>
+      {#if n !== 'Default'}
+        <span class="sub-grip" aria-hidden="true" title="Drag to reorder, Alt+Up or Down" onpointerdown={(e) => gripDown(e, n)}>
+          <svg viewBox="0 0 8 12"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg>
+        </span>
+        <button type="button" class="sub-x" class:holding={holding === n} class:withwrench={on} aria-label={'Delete ' + n + ', hold 1 s'}
+                title="Hold 1 s to delete" onpointerdown={() => holdStart(n)} onpointerup={holdStop} onpointerleave={holdStop}
+                onpointercancel={holdStop} onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); holdStart(n); } }}
+                onkeyup={holdStop} onblur={holdStop}>
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8"/></svg>
+        </button>
+      {/if}
       {#if on}
         <button type="button" class="rail-wrench" aria-pressed={dashEdit.on}
                 title={dashEdit.on ? 'Done editing' : 'Edit layout'} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
@@ -68,6 +131,26 @@
     min-height: 30px;
     padding-left: calc(var(--sp-5) + var(--sp-2) - var(--sp-3));
   }
+  .sub-grip, .sub-x {
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+    display: none;
+    place-items: center;
+    padding: 0;
+    color: var(--ink-faint);
+  }
+  .sub-grip { left: var(--sp-1); width: 10px; height: 20px; cursor: grab; touch-action: none; }
+  .sub-grip svg { width: 8px; height: 12px; fill: currentColor; }
+  .sub-x { right: var(--sp-1); width: 22px; height: 22px; border-radius: var(--radius); overflow: hidden; }
+  .sub-x.withwrench { right: 30px; }
+  .sub-x svg { position: relative; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+  .sub-x::before { content: ''; position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .sub-x.holding::before { width: 100%; transition: width 1s linear; }
+  .sub-x:hover, .sub-x:focus-visible, .sub-x.holding { color: var(--warn-ink); }
+  .sub-row:hover .sub-grip, .sub-row:hover .sub-x, .sub-row:focus-within .sub-grip, .sub-row:focus-within .sub-x { display: grid; }
+  .sub-row.dragging { opacity: .6; }
+  @media (hover: none) { .sub-grip, .sub-x { display: grid; } }
   .sub-layout.add { color: var(--ink-faint); }
   .sub-layout.add:hover { color: var(--highlight); }
   .rail-wrench {
