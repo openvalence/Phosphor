@@ -112,7 +112,7 @@ const byReading = (a, b) => a.y - b.y || a.x - b.x;
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
 export function pack(items, map, cols, placed = [], fit = null) {
-  const seeded = [];
+  const seeded = [], fresh = [];
   let from = 0;   // rank order: no card lands in a row above the one before it, or a section header would trail its cards
   for (const it of items) {
     const e = map[it.id];
@@ -126,14 +126,25 @@ export function pack(items, map, cols, placed = [], fit = null) {
     }
     placed.push(r);
     from = r.y;
+    fresh.push(r);
     if (fw > 0) seeded.push(r);
   }
   // No seeded row ends in a gutter (DESIGN §10.5): the card at a row's end stretches to the edge and
-  // keeps its placement height (its content only gets shorter at the wider width). `fit` is only ever
-  // asked at seed widths, so the result never depends on what was measured after a stretch.
+  // takes the height of its content at that width (`fit` with the 4th argument true: a measurement made
+  // at that width, null until made, then the seed-width height stands). Then the packed cards fall upward
+  // in reading order, x and width untouched. `fit` is only ever asked at seed widths or with the flag, so
+  // the result never depends on how a card happened to be drawn.
   for (const r of seeded.sort((a, b) => b.x - a.x)) {
     const w = cols - r.x;
-    if (!hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h: r.h })) r.w = w;
+    if (w === r.w || hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h: r.h })) continue;
+    const e = map[r.id];
+    const f = fit && fit({ ...r, ...lookOf(e) }, w, sizeOf(e, cols).h, true);
+    const h = f ? Math.min(MAX_H, Math.max(sizeOf(e, cols).h, f)) : r.h;
+    if (!hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h: Math.max(h, r.h) })) { r.w = w; r.h = h; }
+  }
+  for (const r of fresh.sort(byReading)) {
+    const others = placed.filter((q) => q !== r);
+    while (r.y > 0 && !hits(others, { x: r.x, y: r.y - 1, w: r.w, h: r.h })) r.y--;
   }
   return placed.sort(byReading);
 }

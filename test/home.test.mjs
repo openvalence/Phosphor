@@ -408,6 +408,8 @@ if (!LIVE) {
   const fresh = await geoOf(fr.page);
   ok('sections: a 1428 -> 1024 resize lays out the same as a fresh 1024 load', JSON.stringify(resized) === JSON.stringify(fresh), [resized, fresh]);
   await fr.ctx.close();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(600);
   // A category page never edits and lays out from the seed; a placement saved for it is inert and survives untouched.
   ok('a category page has no toolbar, no grip and no edit entry', await page.locator('main.pane .dash-toolbar, main.pane .handle.grab').count() === 0);
   const inert = JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: { 'full.cat2': { 'group:2:ungrouped': { x: 9, y: 9, w: 5, h: 5 } } } } });
@@ -613,10 +615,10 @@ if (!LIVE) {
     if (await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"]').count()) break;
   }
   const advShape = await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .advgen').evaluate((el) => ({
-    gridHasMods: !!el.querySelector(':scope > .grid .mod'),
-    mods: el.querySelectorAll(':scope > .mods .mod').length,
+    gridHasMods: !!el.querySelector(':scope > .card-body .card-sub'),
+    mods: el.querySelectorAll(':scope > .mods .field').length,
     fieldTags: [...el.querySelectorAll(':scope > .mods .field .tag.adv')].filter((t) => getComputedStyle(t).display !== 'none').length,
-    blockTag: !!el.querySelector(':scope > .mods > h4 .tag'),
+    blockTag: !!el.querySelector(':scope > .mods h4 .tag'),
   }));
   ok('advanced generator: modulators in their own block, one adv tag for it (ph-55r)',
     !advShape.gridHasMods && advShape.mods > 0 && advShape.fieldTags === 0 && advShape.blockTag, advShape);

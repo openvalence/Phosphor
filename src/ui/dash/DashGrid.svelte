@@ -233,20 +233,23 @@
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
-  // The seed's width for an unplaced card (grid.js pack `fit.w`): its measured floor, never under a
-  // field floor (FIELD_FLOOR_COLS layout columns of 2 rem) or its declared cells, a plugin's at least
-  // half the row. The floor part (`s0`) is kept from the card's first measure so a later content change
-  // (a write in flight) never moves a card; a section header fills the row.
+  // The seed (grid.js pack `fit.w`, `fit`): per card, whatever orientation it is drawn in, `s0` its width in
+  // cells (measured floor, never under a field floor of FIELD_FLOOR_COLS layout columns of 2 rem or its
+  // declared cells; kept from the first measure so a write in flight never moves a card) and `sh` its
+  // canonical height in px per width, measured with the card forced to that width. A plugin seeds at the
+  // full row; a section header fills it.
+  let seedInfo = $state({});
   let gen = 0;
-  const seedFor = (it, m) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? Math.max(m.s0, Math.floor(cols / 2)) : m.s0));
-  const seedOf = (it) => { const m = need[keyOf(it, 'h')]; return m ? seedFor(it, m) : 0; };
-  /** grid.js pack `fit`: an item's height in cells at width `w`. At its seed width: measured at that width (`sh`), null before; elsewhere the last height drawn there. */
-  function fitH(it, w, h) {
+  const seedFor = (it, si) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? cols : si.s0));
+  const seedOf = (it) => { const si = seedInfo[keyOf(it, 'h')]; return si ? seedFor(it, si) : 0; };
+  const floorH = (it) => ((it.min && it.min(it.look, 'h')) || RESIZE_FLOOR)[1];
+  /** grid.js pack `fit`: an item's height in cells at width `w`. At its seed width, or flagged for the width a row end stretches to: the canonical measure (`sh`), null before. Elsewhere the last height drawn there. */
+  function fitH(it, w, h, stretched = false) {
+    const si = seedInfo[keyOf(it, 'h')];
+    if (si && si.sh[w] != null) return Math.max(floorH(it), cellsFor(si.sh[w], grid.cell));
+    if (stretched || (si && seedFor(it, si) === w)) return null;
     const m = need[keyOf(it, orientationOf(w, h))];
-    if (!m) return null;
-    if (m.sh && m.sh[w] != null) return Math.max(((it.min && it.min(it.look, 'h')) || RESIZE_FLOOR)[1], cellsFor(m.sh[w], grid.cell));
-    if (seedFor(it, m) === w) return null;
-    return m.hs[w] != null ? minOf(it)(w, h)[1] : null;
+    return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
   fitH.w = seedOf;
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
@@ -266,26 +269,33 @@
     let grew = false;
     for (const p of placed) {
       const el = cellEls.get(p.id);
-      const k = keyOf(p, orientationOf(p.w, p.h));
-      const o = need[k];
-      const stale = !o || dirty.has(p.id);
-      const drawn = stale || o.hs[p.w] == null;
-      const seedSh = !stale && o.sh[seedFor(p, o)] == null && seedFor(p, o) > 0;
-      if (!el || !(drawn || seedSh)) continue;
-      const m = drawn ? measure(el) : null;
-      if (drawn && !m) continue;
-      if (drawn) fresh.add(p.id);
-      // A content change forgets the heights drawn at other widths.
-      const hs = drawn ? { ...(o && !stale ? o.hs : {}), [p.w]: m.h } : o.hs;
-      const w = drawn ? Math.max(m.w, o ? o.w : 0) : o.w;
+      const k = keyOf(p, orientationOf(p.w, p.h)), kh = keyOf(p, 'h');
+      const o = need[k], so = seedInfo[kh];
+      const stale = dirty.has(p.id);
+      const drawn = !o || stale || o.hs[p.w] == null;
+      // Canonical heights wanted: at the seed width, and at the stretched width an unsaved card is drawn at.
+      const wantAt = (si) => { const sw = seedFor(p, si); return sw > 0 ? (p.w !== sw && !layout.saved(p.id) ? [sw, p.w] : [sw]) : []; };
+      const fresh0 = !so || so.gen !== gen;
+      const seedMiss = fresh0 || stale || wantAt(so).some((x) => so.sh[x] == null);
+      if (!el || !(drawn || seedMiss)) continue;
+      const m = drawn || fresh0 ? measure(el) : null;
+      if ((drawn || fresh0) && !m) continue;
+      let ne = o;
+      if (drawn) {
+        fresh.add(p.id);
+        // A content change forgets the heights drawn at other widths.
+        const hs = { ...(o && !stale ? o.hs : {}), [p.w]: m.h };
+        const w = Math.max(m.w, o ? o.w : 0);
+        ne = { w, hs };
+        if (!o || JSON.stringify(ne) !== JSON.stringify(o)) { need[k] = ne; grew = true; }
+      }
       const declared = (p.hero && p.hero.cells && p.hero.cells.h[0]) || 0;
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const s0 = o && o.gen === gen ? o.s0
-        : Math.max(((p.min && p.min(p.look, 'h')) || RESIZE_FLOOR)[0], cellsFor(w, grid.cell), declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell));
-      const e = { w, hs, s0, gen, sh: !stale && o.gen === gen ? { ...o.sh } : {} };
-      const sw = seedFor(p, e);
-      if (sw > 0 && e.sh[sw] == null) { const h = measureAt(el, sw); if (h != null) e.sh[sw] = h; }
-      if (!o || JSON.stringify(e) !== JSON.stringify(o)) { need[k] = e; grew = true; }
+      const s0 = !fresh0 ? so.s0
+        : Math.max(((p.min && p.min(p.look, 'h')) || RESIZE_FLOOR)[0], cellsFor(m ? m.w : (ne ? ne.w : 0), grid.cell), declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell));
+      const si = { s0, gen, sh: !fresh0 && !stale ? { ...so.sh } : {} };
+      for (const x of wantAt(si)) if (si.sh[x] == null) { const h = measureAt(el, x); if (h != null) si.sh[x] = h; }
+      if (!so || JSON.stringify(si) !== JSON.stringify(so)) { seedInfo[kh] = si; grew = true; }
     }
     dirty.clear();
     if (seeded) return;
