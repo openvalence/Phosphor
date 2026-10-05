@@ -49,6 +49,10 @@
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
+  import RailLayouts from './shell/RailLayouts.svelte';
+  import { hold } from './shell/hold.js';
+  import { settingNeedsConfirm } from './model/actions.js';
+  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -240,6 +244,23 @@
     drill = null;
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
   }
+  // A saved dash layout is a view of the Dash tab: the store holds which one.
+  function pickLayout(n) {
+    if (layouts.active !== n) dashEdit.on = false;
+    switchLayout(n);
+    selectTab('machine');
+  }
+  $effect(() => { if (active !== 'machine') dashEdit.on = false; });
+  // The tab strip's Add layout (the rail has RailLayouts' own).
+  let stripAdding = $state(false);
+  let stripName = $state('');
+  let stripBad = $state(false);
+  const focusNode = (n) => n.focus();
+  function stripCommit() {
+    const n = stripName.trim();
+    if (!n) { stripAdding = false; return; }
+    if (addLayout(n)) { stripAdding = false; pickLayout(n); } else stripBad = true;
+  }
 
   // Rail collapse is a browser preference. Icons come from the registry
   // category id or our own pane id (ui/navIcons.js), never a device label.
@@ -266,7 +287,8 @@
     if (idx < 0) return;
     const next = list[(idx + (e.key === nextKey ? 1 : -1) + list.length) % list.length];
     next.focus();
-    active = next.dataset.tabId;
+    if (next.dataset.tabId === 'machine') pickLayout('Default');
+    else active = next.dataset.tabId;
   }
 
   // Card-zone hero titles come from OUR registry ids (heroes.js), never a
@@ -355,12 +377,26 @@
   const catPage = $derived(!current.pane && ready && current.id !== 'machine' && !!current.cat);
   // Writes in flight on this page, in the footer's fixed slot (law 5).
   const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
+  const applyReset = () => { for (const f of resettable) writeSetting(f, f.dflt); };
   async function resetCategory() {
     const n = resettable.length;
     const ok = await askConfirm({
       title: 'Reset ' + n + ' setting' + (n === 1 ? '' : 's') + ' to defaults',
     });
-    if (ok) for (const f of resettable) writeSetting(f, f.dflt);
+    if (ok) applyReset();
+  }
+  // The expanded rail carries the page operations in the selected page's pill
+  // (DESIGN §10.11); PageFoot keeps them on the mini rail and the tab strip.
+  const railOps = $derived(isDesktop && !railMini && catPage);
+  // Reset on the rail is a 1 s hold (shell/hold.js) and the hold is the
+  // confirmation, except where a resettable field is confirm-gated (a flip, a
+  // destructive flag): then the whole reset takes the modal (RENDERING §8.3).
+  let resetDone = $state(false);
+  function holdReset() {
+    if (resettable.some((f) => settingNeedsConfirm(f, machine.samples[f.channelId]?.[f.name], f.dflt))) { resetCategory(); return; }
+    applyReset();
+    resetDone = true;
+    setTimeout(() => (resetDone = false), 1200);
   }
 
   /**
@@ -376,7 +412,8 @@
   // follow one header row (settings.js orders them together, DESIGN §10.11).
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
-      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
+      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h,
+         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid)) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
       ...(g.section && g.section !== all[i - 1]?.group.section
         ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
@@ -413,6 +450,25 @@
 
 {#snippet heroCard(item)}
   <item.hero.component fields={item.hero.fields} hero={item.hero} />
+{/snippet}
+
+{#snippet stripWrench()}
+  <button type="button" class="strip-wrench" aria-pressed={dashEdit.on} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
+          title={dashEdit.on ? 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
+  </button>
+{/snippet}
+
+{#snippet railTab(t)}
+  <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
+          aria-selected={current && current.id === t.id}
+          tabindex={current && current.id === t.id ? 0 : -1}
+          class:on={current && current.id === t.id}
+          title={t.label}
+          onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
+    <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
+    {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
+  </button>
 {/snippet}
 
 {#snippet pane()}
@@ -479,14 +535,14 @@
           </select>
         {/if}
       {/if}
-      {#if catPage}
-        {#if visibleGroups.adv}
-          <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
-        {/if}
+      {#if catPage && !railOps}
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
                   title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} diagnostic</button>
+        {/if}
+        {#if visibleGroups.adv}
+          <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
+                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
@@ -530,15 +586,30 @@
             <div class="rail-sec" class:shell={sec.shell}>
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
-                <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
-                        aria-selected={current && current.id === t.id}
-                        tabindex={current && current.id === t.id ? 0 : -1}
-                        class:on={current && current.id === t.id}
-                        title={t.label}
-                        onclick={() => selectTab(t.id)}>
-                  <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
-                  {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
-                </button>
+                {@const ops = railOps && current.id === t.id}
+                <div class="rail-pill" class:ops role="none">
+                  {@render railTab(t)}
+                  {#if ops}
+                    <div class="rail-ops" role="group" aria-label="Page operations"
+                         style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                      {#if visibleGroups.diagAll}
+                        <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                      {/if}
+                      {#if visibleGroups.adv}
+                        <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                      {/if}
+                      {#if hasDefaults}
+                        <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                                use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
+                                title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+>{resetDone ? 'reset ✓' : 'reset'}</button>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+                {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
               {/each}
             </div>
           {/each}
@@ -557,8 +628,24 @@
                   aria-selected={current && current.id === t.id}
                   tabindex={current && current.id === t.id ? 0 : -1}
                   class:shell={!!t.pane}
-                  class:on={current && current.id === t.id}
-                  onclick={() => selectTab(t.id)}>{t.label}</button>
+                  class:on={current && current.id === t.id && (t.id !== 'machine' || layouts.active === 'Default')}
+                  onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>{t.label}</button>
+          {#if t.id === 'machine'}
+            {#if active === 'machine' && layouts.active === 'Default'}{@render stripWrench()}{/if}
+            {#each orderedLayoutNames().slice(1) as n (n)}
+              {@const sel = active === 'machine' && layouts.active === n}
+              <button type="button" data-layout={n} aria-current={sel ? 'page' : undefined}
+                      class:on={sel} onclick={() => pickLayout(n)}>{n}</button>
+              {#if sel}{@render stripWrench()}{/if}
+            {/each}
+            {#if stripAdding}
+              <input class="strip-add" aria-label="New layout name" aria-invalid={stripBad} placeholder="Layout name" bind:value={stripName}
+                     use:focusNode onkeydown={(e) => { if (e.key === 'Enter') stripCommit(); else if (e.key === 'Escape') { e.stopPropagation(); stripAdding = false; } }}
+                     onblur={() => (stripAdding = false)} />
+            {:else}
+              <button type="button" aria-label="Add layout" title="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
+            {/if}
+          {/if}
         {/each}
       </div>
     </nav>
@@ -666,6 +753,49 @@
     flex-direction: column;
     padding: 0 var(--sp-2) var(--sp-2);
   }
+  /* The selected page's pill grows to hold its operations: inset, not
+     indented, one row of two or three buttons. */
+  .rail-pill { display: contents; }
+  .rail-pill.ops {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--line-1);
+    border-radius: var(--radius);
+  }
+  .rail-pill.ops > :global(.rail-tab.on) { background: none; border-color: transparent; }
+  .rail-ops {
+    display: grid;
+    grid-template-columns: repeat(var(--n, 3), 1fr);
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2) var(--sp-2);
+  }
+  .rail-ops button {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-1);
+    min-height: 24px;
+    padding: 0 var(--sp-1);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink-dim);
+    font-size: .62rem;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .rail-ops button b { font: 400 .68rem var(--mono); color: var(--ink); letter-spacing: 0; }
+  .rail-ops button:hover:not(:disabled) { border-color: var(--highlight); }
+  .rail-ops button[aria-pressed='true'] { color: var(--highlight); border-color: var(--highlight); }
+  .rail-ops button:disabled { opacity: .4; }
+  .rail-ops .reset { color: var(--warn-ink); }
+  .rail-ops .reset::before { content: ''; position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .rail-ops .reset:global(.holding)::before { width: 100%; transition: width 1s linear; }
+  .rail-ops .reset.done { border-color: var(--warn); }
+  @media (pointer: coarse) { .rail-ops button { min-height: 40px; } }
   .rail-sec.shell {
     margin-top: auto;
     padding: var(--sp-2);
@@ -674,7 +804,7 @@
     border: 1px solid var(--shell-border);
     border-radius: var(--radius);
   }
-  .rail-sec.shell .rail-tab:not(.on),
+  .rail-sec.shell :global(.rail-tab:not(.on)),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
   .rail-lbl {
@@ -686,7 +816,7 @@
     color: var(--ink-faint);
   }
 
-  .rail-tab {
+  :global(.rail-tab) {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
@@ -701,10 +831,10 @@
     white-space: nowrap;
     transition: color var(--t-quick) var(--ease-out), background-color var(--t-quick) var(--ease-out);
   }
-  .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
+  :global(.rail-tab:hover) { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
-  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) + var(--sp-2)); }
-  .rail-tab.on {
+  .rail:not(.mini) :global(.rail-tab.sub) { padding-left: calc(var(--sp-5) + var(--sp-2)); }
+  :global(.rail-tab.on) {
     color: var(--ink-hi);
     background: var(--bg-card);
     border-color: var(--line-1);
@@ -712,7 +842,7 @@
   /* Active marker: a reality-blue tick on the leading edge — the same accent
      that means "what the machine reports" everywhere else marks "you are
      here". */
-  .rail-tab.on .rail-glyph { color: var(--reality); }
+  :global(.rail-tab.on) .rail-glyph { color: var(--reality); }
 
   .rail-glyph {
     flex: 0 0 auto;
@@ -730,7 +860,7 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .rail-name {
+  :global(.rail-name) {
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
@@ -743,7 +873,7 @@
      would be clipped by the scrollport before it reached 40px. */
   @media (pointer: coarse) {
     .rail-collapse { min-width: 40px; min-height: 40px; }
-    .rail-tab { min-height: 40px; }
+    :global(.rail-tab) { min-height: 40px; }
   }
 
   /* ---- phone: horizontal tab strip ---------------------------------------
@@ -778,6 +908,7 @@
   .tabs button {
     flex: 0 0 auto;
     min-height: var(--tap);
+    min-width: var(--tap);
     padding: 0 var(--sp-4);
     border-radius: var(--radius);
     color: var(--ink-dim);
@@ -790,6 +921,11 @@
     color: var(--shell-fg);
     border-color: var(--shell-border);
   }
+  .tabs .strip-wrench { display: grid; place-items: center; min-width: var(--tap); padding: 0; }
+  .tabs .strip-wrench svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .tabs .strip-wrench[aria-pressed='true'] { color: var(--highlight); border-color: var(--highlight); }
+  .tabs .strip-add { flex: 0 0 auto; width: 10rem; min-height: var(--tap); padding: 0 var(--sp-4); background: var(--bg-sunken); border: 1px solid var(--highlight); border-radius: var(--radius); color: var(--ink); font: inherit; outline: none; }
+  .tabs .strip-add[aria-invalid='true'] { border-color: var(--warn); }
   .tabs button.on {
     color: var(--ink-hi);
     background: var(--bg-card);

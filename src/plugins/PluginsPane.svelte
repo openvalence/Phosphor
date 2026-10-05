@@ -124,16 +124,16 @@
 
 <style>
   .count, .ver { font-size: .75rem; color: var(--tx-mut); }
-  .chip { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--ink-dim); }
+  .chip { font-family: var(--mono); font-size: .68rem; padding: 1px var(--sp-2); border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--ink-dim); }
   /* Fixed width: active, disabled and error swap in place. */
   .chip.status { min-width: 10ch; text-align: center; }
   .chip.status[data-status='active'] { color: var(--reality); border-color: var(--reality); }
   .chip.failed, .chip.status[data-status='error'], .chip.status[data-status='invalid'] { color: var(--warn); border-color: var(--warn); }
   .og-switch { font-size: .78rem; min-height: 30px; }
-  .page-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .perms { margin: 0; padding-left: 16px; }
+  .page-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .perms { margin: 0; padding-left: var(--sp-5); }
   .src { font-size: .7rem; color: var(--tx-mut); }
-  .err-row { display: flex; align-items: flex-start; gap: 8px; }
+  .err-row { display: flex; align-items: flex-start; gap: var(--sp-3); }
   .err-row .pane-status { flex: 1; min-width: 0; font-family: var(--mono); }
   code { font-family: var(--mono); font-size: .85em; }
   @media (pointer: coarse) { .og-switch { min-height: 40px; } }

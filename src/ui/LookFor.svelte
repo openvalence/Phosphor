@@ -252,7 +252,7 @@
     height: min(100%, 440px);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
@@ -262,7 +262,7 @@
   .lf-q {
     flex: none;
     min-height: var(--tap);
-    padding: 0 10px;
+    padding: 0 var(--sp-3);
     font: inherit;
     color: var(--ink-hi);
     background: var(--bg-sunken);
@@ -273,10 +273,10 @@
   .lf-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
   li {
     display: flex;
-    gap: 6px;
+    gap: var(--sp-2);
     align-items: baseline;
     min-height: 28px;
-    padding: 4px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--radius);
     font-size: .82rem;
     white-space: nowrap;

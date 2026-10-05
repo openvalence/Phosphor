@@ -25,6 +25,7 @@
   import { foundVia } from './found.js';
   import { machine, disconnect, retryNow } from '../model/machine.svelte.js';
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
+  import { nameInput, opensName } from './rename.js';
   import { since, endpointLabel } from '../model/format.js';
   import { hasMachine, BUILTIN_KEY } from '../model/vault.js';
   import { openVirtual, sim, onSim } from './virtual.svelte.js';
@@ -88,11 +89,11 @@
     {/if}
       <ul class="pane-list rows">
         {#each $savedHubs as h (h.id)}
-          <li>
+          <li use:opensName={(li) => li.querySelector('.nick input')}>
             <span class="who">
               <label class="nick">
                 <span class="sr-only">Nickname for {hubLabel(h)}</span>
-                <input type="text" value={h.nickname} placeholder={h.name || 'Nickname'} maxlength="40"
+                <input type="text" use:nameInput value={h.nickname} placeholder={h.name || 'Nickname'} maxlength="40"
                        onchange={(e) => renameHub(h.id, e.currentTarget.value)} />
               </label>
               <span class="meta mono" title={h.host + ':' + h.port}>{h.host}:{h.port}{h.name && h.nickname ? ' · ' + h.name : ''}</span>

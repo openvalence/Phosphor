@@ -129,6 +129,48 @@ false leaves. Every change is announced on `window` as
 for it (the funscript player's media fullscreen) ends with the shell's
 (Escape, the caret, F11, a page switch). Seam: `src/App.svelte`.
 
+**Page layout by bucket** (DESIGN §10.12, `ph-cqz6`). The host publishes the
+window's width bucket, 1 (watch) to 5 (wide), as `<html data-bucket>`, with
+`--cols` (the width in 2 rem layout columns); a page reads
+`document.documentElement.dataset.bucket` (or styles `:root[data-bucket="1"]`
+in its CSS) and never `innerWidth`. It declares a layout per bucket, or takes
+the host's stacked default: buckets 1 and 2 are one column, 3 the page's
+handheld layout else stacked, 4 and 5 its full layout. The stacked default
+and the guarantee of no horizontal overflow in any bucket and 40 px targets
+in 1 and 2 (law 12) are the contract the host will honor (`ph-cqz6`, the
+shell's page frame), not behavior yet: a page keeps both itself. The
+bucket can change while the page stays mounted (resize, scale, theme, text
+size), so a page watches `data-bucket` (a `MutationObserver`) or lets CSS
+do it.
+
+**Search** (experimental). `registerPage({..., search: [{label, key}]})`
+lists the page's controls in F3 as `<label> · <page label>`. `key` names a
+`[data-search-key="<key>"]` element in the mount; choosing the entry opens
+the page, scrolls to that element and focuses its first enabled control. A malformed list
+throws like any bad `registerPage` field; absent, the page is found by
+name only. Seam: `registerPage` in `src/plugins/host.js`, `src/ui/LookFor.svelte`.
+
+**Density rungs** (DESIGN §10.5). A widget or hero has two rungs, compact and
+normal, picked by the width its card gives it: compact under 18rem, normal
+above, the line the built-in fields use (`src/ui/Field.svelte`); a widget
+whose content turns at another width may place its own line. The host sets
+no container on a plugin's element: the mount makes its root
+`container-type: inline-size` and writes `@container (max-width: 18rem)` for
+the compact form, or measures its own width (the reference plugin turns its
+narrow form at 480 px of its root). Compact never goes under the 40 px
+target and never hides the four-state reason (law 5).
+
+**Modifier keys** (DESIGN §10.5). A plugin that edits a number inlines the
+host's rule; plugins do not import app modules. Shift = fine: a drag at a
+tenth of its gain, a key at the declared step and never under it (an
+off-grid value is refused). Ctrl snaps to the decade below the range's
+magnitude (1000 snaps at 100, 50 at 10): a key goes to the adjacent
+multiple in its direction, one notch per press, and a drag rounds to the
+multiple. Alt: a drag may hold its write to the release while `e.altKey` is down;
+it has no other meaning. The advanced-penetration
+plugin is the reference (`nudge` and the pointer handlers in its
+`makeEditor`).
+
 ## The API (v1)
 
 | member | what | status |
@@ -159,7 +201,7 @@ for it (the funscript player's media fullscreen) ends with the shell's
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
-| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
+| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 

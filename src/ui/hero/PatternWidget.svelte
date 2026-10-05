@@ -72,7 +72,7 @@
 
 <div class="hero pattern-hero">
   <div class="pattern-topline">
-    <span class="pattern-state" data-shadow={statusOf(running)}>{patternStateText}</span>
+    <span class="pattern-state" data-shadow={statusOf(running)} title={headReason || undefined}>{headReason || patternStateText}</span>
   </div>
 
   <div class="pattern-head">
@@ -87,13 +87,12 @@
   <!-- RENDERING §10.1: co-located with run/stop, the shared switch (Field
        confirms false -> true first). -->
   {#if bgRun}<Field field={bgRun} />{/if}
-  {#if headReason}<p class="hint">{headReason}</p>{/if}
 
   {#if select.options && select.options.length}
     <!-- OG .pat-grid/.pat-tile, label-only: a waveform glyph is a catalog/RFC
          candidate (a `glyph` field on the pattern registry entry), never a
          client-invented shape. -->
-    <div class="pattern-grid" role="radiogroup" aria-label={labelFor(select)}
+    <div class="pattern-grid card-body" role="radiogroup" aria-label={labelFor(select)}
          data-shadow={statusOf(select)}>
       {#each select.options as _opt, i}
         <button type="button" class="pat-tile" role="radio" aria-checked={Number(selectVal) === i}
@@ -108,11 +107,7 @@
   {/if}
 
   {#if knobs.length}
-    <!-- OG .fld2 compact 2-col slider grid — reuses Field.svelte's slider
-         widget verbatim (label top-left, recessed value chip top-right,
-         hairline range below) instead of a second hand-rolled slider, so
-         these rows are pixel-identical to every other slider in the app. -->
-    <div class="fld2">
+    <div class="card-body">
       {#each knobs as f (f.uid)}
         <Field field={f} />
       {/each}
@@ -138,6 +133,10 @@
     justify-content: flex-end;
   }
   .pattern-state {
+    min-height: 1em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--mono);
     font-weight: var(--num-wght);
     font-variation-settings: 'wdth' 90;
@@ -150,7 +149,7 @@
   .pattern-head {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--sp-3);
   }
 
   /* Chrome (border/color/disabled/hover) comes from the global .og-btn /
@@ -161,8 +160,8 @@
   .run-btn {
     width: 100%;
     justify-content: center;
-    gap: 10px;
-    padding: 12px;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
     letter-spacing: .14em;
     text-transform: uppercase;
   }
@@ -189,21 +188,19 @@
   /* OG .pat-grid/.pat-tile — bordered label tiles, responsive rather than
      the OG's fixed 4-column grid (dashboard cards here are user-resizable,
      the OG's Pattern card was not). */
-  /* Equal rows, so a two-line label never makes its tile the odd one. */
+  /* Tiles are two layout columns wide and share row height. */
   .pattern-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    --field-floor: 4rem;
     grid-auto-rows: 1fr;
-    gap: 7px;
   }
   .pat-tile {
     min-height: var(--tap);
-    padding: 8px 4px;
+    padding: var(--sp-3) var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     background: transparent;
     text-align: center;
-    transition: border-color .15s, box-shadow .2s;
+    transition: border-color var(--t-quick), box-shadow var(--t-move);
   }
   .pat-tile-label {
     display: block;
@@ -220,19 +217,6 @@
   .pattern-grid:is([data-shadow='pending'], [data-shadow='overdue']) .pat-tile.on .pat-tile-label { color: var(--intent); }
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* OG .fld2 — compact slider grid (mock r6, Pattern card): 220px columns,
-     so one column on a phone (a fixed 1fr 1fr overflows 360px). Field.svelte
-     owns every other visual (label, chip, hairline slider); this only owns
-     the grid rhythm and tightens the slider's vertical margin to the OG's
-     fld2-specific value (the page-wide default is roomier). */
-  .fld2 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px 16px;
-  }
-  .fld2 :global(input[type='range']) {
-    margin: 8px 0 2px;
-  }
 
   .hint {
     margin: 0;
