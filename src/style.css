@@ -571,12 +571,20 @@ select:focus { outline: none; border-color: var(--highlight); }
   z-index: 14;
   display: block;
   flex: none;
-  height: 24px;
+  height: var(--shade-h);
   pointer-events: none;
   opacity: 0;
 }
-[data-shade]::before { top: 0; margin-bottom: -24px; background: linear-gradient(var(--line-1) 0 1px, rgba(var(--shade-rgb), .95) 1px, rgba(var(--shade-rgb), 0)); }
-[data-shade]::after { bottom: 0; margin-top: -24px; background: linear-gradient(rgba(var(--shade-rgb), 0), rgba(var(--shade-rgb), .95) calc(100% - 1px), var(--line-1) 0); }
+/* Ink from the theme surface; zero layout size, so toggling one moves no box.
+   A scroller carries no padding of its own (the shade spans its scrollport):
+   its children do. */
+[data-shade] {
+  --shade-h: 24px;
+  --shade-ink: color-mix(in srgb, var(--bg-sunken) 92%, transparent);
+  --shade-none: color-mix(in srgb, var(--bg-sunken) 0%, transparent);
+}
+[data-shade]::before { top: 0; margin-bottom: calc(var(--shade-h) * -1); background: linear-gradient(var(--line-1) 0 1px, var(--shade-ink) 1px, var(--shade-none)); }
+[data-shade]::after { bottom: 0; margin-top: calc(var(--shade-h) * -1); background: linear-gradient(var(--shade-none), var(--shade-ink) calc(100% - 1px), var(--line-1) 0); }
 [data-shade-top]::before,
 [data-shade-bottom]::after { opacity: 1; }
 :is([data-shade-bottom], [data-shade-bottom] > .pane) > .page-foot {

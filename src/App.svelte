@@ -627,8 +627,6 @@
        against. Grid's default stretch gives it the frame's full height. */
     display: flex;
     flex-direction: column;
-    gap: var(--sp-1);
-    padding: var(--sp-3);
     background: var(--bg-raised);
     border: 1px solid var(--line-0);
     border-radius: var(--radius);
@@ -636,13 +634,11 @@
     overflow-y: auto;
   }
   .rail.mini { width: 56px; }
-  /* The recess shades (style.css [data-shade]) take no room: their margin
-     also cancels the rail's 2px flex gap. */
-  .rail::before { margin-bottom: -26px; }
-  .rail::after { margin-top: -26px; }
-
+  /* No padding on the rail itself: the recess shades (style.css [data-shade])
+     span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {
     align-self: flex-end;
+    margin: var(--sp-3) var(--sp-3) var(--sp-1);
     min-width: 28px;
     min-height: 28px;
     color: var(--ink-faint);
@@ -668,6 +664,7 @@
     flex: 1 0 auto;
     display: flex;
     flex-direction: column;
+    padding: 0 var(--sp-3) var(--sp-3);
   }
   .rail-sec.shell {
     margin-top: auto;

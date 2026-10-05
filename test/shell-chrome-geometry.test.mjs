@@ -492,6 +492,34 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
         on ? edges[2] === 4 && edges[3] === -9 : edges[2] === 0 && edges[3] === -5, edges.join(' / '));
     }
   }
+  if (w >= 960) {
+    // ph-mdqo.2: the rail's recess spans its scrollport (no padding on the rail), takes no room, tints from the theme
+    // surface, and holds its state through the last 2 px.
+    await fp.setViewportSize({ width: w, height: 560 });
+    await fp.waitForTimeout(200);
+    const rs = await fp.evaluate(async () => {
+      const rail = document.querySelector('nav.rail'), frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const max = rail.scrollHeight - rail.clientHeight, cs = getComputedStyle(rail);
+      const tabs = () => [...rail.querySelectorAll('.rail-tab')].map((t) => { const r = t.getBoundingClientRect(); return [r.top, r.left, r.width, r.height].join(','); }).join('|');
+      const at = async (y) => { rail.scrollTop = y; await frames(); return [rail.hasAttribute('data-shade-top'), rail.hasAttribute('data-shade-bottom')]; };
+      const mid = await at(max / 2);
+      const bef = getComputedStyle(rail, '::before'), aft = getComputedStyle(rail, '::after');
+      const geo = { pad: cs.paddingLeft + cs.paddingTop + cs.paddingBottom, bw: parseFloat(bef.width) - rail.clientWidth, aw: parseFloat(aft.width) - rail.clientWidth,
+        ink: bef.backgroundImage + aft.backgroundImage };
+      const withOn = tabs(); rail.removeAttribute('data-shade-bottom'); const withOff = tabs(); rail.setAttribute('data-shade-bottom', '');
+      const flips = []; let last = mid[1];
+      for (const y of [max - 1, max - 0.2, max - 1, max - 1.5, max - 0.2, max - 3]) { const b = (await at(y))[1]; if (b !== last) flips.push(b); last = b; }
+      return { max, mid, geo, same: withOn === withOff, flips };
+    });
+    ok(tag + ': the rail scrolls and shades both edges mid-way', rs.max > 20 && rs.mid[0] && rs.mid[1], JSON.stringify(rs.mid));
+    ok(tag + ': the rail has no padding; both shades span its scrollport', rs.geo.pad === '0px0px0px' && Math.abs(rs.geo.bw) < 0.5 && Math.abs(rs.geo.aw) < 0.5, JSON.stringify(rs.geo).slice(0, 120));
+    ok(tag + ': the shade ink comes from the theme surface, not black', !/rgba?\(0, 0, 0/.test(rs.geo.ink), rs.geo.ink.slice(0, 160));
+    ok(tag + ': a shade moves no rail tab', rs.same);
+    ok(tag + ': the bottom shade holds through the last 2 px (off once, back on only past 2 px)', JSON.stringify(rs.flips) === '[false,true]', JSON.stringify(rs.flips));
+    await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/rail-shade.png' });
+    await fp.setViewportSize({ width: w, height: h });
+    await fp.waitForTimeout(200);
+  }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
   for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
