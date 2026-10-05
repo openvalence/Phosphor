@@ -82,6 +82,7 @@
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
   import { deferring } from '../defer.js';
+  import { modStep, dragGain, snap as modSnap } from '../../model/nudge.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
   import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
 
@@ -117,7 +118,7 @@
     return (machine.link.roles | 0) >= (e.access | 0);
   }
 
-  // A Shift-drag of the window holds its edges here (defer.js) until release.
+  // An Alt-drag of the window holds its edges here (defer.js) until release.
   let pend = $state(null); // null | {min?, max?}
   const minVal = $derived(pend && pend.min != null ? pend.min : displayValue(min, sampleOf(min)));
   const maxVal = $derived(pend && pend.max != null ? pend.max : displayValue(max, sampleOf(max)));
@@ -711,6 +712,7 @@
   const axis = (e) => (vertical ? e.clientY : e.clientX);
   let dragStartMin = 0;
   let dragStartMax = 0;
+  let dragCurMin = 0, dragCurMax = 0, dragG = 1;   // the last written edges; Shift's gain re-bases here
 
   /** The gate for one drag mode. Asked at grab AND on every move: a handle the
       machine disables mid-gesture (mask, link loss, tier change) must stop
@@ -723,8 +725,9 @@
     if (!dragAllowed(mode)) return;
     dragMode = mode;
     dragStartX = axis(e);
-    dragStartMin = minVal ?? lo;
-    dragStartMax = maxVal ?? hi;
+    dragStartMin = dragCurMin = minVal ?? lo;
+    dragStartMax = dragCurMax = maxVal ?? hi;
+    dragG = 1;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
     e.preventDefault();
   }
@@ -737,18 +740,23 @@
     const rect = hostEl.getBoundingClientRect();
     const len = vertical ? rect.height : rect.width;
     if (!len) return;
-    const dv = dir * ((axis(e) - dragStartX) / len) * span;
+    // Shift: a tenth of the gain, relative to where Shift went down.
+    const g = dragGain(e, 1);
+    if (g !== dragG) { dragG = g; dragStartX = axis(e); dragStartMin = dragCurMin; dragStartMax = dragCurMax; }
+    const dv = dir * ((axis(e) - dragStartX) / len) * span * g;
     const out = {};
     if (dragMode === 'min') {
-      out.min = snap(clamp(dragStartMin + dv, lo, dragStartMax), min);
+      out.min = snap(modSnap(clamp(dragStartMin + dv, lo, dragStartMax), e, lo, hi), min);
     } else if (dragMode === 'max') {
-      out.max = snap(clamp(dragStartMax + dv, dragStartMin, hi), max);
+      out.max = snap(modSnap(clamp(dragStartMax + dv, dragStartMin, hi), e, lo, hi), max);
     } else if (dragMode === 'band') {
       const width = dragStartMax - dragStartMin;
-      const newMin = clamp(dragStartMin + dv, lo, hi - width);
+      const newMin = modSnap(clamp(dragStartMin + dv, lo, hi - width), e, lo, hi);
       out.min = snap(newMin, min);
       out.max = snap(newMin + width, max);
     }
+    if (out.min != null) dragCurMin = out.min;
+    if (out.max != null) dragCurMax = out.max;
     if (deferring(e)) { pend = out; return; }
     pend = null;
     writeEdges(out);
@@ -758,7 +766,7 @@
     if (out.max != null) writeSetting(max, out.max);
   }
 
-  // A held Shift-drag writes on release only; a cancelled pointer writes nothing.
+  // A held Alt-drag writes on release only; a cancelled pointer writes nothing.
   function endDrag(e) {
     const p = pend, mode = dragMode;
     pend = null;
@@ -769,7 +777,7 @@
   function onBandKey(e) {
     if (!bandEnabled) return;
     const width = (maxVal ?? hi) - (minVal ?? lo);
-    const step = min.step || max.step || Math.max(span / 100, 1e-6);
+    const step = modStep(e, min.step || max.step || Math.max(span / 100, 1e-6), lo, hi);
     let dv = 0;
     if (e.key === 'ArrowRight') dv = dir * step;
     else if (e.key === 'ArrowLeft') dv = -dir * step;
@@ -788,7 +796,7 @@
     const field = which === 'min' ? min : max;
     const ok = which === 'min' ? minEnabled : maxEnabled;
     if (!ok) return;
-    const step = field.step || Math.max(span / 100, 1e-6);
+    const step = modStep(e, field.step || Math.max(span / 100, 1e-6), lo, hi);
     let target;
     const cur = which === 'min' ? (minVal ?? lo) : (maxVal ?? hi);
     if (e.key === 'ArrowRight') target = cur + dir * step;
@@ -853,7 +861,7 @@
   // ---------------------------------------------------------------------------
   let moveDragging = $state(false);
   let moveDragValue = $state(null);
-  let moveHeld = $state(false); // a Shift-drag holding its jog until release (defer.js)
+  let moveHeld = $state(false); // an Alt-drag holding its jog until release (defer.js)
   let tapeBarEl = $state(null);
 
   // BUG FIX (tap/scrub not registering): the pointer handlers used to live on
@@ -911,8 +919,10 @@
     get lo() { return tapeLo; }, get hi() { return tapeHi; }, get windowed() { return haveWindow && !override; },
   };
 
+  let tapeAnchor = null;
   function onTapePointerDown(e) {
     if (!moveEnabled) return;
+    tapeAnchor = null;
     moveDragging = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
     onTapePointerMove(e);
@@ -920,7 +930,14 @@
   }
   function onTapePointerMove(e) {
     if (!moveDragging) return;
-    const v = moveValueFromPoint(e);
+    const raw = moveValueFromPoint(e);
+    // Shift: a tenth of the gain relative to where it went down; Ctrl: the decade grid.
+    let v = raw;
+    if (raw != null) {
+      const g = dragGain(e, 1);
+      if (!tapeAnchor || tapeAnchor.g !== g) tapeAnchor = { raw, out: tapeAnchor ? moveDragValue : raw, g };
+      v = modSnap(clamp(tapeAnchor.out + (raw - tapeAnchor.raw) * g, tapeLo, tapeHi), e, tapeLo, tapeHi);
+    }
     moveDragValue = v;
     moveHeld = deferring(e);
     if (!moveHeld) requestMove(v);
@@ -942,7 +959,7 @@
   // not a reproduction of anything the original did.
   function onTapeKey(e) {
     if (!moveEnabled) return;
-    const step = (move && move.step) || Math.max(tapeSpan / 100, 1e-6);
+    const step = modStep(e, (move && move.step) || Math.max(tapeSpan / 100, 1e-6), tapeLo, tapeHi);
     const cur = tapeVal ?? tapeLo;
     let v;
     if (e.key === 'ArrowRight') v = cur + dir * step;
