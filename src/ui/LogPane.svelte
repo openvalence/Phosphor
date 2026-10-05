@@ -26,6 +26,8 @@
   } from '../../../Valence/clients/js/index.js';
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
   import { logView } from './logview.svelte.js';
+  import { history, undo, revertAll, revertCount, fieldOfEntry } from '../model/history.svelte.js';
+  import { askConfirm } from './confirm.svelte.js';
   import './pane.css';
 
   const TABS = [
@@ -33,6 +35,7 @@
     { id: 'anomaly', label: 'Anomalies' },
     { id: 'safety', label: 'Safety' },
     { id: 'session', label: 'Session' },
+    { id: 'changes', label: 'Changes' },
   ];
   // Shared so the top strip can open a feed.
   const tab = $derived(logView.tab);
@@ -49,6 +52,7 @@
     anomaly: machine.events.anomaly,
     safety: machine.events.safety,
     session: machine.events.session,
+    changes: [...history.entries].reverse(),
   });
 
   const EMPTY_TEXT = {
@@ -56,6 +60,7 @@
     anomaly: 'No device events yet',
     safety: 'No safety events this session',
     session: 'No session events yet',
+    changes: 'No setting changed this session',
   };
 
   // ---- generic body decoding -----------------------------------------------
@@ -184,7 +189,7 @@
   // Re-runs when the feed's rows or its follow flag change.
   const stick = (id) => (el) => {
     void shown[id].length;
-    if (feeds[id].follow) el.scrollTop = el.scrollHeight;
+    if (id !== 'changes' && feeds[id].follow) el.scrollTop = el.scrollHeight;
   };
 
   // ---- copy and the status slot --------------------------------------------------
@@ -207,7 +212,20 @@
     flashTimer = setTimeout(() => { flash = ''; }, 2500);
   }
 
+  const val = (e, v) => {
+    const f = fieldOfEntry(e.id);
+    return !f ? String(v) : f.options ? optionLabel(f, v) : formatWithUnit(f, v);
+  };
+  // The count is asked before the confirm so a no-op revert says so instead of asking.
+  async function revert() {
+    logView.tab = 'changes';
+    const n = revertCount();
+    if (!n) { history.msg = 'Nothing to revert'; return; }
+    if (await askConfirm({ title: 'Revert changes', body: 'Writes ' + n + ' setting' + (n === 1 ? '' : 's') + ' back to how they were when you connected.', confirmLabel: 'Revert' })) revertAll();
+  }
+
   const status = $derived.by(() => {
+    if (tab === 'changes') return flash || history.msg;
     if (flash) return flash;
     const f = feeds[tab];
     const live = lists[tab] || [];
@@ -258,10 +276,12 @@
         {#each tags as t (t)}<option value={t}>{t}</option>{/each}
       </select>
     </label>
-    <button type="button" class="og-btn sm" class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
+    <button type="button" class="og-btn sm" disabled={tab === 'changes'} class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
       {feeds[tab].follow ? 'Following' : 'Follow'}
     </button>
-    <button type="button" class="og-btn sm" disabled={!shown[tab].length} onclick={copyFeed}>Copy</button>
+    <button type="button" class="og-btn sm" disabled={tab === 'changes' || !shown[tab].length} onclick={copyFeed}>Copy</button>
+    <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
+            onclick={revert}>Revert changes</button>
   </div>
   <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} title={status}>{status}</p>
 
@@ -274,6 +294,14 @@
           <p class="pane-empty">{(t.id === 'log' && lists.log.length) ? 'No line matches the filters' : EMPTY_TEXT[t.id]}</p>
         {:else}
           {#each shown[t.id] as evt (evt)}
+            {#if t.id === 'changes'}
+            <div class="line change">
+              <time class="mono">{new Date(evt.t).toLocaleTimeString()}</time>
+              <span class="text">{evt.label}</span>
+              <span class="kv">{val(evt, evt.before)} &rarr; {val(evt, evt.after)}</span>
+              <button type="button" class="og-btn sm undo" disabled={history.busy} onclick={() => undo(evt.id)}>Undo</button>
+            </div>
+            {:else}
             {@const p = parts(t.id, evt)}
             <div class="line" class:lvl-warn={p.lvl === 'warn' || p.lvl === 'error' || p.lvl === 'fatal'}
                  class:superseded={p.superseded} class:diag={p.diag}>
@@ -284,6 +312,7 @@
               {#each p.kv as f}<span class="kv">{f.key}={f.display}</span>{/each}
               {#if p.superseded}<span class="chip">superseded</span>{/if}
             </div>
+            {/if}
           {/each}
         {/if}
       </div>
@@ -351,5 +380,6 @@
   .chip.lvl-warn, .chip.lvl-error, .chip.lvl-fatal { color: var(--warn-ink, var(--warn)); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
   .chip.tag { text-transform: none; }
 
+  .change .undo { margin-left: auto; }
   .kv { font-family: var(--mono); font-size: .68rem; color: var(--ink-faint); flex: 0 0 auto; }
 </style>

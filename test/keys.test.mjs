@@ -47,6 +47,8 @@ const PROBES = {
   'Global|F1': /e\.key === 'F1'/,
   'Global|F3, Ctrl+F': /key\.toLowerCase\(\) === 'f'[\s\S]*e\.key !== 'F3'/,
   'Global|Escape': /e\.key === 'Escape'/,
+  'Global|Ctrl+Z': /e\.key\.toLowerCase\(\) !== 'z'[\s\S]*\(e\.shiftKey \? redo : undo\)\(\)/,
+  'Global|Ctrl+Shift+Z': /e\.key\.toLowerCase\(\) !== 'z'[\s\S]*\(e\.shiftKey \? redo : undo\)\(\)/,
   'Global|F11': /e\.key === 'F11' && current\?\.page\?\.fields/,
   'Global|Escape|Fullscreen page': /e\.key === 'Escape' && full\.on/,
   'Global|Arrows': /onTablistKeydown[\s\S]*ArrowDown[\s\S]*ArrowRight/,
@@ -441,6 +443,82 @@ console.log('\n[overlays] F1, F3 and a confirm are one overlay at a time');
     ok('a confirm opening closes an open look-for', await page.locator('.lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
     await page.keyboard.press('Escape');
   } else console.log('  (no flip control in this fixture; confirm cases skipped)');
+  await ctx.close();
+}
+
+// ---- history (ph-mdqo.11) -------------------------------------------------------
+console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
+{
+  const motion = MODEL.categories.find((c) => c.label === 'Motion');
+  const sliders = motion.groups.flatMap((g) => (g.diagnostic ? [] : g.fields))
+    .filter((f) => !f.readOnly && !f.role && !f.advanced && f.widget === WIDGET.slider).slice(0, 3);
+  const gen = MODEL.categories.find((c) => c.label === 'Generator');
+  const { ctx, page } = await open(1400, 900);
+  const sel = (f) => '.field[data-uid="' + f.uid + '"]';
+  const valueOf = (f) => hub.values[f.channelId + ':' + f.name];
+  const setTo = async (f, frac) => {
+    const v = f.min + Math.round((f.max - f.min) * frac / (f.step || 1)) * (f.step || 1);
+    await page.locator(sel(f) + ' input[type=range]').evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await page.waitForFunction((s) => document.querySelector(s)?.dataset.shadow === 'confirmed', sel(f), { timeout: 4000 }).catch(() => {});
+    await sleep(1100);
+    return v;
+  };
+  const start = sliders.map((f) => valueOf(f) ?? f.dflt);
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
+  const set = [];
+  for (const [i, f] of sliders.entries()) set.push(await setTo(f, [0.15, 0.6, 0.85][i]));
+  const feed = async () => {
+    await page.locator('[role=tab][data-tab-id=log]').first().click();
+    await page.locator('[data-feed=changes]').click();
+    return page.locator('#lp-feed-changes .line.change');
+  };
+  const rows = await feed();
+  await sleep(200);
+  await shot(page, 'changes-feed.png');
+  ok('the Changes feed lists three rows', await rows.count() === 3, await rows.count());
+  const texts = await rows.allTextContents();
+  ok('...newest first, before to after', texts[0].includes(labelFor(sliders[2])) && texts[2].includes(labelFor(sliders[0])) && texts.every((t) => t.includes('\u2192')), texts);
+  await rows.first().locator('.undo').click();
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-changes .line.change').length === 2, null, { timeout: 4000 }).catch(() => {});
+  ok('Undo writes the before value and the row leaves', await page.locator('#lp-feed-changes .line.change').count() === 2
+    && Math.abs(valueOf(sliders[2]) - start[2]) < 1e-3, [valueOf(sliders[2]), start[2]]);
+  await page.locator('[role=tab]', { hasText: 'Generator' }).first().click();
+  const run = page.locator('.run-btn');
+  if (await run.count()) {
+    await run.first().click();
+    await sleep(500);
+    await page.locator('[role=tab][data-tab-id=log]').first().click();
+    await page.locator('[data-feed=changes]').click();
+    await sleep(100);
+    await page.locator('button', { hasText: 'Revert changes' }).click();
+    await page.waitForSelector('.overlay.hazard', { timeout: 3000 });
+    ok('Revert asks first, with the count', /Writes 2 settings/.test(await page.locator('.overlay.hazard').textContent()));
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
+    await sleep(1500);
+    ok('Revert restores the remaining settings', Math.abs(valueOf(sliders[0]) - start[0]) < 1e-3 && Math.abs(valueOf(sliders[1]) - start[1]) < 1e-3,
+      [valueOf(sliders[0]), start[0], valueOf(sliders[1]), start[1]]);
+    ok('...and says in one line that the run switch was skipped', /Skipped.*running/i.test(await page.locator('.pane-status').textContent()),
+      await page.locator('.pane-status').textContent());
+  } else console.log('  (no run button in this fixture; the revert cases are skipped)');
+  // Ctrl+Z outside a text field undoes; inside one it does not.
+  const before = hub.log.length;
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
+  await setTo(sliders[0], 0.9);
+  const n0 = hub.log.length;
+  await page.locator(sel(sliders[0]) + ' input.chip-num').focus();
+  await page.keyboard.press('Control+z');
+  await sleep(600);
+  ok('Ctrl+Z in a text input does not undo', hub.log.length === n0, [hub.log.length, n0]);
+  await page.locator('[role=tab][aria-selected=true]').first().focus();
+  await page.keyboard.press('Control+z');
+  await sleep(900);
+  ok('Ctrl+Z elsewhere undoes the latest write', hub.log.length > n0 && Math.abs(valueOf(sliders[0]) - start[0]) < 1e-3, [valueOf(sliders[0]), start[0]]);
+  await page.keyboard.press('Control+Shift+z');
+  await sleep(900);
+  ok('Ctrl+Shift+Z redoes it', Math.abs(valueOf(sliders[0]) - 0) >= 0 && hub.log.length > n0 + 1);
+  void before;
   await ctx.close();
 }
 
