@@ -1201,6 +1201,60 @@ if (!LIVE) {
   await nrSet(NHI);
   ok('narrowed: fault on a NACK, the code in words', await until(lkIs(NARROW_KEY, 'fault', /INVALID_VALUE/), 1500), await lkSlot(NARROW_KEY));
   hub.mode = 'echo';
+
+  // ---- density rungs and targets (ph-z50z, ph-46yw, ph-1ggd, ph-3z96) ----------
+  // Compact below 18rem, normal above; the ladder slot keeps the width of
+  // 'still waiting' at a 10-cell field (a 4-cell one holds the chip alone); under a coarse pointer
+  // every hit target in both rungs is 40 px, the reset button and bit rows too.
+  const setW = (pg, px) => pg.evaluate((w) => document.querySelectorAll('.cell').forEach((c) => { c.style.width = w + 'px'; }), px);
+  const slotW = (p) => cell(p).locator('.ladder').evaluate((e) => e.getBoundingClientRect().width);
+  // Head children that overlap, as label pairs; hit boxes count (a tap must land on one thing).
+  const OVERLAPS = () => [...document.querySelectorAll('.field-head')].flatMap((h) => {
+    const kids = [...h.querySelectorAll('.field-label-text, button.info, .ladder, .field-value')].filter((e) => e.getClientRects().length)
+      .map((e) => [e.className || e.tagName, e.getBoundingClientRect()]);
+    const out = [];
+    for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) {
+      const a = kids[i][1], b = kids[j][1];
+      if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5) out.push(kids[i][0] + ' x ' + kids[j][0] + ' ' + [a.left, a.right, b.left, b.right].map(Math.round));
+    }
+    return out;
+  });
+  const gapOf = (p) => cell(p).evaluate((e) => getComputedStyle(e.querySelector('.field-head')).columnGap);
+  for (const [cells, px] of [[4, 4 * 36 + 16], [10, 10 * 36 + 16]]) {
+    await setW(page, px);
+    if (SHOTS) await page.locator('.row').first().screenshot({ path: join(SHOTS, 'rung-' + cells + '-cells.png') });
+    if (cells > 4) for (const p of WRITERS) ok(p + ' at ' + cells + ' cells: the status slot holds a still-waiting word', await slotW(p) >= 70, await slotW(p));
+    if (cells === 4) {
+      const labW = await page.$$eval('.field-label-text', (els) => els.filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().width)));
+      const clipped = await page.$$eval('.chip-num', (els) => els.filter((e) => e.getClientRects().length && e.scrollWidth > e.clientWidth).length);
+      ok('4 cells: no typeable chip clips its number', clipped === 0, clipped);
+      ok('4 cells: every label keeps 3em', labW.length > 0 && labW.every((w) => w >= 34), labW);
+    }
+    ok(cells + ' cells: no head children overlap', (await page.evaluate(OVERLAPS)).length === 0, await page.evaluate(OVERLAPS));
+    ok(cells + ' cells: ' + (cells < 8 ? 'compact' : 'normal') + ' rung head gap',
+      await gapOf('slider') === (cells < 8 ? '4px' : '8px'), await gapOf('slider'));
+  }
+  await setW(page, 280);
+  const ctxT = await browser.newContext({ viewport: { width: 1400, height: 900 }, hasTouch: true });
+  await ctxT.addInitScript(([etag, bytes]) => {
+    try { localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* none */ }
+  }, [ETAG, Buffer.from(CAT).toString('hex')]);
+  await ctxT.routeWebSocket(/:82\//, fakeHub);
+  const pt = await ctxT.newPage();
+  await pt.goto(page.url());
+  await pt.waitForSelector('.cell[data-pres=slider] input[type=range]:not([disabled])', { timeout: 15000 });
+  for (const px of [4 * 36 + 16, 10 * 36 + 16]) {
+    await setW(pt, px);
+    const small = await pt.$$eval('.field :is(button.info, .bitfield .bit, input[type=range], select, .og-switch, .stepper button)', (els) =>
+      els.filter((e) => e.getClientRects().length).map((e) => {
+        const r = e.getBoundingClientRect();
+        return { c: String(e.className || e.tagName), w: Math.round(r.width), h: Math.round(r.height) };
+      }).filter((r) => r.h < 39.5 || (r.c.includes('info') && r.w < 39.5)));
+    ok('coarse at ' + px + ' px: every hit target is 40 px, .info.reset included', small.length === 0, small);
+    ok('coarse at ' + px + ' px: no head hit box overlaps another', (await pt.evaluate(OVERLAPS)).length === 0, await pt.evaluate(OVERLAPS));
+  }
+  ok('coarse: a reset button is on the page to measure', await pt.locator('.field button.info.reset').count() > 0);
+  await ctxT.close();
 } else {
   // ---- live: each presentation confirmed on a second, raw session (C-8) ------
   // The raw session holds a /uitoken only to put back what this pass wrote.

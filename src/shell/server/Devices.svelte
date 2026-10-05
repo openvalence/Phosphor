@@ -128,15 +128,15 @@
 {/if}
 
 <style>
-  .dv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .dv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
   .dv-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     width: 100%;
     min-height: 40px;
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     background: none;
     border: 1px solid transparent;
     border-radius: var(--radius);
@@ -150,14 +150,14 @@
   .dv-conn { color: var(--ink-faint); font-size: .72rem; }
   .dv[data-on='true'] .dv-conn { color: var(--reality); }
   .dv[data-on='false'] .dv-name { color: var(--ink-dim); }
-  .dv-body { display: grid; gap: 6px; padding: 4px 8px 10px 8px; border-left: 2px solid var(--line); margin-left: 8px; }
-  .dv-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: .72rem; }
+  .dv-body { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-3) var(--sp-3); border-left: 2px solid var(--line); margin-left: var(--sp-3); }
+  .dv-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-1) var(--sp-3); margin: 0; font-size: .72rem; }
   .dv-facts dt { color: var(--ink-faint); }
   .dv-facts dd { margin: 0; overflow-wrap: anywhere; }
   .dv-table { border-collapse: collapse; font-size: .72rem; }
-  .dv-table th { color: var(--ink-faint); font-weight: normal; text-align: left; padding: 2px 10px 2px 0; }
-  .dv-table td { padding: 2px 10px 2px 0; }
+  .dv-table th { color: var(--ink-faint); font-weight: normal; text-align: left; padding: var(--sp-1) var(--sp-3) var(--sp-1) 0; }
+  .dv-table td { padding: var(--sp-1) var(--sp-3) var(--sp-1) 0; }
   .dv-sensor { min-width: 9ch; color: var(--ink-dim); }
   .dv-stale { opacity: .5; }
-  .dv-sub { margin: 6px 0 0; color: var(--ink-dim); font-size: .72rem; }
+  .dv-sub { margin: var(--sp-2) 0 0; color: var(--ink-dim); font-size: .72rem; }
 </style>

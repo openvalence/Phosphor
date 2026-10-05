@@ -38,7 +38,7 @@
   const HEAD = 40;
   const K_MAX = 2;
   const CATS = ['Input', 'Math', 'Logic', 'Converter'];
-  // Node head icons: a 16 px grid at 1.5 px, as the strip's (SafetyOp ARROW).
+  // Node head icons: a 16 px grid, stroked by .gicon.
   const ICON = {
     Input: '<path d="M2 8h12"/><circle cx="6" cy="8" r="2"/>',
     Math: '<path d="M12 3H4l4.5 5L4 13h8"/>',
@@ -945,7 +945,5 @@
     .gsock { --hit: 40px; }
     .gtool .og-btn, .gparams input:not([type='checkbox']) { min-height: var(--tap); }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .gwire[data-live] { animation: none; }
-  }
+  :global(html.still) .gwire[data-live] { animation: none; }
 </style>

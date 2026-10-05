@@ -138,12 +138,12 @@
 
 <style>
   .count { font-size: .75rem; color: var(--tx-mut); }
-  .acts { display: flex; gap: 6px; margin-left: auto; }
+  .acts { display: flex; gap: var(--sp-2); margin-left: auto; }
   .mrows > li {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) minmax(0, 7rem) minmax(0, 7rem) minmax(0, 9rem);
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-height: 48px;
   }
   .mrows > li.hdr { min-height: 24px; border: 0; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--tx-mut); }
@@ -158,7 +158,7 @@
   li[data-phase='settled'] .state { color: var(--reality); }
   li[data-phase='pending'] .state { color: var(--intent); }
   li[data-phase='fault'] .state { color: var(--warn-ink, var(--warn)); }
-  .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--line); border-radius: var(--r-s); color: var(--tx-mut); }
+  .mark { margin-left: var(--sp-3); padding: 0 var(--sp-2); font-size: .68rem; font-weight: 400; border: 1px solid var(--line); border-radius: var(--r-s); color: var(--tx-mut); }
   .mark.warn { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
   @media (pointer: coarse) { .mrows input[type=checkbox] { width: 28px; height: 28px; } }
   /* Phones: the state drops under the values so the tick keeps its size. */

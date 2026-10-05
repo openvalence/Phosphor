@@ -3,6 +3,7 @@
 // presentation side by side. Never shipped; the app bundle never imports it.
 import { mount } from 'svelte';
 import '../../src/style.css';
+import '../../src/ui/still.svelte.js';
 import { connect, machine } from '../../src/model/machine.svelte.js';
 import { inFlight } from '../../src/model/shadow.svelte.js';
 import { placeableControls } from '../../src/model/settings.js';
