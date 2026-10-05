@@ -255,7 +255,7 @@ console.log('migration');
   ok('a reset per-class map wins over the legacy key', Object.keys(loadStore(reset).layouts.Default['full.machine']).length === 0);
 
   const existing = memStorage({ [STORE_KEY]: JSON.stringify({ active: 'A', layouts: { A: { 'full.v': { q: { x: 1, y: 0, w: 2, h: 1 } } } } }), 'sd32.dash.v': '{}' });
-  ok('an existing store is loaded as is, migration skipped', loadStore(existing).layouts.A['full.v'].q.x === 1 && !loadStore(existing).layouts.Default);
+  ok('an existing store is loaded as is, migration skipped, a missing Default added empty', loadStore(existing).layouts.A['full.v'].q.x === 1 && Object.keys(loadStore(existing).layouts.Default).length === 0);
 }
 
 // ---- nests and modules (ph-e82.6) ----------------------------------------------
@@ -583,8 +583,8 @@ console.log('floor');
      (it) => (it.look && it.look.pres === 'knob' ? 7 : 1))[0].h === 7);
   const fw = Object.assign(() => null, { w: (it) => ({ a: 10, b: 12, c: 30 }[it.id] || 0) });
   const seeded = pack([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], { d: { w: 5 } }, 40, [], fw);
-  ok('a seeded card takes its floor width, rank order, narrow cards share a row',
-     JSON.stringify(seeded.map((p) => [p.id, p.x, p.y, p.w])) === '[["a",0,0,10],["b",10,0,12],["c",0,1,30],["d",30,1,5]]', JSON.stringify(seeded));
+  ok('a seeded card takes its floor width in rank order, narrow cards share a row, the last card of a row stretches',
+     JSON.stringify(seeded.map((p) => [p.id, p.x, p.y, p.w])) === '[["a",0,0,10],["b",10,0,30],["c",0,1,30],["d",30,1,5]]', JSON.stringify(seeded));
   ok('an unmeasured floor fills the row; a floor over the grid clamps to it',
      pack([{ id: 'a' }], {}, 40, [], Object.assign(() => null, { w: () => 0 }))[0].w === 40
      && pack([{ id: 'a' }], {}, 8, [], fw)[0].w === 8 && pack([{ id: 'c' }], {}, 20, [], fw)[0].w === 20);

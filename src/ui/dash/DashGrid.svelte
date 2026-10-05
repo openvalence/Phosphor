@@ -78,9 +78,10 @@
   import { orientationOf } from '../../model/settings.js';
   import { onTheme } from '../../model/theme.js';
   import { view } from '../../model/viewport.svelte.js';
+  import { FIELD_FLOOR_COLS } from '../../model/rclass.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
+    ondragout = null, target = false, ondelete = null, tool = null, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -200,21 +201,13 @@
   }
   /**
    * {w, h} px the card in `cell` needs, gutter included; null for an opened
-   * card. A floated child of the body is a host's edit chrome (Home's
-   * Remove), never content: it is out while the card is measured.
+   * card.
    */
   function measure(cell) {
     const it = cell.firstElementChild;
     if (!it || it.classList.contains('open')) return null;
     const [px, py] = padOf(cell);
-    const chrome = [...(it.querySelector(':scope > .dash-body')?.children || [])].filter((c) => getComputedStyle(c).float !== 'none');
-    const was = chrome.map((c) => c.style.getPropertyValue('display'));
-    chrome.forEach((c) => c.style.setProperty('display', 'none'));
-    try {
-      return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
-    } finally {
-      chrome.forEach((c, i) => c.style.setProperty('display', was[i]));
-    }
+    return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
   }
   /** Cells of content height at width `w`: the tallest drawn at `w` or wider (narrower only wraps more); 0 unmeasured. */
   function tallAt(m, w) {
@@ -237,13 +230,17 @@
     const m = need[keyOf(it, orientationOf(w, h))];
     return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
-  // The seed's width for an unplaced card: its floor at first measure (grid.js pack), kept so a
-  // later content change (a write in flight) never moves a card; a section header fills the row.
+  // The seed's width for an unplaced card: its measured floor, never under a field floor
+  // (FIELD_FLOOR_COLS layout columns of 2 rem), kept from first measure so a later content
+  // change (a write in flight) never moves a card; a section header fills the row.
   const seedW = new Map();
   fitH.w = (it) => {
     const k = keyOf(it, 'h');
     if (it.kind === 'section' || !(seedW.has(k) || need[k])) return 0;
-    if (!seedW.has(k)) seedW.set(k, minOf(it)(cols, 1)[0]);
+    if (!seedW.has(k)) {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      seedW.set(k, Math.max(minOf(it)(cols, 1)[0], Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell)));
+    }
     return seedW.get(k);
   };
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
@@ -301,7 +298,7 @@
     return () => l.measured(null);
   });
   // The look scale resizes every font without touching the DOM.
-  $effect(() => onTheme(() => { for (const id of cellEls.keys()) dirty.add(id); later(); }));
+  $effect(() => onTheme(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); }));
   $effect(() => {
     // A card's content changed (catalog adoption, a presentation, an option list, a nest member's floor): measure it again.
     const top = (n) => { while (n && n.parentElement !== gridEl) n = n.parentElement; return n; };
@@ -310,7 +307,7 @@
       if (dirty.size) later();
     });
     mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor'] });
-    document.fonts?.ready.then(() => { for (const id of cellEls.keys()) dirty.add(id); later(); });
+    document.fonts?.ready.then(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); });
     return () => { mo.disconnect(); if (frame) cancelAnimationFrame(frame); frame = 0; };
   });
   const ORIENT = { h: 'horizontal', v: 'vertical' };
@@ -705,6 +702,7 @@
   <Nest {item} parent={layout} {editing} {announce} target={pin?.into === item.id}
         ondragout={(it, x, y, phase) => childOut(item.id, it, x, y, phase)}
         ondropkey={ondropkey && ((key) => ondropkey(key, null, item.id))}
+        {ondelete}
         candidates={all.filter((it) => it.kind !== 'nest' && placeable(it.kind, true))} />
 {/snippet}
 
@@ -851,6 +849,7 @@
             onkeylook={() => keyLook(item.id)}
             onkeydelete={() => keyDelete(item.id)}
             onremove={onremove && placeable(item.kind, false) ? () => onremove(item.id) : null}
+            ondelete={(tool || ondelete) && item.kind !== 'nest' ? () => (tool || ondelete)([item.id]) : null}
           />
         {/if}
       </div>

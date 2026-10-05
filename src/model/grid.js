@@ -112,6 +112,7 @@ const byReading = (a, b) => a.y - b.y || a.x - b.x;
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
 export function pack(items, map, cols, placed = [], fit = null) {
+  const seeded = [];
   let from = 0;   // rank order: no card lands in a row above the one before it, or a section header would trail its cards
   for (const it of items) {
     const e = map[it.id];
@@ -125,6 +126,15 @@ export function pack(items, map, cols, placed = [], fit = null) {
     }
     placed.push(r);
     from = r.y;
+    if (fw > 0) seeded.push({ r, h0, e });
+  }
+  // No seeded row ends in a gutter (DESIGN §10.5): the card at a row's end stretches to the edge.
+  // Its height follows the new width when that width was measured, else it keeps the narrower, taller one.
+  for (const { r, h0, e } of seeded.sort((a, b) => b.r.x - a.r.x)) {
+    const w = cols - r.x;
+    const f = fit && fit({ ...r, ...lookOf(e) }, w, h0);
+    const h = f ? Math.min(MAX_H, Math.max(h0, f)) : r.h;
+    if (!hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h })) { r.w = w; r.h = h; }
   }
   return placed.sort(byReading);
 }
@@ -417,7 +427,10 @@ export function loadStore(storage) {
     const s = readJson(storage, STORE_KEY);
     if (s && typeof s === 'object' && s.layouts && typeof s.layouts === 'object') {
       const names = Object.keys(s.layouts).filter((n) => validName(n) && s.layouts[n] && typeof s.layouts[n] === 'object');
-      if (names.length) return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts, modules: modulesOf(s), order: Array.isArray(s.order) ? s.order : [] };
+      if (names.length) {
+        if (!own(s.layouts, DEFAULT_NAME) || typeof s.layouts[DEFAULT_NAME] !== 'object') s.layouts[DEFAULT_NAME] = {};
+        return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts, modules: modulesOf(s), order: Array.isArray(s.order) ? s.order : [] };
+      }
     }
     const seed = {};
     const legacy = {};
@@ -456,7 +469,7 @@ export function viewMap(store, cls, viewId, create = true) {
 
 /** Layout names in sidebar order: Default first, then `store.order`, then any layout it does not list. */
 export function layoutOrder(store) {
-  const names = Object.keys(store.layouts).filter((n) => own(store.layouts, n));
+  const names = Object.keys(store.layouts);
   const want = [DEFAULT_NAME, ...(Array.isArray(store.order) ? store.order : []), ...names];
   return [...new Set(want)].filter((n) => names.includes(n));
 }
@@ -465,7 +478,6 @@ export function layoutOrder(store) {
 export function addLayout(store, name) {
   const n = validName(name) && name.trim();
   if (!n || own(store.layouts, n)) return false;
-  store.order = layoutOrder(store);
   store.layouts[n] = {};
   store.order = layoutOrder(store);
   store.active = n;
@@ -551,7 +563,7 @@ export function setDensity(store, density) {
   return true;
 }
 
-/** Delete a layout; Default cannot go (a store without one deletes down to its last). */
+/** Delete a layout; Default cannot go. */
 export function deleteLayout(store, name) {
   const names = layoutOrder(store);
   if (name === DEFAULT_NAME || !own(store.layouts, name) || names.length < 2) return false;

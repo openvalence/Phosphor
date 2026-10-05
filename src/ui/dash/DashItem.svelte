@@ -65,6 +65,8 @@
     onkeydelete = null,
     // Set on a nest member: edit mode offers Out (back to the top level).
     onremove = null,
+    // Edit mode offers Remove from the surface (a tool in the head, never over the body).
+    ondelete = null,
     // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
     selected = false,
     onselect = null,
@@ -105,7 +107,7 @@
   $effect(() => { if (app) { app.inert = !(open || engaged); app.toggleAttribute('data-preview', !open); } });
   const closeOnEscape = (e) => { if (open && e.key === 'Escape' && !e.defaultPrevented) open = false; };
   // Tools in the head's right end, the grip last: the title yields this much.
-  const tools = $derived((look ? 1 : 0) + (item.selfLabeled && item.setLook ? 1 : 0) + (onremove ? 1 : 0));
+  const tools = $derived((look ? 1 : 0) + (item.selfLabeled && item.setLook ? 1 : 0) + (onremove ? 1 : 0) + (ondelete ? 1 : 0));
   function toggleLabel() {
     const { label, ...rest } = item.look || {};
     item.setLook(bare ? { ...rest, label: true } : rest);
@@ -138,6 +140,7 @@
   }
   // Rename (DESIGN §10.6): F2 or a double-click opens the title's input outside edit mode; in edit mode it is always there.
   let renaming = $state(false);
+  const toTitle = () => queueMicrotask(() => itemEl.querySelector('h3.dash-title')?.focus());
   const renameFocus = (el) => { if (renaming) { el.focus(); el.select(); } };
   function onGrabKeyDown(e) {
     const key = e.key;
@@ -194,14 +197,14 @@
                use:renameFocus onblur={() => (renaming = false)}
                onchange={(e) => (e.currentTarget.value.trim() ? item.retitle(e.currentTarget.value) : (e.currentTarget.value = item.title))}
                onkeydown={(e) => {
-                 if (e.key === 'Enter') e.currentTarget.blur();
-                 else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); }
+                 if (e.key === 'Enter') { e.currentTarget.blur(); toTitle(); }
+                 else if (e.key === 'Escape') { e.currentTarget.value = item.title; e.currentTarget.blur(); toTitle(); }
                }} />
       {:else}
         <!-- The title attribute is the full form of a title cut by its ellipsis;
              the count follows the title and the title yields to it. -->
         <div class="dash-name">
-          <h3 class="dash-title" data-pidx={pidx} title={item.title} tabindex={item.retitle ? 0 : null}
+          <h3 class="dash-title" data-pidx={pidx} title={item.title} tabindex={item.retitle ? 0 : null} aria-keyshortcuts={item.retitle ? 'F2' : null}
               ondblclick={item.retitle ? () => (renaming = true) : null}
               onkeydown={item.retitle ? (e) => { if (e.key === 'F2') { e.preventDefault(); renaming = true; } } : null}>{item.title}</h3>
           {#if busy.n}<span class="dash-busy" class:overdue={busy.overdue}>{busy.n} in flight</span>{/if}
@@ -234,6 +237,11 @@
           <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} title="Out of the nest"
                   onclick={onremove}>
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M12 10v3.5H2.5V4H6" /></svg>
+          </button>
+        {/if}
+        {#if ondelete}
+          <button type="button" class="ico home-remove" aria-label={'Remove ' + item.title + ' from Dash'} title="Remove" onclick={ondelete}>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         {/if}
         <button type="button" class="handle grab"

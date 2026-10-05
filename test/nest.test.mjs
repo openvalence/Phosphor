@@ -212,6 +212,13 @@ ok('F2 on the focused title opens it too', await rn.count() === 1);
 await rn.fill('Renamed'); await rn.press('Enter');
 ok('Enter keeps the new name', await rn.count() === 0 && (await nestTitle.textContent()).trim() === 'Renamed', await nestName());
 
+// F2 on the grip in edit mode focuses the name input (ph-mdqo.10).
+await page.click('button:has-text("Edit layout")');
+await nest.locator(':scope > .dash-item > .dash-head .handle.grab').focus();
+await page.keyboard.press('F2');
+ok('edit mode: F2 on the grip focuses the name input', await rn.evaluate((el) => document.activeElement === el));
+await page.click('button:has-text("Done")');
+
 // The last member with a writable range: write it while the hub holds the echo.
 const target = await nest.evaluate((cell) => {
   const withRange = [...cell.querySelectorAll('.nest-body .dash-cell')].filter((c) => c.querySelector('input[type=range]:not([disabled])'));

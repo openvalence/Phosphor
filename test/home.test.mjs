@@ -371,20 +371,25 @@ if (!LIVE) {
     return out;
   });
   ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
+  await page.waitForTimeout(600);
   const geo0 = await cellGeo();
   const advBtn = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' });
   await advBtn.click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(600);
   const geoHidden = await cellGeo();
   await advBtn.click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(600);
   const geoBack = await cellGeo();
   const headId = Object.keys(geo0).find((id) => id.startsWith('section:'));
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  ok('sections: the round trip lands where it began (cards flow by rank at floor width, so a toggle repacks them)',
-     JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
+  // A row's last card stretches to the grid edge (DESIGN §10.5), so only such a card may change width.
+  const gridEdge = Math.max(...Object.values(geo0).map((g) => g[0] + g[2]));
+  const rowEnd = (g) => g[0] + g[2] >= gridEdge - 1;
+  ok('sections: no card changes width but a row-end one, and the round trip lands where it began (a toggle may repack columns)',
+     Object.keys(geoHidden).every((id) => geoHidden[id][2] === geo0[id][2] || rowEnd(geoHidden[id]) || rowEnd(geo0[id]))
+     && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 
@@ -435,7 +440,7 @@ if (!LIVE) {
   await paletteToggle.click();
   ok('palette: Modules puts it away', await page.locator('.palette').count() === 0 && await paletteToggle.getAttribute('aria-pressed') === 'false');
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
-    await page.locator('.home .home-remove').first().evaluate((el) => el.click());
+    await page.locator('.home .home-remove').first().click();
     await page.waitForTimeout(80);
   }
   ok('build: every module deleted', (await topIds(page)).length === 0, await topIds(page));
@@ -511,7 +516,7 @@ if (!LIVE) {
   await editBtn(page).click();
   await paletteToggle.click();
   await page.locator('.home .dash-cell[data-id="' + nestId + '"] button', { hasText: 'Ungroup' }).click();
-  for (let i = 0; i < 10 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().evaluate((el) => el.click());
+  for (let i = 0; i < 10 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().click();
   await page.reload();
   await boot(page, 1280);
   ok('build: an emptied home is not reseeded', (await topIds(page)).length === 0, await topIds(page));
@@ -683,7 +688,7 @@ if (!LIVE) {
   ok('catalog adopted from the sim', up);
   await editBtn(page).click();
   await page.waitForTimeout(150);
-  for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().evaluate((el) => el.click());
+  for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().click();
   const keys = await page.$$eval('.palette li[data-key]', (els) => els.map((e) => e.dataset.key));
   const want = [keys.find((k) => k.startsWith('hero:')), keys.find((k) => k.startsWith('safety:')),
     keys.find((k) => k.startsWith('role:') || k.startsWith('uid:'))].filter(Boolean);
