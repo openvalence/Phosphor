@@ -35,6 +35,9 @@
 // - setScript's script is the shaped one (interp.js shape(), display only: the hub draws its own curve
 //   through the wire's tangents). raw, when it is another Script, is the file's actions, drawn muted under
 //   it; the heat reads raw.
+// - The detail's top right is one control bundle on a plate flush with the corner: the caller's `bundle`
+//   elements (Motion, Offset, Invert), then zoom, A-B, Analyzer, Settings. The detail and the heat sit on
+//   --screen with the advanced generator's inset shadow.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
 
@@ -157,6 +160,7 @@ export const CSS = `
 .fsp-tl { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .fsp-ph { position: absolute; top: 0; bottom: 12px; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
+.fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -185,12 +189,15 @@ export const CSS = `
   translate: 0 calc(clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
-.fsp-zoom { position: absolute; right: 0; top: 0; display: flex; z-index: 1; }
-.fsp-zoom button { width: var(--tap); height: var(--tap); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
-.fsp-zoom .fsp-ab { font-size: .72rem; }
-.fsp-zoom button:hover, .fsp-zoom button:focus-visible { color: var(--highlight); outline: none; }
-.fsp-zoom button:disabled { opacity: .35; cursor: default; }
-.fsp-zoom button[aria-pressed=true] { color: var(--highlight); }
+.fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 4px;
+  max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 4px; background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
+  border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
+.fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
+.fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
+.fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 4px; font-size: .72rem; }
+.fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }
+.fsp-zoom button:not(.fsp-btn):disabled { opacity: .35; cursor: default; }
+.fsp-zoom button:not(.fsp-btn)[aria-pressed=true] { color: var(--highlight); }
 .fsp-zoom svg { position: static; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; vertical-align: middle; }
 `;
 
@@ -210,7 +217,7 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null,
+export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null,
   onSettings = null, settingsOpen = false }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
@@ -332,7 +339,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn, zSet));
+    h('div', { class: 'fsp-zoom' }, ...bundle, zOut, zIn, zAB, zAn, zSet));
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
   el.append(root);

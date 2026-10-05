@@ -24,12 +24,8 @@
 //   mid-play holds and the video plays on.
 // - Composition follows the card's own box: full >= 960, handheld 264..959,
 //   glance < 264. Every row has a fixed height; a state change swaps text only.
-// - Handheld takes data-narrow (two strip rows; three beside the analyzer) when
-//   the strip overflows at the card's width, measured on a width change, on a
-//   Look change (the Offset label's box) and on an analyzer toggle, never on a
-//   state change, so the Look scale moves the switch with the text. Its button
-//   columns are max-content: an auto column squeezes a button to its 40 px
-//   min-width, cutting the label, and never overflows.
+// - Motion, Offset (ms) and Invert live in the detail's control bundle (timeline.js
+//   .fsp-zoom), on a plate at its corner; the strip holds the speed reading.
 // - Play and the time live in the hover bar; the strip shows them only where the
 //   bar cannot draw (glance, the handheld analyzer's thumbnail).
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
@@ -87,6 +83,7 @@ export const COPY = Object.freeze({
   motion: 'Motion',
   offset: 'Offset',
   offsetTip: 'Machine later (+) or earlier (-)',
+  offsetUnit: 'ms',
   invert: 'Invert',
   volume: 'Volume',
   speed: 'Stroke speed',
@@ -574,10 +571,9 @@ export const CSS = `
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); } }
 .fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "tr" "tl" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
-.fsp[data-comp=handheld] { --fsp-detail: 72px; grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) 100px 20px;
+.fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 3 + 4px); grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) calc(var(--fsp-detail) + 28px) 20px;
   grid-template-areas: "src" "stage" "tr" "tl" "st"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) calc(var(--fsp-bar) * 2 + 4px) 100px 20px; }
 .fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
@@ -628,27 +624,18 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: 6px; background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
-  grid-template-columns: max-content max-content max-content minmax(auto, 1fr);
-  grid-template-areas: "motion off inv speed"; }
+  grid-template-columns: minmax(auto, 1fr); grid-template-areas: "speed"; }
 .fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
-.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: max-content minmax(auto, 1fr);
-  grid-template-rows: var(--fsp-bar) var(--fsp-bar); grid-template-areas: "motion off" "inv speed"; }
 .fsp:not([data-comp=glance], [data-an][data-comp=handheld]) :is(.fsp-play, .fsp-time) { display: none; }
-.fsp[data-an][data-comp=handheld] .fsp-tr { --fsp-bar: var(--tap); grid-template-columns: max-content 16ch minmax(auto, 1fr) max-content;
-  grid-template-rows: var(--tap) var(--tap);
-  grid-template-areas: "play time speed speed" "motion off off inv"; }
-.fsp[data-an][data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: var(--tap) var(--tap) var(--tap);
-  grid-template-areas: "play time time" "motion off off" "inv speed speed"; }
-.fsp[data-an][data-comp=handheld][data-narrow] .fsp-time { font-size: .7rem; }
+.fsp[data-an][data-comp=handheld] .fsp-tr { --fsp-bar: var(--tap); grid-template-columns: max-content 16ch minmax(auto, 1fr);
+  grid-template-rows: var(--tap); grid-template-areas: "play time speed"; }
 .fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; grid-template-areas: "play time"; }
-.fsp[data-comp=glance] :is(.fsp-motion, .fsp-off, .fsp-inv, .fsp-speed) { display: none; }
+.fsp[data-comp=glance] .fsp-speed { display: none; }
 .fsp-play { grid-area: play; min-width: 72px; }
 .fsp-time { grid-area: time; font: .8rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
-.fsp-motion { grid-area: motion; }
-.fsp-inv { grid-area: inv; }
-.fsp-off { grid-area: off; display: flex; align-items: center; gap: 6px; min-height: var(--fsp-bar); }
+.fsp-off { display: flex; align-items: center; gap: 6px; min-height: var(--fsp-bar); }
+.fsp-offu { color: var(--tx-mut); font-size: .8rem; }
 .fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--fsp-bar); display: grid; align-items: center; }
 .fsp-off input { width: 7ch; height: var(--fsp-bar); min-height: var(--fsp-bar); font-family: var(--mono); }
 .fsp-speed { grid-area: speed; position: relative; height: var(--fsp-bar); min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center; }
@@ -667,11 +654,9 @@ export const CSS = `
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - 4px) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
-.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 2 + 4px);
+.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--tap);
   grid-template-areas: "src" "tl" "st" "tr"; }
-.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--tap) * 3 + 8px); }
-.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) + 100px - var(--tap) * 2); }
-.fsp[data-an][data-comp=handheld][data-narrow] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) * 2 + 100px - var(--tap) * 3); }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-bar) + var(--fsp-detail) + 32px - var(--tap)); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
@@ -845,7 +830,7 @@ export function createPlayer(api) {
     motion.addEventListener('click', () => ctl.setMotion(!st.motion));
     const offIn = h('input', { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
     const offK = h('span', { class: 'fsp-offk', text: COPY.offset, title: COPY.offsetTip });
-    const off = h('label', { class: 'fsp-off' }, offK, offIn);
+    const off = h('label', { class: 'fsp-off' }, offK, offIn, h('span', { class: 'fsp-offu', text: COPY.offsetUnit }));
     const commitOff = (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); offIn.value = String(st.T.offsetMs); };
     offIn.addEventListener('change', () => commitOff(offIn.value));
     offIn.addEventListener('keydown', (e) => {
@@ -873,7 +858,7 @@ export function createPlayer(api) {
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
-    const tr = h('div', { class: 'fsp-tr' }, play, time, motion, off, inv, speed);
+    const tr = h('div', { class: 'fsp-tr' }, play, time, speed);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       src, stage, tlbox, lib, anbox, meter, status, tr);
@@ -978,6 +963,7 @@ export function createPlayer(api) {
 
     let zoomMs = readPrefs(api).zoomMs;
     const tl = mountTimeline(tlbox, {
+      bundle: [motion, off, inv],
       zoomMs,
       onZoom: (z) => { zoomMs = z; writePref(api, 'zoomMs', z); },
       onExpand: (on) => expand(on),
@@ -992,7 +978,6 @@ export function createPlayer(api) {
     function expand(on) {
       root.toggleAttribute('data-an', on);
       tl.setExpanded(on);
-      measure();
       if (on) anMount();
     }
     function anMount() {
@@ -1002,10 +987,6 @@ export function createPlayer(api) {
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
     let comp = '';
-    const measure = () => {
-      root.removeAttribute('data-narrow');
-      if (comp === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
-    };
     const ro = new ResizeObserver(() => {
       const c = compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -1015,10 +996,8 @@ export function createPlayer(api) {
         if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
           fetch: (u, i) => api.net.fetch(u, i) });
       }
-      measure();
     });
     ro.observe(root);
-    ro.observe(offK);
 
     let tlKey = null;
     function render() {

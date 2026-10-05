@@ -656,7 +656,7 @@ const chrome = (page) => page.evaluate((c) => {
   const root = document.querySelector(c);
   const o = root.getBoundingClientRect();
   const out = {};
-  for (const sel of [':scope > :not(style)', '.fsp-tr > *', '.fsp-src > *', '.fsp-tlbox > *']) {
+  for (const sel of [':scope > :not(style)', '.fsp-tr > *', '.fsp-src > *', '.fsp-tlbox > *', '.fsp-zoom > *']) {
     root.querySelectorAll(sel).forEach((e, i) => {
       const r = e.getBoundingClientRect();
       if (!r.width || !r.height || getComputedStyle(e).visibility === 'hidden') return;
@@ -936,6 +936,24 @@ if (!LIVE) {
     const r = sameChrome(rects.empty, rects[s]);
     ok('layout: chrome rects in ' + s + ' match empty', r.ok, r.diff.slice(0, 4));
   }
+  const bundle = await page.evaluate((c) => {
+    const dt = document.querySelector(c + ' .fsp-dt'), z = dt.querySelector('.fsp-zoom'), d = dt.getBoundingClientRect(), p = z.getBoundingClientRect();
+    const probe = document.createElement('i');
+    probe.style.background = 'var(--screen)';
+    document.body.append(probe);
+    const screen = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return { inTr: document.querySelectorAll(c + ' .fsp-tr :is(.fsp-motion, .fsp-off, .fsp-inv)').length,
+      inBundle: [...z.children].slice(0, 3).map((e) => e.className.replace('fsp-btn ', '')), unit: z.querySelector('.fsp-off').textContent,
+      corner: [Math.round(d.right - p.right), Math.round(p.top - d.top)], dtBg: getComputedStyle(dt).backgroundColor === screen,
+      ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
+      shadow: getComputedStyle(dt).boxShadow.includes('inset'), plate: getComputedStyle(z).boxShadow !== 'none' };
+  }, C);
+  ok('bundle: Motion, Offset and Invert sit in the detail bundle, none in the strip', bundle.inTr === 0
+    && bundle.inBundle.join() === 'fsp-motion,fsp-off,fsp-inv', bundle);
+  ok('bundle: Offset is labeled with its unit, ms', /Offset.*ms/.test(bundle.unit), bundle.unit);
+  ok('bundle: the plate is flush with the detail top right corner and shadowed', bundle.corner[0] <= 1 && bundle.corner[1] <= 1 && bundle.plate, bundle);
+  ok('bundle: the detail and the heat sit on --screen with the inset shadow', bundle.dtBg && bundle.ovBg && bundle.shadow, bundle);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
     for (const t of ['--bad', '--estop']) probe.style.color = 'var(' + t + ')';
@@ -999,39 +1017,31 @@ if (!LIVE) {
   const gsp = await spill(page);
   ok('glance: every control lies inside the card, no label cut', gsp.out.length === 0 && gsp.cut.length === 0, gsp);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
-  // Handheld from its floor up, every 2 px at the default Look and at 1.4: the transport goes
-  // to three rows where two do not fit, and no label or the speed reading's floor is cut.
-  // At Look 1.4 the source row (two tabs and Open files) needs 304 px: the floor scales with
-  // the Look, the tier thresholds stay the shell's px (rclass.js).
+  // Handheld from its floor up, every 2 px at the default Look and at 1.4: no label or the speed
+  // reading's floor is cut. At Look 1.4 the source row (two tabs and Open files) needs 304 px: the
+  // floor scales with the Look, the tier thresholds stay the shell's px (rclass.js).
   const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
-  const sweep = [], firstNarrow = {};
+  const sweep = [];
   for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
     await setLook(look);
     for (let w = floor; w <= 959; w += 2) {
       await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
       await page.waitForTimeout(30);
-      const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
+      const comp = await page.locator(C).evaluate((e) => e.dataset.comp);
       const s = await spill(page);
       sweep.push({ look, w, comp, out: s.out, cut: s.cut });
-      if (comp.endsWith('narrow')) firstNarrow[look] = w;
     }
   }
   const bad = sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld'));
   ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut',
     bad.length === 0, bad.slice(0, 6));
-  console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
-  // A Look change alone (no width change) re-measures the switch.
+  // A Look change alone (no width change) leaves every control inside the card.
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = '400px'; });
-  await setLook(1.12);
-  await page.waitForTimeout(100);
-  const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
   await setLook(1.6);
   await page.waitForTimeout(150);
-  const big = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
   const bigSpill = await spill(page);
   await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
-  ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
-    { wide, big, bigSpill });
+  ok('handheld: a Look change at a fixed width keeps every control inside the card, no label cut', !bigSpill.cut.length && !bigSpill.out.length, bigSpill);
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);
