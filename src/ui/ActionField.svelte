@@ -21,7 +21,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
-  let { action } = $props();
+  let { action, titled = false } = $props();   // titled: the composite supplies the heading
 
   const opLabel = (i) => optionLabel(action, i).replace(/_/g, ' ');
   const ops = $derived(action.options
@@ -87,7 +87,7 @@
   <!-- One fixed line in the head row for the ladder, else the gate (laws 3,
        5), as Field carries it: no state changes the card's height. -->
   <div class="field-head">
-    <span class="field-label">{labelFor(action)}</span>
+    {#if !titled}<span class="field-label">{labelFor(action)}</span>{/if}
     <span class="state" class:why={!statusText} role="status"
           title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
   </div>

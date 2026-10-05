@@ -91,7 +91,7 @@
   {#if fields.presetOp}
     <section class="block">
       <h4 class="card-sub">Presets</h4>
-      <ActionField action={fields.presetOp} />
+      <ActionField action={fields.presetOp} titled />
       {#if presets}<Roster store={presets.store} roster={presets.roster} />{/if}
     </section>
   {/if}

@@ -402,6 +402,15 @@ console.log('\n[index] F3 indexes every page and every layout, and rebuilds on c
     ok('a page is listed: ' + name, rows.some((r) => r.startsWith(name)), rows.slice(0, 3));
     await page.keyboard.press('Escape');
   }
+  // A page whose search key sits on the control itself (funscript's buttons): F3 must focus it, not BODY.
+  const onSelf = (await find('Invert')).findIndex((r) => /funscript/i.test(r));
+  if (onSelf >= 0) {
+    for (let i = 0; i < onSelf; i++) await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await sleep(500);
+    ok('F3 focuses a control that carries the search key itself', await page.evaluate(() => document.activeElement && document.activeElement !== document.body));
+  } else console.log('  (no indexed page with a key on the control in this build; the check waits for funscript)');
+  await page.keyboard.press('Escape');
   const before = await find('Zed layout');
   ok('a layout not yet saved is not listed', !before.some((r) => r.startsWith('Zed layout')), before.slice(0, 3));
   await page.keyboard.press('Escape');
