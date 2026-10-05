@@ -835,17 +835,18 @@
 </div>
 
 <style>
-  .graph { position: relative; display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
-  .graph.full { position: fixed; top: var(--strip-h, 0px); left: 0; right: 0; bottom: 0; z-index: 20; padding: 8px; background: var(--bg); }
-  .gtool { position: relative; container-type: inline-size; display: flex; flex-wrap: wrap; gap: 4px; }
-  .gtool .og-btn { width: auto; min-height: 30px; padding: 2px 10px; }
+  /* Node rows below are px on purpose: JS places the sockets by fixed row heights. */
+  .graph { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); height: 100%; min-height: 0; }
+  .graph.full { position: fixed; top: var(--strip-h, 0px); left: 0; right: 0; bottom: 0; z-index: 20; padding: var(--sp-3); background: var(--bg); }
+  .gtool { position: relative; container-type: inline-size; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .gtool .og-btn { width: auto; min-height: 30px; padding: var(--sp-1) var(--sp-3); }
   .gtool .og-btn[aria-pressed='true'] { border-color: var(--highlight); color: var(--ink-hi); }
   .gmore { display: contents; }
   .gmore-btn { display: none; }
   /* Under 44rem the toolbar holds one row: + Add, Fit, More. */
   @container (max-width: 44rem) {
     .gmore-btn { display: inline-flex; }
-    .gmore { display: none; position: absolute; z-index: 6; top: calc(100% + 4px); left: 0; flex-direction: column; gap: 4px; padding: 6px;
+    .gmore { display: none; position: absolute; z-index: 6; top: calc(100% + var(--sp-2)); left: 0; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
       background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
     .gmore[data-open] { display: flex; }
   }
@@ -935,7 +936,7 @@
 
   .gempty { position: absolute; inset: 40% 0 auto; max-width: none; margin: 0; text-align: center; font-size: .8rem; color: var(--ink-dim); pointer-events: none; }
   .gbox { position: absolute; border: 1px dashed var(--highlight); background: rgba(var(--highlight-rgb), .08); pointer-events: none; }
-  .gcursor { position: absolute; z-index: 4; max-width: 240px; margin: 0; padding: 3px 6px; font-size: 11px; pointer-events: none;
+  .gcursor { position: absolute; z-index: 4; max-width: 240px; margin: 0; padding: var(--sp-1) var(--sp-2); font-size: 11px; pointer-events: none;
     background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink); }
   .gcursor[data-phase='fault'] { color: var(--warn); border-color: var(--warn); }
 

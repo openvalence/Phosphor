@@ -314,7 +314,7 @@
     padding: var(--gap);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-3);
   }
 
   .empty {
@@ -326,7 +326,7 @@
   .tchart-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 16px;
+    gap: var(--sp-3) var(--sp-5);
   }
 
   /* Sizes/colors verified against the OG's .diag-key (style.css): Chakra
@@ -337,13 +337,13 @@
     max-width: 100%;
     text-align: left;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-family: var(--font);
     font-size: .68rem;
     color: var(--tx-mut);
     background: none;
     border: 0;
-    padding: 2px 0;
+    padding: var(--sp-1) 0;
     cursor: pointer;
   }
   .leg.off { opacity: .45; }
@@ -372,7 +372,7 @@
   .unit {
     color: var(--tx-ghost);
     font-size: max(11px, 0.85em);
-    margin-left: 2px;
+    margin-left: var(--sp-1);
   }
 
   /* Surface (background/border/inset shadow) comes from the global

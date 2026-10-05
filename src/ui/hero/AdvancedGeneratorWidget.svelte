@@ -67,34 +67,30 @@
 </script>
 
 {#snippet modulator(m, rides)}
-  <section class="mod">
-    <h4>{m.amount.group || 'Modulator'} (rides {rides}){isOff(m) ? ': off' : ''}</h4>
-    <div class="grid">
-      {#each MOD_KEYS as k (k)}<Field field={m[k]} />{/each}
-    </div>
-  </section>
+  <h4 class="card-sub">{m.amount.group || 'Modulator'} (rides {rides}){isOff(m) ? ': off' : ''}</h4>
+  {#each MOD_KEYS as k (k)}<Field field={m[k]} />{/each}
 {/snippet}
 
 <div class="hero advgen">
-  <div class="head">
+  <div class="card-body">
     <Field field={fields.running} />
     {#if fields.bgRun}<Field field={fields.bgRun} />{/if}
     {#if fields.mode}<Field field={fields.mode} />{/if}
-  </div>
-
-  <div class="grid">
     {#each BASE as k (k)}<Field field={fields[k]} />{/each}
   </div>
 
   {#if modRows.length}
     <section class="block mods" class:adv={modsAdv}>
-      <h4>Modulators{#if modsAdv}<span class="tag">adv</span>{/if}</h4>
-      {#each modRows as { m, rides } (m.channelId)}{@render modulator(m, rides)}{/each}
+      <div class="card-body">
+        <h4 class="card-sub">Modulators{#if modsAdv}<span class="tag">adv</span>{/if}</h4>
+        {#each modRows as { m, rides } (m.channelId)}{@render modulator(m, rides)}{/each}
+      </div>
     </section>
   {/if}
 
   {#if fields.presetOp}
     <section class="block">
+      <h4 class="card-sub">Presets</h4>
       <ActionField action={fields.presetOp} />
       {#if presets}<Roster store={presets.store} roster={presets.roster} />{/if}
     </section>
@@ -111,28 +107,17 @@
     flex-direction: column;
     gap: var(--gap);
   }
-  .head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-  }
-  .head > :global(*) { flex: 1 1 180px; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px 16px;
-  }
   .block {
     border-top: 1px solid var(--line);
     padding-top: var(--gap);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
   }
   .mods.adv :global(.field .tag.adv) { display: none; }
   .tag {
-    margin-left: 6px;
-    padding: 1px 5px;
+    margin-left: var(--sp-2);
+    padding: 1px var(--sp-2);
     font-size: .62rem;
     font-weight: 500;
     text-transform: uppercase;
@@ -140,19 +125,5 @@
     background: var(--bg-sunken);
     box-shadow: inset 0 0 0 1px var(--line-2);
     border-radius: var(--r-s);
-  }
-  .mod {
-    margin-left: 12px;
-    border-left: 2px solid var(--line);
-    padding-left: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  h4 {
-    margin: 0;
-    font-size: .72rem;
-    letter-spacing: .04em;
-    color: var(--tx-mut);
   }
 </style>

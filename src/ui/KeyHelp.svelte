@@ -107,22 +107,22 @@
     height: min(100%, 560px);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     box-shadow: 0 8px 40px rgba(var(--shade-rgb), .6);
   }
-  .kh-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .kh-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   /* The panes' heading face (pane.css .pane-head h2). */
   h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
-  .kh-close { min-height: var(--tap); padding: 0 16px; }
+  .kh-close { min-height: var(--tap); padding: 0 var(--sp-5); }
   .kh-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   .kh-list.two { columns: 2; column-gap: calc(var(--gap) * 2); }
   section { break-inside: avoid; margin-bottom: var(--gap); }
   h3 {
-    margin: 0 0 4px;
+    margin: 0 0 var(--sp-2);
     font-size: .7rem;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -131,7 +131,7 @@
   dl {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
-    gap: 3px 10px;
+    gap: var(--sp-1) var(--sp-3);
     margin: 0;
     font-size: .8rem;
   }

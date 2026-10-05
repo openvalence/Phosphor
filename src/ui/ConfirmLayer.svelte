@@ -116,7 +116,7 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-3);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
@@ -133,8 +133,8 @@
   h2::first-letter { text-transform: uppercase; }
   p { margin: 0; color: var(--ink); font-size: .9rem; }
   p:empty { display: none; }
-  .acts { display: flex; gap: 8px; justify-content: flex-end; }
-  .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 16px; }
+  .acts { display: flex; gap: var(--sp-3); justify-content: flex-end; }
+  .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-5); }
   .acts .confirm { border-color: var(--line-4); color: var(--ink-hi); }
   .overlay { animation: rise var(--t-quick) ease-out; }
   @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
