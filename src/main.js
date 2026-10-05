@@ -15,6 +15,7 @@ import App from './App.svelte';
 import './style.css';
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme } from './model/theme.js';
+import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 
 // Client preferences, applied before first paint so the page never flashes the

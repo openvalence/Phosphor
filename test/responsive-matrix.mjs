@@ -57,7 +57,7 @@
  *
  * Build first (`npm run build:only`); this builds nothing but the phosphor
  * scenario's shell bundle.
- * Run: node test/responsive-matrix.mjs [--only 360x800|picker|class|glance|home|scale|nest|builder|phosphor] [--no-shots]
+ * Run: node test/responsive-matrix.mjs [--only 360x800|picker|bucket|class|glance|home|scale|nest|builder|phosphor] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
 import { chromium } from 'playwright';
@@ -538,6 +538,25 @@ if (!ONLY || ONLY === 'picker') {
     scen('the reconnect adopts the rebooted hub', back && lb.includes('Rebooted fixture') && !lb.includes('Responsive fixture'));
     await ctx.close();
   }
+}
+
+if (!ONLY || ONLY === 'bucket') {
+  console.log('\nbucket scenarios');
+  const { ctx, page } = await seeded({ width: 1428, height: 900 }, (ws) => fakeHub(ws));
+  await page.goto('http://127.0.0.1:' + PORT + '/');
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  const read = () => page.evaluate(() => ({ b: document.documentElement.dataset.bucket, c: getComputedStyle(document.documentElement).getPropertyValue('--cols').trim() }));
+  for (const [w, h, want] of [[200, 390, '1'], [390, 844, '2'], [844, 390, '3'], [1428, 900, '4'], [2560, 1440, '5']]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(200);
+    const r = await read();
+    scen(w + 'x' + h + ' is bucket ' + want, r.b === want && Number(r.c) > 0, r.b + ' cols ' + r.c);
+  }
+  await page.setViewportSize({ width: 1428, height: 900 });
+  // Ctrl+= through ScaleControl (the real path): 10 % steps stop at 140 % (knob max 1.6).
+  for (let k = 0; k < 6; k++) await page.keyboard.press('Control+='); await page.waitForTimeout(200);
+  scen('140 % UI scale puts 1428 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
+  await ctx.close();
 }
 
 if (!ONLY || ONLY === 'class') {

@@ -34,7 +34,7 @@
     applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList,
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
-  import { setPref } from '../model/prefs.js';
+  import { setPref, MOTION } from '../model/prefs.js';
   import { formatWithUnit } from '../model/format.js';
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
@@ -273,6 +273,20 @@
       <input type="checkbox" role="switch" checked={$prefs.scrollbars} onchange={(e) => setPref('scrollbars', e.currentTarget.checked)} />
       <span class="track"></span>Scrollbars
     </label>
+    <div class="row">
+      <span id="tp-motion" class="mo-label">Motion</span>
+      <div class="og-seg" role="radiogroup" aria-labelledby="tp-motion">
+        {#each MOTION as m (m)}
+          <button type="button" role="radio" aria-checked={$prefs.motion === m} class:active={$prefs.motion === m}
+                  onclick={() => setPref('motion', m)}>{m[0].toUpperCase() + m.slice(1)}</button>
+        {/each}
+      </div>
+    </div>
+    <p class="pane-note">System follows the OS; theme motion 0 always holds still</p>
+    <label class="og-switch">
+      <input type="checkbox" role="switch" checked={$prefs.railHide} onchange={(e) => setPref('railHide', e.currentTarget.checked)} />
+      <span class="track"></span>Rail hide tab
+    </label>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-units">
@@ -404,6 +418,7 @@
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
   }
 
+  .mo-label { font-size: .8rem; }
   .og-switch { min-height: var(--tap); font-size: .8rem; align-self: flex-start; }
   .cls { color: var(--reality); text-transform: uppercase; letter-spacing: .06em; }
 </style>

@@ -24,6 +24,8 @@ const HUBS_MAX = 32;
 export const UNITS = ['metric'];
 /** Page fullscreen (App.svelte, model/fullscreen.js): inside the window, or the window itself. */
 export const FULLSCREEN = ['window', 'borderless'];
+/** Motion override (ui/still.svelte.js): follow the OS, or force stillness or motion. */
+export const MOTION = ['system', 'reduced', 'full'];
 export const DEFAULTS = Object.freeze({
   autorange: true,    // RFC-086 SI-prefix display autoranging
   units: 'metric',
@@ -32,6 +34,9 @@ export const DEFAULTS = Object.freeze({
   estopDatagram: true, // shell: an e-stop press also broadcasts the RFC-053 datagram (opt-out)
   fullscreen: 'window',
   scrollbars: false,  // recess shadows are the scroll affordance (DESIGN §10.3)
+  motion: 'system',   // DESIGN §10.13; theme motion 0 still holds everything still
+  railHide: true,     // the hide tab on the rail strip is available (feature switch)
+  railHidden: false,  // the rail is hidden right now (state)
 });
 
 function read(key) {
@@ -53,6 +58,9 @@ export function loadPrefs(raw = read(PREFS_KEY)) {
     estopDatagram: typeof p.estopDatagram === 'boolean' ? p.estopDatagram : DEFAULTS.estopDatagram,
     fullscreen: FULLSCREEN.includes(p.fullscreen) ? p.fullscreen : DEFAULTS.fullscreen,
     scrollbars: typeof p.scrollbars === 'boolean' ? p.scrollbars : DEFAULTS.scrollbars,
+    motion: MOTION.includes(p.motion) ? p.motion : DEFAULTS.motion,
+    railHide: typeof p.railHide === 'boolean' ? p.railHide : DEFAULTS.railHide,
+    railHidden: typeof p.railHidden === 'boolean' ? p.railHidden : DEFAULTS.railHidden,
   };
 }
 

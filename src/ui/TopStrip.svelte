@@ -434,7 +434,7 @@
     top: 0;
     z-index: 30;
     flex: none;
-    margin: 0 calc(var(--gap) * -1);
+    margin: 0 calc(var(--app-pad, var(--gap)) * -1);
     background: var(--bg-raised);
     border-bottom: 1px solid var(--line);
   }
