@@ -230,6 +230,7 @@ async function sendQueued(session, channelId, entries, trial, mine) {
       if (Object.prototype.hasOwnProperty.call(applied, k)) {
         sh.applied = applied[k];
         settle(sh);
+        if (rec.field && settledHook) settledHook({ field: rec.field, before: rec.before, after: applied[k], trial, ...rec.hist });
       } else {
         fail(sh, 'no applied value in echo');
       }
@@ -353,8 +354,24 @@ export function writeSetting(field, value, o = {}) {
   const shadowKey = keyOf('set', field.writeChannel, field.settingKey);
   const sh = ensureShadow(shadowKey, field.writeChannel, labelFor(field));
   const seq = begin(sh, value);
-  queueFor(field.writeChannel).pending.set(field.settingKey, { value, shadowKey, seq, trial: !!o.trial });
+  const q = queueFor(field.writeChannel);
+  // A write coalesced over an unsent one keeps the older write's before: the
+  // history sees the value the machine reported, never a request.
+  const prev = q.pending.get(field.settingKey);
+  const before = prev ? prev.before : reportedValue(field, machine.samples[field.channelId]);
+  q.pending.set(field.settingKey, { value, shadowKey, seq, trial: !!o.trial, field, before, hist: o.hist || null });
   schedule(field.writeChannel);
+}
+
+/**
+ * The history seam (history.svelte.js): called once per settled setting write
+ * with { field, before, after, trial, hist }. `hist` is the opts bag the
+ * writer passed as `o.hist` ({ via, id } for an undo or redo), else null. Never
+ * called for commands or actions.
+ */
+let settledHook = null;
+export function setSettledHook(fn) {
+  settledHook = typeof fn === 'function' ? fn : null;
 }
 
 // ---------------------------------------------------------------------------
