@@ -396,7 +396,9 @@ function stickyCheck() {
 }
 
 // ---- the matrix -----------------------------------------------------------
-const VIEWPORTS = [
+// --vp 1428x900,420x860 replaces the list (evidence shots at chosen sizes).
+const VP = argOf('--vp', null)?.split(',').map((v) => v.split('x').map(Number));
+const VIEWPORTS = VP || [
   [200, 390], [320, 568], [360, 800], [390, 844, 2], [412, 915], [844, 390], [768, 1024], [1024, 768],
   [1280, 720], [1440, 900, 2], [1920, 1080], [2560, 1440], [3840, 2160],
 ];

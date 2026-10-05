@@ -529,6 +529,24 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.setViewportSize({ width: w, height: h });
     await fp.waitForTimeout(200);
   }
+  if (w >= 960) {
+    // ph-lxea: saved layouts are Dash sub-items; the wrench on the selected one flips edit mode; Add layout is last.
+    await fp.click('nav.rail [data-tab-id="machine"]');
+    const rows = () => fp.$$eval('nav.rail .rail-sub [data-layout]', (e) => e.map((b) => b.dataset.layout + (b.hasAttribute('aria-current') ? '*' : '')));
+    ok(tag + ': Dash selects Default, listed first, with Add layout last', JSON.stringify(await rows()) === '["Default*"]'
+      && await fp.$eval('nav.rail .rail-sub', (e) => e.lastElementChild.textContent.trim()) === '+ Add layout', JSON.stringify(await rows()));
+    const wr = fp.locator('nav.rail .rail-wrench');
+    await wr.click();
+    const pressed = await wr.getAttribute('aria-pressed');
+    await wr.click();
+    ok(tag + ': the wrench toggles edit mode', pressed === 'true' && await wr.getAttribute('aria-pressed') === 'false', pressed);
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Bench');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': Add layout creates and selects a named layout', JSON.stringify(await rows()) === '["Default","Bench*"]', JSON.stringify(await rows()));
+    await fp.click('nav.rail [data-tab-id="machine"]');
+    ok(tag + ': Dash selects Default again', JSON.stringify(await rows()) === '["Default*","Bench"]', JSON.stringify(await rows()));
+  }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
   for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {

@@ -49,6 +49,8 @@
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
+  import RailLayouts from './shell/RailLayouts.svelte';
+  import { layouts, orderedLayoutNames, switchLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -240,6 +242,13 @@
     drill = null;
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
   }
+  // A saved dash layout is a view of the Dash tab: the store holds which one.
+  function pickLayout(n) {
+    if (layouts.active !== n) dashEdit.on = false;
+    switchLayout(n);
+    selectTab('machine');
+  }
+  $effect(() => { if (active !== 'machine') dashEdit.on = false; });
 
   // Rail collapse is a browser preference. Icons come from the registry
   // category id or our own pane id (ui/navIcons.js), never a device label.
@@ -535,10 +544,11 @@
                         tabindex={current && current.id === t.id ? 0 : -1}
                         class:on={current && current.id === t.id}
                         title={t.label}
-                        onclick={() => selectTab(t.id)}>
+                        onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
                   <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
                   {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
                 </button>
+                {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
               {/each}
             </div>
           {/each}
@@ -558,7 +568,13 @@
                   tabindex={current && current.id === t.id ? 0 : -1}
                   class:shell={!!t.pane}
                   class:on={current && current.id === t.id}
-                  onclick={() => selectTab(t.id)}>{t.label}</button>
+                  onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>{t.label}</button>
+          {#if t.id === 'machine'}
+            {#each orderedLayoutNames().slice(1) as n (n)}
+              <button type="button" data-layout={n} aria-current={active === 'machine' && layouts.active === n ? 'page' : undefined}
+                      class:on={active === 'machine' && layouts.active === n} onclick={() => pickLayout(n)}>{n}</button>
+            {/each}
+          {/if}
         {/each}
       </div>
     </nav>
@@ -674,7 +690,7 @@
     border: 1px solid var(--shell-border);
     border-radius: var(--radius);
   }
-  .rail-sec.shell .rail-tab:not(.on),
+  .rail-sec.shell :global(.rail-tab:not(.on)),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
   .rail-lbl {
@@ -686,7 +702,7 @@
     color: var(--ink-faint);
   }
 
-  .rail-tab {
+  :global(.rail-tab) {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
@@ -701,10 +717,10 @@
     white-space: nowrap;
     transition: color var(--t-quick) var(--ease-out), background-color var(--t-quick) var(--ease-out);
   }
-  .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
+  :global(.rail-tab:hover) { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
-  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) + var(--sp-2)); }
-  .rail-tab.on {
+  .rail:not(.mini) :global(.rail-tab.sub) { padding-left: calc(var(--sp-5) + var(--sp-2)); }
+  :global(.rail-tab.on) {
     color: var(--ink-hi);
     background: var(--bg-card);
     border-color: var(--line-1);
@@ -712,7 +728,7 @@
   /* Active marker: a reality-blue tick on the leading edge — the same accent
      that means "what the machine reports" everywhere else marks "you are
      here". */
-  .rail-tab.on .rail-glyph { color: var(--reality); }
+  :global(.rail-tab.on) .rail-glyph { color: var(--reality); }
 
   .rail-glyph {
     flex: 0 0 auto;
@@ -730,7 +746,7 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  .rail-name {
+  :global(.rail-name) {
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
@@ -743,7 +759,7 @@
      would be clipped by the scrollport before it reached 40px. */
   @media (pointer: coarse) {
     .rail-collapse { min-width: 40px; min-height: 40px; }
-    .rail-tab { min-height: 40px; }
+    :global(.rail-tab) { min-height: 40px; }
   }
 
   /* ---- phone: horizontal tab strip ---------------------------------------
