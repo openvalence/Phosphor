@@ -796,6 +796,19 @@
     writeSetting(field, snap(clamp(target, lower, upper), field));
   }
 
+  // The pill carries the span alone; the edges' values sit on the axis row and
+  // an axis mark yields where a window value would land on it.
+  const spanLabel = $derived(
+    haveWindow ? formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + (unitOf(min) ? ' ' + unitOf(min) : '') : ''
+  );
+  const AXIS_CLEAR = 44;
+  const loPx = $derived(bandL * railWidthPx);
+  const hiPx = $derived(bandR * railWidthPx);
+  const narrow = $derived(hiPx - loPx < 2 * AXIS_CLEAR);
+  const yieldLo = $derived(haveWindow && loPx < AXIS_CLEAR);
+  const yieldHi = $derived(haveWindow && railWidthPx - hiPx < AXIS_CLEAR);
+  const yieldMid = $derived(haveWindow && (Math.abs(loPx - railWidthPx / 2) < AXIS_CLEAR || Math.abs(hiPx - railWidthPx / 2) < AXIS_CLEAR));
+
   const bandLabel = $derived(
     haveWindow
       ? ends(min, minVal, max, maxVal) + ' · ' + formatValue(min, (maxVal ?? hi) - (minVal ?? lo)) + (unitOf(min) ? ' ' + unitOf(min) : '')
@@ -953,7 +966,7 @@
   <!-- The numerals, override/return and Flip live in the top strip
        (TopStrip.svelte, reading railReadout()); this panel is the rail row
        and the rail. -->
-  <div class="rail-panel og-panel">
+  <div class="rail-panel">
   <!-- THE RAIL ROW, one fixed height, the rail's full width: the jog tape
        and the plan strip share one cell, both mounted, and planShown picks
        the visible one, so a swap remounts and moves nothing. A reason
@@ -1035,6 +1048,7 @@
          viewBox is the host's REAL pixel size (not an abstract 0-100 box),
          so the CTM is 1:1 and stroke-width="1" stays a true hairline instead
          of stretching into a block on a wide-short host. -->
+    <div class="rail-clip">
     <svg class="rail-ruler-svg" viewBox="0 0 {Math.max(railWidthPx, 1)} {Math.max(railHeightPx, 1)}"
          preserveAspectRatio="none" aria-hidden="true">
       {#each ticks as t}
@@ -1044,9 +1058,9 @@
       {/each}
       <line x1="0" y1={baselineY} x2={railWidthPx} y2={baselineY} stroke="var(--line-1)" stroke-width="1" />
     </svg>
-    <span class="rail-endcap lo mono">{flipped ? formatValue(max, hi) : formatValue(min, lo)}</span>
-    <span class="rail-endcap hi mono">{flipped ? formatValue(min, lo) : formatValue(max, hi)}</span>
-    <span class="rail-ghost mono">{formatValue(max, (lo + hi) / 2)}</span>
+    <span class="rail-endcap lo mono" class:yield={yieldLo}>{flipped ? formatValue(max, hi) : formatValue(min, lo)}</span>
+    <span class="rail-endcap hi mono" class:yield={yieldHi}>{flipped ? formatValue(min, lo) : formatValue(max, hi)}</span>
+    <span class="rail-ghost mono" class:yield={yieldMid}>{formatValue(max, (lo + hi) / 2)}</span>
     <span class="rail-tri lo" aria-hidden="true"></span>
     <span class="rail-tri hi" aria-hidden="true"></span>
 
@@ -1054,6 +1068,7 @@
     <div class="rail-hz hi" style="clip-path: inset(0 0 0 {haveWindow ? (bandR * 100) : 100}%)"></div>
 
     <canvas class="rail-canvas" bind:this={canvasEl}></canvas>
+    </div>
 
     {#if haveWindow}
       <!-- The window's catalog description rides the band's own tooltip. -->
@@ -1072,8 +1087,10 @@
            onpointerup={endDrag}
            onpointercancel={endDrag}
            onkeydown={onBandKey}>
-        <span class="rail-band-label mono">{bandLabel}</span>
+        <span class="rail-band-label mono">{spanLabel}</span>
       </div>
+      <span class="rail-win lo mono" class:flank={narrow} style="--at:{bandL * 100}%">{flipped ? formatValue(max, maxVal) : formatValue(min, minVal)}</span>
+      <span class="rail-win hi mono" class:flank={narrow} style="--at:{bandR * 100}%">{flipped ? formatValue(min, minVal) : formatValue(max, maxVal)}</span>
 
       <div class="rail-band-handle lo"
            class:disabled={!minEnabled}
@@ -1142,15 +1159,11 @@
   .swap-face { grid-area: 1 / 1; min-width: 0; }
   .swap-face.off { visibility: hidden; }
 
-  /* The rail panel: one inset on all four sides (operator 2026-10-03,
-     ph-ryi7), clear of the og-panel's 4px outline frame by
-     the 10px margin. */
+  /* No frame of its own: HeroStrip is the bar's surface (DESIGN §10.3). */
   .rail-panel {
-    margin: 10px 0;
-    padding: calc(var(--s) * 12px);
     display: flex;
     flex-direction: column;
-    gap: calc(var(--s) * 12px);
+    gap: calc(var(--s) * 4px);
   }
 
   /* ---- input tape (disabled command surface) ------------------------------ */
@@ -1247,18 +1260,17 @@
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
     position: relative;
-    height: max(calc(var(--s) * 72px), 64px);
+    height: max(calc(var(--s) * 63px), 66px);
     background: var(--bg-sunken);
     border: 1px solid var(--line-1);
     border-radius: var(--r-s);
     box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .6);
-    /* Clipped 8 px out, the window handles' glow radius: a handle at either
-       end keeps its whole glow (ph-hjo). */
-    overflow: clip;
-    overflow-clip-margin: 8px;
     touch-action: none;
     cursor: crosshair;
   }
+  /* Do not clip the host: the window handles straddle its ends and stay whole
+     only outside this layer (ph-n8vs). */
+  .rail-clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
 
   .rail-ruler-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .rail-endcap {
@@ -1270,6 +1282,7 @@
   }
   .rail-endcap.lo { left: 4px; }
   .rail-endcap.hi { right: 4px; }
+  .rail-endcap.yield, .rail-ghost.yield { visibility: hidden; }
   /* The mid label rides the endcaps' line, clear of the tick row (ph-hjo). */
   .rail-ghost {
     position: absolute;
@@ -1345,17 +1358,36 @@
   .drag-live .rail-band,
   .drag-live .rail-band-handle { transition: none; }
 
+  /* The span pill: a plate in the band's center, gone when the band is
+     narrower than the plate. */
+  .rail-band { container-type: inline-size; }
   .rail-band-label {
     position: absolute;
-    top: calc(var(--s) * -17px);
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
+    padding: 1px 6px;
+    border-radius: var(--r-s);
+    background: var(--bg-sunken);
     font-size: max(11px, 0.6rem);
     color: var(--intent);
     white-space: nowrap;
     pointer-events: none;
   }
-
+  @container (max-width: 84px) { .rail-band-label { display: none; } }
+  /* The window's edge values on the axis row; a narrow band flanks them
+     outward so they never overlap. */
+  .rail-win {
+    position: absolute;
+    bottom: 2px;
+    left: clamp(2.2em, var(--at), calc(100% - 2.2em));
+    transform: translateX(-50%);
+    font-size: max(11px, 0.56rem);
+    color: var(--intent);
+    pointer-events: none;
+  }
+  .rail-win.flank.lo { left: max(var(--at), 3.2em); transform: translateX(-100%); }
+  .rail-win.flank.hi { left: min(var(--at), calc(100% - 3.2em)); transform: none; }
   /* Handles are siblings of the band (not nested — each positions from its own
      independent pct so a keyboard nudge on one never has to touch the other's
      DOM), so top/height are set here in the SAME host-relative units as the

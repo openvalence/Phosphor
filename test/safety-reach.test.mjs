@@ -1019,9 +1019,9 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   ok('flip icon: shares no stroke with Override or Return', ![n.d, f.d].some((d) => /M2 8h9|M13\.5 3v10|M2\.5 3v10|M5 8h9/.test(d)),
     JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
-  ok('rail heads: the window label and the axis read one precision; the unit is spaced',
-    hd.band === seen[0].caps.join('–') + ' · ' + seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
-  ok('rail ruler: the mid label clears the tick row; the end handles keep their glow', hd.ghostClear && /^clip .*8px/.test(hd.clip),
+  ok('rail heads: the span pill and the axis read one precision; the unit is spaced',
+    hd.band === seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
+  ok('rail ruler: the mid label clears the tick row; the host does not clip the end handles (ph-n8vs)', hd.ghostClear && hd.clip.startsWith('visible'),
     JSON.stringify(hd));
   // ph-hsl: every strip glyph in one 16 px box, drawn at one 1.5 px stroke.
   ok('strip icons: one box, one drawn stroke', seen[0].icons.length >= 4 && seen[0].icons.every((i) => i.w === 16 && Math.abs(i.px - 1.5) < 0.05),
