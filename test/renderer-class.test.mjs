@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import {
   nextClass, promotes, projectGroups, CLASSES,
   FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER, FLOOR_W, FLOOR_H,
+  layoutCols, bucketOf, FIELD_FLOOR_COLS,
 } from '../src/model/rclass.js';
 import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
 import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY } from '../../Valence/clients/js/index.js';
@@ -124,6 +125,21 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
     ok('DESIGN states ' + n + ' ' + v, design.includes('`' + n + '` ' + v));
   }
   ok('the floor is glance', nextClass(null, FLOOR_W, 'fine') === 'glance');
+}
+
+// ---- layout buckets (DESIGN 10.12): 2 rem columns, field floor 8, doubling ---
+{
+  ok('field floor is 8 columns', FIELD_FLOOR_COLS === 8);
+  const R = 18;   // 36 px per column
+  const at = (w) => bucketOf(layoutCols(w, R));
+  ok('cols = floor(width / 2 rem)', layoutCols(288, R) === 8 && layoutCols(287, R) === 7);
+  const rows = [[199, 1], [200, 1], [287, 1], [288, 2], [573, 2], [575, 2], [576, 3], [1147, 3], [1151, 3],
+    [1152, 4], [2294, 4], [2303, 4], [2304, 5], [4000, 5]];
+  for (const [w, b] of rows) ok(w + ' px at 18 px rem is bucket ' + b, at(w) === b, String(at(w)));
+  ok('the viewport matrix lands 1/2/3/4/5',
+     [200, 390, 844, 1428, 2560].map(at).join() === '1,2,3,4,5');
+  ok('a 200 % UI scale moves 1428 px down to bucket 3', bucketOf(layoutCols(1428, 36)) === 3);
+  ok('bucketOf is monotonic', [...Array(80).keys()].every((c) => bucketOf(c + 1) >= bucketOf(c)));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));

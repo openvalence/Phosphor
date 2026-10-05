@@ -125,6 +125,10 @@ export const LOCKED = {
   '--fx-breath-slow': 'ladder curve',
   '--fx-run-ms': 'ladder curve',
   '--fx-run-delay': 'ladder curve',
+  '--t-quick': 'motion token (html.still)',
+  '--t-move': 'motion token (html.still)',
+  '--t-slow': 'motion token (html.still)',
+  '--ease-out': 'motion token (html.still)',
   '--chrome-inset-top': 'safe-area owner',
   '--font': 'bundled font',
   '--mono': 'bundled font',
@@ -460,7 +464,6 @@ export function applyTheme(idOrTheme, { persist = true } = {}) {
     el.textContent = themeCss(t);
     const root = document.documentElement;
     root.dataset.theme = t.id;
-    root.classList.toggle('still', t.look.motion === 0);
   }
   for (const fn of subs) { try { fn(t); } catch (e) { console.error('theme subscriber', e); } }
   return t;
