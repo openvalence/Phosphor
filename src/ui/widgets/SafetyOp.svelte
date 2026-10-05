@@ -196,13 +196,14 @@
     min-width: var(--sb-w, max(var(--tap), 96px));
     width: var(--sb-w, auto);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: 2px 6px 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
     font-weight: 500;
-    font-size: .72rem;
+    font-size: max(11px, .54rem);
+    line-height: 1;
     white-space: nowrap;
     user-select: none;
     -webkit-touch-callout: none;
@@ -224,9 +225,9 @@
   .lbls > *, .hints > * { grid-area: 1 / 1; }
   .ghost { visibility: hidden; }
   .hints { height: 0; overflow: hidden; }
-  .state, .hints small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  .state, .hints small { line-height: 1; font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   /* Never widens the box: no intrinsic width, stretched to the button. */
-  .state { contain: inline-size; align-self: stretch; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .state { contain: inline-size; align-self: stretch; min-height: 1em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   [data-shadow='overdue'] .state { color: var(--warn-ink, var(--warn)); }
   [data-shadow='fault'] .state { color: var(--warn-ink, var(--warn)); }
 

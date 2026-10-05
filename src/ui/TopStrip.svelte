@@ -333,8 +333,9 @@
           onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
          stroke-linejoin="round" aria-hidden="true">
-      <ellipse cx="12" cy="12" rx="3.2" ry="5.2"/><path d="M9.5 16.5l5-9M17 12h5M19.5 9.5L22 12l-2.5 2.5"/>
-      <path class="gray" d="M7 12H2M4.5 9.5L2 12l2.5 2.5"/>
+      <text class="zero" x="12" y="17" text-anchor="middle">0</text>
+      <path d="M17.5 12H22M20 9.5L22 12l-2 2.5"/>
+      <path class="gray" d="M6.5 12H2M4 9.5L2 12l2 2.5"/>
     </svg>
     <span class="lbl">Flip</span>
   </button>
@@ -462,9 +463,9 @@
   .strip {
     --num-h: calc(clamp(54px, 6.2vw, 80px) * .95 + 20px);
     /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
-    --sb-w: 84px;
-    --sb-h: min(68px, max(var(--num-h), var(--tap)));
-    --sico: clamp(16px, calc(var(--sb-h) - 40px), 28px);
+    --sb-w: 63px;
+    --sb-h: min(51px, max(var(--num-h), var(--tap)));
+    --sico: clamp(12px, calc(var(--sb-h) - 30px), 21px);
     display: flex;
     align-items: center;
     gap: 6px 12px;
@@ -493,7 +494,7 @@
      grid guarantees (a wrapping flex row once pushed the pair onto a third,
      clipped line). */
   .strip.stacked {
-    --sb-h: calc(var(--tap) + 5px);
+    --sb-h: var(--tap);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
     height: calc(var(--num-h) + 6px + var(--tap) + 12px);
@@ -612,9 +613,11 @@
     flex-direction: column;
     justify-content: flex-start;
     gap: 1px;
-    min-width: var(--sb-w, 84px);
+    min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: 2px 6px 1px;
+    font-size: max(11px, .54rem);
+    line-height: 1;
   }
   /* One icon box and one drawn stroke for every strip glyph. */
   .ico { width: var(--sico, 28px); height: var(--sico, 28px); }
@@ -649,17 +652,20 @@
     justify-content: flex-start;
     gap: 1px;
     min-height: var(--tap);
-    min-width: var(--sb-w, 84px);
+    min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: 2px 6px 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
     font-weight: 500;
-    font-size: .72rem;
+    font-size: max(11px, .54rem);
+    line-height: 1;
   }
   .rw-flip .gray { stroke: var(--tx-ghost); }
+  /* The hero numerals' face and its slashed zero. */
+  .rw-flip .zero { font: 500 15px var(--mono); fill: currentColor; stroke: none; }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
@@ -675,8 +681,8 @@
   /* Phone: the safety ops drop their idle hint line and narrow to 64 px
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
-    .strip { --sb-w: 64px; }
-    .dock :global(.safety-op .btn) { padding: 4px 4px 2px; }
+    .strip { --sb-w: var(--tap); }
+    .dock :global(.safety-op .btn) { padding: 3px 3px 2px; }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   }
   @media (max-width: 300px) {

@@ -606,7 +606,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
     ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
-      && (await flip.textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
+      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
       && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
     await flip.click();
     await page.waitForTimeout(200);
@@ -1007,7 +1007,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     });
     const chip = page.locator('.topstrip .rw-flip');
     const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').first().getAttribute('d'),
-      text: (await chip.textContent()).trim(), w: (await chip.boundingBox()).width };
+      text: (await chip.locator('.lbl').textContent()).trim(), w: (await chip.boundingBox()).width };
     const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
       const w = s.getBoundingClientRect().width;
       return { w: Math.round(w * 100) / 100, px: Math.round(parseFloat(getComputedStyle(s).strokeWidth) * 100) / 100,
@@ -1034,7 +1034,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   // Flip shows what the press does, not the state: one fixed glyph (a struck
   // 0 between two arrows), the same normal and flipped.
   const [n, f] = [seen[0].face, seen[1].face];
-  ok('flip icon: a fixed glyph, the same normal and flipped, shares no stroke with Override or Return', n.d === f.d && /^M9\.5 16\.5/.test(n.d) && !/M3 5v14|M10 6v12/.test(n.d), JSON.stringify([n.d, f.d]));
+  ok('flip icon: a fixed glyph, the same normal and flipped, shares no stroke with Override or Return', n.d === f.d && /^M17\.5 12H22/.test(n.d) && !/M3 5v14|M10 6v12/.test(n.d), JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
   ok('rail heads: the span pill and the axis read one precision; the unit is spaced',
     hd.band === seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
