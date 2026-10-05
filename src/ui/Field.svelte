@@ -117,7 +117,7 @@
   // puts the switch back to what the machine reports.
   async function commitToggle(el) {
     const to = tog ? (el.checked ? tog.b : tog.a) : el.checked ? 1 : 0;
-    if (settingNeedsConfirm(field, value, to) && !(await askConfirm(confirmCopy(field)))) {
+    if (settingNeedsConfirm(field, value, to) && !(await askConfirm(confirmCopy(field, to)))) {
       el.checked = toggleOn;
       return;
     }
@@ -253,7 +253,7 @@
     const { f, side } = rel, st = side === 'v' ? step : rangeStep(f);
     rel.v = Math.max(f.min, Math.min(f.max, rel.v + ((e.clientX - rel.x) / rel.w) * (f.max - f.min) * dragGain(e, 1)));
     rel.x = e.clientX;
-    let n = f.min + Math.round((modSnap(rel.v, e, f.min, f.max) - f.min) / st) * st;
+    let n = f.min + Math.round((modSnap(rel.v, e, f.min, f.max, 0, st) - f.min) / st) * st;
     n = Math.max(f.min, Math.min(f.max, n));
     rel.el.value = n;
     if (n !== rel.last) { rel.last = n; dragWrite(side, n); }
@@ -267,7 +267,7 @@
     e.preventDefault();
     if (side === 'v') return nudge(dir, e);
     const f = field[side], b = Number(side === 'lo' ? loValue : hiValue);
-    (side === 'lo' ? commitLo : commitHi)(modSnap(isFinite(b) ? b : f.min, e, f.min, f.max, dir));
+    (side === 'lo' ? commitLo : commitHi)(modSnap(isFinite(b) ? b : f.min, e, f.min, f.max, dir, rangeStep(f)));
   }
   $effect(() => () => { if (drag) dragEnd({ pointerId: drag.id, type: 'pointercancel' }); });
   const heldOf = (side, v) => (held && held.side === side ? held.n : v);
@@ -349,7 +349,7 @@
   function nudge(dir, e) {
     const b = Number(value), base = isFinite(b) ? b : (field.min ?? 0);
     if (e && (e.shiftKey || e.ctrlKey)) dir = Math.sign(dir);
-    commitNumber(e && e.ctrlKey ? modSnap(base, e, field.min, field.max, dir) : base + dir * modStep(e, step, field.min, field.max));
+    commitNumber(e && e.ctrlKey ? modSnap(base, e, field.min, field.max, dir, step) : base + dir * modStep(e, step, field.min, field.max));
   }
 
   const step = $derived(field.step || (precisionFor(field) === 0 ? 1 : 0.01));
@@ -511,7 +511,7 @@
     const span = (field.max - field.min) * dragGain(e, 1);
     knobDrag.v = Math.max(field.min, Math.min(field.max, knobDrag.v + ((knobDrag.y - e.clientY) / KNOB_DRAG_PX) * span));
     knobDrag.y = e.clientY;
-    const n = modSnap(snap(knobDrag.v), e, field.min, field.max);
+    const n = modSnap(snap(knobDrag.v), e, field.min, field.max, 0, step);
     if (n !== knobDrag.last) { knobDrag.last = n; dragWrite('v', n); }
   }
   function knobKey(e) {
@@ -901,6 +901,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    container-type: inline-size;
   }
 
   .field-head {
@@ -1213,7 +1214,14 @@
   /* Touch: the 18px info/reset box keeps its look and gains an invisible
      40px hit area; the typeable chip grows to the fingertip floor. */
   @media (pointer: coarse) {
-    .info::before { content: ''; position: absolute; inset: -12px; }
+    /* The button box is the 40 px hit target and its negative margin keeps
+       the 18 px footprint in the head row; the visible square is ::before. */
+    .info { width: 40px; height: 40px; margin: -11px 0; border: 0; }
+    .info::before { content: ''; position: absolute; inset: 11px; border: 1px solid var(--line-2); border-radius: var(--r-s); }
+    .info:hover::before { border-color: var(--line-4); }
+    .info[aria-expanded='true']::before { border-color: var(--reality); }
+    .reset:disabled::before { border-color: var(--line-1); }
+    .bitfield .bit { min-height: 40px; }
     .field-value .chip-num { padding: 10px 0; min-width: 40px; }
   }
   .field-value .chip-num::-webkit-inner-spin-button,
@@ -1391,12 +1399,44 @@
     accent-color: var(--reality);
   }
 
+  /* Density rungs (DESIGN §10.12): compact under 18rem (about 8 cells), normal
+     above. Compact is a fixed two-row head in every state: the label with its
+     tags and info/reset, then the status words and the value chip. The label
+     keeps 3em and the chip never clips its number: the unit yields first, then
+     the status slot. */
+  @container (max-width: 18rem) {
+    .field-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: 18px minmax(20px, auto);
+      gap: 2px 4px;
+      align-items: center;
+    }
+    .field-label-group { grid-column: 1 / -1; grid-row: 1; gap: 4px; }
+    .field-label { overflow: hidden; }
+    .field-label-text { min-width: 3em; }
+    .ladder { grid-column: 1; grid-row: 2; min-width: 0; text-align: left; }
+    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100cqi; }
+    .field-head .unit { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+    .field > input[type='range'] { margin: 4px 0 0; }
+    .range-dual { margin: 4px 0 0; }
+    .bitfield { gap: 6px 10px; }
+    .lamps { gap: 4px 10px; }
+  }
+  /* The 40 px info/reset box reaches 11 px below the first row: the gap keeps it off the second. */
+  @media (pointer: coarse) {
+    @container (max-width: 18rem) { .field-head { row-gap: 11px; } }
+  }
+
   /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------
      Basis 0, so its text never takes width from the label or the value chip
      and never wraps the head: the field's height is the same in every state. */
   .ladder {
     flex: 1 1 0;
-    min-width: 0;
+    /* 'still waiting' at 11px is 7em. The head row yields it to the words
+       once the field is wide enough to hold label, chip and words (ph-46yw);
+       below that the slot is leftover only, so the chip never overflows. */
+    min-width: clamp(0px, 100cqi - 11rem, 7em);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1583,10 +1623,6 @@
   @keyframes loc-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
   @keyframes loc-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
   @keyframes loc-hold { from { opacity: 1; } to { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) {
-    .loc-arc { display: none; }
-    .locate { animation: loc-hold var(--loc-ms) steps(1, jump-end) both; }
-  }
   :global(html.still) .loc-arc { display: none; }
   :global(html.still) .locate { animation: loc-hold var(--loc-ms) steps(1, jump-end) both; }
 

@@ -516,6 +516,7 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
   ok('background_run false->true confirms', settingNeedsConfirm(bg, 0, 1));
   ok('background_run true->false does not', !settingNeedsConfirm(bg, 1, 0));
   ok('an ordinary toggle does not', !settingNeedsConfirm({ role: '' }, 0, 1));
+  ok('axis.flipped confirms every write', settingNeedsConfirm({ role: FIELD_ROLE.axis_flipped }, 0, 1) && settingNeedsConfirm({ role: FIELD_ROLE.axis_flipped }, 1, 0));
   const copy = confirmCopy(act('action.reboot', { options: ['reserved', 'warm_reboot'], desc: 'Restart the hub.' }), 1);
   ok('confirm copy is the catalog\'s own option label and desc',
      copy.title === 'warm reboot' && copy.body === 'Restart the hub.', JSON.stringify(copy));

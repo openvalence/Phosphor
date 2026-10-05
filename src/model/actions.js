@@ -84,12 +84,14 @@ export function needsConfirm(action, value) {
 
 /**
  * Must this SETTING write confirm first? A `destructive`-flagged setting on
- * every write (SPEC §8.8), and `source.background_run` going false -> true
- * (§10.1 rule 2): "this may keep moving after you leave".
+ * every write (SPEC §8.8), `source.background_run` going false -> true
+ * (§10.1 rule 2): "this may keep moving after you leave", and `axis.flipped`
+ * on every write (RENDERING §8.2 row 7).
  */
 export function settingNeedsConfirm(field, from, to) {
   if (!field) return false;
   if (field.flagBits && field.flagBits.destructive) return true;
+  if (field.role === FIELD_ROLE.axis_flipped) return true;
   return field.role === FIELD_ROLE.source_background_run && !from && !!to;
 }
 
@@ -171,6 +173,10 @@ export function railOwnerName(ownerEntry, ownerSample) {
  * (or the field's label) as the title, its `desc` as the body.
  */
 export function confirmCopy(item, value) {
+  if (item && item.role === FIELD_ROLE.axis_flipped) {
+    const on = !!Number(value);
+    return { title: on ? 'Flip the rail' : 'Unflip the rail', body: 'Home moves to the ' + (on ? 'right' : 'left') + ' end', confirmLabel: on ? 'Flip' : 'Unflip' };
+  }
   const title = item && item.options ? optionLabel(item, value).replace(/_/g, ' ') : labelFor(item);
   return { title, body: (item && item.desc) || '' };
 }

@@ -38,6 +38,7 @@
 
   $effect(() => {
     if (!open) return;
+    window.dispatchEvent(new CustomEvent('phosphor-overlay', { detail: 'confirm' }));
     opener = document.activeElement;
     tick().then(() => card?.querySelector('[data-autofocus]')?.focus());
     return () => { if (opener && opener.isConnected) opener.focus(); };
@@ -135,8 +136,6 @@
   .acts { display: flex; gap: 8px; justify-content: flex-end; }
   .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 16px; }
   .acts .confirm { border-color: var(--line-4); color: var(--ink-hi); }
-  @media (prefers-reduced-motion: no-preference) {
-    .overlay { animation: rise .14s ease-out; }
-  }
+  .overlay { animation: rise var(--t-quick) ease-out; }
   @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
 </style>
