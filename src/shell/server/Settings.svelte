@@ -68,15 +68,15 @@
 {/if}
 
 <style>
-  .sp-form { display: grid; gap: 8px; justify-items: start; }
+  .sp-form { display: grid; gap: var(--sp-3); justify-items: start; }
   .sp-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 14px;
+    gap: var(--sp-2) var(--sp-4);
     margin: 0;
-    padding: 4px 10px;
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid var(--line);
     border-radius: var(--radius);
   }
-  .sp-group legend { color: var(--ink-dim); font-size: .72rem; padding: 0 4px; }
+  .sp-group legend { color: var(--ink-dim); font-size: .72rem; padding: 0 var(--sp-2); }
 </style>

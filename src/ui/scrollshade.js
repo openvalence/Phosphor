@@ -15,8 +15,11 @@ export function scrollshade(node, on = true) {
   const update = () => {
     raf = 0;
     const { scrollTop, clientHeight, scrollHeight } = node;
-    node.toggleAttribute('data-shade-top', scrollTop > 0);
-    node.toggleAttribute('data-shade-bottom', scrollTop + clientHeight < scrollHeight - 1);
+    // Hysteresis: on past 2 px, off under 0.5 px, held between, so the last
+    // pixel of an edge never flickers.
+    const hold = (name, left) => node.toggleAttribute(name, left > 2 || (left >= 0.5 && node.hasAttribute(name)));
+    hold('data-shade-top', scrollTop);
+    hold('data-shade-bottom', scrollHeight - scrollTop - clientHeight);
   };
   const queue = () => { raf ||= requestAnimationFrame(update); };
   const ro = new ResizeObserver(queue);
