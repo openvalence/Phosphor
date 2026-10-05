@@ -164,7 +164,7 @@ export function zoomStep(ms, dir) {
 }
 
 export const CSS = `
-.fsp-tl { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fsp-tl { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
@@ -196,12 +196,12 @@ export const CSS = `
   translate: 0 calc(clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
-.fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 4px;
-  max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 4px; background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
+.fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 var(--sp-2);
+  max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 var(--sp-2); background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
   border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
 .fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
 .fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
-.fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 4px; font-size: .72rem; }
+.fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 var(--sp-2); font-size: .72rem; }
 .fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }
 .fsp-zoom button:not(.fsp-btn):disabled { opacity: .35; cursor: default; }
 .fsp-zoom button:not(.fsp-btn)[aria-pressed=true] { color: var(--highlight); }

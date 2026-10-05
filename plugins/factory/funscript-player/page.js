@@ -27,10 +27,10 @@ export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 const CSS = `
 .fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; }
 .fsp-page > .fsp-pcard { height: 100%; min-height: min(100%, 340px); }
-.fsp-page > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2; overflow-y: auto; padding: 8px;
+.fsp-page > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2; overflow-y: auto; padding: var(--sp-3);
   background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
 .fsp-page:has(.fsp[data-an]) > .fsp-psec { width: clamp(320px, 40%, 560px); }
-@container (max-width: 959px) { .fsp-page > .fsp-psec { position: static; width: auto; max-height: none; padding: 8px 0; box-shadow: none; background: none; } }
+@container (max-width: 959px) { .fsp-page > .fsp-psec { position: static; width: auto; max-height: none; padding: var(--sp-3) 0; box-shadow: none; background: none; } }
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 

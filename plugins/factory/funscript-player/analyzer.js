@@ -121,15 +121,15 @@ export function fmtValue(f, v) {
 }
 
 export const CSS = `
-.fsa { height: 100%; min-height: 0; display: grid; gap: 4px; grid-template-rows: var(--tap) 20px 20px minmax(0, 1fr); }
-.fsa-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.fsa-head .fsp-btn { padding: 0 8px; }
+.fsa { height: 100%; min-height: 0; display: grid; gap: var(--sp-2); grid-template-rows: var(--tap) 20px 20px minmax(0, 1fr); }
+.fsa-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.fsa-head .fsp-btn { padding: 0 var(--sp-3); }
 .fsa-head .fsa-gap { flex: 1 1 0; }
 .fsa-lag { height: 20px; line-height: 20px; font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: middle; background: var(--highlight); }
+.fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: var(--sp-2); vertical-align: middle; background: var(--highlight); }
 .fsa-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--r-s); }
-.fsa-g { height: 20px; line-height: 20px; padding: 0 6px; font-size: .72rem; color: var(--tx-mut); background: var(--bg-sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fsa-row { position: relative; height: var(--tap); display: grid; align-items: center; gap: 6px; padding: 0 6px 0 9px;
+.fsa-g { height: 20px; line-height: 20px; padding: 0 var(--sp-2); font-size: .72rem; color: var(--tx-mut); background: var(--bg-sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsa-row { position: relative; height: var(--tap); display: grid; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2) 0 var(--sp-3);
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 9ch; }
 .fsa-row::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 1.5px; background: transparent; }
 .fsa-row[data-st=pending]::before { background: var(--intent); }
@@ -137,9 +137,9 @@ export const CSS = `
 .fsa-k { font-size: .78rem; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-v { font: .72rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-row[data-draft] .fsa-v { color: var(--intent); }
-.fsa-c { min-width: 0; display: flex; gap: 2px; align-items: center; height: var(--tap); }
+.fsa-c { min-width: 0; display: flex; gap: var(--sp-1); align-items: center; height: var(--tap); }
 .fsa-c > * { min-width: 0; }
-.fsa-c .fsp-btn { flex: 1 1 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; font-size: .75rem; }
+.fsa-c .fsp-btn { flex: 1 1 0; padding: 0 var(--sp-2); overflow: hidden; text-overflow: ellipsis; font-size: .75rem; }
 .fsa-c select, .fsa-c input[type=number] { width: 100%; min-height: var(--tap); font: .75rem var(--mono); }
 .fsa-c input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); margin: 0; background: none; cursor: ew-resize; }
 .fsa-c input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
@@ -149,7 +149,7 @@ export const CSS = `
 .fsa-c input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
 .fsa-c input[type=range]:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
 .fsa-c :disabled { opacity: .4; cursor: default; }
-.fsa-empty { padding: 10px 6px; font-size: .78rem; color: var(--tx-mut); }
+.fsa-empty { padding: var(--sp-3) var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
 `;
 
 const h = (tag, attrs = {}, ...kids) => {

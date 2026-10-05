@@ -636,7 +636,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // The stage row is the only flexible row and may shrink to 0, so the fixed rows always fit the card.
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
-.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px; --fsp-sp: 4px;
+.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px; --fsp-sp: var(--sp-2);
   grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-sp) var(--fsp-bar) var(--fsp-detail) 20px;
   grid-template-areas: "src lib" "stage lib" "sp lib" "tr lib" "tl lib" "st st"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
@@ -645,20 +645,20 @@ export const CSS = `
 .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 2 + 56px); grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-sp) var(--fsp-bar) var(--fsp-detail) 20px;
   grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-sp) calc(var(--fsp-bar) * 2 + 4px) var(--fsp-detail) 20px; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-sp) calc(var(--fsp-bar) * 2 + var(--sp-2)) var(--fsp-detail) 20px; }
 @media (pointer: coarse) { .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 3 + 56px); } }
 .fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
 .fsp button, .fsp input { font: inherit; }
-.fsp-btn { min-height: var(--tap); min-width: var(--tap); padding: 0 10px; background: none; color: var(--tx); border: 1px solid var(--line-2);
+.fsp-btn { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
   border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
 .fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
 .fsp-btn:hover { border-color: var(--line-4); }
 .fsp-btn:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
 .fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
 .fsp-btn:disabled { opacity: .4; cursor: default; }
-.fsp-src { grid-area: src; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fsp-src { grid-area: src; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .fsp-libcaret { display: none; flex: none; place-items: center; width: 18px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
   background: var(--bg-raised); border: 1px solid var(--line); border-right: 0; border-radius: var(--r-s) 0 0 var(--r-s); cursor: pointer; }
 @media (pointer: coarse) { .fsp-libcaret { width: var(--tap); } }
@@ -670,7 +670,7 @@ export const CSS = `
 .fsp-libcaret svg { transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
 .fsp[data-libshut] .fsp-libcaret svg { transform: rotate(180deg); }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
-.fsp-src > [role=tablist] { display: flex; flex: none; gap: 4px; }
+.fsp-src > [role=tablist] { display: flex; flex: none; gap: var(--sp-2); }
 .fsp-tab { display: none; }
 .fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
 .fsp[data-comp=handheld] .fsp-title { display: none; }
@@ -702,16 +702,16 @@ export const CSS = `
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
 .fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  border-left: 3px solid transparent; padding-left: 6px; background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
+  border-left: 3px solid transparent; padding-left: var(--sp-2); background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
-.fsp-tr { grid-area: tr; display: grid; gap: 4px; align-items: center; min-width: 0;
+.fsp-tr { grid-area: tr; display: grid; gap: var(--sp-2); align-items: center; min-width: 0;
   grid-template-columns: repeat(4, max-content) minmax(120px, 1fr) max-content minmax(48px, 96px) repeat(5, max-content); }
 .fsp-tr > * { min-width: 0; }
 .fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
 .fsp-tr .fsp-tb { display: grid; place-items: center; min-width: var(--fsp-bar); padding: 0; }
 .fsp-tb svg { width: 18px; height: 18px; fill: currentColor; }
 .fsp-tb svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-tr .fsp-rate { width: 6ch; min-width: 6ch; padding: 0 6px; font: .75rem var(--mono); }
+.fsp-tr .fsp-rate { width: 6ch; min-width: 6ch; padding: 0 var(--sp-2); font: .75rem var(--mono); }
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
 .fsp-vol { width: 100%; height: var(--fsp-bar); margin: 0; accent-color: var(--highlight); cursor: pointer; }
 .fsp[data-comp=handheld] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(120px, 1fr) max-content minmax(32px, 64px) max-content repeat(2, var(--fsp-bar)); }
@@ -725,7 +725,7 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-tr > :not(.fsp-play, .fsp-time) { display: none; }
 .fsp[data-comp=glance] .fsp-speed { display: none; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
-.fsp-off { display: flex; align-items: center; gap: 6px; min-height: var(--fsp-bar); }
+.fsp-off { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--fsp-bar); }
 .fsp-offu { color: var(--tx-mut); font-size: .8rem; }
 .fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--fsp-bar); display: grid; align-items: center; }
 .fsp[data-comp=handheld] .fsp-off input { width: 5ch; }
@@ -741,16 +741,16 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox { position: relative; min-height: 0; }
-.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: calc(var(--fsp-detail) + 12px); }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: calc(var(--fsp-detail) + var(--sp-4)); }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
-.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - 4px) minmax(0, 1fr) 20px var(--fsp-bar);
+.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - var(--sp-2)) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src" "tl" "st" "tr"; }
-.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--fsp-bar) * 2 + 4px); }
-.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + 12px); }
+.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--fsp-bar) * 2 + var(--sp-2)); }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + var(--sp-4)); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
@@ -759,14 +759,14 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
 .fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
-.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: 20px 6px 0;
+.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: var(--sp-5) var(--sp-2) 0;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
   opacity: 0; transition: opacity var(--t-move, 200ms) var(--ease-out, ease); pointer-events: none; }
 .fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
-@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: 8px; } }
+@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: var(--sp-3); } }
 @container (max-height: 129px) { .fsp-hb { display: none; } }
 @container (max-width: 439px) { .fsp-hb-vol, .fsp-hov .fsp-hb-mode { display: none; } }
-.fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 6px; cursor: pointer; touch-action: none; outline: none; }
+.fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 var(--sp-2); cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
 .fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
 .fsp-hb-seek:is(:hover, [data-drag]) .fsp-hb-track { height: 5px; }
@@ -776,11 +776,11 @@ export const CSS = `
 .fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
   background: var(--highlight); transform: scale(0); transition: transform var(--t-quick, 120ms) var(--ease-out, ease); }
 .fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
-.fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: 2px 6px; font: .75rem var(--mono); color: var(--tx);
+.fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); font: .75rem var(--mono); color: var(--tx);
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }
 .fsp:not([data-media]) :is(.fsp-hb-seek, .fsp-hb-play, .fsp-hb-mute, .fsp-hb-vol, .fsp-hb-time) { display: none; }
-.fsp:not([data-media]) .fsp-hb { grid-template-rows: var(--tap); padding-top: 8px; }
-.fsp-hb-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.fsp:not([data-media]) .fsp-hb { grid-template-rows: var(--tap); padding-top: var(--sp-3); }
+.fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 .fsp-hb-b { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); padding: 0; color: var(--tx); background: none;
   border: 0; border-radius: var(--r-s); cursor: pointer; }
 .fsp-hb-b:hover { color: var(--tx-hi); }
@@ -789,7 +789,7 @@ export const CSS = `
 .fsp-hb-b svg { width: 20px; height: 20px; fill: currentColor; }
 .fsp-hb-b svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .fsp-hb-vol { flex: 0 1 80px; min-width: 48px; height: var(--tap); margin: 0; accent-color: var(--highlight); cursor: pointer; }
-.fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 6px 0 10px; font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
@@ -1305,12 +1305,12 @@ export function createPlayer(api) {
 // ---- the settings card's playback rows -------------------------------------
 
 export const PLAY_CSS = `
-.fsp-pset { display: grid; grid-template-columns: 12ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: 4px 8px; align-items: center; margin-top: 8px; }
+.fsp-pset { display: grid; grid-template-columns: 12ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: var(--sp-2) var(--sp-3); align-items: center; margin-top: var(--sp-3); }
 .fsp-pset h4 { grid-column: 1 / -1; margin: 0; font-size: .85rem; color: var(--tx-mut); font-weight: 600; }
 .fsp-pset label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-pset input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
 .fsp-pset input:focus-visible, .fsp-pset button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-pset button { justify-self: start; min-height: var(--tap); min-width: calc(var(--tap) * 2); padding: 0 10px; background: none; color: var(--tx);
+.fsp-pset button { justify-self: start; min-height: var(--tap); min-width: calc(var(--tap) * 2); padding: 0 var(--sp-3); background: none; color: var(--tx);
   border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
 .fsp-pset button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
 .fsp-pset output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
