@@ -435,18 +435,19 @@ export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
 const CSS = `
 .ap { display: flex; flex-direction: column; gap: var(--gap); }
 .ap [hidden] { display: none !important; }
-.ap-tabs { display: grid; grid-template-columns: 1fr 1fr; }
+.ap-tabs { display: flex; }
+.ap-tabs > button { flex: 1 1 0; }
 .ap-tabs button, .ap-mtab { min-height: var(--tap); background: none; border: 1px solid var(--line); color: var(--tx-mut);
   font: 500 .82rem/1.2 var(--font); }
 .ap-tabs button { cursor: pointer; }
 .ap-tabs button:hover, .ap-mtab:hover { border-color: var(--line-4); color: var(--tx); }
 .ap-tabs button[aria-selected=true], .ap-mtab:has([aria-selected=true]) { color: var(--highlight); border-color: var(--highlight); }
 .ap-mtab { display: flex; align-items: stretch; min-width: 0; }
-.ap-mtab > button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0 6px; }
-.ap-mtab [role=tab] { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ap-mtab > button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0 var(--sp-2); }
+.ap-mtab [role=tab] { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: var(--sp-2); }
 .ap-mtab [role=tab] > span { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow-wrap: anywhere; text-align: center; }
-.ap-mon { flex: none; padding: 0 6px; gap: 0; }
+.ap-mon { flex: none; padding: 0 var(--sp-2); gap: 0; }
 .ap-mon .track { width: 28px; height: 16px; }
 .ap-mon .track::after { width: 10px; height: 10px; }
 .ap-mon input:checked + .track::after { transform: translateX(12px); }
@@ -454,42 +455,46 @@ const CSS = `
 .ap-mtrash { flex: none; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-mtrash svg, .ap-tool svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .ap-mtab button:disabled { cursor: default; opacity: .4; }
-.ap-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ap-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
 .ap-row > select, .ap-row > input { flex: 1 1 180px; min-height: var(--tap); }
 .ap-row .og-btn, .ap-run { min-height: var(--tap); }
 .ap-run { flex: 1 1 200px; }
 .ap-ctl { display: flex; flex-direction: column; }
-.ap-ctl label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ap-ctl label { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); }
 :is(.ap-ctl label, .ap-num) > span { font: 500 .76rem var(--font); color: var(--tx-mut); text-transform: lowercase; letter-spacing: .04em; }
-.ap-ctl output { display: inline-flex; align-items: center; padding: 1px 6px; font: var(--num-wght) .76rem var(--mono); font-variation-settings: 'wdth' 90;
+.ap-ctl output { display: inline-flex; align-items: center; padding: var(--sp-1) var(--sp-2); font: var(--num-wght) .76rem var(--mono); font-variation-settings: 'wdth' 90;
   color: var(--tx-val); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
   border: 1px solid var(--line-1); border-radius: var(--r-s); }
-.ap-ctl .unit { margin-left: 3px; font: 500 .64rem var(--font); color: var(--tx-ghost); }
-.ap-ctl input[type=range] { margin: 6px 0; }
+.ap-ctl .unit { margin-left: var(--sp-1); font: 500 .64rem var(--font); color: var(--tx-ghost); }
+.ap-ctl input[type=range] { margin: var(--sp-2) 0; }
 .ap-note { margin: 0; height: 1.45em; line-height: 1.45; font-size: .74rem; color: var(--ink-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-note[data-slot=pending] { color: var(--intent); }
 .ap-note:is([data-slot=overdue], [data-slot=fault]) { color: var(--warn); }
 .ap-note[data-slot=confirmed] { color: color-mix(in srgb, var(--reality) calc(var(--ga, 0) * 100%), var(--tx-mut)); }
-.ap-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px 10px; }
-.ap-num { display: flex; flex-direction: column; gap: 2px; }
+.ap-nums { --field-floor: 12rem; }   /* 6 layout columns: 'trough dwell (strokes)' holds one line */
+.ap-mtabs { --field-floor: 12rem; }
+.ap-narrow .ap-mtabs { --field-floor: 8rem; }   /* 4 columns: two tabs per row at 390 */
+.ap-narrow .ap-mtab > button, .ap-narrow .ap-mon { padding: 0 var(--sp-1); }
+.ap-narrow .ap-mtab [role=tab] { gap: 0; }
+.ap-num { display: flex; flex-direction: column; gap: var(--sp-1); }
 .ap .ap-num input { font-family: var(--mono); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); }
 .ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
 .ap-num:is([data-status=overdue], [data-status=fault]) input { border-color: var(--warn); }
 .ap-row .ap-tool { flex: none; width: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-row .ap-tool[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
-.ap-cap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
+.ap-cap { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
 .ap-ed { position: relative; width: 100%; background: var(--screen); box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .65);
   border: 1px solid var(--line-1); border-radius: var(--r-s); touch-action: none; user-select: none; }
 .ap-ed svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ap-stroke { height: 240px; }
 .ap-stair { height: 180px; }
-.ap-plan { display: flex; gap: 8px; align-items: stretch; }
+.ap-plan { display: flex; gap: var(--sp-3); align-items: stretch; }
 .ap-plan > .ap-ed { flex: 1 1 auto; min-width: 0; height: 120px; touch-action: auto; }
 .ap-win { flex: none; width: var(--tap); display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; }
 .ap-win button { flex: none; width: 100%; height: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-win output { text-align: center; font: var(--num-wght) .76rem var(--mono); color: var(--tx-val); }
-.ap-gl { position: absolute; bottom: 2px; transform: translateX(-50%); font: .62rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
+.ap-gl { position: absolute; bottom: var(--sp-1); transform: translateX(-50%); font: .62rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-ed path, .ap-ed line, .ap-ed polyline { fill: none; vector-effect: non-scaling-stroke; }
 .ap-ed .curve { stroke: var(--reality); stroke-width: 2; }
 .ap-ed .curve.intent { stroke: var(--intent); }
@@ -501,21 +506,21 @@ const CSS = `
 .ap-ed .cut.intent { stroke: var(--intent); }
 .ap-plus { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); padding: 0;
   display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--tx-mut); z-index: 2; }
-.ap-stair .ap-plus { margin: 0; padding: 4px; place-items: start; transform: translate(6px, 8px); }   /* off its corner handle: never over it */
+.ap-stair .ap-plus { margin: 0; padding: var(--sp-2); place-items: start; transform: translate(6px, 8px); }   /* off its corner handle: never over it */
 .ap-plus > i { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 50%;
   background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65); font: 600 14px/1 var(--mono); pointer-events: none; }
 .ap-plus:is(:hover, :focus-visible) { color: var(--highlight); outline: none; }
 .ap-plus:hover > i { border-color: var(--highlight); }
 .ap-plus:focus-visible > i { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
-.ap-ax { position: absolute; left: 4px; transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
+.ap-ax { position: absolute; left: var(--sp-2); transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-seg { position: absolute; bottom: 30px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
-.ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
+.ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; translate: -50% -50%;
   border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65);
   box-sizing: border-box; }
-.ap-h[data-shape=vpill]::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; }
-.ap-h[data-shape=hpill]::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; }
+.ap-h[data-shape=vpill]::after { width: 9px; height: 20px; border-radius: 4.5px; }
+.ap-h[data-shape=hpill]::after { width: 20px; height: 9px; border-radius: 4.5px; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
 .ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--hc, var(--reality)); background: none; }
 .ap-h:not(.off):hover::after { outline: 1px solid var(--highlight); outline-offset: 2px; }
@@ -526,17 +531,15 @@ const CSS = `
 .ap-h[data-status=fault] .ap-tag { color: var(--warn); }
 .ap-h.off { opacity: .4; }
 .ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem/1.3 var(--mono); color: var(--reality);
-  pointer-events: none; padding: 0 3px; border-radius: 4px; }
+  pointer-events: none; padding: 0 var(--sp-1); border-radius: 4px; }
 .ap-tag.bg { background: color-mix(in srgb, var(--screen) 85%, transparent); }
 .ap-tag:empty { display: none; }
-.ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
-.ap h4 { margin: 0; font: 500 .8rem var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); white-space: nowrap; }
+.ap-play { position: absolute; width: 14px; height: 14px; translate: -50% -50%; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
+.ap h4 { white-space: nowrap; }
 .ap-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 4px; }
 .ap-mtabs [role=tab]::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
 .ap-mtabs [role=tab][data-on=true]::before { background: var(--reality); }
 .ap-narrow :is(.ap-hint, .ap-ax) { display: none; }
-.ap-narrow .ap-mtabs { grid-template-columns: 1fr 1fr; }
 .ap-narrow .ap-mtabs [role=tab]::before { display: none; }
 @media (pointer: coarse) { .ap-mon, .ap-mtrash { min-width: var(--tap); } }
 .ap .ap-stale { opacity: .55; }
@@ -1010,7 +1013,7 @@ function mountCard(api, el, fields) {
     const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152, H: 180 };   // H - TRACK = YT: room under the track for the offset label
     let cur = 0;
     const kept = new Map();
-    const tabs = h('div', { class: 'ap-mtabs', role: 'tablist' });
+    const tabs = h('div', { class: 'ap-mtabs card-body', role: 'tablist' });
     const host = h('div');
     const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>';
     // The amp handle's touch box stays inside the plot: the axis half a handle in, the stair half a handle and a gap past it.
@@ -1092,7 +1095,7 @@ function mountCard(api, el, fields) {
           { key: 'phase', field: m.phase, label: 'Offset', shape: 'tri', at: (g) => g.phase, value: stairValue.phase, text: (v) => 'offset ' + num(v) },
         ],
       }, ed);
-      const nums = h('div', { class: 'ap-nums' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
+      const nums = h('div', { class: 'ap-nums card-body' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
       numRows.push(nums);
       const view = h('div', { class: 'ap-mview', role: 'tabpanel', 'aria-label': name }, cyc.box, cyc.note, nums);
       updaters.push(() => {
@@ -1114,7 +1117,7 @@ function mountCard(api, el, fields) {
     };
     show();
     rhythm = h('section', { class: 'ap-rhythm' },
-      h('div', { class: 'ap-cap' }, h('h4', { text: 'Rhythm modifier' }), h('span', { class: 'ap-hint explain', text: 'vary a control across strokes' })),
+      h('div', { class: 'ap-cap' }, h('h4', { class: 'card-sub', text: 'Rhythm modifier' }), h('span', { class: 'ap-hint explain', text: 'vary a control across strokes' })),
       tabs, host);
   }
 
@@ -1161,7 +1164,7 @@ function mountCard(api, el, fields) {
         // One label per whole step of 1, 2, 5, 10, 30 or 60 s that clears 28 px.
         const step = [1, 2, 5, 10, 30, 60].find((n) => n * w / winS >= 28) || 60;
         planBox.querySelectorAll('.ap-gl').forEach((e) => e.remove());
-        for (let t = 0; t <= winS; t += step) planBox.append(h('span', { class: 'ap-gl', style: 'left:' + (t / winS * 100) + '%' + (t === 0 ? ';transform:none;margin-left:3px' : t === winS ? ';transform:translateX(-100%);margin-left:-3px' : ''), text: String(t) }));
+        for (let t = 0; t <= winS; t += step) planBox.append(h('span', { class: 'ap-gl', style: 'left:' + (t / winS * 100) + '%' + (t === 0 ? ';transform:none;margin-left:var(--sp-1)' : t === winS ? ';transform:translateX(-100%);margin-left:calc(var(--sp-1) * -1)' : ''), text: String(t) }));
       }
       const mm = {};
       for (const { m, t } of mods) {
@@ -1230,7 +1233,7 @@ function mountCard(api, el, fields) {
   });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
-  const baseNums = h('div', { class: 'ap-nums' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
+  const baseNums = h('div', { class: 'ap-nums card-body' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
   numRows.push(baseNums);
   const tools = [inputsBtn(), linkBtn()];
   const presets = F.presetOp ? presetRow(api, F, updaters, tools) : h('div', { class: 'ap-row' }, ...tools);
