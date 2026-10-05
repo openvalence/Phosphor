@@ -37,7 +37,7 @@
 //   drawn at the cap with its middle dotted (cut). The picture never caps the
 //   value: the field's own max bounds it.
 
-const STORE_OP = { save: 1, load: 2, delete: 3 };   // registry store_ops (RFC-067)
+const STORE_OP = { save: 1, load: 2, delete: 3, rename: 4 };   // registry store_ops (RFC-067)
 const CBOR = { uint: 0, tstr: 4 };                 // SPEC §8.1 schema field types
 const HIT = 30;                                    // px: pointer radius that picks a handle
 const TANGENT = 0.7;                               // accel diamond: share of the bezier control offset
@@ -397,11 +397,11 @@ function normalAt(lines, x, y) {
  * densified polylines; marks: [x, y, clearance px (default 8)], the handles
  * and any control on the plot. A label tries the eight sides of its handle,
  * squarest to the line's local tangent first, at gap G, then the eight again
- * one and two label heights further out; it takes the first inside the box,
+ * one to four label heights further out; it takes the first inside the box,
  * clear of the lines, of the marks and of labels already placed, then of the
  * plot's own text (fixed, {x, y, w, h}), which yields first. The label with
  * the fewest open sides places first. None clear: the clearest, with a
- * backing (bg).
+ * backing (bg), preferring one clear of the hard marks (m[3]: a plus button) first, then of the lines, then of the handles.
  */
 export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
   const pts = lines.flat(), placed = [], out = [];
@@ -411,9 +411,10 @@ export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
       const r = { x: it.x + ux * (gap + it.w / 2) - it.w / 2, y: it.y + uy * (gap + it.h / 2) - it.h / 2, w: it.w, h: it.h };
       return { r, pref: Math.abs(ux * n[0] + uy * n[1]) / Math.hypot(ux, uy), line: away(pts, r),
         mark: marks.every((m) => (m[0] === it.x && m[1] === it.y) || away([m], r) > (m[2] || 8)),
+        hard: marks.every((m) => !m[3] || away([m], r) > m[2]),
         text: !fixed.some((q) => overlaps(r, q)), inside: r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H };
     }).sort((a, b) => b.pref - a.pref);
-    return [...ring(G), ...ring(G + it.h), ...ring(G + 2 * it.h)];
+    return [...ring(G), ...ring(G + it.h), ...ring(G + 2 * it.h), ...ring(G + 3 * it.h), ...ring(G + 4 * it.h)];
   });
   const open = (c) => c.inside && c.line > 1.5 && c.mark;
   // The label with the fewest open sides picks first (a stable sort: ties keep handle order).
@@ -422,7 +423,7 @@ export function placeLabels(items, lines, marks, W, H, fixed = [], G = 8) {
     const clear = (c) => open(c) && c.free;
     let pick = cands.find((c) => clear(c) && c.text) || cands.find(clear);
     const bg = !pick;
-    if (!pick) pick = [...cands].sort((a, b) => (b.free - a.free) || (b.inside - a.inside) || (b.line - a.line))[0];
+    if (!pick) pick = [...cands].sort((a, b) => (b.free - a.free) || (b.inside - a.inside) || (b.hard - a.hard) || ((b.line > 1.5) - (a.line > 1.5)) || (b.mark - a.mark) || (b.line - a.line))[0];
     placed.push(pick.r);
     out[i] = { dx: pick.r.x - items[i].x, dy: pick.r.y - items[i].y, bg };
   }
@@ -726,9 +727,10 @@ function makeEditor(api, o, ed) {
       const r = e.getBoundingClientRect();
       return { x: (r.left - b0.left) / z, y: (r.top - b0.top) / z, w: r.width / z, h: r.height / z };
     };
+    box.querySelectorAll(':scope > .ap-cap[hidden]').forEach((e) => { e.hidden = false; });   // a caption a label covered returns on the next clear render
     const fixed = [...box.querySelectorAll(':scope > :is(.ap-seg, .ap-cap, .ap-ax):not([hidden])')].map(rel);
     // A plus is a control: a label keeps off its dot like off a handle.
-    const dots = [...box.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map(rel).map((q) => [q.x + q.w / 2, q.y + q.h / 2, q.w / 2 + 2]);
+    const dots = [...box.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map(rel).map((q) => [q.x + q.w / 2, q.y + q.h / 2, q.w / 2 + 2, true]);
     let items = measure(), res = placeLabels(items, lines, [...marks, ...dots], bw, bh, fixed);
     // No clear side: a three-word label drops its first word (the side, which its half shows) and all place again.
     if (res.some((r, i) => r.bg && /^\S+ \S+ \S+$/.test(tagged[i].tag.textContent))) {
@@ -743,6 +745,7 @@ function makeEditor(api, o, ed) {
       t.classList.toggle('bg', r.bg);
       return { x: items[i].x + r.dx, y: items[i].y + r.dy, w: items[i].w, h: items[i].h };
     });
+    for (const e of box.querySelectorAll(':scope > .ap-cap')) e.hidden = placed.some((q) => overlaps(q, rel(e)));
     // A segment caption a label could not avoid yields: its word first, then itself.
     for (const e of box.querySelectorAll(':scope > .ap-seg:not([hidden])')) {
       if (!placed.some((q) => overlaps(q, rel(e)))) continue;
@@ -1351,10 +1354,10 @@ function presetRow(api, F, updaters, tools) {
     draw();
     if (asking) name.focus();
   });
-  // F2 or a double-click on the chosen preset renames it: the same slot, saved under the new name (the card's current values ride with it).
+  // F2 or a double-click on the chosen preset renames it in place, only where the op list carries a rename.
   const rename = () => {
     const r = (slots || []).find((x) => x.slot === pick());
-    if (!r || sel.disabled) return;
+    if ((op.options || [])[STORE_OP.rename] !== 'rename' || !r || sel.disabled) return;
     asking = false;
     renaming = r.slot;
     name.value = r.name || '';
@@ -1364,6 +1367,11 @@ function presetRow(api, F, updaters, tools) {
   };
   sel.addEventListener('dblclick', rename);
   sel.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); rename(); } });
+  // Enter keeps, Escape reverts, blur keeps (an empty name reverts); a click on Rename commits itself.
+  name.addEventListener('blur', (e) => {
+    if (renaming == null || e.relatedTarget === ok) return;
+    if (name.value && !ok.disabled) ok.click(); else { renaming = null; draw(); }
+  });
   name.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !ok.disabled) ok.click();
     else if (e.key === 'Escape') { asking = false; renaming = null; name.value = ''; draw(); sel.focus(); }
@@ -1372,7 +1380,7 @@ function presetRow(api, F, updaters, tools) {
     if (renaming != null) {
       const slot = renaming;
       renaming = null;
-      await run(STORE_OP.save, slot, name.value);
+      await run(STORE_OP.rename, slot, name.value);
       name.value = '';
       draw();
       return;
