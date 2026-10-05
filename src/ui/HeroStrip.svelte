@@ -13,16 +13,30 @@
   // instrument hero's row carries the transport controls (OG .hero-row).
   // This strip stays ignorant of what the snippet contains.
   import { prefs } from '../model/prefs.js';
-  import { heroBar } from './hero/heroBar.svelte.js';
+  import { heroBar, isCollapsed } from './hero/heroBar.svelte.js';
 
   let { heroes, accessory = null } = $props();
   // The rail stays mounted while hidden: railReadout() keeps feeding the numerals.
-  const collapsed = $derived(heroBar.form === 'mini' || ($prefs.railHide && $prefs.railHidden));
+  const collapsed = $derived(isCollapsed($prefs));
+  // The rail's natural height, whatever the collapse is doing: the slots' own
+  // boxes plus the bar's padding. The budget reads it, never the animated box.
+  let inner = $state(null);
+  $effect(() => {
+    if (!inner) return;
+    const measure = () => {
+      const kids = [...inner.children], g = parseFloat(getComputedStyle(inner).rowGap) || 0;
+      heroBar.railH = kids.reduce((a, e) => a + e.offsetHeight, 0) + Math.max(0, kids.length - 1) * g + 2 * g + 1;
+    };
+    const ro = new ResizeObserver(measure);
+    for (const k of inner.children) ro.observe(k);
+    measure();
+    return () => ro.disconnect();
+  });
 </script>
 
 {#if heroes && heroes.length}
   <div class="hero-strip" class:collapsed>
-    <div class="hero-inner" inert={collapsed}>
+    <div class="hero-inner" inert={collapsed} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}
         <div class="hero-slot" data-hero={hero.id}>
           <hero.component fields={hero.fields} accessory={i === 0 ? accessory : null} />

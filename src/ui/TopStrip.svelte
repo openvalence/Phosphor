@@ -59,8 +59,9 @@
   import PlanStrip from './widgets/PlanStrip.svelte';
   import { railReadout } from './hero/RailWidget.svelte';
   import MiniRail from './hero/MiniRail.svelte';
-  import { heroBar, budgetOf } from './hero/heroBar.svelte.js';
+  import { heroBar, budgetOf, isCollapsed } from './hero/heroBar.svelte.js';
   import { view } from '../model/viewport.svelte.js';
+  import { history } from '../model/history.svelte.js';
   import { prefs, setPref } from '../model/prefs.js';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
@@ -97,9 +98,11 @@
 
   const rail = $derived(railReadout());
   // The hide tab (Settings: Rail hide tab) and, while hidden, the mini rail.
-  const tab = $derived(!!rail && $prefs.railHide && heroBar.form === 'full');
-  const railHidden = $derived(!!rail && (heroBar.form === 'mini' || ($prefs.railHide && $prefs.railHidden)));
-  const showRail = () => setPref('railHidden', false);
+  const tab = $derived(!!rail && $prefs.railHide);
+  const railHidden = $derived(!!rail && isCollapsed($prefs));
+  // A user act: shows the rail even over the budget, until the next resize.
+  const showRail = () => { heroBar.userShow = true; setPref('railHidden', false); };
+  const toggleRail = () => (railHidden ? showRail() : setPref('railHidden', true));
   // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
   // and never on a hub whose op table lacks it (law 7).
   const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
@@ -136,20 +139,20 @@
     if (onopenlog) onopenlog();
   }
 
-  // The hero budget: the bar plus the rail fit a share of the window height,
-  // else the rail takes its mini form (a resize is user input, so this may
-  // shift the page). railH is the rail block's last measured full height;
-  // this bar's own height never depends on the form, so no loop.
-  let winH = $state(0);
-  let railH = 129;
-  $effect(() => {
-    const el = document.querySelector('.hero-inner');
-    if (heroBar.form === 'full' && el && !el.inert && el.offsetHeight) railH = el.offsetHeight;
-  });
+  // The hero budget (DESIGN §10.12): link bar + strip + rail fit a share of
+  // the window height. Order of giving way: the numeral shrinks to its floor
+  // (--num-cap), then the rail takes its mini form. Pure in viewport, prefs
+  // and the user's taps (userShow, cleared by a resize); never of history.
+  let winH = $state(0), winW = $state(0);
+  let chromeH = $state(34), tapPx = $state(49);
+  $effect(() => { void winH; void winW; heroBar.userShow = false; });
   $effect(() => {
     if (!winH) return;
     heroBar.budget = budgetOf(winH, view.bucket);
-    heroBar.form = view.bucket <= 2 || stripH + railH > heroBar.budget ? 'mini' : 'full';
+    const numMin = (winW >= 1024 ? 54 : 42) * .95 + 20;
+    const row = stacked ? numMin + 6 + tapPx + 12 : Math.max(numMin, tapPx) + 12;
+    const over = chromeH + row + heroBar.railH > heroBar.budget;
+    heroBar.form = $prefs.railHide && !heroBar.userShow && over ? 'mini' : 'full';
   });
 
   // The phone tab strip sticks just below this strip (App.svelte .tabs).
@@ -182,6 +185,7 @@
     if (unattended) return { kind: 'unattended', text: 'Unattended: no session in control' };
     if (lastRefusal.at) return { kind: 'refusal' };
     if (jogNote) return { kind: 'notice', text: jogNote };
+    if (history.msg) return { kind: 'notice', text: history.msg };
     if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
@@ -271,8 +275,18 @@
     const cs = getComputedStyle(stripEl);
     const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
-    // The secondaries need three 11 px rows; short of that they go, never shrink (ph-kl5u).
-    smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 72;
+    // The secondaries need three 11 px rows (num-h >= 3.4 x 11 + 20); short of that they go (ph-kl5u).
+    smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
+    chromeH = (stripEl.parentElement?.offsetHeight || 0) - stripEl.offsetHeight;
+    tapPx = measureEl.querySelector('[data-k=tap]')?.offsetHeight || tapPx;
+    // Stacked is decided at the numeral's design size, so the budget's shrink
+    // never feeds back into it (and a missing hub reads like a live one).
+    const W = innerWidth, F = W >= 1024 ? Math.min(80, Math.max(54, W * .062)) : Math.min(54, Math.max(42, W * .085));
+    const valEl = stripEl.querySelector('.hn-primary .hn-val');
+    const curF = valEl ? parseFloat(getComputedStyle(valEl).fontSize) : 0;
+    const primD = valEl && curF ? Math.max(stripEl.querySelector('.hn-primary .hn-label')?.offsetWidth || 0, valEl.offsetWidth * F / curF) : 3.5 * F;
+    const dCol = Math.min(21.6, (F * .95) / 3.4), colEl = stripEl.querySelector('.hn-col .hn-val');
+    const cCol = colEl ? parseFloat(getComputedStyle(colEl).fontSize) : 0;
     stripEl.style.setProperty('--prim-w', prim + 'px');
     const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
     const GAP = 6;
@@ -287,8 +301,9 @@
     const homeW = ops.length > 1 ? w('menu') : ops.length ? w('op') : slot;
     const iconW = ops.length ? w('icon') : slot;
     const needs = [pair + ovr + fl + homeW, pair + ovr + iconW, pair + iconW];
-    const col = stripEl.querySelector('.hn-col')?.offsetWidth;
-    const oneRow = content - prim - (col ? col + 18 : 0) - Math.min(240, content * 0.25) - 24;
+    const colW = stripEl.querySelector('.hn-col')?.offsetWidth;
+    const colD = colW && cCol ? colW * dCol / cCol : 11 * dCol + 40;
+    const oneRow = content - primD - colD - 18 - Math.min(240, content * 0.25) - 24;
     stacked = !needs.slice(0, 2).some((n) => n <= oneRow);
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
@@ -365,16 +380,17 @@
   </button>
 {/snippet}
 
-<svelte:window onkeydown={onWindowKey} bind:innerHeight={winH} />
+<svelte:window onkeydown={onWindowKey} bind:innerHeight={winH} bind:innerWidth={winW} />
 <svelte:document onclick={onDocClick} />
 
-<div class="topstrip" style:--hb={heroBar.budget ? heroBar.budget + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
+<div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
   <div class="strip" class:stacked class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
       <span class="btn home-btn icon-only" data-k="icon">{@render homeFace()}</span>
+      <span data-k="tap" style="height: var(--tap)"></span>
     </div>
     <div class="nums">
       {#if rail && rail.posField}
@@ -420,11 +436,11 @@
       {/if}
     {#if tab || railHidden}
       <div class="railtab">
-        {#if railHidden}<MiniRail onshow={heroBar.form === 'full' ? showRail : null} />{/if}
+        {#if railHidden}<MiniRail onshow={showRail} />{/if}
         {#if tab}
-          <button type="button" class="tab" aria-label={$prefs.railHidden ? 'Show rail' : 'Hide rail'} title={$prefs.railHidden ? 'Show rail' : 'Hide rail'}
-                  aria-expanded={!$prefs.railHidden} onclick={() => setPref('railHidden', !$prefs.railHidden)}>
-            <svg viewBox="0 0 12 12" aria-hidden="true"><path d={$prefs.railHidden ? 'M2.5 4.5l3.5 3.5 3.5-3.5' : 'M2.5 7.5l3.5-3.5 3.5 3.5'}/></svg>
+          <button type="button" class="tab" aria-label={railHidden ? 'Show rail' : 'Hide rail'} title={railHidden ? 'Show rail' : 'Hide rail'}
+                  aria-expanded={!railHidden} onclick={toggleRail}>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d={railHidden ? 'M2.5 4.5l3.5 3.5 3.5-3.5' : 'M2.5 7.5l3.5-3.5 3.5 3.5'}/></svg>
           </button>
         {/if}
       </div>
@@ -486,7 +502,8 @@
      height .95, plus its label line): change both together. */
   .strip {
     /* The hero budget caps the numeral (DESIGN §10.12): link bar, padding and, stacked, the control row come off it. */
-    --num-cap: max(40px, calc(var(--hb, 999px) - 46px));
+    --num-min: calc(54px * .95 + 20px);
+    --num-cap: max(var(--num-min), calc(var(--hb, 999px) - 46px));
     --num-h: min(calc(clamp(54px, 6.2vw, 80px) * .95 + 20px), var(--num-cap));
     /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
     --sb-w: 63px;
@@ -513,14 +530,14 @@
   }
   .measure > * { flex: none; }
   @media (max-width: 1023px) {
-    /* Narrow enough to stack: the cap leaves the control row room. From the viewport alone, never from the stacked state (it would feed back through the numeral's width). */
-    .strip { --num-cap: max(40px, calc(var(--hb, 999px) - 52px - var(--tap))); --num-h: min(calc(clamp(42px, 8.5vw, 54px) * .95 + 20px), var(--num-cap)); }
+    .strip { --num-min: calc(42px * .95 + 20px); --num-h: min(calc(clamp(42px, 8.5vw, 54px) * .95 + 20px), var(--num-cap)); }
   }
   /* Stacked (the measured budget says one row cannot hold the group): the
      primary numeral and the status on one row, the controls on a second the
      grid guarantees (a wrapping flex row once pushed the pair onto a third,
      clipped line). */
   .strip.stacked {
+    --num-cap: max(var(--num-min), calc(var(--hb, 999px) - 52px - var(--tap)));
     --sb-h: var(--tap);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);

@@ -13,7 +13,7 @@
   const at = $derived(r ? r.posFrac : null);
 </script>
 
-<button type="button" class="mini" aria-label="Show rail" title={onshow ? 'Show rail' : 'Window too short for the rail'} disabled={!onshow} onclick={onshow}>
+<button type="button" class="mini" aria-label="Show rail" title="Show rail" onclick={onshow}>
   <span class="plate">
     <span class="band" style="left:{l}%; width:{w}%"></span>
     {#if at != null}<span class="pos" style="left:{at * 100}%"></span>{/if}
