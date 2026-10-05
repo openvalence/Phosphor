@@ -27,11 +27,10 @@
  *            reading order;
  *            Enter opens the look picker; Delete removes (Ctrl+Z restores);
  *            Escape cancels a pointer drag with nothing written (ph-e82.20.5)
- *   layouts  a switch with changes since editing began asks Keep, Discard
- *            or Stay; a switch runs no animation on the grid; a layout
- *            exports as JSON and imports under a free name (ph-e82.20.6);
- *            outside edit mode the toolbar is the picker and Edit layout,
- *            the scale sits in the Layout menu beside density (ph-e82.22)
+ *   layouts  a switch from the sidebar ends edit mode and runs no animation
+ *            on the grid; a layout exports as JSON and imports under a free
+ *            name (ph-e82.20.6); the dash has no pane head and no toolbar
+ *            outside edit mode, and no scale anywhere (ph-rk0)
  *   density  Compact (per layout) shrinks the gutter, card padding and card
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
@@ -61,6 +60,10 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from
 import { buildSettingsModel, placeableControls, minCells, WIDGET } from '../src/model/settings.js';
 import { STORE_KEY } from '../src/model/grid.js';
 
+// The sidebar wrench drives edit mode (dashEdit); a layout is picked from the sidebar sub-items.
+const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
+const pickLayout = (page, name) => page.locator('nav.rail .sub-layout[data-layout="' + name + '"]').click();
 let fails = 0;
 const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
@@ -125,7 +128,8 @@ async function open(home, { w = 1280, h = 1000, store = null, edit = true } = {}
   await page.waitForSelector('.home .dash-grid', { timeout: 15000 });
   await page.waitForTimeout(300);
   if (edit) {
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editBtn(page).click();
+    await page.waitForSelector('.dash-toolbar');
     // The palette overlays the grid's top right (ph-wia); these cases edit the grid alone.
     await page.locator('.dash-toolbar .palette-toggle').click();
     await page.waitForTimeout(150);
@@ -315,7 +319,7 @@ console.log('select');
   await page.waitForTimeout(150);
   s = await stored();
   ok('one undo restores the whole group remove', !!s[F1 + '#2'] && !!s['nest:2'], Object.keys(s));
-  await page.locator('.home .dash-toolbar .done-btn').click();
+  await doneBtn(page).click();
   ok('leaving edit mode clears the selection', await page.locator('.home .dash-selbar').count() === 0);
   await ctx.close();
 }
@@ -389,7 +393,7 @@ console.log('keys');
 
   const reading = Object.entries(await stored()).filter(([k, e]) => e && e.y != null && k !== 'home:built')
     .sort(([, a], [, b]) => a.y - b.y || a.x - b.x).map(([k]) => k);
-  await page.locator('.home .dash-toolbar .done-btn').focus();
+  await doneBtn(page).focus();
   const seen = [];
   for (let i = 0; i < 120 && seen.length < reading.length; i++) {
     await page.keyboard.press('Tab');
@@ -439,40 +443,30 @@ console.log('layouts');
   } };
   const { ctx, page, said, card } = await open(null, { store });
   const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
-  const picker = page.locator('.home .dash-toolbar select[aria-label="Layout"]');
-  const bar = page.locator('.home .dash-switchbar');
   await card(F1).locator('.handle.grab').focus();
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(100);
-  await picker.selectOption('Night');
-  await page.waitForTimeout(100);
-  ok('a switch with changes since editing began asks first', await bar.count() === 1 && (await all()).active === 'Default'
-     && await picker.inputValue() === 'Default', await said());
-  await bar.locator('button', { hasText: 'Stay' }).click();
-  ok('Stay keeps the layout and its change', (await all()).active === 'Default' && (await all()).layouts.Default['full.machine'][F1].x === 1
-     && await bar.count() === 0);
-  await picker.selectOption('Night');
-  await page.waitForTimeout(50);
-  await bar.locator('button', { hasText: 'Discard and switch' }).click();
+  await pickLayout(page, 'Night');
+  await page.waitForTimeout(150);
   const moving = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.dash-grid') && !/fade-in/.test(a.animationName || '')).length);
   const still = await page.$$eval('.home .dash-cell, .home .dash-item', (els) => els.every((e) => getComputedStyle(e).transitionDuration.split(',').every((d) => parseFloat(d) === 0)));
-  await page.waitForTimeout(100);
   let s = await all();
-  ok('Discard puts the old layout back and switches', s.active === 'Night' && s.layouts.Default['full.machine'][F1].x === 0
-     && await card(F2).count() === 1 && await card(F1).count() === 0, JSON.stringify(s.layouts.Default['full.machine'][F1]));
+  ok('a switch from the sidebar ends edit mode and shows the other layout, the edit kept', s.active === 'Night'
+     && s.layouts.Default['full.machine'][F1].x === 1 && await card(F2).count() === 1 && await card(F1).count() === 0
+     && await page.locator('.dash-toolbar').count() === 0, JSON.stringify(s.layouts.Default['full.machine'][F1]));
   ok('a switch moves nothing on the grid (no transition; only the opacity fade-in)', moving === 0 && still, { moving, still });
-  await picker.selectOption('Default');
-  await page.waitForTimeout(100);
-  ok('a switch with no changes goes at once', (await all()).active === 'Default' && await bar.count() === 0);
-
-  await page.locator('.home .dash-toolbar .done-btn').click();
-  const plain = await page.$$eval('.home .dash-toolbar > *', (els) => els.map((e) => (e.getAttribute('aria-label') || e.textContent).trim()));
-  ok('outside edit mode the toolbar is the layout picker and Edit layout only', JSON.stringify(plain) === '["Layout","Edit layout"]', plain);
-  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
-  ok('the scale is not on the toolbar in edit mode either', await page.locator('.home .dash-toolbar > .scale, .home .dash-toolbar > .edit-ops .scale').count() === 0);
+  await pickLayout(page, 'Default');
+  await page.waitForTimeout(150);
+  ok('and back at once', (await all()).active === 'Default' && await card(F1).count() === 1);
+  ok('the dash has no pane head: no toolbar outside edit mode, the grid starts at the top of its wrap', await page.locator('.home .dash-toolbar, .home select[aria-label="Layout"]').count() === 0
+     && await page.evaluate(() => { const w = document.querySelector('.home > .dash-wrap'); return w.firstElementChild.classList.contains('dash-grid')
+       && w.firstElementChild.getBoundingClientRect().top === w.getBoundingClientRect().top; }));
+  await editBtn(page).click();
+  await page.waitForSelector('.dash-toolbar');
+  ok('the scale is not on the toolbar, and not in the Layout menu either (ph-rk0)', await page.locator('.dash-toolbar .scale, .dash-menu .scale').count() === 0);
   await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
-  ok('the scale sits in the Layout menu beside density', await page.locator('.dash-menu .view-row .scale [aria-label="Scale up"]').count() === 1
-     && await page.locator('.dash-menu .view-row .density').count() === 1);
+  ok('the Layout menu holds density, export, import, no scale', await page.locator('.dash-menu .view-row .density').count() === 1
+     && await page.locator('.dash-menu .scale').count() === 0);
   await page.locator('.dash-menu button', { hasText: 'Export' }).click();
   const text = await page.locator('.dash-menu textarea[aria-label="Layout JSON"]').inputValue();
   let parsed = null;
@@ -517,12 +511,13 @@ console.log('density');
   ok('Compact is stored on the layout', (await all()).layouts.Default.opts?.density === 'compact' && /is compact/.test(await said()));
   ok('Compact shrinks the gutter and the card label', tight.pad < roomy.pad && tight.title < roomy.title, { roomy, tight });
   ok('the label keeps the 11 px floor and handles keep 40 px (law 12)', tight.title >= 11 && tight.handle >= 39.5, tight);
-  await page.locator('.home .dash-toolbar select[aria-label="Layout"]').selectOption('Spare');
-  await page.locator('.home .dash-switchbar button', { hasText: 'Keep and switch' }).click();
+  await pickLayout(page, 'Spare');
   await page.waitForTimeout(150);
   ok('density is per layout: another layout stays comfortable', (await metrics()).pad === roomy.pad && !(await all()).layouts.Spare.opts);
-  await page.locator('.home .dash-toolbar select[aria-label="Layout"]').selectOption('Default');
+  await pickLayout(page, 'Default');
   await page.waitForTimeout(150);
+  await editBtn(page).click();
+  await page.waitForSelector('.dash-toolbar');
 
   ok('only a self-labeled card offers its label', await card(SLIDER).locator('.label-btn').count() === 1
      && await card('hero:pattern').locator('.label-btn').count() === 0);
@@ -533,14 +528,14 @@ console.log('density');
   await page.waitForTimeout(100);
   ok('showing the label is stored on the placement look', (await all()).layouts.Default['full.machine'][SLIDER].look?.label === true
      && await card(SLIDER).locator('.label-btn').getAttribute('aria-pressed') === 'true');
-  await page.locator('.home .dash-toolbar .done-btn').click();
+  await doneBtn(page).click();
   await page.waitForTimeout(100);
   ok('outside edit mode a shown label heads the card', await card(SLIDER).locator('.dash-head .dash-title').count() === 1);
-  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  await editBtn(page).click();
   await card(SLIDER).locator('.label-btn').click();
   await page.waitForTimeout(100);
   ok('hiding it again clears the option', !('label' in ((await all()).layouts.Default['full.machine'][SLIDER].look || {})));
-  await page.locator('.home .dash-toolbar .done-btn').click();
+  await doneBtn(page).click();
   await page.waitForTimeout(100);
   ok('outside edit mode a bare card has no head and the field names itself once',
      await card(SLIDER).locator('.dash-head').count() === 0 && await card(SLIDER).locator('.field-label').count() === 1);
@@ -621,7 +616,7 @@ console.log('floor');
     return { inside: r.right <= n.right + 0.5 && r.left >= n.left - 0.5 };
   });
   ok('the member lies inside the nest frame', f.inside, f);
-  await page.locator('.home .dash-toolbar .done-btn').click();
+  await doneBtn(page).click();
   await page.waitForTimeout(150);
   f = await fit('nest:1');
   ok('a long title truncates on one line', f.titleH < 2 * f.font && f.cut, f);
@@ -658,7 +653,7 @@ console.log('modes');
       'nest:1': { x: 13, y: 7, w: 14, h: 6, nest: { title: 'Pump', map: { [F3]: { x: 0, y: 0, w: 6, h: 3 } } } },
     }, { w, h, edit: false });
     const geo = () => page.evaluate(() => {
-      const g = document.querySelector('main.pane .dash-toolbar').parentElement.querySelector(':scope > .dash-grid');
+      const g = document.querySelector('main.pane .home > .dash-wrap > .dash-grid');
       const r = (el) => { const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
       return { grid: r(g), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
     });
@@ -675,7 +670,7 @@ console.log('modes');
     ok(tag + 'a nest member sits at its stored cells, on the top grid\'s columns (ph-nnl)', sub === s0['nest:1'].w
        && Math.abs(run.cards[F3][0] - run.grid[0] - (s0['nest:1'].x + m.x) * cell) <= 1 && Math.abs(run.cards[F3][2] - m.w * cell) <= 1,
        [sub, s0['nest:1'].w, m, run.cards[F3]]);
-    await page.locator('main.pane .dash-toolbar .edit-toggle').click();
+    await editBtn(page).click();
     await page.waitForTimeout(300);
     const edit = await geo();
     // Origin and width; the height may grow by the palette's reserve below the cards.

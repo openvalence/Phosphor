@@ -62,19 +62,21 @@
    * - `ondropkey(key, rect)` takes a palette entry dragged onto the grid in
    *   edit mode (grid.js MODULE_MIME); `rect` is the cell area the drop target
    *   showed, null when stacked. A nest's grid hands it on with the nest's id.
-   * - Outside edit mode the toolbar is the layout picker and Edit layout only;
-   *   scale, density and the layout and module operations sit in one popover
-   *   menu (test/responsive-matrix.mjs).
+   * - The Dash (`editable`) has no pane head. Edit mode follows dashEdit (the
+   *   sidebar wrench) and shows one sticky bar after the grid: undo, New nest,
+   *   Modules, and a popover for density, reset, delete, export, import and
+   *   saved modules. Any other top grid is a category page: no bar, no edit,
+   *   laid out from the rank seed.
    */
   import DashItem from './DashItem.svelte';
   import Nest from './Nest.svelte';
   import {
-    dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
-    switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
-    layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity, palette, edited,
+    dashboardLayout, grid, layouts, undo, undoLast, dashEdit,
+    switchLayout, deleteLayout, moduleNames, deleteModule,
+    exportLayout, importLayout, density, setDensity, palette,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
-  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
+  import { cellCount, place, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
     RESIZE_FLOOR, cellsFor, floorOf, growWidth, growHeight } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { onTheme } from '../../model/theme.js';
@@ -82,11 +84,11 @@
   import { FIELD_FLOOR_COLS } from '../../model/rclass.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, tool = null, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
+    ondragout = null, target = false, ondelete = null, tool = null, editable = false, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
-  const nests = $derived(given ? [] : layout.nests());
+  const nests = $derived(given || !editable ? [] : layout.nests());
   const all = $derived.by(() => {
     if (!nests.length) return items;
     const byId = new Map(items.map((it) => [it.id, it]));
@@ -114,24 +116,17 @@
   // drops the capture and strands the drag.
   let stackOrder = $state(null);
   let announceMsg = $state('');
-  let nameDraft = $state('');
   let moduleDraft = $state('');
   let sel = $state([]);          // selected ids (edit mode)
-  // The active layout as it was when editing began (or it became active while
-  // editing): the switch guard compares against it. Layouts save on every
-  // edit, so "changes" means the user's edits since then (a grow to the
-  // content floor is a repair, not one), which Discard can take back.
-  let baseline = $state(null);
-  let baseEdits = 0;
-  let pendingSwitch = $state(null);
   let layoutText = $state('');
+  // The Dash edits while the sidebar wrench says so (dashEdit); a category page never edits and lays out
+  // from the rank seed, its saved placements left untouched (law 10).
+  const seeded = !given && !editable;
   $effect(() => {
-    const a = layouts.active;
-    const on = !given && editing;
-    // untrack (T23): the snapshot reads the whole layout and must not subscribe to it.
-    untrack(() => { baseline = on ? layoutJson(a) : null; baseEdits = edited(); pendingSwitch = null; });
+    if (given || !editable) return;
+    editing = dashEdit.on;
+    if (!dashEdit.on) untrack(() => { pin = null; stackOrder = null; sel = []; });
   });
-  const changed = () => baseline !== null && edited() !== baseEdits && layoutJson() !== baseline;
   let marquee = $state(null);    // {x0, y0, x1, y1, add} client px while a marquee is drawn
   let dragMoved = false;         // the grip's click after a real drag is not a selection
 
@@ -145,7 +140,7 @@
   // Each placed item carries its entry's `look` (grid.js pack) and a setter
   // bound to THIS grid's map, so one control in two nests keeps two looks.
   const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? (pin.group ? groupPins(pin) : pin) : null);
-  const placed = $derived(layout.arrange(all, cols, live, fitH)
+  const placed = $derived((seeded ? place(all, {}, cols, null, fitH) : layout.arrange(all, cols, live, fitH))
     .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
   // The drop targets: where the dragged cards or the palette entry land on release.
   const ghosts = $derived(stack ? [] : live ? placed.filter((p) => (pin.group || [pin]).some((g) => g.id === p.id))
@@ -293,6 +288,7 @@
       if (!o || JSON.stringify(e) !== JSON.stringify(o)) { need[k] = e; grew = true; }
     }
     dirty.clear();
+    if (seeded) return;
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
     const held = layout.held();
     if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols, null); return; }
@@ -629,39 +625,6 @@
     stackOrder = null;
     announce('Layout reset to default');
   }
-  function setEditing(on) {
-    editing = on;
-    pin = null;
-    stackOrder = null;
-    sel = [];
-    announce('Layout edit mode ' + (on ? 'on' : 'off'));
-  }
-  // ---- layout switching: no motion, a guard for changes, JSON in and out ----------
-  function pick(e) {
-    const to = e.currentTarget.value;
-    e.currentTarget.value = layouts.active;
-    if (to === layouts.active) return;
-    if (changed()) {
-      pendingSwitch = to;
-      announce(layouts.active + ' changed while editing: keep or discard');
-      return;
-    }
-    doSwitch(to);
-  }
-  function doSwitch(to) {
-    const from = layouts.active;
-    pendingSwitch = null;
-    pin = null;
-    stackOrder = null;
-    sel = [];
-    if (switchLayout(to)) announce('Layout ' + to + (from !== to ? ', was ' + from : ''));
-  }
-  function resolveSwitch(how) {
-    const to = pendingSwitch;
-    if (how === 'stay' || !to) { pendingSwitch = null; announce('Staying on ' + layouts.active); return; }
-    if (how === 'discard') restoreLayout(layouts.active, baseline);
-    doSwitch(to);
-  }
   function exportText() {
     layoutText = exportLayout(layouts.active);
     navigator.clipboard?.writeText(layoutText).then(() => announce('Layout ' + layouts.active + ' copied'), () => {});
@@ -671,19 +634,11 @@
     try {
       const name = importLayout(layoutText);
       layoutText = '';
-      if (changed()) {
-        pendingSwitch = name;
-        announce('Imported layout ' + name + ': keep or discard ' + layouts.active + ' changes');
-      } else {
-        doSwitch(name);
-        announce('Imported layout ' + name);
-      }
+      pin = null; stackOrder = null; sel = [];
+      if (switchLayout(name)) announce('Imported layout ' + name);
     } catch (err) {
       announce('Not imported: ' + err.message);
     }
-  }
-  function nameOp(fn, ok, fail) {
-    if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
   /** Fix a new unplaced entry at the first free rect it is drawn at (grid.js addNest). */
   const settleNew = (id) => {
@@ -745,96 +700,7 @@
 {/snippet}
 
 <div class="dash-wrap" data-density={given ? null : density()}>
-  {#if !given}
-  <!-- One row in both modes: the status slot swaps the hint, the selection
-       and the switch guard in place, so the grid never moves. -->
-  <div class="dash-toolbar" class:stack>
-    <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active} onchange={pick}>
-      {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
-    </select>
-    {#if editing}
-    <div class="dash-slot">
-      {#if pendingSwitch}
-        <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
-          <span class="sel-n">{layouts.active} changed while editing</span>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
-        </div>
-      {:else if selSet.size}
-        {@render selbar()}
-      {:else}
-        <span class="dash-hint" title="Drag grips to move, edges to resize">Drag grips to move, edges to resize</span>
-      {/if}
-    </div>
-      <div class="edit-ops" role="group" aria-label="Layout editing">
-        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
-                onclick={undoOnce}>Undo</button>
-        <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
-        {#if palette.shown}
-          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
-                  onclick={() => (palette.open = !palette.open)}>Modules</button>
-        {/if}
-        <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
-      </div>
-      <div class="dash-menu og-panel" id={menuId} popover role="group" aria-label={'Layout ' + layouts.active}
-           style={'position-anchor: --' + menuId}>
-        <input class="layout-name" type="text" aria-label="Layout name" placeholder="Name" bind:value={nameDraft} />
-        <div class="menu-row">
-          <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
-                  onclick={() => nameOp(saveLayoutAs, 'Saved layout', 'That name is taken')}>Save as</button>
-          <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
-                  onclick={() => nameOp((n) => renameLayout(layouts.active, n), 'Renamed to', 'That name is taken')}>Rename</button>
-          <button type="button" class="og-btn sm" disabled={layoutNames().length < 2}
-                  onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
-          <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
-        </div>
-        <div class="menu-row view-row">
-          <div class="scale" role="group" aria-label="Scale">
-            <button type="button" class="og-btn sm" aria-label="Scale down" title="Scale down"
-                    disabled={grid.scale === grid.steps[0]} onclick={() => stepScale(-1)}>−</button>
-            <button type="button" class="og-btn sm" aria-label="Reset scale"
-                    title="Reset scale" onclick={() => stepScale(0)}>{Math.round(grid.scale * 100)}%</button>
-            <button type="button" class="og-btn sm" aria-label="Scale up" title="Scale up"
-                    disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
-          </div>
-          <label class="og-switch density">
-            <input type="checkbox" role="switch" checked={density() === 'compact'}
-                   onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
-            <span class="track"></span>Compact cards
-          </label>
-        </div>
-        <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
-                  placeholder="Paste layout JSON to import" bind:value={layoutText}></textarea>
-        <div class="menu-row">
-          <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
-          <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
-        </div>
-        {#if moduleNames().length}
-          <div class="menu-row">
-            <select class="layout-pick" aria-label="Module" bind:value={moduleDraft}>
-              <option value="">Module…</option>
-              {#each moduleNames() as n (n)}<option value={n}>{n}</option>{/each}
-            </select>
-            <button type="button" class="og-btn sm" disabled={!moduleDraft} onclick={insertModule}>Insert</button>
-            <button type="button" class="og-btn sm" disabled={!moduleDraft}
-                    onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
-          </div>
-          {#if preview}
-            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here</p>
-            <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
-              {#each preview as m (m.key)}
-                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not on this machine)'}</li>
-              {/each}
-            </ul>
-          {/if}
-        {/if}
-      </div>
-    {/if}
-    <button type="button" class="og-btn sm edit-toggle" class:done-btn={editing} aria-pressed={editing}
-            onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
-  </div>
-  {:else if editing && selSet.size}
+  {#if given && editing && selSet.size}
     {@render selbar()}
   {/if}
 
@@ -888,6 +754,69 @@
   </div>
 
   <div class="sr-only" aria-live="polite">{announceMsg}</div>
+  {#if !given && editable && editing}
+  <!-- Out of the grid's flow, after it: entering edit mode moves nothing above (ph-wia). The sidebar
+       wrench ends editing. -->
+  <div class="dash-toolbar" class:stack>
+    <div class="dash-slot">
+      {#if selSet.size}
+        {@render selbar()}
+      {:else}
+        <span class="dash-hint" title="Drag grips to move, edges to resize">Drag grips to move, edges to resize</span>
+      {/if}
+    </div>
+      <div class="edit-ops" role="group" aria-label="Layout editing">
+        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
+                onclick={undoOnce}>Undo</button>
+        <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
+        {#if palette.shown}
+          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
+                  onclick={() => (palette.open = !palette.open)}>Modules</button>
+        {/if}
+        <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
+      </div>
+      <div class="dash-menu og-panel" id={menuId} popover role="group" aria-label={'Layout ' + layouts.active}
+           style={'position-anchor: --' + menuId}>
+        <div class="menu-row">
+          <button type="button" class="og-btn sm" disabled={layouts.active === 'Default'}
+                  onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
+          <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
+        </div>
+        <div class="menu-row view-row">
+          <label class="og-switch density">
+            <input type="checkbox" role="switch" checked={density() === 'compact'}
+                   onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
+            <span class="track"></span>Compact cards
+          </label>
+        </div>
+        <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
+                  placeholder="Paste layout JSON to import" bind:value={layoutText}></textarea>
+        <div class="menu-row">
+          <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
+          <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
+        </div>
+        {#if moduleNames().length}
+          <div class="menu-row">
+            <select class="layout-pick" aria-label="Module" bind:value={moduleDraft}>
+              <option value="">Module…</option>
+              {#each moduleNames() as n (n)}<option value={n}>{n}</option>{/each}
+            </select>
+            <button type="button" class="og-btn sm" disabled={!moduleDraft} onclick={insertModule}>Insert</button>
+            <button type="button" class="og-btn sm" disabled={!moduleDraft}
+                    onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
+          </div>
+          {#if preview}
+            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here</p>
+            <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
+              {#each preview as m (m.key)}
+                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not on this machine)'}</li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </div>
+  </div>
+  {/if}
 </div>
 
 <style>
@@ -901,13 +830,18 @@
     gap: 6px;
   }
 
-  /* One row: the slot between the picker and the edit group swaps its
-     contents in place. Only the stacked phone grid wraps (ph-e82.7 owes
-     its ruling): the picker keeps the first row, the edit group follows. */
+  /* The edit chrome: one row after the grid, sticky to the pane's bottom edge, so entering edit
+     mode moves nothing above it. The slot swaps the hint and the selection in place. */
   .dash-toolbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: var(--sp-3) 0;
+    background: var(--bg-card);
+    border-top: 1px solid var(--line-2);
   }
   .dash-toolbar.stack { flex-wrap: wrap; justify-content: flex-end; }
   /* ponytail: clips past ~960 px with three or more selected; a menu for
@@ -919,9 +853,7 @@
     align-items: center;
     overflow: hidden;
   }
-  .scale { display: flex; gap: 2px; }
   .view-row { align-items: center; gap: 12px; }
-  .scale button { min-width: 40px; font-variant-numeric: tabular-nums; }
   .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: 5px 28px 5px 10px; margin-right: auto; }
   .edit-ops { display: flex; gap: 6px; }
   .dash-hint {
@@ -996,21 +928,6 @@
     font-family: var(--mono);
     font-size: .72rem;
     resize: vertical;
-  }
-  .layout-name {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--line-2);
-    border-radius: var(--radius);
-    background: var(--bg);
-    color: var(--tx);
-    font: inherit;
-    font-size: .82rem;
-  }
-  @media (pointer: coarse) { .layout-name { min-height: 40px; } }
-  .done-btn {
-    color: var(--ink-hi);
-    border-color: var(--line-4);
   }
 
   /* Tracks are exactly one cell, rows too; the spacing lives inside

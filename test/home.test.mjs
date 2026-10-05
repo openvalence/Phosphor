@@ -254,8 +254,9 @@ const surfaceFaults = (page) => page.evaluate(() => {
   }
   return [...new Set(out)];
 });
-const editBtn = (page) => page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' });
-const doneBtn = (page) => page.locator('.home .dash-toolbar .done-btn');
+// The sidebar wrench drives edit mode (dashEdit); the dash has no pane head.
+const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
 
 /** Everything a derived category page shows: field uids, action labels, card titles. */
 async function harvestDerived(page) {
@@ -407,6 +408,17 @@ if (!LIVE) {
   const fresh = await geoOf(fr.page);
   ok('sections: a 1428 -> 1024 resize lays out the same as a fresh 1024 load', JSON.stringify(resized) === JSON.stringify(fresh), [resized, fresh]);
   await fr.ctx.close();
+  // A category page never edits and lays out from the seed; a placement saved for it is inert and survives untouched.
+  ok('a category page has no toolbar, no grip and no edit entry', await page.locator('main.pane .dash-toolbar, main.pane .handle.grab').count() === 0);
+  const inert = JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: { 'full.cat2': { 'group:2:ungrouped': { x: 9, y: 9, w: 5, h: 5 } } } } });
+  await page.evaluate(([k, v]) => localStorage.setItem(k, v), ['phosphor.layouts', inert]);
+  await page.reload();
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.waitForTimeout(1200);
+  const seededAt = (await geoOf(page))['group:2:ungrouped'];
+  ok('a saved category placement is ignored: the card sits where the seed puts it', !!seededAt && seededAt[1] < 600, seededAt);
+  ok('and the store is left as it was', await page.evaluate((k) => localStorage.getItem(k), 'phosphor.layouts') === inert);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 

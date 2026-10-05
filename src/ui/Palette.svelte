@@ -101,7 +101,7 @@
     z-index: 4;
     right: var(--gap);
     width: min(320px, calc(100% - 2 * var(--gap)));
-    margin-top: 40px;
+    margin-top: 0;
     padding: 8px 12px;
     box-shadow: 0 10px 28px rgba(var(--shade-rgb), .6);
   }

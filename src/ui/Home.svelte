@@ -66,7 +66,7 @@
     for (const k of ['composite', 'plugin', 'safety']) {
       for (const c of controls.filter((x) => x.kind === k)) {
         put(c.key, k === 'safety' ? (c.op === SAFETY_OP.estop ? estopLabel() : 'Pause') : c.hero.title || cap(c.hero.id),
-          KIND_SECTION[k], { kind: k, control: c, min: minOf(c), selfLabeled: k === 'safety' });
+          KIND_SECTION[k], { kind: k, control: c, fields: c.hero?.fields?.claimed ? model.fields.filter((f) => c.hero.fields.claimed.has(f.uid)) : undefined, min: minOf(c), selfLabeled: k === 'safety' });
       }
     }
     const fields = controls.filter((x) => x.kind === 'field');
@@ -171,7 +171,7 @@
   {#if editing && builder}
     <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
   {/if}
-  <DashGrid viewId={VIEW} {items} bind:editing ondelete={builder ? removeIds : null} onduplicate={builder ? duplicateId : null}
+  <DashGrid viewId={VIEW} {items} bind:editing editable={builder} ondelete={builder ? removeIds : null} onduplicate={builder ? duplicateId : null}
             resolve={(k) => modules.get(canon(k))?.title}
             ondropkey={builder ? (key, at, nest) => add(key, nest || '', null, at) : null} />
 </div>
