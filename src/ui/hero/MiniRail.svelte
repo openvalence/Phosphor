@@ -43,8 +43,8 @@
   }
   .band {
     position: absolute;
-    top: 6px;
-    bottom: 6px;
+    top: var(--sp-2);
+    bottom: var(--sp-2);
     background: rgba(var(--intent-deep-rgb), .16);
     border-left: 1px solid var(--intent);
     border-right: 1px solid var(--intent);

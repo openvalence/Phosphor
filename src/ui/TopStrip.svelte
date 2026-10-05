@@ -149,13 +149,13 @@
   // (--num-cap), then the rail takes its mini form. Pure in viewport, prefs
   // and the user's taps (userShow, cleared by a resize); never of history.
   let winH = $state(0), winW = $state(0);
-  let chromeH = $state(34), tapPx = $state(49);
+  let chromeH = $state(34), tapPx = $state(49), padV = $state(6);
   $effect(() => { void winH; void winW; heroBar.userShow = false; });
   $effect(() => {
     if (!winH) return;
     heroBar.budget = budgetOf(winH, view.bucket);
     const numMin = (winW >= 1024 ? 54 : 42) * .95 + 20;
-    const row = stacked ? numMin + 6 + tapPx + 12 : Math.max(numMin, tapPx) + 12;
+    const row = stacked ? numMin + padV + tapPx + 2 * padV : Math.max(numMin, tapPx) + 2 * padV;
     const over = chromeH + row + heroBar.railH > heroBar.budget;
     // Handheld: the mini is the rail's permanent form; its pop-up is the rail.
     heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
@@ -290,6 +290,7 @@
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
     // The secondaries need three 11 px rows (num-h >= 3.4 x 11 + 20); short of that they go (ph-kl5u).
     smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
+    padV = parseFloat(cs.paddingTop) || padV;
     chromeH = (stripEl.parentElement?.offsetHeight || 0) - stripEl.offsetHeight;
     tapPx = measureEl.querySelector('[data-k=tap]')?.offsetHeight || tapPx;
     // Stacked is decided at the numeral's design size, so the budget's shrink
@@ -525,9 +526,9 @@
     --sico: clamp(12px, calc(var(--sb-h) - 30px), 21px);
     display: flex;
     align-items: center;
-    gap: 6px 12px;
-    height: calc(max(var(--num-h), var(--tap)) + 12px);
-    padding: 6px var(--gap);
+    gap: var(--sp-2) var(--sp-4);
+    height: calc(max(var(--num-h), var(--tap)) + 2 * var(--sp-2));
+    padding: var(--sp-2) var(--gap);
     position: relative;
   }
   /* Off-layout: the ops at their inline width, for the budget only. */
@@ -555,11 +556,11 @@
     --sb-h: var(--tap);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
-    height: calc(var(--num-h) + 6px + var(--tap) + 12px);
+    height: calc(var(--num-h) + var(--sp-2) + var(--tap) + 2 * var(--sp-2));
   }
   .stacked .nums { grid-area: num; }
   .stacked .status { grid-area: status; }
-  .strip.stacked .dock { grid-area: dock; display: flex; justify-content: flex-end; gap: 6px; min-width: 0; }
+  .strip.stacked .dock { grid-area: dock; display: flex; justify-content: flex-end; gap: var(--sp-2); min-width: 0; }
   /* Watch-sized: no room beside the numeral. A current condition covers
      the numeral in its own cell; the edge history stays in the Log. */
   @media (max-width: 300px) {
@@ -590,8 +591,8 @@
      status slot outranks it. */
   .readback {
     position: absolute;
-    top: 6px;
-    left: calc(var(--gap) + var(--prim-w, 0px) + 18px);
+    top: var(--sp-2);
+    left: calc(var(--gap) + var(--prim-w, 0px) + var(--sp-5));
     right: var(--gap);
     pointer-events: none;
   }
@@ -604,7 +605,7 @@
     overflow: hidden;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     justify-content: center;
     font-size: 12.5px;
   }
@@ -626,7 +627,7 @@
   .recovery {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-width: 0;
   }
 
@@ -634,9 +635,9 @@
 
   /* Rides the status slot's right end: no width of its own in the strip's budget. */
   .status { position: relative; }
-  .status.hastab { padding-right: 56px; }
-  .railtab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 6px; }
-  .status.hastab:has(.mini) { padding-right: 126px; }
+  .status.hastab { padding-right: calc(var(--tap) + var(--sp-3)); }
+  .railtab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: var(--sp-2); }
+  .status.hastab:has(.mini) { padding-right: calc(var(--tap) + 64px + var(--sp-3) + var(--sp-2)); }
   @media (max-width: 300px) { .railtab { display: none; } .status.hastab { padding-right: 0; } }
   .tab {
     display: flex;
@@ -654,17 +655,17 @@
   /* Bare: out of flow at the window's top right, the pair alone. */
   .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
   .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
-  .topstrip.bare .strip { display: flex; height: auto; padding: 6px; }
+  .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
   /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
   .pair {
     flex: none;
     display: flex;
-    gap: 6px;
+    gap: var(--sp-2);
   }
   /* Never shrink, never scroll: the budget decides what is inline. */
-  .ovr, .ops, .home-menu { flex: none; display: flex; gap: 6px; }
+  .ovr, .ops, .home-menu { flex: none; display: flex; gap: var(--sp-2); }
   .ops:empty { display: none; }
 
   .home-menu { position: relative; }
@@ -674,7 +675,7 @@
     gap: 1px;
     min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 2px 6px 1px;
+    padding: var(--sp-1) var(--sp-2) 1px;
     font-size: max(11px, .54rem);
     line-height: 1;
   }
@@ -686,13 +687,13 @@
      Opens toward the pair, mirrored with the dock. */
   .menu-pop {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + var(--sp-2));
     left: 0;
     z-index: 40;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 6px;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
     min-width: 100%;
     background: var(--bg-card);
     border: 1px solid var(--line-2);
@@ -713,7 +714,7 @@
     min-height: var(--tap);
     min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 2px 6px 1px;
+    padding: var(--sp-1) var(--sp-2) 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -741,11 +742,11 @@
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
     .strip { --sb-w: var(--tap); }
-    .dock :global(.safety-op .btn) { padding: 3px 3px 2px; }
+    .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-1) var(--sp-1); }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   }
   @media (max-width: 300px) {
-    .dock :global(.safety-op .btn) { padding: 2px 4px; }
+    .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-2); }
     .dock :global(.safety-op .ico) { display: none; }
   }
   .home-btn.icon-only { min-width: var(--tap); }
@@ -759,7 +760,7 @@
     justify-content: center;
     min-height: var(--tap);
     min-width: max(var(--tap), 56px);
-    padding: 0 12px;
+    padding: 0 var(--sp-4);
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -778,10 +779,10 @@
   .st-dismiss {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     min-width: 0;
     min-height: var(--tap);
-    padding: 0 4px;
+    padding: 0 var(--sp-2);
     text-align: left;
     border-radius: var(--r-s);
   }
@@ -793,9 +794,9 @@
     max-width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-height: var(--tap);
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     font-size: 12px;
@@ -817,7 +818,7 @@
     font-size: 11px;
     color: var(--ink-dim);
     border: 1px solid var(--line-2);
-    padding: 0 5px;
+    padding: 0 var(--sp-2);
   }
 
   :global(html.still) .btn.hazard { animation: none; }

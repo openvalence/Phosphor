@@ -404,7 +404,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 0 12px;
+    gap: 0 var(--sp-4);
     height: 1.1rem;
     min-width: 0;
     overflow: hidden;
@@ -426,7 +426,7 @@
   .plan-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     font-size: .75rem;
     color: var(--tx-val);
   }

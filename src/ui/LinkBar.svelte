@@ -307,7 +307,7 @@
   .linkbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     height: calc(32px + var(--chrome-inset-top, 0px));
     padding: var(--chrome-inset-top, 0px) var(--gap) 0;
     background: var(--bg-raised);
@@ -329,7 +329,7 @@
   .header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     flex: 0 1 auto;
     min-width: 6ch;
     overflow: hidden;
@@ -362,13 +362,13 @@
   .chips {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
   }
   .chips.pinned { flex: none; margin-left: auto; }
   /* Whatever does not fit on the one line wraps below a clipped edge, so the
      optional chips shed from their tail at ANY width, first in the bar. */
   .chips.opt {
-    gap: 2em 6px;
+    gap: 2em var(--sp-2);
     min-width: 0;
     flex: 0 1000 auto;
     flex-wrap: wrap;
@@ -383,10 +383,10 @@
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-2);
     font-size: .62rem;
     font-weight: 400;
-    padding: 3px 6px;
+    padding: var(--sp-1) var(--sp-2);
     border-radius: var(--radius);
     background: var(--chip);
     border: 1px solid var(--chip-line);

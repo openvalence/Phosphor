@@ -1203,7 +1203,7 @@
   .rail-panel {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--s) * 4px);
+    gap: var(--sp-2);
   }
 
   /* ---- input tape (disabled command surface) ------------------------------ */
@@ -1270,8 +1270,9 @@
   .rail-ripple {
     position: absolute;
     top: 0; bottom: 0;
-    width: 240px;
-    margin-left: -120px;
+    --rw: 240px;
+    width: var(--rw);
+    margin-left: calc(var(--rw) / -2);
     background:
       repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .45) 0 1px, transparent 1px 7px),
       radial-gradient(closest-side, rgba(var(--intent-rgb), .14), transparent);
@@ -1332,19 +1333,19 @@
   .rail-ruler-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .rail-endcap {
     position: absolute;
-    bottom: 2px;
+    bottom: var(--sp-1);
     font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
     pointer-events: none;
   }
-  .rail-endcap.lo { left: 4px; }
-  .rail-endcap.hi { right: 4px; }
+  .rail-endcap.lo { left: var(--sp-2); }
+  .rail-endcap.hi { right: var(--sp-2); }
   .rail-endcap.yield, .rail-ghost.yield { visibility: hidden; }
   /* The mid label rides the endcaps' line, clear of the tick row (ph-hjo). */
   .rail-ghost {
     position: absolute;
     left: 50%;
-    bottom: 2px;
+    bottom: var(--sp-1);
     transform: translateX(-50%);
     font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
@@ -1423,7 +1424,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    padding: 1px 6px;
+    padding: 1px var(--sp-2);
     border-radius: var(--r-s);
     background: var(--bg-sunken);
     font-size: max(11px, 0.6rem);
@@ -1436,7 +1437,7 @@
      outward so they never overlap. */
   .rail-win {
     position: absolute;
-    bottom: 2px;
+    bottom: var(--sp-1);
     left: clamp(2.2em, var(--at), calc(100% - 2.2em));
     transform: translateX(-50%);
     font-size: max(11px, 0.56rem);
@@ -1444,8 +1445,8 @@
     pointer-events: none;
   }
   /* At the window's extremes the value takes the axis mark's spot. */
-  .rail-win.edge.lo { left: 4px; transform: none; }
-  .rail-win.edge.hi { left: auto; right: 4px; transform: none; }
+  .rail-win.edge.lo { left: var(--sp-2); transform: none; }
+  .rail-win.edge.hi { left: auto; right: var(--sp-2); transform: none; }
   .rail-win.flank.lo { left: max(var(--at), 3.2em); transform: translateX(-100%); }
   .rail-win.flank.hi { left: min(var(--at), calc(100% - 3.2em)); transform: none; }
   /* Handles are siblings of the band (not nested — each positions from its own

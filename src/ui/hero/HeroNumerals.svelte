@@ -218,7 +218,7 @@
   .hero-numerals {
     display: flex;
     align-items: flex-end;
-    gap: 18px;
+    gap: var(--sp-5);
   }
 
   /* Planned target, lag, speed: one column of "label value unit" rows beside
@@ -230,7 +230,7 @@
     display: grid;
     grid-template-columns: max-content max-content max-content;
     align-items: baseline;
-    column-gap: 6px;
+    column-gap: var(--sp-2);
     align-self: flex-end;
   }
   .hn-col .hn-secondary { display: contents; }
@@ -244,13 +244,13 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: var(--sp-1);
   }
 
   .hn-label {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-family: var(--font);
     font-size: .68rem;
     color: var(--tx-mut);

@@ -196,7 +196,7 @@
     min-width: var(--sb-w, max(var(--tap), 96px));
     width: var(--sb-w, auto);
     height: var(--sb-h, auto);
-    padding: 2px 6px 1px;
+    padding: var(--sp-1) var(--sp-2) 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -212,7 +212,7 @@
   /* Narrower than the strip's pair at 96px (2 x 96 + 6 + 2 x --gap): the
      op sheds the 96px floor and its text wraps; --tap still holds. */
   @media (max-width: 221px) {
-    .btn { min-width: var(--tap); padding: 2px 6px; white-space: normal; }
+    .btn { min-width: var(--tap); padding: var(--sp-1) var(--sp-2); white-space: normal; }
   }
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
