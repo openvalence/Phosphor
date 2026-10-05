@@ -533,7 +533,8 @@ question in §10.8).
   one surface, the panel's line carried over as a divider between the
   numerals row and the rail; no panel outline. The jog tape is always
   shown wherever a jog is possible; while a source owns the rail the
-  planned segment keeps its slot (`ph-ryi7`) and Override brings it back. The window's span (mm) is a small pill on a dark plate inside the
+  planned segment keeps its slot (`ph-ryi7`) and Override brings it back.
+  The window's span (mm) is a small pill on a dark plate inside the
   band; its start and end values sit on the axis row under the band's
   edges, in the window color, beside the gray axis marks; no label row
   above the band. A small up-arrow tab mid-bar, between the readouts and the
