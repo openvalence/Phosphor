@@ -1186,7 +1186,7 @@ if (LIVE) {
     // ph-e31: the value then the unit, the host's Field chip (format.js): no space glyph, a 3 px gap, padded off the edge.
     const unit = await ctl.locator('output').evaluate((o) => ({ text: o.firstChild.textContent, unit: o.querySelector('.unit')?.textContent,
       gap: getComputedStyle(o.querySelector('.unit')).marginLeft, pad: getComputedStyle(o).paddingRight }));
-    ok('unit: Speed reads the value, then the unit 3 px off, inside a padded chip', unit.text === '30' && unit.unit === '%' && unit.gap === '3px'
+    ok('unit: Speed reads the value, then the unit a token off, inside a padded chip', unit.text === '30' && unit.unit === '%' && parseFloat(unit.gap) > 1 && parseFloat(unit.gap) < 4
       && parseFloat(unit.pad) >= 4, unit);   // --sp-2
 
     // ph-8qc: the deep label holds its place through pending, overdue and the echo; the words ride the note.

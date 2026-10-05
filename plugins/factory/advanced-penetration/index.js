@@ -465,18 +465,19 @@ const CSS = `
 .ap-ctl output { display: inline-flex; align-items: center; padding: var(--sp-1) var(--sp-2); font: var(--num-wght) .76rem var(--mono); font-variation-settings: 'wdth' 90;
   color: var(--tx-val); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
   border: 1px solid var(--line-1); border-radius: var(--r-s); }
-.ap-ctl .unit { margin-left: 3px; font: 500 .64rem var(--font); color: var(--tx-ghost); }
+.ap-ctl .unit { margin-left: var(--sp-1); font: 500 .64rem var(--font); color: var(--tx-ghost); }
 .ap-ctl input[type=range] { margin: var(--sp-2) 0; }
 .ap-note { margin: 0; height: 1.45em; line-height: 1.45; font-size: .74rem; color: var(--ink-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-note[data-slot=pending] { color: var(--intent); }
 .ap-note:is([data-slot=overdue], [data-slot=fault]) { color: var(--warn); }
 .ap-note[data-slot=confirmed] { color: color-mix(in srgb, var(--reality) calc(var(--ga, 0) * 100%), var(--tx-mut)); }
-.ap-nums, .ap-mtabs { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
-.ap-mtabs { gap: var(--sp-2); }
-.ap-num { flex: 1 1 6rem; display: flex; flex-direction: column; gap: var(--sp-1); }
-.ap-mtab { flex: 1 1 11.9rem; }
-.ap-narrow .ap-mtab { flex-basis: calc(50% - var(--sp-2)); }
+.ap-nums { --field-floor: 12rem; }   /* 6 layout columns: 'trough dwell (strokes)' holds one line */
+.ap-mtabs { --field-floor: 12rem; }
+.ap-narrow .ap-mtabs { --field-floor: 8rem; }   /* 4 columns: two tabs per row at 390 */
+.ap-narrow .ap-mtab > button, .ap-narrow .ap-mon { padding: 0 var(--sp-1); }
+.ap-narrow .ap-mtab [role=tab] { gap: 0; }
+.ap-num { display: flex; flex-direction: column; gap: var(--sp-1); }
 .ap .ap-num input { font-family: var(--mono); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); }
 .ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
 .ap-num:is([data-status=overdue], [data-status=fault]) input { border-color: var(--warn); }
@@ -493,7 +494,7 @@ const CSS = `
 .ap-win { flex: none; width: var(--tap); display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; }
 .ap-win button { flex: none; width: 100%; height: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-win output { text-align: center; font: var(--num-wght) .76rem var(--mono); color: var(--tx-val); }
-.ap-gl { position: absolute; bottom: 2px; transform: translateX(-50%); font: .62rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
+.ap-gl { position: absolute; bottom: var(--sp-1); transform: translateX(-50%); font: .62rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-ed path, .ap-ed line, .ap-ed polyline { fill: none; vector-effect: non-scaling-stroke; }
 .ap-ed .curve { stroke: var(--reality); stroke-width: 2; }
 .ap-ed .curve.intent { stroke: var(--intent); }
@@ -512,14 +513,14 @@ const CSS = `
 .ap-plus:hover > i { border-color: var(--highlight); }
 .ap-plus:focus-visible > i { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
-.ap-ax { position: absolute; left: 4px; transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
+.ap-ax { position: absolute; left: var(--sp-2); transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-seg { position: absolute; bottom: 30px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
-.ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
+.ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; translate: -50% -50%;
   border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65);
   box-sizing: border-box; }
-.ap-h[data-shape=vpill]::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; }
-.ap-h[data-shape=hpill]::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; }
+.ap-h[data-shape=vpill]::after { width: 9px; height: 20px; border-radius: 4.5px; }
+.ap-h[data-shape=hpill]::after { width: 20px; height: 9px; border-radius: 4.5px; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
 .ap-h[data-shape=tri]::after { border-radius: 0; width: 0; height: 0; border-width: 0 7px 12px; border-color: transparent transparent var(--hc, var(--reality)); background: none; }
 .ap-h:not(.off):hover::after { outline: 1px solid var(--highlight); outline-offset: 2px; }
@@ -533,7 +534,7 @@ const CSS = `
   pointer-events: none; padding: 0 var(--sp-1); border-radius: 4px; }
 .ap-tag.bg { background: color-mix(in srgb, var(--screen) 85%, transparent); }
 .ap-tag:empty { display: none; }
-.ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
+.ap-play { position: absolute; width: 14px; height: 14px; translate: -50% -50%; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
 .ap h4 { white-space: nowrap; }
 .ap-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-mtabs [role=tab]::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); }
@@ -1012,7 +1013,7 @@ function mountCard(api, el, fields) {
     const ML = { X0: 90, XR: 970, YT: 28, YB: 120, AX: 40, TRACK: 152, H: 180 };   // H - TRACK = YT: room under the track for the offset label
     let cur = 0;
     const kept = new Map();
-    const tabs = h('div', { class: 'ap-mtabs', role: 'tablist' });
+    const tabs = h('div', { class: 'ap-mtabs card-body', role: 'tablist' });
     const host = h('div');
     const TRASH = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.8 9.5h6.4L12 4M6.75 6.5v4.5M9.25 6.5v4.5"/></svg>';
     // The amp handle's touch box stays inside the plot: the axis half a handle in, the stair half a handle and a gap past it.
@@ -1094,7 +1095,7 @@ function mountCard(api, el, fields) {
           { key: 'phase', field: m.phase, label: 'Offset', shape: 'tri', at: (g) => g.phase, value: stairValue.phase, text: (v) => 'offset ' + num(v) },
         ],
       }, ed);
-      const nums = h('div', { class: 'ap-nums' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
+      const nums = h('div', { class: 'ap-nums card-body' }, ...MOD.map(([k, , l]) => numCtl(m[k], l)));
       numRows.push(nums);
       const view = h('div', { class: 'ap-mview', role: 'tabpanel', 'aria-label': name }, cyc.box, cyc.note, nums);
       updaters.push(() => {
@@ -1232,7 +1233,7 @@ function mountCard(api, el, fields) {
   });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
-  const baseNums = h('div', { class: 'ap-nums' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
+  const baseNums = h('div', { class: 'ap-nums card-body' }, ...DRIVEN.map(([k, , l]) => numCtl(F[k], l)));
   numRows.push(baseNums);
   const tools = [inputsBtn(), linkBtn()];
   const presets = F.presetOp ? presetRow(api, F, updaters, tools) : h('div', { class: 'ap-row' }, ...tools);
