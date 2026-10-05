@@ -834,6 +834,9 @@ if (LIVE) {
     const { ctx, page } = await open();
     await toPatternPage(page);
     await toAdvanced(page);
+    // The dash seeds this card at its field floor (428 px at 1440), where a degenerate state may back a label (the
+    // designed fallback); these states assert the wide plot's placement, so the plot is held at the old width.
+    await page.addStyleTag({ content: 'main.pane .ap { width: 1184px !important; }' });
     const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(150); };
     const onLine = () => page.evaluate(() => {
       const hits = [];
