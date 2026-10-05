@@ -605,7 +605,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     const n = up ? await (await reach()).count() : 0;
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
-        ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
+    ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
       && (await flip.textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
       && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
     await flip.click();
@@ -961,6 +961,29 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const flipE = byRole('axis.flipped'), posE = byRole('telemetry.position'), cfgE = byRole('window.min');
   const T = 500, P = 150;
   const cfg = stateOf(cfgE, { 'window.min': 0, 'window.max': T, 'geometry.max_travel': T, 'geometry.measured_travel': T });
+  // Coarse pointer, full window: both end handles stay whole and the page does not widen.
+  {
+    const { ctx, page } = await open(browser, { w: 360, h: 800, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
+    await page.waitForTimeout(600);
+    const m = await page.evaluate(() => {
+      const hits = (k) => { const r = document.querySelector('.rail-band-handle.' + k).getBoundingClientRect(); let n = 0;
+        for (let x = Math.floor(r.x); x < r.x + r.width; x++) { const e = document.elementFromPoint(x + 0.5, r.y + r.height / 2); if (e && e.classList.contains('rail-band-handle') && e.classList.contains(k)) n++; }
+        return n; };
+      return { lo: hits('lo'), hi: hits('hi'), sw: document.documentElement.scrollWidth, iw: innerWidth };
+    });
+    ok('rail: touch, full window: each end handle hits >= 40 px and the page does not widen', m.lo >= 40 && m.hi >= 40 && m.sw === m.iw, JSON.stringify(m));
+    await ctx.close();
+  }
+  // The latched e-stop's state line lies inside its box on the stacked strip.
+  {
+    const { ctx, page } = await open(browser, { w: 1024, h: 768, touch: false, catalog: 'none' });
+    await page.locator('.topstrip .btn-estop').click();
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => { const b = document.querySelector('.topstrip .btn-estop'), s = b.querySelector('.state');
+      const br = b.getBoundingClientRect(), sr = s.getBoundingClientRect(); return { txt: s.textContent, bt: br.top, bb: br.bottom, st: sr.top, sb: sr.bottom }; });
+    ok('strip: the latched e-stop state line lies inside its box at 1024x768', r.txt === 'Hold 3 s' && r.st >= r.bt && r.sb <= r.bb - 1, JSON.stringify(r));
+    await ctx.close();
+  }
   const seen = {};
   for (const flipped of [0, 1]) {
     const states = { [flipE.id]: stateOf(flipE, { 'axis.flipped': flipped }), [cfgE.id]: cfg };
@@ -1011,7 +1034,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   // Flip shows what the press does, not the state: one fixed glyph (a struck
   // 0 between two arrows), the same normal and flipped.
   const [n, f] = [seen[0].face, seen[1].face];
-  ok('flip icon: a fixed glyph, the same normal and flipped', n.d === f.d && /^M9\.5 16\.5/.test(n.d), JSON.stringify([n.d, f.d]));
+  ok('flip icon: a fixed glyph, the same normal and flipped, shares no stroke with Override or Return', n.d === f.d && /^M9\.5 16\.5/.test(n.d) && !/M3 5v14|M10 6v12/.test(n.d), JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
   ok('rail heads: the span pill and the axis read one precision; the unit is spaced',
     hd.band === seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));

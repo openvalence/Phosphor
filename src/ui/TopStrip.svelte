@@ -318,7 +318,7 @@
 
 {#snippet flipButton()}
   <!-- The glyph shows what the press does, never the state (two arrows around
-       a struck 0, the left one grey); the state is in the tooltip. -->
+       a struck 0, the left one gray); the state is in the tooltip. -->
   <!-- The ladder wears the fields' ring outside the box (docs/EFFECTS.md A,
        ph-vdk.65), never the inset one. -->
   <button type="button" class="rw-flip field" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
@@ -327,7 +327,7 @@
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
          stroke-linejoin="round" aria-hidden="true">
       <ellipse cx="12" cy="12" rx="3.2" ry="5.2"/><path d="M9.5 16.5l5-9M17 12h5M19.5 9.5L22 12l-2.5 2.5"/>
-      <path class="grey" d="M7 12H2M4.5 9.5L2 12l2.5 2.5"/>
+      <path class="gray" d="M7 12H2M4.5 9.5L2 12l2.5 2.5"/>
     </svg>
     <span class="lbl">Flip</span>
   </button>
@@ -446,7 +446,7 @@
     /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
     --sb-w: 84px;
     --sb-h: min(68px, max(var(--num-h), var(--tap)));
-    --sico: clamp(16px, calc(var(--sb-h) - 31px), 28px);
+    --sico: clamp(16px, calc(var(--sb-h) - 40px), 28px);
     display: flex;
     align-items: center;
     gap: 6px 12px;
@@ -603,8 +603,8 @@
   .menu-pop .btn { justify-content: flex-start; }
   .menu-pop :global(.safety-op) { height: auto; }
 
-  /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on.
-     One square box in every state: the icon is its only content. */
+  /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on. Same
+     box as the ops (--sb-w, --sb-h). */
   .rw-flip {
     display: flex;
     flex-direction: column;
@@ -622,7 +622,7 @@
     font-weight: 500;
     font-size: .72rem;
   }
-  .rw-flip .grey { stroke: var(--tx-ghost); }
+  .rw-flip .gray { stroke: var(--tx-ghost); }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
@@ -635,7 +635,7 @@
     50% { box-shadow: 0 0 0 2px rgba(var(--bad-rgb), .45), 0 0 10px rgba(var(--bad-rgb), .35); }
   }
 
-  /* Phone: the safety ops drop their idle hint line and the 96 px floor
+  /* Phone: the safety ops drop their idle hint line and narrow to 64 px
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
     .strip { --sb-w: 64px; }

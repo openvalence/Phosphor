@@ -1089,8 +1089,8 @@
            onkeydown={onBandKey}>
         <span class="rail-band-label mono">{spanLabel}</span>
       </div>
-      <span class="rail-win lo mono" class:flank={narrow} style="--at:{bandL * 100}%">{flipped ? formatValue(max, maxVal) : formatValue(min, minVal)}</span>
-      <span class="rail-win hi mono" class:flank={narrow} style="--at:{bandR * 100}%">{flipped ? formatValue(min, minVal) : formatValue(max, maxVal)}</span>
+      <span class="rail-win lo mono" class:flank={narrow} class:edge={yieldLo} style="--at:{bandL * 100}%">{flipped ? formatValue(max, maxVal) : formatValue(min, minVal)}</span>
+      <span class="rail-win hi mono" class:flank={narrow} class:edge={yieldHi} style="--at:{bandR * 100}%">{flipped ? formatValue(min, minVal) : formatValue(max, maxVal)}</span>
 
       <div class="rail-band-handle lo"
            class:disabled={!minEnabled}
@@ -1386,6 +1386,9 @@
     color: var(--intent);
     pointer-events: none;
   }
+  /* At the window's extremes the value takes the axis mark's spot. */
+  .rail-win.edge.lo { left: 4px; transform: none; }
+  .rail-win.edge.hi { left: auto; right: 4px; transform: none; }
   .rail-win.flank.lo { left: max(var(--at), 3.2em); transform: translateX(-100%); }
   .rail-win.flank.hi { left: min(var(--at), calc(100% - 3.2em)); transform: none; }
   /* Handles are siblings of the band (not nested — each positions from its own
@@ -1417,6 +1420,9 @@
     .rail-band-handle { width: var(--tap); top: calc(var(--s) * 33px - 21px); height: 42px; }
     .rail-band { top: calc(var(--s) * 33px - 20px); height: 40px; }
     .rail-tape-track { height: 40px; }
+    /* Half a handle (--tap) must fit between the host edge and the window's
+       edge: the end handles straddle the host. */
+    .rail-panel { padding-inline: max(0px, calc(var(--tap) / 2 - var(--gap))); }
   }
   .rail-band-handle::before {
     content: '';
