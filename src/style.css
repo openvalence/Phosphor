@@ -453,6 +453,18 @@ html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
    moves nothing, and without it a drag would strobe. */
 html.still [data-shadow='overdue']:not(.field) { animation: none; }
 html.still * { transition: none !important; }
+/* Popovers rise in on the quick token; zero specificity so a component's own
+   popover motion wins. */
+:where(html:not(.still)) [popover] {
+  transition: opacity var(--t-quick) var(--ease-out), translate var(--t-quick) var(--ease-out);
+}
+@starting-style {
+  :where(html:not(.still)) [popover]:popover-open { opacity: 0; translate: 0 -4px; }
+}
+/* A page switch (App.svelte keys the pane on the page): the new page fades in
+   (opacity only: a transform would re-anchor fixed descendants). The one owner of page-switch motion; pages add none. */
+@keyframes page-in { from { opacity: 0; } }
+:where(html:not(.still)) .pane-main > * { animation: page-in var(--t-move) var(--ease-out) both; }
 html.still .field[data-shadow] { animation: none; }
 html.still .field[data-glow][data-shadow='confirmed'] {
   --fx-g-peak: .6;
@@ -496,7 +508,7 @@ input[type="range"]::-webkit-slider-thumb {
   border: 1px solid var(--tx-val);
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--bg);
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--t-quick) var(--ease-out), box-shadow var(--t-quick) var(--ease-out);
 }
 input[type="range"]::-moz-range-thumb {
   width: var(--slider-thumb-w);
@@ -506,7 +518,7 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--tx-val);
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--bg);
-  transition: border-color .12s, box-shadow .12s;
+  transition: border-color var(--t-quick) var(--ease-out), box-shadow var(--t-quick) var(--ease-out);
 }
 /* Thumb ignites --highlight + glow while dragged. */
 input[type="range"]:active::-webkit-slider-thumb {
@@ -681,7 +693,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   background: var(--bg);
   border: 1px solid var(--line-2);
   position: relative;
-  transition: border-color .15s;
+  transition: border-color var(--t-quick) var(--ease-out);
   flex: 0 0 auto;
 }
 .og-switch .track::after {
@@ -693,7 +705,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   height: 16px;
   border-radius: var(--radius);
   background: var(--tx-mut);
-  transition: transform .15s, background .15s;
+  transition: transform var(--t-quick) var(--ease-out), background var(--t-quick) var(--ease-out);
 }
 .og-switch input:checked + .track { border-color: var(--reality); }
 .og-switch input:checked + .track::after {
@@ -722,7 +734,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   cursor: pointer;
   background: transparent;
   color: var(--tx);
-  transition: border-color .12s, color .12s;
+  transition: border-color var(--t-quick) var(--ease-out), color var(--t-quick) var(--ease-out);
 }
 .og-btn:hover { border-color: var(--line-4); }
 .og-btn:active { border-color: var(--highlight); color: var(--highlight); }
@@ -783,7 +795,7 @@ select:focus { outline: none; border-color: var(--highlight); }
   font-weight: 500;
   font-family: 'Chakra Petch', sans-serif;
   cursor: pointer;
-  transition: border-color .12s, color .12s;
+  transition: border-color var(--t-quick) var(--ease-out), color var(--t-quick) var(--ease-out);
 }
 .og-seg button:hover { border-color: var(--line-4); }
 .og-seg button:disabled { opacity: .45; cursor: not-allowed; }

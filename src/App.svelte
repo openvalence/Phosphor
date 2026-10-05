@@ -474,6 +474,7 @@
 {#snippet pane()}
   <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
     <div class="pane-main">
+      {#key current.id}
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
       {:else if !ready}
@@ -522,6 +523,7 @@
       {:else if current.id === 'plugins'}
         <PluginsPane />
       {/if}
+      {/key}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
       {#if current.page?.fields && !current.page.mediaFullscreen}

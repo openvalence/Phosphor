@@ -18,6 +18,7 @@
    */
   import { tick } from 'svelte';
   import { flip } from 'svelte/animate';
+  import { slide } from 'svelte/transition';
   import { hold } from './hold.js';
   import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, renameLayout, dashEdit } from '../model/dashboard.svelte.js';
   import { isStill } from '../ui/still.svelte.js';
@@ -104,7 +105,8 @@
 <div class="rail-sub" role="none" bind:this={listEl}>
   {#each names as n (n)}
     {@const on = dashActive && layouts.active === n}
-    <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}>
+    <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}
+         transition:slide|local={{ duration: isStill() ? 0 : 200 }}>
       {#if renaming === n}
         <input class="sub-input" aria-label={'Rename ' + n} aria-invalid={taken} bind:value={name} use:selectOn
                oninput={() => (taken = false)}
