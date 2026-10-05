@@ -598,14 +598,12 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap);
-    padding-top: var(--gap);
-    /* The hero panel's frame (style.css .og-panel: a 4px offset, 1px outline)
-       reaches 5px past its box; the rail and the content reach it too, and
-       with the scrollbars pref on, the content's track sits past it on the
-       right (style.css [data-shade]). --track must fit the .app padding left
-       past the hero frame. */
+    /* rail | gap | content | gap: the sidebar is flush on the window's left
+       edge, one --gap under the hero bar and above the status row. */
+    padding: var(--gap) var(--gap) var(--gap) 0;
+    /* With the scrollbars pref on, the content's track sits inside the right
+       gap (style.css [data-shade]). */
     --track: 0px;
-    margin: 0 calc(-5px - var(--track)) 0 -5px;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
@@ -615,6 +613,7 @@
      must scroll with it, never overflow the non-scrolling column. */
   .content {
     position: relative;
+    margin-right: calc(var(--track) * -1);
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
@@ -627,22 +626,19 @@
        against. Grid's default stretch gives it the frame's full height. */
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 6px;
     background: var(--bg-raised);
     border: 1px solid var(--line-0);
-    border-radius: var(--radius);
+    border-left: 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
     /* Independent scroll for a catalog with many categories. */
     overflow-y: auto;
   }
   .rail.mini { width: 56px; }
-  /* The recess shades (style.css [data-shade]) take no room: their margin
-     also cancels the rail's 2px flex gap. */
-  .rail::before { margin-bottom: -26px; }
-  .rail::after { margin-top: -26px; }
-
+  /* No padding on the rail itself: the recess shades (style.css [data-shade])
+     span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {
     align-self: flex-end;
+    margin: var(--sp-2) var(--sp-2) var(--sp-1);
     min-width: 28px;
     min-height: 28px;
     color: var(--ink-faint);
@@ -655,12 +651,12 @@
   .rail-sec {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding-bottom: 8px;
+    gap: var(--sp-1);
+    padding-bottom: var(--sp-3);
   }
   .rail-sec + .rail-sec {
     border-top: 1px solid var(--line-0);
-    padding-top: 8px;
+    padding-top: var(--sp-3);
   }
   /* Phosphor: shell chrome, shaded as the shell row is (style.css --shell-*),
      pinned to the rail's foot. */
@@ -668,10 +664,11 @@
     flex: 1 0 auto;
     display: flex;
     flex-direction: column;
+    padding: 0 var(--sp-2) var(--sp-2);
   }
   .rail-sec.shell {
     margin-top: auto;
-    padding: 6px;
+    padding: var(--sp-2);
     background: var(--shell-bg);
     color: var(--shell-fg);
     border: 1px solid var(--shell-border);
@@ -681,7 +678,7 @@
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
   .rail-lbl {
-    padding: 2px 8px 4px;
+    padding: var(--sp-1) var(--sp-3) var(--sp-2);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -692,9 +689,9 @@
   .rail-tab {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-height: 34px;
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     border-radius: var(--radius);
     border: 1px solid transparent;
     color: var(--ink-dim);
@@ -706,7 +703,7 @@
   }
   .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
-  .rail:not(.mini) .rail-tab.sub { padding-left: 24px; }
+  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) + var(--sp-2)); }
   .rail-tab.on {
     color: var(--ink-hi);
     background: var(--bg-card);
@@ -759,8 +756,8 @@
     position: sticky;
     top: var(--strip-h, 0px);
     z-index: 15;
-    margin: 0 calc(var(--gap) * -1);
-    padding: 6px var(--gap);
+    margin: 0 calc(var(--app-pad) * -1);
+    padding: var(--sp-2) var(--gap);
     background: color-mix(in srgb, var(--bg) 92%, transparent);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line-0);
@@ -773,7 +770,7 @@
   }
   .tabs > div {
     display: flex;
-    gap: 4px;
+    gap: var(--sp-2);
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -781,7 +778,7 @@
   .tabs button {
     flex: 0 0 auto;
     min-height: var(--tap);
-    padding: 0 14px;
+    padding: 0 var(--sp-4);
     border-radius: var(--radius);
     color: var(--ink-dim);
     font-weight: 500;
@@ -801,26 +798,17 @@
 
   .pane { padding: var(--gap) 0; min-width: 0; }
 
-  /* Columns capped at the reading measure, never one stretched row: a
-     full-width card is 1180px of pane at 1440 and 1420px at 1920, which is
-     140 and 169 characters of label-to-value travel. */
-  .card-body {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, min(100%, var(--measure)));
-    gap: 14px var(--gap);
-  }
-
   /* ---- §11 drill-in (handheld, glance) ---------------------------------- */
   .drill-open {
     display: flex;
     width: 100%;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--sp-4);
   }
   .drill-back { margin-bottom: var(--gap); }
-  .drill-page { padding: 12px; }
+  .drill-page { padding: var(--sp-4); }
   .drill-title {
-    margin: 0 0 12px;
+    margin: 0 0 var(--sp-4);
     font-size: .8rem;
     text-transform: uppercase;
     letter-spacing: .08em;
@@ -834,7 +822,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100%;
-    padding-bottom: 0;
+    padding-block: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes

@@ -88,14 +88,14 @@
 </div>
 
 <style>
-  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
   .og-switch { min-height: var(--tap); align-self: flex-start; font-size: .8rem; }
-  .rate { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--tx-mut); }
+  .rate { display: flex; align-items: center; gap: var(--sp-3); font-size: .8rem; color: var(--tx-mut); }
   .rate input { width: 9ch; min-height: var(--tap); }
   textarea {
     width: 100%;
     min-height: var(--tap);
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
     background: var(--bg-sunken);

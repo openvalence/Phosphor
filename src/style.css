@@ -133,7 +133,17 @@
   /* Invisible padding above and below a range track so a fingertip can land
      on it: 0 for a mouse, set in the touch block below. */
   --range-hit: 0px;
-  --gap: 12px;
+  /* Spacing scale off the 2 rem layout column, so it follows the UI scale
+     (--s 1.12 at 100%: --sp-4 is 12 px). Components carry no raw px padding,
+     margin, gap or inset. */
+  --sp-1: .125rem;
+  --sp-2: .25rem;
+  --sp-3: .5rem;
+  --sp-4: .667rem;
+  --sp-5: 1rem;
+  --gap: var(--sp-4);
+  /* Narrowest card-body column: 8 layout columns. */
+  --field-floor: 16rem;
   /* Reading measure: the widest a column of labeled values may get before
      the eye stops tracking a row left to right. 48ch of Chakra Petch at the
      root scale is ~64 characters of real text (its `0` is wider than its
@@ -472,7 +482,7 @@ input[type="range"] {
   padding: var(--range-hit) 0;
   -webkit-appearance: none;
   appearance: none;
-  margin: 12px 0;
+  margin: var(--sp-4) 0;
   background: var(--line-2) content-box;
   outline: none;
   touch-action: pan-y;
@@ -523,7 +533,7 @@ input[type="range"]:focus-visible::-moz-range-thumb {
 /* ---- Select ---- */
 select {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: var(--radius);
   border: 1px solid var(--line-2);
   background: var(--bg);
@@ -561,12 +571,20 @@ select:focus { outline: none; border-color: var(--highlight); }
   z-index: 14;
   display: block;
   flex: none;
-  height: 24px;
+  height: var(--shade-h);
   pointer-events: none;
   opacity: 0;
 }
-[data-shade]::before { top: 0; margin-bottom: -24px; background: linear-gradient(var(--line-1) 0 1px, rgba(var(--shade-rgb), .95) 1px, rgba(var(--shade-rgb), 0)); }
-[data-shade]::after { bottom: 0; margin-top: -24px; background: linear-gradient(rgba(var(--shade-rgb), 0), rgba(var(--shade-rgb), .95) calc(100% - 1px), var(--line-1) 0); }
+/* Ink from the theme surface; zero layout size, so toggling one moves no box.
+   A scroller carries no padding of its own (the shade spans its scrollport):
+   its children do. */
+[data-shade] {
+  --shade-h: 24px;
+  --shade-ink: color-mix(in srgb, var(--bg-sunken) 92%, transparent);
+  --shade-none: color-mix(in srgb, var(--bg-sunken) 0%, transparent);
+}
+[data-shade]::before { top: 0; margin-bottom: calc(var(--shade-h) * -1); background: linear-gradient(var(--line-1) 0 1px, var(--shade-ink) 1px, var(--shade-none)); }
+[data-shade]::after { bottom: 0; margin-top: calc(var(--shade-h) * -1); background: linear-gradient(var(--shade-none), var(--shade-ink) calc(100% - 1px), var(--line-1) 0); }
 [data-shade-top]::before,
 [data-shade-bottom]::after { opacity: 1; }
 :is([data-shade-bottom], [data-shade-bottom] > .pane) > .page-foot {
@@ -624,7 +642,7 @@ select:focus { outline: none; border-color: var(--highlight); }
 /* ---- Value input: recessed numeral field ---- */
 .og-num {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: var(--radius);
   border: 1px solid var(--line-1);
   background: var(--screen);
@@ -642,7 +660,7 @@ select:focus { outline: none; border-color: var(--highlight); }
 .og-num[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---- Switch ---- */
-.og-switch { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.og-switch { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; user-select: none; }
 /* Visually hidden, NOT display:none — keeps the checkbox in the tab order for
    keyboard focus; the focus ring draws on .track instead. */
 .og-switch input {
@@ -692,10 +710,10 @@ select:focus { outline: none; border-color: var(--highlight); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-2);
   width: auto;
   min-height: var(--tap);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
   font-size: .82rem;
@@ -730,10 +748,29 @@ select:focus { outline: none; border-color: var(--highlight); }
   color: var(--reality);
   box-shadow: var(--glow-reality);
 }
-.og-btn.sm { min-height: 30px; font-size: .72rem; padding: 4px 8px; }
+.og-btn.sm { min-height: 30px; font-size: .72rem; padding: var(--sp-2) var(--sp-3); }
+
+/* ---- Card body: the one field layout of a card ----
+   Columns are at least --field-floor wide and the remainder stretches, so no
+   card ends in a gutter. Composites use this, never a private grid. */
+.card-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--field-floor)), 1fr));
+  gap: var(--sp-3) var(--gap);
+}
+/* A sub-group title inside a card body: one type step, spans the row. */
+.card-sub {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-dim);
+}
 
 /* ---- Segmented control ---- */
-.og-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.og-seg { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .og-seg button {
   flex: 1;
   min-width: 50px;
@@ -767,9 +804,14 @@ select:focus { outline: none; border-color: var(--highlight); }
   /* Full window width at every size (DESIGN §10.4); prose keeps its own
      measure (--measure). The top strip (ui/TopStrip.svelte) is in flow, so
      no chrome reserve lives here. */
-  padding-left: var(--gap);
-  padding-right: var(--gap);
+  padding-inline: var(--app-pad);
 }
+/* The desktop frame owns its insets (App.svelte .frame): the sidebar sits
+   flush on the window's left edge and the bars run full bleed. The tab-strip
+   layouts (phone, glance, no hub yet) keep the --gap side margin; TopStrip
+   and FootStrip bleed out of --app-pad, whatever it is. */
+:root { --app-pad: 0px; }
+.app:not(:has(> .frame)) { --app-pad: var(--gap); }
 
 /* Mobile: a normally-scrolling page. Only the page footer is fixed to the
    bottom edge (DESIGN §10.3); it reserves its own height here

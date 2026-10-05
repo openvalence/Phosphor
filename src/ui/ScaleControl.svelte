@@ -75,7 +75,7 @@
 
 <style>
   /* The negative block margin nets the 20 px buttons to the row's text height. */
-  .foot-scale { flex: none; display: flex; align-items: center; gap: 4px; margin: -2px 0 -2px auto; }
+  .foot-scale { flex: none; display: flex; align-items: center; gap: var(--sp-2); margin: calc(var(--sp-1) * -1) 0 calc(var(--sp-1) * -1) auto; }
   .foot-scale .og-btn { min-height: 0; height: 20px; min-width: 24px; padding: 0; color: var(--ink-dim); }
   .foot-scale svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .foot-scale output { min-width: 4ch; text-align: center; font-size: 11px; color: var(--ink-dim); }

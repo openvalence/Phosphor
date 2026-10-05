@@ -43,7 +43,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    column-gap: 6px;
+    column-gap: var(--sp-2);
     min-height: calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px));
     margin-top: var(--gap);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -75,7 +75,7 @@
     flex-wrap: wrap;
     align-items: center;
     align-content: center;
-    gap: 4px 6px;
+    gap: var(--sp-2) var(--sp-2);
   }
   .foot-page :global(button) { flex: none; color: var(--ink-dim); }
   /* On is the reality on-state an active control wears (style.css .og-btn.on). */

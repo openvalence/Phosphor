@@ -315,17 +315,17 @@
 
 <style>
   .tp-active { font-size: .76rem; color: var(--ink-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
-  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
   .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
 
-  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
-  .preset { display: inline-flex; align-items: center; gap: 2px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .preset { display: inline-flex; align-items: center; gap: var(--sp-1); }
   .swatch {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     min-height: var(--tap);
-    padding: 0 10px 0 6px;
+    padding: 0 var(--sp-3) 0 var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     color: var(--ink-dim);
@@ -339,17 +339,17 @@
   .chassis {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 5px;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
   }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
   .name { text-transform: uppercase; letter-spacing: .03em; }
-  .del { min-width: 30px; padding: 4px; }
+  .del { min-width: 30px; padding: var(--sp-2); }
 
-  .accents { display: flex; flex-wrap: wrap; gap: 6px 16px; }
-  .accent { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; max-width: 100%; font-size: .8rem; color: var(--tx); }
+  .accents { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); }
+  .accent { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); min-width: 0; max-width: 100%; font-size: .8rem; color: var(--tx); }
   .hex { color: var(--tx-mut); font-size: .72rem; }
   .color-input {
     display: inline-flex;
@@ -359,14 +359,14 @@
     border: 1px solid var(--line-2);
   }
   /* The input IS the hit box (law 12): it fills the 40 px+ box. */
-  .color-input input { width: 100%; height: 100%; border: none; background: none; padding: 2px; cursor: pointer; }
+  .color-input input { width: 100%; height: 100%; border: none; background: none; padding: var(--sp-1); cursor: pointer; }
 
-  .locked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-  .lock { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--tx-mut); }
+  .locked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); }
+  .lock { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: .72rem; color: var(--tx-mut); }
   .lock i { width: 14px; height: 14px; border-radius: var(--r-s); outline: 1px dashed var(--line-3); outline-offset: 2px; }
 
-  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 28px; }
-  .knob-row { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 7ch; align-items: center; gap: 10px; font-size: .8rem; color: var(--tx-mut); }
+  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 calc(var(--sp-5) + var(--sp-4)); }
+  .knob-row { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 7ch; align-items: center; gap: var(--sp-3); font-size: .8rem; color: var(--tx-mut); }
   .knob-row output { text-align: right; color: var(--tx-val); font-size: .74rem; }
 
   .ramp { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); height: 18px; border: 1px solid var(--line-1); }
@@ -378,32 +378,32 @@
   .ratio-grid {
     display: grid;
     grid-template-columns: repeat(3, max-content) minmax(0, 1fr);
-    column-gap: 20px;
+    column-gap: var(--sp-5);
     height: calc(3 * 1.45em);
   }
   .ratio { display: flex; flex-direction: column; white-space: nowrap; }
   .rk { color: var(--tx-mut); }
   .near { grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @container (max-width: 15em) {
-    .ratio-grid { grid-template-columns: max-content minmax(0, 1fr); column-gap: 8px; height: calc(4 * 1.45em); }
+    .ratio-grid { grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--sp-3); height: calc(4 * 1.45em); }
     .ratio { display: contents; }
   }
 
-  .adv summary { display: flex; align-items: center; gap: 10px; min-height: var(--tap); cursor: pointer; }
+  .adv summary { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap); cursor: pointer; }
   .adv summary h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
-  .tokens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .72rem; }
-  .tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  .tokens { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: .72rem; }
+  .tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); }
   .tokens .tk { flex: 0 0 18ch; color: var(--tx-val); overflow-wrap: anywhere; }
   /* One line per row: a long value ellipsizes and rides its title. */
   .tokens .derived { flex: 1 1 14ch; min-width: 0; color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tokens .derived[data-phase='fault'] { color: var(--warn-ink); }
   .tokens li.pinned .tk { color: var(--highlight); }
-  .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: 4px 6px; font-size: .72rem; }
+  .tokens input { flex: 1 1 14ch; min-width: 12ch; padding: var(--sp-2) var(--sp-2); font-size: .72rem; }
 
   textarea {
     width: 100%;
     min-height: var(--tap);
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line-1);
     background: var(--bg-sunken);

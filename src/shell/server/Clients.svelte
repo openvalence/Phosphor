@@ -33,8 +33,8 @@
 <p class="sp-note">one app at a time</p>
 
 <style>
-  .cl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-  .cl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .cl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+  .cl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); }
   .cl-name { font-weight: 600; }
   .cl-fact { color: var(--ink-dim); font-size: .72rem; }
 </style>
