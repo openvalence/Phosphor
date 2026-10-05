@@ -801,15 +801,6 @@
 
   .pane { padding: var(--gap) 0; min-width: 0; }
 
-  /* Columns capped at the reading measure, never one stretched row: a
-     full-width card is 1180px of pane at 1440 and 1420px at 1920, which is
-     140 and 169 characters of label-to-value travel. */
-  .card-body {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, min(100%, var(--measure)));
-    gap: var(--sp-4) var(--gap);
-  }
-
   /* ---- §11 drill-in (handheld, glance) ---------------------------------- */
   .drill-open {
     display: flex;

@@ -272,7 +272,7 @@ const ALIASES = {
   '--ink': 'var(--tx)', '--ink-hi': 'var(--tx-hi)', '--ink-dim': 'var(--tx-mut)', '--ink-faint': 'var(--tx-ghost)',
   '--good': 'var(--reality)', '--r': 'var(--radius)', '--r-s': 'var(--radius)',
   '--sp-1': '.125rem', '--sp-2': '.25rem', '--sp-3': '.5rem', '--sp-4': '.667rem', '--sp-5': '1rem',
-  '--gap': 'var(--sp-4)', '--measure': '48ch',
+  '--gap': 'var(--sp-4)', '--field-floor': '16rem', '--measure': '48ch',
 };
 
 /**

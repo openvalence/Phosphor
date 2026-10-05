@@ -142,6 +142,8 @@
   --sp-4: .667rem;
   --sp-5: 1rem;
   --gap: var(--sp-4);
+  /* Narrowest card-body column: 8 layout columns. */
+  --field-floor: 16rem;
   /* Reading measure: the widest a column of labeled values may get before
      the eye stops tracking a row left to right. 48ch of Chakra Petch at the
      root scale is ~64 characters of real text (its `0` is wider than its
@@ -739,6 +741,25 @@ select:focus { outline: none; border-color: var(--highlight); }
   box-shadow: var(--glow-reality);
 }
 .og-btn.sm { min-height: 30px; font-size: .72rem; padding: var(--sp-2) var(--sp-3); }
+
+/* ---- Card body: the one field layout of a card ----
+   Columns are at least --field-floor wide and the remainder stretches, so no
+   card ends in a gutter. Composites use this, never a private grid. */
+.card-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--field-floor)), 1fr));
+  gap: var(--sp-3) var(--gap);
+}
+/* A sub-group title inside a card body: one type step, spans the row. */
+.card-sub {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-dim);
+}
 
 /* ---- Segmented control ---- */
 .og-seg { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
