@@ -22,7 +22,7 @@
  * toggle, segmented, select, text and bitfield (a synthetic setting channel
  * appended to the recorded catalog carries the text, bitfield and destructive
  * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
- * destructive toggle's confirm (ph-vdk.60.5). A Shift-drag of the slider or
+ * destructive toggle's confirm (ph-vdk.60.5). An Alt-drag of the slider or
  * knob writes once, on release, never on a cancel, with the ring pending and
  * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider). Through a
  * placement look (RFC-080 by ruling, ph-huv): a two-valued toggle on a
@@ -787,9 +787,9 @@ if (!LIVE) {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   hub.mode = 'echo';
 
-  // Shift-drag (ph-vdk.60.11, docs/EFFECTS.md): a held drag follows the
+  // Alt-drag (ph-vdk.60.11, docs/EFFECTS.md): a held drag follows the
   // pointer, writes nothing until release, and runs no pulses.
-  console.log('\n[defer] Shift-drag sends on release (ph-vdk.60.11)');
+  console.log('\n[defer] Alt-drag sends on release (ph-vdk.60.11)');
   await page.evaluate(() => addEventListener('pointerdown', (e) => { window.__pid = e.pointerId; }, true));
   const SLI = page.locator('.cell[data-pres=slider] input[type=range]');
   const writes = () => hub.log.filter((w) => w.ch === FIELD.writeChannel);
@@ -817,7 +817,7 @@ if (!LIVE) {
 
   await waitShadow('slider', 'confirmed', 3000);
   w0 = writes().length;
-  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
   await page.mouse.move(sx(0.8), sy);
   await page.mouse.down();
   await sweep(0.8, 0.3);
@@ -826,36 +826,36 @@ if (!LIVE) {
     anims: await cssAnims(), ring: (await ring())[INTENT], slot: await ladderOf('slider') };
   const runs = [];
   for (let i = 0; i < 4; i++) { runs.push(await fxRun()); await sleep(120); }
-  ok('Shift-drag: nothing is written while it is held', mid.n === 0, mid.n);
-  ok('Shift-drag: the ring is pending and breathes in intent', mid.shadow === 'pending' && mid.defer === ''
+  ok('Alt-drag: nothing is written while it is held', mid.n === 0, mid.n);
+  ok('Alt-drag: the ring is pending and breathes in intent', mid.shadow === 'pending' && mid.defer === ''
     && mid.anims.includes('fx-breath') && mid.ring > 0.2, mid);
-  ok('Shift-drag: no pulses run (nothing is in flight)', runs.every((x) => Number(x) === 0), runs);
-  ok('Shift-drag: the slot says it sends on release', mid.slot === 'sends on release', mid.slot);
+  ok('Alt-drag: no pulses run (nothing is in flight)', runs.every((x) => Number(x) === 0), runs);
+  ok('Alt-drag: the slot says it sends on release', mid.slot === 'sends on release', mid.slot);
   const chip = page.locator('.cell[data-pres=slider] .chip-num');
-  ok('Shift-drag: the readout holds the pending number in intent',
+  ok('Alt-drag: the readout holds the pending number in intent',
     await chip.evaluate((el) => getComputedStyle(el).color) === await intentColor()
     && Number(await chip.inputValue()) === Number(await SLI.inputValue()), [await chip.inputValue(), await SLI.inputValue()]);
   if (SHOTS) await page.locator('.cell[data-pres=slider]').screenshot({ path: join(SHOTS, 'shift-drag-slider.png') });
   const heldV = Number(await SLI.inputValue());
   await page.mouse.up();
-  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
   await sleep(500);
-  ok('Shift-drag: exactly one write, on release, with the final value', writes().length - w0 === 1 && lastWrite() === heldV,
+  ok('Alt-drag: exactly one write, on release, with the final value', writes().length - w0 === 1 && lastWrite() === heldV,
     [writes().length - w0, lastWrite(), heldV]);
-  ok('Shift-drag: the control settles on the written value', await waitShadow('slider', 'confirmed') && await current() === heldV);
+  ok('Alt-drag: the control settles on the written value', await waitShadow('slider', 'confirmed') && await current() === heldV);
 
   w0 = writes().length;
   await page.mouse.move(sx(0.3), sy);
   await page.mouse.down();
   await sweep(0.3, 0.5);
-  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
   await sleep(600);
   const w1 = writes().length;
   await sweep(0.5, 0.9);
-  ok('Shift pressed mid-drag: no write from that moment', writes().length === w1 && w1 > w0, [w0, w1, writes().length]);
+  ok('Alt pressed mid-drag: no write from that moment', writes().length === w1 && w1 > w0, [w0, w1, writes().length]);
   const held2 = Number(await SLI.inputValue());
   await page.mouse.up();
-  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
   await sleep(500);
   ok('...and the release writes the held value once', writes().length === w1 + 1 && lastWrite() === held2,
     [writes().length - w1, lastWrite(), held2]);
@@ -863,29 +863,29 @@ if (!LIVE) {
 
   w0 = writes().length;
   const v0c = await current();
-  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
   await page.mouse.move(sx(0.2), sy);
   await page.mouse.down();
   await sweep(0.2, 0.7);
   await SLI.evaluate((el) => el.dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__pid, bubbles: true })));
   await page.mouse.up();
-  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
   await sleep(500);
-  ok('a cancelled Shift-drag writes nothing and puts the control back', writes().length === w0 && await current() === v0c
+  ok('a cancelled Alt-drag writes nothing and puts the control back', writes().length === w0 && await current() === v0c
     && await shadowOf('slider') === 'confirmed', [writes().length - w0, await current(), v0c]);
 
   const KN = page.locator('.cell[data-pres=knob] .knob');
   const kb0 = await KN.boundingBox();
   w0 = writes().length;
   await page.mouse.move(kb0.x + kb0.width / 2, kb0.y + kb0.height / 2);
-  await page.keyboard.down('Shift');
+  await page.keyboard.down('Alt');
   await page.mouse.down();
   for (let i = 1; i <= 6; i++) { await page.mouse.move(kb0.x + kb0.width / 2, kb0.y + kb0.height / 2 - 6 * i); await sleep(70); }
   const knobMid = writes().length - w0;
   await page.mouse.up();
-  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
   await sleep(500);
-  ok('knob: a Shift-drag writes once, on release', knobMid === 0 && writes().length - w0 === 1, [knobMid, writes().length - w0]);
+  ok('knob: an Alt-drag writes once, on release', knobMid === 0 && writes().length - w0 === 1, [knobMid, writes().length - w0]);
   await waitShadow('knob', 'confirmed', 3000);
 
   console.log('\n[presentations]');
@@ -920,6 +920,35 @@ if (!LIVE) {
   await page.keyboard.press('PageUp');
   await settle('knob');
   ok('knob: PageUp moves a tenth of the range', near(await current(), v0 + page10 * step), [v0, await current(), page10]);
+  v0 = await current();
+  await page.keyboard.press('ArrowUp');
+  await settle('knob');
+  const plainStep = (await current()) - v0;
+  v0 = await current();
+  await page.keyboard.press('Shift+ArrowUp');
+  await settle('knob');
+  ok('knob: Shift+Arrow never steps more than Arrow', Math.abs((await current()) - v0) <= Math.abs(plainStep) + 1e-9, [plainStep, (await current()) - v0]);
+  const decade = Math.pow(10, Math.ceil(Math.log10(FIELD.max - FIELD.min)) - 1);
+  await page.keyboard.press('Control+ArrowUp');
+  await settle('knob');
+  const span = FIELD.max - FIELD.min;
+  const from30 = FIELD.min + Math.round(span * 0.34 / step) * step;
+  const up = Math.min(FIELD.max, (Math.floor(from30 / decade + 1e-9) + 1) * decade);
+  const down = Math.max(FIELD.min, (Math.ceil(from30 / decade - 1e-9) - 1) * decade);
+  const ctrlFrom = async (act) => {
+    await setReported(FIELD, from30);
+    await knob.focus();
+    await page.keyboard.down('Control');
+    await act();
+    await page.keyboard.up('Control');
+    await settle('knob');
+    return current();
+  };
+  ok('knob: Ctrl+ArrowUp goes to the adjacent multiple above', near(await ctrlFrom(() => page.keyboard.press('ArrowUp')), up), [from30, up]);
+  ok('knob: Ctrl+ArrowDown goes to the adjacent multiple below', near(await ctrlFrom(() => page.keyboard.press('ArrowDown')), down), [from30, down]);
+  ok('knob: Ctrl+PageUp is one decade, not the range', near(await ctrlFrom(() => page.keyboard.press('PageUp')), up), [from30, up]);
+  ok('knob: Ctrl+wheel is one decade, not the range', near(await ctrlFrom(() => page.mouse.wheel(0, -100)), up), [from30, up]);
+  await setReported(FIELD, from30);
   ok('knob: its value in words carries the unit (aria-valuetext)', /\S/.test(await knob.getAttribute('aria-valuetext') || ''),
     await knob.getAttribute('aria-valuetext'));
   const kb = await knob.boundingBox();
@@ -937,6 +966,40 @@ if (!LIVE) {
   const coarse = await drag(16, false);
   const fine = await drag(16, true);
   ok('knob: a drag turns it, Shift drags ten times finer', coarse > 0 && near(fine * 10, coarse), [coarse, fine]);
+  await setReported(FIELD, FIELD.min + Math.round(span * 0.2 / step) * step);
+  const half = await drag(160, false);
+  ok('knob: 160 px turns it about half the span', Math.abs(half - span / 2) <= span * 0.03, [half, span / 2]);
+
+  // Slider: Shift or Ctrl at pointerdown drags relative to the start value.
+  await setReported(FIELD, FIELD.min + Math.round(span * 0.5 / step) * step);
+  const sl = await SLI.boundingBox();
+  const slx = (f) => sl.x + sl.width * f, sly = sl.y + sl.height / 2;
+  const slDrag = async (key, f0, f1, mid) => {
+    await page.mouse.move(slx(f0), sly);
+    await page.keyboard.down(key);
+    await page.mouse.down();
+    for (let i = 1; i <= 5; i++) { await page.mouse.move(slx(f0 + (f1 - f0) * i / 5), sly); await sleep(40); }
+    if (mid) await mid();
+    await page.mouse.up();
+    await page.keyboard.up(key);
+    await settle('slider');
+    return current();
+  };
+  const sv0 = await current();
+  const sShift = await slDrag('Shift', 0.2, 0.3);
+  ok('slider: Shift+drag does not jump the thumb and moves about a tenth', Math.abs(sShift - sv0 - span * 0.01) <= Math.max(2 * step, span * 0.004), [sv0, sShift]);
+  await setReported(FIELD, sv0);
+  const sCtrl = await slDrag('Control', 0.2, 0.35);
+  ok('slider: Ctrl+drag lands on decade multiples', near(Math.round(sCtrl / decade) * decade, sCtrl), [sCtrl, decade]);
+  await setReported(FIELD, sv0);
+  let beforeRel = null;
+  const sRel = await slDrag('Shift', 0.2, 0.3, async () => {
+    beforeRel = await current();
+    await page.keyboard.up('Shift');
+    await page.mouse.move(slx(0.3) + 3, sly);
+    await page.keyboard.down('Shift');
+  });
+  ok('slider: releasing Shift mid-drag does not jump', Math.abs(sRel - sv0) <= span * 0.05, [sv0, beforeRel, sRel]);
 
   const plus = page.locator('.cell[data-pres=stepper] .stepper button').nth(1);
   const pb = await plus.boundingBox();
