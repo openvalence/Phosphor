@@ -323,14 +323,14 @@
 </div>
 
 <style>
-  .logpane { gap: 8px; }
+  .logpane { gap: var(--sp-3); }
   /* One width per tab; wrap rather than squeeze, so a tab never clips its
      label or count. */
   .tabs button { flex: 1 1 0; min-width: max-content; }
-  .count { color: var(--ink-faint); font-size: .68rem; margin-left: 4px; }
+  .count { color: var(--ink-faint); font-size: .68rem; margin-left: var(--sp-2); }
 
-  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .tool { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: .75rem; color: var(--tx-mut); }
+  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .tool { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; font-size: .75rem; color: var(--tx-mut); }
   /* Fixed width: a new tag arriving never resizes the toolbar. */
   .tool select { width: 16ch; min-width: 0; flex: 0 1 auto; }
 
@@ -341,11 +341,11 @@
     visibility: hidden;
     height: 52vh;
     min-height: 240px;
-    padding: 8px 10px;
+    padding: var(--sp-3) var(--sp-3);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--sp-1);
   }
   .feed.active { visibility: visible; }
 
@@ -353,10 +353,10 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 6px;
+    gap: var(--sp-2);
     font-size: .78rem;
     line-height: 1.5;
-    padding: 2px 0;
+    padding: var(--sp-1) 0;
     border-bottom: 1px solid var(--line-soft);
     flex: 0 0 auto;
   }
@@ -370,7 +370,7 @@
 
   .chip {
     font-size: .68rem;
-    padding: 1px 6px;
+    padding: 1px var(--sp-2);
     border-radius: var(--r-s);
     background: var(--bg-card);
     border: 1px solid var(--line);

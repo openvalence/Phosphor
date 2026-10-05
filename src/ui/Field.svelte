@@ -900,7 +900,7 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-2);
     container-type: inline-size;
   }
 
@@ -908,7 +908,7 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--sp-3);
   }
 
   /* Groups the label with its ⓘ toggle so field-head's space-between still
@@ -916,7 +916,7 @@
   .field-label-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     min-width: 0;
   }
 
@@ -924,7 +924,7 @@
      margin, verified against og-ref/style.css) instead of the global 12px 0 —
      part of reading as one instrument row with its label/chip. */
   .field input[type='range'] {
-    margin: 8px 0 2px;
+    margin: var(--sp-3) 0 var(--sp-1);
   }
 
   /* RENDERING §11 dual-thumb range: two overlapping input[type=range], each
@@ -936,7 +936,7 @@
   .range-dual {
     position: relative;
     height: calc(2px + 2 * var(--range-hit));
-    margin: 8px 0 2px;
+    margin: var(--sp-3) 0 var(--sp-1);
   }
   .range-dual input[type='range'] {
     position: absolute;
@@ -994,8 +994,8 @@
   .tag {
     display: inline-block;
     flex: none;
-    margin-left: 6px;
-    padding: 1px 5px;
+    margin-left: var(--sp-2);
+    padding: 1px var(--sp-2);
     font-size: .62rem;
     font-weight: 500;
     text-transform: uppercase;
@@ -1050,7 +1050,7 @@
     color: var(--tx-mut);
     line-height: 1;
     cursor: pointer;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   .info:hover {
     border-color: var(--line-4);
@@ -1096,7 +1096,7 @@
     z-index: 30;
     width: max-content;
     max-width: 240px;
-    padding: 8px 10px;
+    padding: var(--sp-3) var(--sp-3);
     background: var(--bg-card);
     border: 1px solid var(--line-1);
     outline: 1px solid var(--line-0);
@@ -1109,7 +1109,7 @@
     opacity: 0;
     visibility: hidden;
     transform: translateY(-4px);
-    transition: opacity .12s, transform .12s, visibility .12s;
+    transition: opacity var(--t-quick), transform var(--t-quick), visibility var(--t-quick);
     pointer-events: none;
   }
   :global(html.terse) .info-wrap:hover .tip,
@@ -1163,7 +1163,7 @@
      .64rem literal (not a relative em) so it stays legible at the chip's
      smallest sizes. */
   .field-value .unit {
-    margin-left: 3px;
+    margin-left: var(--sp-1);
     font-family: var(--font);
     font-weight: 500;
     font-size: .64rem;
@@ -1191,7 +1191,7 @@
      use-case) — a chip that grew spinners would break that on this one
      control. Width is set inline from the field's published bounds. */
   .field-value.typeable {
-    padding: 0 6px 0 5px;
+    padding: 0 var(--sp-2) 0 var(--sp-2);
     background: var(--screen);
     box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
     border-color: var(--line-1);
@@ -1242,7 +1242,7 @@
      no-hazard case: this is a generic reading, not a bus-voltage instrument. */
   .readout-bar {
     height: 2px;
-    margin-top: 2px;
+    margin-top: var(--sp-1);
     background: var(--line-2);
     border-radius: 1px;
     overflow: hidden;
@@ -1252,7 +1252,7 @@
     width: 0%;
     background: var(--reality);
     box-shadow: 0 0 6px rgba(var(--reality-rgb), .4);
-    transition: width .4s cubic-bezier(.3, .7, .3, 1);
+    transition: width var(--t-slow) cubic-bezier(.3, .7, .3, 1);
   }
   .readout-bar { position: relative; }
   .readout-bar-peak {
@@ -1264,7 +1264,7 @@
     background: var(--ink);
   }
   .peak-tag {
-    margin-left: 6px;
+    margin-left: var(--sp-2);
     font-size: 11px;
     color: var(--ink-dim);
   }
@@ -1281,7 +1281,7 @@
     font-variation-settings: 'wdth' 90;
     font-weight: var(--num-wght);
     border-radius: var(--r-s);
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     text-align: left;
   }
 
@@ -1295,7 +1295,7 @@
   .toggle-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
   }
   .toggle-text {
     font-family: var(--mono);
@@ -1313,7 +1313,7 @@
   .stepper {
     display: flex;
     align-items: stretch;
-    gap: 6px;
+    gap: var(--sp-2);
   }
   .stepper input {
     flex: 1 1 auto;
@@ -1335,7 +1335,7 @@
     font-size: .9rem;
     line-height: 1;
     cursor: pointer;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   .stepper button:hover:not(:disabled) {
     border-color: var(--line-4);
@@ -1357,12 +1357,12 @@
   .lamps {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 14px;
+    gap: var(--sp-2) var(--sp-4);
   }
   .lamp {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-size: .78rem;
     color: var(--tx-mut);
   }
@@ -1384,12 +1384,12 @@
   .bitfield {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 16px;
+    gap: var(--sp-3) var(--sp-5);
   }
   .bitfield .bit {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-size: .85rem;
     color: var(--tx);
   }
@@ -1409,21 +1409,21 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: 18px minmax(20px, auto);
-      gap: 2px 4px;
+      gap: var(--sp-1) var(--sp-2);
       align-items: center;
     }
-    .field-label-group { grid-column: 1 / -1; grid-row: 1; gap: 4px; }
+    .field-label-group { grid-column: 1 / -1; grid-row: 1; gap: var(--sp-2); }
     .field-label { overflow: hidden; }
     .field-label-text { min-width: 3em; }
     .ladder { grid-column: 1; grid-row: 2; min-width: 0; text-align: left; }
     .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100cqi; }
     .field-head .unit { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-    .field > input[type='range'] { margin: 4px 0 0; }
-    .range-dual { margin: 4px 0 0; }
-    .bitfield { gap: 6px 10px; }
-    .lamps { gap: 4px 10px; }
+    .field > input[type='range'] { margin: var(--sp-2) 0 0; }
+    .range-dual { margin: var(--sp-2) 0 0; }
+    .bitfield { gap: var(--sp-2) var(--sp-3); }
+    .lamps { gap: var(--sp-2) var(--sp-3); }
   }
-  /* The 40 px info/reset box reaches 11 px below the first row: the gap keeps it off the second. */
+  /* Hit-box geometry (40 px box, 11 px reach): px on purpose, not spacing. */
   @media (pointer: coarse) {
     @container (max-width: 18rem) { .field-head { row-gap: 11px; } }
   }
@@ -1529,7 +1529,7 @@
     white-space: pre;
   }
   .numeral .unit, .knob-val .unit {
-    margin-left: 3px;
+    margin-left: var(--sp-1);
     font-family: var(--font);
     font-size: .7rem;
     color: var(--tx-ghost);
@@ -1579,7 +1579,7 @@
   .field[data-orient='v'] .stepper { flex-direction: column-reverse; }
   .field[data-orient='v'] .og-seg { flex-direction: column; }
 
-  .color-row { display: flex; align-items: center; gap: 10px; }
+  .color-row { display: flex; align-items: center; gap: var(--sp-3); }
   .color-row input.unknown { opacity: 0; }
 
   /* Alt-drag (defer.js): the held number in intent; the ring stays pending
@@ -1594,6 +1594,7 @@
   .field { --loc-ms: 2s; }
   .locate {
     position: absolute;
+    /* Ring geometry, px on purpose: 3 px out plus the 1 px line, both sides. */
     inset: -4px;
     width: calc(100% + 8px);
     height: calc(100% + 8px);

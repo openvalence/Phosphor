@@ -899,22 +899,22 @@ derives from one unit, and no size is tuned by hand.
   dense screen while text does not, so counting grid cells would put a
   retina laptop in the widest bucket.
 - `cols` is the whole layout columns across the window. A field's floor is
-  8 columns. The BUCKET counts field floors across the window, doubling per
-  step:
+  8 columns. The BUCKET starts from a 12-column floor and doubles per step
+  (operator ruling 2026-10-05):
 
-| Bucket | `cols` | Field floors across | At 100 % (CSS px) | Typical |
-|---|---|---|---|---|
-| 1 watch | under 8 | under 1 | under 287 | a watch, the 200 px floor |
-| 2 phone | 8 to 15 | 1 | 287 to 573 | a phone upright |
-| 3 tablet | 16 to 31 | 2 to 3 | 573 to 1147 | a phone on its side, a tablet, a small window |
-| 4 desk | 32 to 63 | 4 to 7 | 1147 to 2294 | a laptop, a 1080p or 1440p desktop |
-| 5 wide | 64 and up | 8 and up | 2294 and up | 4K, ultrawide |
+| Bucket | `cols` | At 100 % (CSS px, 35.84 px a column) | Typical |
+|---|---|---|---|
+| 1 | under 12 | under 430 | a watch, a phone upright |
+| 2 | 12 to 23 | 430 to 860 | a phone on its side, a small tablet, a narrow window |
+| 3 | 24 to 47 | 860 to 1720 | a tablet on its side, a laptop, the 1428 launch window |
+| 4 | 48 to 95 | 1720 to 3441 | a 1080p or 1440p desktop at full screen |
+| 5 | 96 and up | 3441 and up | 4K, ultrawide |
 
 | Bucket | Hero budget | Rail | Sidebar | Card body | Seed rung | Plugin page |
 |---|---|---|---|---|---|---|
 | 1 | 45 % of the height | the mini; tap opens the vertical rail | menu stack at glance, else tab strip | 1 column | compact | the host's stacked default |
 | 2 | 45 % | the mini; tap opens the vertical rail | tab strip | 1 column | compact | stacked default |
-| 3 | 33 % | horizontal in the hero bar, hideable to the mini | by the renderer class: tab strip, or the rail at `full` | field floors across the card | compact | the page's handheld layout, else stacked |
+| 3 | 33 % | horizontal in the hero bar, hideable to the mini | by the renderer class: tab strip, or the rail at `full` | field floors across the card | normal | the page's own layout by its card width |
 | 4 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
 | 5 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
 
@@ -1022,3 +1022,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-05 | §10.3 | The tape shows wherever a jog is possible; a source-owned rail keeps the planned segment in its slot (`ph-ryi7` stands) (`ph-mdqo.4`). | operator (the reading of "always visible" is the agent's, veto-able) |
 | 2026-10-05 | plugins | Funscript player: the page's Settings take the library column's slot at full width instead of a half-page cap; the card turns handheld only when the card itself is narrow (`ph-mdqo.7`, supersedes the `ph-yuce` half-page cap). | agent, veto-able |
 | 2026-10-05 | §10.3 | The strip's safety buttons draw at 75 % of the first icon-above-word size; Flip's struck zero is the hero numerals' slashed zero (`ph-9zdy`). | operator |
+| 2026-10-05 | §10.12 | Bucket floor is 12 layout columns, doubling: under 12, 12 to 23, 24 to 47, 48 to 95, 96 and up; at 100 % about 430, 860, 1720 and 3441 CSS px; the field floor stays 8 columns. Bucket 3 now holds the launch window, so its seed rung is normal and plugin pages lay out by their card width there. | operator (the bucket 3 row is the agent's, veto-able) |
