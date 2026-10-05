@@ -242,24 +242,32 @@
     if (!e.shiftKey && !e.ctrlKey) return;
     const f = side === 'v' ? field : field[side];
     const el = e.currentTarget;
-    const n = Number(side === 'v' ? value : side === 'lo' ? loValue : hiValue);
+    const raw = side === 'v' ? value : side === 'lo' ? loValue : hiValue;
+    const n = raw == null ? NaN : Number(raw);
     el.setPointerCapture(e.pointerId);
-    rel = { side, f, el, x: e.clientX, v: isFinite(n) ? n : f.min, w: el.getBoundingClientRect().width || 1 };
+    rel = { side, f, el, x: e.clientX, v: isFinite(n) ? n : f.min, last: n, w: el.getBoundingClientRect().width || 1 };
   }
+  // Incremental like the knob: a modifier change mid-drag never jumps the value.
   function relMove(e) {
     if (!rel) return;
-    const { f } = rel, st = f.step || 1;
-    let n = rel.v + ((e.clientX - rel.x) / rel.w) * (f.max - f.min) * dragGain(e, 1);
-    n = f.min + Math.round((modSnap(n, e, f.min, f.max) - f.min) / st) * st;
+    const { f, side } = rel, st = side === 'v' ? step : rangeStep(f);
+    rel.v = Math.max(f.min, Math.min(f.max, rel.v + ((e.clientX - rel.x) / rel.w) * (f.max - f.min) * dragGain(e, 1)));
+    rel.x = e.clientX;
+    let n = f.min + Math.round((modSnap(rel.v, e, f.min, f.max) - f.min) / st) * st;
     n = Math.max(f.min, Math.min(f.max, n));
     rel.el.value = n;
-    dragWrite(rel.side, n);
+    if (n !== rel.last) { rel.last = n; dragWrite(side, n); }
   }
   // Mouse default drags the native thumb; with a modifier the relative path owns the drag.
   const relGuard = (e) => { if (e.shiftKey || e.ctrlKey) { e.preventDefault(); e.currentTarget.focus(); } };
-  function sliderKey(e) {
+  // Shift+Arrow is the native one step; Ctrl+Arrow goes to the adjacent decade multiple.
+  function sliderKey(e, side) {
     const dir = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
-    if (dir && (e.shiftKey || e.ctrlKey) && enabled) { e.preventDefault(); nudge(dir, e); }
+    if (!dir || !e.ctrlKey || !enabled) return;
+    e.preventDefault();
+    if (side === 'v') return nudge(dir, e);
+    const f = field[side], b = Number(side === 'lo' ? loValue : hiValue);
+    (side === 'lo' ? commitLo : commitHi)(modSnap(isFinite(b) ? b : f.min, e, f.min, f.max, dir));
   }
   $effect(() => () => { if (drag) dragEnd({ pointerId: drag.id, type: 'pointercancel' }); });
   const heldOf = (side, v) => (held && held.side === side ? held.n : v);
@@ -337,9 +345,11 @@
   $effect(() => () => holdEnd());
 
   /** Move one step-sized tick from wherever the value currently sits. */
+  // With Shift or Ctrl held one key or notch is one modifier step, whatever dir says.
   function nudge(dir, e) {
-    const base = Number(value);
-    commitNumber(modSnap((isFinite(base) ? base : (field.min ?? 0)) + dir * modStep(e, step, field.min, field.max), e, field.min, field.max));
+    const b = Number(value), base = isFinite(b) ? b : (field.min ?? 0);
+    if (e && (e.shiftKey || e.ctrlKey)) dir = Math.sign(dir);
+    commitNumber(e && e.ctrlKey ? modSnap(base, e, field.min, field.max, dir) : base + dir * modStep(e, step, field.min, field.max));
   }
 
   const step = $derived(field.step || (precisionFor(field) === 0 ? 1 : 0.01));
@@ -473,8 +483,8 @@
   }
 
   // ---- knob: a bounded numeric as a rotary control ---------------------------
-  // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full range,
-  // ten times that with Shift held (fine); Ctrl snaps to the range's decade. Every change snaps to the step and
+  // 270 degrees of sweep; a vertical drag of KNOB_DRAG_PX covers the full
+  // range, a tenth of that with Shift held (fine); Ctrl snaps to the decade. Every change snaps to the step and
   // is an ordinary echo-confirmed write through commitNumber().
   let knobEl = $state(null);
   const KNOB_DRAG_PX = 320;
@@ -742,7 +752,7 @@
   {:else if pres === WIDGET.slider}
     <input id={domId} type="range"
            min={field.min} max={field.max} step={step}
-           value={shown ?? field.min} disabled={!enabled} onpointerdown={(e) => relDown(e, 'v')} onpointermove={relMove} onmousedown={relGuard} onkeydown={sliderKey}
+           value={shown ?? field.min} disabled={!enabled} onpointerdown={(e) => relDown(e, 'v')} onpointermove={relMove} onmousedown={relGuard} onkeydown={(e) => sliderKey(e, 'v')}
            oninput={(e) => dragWrite('v', Number(e.currentTarget.value))} />
     <!-- No printed min…max caption (OG density doctrine — the slider's own
          extent plus the value chip already carry the bounds; a bounds line
@@ -761,12 +771,12 @@
            style="left: {loFrac * 100}%; right: {(1 - hiFrac) * 100}%"></div>
       <input type="range" class="range-lo" class:on-top={loFrac >= hiFrac}
              min={field.lo.min} max={field.lo.max} step={rangeStep(field.lo)}
-             value={shownLo ?? field.lo.min} disabled={!loEnabled} onpointerdown={(e) => relDown(e, 'lo')} onpointermove={relMove} onmousedown={relGuard}
+             value={shownLo ?? field.lo.min} disabled={!loEnabled} onpointerdown={(e) => relDown(e, 'lo')} onpointermove={relMove} onmousedown={relGuard} onkeydown={(e) => sliderKey(e, 'lo')}
              aria-label={'minimum ' + field.label}
              oninput={(e) => dragWrite('lo', Number(e.currentTarget.value))} />
       <input type="range" class="range-hi"
              min={field.hi.min} max={field.hi.max} step={rangeStep(field.hi)}
-             value={shownHi ?? field.hi.max} disabled={!hiEnabled} onpointerdown={(e) => relDown(e, 'hi')} onpointermove={relMove} onmousedown={relGuard}
+             value={shownHi ?? field.hi.max} disabled={!hiEnabled} onpointerdown={(e) => relDown(e, 'hi')} onpointermove={relMove} onmousedown={relGuard} onkeydown={(e) => sliderKey(e, 'hi')}
              aria-label={'maximum ' + field.label}
              oninput={(e) => dragWrite('hi', Number(e.currentTarget.value))} />
     </div>

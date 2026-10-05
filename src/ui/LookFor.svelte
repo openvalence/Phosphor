@@ -24,7 +24,7 @@
   import { placeableControls } from '../model/settings.js';
   import { labelFor } from '../model/format.js';
   import { view } from '../model/viewport.svelte.js';
-  import { score } from '../model/fuzzy.js';
+  import { rank } from '../model/fuzzy.js';
 
   let { tabs = [], go = () => {} } = $props();
 
@@ -82,17 +82,7 @@
     return out;
   }
 
-  // Fuzzy (fuzzy.js), tightest first; any label hit outranks every path hit.
-  const results = $derived.by(() => {
-    if (!q.trim()) return index;
-    const scored = [];
-    for (const it of index) {
-      const l = score(q, it.label);
-      const p = l == null ? score(q, it.path) : null;
-      if (l != null || p != null) scored.push([l != null ? 1000 + l : p, it]);
-    }
-    return scored.sort((a, b) => b[0] - a[0] || a[1].label.localeCompare(b[1].label)).map((x) => x[1]);
-  });
+  const results = $derived(q.trim() ? rank(q, index) : index);
   $effect(() => { void q; at = 0; });
 
   let top = $state(0);

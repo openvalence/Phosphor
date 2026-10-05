@@ -22,7 +22,7 @@
  * toggle, segmented, select, text and bitfield (a synthetic setting channel
  * appended to the recorded catalog carries the text, bitfield and destructive
  * toggle it lacks), plus RFC-064 index 0, segmented keyboard and the
- * destructive toggle's confirm (ph-vdk.60.5). A Alt-drag of the slider or
+ * destructive toggle's confirm (ph-vdk.60.5). An Alt-drag of the slider or
  * knob writes once, on release, never on a cancel, with the ring pending and
  * no pulses (ph-vdk.60.11; --shots <dir> saves the held slider). Through a
  * placement look (RFC-080 by ruling, ph-huv): a two-valued toggle on a
@@ -885,7 +885,7 @@ if (!LIVE) {
   await page.mouse.up();
   await page.keyboard.up('Alt');
   await sleep(500);
-  ok('knob: a Alt-drag writes once, on release', knobMid === 0 && writes().length - w0 === 1, [knobMid, writes().length - w0]);
+  ok('knob: an Alt-drag writes once, on release', knobMid === 0 && writes().length - w0 === 1, [knobMid, writes().length - w0]);
   await waitShadow('knob', 'confirmed', 3000);
 
   console.log('\n[presentations]');
@@ -931,8 +931,24 @@ if (!LIVE) {
   const decade = Math.pow(10, Math.ceil(Math.log10(FIELD.max - FIELD.min)) - 1);
   await page.keyboard.press('Control+ArrowUp');
   await settle('knob');
-  const landed = await current();
-  ok('knob: Ctrl+Arrow lands on a decade multiple', landed === FIELD.max || near(Math.round(landed / decade) * decade, landed), [landed, decade]);
+  const span = FIELD.max - FIELD.min;
+  const from30 = FIELD.min + Math.round(span * 0.34 / step) * step;
+  const up = Math.min(FIELD.max, (Math.floor(from30 / decade + 1e-9) + 1) * decade);
+  const down = Math.max(FIELD.min, (Math.ceil(from30 / decade - 1e-9) - 1) * decade);
+  const ctrlFrom = async (act) => {
+    await setReported(FIELD, from30);
+    await knob.focus();
+    await page.keyboard.down('Control');
+    await act();
+    await page.keyboard.up('Control');
+    await settle('knob');
+    return current();
+  };
+  ok('knob: Ctrl+ArrowUp goes to the adjacent multiple above', near(await ctrlFrom(() => page.keyboard.press('ArrowUp')), up), [from30, up]);
+  ok('knob: Ctrl+ArrowDown goes to the adjacent multiple below', near(await ctrlFrom(() => page.keyboard.press('ArrowDown')), down), [from30, down]);
+  ok('knob: Ctrl+PageUp is one decade, not the range', near(await ctrlFrom(() => page.keyboard.press('PageUp')), up), [from30, up]);
+  ok('knob: Ctrl+wheel is one decade, not the range', near(await ctrlFrom(() => page.mouse.wheel(0, -100)), up), [from30, up]);
+  await setReported(FIELD, from30);
   ok('knob: its value in words carries the unit (aria-valuetext)', /\S/.test(await knob.getAttribute('aria-valuetext') || ''),
     await knob.getAttribute('aria-valuetext'));
   const kb = await knob.boundingBox();
@@ -950,6 +966,40 @@ if (!LIVE) {
   const coarse = await drag(16, false);
   const fine = await drag(16, true);
   ok('knob: a drag turns it, Shift drags ten times finer', coarse > 0 && near(fine * 10, coarse), [coarse, fine]);
+  await setReported(FIELD, FIELD.min + Math.round(span * 0.2 / step) * step);
+  const half = await drag(160, false);
+  ok('knob: 160 px turns it about half the span', Math.abs(half - span / 2) <= span * 0.03, [half, span / 2]);
+
+  // Slider: Shift or Ctrl at pointerdown drags relative to the start value.
+  await setReported(FIELD, FIELD.min + Math.round(span * 0.5 / step) * step);
+  const sl = await SLI.boundingBox();
+  const slx = (f) => sl.x + sl.width * f, sly = sl.y + sl.height / 2;
+  const slDrag = async (key, f0, f1, mid) => {
+    await page.mouse.move(slx(f0), sly);
+    await page.keyboard.down(key);
+    await page.mouse.down();
+    for (let i = 1; i <= 5; i++) { await page.mouse.move(slx(f0 + (f1 - f0) * i / 5), sly); await sleep(40); }
+    if (mid) await mid();
+    await page.mouse.up();
+    await page.keyboard.up(key);
+    await settle('slider');
+    return current();
+  };
+  const sv0 = await current();
+  const sShift = await slDrag('Shift', 0.2, 0.3);
+  ok('slider: Shift+drag does not jump the thumb and moves about a tenth', Math.abs(sShift - sv0 - span * 0.01) <= Math.max(2 * step, span * 0.004), [sv0, sShift]);
+  await setReported(FIELD, sv0);
+  const sCtrl = await slDrag('Control', 0.2, 0.35);
+  ok('slider: Ctrl+drag lands on decade multiples', near(Math.round(sCtrl / decade) * decade, sCtrl), [sCtrl, decade]);
+  await setReported(FIELD, sv0);
+  let beforeRel = null;
+  const sRel = await slDrag('Shift', 0.2, 0.3, async () => {
+    beforeRel = await current();
+    await page.keyboard.up('Shift');
+    await page.mouse.move(slx(0.3) + 3, sly);
+    await page.keyboard.down('Shift');
+  });
+  ok('slider: releasing Shift mid-drag does not jump', Math.abs(sRel - sv0) <= span * 0.05, [sv0, beforeRel, sRel]);
 
   const plus = page.locator('.cell[data-pres=stepper] .stepper button').nth(1);
   const pb = await plus.boundingBox();

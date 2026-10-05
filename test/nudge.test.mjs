@@ -24,8 +24,7 @@ ok('a degenerate range falls back to 1', decadeBelow(5, 5) === 1);
 for (const step of [1, 0.01, 5]) {
   ok('Shift never exceeds the plain step (' + step + ')', modStep(shift, step, 0, 1000) <= modStep(none, step, 0, 1000));
 }
-ok('Shift on a fractional step is a tenth', modStep(shift, 0.5, 0, 10) === 0.05);
-ok('Shift on an integer step is one step', modStep(shift, 1, 0, 100) === 1);
+ok('Shift on a key is the declared step', modStep(shift, 0.5, 0, 10) === 0.5 && modStep(shift, 1, 0, 100) === 1);
 ok('Ctrl steps the decade', modStep(ctrl, 1, 0, 1000) === 100);
 ok('Ctrl never goes below the step', modStep(ctrl, 500, 0, 1000) === 500);
 
@@ -34,7 +33,10 @@ ok('plain drag keeps its gain', dragGain(none, 0.5) === 0.5);
 
 ok('Ctrl snaps to a decade multiple', snap(234, ctrl, 0, 1000) === 200);
 ok('no Ctrl leaves the value', snap(234, none, 0, 1000) === 234);
-ok('Ctrl+key from 130 lands on a multiple', snap(130 + modStep(ctrl, 1, 0, 1000), ctrl, 0, 1000) % 100 === 0);
+ok('Ctrl up from 130 and 150 is 200', snap(130, ctrl, 0, 1000, 1) === 200 && snap(150, ctrl, 0, 1000, 1) === 200);
+ok('Ctrl down from 130 and 150 is 100', snap(130, ctrl, 0, 1000, -1) === 100 && snap(150, ctrl, 0, 1000, -1) === 100);
+ok('Ctrl from a multiple moves one decade', snap(200, ctrl, 0, 1000, 1) === 300 && snap(200, ctrl, 0, 1000, -1) === 100);
+ok('Ctrl on a fractional decade does not stall', Math.abs(snap(0.3, ctrl, 0, 1, 1) - 0.4) < 1e-9);
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);

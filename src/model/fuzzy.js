@@ -4,7 +4,7 @@
  * Constraints:
  * - A word hits as a contiguous substring (better, earlier is better) or, failing
  *   that, as a subsequence (worse, tighter is better). No hit on any word is null.
- * - Higher is better. Callers rank label hits above path hits themselves.
+ * - Higher is better. rank() puts every label hit before any path hit.
  */
 function word(w, t) {
   const i = t.indexOf(w);
@@ -30,4 +30,16 @@ export function score(query, text) {
     sum += s;
   }
   return sum;
+}
+
+/** Items ({label, path}) matching `query`: label hits first, then path hits (scored on path + label), each tightest first. */
+export function rank(query, items) {
+  const out = [];
+  for (const it of items) {
+    const l = score(query, it.label);
+    const p = l == null ? score(query, (it.path || '') + ' ' + it.label) : null;
+    if (l != null) out.push([0, l, it]);
+    else if (p != null) out.push([1, p, it]);
+  }
+  return out.sort((a, b) => a[0] - b[0] || b[1] - a[1] || a[2].label.localeCompare(b[2].label)).map((x) => x[2]);
 }
