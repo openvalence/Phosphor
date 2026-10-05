@@ -330,7 +330,7 @@
     inset: var(--strip-h, 0px) 0 0 0;
     z-index: 20;
     height: auto;
-    padding: 8px;
+    padding: var(--sp-3);
     background: var(--bg);
   }
   /* Opened: the body hands its full height down to the application region
@@ -373,7 +373,7 @@
     flex: 1 1 auto;
     width: 0;
     height: var(--head-h);
-    padding: 0 6px;
+    padding: 0 var(--sp-2);
     border: 1px dashed var(--line-3);
     border-radius: var(--radius);
     background: transparent;
@@ -387,9 +387,9 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     height: var(--head-h);
-    padding: 0 0 4px;
+    padding: 0 0 var(--sp-2);
     min-width: 0;
   }
   /* A bare card has no head outside edit mode; in it the tools overlay the
@@ -428,7 +428,7 @@
     min-width: 0;
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: var(--sp-2);
     overflow: hidden;
   }
   /* Words and color only: the ring box is the controls' language (ph-sbu). */
@@ -475,8 +475,8 @@
      squeezes the control (Home's Remove) never spills onto a neighbor. The
      margin is the cell gutter: a control's hit extension past the body's
      edge still reaches, as it does running. */
-  .editing > .dash-body.surface-card { overflow: clip; overflow-clip-margin: var(--dash-cell-pad, 7px); }
-  .clip > .dash-head { overflow: clip; overflow-clip-margin: 10px; }
+  .editing > .dash-body.surface-card { overflow: clip; overflow-clip-margin: var(--dash-cell-pad, var(--sp-3)); }
+  .clip > .dash-head { overflow: clip; overflow-clip-margin: var(--sp-3); }
 
   /* ---- tools and handles ----
      Near-invisible until hover/focus -- the frame should read as quiet
@@ -488,14 +488,14 @@
   .tools {
     position: absolute;
     top: calc(var(--head-h) / 2);
-    right: -4px;
+    right: calc(var(--sp-2) * -1);
     transform: translateY(-50%);
     max-width: calc(100% + 4px);
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
     align-items: center;
-    gap: 2px;
+    gap: var(--sp-1);
   }
   .handle, .ico {
     display: grid;
@@ -551,16 +551,16 @@
     z-index: 1;
     touch-action: none;
   }
-  .edge-n, .edge-s { left: 8px; right: 8px; height: 8px; cursor: ns-resize; }
-  .edge-e, .edge-w { top: 8px; bottom: 8px; width: 8px; cursor: ew-resize; }
-  .edge-n { top: -7px; }
-  .edge-s { bottom: -7px; }
-  .edge-e { right: -7px; }
-  .edge-w { left: -7px; }
+  .edge-n, .edge-s { left: var(--sp-3); right: var(--sp-3); height: 8px; cursor: ns-resize; }
+  .edge-e, .edge-w { top: var(--sp-3); bottom: var(--sp-3); width: 8px; cursor: ew-resize; }
+  .edge-n { top: calc(var(--sp-3) * -1); }
+  .edge-s { bottom: calc(var(--sp-3) * -1); }
+  .edge-e { right: calc(var(--sp-3) * -1); }
+  .edge-w { left: calc(var(--sp-3) * -1); }
   .edge-ne, .edge-nw, .edge-sw { width: 14px; height: 14px; }
-  .edge-ne { top: -7px; right: -7px; cursor: nesw-resize; }
-  .edge-sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
-  .edge-nw { top: -7px; left: -7px; cursor: nwse-resize; }
+  .edge-ne { top: calc(var(--sp-3) * -1); right: calc(var(--sp-3) * -1); cursor: nesw-resize; }
+  .edge-sw { bottom: calc(var(--sp-3) * -1); left: calc(var(--sp-3) * -1); cursor: nesw-resize; }
+  .edge-nw { top: calc(var(--sp-3) * -1); left: calc(var(--sp-3) * -1); cursor: nwse-resize; }
   .edge:hover { background: color-mix(in srgb, var(--intent) 25%, transparent); }
   @media (pointer: coarse) { .edge { display: none; } }
 </style>

@@ -837,7 +837,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-2);
   }
 
   /* The edit chrome: one row after the grid, sticky to the pane's bottom edge, so entering edit
@@ -848,7 +848,7 @@
     z-index: 5;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     padding: var(--sp-3) 0;
     background: var(--bg-card);
     border-top: 1px solid var(--line-2);
@@ -863,9 +863,9 @@
     align-items: center;
     overflow: hidden;
   }
-  .view-row { align-items: center; gap: 12px; }
-  .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: 5px 28px 5px 10px; margin-right: auto; }
-  .edit-ops { display: flex; gap: 6px; }
+  .view-row { align-items: center; gap: var(--sp-4); }
+  .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: var(--sp-2) calc(var(--sp-5) + var(--sp-3)) var(--sp-2) var(--sp-3); margin-right: auto; }
+  .edit-ops { display: flex; gap: var(--sp-2); }
   .dash-hint {
     min-width: 0;
     font-size: .72rem;
@@ -877,7 +877,7 @@
   .dash-selbar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-size: .8rem;
     color: var(--ink-hi);
     white-space: nowrap;
@@ -889,12 +889,12 @@
     position: absolute;
     z-index: 3;
     right: var(--bleed, 0px);
-    bottom: calc(100% + 6px);
+    bottom: calc(100% + var(--sp-2));
     max-width: calc(100% - 2 * var(--bleed, 0px));
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .sel-n { margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .sel-n { margin-right: var(--sp-2); font-variant-numeric: tabular-nums; }
   .marquee {
     position: absolute;
     z-index: 2;
@@ -907,17 +907,17 @@
      page. Without anchor positioning it opens centered (the UA default). */
   .dash-menu {
     flex-direction: column;
-    gap: 8px;
-    padding: 10px;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
     max-width: calc(100vw - 32px);
     color: var(--tx);
   }
   .dash-menu:popover-open { display: flex; }
   @supports (top: anchor(bottom)) {
-    .dash-menu { inset: auto; top: anchor(bottom); right: anchor(right); margin: 6px 0 0; position-try-fallbacks: flip-block, flip-inline; }
+    .dash-menu { inset: auto; top: anchor(bottom); right: anchor(right); margin: var(--sp-2) 0 0; position-try-fallbacks: flip-block, flip-inline; }
   }
   .dash-menu .layout-pick { margin-right: 0; }
-  .menu-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .menu-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   .module-sum { margin: 0; font-size: .75rem; color: var(--ink-dim); }
   .module-preview {
     margin: 0;
@@ -930,7 +930,7 @@
   .module-preview .inert { color: var(--ink-faint); font-style: italic; }
   .layout-json {
     width: 100%;
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: var(--bg);
@@ -974,7 +974,7 @@
   }
   .drop-ghost {
     z-index: 1;
-    margin: 3px;
+    margin: var(--sp-1);
     border: 1.5px dashed var(--intent);
     border-radius: var(--radius);
     background: color-mix(in srgb, var(--intent) 8%, transparent);
@@ -989,8 +989,8 @@
      high ink, never in a safety color (law 13 keeps those for hazards). */
   .drop-ghost.refused { border-style: solid; border-color: var(--ink-hi); }
   .ghost-size {
-    margin: 4px;
-    padding: 1px 6px;
+    margin: var(--sp-2);
+    padding: 1px var(--sp-2);
     border-radius: var(--radius);
     background: var(--bg-raised);
     color: var(--ink-hi);
@@ -1001,7 +1001,7 @@
 
   /* The gutter between cards; a selected card's outline sits inside it. */
   .dash-cell {
-    padding: var(--dash-cell-pad, 7px);
+    padding: var(--dash-cell-pad, var(--sp-3));
     min-width: 0;
   }
   @keyframes fade-in { from { opacity: 0; } }
@@ -1013,7 +1013,7 @@
   .dash-section {
     display: flex;
     align-items: flex-end;
-    gap: 10px;
+    gap: var(--sp-3);
     height: 100%;
     font-size: var(--dash-title-size, .8rem);
     font-weight: 500;
@@ -1038,7 +1038,7 @@
      The label stays at 11 px or more (test/responsive-matrix.mjs font floor)
      and every handle keeps its 40 px (law 12). */
   .dash-wrap[data-density='compact'] {
-    --dash-cell-pad: 4px;
+    --dash-cell-pad: var(--sp-2);
     --dash-body-pad: 6px;
     --dash-title-size: .7rem;
   }

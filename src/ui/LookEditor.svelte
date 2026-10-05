@@ -74,8 +74,8 @@
     position: fixed;
     grid-template-columns: auto auto;
     align-items: center;
-    gap: 6px 12px;
-    padding: 10px;
+    gap: var(--sp-2) var(--sp-4);
+    padding: var(--sp-3);
     max-width: calc(100vw - 32px);
     font-size: .8rem;
     color: var(--ink-dim);
@@ -87,17 +87,17 @@
     .look {
       position-anchor: var(--card);
       inset: auto;
-      top: calc(anchor(top) + 24px);
+      top: calc(anchor(top) + var(--sp-5) + var(--sp-3));
       left: anchor(left);
       margin: 0;
       position-try-fallbacks: flip-block, flip-inline;
     }
   }
   .look-pres { grid-column: 1 / -1; justify-self: start; }
-  .look label { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .look label { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
   .look input {
     width: 6em;
-    padding: 4px 6px;
+    padding: var(--sp-2) var(--sp-2);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: var(--bg);

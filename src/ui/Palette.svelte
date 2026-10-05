@@ -102,7 +102,7 @@
     right: var(--gap);
     width: min(320px, calc(100% - 2 * var(--gap)));
     margin-top: 0;
-    padding: 8px 12px;
+    padding: var(--sp-3) var(--sp-4);
     box-shadow: 0 10px 28px rgba(var(--shade-rgb), .6);
   }
   @supports (top: anchor(top)) {
@@ -112,13 +112,13 @@
   :global(html:not(.still)) .palette { animation: fade-in var(--t-move, 200ms) var(--ease-out, ease-out); }
   .palette-bar {
     display: flex;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
   }
   .palette-filter {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: var(--bg);
@@ -128,7 +128,7 @@
   }
   summary {
     cursor: pointer;
-    padding: 6px 0;
+    padding: var(--sp-2) 0;
     font-size: .8rem;
     text-transform: uppercase;
     letter-spacing: .08em;
@@ -137,17 +137,17 @@
   .palette-n { color: var(--ink-faint); font-family: var(--mono); }
   ul {
     list-style: none;
-    margin: 0 0 6px;
+    margin: 0 0 var(--sp-2);
     padding: 0;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
-    gap: 4px 12px;
+    gap: var(--sp-2) var(--sp-4);
   }
   li {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 8px;
+    gap: var(--sp-2) var(--sp-3);
     min-width: 0;
   }
   li.grabbable { cursor: grab; }
@@ -163,18 +163,18 @@
     color: var(--tx-mut);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
-    padding: 1px 6px;
+    padding: 1px var(--sp-2);
   }
   .palette-looks {
     flex-basis: 100%;
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--sp-2);
   }
   .look-chip {
     font: inherit;
     font-size: .72rem;
-    padding: 1px 8px;
+    padding: 1px var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: transparent;
