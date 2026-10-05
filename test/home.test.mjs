@@ -278,7 +278,7 @@ async function harvestDerived(page) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     await collect();
@@ -305,6 +305,8 @@ function checkReach(tag, before, seen) {
   for (const t of ['Pattern', 'Limits']) ok(tag + ': the ' + t + ' card is on a category page', seen.titles.has(t));
 }
 
+// A page's operations live in the selected page's rail pill; a narrow shell keeps them in the page foot.
+const OPS = 'main.pane .page-foot, nav.rail .rail-ops';
 if (!LIVE) {
   // ---- full class ------------------------------------------------------------
   console.log('\n[full 1280x900]');
@@ -330,7 +332,7 @@ if (!LIVE) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
@@ -373,7 +375,7 @@ if (!LIVE) {
   ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
   await page.waitForTimeout(600);
   const geo0 = await cellGeo();
-  const advBtn = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' });
+  const advBtn = page.locator(OPS).locator('button[title$=" advanced"]');
   await advBtn.click();
   await page.waitForTimeout(600);
   const geoHidden = await cellGeo();
@@ -399,7 +401,7 @@ if (!LIVE) {
   const fr = await open(1024, 768);
   await fr.page.click('nav.rail [role=tab][title="Motion"]');
   await fr.page.waitForTimeout(150);
-  const shutFresh = fr.page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+  const shutFresh = fr.page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
   for (let i = 0; i < 40 && await shutFresh.count(); i++) await shutFresh.first().click();
   await fr.page.waitForTimeout(1500);
   const fresh = await geoOf(fr.page);
@@ -545,7 +547,7 @@ if (!LIVE) {
     await page.waitForTimeout(150);
     if (await page.locator('main.pane .dash-cell[data-id="hero:pattern"]').count()) break;
   }
-  ok('bar: the Pattern page offers Reset', await page.locator('main.pane .page-foot .reset-cat').count() === 1);
+  ok('bar: the Pattern page offers Reset', await page.locator('nav.rail .rail-ops .reset').count() === 1);
   ok('bar: no card of send-only fields', await page.locator('main.pane .dash-cell[data-id$=":ungrouped"]').count() === 0,
     await page.$$eval('main.pane .dash-cell', (els) => els.map((e) => e.dataset.id)));
   hub.mode = 'hold';
@@ -555,10 +557,10 @@ if (!LIVE) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await page.waitForTimeout(150);
-  const busyText = () => page.locator('main.pane .page-foot .cat-busy').textContent();
+  const busyText = () => page.locator('main.pane .dash-cell[data-id="hero:pattern"] .dash-busy').first().textContent({ timeout: 1000 }).catch(() => '');
   ok('bar: a held write inside the Pattern card is counted in flight', (await busyText()).trim() === '1 in flight', await busyText());
   await release();
-  await page.waitForFunction(() => !document.querySelector('main.pane .page-foot .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => !document.querySelector('main.pane .dash-cell[data-id="hero:pattern"] .dash-busy'), null, { timeout: 3000 }).catch(() => {});
   ok('bar: the echo clears the count', !(await busyText()).trim(), await busyText());
 
   // roster (ph-zri, ph-6a2): the hub's pattern in reality, intent only while a
