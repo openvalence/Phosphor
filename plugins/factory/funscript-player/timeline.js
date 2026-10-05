@@ -72,6 +72,12 @@ export const COPY = Object.freeze({
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// The modifier rule (DESIGN 10.5), inlined: a key takes the 1 % step (Shift included), Ctrl the adjacent 10 % multiple.
+export function pillKey(v, dir, e = {}) {
+  if (!e.ctrlKey) return v + dir * 0.01;
+  const q = v / 0.1;
+  return (dir > 0 ? Math.floor(q + 1e-9) + 1 : Math.ceil(q - 1e-9) - 1) * 0.1;
+}
 const tf = (n, T) => T.lo + (T.invert ? 1 - n : n) * (T.hi - T.lo);
 
 /** The intent curve over [fromMs, toMs] as SVG polyline points in a W x H box; 1 at the top. */
@@ -327,7 +333,7 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
       const d = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
       if (!d) return;
       e.preventDefault();
-      move(eff()[key] + d * (e.shiftKey ? 0.1 : 0.01));
+      move(pillKey(eff()[key], d, e));
     });
     p.addEventListener('keyup', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') commit(); });
     p.addEventListener('blur', commit);

@@ -478,11 +478,11 @@ FULL
   the heat, so the two never disagree); range low
   and high are horizontal pills at the detail's left edge, high one tap to
   the right of low so close values never stack (up-down; arrows 1 %, Shift
-  10 %). A pill's hit box stays inside the detail, which clips, and only
+  the same, Ctrl the adjacent 10 %). A pill's hit box stays inside the detail, which clips, and only
   the drawn pill rides the value to the edge (a clipped box took touches
   over 60 % of itself). They preview in the intent look and commit on release.
-  Offset is a number field in the bundle (drag 5 ms per 2 px, type, arrows 5 ms,
-  Shift 50 ms). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
+  Offset is a number field in the bundle (drag 5 ms per 4 px, type, arrows 5 ms;
+  Shift: a drag at a tenth of the gain, a key the same 5 ms; Ctrl: the adjacent 100 ms multiple, DESIGN 10.5). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
   captured. Keys: Hover controls.
 - **Hover controls** (ph-mcfe, ruling 2026-10-03: familiar, YouTube's
   shape). Over the video in the card and the page: a bottom gradient bar

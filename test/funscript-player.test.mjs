@@ -113,6 +113,18 @@ if (prefs) {
     stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
     interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
+  {
+    const { offsetKey, offsetDrag } = mods[P + 'ui.js'], { pillKey } = mods[P + 'timeline.js'];
+    ok('modifiers: an offset key steps 5 ms, Shift the same, Ctrl the adjacent 100 ms multiple',
+      offsetKey(0, 1) === 5 && offsetKey(0, 1, { shiftKey: true }) === 5 && offsetKey(0, 1, { ctrlKey: true }) === 100
+      && offsetKey(100, 1, { ctrlKey: true }) === 200 && offsetKey(130, -1, { ctrlKey: true }) === 100 && offsetKey(100, -1, { ctrlKey: true }) === 0
+      && offsetKey(500, 1) === 500);
+    ok('modifiers: the offset drag takes 4 px per 5 ms, Shift a tenth of that, Ctrl rounds to 100',
+      offsetDrag(0, 40) === 50 && offsetDrag(0, 40, { shiftKey: true }) === 5 && offsetDrag(0, 90, { ctrlKey: true }) === 100);
+    ok('modifiers: a range pill key steps 1 %, Shift the same, Ctrl the adjacent 10 %',
+      Math.abs(pillKey(0.5, 1) - 0.51) < 1e-9 && Math.abs(pillKey(0.5, 1, { shiftKey: true }) - 0.51) < 1e-9
+      && Math.abs(pillKey(0.5, 1, { ctrlKey: true }) - 0.6) < 1e-9 && Math.abs(pillKey(0.55, -1, { ctrlKey: true }) - 0.5) < 1e-9);
+  }
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));

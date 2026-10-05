@@ -182,6 +182,22 @@ export function compositionOf(width) {
   return width >= FULL_UP ? 'full' : width >= GLANCE_UP ? 'handheld' : 'glance';
 }
 
+// The modifier rule (DESIGN 10.5), inlined as plugins do: a key takes the declared step (Shift included),
+// Ctrl the adjacent multiple of the decade below the range's span; a drag's Shift is a tenth of its gain.
+export const OFFSET_STEP = 5, OFFSET_MAX = 500;
+const OFFSET_DECADE = 100;   // decade below the 1000 ms span
+/** Offset after one key press: dir +1/-1, the 5 ms step, Ctrl the adjacent 100 ms multiple. */
+export function offsetKey(v, dir, e = {}) {
+  if (!e.ctrlKey) return clampOffset(v + dir * OFFSET_STEP);
+  const q = v / OFFSET_DECADE;
+  return clampOffset((dir > 0 ? Math.floor(q + 1e-9) + 1 : Math.ceil(q - 1e-9) - 1) * OFFSET_DECADE);
+}
+/** Offset after a label drag of dx px from v0: 5 ms per 4 px, a tenth with Shift, Ctrl rounds to 100 ms. */
+export function offsetDrag(v0, dx, e = {}) {
+  const raw = v0 + (dx / 4) * OFFSET_STEP * (e.shiftKey ? 0.1 : 1);
+  return clampOffset(e.ctrlKey ? Math.round(raw / OFFSET_DECADE) * OFFSET_DECADE : raw);
+}
+
 /** Offset ms on the 5 ms grid inside -500..500. */
 export function clampOffset(v) {
   return Number.isFinite(+v) ? clamp(Math.round(+v / 5) * 5, -500, 500) : 0;
@@ -1004,9 +1020,9 @@ export function createPlayer(api) {
     const commitOff = (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); offIn.value = String(st.T.offsetMs); };
     offIn.addEventListener('change', () => commitOff(offIn.value));
     offIn.addEventListener('keydown', (e) => {
-      if (!e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
-      offIn.value = String(clampOffset(+offIn.value + (e.key === 'ArrowUp' ? 50 : -50)));
+      offIn.value = String(offsetKey(+offIn.value || 0, e.key === 'ArrowUp' ? 1 : -1, e));
     });
     offIn.addEventListener('keyup', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') commitOff(offIn.value); });
     let offDrag = null;
@@ -1016,7 +1032,7 @@ export function createPlayer(api) {
       offDrag = { id: e.pointerId, x: e.clientX, v: st.T.offsetMs };
     });
     offK.addEventListener('pointermove', (e) => {
-      if (offDrag && e.pointerId === offDrag.id) offIn.value = String(clampOffset(offDrag.v + Math.round((e.clientX - offDrag.x) / 2) * 5));
+      if (offDrag && e.pointerId === offDrag.id) offIn.value = String(offsetDrag(offDrag.v, e.clientX - offDrag.x, e));
     });
     const offUp = (e) => { if (offDrag && e.pointerId === offDrag.id) { offDrag = null; commitOff(offIn.value); } };
     offK.addEventListener('pointerup', offUp);
