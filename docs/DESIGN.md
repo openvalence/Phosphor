@@ -529,6 +529,27 @@ question in §10.8).
   a source plays or a plan streams; stacked, a status condition outranks it.
   Seams: `src/ui/hero/RailWidget.svelte`, `src/ui/widgets/PlanStrip.svelte`,
   `src/ui/TopStrip.svelte`.
+- The hero bar (operator rulings 2026-10-05): the rail joins the strip as
+  one surface, the panel's line carried over as a divider between the
+  numerals row and the rail; no panel outline. The jog tape is always
+  shown. The window's span (mm) is a small pill on a dark plate inside the
+  band; its start and end values sit on the axis row under the band's
+  edges, in the window color, beside the grey axis marks; no label row
+  above the band. A small up-arrow tab mid-bar, between the readouts and the
+  controls, hides the rail entirely; while hidden a 64 px live mini rail
+  (the window and the live position, the rail's look, display only, never
+  jog input) sits beside the tab, and tapping either shows the rail. The
+  hidden state persists; Settings can turn the hide off. In buckets 1 and 2
+  (§10.12) the mini is the rail's permanent form, and tapping it opens the
+  rail rotated VERTICAL (travel top to bottom, tape and band with it) in a
+  pop-up, dismissed by a tap outside, held open while a scrub or window drag
+  is in progress. The bar keeps a height budget per bucket (§10.12).
+- Strip buttons (operator rulings 2026-10-02 and 2026-10-05, `ph-9zdy`):
+  Home, Flip, Override, Pause and Halt are one box, icon above the word,
+  icons taller. An icon shows what the press does: Override is two arrows
+  inside a window pointing out (lift the window), and once lifted two arrows
+  outside pointing in (return); Flip is two arrows around a struck-through
+  0, one pointing right and one grey pointing left.
 - Home is one control; any other home op (Force Home, where the hub offers
   it) lives in its popover, and the status slot carries no remedy button.
   While home is required (the snapshot's `home_required`, or a `NOT_HOMED`
@@ -544,6 +565,12 @@ question in §10.8).
   served page draws the strip without window controls.
 - One strip, one top reserve, one safe-area owner (`.claude/rules/webui.md`
   T22). Safety colors stay unthemeable in the new chrome (law 13).
+- No shifting from non-user input (operator ruling 2026-10-02, amended
+  2026-10-05). A link drop, a refusal, a reason, a notice or any other state
+  never moves a control: every transient has a fixed slot reserved up front,
+  and a long text ellipsizes with its full form in `title`. A user's own act
+  (the rail's hide tab, the sidebar collapse, a disclosure, a window resize)
+  may change heights, because it cannot cause a misinput elsewhere.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -562,9 +589,15 @@ question in §10.8).
   Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel act on the same value and never zoom
   the webview; Ctrl+wheel over a surface that takes the wheel itself never
   scales. Not a safety surface: the bottom-edge rule above binds safety
-  controls. On desktop the rail and the content reach the hero panel's
-  frame (its 4 px outline offset plus the 1 px line, 5 px past its box) on
-  both sides, so the pane's outer edges line up with the hero card's.
+  controls. Where the sidebar is a rail, the advanced and diagnostic toggles
+  and Reset live in the selected page's sidebar pill instead (§10.11), so a
+  category page has no footer there; the tab strip classes keep them here.
+- The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
+  side margin. The top bar, the hero bar and the bottom status row are full
+  bleed; the frame below the hero bar is `--gap` on all four sides with
+  `--gap` between the sidebar and the content (sidebar | gap | content |
+  gap), so the content's right edge mirrors its left. Nothing aligns to the
+  old hero outline.
 - Scroll recesses (operator ruling 2026-10-03, `ph-inh5`): a scroller's
   affordance is a shadow on its own top edge while it can scroll up and on its
   bottom edge while it can scroll down, so the pane reads as sliding under the
@@ -572,8 +605,12 @@ question in §10.8).
   `scrollbars` pref, off by default; the guided onboarding, when it exists,
   asks this once. With them on, the content reserves its 4 px track past the
   hero frame on the right (`ph-i7ln`, `ph-p6a2`): a scrollbar appearing would
-  drop a grid column and loop. Seams: `src/ui/scrollshade.js`, `[data-shade]`
-  in `src/style.css`.
+  drop a grid column and loop. The shade covers the scroller's padding and
+  meets its rounded corners, its ink is a theme surface (`--bg-sunken`),
+  never black, and an edge toggles with 2 px of hysteresis so a sub-pixel
+  scroll never flickers it; toggling a shade moves no box (amended
+  2026-10-05). Seams: `src/ui/scrollshade.js`, `[data-shade]` in
+  `src/style.css`.
 - Page fullscreen (operator ruling 2026-10-03, `ph-wb4j`): a plugin page's
   footer carries Fullscreen (F11) and, in the desktop shell, its mode: In
   window (default) or Borderless. In window, the page takes the whole window
@@ -637,6 +674,22 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   `floorOf` and `growWidth`, `ph-e82.25`).
 - Renderer-class selection (`src/model/rclass.js`, `viewport.svelte.js`) stays
   in CSS px and is independent of the grid.
+- One card body (operator ruling 2026-10-05): fields and composites lay out
+  by one rule, `.card-body` in `src/style.css`. Columns are whole field
+  floors (8 layout columns, §10.12) across the card and the remainder
+  stretches, so no card ends in a gutter; one row height per presentation
+  rung; a sub-group title and a section header are one type step each and
+  nowhere else. A composite carries no private grid rule.
+- Spacing (`ph-acnj`): `--sp-1` to `--sp-5` are fractions of the layout
+  column (2 rem: 1/16, 1/8, 1/4, 1/3, 1/2), `--gap` is `--sp-4`; padding,
+  margin and gap in `src/ui` and `plugins/factory` use them, never raw px
+  (a 1 px hairline excepted), enforced by a check.
+- Modifier keys, everywhere (operator ruling 2026-10-05, Blender's
+  bindings): Shift = fine (a drag at a tenth of its gain, a key at the
+  smallest step), Ctrl = snap to the decade below the range's magnitude (a
+  range of 1000 snaps at 100, 50 at 10, 1e6 at 1e5). The old Shift x10
+  nudge flips to match. Relative drags (knob, the advanced generator's
+  handles, labels that drag a value) run at a lower gain than today.
 
 ### 10.6 Nests and layouts
 
@@ -668,6 +721,19 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
 - LAYOUTS are named and saved per user per client, stored locally, with the
   try/catch degrade `dashboard.svelte.js` already uses. Sync is a later
   maybe, not planned.
+- The Dash is the only customizable page (operator ruling 2026-10-05). Its
+  layouts are the indented sub-items under Dash in the sidebar (§10.11);
+  clicking Dash opens Default, pinned first, never deleted or reordered;
+  `+ Add layout` is the last sub-item and starts a layout from the rank
+  seed. The dash has no pane head: content starts at the top of the pane,
+  and the edit control is a wrench at the right end of the selected layout
+  sub-item; what the Layout menu held (density, modules, export, import)
+  rides the edit-mode chrome. A category page lays out from the rank seed
+  and does not edit; placements saved for it before this stay inert in
+  storage (law 10). A sub-item reorders by drag (a grip on hover) and
+  deletes by an x on hover held 1 s.
+- Rename, everywhere a thing has a user name (operator ruling 2026-10-05):
+  F2 or a double-click renames inline; Enter keeps, Escape reverts.
 - Migration: today's `phosphor.dash.<class>.<view>` maps and the legacy
   `sd32.dash.*` keys seed a layout named Default. Legacy keys are read, never
   written or deleted.
@@ -703,11 +769,13 @@ is build configuration, never code" clause (amendments below). Seam:
 - The listener binds loopback. LAN exposure is `ph-vdk.28`'s ruling, the same
   question the TCode listener (`src-tauri/src/plugins.rs`) already raised.
 
-### 10.9 Mobile: unresolved
+### 10.9 Mobile
 
-OPEN (`ph-e82.7`). Likely the handheld class keeps an auto-built layout and
-desktop gets the builder. Top-strip safety applies on phones unless the
-operator rules otherwise.
+Resolved by §10.12 (operator rulings 2026-10-05, `ph-mdqo`): phones are
+buckets 1 and 2, the rail's mini with its vertical pop-up, the tab strip and
+single-column cards. Top-strip safety applies on phones. Whether a desktop
+layout ever projects onto handheld stays `ph-e82.7`'s question; layouts stay
+per class.
 
 ### 10.10 Virtual Valence: demo and configure mode
 
@@ -801,6 +869,13 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   `splitGroup` and pass 3 in `src/model/settings.js`, `settingItems` in
   `src/App.svelte`, `.dash-section` in `src/ui/dash/DashGrid.svelte`
   (`ph-efai`).
+- Sub-items and the page pill (operator rulings 2026-10-05, `ph-lxea`):
+  the Dash's layouts are indented sub-items under Dash as plugin pages are
+  under Plugins, their list edge inset about 10 px from the Dash pill's,
+  text indent unchanged. The selected category page's pill grows to hold its
+  page operations inside it, inset, never indented: count then item,
+  `[4 diag] [3 adv] [reset]`, a button absent when its count is 0. Reset is
+  a 1 s hold, released early does nothing. ButtplugIO keeps its own row.
 - Category 1 reads "Generator", the protocol view reads "Link", the built
   home page reads "Dash". Tab ids are storage keys and do not follow the
   labels: `machine` (the Dash layout), `valence` (Link), `cat<id>`.
@@ -810,6 +885,84 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   override glyphs' style. Expanded and collapsed rails draw the same icon.
 - The served page shows the Phosphor section with Display and Plugins; shell
   panes and the shell shading stay shell-only.
+
+### 10.12 Responsive layout (operator rulings 2026-10-05, `ph-mdqo`)
+
+The layout solves a problem over widths, never per width: every rule here
+derives from one unit, and no size is tuned by hand.
+
+- The unit is the LAYOUT COLUMN, 2 rem: the grid cell at 1x DPR and the
+  default scale (36 px at 100 %). It follows the UI scale and the browser's
+  text size, never the DPR. The grid cell (§10.5) shrinks in CSS px on a
+  dense screen while text does not, so counting grid cells would put a
+  retina laptop in the widest bucket.
+- `cols` is the whole layout columns across the window. A field's floor is
+  8 columns. The BUCKET counts field floors across the window, doubling per
+  step:
+
+| Bucket | `cols` | Field floors across | At 100 % (CSS px) | Typical |
+|---|---|---|---|---|
+| 1 watch | under 8 | under 1 | under 287 | a watch, the 200 px floor |
+| 2 phone | 8 to 15 | 1 | 287 to 573 | a phone upright |
+| 3 tablet | 16 to 31 | 2 to 3 | 573 to 1147 | a phone on its side, a tablet, a small window |
+| 4 desk | 32 to 63 | 4 to 7 | 1147 to 2294 | a laptop, a 1080p or 1440p desktop |
+| 5 wide | 64 and up | 8 and up | 2294 and up | 4K, ultrawide |
+
+| Bucket | Hero budget | Rail | Sidebar | Card body | Seed rung | Plugin page |
+|---|---|---|---|---|---|---|
+| 1 | 45 % of the height | the mini; tap opens the vertical rail | menu stack at glance, else tab strip | 1 column | compact | the host's stacked default |
+| 2 | 45 % | the mini; tap opens the vertical rail | tab strip | 1 column | compact | stacked default |
+| 3 | 33 % | horizontal in the hero bar, hideable to the mini | by the renderer class: tab strip, or the rail at `full` | field floors across the card | compact | the page's handheld layout, else stacked |
+| 4 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
+| 5 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
+
+- Hero budget: the strip plus the rail fit inside the budget's share of the
+  window height; short of it the rail takes its mini form until the window
+  grows, the numeral scales inside the budget (`--num-h`), and the plan
+  strip draws one row. The stop pair never moves (RENDERING §8.4 row 11).
+  45 % keeps the strip under half of the 390 px floor (§10.4).
+- Sidebar: the renderer class (§10.4, RFC-062 draft) still picks the nav
+  model, rail or tab strip; the bucket decides everything inside it. On the
+  tab strip the page operations stay in the page footer (§10.3).
+- Card body: §10.5's one rule; the columns are whole field floors across
+  the card, the remainder stretched. The seed rung is the density a
+  first-run seed gives a control (`ph-z50z`); a control's own rung follows
+  the cells it holds.
+- Plugin pages: a page reads the bucket like the host and declares its
+  layout per bucket or takes the host's stacked default; the host
+  guarantees no horizontal overflow and the 40 px target in buckets 1 and 2
+  (`ph-cqz6`, [PLUGINS.md](PLUGINS.md), Pages).
+- Mechanism: `src/model/viewport.svelte.js` derives `view.cols` and
+  `view.bucket` (1 to 5) on resize, scale, theme and text-size change,
+  deferred while a pointer is down like the class, and mirrors them on
+  `<html>` as `data-bucket` and `--cols`. CSS reads `:root[data-bucket]`,
+  JS reads `view.bucket`; nothing else reads the window width for layout.
+  No hysteresis: nothing a bucket changes feeds back into the width.
+- The count of five is the operator's proposal, derived here; changing it
+  is a change to the doubling rule, never a new threshold.
+
+### 10.13 Interaction (operator rulings 2026-10-05, `ph-mdqo`)
+
+- Look for (F3, `src/ui/LookFor.svelte`): the index holds every page (the
+  categories, Pairing, Link, Log, Hubs, Settings, Plugins, ButtplugIO, each
+  plugin page, each dash layout), every settings entry and every control on
+  a plugin page, and rebuilds when any of them changes. Matching is fuzzy,
+  Blender F3 style: words in any order and subsequences ("spd in" finds "In
+  speed"), ranked by how tight the match is, a label hit before a path hit.
+- History: the last 256 setting writes this session made, each with its
+  before and after, in a visible list (the Log pane's Changes feed), each
+  undoable; Ctrl+Z undoes the latest outside an editor that owns its own
+  undo. Revert changes returns every changed setting to its value at the
+  moment Phosphor connected (the session baseline); a hazard write (one that
+  needs a confirm, a destructive or background-run setting, a run switch)
+  is skipped and listed by name. Moves and actions are not history.
+- Motion: the common animations run app-wide (page and pane transitions,
+  list enter and exit, hover and press, the value-change afterglow, the
+  rail's hide, popovers), on one set of duration tokens in `src/style.css`.
+  Settings > Legibility carries Motion: System, Reduced, Full. System
+  follows `prefers-reduced-motion`; Reduced and Full override it. Every
+  animation keys off one class, `html.still`, which the theme's motion 0
+  also sets; no component reads the media query itself.
 
 ## Amendments
 
@@ -848,3 +1001,19 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
 | 2026-10-05 | §10.5 | Spacing is a scale derived from the cell, so padding follows the UI scale; components carry no raw px padding or gap, enforced by a check (`ph-acnj`). | advisor, operator yes |
 | 2026-10-05 | §10.5 | The rank seed gives a card its floor width, never the row, and packs the rest of the row by rank; each presentation has two density rungs, compact and normal, picked by the cells it holds, never under the 40 px target (law 12) and never hiding the four-state reason (law 5); plugin widgets take the same rungs through the plugin contract before its freeze (`ph-z50z`). No rewrite of the grid model: absolute placements, floors and nests stand. | advisor, operator yes |
 | 2026-10-05 | §10.9 | A plugin page declares its layout per renderer class or takes the host's stacked default; the host guarantees no horizontal overflow and the 40 px target at handheld; every plugin page runs in the responsive matrix at the phone sizes; the funscript player first, the Pixel is the bench (`ph-cqz6`). | operator |
+| 2026-10-05 | §10.3 | The no-page-shifting rule (2026-10-02) is written down and reads "no shifting from non-user input": a user's own act may change heights, state never may (`ph-mdqo`). | operator |
+| 2026-10-05 | §10.3 | The page frame: no window side margin, the bars full bleed, the frame `--gap` on all four sides and between sidebar and content; the old 5 px reach to the hero outline goes (`ph-p43h`). | operator (the gap left of the sidebar, read from "one padding on all four sides", is the agent's, veto-able) |
+| 2026-10-05 | §10.3 | Scroll recesses cover the scroller's padding and corners, take a theme ink, toggle with 2 px of hysteresis and move no box. | operator (`--bg-sunken` as the ink is the agent's, veto-able) |
+| 2026-10-05 | §10.3 | The rail joins the strip as one hero bar with a divider; tape always shown; the span pill in the band, start and end on the axis row; a hide tab with a 64 px live mini rail, disableable in Settings; buckets 1 and 2 keep the mini and open a vertical rail pop-up. The slim/expanded flipper is withdrawn. | operator (the hidden state persisting and the pop-up held open during a drag are the agent's reading, veto-able) |
+| 2026-10-05 | §10.3 | Strip buttons are one icon-above-word box with taller icons; Override draws arrows out of the window (lift) and in (return); Flip draws two arrows around a struck 0, one grey. Supersedes the 2026-10-02 glyph rulings of `ph-l1y6` and `ph-0hdh`. | operator |
+| 2026-10-05 | §10.3, §10.11 | The advanced and diagnostic toggles and Reset move into the selected page's sidebar pill (count then item, Reset a 1 s hold); a category page on the rail has no footer; the tab strip classes keep them in the footer (`ph-lxea`). | operator (dropping the page's in-flight count on the rail, since every card head carries its own, is the agent's, veto-able) |
+| 2026-10-05 | §10.5 | One card-body layout for fields and composites: whole field floors across the card, remainder stretched, no private grid in a composite, one type step per sub-group title and section header. | operator (the 8-column field floor is the agent's, veto-able) |
+| 2026-10-05 | §10.5 | The spacing scale is five fractions of the 2 rem layout column, `--gap` among them (`ph-acnj`). | advisor, operator yes (the fractions are the agent's, veto-able) |
+| 2026-10-05 | §10.5 | Modifier keys everywhere: Shift = fine, Ctrl = snap to the decade below the range's magnitude; the Shift x10 nudge flips; relative drags lower their gain. | operator (Shift's old "send on release" during a drag moving to Alt is the agent's, veto-able, flagged) |
+| 2026-10-05 | §10.6 | The Dash is the only customizable page; its named layouts are sub-items under Dash with Default pinned first, `+ Add layout` last, a wrench on the selected layout, no pane head, drag reorder and hold-to-delete; category pages lay out from the seed and their saved placements stay inert. | operator (a new layout starting from the seed, the Layout menu's contents joining the edit-mode chrome and the second UI scale going, `ph-rk0`, are the agent's, veto-able) |
+| 2026-10-05 | §10.6 | F2 or a double-click renames anything with a user name. | operator |
+| 2026-10-05 | §10.9 | Mobile is no longer unresolved: §10.12's buckets 1 and 2 answer it; desktop-to-handheld projection stays `ph-e82.7`'s. | operator |
+| 2026-10-05 | §10.12 | Responsive layout: five buckets counted in field floors of the 2 rem layout column, doubling per step; each sets the hero budget, rail form, sidebar form inside the renderer class, card columns, seed rung and plugin page layout; published as `data-bucket` and `--cols` on `<html>`. | operator (the five-bucket proposal; the 2 rem unit, the 8-column floor, the doubling, the 45/33 % budgets and the no-hysteresis call are the agent's, veto-able, count flagged) |
+| 2026-10-05 | §10.13 | F3 indexes every page, settings entry, plugin-page control and dash layout and matches fuzzily; a 256-write session history with undo and Revert changes to the connect-time baseline, hazards skipped and named; app-wide motion with a System / Reduced / Full toggle on `html.still`. | operator (the Changes feed in the Log pane, Ctrl+Z outside editors and settings-only history are the agent's, veto-able) |
+| 2026-10-05 | plugins | Funscript player: Open files leaves the main bar; Motion, Offset (in ms) and Invert join the wave preview's control bundle on a shadow plate at its corner; the preview takes the advanced generator's screen; a draggable viewer split; hiding a panel never shrinks the player; one transport row (prev, play, next, elapsed, heatmap timeline, remaining, volume, rate, graph toggle with its key, screenshot, layout, close). Text lands in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md) with the code. | operator (Open files moving to the Library head, and what screenshot, layout and close do, are the agent's, veto-able) |
+| 2026-10-05 | plugins | Advanced generator: every input and handle sits on the sunk screen plate; the wave scope becomes a to-scale planned-motion strip (10 s default window, 1 s grid, up / number / down stepper, no caption); a plus spawns a 0.01-stroke dwell; handles drag at a lower gain. Text lands in [PLUGINS.md](PLUGINS.md) with the code. | operator |
