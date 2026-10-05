@@ -46,6 +46,7 @@
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
 //   its current text, so the switch does not move with the reading.
+// - Motion: every transition rides the shell's duration tokens (--t-quick, --t-move, --ease-out), which are 0ms under html.still.
 // - CSS: tokens only, never --bad or --estop (law 13); 40 px targets (law 12).
 // - --warn is a mark, never text: on a light chassis it reads 1.8:1, and it is
 //   locked (law 13). Warn text stays --tx beside a --warn bar.
@@ -652,6 +653,7 @@ export const CSS = `
 .fsp button, .fsp input { font: inherit; }
 .fsp-btn { min-height: var(--tap); min-width: var(--tap); padding: 0 10px; background: none; color: var(--tx); border: 1px solid var(--line-2);
   border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
+.fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
 .fsp-btn:hover { border-color: var(--line-4); }
 .fsp-btn:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
 .fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
@@ -665,6 +667,7 @@ export const CSS = `
 .fsp-libcaret:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
 .fsp-libcaret svg { width: 14px; height: 14px; fill: none; }
 .fsp-libcaret svg .s { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp-libcaret svg { transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
 .fsp[data-libshut] .fsp-libcaret svg { transform: rotate(180deg); }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
 .fsp-src > [role=tablist] { display: flex; flex: none; gap: 4px; }
@@ -682,6 +685,7 @@ export const CSS = `
 .fsp-split::before { content: ''; position: absolute; inset: -4px 0; }
 .fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--line-2); border-radius: 2px; }
 @media (pointer: coarse) { .fsp-split::before { inset: 0; } }
+.fsp-split::after { transition: background var(--t-quick, 120ms); }
 .fsp-split:hover::after, .fsp-split[data-drag]::after, .fsp-split:focus-visible::after { background: var(--highlight); }
 .fsp[data-an] .fsp-split, .fsp[data-comp=glance] .fsp-split { display: none; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
@@ -757,20 +761,20 @@ export const CSS = `
 .fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
 .fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: 20px 6px 0;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
-  opacity: 0; transition: opacity .2s; pointer-events: none; }
+  opacity: 0; transition: opacity var(--t-move, 200ms) var(--ease-out, ease); pointer-events: none; }
 .fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
 @media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: 8px; } }
 @container (max-height: 129px) { .fsp-hb { display: none; } }
 @container (max-width: 439px) { .fsp-hb-vol, .fsp-hov .fsp-hb-mode { display: none; } }
 .fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 6px; cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
-.fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height .1s; }
+.fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
 .fsp-hb-seek:is(:hover, [data-drag]) .fsp-hb-track { height: 5px; }
 .fsp-hb-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
 .fsp-hb-buf { background: color-mix(in srgb, var(--tx) 40%, transparent); }
 .fsp-hb-played { background: var(--highlight); }
 .fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
-  background: var(--highlight); transform: scale(0); transition: transform .1s; }
+  background: var(--highlight); transform: scale(0); transition: transform var(--t-quick, 120ms) var(--ease-out, ease); }
 .fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
 .fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: 2px 6px; font: .75rem var(--mono); color: var(--tx);
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }

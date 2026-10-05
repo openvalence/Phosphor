@@ -1016,6 +1016,16 @@ if (!LIVE) {
     }).length;
   }, C);
   ok('layout: nothing in the card wears --bad or --estop (law 13)', red === 0, red);
+  const still = await page.evaluate((c) => {
+    const bar = document.querySelector(c + ' .fsp-hb'), caret = document.querySelector(c + ' .fsp-libcaret svg');
+    const d = () => [getComputedStyle(bar).transitionDuration, getComputedStyle(caret).transitionDuration];
+    const was = d();
+    document.documentElement.classList.add('still');
+    const on = d();
+    document.documentElement.classList.remove('still');
+    return { was, on };
+  }, C);
+  ok('motion: the card transitions ride the duration tokens and stop under html.still', still.was.every((v) => v !== '0s') && still.on.every((v) => v === '0s'), still);
   // --warn is a mark, never text: Paper's white card reads it at 1.8:1.
   const warnText = await page.evaluate((c) => {
     const probe = document.createElement('i');
