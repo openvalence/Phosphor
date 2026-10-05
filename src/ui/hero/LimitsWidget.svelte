@@ -58,7 +58,4 @@
     color: var(--ink-dim);
     font-size: 0.78rem;
   }
-  .card-body :global(input[type='range']) {
-    margin: var(--sp-3) 0 var(--sp-1);
-  }
 </style>

@@ -1594,7 +1594,8 @@
   .field { --loc-ms: 2s; }
   .locate {
     position: absolute;
-    inset: calc(-1 * var(--sp-2));
+    /* Ring geometry, px on purpose: 3 px out plus the 1 px line, both sides. */
+    inset: -4px;
     width: calc(100% + 8px);
     height: calc(100% + 8px);
     overflow: visible;

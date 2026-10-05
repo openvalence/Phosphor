@@ -365,7 +365,7 @@ console.log('\n[look] F3 look for a control');
     const f = document.querySelector(sel).getBoundingClientRect(), s = document.querySelector(sel + ' svg.locate').getBoundingClientRect();
     return [s.left - f.left, s.top - f.top, s.right - f.right, s.bottom - f.bottom].map((v) => Math.round(v * 2) / 2);
   }, sel);
-  ok('the sweep sits on the ring\'s line (one --sp-2 outside the box)', geo.every((v, i) => Math.abs(Math.abs(v) - 4.48) <= 1.1 && (v < 0) === (i < 2)), geo);
+  ok('the sweep sits on the ring\'s line (4 px outside the box)', geo.join() === '-4,-4,4,4', geo);
   await sleep(700);
   if (SHOTS) {
     const b = await page.locator(sel).boundingBox();

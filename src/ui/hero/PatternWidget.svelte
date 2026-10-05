@@ -92,7 +92,7 @@
     <!-- OG .pat-grid/.pat-tile, label-only: a waveform glyph is a catalog/RFC
          candidate (a `glyph` field on the pattern registry entry), never a
          client-invented shape. -->
-    <div class="pattern-grid" role="radiogroup" aria-label={labelFor(select)}
+    <div class="pattern-grid card-body" role="radiogroup" aria-label={labelFor(select)}
          data-shadow={statusOf(select)}>
       {#each select.options as _opt, i}
         <button type="button" class="pat-tile" role="radio" aria-checked={Number(selectVal) === i}
@@ -107,10 +107,6 @@
   {/if}
 
   {#if knobs.length}
-    <!-- OG .fld2 compact 2-col slider grid — reuses Field.svelte's slider
-         widget verbatim (label top-left, recessed value chip top-right,
-         hairline range below) instead of a second hand-rolled slider, so
-         these rows are pixel-identical to every other slider in the app. -->
     <div class="card-body">
       {#each knobs as f (f.uid)}
         <Field field={f} />
@@ -192,21 +188,19 @@
   /* OG .pat-grid/.pat-tile — bordered label tiles, responsive rather than
      the OG's fixed 4-column grid (dashboard cards here are user-resizable,
      the OG's Pattern card was not). */
-  /* Equal rows, so a two-line label never makes its tile the odd one. */
+  /* Tiles are two layout columns wide and share row height. */
   .pattern-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--sp-3);
+    --field-floor: 4rem;
+    grid-auto-rows: 1fr;
   }
   .pat-tile {
-    flex: 1 1 72px;
-    min-height: max(var(--tap), 52px);
+    min-height: var(--tap);
     padding: var(--sp-3) var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     background: transparent;
     text-align: center;
-    transition: border-color .15s, box-shadow .2s;
+    transition: border-color var(--t-quick), box-shadow var(--t-move);
   }
   .pat-tile-label {
     display: block;
@@ -223,9 +217,6 @@
   .pattern-grid:is([data-shadow='pending'], [data-shadow='overdue']) .pat-tile.on .pat-tile-label { color: var(--intent); }
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .card-body :global(input[type='range']) {
-    margin: var(--sp-3) 0 var(--sp-1);
-  }
 
   .hint {
     margin: 0;

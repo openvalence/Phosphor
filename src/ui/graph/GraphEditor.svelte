@@ -846,7 +846,7 @@
   /* Under 44rem the toolbar holds one row: + Add, Fit, More. */
   @container (max-width: 44rem) {
     .gmore-btn { display: inline-flex; }
-    .gmore { display: none; position: absolute; z-index: 6; top: calc(100% + 4px); left: 0; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
+    .gmore { display: none; position: absolute; z-index: 6; top: calc(100% + var(--sp-2)); left: 0; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
       background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
     .gmore[data-open] { display: flex; }
   }
