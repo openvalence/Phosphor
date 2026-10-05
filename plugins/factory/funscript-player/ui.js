@@ -946,6 +946,7 @@ export function createPlayer(api) {
     const rate = h('button', { type: 'button', class: 'fsp-btn fsp-rate', title: COPY.rate, 'aria-label': COPY.rate });
     rate.addEventListener('click', () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); });
     const graph = trBtn('fsp-expand', ICON.graph, COPY.graph);
+    graph.setAttribute('data-search-key', 'graph');
     graph.setAttribute('aria-pressed', 'false');
     graph.addEventListener('click', () => expand(!root.hasAttribute('data-an')));
     const snapB = trBtn('fsp-snap', ICON.snap, COPY.snap);
@@ -973,7 +974,7 @@ export function createPlayer(api) {
       const room = d.getBoundingClientRect().height + stage.getBoundingClientRect().height - MIN_STAGE;
       if (split > room) root.style.setProperty('--fsp-detail', Math.max(SPLIT_MIN, room) + 'px');
     };
-    const sp = h('div', { class: 'fsp-split', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', 'aria-label': COPY.split,
+    const sp = h('div', { class: 'fsp-split', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', 'data-search-key': 'split', 'aria-label': COPY.split,
       'aria-valuemin': String(SPLIT_MIN), 'aria-valuemax': '480' });
     const detailH = () => Math.round(dtEl().getBoundingClientRect().height);
     const dtEl = () => tlbox.querySelector('.fsp-dt');
@@ -1016,11 +1017,11 @@ export function createPlayer(api) {
     layoutB.addEventListener('click', () => { split = SPLITS[(SPLITS.indexOf(split) + 1) % SPLITS.length]; writePref(api, 'split', split); applySplit(); });
     const closeB = trBtn('fsp-close', ICON.close, COPY.close);
     closeB.addEventListener('click', () => ctl.unload());
-    const motion = btn('fsp-motion', COPY.motion);
+    const motion = btn('fsp-motion', COPY.motion, { 'data-search-key': 'motion' });
     motion.addEventListener('click', () => ctl.setMotion(!st.motion));
     const offIn = h('input', { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
     const offK = h('span', { class: 'fsp-offk', text: COPY.offset, title: COPY.offsetTip });
-    const off = h('label', { class: 'fsp-off' }, offK, offIn, h('span', { class: 'fsp-offu', text: COPY.offsetUnit }));
+    const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offIn, h('span', { class: 'fsp-offu', text: COPY.offsetUnit }));
     const commitOff = (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); offIn.value = String(st.T.offsetMs); };
     offIn.addEventListener('change', () => commitOff(offIn.value));
     offIn.addEventListener('keydown', (e) => {
@@ -1041,7 +1042,7 @@ export function createPlayer(api) {
     const offUp = (e) => { if (offDrag && e.pointerId === offDrag.id) { offDrag = null; commitOff(offIn.value); } };
     offK.addEventListener('pointerup', offUp);
     offK.addEventListener('pointercancel', offUp);
-    const inv = btn('fsp-inv', COPY.invert);
+    const inv = btn('fsp-inv', COPY.invert, { 'data-search-key': 'invert' });
     inv.addEventListener('click', () => ctl.setT({ invert: !st.T.invert }));
     const speedBar = h('i');
     const speedTxt = h('span');

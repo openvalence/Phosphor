@@ -404,6 +404,7 @@ FULL
   generator's inset shadow. The stroke speed reading rides the card's
   bottom, right of the range pills. Under a coarse pointer the rows are
   `var(--tap)` (law 12).
+- **F3 look-for** (`ph-mdqo.12`): the page registers `search` entries Motion, Offset, Invert, Open files, Graph, Split; each key is a `data-search-key` on its control, and the shell opens the page, scrolls to it and focuses its first enabled control.
 - **Open files** lives in the library head; an empty stage is a click
   target for it.
 - **Page fill** (`ph-yuce`): the page registers `fill` (docs/PLUGINS.md,

@@ -1656,6 +1656,14 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(300);
   };
   ok('page settings: the page mounts the card', up && await toPage());
+  const skeys = await page.$$eval(C + ' [data-search-key]', (els) => els.map((e) => e.dataset.searchKey).sort());
+  ok('search: the page lists motion, offset, invert, open, graph and split, each on a control', skeys.join() === 'graph,invert,motion,offset,open,split', skeys);
+  await page.keyboard.press('F3');
+  await page.keyboard.type('Offset');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(600);
+  ok('search: F3 Offset lands on the Offset field, focused', await page.evaluate((c) => document.activeElement === document.querySelector(c + ' .fsp-off input'), C));
   ok('page settings: closed by default, one Settings button, nothing mounted',
     (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
   await pageShot('page-settings-closed-1280x800');

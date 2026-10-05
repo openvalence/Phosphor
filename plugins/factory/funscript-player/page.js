@@ -22,6 +22,12 @@
  */
 import { readPrefs, writePref } from './prefs.js';
 
+// F3 entries: each key is a [data-search-key] on the card (ui.js, library.js); the shell scrolls to it and focuses its first control.
+export const SEARCH = [
+  { label: 'Motion', key: 'motion' }, { label: 'Offset', key: 'offset' }, { label: 'Invert', key: 'invert' },
+  { label: 'Open files', key: 'open' }, { label: 'Graph', key: 'graph' }, { label: 'Split', key: 'split' },
+];
+
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
@@ -35,7 +41,7 @@ const CSS = `
 `;
 
 export function registerPlayerPage(api, player, spec, settings) {
-  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, mount(el, fields) {
+  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, search: SEARCH, mount(el, fields) {
     const style = Object.assign(document.createElement('style'), { textContent: CSS });
     const card = Object.assign(document.createElement('div'), { className: 'fsp-pcard' });
     const sec = Object.assign(document.createElement('div'), { className: 'fsp-psec' });
