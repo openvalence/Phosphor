@@ -60,13 +60,16 @@ reserves the fourth field.
 
 ### Store identity
 
-`tools/msix/identity.json` holds the three identity strings. The committed
-values are placeholders. Once the Partner Center account exists and the name
-"Phosphor" is reserved, Partner Center > the app > Product management >
-Product identity lists them: copy `Package/Identity/Name` to `name`,
-`Package/Identity/Publisher` to `publisher` and
-`Package/Properties/PublisherDisplayName` to `publisherDisplay`. Nothing else
-changes. Submissions upload the unsigned CI package; the Store signs it.
+`tools/msix/identity.json` holds the three identity strings from Partner
+Center (the app > Product management > Product identity): `name` is
+`Package/Identity/Name`, `publisher` is `Package/Identity/Publisher`,
+`publisherDisplay` is `Package/Properties/PublisherDisplayName`. The listing
+is reserved as "OpenValence Phosphor" (the bare name was held by someone
+else's unsubmitted reservation; the exe, window and package keep Phosphor).
+Store ID 9NCK3K06QFVD, package family
+`OpenValence.OpenValencePhosphor_tdbgarf26mbq2`. Submissions upload the
+unsigned CI package; the Store signs it. Once the listing is live,
+`winget install --id 9NCK3K06QFVD -s msstore` installs it.
 
 ### Local test install
 
@@ -75,7 +78,7 @@ node tools/msix/pack.mjs --test-sign
 ```
 
 On first use, `--test-sign` creates a self-signed certificate whose Subject
-equals the placeholder `publisher`, and leaves `test.pfx` and `test.cer` in
+equals `publisher` (so a changed identity needs the old `test.pfx` deleted), and leaves `test.pfx` and `test.cer` in
 `src-tauri/target/msix/` (never committed; `cargo clean` deletes them, so
 trust the new `.cer` after one). Windows installs only packages whose signer
 is trusted machine-wide. Run once, from an elevated PowerShell:
@@ -88,11 +91,10 @@ Then double-click the `.msix` or run `Add-AppxPackage src-tauri\target\msix\phos
 The current user's TrustedPeople store is not enough (0x800B0109). Without
 admin but with Developer Mode on, `Add-AppxPackage -Register src-tauri\target\msix\layout\AppxManifest.xml`
 installs the unsigned layout in place; a rebuild replaces that folder, so
-copy it elsewhere first. `Get-AppxPackage OpenValence.Phosphor | Remove-AppxPackage`
+copy it elsewhere first. `Get-AppxPackage OpenValence.OpenValencePhosphor | Remove-AppxPackage`
 uninstalls either one.
 
-winget comes later: a manifest in `microsoft/winget-pkgs` can point at the
-Store listing once it is live.
+winget needs no manifest of ours: the `msstore` source serves the listing.
 
 ## macOS (the M4 Air, aarch64)
 
