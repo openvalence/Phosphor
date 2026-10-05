@@ -347,7 +347,7 @@ Shipped:
   RFC-070), the stroke editor (deep and shallow on the window, in and out
   speed as the width of each half, accel as a bezier diamond at each foot),
   a rhythm staircase per modulator (amp fader, step handles in whole strokes,
-  offset marker), a told-wave strip, and a numeric twin for every handle. A
+  offset marker), a planned-motion strip, and a numeric twin for every handle. A
   handle and its twin read one effective value (the card's draft while
   edited, else `api.value`): a drag, nudge or keystroke redraws at once in
   the intent look, and release, Enter or blur writes once through
@@ -414,8 +414,25 @@ Shipped:
   store op's slot and name, so it tells them apart by schema type.
 
   **Narrow** (the card under 480 px, a phone or a two-cell placement): the
-  hint and the depth ticks drop and the modifier tabs pair up. The
-  told-wave shows a flat line and `stopped` while Advanced is stopped.
+  hint and the depth ticks drop and the modifier tabs pair up.
+
+  **Planned motion** (`planMotion`, pure): under the stroke editor and
+  above the rhythm section, the current parameters to scale over a fixed
+  window (default 10 s, 2 to 60, a stepper right of the strip: up, number,
+  down; steps 1, 5 or 10; kept in `api.prefs`) on a 1 s grid with thinned
+  labels in a band under the plot and no caption. It runs the way the
+  firmware does (`AdvancedGenerator`): half-strokes from the in half, each
+  from where the last landed, v = master x half x `limit.input.speed`
+  (floor 1 mm/s), a = v^2/d x (1 + 9 knob), d from `window.min`/`window.max`;
+  a dwell holds dwell x (this half + the one before, the run's first
+  counting twice); a half under 0.25 mm is a 50 ms rest that owes no dwell.
+  Every modulator applies per stroke through `BaseControl::modifiedValue`:
+  value - (value - ref) x amount x `dropAt`, ref the control's minimum, and
+  for the depth pair the other depth (max pulls toward min, min toward max),
+  so a depth swing is amount of (max - min). The cycle index is
+  (stroke / 2 + offset) mod steps. Without the ceiling or the window fields
+  the strip is not shown. Editors, handle
+  plates and numeric twins sit on the sunk `--screen` plate.
 
   **Dwells** (RFC-095, optional `advgen.dwell_crest` and
   `advgen.dwell_trough`; absent, nothing is drawn and nothing declines).
@@ -425,7 +442,7 @@ Shipped:
   plot; past it the flat is drawn at the cap with its middle 40 % as dots
   fading out and back in. At 0, a thin guide and a plus sit at the bound
   (the trough start, the deep turn), centered where the pill will ride, off
-  the curve and the diamonds; the plus writes `DWELL_SPAWN` (0.25
+  the curve and the diamonds; the plus writes `DWELL_SPAWN` (0.01
   strokes) and a vertical pill rides the guide at the flat's end, off the
   curve, in the plus's place. Dragging the pill right lengthens the
   dwell: under the cap the pill follows the pointer, past it the flat
@@ -435,7 +452,9 @@ Shipped:
   it to 0 and the plus returns. The numeric twins carry both dwells behind
   the Inputs toggle, and preset Reset returns them to their defaults. The
   playhead follows the told target's half and holds while the position
-  sits at a bound, so through a hold it parks on that bound.
+  sits at a bound, so through a hold it parks on that bound. A handle drag
+  is relative to the grab at gain 0.5 (Shift 0.1) through the same geometry,
+  so it never jumps on pickup.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it

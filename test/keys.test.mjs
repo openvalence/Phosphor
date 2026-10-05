@@ -1,6 +1,6 @@
 /**
  * keys.test.mjs -- ph-vdk.60.11: the key table, F1 key help, F3 look-for and
- * the rail's Shift-drag.
+ * the rail's Alt-drag.
  *
  *   table    every binding in src/model/keys.js exists in the file it names
  *            (a grep-level probe per entry; an entry without a probe fails)
@@ -11,7 +11,7 @@
  *            typing narrows; Enter jumps to a control on another page and
  *            focuses it; the locate sweep runs on the field's ring, then is
  *            gone; Escape returns focus; nothing in the layout moves
- *   rail     a plain window drag writes as it goes; a Shift-drag writes
+ *   rail     a plain window drag writes as it goes; an Alt-drag writes
  *            nothing until release, then once; a cancelled one never
  *
  * The built app on a fake hub (Playwright's WebSocket route; the recorded
@@ -59,8 +59,11 @@ const PROBES = {
   'Controls|Arrows|Slider, knob': /ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1/,
   'Controls|Page Up, Page Down': /PageUp: pageSteps, PageDown: -pageSteps/,
   'Controls|Home, End': /e\.key === 'Home' \|\| e\.key === 'End'/,
-  'Controls|Shift+drag|Slider, knob, range': /deferring\(drag\)[\s\S]*dragWrite\('lo'/,
-  'Controls|Shift+drag|Knob': /e\.shiftKey \? 0\.1 : 1/,
+  'Controls|Alt+drag|Slider, knob, range': /deferring\(drag\)[\s\S]*dragWrite\('lo'/,
+  'Controls|Shift+drag': /dragGain\(e, 1\)/,
+  'Controls|Ctrl+drag': /modSnap\(snap\(knobDrag\.v\), e/,
+  'Controls|Shift+Arrows': /nudge\(dir, e\)/,
+  'Controls|Ctrl+Arrows': /modStep\(e, step, field\.min, field\.max\)/,
   'Controls|Wheel': /e\.shiftKey \? 1 : Math\.max\(1, Math\.round\(pageSteps \/ 10\)\)/,
   'Controls|Arrows|Option buttons': /function segKey/,
   'Controls|Hold': /function holdStart/,
@@ -70,7 +73,7 @@ const PROBES = {
   'Rail|Arrows|Stroke window': /function onBandKey[\s\S]*ArrowRight/,
   'Rail|Arrows, Page Up, Page Down': /function onHandleKey[\s\S]*PageUp/,
   'Rail|Home, End|Window, window edge': /function onBandKey[\s\S]*'Home'[\s\S]*function onHandleKey[\s\S]*'Home'/,
-  'Rail|Shift+drag': /deferring\(e\)[\s\S]*moveHeld = deferring\(e\)/,
+  'Rail|Alt+drag': /deferring\(e\)[\s\S]*moveHeld = deferring\(e\)/,
   'Grid|Ctrl+Z': /e\.key\.toLowerCase\(\) !== 'z'/,
   'Grid|Escape': /if \(pin \|\| marquee\)/,
   'Grid|Shift+drag, Ctrl+drag': /add: e\.shiftKey \|\| e\.ctrlKey/,
@@ -380,7 +383,7 @@ console.log('\n[look] F3 look for a control');
 }
 
 // ---- rail ---------------------------------------------------------------------
-console.log('\n[rail] Shift-drag on the stroke window');
+console.log('\n[rail] Alt-drag on the stroke window');
 {
   const { ctx, page } = await open(1400, 900);
   const band = page.locator('.rail-band');
@@ -392,26 +395,26 @@ console.log('\n[rail] Shift-drag on the stroke window');
     await page.evaluate(() => addEventListener('pointerdown', (e) => { window.__pid = e.pointerId; }, true));
     const b = await band.boundingBox();
     const y = b.y + b.height / 2, x0 = b.x + b.width / 2;
-    const drag = async (shift, dx, cancel = false) => {
+    const drag = async (alt, dx, cancel = false) => {
       const n0 = hub.log.length;
-      if (shift) await page.keyboard.down('Shift');
+      if (alt) await page.keyboard.down('Alt');
       await page.mouse.move(x0, y);
       await page.mouse.down();
       for (let i = 1; i <= 6; i++) { await page.mouse.move(x0 + dx * i / 6, y); await sleep(80); }
       const mid = { n: hub.log.length - n0, shadow: await band.getAttribute('data-shadow') };
       if (cancel) await band.evaluate((el) => el.dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__pid, bubbles: true })));
       await page.mouse.up();
-      if (shift) await page.keyboard.up('Shift');
+      if (alt) await page.keyboard.up('Alt');
       await sleep(600);
       return { mid, after: hub.log.length - n0 };
     };
     const plain = await drag(false, 40);
     ok('a plain window drag writes as it goes', plain.after > 1, plain);
     const held = await drag(true, -40);
-    ok('a Shift-drag writes nothing while held, and shows pending', held.mid.n === 0 && held.mid.shadow === 'pending', held);
+    ok('an Alt-drag writes nothing while held, and shows pending', held.mid.n === 0 && held.mid.shadow === 'pending', held);
     ok('...then writes once on release', held.after >= 1 && held.after <= 2, held);
     const gone = await drag(true, 40, true);
-    ok('a cancelled Shift-drag writes nothing', gone.after === 0, gone);
+    ok('a cancelled Alt-drag writes nothing', gone.after === 0, gone);
   }
   await ctx.close();
 }

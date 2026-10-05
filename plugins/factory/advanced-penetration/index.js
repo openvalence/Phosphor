@@ -41,7 +41,8 @@ const STORE_OP = { save: 1, load: 2, delete: 3 };   // registry store_ops (RFC-0
 const CBOR = { uint: 0, tstr: 4 };                 // SPEC §8.1 schema field types
 const HIT = 30;                                    // px: pointer radius that picks a handle
 const TANGENT = 0.7;                               // accel diamond: share of the bezier control offset
-const WAVE_MS = 6000;
+const WINDOW_KEY = 'window';                       // api.prefs: the planned-motion window, seconds
+const WINDOW_S = [2, 60, 10];                      // min, max, default
 const CONTROL_OWNER = 0x0004;                     // registry core channel control-owner
 const LINK_KEY = 'phosphor.advpen.speedLink';     // client preference; phosphor.* rides the prefs backup
 const INPUTS_KEY = 'phosphor.advpen.inputs';      // client preference: the numeric rows shown
@@ -58,10 +59,12 @@ const CLASSIC = [['pSpeed', 'pattern.speed', 'Speed'], ['pDepth', 'pattern.depth
 // RFC-095: the dwells, flats on the stroke picture when the hub carries them.
 const DWELL = [['dwellCrest', 'advgen.dwell_crest', 'Crest dwell'], ['dwellTrough', 'advgen.dwell_trough', 'Trough dwell']];
 export const DWELL_CAP = 0.25;                     // share of the plot a flat takes before it is drawn cut
-export const DWELL_SPAWN = 0.25;                   // strokes a plus writes
+export const DWELL_SPAWN = 0.01;                   // strokes a plus writes
 const DWELL_OFF = 36;                              // viewBox units: a dwell pill sits this far off its bound
 const LADDER = { pending: 'waiting', overdue: 'still waiting', fault: 'refused' };
 const RANK = { pending: 1, overdue: 2, fault: 3 };
+const DRAG_GAIN = 0.5;                              // handle travel per pointer travel; Shift: DRAG_FINE
+const DRAG_FINE = 0.1;
 const KEYS = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 'min', End: 'max' };
 
 // ---- geometry (pure; test/plugins.test.mjs drives it) ----------------------
@@ -268,6 +271,66 @@ export function dropAt(i, c) {
   return 0;
 }
 
+const MIN_TRAVEL_MM = 0.25, REST_S = 0.05;           // Nucleus PatternEngine kMinTravelMm, kRestUs
+
+/**
+ * The planned motion over windowS seconds, as [[t, position share]], the way
+ * AdvancedGenerator runs it: half-strokes count up from 0 (even in toward max
+ * depth, odd out), each from where the last landed. A half takes the
+ * trapezoid d/v + v/a (v = master x half x ceiling, floor 1; a = v^2/d x
+ * (1 + 9 knob)) and holds its dwell x (this half + the one before; the run's
+ * first counts twice). A half under 0.25 mm is a 50 ms rest and owes no dwell.
+ * p: {master, dMin, dMax, speedIn, speedOut, accelIn, accelOut, dwellCrest,
+ * dwellTrough} shares and strokes; span (mm), ceiling (mm/s); refs: the
+ * modulator's pull-to value per key, default 0; mods: per key {amount (ratio),
+ * rise, hold, fall, rest, phase}. Every control takes BaseControl::modifiedValue
+ * = v - (v - ref) x amount x dropAt(cycle); ref is the other depth for the
+ * depth pair. px: the strip's width, which caps the samples per half.
+ */
+export function planMotion(p, windowS, px = 600) {
+  const out = [];
+  const { span, ceiling } = p;
+  if (!(span > 0 && ceiling > 0 && p.master > 0 && windowS > 0)) return out;
+  const mv = (key, base, ref, i) => {
+    const m = p.mods && p.mods[key], n = m ? m.rise + m.hold + m.fall + m.rest : 0;
+    if (!(m && m.amount > 0 && n > 0)) return base;
+    return base - (base - ref) * m.amount * dropAt((((i >> 1) + m.phase) % n + n) % n, m);
+  };
+  const ref = (key) => (p.refs && p.refs[key]) || 0;
+  let t = 0, y = p.dMin, done = false;
+  const add = (tt, yy) => {
+    if (done) return;
+    if (tt >= windowS) {
+      out.push([windowS, y + (yy - y) * (tt > t ? (windowS - t) / (tt - t) : 1)]);
+      done = true;
+      return;
+    }
+    out.push([tt, yy]);
+    t = tt;
+    y = yy;
+  };
+  add(0, p.dMin);
+  let prev = 0;
+  for (let i = 0; !done && i < 20000; i++) {
+    const inH = i % 2 === 0;
+    const tgt = clamp(inH ? mv('dMax', p.dMax, p.dMin, i) : mv('dMin', p.dMin, p.dMax, i), 0, 1);
+    const d = Math.abs(tgt - y) * span;
+    if (d < MIN_TRAVEL_MM) { prev = 0; add(t + REST_S, y); continue; }
+    const sk = inH ? 'speedIn' : 'speedOut', ak = inH ? 'accelIn' : 'accelOut', dk = inH ? 'dwellCrest' : 'dwellTrough';
+    const v = Math.max(1, p.master * Math.max(0, mv(sk, p[sk], ref(sk), i)) * ceiling), A = clamp(mv(ak, p[ak], ref(ak), i), 0, 1);
+    const T = halfTime(d, v, A), ta = accTime(d, v, A), y0 = y, t0 = t;
+    const N = clamp(Math.ceil(T / windowS * px / 3), 2, 24);
+    for (let k = 1; k <= N; k++) {
+      const u = T * k / N;
+      const sh = u < ta ? u * u / (2 * ta * (T - ta)) : u > T - ta ? 1 - (T - u) ** 2 / (2 * ta * (T - ta)) : (ta / 2 + u - ta) / (T - ta);
+      add(t0 + u, y0 + (tgt - y0) * sh);
+    }
+    add(t + Math.max(0, mv(dk, p[dk] || 0, ref(dk), i)) * (T + (prev || T)), tgt);
+    prev = T;
+  }
+  return out;
+}
+
 /**
  * The rhythm staircase: one bar per stroke, height following amount. c:
  * {amount, rise, hold, fall, rest, phase} in field units; L: {X0, XR, YT, YB, AX, TRACK}.
@@ -404,17 +467,23 @@ const CSS = `
 .ap-note[data-slot=confirmed] { color: color-mix(in srgb, var(--reality) calc(var(--ga, 0) * 100%), var(--tx-mut)); }
 .ap-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px 10px; }
 .ap-num { display: flex; flex-direction: column; gap: 2px; }
-.ap-num input { font-family: var(--mono); }
+.ap .ap-num input { font-family: var(--mono); background: var(--screen); box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); }
 .ap-num:is([data-status=draft], [data-status=pending]) input { border-style: dashed; border-color: var(--intent); }
 .ap-num:is([data-status=overdue], [data-status=fault]) input { border-color: var(--warn); }
 .ap-row .ap-tool { flex: none; width: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
 .ap-row .ap-tool[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
 .ap-cap { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-family: var(--mono); font-size: .7rem; color: var(--tx-mut); }
-.ap-ed { position: relative; width: 100%; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; }
+.ap-ed { position: relative; width: 100%; background: var(--screen); box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .65);
+  border: 1px solid var(--line-1); border-radius: var(--r-s); touch-action: none; user-select: none; }
 .ap-ed svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ap-stroke { height: 240px; }
 .ap-stair { height: 180px; }
-.ap-wave { height: 64px; touch-action: auto; }
+.ap-plan { display: flex; gap: 8px; align-items: stretch; }
+.ap-plan > .ap-ed { flex: 1 1 auto; min-width: 0; height: 120px; touch-action: auto; }
+.ap-win { flex: none; width: var(--tap); display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; }
+.ap-win button { flex: none; width: 100%; height: var(--tap); padding: 0; display: grid; place-items: center; color: var(--tx-mut); }
+.ap-win output { text-align: center; font: var(--num-wght) .76rem var(--mono); color: var(--tx-val); }
+.ap-gl { position: absolute; bottom: 2px; transform: translateX(-50%); font: .62rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-ed path, .ap-ed line, .ap-ed polyline { fill: none; vector-effect: non-scaling-stroke; }
 .ap-ed .curve { stroke: var(--reality); stroke-width: 2; }
 .ap-ed .curve.intent { stroke: var(--intent); }
@@ -428,17 +497,17 @@ const CSS = `
   display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--tx-mut); z-index: 2; }
 .ap-stair .ap-plus { margin: 0; padding: 4px; place-items: start; transform: translate(6px, 8px); }   /* off its corner handle: never over it */
 .ap-plus > i { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 50%;
-  background: var(--bg-card); font: 600 14px/1 var(--mono); pointer-events: none; }
+  background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65); font: 600 14px/1 var(--mono); pointer-events: none; }
 .ap-plus:is(:hover, :focus-visible) { color: var(--highlight); outline: none; }
 .ap-plus:hover > i { border-color: var(--highlight); }
 .ap-plus:focus-visible > i { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .ap-ed .fill { fill: var(--intent); opacity: .12; }
-.ap-ed .told { stroke: var(--intent); stroke-width: 1.5; }
 .ap-ax { position: absolute; left: 4px; transform: translateY(-50%); font: .66rem var(--mono); color: var(--tx-ghost); pointer-events: none; }
 .ap-seg { position: absolute; bottom: 30px; transform: translateX(-50%); font: .66rem var(--mono); color: var(--tx-mut); pointer-events: none; white-space: nowrap; }
 .ap-h { position: absolute; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; }
 .ap-h::after { content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px;
-  border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--bg-card); box-sizing: border-box; }
+  border-radius: 50%; border: 2px solid var(--hc, var(--reality)); background: var(--screen); box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .65);
+  box-sizing: border-box; }
 .ap-h[data-shape=vpill]::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; }
 .ap-h[data-shape=hpill]::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; }
 .ap-h[data-shape=diamond]::after { border-radius: 2px; transform: rotate(45deg); }
@@ -452,9 +521,9 @@ const CSS = `
 .ap-h.off { opacity: .4; }
 .ap-tag { position: absolute; left: calc(50% + 12px); top: calc(50% + 4px); white-space: nowrap; font: .7rem/1.3 var(--mono); color: var(--reality);
   pointer-events: none; padding: 0 3px; border-radius: 4px; }
-.ap-tag.bg { background: color-mix(in srgb, var(--bg-card) 85%, transparent); }
+.ap-tag.bg { background: color-mix(in srgb, var(--screen) 85%, transparent); }
 .ap-tag:empty { display: none; }
-.ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--bg-card); box-sizing: border-box; pointer-events: none; z-index: 1; }
+.ap-play { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--intent); border: 2px solid var(--screen); box-sizing: border-box; pointer-events: none; z-index: 1; }
 .ap h4 { margin: 0; font: 500 .8rem var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); white-space: nowrap; }
 .ap-hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ap-mtabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 4px; }
@@ -463,7 +532,7 @@ const CSS = `
 .ap-narrow :is(.ap-hint, .ap-ax) { display: none; }
 .ap-narrow .ap-mtabs { grid-template-columns: 1fr 1fr; }
 .ap-narrow .ap-mtabs [role=tab]::before { display: none; }
-.ap-idle { position: absolute; left: 8px; top: 4px; font: .7rem var(--mono); color: var(--tx-mut); }
+@media (pointer: coarse) { .ap-mon, .ap-mtrash { min-width: var(--tap); } }
 .ap .ap-stale { opacity: .55; }
 `;
 
@@ -552,7 +621,7 @@ function makeEditor(api, o, ed) {
   }
   const local = (e) => {
     const r = box.getBoundingClientRect();
-    return { x: clamp((e.clientX - r.left) / r.width * o.W, 0, o.W), y: clamp((e.clientY - r.top) / r.height * o.H, 0, o.H) };
+    return { x: (e.clientX - r.left) / r.width * o.W, y: (e.clientY - r.top) / r.height * o.H };   // unclamped: half gain must travel past the edge
   };
   box.addEventListener('pointerdown', (e) => {
     const r = box.getBoundingClientRect();
@@ -568,13 +637,18 @@ function makeEditor(api, o, ed) {
     e.preventDefault();
     box.setPointerCapture(e.pointerId);
     best.el.focus({ preventScroll: true });
-    drag = { hd: best, g0: g, id: e.pointerId };
+    const h0 = best.at(g), p0 = local(e);
+    drag = { hd: best, g0: g, id: e.pointerId, h0, p0, gain: e.shiftKey ? DRAG_FINE : DRAG_GAIN };
   });
   box.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const p = local(e);
-    const f = drag.hd.field;
-    const v = drag.hd.value(f, drag.g0, p.x, p.y);
+    const p = local(e), f = drag.hd.field;
+    // Relative to the grab, scaled; a gain change (Shift) re-anchors so the handle never jumps.
+    const gain = e.shiftKey ? DRAG_FINE : DRAG_GAIN;
+    const at = () => ({ x: clamp(drag.h0.x + (p.x - drag.p0.x) * drag.gain, 0, o.W), y: clamp(drag.h0.y + (p.y - drag.p0.y) * drag.gain, 0, o.H) });
+    if (gain !== drag.gain) { drag.h0 = at(); drag.p0 = p; drag.gain = gain; }
+    const q = at();
+    const v = drag.hd.value(f, drag.g0, q.x, q.y);
     if (Number.isFinite(v)) ed.preview(f, v);
   });
   const end = (e) => {
@@ -1025,31 +1099,84 @@ function mountCard(api, el, fields) {
       tabs, host);
   }
 
-  // ---- wave · told: the commanded target while running, from the shadow
-  // ponytail: sampled per frame from api.value, not the source timeline (webui T18); a scope, not a measurement.
-  const waveLine = s('polyline', { class: 'told' });
-  // Stopped: a flat dim line and the word, never a blank box.
-  const flat = s('line', { class: 'guide', x1: 0, x2: 1000, y1: 32, y2: 32 });
-  const idle = h('span', { class: 'ap-idle', text: 'stopped' });
-  const wave = h('div', { class: 'ap-ed ap-wave' }, idle, h('span', { class: 'ap-cap', style: 'position:absolute;right:8px;top:4px', text: 'wave · told' }));
-  const waveSvg = s('svg', { viewBox: '0 0 1000 64', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
-  waveSvg.append(flat, waveLine);
-  wave.prepend(waveSvg);
+  // ---- planned motion: the current parameters to scale over a fixed window (planMotion)
+  const limit = api.field('limit.input.speed');
+  const wlo = api.field('window.min'), whi = api.field('window.max');
+  let plan = null;
+  // Without the ceiling or the window nothing is to scale: no strip.
+  if (limit && wlo && whi) {
+    let winS = Number(api.prefs.get(WINDOW_KEY));
+    if (!(winS >= WINDOW_S[0] && winS <= WINDOW_S[1])) winS = WINDOW_S[2];
+    const planPath = s('path', { class: 'curve' });
+    const planGrid = s('g');
+    const planSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    planSvg.append(planGrid, planPath);
+    const planBox = h('div', { class: 'ap-ed ap-planbox' }, planSvg);
+    const winOut = h('output', { title: 'Window, seconds' });
+    const winBtn = (dir, label, d) => {
+      const b = h('button', { type: 'button', class: 'og-btn ap-tool', 'aria-label': label, title: label });
+      b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '"/></svg>';
+      b.addEventListener('click', () => {
+        const step = dir > 0 ? (winS < 10 ? 1 : winS < 30 ? 5 : 10) : (winS <= 10 ? 1 : winS <= 30 ? 5 : 10);
+        winS = clamp(winS + dir * step, WINDOW_S[0], WINDOW_S[1]);
+        api.prefs.set(WINDOW_KEY, winS);
+        drawPlan();
+      });
+      return b;
+    };
+    const upB = winBtn(1, 'Longer window', 'M3.5 10.5 8 6l4.5 4.5'), downB = winBtn(-1, 'Shorter window', 'M3.5 5.5 8 10l4.5-4.5');
+    plan = h('div', { class: 'ap-plan' }, planBox, h('div', { class: 'ap-win' }, upB, winOut, downB));
+    // Plot y 4..80 of the box; the grid labels own the band under it.
+    const PY = (v) => (80 - v * 76).toFixed(1);
+    const keyOf = new Map(DRIVEN.map(([k]) => [F[k].uid, k]));
+    const speedRef = (f) => unitOf(f, f.min);
+    let gridKey = '', planKey = '';
+    function drawPlan() {
+      winOut.textContent = String(winS);
+      upB.disabled = winS >= WINDOW_S[1];
+      downB.disabled = winS <= WINDOW_S[0];
+      const w = planBox.clientWidth || 300, gk = winS + ':' + w;
+      if (gridKey !== gk) {
+        gridKey = gk;
+        planGrid.replaceChildren(...Array.from({ length: winS + 1 }, (_, i) => s('line', { class: 'grid', x1: i * 1000 / winS, x2: i * 1000 / winS, y1: 0, y2: 80 })));
+        // One label per whole step of 1, 2, 5, 10, 30 or 60 s that clears 28 px.
+        const step = [1, 2, 5, 10, 30, 60].find((n) => n * w / winS >= 28) || 60;
+        planBox.querySelectorAll('.ap-gl').forEach((e) => e.remove());
+        for (let t = 0; t <= winS; t += step) planBox.append(h('span', { class: 'ap-gl', style: 'left:' + (t / winS * 100) + '%' + (t === 0 ? ';transform:none;margin-left:3px' : t === winS ? ';transform:translateX(-100%);margin-left:-3px' : ''), text: String(t) }));
+      }
+      const mm = {};
+      for (const { m, t } of mods) {
+        const k = keyOf.get(t), a = val(m.amount);
+        if (k && a > 0) mm[k] = { amount: a / (m.amount.max || 100), ...Object.fromEntries(MOD.slice(1).map(([n]) => [n, Math.max(0, Math.round(val(m[n]) || 0))])) };
+      }
+      const inp = {
+        master: unitOf(F.master, val(F.master)), speedIn: unitOf(F.speedIn, val(F.speedIn)), speedOut: unitOf(F.speedOut, val(F.speedOut)),
+        accelIn: unitOf(F.accelIn, val(F.accelIn)), accelOut: unitOf(F.accelOut, val(F.accelOut)),
+        dMin: fracOf(F.depthMin, val(F.depthMin)), dMax: fracOf(F.depthMax, val(F.depthMax)),
+        dwellCrest: dw(F.dwellCrest), dwellTrough: dw(F.dwellTrough),
+        span: Number(api.value(whi)) - Number(api.value(wlo)), ceiling: Number(api.value(limit)),
+        refs: { speedIn: speedRef(F.speedIn), speedOut: speedRef(F.speedOut), dwellCrest: F.dwellCrest ? F.dwellCrest.min || 0 : 0, dwellTrough: F.dwellTrough ? F.dwellTrough.min || 0 : 0 },
+        mods: mm,
+      };
+      const key = JSON.stringify([inp, w, winS]);
+      if (key === planKey) return;
+      planKey = key;
+      planPath.setAttribute('d', planMotion(inp, winS, w).map(([t, y], i) => (i ? 'L' : 'M') + (t / winS * 1000).toFixed(1) + ' ' + PY(y)).join(''));
+    }
+    const planRo = new ResizeObserver(() => drawPlan());
+    planRo.observe(planBox);
+    loops.push(() => planRo.disconnect());
+    updaters.push(drawPlan);
+  }
+
   const tgt = api.field('telemetry.target') || api.field('telemetry.position');
   const pos = api.field('telemetry.position');
-  const wlo = api.field('window.min'), whi = api.field('window.max');
   const share = (f) => {
     const a = Number(api.value(wlo)), b = Number(api.value(whi)), v = Number(api.value(f));
     return f && wlo && whi && b > a && Number.isFinite(v) ? clamp((v - a) / (b - a), 0, 1) : null;
   };
-  const trace = [];
   let lastU = null, dir = 1;
   function frame() {
-    const now = performance.now();
-    const u = share(tgt);
-    if (u != null) trace.push([now, u]);
-    while (trace.length && trace[0][0] < now - WAVE_MS) trace.shift();
-    waveLine.setAttribute('points', trace.map(([t, v]) => ((t - now + WAVE_MS) / WAVE_MS * 1000).toFixed(1) + ',' + (60 - v * 56).toFixed(1)).join(' '));
     // Playhead: the live position on the half it is travelling (depth window shares).
     // The half is the told target's side (no target role: the position's own
     // direction), and it holds while the position sits at a bound, so a hold parks
@@ -1076,14 +1203,11 @@ function mountCard(api, el, fields) {
   const tick = () => {
     frame();
     raf = running() ? requestAnimationFrame(tick) : 0;
-    if (!raf) { play.hidden = true; trace.length = 0; waveLine.setAttribute('points', ''); }
+    if (!raf) play.hidden = true;
   };
   loops.push(() => cancelAnimationFrame(raf));
   updaters.push(() => {
-    const r = running();
-    idle.hidden = r;
-    flat.toggleAttribute('hidden', r);
-    if (!raf && r) raf = requestAnimationFrame(tick);
+    if (!raf && running()) raf = requestAnimationFrame(tick);
   });
 
   // ---- presets: a dropdown over the store (RFC-070) and its ops (RFC-067)
@@ -1140,9 +1264,9 @@ function mountCard(api, el, fields) {
     slider(F.master, 'Speed'),
     ...(presets ? [presets] : []),
     stroke.box, stroke.note,
+    ...(plan ? [plan] : []),
     baseNums,
     ...(rhythm ? [rhythm] : []),
-    wave,
     runRow(F.advRun, F.running));
   const classic = F.select && F.running ? h('div', { class: 'ap' }, choice(F.select, 'Pattern'),
     ...CLASSIC.filter(([k]) => F[k]).map(([k, , l]) => slider(F[k], l)),

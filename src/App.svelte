@@ -702,6 +702,7 @@
     font-weight: 500;
     text-align: left;
     white-space: nowrap;
+    transition: color var(--t-quick) var(--ease-out), background-color var(--t-quick) var(--ease-out);
   }
   .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */

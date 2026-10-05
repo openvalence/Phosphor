@@ -57,6 +57,7 @@ export function undoLast() {
   layouts.active = s.active;
   layouts.layouts = s.layouts;
   layouts.modules = s.modules;
+  layouts.order = s.order;
   last = null;
   undo.can = false;
   persist();
@@ -64,6 +65,14 @@ export function undoLast() {
 }
 
 export const layoutNames = () => Object.keys(layouts.layouts);
+/** Layout names in sidebar order, Default first and pinned (grid.js layoutOrder). */
+export const orderedLayoutNames = () => G.layoutOrder(layouts);
+/** True while the Dash page is in edit mode; the sidebar wrench flips it. */
+export const dashEdit = $state({ on: false });
+/** A new empty layout (rank seed) made active; false for a taken or invalid name. */
+export const addLayout = edit((n) => G.addLayout(layouts, n));
+/** Default refuses; `index` counts Default as 0. */
+export const moveLayout = edit((n, i) => G.moveLayout(layouts, n, i));
 export const switchLayout = (n) => saved(G.switchLayout(layouts, n));
 export const saveLayoutAs = edit((n) => G.saveLayoutAs(layouts, n));
 export const renameLayout = edit((a, b) => G.renameLayout(layouts, a, b));

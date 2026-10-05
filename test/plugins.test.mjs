@@ -53,7 +53,7 @@ import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
 import {
   snap, halfTime, speedInAt, speedOutAt, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
-  dwellAt, DWELL_CAP,
+  dwellAt, DWELL_CAP, DWELL_SPAWN, planMotion,
   linkedInAt, linkedOutAt, linkSpan, linkPartner, linkRescale, placeLabels, densify,
 } from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
@@ -1074,6 +1074,39 @@ console.log('(h) editor geometry');
   ok('staircase: amp fader to amount', near(stairValue.amount(pct, st, 0, st.amp.y), 50));
   ok('staircase: phase marker wraps the cycle', near(stairValue.phase(pct, st, st.phase.x), 2));
   ok('staircase: amount 0 is flat', stairGeom({ ...c, amount: 0 }, 100, ML).bars.every((y) => y === ML.YT));
+
+  // The planned motion (ph-mdqo.8): the firmware's trapezoid halves, dwells as flats, the rhythm per stroke.
+  ok('dwell: a plus writes 0.01 strokes', DWELL_SPAWN === 0.01);
+  const pm = { master: 0.5, speedIn: 0.5, speedOut: 0.5, accelIn: 0.5, accelOut: 0.5, dMin: 0, dMax: 1, span: 100, ceiling: 400 };
+  const tH = halfTime(100, 0.5 * 0.5 * 400, 0.5);   // 100 mm at 100 mm/s: d/v + v/a
+  const at = (pts, t) => { const i = pts.findIndex(([x]) => x >= t - 1e-9); return pts[i]; };
+  const pl = planMotion(pm, 10);
+  ok('plan: the first half takes the trapezoid time and ends at the deep turn', near(tH, 1 + 1 / 5.5, 1e-9) && near(at(pl, tH)[0], tH, 1e-9)
+    && near(at(pl, tH)[1], 1, 1e-9) && near(at(pl, tH * 2)[1], 0, 1e-9));
+  ok('plan: spans exactly the window, from the trough', pl[0][0] === 0 && pl[0][1] === 0 && pl[pl.length - 1][0] === 10);
+  ok('plan: the half is monotonic', pl.filter(([t]) => t <= tH).every(([, y], i, a) => !i || y >= a[i - 1][1] - 1e-12));
+  // The run starts as the firmware does: in half, crest hold (the first stroke's clock is 2 x tIn), out half, trough hold.
+  const dwp = planMotion({ ...pm, dwellTrough: 0.25, dwellCrest: 0.5 }, 20);
+  ok('plan: dwells are flats of dwell x (this half + the last); the first counts twice', near(at(dwp, tH * 2)[1], 1, 1e-9)
+    && near(dwp.find(([t, y], i) => i && y === 1 && dwp[i - 1][1] === 1)[0], tH * 2, 1e-9) && near(at(dwp, tH * 3)[1], 0, 1e-9)
+    && near(at(dwp, tH * 3.5)[0], tH * 3.5, 1e-9) && near(at(dwp, tH * 3.5)[1], 0, 1e-9));
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const topsOf = (q, w) => {
+    const r = planMotion(q, w), o = [];
+    for (let i = 1; i < r.length - 1; i++) if (r[i][1] > r[i - 1][1] && r[i][1] >= r[i + 1][1]) o.push(+r[i][1].toFixed(6));
+    return o;
+  };
+  const cyc = { amount: 0.5, rise: 2, hold: 1, fall: 0, rest: 1, phase: 0 };
+  ok('plan: the rhythm lowers the deep turn per dropAt, then rests at full', eq(topsOf({ ...pm, mods: { dMax: cyc } }, 20).slice(0, 4), [0.75, 0.5, 0.5, 1]));
+  ok('plan: the rhythm phase adds to the cycle index', eq(topsOf({ ...pm, mods: { dMax: { ...cyc, phase: 1 } } }, 20).slice(0, 4), [0.5, 0.5, 1, 0.75]));
+  ok('plan: the depth swing is amount of (max - min), with a shallow stop above 0', eq(topsOf({ ...pm, dMin: 0.2, mods: { dMax: cyc } }, 20).slice(0, 4), [0.8, 0.6, 0.6, 1]));
+  const sp = planMotion({ ...pm, mods: { speedIn: { amount: 0.5, rise: 1, hold: 0, fall: 1, rest: 0, phase: 0 } } }, 20);
+  const tSlow = halfTime(100, 0.5 * 0.25 * 400, 0.5);
+  ok('plan: a speed modulator changes that half\'s time (speed 0.5 -> 0.25 of full, twice the cruise)', near(at(sp, tSlow)[1], 1, 1e-9) && tSlow > tH * 1.9);
+  const zt = planMotion({ ...pm, mods: { dMax: { amount: 1, rise: 1, hold: 1, fall: 1, rest: 1, phase: 0 } } }, 10);
+  ok('plan: zero-travel strokes rest 50 ms and the plan carries on to the window end, then moves again',
+    zt[zt.length - 1][0] === 10 && near(zt[1][0], 0.05, 1e-9) && zt[1][1] === 0 && Math.max(...zt.map((q) => q[1])) > 0.9);
+  ok('plan: no ceiling or travel draws nothing', planMotion({ ...pm, ceiling: 0 }, 10).length === 0 && planMotion({ ...pm, span: 0 }, 10).length === 0);
 }
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');

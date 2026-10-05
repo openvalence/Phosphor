@@ -376,6 +376,50 @@ for (const id of ['slate', 'ink', 'paper']) {
   await ctx.close();
 }
 
+// ---- 4. motion: html.still from theme motion 0, the Motion pref and the OS ---
+{
+  console.log('\n--- motion ---');
+  const hover = async (page) => {
+    await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+    await page.hover('nav.rail [role=tab] >> nth=1');
+    return page.$eval('nav.rail [role=tab] >> nth=1', (e) => parseFloat(getComputedStyle(e).transitionDuration));
+  };
+  const motionCase = async (name, { pref, media, theme }, wantStill, wantHover) => {
+    const seed = {};
+    if (pref) seed['phosphor.prefs'] = JSON.stringify({ v: 1, motion: pref });
+    if (theme) seed['phosphor.theme'] = JSON.stringify(theme);
+    const { ctx, page, errors } = await boot({ width: 1440, height: 900 }, seed);
+    if (media) await page.emulateMedia({ reducedMotion: media });
+    const dur = await hover(page);
+    await page.waitForTimeout(200);
+    const still = await page.evaluate(() => document.documentElement.classList.contains('still'));
+    ok(name + ': html.still is ' + wantStill, still === wantStill);
+    ok(name + ': rail-tab hover transition ' + (wantHover ? 'runs' : 'is instant'), wantHover ? dur > 0 : dur === 0, String(dur));
+    ok(name + ': no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+  };
+  await motionCase('OS reduce + pref Full', { pref: 'full', media: 'reduce' }, false, true);
+  await motionCase('OS reduce + pref System', { media: 'reduce' }, true, false);
+  await motionCase('no OS preference + pref Reduced', { pref: 'reduced', media: 'no-preference' }, true, false);
+  await motionCase('no OS preference + pref System', { media: 'no-preference' }, false, true);
+  const noMotion = { ...THEMES[0], look: { ...THEMES[0].look, motion: 0 } };
+  await motionCase('theme motion 0 + pref Full', { pref: 'full', media: 'no-preference', theme: noMotion }, true, false);
+
+  // The Settings toggle drives it live.
+  const { ctx, page } = await boot({ width: 1440, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await openTab(page, 'display');
+  const radio = (label) => page.locator('[role=radiogroup][aria-labelledby=tp-motion] >> role=radio[name="' + label + '"]');
+  await radio('Reduced').click();
+  ok('Settings: Reduced sets html.still', await page.evaluate(() => document.documentElement.classList.contains('still')));
+  ok('Settings: Reduced zeroes --t-move', (await css(page, '--t-move')) === '0ms', await css(page, '--t-move'));
+  await radio('Full').click();
+  ok('Settings: Full clears html.still', !(await page.evaluate(() => document.documentElement.classList.contains('still'))));
+  ok('Settings: Full restores --t-move', ['200ms', '.2s'].includes(await css(page, '--t-move')), await css(page, '--t-move'));
+  ok('Settings: the Rail hide tab switch is on by default', await page.isChecked('label:has-text("Rail hide tab") input'));
+  await ctx.close();
+}
+
 await browser.close();
 srv.close();
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS'));

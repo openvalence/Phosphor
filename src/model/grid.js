@@ -101,24 +101,40 @@ const hits = (placed, r) => placed.some((p) => overlaps(r, p));
 const byReading = (a, b) => a.y - b.y || a.x - b.x;
 
 /**
- * The first-run seed: `items` flow in order, each at the first free rect of
- * its own size around `placed` (an entry with no `w`, or no entry, fills the
- * row; `h` defaults to DEFAULT_H). place() puts an unplaced item the same way.
+ * The first-run seed: `items` flow in order (rank), each at the first free
+ * rect of its own size around `placed`. An entry with no `w`, or no entry,
+ * takes the item's floor width `fit.w(item)` (cells, null before it was
+ * measured) and fills the row without one; `h` defaults to DEFAULT_H. place()
+ * puts an unplaced item the same way.
  * `fit(item, w, h)` is the item's content height in cells at width `w`, or
  * null before it was ever measured; an unplaced item is never drawn shorter.
  */
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
 export function pack(items, map, cols, placed = [], fit = null) {
+  const seeded = [];
+  let from = 0;   // rank order: no card lands in a row above the one before it, or a section header would trail its cards
   for (const it of items) {
     const e = map[it.id];
-    const { w, h: h0 } = sizeOf(e, cols);
+    const { w: w0, h: h0 } = sizeOf(e, cols);
+    const fw = fit && fit.w && !(e && e.w != null) ? fit.w({ ...it, ...lookOf(e) }) : 0;
+    const w = fw > 0 ? int(fw, 1, cols, cols) : w0;
     const h = Math.min(MAX_H, Math.max(h0, (fit && fit({ ...it, ...lookOf(e) }, w, h0)) || 0));
     let r = null;
-    for (let y = 0; !r; y++) {
+    for (let y = from; !r; y++) {
       for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
     }
     placed.push(r);
+    from = r.y;
+    if (fw > 0) seeded.push({ r, h0, e });
+  }
+  // No seeded row ends in a gutter (DESIGN §10.5): the card at a row's end stretches to the edge.
+  // Its height follows the new width when that width was measured, else it keeps the narrower, taller one.
+  for (const { r, h0, e } of seeded.sort((a, b) => b.r.x - a.r.x)) {
+    const w = cols - r.x;
+    const f = fit && fit({ ...r, ...lookOf(e) }, w, h0);
+    const h = f ? Math.min(MAX_H, Math.max(h0, f)) : r.h;
+    if (!hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h })) { r.w = w; r.h = h; }
   }
   return placed.sort(byReading);
 }
@@ -358,12 +374,14 @@ export function commitOrder(map, items, cols, orderedIds) {
 // ---- named layouts ---------------------------------------------------------------
 
 /**
- * Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map, opts? } }, modules: { [name]: module } }.
+ * Store shape: { active, layouts: { [name]: { [cls + '.' + viewId]: map, opts? } }, modules: { [name]: module }, order: [name] }.
+ * `order` is the sidebar order; read it only through layoutOrder(), which
+ * heals it (Default first and pinned, unknown names dropped, new ones last).
  * Modules (saved nests) belong to no layout and no view. A layout's `opts`
  * ({density}) has no dot, so it never collides with a view key.
  */
 function emptyStore() {
-  return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: {} }, modules: {} };
+  return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: {} }, modules: {}, order: [DEFAULT_NAME] };
 }
 const modulesOf = (s) => (s && s.modules && typeof s.modules === 'object' && !Array.isArray(s.modules) ? s.modules : {});
 
@@ -409,7 +427,10 @@ export function loadStore(storage) {
     const s = readJson(storage, STORE_KEY);
     if (s && typeof s === 'object' && s.layouts && typeof s.layouts === 'object') {
       const names = Object.keys(s.layouts).filter((n) => validName(n) && s.layouts[n] && typeof s.layouts[n] === 'object');
-      if (names.length) return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts, modules: modulesOf(s) };
+      if (names.length) {
+        if (!own(s.layouts, DEFAULT_NAME) || typeof s.layouts[DEFAULT_NAME] !== 'object') s.layouts[DEFAULT_NAME] = {};
+        return { active: names.includes(s.active) ? s.active : names[0], layouts: s.layouts, modules: modulesOf(s), order: Array.isArray(s.order) ? s.order : [] };
+      }
     }
     const seed = {};
     const legacy = {};
@@ -424,7 +445,7 @@ export function loadStore(storage) {
       }
     }
     for (const [view, k] of Object.entries(legacy)) if (!own(seed, view)) seed[view] = migrateSpans(readJson(storage, k));
-    return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: seed }, modules: {} };
+    return { active: DEFAULT_NAME, layouts: { [DEFAULT_NAME]: seed }, modules: {}, order: [DEFAULT_NAME] };
   } catch (e) {
     return emptyStore();
   }
@@ -446,6 +467,32 @@ export function viewMap(store, cls, viewId, create = true) {
   return create ? (l[k] = {}) : {};
 }
 
+/** Layout names in sidebar order: Default first, then `store.order`, then any layout it does not list. */
+export function layoutOrder(store) {
+  const names = Object.keys(store.layouts);
+  const want = [DEFAULT_NAME, ...(Array.isArray(store.order) ? store.order : []), ...names];
+  return [...new Set(want)].filter((n) => names.includes(n));
+}
+
+/** Add an empty layout (every view lays out from the rank seed) and make it active. */
+export function addLayout(store, name) {
+  const n = validName(name) && name.trim();
+  if (!n || own(store.layouts, n)) return false;
+  store.layouts[n] = {};
+  store.order = layoutOrder(store);
+  store.active = n;
+  return true;
+}
+
+/** Move `name` to position `index` of layoutOrder(); Default neither moves nor yields slot 0. */
+export function moveLayout(store, name, index) {
+  if (name === DEFAULT_NAME || !own(store.layouts, name)) return false;
+  const o = layoutOrder(store).filter((n) => n !== name);
+  o.splice(int(index, 1, o.length, o.length), 0, name);
+  store.order = o;
+  return true;
+}
+
 export function switchLayout(store, name) {
   if (!own(store.layouts, name)) return false;
   store.active = name;
@@ -463,7 +510,8 @@ export function saveLayoutAs(store, name) {
 
 export function renameLayout(store, from, to) {
   const n = validName(to) && to.trim();
-  if (!n || !own(store.layouts, from) || own(store.layouts, n)) return false;
+  if (from === DEFAULT_NAME || !n || !own(store.layouts, from) || own(store.layouts, n)) return false;
+  store.order = layoutOrder(store).map((m) => (m === from ? n : m));
   store.layouts[n] = store.layouts[from];
   delete store.layouts[from];
   if (store.active === from) store.active = n;
@@ -515,12 +563,13 @@ export function setDensity(store, density) {
   return true;
 }
 
-/** Delete a layout; the last one cannot go. */
+/** Delete a layout; Default cannot go. */
 export function deleteLayout(store, name) {
-  const names = Object.keys(store.layouts);
-  if (!own(store.layouts, name) || names.length < 2) return false;
+  const names = layoutOrder(store);
+  if (name === DEFAULT_NAME || !own(store.layouts, name) || names.length < 2) return false;
+  store.order = names.filter((n) => n !== name);
   delete store.layouts[name];
-  if (store.active === name) store.active = Object.keys(store.layouts)[0];
+  if (store.active === name) store.active = store.order[0];
   return true;
 }
 

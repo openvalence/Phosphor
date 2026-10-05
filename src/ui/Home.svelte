@@ -151,10 +151,6 @@
 </script>
 
 {#snippet body(item)}
-  {#if editing && builder}
-    <button type="button" class="og-btn sm home-remove" aria-label={'Remove ' + item.title + ' from Dash'}
-            onclick={() => remove(item.id, false)}>Remove</button>
-  {/if}
   {#if item.control}
     {#if editing && builder && item.kind === 'field' && item.setLook}
       <div data-look><LookEditor control={item.control} look={item.look} onchange={item.setLook} /></div>
@@ -187,7 +183,6 @@
     gap: var(--gap);
     min-width: 0;
   }
-  .home-remove { float: right; margin: 0 0 6px 6px; }
   /* App.svelte's .card-body: columns capped at the reading measure. */
   .home-fields {
     display: grid;

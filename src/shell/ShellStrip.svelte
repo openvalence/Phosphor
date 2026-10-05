@@ -189,7 +189,5 @@
     animation: sb-fill var(--hold-ms) linear forwards;
   }
   @keyframes sb-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-  @media (prefers-reduced-motion: reduce) {
-    .sb-fill { animation: none; }
-  }
+  :global(html.still) .sb-fill { animation: none; }
 </style>

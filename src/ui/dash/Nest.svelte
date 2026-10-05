@@ -26,7 +26,7 @@
   import { inFlight } from '../../model/shadow.svelte.js';
 
   let { item, parent, editing = false, candidates = [], announce = () => {}, ondropkey = null,
-    ondragout = null, target = false } = $props();
+    ondragout = null, target = false, ondelete = null } = $props();
 
   const n = $derived(item.nest);
   const sub = $derived(parent.nest(item.id));
@@ -64,7 +64,7 @@
     {#if !item.members.length}
       <p class="nest-empty">{editing ? 'Drop controls here' : 'Empty nest'}</p>
     {/if}
-    <DashGrid items={item.members} layout={sub} {editing} {ondropkey} {ondragout} {target} bind:picked
+    <DashGrid items={item.members} layout={sub} {editing} {ondropkey} {ondragout} {target} tool={ondelete} bind:picked
               onremove={(id) => parent.nestOut(item.id, id) && announce('Moved out of ' + n.title)} />
   </div>
 </div>
