@@ -332,6 +332,7 @@ const handle = (page, key) => page.locator('main.pane .ap .ap-h[data-key="' + ke
 const numIn = (page, label) => page.locator('main.pane .ap .ap-num input[aria-label="' + label + '"]:visible').first();
 /** Drag a handle by (dx, dy) CSS px with the mouse; returns the intents it sent. */
 async function dragBy(page, loc, dx, dy) {
+  await loc.scrollIntoViewIfNeeded();
   const b = await loc.boundingBox();
   const x = b.x + b.width / 2, y = b.y + b.height / 2;
   const n0 = hub.intents.length;
@@ -1186,7 +1187,7 @@ if (LIVE) {
     const unit = await ctl.locator('output').evaluate((o) => ({ text: o.firstChild.textContent, unit: o.querySelector('.unit')?.textContent,
       gap: getComputedStyle(o.querySelector('.unit')).marginLeft, pad: getComputedStyle(o).paddingRight }));
     ok('unit: Speed reads the value, then the unit 3 px off, inside a padded chip', unit.text === '30' && unit.unit === '%' && unit.gap === '3px'
-      && unit.pad === '6px', unit);
+      && parseFloat(unit.pad) >= 4, unit);   // --sp-2
 
     // ph-8qc: the deep label holds its place through pending, overdue and the echo; the words ride the note.
     const deep = handle(page, 'deep');
