@@ -586,7 +586,12 @@ if (LIVE) {
     await page.keyboard.press('Shift+ArrowUp');
     await page.waitForTimeout(200);
     const kv = hub.intents.slice(n1);
-    ok('keys: shift+arrow nudges ten steps, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 10, kv);
+    ok('keys: shift+arrow is the declared step, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 1, kv);
+    const nCtl = hub.intents.length;
+    await page.keyboard.press('Control+ArrowUp');
+    await page.waitForTimeout(250);
+    const cv = hub.intents.slice(nCtl);
+    ok('keys: ctrl+arrow goes to the next decade multiple, one write', cv.length === 1 && cv[0].val[MIND.key] === (Math.floor((m0 + 1) / 10) + 1) * 10, [cv, m0]);
 
     // ---- rhythm: In speed's staircase
     const apEl = await page.locator('main.pane .ap').first().elementHandle();
@@ -627,6 +632,31 @@ if (LIVE) {
     ok('presets: Save with nothing chosen prompts a name, saves to the first empty slot', saved && saved.val[2] === 1 && saved.val[3] === 'Mine', saved);
     ok('presets: the list re-reads', (await sel.locator('option').allTextContents()).includes('Mine'));
     await sel.selectOption({ label: 'Mine' });
+    const nR = hub.intents.length;
+    await sel.focus();
+    await page.keyboard.press('F2');
+    const nameIn = page.locator('main.pane .ap input[aria-label="Preset name"]');
+    ok('presets: F2 opens the name input prefilled with the chosen name', (await nameIn.isVisible()) && (await nameIn.inputValue()) === 'Mine');
+    await nameIn.fill('Mine 2');
+    await nameIn.press('Enter');
+    await page.waitForTimeout(500);
+    const ren = hub.intents.slice(nR).find((i) => i.ch === cmd && i.val[1] === 4);
+    ok('presets: Enter renames the same slot (op 4), and no save goes out', ren && ren.val[2] === 1 && ren.val[3] === 'Mine 2' && !(await nameIn.isVisible())
+      && !hub.intents.slice(nR).some((i) => i.ch === cmd && i.val[1] === 1), hub.intents.slice(nR));
+    await sel.selectOption({ label: 'Mine 2' });
+    const nD = hub.intents.length;
+    await sel.dblclick();
+    const opened = await nameIn.isVisible();
+    await nameIn.press('Escape');
+    ok('presets: a double-click opens it too, Escape cancels with no write', opened && !(await nameIn.isVisible()) && hub.intents.length === nD);
+    await sel.focus();
+    await page.keyboard.press('F2');
+    await nameIn.fill('Mine 3');
+    const nB = hub.intents.length;
+    await page.locator('main.pane .ap h4').first().click();
+    await page.waitForTimeout(400);
+    ok('presets: blur keeps the name', hub.intents.slice(nB).some((i) => i.ch === cmd && i.val[1] === 4 && i.val[3] === 'Mine 3'));
+    await sel.selectOption({ label: 'Mine 3' });
     const n3 = hub.intents.length;
     await page.click('main.pane .ap .og-btn:has-text("Delete")');
     const dlg = page.locator('[role=alertdialog]');
@@ -808,14 +838,19 @@ if (LIVE) {
     await ctx.close();
   }
 
-  {
-    // ---- labels clear of the line, in every fixture state
-    const { ctx, page } = await open();
+  // ---- labels clear of the line, in every fixture state, at the widths the dash seeds the card (1428x900, 1024x768:
+  // a backed label is allowed only where it overlaps nothing) and at a wide plot (none backed)
+  for (const { name, size, wide } of [{ name: '1428x900', size: { width: 1428, height: 900 } }, { name: '1024x768', size: { width: 1024, height: 768 } },
+    { name: 'wide plot', size: { width: 1428, height: 900 }, wide: true }]) {
+    const { ctx, page } = await open({ size });
     await toPatternPage(page);
     await toAdvanced(page);
+    if (wide) await page.addStyleTag({ content: 'main.pane .ap { width: 1184px !important; }' });
     const typeIn = async (label, v) => { const i = numIn(page, label); await i.fill(String(v)); await i.press('Enter'); await page.waitForTimeout(150); };
-    const onLine = () => page.evaluate(() => {
+    const onLine = () => page.evaluate((strict) => {
       const hits = [];
+      const R = (e) => e.getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
       for (const ed of document.querySelectorAll('main.pane .ap .ap-ed:is(.ap-stroke, .ap-stair)')) {
         if (!ed.offsetParent) continue;
         const pts = [];
@@ -830,30 +865,31 @@ if (LIVE) {
           const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
           for (let i = 0; i <= n; i++) pts.push([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n]);
         }
+        const dots = [...ed.querySelectorAll(':scope > .ap-plus:not([hidden]) > i')].map(R);
+        const caps = [...ed.querySelectorAll(':scope > .ap-cap:not([hidden])')].map(R);
         for (const t of ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')) {
           if (!t.textContent) continue;
-          const r = t.getBoundingClientRect();
+          const r = R(t);
           const n = pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length;
-          if (n || t.classList.contains('bg')) hits.push({ tag: t.textContent, n, bg: t.classList.contains('bg') });
+          const over = dots.filter((d) => hit(r, d)).length + caps.filter((c) => hit(r, c)).length;
+          if (n || over || (strict && t.classList.contains('bg'))) hits.push({ tag: t.textContent, n, over, bg: t.classList.contains('bg') });
         }
       }
       return hits;
-    });
+    }, !!wide);
     // The review state (shallow 10 just above the 0 guide) among them.
     const STATES = [null, [85, 0, 100, 50, 40, 40], [50, 30, 20, 100, 0, 100], [100, 0, 1, 100, 100, 0], [30, 25, 100, 5, 0, 0], [85, 10, 70, 45, 30, 60]];
     for (const st of STATES) {
       if (st) for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, st[i]);
       await page.waitForTimeout(200);
       const hits = await onLine();
-      ok('labels: none on the stroke, the staircase or a guide, none backed (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
-      if (SHOT && st && st[0] === 85) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
+      ok('labels ' + name + ': none on the line, a plus or a caption' + (wide ? ', none backed' : '') + ' (' + (st ? st.join('/') : 'as found') + ')', hits.length === 0, hits);
+      if (SHOT && st && st[0] === 85 && !size.height - 900) await page.locator('main.pane .ap').first().screenshot({ path: shot('2-labels') });
     }
     await page.click('main.pane .ap .ap-mtabs [role=tab]:has-text("Max depth")');
     await typeIn('Amp', 100);
     await page.waitForTimeout(200);
-    ok('labels: the staircase labels clear its line at full amp', (await onLine()).length === 0, await onLine());
-    await typeIn('Amp', 0);
-    for (const [i, l] of BASE_LABELS.entries()) await typeIn(l, [10, 0, 100, 100, 40, 40][i]);
+    ok('labels ' + name + ': the staircase labels clear its line at full amp', (await onLine()).length === 0, await onLine());
     await ctx.close();
   }
 
@@ -1034,7 +1070,7 @@ if (LIVE) {
       return [...ed.querySelectorAll('.ap-h:not([hidden]) .ap-tag')].filter((t) => t.textContent).map((t) => {
         const r = t.getBoundingClientRect();
         return { tag: t.textContent, n: pts.filter(([x, y]) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom).length, bg: t.classList.contains('bg') };
-      }).filter((h) => h.n || h.bg);
+      }).filter((h) => h.n);
     });
     ok('dwell: labels clear of the line and the flats', labelHits.length === 0, labelHits);
     dw = (await dragBy(page, pill, -0.6 * bw, 0)).filter((i) => CREST.key in i.val);
@@ -1235,18 +1271,22 @@ if (LIVE) {
     const box = await page.locator('main.pane .ap .ap-stroke').boundingBox();
     const MAXD = settingOf('pattern-advanced', 'max_depth');
     const range = byName('pattern-advanced').layout.find((f) => f.name === 'max_depth');
-    const absDelta = 60 * (240 / box.height) / 180 * (range.max - range.min);
-    const dd = async (shift) => {
-      if (shift) await page.keyboard.down('Shift');
-      const w = (await dragBy(page, handle(page, 'deep'), 0, 60)).filter((i) => MAXD.key in i.val);
-      if (shift) await page.keyboard.up('Shift');
+    const DY = 150;   // far enough that a tenth of the gain is still several whole values
+    const absDelta = DY * (240 / box.height) / 180 * (range.max - range.min);
+    const dd = async (mod) => {
+      if (mod) await page.keyboard.down(mod);
+      const w = (await dragBy(page, handle(page, 'deep'), 0, DY)).filter((i) => MAXD.key in i.val);
+      if (mod) await page.keyboard.up(mod);
       return w.length ? 85 - w[0].val[MAXD.key] : NaN;
     };
-    const full = await dd(false);
+    const full = await dd();
     hubAt(REVIEW); hub.push(ADV.id); await page.waitForTimeout(300);
-    const fine = await dd(true);
-    ok('drag: 60 px moves the value half as far as the absolute mapping, Shift a tenth', Math.abs(full / absDelta - 0.5) < 0.1 && Math.abs(fine / absDelta - 0.1) < 0.06,
+    const fine = await dd('Shift');
+    hubAt(REVIEW); hub.push(ADV.id); await page.waitForTimeout(300);
+    const snapped = 85 - (await dd('Control'));
+    ok('drag: 150 px moves the value half as far as the absolute mapping, Shift a tenth of that', Math.abs(full / absDelta - 0.5) < 0.05 && Math.abs(fine / absDelta - 0.05) < 0.02,
       { full, fine, absDelta });
+    ok('drag: Ctrl rounds the written value to the decade below the range', snapped % 10 === 0 && snapped !== 85, snapped);
     await ctx.close();
   }
 
