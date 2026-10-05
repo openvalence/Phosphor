@@ -413,6 +413,37 @@ console.log('\n[index] F3 indexes every page and every layout, and rebuilds on c
   await ctx.close();
 }
 
+// ---- exclusive overlays (ph-ubwk) ---------------------------------------------
+console.log('\n[overlays] F1, F3 and a confirm are one overlay at a time');
+{
+  const { ctx, page } = await open(1400, 900);
+  const dialogs = () => page.locator('.kh, .lf, .overlay').count();
+  await page.locator('[role=tab][aria-selected=true]').first().focus();
+  await page.keyboard.press('F1');
+  await page.keyboard.press('F3');
+  ok('F1 then F3 leaves the look-for alone', await page.locator('.kh').count() === 0 && await page.locator('.lf').count() === 1, await dialogs());
+  await page.keyboard.press('F1');
+  ok('...and F1 then replaces it', await page.locator('.kh').count() === 1 && await page.locator('.lf').count() === 0);
+  await page.keyboard.press('Escape');
+  const flip = page.locator('.topstrip .rw-flip');
+  if (await flip.count()) {
+    await flip.click();
+    await sleep(200);
+    ok('a flip asks for a confirm', await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('F1');
+    await page.keyboard.press('F3');
+    ok('F1 and F3 do not open over a pending confirm', await page.locator('.kh, .lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('Escape');
+    ok('one Escape closes the confirm', await dialogs() === 0);
+    await page.keyboard.press('F3');
+    await flip.click();
+    await sleep(200);
+    ok('a confirm opening closes an open look-for', await page.locator('.lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('Escape');
+  } else console.log('  (no flip control in this fixture; confirm cases skipped)');
+  await ctx.close();
+}
+
 // ---- rail ---------------------------------------------------------------------
 console.log('\n[rail] Alt-drag on the stroke window');
 {

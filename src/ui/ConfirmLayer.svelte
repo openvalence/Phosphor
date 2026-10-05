@@ -38,6 +38,7 @@
 
   $effect(() => {
     if (!open) return;
+    window.dispatchEvent(new CustomEvent('phosphor-overlay', { detail: 'confirm' }));
     opener = document.activeElement;
     tick().then(() => card?.querySelector('[data-autofocus]')?.focus());
     return () => { if (opener && opener.isConnected) opener.focus(); };

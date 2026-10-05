@@ -16,12 +16,15 @@
    *   buttons, focuses the control and asks its Field for the locate sweep.
    *   The home never scrolls for it; a category page may.
    * - A home placement the catalog lacks lists inert, "not on this hub".
-   * - Same overlay band as KeyHelp: no scrim, below the top strip.
+   * - Same overlay band as KeyHelp: no scrim, below the top strip. One
+   *   overlay at a time: opening announces 'phosphor-overlay', and a pending
+   *   confirm blocks F3.
    */
   import { tick } from 'svelte';
   import { machine, specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { layouts, layoutNames, switchLayout } from '../model/dashboard.svelte.js';
   import { searchEntries } from './searchIndex.js';
+  import { confirmUi } from './confirm.svelte.js';
   import { isNest, nestsIn, baseKey } from '../model/grid.js';
   import { placeableControls } from '../model/settings.js';
   import { labelFor } from '../model/format.js';
@@ -102,6 +105,8 @@
 
   let top = $state(0);
   async function show() {
+    if (confirmUi.req) return;
+    window.dispatchEvent(new CustomEvent('phosphor-overlay', { detail: 'look' }));
     opener = document.activeElement;
     top = document.querySelector('.topstrip')?.getBoundingClientRect().bottom ?? 0;
     q = '';
@@ -201,7 +206,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
+<svelte:window onkeydown={onWindowKey} onphosphor-overlay={(e) => { if (open && e.detail !== 'look') hide(); }} />
 
 {#if open}
   <div class="ov-band" style="--ov-top: {top}px">
