@@ -301,6 +301,16 @@ p { max-width: 75ch; }
 @property --fx-b   { syntax: '<number>'; inherits: true; initial-value: 0; }
 @property --fx-run { syntax: '<number>'; inherits: true; initial-value: 0; }
 
+/* App-wide motion tokens: every transition and animation outside the effect
+   ladder reads these. html.still zeroes them (ui/still.svelte.js). */
+:root {
+  --t-quick: 120ms;
+  --t-move: 200ms;
+  --t-slow: 320ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+}
+html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
+
 /* Every effect timing, here and nowhere else. The ladder's own thresholds
    (overdue at 500 ms, fault at 2 s) are shadow.svelte.js's. */
 :root {
@@ -427,20 +437,10 @@ p { max-width: 75ch; }
   filter: blur(calc(1px + var(--fx-g) * 2.5px));
 }
 
-@media (prefers-reduced-motion: reduce) {
-  [data-shadow='overdue']:not(.field) { animation: none; }
-  * { transition: none !important; }
-  /* Held still: no breath, no travel; the echo holds a steady glow for the
-     same --fx-glow, then clears. The follow stays: it fades a color and
-     moves nothing, and without it a drag would strobe. */
-  .field[data-shadow] { animation: none; }
-  .field[data-glow][data-shadow='confirmed'] {
-    --fx-g-peak: .6;
-    animation: fx-glow var(--fx-glow) steps(1, jump-end) both;
-  }
-  .field { transition: --fx-p var(--fx-follow), --fx-w var(--fx-follow) !important; }
-}
-/* Theme motion 0 (model/theme.js): the same stillness, chosen in the app. */
+/* html.still (ui/still.svelte.js): theme motion 0, the Motion pref, or the OS
+   preference. Held still: no breath, no travel; the echo holds a steady glow
+   for the same --fx-glow, then clears. The follow stays: it fades a color and
+   moves nothing, and without it a drag would strobe. */
 html.still [data-shadow='overdue']:not(.field) { animation: none; }
 html.still * { transition: none !important; }
 html.still .field[data-shadow] { animation: none; }
