@@ -97,8 +97,10 @@
     flex-wrap: nowrap;
     overflow: hidden;
     white-space: nowrap;
-    gap: 12px;
-    padding: 8px var(--gap);
+    gap: var(--sp-4);
+    /* em of the fixed 11 px type, not rem: the row's box and the scale group's edge hold while the UI scale steps. */
+    margin: 0 calc(var(--app-pad) * -1);
+    padding: .727em 1.09em;
     background: var(--bg-raised);
     border-top: 1px solid var(--line);
     color: var(--ink-faint);
@@ -115,7 +117,7 @@
   .facts {
     display: flex;
     flex-wrap: nowrap;
-    gap: 9px;
+    gap: var(--sp-3);
     min-width: 0;
     overflow: hidden;
     flex: 1 1 auto;
@@ -125,7 +127,7 @@
     flex: none;
     display: inline-flex;
     align-items: baseline;
-    gap: 5px;
+    gap: var(--sp-2);
     white-space: nowrap;
   }
   /* A fact that happens to be clickable stays a fact: same metrics, no button

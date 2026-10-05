@@ -476,21 +476,58 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - s.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 }; });
   const sb0 = await sbox();
   ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
+  // ph-p43h: the top bar and the status row are full bleed; the status text keeps a --gap inset at both ends.
+  const bleed = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), t = r('.topstrip'), f = r('.footstrip');
+    return { t: [t.left, t.width], f: [f.left, f.width], iw: innerWidth, ow: document.documentElement.scrollWidth }; });
+  ok(tag + ': the top bar and the status row span the window edge to edge, no overflow',
+    bleed.t[0] === 0 && bleed.f[0] === 0 && Math.abs(bleed.t[1] - bleed.iw) < 0.5 && Math.abs(bleed.f[1] - bleed.iw) < 0.5 && bleed.ow <= bleed.iw, JSON.stringify(bleed));
   if (w >= 960) {
-    // style.css .og-panel: outline 1px at a 4px offset, so the panel's frame reaches 5px past its box.
-    // The content's edge is its scrollport's. Scrollbars off (default): no track, the visible edge is
-    // the frame's; on, the reserved 4 px track sits past the frame (DESIGN §10.3).
+    // The sidebar is flush on the window's left edge; the gaps are rail | gap | content | gap. Scrollbars off (default):
+    // the content ends one --gap from the window edge; on, the reserved 4 px track sits inside that gap (DESIGN §10.3).
+    const hb = await fp.evaluate(() => { const r = (q) => document.querySelector(q).getBoundingClientRect(), h = r('.hero-strip'), t = r('.topstrip'), k = r('.spine-rail-host');
+      const pr = document.createElement('i'); pr.style.paddingLeft = 'var(--gap)'; document.body.append(pr); const gap = parseFloat(getComputedStyle(pr).paddingLeft); pr.remove();
+      return { hl: h.left, hr: h.right, ht: h.top - t.bottom, iw: innerWidth, kl: k.left - h.left - gap, kr: h.right - k.right - gap }; });
+    ok(tag + ': the hero bar spans the window under the top bar; the rail host is inset one gap each side',
+      hb.hl === 0 && Math.abs(hb.hr - hb.iw) < 0.5 && Math.abs(hb.ht) < 0.5 && Math.abs(hb.kl) <= 0.5 && Math.abs(hb.kr) <= 0.5, JSON.stringify(hb));
     for (const on of [false, true]) {
       const edges = await fp.evaluate((on) => { document.documentElement.toggleAttribute('data-scrollbars', on);
-        const r = (s) => document.querySelector(s).getBoundingClientRect(), p = r('.hero-strip .og-panel'), a = r('nav.rail'), c = document.querySelector('.content'), cb = c.getBoundingClientRect();
-        const out = [a.left - p.left, p.right - (cb.left + c.clientWidth), c.offsetWidth - c.clientWidth, p.right - cb.right].map((v) => Math.round(v * 10) / 10);
+        const a = document.querySelector('nav.rail').getBoundingClientRect(), c = document.querySelector('.content'), cb = c.getBoundingClientRect();
+        const pr = document.createElement('i'); pr.style.paddingLeft = 'var(--gap)'; document.body.append(pr); const gap = parseFloat(getComputedStyle(pr).paddingLeft); pr.remove();
+        const out = [a.left, cb.left - a.right - gap, innerWidth - (cb.left + c.clientWidth) - gap, c.offsetWidth - c.clientWidth].map((v) => Math.round(v * 10) / 10);
         document.documentElement.removeAttribute('data-scrollbars');
         return out; }, on);
       const st = on ? ' (scrollbars on)' : ' (scrollbars off)';
-      ok(tag + ': the rail and the content reach the hero panel frame on both sides' + st, edges[0] === -5 && edges[1] === -5, edges.join(' / '));
-      ok(tag + (on ? ': the content reserves its 4 px track past the frame' : ': no track, the content box ends at the frame') + st,
-        on ? edges[2] === 4 && edges[3] === -9 : edges[2] === 0 && edges[3] === -5, edges.join(' / '));
+      ok(tag + ': the rail is flush left, one gap to the content, one gap on its right edge' + st, edges[0] === 0 && Math.abs(edges[1]) <= 0.5 && Math.abs(edges[2]) <= 0.5, edges.join(' / '));
+      ok(tag + (on ? ': the content reserves its 4 px track inside the right gap' : ': no track') + st, on ? edges[3] === 4 : edges[3] === 0, edges.join(' / '));
     }
+  }
+  if (w >= 960) {
+    // ph-mdqo.2: the rail's recess spans its scrollport (no padding on the rail), takes no room, tints from the theme
+    // surface, and holds its state through the last 2 px.
+    await fp.setViewportSize({ width: w, height: 560 });
+    await fp.waitForTimeout(200);
+    const rs = await fp.evaluate(async () => {
+      const rail = document.querySelector('nav.rail'), frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const max = rail.scrollHeight - rail.clientHeight, cs = getComputedStyle(rail);
+      const tabs = () => [...rail.querySelectorAll('.rail-tab')].map((t) => { const r = t.getBoundingClientRect(); return [r.top, r.left, r.width, r.height].join(','); }).join('|');
+      const at = async (y) => { rail.scrollTop = y; await frames(); return [rail.hasAttribute('data-shade-top'), rail.hasAttribute('data-shade-bottom')]; };
+      const mid = await at(max / 2);
+      const bef = getComputedStyle(rail, '::before'), aft = getComputedStyle(rail, '::after');
+      const geo = { pad: cs.paddingLeft + cs.paddingTop + cs.paddingBottom, bw: parseFloat(bef.width) - rail.clientWidth, aw: parseFloat(aft.width) - rail.clientWidth,
+        ink: bef.backgroundImage + aft.backgroundImage };
+      const withOn = tabs(); rail.removeAttribute('data-shade-bottom'); const withOff = tabs(); rail.setAttribute('data-shade-bottom', '');
+      const flips = []; let last = mid[1];
+      for (const y of [max - 1, max - 0.2, max - 1, max - 1.5, max - 0.2, max - 3]) { const b = (await at(y))[1]; if (b !== last) flips.push(b); last = b; }
+      return { max, mid, geo, same: withOn === withOff, flips };
+    });
+    ok(tag + ': the rail scrolls and shades both edges mid-way', rs.max > 20 && rs.mid[0] && rs.mid[1], JSON.stringify(rs.mid));
+    ok(tag + ': the rail has no padding; both shades span its scrollport', rs.geo.pad === '0px0px0px' && Math.abs(rs.geo.bw) < 0.5 && Math.abs(rs.geo.aw) < 0.5, JSON.stringify(rs.geo).slice(0, 120));
+    ok(tag + ': the shade ink comes from the theme surface, not black', !/rgba?\(0, 0, 0/.test(rs.geo.ink), rs.geo.ink.slice(0, 160));
+    ok(tag + ': a shade moves no rail tab', rs.same);
+    ok(tag + ': the bottom shade holds through the last 2 px (off once, back on only past 2 px)', JSON.stringify(rs.flips) === '[false,true]', JSON.stringify(rs.flips));
+    await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/responsive/rail-shade.png' });
+    await fp.setViewportSize({ width: w, height: h });
+    await fp.waitForTimeout(200);
   }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
@@ -590,7 +627,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     const s1 = await look();
     ok(tag + ': + steps 10% and persists in the theme', s1.out === '110%' && Math.abs(s1.theme - 1.12 * 1.1) < 1e-9, JSON.stringify(s1));
     ok(tag + ': Reset shows off 100%; the status row and the scale group hold still for 30 frames', s1.reset === 'visible'
-      && frames.every((f) => f === frames[0]), frames.find((f) => f !== frames[0]) || '');
+      && frames.every((f) => f === frames[0]), frames[0] + ' -> ' + (frames.find((f) => f !== frames[0]) || ''));
     // At one scale, Reset's slot is the same hidden or shown.
     const flip = await fp.evaluate(() => {
       const r = document.querySelector('.footstrip .reset');

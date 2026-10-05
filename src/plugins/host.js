@@ -258,6 +258,9 @@ export function createPluginHost(deps) {
         if (def.icon != null && !(typeof def.icon === 'string' && PATH_RE.test(def.icon))) {
           throw new Error('registerPage: icon must be one SVG path d on a 16-unit viewBox');
         }
+        if (def.search != null && !(Array.isArray(def.search) && def.search.every((e) => e && typeof e.label === 'string' && typeof e.key === 'string'))) {
+          throw new Error('registerPage: search must be [{label, key}]');
+        }
         if (rec.pages.some((p) => p.def.id === def.id)) throw new Error('registerPage: id "' + def.id + '" is taken');
         const slot = { def, failed: false };
         rec.pages.push(slot);
@@ -488,6 +491,7 @@ export function createPluginHost(deps) {
           icon: p.def.icon || null,
           spec: p.def.spec || {},
           fill: !!p.def.fill,
+          search: (p.def.search || []).map((e) => ({ label: e.label, key: e.key })),
           mediaFullscreen: !!p.def.mediaFullscreen,
           plugin: rec.manifest.name,
           slot: p,

@@ -285,10 +285,6 @@
   }
   // Home's icon (Lucide, MIT; the OG ui.js ICONS entry).
   const HOME_ICON = '<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>';
-  // Flip: a swap over the rail, home's stop at the end it sits (left normal,
-  // right flipped). Two heads and a level bar, never a twin of Override's
-  // ->| or Return's |<- (ph-wq9).
-  const FLIP_ICON = (on) => 'M4 4h8M10 2l2 2-2 2M12 8H4M6 6L4 8l2 2M2 13h12' + (on ? 'M14 10.5v5' : 'M2 10.5v5');
 
   let busy = $state({});
   async function fire(op) {
@@ -307,10 +303,9 @@
 </script>
 
 {#snippet homeFace()}
-  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
        stroke-linejoin="round" aria-hidden="true">{@html HOME_ICON}</svg>
   <span class="lbl">{homeOp ? displayLabel(homeOp.label) : 'More'}</span>
-  <svg class="caret" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3"/></svg>
 {/snippet}
 
 {#snippet opButton(op)}
@@ -321,16 +316,20 @@
   </button>
 {/snippet}
 
-{#snippet flipButton(labeled)}
-  <!-- The state in words in the tooltip; in the Home popover the word rides
-       the icon like its labeled neighbors. -->
+{#snippet flipButton()}
+  <!-- The glyph shows what the press does, never the state (two arrows around
+       a struck 0, the left one gray); the state is in the tooltip. -->
   <!-- The ladder wears the fields' ring outside the box (docs/EFFECTS.md A,
        ph-vdk.65), never the inset one. -->
-  <button type="button" class="rw-flip field" class:labeled aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
+  <button type="button" class="rw-flip field" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
           data-shadow={flip.status} data-glow={flip.glow || undefined} title={flip.text} onclick={toggleFlip}
           onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
-    <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d={FLIP_ICON(flip.on)}/></svg>
-    {#if labeled}<span class="lbl">Flip</span>{/if}
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <ellipse cx="12" cy="12" rx="3.2" ry="5.2"/><path d="M9.5 16.5l5-9M17 12h5M19.5 9.5L22 12l-2.5 2.5"/>
+      <path class="gray" d="M7 12H2M4.5 9.5L2 12l2.5 2.5"/>
+    </svg>
+    <span class="lbl">Flip</span>
   </button>
 {/snippet}
 
@@ -402,7 +401,7 @@
           {#if menuOpen}
             <div class="menu-pop" role="group" aria-label="Home and machine ops">
               {#each ops as op (op.key)}{@render opButton(op)}{/each}
-              {#if flipInMenu}{@render flipButton(true)}{/if}
+              {#if flipInMenu}{@render flipButton()}{/if}
               {#if ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
             </div>
           {/if}
@@ -410,7 +409,7 @@
       {/if}
       {#if (flip && !flipInMenu) || (hasOverride && !ovrInMenu)}
         <div class="ovr" bind:this={ovrEl}>
-          {#if flip && !flipInMenu}{@render flipButton(false)}{/if}
+          {#if flip && !flipInMenu}{@render flipButton()}{/if}
           {#if hasOverride && !ovrInMenu}<SafetyOp action={specSafety} op={SAFETY_OP.override} />{/if}
         </div>
       {/if}
@@ -444,6 +443,10 @@
      height .95, plus its label line): change both together. */
   .strip {
     --num-h: calc(clamp(54px, 6.2vw, 80px) * .95 + 20px);
+    /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
+    --sb-w: 84px;
+    --sb-h: min(68px, max(var(--num-h), var(--tap)));
+    --sico: clamp(16px, calc(var(--sb-h) - 40px), 28px);
     display: flex;
     align-items: center;
     gap: 6px 12px;
@@ -472,6 +475,7 @@
      grid guarantees (a wrapping flex row once pushed the pair onto a third,
      clipped line). */
   .strip.stacked {
+    --sb-h: calc(var(--tap) + 5px);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
     height: calc(var(--num-h) + 6px + var(--tap) + 12px);
@@ -567,11 +571,17 @@
   .ops:empty { display: none; }
 
   .home-menu { position: relative; }
-  .home-btn { gap: 6px; }
-  /* One icon box and one drawn stroke for every strip glyph (ph-hsl): 16 px,
-     1.5 px, so a 24-grid icon draws at 2.25 and a 16-grid one at 1.5. */
-  .home-btn .ico { width: 16px; height: 16px; }
-  .home-btn .caret { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+  .btn.home-btn {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 1px;
+    min-width: var(--sb-w, 84px);
+    height: var(--sb-h, auto);
+    padding: 4px 8px 2px;
+  }
+  /* One icon box and one drawn stroke for every strip glyph. */
+  .ico { width: var(--sico, 28px); height: var(--sico, 28px); }
+  .ico :global(*) { vector-effect: non-scaling-stroke; }
   .home-btn[aria-expanded='true'] { border-color: var(--line-4); }
   /* Overlay: out of flow under its button, above the rail; moves nothing.
      Opens toward the pair, mirrored with the dock. */
@@ -593,22 +603,26 @@
   .menu-pop .btn { justify-content: flex-start; }
   .menu-pop :global(.safety-op) { height: auto; }
 
-  /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on.
-     One square box in every state: the icon is its only content. */
+  /* Law 12 floor; a quiet chip like the safety ops, warn-bordered while on. Same
+     box as the ops (--sb-w, --sb-h). */
   .rw-flip {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    gap: 1px;
     min-height: var(--tap);
-    width: var(--tap);
-    padding: 0;
+    min-width: var(--sb-w, 84px);
+    height: var(--sb-h, auto);
+    padding: 4px 8px 2px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
+    font-weight: 500;
+    font-size: .72rem;
   }
-  .rw-flip .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .rw-flip.labeled { width: auto; gap: 6px; justify-content: flex-start; padding: 0 12px; font-weight: 500; font-size: .72rem; }
+  .rw-flip .gray { stroke: var(--tx-ghost); }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
@@ -621,17 +635,18 @@
     50% { box-shadow: 0 0 0 2px rgba(var(--bad-rgb), .45), 0 0 10px rgba(var(--bad-rgb), .35); }
   }
 
-  /* Phone: the safety ops drop their idle hint line and the 96 px floor
+  /* Phone: the safety ops drop their idle hint line and narrow to 64 px
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
-    .dock :global(.safety-op .btn) { min-width: var(--tap); padding: 2px 8px; }
+    .strip { --sb-w: 64px; }
+    .dock :global(.safety-op .btn) { padding: 4px 4px 2px; }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   }
   @media (max-width: 300px) {
     .dock :global(.safety-op .btn) { padding: 2px 4px; }
     .dock :global(.safety-op .ico) { display: none; }
   }
-  .home-btn.icon-only { padding: 0 8px; min-width: var(--tap); }
+  .home-btn.icon-only { min-width: var(--tap); }
   .home-btn.icon-only .lbl { display: none; }
 
   .btn {

@@ -8,6 +8,8 @@
    * - An overlay in ConfirmLayer's band (RENDERING §9): no scrim, no inert,
    *   below the top strip, so the stop stays reachable. Fixed size whatever
    *   the class; only the panel's list scrolls.
+   * - One overlay at a time: opening announces 'phosphor-overlay', which
+   *   closes this one; a pending confirm blocks F1 (it must stay visible).
    * - Two columns on `full`, one otherwise.
    * - A shell-only binding (its `src` under src/shell) is listed in the shell
    *   only; the served page has no such control.
@@ -15,6 +17,7 @@
   import { tick } from 'svelte';
   import { KEYS } from '../model/keys.js';
   import { view } from '../model/viewport.svelte.js';
+  import { confirmUi } from './confirm.svelte.js';
 
   const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
   const GROUPS = KEYS.map((g) => ({ ...g, items: g.items.filter((k) => SHELL || !k.src.startsWith('src/shell/')) }))
@@ -26,17 +29,20 @@
 
   let top = $state(0);
   async function show() {
+    if (confirmUi.req) return;
+    window.dispatchEvent(new CustomEvent('phosphor-overlay', { detail: 'help' }));
     opener = document.activeElement;
     top = document.querySelector('.topstrip')?.getBoundingClientRect().bottom ?? 0;
     open = true;
     await tick();
     panel?.querySelector('.kh-close')?.focus();
   }
-  function hide() {
+  function hide(restore = true) {
     open = false;
-    if (opener && opener.isConnected) opener.focus();
+    if (restore && opener && opener.isConnected) opener.focus();
     opener = null;
   }
+  const yield_ = (e) => { if (open && e.detail !== 'help') hide(); };
 
   function onkeydown(e) {
     if (e.key === 'F1') {
@@ -54,7 +60,7 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onphosphor-overlay={yield_} />
 
 {#if open}
   <div class="ov-band" style="--ov-top: {top}px">
@@ -134,8 +140,6 @@
   kbd { font-family: var(--mono); font-size: .74rem; color: var(--tx-hi); white-space: nowrap; }
   dd { color: var(--ink); }
   .kh-where { display: block; font-size: .7rem; color: var(--ink-dim); }
-  @media (prefers-reduced-motion: no-preference) {
-    .kh { animation: kh-rise .14s ease-out; }
-  }
+  .kh { animation: kh-rise var(--t-quick) ease-out; }
   @keyframes kh-rise { from { opacity: 0; } to { opacity: 1; } }
 </style>

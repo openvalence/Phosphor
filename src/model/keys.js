@@ -13,6 +13,8 @@ export const KEYS = [
   { group: 'Global', items: [
     { keys: 'F1', does: 'Key help', where: 'Anywhere', src: 'src/ui/KeyHelp.svelte' },
     { keys: 'F3, Ctrl+F', does: 'Look for a control', where: 'Anywhere', src: 'src/ui/LookFor.svelte' },
+    { keys: 'Ctrl+Z', does: 'Undo last setting write', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
+    { keys: 'Ctrl+Shift+Z', does: 'Redo', where: 'Outside text fields and editors', src: 'src/model/history.svelte.js' },
     { keys: 'Escape', does: 'Close dialog, menu or popover', where: 'Anywhere', src: 'src/ui/ConfirmLayer.svelte' },
     { keys: 'F11', does: 'Fullscreen', where: 'Plugin page', src: 'src/App.svelte' },
     { keys: 'Escape', does: 'Leave fullscreen', where: 'Fullscreen page', src: 'src/App.svelte' },

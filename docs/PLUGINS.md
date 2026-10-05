@@ -338,35 +338,36 @@ its folder.
 Shipped:
 
 - `plugins/factory/advanced-penetration/`: the pattern card. It substitutes
-  both RENDERING §10 `generator-advanced` and `pattern-panel`
-  (`replaces: ['advanced-generator', 'pattern']`) as a direct-manipulation
-  editor after fray-d's OSSM-Lite. Advanced and
-  Classic are two SPEC §11.4 sources in two tabs, each with its own Start
-  (RFC-093 `advgen.running`, `pattern.running`); a tab switch writes nothing.
-  Advanced: master speed, a presets dropdown over the store (RFC-067,
-  RFC-070), the stroke editor (deep and shallow on the window, in and out
-  speed as the width of each half, accel as a bezier diamond at each foot),
-  a rhythm staircase per modulator (amp fader, step handles in whole strokes,
-  offset marker), a planned-motion strip, and a numeric twin for every handle. A
-  handle and its twin read one effective value (the card's draft while
-  edited, else `api.value`): a drag, nudge or keystroke redraws at once in
-  the intent look, and release, Enter or blur writes once through
-  `api.write`; arrows nudge, Shift by ten. The stroke picture's x axis is the
+  both RENDERING §10 `generator-advanced` and `pattern-panel` (`replaces:
+  ['advanced-generator', 'pattern']`) as a direct-manipulation editor after
+  fray-d's OSSM-Lite. Advanced and Classic are two SPEC §11.4 sources in two
+  tabs, each with its own Start (RFC-093 `advgen.running`,
+  `pattern.running`); a tab switch writes nothing. Advanced: master speed, a
+  presets dropdown over the store (RFC-067, RFC-070; F2 or a double-click
+  renames the chosen slot through the store's rename op, Enter or blur keeps
+  the name, Escape cancels), the stroke editor (deep and shallow on the
+  window, in and out speed as the width of each half, accel as a bezier
+  diamond at each foot), a rhythm staircase per modulator (amp fader, step
+  handles in whole strokes, offset marker), a planned-motion strip, and a
+  numeric twin for every handle. A handle and its twin read one effective
+  value (the card's draft while edited, else `api.value`): a drag, nudge or
+  keystroke redraws at once in the intent look, and release, Enter or blur
+  writes once through `api.write`; arrows nudge, Shift is the declared step,
+  Ctrl the adjacent decade multiple. The stroke picture's x axis is the
   share of one stroke's time, so the curve always spans the plot, mid-drag
   included. A handle's shape is its drag axis: a dot moves any direction, a
   vertical pill left-right only, a horizontal pill up-down only. A label
-  reads name then value (`deep 85`, `shallow 10`, `in 70`, `out 45`,
-  `in accel 30`, `out accel 60`, `dwell 0.5`, `amp 40`, `offset 0`). It
-  sits beside its handle on the side square to the curve's tangent, clear
-  of every drawn line (the stroke, the 0 and 100 guides, the modifier
-  graph's top guide, amp axis and offset track), of the handles and of a
-  plus's dot; it tries one and two label heights further out before giving
-  up, the most hemmed-in label places first, a three-word label with no
-  clear side drops its side word (`accel 100`, the half shows the side),
-  and only then does a label wear a backing. The numeric rows hide behind
-  an Inputs toggle right of the preset box (default hidden,
-  `phosphor.advpen.inputs`); hidden, they are not rendered and the handles
-  carry the arrow keys.
+  reads name then value (`deep 85`, `shallow 10`, `in 70`, `out 45`, `in
+  accel 30`, `out accel 60`, `dwell 0.5`, `amp 40`, `offset 0`). It sits
+  beside its handle on the side square to the curve's tangent, clear of
+  every drawn line (the stroke, the 0 and 100 guides, the modifier graph's
+  top guide, amp axis and offset track), of the handles and of a plus's dot;
+  it tries one and two label heights further out before giving up, the most
+  hemmed-in label places first, a three-word label with no clear side drops
+  its side word (`accel 100`, the half shows the side), and only then does a
+  label wear a backing. The numeric rows hide behind an Inputs toggle right
+  of the preset box (default hidden, `phosphor.advpen.inputs`); hidden, they
+  are not rendered and the handles carry the arrow keys.
 
   **The ladder, the house way.** The master and Classic sliders are host
   fields: `.field` with `data-shadow` (style.css GROUND TRUTH, the ring
@@ -435,26 +436,25 @@ Shipped:
   plates and numeric twins sit on the sunk `--screen` plate.
 
   **Dwells** (RFC-095, optional `advgen.dwell_crest` and
-  `advgen.dwell_trough`; absent, nothing is drawn and nothing declines).
-  The stroke reads trough flat, in half, crest flat, out half, left to
-  right. A dwell's clock is one stroke, the two moving halves, so a flat is
-  drawn to scale beside them until it would pass `DWELL_CAP` (25 %) of the
-  plot; past it the flat is drawn at the cap with its middle 40 % as dots
-  fading out and back in. At 0, a thin guide and a plus sit at the bound
-  (the trough start, the deep turn), centered where the pill will ride, off
-  the curve and the diamonds; the plus writes `DWELL_SPAWN` (0.01
-  strokes) and a vertical pill rides the guide at the flat's end, off the
-  curve, in the plus's place. Dragging the pill right lengthens the
-  dwell: under the cap the pill follows the pointer, past it the flat
-  holds the cap and the value
-  keeps growing toward the plot's right edge, where it asks for the
-  field's own max (the UI sets none). Dragging back to the bound collapses
-  it to 0 and the plus returns. The numeric twins carry both dwells behind
-  the Inputs toggle, and preset Reset returns them to their defaults. The
-  playhead follows the told target's half and holds while the position
-  sits at a bound, so through a hold it parks on that bound. A handle drag
-  is relative to the grab at gain 0.5 (Shift 0.1) through the same geometry,
-  so it never jumps on pickup.
+  `advgen.dwell_trough`; absent, nothing is drawn and nothing declines). The
+  stroke reads trough flat, in half, crest flat, out half, left to right. A
+  dwell's clock is one stroke, the two moving halves, so a flat is drawn to
+  scale beside them until it would pass `DWELL_CAP` (25 %) of the plot; past
+  it the flat is drawn at the cap with its middle 40 % as dots fading out
+  and back in. At 0, a thin guide and a plus sit at the bound (the trough
+  start, the deep turn), centered where the pill will ride, off the curve
+  and the diamonds; the plus writes `DWELL_SPAWN` (0.01 strokes) and a
+  vertical pill rides the guide at the flat's end, off the curve, in the
+  plus's place. Dragging the pill right lengthens the dwell: under the cap
+  the pill follows the pointer, past it the flat holds the cap and the value
+  keeps growing toward the plot's right edge, where it asks for the field's
+  own max (the UI sets none). Dragging back to the bound collapses it to 0
+  and the plus returns. The numeric twins carry both dwells behind the
+  Inputs toggle, and preset Reset returns them to their defaults. The
+  playhead follows the told target's half and holds while the position sits
+  at a bound, so through a hold it parks on that bound. A handle drag is
+  relative to the grab at gain 0.5 (Shift 0.05, Ctrl rounds to the decade)
+  through the same geometry, so it never jumps on pickup.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it

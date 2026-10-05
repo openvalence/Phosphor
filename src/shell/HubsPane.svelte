@@ -164,7 +164,7 @@
 </div>
 
 <style>
-  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
   .count { font-size: .75rem; color: var(--tx-mut); }
   /* Every row is the same two-line box: who on the left, last seen and the
      actions on the right. */
@@ -174,15 +174,15 @@
   .name { font-weight: 500; }
   .meta { font-size: .72rem; color: var(--tx-mut); }
   .seen { font-size: .72rem; color: var(--tx-mut); text-align: right; }
-  .acts { display: flex; gap: 6px; }
-  .mark { margin-left: 8px; padding: 0 6px; font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
+  .acts { display: flex; gap: var(--sp-2); }
+  .mark { margin-left: var(--sp-3); padding: 0 var(--sp-2); font-size: .68rem; font-weight: 400; border: 1px solid var(--reality); border-radius: var(--r-s); color: var(--reality); }
   .mark.setup { border-color: var(--intent); color: var(--intent); }
   .mark.virt { border-color: var(--warn); color: var(--warn-ink, var(--warn)); }
   .mark.via { border-color: var(--line); color: var(--tx-mut); }
   .nick input {
     width: 100%;
     min-height: 30px;
-    padding: 2px 8px;
+    padding: var(--sp-1) var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line);
     background: var(--bg-sunken);

@@ -36,6 +36,7 @@ ok('no Ctrl leaves the value', snap(234, none, 0, 1000) === 234);
 ok('Ctrl up from 130 and 150 is 200', snap(130, ctrl, 0, 1000, 1) === 200 && snap(150, ctrl, 0, 1000, 1) === 200);
 ok('Ctrl down from 130 and 150 is 100', snap(130, ctrl, 0, 1000, -1) === 100 && snap(150, ctrl, 0, 1000, -1) === 100);
 ok('Ctrl from a multiple moves one decade', snap(200, ctrl, 0, 1000, 1) === 300 && snap(200, ctrl, 0, 1000, -1) === 100);
+ok('Ctrl never snaps finer than the step: step 25 in 0..100 moves a full step', snap(25, ctrl, 0, 100, 1, 25) === 50 && snap(25, ctrl, 0, 100, -1, 25) === 0 && snap(30, ctrl, 0, 100, 0, 25) === 25);
 ok('Ctrl on a fractional decade does not stall', Math.abs(snap(0.3, ctrl, 0, 1, 1) - 0.4) < 1e-9);
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
