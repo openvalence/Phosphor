@@ -545,10 +545,10 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   const ovr = page.locator('.topstrip .dock .ovr .btn-override');
   const tape = page.locator('.rail-hero .rail-tape-track');
   const lbl = async () => (await ovr.locator('.lbl').textContent()).trim();
-  const face = async () => ({ d: await ovr.locator('svg.arrow path').getAttribute('d'), w: (await ovr.boundingBox()).width,
-    iconLeft: await ovr.evaluate((b) => b.querySelector('svg').getBoundingClientRect().right <= b.querySelector('.lbl').getBoundingClientRect().left) });
+  const face = async () => ({ d: await ovr.locator('svg.ico path').getAttribute('d'), w: (await ovr.boundingBox()).width,
+    iconAbove: await ovr.evaluate((b) => b.querySelector('svg').getBoundingClientRect().bottom <= b.querySelector('.lbl').getBoundingClientRect().top + 1) });
   const f0 = await face();
-  ok('override: the arrow runs into the bar (->|), left of the word', /^M2 8h9/.test(f0.d) && /M13\.5 3v10$/.test(f0.d) && f0.iconLeft, JSON.stringify(f0));
+  ok('override: two arrows inside the window pointing out, above the word', /^M3 5v14M21 5v14/.test(f0.d) && f0.iconAbove, JSON.stringify(f0));
   ok('override: one control in the strip, beside Home', await ovr.count() === 1
     && await page.locator('.topstrip .dock button.home-btn', { hasText: /home/i }).count() === 1);
   ok('override: unpaused, the tape takes a plain point move', await tape.getAttribute('aria-disabled') === 'false');
@@ -574,8 +574,8 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   ok('override: sends override and reads Return', wire.ops.at(-1) === SAFETY_OP.override && await lbl() === 'Return',
     wire.ops.slice(n).join() + ' / ' + await lbl());
   const f1 = await face();
-  ok('override: Return draws the arrow leaving the bar (|<-), one button width', /^M2\.5 3v10/.test(f1.d) && /L5 8l3 3$/.test(f1.d)
-    && f1.iconLeft && f1.w === f0.w, JSON.stringify([f0, f1]));
+  ok('override: Return draws two arrows outside the window pointing in, one button width', /^M10 6v12M14 6v12/.test(f1.d)
+    && f1.iconAbove && f1.w === f0.w, JSON.stringify([f0, f1]));
   const span = await page.evaluate(() => [document.querySelector('.rail-hero .rail-tape').getBoundingClientRect().width,
     document.querySelector('.rail-hero .rail-tape-track').clientWidth]);
   ok('override: the tape is a jog over the whole travel',
@@ -605,11 +605,9 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     const n = up ? await (await reach()).count() : 0;
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
-    // Inline it is an icon alone; in the Home popover the word rides it (ph-wq9).
-    const inMenu = await flip.evaluate((el) => !!el.closest('.menu-pop'));
-    ok(cls + ': Flip is an icon (worded in the Home popover), its state in the tooltip', await flip.locator('svg path').count() === 1
-      && (await flip.textContent()).trim() === (inMenu ? 'Flip' : '') && await flip.getAttribute('title') === 'Normal: home at left'
-      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([inMenu, await flip.textContent(), await flip.getAttribute('title')]));
+        ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
+      && (await flip.textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
+      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
     await flip.click();
     await page.waitForTimeout(200);
     const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
@@ -985,11 +983,11 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
         ghostClear: g.top >= hr.top + hr.height * 40 / 72 - 0.5, clip: cs.overflowX + ' ' + cs.overflowClipMargin };
     });
     const chip = page.locator('.topstrip .rw-flip');
-    const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').getAttribute('d'),
+    const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').first().getAttribute('d'),
       text: (await chip.textContent()).trim(), w: (await chip.boundingBox()).width };
     const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
       const w = s.getBoundingClientRect().width;
-      return { w: Math.round(w * 100) / 100, px: Math.round(parseFloat(getComputedStyle(s).strokeWidth) * w / s.viewBox.baseVal.width * 100) / 100,
+      return { w: Math.round(w * 100) / 100, px: Math.round(parseFloat(getComputedStyle(s).strokeWidth) * 100) / 100,
         at: s.closest('button').className.split(' ')[0] };
     }));
     const strip = await page.locator('.rail-hero .rail-tape').boundingBox();
@@ -1010,23 +1008,19 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     JSON.stringify(seen));
   ok('axis: flipped, the endcaps read travel then 0', seen[0].caps.join() === [...seen[1].caps].reverse().join()
     && parseFloat(seen[1].caps[0]) > parseFloat(seen[1].caps[1]), JSON.stringify([seen[0].caps, seen[1].caps]));
-  // A two-headed swap over a level rail, home's stop at its end: left
-  // normal, right flipped; never Override's ->| or Return's |<- (ph-wq9).
+  // Flip shows what the press does, not the state: one fixed glyph (a struck
+  // 0 between two arrows), the same normal and flipped.
   const [n, f] = [seen[0].face, seen[1].face];
-  const heads = (d) => d.includes('M10 2l2 2-2 2') && d.includes('M6 6L4 8l2 2') && d.includes('M2 13h12');
-  ok('flip icon: a swap over the rail, the stop left normal and right flipped',
-    heads(n.d) && heads(f.d) && /M2 10\.5v5$/.test(n.d) && /M14 10\.5v5$/.test(f.d), JSON.stringify([n.d, f.d]));
-  ok('flip icon: shares no stroke with Override or Return', ![n.d, f.d].some((d) => /M2 8h9|M13\.5 3v10|M2\.5 3v10|M5 8h9/.test(d)),
-    JSON.stringify([n.d, f.d]));
+  ok('flip icon: a fixed glyph, the same normal and flipped', n.d === f.d && /^M9\.5 16\.5/.test(n.d), JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
   ok('rail heads: the span pill and the axis read one precision; the unit is spaced',
     hd.band === seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
   ok('rail ruler: the mid label clears the tick row; the host does not clip the end handles (ph-n8vs)', hd.ghostClear && hd.clip.startsWith('visible'),
     JSON.stringify(hd));
-  // ph-hsl: every strip glyph in one 16 px box, drawn at one 1.5 px stroke.
-  ok('strip icons: one box, one drawn stroke', seen[0].icons.length >= 4 && seen[0].icons.every((i) => i.w === 16 && Math.abs(i.px - 1.5) < 0.05),
+  // Every strip glyph in one box, drawn at one stroke.
+  ok('strip icons: one box, one drawn stroke', seen[0].icons.length >= 4 && seen[0].icons.every((i) => i.w === seen[0].icons[0].w && i.w >= 16 && Math.abs(i.px - 1.75) < 0.05),
     JSON.stringify(seen[0].icons));
-  ok('flip icon: no text, the state in words in the tooltip', !n.text && !f.text
+  ok('flip icon: the word Flip, the state in words in the tooltip', n.text === 'Flip' && f.text === 'Flip'
     && n.title === 'Normal: home at left' && f.title === 'Flipped: home at right', JSON.stringify([n.title, f.title]));
   ok('flip icon: one chip width normal, flipped and waiting', n.w === f.w && [n.waitW, f.waitW].every((v) => v == null || v === n.w),
     JSON.stringify([n.w, f.w, n.waitW, f.waitW]));

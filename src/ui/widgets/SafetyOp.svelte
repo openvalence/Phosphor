@@ -50,12 +50,12 @@
     pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     resume: '<polygon points="6 4 20 12 6 20 6 4"/>',
   };
-  // Override and Return, from the operator's sketch (2026-10-02), drawn like
-  // Flip's (TopStrip.svelte) on a 16 px grid at 1.5 px: an arrow running
-  // into the limit bar, and one leaving it.
+  // Override lifts the window: two arrows inside its sides pointing out.
+  // Return closes it: two arrows outside pointing in. The window is two
+  // vertical lines, no top or bottom (operator 2026-10-05).
   const ARROW = {
-    override: '<path d="M2 8h9M8 5l3 3-3 3M13.5 3v10"/>',
-    return: '<path d="M2.5 3v10M5 8h9M8 5L5 8l3 3"/>',
+    override: '<path d="M3 5v14M21 5v14M11 12H6M8.5 9.5L6 12l2.5 2.5M13 12h5M15.5 9.5L18 12l-2.5 2.5"/>',
+    return: '<path d="M10 6v12M14 6v12M2 12h5M4.5 9.5L7 12l-2.5 2.5M22 12h-5M19.5 9.5L17 12l2.5 2.5"/>',
   };
   // Per pair: the snapshot bit that is its second state, and its second op.
   const PAIR = {
@@ -171,13 +171,8 @@
           onpointerdown={pressStart} onpointerup={holdEnd} onpointerleave={holdEnd} onpointercancel={holdEnd}
           oncontextmenu={(e) => { if (isEstop && latched) e.preventDefault(); }}>
     <span class="row">
-      {#if isOverride}
-        <svg class="ico arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-             stroke-linejoin="round" aria-hidden="true">{@html ARROW[icon]}</svg>
-      {:else}
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
-             stroke-linejoin="round" aria-hidden="true">{@html ICON[icon]}</svg>
-      {/if}
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
+           stroke-linejoin="round" aria-hidden="true">{@html isOverride ? ARROW[icon] : ICON[icon]}</svg>
       <span class="lbls"><span class="lbl">{label}</span><span class="ghost" aria-hidden="true">{LABELS[latched ? 0 : 1]}</span></span>
     </span>
     <small class="state" class:hint={status === hint} role="status">{status}</small>
@@ -196,10 +191,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     min-height: var(--tap);
-    min-width: max(var(--tap), 96px);
-    padding: 2px 12px;
+    min-width: var(--sb-w, max(var(--tap), 96px));
+    width: var(--sb-w, auto);
+    height: var(--sb-h, auto);
+    padding: 4px 8px 2px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -218,16 +215,18 @@
   }
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
-  .row { display: flex; align-items: center; gap: 4px; }
-  /* The strip's one icon box and drawn stroke (TopStrip.svelte, ph-hsl). */
-  .ico { width: 16px; height: 16px; }
+  /* Icon above the word; the live subline sits below and never moves them. */
+  .row { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  /* The strip's one icon box and drawn stroke (TopStrip.svelte). */
+  .ico { width: var(--sico, 28px); height: var(--sico, 28px); }
+  .ico :global(*) { vector-effect: non-scaling-stroke; }
   .lbls, .hints { display: grid; }
   .lbls > *, .hints > * { grid-area: 1 / 1; }
   .ghost { visibility: hidden; }
   .hints { height: 0; overflow: hidden; }
   .state, .hints small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   /* Never widens the box: no intrinsic width, stretched to the button. */
-  .state { contain: inline-size; align-self: stretch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .state { contain: inline-size; align-self: stretch; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   [data-shadow='overdue'] .state { color: var(--warn-ink, var(--warn)); }
   [data-shadow='fault'] .state { color: var(--warn-ink, var(--warn)); }
 
