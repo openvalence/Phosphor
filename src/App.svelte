@@ -51,7 +51,7 @@
   import { scrollshade } from './ui/scrollshade.js';
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
-  import { settingNeedsConfirm } from './model/actions.js';
+  import { resetNeedsModal } from './shell/resetGate.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
@@ -393,7 +393,7 @@
   // destructive flag): then the whole reset takes the modal (RENDERING §8.3).
   let resetDone = $state(false);
   function holdReset() {
-    if (resettable.some((f) => settingNeedsConfirm(f, machine.samples[f.channelId]?.[f.name], f.dflt))) { resetCategory(); return; }
+    if (resetNeedsModal(resettable, machine.samples)) { resetCategory(); return; }
     applyReset();
     resetDone = true;
     setTimeout(() => (resetDone = false), 1200);

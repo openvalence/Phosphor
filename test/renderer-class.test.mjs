@@ -18,7 +18,8 @@ import {
   layoutCols, bucketOf, FIELD_FLOOR_COLS,
 } from '../src/model/rclass.js';
 import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
-import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY, FIELD_ROLE } from '../../Valence/clients/js/index.js';
+import { resetNeedsModal } from '../src/shell/resetGate.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -140,6 +141,18 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
      [200, 390, 844, 1428, 2560].map(at).join() === '1,2,3,4,5');
   ok('a 200 % UI scale moves 1428 px down to bucket 3', bucketOf(layoutCols(1428, 36)) === 3);
   ok('bucketOf is monotonic', [...Array(80).keys()].every((c) => bucketOf(c + 1) >= bucketOf(c)));
+}
+
+// ---- the held page reset asks the modal only for a confirm-gated field -------
+{
+  const plain = { channelId: 1, name: 'a', dflt: 3, role: 0 };
+  const flip = { channelId: 1, name: 'f', dflt: 1, role: FIELD_ROLE.axis_flipped };
+  const boom = { channelId: 1, name: 'd', dflt: 0, flagBits: { destructive: true } };
+  const bg = { channelId: 1, name: 'b', dflt: 1, role: FIELD_ROLE.source_background_run };
+  ok('reset gate: ordinary settings never ask', !resetNeedsModal([plain], {}));
+  ok('reset gate: a flip asks', resetNeedsModal([plain, flip], { 1: { f: 0 } }));
+  ok('reset gate: a destructive field asks', resetNeedsModal([plain, boom], {}));
+  ok('reset gate: background run asks only when it would turn on', resetNeedsModal([bg], { 1: { b: 0 } }) && !resetNeedsModal([bg], { 1: { b: 1 } }));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));
