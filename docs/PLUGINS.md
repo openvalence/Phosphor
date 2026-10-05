@@ -344,7 +344,8 @@ Shipped:
   Classic are two SPEC §11.4 sources in two tabs, each with its own Start
   (RFC-093 `advgen.running`, `pattern.running`); a tab switch writes nothing.
   Advanced: master speed, a presets dropdown over the store (RFC-067,
-  RFC-070), the stroke editor (deep and shallow on the window, in and out
+  RFC-070; F2 or a double-click renames the chosen slot, Enter saves it under
+  the new name with the current values, Escape cancels), the stroke editor (deep and shallow on the window, in and out
   speed as the width of each half, accel as a bezier diamond at each foot),
   a rhythm staircase per modulator (amp fader, step handles in whole strokes,
   offset marker), a planned-motion strip, and a numeric twin for every handle. A

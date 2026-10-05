@@ -1322,7 +1322,7 @@ function presetRow(api, F, updaters, tools) {
   // The registry names no role for the op's slot and name: told apart by type (ph-e82.18).
   const slotKey = ((op.payload || []).find((p) => p.type === CBOR.uint) || {}).key;
   const nameKey = ((op.payload || []).find((p) => p.type === CBOR.tstr) || {}).key;
-  let slots = null, reading = false, again = false, asking = false;
+  let slots = null, reading = false, again = false, asking = false, renaming = null;   // renaming: the slot whose name is edited
   const sel = h('select', { 'aria-label': 'Preset' });
   const save = h('button', { type: 'button', class: 'og-btn', text: 'Save' });
   const reset = h('button', { type: 'button', class: 'og-btn', text: 'Reset' });
@@ -1351,7 +1351,32 @@ function presetRow(api, F, updaters, tools) {
     draw();
     if (asking) name.focus();
   });
+  // F2 or a double-click on the chosen preset renames it: the same slot, saved under the new name (the card's current values ride with it).
+  const rename = () => {
+    const r = (slots || []).find((x) => x.slot === pick());
+    if (!r || sel.disabled) return;
+    asking = false;
+    renaming = r.slot;
+    name.value = r.name || '';
+    draw();
+    name.focus();
+    name.select();
+  };
+  sel.addEventListener('dblclick', rename);
+  sel.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); rename(); } });
+  name.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !ok.disabled) ok.click();
+    else if (e.key === 'Escape') { asking = false; renaming = null; name.value = ''; draw(); sel.focus(); }
+  });
   ok.addEventListener('click', async () => {
+    if (renaming != null) {
+      const slot = renaming;
+      renaming = null;
+      await run(STORE_OP.save, slot, name.value);
+      name.value = '';
+      draw();
+      return;
+    }
     const free = (slots || []).find((r) => r.state === 'empty');
     if (!free || !name.value) return;
     asking = false;
@@ -1383,7 +1408,8 @@ function presetRow(api, F, updaters, tools) {
     sel.replaceChildren(h('option', { value: '', text: head }),
       ...items.map((r) => h('option', { value: String(r.slot), text: r.name || 'Unnamed ' + r.slot })));
     sel.value = items.some((r) => String(r.slot) === keep) ? keep : '';
-    name.hidden = ok.hidden = !asking;
+    name.hidden = ok.hidden = !(asking || renaming != null);
+    ok.textContent = renaming != null ? 'Rename' : 'Save as';
     gateRow();
   }
   function gateRow() {
@@ -1392,7 +1418,7 @@ function presetRow(api, F, updaters, tools) {
     sel.disabled = !!gate || !live;
     save.disabled = reset.disabled = !!gate || !live;
     del.disabled = !!gate || !live || pick() == null;
-    ok.disabled = !!gate || !name.value || !(slots || []).some((r) => r.state === 'empty');
+    ok.disabled = !!gate || !name.value || (renaming == null && !(slots || []).some((r) => r.state === 'empty'));
     sel.dataset.shadow = st;
     say(note, gate, st, LADDER[st] || (asking && !(slots || []).some((r) => r.state === 'empty') ? 'store full' : ''));
   }
