@@ -25,10 +25,10 @@ export function modStep(e, step, lo, hi) {
 /** A relative drag's gain: a tenth with Shift. */
 export const dragGain = (e, base) => (e && e.shiftKey ? base * 0.1 : base);
 
-/** While Ctrl is held: round to a decade multiple, or with `dir` the adjacent multiple that way. */
-export function snap(v, e, lo, hi, dir = 0) {
+/** While Ctrl is held: round to a decade multiple (never finer than `step`), or with `dir` the adjacent multiple that way. */
+export function snap(v, e, lo, hi, dir = 0, step = 0) {
   if (!e || !e.ctrlKey) return v;
-  const d = decadeBelow(lo, hi), q = v / d;
+  const d = Math.max(step, decadeBelow(lo, hi)), q = v / d;
   if (dir > 0) return (Math.floor(q + 1e-9) + 1) * d;
   if (dir < 0) return (Math.ceil(q - 1e-9) - 1) * d;
   return Math.round(q) * d;

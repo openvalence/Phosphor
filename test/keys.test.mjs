@@ -47,6 +47,8 @@ const PROBES = {
   'Global|F1': /e\.key === 'F1'/,
   'Global|F3, Ctrl+F': /key\.toLowerCase\(\) === 'f'[\s\S]*e\.key !== 'F3'/,
   'Global|Escape': /e\.key === 'Escape'/,
+  'Global|Ctrl+Z': /e\.key\.toLowerCase\(\) !== 'z'[\s\S]*\(e\.shiftKey \? redo : undo\)\(\)/,
+  'Global|Ctrl+Shift+Z': /e\.key\.toLowerCase\(\) !== 'z'[\s\S]*\(e\.shiftKey \? redo : undo\)\(\)/,
   'Global|F11': /e\.key === 'F11' && current\?\.page\?\.fields/,
   'Global|Escape|Fullscreen page': /e\.key === 'Escape' && full\.on/,
   'Global|Arrows': /onTablistKeydown[\s\S]*ArrowDown[\s\S]*ArrowRight/,
@@ -129,7 +131,7 @@ const srv = createServer((q, s) => {
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
-const hub = { values: {}, log: [] };
+const hub = { values: {}, log: [], echoDelay: 0 };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -203,9 +205,12 @@ function fakeHub(ws) {
             if (f) hub.values[st.id + ':' + f.name] = v;
           }
         }
-        send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
-          [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
-        for (const st of sts) pushState(st.id);
+        const reply = () => {
+          send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
+            [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
+          for (const st of sts) pushState(st.id);
+        };
+        if (hub.echoDelay) setTimeout(reply, hub.echoDelay); else reply();
       } else if (header.type === FRAME.PING) {
         send(FRAME.PONG, header.channel, payload);
       }
@@ -379,6 +384,166 @@ console.log('\n[look] F3 look for a control');
   await page.keyboard.press('Escape');
   ok('Escape closes it and returns focus', await page.locator('.lf').count() === 0
     && await page.evaluate(() => document.activeElement.dataset.tabId === 'machine'));
+  await ctx.close();
+}
+
+// ---- full index (ph-mdqo.12) ----------------------------------------------------
+console.log('\n[index] F3 indexes every page and every layout, and rebuilds on change');
+{
+  const { ctx, page } = await open(1400, 900);
+  const find = async (q) => {
+    await page.keyboard.press('F3');
+    await page.keyboard.type(q);
+    await sleep(120);
+    return page.locator('.lf-list [role=option]').allTextContents();
+  };
+  for (const name of ['Pairing', 'Log']) {
+    const rows = await find(name);
+    ok('a page is listed: ' + name, rows.some((r) => r.startsWith(name)), rows.slice(0, 3));
+    await page.keyboard.press('Escape');
+  }
+  const before = await find('Zed layout');
+  ok('a layout not yet saved is not listed', !before.some((r) => r.startsWith('Zed layout')), before.slice(0, 3));
+  await page.keyboard.press('Escape');
+  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  await page.locator('input[aria-label="Layout name"]').fill('Zed layout');
+  await page.locator('.dash-menu button', { hasText: 'Save as' }).click();
+  await page.keyboard.press('Escape');
+  const after = await find('Zed layout');
+  ok('a layout saved while the app runs is listed without a reload', after.some((r) => r.startsWith('Zed layout')), after.slice(0, 3));
+  await page.keyboard.press('Enter');
+  await sleep(300);
+  ok('Enter on a layout makes it the active one', await page.locator('.layout-pick').first().inputValue() === 'Zed layout');
+  await ctx.close();
+}
+
+// ---- exclusive overlays (ph-ubwk) ---------------------------------------------
+console.log('\n[overlays] F1, F3 and a confirm are one overlay at a time');
+{
+  const { ctx, page } = await open(1400, 900);
+  const dialogs = () => page.locator('.kh, .lf, .overlay').count();
+  await page.locator('[role=tab][aria-selected=true]').first().focus();
+  await page.keyboard.press('F1');
+  await page.keyboard.press('F3');
+  ok('F1 then F3 leaves the look-for alone', await page.locator('.kh').count() === 0 && await page.locator('.lf').count() === 1, await dialogs());
+  await page.keyboard.press('F1');
+  ok('...and F1 then replaces it', await page.locator('.kh').count() === 1 && await page.locator('.lf').count() === 0);
+  await page.keyboard.press('Escape');
+  const flip = page.locator('.topstrip .rw-flip');
+  if (await flip.count()) {
+    await flip.click();
+    await sleep(200);
+    ok('a flip asks for a confirm', await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('F1');
+    await page.keyboard.press('F3');
+    ok('F1 and F3 do not open over a pending confirm', await page.locator('.kh, .lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('Escape');
+    ok('one Escape closes the confirm', await dialogs() === 0);
+    await page.keyboard.press('F3');
+    await flip.click();
+    await sleep(200);
+    ok('a confirm opening closes an open look-for', await page.locator('.lf').count() === 0 && await page.locator('.overlay.hazard').count() === 1);
+    await page.keyboard.press('Escape');
+  } else console.log('  (no flip control in this fixture; confirm cases skipped)');
+  await ctx.close();
+}
+
+// ---- history (ph-mdqo.11) -------------------------------------------------------
+console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
+{
+  const motion = MODEL.categories.find((c) => c.label === 'Motion');
+  const sliders = motion.groups.flatMap((g) => (g.diagnostic ? [] : g.fields))
+    .filter((f) => !f.readOnly && !f.role && !f.advanced && f.widget === WIDGET.slider).slice(0, 3);
+  const gen = MODEL.categories.find((c) => c.label === 'Generator');
+  const { ctx, page } = await open(1400, 900);
+  const sel = (f) => '.field[data-uid="' + f.uid + '"]';
+  const valueOf = (f) => hub.values[f.channelId + ':' + f.name];
+  const setTo = async (f, frac) => {
+    const v = f.min + Math.round((f.max - f.min) * frac / (f.step || 1)) * (f.step || 1);
+    await page.locator(sel(f) + ' input[type=range]').evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await page.waitForFunction((s) => document.querySelector(s)?.dataset.shadow === 'confirmed', sel(f), { timeout: 4000 }).catch(() => {});
+    await sleep(1100);
+    return v;
+  };
+  const start = sliders.map((f) => valueOf(f) ?? f.dflt);
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
+  const set = [];
+  for (const [i, f] of sliders.entries()) set.push(await setTo(f, [0.15, 0.6, 0.85][i]));
+  const feed = async () => {
+    await page.locator('[role=tab][data-tab-id=log]').first().click();
+    await page.locator('[data-feed=changes]').click();
+    return page.locator('#lp-feed-changes .line.change');
+  };
+  const rows = await feed();
+  await sleep(200);
+  await shot(page, 'changes-feed.png');
+  ok('the Changes feed lists three rows', await rows.count() === 3, await rows.count());
+  const texts = await rows.allTextContents();
+  ok('...newest first, before to after', texts[0].includes(labelFor(sliders[2])) && texts[2].includes(labelFor(sliders[0])) && texts.every((t) => t.includes('\u2192')), texts);
+  await rows.first().locator('.undo').click();
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-changes .line.change').length === 2, null, { timeout: 4000 }).catch(() => {});
+  ok('Undo writes the before value and the row leaves', await page.locator('#lp-feed-changes .line.change').count() === 2
+    && Math.abs(valueOf(sliders[2]) - start[2]) < 1e-3, [valueOf(sliders[2]), start[2]]);
+  await page.locator('[role=tab]', { hasText: 'Generator' }).first().click();
+  const run = page.locator('.run-btn');
+  if (await run.count()) {
+    await run.first().click();
+    await sleep(500);
+    await page.locator('[role=tab][data-tab-id=log]').first().click();
+    await page.locator('[data-feed=changes]').click();
+    await sleep(100);
+    await page.locator('button', { hasText: 'Revert changes' }).click();
+    await page.waitForSelector('.overlay.hazard', { timeout: 3000 });
+    ok('Revert asks first, with the count', /Writes 2 settings/.test(await page.locator('.overlay.hazard').textContent()));
+    await page.locator('.overlay.hazard .og-btn.confirm').click();
+    await sleep(1500);
+    ok('Revert restores the remaining settings', Math.abs(valueOf(sliders[0]) - start[0]) < 1e-3 && Math.abs(valueOf(sliders[1]) - start[1]) < 1e-3,
+      [valueOf(sliders[0]), start[0], valueOf(sliders[1]), start[1]]);
+    ok('...and says in one line that the run switch was skipped', /Skipped.*running/i.test(await page.locator('.pane-status').textContent()),
+      await page.locator('.pane-status').textContent());
+  } else console.log('  (no run button in this fixture; the revert cases are skipped)');
+  // Ctrl+Z outside a text field undoes; inside one it does not.
+  const before = hub.log.length;
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
+  const v9 = await setTo(sliders[0], 0.9);
+  const n0 = hub.log.length;
+  await page.locator(sel(sliders[0]) + ' input.chip-num').focus();
+  await page.keyboard.press('Control+z');
+  await sleep(600);
+  ok('Ctrl+Z in a text input does not undo', hub.log.length === n0, [hub.log.length, n0]);
+  await page.locator('[role=tab][aria-selected=true]').first().focus();
+  await page.keyboard.press('Control+z');
+  await sleep(900);
+  ok('Ctrl+Z elsewhere undoes the latest write', hub.log.length > n0 && Math.abs(valueOf(sliders[0]) - start[0]) < 1e-3, [valueOf(sliders[0]), start[0]]);
+  await page.keyboard.press('Control+Shift+z');
+  await sleep(900);
+  ok('Ctrl+Shift+Z redoes it', Math.abs(valueOf(sliders[0]) - v9) < 1e-3 && hub.log.length > n0 + 1, [valueOf(sliders[0]), v9]);
+  void before;
+  // A drag whose echoes lag: the first write's echo lands after newer writes took the shadow.
+  hub.echoDelay = 350;
+  await page.locator('[role=tab][data-tab-id=log]').first().click();
+  await page.locator('[data-feed=changes]').click();
+  const nBefore = await page.locator('#lp-feed-changes .line.change').count();
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[1]), { timeout: 5000 });
+  const from = valueOf(sliders[1]);
+  const lo = sliders[1].min, hi = sliders[1].max, stp = sliders[1].step || 1;
+  const pts = [0.2, 0.4, 0.7].map((fr) => lo + Math.round((hi - lo) * fr / stp) * stp);
+  for (const v of pts) {
+    await page.locator(sel(sliders[1]) + ' input[type=range]').evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await sleep(120);
+  }
+  await sleep(1200);
+  hub.echoDelay = 0;
+  await page.locator('[role=tab][data-tab-id=log]').first().click();
+  await page.locator('[data-feed=changes]').click();
+  const texts2 = await page.locator('#lp-feed-changes .line.change').allTextContents();
+  ok('a drag with delayed echoes is one entry', texts2.length === nBefore + 1, [texts2.length, nBefore]);
+  const beforeNums = texts2[0].split('→')[0].match(/-?\d+(?:\.\d+)?/g) || [];
+  ok('...from the value before the first write', Math.abs(parseFloat(beforeNums.at(-1)) - from) < 0.01, [texts2[0], from]);
   await ctx.close();
 }
 
