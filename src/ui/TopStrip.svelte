@@ -98,10 +98,15 @@
 
   const rail = $derived(railReadout());
   // The hide tab (Settings: Rail hide tab) and, while hidden, the mini rail.
-  const tab = $derived(!!rail && $prefs.railHide);
+  const handheld = $derived(view.bucket <= 2);
+  const tab = $derived(!!rail && $prefs.railHide && !handheld);
   const railHidden = $derived(!!rail && isCollapsed($prefs));
   // A user act: shows the rail even over the budget, until the next resize.
-  const showRail = () => { heroBar.userShow = true; setPref('railHidden', false); };
+  const showRail = () => {
+    if (handheld) { heroBar.popup = !heroBar.popup; return; }
+    heroBar.userShow = true;
+    setPref('railHidden', false);
+  };
   const toggleRail = () => (railHidden ? showRail() : setPref('railHidden', true));
   // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
   // and never on a hub whose op table lacks it (law 7).
@@ -152,8 +157,16 @@
     const numMin = (winW >= 1024 ? 54 : 42) * .95 + 20;
     const row = stacked ? numMin + 6 + tapPx + 12 : Math.max(numMin, tapPx) + 12;
     const over = chromeH + row + heroBar.railH > heroBar.budget;
-    heroBar.form = $prefs.railHide && !heroBar.userShow && over ? 'mini' : 'full';
+    // Handheld: the mini is the rail's permanent form; its pop-up is the rail.
+    heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
   });
+  $effect(() => { if (!handheld || !rail) heroBar.popup = false; });
+  // Outside tap closes the pop-up unless a scrub or window drag is live.
+  function onPopupAway(e) {
+    if (!heroBar.popup || (rail && rail.busy)) return;
+    if (e.target.closest && (e.target.closest('.hero-inner.popup') || e.target.closest('.mini'))) return;
+    heroBar.popup = false;
+  }
 
   // The phone tab strip sticks just below this strip (App.svelte .tabs).
   let stripH = $state(0);
@@ -324,6 +337,7 @@
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
   function onWindowKey(e) {
+    if (e.key === 'Escape' && heroBar.popup) heroBar.popup = false;
     if (e.key === 'Escape' && menuOpen) {
       menuOpen = false;
       menuEl?.querySelector('.home-btn')?.focus();
@@ -381,7 +395,7 @@
 {/snippet}
 
 <svelte:window onkeydown={onWindowKey} bind:innerHeight={winH} bind:innerWidth={winW} />
-<svelte:document onclick={onDocClick} />
+<svelte:document onclick={onDocClick} onpointerdown={onPopupAway} />
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />

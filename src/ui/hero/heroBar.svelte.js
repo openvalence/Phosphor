@@ -3,7 +3,7 @@
  * the bar) or 'mini' (the 64 px mini stands in for it); `popup` is the
  * handheld vertical rail's open state. Written by TopStrip and MiniRail only.
  */
-export const heroBar = $state({ form: 'full', popup: false, budget: 0, railH: 0, userShow: false });
+export const heroBar = $state({ form: 'full', popup: false, budget: 0, railH: 0, slotH: 0, userShow: false });
 
 /** Collapsed: the budget (form) or the user's hide (pref) put the rail away. */
 export const isCollapsed = (p) => heroBar.form === 'mini' || (p.railHide && p.railHidden);

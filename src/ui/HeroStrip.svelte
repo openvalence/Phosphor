@@ -24,7 +24,9 @@
   $effect(() => {
     if (!inner) return;
     const measure = () => {
+      if (heroBar.popup) return;   // the pop-up sets the slot's own box
       const kids = [...inner.children], g = parseFloat(getComputedStyle(inner).rowGap) || 0;
+      heroBar.slotH = kids.reduce((a, e) => a + e.offsetHeight, 0);
       heroBar.railH = kids.reduce((a, e) => a + e.offsetHeight, 0) + Math.max(0, kids.length - 1) * g + 2 * g + 1;
     };
     const ro = new ResizeObserver(measure);
@@ -36,7 +38,7 @@
 
 {#if heroes && heroes.length}
   <div class="hero-strip" class:collapsed>
-    <div class="hero-inner" inert={collapsed} bind:this={inner}>
+    <div class="hero-inner" class:popup={heroBar.popup} inert={collapsed && !heroBar.popup} style:--rh={heroBar.slotH + 'px'} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}
         <div class="hero-slot" data-hero={hero.id}>
           <hero.component fields={hero.fields} accessory={i === 0 ? accessory : null} />
@@ -61,6 +63,31 @@
   /* Collapsed: no height, no divider (the top bar's border stays). */
   .hero-strip.collapsed { grid-template-rows: 0fr; border-bottom-width: 0; }
   .collapsed .hero-inner { overflow: hidden; visibility: hidden; padding-block: 0; }
+  /* Handheld pop-up (buckets 1-2): the one rail instance, rotated so travel
+     runs top to bottom, in a box under the top bar. */
+  .hero-inner.popup, .collapsed .hero-inner.popup {
+    position: fixed;
+    top: calc(var(--strip-h, 0px) + var(--gap));
+    right: var(--gap);
+    z-index: 40;
+    display: block;
+    visibility: visible;
+    overflow: visible;
+    box-sizing: content-box;
+    width: var(--rh);
+    height: min(60vh, 440px);
+    padding: var(--gap);
+    background: var(--bg-raised);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  }
+  .popup .hero-slot {
+    width: min(60vh, 440px);
+    height: var(--rh);
+    transform-origin: 0 0;
+    transform: translateX(var(--rh)) rotate(90deg);
+  }
 
   .hero-slot {
     min-width: 0; /* let sliders/rails shrink instead of forcing horizontal scroll */

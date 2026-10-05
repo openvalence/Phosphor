@@ -77,6 +77,7 @@
   import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
+  import { heroBar } from './heroBar.svelte.js';
   import { ACCENT, ac } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
@@ -432,6 +433,8 @@
       get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
+      // A scrub or window drag in flight keeps the pop-up open.
+      get busy() { return moveDragging || dragMode !== null; },
       get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; }, jog,
       // The mini rail's window and live position, as screen fractions.
       get haveWindow() { return haveWindow; }, get bandL() { return bandL; }, get bandR() { return bandR; },
@@ -703,6 +706,9 @@
 
   let dragMode = $state(null); // null | 'min' | 'max' | 'band'
   let dragStartX = 0;
+  // The handheld pop-up draws the rail rotated 90 degrees (HeroStrip): travel runs down the screen.
+  const vertical = $derived(heroBar.popup);
+  const axis = (e) => (vertical ? e.clientY : e.clientX);
   let dragStartMin = 0;
   let dragStartMax = 0;
 
@@ -716,7 +722,7 @@
   function startDrag(mode, e) {
     if (!dragAllowed(mode)) return;
     dragMode = mode;
-    dragStartX = e.clientX;
+    dragStartX = axis(e);
     dragStartMin = minVal ?? lo;
     dragStartMax = maxVal ?? hi;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
@@ -729,8 +735,9 @@
     // from a stale dragStartX would jump the window on re-enable.
     if (!dragAllowed(dragMode)) { dragMode = null; pend = null; return; }
     const rect = hostEl.getBoundingClientRect();
-    if (!rect.width) return;
-    const dv = dir * ((e.clientX - dragStartX) / rect.width) * span;
+    const len = vertical ? rect.height : rect.width;
+    if (!len) return;
+    const dv = dir * ((axis(e) - dragStartX) / len) * span;
     const out = {};
     if (dragMode === 'min') {
       out.min = snap(clamp(dragStartMin + dv, lo, dragStartMax), min);
@@ -883,11 +890,12 @@
   const tapeStripHiPct = $derived(haveWindow && !override ? bandR : 1);
 
   /** clientX -> commandable value, mapped against the STRIP's own width (not the whole assembly) so a short window strip still reads its full drag travel as [tapeLo,tapeHi]. */
-  function moveValueFromClientX(clientX) {
+  function moveValueFromPoint(e) {
     if (!tapeBarEl) return null;
     const rect = tapeBarEl.getBoundingClientRect();
-    if (!rect.width) return null;
-    const frac = clamp((clientX - rect.left) / rect.width, 0, 1);
+    const len = vertical ? rect.height : rect.width;
+    if (!len) return null;
+    const frac = clamp((axis(e) - (vertical ? rect.top : rect.left)) / len, 0, 1);
     return flipped ? tapeHi - frac * tapeSpan : tapeLo + frac * tapeSpan;
   }
 
@@ -912,7 +920,7 @@
   }
   function onTapePointerMove(e) {
     if (!moveDragging) return;
-    const v = moveValueFromClientX(e.clientX);
+    const v = moveValueFromPoint(e);
     moveDragValue = v;
     moveHeld = deferring(e);
     if (!moveHeld) requestMove(v);

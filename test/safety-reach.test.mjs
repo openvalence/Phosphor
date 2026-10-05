@@ -229,7 +229,7 @@ async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-prefere
   await page.waitForTimeout(500);
   // Over the hero budget the rail is the mini; a tap is the user's ask for the rail.
   const mini = page.locator('.topstrip .mini');
-  if (await mini.count() && await mini.isVisible()) { await mini.click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300); }
+  if (await mini.count() && await page.locator('.topstrip .tab').count() && await mini.isVisible()) { await mini.click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300); }
   return { ctx, page, wire, up };
 }
 
@@ -968,9 +968,11 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   {
     const { ctx, page } = await open(browser, { w: 360, h: 800, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
     await page.waitForTimeout(600);
+    await page.locator('.topstrip .mini').click();   // the pop-up draws the rail vertically: hits are counted down the travel
+    await page.waitForTimeout(500);
     const m = await page.evaluate(() => {
       const hits = (k) => { const r = document.querySelector('.rail-band-handle.' + k).getBoundingClientRect(); let n = 0;
-        for (let x = Math.floor(r.x); x < r.x + r.width; x++) { const e = document.elementFromPoint(x + 0.5, r.y + r.height / 2); if (e && e.classList.contains('rail-band-handle') && e.classList.contains(k)) n++; }
+        for (let y = Math.floor(r.y); y < r.y + r.height; y++) { const e = document.elementFromPoint(r.x + r.width / 2, y + 0.5); if (e && e.classList.contains('rail-band-handle') && e.classList.contains(k)) n++; }
         return n; };
       return { lo: hits('lo'), hi: hits('hi'), sw: document.documentElement.scrollWidth, iw: innerWidth };
     });
@@ -1093,6 +1095,30 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await page.waitForTimeout(1500);
   const down = await h();
   ok('hero: the 390 strip is as tall with the link dropped as live (ph-t4ge)', Math.abs(live - down) < 0.5, live + ' / ' + down);
+  await ctx.close();
+}
+// Handheld: the mini opens a vertical rail pop-up; a drag leaving it keeps it open; an outside tap closes it.
+{
+  const cfgE = byRole('window.min');
+  const cfg = stateOf(cfgE, { 'window.min': 0, 'window.max': 500, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
+  const { ctx, page, wire } = await open(browser, { w: 390, h: 844, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
+  const pop = () => page.locator('.hero-inner.popup').count();
+  ok('handheld: the rail starts as the mini', await page.locator('.topstrip .mini').count() === 1 && await pop() === 0);
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(400);
+  const h = await page.locator('.rail-band-handle.lo').boundingBox();
+  const v0 = wire.writes.length;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 150, h.y + 100, { steps: 6 });
+  const mid = await pop();
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const v1 = wire.writes.length;
+  ok('handheld: the pop-up opens, travel runs down, a drag leaving it keeps it open and writes', mid === 1 && v1 > v0 && await pop() === 1, JSON.stringify([mid, v0, v1]));
+  await page.mouse.click(10, 760);
+  await page.waitForTimeout(300);
+  ok('handheld: an outside tap closes the pop-up', await pop() === 0);
   await ctx.close();
 }
 
