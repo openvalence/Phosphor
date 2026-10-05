@@ -33,7 +33,7 @@
   import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
-  import { untrack } from 'svelte';
+  import { untrack, tick } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
@@ -52,6 +52,8 @@
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
+  import { SETTINGS_ENTRIES } from './shell/settingsSearch.js';
+  import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
@@ -251,6 +253,17 @@
     selectTab('machine');
   }
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
+  // F3 lists every Display and Settings entry and lands on its row.
+  const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
+  $effect(() => registerSearch('settings', () => (settingsTab ? SETTINGS_ENTRIES
+    .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
+    .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
+      selectTab(settingsTab.id);
+      await tick();
+      const el = document.querySelector('[data-search-key="' + e.key + '"]');
+      el?.scrollIntoView({ block: 'center' });
+      el?.querySelector('input, button')?.focus();
+    } })) : [])));
   // The tab strip's Add layout (the rail has RailLayouts' own).
   let stripAdding = $state(false);
   let stripName = $state('');

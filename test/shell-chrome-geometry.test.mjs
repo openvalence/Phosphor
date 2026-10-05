@@ -596,6 +596,18 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
   }
   if (w >= 960) {
+    // ph-mdqo.12: F3 lists the Display entries and Enter lands on the row.
+    for (const [q, key] of [['scrollbars', 'scrollbars'], ['rail hide', 'railhide'], ['motion reduced', 'motion']]) {
+      await fp.keyboard.press('F3');
+      await fp.keyboard.type(q);
+      const first = await fp.locator('.lf-list [role=option]').first().textContent();
+      await fp.keyboard.press('Enter');
+      await fp.waitForTimeout(250);
+      const landed = await fp.evaluate((k) => { const e = document.querySelector('[data-search-key="' + k + '"]'); const r = e && e.getBoundingClientRect(); return !!r && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }, key);
+      ok(tag + ': F3 "' + q + '" lands on its Display row', landed, first.replace(/\s+/g, ' ').trim());
+    }
+  }
+  if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.
     let hit = null;
     for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
