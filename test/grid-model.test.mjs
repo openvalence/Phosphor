@@ -18,7 +18,7 @@
 import {
   CELL_DEVICE_PX, SCALE_STEPS, STORE_KEY,
   cellCssPx, cellCount, allowedSteps, clampScale, stepScale, place, blocker, commitPin, commitOrder,
-  loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout,
+  loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout, addLayout, moveLayout, layoutOrder,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
@@ -178,12 +178,35 @@ console.log('layouts');
   const back = loadStore(st);
   ok('the store survives a reload', back.active === 'Default' && back.layouts.Night['full.machine'].a.w === 20);
   ok('the absent id survives the reload', JSON.stringify(back.layouts.Default['full.machine'].ghost) === '{"x":3,"y":0,"w":4,"h":1}');
-  ok('delete the active layout falls back to another', deleteLayout(back, 'Default') && back.active === 'Night');
-  ok('the last layout cannot be deleted', !deleteLayout(back, 'Night'));
+  ok('delete the active layout falls back to Default', switchLayout(back, 'Night') && deleteLayout(back, 'Night') && back.active === 'Default');
+  ok('Default cannot be deleted', !deleteLayout(back, 'Default') && !!back.layouts.Default);
   saveScale(st, 1.25);
   ok('scale persists', loadScale(st) === 1.25);
   st.setItem('phosphor.scale', '7');
   ok('an off-list stored scale reads as 1', loadScale(st) === 1);
+}
+
+// ---- layout order: Default pinned first (ph-mdqo.9) ----
+console.log('layout order');
+{
+  const st = memStorage();
+  const s = loadStore(st);
+  ok('a fresh store lists Default alone', layoutOrder(s).join() === 'Default');
+  ok('add makes an empty active layout, last', addLayout(s, 'B') && addLayout(s, 'C') && s.active === 'C'
+     && layoutOrder(s).join() === 'Default,B,C' && Object.keys(s.layouts.C).length === 0);
+  ok('add refuses a taken or invalid name', !addLayout(s, 'B') && !addLayout(s, ' ') && !addLayout(s, '__proto__'));
+  ok('move reorders and clamps', moveLayout(s, 'C', 1) && layoutOrder(s).join() === 'Default,C,B'
+     && moveLayout(s, 'C', 99) && layoutOrder(s).join() === 'Default,B,C');
+  ok('nothing moves to slot 0', moveLayout(s, 'C', 0) && layoutOrder(s).join() === 'Default,C,B');
+  ok('Default does not move, rename or delete', !moveLayout(s, 'Default', 2) && !renameLayout(s, 'Default', 'X')
+     && !deleteLayout(s, 'Default') && layoutOrder(s).join() === 'Default,C,B');
+  ok('rename keeps the slot', renameLayout(s, 'C', 'D') && layoutOrder(s).join() === 'Default,D,B' && s.active === 'D');
+  ok('delete drops the name and the active falls back to Default', deleteLayout(s, 'D') && layoutOrder(s).join() === 'Default,B' && s.active === 'Default');
+  saveStore(st, s);
+  ok('the order survives a reload', layoutOrder(loadStore(st)).join() === 'Default,B');
+  const odd = { active: 'A', layouts: { A: {}, Default: {}, Z: {} }, modules: {}, order: ['Z', 'Gone', 'A', 'Z'] };
+  ok('a stale order heals: Default first, unknown dropped, no duplicates', layoutOrder(odd).join() === 'Default,Z,A');
+  ok('a layout missing from the order lands last', layoutOrder({ layouts: { Default: {}, N: {} }, order: [] }).join() === 'Default,N');
 }
 
 // ---- storage that throws ------------------------------------------------------
