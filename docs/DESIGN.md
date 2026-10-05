@@ -532,9 +532,11 @@ question in §10.8).
 - The hero bar (operator rulings 2026-10-05): the rail joins the strip as
   one surface, the panel's line carried over as a divider between the
   numerals row and the rail; no panel outline. The jog tape is always
-  shown. The window's span (mm) is a small pill on a dark plate inside the
+  shown wherever a jog is possible; while a source owns the rail the
+  planned segment keeps its slot (`ph-ryi7`) and Override brings it back.
+  The window's span (mm) is a small pill on a dark plate inside the
   band; its start and end values sit on the axis row under the band's
-  edges, in the window color, beside the grey axis marks; no label row
+  edges, in the window color, beside the gray axis marks; no label row
   above the band. A small up-arrow tab mid-bar, between the readouts and the
   controls, hides the rail entirely; while hidden a 64 px live mini rail
   (the window and the live position, the rail's look, display only, never
@@ -594,10 +596,10 @@ question in §10.8).
   category page has no footer there; the tab strip classes keep them here.
 - The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
   side margin. The top bar, the hero bar and the bottom status row are full
-  bleed; the frame below the hero bar is `--gap` on all four sides with
-  `--gap` between the sidebar and the content (sidebar | gap | content |
-  gap), so the content's right edge mirrors its left. Nothing aligns to the
-  old hero outline.
+  bleed; the sidebar sits flush on the window's left edge, and the frame
+  below the hero bar is sidebar | gap | content | gap, with `--gap` above
+  the content and below it, so the content's right edge mirrors its left.
+  Nothing aligns to the old hero outline.
 - Scroll recesses (operator ruling 2026-10-03, `ph-inh5`): a scroller's
   affordance is a shadow on its own top edge while it can scroll up and on its
   bottom edge while it can scroll down, so the pane reads as sliding under the
@@ -1002,7 +1004,7 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-05 | §10.5 | The rank seed gives a card its floor width, never the row, and packs the rest of the row by rank; each presentation has two density rungs, compact and normal, picked by the cells it holds, never under the 40 px target (law 12) and never hiding the four-state reason (law 5); plugin widgets take the same rungs through the plugin contract before its freeze (`ph-z50z`). No rewrite of the grid model: absolute placements, floors and nests stand. | advisor, operator yes |
 | 2026-10-05 | §10.9 | A plugin page declares its layout per renderer class or takes the host's stacked default; the host guarantees no horizontal overflow and the 40 px target at handheld; every plugin page runs in the responsive matrix at the phone sizes; the funscript player first, the Pixel is the bench (`ph-cqz6`). | operator |
 | 2026-10-05 | §10.3 | The no-page-shifting rule (2026-10-02) is written down and reads "no shifting from non-user input": a user's own act may change heights, state never may (`ph-mdqo`). | operator |
-| 2026-10-05 | §10.3 | The page frame: no window side margin, the bars full bleed, the frame `--gap` on all four sides and between sidebar and content; the old 5 px reach to the hero outline goes (`ph-p43h`). | operator (the gap left of the sidebar, read from "one padding on all four sides", is the agent's, veto-able) |
+| 2026-10-05 | §10.3 | The page frame: no window side margin, the bars full bleed, the frame `--gap` on all four sides and between sidebar and content; the old 5 px reach to the hero outline goes (`ph-p43h`). | operator (2026-10-05 later: the sidebar sits flush left, no gap before it; the agent's four-side reading is withdrawn) |
 | 2026-10-05 | §10.3 | Scroll recesses cover the scroller's padding and corners, take a theme ink, toggle with 2 px of hysteresis and move no box. | operator (`--bg-sunken` as the ink is the agent's, veto-able) |
 | 2026-10-05 | §10.3 | The rail joins the strip as one hero bar with a divider; tape always shown; the span pill in the band, start and end on the axis row; a hide tab with a 64 px live mini rail, disableable in Settings; buckets 1 and 2 keep the mini and open a vertical rail pop-up. The slim/expanded flipper is withdrawn. | operator (the hidden state persisting and the pop-up held open during a drag are the agent's reading, veto-able) |
 | 2026-10-05 | §10.3 | Strip buttons are one icon-above-word box with taller icons; Override draws arrows out of the window (lift) and in (return); Flip draws two arrows around a struck 0, one grey. Supersedes the 2026-10-02 glyph rulings of `ph-l1y6` and `ph-0hdh`. | operator |
@@ -1017,3 +1019,6 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-05 | §10.13 | F3 indexes every page, settings entry, plugin-page control and dash layout and matches fuzzily; a 256-write session history with undo and Revert changes to the connect-time baseline, hazards skipped and named; app-wide motion with a System / Reduced / Full toggle on `html.still`. | operator (the Changes feed in the Log pane, Ctrl+Z outside editors and settings-only history are the agent's, veto-able) |
 | 2026-10-05 | plugins | Funscript player: Open files leaves the main bar; Motion, Offset (in ms) and Invert join the wave preview's control bundle on a shadow plate at its corner; the preview takes the advanced generator's screen; a draggable viewer split; hiding a panel never shrinks the player; one transport row (prev, play, next, elapsed, heatmap timeline, remaining, volume, rate, graph toggle with its key, screenshot, layout, close). Text lands in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md) with the code. | operator (Open files moving to the Library head, and what screenshot, layout and close do, are the agent's, veto-able) |
 | 2026-10-05 | plugins | Advanced generator: every input and handle sits on the sunk screen plate; the wave scope becomes a to-scale planned-motion strip (10 s default window, 1 s grid, up / number / down stepper, no caption); a plus spawns a 0.01-stroke dwell; handles drag at a lower gain. Text lands in [PLUGINS.md](PLUGINS.md) with the code. | operator |
+| 2026-10-05 | §10.3 | The tape shows wherever a jog is possible; a source-owned rail keeps the planned segment in its slot (`ph-ryi7` stands) (`ph-mdqo.4`). | operator (the reading of "always visible" is the agent's, veto-able) |
+| 2026-10-05 | plugins | Funscript player: the page's Settings take the library column's slot at full width instead of a half-page cap; the card turns handheld only when the card itself is narrow (`ph-mdqo.7`, supersedes the `ph-yuce` half-page cap). | agent, veto-able |
+| 2026-10-05 | §10.3 | The strip's safety buttons draw at 75 % of the first icon-above-word size; Flip's struck zero is the hero numerals' slashed zero (`ph-9zdy`). | operator |
