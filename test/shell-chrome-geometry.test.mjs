@@ -582,6 +582,18 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': Default refuses to rename', await fp.locator('nav.rail .sub-input').count() === 0);
     await fp.click('nav.rail [data-tab-id="machine"]');
     ok(tag + ': Dash selects Default again', (await rows()).join() === 'Default*,Sofa', JSON.stringify(await rows()));
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Sofa');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': a taken name stays open, marked invalid', await fp.locator('nav.rail .sub-input[aria-invalid="true"]').count() === 1);
+    await fp.keyboard.press('Escape');
+    // Deleting the active layout with the wrench on turns edit mode off and moves focus to a neighbor.
+    await fp.click('nav.rail [data-layout="Sofa"]');
+    await fp.click('nav.rail .rail-wrench');
+    await fp.hover(rowSel('Sofa'));
+    const [dx, dy] = await center(rowSel('Sofa') + ' .sub-x');
+    await fp.mouse.move(dx, dy); await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
+    ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
   }
   if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.

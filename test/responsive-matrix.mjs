@@ -563,27 +563,59 @@ if (!ONLY || ONLY === 'bucket') {
 
 if (!ONLY || ONLY === 'railops') {
   console.log('\nrail operations scenarios (ph-lxea)');
-  const { ctx, page } = await seeded({ width: 1428, height: 900 }, (ws) => fakeHub(ws));
+  // Count the INTENT frames the page sends: a reset is one per resettable field.
+  const sent = { n: 0 };
+  const { ctx, page } = await seeded({ width: 1428, height: 900 }, (ws) => {
+    const on = ws.onMessage.bind(ws);
+    ws.onMessage = (h) => on((m) => { try { for (const { header } of parseFrames(new Uint8Array(m))) if (header.type === FRAME.INTENT) sent.n++; } catch (e) { /* not a frame */ } h(m); });
+    fakeHub(ws);
+  });
   await page.goto('http://127.0.0.1:' + PORT + '/');
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   await page.waitForTimeout(500);
-  let hit = false;
-  for (const id of await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (e) => e.map((b) => b.dataset.tabId))) {
-    await page.click('[data-tab-id="' + id + '"]');
-    await page.waitForTimeout(250);
-    if (await page.locator('.rail-ops .reset:not(:disabled)').count()) { hit = true; break; }
-  }
-  scen('a category page has an enabled reset in its pill', hit);
-  if (hit) {
-    scen('the expanded rail shows no page footer', await page.evaluate(() => getComputedStyle(document.querySelector('main.pane .page-foot')).display) === 'none');
-    const b = await page.locator('.rail-ops .reset').boundingBox();
+  const take = () => { const n = sent.n; sent.n = 0; return n; };
+  const rb = '.rail-ops .reset';
+  const modal = () => page.locator('[role=alertdialog]').count();
+  const catIds = await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (e) => e.map((b) => b.dataset.tabId));
+  const go = async (id) => { await page.click('[data-tab-id="' + id + '"]'); await page.waitForTimeout(250); };
+  // A page whose reset writes directly, and one that asks (a Flip lives on it).
+  let plain = null, gated = null;
+  for (const id of catIds) {
+    await go(id);
+    if (!await page.locator(rb + ':not(:disabled)').count()) continue;
+    const b = await page.locator(rb).boundingBox();
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-    await page.mouse.down(); await page.waitForTimeout(500); await page.mouse.up();
-    const early = await page.locator('.rail-ops .reset.done').count();
-    await page.mouse.down(); await page.waitForTimeout(1250); await page.mouse.up();
-    scen('reset held 0.5 s does nothing, held 1 s fires', early === 0 && await page.locator('.rail-ops .reset.done').count() === 1, String(early));
-    await page.click('nav.rail .rail-collapse');
-    await page.waitForTimeout(200);
+    take(); await page.mouse.down(); await page.waitForTimeout(1250); await page.mouse.up(); await page.waitForTimeout(200);
+    if (await modal()) { gated ??= id; await page.keyboard.press('Escape'); await page.waitForTimeout(150); }
+    else if (take() > 0) plain ??= id;
+    if (plain) break;
+  }
+  // The fixture catalog has no confirm-gated field on a category page, so the modal branch of holdReset is not reached here.
+  scen('a plain page writes on the hold', !!plain, String(plain));
+  if (plain) {
+    await go(plain);
+    const at = async () => { const b = await page.locator(rb).boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); };
+    take();
+    await at(); await page.mouse.down(); await page.waitForTimeout(500); await page.mouse.up(); await page.waitForTimeout(200);
+    scen('reset held 0.5 s writes nothing', take() === 0);
+    await at(); await page.mouse.down(); await page.waitForTimeout(1250); await page.mouse.up(); await page.waitForTimeout(200);
+    const n = take();
+    scen('reset held 1 s writes the page defaults', n > 0, String(n));
+    await at(); await page.mouse.down(); await page.waitForTimeout(400); await page.mouse.move(5, 5); await page.waitForTimeout(900); await page.mouse.up();
+    scen('leaving the button mid-hold writes nothing', take() === 0);
+    await at(); await page.mouse.down({ button: 'right' }); await page.waitForTimeout(1250); await page.mouse.up({ button: 'right' });
+    scen('a right-button hold writes nothing', take() === 0);
+    await at(); await page.mouse.down(); await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelector('nav.rail [data-tab-id="machine"]').click());
+    await page.waitForTimeout(1100); await page.mouse.up(); await page.waitForTimeout(200);
+    scen('changing page mid-hold writes nothing', take() === 0);
+    await go(plain);
+    await page.locator(rb).focus(); await page.keyboard.down('Enter'); await page.waitForTimeout(1250); await page.keyboard.up('Enter'); await page.waitForTimeout(200);
+    scen('Enter held 1 s writes', take() > 0);
+    await page.locator(rb).focus(); await page.keyboard.down('Enter'); await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelector('nav.rail .rail-collapse').click());
+    await page.waitForTimeout(1100); await page.keyboard.up('Enter'); await page.waitForTimeout(200);
+    scen('collapsing the rail mid-hold writes nothing', take() === 0);
     scen('the mini rail keeps the toggles in the page footer', await page.locator('main.pane .page-foot .reset-cat').count() > 0 && await page.locator('.rail-ops').count() === 0);
     await page.click('nav.rail .rail-collapse');
     await page.setViewportSize({ width: 420, height: 860 });

@@ -50,7 +50,9 @@
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
   import RailLayouts from './shell/RailLayouts.svelte';
-  import { layouts, orderedLayoutNames, switchLayout, dashEdit } from './model/dashboard.svelte.js';
+  import { hold } from './shell/hold.js';
+  import { settingNeedsConfirm } from './model/actions.js';
+  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -249,6 +251,16 @@
     selectTab('machine');
   }
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
+  // The tab strip's Add layout (the rail has RailLayouts' own).
+  let stripAdding = $state(false);
+  let stripName = $state('');
+  let stripBad = $state(false);
+  const focusNode = (n) => n.focus();
+  function stripCommit() {
+    const n = stripName.trim();
+    if (!n) { stripAdding = false; return; }
+    if (addLayout(n)) { stripAdding = false; pickLayout(n); } else stripBad = true;
+  }
 
   // Rail collapse is a browser preference. Icons come from the registry
   // category id or our own pane id (ui/navIcons.js), never a device label.
@@ -275,7 +287,8 @@
     if (idx < 0) return;
     const next = list[(idx + (e.key === nextKey ? 1 : -1) + list.length) % list.length];
     next.focus();
-    active = next.dataset.tabId;
+    if (next.dataset.tabId === 'machine') pickLayout('Default');
+    else active = next.dataset.tabId;
   }
 
   // Card-zone hero titles come from OUR registry ids (heroes.js), never a
@@ -375,23 +388,16 @@
   // The expanded rail carries the page operations in the selected page's pill
   // (DESIGN §10.11); PageFoot keeps them on the mini rail and the tab strip.
   const railOps = $derived(isDesktop && !railMini && catPage);
-  // Reset on the rail is a 1 s hold, and the hold is the confirmation.
-  const HOLD_MS = 1000;
-  let resetHold = $state(false);
+  // Reset on the rail is a 1 s hold (shell/hold.js) and the hold is the
+  // confirmation, except where a resettable field is confirm-gated (a flip, a
+  // destructive flag): then the whole reset takes the modal (RENDERING §8.3).
   let resetDone = $state(false);
-  let holdTimer = 0;
   function holdReset() {
-    if (resetWhy || resetHold) return;
-    resetHold = true;
-    holdTimer = setTimeout(() => {
-      resetHold = false;
-      applyReset();
-      resetDone = true;
-      setTimeout(() => (resetDone = false), 1200);
-    }, HOLD_MS);
+    if (resettable.some((f) => settingNeedsConfirm(f, machine.samples[f.channelId]?.[f.name], f.dflt))) { resetCategory(); return; }
+    applyReset();
+    resetDone = true;
+    setTimeout(() => (resetDone = false), 1200);
   }
-  function releaseReset() { clearTimeout(holdTimer); resetHold = false; }
-  $effect(() => { current?.id; untrack(releaseReset); });
 
   /**
    * Dashboard items.
@@ -406,7 +412,8 @@
   // follow one header row (settings.js orders them together, DESIGN §10.11).
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
-      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h })),
+      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h,
+         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid)) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
       ...(g.section && g.section !== all[i - 1]?.group.section
         ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
@@ -443,6 +450,13 @@
 
 {#snippet heroCard(item)}
   <item.hero.component fields={item.hero.fields} hero={item.hero} />
+{/snippet}
+
+{#snippet stripWrench()}
+  <button type="button" class="strip-wrench" aria-pressed={dashEdit.on} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
+          title={dashEdit.on ? 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
+  </button>
 {/snippet}
 
 {#snippet railTab(t)}
@@ -522,13 +536,13 @@
         {/if}
       {/if}
       {#if catPage && !railOps}
-        {#if visibleGroups.adv}
-          <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
-        {/if}
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
                   title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} diagnostic</button>
+        {/if}
+        {#if visibleGroups.adv}
+          <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
+                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
@@ -580,18 +594,17 @@
                          style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
                       {#if visibleGroups.diagAll}
                         <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b>diag</button>
+                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
                       {/if}
                       {#if visibleGroups.adv}
                         <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b>adv</button>
+                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
                       {/if}
                       {#if hasDefaults}
-                        <button type="button" class="reset" class:holding={resetHold} class:done={resetDone} disabled={!!resetWhy}
+                        <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                                use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
                                 title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
-                                onpointerdown={holdReset} onpointerup={releaseReset} onpointerleave={releaseReset} onpointercancel={releaseReset}
-                                onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); holdReset(); } }}
-                                onkeyup={releaseReset} onblur={releaseReset}>{resetDone ? 'reset ✓' : 'reset'}</button>
+>{resetDone ? 'reset ✓' : 'reset'}</button>
                       {/if}
                     </div>
                   {/if}
@@ -615,13 +628,23 @@
                   aria-selected={current && current.id === t.id}
                   tabindex={current && current.id === t.id ? 0 : -1}
                   class:shell={!!t.pane}
-                  class:on={current && current.id === t.id}
+                  class:on={current && current.id === t.id && (t.id !== 'machine' || layouts.active === 'Default')}
                   onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>{t.label}</button>
           {#if t.id === 'machine'}
+            {#if active === 'machine' && layouts.active === 'Default'}{@render stripWrench()}{/if}
             {#each orderedLayoutNames().slice(1) as n (n)}
-              <button type="button" data-layout={n} aria-current={active === 'machine' && layouts.active === n ? 'page' : undefined}
-                      class:on={active === 'machine' && layouts.active === n} onclick={() => pickLayout(n)}>{n}</button>
+              {@const sel = active === 'machine' && layouts.active === n}
+              <button type="button" data-layout={n} aria-current={sel ? 'page' : undefined}
+                      class:on={sel} onclick={() => pickLayout(n)}>{n}</button>
+              {#if sel}{@render stripWrench()}{/if}
             {/each}
+            {#if stripAdding}
+              <input class="strip-add" aria-label="New layout name" aria-invalid={stripBad} placeholder="Layout name" bind:value={stripName}
+                     use:focusNode onkeydown={(e) => { if (e.key === 'Enter') stripCommit(); else if (e.key === 'Escape') { e.stopPropagation(); stripAdding = false; } }}
+                     onblur={() => (stripAdding = false)} />
+            {:else}
+              <button type="button" aria-label="Add layout" title="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
+            {/if}
           {/if}
         {/each}
       </div>
@@ -770,7 +793,7 @@
   .rail-ops button:disabled { opacity: .4; }
   .rail-ops .reset { color: var(--warn-ink); }
   .rail-ops .reset::before { content: ''; position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--warn) 30%, transparent); }
-  .rail-ops .reset.holding::before { width: 100%; transition: width 1s linear; }
+  .rail-ops .reset:global(.holding)::before { width: 100%; transition: width 1s linear; }
   .rail-ops .reset.done { border-color: var(--warn); }
   @media (pointer: coarse) { .rail-ops button { min-height: 40px; } }
   .rail-sec.shell {
@@ -897,6 +920,11 @@
     color: var(--shell-fg);
     border-color: var(--shell-border);
   }
+  .tabs .strip-wrench { display: grid; place-items: center; min-width: var(--tap); padding: 0; }
+  .tabs .strip-wrench svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .tabs .strip-wrench[aria-pressed='true'] { color: var(--highlight); border-color: var(--highlight); }
+  .tabs .strip-add { flex: 0 0 auto; width: 10rem; min-height: var(--tap); padding: 0 var(--sp-4); background: var(--bg-sunken); border: 1px solid var(--highlight); border-radius: var(--radius); color: var(--ink); font: inherit; outline: none; }
+  .tabs .strip-add[aria-invalid='true'] { border-color: var(--warn); }
   .tabs button.on {
     color: var(--ink-hi);
     background: var(--bg-card);

@@ -16,13 +16,14 @@
    * - A layout's name is a storage key (dashboard.svelte.js); every change
    *   goes through its exported edits, never the store directly.
    */
+  import { tick } from 'svelte';
   import { flip } from 'svelte/animate';
+  import { hold } from './hold.js';
   import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, renameLayout, dashEdit } from '../model/dashboard.svelte.js';
   import { isStill } from '../ui/still.svelte.js';
 
   let { dashActive = false, onpick } = $props();
 
-  const HOLD_MS = 1000;
   const stored = $derived(orderedLayoutNames());
   // While a grip is dragged the list previews the drop.
   let drag = $state(null);
@@ -34,22 +35,31 @@
   });
   let adding = $state(false);
   let draft = $state('');
+  let taken = $state(false);
 
-  function startAdd() { draft = ''; adding = true; }
+  function startAdd() { draft = ''; taken = false; adding = true; }
   function commitAdd() {
     const n = draft.trim();
     if (!n) { adding = false; return; }
-    if (addLayout(n)) { adding = false; onpick(n, true); }
+    if (addLayout(n)) { adding = false; onpick(n, true); } else taken = true;
   }
   function focusOn(node) { node.focus(); }
+  const rowOf = (n) => listEl?.querySelector('[data-layout="' + CSS.escape(n) + '"]');
 
   let renaming = $state(null);
   let name = $state('');
-  function startRename(n) { if (n === 'Default') return; name = n; renaming = n; }
-  function keepRename() {
+  function startRename(n) { if (n === 'Default') return; name = n; taken = false; renaming = n; }
+  // Enter keeps (a taken name stays open, marked); blur keeps or drops it.
+  async function keepRename(viaEnter) {
     const from = renaming, to = name.trim();
+    if (!from) return;
+    if (to && to !== from && !renameLayout(from, to)) {
+      if (viaEnter) { taken = true; return; }
+      renaming = null;
+      return;
+    }
     renaming = null;
-    if (from && to && to !== from) renameLayout(from, to);
+    if (viaEnter) { await tick(); rowOf(to && to !== from ? to : from)?.focus(); }
   }
   function selectOn(node) { node.focus(); node.select(); }
 
@@ -80,15 +90,15 @@
     queueMicrotask(() => listEl.querySelector('[data-layout="' + CSS.escape(n) + '"]')?.focus());
   }
 
-  // A hold fires once, after HOLD_MS; any release or leave before that is nothing.
-  let holding = $state(null);
-  let timer = 0;
-  function holdStart(n) {
-    holdStop();
-    holding = n;
-    timer = setTimeout(() => { holding = null; deleteLayout(n); }, HOLD_MS);
+  async function remove(n) {
+    const i = stored.indexOf(n);
+    if (layouts.active === n) dashEdit.on = false;
+    deleteLayout(n);
+    await tick();
+    const next = orderedLayoutNames()[Math.min(i, stored.length - 1)];
+    (next && rowOf(next)) || listEl.querySelector('.add')?.focus();
+    rowOf(next)?.focus();
   }
-  function holdStop() { clearTimeout(timer); holding = null; }
 </script>
 
 <div class="rail-sub" role="none" bind:this={listEl}>
@@ -96,9 +106,11 @@
     {@const on = dashActive && layouts.active === n}
     <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}>
       {#if renaming === n}
-        <input class="sub-input" aria-label={'Rename ' + n} bind:value={name} use:selectOn
-               onkeydown={(e) => { if (e.key === 'Enter') keepRename(); else if (e.key === 'Escape') renaming = null; }}
-               onblur={keepRename} />
+        <input class="sub-input" aria-label={'Rename ' + n} aria-invalid={taken} bind:value={name} use:selectOn
+               oninput={() => (taken = false)}
+               onkeydown={(e) => { if (e.key === 'Enter') keepRename(true); else if (e.key === 'Escape') { e.stopPropagation(); renaming = null; } }}
+               onblur={() => keepRename(false)} />
+        {#if taken}<span class="sub-hint" role="alert">Name taken</span>{/if}
       {:else}
         <button type="button" class="rail-tab sub-layout" class:on data-layout={n}
                 aria-current={on ? 'page' : undefined} title={n} onclick={() => onpick(n)}
@@ -111,10 +123,8 @@
         <span class="sub-grip" aria-hidden="true" title="Drag to reorder, Alt+Up or Down" onpointerdown={(e) => gripDown(e, n)}>
           <svg viewBox="0 0 8 12"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg>
         </span>
-        <button type="button" class="sub-x" class:holding={holding === n} class:withwrench={on} aria-label={'Delete ' + n + ', hold 1 s'}
-                title="Hold 1 s to delete" onpointerdown={() => holdStart(n)} onpointerup={holdStop} onpointerleave={holdStop}
-                onpointercancel={holdStop} onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); holdStart(n); } }}
-                onkeyup={holdStop} onblur={holdStop}>
+        <button type="button" class="sub-x" class:withwrench={on} aria-label={'Delete ' + n + ', hold 1 s'}
+                title="Hold 1 s to delete" use:hold={{ ms: 1000, onfire: () => remove(n), key: n }}>
           <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8"/></svg>
         </button>
       {/if}
@@ -129,9 +139,11 @@
   {/each}
   {#if adding}
     <div class="sub-row" role="none">
-      <input class="sub-input" aria-label="New layout name" placeholder="Layout name" bind:value={draft} use:focusOn
-             onkeydown={(e) => { if (e.key === 'Enter') commitAdd(); else if (e.key === 'Escape') adding = false; }}
+      <input class="sub-input" aria-label="New layout name" aria-invalid={taken} placeholder="Layout name" bind:value={draft} use:focusOn
+             oninput={() => (taken = false)}
+             onkeydown={(e) => { if (e.key === 'Enter') commitAdd(); else if (e.key === 'Escape') { e.stopPropagation(); adding = false; } }}
              onblur={() => (adding = false)} />
+      {#if taken}<span class="sub-hint" role="alert">Name taken</span>{/if}
     </div>
   {:else}
     <button type="button" class="rail-tab sub-layout add" onclick={startAdd}>
@@ -143,7 +155,7 @@
 <style>
   /* The sub-list's pill edge sits one step in from the Dash pill's; the text
      indent stays where a sub-item's always was. */
-  .rail-sub { display: flex; flex-direction: column; gap: var(--sp-1); margin-left: var(--sp-3); }
+  .rail-sub { --wr: 24px; --xs: 22px; --gs: 10px; display: flex; flex-direction: column; gap: var(--sp-1); margin-left: var(--sp-3); }
   .sub-row { position: relative; display: flex; }
   .sub-row .sub-layout { flex: 1 1 auto; min-width: 0; }
   .rail-tab.sub-layout {
@@ -159,14 +171,14 @@
     padding: 0;
     color: var(--ink-faint);
   }
-  .sub-grip { left: var(--sp-1); width: 10px; height: 20px; cursor: grab; touch-action: none; }
+  .sub-grip { left: var(--sp-1); width: var(--gs); height: var(--xs); cursor: grab; touch-action: none; }
   .sub-grip svg { width: 8px; height: 12px; fill: currentColor; }
-  .sub-x { right: var(--sp-1); width: 22px; height: 22px; border-radius: var(--radius); overflow: hidden; }
-  .sub-x.withwrench { right: 30px; }
+  .sub-x { right: var(--sp-1); width: var(--xs); height: var(--xs); border-radius: var(--radius); overflow: hidden; }
+  .sub-x.withwrench { right: calc(var(--wr) + var(--sp-2)); }
   .sub-x svg { position: relative; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
   .sub-x::before { content: ''; position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--warn) 45%, transparent); }
-  .sub-x.holding::before { width: 100%; transition: width 1s linear; }
-  .sub-x:hover, .sub-x:focus-visible, .sub-x.holding { color: var(--warn-ink); }
+  .sub-x:global(.holding)::before { width: 100%; transition: width 1s linear; }
+  .sub-x:hover, .sub-x:focus-visible, .sub-x:global(.holding) { color: var(--warn-ink); }
   .sub-row:hover .sub-grip, .sub-row:hover .sub-x, .sub-row:focus-within .sub-grip, .sub-row:focus-within .sub-x { display: grid; }
   .sub-row.dragging { opacity: .6; }
   @media (hover: none) { .sub-grip, .sub-x { display: grid; } }
@@ -179,8 +191,8 @@
     translate: 0 -50%;
     display: grid;
     place-items: center;
-    width: 24px;
-    height: 24px;
+    width: var(--wr);
+    height: var(--wr);
     padding: 0;
     color: var(--ink-dim);
     border-radius: var(--radius);
@@ -199,8 +211,12 @@
     font: inherit;
     outline: none;
   }
+  .sub-input[aria-invalid='true'] { border-color: var(--warn); }
+  .sub-hint { position: absolute; right: var(--sp-3); top: 50%; translate: 0 -50%; font-size: .62rem; color: var(--warn-ink); pointer-events: none; }
   @media (pointer: coarse) {
-    .rail-tab.sub-layout, .sub-input { min-height: 40px; }
-    .rail-wrench { width: 40px; height: 40px; }
+    .rail-sub { --wr: var(--tap); --xs: var(--tap); --gs: var(--tap); }
+    .rail-tab.sub-layout, .sub-input { min-height: var(--tap); padding-left: var(--tap); }
+    .sub-input { padding-left: var(--sp-3); }
+    .sub-grip { left: 0; }
   }
 </style>
