@@ -121,8 +121,8 @@
 </div>
 
 <style>
-  .action { display: flex; flex-direction: column; gap: 6px; }
-  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .action { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   /* Field's label face (.76rem, 500, --tx-mut). */
   .field-label {
     flex: 0 1 auto;
@@ -137,10 +137,10 @@
     text-transform: lowercase;
     letter-spacing: .04em;
   }
-  .ops { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ops { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   /* Hub labels render as sent (COPY rule 8). */
-  .ops button { min-height: var(--tap); padding: 0 14px; }
-  .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
+  .ops button { min-height: var(--tap); padding: 0 var(--sp-4); }
+  .payload { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); font-size: .8rem; color: var(--ink-dim); }
   .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; padding: 0 var(--sp-3); }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   /* Field's .ladder slot: basis 0, one clipped 14 px line. */

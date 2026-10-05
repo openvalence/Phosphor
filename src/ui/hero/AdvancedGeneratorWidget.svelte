@@ -114,7 +114,7 @@
   .head {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 16px;
+    gap: var(--sp-3) var(--sp-5);
   }
   .head > :global(*) { flex: 1 1 180px; }
   .block {
@@ -122,12 +122,12 @@
     padding-top: var(--gap);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
   }
   .mods.adv :global(.field .tag.adv) { display: none; }
   .tag {
-    margin-left: 6px;
-    padding: 1px 5px;
+    margin-left: var(--sp-2);
+    padding: 1px var(--sp-2);
     font-size: .62rem;
     font-weight: 500;
     text-transform: uppercase;
@@ -137,12 +137,12 @@
     border-radius: var(--r-s);
   }
   .mod {
-    margin-left: 12px;
+    margin-left: var(--sp-4);
     border-left: 2px solid var(--line);
-    padding-left: 10px;
+    padding-left: var(--sp-3);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
   }
   h4 {
     margin: 0;

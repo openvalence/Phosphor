@@ -153,7 +153,7 @@
   .pattern-head {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--sp-3);
   }
 
   /* Chrome (border/color/disabled/hover) comes from the global .og-btn /
@@ -164,8 +164,8 @@
   .run-btn {
     width: 100%;
     justify-content: center;
-    gap: 10px;
-    padding: 12px;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
     letter-spacing: .14em;
     text-transform: uppercase;
   }
@@ -196,12 +196,12 @@
   .pattern-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 7px;
+    gap: var(--sp-3);
   }
   .pat-tile {
     flex: 1 1 72px;
     min-height: max(var(--tap), 52px);
-    padding: 8px 4px;
+    padding: var(--sp-3) var(--sp-2);
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
     background: transparent;
@@ -224,7 +224,7 @@
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .card-body :global(input[type='range']) {
-    margin: 8px 0 2px;
+    margin: var(--sp-3) 0 var(--sp-1);
   }
 
   .hint {

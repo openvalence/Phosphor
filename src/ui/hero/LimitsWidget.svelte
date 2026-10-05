@@ -59,6 +59,6 @@
     font-size: 0.78rem;
   }
   .card-body :global(input[type='range']) {
-    margin: 8px 0 2px;
+    margin: var(--sp-3) 0 var(--sp-1);
   }
 </style>
