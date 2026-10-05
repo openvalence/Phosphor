@@ -194,7 +194,6 @@ export const CSS = `
   max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 4px; background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
   border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
 .fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
-.fsp[data-comp=handheld] .fsp-zoom { max-width: 100%; }
 .fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
 .fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 4px; font-size: .72rem; }
 .fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }

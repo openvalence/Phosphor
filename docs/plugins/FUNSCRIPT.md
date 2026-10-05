@@ -394,8 +394,10 @@ FULL
   video frame as a PNG (a cross-origin stream cannot be read and says so in
   the log); layout cycles the wave card's height (default, 160, 240 px, pref
   `split`); close unloads the media. Rate scales the stroke speed shown and
-  checked against the input limit. The hover bar stays on the video with
-  its own Play, mute and Fullscreen. Handheld drops screenshot and layout.
+  checked against the input limit (the heat's stripes too). Outside media
+  fullscreen the hover bar holds only Fullscreen and its mode (the row has
+  the rest; `m` mutes); in media fullscreen it is the whole bar. Handheld
+  drops screenshot and layout.
 - **Wave bundle**: Motion, Offset (labeled `ms`) and Invert sit with zoom,
   A-B and Settings on a raised plate flush with the wave card's top right
   corner. The wave card and the heat sit on `--screen` with the advanced
@@ -408,9 +410,11 @@ FULL
   Pages), so on the desktop it is a column filling the content pane: the
   stage row grows (the video contained, letterboxed in the stage's dark),
   the strip, timeline and status keep their fixed heights, the library
-  column keeps 320 px. An open Settings section takes width (360 px beside
-  the card, scrolling within), or sits below the card under 620 px of page
-  width; the card never loses height to it (`ph-mdqo.7`), and keeps 340 px
+  column keeps 320 px. An open Settings section takes the library column's
+  slot (320 px, the analyzer column's width beside the analyzer; scrolling
+  within) while the card is full, so the card keeps its size and composition;
+  under 960 px of page width it sits below the card, reached by scrolling.
+  The card never loses height to it (`ph-mdqo.7`) and keeps 340 px
   (a 120 px stage) on a shorter page, which scrolls. The phone layout is not filled.
 - **Split bar** (`ph-mdqo.7`): a 4 px bar between the stage and the transport
   sizes the wave card: drag (up grows it), arrows 8 px (Shift 1), double-click
@@ -425,7 +429,8 @@ FULL
 
 - **Handheld:** tabs Player | Library (shown only here; in full the library
   is the side column) swap the one main region in place (a view switch,
-  never a write; the video keeps playing under the library); detail 72 px;
+  never a write; the video keeps playing under the library); the wave card two
+  bundle rows plus 48 px (112 px; three rows under a coarse pointer);
   the transport is one fixed row without screenshot and layout. Where it
   overflows the card (measured on a width change, a Look change and an
   analyzer toggle; at or under 412 px at the default Look, 454 at 1.4),
@@ -487,7 +492,8 @@ FULL
   The mode is a two-state glyph, `In window / Borderless`, in the desktop
   shell only: it asks the shell to set its pref `fullscreen` (docs/PLUGINS.md,
   Pages) and stores nothing itself; under 440 px of stage it yields with the
-  volume slider. It shows on
+  volume slider. Outside media fullscreen only the mode and Fullscreen are
+  drawn. It shows on
   pointer movement and hides after `HOVER_IDLE_MS` (2.5 s) idle and on
   pointer leave; it stays while the pointer rests on it, a seek drags or a
   control holds keyboard focus. A touch on the video while it is hidden

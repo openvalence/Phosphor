@@ -49,15 +49,16 @@ const TILE_MIN = 150, TILE_MAX = 300;
 export const CSS = `
 .fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: ${GAP}px; height: 100%; min-height: 0; overflow: hidden; }
 .fsp-lib [hidden], .fsp-connect [hidden] { display: none !important; }
+.fsp-lib-head { gap: 4px !important; }
 .fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
 .fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--bg); color: var(--tx); font: .8rem var(--mono); }
 .fsp-in:focus { outline: none; border-color: var(--highlight); }
-.fsp-lib-head .fsp-in { flex: 1 1 120px; }
-.fsp-lib-open { padding: 0 8px; font-size: .8rem; }
-.fsp-lib-head select { flex: 0 1 72px; width: auto; min-height: var(--tap); }
-.fsp-dir, .fsp-pg { width: var(--tap); padding: 0; }
+.fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 80px; }
+.fsp-lib-head .fsp-lib-open { min-width: 0; padding: 0 6px; font: .72rem var(--mono); letter-spacing: 0; white-space: nowrap; }
+.fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
+.fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
 .fsp-grid { display: grid; gap: ${GAP}px; align-content: start; height: 100%; }
 .fsp-grid.busy { opacity: .5; }

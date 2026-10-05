@@ -11,10 +11,11 @@
  * - The section mounts the registerSettings function itself, on open, so it
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted. Its
  *   button is the timeline's (ui.js opts.settings), open kept in settingsOpen.
- * - The card never shrinks in height: the open section takes width beside it
- *   (360 px, scrolling within), or sits below it, reached by scrolling, where the
- *   page is under 620 px wide. The card keeps 340 px of height (a 120 px stage
- *   over the fixed rows); a shorter page scrolls. In media fullscreen
+ * - The card never changes size for the section: at 960 px of page width and up the
+ *   section overlays the card's library column (320 px, the analyzer column's width
+ *   beside the analyzer), so the card stays full; under 960 it sits below the card,
+ *   reached by scrolling. The card keeps 340 px of height (a 120 px stage over the
+ *   fixed rows); a shorter page scrolls. In media fullscreen
  *   (ui.js, data-media) the card takes the whole page and the section is hidden.
  * - mediaFullscreen: the hover bar offers fullscreen and its mode, so the
  *   shell's footer offers neither.
@@ -24,12 +25,12 @@ import { readPrefs, writePref } from './prefs.js';
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { position: relative; height: 100%; overflow-y: auto; display: flex; gap: 8px; container-type: inline-size; }
-.fsp-page > .fsp-pcard { flex: 1 1 0; min-width: 0; min-height: min(100%, 340px); }
-.fsp-page > .fsp-psec { flex: 0 0 360px; max-height: 100%; overflow-y: auto; padding: 0; }
-@container (max-width: 619px) { .fsp-page { flex-direction: column; }
-  .fsp-page > .fsp-pcard { flex: 0 0 100%; }
-  .fsp-page > .fsp-psec { flex: none; max-height: none; padding: 8px 0; } }
+.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; }
+.fsp-page > .fsp-pcard { height: 100%; min-height: min(100%, 340px); }
+.fsp-page > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2; overflow-y: auto; padding: 8px;
+  background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
+.fsp-page:has(.fsp[data-an]) > .fsp-psec { width: clamp(320px, 40%, 560px); }
+@container (max-width: 959px) { .fsp-page > .fsp-psec { position: static; width: auto; max-height: none; padding: 8px 0; box-shadow: none; background: none; } }
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 
