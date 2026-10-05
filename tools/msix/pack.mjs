@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { buildVersion } from '../version.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const here = root + 'tools/msix/';
@@ -18,7 +19,7 @@ const msix = out + 'phosphor-x86_64.msix';
 
 const id = JSON.parse(readFileSync(here + 'identity.json', 'utf8'));
 const conf = JSON.parse(readFileSync(root + 'src-tauri/tauri.conf.json', 'utf8'));
-const semver = conf.version || JSON.parse(readFileSync(root + 'package.json', 'utf8')).version;
+const semver = buildVersion();
 // The Store wants a.b.c.0: the fourth field is reserved for it.
 const version = semver.split(/[-+]/)[0] + '.0';
 

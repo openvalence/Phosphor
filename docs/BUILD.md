@@ -248,6 +248,27 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   `usesCleartextTraffic` set to true there: the template allows cleartext
   only in debug, and hubs speak plain `ws://` and `http://`.
 
+## Versioning
+
+Operator ruling, 2026-10-04 (Valence RFC-102 carries it for the whole stack):
+
+- MAJOR is the compatibility line. Every 1.x.y hub, client and library work
+  together; a break inside a major is a bug on one side and ships as a patch.
+- MINOR adds. A feature from x.2 may not work against an x.1 peer; nothing
+  outside that feature may break.
+- PATCH is free and moves on every build, not only on submissions.
+
+Mechanics: `src-tauri/tauri.conf.json` holds MAJOR.MINOR.0 and is the only
+file edited by hand (`package.json` and the metainfo release mirror it;
+`npm run check` fails when they drift or the committed patch is not 0).
+`tools/version.mjs` computes PATCH as the commit count since the tag
+`base/MAJOR.MINOR` (`git tag base/0.2 && git push origin base/0.2` when the
+minor moves). CI stamps the three files before every bundle; locally
+`npm run build:app -- --bundles nsis` does the same through `--config`, and
+`tools/msix/pack.mjs` uses the computed version too. Nothing commits a
+stamped file. Android's versionCode is major*1e6 + minor*1e3 + patch, so a
+minor must move before the patch reaches 1000.
+
 ## CI (`.github/workflows/build.yml`)
 
 Runs on every push to `main`, every pull request, every `v*` tag and by hand.
