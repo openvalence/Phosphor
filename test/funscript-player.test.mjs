@@ -1610,14 +1610,17 @@ if (!LIVE && !args.includes('--stash-live')) {
     (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
   await pageShot('page-settings-closed-1280x800');
   const before = await cardBox();
+  const stageH = () => page.locator(C + ' .fsp-stage').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  const stage0 = await stageH();
   await page.click(SUM);
   await page.waitForTimeout(200);
   ok('page settings: Settings mounts the plugin settings card (connect, curve, playback)', same(await rows(), [1, 1, 1]), await rows());
   const after = await cardBox();
-  const sec = await page.evaluate(() => { const s = document.querySelector('main.pane .fsp-psec');
-    return { h: s.clientHeight, page: s.parentElement.clientHeight, scrolls: s.scrollHeight > s.clientHeight + 1 }; });
-  ok('page settings: the card keeps its top and yields height; the section at most half the page, scrolling within (fill)',
-    after[0] === before[0] && after[1] < before[1] && sec.h <= sec.page / 2 + 1 && sec.scrolls, { before, after, sec });
+  const sec = await page.evaluate((c) => { const s = document.querySelector('main.pane .fsp-psec'), k = document.querySelector(c).getBoundingClientRect(), r = s.getBoundingClientRect();
+    return { beside: r.left >= k.right - 1, h: s.clientHeight, page: s.parentElement.clientHeight, scrolls: s.scrollHeight > s.clientHeight + 1 }; }, C);
+  ok('page settings: the card keeps its top and height; the section takes width beside it, scrolling within (fill)',
+    after[0] === before[0] && after[1] >= before[1] && sec.beside && sec.scrolls, { before, after, sec });
+  ok('page settings: opening Settings never shrinks the stage', (await stageH()) >= stage0, [stage0, await stageH()]);
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
@@ -1744,6 +1747,26 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(200);
   ok('keys: k plays and pauses, j seeks back 10 s, all through the controller', kPlay && tJ < CLIP_S / 2 - 8
     && await video(page, (v) => v.paused) && (await direct()).length === 0, { kPlay, tJ, direct: await direct() });
+  // The split bar: drag moves the wave card's height against the stage's, remembered.
+  const dims = () => page.locator(C).evaluate((e) => ({ dt: Math.round(e.querySelector('.fsp-dt').getBoundingClientRect().height),
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height) }));
+  const d0 = await dims();
+  const sb = await page.locator(C + ' .fsp-split').boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2 - 40, { steps: 4 });
+  await page.mouse.up();
+  const d1 = await dims();
+  ok('split: dragging the bar up 40 px grows the wave card by 40 and shrinks the stage by as much', Math.abs(d1.dt - d0.dt - 40) <= 2
+    && Math.abs(d0.stage - d1.stage - 40) <= 2, [d0, d1]);
+  await page.locator(C + ' .fsp-split').focus();
+  await page.keyboard.press('ArrowDown');
+  const d2 = await dims();
+  await page.keyboard.press('Shift+ArrowDown');
+  const d3 = await dims();
+  ok('split: ArrowDown shrinks the wave card 8 px, Shift 1 px', d1.dt - d2.dt === 8 && d2.dt - d3.dt === 1, [d1, d2, d3]);
+  const splitSaved = d3.dt;
+  ok('split: the height is stored as the pref split', Math.abs(await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) - d3.dt) <= 1);
   // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
   ok('volume: the transport has the slider, the hover bar the only mute', await page.locator(C + ' .fsp-tr').evaluate((t) =>
     !!t.querySelector('input.fsp-vol') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
@@ -1760,6 +1783,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   await page.waitForTimeout(600);
   await toPage();
+  ok('split: the height comes back after a launch', Math.abs((await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height))) - splitSaved) <= 2, splitSaved);
   ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
     && (await page.locator(C + ' .fsp-hb-mute').getAttribute('aria-label')) === 'Unmute (m)');
   await page.locator(C + ' .fsp-hb-mute').evaluate((e) => e.click());
@@ -1820,12 +1844,15 @@ if (!LIVE && !args.includes('--stash-live')) {
     && m1.b === 'true' && m2.pref === 'window' && m2.b === 'false', { m1, m2 });
   // The library caret: the column closes, the stage takes the width, remembered.
   const libW = () => page.locator(C).evaluate((e) => ({ lib: e.querySelector('.fsp-libbox').getClientRects().length > 0,
-    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width) }));
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width),
+    stageH: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height) }));
+  const open0 = await libW();
   await page.click(C + ' .fsp-libcaret');
   await page.waitForTimeout(200);
   const shut = await libW();
   ok('library: the caret closes the column and the stage takes the card width, remembered', !shut.lib && shut.stage === shut.card
     && await page.evaluate(() => localStorage.getItem('phosphor.funscript.libOpen')) === 'false', shut);
+  ok('library: closing the column never shrinks the stage height', shut.stageH >= open0.stageH, [open0.stageH, shut.stageH]);
   await page.click(C + ' .fsp-libcaret');
   await page.waitForTimeout(200);
   ok('library: the caret opens it again', (await libW()).lib);

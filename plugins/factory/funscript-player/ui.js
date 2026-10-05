@@ -34,6 +34,10 @@
 //   Handheld drops screenshot and layout and wraps to two rows when narrow; glance keeps play and the time.
 // - Prev and next walk the library's loaded list (library.js step); close unloads the media. Rate
 //   scales the stroke speed shown and checked against the input limit. Layout cycles SPLITS (pref split).
+// - The split bar (.fsp-split, between the stage and the transport) sizes the wave card: drag, arrows
+//   (8 px, Shift 1), double-click for the default; the stage keeps at least MIN_STAGE px. The pref
+//   split holds the px, 0 the composition's default. Hiding the library or the page's Settings never
+//   shrinks the stage (page.js).
 // - Open files lives in the library head; an empty stage is a click target for it.
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
@@ -81,6 +85,7 @@ const TRACE_MS = 8000;
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 // The wave card's heights the layout button cycles, px; 0 is the composition's default.
 export const SPLITS = [0, 160, 240];
+export const SPLIT_MIN = 64, MIN_STAGE = 120;
 // Registry unit_ids: 0 mm, 1 mm_s.
 const UNIT_MM = 0, UNIT_MM_S = 1;
 
@@ -102,6 +107,7 @@ export const COPY = Object.freeze({
   layout: 'Layout',
   close: 'Close',
   snapFail: 'Frame not readable',
+  split: 'Resize',
   invert: 'Invert',
   volume: 'Volume',
   speed: 'Stroke speed',
@@ -610,15 +616,15 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: 4px; --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px;
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-bar) var(--fsp-detail) 20px;
-  grid-template-areas: "src lib" "stage lib" "tr lib" "tl lib" "st st"; }
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) 4px var(--fsp-bar) var(--fsp-detail) 20px;
+  grid-template-areas: "src lib" "stage lib" "sp lib" "tr lib" "tl lib" "st st"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); } }
-.fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "tr" "tl" "st"; }
+.fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
 .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 2 + 8px); grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-bar) var(--fsp-detail) 20px;
-  grid-template-areas: "src" "stage" "tr" "tl" "st"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) calc(var(--fsp-bar) * 2 + 4px) var(--fsp-detail) 20px; }
+  grid-template-rows: var(--tap) minmax(0, 1fr) 4px var(--fsp-bar) var(--fsp-detail) 20px;
+  grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 4px calc(var(--fsp-bar) * 2 + 4px) var(--fsp-detail) 20px; }
 .fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
@@ -651,10 +657,15 @@ export const CSS = `
 .fsp-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .fsp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-mut); font-size: .85rem; pointer-events: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
+.fsp-split { grid-area: sp; position: relative; background: var(--line-2); border-radius: 2px; cursor: ns-resize; touch-action: none; outline: none; }
+.fsp-split::before { content: ''; position: absolute; inset: -8px 0; }
+@media (pointer: coarse) { .fsp-split::before { inset: -18px 0; } }
+.fsp-split:hover, .fsp-split[data-drag], .fsp-split:focus-visible { background: var(--highlight); }
+.fsp[data-an] .fsp-split, .fsp[data-comp=glance] .fsp-split { display: none; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .fsp[data-comp=full] .fsp-lib { min-height: 400px; }
-.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 5 / 2; }
-.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
+.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 6 / 2; }
+.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-split, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -704,7 +715,7 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox { position: relative; min-height: 0; }
-.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: 100px; }
+.fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: calc(var(--fsp-detail) + 12px); }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - 4px) minmax(0, 1fr) 20px var(--fsp-bar);
@@ -713,7 +724,7 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--fsp-bar);
   grid-template-areas: "src" "tl" "st" "tr"; }
 .fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--fsp-bar) * 2 + 4px); }
-.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + 4px); }
+.fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + 12px); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
@@ -926,6 +937,45 @@ export function createPlayer(api) {
     });
     let split = readPrefs(api).split;
     const applySplit = () => { if (split > 0) root.style.setProperty('--fsp-detail', split + 'px'); else root.style.removeProperty('--fsp-detail'); };
+    const sp = h('div', { class: 'fsp-split', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', 'aria-label': COPY.split,
+      'aria-valuemin': String(SPLIT_MIN), 'aria-valuemax': '480' });
+    const detailH = () => Math.round(dtEl().getBoundingClientRect().height);
+    const dtEl = () => tlbox.querySelector('.fsp-dt');
+    const setSplit = (px, save) => {
+      split = clamp(Math.round(px), SPLIT_MIN, 480);
+      applySplit();
+      sp.setAttribute('aria-valuenow', String(split));
+      if (save) writePref(api, 'split', split);
+    };
+    let spDrag = null;
+    sp.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      sp.setPointerCapture(e.pointerId);
+      sp.setAttribute('data-drag', '');
+      const h0 = detailH();
+      spDrag = { id: e.pointerId, y: e.clientY, h: h0, max: Math.max(h0, h0 + stage.getBoundingClientRect().height - MIN_STAGE) };
+    });
+    sp.addEventListener('pointermove', (e) => {
+      if (spDrag && e.pointerId === spDrag.id) setSplit(clamp(spDrag.h - (e.clientY - spDrag.y), SPLIT_MIN, spDrag.max), false);
+    });
+    const spUp = (e) => {
+      if (!spDrag || e.pointerId !== spDrag.id) return;
+      spDrag = null;
+      sp.removeAttribute('data-drag');
+      writePref(api, 'split', split);
+    };
+    sp.addEventListener('pointerup', spUp);
+    sp.addEventListener('pointercancel', spUp);
+    sp.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const cur = detailH();
+      setSplit(clamp(cur + d * (e.shiftKey ? 1 : 8), SPLIT_MIN, Math.max(cur, cur + stage.getBoundingClientRect().height - MIN_STAGE)), true);
+    });
+    sp.addEventListener('dblclick', () => { split = 0; applySplit(); sp.removeAttribute('aria-valuenow'); writePref(api, 'split', 0); });
+    sp.addEventListener('focus', () => sp.setAttribute('aria-valuenow', String(split || detailH())));
     const layoutB = trBtn('fsp-layout', ICON.layout, COPY.layout);
     layoutB.addEventListener('click', () => { split = SPLITS[(SPLITS.indexOf(split) + 1) % SPLITS.length]; writePref(api, 'split', split); applySplit(); });
     const closeB = trBtn('fsp-close', ICON.close, COPY.close);
@@ -965,7 +1015,7 @@ export function createPlayer(api) {
     const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, vol, rate, graph, snapB, layoutB, closeB);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
-      src, stage, tlbox, lib, anbox, meter, status, tr);
+      src, stage, sp, tlbox, lib, anbox, meter, status, tr);
     applySplit();
     // ---- the hover bar over the video ----
     const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full'), hbMode = hbBtn('fsp-hb-mode');

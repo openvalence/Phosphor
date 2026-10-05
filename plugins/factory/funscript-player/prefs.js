@@ -72,7 +72,7 @@ const REPAIR = {
   audio: (a) => ({ ...a, vol: clamp(a.vol, 0, 1) }),
   lib: (l) => ({ ...l, sort: l.sort || PREFS.lib.sort, direction: l.direction === 'ASC' ? 'ASC' : 'DESC' }),
   view: (v) => (v === 'library' ? v : 'player'),
-  split: (v) => (v >= 48 ? Math.min(Math.round(v), 480) : 0),
+  split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
   interp: cleanInterp,
   play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),

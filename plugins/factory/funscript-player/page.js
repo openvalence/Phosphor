@@ -11,9 +11,10 @@
  * - The section mounts the registerSettings function itself, on open, so it
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted. Its
  *   button is the timeline's (ui.js opts.settings), open kept in settingsOpen.
- * - The page is a column: the card takes what the open section leaves, never
- *   under 340 px (a 120 px stage over the fixed rows), the section at most half
- *   the page, scrolling within. In media fullscreen
+ * - The card never shrinks in height: the open section takes width beside it
+ *   (360 px, scrolling within), or sits below it, reached by scrolling, where the
+ *   page is under 620 px wide. The card keeps 340 px of height (a 120 px stage
+ *   over the fixed rows); a shorter page scrolls. In media fullscreen
  *   (ui.js, data-media) the card takes the whole page and the section is hidden.
  * - mediaFullscreen: the hover bar offers fullscreen and its mode, so the
  *   shell's footer offers neither.
@@ -23,9 +24,12 @@ import { readPrefs, writePref } from './prefs.js';
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.fsp-page > .fsp-pcard { flex: 1 1 auto; min-height: min(100%, 340px); }
-.fsp-page > .fsp-psec { flex: 0 1 auto; max-height: 50%; max-width: 640px; overflow-y: auto; padding: 8px 0; }
+.fsp-page { position: relative; height: 100%; overflow-y: auto; display: flex; gap: 8px; container-type: inline-size; }
+.fsp-page > .fsp-pcard { flex: 1 1 0; min-width: 0; min-height: min(100%, 340px); }
+.fsp-page > .fsp-psec { flex: 0 0 360px; max-height: 100%; overflow-y: auto; padding: 0; }
+@container (max-width: 619px) { .fsp-page { flex-direction: column; }
+  .fsp-page > .fsp-pcard { flex: 0 0 100%; }
+  .fsp-page > .fsp-psec { flex: none; max-height: none; padding: 8px 0; } }
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 

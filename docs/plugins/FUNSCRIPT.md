@@ -408,9 +408,16 @@ FULL
   Pages), so on the desktop it is a column filling the content pane: the
   stage row grows (the video contained, letterboxed in the stage's dark),
   the strip, timeline and status keep their fixed heights, the library
-  column keeps 320 px. An open Settings section takes at most half the page
-  and scrolls within; the card yields height above it but never under
-  340 px (a 120 px stage). The phone layout is not filled.
+  column keeps 320 px. An open Settings section takes width (360 px beside
+  the card, scrolling within), or sits below the card under 620 px of page
+  width; the card never loses height to it (`ph-mdqo.7`), and keeps 340 px
+  (a 120 px stage) on a shorter page, which scrolls. The phone layout is not filled.
+- **Split bar** (`ph-mdqo.7`): a 4 px bar between the stage and the transport
+  sizes the wave card: drag (up grows it), arrows 8 px (Shift 1), double-click
+  for the default, never leaving the stage under 120 px, stored as pref
+  `split` in px (0 is the composition's default; the layout button cycles
+  0, 160, 240). Hiding the library or the Settings section never shrinks the
+  stage. Not drawn in glance or beside the analyzer.
 - **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
   library column's edge, `Library`: it closes the column and the player
   takes the width, open again from the card's edge; a view switch kept in
