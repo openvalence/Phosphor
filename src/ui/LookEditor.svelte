@@ -81,6 +81,8 @@
     color: var(--ink-dim);
   }
   .look:popover-open { display: grid; }
+  @keyframes fade-in { from { opacity: 0; } }
+  :global(html:not(.still)) .look:popover-open { animation: fade-in var(--t-quick, 120ms) var(--ease-out, ease-out); }
   @supports (top: anchor(top)) {
     .look {
       position-anchor: var(--card);

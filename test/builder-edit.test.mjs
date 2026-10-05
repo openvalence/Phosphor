@@ -454,13 +454,13 @@ console.log('layouts');
   await picker.selectOption('Night');
   await page.waitForTimeout(50);
   await bar.locator('button', { hasText: 'Discard and switch' }).click();
-  const moving = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.dash-grid')).length);
+  const moving = await page.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.dash-grid') && !/fade-in/.test(a.animationName || '')).length);
   const still = await page.$$eval('.home .dash-cell, .home .dash-item', (els) => els.every((e) => getComputedStyle(e).transitionDuration.split(',').every((d) => parseFloat(d) === 0)));
   await page.waitForTimeout(100);
   let s = await all();
   ok('Discard puts the old layout back and switches', s.active === 'Night' && s.layouts.Default['full.machine'][F1].x === 0
      && await card(F2).count() === 1 && await card(F1).count() === 0, JSON.stringify(s.layouts.Default['full.machine'][F1]));
-  ok('a switch animates nothing on the grid (no transition, no animation)', moving === 0 && still, { moving, still });
+  ok('a switch moves nothing on the grid (no transition; only the opacity fade-in)', moving === 0 && still, { moving, still });
   await picker.selectOption('Default');
   await page.waitForTimeout(100);
   ok('a switch with no changes goes at once', (await all()).active === 'Default' && await bar.count() === 0);

@@ -108,6 +108,8 @@
   @supports (top: anchor(top)) {
     .palette { position-anchor: --dash-grid; top: anchor(top); right: anchor(right); margin: 0; }
   }
+  @keyframes fade-in { from { opacity: 0; } }
+  :global(html:not(.still)) .palette { animation: fade-in var(--t-move, 200ms) var(--ease-out, ease-out); }
   .palette-bar {
     display: flex;
     gap: 6px;

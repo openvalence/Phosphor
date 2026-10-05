@@ -31,8 +31,9 @@
    *   free rect it was drawn at is where it stays.
    * - DOM order is reading order, frozen while a drag is in flight: moving the
    *   node that holds pointer capture drops the capture.
-   * - Nothing on the grid transitions or animates: a layout switch or a
-   *   reflow lands at once, never as motion that could read as the machine.
+   * - Nothing on the grid moves: a layout switch or a reflow lands at once,
+   *   never as motion that could read as the machine. A card's first
+   *   addition and the Layout menu fade in (opacity only, html.still off).
    * - A resize never goes below the item's floor: per dimension the larger
    *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
    *   its measured content (grid.js floorOf): the ghost shows the refusal and
@@ -172,7 +173,12 @@
   let gridEl;
   /** @type {Map<string, HTMLElement>} */
   const cellEls = new Map();
+  // A card added after the grid has settled fades in; the first draw (a page switch) does not.
+  let drawnAt = performance.now();
+  let drawnView = untrack(() => viewId);
   function registerCell(node, id) {
+    if (viewId !== drawnView) { drawnView = viewId; drawnAt = performance.now(); }
+    else if (performance.now() - drawnAt > 600) node.classList.add('enter');
     cellEls.set(id, node);
     return { destroy() { if (cellEls.get(id) === node) cellEls.delete(id); } };
   }
@@ -1056,6 +1062,9 @@
     padding: var(--dash-cell-pad, 7px);
     min-width: 0;
   }
+  @keyframes fade-in { from { opacity: 0; } }
+  :global(html:not(.still)) .dash-cell:global(.enter) { animation: fade-in var(--t-move, 200ms) var(--ease-out, ease-out) backwards; }
+  :global(html:not(.still)) .dash-menu:popover-open { animation: fade-in var(--t-quick, 120ms) var(--ease-out, ease-out); }
   /* A section's header row (DESIGN §10.11): text and a hairline on the page,
      never a band or a third tint, in the card titles' type step. The label
      sits on the row's floor, over the cards it heads. */
