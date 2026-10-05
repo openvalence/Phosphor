@@ -590,7 +590,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     const s1 = await look();
     ok(tag + ': + steps 10% and persists in the theme', s1.out === '110%' && Math.abs(s1.theme - 1.12 * 1.1) < 1e-9, JSON.stringify(s1));
     ok(tag + ': Reset shows off 100%; the status row and the scale group hold still for 30 frames', s1.reset === 'visible'
-      && frames.every((f) => f === frames[0]), frames.find((f) => f !== frames[0]) || '');
+      && frames.every((f) => f === frames[0]), frames[0] + ' -> ' + (frames.find((f) => f !== frames[0]) || ''));
     // At one scale, Reset's slot is the same hidden or shown.
     const flip = await fp.evaluate(() => {
       const r = document.querySelector('.footstrip .reset');

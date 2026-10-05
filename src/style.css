@@ -133,7 +133,15 @@
   /* Invisible padding above and below a range track so a fingertip can land
      on it: 0 for a mouse, set in the touch block below. */
   --range-hit: 0px;
-  --gap: 12px;
+  /* Spacing scale off the 2 rem layout column, so it follows the UI scale
+     (--s 1.12 at 100%: --sp-4 is 12 px). Components carry no raw px padding,
+     margin, gap or inset. */
+  --sp-1: .125rem;
+  --sp-2: .25rem;
+  --sp-3: .5rem;
+  --sp-4: .667rem;
+  --sp-5: 1rem;
+  --gap: var(--sp-4);
   /* Reading measure: the widest a column of labeled values may get before
      the eye stops tracking a row left to right. 48ch of Chakra Petch at the
      root scale is ~64 characters of real text (its `0` is wider than its
@@ -363,7 +371,7 @@ html.still { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
 .field::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: calc(var(--sp-1) * -1);
   border-radius: var(--radius);
   pointer-events: none;
   box-shadow:
@@ -472,7 +480,7 @@ input[type="range"] {
   padding: var(--range-hit) 0;
   -webkit-appearance: none;
   appearance: none;
-  margin: 12px 0;
+  margin: var(--sp-4) 0;
   background: var(--line-2) content-box;
   outline: none;
   touch-action: pan-y;
@@ -523,7 +531,7 @@ input[type="range"]:focus-visible::-moz-range-thumb {
 /* ---- Select ---- */
 select {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: var(--radius);
   border: 1px solid var(--line-2);
   background: var(--bg);
@@ -624,7 +632,7 @@ select:focus { outline: none; border-color: var(--highlight); }
 /* ---- Value input: recessed numeral field ---- */
 .og-num {
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: var(--radius);
   border: 1px solid var(--line-1);
   background: var(--screen);
@@ -642,7 +650,7 @@ select:focus { outline: none; border-color: var(--highlight); }
 .og-num[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---- Switch ---- */
-.og-switch { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.og-switch { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; user-select: none; }
 /* Visually hidden, NOT display:none — keeps the checkbox in the tab order for
    keyboard focus; the focus ring draws on .track instead. */
 .og-switch input {
@@ -692,10 +700,10 @@ select:focus { outline: none; border-color: var(--highlight); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-3);
   width: auto;
   min-height: var(--tap);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
   font-size: .82rem;
@@ -730,10 +738,10 @@ select:focus { outline: none; border-color: var(--highlight); }
   color: var(--reality);
   box-shadow: var(--glow-reality);
 }
-.og-btn.sm { min-height: 30px; font-size: .72rem; padding: 4px 8px; }
+.og-btn.sm { min-height: 30px; font-size: .72rem; padding: var(--sp-2) var(--sp-3); }
 
 /* ---- Segmented control ---- */
-.og-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.og-seg { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .og-seg button {
   flex: 1;
   min-width: 50px;

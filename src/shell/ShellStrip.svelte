@@ -121,7 +121,7 @@
 <style>
   .sb-ble {
     flex: none;
-    padding: 3px 6px;
+    padding: var(--sp-1) var(--sp-3);
     font-size: .62rem;
     border-radius: var(--radius);
     border: 1px solid color-mix(in srgb, var(--intent) 45%, var(--line));
@@ -151,10 +151,10 @@
     z-index: 40;
     width: max-content;
     max-width: min(320px, calc(100vw - 16px));
-    padding: 10px;
+    padding: var(--sp-3);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-3);
     background: var(--shell-bg);
     color: var(--shell-fg);
     border: 1px solid var(--shell-border);
@@ -169,7 +169,7 @@
     position: relative;
     overflow: hidden;
     min-height: var(--tap);
-    padding: 0 14px;
+    padding: 0 var(--sp-4);
     border: 1px solid var(--line-3);
     border-radius: var(--r-s);
     color: var(--ink-hi);

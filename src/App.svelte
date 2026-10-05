@@ -627,8 +627,8 @@
        against. Grid's default stretch gives it the frame's full height. */
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 6px;
+    gap: var(--sp-1);
+    padding: var(--sp-3);
     background: var(--bg-raised);
     border: 1px solid var(--line-0);
     border-radius: var(--radius);
@@ -655,12 +655,12 @@
   .rail-sec {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding-bottom: 8px;
+    gap: var(--sp-1);
+    padding-bottom: var(--sp-3);
   }
   .rail-sec + .rail-sec {
     border-top: 1px solid var(--line-0);
-    padding-top: 8px;
+    padding-top: var(--sp-3);
   }
   /* Phosphor: shell chrome, shaded as the shell row is (style.css --shell-*),
      pinned to the rail's foot. */
@@ -671,7 +671,7 @@
   }
   .rail-sec.shell {
     margin-top: auto;
-    padding: 6px;
+    padding: var(--sp-3);
     background: var(--shell-bg);
     color: var(--shell-fg);
     border: 1px solid var(--shell-border);
@@ -681,7 +681,7 @@
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
   .rail-lbl {
-    padding: 2px 8px 4px;
+    padding: var(--sp-1) var(--sp-3) var(--sp-2);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -692,9 +692,9 @@
   .rail-tab {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-height: 34px;
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     border-radius: var(--radius);
     border: 1px solid transparent;
     color: var(--ink-dim);
@@ -706,7 +706,7 @@
   }
   .rail-tab:hover { color: var(--ink); background: var(--line-soft); }
   /* A plugin page: indented under Plugins; the collapsed rail keeps the column. */
-  .rail:not(.mini) .rail-tab.sub { padding-left: 24px; }
+  .rail:not(.mini) .rail-tab.sub { padding-left: calc(var(--sp-5) * 1.333); }
   .rail-tab.on {
     color: var(--ink-hi);
     background: var(--bg-card);
@@ -760,7 +760,7 @@
     top: var(--strip-h, 0px);
     z-index: 15;
     margin: 0 calc(var(--gap) * -1);
-    padding: 6px var(--gap);
+    padding: var(--sp-3) var(--gap);
     background: color-mix(in srgb, var(--bg) 92%, transparent);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line-0);
@@ -773,7 +773,7 @@
   }
   .tabs > div {
     display: flex;
-    gap: 4px;
+    gap: var(--sp-2);
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -781,7 +781,7 @@
   .tabs button {
     flex: 0 0 auto;
     min-height: var(--tap);
-    padding: 0 14px;
+    padding: 0 var(--sp-4);
     border-radius: var(--radius);
     color: var(--ink-dim);
     font-weight: 500;
@@ -807,7 +807,7 @@
   .card-body {
     display: grid;
     grid-template-columns: repeat(auto-fill, min(100%, var(--measure)));
-    gap: 14px var(--gap);
+    gap: var(--sp-4) var(--gap);
   }
 
   /* ---- §11 drill-in (handheld, glance) ---------------------------------- */
@@ -815,12 +815,12 @@
     display: flex;
     width: 100%;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--sp-4);
   }
   .drill-back { margin-bottom: var(--gap); }
-  .drill-page { padding: 12px; }
+  .drill-page { padding: var(--sp-4); }
   .drill-title {
-    margin: 0 0 12px;
+    margin: 0 0 var(--sp-4);
     font-size: .8rem;
     text-transform: uppercase;
     letter-spacing: .08em;

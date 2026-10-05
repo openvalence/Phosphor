@@ -100,7 +100,7 @@
   .sp-pane .pane-head h2 { flex: 0 0 auto; white-space: nowrap; }
   .sp-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; color: var(--tx-mut); }
   .sp-state[data-on='true'] { color: var(--reality); }
-  .sp-panel { display: grid; gap: 8px; min-width: 0; }
+  .sp-panel { display: grid; gap: var(--sp-3); min-width: 0; }
   /* One width for Start and Stop, so Stop all toys never moves. */
   .run { min-width: 9.5em; }
   .og-seg button { flex: 1 0 auto; }
@@ -108,19 +108,19 @@
   /* :global under .sp-pane: the tab components in ./server share these.
      Their buttons are .og-btn; these are the shared row, field and ladder. */
   .sp-pane :global(.sp-btn) { min-height: 40px; }
-  .sp-pane :global(.sp-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--tx-mut); }
+  .sp-pane :global(.sp-row) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .sp-pane :global(.sp-field) { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: .78rem; color: var(--tx-mut); }
   .sp-pane :global(.sp-field input), .sp-pane :global(.sp-field select) {
     min-height: 40px;
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     background: var(--bg-sunken);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     color: var(--ink);
   }
-  .sp-pane :global(.sp-field select) { width: auto; padding-right: 28px; }
+  .sp-pane :global(.sp-field select) { width: auto; padding-right: calc(var(--sp-5) * 1.556); }
   .sp-pane :global(.sp-field input[type='number']) { width: 8ch; }
-  .sp-pane :global(.sp-check) { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; font-size: .8rem; }
+  .sp-pane :global(.sp-check) { display: inline-flex; align-items: center; gap: var(--sp-3); min-height: 40px; font-size: .8rem; }
   .sp-pane :global(.sp-check input) { width: 18px; height: 18px; margin: 0; }
   .sp-pane :global(.sp-note) { margin: 0; color: var(--tx-mut); font-size: .75rem; }
   .sp-pane :global(.sp-ladder) { margin: 0; font-size: .75rem; color: var(--ink-dim); }
