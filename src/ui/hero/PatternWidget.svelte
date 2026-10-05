@@ -180,9 +180,7 @@
     background: currentColor;
     box-shadow: 0 0 6px currentColor;
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .run-btn.running .run-dot { animation: pulse 1.6s ease-in-out infinite; }
-  }
+  :global(html:not(.still)) .run-btn.running .run-dot { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
