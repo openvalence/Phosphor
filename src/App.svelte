@@ -908,6 +908,7 @@
   .tabs button {
     flex: 0 0 auto;
     min-height: var(--tap);
+    min-width: var(--tap);
     padding: 0 var(--sp-4);
     border-radius: var(--radius);
     color: var(--ink-dim);
