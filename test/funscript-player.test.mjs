@@ -562,8 +562,8 @@ const BUSY_PROBE = {
   }`,
 };
 
-async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, probe = null, prefs = {}, onPage = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: coarse });
+async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(SHELL_STUB, probe);
   await ctx.exposeFunction('__nodeFetch', nodeFetch);
@@ -1682,6 +1682,45 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
+}
+
+// ---- (u) handheld sizes on a coarse pointer: no horizontal overflow, 40 px targets (ph-cqz6) ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(u) handheld viewports');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  for (const [w, hh] of [[200, 390], [390, 844], [412, 915], [844, 390]]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page } = await open({ cat, hub, coarse: true, width: w, height: hh });
+    const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+    await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
+    await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
+    const there = await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).then(() => true, () => false);
+    ok('handheld ' + w + 'x' + hh + ': the page mounts the card', there);
+    if (there) {
+      await loadClip(page);
+      await page.waitForTimeout(500);
+      const m = await page.evaluate((c) => {
+        const root = document.querySelector(c), o = root.getBoundingClientRect();
+        const hits = [...root.querySelectorAll('button, input:not([type=file]), select, [role=slider]')].filter((e) => e.getClientRects().length
+          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]'));
+        const small = hits.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.width < 39.5 || r.height < 39.5); })
+          .map((e) => (e.className || e.getAttribute('aria-label') || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
+        const wide = [...root.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 0.5 || r.left < o.left - 0.5)
+          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-hov, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
+        const pg = root.closest('.fsp-page'), de = document.documentElement;
+        return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],
+          stage: Math.round(root.querySelector('.fsp-stage').getBoundingClientRect().height) };
+      }, C);
+      ok('handheld ' + w + 'x' + hh + ': no horizontal overflow, in the card or its page', m.wide.length === 0 && m.pageOverflow <= 0, m);
+      ok('handheld ' + w + 'x' + hh + ': every control is at least 40 px', m.small.length === 0, m);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'bucket-' + w + 'x' + hh + '.png') });
+    }
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
 }
 
 // ---- (m) the hover bar over the video, media fullscreen, the analyzer column (ph-mcfe, ph-tz5t) ----
