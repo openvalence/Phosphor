@@ -553,9 +553,9 @@ if (!ONLY || ONLY === 'bucket') {
     scen(w + 'x' + h + ' is bucket ' + want, r.b === want && Number(r.c) > 0, r.b + ' cols ' + r.c);
   }
   await page.setViewportSize({ width: 1428, height: 900 });
-  // Ctrl+= through ScaleControl (the real path): the knob tops out at 1.6, 142 % of the default.
+  // Ctrl+= through ScaleControl (the real path): 10 % steps stop at 140 % (knob max 1.6).
   for (let k = 0; k < 6; k++) await page.keyboard.press('Control+='); await page.waitForTimeout(200);
-  scen('142 % UI scale puts 1428 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
+  scen('140 % UI scale puts 1428 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
   await ctx.close();
 }
 
