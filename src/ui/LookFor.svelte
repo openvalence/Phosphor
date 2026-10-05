@@ -289,8 +289,6 @@
   .lf-path { color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; }
   .lf-none { color: var(--ink-faint); cursor: default; }
   @media (pointer: coarse) { li { min-height: var(--tap); } }
-  @media (prefers-reduced-motion: no-preference) {
-    .lf { animation: lf-rise .14s ease-out; }
-  }
+  .lf { animation: lf-rise var(--t-quick) ease-out; }
   @keyframes lf-rise { from { opacity: 0; } to { opacity: 1; } }
 </style>

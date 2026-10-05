@@ -30,6 +30,7 @@
   import { VALUE_ASPECT } from '../../../../Valence/clients/js/index.js';
   import { createTelebuf, chartPath } from '../hero/telebuf.js';
   import { onTheme } from '../../model/theme.js';
+  import { isStill } from '../still.svelte.js';
 
   let { roles = [ROLE.telemetryPosition, ROLE.telemetryVelocity] } = $props();
 
@@ -132,10 +133,7 @@
     themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
     const offTheme = onTheme(readTokens);
 
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let reduced = mq.matches;
-    const onMqChange = (e) => { reduced = e.matches; };
-    mq.addEventListener('change', onMqChange);
+    const reduced = untrack(isStill);
 
     let cssW = 0, cssH = 0;
     function sizeIfNeeded() {
@@ -253,7 +251,7 @@
       raf = requestAnimationFrame(frame);
     }
 
-    // prefers-reduced-motion: no continuous scroll, a discrete 1 s redraw.
+    // html.still: no continuous scroll, a discrete 1 s redraw.
     // Capture is independent of this (the arrival effect above), and the HTML
     // legend is plain reactive markup, live either way. untrack: a synchronous
     // draw here would subscribe this effect to telemetry (webui.md T23).
@@ -267,7 +265,6 @@
     return () => {
       themeObserver.disconnect();
       offTheme();
-      mq.removeEventListener('change', onMqChange);
       if (raf) cancelAnimationFrame(raf);
       if (timer) clearInterval(timer);
     };

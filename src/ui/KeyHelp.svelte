@@ -140,8 +140,6 @@
   kbd { font-family: var(--mono); font-size: .74rem; color: var(--tx-hi); white-space: nowrap; }
   dd { color: var(--ink); }
   .kh-where { display: block; font-size: .7rem; color: var(--ink-dim); }
-  @media (prefers-reduced-motion: no-preference) {
-    .kh { animation: kh-rise .14s ease-out; }
-  }
+  .kh { animation: kh-rise var(--t-quick) ease-out; }
   @keyframes kh-rise { from { opacity: 0; } to { opacity: 1; } }
 </style>
