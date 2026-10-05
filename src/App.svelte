@@ -976,6 +976,10 @@
     padding-block: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
+  /* The host's stacked default (docs/PLUGINS.md, Pages): in buckets 1 and 2 a
+     page is one column at most the pane wide, whatever it declares. */
+  :global(:root[data-bucket='1']) .pane-main > :global(*),
+  :global(:root[data-bucket='2']) .pane-main > :global(*) { max-width: 100%; min-width: 0; }
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }

@@ -991,6 +991,44 @@ if (!ONLY || ONLY === 'phosphor') {
   sh.close();
 }
 
+if (!ONLY || ONLY === 'pluginpages') {
+  console.log('\nplugin page scenarios (ph-cqz6)');
+  const SHELL = await buildShellPage();
+  const sh = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
+  await new Promise((r) => sh.listen(0, '127.0.0.1', r));
+  for (const [w, h] of [[200, 390], [390, 844], [412, 915], [844, 390], [1428, 900]]) {
+    const phone = Math.min(w, h) < 600, tag = w + 'x' + h;
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: phone });
+    await ctx.addInitScript(TAURI_STUB);
+    await ctx.addInitScript(([etag, bytes]) => {
+      try {
+        if (!sessionStorage.getItem('pp.seeded')) { sessionStorage.setItem('pp.seeded', '1'); localStorage.clear(); }
+        localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+        localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'fixture', nickname: '', lastSeen: Date.now() }]));
+      } catch (e) { /* none */ }
+    }, [ETAG, toHex(CAT)]);
+    await ctx.routeWebSocket(/:82\//, (ws) => fakeHub(ws));
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('pluginpages: ' + e); });
+    await page.goto('http://127.0.0.1:' + sh.address().port + '/');
+    const up = await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 }).then(() => true).catch(() => false);
+    const ids = up ? await page.$$eval('[data-tab-id^="plugin:"]', (els) => els.map((e) => e.dataset.tabId)) : [];
+    scen(tag + ': the shell bundle lists plugin pages', ids.length > 0, JSON.stringify(ids));
+    for (const id of ids) {
+      await page.click('[data-tab-id="' + id + '"]');
+      await page.waitForTimeout(500);
+      // A plugin's thin heat strip is a strip, not a chart: the chart-height rule does not apply to pages.
+      const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)].filter((x) => !(x[0] === 'measure' && /^chart svg/.test(x[1])));
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      if (over > 0) f.push(['overflow', 'scrollWidth exceeds the window by ' + over]);
+      scen(tag + ': ' + id + ' has no overflow and meets the targets', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+      if (SHOTS) await page.screenshot({ path: join(OUT, 'plugin-' + slug(id) + '-' + tag + '.png') });
+    }
+    await ctx.close();
+  }
+  sh.close();
+}
+
 await browser.close();
 srv.close();
 
