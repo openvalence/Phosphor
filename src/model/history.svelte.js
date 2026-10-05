@@ -8,9 +8,13 @@
  *   handling apply unchanged. History records on the settle hook only.
  * - Revert skips every hazard write (needs a confirm, destructive, a run
  *   switch, a secret) and names it; a refused write is reported, never retried.
- * - Baseline: the reported values when the link goes live, a field first
- *   written after that adds its own before. Cleared with the history when the
- *   link ends (idle or failed), kept through a retry.
+ * - Run switches are actions, not history: never recorded, Revert names them.
+ * - An undo or redo refuses when the machine's value is no longer the one the
+ *   entry left (it would overwrite a newer change).
+ * - Baseline: the reported values when the catalog is ready and the link is
+ *   live, a field first written after that adds its own before. Kept through a
+ *   visibility idle and a retry; cleared when the catalog goes away or the hub
+ *   identity or catalog etag differs from the baseline's.
  */
 import { untrack } from 'svelte';
 import { FIELD_ROLE } from '../../../Valence/clients/js/index.js';
@@ -19,7 +23,8 @@ import { writeSetting, setSettledHook, shadowOf, displayValue, STATUS } from './
 import { reportedValue, isFieldEnabled } from './settings.js';
 import { settingNeedsConfirm, confirmCopy } from './actions.js';
 import { labelFor } from './format.js';
-import { askConfirm } from '../ui/confirm.svelte.js';
+import { askConfirm, confirmUi } from '../ui/confirm.svelte.js';
+import { sameValue } from './merge.js';
 import { pushEntry, planRevert, fillBaseline, MAX } from './history.js';
 
 export { MAX };
@@ -28,6 +33,8 @@ export { MAX };
 export const history = $state({ entries: [], redo: [], msg: '', busy: false, baselined: false });
 
 let baseline = null;
+let baseKey = '';
+let msgTimer = null;
 let nextId = 1;
 let fillTimer = null;
 const fieldOf = new Map();   // entry id -> the field written; a catalog rebuild never strands an entry
@@ -36,7 +43,25 @@ const RUN_ROLES = new Set([FIELD_ROLE.pattern_running, FIELD_ROLE.advgen_running
 const isSecret = (f) => !!(f.flagBits && f.flagBits.secret);
 const settings = () => ((machine.catalog.model && machine.catalog.model.fields) || [])
   .filter((f) => !f.readOnly && f.writeChannel != null && f.settingKey != null && !isSecret(f));
-const hazard = (f, from, to) => RUN_ROLES.has(f.role) || settingNeedsConfirm(f, from, to);
+// Why Revert leaves a field alone, or '' when it writes it.
+function hazard(f, from, to) {
+  if (RUN_ROLES.has(f.role)) return 'run switch';
+  if (trialHeld(f)) return 'on trial';
+  return settingNeedsConfirm(f, from, to) ? 'needs a confirm' : '';
+}
+// RFC-099: the field's newest entry was a trial write and some trial is still pending on the machine.
+function trialHeld(f) {
+  const last = [...history.entries].reverse().find((e) => e.uid === f.uid);
+  if (!last || !last.trial) return false;
+  const bits = (machine.catalog.model && machine.catalog.model.byRole.get(FIELD_ROLE.meta_trial_pending)) || [];
+  return bits.some((b) => { const s = machine.samples[b.channelId]; return !!(s && s[b.name]); });
+}
+/** The one status line; clears itself so a refusal does not outlive its tab. */
+export function say(m) {
+  history.msg = m;
+  clearTimeout(msgTimer);
+  if (m) msgTimer = setTimeout(() => { history.msg = ''; }, 8000);
+}
 const currentOf = (f) => reportedValue(f, machine.samples[f.channelId]);
 
 /** Why a write would not leave right now; '' when it would. */
@@ -54,7 +79,7 @@ const fill = () => {
 };
 
 function onSettled({ field, before, after, trial, via, id }) {
-  if (isSecret(field)) return;
+  if (isSecret(field) || RUN_ROLES.has(field.role)) return;
   if (via === 'undo' || via === 'redo') {
     const [from, to] = via === 'undo' ? [history.entries, history.redo] : [history.redo, history.entries];
     const i = from.findIndex((e) => e.id === id);
@@ -83,14 +108,15 @@ async function outcome(field) {
 async function replay(e, via) {
   const f = fieldOf.get(e.id);
   const why = f ? whyNot(f) : 'not in this catalog';
-  if (why) { history.msg = e.label + ': ' + why; return false; }
+  if (why) { say(e.label + ': ' + why); return false; }
   const to = via === 'undo' ? e.before : e.after;
+  if (!sameValue(currentOf(f), via === 'undo' ? e.after : e.before)) { say(e.label + ': changed since'); return false; }
   const from = displayValue(f, machine.samples[f.channelId]);
-  if (settingNeedsConfirm(f, from, to) && !(await askConfirm(confirmCopy(f)))) return false;
+  if (settingNeedsConfirm(f, from, to) && !(await askConfirm(confirmCopy(f, to)))) return false;
   writeSetting(f, to, { trial: e.trial, hist: { via, id: e.id } });
   const sh = await outcome(f);
-  if (sh && sh.status === STATUS.fault) { history.msg = e.label + ': ' + sh.error; return false; }
-  history.msg = '';
+  if (sh && sh.status === STATUS.fault) { say(e.label + ': ' + sh.error); return false; }
+  say('');
   return true;
 }
 
@@ -120,8 +146,8 @@ const revertItems = () => settings().map((f) => {
 /** The field an entry wrote, for formatting its values. */
 export const fieldOfEntry = (id) => fieldOf.get(id);
 
-/** How many settings Revert changes would write now (the confirm's count). */
-export const revertCount = () => (baseline ? planRevert(baseline, revertItems()).send.length : 0);
+/** What Revert changes would do now: { send, skipped } (the confirm's count and the skipped names). */
+export const revertPlan = () => (baseline ? planRevert(baseline, revertItems()) : { send: [], skipped: [] });
 
 /**
  * Write every changed, non-hazard setting back to its baseline value.
@@ -139,31 +165,36 @@ export const revertAll = once(async () => {
     sent.push(f);
   }
   let n = sent.length;
+  const waiting = [];
   for (const f of sent) {
     const sh = await outcome(f);
     if (sh && sh.status === STATUS.fault) { refused.push(labelFor(f) + ': ' + sh.error); n--; }
+    else if (sh && (sh.status === STATUS.pending || sh.status === STATUS.overdue)) waiting.push(labelFor(f));
   }
-  history.msg = [n ? 'Reverted ' + n : 'Nothing reverted', skipped.length && 'Skipped, needs a confirm: ' + skipped.join(', '),
-    refused.length && 'Refused: ' + refused.join(', ')].filter(Boolean).join('. ');
-  return { sent: n, skipped, refused };
+  say([n ? 'Reverted ' + n : 'Nothing reverted', skipped.length && 'Skipped: ' + skipped.join(', '),
+    refused.length && 'Refused: ' + refused.join(', '), waiting.length && 'Still waiting: ' + waiting.join(', ')].filter(Boolean).join('. '));
+  return { sent: n, skipped, refused, waiting };
 });
 
 $effect.root(() => {
   $effect(() => {
-    const phase = machine.link.phase;
+    const phase = machine.link.phase, ready = machine.catalog.ready;
+    const key = JSON.stringify(machine.link.hubIdentity || null) + '|' + machine.catalog.etag;
     untrack(() => {
-      if (phase === 'live') {
-        fill();
-        clearTimeout(fillTimer);
-        fillTimer = setTimeout(fill, 2000);
-      } else if (phase === 'idle' || phase === 'failed') {
+      if (!ready || (baseline && key !== baseKey)) {
         baseline = null;
         history.baselined = false;
         clearTimeout(fillTimer);
         history.entries.length = 0;
         history.redo.length = 0;
-        history.msg = '';
+        say('');
         fieldOf.clear();
+      }
+      if (ready && phase === 'live') {
+        if (!baseline) baseKey = key;
+        fill();
+        clearTimeout(fillTimer);
+        fillTimer = setTimeout(fill, 2000);
       }
     });
   });
@@ -174,9 +205,9 @@ $effect.root(() => {
 function onKey(e) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'z') return;
   setTimeout(() => {
-    if (e.defaultPrevented || document.querySelector('.edit-ops')) return;
+    if (e.defaultPrevented || confirmUi.req || document.querySelector('.edit-ops')) return;
     const t = e.target;
-    if (t && t.closest && t.closest('textarea, [contenteditable]:not([contenteditable=false]), input:not([type=range],[type=checkbox],[type=radio],[type=button])')) return;
+    if (t && t.closest && t.closest('.graph, textarea, [contenteditable]:not([contenteditable=false]), input:not([type=range],[type=checkbox],[type=radio],[type=button])')) return;
     (e.shiftKey ? redo : undo)();
   });
 }

@@ -223,15 +223,14 @@ async function sendQueued(session, channelId, entries, trial, mine) {
     const applied = (echo && echo.applied) || {};
     for (const [k, rec] of entries) {
       const sh = mine(rec);
-      if (!sh) continue;
       // The ECHO is the post-clamp APPLIED value. If the key is missing from
       // the echo the machine did not tell us what it did, and we must not
       // pretend it agreed — fall back to reported truth.
       if (Object.prototype.hasOwnProperty.call(applied, k)) {
-        sh.applied = applied[k];
-        settle(sh);
+        if (sh) { sh.applied = applied[k]; settle(sh); }
+        // The machine applied it even when a newer write owns the shadow: history sees every one.
         if (rec.field && settledHook) settledHook({ field: rec.field, before: rec.before, after: applied[k], trial, ...rec.hist });
-      } else {
+      } else if (sh) {
         fail(sh, 'no applied value in echo');
       }
     }

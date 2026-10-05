@@ -131,7 +131,7 @@ const srv = createServer((q, s) => {
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
-const hub = { values: {}, log: [] };
+const hub = { values: {}, log: [], echoDelay: 0 };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -205,9 +205,12 @@ function fakeHub(ws) {
             if (f) hub.values[st.id + ':' + f.name] = v;
           }
         }
-        send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
-          [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
-        for (const st of sts) pushState(st.id);
+        const reply = () => {
+          send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
+            [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
+          for (const st of sts) pushState(st.id);
+        };
+        if (hub.echoDelay) setTimeout(reply, hub.echoDelay); else reply();
       } else if (header.type === FRAME.PING) {
         send(FRAME.PONG, header.channel, payload);
       }
@@ -505,7 +508,7 @@ console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
   const before = hub.log.length;
   await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
   await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
-  await setTo(sliders[0], 0.9);
+  const v9 = await setTo(sliders[0], 0.9);
   const n0 = hub.log.length;
   await page.locator(sel(sliders[0]) + ' input.chip-num').focus();
   await page.keyboard.press('Control+z');
@@ -517,8 +520,29 @@ console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
   ok('Ctrl+Z elsewhere undoes the latest write', hub.log.length > n0 && Math.abs(valueOf(sliders[0]) - start[0]) < 1e-3, [valueOf(sliders[0]), start[0]]);
   await page.keyboard.press('Control+Shift+z');
   await sleep(900);
-  ok('Ctrl+Shift+Z redoes it', Math.abs(valueOf(sliders[0]) - 0) >= 0 && hub.log.length > n0 + 1);
+  ok('Ctrl+Shift+Z redoes it', Math.abs(valueOf(sliders[0]) - v9) < 1e-3 && hub.log.length > n0 + 1, [valueOf(sliders[0]), v9]);
   void before;
+  // A drag whose echoes lag: the first write's echo lands after newer writes took the shadow.
+  hub.echoDelay = 350;
+  await page.locator('[role=tab][data-tab-id=log]').first().click();
+  await page.locator('[data-feed=changes]').click();
+  const nBefore = await page.locator('#lp-feed-changes .line.change').count();
+  await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
+  await page.waitForSelector(sel(sliders[1]), { timeout: 5000 });
+  const from = valueOf(sliders[1]);
+  const lo = sliders[1].min, hi = sliders[1].max, stp = sliders[1].step || 1;
+  const pts = [0.2, 0.4, 0.7].map((fr) => lo + Math.round((hi - lo) * fr / stp) * stp);
+  for (const v of pts) {
+    await page.locator(sel(sliders[1]) + ' input[type=range]').evaluate((el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await sleep(120);
+  }
+  await sleep(1200);
+  hub.echoDelay = 0;
+  await page.locator('[role=tab][data-tab-id=log]').first().click();
+  await page.locator('[data-feed=changes]').click();
+  const texts2 = await page.locator('#lp-feed-changes .line.change').allTextContents();
+  ok('a drag with delayed echoes is one entry', texts2.length === nBefore + 1, [texts2.length, nBefore]);
+  ok('...from the value before the first write', texts2[0].includes(String(Math.round(from * 100) / 100)) || texts2[0].includes(String(from)), [texts2[0], from]);
   await ctx.close();
 }
 

@@ -23,7 +23,7 @@ export function pushEntry(list, e, max = MAX) {
     if (sameValue(last.before, last.after)) { list.pop(); return null; }
     return last;
   }
-  if (sameValue(e.before, e.after)) return null;
+  if (e.before === undefined || sameValue(e.before, e.after)) return null;
   list.push(e);
   while (list.length > max) list.shift();
   return e;
@@ -38,7 +38,8 @@ export function fillBaseline(baseline, items) {
 
 /**
  * What a revert does. `items` are { uid, label, cur, hazard(to) }; only a
- * field that differs from the baseline counts. A hazard is skipped and named.
+ * field that differs from the baseline counts. A hazard is skipped and named
+ * (hazard() returns a reason string, or true).
  * @returns {{send: {uid: string, to: *}[], skipped: string[]}}
  */
 export function planRevert(baseline, items) {
@@ -47,7 +48,8 @@ export function planRevert(baseline, items) {
     if (!Object.prototype.hasOwnProperty.call(baseline, it.uid)) continue;
     const to = baseline[it.uid];
     if (it.cur === undefined || sameValue(it.cur, to)) continue;
-    if (it.hazard(to)) skipped.push(it.label);
+    const why = it.hazard(to);
+    if (why) skipped.push(typeof why === 'string' ? it.label + ' (' + why + ')' : it.label);
     else send.push({ uid: it.uid, to });
   }
   return { send, skipped };

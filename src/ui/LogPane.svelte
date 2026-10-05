@@ -26,7 +26,7 @@
   } from '../../../Valence/clients/js/index.js';
   import { optionLabel, formatValue, formatWithUnit } from '../model/format.js';
   import { logView } from './logview.svelte.js';
-  import { history, undo, revertAll, revertCount, fieldOfEntry } from '../model/history.svelte.js';
+  import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
   import { askConfirm } from './confirm.svelte.js';
   import './pane.css';
 
@@ -178,6 +178,7 @@
   }
 
   function onScroll(id, el) {
+    if (id === 'changes') return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
     if (!atBottom && feeds[id].follow) { feeds[id].follow = false; feeds[id].snap = lists[id].slice(); }
   }
@@ -219,14 +220,15 @@
   // The count is asked before the confirm so a no-op revert says so instead of asking.
   async function revert() {
     logView.tab = 'changes';
-    const n = revertCount();
-    if (!n) { history.msg = 'Nothing to revert'; return; }
+    const { send, skipped } = revertPlan(), n = send.length;
+    if (!n && !skipped.length) { say('Nothing to revert'); return; }
+    if (!n) { revertAll(); return; }
     if (await askConfirm({ title: 'Revert changes', body: 'Writes ' + n + ' setting' + (n === 1 ? '' : 's') + ' back to how they were when you connected.', confirmLabel: 'Revert' })) revertAll();
   }
 
   const status = $derived.by(() => {
     if (tab === 'changes') return flash || history.msg;
-    if (flash) return flash;
+    if (flash || history.msg) return flash || history.msg;
     const f = feeds[tab];
     const live = lists[tab] || [];
     const filtered = tab === 'log' && (minLevel >= 0 || tagFilter)
@@ -299,7 +301,7 @@
               <time class="mono">{new Date(evt.t).toLocaleTimeString()}</time>
               <span class="text">{evt.label}</span>
               <span class="kv">{val(evt, evt.before)} &rarr; {val(evt, evt.after)}</span>
-              <button type="button" class="og-btn sm undo" disabled={history.busy} onclick={() => undo(evt.id)}>Undo</button>
+              <button type="button" class="og-btn sm undo" aria-label={'Undo ' + evt.label} disabled={history.busy} onclick={() => undo(evt.id)}>Undo</button>
             </div>
             {:else}
             {@const p = parts(t.id, evt)}

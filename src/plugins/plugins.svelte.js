@@ -69,7 +69,7 @@ async function write(field, value, payload) {
   }
   if (field.isIntentField) return sendCommand(field, value);
   const from = displayValue(field, machine.samples[field.channelId]);
-  if (settingNeedsConfirm(field, from, value) && !(await askConfirm(confirmCopy(field)))) return CANCELED;
+  if (settingNeedsConfirm(field, from, value) && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
   return writeSetting(field, value);
 }
 

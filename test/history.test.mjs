@@ -30,6 +30,7 @@ pushEntry(g, { uid: 'a', label: 'A', before: 3, after: 1, t: 4000 });
 ok('a write after the gesture window is its own entry', g.length === 2);
 pushEntry(g, { uid: 'a', label: 'A', before: 1, after: 3, t: 4010 });
 ok('a gesture that ends where it began is dropped', g.length === 1 && g[0].after === 3);
+ok('a write with no reported before is not recorded', pushEntry(g, { uid: 'c', before: undefined, after: 1, t: 9e6 }) === null && g.length === 1);
 ok('a no-change write is not recorded', pushEntry(g, { uid: 'b', before: 5, after: 5, t: 9e6 }) === null && g.length === 1);
 pushEntry(g, { uid: 'b', before: 0, after: 1, t: 9e6, trial: true });
 pushEntry(g, { uid: 'b', before: 1, after: 0, t: 9e6 + 1 });
@@ -45,6 +46,7 @@ const plan = planRevert({ a: 1, b: 2, c: 3, d: 4, e: 5 }, [
   item('a', 1), item('b', 9), item('c', 0, true), item('d', undefined), item('f', 7)]);
 ok('revert sends only changed non-hazard fields', JSON.stringify(plan.send) === '[{"uid":"b","to":2}]', JSON.stringify(plan.send));
 ok('...and names the skipped hazard', plan.skipped.join() === 'C', plan.skipped.join());
+ok('a hazard reason is named beside the label', planRevert({ a: 1 }, [{ uid: 'a', label: 'A', cur: 2, hazard: () => 'on trial' }]).skipped.join() === 'A (on trial)');
 ok('a float equal at f32 precision is unchanged', planRevert({ a: 0.1 }, [item('a', Math.fround(0.1))]).send.length === 0);
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- history'));
