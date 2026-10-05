@@ -382,6 +382,37 @@ console.log('\n[look] F3 look for a control');
   await ctx.close();
 }
 
+// ---- full index (ph-mdqo.12) ----------------------------------------------------
+console.log('\n[index] F3 indexes every page and every layout, and rebuilds on change');
+{
+  const { ctx, page } = await open(1400, 900);
+  const find = async (q) => {
+    await page.keyboard.press('F3');
+    await page.keyboard.type(q);
+    await sleep(120);
+    return page.locator('.lf-list [role=option]').allTextContents();
+  };
+  for (const name of ['Pairing', 'Log']) {
+    const rows = await find(name);
+    ok('a page is listed: ' + name, rows.some((r) => r.startsWith(name)), rows.slice(0, 3));
+    await page.keyboard.press('Escape');
+  }
+  const before = await find('Zed layout');
+  ok('a layout not yet saved is not listed', !before.some((r) => r.startsWith('Zed layout')), before.slice(0, 3));
+  await page.keyboard.press('Escape');
+  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
+  await page.locator('input[aria-label="Layout name"]').fill('Zed layout');
+  await page.locator('.dash-menu button', { hasText: 'Save as' }).click();
+  await page.keyboard.press('Escape');
+  const after = await find('Zed layout');
+  ok('a layout saved while the app runs is listed without a reload', after.some((r) => r.startsWith('Zed layout')), after.slice(0, 3));
+  await page.keyboard.press('Enter');
+  await sleep(300);
+  ok('Enter on a layout makes it the active one', await page.locator('.layout-pick').first().inputValue() === 'Zed layout');
+  await ctx.close();
+}
+
 // ---- rail ---------------------------------------------------------------------
 console.log('\n[rail] Alt-drag on the stroke window');
 {

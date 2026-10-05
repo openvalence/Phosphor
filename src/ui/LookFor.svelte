@@ -5,11 +5,12 @@
    * Constraints:
    * - F3 and Ctrl+F are bound here, on the window, with preventDefault so the
    *   webview's find bar never opens. Escape closes and returns focus.
-   * - The index is built at open time from what App already holds (`tabs`:
-   *   category pages with their groups and heroes, the Valence and Phosphor
-   *   panes, each with its tier's `section`, a plugin page with its own
-   *   `path`) plus the saved Dash layout
-   *   (dashboard.svelte.js); no store.
+   * - The index is a $derived over what App already holds (`tabs`: category
+   *   pages with their groups and heroes, the Valence and Phosphor panes,
+   *   each with its tier's `section`, a plugin page with its own `path`, its
+   *   claimed fields and its `search` entries), every saved Dash layout with
+   *   its controls (dashboard.svelte.js) and the sources registered through
+   *   searchIndex.js, so it rebuilds whenever any of them changes.
    * - A jump switches page through `go` (App's selectTab), reveals a hidden
    *   advanced or diagnostic field or a drill-in group with the page's own
    *   buttons, focuses the control and asks its Field for the locate sweep.
@@ -19,19 +20,20 @@
    */
   import { tick } from 'svelte';
   import { machine, specSafetyAction, estopLabel } from '../model/machine.svelte.js';
-  import { layouts } from '../model/dashboard.svelte.js';
-  import { viewMap, isNest, nestsIn, baseKey } from '../model/grid.js';
+  import { layouts, layoutNames, switchLayout } from '../model/dashboard.svelte.js';
+  import { searchEntries } from './searchIndex.js';
+  import { isNest, nestsIn, baseKey } from '../model/grid.js';
   import { placeableControls } from '../model/settings.js';
   import { labelFor } from '../model/format.js';
   import { view } from '../model/viewport.svelte.js';
   import { rank } from '../model/fuzzy.js';
+  import { pluginsUi } from '../plugins/plugins.svelte.js';
 
   let { tabs = [], go = () => {} } = $props();
 
   let open = $state(false);
   let q = $state('');
   let at = $state(0);
-  let index = $state([]);
   let inputEl = $state(null);
   let listEl = $state(null);
   let opener = null;
@@ -39,10 +41,17 @@
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const esc = (s) => CSS.escape(s);
 
-  function build() {
+  const index = $derived.by(() => {
+    pluginsUi.gen;
     const out = [];
     for (const t of tabs) {
       out.push({ label: t.label, path: t.path || t.section, go: () => goTab(t.id) });
+      if (t.page) {
+        for (const f of Object.values(t.page.fields || {})) {
+          if (f && f.uid) out.push({ label: labelFor(f), path: t.label, go: () => goKey(t, '[data-uid="' + esc(f.uid) + '"]') });
+        }
+        for (const e of t.page.search || []) out.push({ label: e.label, path: t.label, go: () => goKey(t, '[data-search-key="' + esc(e.key) + '"]') });
+      }
       if (!t.cat) continue;
       for (const g of t.cat.groups) {
         const path = t.label + (g.name ? ' › ' + g.name : '');
@@ -52,11 +61,10 @@
         out.push({ label: h.title || cap(h.id), path: t.label, go: () => goCell(t.id, 'hero:' + h.id) });
       }
     }
-    // The built home's placements, nests named in the path. The seed home is
-    // the category pages' fields, already listed.
+    // Every saved layout's placements, nests named in the path. A seed home
+    // (no placements built) is the category pages' fields, already listed.
     const model = machine.catalog.model;
-    const map = view.cls === 'full' ? viewMap(layouts, view.cls, 'machine', false) : {};
-    if (model && Object.keys(map).some((k) => !isNest(map[k]) && !k.startsWith('home:'))) {
+    if (model) {
       const names = new Map();
       for (const c of placeableControls(model, { safety: specSafetyAction() })) {
         const label = c.kind === 'field' ? labelFor(c.field) : c.kind === 'safety' ? (c.key === 'safety:estop' ? estopLabel() : 'Pause') : null;
@@ -66,21 +74,28 @@
       }
       for (const t of tabs) for (const h of t.cat?.heroes || []) names.set('hero:' + h.id, h.title || cap(h.id));
       const MODULES = { 'widget:hero-rank': 'Machine', 'widget:telemetry': 'Telemetry', 'widget:actions': 'Actions' };
-      const add = (key, nest) => {
-        const b = baseKey(key);
-        const label = names.get(b) || MODULES[b];
-        const path = 'Dash' + (nest ? ' › ' + nest.title : '');
-        if (label) out.push({ label, path, go: () => goCell('machine', key, nest && nest.id) });
-        else if (/^(uid|role):/.test(b)) out.push({ label: b.replace(/^\w+:/, ''), path, inert: true });
-      };
-      for (const k of Object.keys(map)) if (!isNest(map[k]) && !k.startsWith('home:')) add(k, null);
-      for (const n of nestsIn(map)) {
-        out.push({ label: n.title, path: 'Dash', go: () => goCell('machine', n.id) });
-        for (const k of n.keys) add(k, n);
+      for (const ln of layoutNames()) {
+        const map = layouts.layouts[ln]?.[view.cls + '.machine'] || {};
+        const dash = ln === layouts.active ? 'Dash' : 'Dash › ' + ln;
+        out.push({ label: ln, path: 'Dash › layouts', go: () => { switchLayout(ln); return goTab('machine'); } });
+        if (!Object.keys(map).some((k) => !isNest(map[k]) && !k.startsWith('home:'))) continue;
+        const add = (key, nest) => {
+          const b = baseKey(key);
+          const label = names.get(b) || MODULES[b];
+          const path = dash + (nest ? ' › ' + nest.title : '');
+          if (label) out.push({ label, path, go: () => goCell('machine', key, nest && nest.id, ln) });
+          else if (/^(uid|role):/.test(b)) out.push({ label: b.replace(/^\w+:/, ''), path, inert: true });
+        };
+        for (const k of Object.keys(map)) if (!isNest(map[k]) && !k.startsWith('home:')) add(k, null);
+        for (const n of nestsIn(map)) {
+          out.push({ label: n.title, path: dash, go: () => goCell('machine', n.id, null, ln) });
+          for (const k of n.keys) add(k, n);
+        }
       }
     }
+    out.push(...searchEntries());
     return out;
-  }
+  });
 
   const results = $derived(q.trim() ? rank(q, index) : index);
   $effect(() => { void q; at = 0; });
@@ -89,7 +104,6 @@
   async function show() {
     opener = document.activeElement;
     top = document.querySelector('.topstrip')?.getBoundingClientRect().bottom ?? 0;
-    index = build();
     q = '';
     open = true;
     await tick();
@@ -148,7 +162,15 @@
     document.querySelector('[role=tab][data-tab-id="' + esc(id) + '"]')?.focus();
   }
 
-  async function goCell(tabId, key, nestId = null) {
+  async function goKey(t, sel) {
+    go(t.id);
+    const find = () => pane()?.querySelector(sel);
+    await settle(find);
+    land(find(), true);
+  }
+
+  async function goCell(tabId, key, nestId = null, layout = null) {
+    if (layout && layout !== layouts.active) switchLayout(layout);
     go(tabId);
     await settle(() => pane()?.querySelector('.dash-cell[data-id="' + esc(nestId || key) + '"]'));
     const scope = nestId ? pane()?.querySelector('.dash-cell[data-id="' + esc(nestId) + '"]') : pane();
