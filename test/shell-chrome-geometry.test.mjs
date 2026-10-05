@@ -613,15 +613,15 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
       await fp.click('[data-tab-id="' + id + '"]');
       await fp.waitForTimeout(150);
-      if (await fp.locator('.rail-pill .rail-ops .reset').count()) { hit = id; break; }
+      if (await fp.locator('.rail-tab.on + .rail-ops .reset').count()) { hit = id; break; }
     }
     ok(tag + ': a category page grows its pill with the operations strip', !!hit, String(hit));
     if (hit) {
-      const strip = await fp.evaluate(() => { const p = document.querySelector('.rail-pill.ops'), o = p.querySelector('.rail-ops'), t = p.querySelector('.rail-tab');
+      const strip = await fp.evaluate(() => { const o = document.querySelector('.rail-tab.on + .rail-ops'), p = o.parentElement, t = o.previousElementSibling;
         return { inside: p.contains(o), labels: [...o.querySelectorAll('button')].map((b) => b.textContent.trim().replace(/^\d+/, '#')), cols: getComputedStyle(o).gridTemplateColumns.split(' ').length,
-          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-pill.ops').length,
+          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-ops').length,
           inset: o.getBoundingClientRect().left - t.getBoundingClientRect().left }; });
-      ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.inside && strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
+      ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
     }
     await fp.click('nav.rail .rail-collapse');
     await fp.waitForTimeout(150);

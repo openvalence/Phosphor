@@ -602,9 +602,8 @@
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
                 {@const ops = railOps && current.id === t.id}
-                <div class="rail-pill" class:ops role="none">
-                  {@render railTab(t)}
-                  {#if ops}
+                {@render railTab(t)}
+                {#if ops}
                     <div class="rail-ops" role="group" aria-label="Page operations"
                          style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
                       {#if visibleGroups.diagAll}
@@ -621,9 +620,8 @@
                                 title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
 >{resetDone ? 'reset ✓' : 'reset'}</button>
                       {/if}
-                    </div>
-                  {/if}
-                </div>
+                  </div>
+                {/if}
                 {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
               {/each}
             </div>
@@ -770,16 +768,13 @@
   }
   /* The selected page's pill grows to hold its operations: inset, not
      indented, one row of two or three buttons. */
-  .rail-pill { display: contents; }
-  .rail-pill.ops {
-    display: flex;
-    flex-direction: column;
+  :global(.rail-tab.on):has(+ .rail-ops) { border-bottom-color: transparent; border-radius: var(--radius) var(--radius) 0 0; }
+  .rail-ops {
+    margin-top: calc(var(--sp-1) * -1);
     background: var(--bg-card);
     border: 1px solid var(--line-1);
-    border-radius: var(--radius);
-  }
-  .rail-pill.ops > :global(.rail-tab.on) { background: none; border-color: transparent; }
-  .rail-ops {
+    border-top: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
     display: grid;
     grid-template-columns: repeat(var(--n, 3), 1fr);
     gap: var(--sp-1);

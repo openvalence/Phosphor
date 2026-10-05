@@ -38,17 +38,19 @@ export const FLOOR_H = 390;
 export const DRILL_AFTER = 8;
 
 // Layout columns (DESIGN 10.12): one column = 2 rem, so buckets follow the UI
-// scale and the browser text size, never DPR. A field floor is 8 columns and
-// each bucket doubles the count: 1 watch, 2 phone, 3 tablet, 4 desk, 5 wide.
+// scale and the browser text size, never DPR. The narrowest bucket ends at 12
+// columns and each next one doubles: 1 watch, 2 phone, 3 tablet, 4 desk, 5 wide.
+// A field's own floor is 8 columns (16 rem), a separate number.
 export const FIELD_FLOOR_COLS = 8;
-const BUCKET_EDGES = [1, 2, 4, 8].map((k) => FIELD_FLOOR_COLS * k);
+export const BUCKET_FLOOR_COLS = 12;
+const BUCKET_EDGES = [1, 2, 4, 8].map((k) => BUCKET_FLOOR_COLS * k);
 
 /** Whole 2 rem columns across `widthCss` at a root font size of `remPx`. */
 export function layoutCols(widthCss, remPx) {
   return Math.floor(widthCss / (2 * remPx));
 }
 
-/** 1..5: 1 plus the count of 8/16/32/64 at or below `cols`. */
+/** 1..5: 1 plus the count of 12/24/48/96 at or below `cols`. */
 export function bucketOf(cols) {
   return 1 + BUCKET_EDGES.filter((e) => cols >= e).length;
 }

@@ -548,16 +548,16 @@ if (!ONLY || ONLY === 'bucket') {
   await page.goto('http://127.0.0.1:' + PORT + '/');
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   const read = () => page.evaluate(() => ({ b: document.documentElement.dataset.bucket, c: getComputedStyle(document.documentElement).getPropertyValue('--cols').trim() }));
-  for (const [w, h, want] of [[200, 390, '1'], [390, 844, '2'], [844, 390, '3'], [1428, 900, '4'], [2560, 1440, '5']]) {
+  for (const [w, h, want] of [[200, 390, '1'], [412, 915, '1'], [844, 390, '2'], [880, 800, '3'], [1428, 900, '3'], [1920, 1080, '4'], [3840, 2160, '5']]) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(200);
     const r = await read();
     scen(w + 'x' + h + ' is bucket ' + want, r.b === want && Number(r.c) > 0, r.b + ' cols ' + r.c);
   }
-  await page.setViewportSize({ width: 1428, height: 900 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   // Ctrl+= through ScaleControl (the real path): 10 % steps stop at 140 % (knob max 1.6).
   for (let k = 0; k < 6; k++) await page.keyboard.press('Control+='); await page.waitForTimeout(200);
-  scen('140 % UI scale puts 1428 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
+  scen('140 % UI scale puts 1920 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
   await ctx.close();
 }
 
