@@ -237,8 +237,15 @@
     const m = need[keyOf(it, orientationOf(w, h))];
     return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
-  // The seed's width for an unplaced card: its floor once measured (grid.js pack); a section header fills the row.
-  fitH.w = (it) => (it.kind !== 'section' && need[keyOf(it, 'h')] ? minOf(it)(cols, 1)[0] : 0);
+  // The seed's width for an unplaced card: its floor at first measure (grid.js pack), kept so a
+  // later content change (a write in flight) never moves a card; a section header fills the row.
+  const seedW = new Map();
+  fitH.w = (it) => {
+    const k = keyOf(it, 'h');
+    if (it.kind === 'section' || !(seedW.has(k) || need[k])) return 0;
+    if (!seedW.has(k)) seedW.set(k, minOf(it)(cols, 1)[0]);
+    return seedW.get(k);
+  };
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
   // Ids measured since their last grow check: a card grows when its content
   // is measured, never because a neighbor moved out of its way.
