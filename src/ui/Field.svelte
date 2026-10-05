@@ -901,6 +901,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    container-type: inline-size;
   }
 
   .field-head {
@@ -1213,7 +1214,14 @@
   /* Touch: the 18px info/reset box keeps its look and gains an invisible
      40px hit area; the typeable chip grows to the fingertip floor. */
   @media (pointer: coarse) {
-    .info::before { content: ''; position: absolute; inset: -12px; }
+    /* The button box is the 40 px hit target and its negative margin keeps
+       the 18 px footprint in the head row; the visible square is ::before. */
+    .info { width: 40px; height: 40px; margin: -11px; border: 0; }
+    .info::before { content: ''; position: absolute; inset: 11px; border: 1px solid var(--line-2); border-radius: var(--r-s); }
+    .info:hover::before { border-color: var(--line-4); }
+    .info[aria-expanded='true']::before { border-color: var(--reality); }
+    .reset:disabled::before { border-color: var(--line-1); }
+    .bitfield .bit { min-height: 40px; }
     .field-value .chip-num { padding: 10px 0; min-width: 40px; }
   }
   .field-value .chip-num::-webkit-inner-spin-button,
@@ -1391,12 +1399,27 @@
     accent-color: var(--reality);
   }
 
+  /* Density rungs (DESIGN §10.12): compact under 18rem (about 8 cells), normal
+     above. A rung tightens gaps only; the ladder slot and every coarse
+     target keep their size at both. */
+  @container (max-width: 18rem) {
+    .field-head { gap: 4px; }
+    .field-label-group { gap: 4px; }
+    .field > input[type='range'] { margin: 4px 0 0; }
+    .range-dual { margin: 4px 0 0; }
+    .bitfield { gap: 6px 10px; }
+    .lamps { gap: 4px 10px; }
+  }
+
   /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------
      Basis 0, so its text never takes width from the label or the value chip
      and never wraps the head: the field's height is the same in every state. */
   .ladder {
     flex: 1 1 0;
-    min-width: 0;
+    /* 'still waiting' at 11px is 7em. The head row yields it to the words
+       once the field is wide enough to hold label, chip and words (ph-46yw);
+       below that the slot is leftover only, so the chip never overflows. */
+    min-width: clamp(0px, 100cqi - 11rem, 7em);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
