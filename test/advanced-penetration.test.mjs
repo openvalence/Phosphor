@@ -586,7 +586,12 @@ if (LIVE) {
     await page.keyboard.press('Shift+ArrowUp');
     await page.waitForTimeout(200);
     const kv = hub.intents.slice(n1);
-    ok('keys: shift+arrow nudges ten steps, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 10, kv);
+    ok('keys: shift+arrow is the declared step, one write', kv.length === 1 && kv[0].val[MIND.key] === m0 + 1, kv);
+    const nCtl = hub.intents.length;
+    await page.keyboard.press('Control+ArrowUp');
+    await page.waitForTimeout(250);
+    const cv = hub.intents.slice(nCtl);
+    ok('keys: ctrl+arrow goes to the next decade multiple, one write', cv.length === 1 && cv[0].val[MIND.key] === (Math.floor((m0 + 1) / 10) + 1) * 10, [cv, m0]);
 
     // ---- rhythm: In speed's staircase
     const apEl = await page.locator('main.pane .ap').first().elementHandle();
@@ -1245,7 +1250,7 @@ if (LIVE) {
     const full = await dd(false);
     hubAt(REVIEW); hub.push(ADV.id); await page.waitForTimeout(300);
     const fine = await dd(true);
-    ok('drag: 60 px moves the value half as far as the absolute mapping, Shift a tenth', Math.abs(full / absDelta - 0.5) < 0.1 && Math.abs(fine / absDelta - 0.1) < 0.06,
+    ok('drag: 60 px moves the value half as far as the absolute mapping, Shift a tenth of that', Math.abs(full / absDelta - 0.5) < 0.1 && Math.abs(fine / absDelta - 0.05) < 0.05,
       { full, fine, absDelta });
     await ctx.close();
   }

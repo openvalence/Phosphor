@@ -351,7 +351,7 @@ Shipped:
   handle and its twin read one effective value (the card's draft while
   edited, else `api.value`): a drag, nudge or keystroke redraws at once in
   the intent look, and release, Enter or blur writes once through
-  `api.write`; arrows nudge, Shift by ten. The stroke picture's x axis is the
+  `api.write`; arrows nudge, Shift is the declared step, Ctrl the adjacent decade multiple. The stroke picture's x axis is the
   share of one stroke's time, so the curve always spans the plot, mid-drag
   included. A handle's shape is its drag axis: a dot moves any direction, a
   vertical pill left-right only, a horizontal pill up-down only. A label
@@ -453,7 +453,7 @@ Shipped:
   the Inputs toggle, and preset Reset returns them to their defaults. The
   playhead follows the told target's half and holds while the position
   sits at a bound, so through a hold it parks on that bound. A handle drag
-  is relative to the grab at gain 0.5 (Shift 0.1) through the same geometry,
+  is relative to the grab at gain 0.5 (Shift 0.05, Ctrl rounds to the decade) through the same geometry,
   so it never jumps on pickup.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`

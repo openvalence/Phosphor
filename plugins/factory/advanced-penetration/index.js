@@ -63,14 +63,19 @@ export const DWELL_SPAWN = 0.01;                   // strokes a plus writes
 const DWELL_OFF = 36;                              // viewBox units: a dwell pill sits this far off its bound
 const LADDER = { pending: 'waiting', overdue: 'still waiting', fault: 'refused' };
 const RANK = { pending: 1, overdue: 2, fault: 3 };
-const DRAG_GAIN = 0.5;                              // handle travel per pointer travel; Shift: DRAG_FINE
-const DRAG_FINE = 0.1;
+const DRAG_GAIN = 0.5;                              // handle travel per pointer travel
+const DRAG_FINE = DRAG_GAIN / 10;                  // Shift (DESIGN 10.5)
 const KEYS = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10, Home: 'min', End: 'max' };
 
 // ---- geometry (pure; test/plugins.test.mjs drives it) ----------------------
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+/** Largest power of ten strictly below the field's span (100 -> 10, 1000 -> 100). */
+const decadeBelow = (f) => {
+  const sp = Math.abs((f.max ?? 0) - (f.min ?? 0));
+  return sp > 0 && Number.isFinite(sp) ? 10 ** (Math.ceil(Math.log10(sp)) - 1) : 1;
+};
 /** A value held to the field's bounds and step grid. */
 export function snap(f, v) {
   const lo = f.min ?? -Infinity, hi = f.max ?? Infinity, st = f.step || 1;
@@ -617,7 +622,17 @@ function makeEditor(api, o, ed) {
     const k = KEYS[e.key];
     if (k === undefined || api.gate(f)) return;
     e.preventDefault();
-    ed.preview(f, k === 'min' ? f.min : k === 'max' ? f.max : val(f) + k * (f.step || 1) * (e.shiftKey ? 10 : 1));
+    // DESIGN 10.5, inlined: Shift on a key is the declared step (never finer: an off-grid value is NACKed);
+    // Ctrl is the adjacent decade multiple that way, one notch per press.
+    const st = f.step || 1, cur = val(f);
+    let v;
+    if (k === 'min') v = f.min;
+    else if (k === 'max') v = f.max;
+    else if (e.ctrlKey) {
+      const d = Math.max(st, decadeBelow(f)), q = cur / d;
+      v = (k > 0 ? Math.floor(q + 1e-9) + 1 : Math.ceil(q - 1e-9) - 1) * d;
+    } else v = cur + (e.shiftKey ? Math.sign(k) : k) * st;
+    ed.preview(f, v);
   }
   const local = (e) => {
     const r = box.getBoundingClientRect();
@@ -648,7 +663,8 @@ function makeEditor(api, o, ed) {
     const at = () => ({ x: clamp(drag.h0.x + (p.x - drag.p0.x) * drag.gain, 0, o.W), y: clamp(drag.h0.y + (p.y - drag.p0.y) * drag.gain, 0, o.H) });
     if (gain !== drag.gain) { drag.h0 = at(); drag.p0 = p; drag.gain = gain; }
     const q = at();
-    const v = drag.hd.value(f, drag.g0, q.x, q.y);
+    let v = drag.hd.value(f, drag.g0, q.x, q.y);
+    if (e.ctrlKey && Number.isFinite(v)) { const d = Math.max(f.step || 1, decadeBelow(f)); v = Math.round(v / d) * d; }
     if (Number.isFinite(v)) ed.preview(f, v);
   });
   const end = (e) => {
