@@ -271,27 +271,37 @@ export function dropAt(i, c) {
   return 0;
 }
 
+const MIN_TRAVEL_MM = 0.25, REST_S = 0.05;           // Nucleus PatternEngine kMinTravelMm, kRestUs
+
 /**
- * The planned motion over windowS seconds, as [[t, position share]]. Mirrors
- * the firmware's halfStrokeSeconds: a half runs v = master x half x ceiling
- * (units/s) over d = span x depth share with a = v^2/d x (1 + 9 knob), a
- * trapezoid. A stroke is trough flat, in, crest flat, out; a dwell is its
- * strokes x (tIn + tOut). p: {master, speedIn, speedOut, accelIn, accelOut,
- * dMin, dMax, dwellCrest, dwellTrough} shares and strokes; span, ceiling in
- * the machine's units; rhythm null or {amount (depth share), rise, hold,
- * fall, rest, phase}, which lowers the deep turn per stroke by dropAt.
+ * The planned motion over windowS seconds, as [[t, position share]], the way
+ * AdvancedGenerator runs it: half-strokes count up from 0 (even in toward max
+ * depth, odd out), each from where the last landed. A half takes the
+ * trapezoid d/v + v/a (v = master x half x ceiling, floor 1; a = v^2/d x
+ * (1 + 9 knob)) and holds its dwell x (this half + the one before; the run's
+ * first counts twice). A half under 0.25 mm is a 50 ms rest and owes no dwell.
+ * p: {master, dMin, dMax, speedIn, speedOut, accelIn, accelOut, dwellCrest,
+ * dwellTrough} shares and strokes; span (mm), ceiling (mm/s); refs: the
+ * modulator's pull-to value per key, default 0; mods: per key {amount (ratio),
+ * rise, hold, fall, rest, phase}. Every control takes BaseControl::modifiedValue
+ * = v - (v - ref) x amount x dropAt(cycle); ref is the other depth for the
+ * depth pair. px: the strip's width, which caps the samples per half.
  */
-export function planMotion(p, windowS) {
+export function planMotion(p, windowS, px = 600) {
   const out = [];
-  const { span, ceiling, dMin: lo, dMax: hi } = p;
-  if (!(span > 0 && ceiling > 0 && p.master > 0 && hi > lo && windowS > 0)) return out;
-  const r = p.rhythm, n = r ? r.rise + r.hold + r.fall + r.rest : 0;
-  let t = 0, y = lo, done = false;
+  const { span, ceiling } = p;
+  if (!(span > 0 && ceiling > 0 && p.master > 0 && windowS > 0)) return out;
+  const mv = (key, base, ref, i) => {
+    const m = p.mods && p.mods[key], n = m ? m.rise + m.hold + m.fall + m.rest : 0;
+    if (!(m && m.amount > 0 && n > 0)) return base;
+    return base - (base - ref) * m.amount * dropAt((((i >> 1) + m.phase) % n + n) % n, m);
+  };
+  const ref = (key) => (p.refs && p.refs[key]) || 0;
+  let t = 0, y = p.dMin, done = false;
   const add = (tt, yy) => {
     if (done) return;
     if (tt >= windowS) {
-      const u = tt > t ? (windowS - t) / (tt - t) : 1;
-      out.push([windowS, y + (yy - y) * u]);
+      out.push([windowS, y + (yy - y) * (tt > t ? (windowS - t) / (tt - t) : 1)]);
       done = true;
       return;
     }
@@ -299,26 +309,24 @@ export function planMotion(p, windowS) {
     t = tt;
     y = yy;
   };
-  add(0, lo);
-  for (let i = 0; !done && i < 4000; i++) {
-    const top = n > 0 ? hi - clamp(r.amount, 0, 1) * dropAt((((i - r.phase) % n) + n) % n, r) : hi;
-    const d = Math.max(0, top - lo) * span;
-    const tIn = halfTime(d, p.master * p.speedIn * ceiling, p.accelIn), tOut = halfTime(d, p.master * p.speedOut * ceiling, p.accelOut);
-    if (!tIn || !tOut) { add(windowS, lo); break; }
-    const M = tIn + tOut;
-    // A half, 24 samples: distance share along the trapezoid (accelerate, cruise, decelerate).
-    const half = (T, ta, y0, y1) => {
-      const t0 = t;
-      for (let k = 1; k <= 24; k++) {
-        const u = T * k / 24;
-        const s = u < ta ? u * u / (2 * ta * (T - ta)) : u > T - ta ? 1 - (T - u) ** 2 / (2 * ta * (T - ta)) : (ta / 2 + u - ta) / (T - ta);
-        add(t0 + u, y0 + (y1 - y0) * s);
-      }
-    };
-    add(t + Math.max(0, p.dwellTrough || 0) * M, lo);
-    half(tIn, accTime(d, p.master * p.speedIn * ceiling, p.accelIn), lo, top);
-    add(t + Math.max(0, p.dwellCrest || 0) * M, top);
-    half(tOut, accTime(d, p.master * p.speedOut * ceiling, p.accelOut), top, lo);
+  add(0, p.dMin);
+  let prev = 0;
+  for (let i = 0; !done && i < 20000; i++) {
+    const inH = i % 2 === 0;
+    const tgt = clamp(inH ? mv('dMax', p.dMax, p.dMin, i) : mv('dMin', p.dMin, p.dMax, i), 0, 1);
+    const d = Math.abs(tgt - y) * span;
+    if (d < MIN_TRAVEL_MM) { prev = 0; add(t + REST_S, y); continue; }
+    const sk = inH ? 'speedIn' : 'speedOut', ak = inH ? 'accelIn' : 'accelOut', dk = inH ? 'dwellCrest' : 'dwellTrough';
+    const v = Math.max(1, p.master * Math.max(0, mv(sk, p[sk], ref(sk), i)) * ceiling), A = clamp(mv(ak, p[ak], ref(ak), i), 0, 1);
+    const T = halfTime(d, v, A), ta = accTime(d, v, A), y0 = y, t0 = t;
+    const N = clamp(Math.ceil(T / windowS * px / 3), 2, 24);
+    for (let k = 1; k <= N; k++) {
+      const u = T * k / N;
+      const sh = u < ta ? u * u / (2 * ta * (T - ta)) : u > T - ta ? 1 - (T - u) ** 2 / (2 * ta * (T - ta)) : (ta / 2 + u - ta) / (T - ta);
+      add(t0 + u, y0 + (tgt - y0) * sh);
+    }
+    add(t + Math.max(0, mv(dk, p[dk] || 0, ref(dk), i)) * (T + (prev || T)), tgt);
+    prev = T;
   }
   return out;
 }
@@ -1094,55 +1102,72 @@ function mountCard(api, el, fields) {
   // ---- planned motion: the current parameters to scale over a fixed window (planMotion)
   const limit = api.field('limit.input.speed');
   const wlo = api.field('window.min'), whi = api.field('window.max');
-  let winS = Number(api.prefs.get(WINDOW_KEY));
-  if (!(winS >= WINDOW_S[0] && winS <= WINDOW_S[1])) winS = WINDOW_S[2];
-  const planPath = s('path', { class: 'curve' });
-  const planGrid = s('g');
-  const planSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
-  planSvg.append(planGrid, planPath);
-  const planBox = h('div', { class: 'ap-ed ap-planbox' }, planSvg);
-  const winOut = h('output', { title: 'Window, seconds' });
-  const winBtn = (dir, label, d) => {
-    const b = h('button', { type: 'button', class: 'og-btn ap-tool', 'aria-label': label, title: label });
-    b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '"/></svg>';
-    b.addEventListener('click', () => {
-      const step = dir > 0 ? (winS < 10 ? 1 : winS < 30 ? 5 : 10) : (winS <= 10 ? 1 : winS <= 30 ? 5 : 10);
-      winS = clamp(winS + dir * step, WINDOW_S[0], WINDOW_S[1]);
-      api.prefs.set(WINDOW_KEY, winS);
-      drawPlan();
-    });
-    return b;
-  };
-  const plan = h('div', { class: 'ap-plan' }, planBox,
-    h('div', { class: 'ap-win' }, winBtn(1, 'Longer window', 'M3.5 10.5 8 6l4.5 4.5'), winOut, winBtn(-1, 'Shorter window', 'M3.5 5.5 8 10l4.5-4.5')));
-  let gridFor = 0;
-  function drawPlan() {
-    winOut.textContent = String(winS);
-    if (gridFor !== winS) {
-      gridFor = winS;
-      planGrid.replaceChildren(...Array.from({ length: winS + 1 }, (_, i) => s('line', { class: 'grid', x1: i * 1000 / winS, x2: i * 1000 / winS, y1: 0, y2: 100 })));
+  let plan = null;
+  // Without the ceiling or the window nothing is to scale: no strip.
+  if (limit && wlo && whi) {
+    let winS = Number(api.prefs.get(WINDOW_KEY));
+    if (!(winS >= WINDOW_S[0] && winS <= WINDOW_S[1])) winS = WINDOW_S[2];
+    const planPath = s('path', { class: 'curve' });
+    const planGrid = s('g');
+    const planSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    planSvg.append(planGrid, planPath);
+    const planBox = h('div', { class: 'ap-ed ap-planbox' }, planSvg);
+    const winOut = h('output', { title: 'Window, seconds' });
+    const winBtn = (dir, label, d) => {
+      const b = h('button', { type: 'button', class: 'og-btn ap-tool', 'aria-label': label, title: label });
+      b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '"/></svg>';
+      b.addEventListener('click', () => {
+        const step = dir > 0 ? (winS < 10 ? 1 : winS < 30 ? 5 : 10) : (winS <= 10 ? 1 : winS <= 30 ? 5 : 10);
+        winS = clamp(winS + dir * step, WINDOW_S[0], WINDOW_S[1]);
+        api.prefs.set(WINDOW_KEY, winS);
+        drawPlan();
+      });
+      return b;
+    };
+    const upB = winBtn(1, 'Longer window', 'M3.5 10.5 8 6l4.5 4.5'), downB = winBtn(-1, 'Shorter window', 'M3.5 5.5 8 10l4.5-4.5');
+    plan = h('div', { class: 'ap-plan' }, planBox, h('div', { class: 'ap-win' }, upB, winOut, downB));
+    // Plot y 4..80 of the box; the grid labels own the band under it.
+    const PY = (v) => (80 - v * 76).toFixed(1);
+    const keyOf = new Map(DRIVEN.map(([k]) => [F[k].uid, k]));
+    const speedRef = (f) => unitOf(f, f.min);
+    let gridKey = '', planKey = '';
+    function drawPlan() {
+      winOut.textContent = String(winS);
+      upB.disabled = winS >= WINDOW_S[1];
+      downB.disabled = winS <= WINDOW_S[0];
+      const w = planBox.clientWidth || 300, gk = winS + ':' + w;
+      if (gridKey !== gk) {
+        gridKey = gk;
+        planGrid.replaceChildren(...Array.from({ length: winS + 1 }, (_, i) => s('line', { class: 'grid', x1: i * 1000 / winS, x2: i * 1000 / winS, y1: 0, y2: 80 })));
+        // One label per whole step of 1, 2, 5, 10, 30 or 60 s that clears 28 px.
+        const step = [1, 2, 5, 10, 30, 60].find((n) => n * w / winS >= 28) || 60;
+        planBox.querySelectorAll('.ap-gl').forEach((e) => e.remove());
+        for (let t = 0; t <= winS; t += step) planBox.append(h('span', { class: 'ap-gl', style: 'left:' + (t / winS * 100) + '%' + (t === 0 ? ';transform:none;margin-left:3px' : t === winS ? ';transform:translateX(-100%);margin-left:-3px' : ''), text: String(t) }));
+      }
+      const mm = {};
+      for (const { m, t } of mods) {
+        const k = keyOf.get(t), a = val(m.amount);
+        if (k && a > 0) mm[k] = { amount: a / (m.amount.max || 100), ...Object.fromEntries(MOD.slice(1).map(([n]) => [n, Math.max(0, Math.round(val(m[n]) || 0))])) };
+      }
+      const inp = {
+        master: unitOf(F.master, val(F.master)), speedIn: unitOf(F.speedIn, val(F.speedIn)), speedOut: unitOf(F.speedOut, val(F.speedOut)),
+        accelIn: unitOf(F.accelIn, val(F.accelIn)), accelOut: unitOf(F.accelOut, val(F.accelOut)),
+        dMin: fracOf(F.depthMin, val(F.depthMin)), dMax: fracOf(F.depthMax, val(F.depthMax)),
+        dwellCrest: dw(F.dwellCrest), dwellTrough: dw(F.dwellTrough),
+        span: Number(api.value(whi)) - Number(api.value(wlo)), ceiling: Number(api.value(limit)),
+        refs: { speedIn: speedRef(F.speedIn), speedOut: speedRef(F.speedOut), dwellCrest: F.dwellCrest ? F.dwellCrest.min || 0 : 0, dwellTrough: F.dwellTrough ? F.dwellTrough.min || 0 : 0 },
+        mods: mm,
+      };
+      const key = JSON.stringify([inp, w, winS]);
+      if (key === planKey) return;
+      planKey = key;
+      planPath.setAttribute('d', planMotion(inp, winS, w).map(([t, y], i) => (i ? 'L' : 'M') + (t / winS * 1000).toFixed(1) + ' ' + PY(y)).join(''));
     }
-    // One label per whole step of 1, 2, 5, 10 or 30 s that clears 28 px.
-    const w = planBox.clientWidth || 300, step = [1, 2, 5, 10, 30, 60].find((n) => n * w / winS >= 28) || 60;
-    planBox.querySelectorAll('.ap-gl').forEach((e) => e.remove());
-    for (let t = 0; t <= winS; t += step) planBox.append(h('span', { class: 'ap-gl', style: 'left:' + (t / winS * 100) + '%' + (t === 0 ? ';transform:none;margin-left:3px' : t === winS ? ';transform:translateX(-100%);margin-left:-3px' : ''), text: String(t) }));
-    const lo = fracOf(F.depthMin, val(F.depthMin)), hi = fracOf(F.depthMax, val(F.depthMax));
-    // The rhythm of the modifier riding max depth: its drop, in depth shares, per stroke.
-    const mm = mods.find(({ t }) => t === F.depthMax.uid);
-    const amt = mm ? val(mm.m.amount) : 0;
-    const pts = planMotion({
-      master: unitOf(F.master, val(F.master)), speedIn: unitOf(F.speedIn, val(F.speedIn)), speedOut: unitOf(F.speedOut, val(F.speedOut)),
-      accelIn: unitOf(F.accelIn, val(F.accelIn)), accelOut: unitOf(F.accelOut, val(F.accelOut)),
-      dMin: lo, dMax: hi, dwellCrest: dw(F.dwellCrest), dwellTrough: dw(F.dwellTrough),
-      span: wlo && whi ? Number(api.value(whi)) - Number(api.value(wlo)) : 0, ceiling: limit ? Number(api.value(limit)) : 0,
-      rhythm: amt > 0 ? { amount: amt / (F.depthMax.max - F.depthMax.min), ...Object.fromEntries(MOD.slice(1).map(([k]) => [k, Math.max(0, val(mm.m[k]) || 0)])) } : null,
-    }, winS);
-    planPath.setAttribute('d', pts.map(([t, y], i) => (i ? 'L' : 'M') + (t / winS * 1000).toFixed(1) + ' ' + (94 - y * 88).toFixed(1)).join(''));
+    const planRo = new ResizeObserver(() => drawPlan());
+    planRo.observe(planBox);
+    loops.push(() => planRo.disconnect());
+    updaters.push(drawPlan);
   }
-  const planRo = new ResizeObserver(() => drawPlan());
-  planRo.observe(planBox);
-  loops.push(() => planRo.disconnect());
-  updaters.push(drawPlan);
 
   const tgt = api.field('telemetry.target') || api.field('telemetry.position');
   const pos = api.field('telemetry.position');
@@ -1239,7 +1264,7 @@ function mountCard(api, el, fields) {
     slider(F.master, 'Speed'),
     ...(presets ? [presets] : []),
     stroke.box, stroke.note,
-    plan,
+    ...(plan ? [plan] : []),
     baseNums,
     ...(rhythm ? [rhythm] : []),
     runRow(F.advRun, F.running));

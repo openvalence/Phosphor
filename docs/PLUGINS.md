@@ -420,11 +420,18 @@ Shipped:
   above the rhythm section, the current parameters to scale over a fixed
   window (default 10 s, 2 to 60, a stepper right of the strip: up, number,
   down; steps 1, 5 or 10; kept in `api.prefs`) on a 1 s grid with thinned
-  labels and no caption. Each half is the firmware's trapezoid, v = master x
-  half x `limit.input.speed`, a = v^2/d x (1 + 9 knob), d from
-  `window.min`/`window.max`; a dwell is a flat of dwell x (tIn + tOut); the
-  modifier riding max depth lowers the deep turn per stroke by `dropAt`.
-  Without the ceiling or the window nothing is drawn. Editors, handle
+  labels in a band under the plot and no caption. It runs the way the
+  firmware does (`AdvancedGenerator`): half-strokes from the in half, each
+  from where the last landed, v = master x half x `limit.input.speed`
+  (floor 1 mm/s), a = v^2/d x (1 + 9 knob), d from `window.min`/`window.max`;
+  a dwell holds dwell x (this half + the one before, the run's first
+  counting twice); a half under 0.25 mm is a 50 ms rest that owes no dwell.
+  Every modulator applies per stroke through `BaseControl::modifiedValue`:
+  value - (value - ref) x amount x `dropAt`, ref the control's minimum, and
+  for the depth pair the other depth (max pulls toward min, min toward max),
+  so a depth swing is amount of (max - min). The cycle index is
+  (stroke / 2 + offset) mod steps. Without the ceiling or the window fields
+  the strip is not shown. Editors, handle
   plates and numeric twins sit on the sunk `--screen` plate.
 
   **Dwells** (RFC-095, optional `advgen.dwell_crest` and

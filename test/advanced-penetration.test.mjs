@@ -88,7 +88,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const { bytes: CAT, etag: ETAG } = advgenCatalog();
+let { bytes: CAT, etag: ETAG } = advgenCatalog();
 const ENTRIES = decodeCatalog(CAT);
 const byName = (n) => ENTRIES.find((e) => e.name === n);
 const ADV = byName('pattern-advanced');
@@ -1208,11 +1208,21 @@ if (LIVE) {
     await down.click(); await down.click(); await down.click();
     ok('plan: down steps 15, 10, 9', (await winN()) === '9');
     await up.click(); await up.click(); await up.click(); await up.click(); await up.click();   // 10, 15, 20, 25, 30
+    for (let i = 0; i < 3; i++) await up.click();   // 40, 50, 60
+    ok('plan: the stepper stops at 60 with up disabled', (await winN()) === '60' && await up.isDisabled() && !(await down.isDisabled()));
+    for (let i = 0; i < 3; i++) await down.click();   // 50, 40, 30
+    ok('plan: down steps 60, 50, 40, 30', (await winN()) === '30');
     await page.reload();
     await toPatternPage(page);
     await toAdvanced(page);
     ok('plan: the window persists across a reload', (await winN()) === '30', await winN());
     const labels = await strip.locator('.ap-gl').evaluateAll((es) => es.map((e) => e.getBoundingClientRect()));
+    const band = await page.evaluate(() => {
+      const b = document.querySelector('main.pane .ap .ap-planbox'), p = b.querySelector('path.curve').getBoundingClientRect();
+      const tops = [...b.querySelectorAll('.ap-gl')].map((e) => e.getBoundingClientRect().top);
+      return { pathBottom: p.bottom, labelTop: Math.min(...tops) };
+    });
+    ok('plan: the curve stays out of the label band', band.pathBottom <= band.labelTop, band);
     ok('plan: grid labels never collide', labels.length > 1 && labels.every((r, i) => !i || r.left >= labels[i - 1].right - 0.5), labels.length);
     const plates = await page.evaluate(() => {
       const bg = (q) => getComputedStyle(document.querySelector(q)).backgroundColor;
@@ -1238,6 +1248,20 @@ if (LIVE) {
     ok('drag: 60 px moves the value half as far as the absolute mapping, Shift a tenth', Math.abs(full / absDelta - 0.5) < 0.1 && Math.abs(fine / absDelta - 0.1) < 0.06,
       { full, fine, absDelta });
     await ctx.close();
+  }
+
+  {
+    // Without limit.input.speed there is nothing to scale: no strip at all.
+    const keep = [CAT, ETAG];
+    ({ bytes: CAT, etag: ETAG } = advgenCatalog({ drop: ['limit.input.speed'] }));
+    hubAt(REVIEW);
+    const { ctx, page } = await open({ inputs: false });
+    await toPatternPage(page);
+    await toAdvanced(page);
+    ok('plan: no limit.input.speed role hides the whole strip', (await page.locator('main.pane .ap .ap-stroke').count()) === 1
+      && (await page.locator('main.pane .ap .ap-plan').count()) === 0);
+    await ctx.close();
+    [CAT, ETAG] = keep;
   }
 
   {

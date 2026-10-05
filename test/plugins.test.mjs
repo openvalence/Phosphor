@@ -1085,13 +1085,27 @@ console.log('(h) editor geometry');
     && near(at(pl, tH)[1], 1, 1e-9) && near(at(pl, tH * 2)[1], 0, 1e-9));
   ok('plan: spans exactly the window, from the trough', pl[0][0] === 0 && pl[0][1] === 0 && pl[pl.length - 1][0] === 10);
   ok('plan: the half is monotonic', pl.filter(([t]) => t <= tH).every(([, y], i, a) => !i || y >= a[i - 1][1] - 1e-12));
-  const dwp = planMotion({ ...pm, dwellTrough: 0.5, dwellCrest: 0.25 }, 10);
-  ok('plan: dwells are flats of dwell x (tIn + tOut)', near(dwp[1][0], tH, 1e-9) && near(dwp[1][1], 0)
-    && near(at(dwp, tH * 2)[1], 1, 1e-9) && near(at(dwp, tH * 2.5)[1], 1, 1e-9));
-  const rh = planMotion({ ...pm, rhythm: { amount: 0.5, rise: 2, hold: 1, fall: 0, rest: 1, phase: 0 } }, 20);
-  const tops = []; for (let i = 1; i < rh.length - 1; i++) if (rh[i][1] > rh[i - 1][1] && rh[i][1] >= rh[i + 1][1]) tops.push(rh[i][1]);
-  ok('plan: the rhythm lowers the deep turn per dropAt, then rests at full', near(tops[0], 0.75, 1e-6) && near(tops[1], 0.5, 1e-6)
-    && near(tops[2], 0.5, 1e-6) && near(tops[3], 1, 1e-6), tops);
+  // The run starts as the firmware does: in half, crest hold (the first stroke's clock is 2 x tIn), out half, trough hold.
+  const dwp = planMotion({ ...pm, dwellTrough: 0.25, dwellCrest: 0.5 }, 20);
+  ok('plan: dwells are flats of dwell x (this half + the last); the first counts twice', near(at(dwp, tH * 2)[1], 1, 1e-9)
+    && near(dwp.find(([t, y], i) => i && y === 1 && dwp[i - 1][1] === 1)[0], tH * 2, 1e-9) && near(at(dwp, tH * 3)[1], 0, 1e-9)
+    && near(at(dwp, tH * 3.5)[0], tH * 3.5, 1e-9) && near(at(dwp, tH * 3.5)[1], 0, 1e-9));
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const topsOf = (q, w) => {
+    const r = planMotion(q, w), o = [];
+    for (let i = 1; i < r.length - 1; i++) if (r[i][1] > r[i - 1][1] && r[i][1] >= r[i + 1][1]) o.push(+r[i][1].toFixed(6));
+    return o;
+  };
+  const cyc = { amount: 0.5, rise: 2, hold: 1, fall: 0, rest: 1, phase: 0 };
+  ok('plan: the rhythm lowers the deep turn per dropAt, then rests at full', eq(topsOf({ ...pm, mods: { dMax: cyc } }, 20).slice(0, 4), [0.75, 0.5, 0.5, 1]));
+  ok('plan: the rhythm phase adds to the cycle index', eq(topsOf({ ...pm, mods: { dMax: { ...cyc, phase: 1 } } }, 20).slice(0, 4), [0.5, 0.5, 1, 0.75]));
+  ok('plan: the depth swing is amount of (max - min), with a shallow stop above 0', eq(topsOf({ ...pm, dMin: 0.2, mods: { dMax: cyc } }, 20).slice(0, 4), [0.8, 0.6, 0.6, 1]));
+  const sp = planMotion({ ...pm, mods: { speedIn: { amount: 0.5, rise: 1, hold: 0, fall: 1, rest: 0, phase: 0 } } }, 20);
+  const tSlow = halfTime(100, 0.5 * 0.25 * 400, 0.5);
+  ok('plan: a speed modulator changes that half\'s time (speed 0.5 -> 0.25 of full, twice the cruise)', near(at(sp, tSlow)[1], 1, 1e-9) && tSlow > tH * 1.9);
+  const zt = planMotion({ ...pm, mods: { dMax: { amount: 1, rise: 1, hold: 1, fall: 1, rest: 1, phase: 0 } } }, 10);
+  ok('plan: zero-travel strokes rest 50 ms and the plan carries on to the window end, then moves again',
+    zt[zt.length - 1][0] === 10 && near(zt[1][0], 0.05, 1e-9) && zt[1][1] === 0 && Math.max(...zt.map((q) => q[1])) > 0.9);
   ok('plan: no ceiling or travel draws nothing', planMotion({ ...pm, ceiling: 0 }, 10).length === 0 && planMotion({ ...pm, span: 0 }, 10).length === 0);
 }
 
