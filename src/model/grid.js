@@ -101,24 +101,30 @@ const hits = (placed, r) => placed.some((p) => overlaps(r, p));
 const byReading = (a, b) => a.y - b.y || a.x - b.x;
 
 /**
- * The first-run seed: `items` flow in order, each at the first free rect of
- * its own size around `placed` (an entry with no `w`, or no entry, fills the
- * row; `h` defaults to DEFAULT_H). place() puts an unplaced item the same way.
+ * The first-run seed: `items` flow in order (rank), each at the first free
+ * rect of its own size around `placed`. An entry with no `w`, or no entry,
+ * takes the item's floor width `fit.w(item)` (cells, null before it was
+ * measured) and fills the row without one; `h` defaults to DEFAULT_H. place()
+ * puts an unplaced item the same way.
  * `fit(item, w, h)` is the item's content height in cells at width `w`, or
  * null before it was ever measured; an unplaced item is never drawn shorter.
  */
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
 export function pack(items, map, cols, placed = [], fit = null) {
+  let from = 0;   // rank order: no card lands in a row above the one before it, or a section header would trail its cards
   for (const it of items) {
     const e = map[it.id];
-    const { w, h: h0 } = sizeOf(e, cols);
+    const { w: w0, h: h0 } = sizeOf(e, cols);
+    const fw = fit && fit.w && !(e && e.w != null) ? fit.w({ ...it, ...lookOf(e) }) : 0;
+    const w = fw > 0 ? int(fw, 1, cols, cols) : w0;
     const h = Math.min(MAX_H, Math.max(h0, (fit && fit({ ...it, ...lookOf(e) }, w, h0)) || 0));
     let r = null;
-    for (let y = 0; !r; y++) {
+    for (let y = from; !r; y++) {
       for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
     }
     placed.push(r);
+    from = r.y;
   }
   return placed.sort(byReading);
 }

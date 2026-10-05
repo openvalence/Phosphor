@@ -237,6 +237,8 @@
     const m = need[keyOf(it, orientationOf(w, h))];
     return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
+  // The seed's width for an unplaced card: its floor once measured (grid.js pack); a section header fills the row.
+  fitH.w = (it) => (it.kind !== 'section' && need[keyOf(it, 'h')] ? minOf(it)(cols, 1)[0] : 0);
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
   // Ids measured since their last grow check: a card grows when its content
   // is measured, never because a neighbor moved out of its way.

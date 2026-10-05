@@ -29,7 +29,8 @@
  *   sections   a " / " group is a card under its section's one header row:
  *              Motion's Tuning holds the eleven former Tuning cards, System's
  *              Library its presets card; the header paints no tint, and the
- *              advanced toggle moves neither it nor anything above it
+ *              advanced toggle moves neither it nor anything above it, and
+ *              toggling twice lands every card where it began
  *              (DESIGN §10.11)
  *
  * Live mode (--live): the build-and-reload check against a running valencesim
@@ -382,9 +383,8 @@ if (!LIVE) {
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  ok('sections: no card changes column or width, and the round trip lands where it began',
-     Object.keys(geoHidden).every((id) => geoHidden[id][0] === geo0[id][0] && geoHidden[id][2] === geo0[id][2])
-     && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
+  ok('sections: the round trip lands where it began (cards flow by rank at floor width, so a toggle repacks them)',
+     JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 
@@ -435,7 +435,7 @@ if (!LIVE) {
   await paletteToggle.click();
   ok('palette: Modules puts it away', await page.locator('.palette').count() === 0 && await paletteToggle.getAttribute('aria-pressed') === 'false');
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
-    await page.locator('.home .home-remove').first().click();
+    await page.locator('.home .home-remove').first().evaluate((el) => el.click());
     await page.waitForTimeout(80);
   }
   ok('build: every module deleted', (await topIds(page)).length === 0, await topIds(page));
@@ -511,7 +511,7 @@ if (!LIVE) {
   await editBtn(page).click();
   await paletteToggle.click();
   await page.locator('.home .dash-cell[data-id="' + nestId + '"] button', { hasText: 'Ungroup' }).click();
-  for (let i = 0; i < 10 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().click();
+  for (let i = 0; i < 10 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().evaluate((el) => el.click());
   await page.reload();
   await boot(page, 1280);
   ok('build: an emptied home is not reseeded', (await topIds(page)).length === 0, await topIds(page));
@@ -683,7 +683,7 @@ if (!LIVE) {
   ok('catalog adopted from the sim', up);
   await editBtn(page).click();
   await page.waitForTimeout(150);
-  for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().click();
+  for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) await page.locator('.home .home-remove').first().evaluate((el) => el.click());
   const keys = await page.$$eval('.palette li[data-key]', (els) => els.map((e) => e.dataset.key));
   const want = [keys.find((k) => k.startsWith('hero:')), keys.find((k) => k.startsWith('safety:')),
     keys.find((k) => k.startsWith('role:') || k.startsWith('uid:'))].filter(Boolean);

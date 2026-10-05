@@ -581,6 +581,16 @@ console.log('floor');
   ok('a stored height above the measured one stands', pack([{ id: 'a' }], { a: { h: 6 } }, 40, [], fit)[0].h === 6);
   ok('the fit sees the entry\'s look', pack([{ id: 'a' }], { a: { look: { pres: 'knob' } } }, 40, [],
      (it) => (it.look && it.look.pres === 'knob' ? 7 : 1))[0].h === 7);
+  const fw = Object.assign(() => null, { w: (it) => ({ a: 10, b: 12, c: 30 }[it.id] || 0) });
+  const seeded = pack([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], { d: { w: 5 } }, 40, [], fw);
+  ok('a seeded card takes its floor width, rank order, narrow cards share a row',
+     JSON.stringify(seeded.map((p) => [p.id, p.x, p.y, p.w])) === '[["a",0,0,10],["b",10,0,12],["c",0,1,30],["d",30,1,5]]', JSON.stringify(seeded));
+  ok('an unmeasured floor fills the row; a floor over the grid clamps to it',
+     pack([{ id: 'a' }], {}, 40, [], Object.assign(() => null, { w: () => 0 }))[0].w === 40
+     && pack([{ id: 'a' }], {}, 8, [], fw)[0].w === 8 && pack([{ id: 'c' }], {}, 20, [], fw)[0].w === 20);
+  const sec = pack([{ id: 'a' }, { id: 'head' }, { id: 'b' }], {}, 40, [], Object.assign(() => 4, { w: (it) => (it.id === 'head' ? 0 : 10) }));
+  ok('a seed never rises above the card before it: a full-row header keeps the cards after it below',
+     JSON.stringify(sec.map((p) => [p.id, p.y])) === '[["a",0],["head",4],["b",8]]', JSON.stringify(sec));
   const held = { a: { x: 0, y: 0, w: 8, h: 3 } };
   const ids = commitPin(held, [{ id: 'a' }, { id: 'n' }, { id: 'm' }], 40, null, (it) => (it.id === 'm' ? 2 : it.id === 'a' ? 3 : null));
   ok('a commit holds an add never measured (entered, no rect), writes a measured one', JSON.stringify(ids) === '["n"]' && JSON.stringify(held.n) === '{}'
