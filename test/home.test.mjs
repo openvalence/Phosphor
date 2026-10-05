@@ -384,14 +384,27 @@ if (!LIVE) {
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  // Seeded cards flow by rank at floor widths, so a toggle repacks them: the round trip keeps the
-  // same cards, the header and all above it, and no overlap, not every column or width.
-  const apart = (a, b) => a[0] + a[2] <= b[0] + 1 || b[0] + b[2] <= a[0] + 1 || a[1] + a[3] <= b[1] + 1 || b[1] + b[3] <= a[1] + 1;
-  const ids = Object.keys(geoBack);
-  ok('sections: the round trip keeps the cards, the header and above, and overlaps none',
-     JSON.stringify(Object.keys(geo0).sort()) === JSON.stringify(ids.sort())
-     && still.every((id) => JSON.stringify(geoBack[id]) === JSON.stringify(geo0[id]))
-     && ids.every((a, i) => ids.slice(i + 1).every((b) => apart(geoBack[a], geoBack[b]))), [geoHidden, geoBack]);
+  // A page that does not come back the same after hide/show is a defect: the seed's inputs are canonical.
+  ok('sections: hiding and showing the advanced cards lands every card where it began', JSON.stringify(geoBack) === JSON.stringify(geo0), [geo0, geoBack]);
+  // The same holds across a resize: 1428 -> 1024 equals a fresh 1024 load.
+  const geoOf = (pg) => pg.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => Object.fromEntries(els.map((c) => {
+    const r = c.getBoundingClientRect();
+    return [c.dataset.id, [r.x, r.y, r.width, r.height].map(Math.round)];
+  })));
+  await page.setViewportSize({ width: 1428, height: 900 });
+  await page.waitForTimeout(900);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(1200);
+  const resized = await geoOf(page);
+  const fr = await open(1024, 768);
+  await fr.page.click('nav.rail [role=tab][title="Motion"]');
+  await fr.page.waitForTimeout(150);
+  const shutFresh = fr.page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+  for (let i = 0; i < 40 && await shutFresh.count(); i++) await shutFresh.first().click();
+  await fr.page.waitForTimeout(1500);
+  const fresh = await geoOf(fr.page);
+  ok('sections: a 1428 -> 1024 resize lays out the same as a fresh 1024 load', JSON.stringify(resized) === JSON.stringify(fresh), [resized, fresh]);
+  await fr.ctx.close();
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 

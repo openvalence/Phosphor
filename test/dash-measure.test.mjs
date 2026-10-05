@@ -228,5 +228,5 @@ for (const [dpr, scale] of [[1.25, 1], [2, 1], [1.25, 1.25]]) {
 
 await browser.close();
 srv.close();
-console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- card columns hold the measure.'));
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- card bodies follow the field floor.'));
 process.exit(fails ? 1 : 0);

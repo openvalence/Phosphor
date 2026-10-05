@@ -112,41 +112,30 @@ const byReading = (a, b) => a.y - b.y || a.x - b.x;
 // ponytail: O(n^2 x rows) collision scan, fine for dozens of items; an
 // occupancy bitmap if a layout ever holds hundreds.
 export function pack(items, map, cols, placed = [], fit = null) {
-  // No seeded row ends in a gutter (DESIGN §10.5): the card at a row's end stretches to the edge.
-  // A trial flow finds those cards; the real flow gives them the full width up front, so their
-  // height and everything packed after them are fitted at the width they end up with
-  // (the old height until the new width is measured, so no unmeasured width packs short).
-  const seeds = new Set();
-  const trial = flow(items, map, cols, placed.slice(), fit, {}, seeds);
-  const over = {};
-  for (const r of trial.sort((a, b) => b.x - a.x)) {
-    if (!seeds.has(r.id)) continue;
-    if (!hits(trial.filter((q) => q !== r), { x: r.x, y: r.y, w: cols - r.x, h: r.h })) over[r.id] = [cols - r.x, r.w];
-  }
-  const out = flow(items, map, cols, placed, fit, over);
-  return out.sort(byReading);
-}
-
-function flow(items, map, cols, placed, fit, over, seeds = new Set()) {
+  const seeded = [];
   let from = 0;   // rank order: no card lands in a row above the one before it, or a section header would trail its cards
   for (const it of items) {
     const e = map[it.id];
     const { w: w0, h: h0 } = sizeOf(e, cols);
     const fw = fit && fit.w && !(e && e.w != null) ? fit.w({ ...it, ...lookOf(e) }) : 0;
-    const [wide, narrow] = over[it.id] || [];
-    const w = wide || (fw > 0 ? int(fw, 1, cols, cols) : w0);
-    // A stretched card not yet measured at its new width keeps the height it had at the old one.
-    const at = (x) => (fit && fit({ ...it, ...lookOf(e) }, x, h0)) || 0;
-    const h = Math.min(MAX_H, Math.max(h0, at(w) || (narrow ? at(narrow) : 0)));
+    const w = fw > 0 ? int(fw, 1, cols, cols) : w0;
+    const h = Math.min(MAX_H, Math.max(h0, (fit && fit({ ...it, ...lookOf(e) }, w, h0)) || 0));
     let r = null;
     for (let y = from; !r; y++) {
       for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
     }
-    if (fw > 0) seeds.add(r.id);
     placed.push(r);
     from = r.y;
+    if (fw > 0) seeded.push(r);
   }
-  return placed;
+  // No seeded row ends in a gutter (DESIGN §10.5): the card at a row's end stretches to the edge and
+  // keeps its placement height (its content only gets shorter at the wider width). `fit` is only ever
+  // asked at seed widths, so the result never depends on what was measured after a stretch.
+  for (const r of seeded.sort((a, b) => b.x - a.x)) {
+    const w = cols - r.x;
+    if (!hits(placed.filter((q) => q !== r), { x: r.x, y: r.y, w, h: r.h })) r.w = w;
+  }
+  return placed.sort(byReading);
 }
 
 /**

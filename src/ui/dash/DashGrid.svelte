@@ -215,6 +215,13 @@
     const [px, py] = padOf(cell);
     return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
   }
+  /** Card `cell`'s height in px (gutter included) as if it were `cells` wide: the seed's canonical height, whatever width it is drawn at. */
+  function measureAt(cell, cells) {
+    const it = cell.firstElementChild;
+    if (!it || it.classList.contains('open')) return null;
+    const [px, py] = padOf(cell);
+    return styled(it, 'width', Math.max(0, cells * grid.cell - px) + 'px', () => styled(it, 'height', 'auto', () => it.getBoundingClientRect().height)) + py;
+  }
   /** Cells of content height at width `w`: the tallest drawn at `w` or wider (narrower only wraps more); 0 unmeasured. */
   function tallAt(m, w) {
     let px = 0;
@@ -231,27 +238,22 @@
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
-  /** grid.js pack `fit`: an item's floor height in cells at width `w`, null before it was drawn there. */
+  // The seed's width for an unplaced card (grid.js pack `fit.w`): its measured floor, never under a
+  // field floor (FIELD_FLOOR_COLS layout columns of 2 rem) or its declared cells, a plugin's at least
+  // half the row. The floor part (`s0`) is kept from the card's first measure so a later content change
+  // (a write in flight) never moves a card; a section header fills the row.
+  let gen = 0;
+  const seedFor = (it, m) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? Math.max(m.s0, Math.floor(cols / 2)) : m.s0));
+  const seedOf = (it) => { const m = need[keyOf(it, 'h')]; return m ? seedFor(it, m) : 0; };
+  /** grid.js pack `fit`: an item's height in cells at width `w`. At its seed width: measured at that width (`sh`), null before; elsewhere the last height drawn there. */
   function fitH(it, w, h) {
     const m = need[keyOf(it, orientationOf(w, h))];
-    return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
+    if (!m) return null;
+    if (m.sh && m.sh[w] != null) return Math.max(((it.min && it.min(it.look, 'h')) || RESIZE_FLOOR)[1], cellsFor(m.sh[w], grid.cell));
+    if (seedFor(it, m) === w) return null;
+    return m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
-  // The seed's width for an unplaced card: its measured floor, never under a field floor
-  // (FIELD_FLOOR_COLS layout columns of 2 rem), kept from first measure so a later content
-  // change (a write in flight) never moves a card; a section header fills the row.
-  const seedW = new Map();
-  fitH.w = (it) => {
-    const k = keyOf(it, 'h');
-    if (it.kind === 'section' || !(seedW.has(k) || need[k])) return 0;
-    if (!seedW.has(k)) {
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      // A hero (a category page's card) declares its own cells (host.js registerHero).
-      const declared = (it.hero && it.hero.cells && it.hero.cells.h[0]) || 0;
-      seedW.set(k, Math.max(minOf(it)(cols, 1)[0], declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell)));
-    }
-    // A plugin card is an application (an editor, a player): half the row, never under its declared minimum.
-    return it.kind === 'plugin' || (it.hero && it.hero.plugin) ? Math.max(seedW.get(k), Math.ceil(cols / 2)) : seedW.get(k);
-  };
+  fitH.w = seedOf;
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
   // Ids measured since their last grow check: a card grows when its content
   // is measured, never because a neighbor moved out of its way.
@@ -271,14 +273,24 @@
       const el = cellEls.get(p.id);
       const k = keyOf(p, orientationOf(p.w, p.h));
       const o = need[k];
-      if (!el || (o && !dirty.has(p.id) && o.hs[p.w] != null)) continue;
-      const m = measure(el);
-      if (!m) continue;
-      fresh.add(p.id);
+      const stale = !o || dirty.has(p.id);
+      const drawn = stale || o.hs[p.w] == null;
+      const seedSh = !stale && o.sh[seedFor(p, o)] == null && seedFor(p, o) > 0;
+      if (!el || !(drawn || seedSh)) continue;
+      const m = drawn ? measure(el) : null;
+      if (drawn && !m) continue;
+      if (drawn) fresh.add(p.id);
       // A content change forgets the heights drawn at other widths.
-      const hs = { ...(o && !dirty.has(p.id) ? o.hs : {}), [p.w]: m.h };
-      const w = Math.max(m.w, o ? o.w : 0);
-      if (!o || w !== o.w || JSON.stringify(hs) !== JSON.stringify(o.hs)) { need[k] = { w, hs }; grew = true; }
+      const hs = drawn ? { ...(o && !stale ? o.hs : {}), [p.w]: m.h } : o.hs;
+      const w = drawn ? Math.max(m.w, o ? o.w : 0) : o.w;
+      const declared = (p.hero && p.hero.cells && p.hero.cells.h[0]) || 0;
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const s0 = o && o.gen === gen ? o.s0
+        : Math.max(((p.min && p.min(p.look, 'h')) || RESIZE_FLOOR)[0], cellsFor(w, grid.cell), declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell));
+      const e = { w, hs, s0, gen, sh: !stale && o.gen === gen ? { ...o.sh } : {} };
+      const sw = seedFor(p, e);
+      if (sw > 0 && e.sh[sw] == null) { const h = measureAt(el, sw); if (h != null) e.sh[sw] = h; }
+      if (!o || JSON.stringify(e) !== JSON.stringify(o)) { need[k] = e; grew = true; }
     }
     dirty.clear();
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
@@ -307,7 +319,7 @@
     return () => l.measured(null);
   });
   // The look scale resizes every font without touching the DOM.
-  $effect(() => onTheme(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); }));
+  $effect(() => onTheme(() => { gen++; for (const id of cellEls.keys()) dirty.add(id); later(); }));
   $effect(() => {
     // A card's content changed (catalog adoption, a presentation, an option list, a nest member's floor): measure it again.
     const top = (n) => { while (n && n.parentElement !== gridEl) n = n.parentElement; return n; };
@@ -315,8 +327,8 @@
       for (const r of recs) { const c = top(r.target); if (c && c.dataset.id) dirty.add(c.dataset.id); }
       if (dirty.size) later();
     });
-    mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor'] });
-    document.fonts?.ready.then(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); });
+    mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor', 'data-extent'] });
+    document.fonts?.ready.then(() => { gen++; for (const id of cellEls.keys()) dirty.add(id); later(); });
     return () => { mo.disconnect(); if (frame) cancelAnimationFrame(frame); frame = 0; };
   });
   const ORIENT = { h: 'horizontal', v: 'vertical' };
@@ -826,7 +838,7 @@
     {@render selbar()}
   {/if}
 
-  <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
+  <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-extent={placed.reduce((m, q) => Math.max(m, q.y + q.h), 0)} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols + (!given && editing && palette.shown && palette.open ? ';--reserve:' + palette.h + 'px' : '')} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>

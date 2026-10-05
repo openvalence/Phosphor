@@ -591,6 +591,15 @@ console.log('floor');
   const sec = pack([{ id: 'a' }, { id: 'head' }, { id: 'b' }], {}, 40, [], Object.assign(() => 4, { w: (it) => (it.id === 'head' ? 0 : 10) }));
   ok('a seed never rises above the card before it: a full-row header keeps the cards after it below',
      JSON.stringify(sec.map((p) => [p.id, p.y])) === '[["a",0],["head",4],["b",8]]', JSON.stringify(sec));
+  // The seed asks `fit` at seed widths only and a stretched card keeps its placement height, so
+  // packing again after the stretched widths were measured gives the same result.
+  const asked = [];
+  const wfit = Object.assign((it, w) => { asked.push(w); return w >= 20 ? 2 : 5; }, { w: (it) => ({ a: 10, b: 12, c: 8 }[it.id] || 0) });
+  const first = pack([{ id: 'a' }, { id: 'b' }, { id: 'c' }], {}, 40, [], wfit);
+  ok('fit is asked at seed widths only', asked.every((w) => [10, 12, 8].includes(w)), asked.join());
+  ok('the row end stretches and keeps its placement height',
+     JSON.stringify(first.map((p) => [p.id, p.x, p.w, p.h])) === '[["a",0,10,5],["b",10,12,5],["c",22,18,5]]', JSON.stringify(first));
+  ok('packing again gives the same result', JSON.stringify(pack([{ id: 'a' }, { id: 'b' }, { id: 'c' }], {}, 40, [], wfit)) === JSON.stringify(first));
   const held = { a: { x: 0, y: 0, w: 8, h: 3 } };
   const ids = commitPin(held, [{ id: 'a' }, { id: 'n' }, { id: 'm' }], 40, null, (it) => (it.id === 'm' ? 2 : it.id === 'a' ? 3 : null));
   ok('a commit holds an add never measured (entered, no rect), writes a measured one', JSON.stringify(ids) === '["n"]' && JSON.stringify(held.n) === '{}'
