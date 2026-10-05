@@ -28,25 +28,19 @@
 </script>
 
 <div class="hero limits-hero">
-  <section class="limit-group">
-    <h3 class="group-title">Jog limits <span class="group-sub">ceiling, not target</span></h3>
-    <div class="fld2">
-      {#each jogKnobs as f (f.uid)}
+  <p class="hint">Ceilings, not targets</p>
+  <div class="card-body">
+    <h3 class="card-sub">Jog limits</h3>
+    {#each jogKnobs as f (f.uid)}
+      <Field field={f} />
+    {/each}
+    {#if inputKnobs.length}
+      <h3 class="card-sub">Machine-driven limits</h3>
+      {#each inputKnobs as f (f.uid)}
         <Field field={f} />
       {/each}
-    </div>
-  </section>
-
-  {#if inputKnobs.length}
-    <section class="limit-group">
-      <h3 class="group-title">Machine-driven limits <span class="group-sub">ceiling, not target</span></h3>
-      <div class="fld2">
-        {#each inputKnobs as f (f.uid)}
-          <Field field={f} />
-        {/each}
-      </div>
-    </section>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -57,43 +51,14 @@
     padding: var(--gap);
     display: flex;
     flex-direction: column;
-    gap: calc(var(--gap) * 1.25);
+    gap: var(--sp-3);
   }
-
-  .limit-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .group-title {
+  .hint {
     margin: 0;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--ink);
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
+    color: var(--ink-dim);
+    font-size: 0.78rem;
   }
-  .group-sub {
-    font-size: 0.68rem;
-    font-weight: 400;
-    color: var(--ink-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-
-  /* OG .fld2 — compact slider grid (mock r6, Pattern card), same recipe
-     as PatternWidget's: 220px columns, so one column on a phone (a fixed
-     1fr 1fr overflows a 360px screen). Field.svelte owns every other visual (label, chip,
-     hairline slider); this only owns the grid rhythm and tightens the
-     slider's vertical margin to the OG's fld2-specific value. */
-  .fld2 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px 16px;
-  }
-  .fld2 :global(input[type='range']) {
+  .card-body :global(input[type='range']) {
     margin: 8px 0 2px;
   }
 </style>

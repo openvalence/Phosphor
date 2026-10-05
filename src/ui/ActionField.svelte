@@ -21,7 +21,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
-  let { action } = $props();
+  let { action, title = '' } = $props();
 
   const opLabel = (i) => optionLabel(action, i).replace(/_/g, ' ');
   const ops = $derived(action.options
@@ -87,7 +87,7 @@
   <!-- One fixed line in the head row for the ladder, else the gate (laws 3,
        5), as Field carries it: no state changes the card's height. -->
   <div class="field-head">
-    <span class="field-label">{labelFor(action)}</span>
+    <span class="field-label">{title || labelFor(action)}</span>
     <span class="state" class:why={!statusText} role="status"
           title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
   </div>
@@ -101,11 +101,11 @@
                onchange={(e) => (draft[p.key] = e.currentTarget.checked)} />
       {:else if p.type === CBOR_FIELD.tstr_t}
         <!-- RFC-009.4: a secret payload masks like Field's secret widget. -->
-        <input type={p.secret ? 'password' : 'text'} autocomplete={p.secret ? 'new-password' : undefined}
+        <input class="og-num" type={p.secret ? 'password' : 'text'} autocomplete={p.secret ? 'new-password' : undefined}
                value={draft[p.key] ?? ''}
                oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
       {:else}
-        <input type="number" min={p.min} max={p.max}
+        <input class="og-num" type="number" min={p.min} max={p.max}
                step={p.type === CBOR_FIELD.f32_t ? 'any' : 1} value={draft[p.key] ?? ''}
                oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
       {/if}
@@ -141,7 +141,7 @@
   /* Hub labels render as sent (COPY rule 8). */
   .ops button { min-height: var(--tap); padding: 0 14px; }
   .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
-  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; }
+  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; padding: 0 var(--sp-3); }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   /* Field's .ladder slot: basis 0, one clipped 14 px line. */
   .state {

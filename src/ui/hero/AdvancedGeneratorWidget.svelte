@@ -69,7 +69,7 @@
 {#snippet modulator(m, rides)}
   <section class="mod">
     <h4>{m.amount.group || 'Modulator'} (rides {rides}){isOff(m) ? ': off' : ''}</h4>
-    <div class="grid">
+    <div class="card-body">
       {#each MOD_KEYS as k (k)}<Field field={m[k]} />{/each}
     </div>
   </section>
@@ -82,7 +82,7 @@
     {#if fields.mode}<Field field={fields.mode} />{/if}
   </div>
 
-  <div class="grid">
+  <div class="card-body">
     {#each BASE as k (k)}<Field field={fields[k]} />{/each}
   </div>
 
@@ -95,7 +95,7 @@
 
   {#if fields.presetOp}
     <section class="block">
-      <ActionField action={fields.presetOp} />
+      <ActionField action={fields.presetOp} title="Presets" />
       {#if presets}<Roster store={presets.store} roster={presets.roster} />{/if}
     </section>
   {/if}
@@ -117,11 +117,6 @@
     gap: 8px 16px;
   }
   .head > :global(*) { flex: 1 1 180px; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px 16px;
-  }
   .block {
     border-top: 1px solid var(--line);
     padding-top: var(--gap);

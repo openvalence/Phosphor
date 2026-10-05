@@ -72,7 +72,7 @@
 
 <div class="hero pattern-hero">
   <div class="pattern-topline">
-    <span class="pattern-state" data-shadow={statusOf(running)}>{patternStateText}</span>
+    <span class="pattern-state" data-shadow={statusOf(running)} title={headReason || undefined}>{headReason || patternStateText}</span>
   </div>
 
   <div class="pattern-head">
@@ -87,7 +87,6 @@
   <!-- RENDERING §10.1: co-located with run/stop, the shared switch (Field
        confirms false -> true first). -->
   {#if bgRun}<Field field={bgRun} />{/if}
-  {#if headReason}<p class="hint">{headReason}</p>{/if}
 
   {#if select.options && select.options.length}
     <!-- OG .pat-grid/.pat-tile, label-only: a waveform glyph is a catalog/RFC
@@ -112,7 +111,7 @@
          widget verbatim (label top-left, recessed value chip top-right,
          hairline range below) instead of a second hand-rolled slider, so
          these rows are pixel-identical to every other slider in the app. -->
-    <div class="fld2">
+    <div class="card-body">
       {#each knobs as f (f.uid)}
         <Field field={f} />
       {/each}
@@ -138,6 +137,10 @@
     justify-content: flex-end;
   }
   .pattern-state {
+    min-height: 1em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--mono);
     font-weight: var(--num-wght);
     font-variation-settings: 'wdth' 90;
@@ -191,13 +194,13 @@
      the OG's Pattern card was not). */
   /* Equal rows, so a two-line label never makes its tile the odd one. */
   .pattern-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-    grid-auto-rows: 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 7px;
   }
   .pat-tile {
-    min-height: var(--tap);
+    flex: 1 1 72px;
+    min-height: max(var(--tap), 52px);
     padding: 8px 4px;
     border-radius: var(--r-s);
     border: 1px solid var(--line-2);
@@ -220,17 +223,7 @@
   .pattern-grid:is([data-shadow='pending'], [data-shadow='overdue']) .pat-tile.on .pat-tile-label { color: var(--intent); }
   .pat-tile:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* OG .fld2 — compact slider grid (mock r6, Pattern card): 220px columns,
-     so one column on a phone (a fixed 1fr 1fr overflows 360px). Field.svelte
-     owns every other visual (label, chip, hairline slider); this only owns
-     the grid rhythm and tightens the slider's vertical margin to the OG's
-     fld2-specific value (the page-wide default is roomier). */
-  .fld2 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-    gap: 12px 16px;
-  }
-  .fld2 :global(input[type='range']) {
+  .card-body :global(input[type='range']) {
     margin: 8px 0 2px;
   }
 
