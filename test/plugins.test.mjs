@@ -53,7 +53,7 @@ import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
 import {
   snap, halfTime, speedInAt, speedOutAt, accelForEase, strokeGeom, strokeValue, onCurve, atDepth, stairGeom, stairValue,
-  dwellAt, DWELL_CAP,
+  dwellAt, DWELL_CAP, DWELL_SPAWN, planMotion,
   linkedInAt, linkedOutAt, linkSpan, linkPartner, linkRescale, placeLabels, densify,
 } from '../plugins/factory/advanced-penetration/index.js';
 import { advgenCatalog } from './fixtures/advgen-roles-catalog.mjs';
@@ -1074,6 +1074,25 @@ console.log('(h) editor geometry');
   ok('staircase: amp fader to amount', near(stairValue.amount(pct, st, 0, st.amp.y), 50));
   ok('staircase: phase marker wraps the cycle', near(stairValue.phase(pct, st, st.phase.x), 2));
   ok('staircase: amount 0 is flat', stairGeom({ ...c, amount: 0 }, 100, ML).bars.every((y) => y === ML.YT));
+
+  // The planned motion (ph-mdqo.8): the firmware's trapezoid halves, dwells as flats, the rhythm per stroke.
+  ok('dwell: a plus writes 0.01 strokes', DWELL_SPAWN === 0.01);
+  const pm = { master: 0.5, speedIn: 0.5, speedOut: 0.5, accelIn: 0.5, accelOut: 0.5, dMin: 0, dMax: 1, span: 100, ceiling: 400 };
+  const tH = halfTime(100, 0.5 * 0.5 * 400, 0.5);   // 100 mm at 100 mm/s: d/v + v/a
+  const at = (pts, t) => { const i = pts.findIndex(([x]) => x >= t - 1e-9); return pts[i]; };
+  const pl = planMotion(pm, 10);
+  ok('plan: the first half takes the trapezoid time and ends at the deep turn', near(tH, 1 + 1 / 5.5, 1e-9) && near(at(pl, tH)[0], tH, 1e-9)
+    && near(at(pl, tH)[1], 1, 1e-9) && near(at(pl, tH * 2)[1], 0, 1e-9));
+  ok('plan: spans exactly the window, from the trough', pl[0][0] === 0 && pl[0][1] === 0 && pl[pl.length - 1][0] === 10);
+  ok('plan: the half is monotonic', pl.filter(([t]) => t <= tH).every(([, y], i, a) => !i || y >= a[i - 1][1] - 1e-12));
+  const dwp = planMotion({ ...pm, dwellTrough: 0.5, dwellCrest: 0.25 }, 10);
+  ok('plan: dwells are flats of dwell x (tIn + tOut)', near(dwp[1][0], tH, 1e-9) && near(dwp[1][1], 0)
+    && near(at(dwp, tH * 2)[1], 1, 1e-9) && near(at(dwp, tH * 2.5)[1], 1, 1e-9));
+  const rh = planMotion({ ...pm, rhythm: { amount: 0.5, rise: 2, hold: 1, fall: 0, rest: 1, phase: 0 } }, 20);
+  const tops = []; for (let i = 1; i < rh.length - 1; i++) if (rh[i][1] > rh[i - 1][1] && rh[i][1] >= rh[i + 1][1]) tops.push(rh[i][1]);
+  ok('plan: the rhythm lowers the deep turn per dropAt, then rests at full', near(tops[0], 0.75, 1e-6) && near(tops[1], 0.5, 1e-6)
+    && near(tops[2], 0.5, 1e-6) && near(tops[3], 1, 1e-6), tops);
+  ok('plan: no ceiling or travel draws nothing', planMotion({ ...pm, ceiling: 0 }, 10).length === 0 && planMotion({ ...pm, span: 0 }, 10).length === 0);
 }
 
 console.log(fails ? '\nFAIL — ' + fails + ' assertion(s)' : '\nPASS — plugin host');
