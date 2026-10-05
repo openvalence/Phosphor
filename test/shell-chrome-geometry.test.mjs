@@ -476,20 +476,24 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - s.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 }; });
   const sb0 = await sbox();
   ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
+  // ph-p43h: the top bar and the status row are full bleed; the status text keeps a --gap inset at both ends.
+  const bleed = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), t = r('.topstrip'), f = r('.footstrip');
+    return { t: [t.left, t.width], f: [f.left, f.width], iw: innerWidth, ow: document.documentElement.scrollWidth }; });
+  ok(tag + ': the top bar and the status row span the window edge to edge, no overflow',
+    bleed.t[0] === 0 && bleed.f[0] === 0 && Math.abs(bleed.t[1] - bleed.iw) < 0.5 && Math.abs(bleed.f[1] - bleed.iw) < 0.5 && bleed.ow <= bleed.iw, JSON.stringify(bleed));
   if (w >= 960) {
-    // style.css .og-panel: outline 1px at a 4px offset, so the panel's frame reaches 5px past its box.
-    // The content's edge is its scrollport's. Scrollbars off (default): no track, the visible edge is
-    // the frame's; on, the reserved 4 px track sits past the frame (DESIGN §10.3).
+    // The sidebar is flush on the window's left edge; the gaps are rail | gap | content | gap. Scrollbars off (default):
+    // the content ends one --gap from the window edge; on, the reserved 4 px track sits inside that gap (DESIGN §10.3).
     for (const on of [false, true]) {
       const edges = await fp.evaluate((on) => { document.documentElement.toggleAttribute('data-scrollbars', on);
-        const r = (s) => document.querySelector(s).getBoundingClientRect(), p = r('.hero-strip .og-panel'), a = r('nav.rail'), c = document.querySelector('.content'), cb = c.getBoundingClientRect();
-        const out = [a.left - p.left, p.right - (cb.left + c.clientWidth), c.offsetWidth - c.clientWidth, p.right - cb.right].map((v) => Math.round(v * 10) / 10);
+        const a = document.querySelector('nav.rail').getBoundingClientRect(), c = document.querySelector('.content'), cb = c.getBoundingClientRect();
+        const pr = document.createElement('i'); pr.style.paddingLeft = 'var(--gap)'; document.body.append(pr); const gap = parseFloat(getComputedStyle(pr).paddingLeft); pr.remove();
+        const out = [a.left, cb.left - a.right - gap, innerWidth - (cb.left + c.clientWidth) - gap, c.offsetWidth - c.clientWidth].map((v) => Math.round(v * 10) / 10);
         document.documentElement.removeAttribute('data-scrollbars');
         return out; }, on);
       const st = on ? ' (scrollbars on)' : ' (scrollbars off)';
-      ok(tag + ': the rail and the content reach the hero panel frame on both sides' + st, edges[0] === -5 && edges[1] === -5, edges.join(' / '));
-      ok(tag + (on ? ': the content reserves its 4 px track past the frame' : ': no track, the content box ends at the frame') + st,
-        on ? edges[2] === 4 && edges[3] === -9 : edges[2] === 0 && edges[3] === -5, edges.join(' / '));
+      ok(tag + ': the rail is flush left, one gap to the content, one gap on its right edge' + st, edges[0] === 0 && Math.abs(edges[1]) <= 0.5 && Math.abs(edges[2]) <= 0.5, edges.join(' / '));
+      ok(tag + (on ? ': the content reserves its 4 px track inside the right gap' : ': no track') + st, on ? edges[3] === 4 : edges[3] === 0, edges.join(' / '));
     }
   }
   if (w >= 960) {

@@ -598,14 +598,12 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap);
-    padding-top: var(--gap);
-    /* The hero panel's frame (style.css .og-panel: a 4px offset, 1px outline)
-       reaches 5px past its box; the rail and the content reach it too, and
-       with the scrollbars pref on, the content's track sits past it on the
-       right (style.css [data-shade]). --track must fit the .app padding left
-       past the hero frame. */
+    /* rail | gap | content | gap: the sidebar is flush on the window's left
+       edge, one --gap under the hero bar and above the status row. */
+    padding: var(--gap) var(--gap) var(--gap) 0;
+    /* With the scrollbars pref on, the content's track sits inside the right
+       gap (style.css [data-shade]). */
     --track: 0px;
-    margin: 0 calc(-5px - var(--track)) 0 -5px;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
@@ -615,6 +613,7 @@
      must scroll with it, never overflow the non-scrolling column. */
   .content {
     position: relative;
+    margin-right: calc(var(--track) * -1);
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
@@ -756,7 +755,7 @@
     position: sticky;
     top: var(--strip-h, 0px);
     z-index: 15;
-    margin: 0 calc(var(--gap) * -1);
+    margin: 0 calc(var(--app-pad) * -1);
     padding: var(--sp-3) var(--gap);
     background: color-mix(in srgb, var(--bg) 92%, transparent);
     backdrop-filter: blur(8px);
@@ -822,7 +821,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100%;
-    padding-bottom: 0;
+    padding-block: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes

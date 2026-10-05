@@ -98,8 +98,9 @@
     overflow: hidden;
     white-space: nowrap;
     gap: var(--sp-4);
-    /* em of the fixed 11 px type, not rem: the row's height holds while the UI scale steps. */
-    padding: .727em var(--gap);
+    /* em of the fixed 11 px type, not rem: the row's box and the scale group's edge hold while the UI scale steps. */
+    margin: 0 calc(var(--app-pad) * -1);
+    padding: .727em 1.09em;
     background: var(--bg-raised);
     border-top: 1px solid var(--line);
     color: var(--ink-faint);

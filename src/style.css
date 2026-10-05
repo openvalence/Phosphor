@@ -804,9 +804,14 @@ select:focus { outline: none; border-color: var(--highlight); }
   /* Full window width at every size (DESIGN §10.4); prose keeps its own
      measure (--measure). The top strip (ui/TopStrip.svelte) is in flow, so
      no chrome reserve lives here. */
-  padding-left: var(--gap);
-  padding-right: var(--gap);
+  padding-inline: var(--app-pad);
 }
+/* The desktop frame owns its insets (App.svelte .frame): the sidebar sits
+   flush on the window's left edge and the bars run full bleed. The tab-strip
+   layouts (phone, glance, no hub yet) keep the --gap side margin; TopStrip
+   and FootStrip bleed out of --app-pad, whatever it is. */
+:root { --app-pad: 0px; }
+.app:not(:has(> .frame)) { --app-pad: var(--gap); }
 
 /* Mobile: a normally-scrolling page. Only the page footer is fixed to the
    bottom edge (DESIGN §10.3); it reserves its own height here
