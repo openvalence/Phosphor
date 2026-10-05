@@ -593,9 +593,9 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     }
     ok(tag + ': a category page grows its pill with the operations strip', !!hit, String(hit));
     if (hit) {
-      const strip = await fp.evaluate(() => { const p = document.querySelector('.rail-pill'), o = p.querySelector('.rail-ops'), t = p.querySelector('.rail-tab');
+      const strip = await fp.evaluate(() => { const p = document.querySelector('.rail-pill.ops'), o = p.querySelector('.rail-ops'), t = p.querySelector('.rail-tab');
         return { inside: p.contains(o), labels: [...o.querySelectorAll('button')].map((b) => b.textContent.trim().replace(/^\d+/, '#')), cols: getComputedStyle(o).gridTemplateColumns.split(' ').length,
-          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-pill').length,
+          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-pill.ops').length,
           inset: o.getBoundingClientRect().left - t.getBoundingClientRect().left }; });
       ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.inside && strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
     }
