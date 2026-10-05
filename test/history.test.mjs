@@ -36,6 +36,12 @@ pushEntry(g, { uid: 'b', before: 0, after: 1, t: 9e6, trial: true });
 pushEntry(g, { uid: 'b', before: 1, after: 0, t: 9e6 + 1 });
 ok('a trial and a durable write never share an entry', g.length === 3);
 
+const dg = [];
+pushEntry(dg, { uid: 'd', before: 0.5, after: 0.3, t: 1e7 });
+pushEntry(dg, { uid: 'd', before: 0.3, after: 0.5, t: 1e7 + 100 });
+pushEntry(dg, { uid: 'd', before: 0.3, after: 0.65, t: 1e7 + 200 });
+ok('a drag back through its start reopens from the start', dg.length === 1 && dg[0].before === 0.5 && dg[0].after === 0.65, JSON.stringify(dg));
+
 const b0 = fillBaseline(null, [{ uid: 'x', cur: 1 }, { uid: 'y', cur: undefined }]);
 ok('the baseline takes reported values only', b0.x === 1 && !('y' in b0));
 const b1 = fillBaseline(b0, [{ uid: 'x', cur: 9 }, { uid: 'y', cur: 4 }]);

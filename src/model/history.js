@@ -7,7 +7,8 @@
  * - Values are what the machine reported before and applied after, never a
  *   request. A secret never enters: the caller filters it.
  * - A write to the same field within GESTURE_MS of the newest entry extends
- *   that entry (a drag is one step); an entry back at its before is dropped.
+ *   that entry (a drag is one step); an entry back at its before is dropped,
+ *   its start kept on `list.tomb` so the gesture's next write reopens from it.
  */
 import { sameValue } from './merge.js';
 
@@ -20,8 +21,15 @@ export function pushEntry(list, e, max = MAX) {
   if (last && last.uid === e.uid && e.t - last.t < GESTURE_MS && !!last.trial === !!e.trial) {
     last.after = e.after;
     last.t = e.t;
-    if (sameValue(last.before, last.after)) { list.pop(); return null; }
+    if (sameValue(last.before, last.after)) { list.pop(); list.tomb = { uid: last.uid, before: last.before, t: e.t, trial: last.trial }; return null; }
     return last;
+  }
+  // A gesture that passed back through its start: the next write of it reopens from that start.
+  const tb = list.tomb;
+  list.tomb = null;
+  if (tb && tb.uid === e.uid && e.t - tb.t < GESTURE_MS && !!tb.trial === !!e.trial) {
+    e = { ...e, before: tb.before };
+    if (sameValue(e.before, e.after)) { list.tomb = { ...tb, t: e.t }; return null; }
   }
   if (e.before === undefined || sameValue(e.before, e.after)) return null;
   list.push(e);

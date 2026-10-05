@@ -542,7 +542,8 @@ console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
   await page.locator('[data-feed=changes]').click();
   const texts2 = await page.locator('#lp-feed-changes .line.change').allTextContents();
   ok('a drag with delayed echoes is one entry', texts2.length === nBefore + 1, [texts2.length, nBefore]);
-  ok('...from the value before the first write', texts2[0].includes(String(Math.round(from * 100) / 100)) || texts2[0].includes(String(from)), [texts2[0], from]);
+  const beforeNums = texts2[0].split('→')[0].match(/-?\d+(?:\.\d+)?/g) || [];
+  ok('...from the value before the first write', Math.abs(parseFloat(beforeNums.at(-1)) - from) < 0.01, [texts2[0], from]);
   await ctx.close();
 }
 

@@ -1401,12 +1401,13 @@
 
   /* Density rungs (DESIGN §10.12): compact under 18rem (about 8 cells), normal
      above. Compact is a fixed two-row head in every state: the label with its
-     tags and info/reset, then the status words and the value chip. The status
-     slot keeps 70 px, the label 3em; the chip yields. */
+     tags and info/reset, then the status words and the value chip. The label
+     keeps 3em and the chip never clips its number: the unit yields first, then
+     the status slot. */
   @container (max-width: 18rem) {
     .field-head {
       display: grid;
-      grid-template-columns: minmax(70px, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: 18px minmax(20px, auto);
       gap: 2px 4px;
       align-items: center;
@@ -1414,9 +1415,9 @@
     .field-label-group { grid-column: 1 / -1; grid-row: 1; gap: 4px; }
     .field-label { overflow: hidden; }
     .field-label-text { min-width: 3em; }
-    .ladder { grid-column: 1; grid-row: 2; min-width: 70px; text-align: left; }
-    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; min-width: 0; justify-self: end; overflow: hidden; max-width: calc(100cqi - 74px); }
-    .field-head .chip-num { min-width: 0; }
+    .ladder { grid-column: 1; grid-row: 2; min-width: 0; text-align: left; }
+    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100cqi; }
+    .field-head .unit { flex: 0 1 auto; min-width: 0; overflow: hidden; }
     .field > input[type='range'] { margin: 4px 0 0; }
     .range-dual { margin: 4px 0 0; }
     .bitfield { gap: 6px 10px; }

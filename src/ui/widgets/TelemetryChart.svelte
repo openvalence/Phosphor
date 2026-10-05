@@ -30,7 +30,7 @@
   import { VALUE_ASPECT } from '../../../../Valence/clients/js/index.js';
   import { createTelebuf, chartPath } from '../hero/telebuf.js';
   import { onTheme } from '../../model/theme.js';
-  import { isStill } from '../still.svelte.js';
+  import { still } from '../still.svelte.js';
 
   let { roles = [ROLE.telemetryPosition, ROLE.telemetryVelocity] } = $props();
 
@@ -133,7 +133,7 @@
     themeObserver.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
     const offTheme = onTheme(readTokens);
 
-    const reduced = untrack(isStill);
+    const reduced = still.on;   // tracked: the Motion toggle re-runs this effect
 
     let cssW = 0, cssH = 0;
     function sizeIfNeeded() {

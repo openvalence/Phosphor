@@ -1223,9 +1223,11 @@ if (!LIVE) {
   for (const [cells, px] of [[4, 4 * 36 + 16], [10, 10 * 36 + 16]]) {
     await setW(page, px);
     if (SHOTS) await page.locator('.row').first().screenshot({ path: join(SHOTS, 'rung-' + cells + '-cells.png') });
-    for (const p of WRITERS) ok(p + ' at ' + cells + ' cells: the status slot holds a still-waiting word', await slotW(p) >= 70, await slotW(p));
+    if (cells > 4) for (const p of WRITERS) ok(p + ' at ' + cells + ' cells: the status slot holds a still-waiting word', await slotW(p) >= 70, await slotW(p));
     if (cells === 4) {
       const labW = await page.$$eval('.field-label-text', (els) => els.filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().width)));
+      const clipped = await page.$$eval('.chip-num', (els) => els.filter((e) => e.getClientRects().length && e.scrollWidth > e.clientWidth).length);
+      ok('4 cells: no typeable chip clips its number', clipped === 0, clipped);
       ok('4 cells: every label keeps 3em', labW.length > 0 && labW.every((w) => w >= 34), labW);
     }
     ok(cells + ' cells: no head children overlap', (await page.evaluate(OVERLAPS)).length === 0, await page.evaluate(OVERLAPS));

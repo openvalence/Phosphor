@@ -56,7 +56,7 @@ function trialHeld(f) {
   const bits = (machine.catalog.model && machine.catalog.model.byRole.get(FIELD_ROLE.meta_trial_pending)) || [];
   return bits.some((b) => { const s = machine.samples[b.channelId]; return !!(s && s[b.name]); });
 }
-/** The one status line; clears itself so a refusal does not outlive its tab. */
+/** The one status line (history.msg, readable app-wide); clears itself after 8 s. */
 export function say(m) {
   history.msg = m;
   clearTimeout(msgTimer);
@@ -110,9 +110,13 @@ async function replay(e, via) {
   const why = f ? whyNot(f) : 'not in this catalog';
   if (why) { say(e.label + ': ' + why); return false; }
   const to = via === 'undo' ? e.before : e.after;
-  if (!sameValue(currentOf(f), via === 'undo' ? e.after : e.before)) { say(e.label + ': changed since'); return false; }
+  const stale = () => !sameValue(currentOf(f), via === 'undo' ? e.after : e.before);
+  if (stale()) { say(e.label + ': changed since'); return false; }
   const from = displayValue(f, machine.samples[f.channelId]);
-  if (settingNeedsConfirm(f, from, to) && !(await askConfirm(confirmCopy(f, to)))) return false;
+  if (settingNeedsConfirm(f, from, to)) {
+    if (!(await askConfirm(confirmCopy(f, to)))) return false;
+    if (stale()) { say(e.label + ': changed since'); return false; }
+  }
   writeSetting(f, to, { trial: e.trial, hist: { via, id: e.id } });
   const sh = await outcome(f);
   if (sh && sh.status === STATUS.fault) { say(e.label + ': ' + sh.error); return false; }
