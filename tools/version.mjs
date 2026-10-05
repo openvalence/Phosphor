@@ -10,7 +10,7 @@
 // node tools/version.mjs --check     the committed bases agree (npm run check)
 // node tools/version.mjs --tauri -- <args>   npx tauri build with the version
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -53,7 +53,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const v = buildVersion();
     const rest = argv.slice(argv[1] === '--' ? 2 : 1);
     console.log('version: ' + v);
-    execFileSync('npx', ['tauri', 'build', '--config', JSON.stringify({ version: v }), ...rest], { cwd: root, stdio: 'inherit', shell: true });
+    // A file, not inline JSON: the Windows shell strips the quotes from an argument.
+    const cfg = root + 'src-tauri/target/version.conf.json';
+    mkdirSync(root + 'src-tauri/target', { recursive: true });
+    writeFileSync(cfg, JSON.stringify({ version: v }));
+    execFileSync('npx', ['tauri', 'build', '--config', cfg, ...rest], { cwd: root, stdio: 'inherit', shell: true });
   } else {
     console.log(buildVersion());
   }
