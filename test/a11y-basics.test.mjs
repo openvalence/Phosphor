@@ -368,6 +368,8 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
   const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h }, null, { hasTouch: touch });
   const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
   await page.waitForSelector(tabSel, { timeout: 15000 });
+  // The expanded rail carries the page operations in its pill; the mini rail keeps them in the footer.
+  if (w >= 960) await page.click('nav.rail .rail-collapse');
   const tabs = page.locator(tabSel);
   // The page with an advanced toggle; it moves the most cards.
   let found = false;

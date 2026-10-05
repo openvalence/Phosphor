@@ -561,6 +561,38 @@ if (!ONLY || ONLY === 'bucket') {
   await ctx.close();
 }
 
+if (!ONLY || ONLY === 'railops') {
+  console.log('\nrail operations scenarios (ph-lxea)');
+  const { ctx, page } = await seeded({ width: 1428, height: 900 }, (ws) => fakeHub(ws));
+  await page.goto('http://127.0.0.1:' + PORT + '/');
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(500);
+  let hit = false;
+  for (const id of await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (e) => e.map((b) => b.dataset.tabId))) {
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(250);
+    if (await page.locator('.rail-ops .reset:not(:disabled)').count()) { hit = true; break; }
+  }
+  scen('a category page has an enabled reset in its pill', hit);
+  if (hit) {
+    scen('the expanded rail shows no page footer', await page.evaluate(() => getComputedStyle(document.querySelector('main.pane .page-foot')).display) === 'none');
+    const b = await page.locator('.rail-ops .reset').boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down(); await page.waitForTimeout(500); await page.mouse.up();
+    const early = await page.locator('.rail-ops .reset.done').count();
+    await page.mouse.down(); await page.waitForTimeout(1250); await page.mouse.up();
+    scen('reset held 0.5 s does nothing, held 1 s fires', early === 0 && await page.locator('.rail-ops .reset.done').count() === 1, String(early));
+    await page.click('nav.rail .rail-collapse');
+    await page.waitForTimeout(200);
+    scen('the mini rail keeps the toggles in the page footer', await page.locator('main.pane .page-foot .reset-cat').count() > 0 && await page.locator('.rail-ops').count() === 0);
+    await page.click('nav.rail .rail-collapse');
+    await page.setViewportSize({ width: 420, height: 860 });
+    await page.waitForTimeout(400);
+    scen('the tab strip class keeps the toggles in the page footer', await page.locator('.page-foot .reset-cat').count() > 0 && await page.locator('.rail-ops').count() === 0);
+  }
+  await ctx.close();
+}
+
 if (!ONLY || ONLY === 'class') {
   console.log('\nclass-switch scenarios');
   const { ctx, page } = await seeded({ width: 1280, height: 800 }, (ws) => fakeHub(ws));

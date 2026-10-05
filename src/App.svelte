@@ -364,13 +364,34 @@
   const catPage = $derived(!current.pane && ready && current.id !== 'machine' && !!current.cat);
   // Writes in flight on this page, in the footer's fixed slot (law 5).
   const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
+  const applyReset = () => { for (const f of resettable) writeSetting(f, f.dflt); };
   async function resetCategory() {
     const n = resettable.length;
     const ok = await askConfirm({
       title: 'Reset ' + n + ' setting' + (n === 1 ? '' : 's') + ' to defaults',
     });
-    if (ok) for (const f of resettable) writeSetting(f, f.dflt);
+    if (ok) applyReset();
   }
+  // The expanded rail carries the page operations in the selected page's pill
+  // (DESIGN §10.11); PageFoot keeps them on the mini rail and the tab strip.
+  const railOps = $derived(isDesktop && !railMini && catPage);
+  // Reset on the rail is a 1 s hold, and the hold is the confirmation.
+  const HOLD_MS = 1000;
+  let resetHold = $state(false);
+  let resetDone = $state(false);
+  let holdTimer = 0;
+  function holdReset() {
+    if (resetWhy || resetHold) return;
+    resetHold = true;
+    holdTimer = setTimeout(() => {
+      resetHold = false;
+      applyReset();
+      resetDone = true;
+      setTimeout(() => (resetDone = false), 1200);
+    }, HOLD_MS);
+  }
+  function releaseReset() { clearTimeout(holdTimer); resetHold = false; }
+  $effect(() => { current?.id; untrack(releaseReset); });
 
   /**
    * Dashboard items.
@@ -422,6 +443,18 @@
 
 {#snippet heroCard(item)}
   <item.hero.component fields={item.hero.fields} hero={item.hero} />
+{/snippet}
+
+{#snippet railTab(t)}
+  <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
+          aria-selected={current && current.id === t.id}
+          tabindex={current && current.id === t.id ? 0 : -1}
+          class:on={current && current.id === t.id}
+          title={t.label}
+          onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
+    <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
+    {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
+  </button>
 {/snippet}
 
 {#snippet pane()}
@@ -488,7 +521,7 @@
           </select>
         {/if}
       {/if}
-      {#if catPage}
+      {#if catPage && !railOps}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
                   title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
@@ -539,15 +572,30 @@
             <div class="rail-sec" class:shell={sec.shell}>
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
-                <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
-                        aria-selected={current && current.id === t.id}
-                        tabindex={current && current.id === t.id ? 0 : -1}
-                        class:on={current && current.id === t.id}
-                        title={t.label}
-                        onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
-                  <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
-                  {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
-                </button>
+                {@const ops = railOps && current.id === t.id}
+                <div class="rail-pill" class:ops role="none">
+                  {@render railTab(t)}
+                  {#if ops}
+                    <div class="rail-ops" role="group" aria-label="Page operations"
+                         style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                      {#if visibleGroups.diagAll}
+                        <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b>diag</button>
+                      {/if}
+                      {#if visibleGroups.adv}
+                        <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b>adv</button>
+                      {/if}
+                      {#if hasDefaults}
+                        <button type="button" class="reset" class:holding={resetHold} class:done={resetDone} disabled={!!resetWhy}
+                                title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                                onpointerdown={holdReset} onpointerup={releaseReset} onpointerleave={releaseReset} onpointercancel={releaseReset}
+                                onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); holdReset(); } }}
+                                onkeyup={releaseReset} onblur={releaseReset}>{resetDone ? 'reset ✓' : 'reset'}</button>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
                 {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
               {/each}
             </div>
@@ -682,6 +730,49 @@
     flex-direction: column;
     padding: 0 var(--sp-2) var(--sp-2);
   }
+  /* The selected page's pill grows to hold its operations: inset, not
+     indented, one row of two or three buttons. */
+  .rail-pill { display: contents; }
+  .rail-pill.ops {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--line-1);
+    border-radius: var(--radius);
+  }
+  .rail-pill.ops > :global(.rail-tab.on) { background: none; border-color: transparent; }
+  .rail-ops {
+    display: grid;
+    grid-template-columns: repeat(var(--n, 3), 1fr);
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2) var(--sp-2);
+  }
+  .rail-ops button {
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-1);
+    min-height: 24px;
+    padding: 0 var(--sp-1);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink-dim);
+    font-size: .62rem;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .rail-ops button b { font: 400 .68rem var(--mono); color: var(--ink); letter-spacing: 0; }
+  .rail-ops button:hover:not(:disabled) { border-color: var(--highlight); }
+  .rail-ops button[aria-pressed='true'] { color: var(--highlight); border-color: var(--highlight); }
+  .rail-ops button:disabled { opacity: .4; }
+  .rail-ops .reset { color: var(--warn-ink); }
+  .rail-ops .reset::before { content: ''; position: absolute; inset: 0; width: 0; background: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .rail-ops .reset.holding::before { width: 100%; transition: width 1s linear; }
+  .rail-ops .reset.done { border-color: var(--warn); }
+  @media (pointer: coarse) { .rail-ops button { min-height: 40px; } }
   .rail-sec.shell {
     margin-top: auto;
     padding: var(--sp-2);
