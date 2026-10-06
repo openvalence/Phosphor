@@ -606,6 +606,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.hover(rowSel('Sofa'));
     const [dx, dy] = await center(rowSel('Sofa') + ' .sub-x');
     await fp.mouse.move(dx, dy); await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
+    await fp.waitForTimeout(400); // the row's 200 ms slide-out keeps it listed
     ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
   }
   if (w >= 960) {
