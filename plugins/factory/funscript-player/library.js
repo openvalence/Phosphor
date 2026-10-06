@@ -16,7 +16,7 @@
 import { COPY as STASH_COPY, SORTS, normalizeBase, createStash } from './stash.js';
 
 export const COPY = Object.freeze({
-  search: 'Search scenes',
+  search: 'Search',
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
@@ -53,9 +53,11 @@ export const CSS = `
 .fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
 .fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
-  background: var(--bg); color: var(--tx); font: .8rem var(--mono); }
+  background: var(--bg); color: var(--tx); font: .8rem var(--mono); font-variation-settings: 'wdth' 90; }
 .fsp-in:focus { outline: none; border-color: var(--highlight); }
-.fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 80px; }
+.fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 9ch; }
+.fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
+.fsp-lib[data-off] .fsp-lib-foot { display: none; }
 .fsp-lib-head .fsp-lib-open { min-width: 0; padding: 0 var(--sp-2); font: .72rem var(--mono); letter-spacing: 0; white-space: nowrap; }
 .fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
@@ -169,6 +171,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
     dir.title = asc ? COPY.asc : COPY.desc;
   }
   function setControls(on) {
+    root.toggleAttribute('data-off', !on);
     for (const c of [search, sort, dir]) c.disabled = !on;
     if (!on) { prev.disabled = next.disabled = true; pageOut.textContent = ''; countOut.textContent = ''; }
   }

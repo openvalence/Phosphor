@@ -32,7 +32,7 @@ html:not([data-rc=glance]) .pane-sec > .pane-head:first-child {
   flex-wrap: nowrap;
   height: var(--pane-head-h);
   min-height: 0;
-  margin: calc(-1 * (var(--pane-head-h) + 21px)) calc(var(--sp-4) * -1) var(--sp-4);
+  margin: calc(-1 * (var(--pane-head-h) + 21px)) calc(-1 * var(--sp-4) - 1px) var(--sp-4);
   white-space: nowrap;
 }
 html:not([data-rc=glance]) .pane-sec > .pane-head:first-child > :is(h2, h3) { overflow: hidden; text-overflow: ellipsis; }

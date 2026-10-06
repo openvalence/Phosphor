@@ -17,6 +17,7 @@
    * or a pending write, and never forks the nav logic.
    */
   import Field from './ui/Field.svelte';
+  import { cardbody } from './ui/cardbody.js';
   import ActionField from './ui/ActionField.svelte';
   import FootStrip from './ui/FootStrip.svelte';
   import PageFoot from './ui/PageFoot.svelte';
@@ -252,8 +253,8 @@
     untrack(() => { if (isDesktop && contentEl) contentEl.scrollTop = 0; });
   });
 
-  // Mobile: the tab strip itself must scroll to the top of the viewport on
-  // activation, since the page (not a bounded region) is what scrolls here.
+  // Mobile: a tab switch scrolls the page to its top, since the page (not a
+  // bounded region) is what scrolls here.
   let tabsNav = $state(null);
   // The promoted group page open in the active category (RENDERING §11).
   let drill = $state(null);
@@ -263,7 +264,9 @@
     if (id !== active) switching = true;
     active = id;
     drill = null;
-    tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
+    // The sticky tab strip stays under the top strip; scrolling IT to the
+    // viewport top hides the page's first heading behind both.
+    if (tabsNav) window.scrollTo({ top: 0, behavior: 'auto' });
   }
   // A saved dash layout is a view of the Dash tab: the store holds which one.
   function pickLayout(n) {
@@ -464,7 +467,7 @@
 </script>
 
 {#snippet groupCard(item)}
-  <div class="card-body">
+  <div class="card-body" use:cardbody>
     {#each item.group.fields as f (f.uid)}
       {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
     {/each}

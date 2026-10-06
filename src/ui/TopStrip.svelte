@@ -40,7 +40,9 @@
    * - `bare` (App's page fullscreen, bar hidden): the pair alone, top right,
    *   half opacity at rest and full on any pointer activity or focus; never
    *   hidden (RENDERING §8.4 row 11). The bar is hidden, never unmounted: the
-   *   shell's close gate lives in it.
+   *   shell's close gate lives in it. It publishes --stop-reserve on <html>
+   *   (the pair's reach from the right edge) and --stop-reserve-h (its bottom edge)
+   *   for pages to keep their top row clear of.
    * - The safety-intents channel is found by spec-core identity
    *   (specSafetyAction, law 2), a role tag being one more discovery path,
    *   never the only one: a hub that never annotated it keeps its e-stop.
@@ -82,6 +84,22 @@
       woke = false;
       for (const ev of ['pointermove', 'pointerdown']) window.removeEventListener(ev, wake);
     };
+  });
+
+  // Borderless: the pair's reach from the window's right edge, for a page to keep its top row clear of.
+  $effect(() => {
+    const pair = bare && stripEl?.querySelector('.pair');
+    if (!pair) return;
+    const root = document.documentElement;
+    const set = () => {
+      const r = pair.getBoundingClientRect();
+      root.style.setProperty('--stop-reserve', Math.ceil(window.innerWidth - r.left) + 'px');
+      root.style.setProperty('--stop-reserve-h', Math.ceil(r.bottom) + 'px');
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(pair);
+    return () => { ro.disconnect(); root.style.removeProperty('--stop-reserve'); root.style.removeProperty('--stop-reserve-h'); };
   });
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
@@ -444,7 +462,7 @@
           <span class="evkind">{edgeText}</span>
           <span class="evage">{ageText(now - latestSafety.at)}</span>
           {#if safetyStale}<span class="evtag">stale</span>{/if}
-          {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
+          {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword">{' new'}</span></span>{/if}
         </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
@@ -816,7 +834,10 @@
      the tags yield first (ph-44q). */
   .evkind { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .evkind::first-letter { text-transform: uppercase; }
-  .evage, .evtag { flex: 0 1000 auto; min-width: 0; overflow: hidden; }
+  .evage, .evtag { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .evtag { flex: 0 0 auto; }
+  /* Handheld keeps the count, drops the word. */
+  @media (max-width: 479px) { .evword { display: none; } }
   .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); }
   .evtag {
     font-family: var(--mono);

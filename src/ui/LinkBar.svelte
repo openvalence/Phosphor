@@ -424,11 +424,11 @@
   @media (max-width: 560px) {
     .chip-opt { display: none; }
   }
-  /* Phone: the heatmap (decor) goes before the name ellipsizes. */
+  /* Handheld: the heatmap (decor) goes before the name ellipsizes. */
+  @media (max-width: 479px) { .act-grid { display: none; } }
   @media (max-width: 400px) {
     .chip-opt-last { display: none; }
     .chips.opt { display: none; }
-    .act-grid { display: none; }
     .wordmark { font-size: .82rem; }
     .header-left { min-width: 0; }
   }

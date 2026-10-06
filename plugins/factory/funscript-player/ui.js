@@ -46,6 +46,8 @@
 //   shrinks the stage (page.js).
 // - The hover bar outside media fullscreen holds only Fullscreen and its mode (the transport has the rest;
 //   m mutes); in media fullscreen it is the whole bar.
+// - The top row keeps clear of the Borderless stop pair: the library column (full) starts below it, else
+//   the source row pads by the shell's --stop-reserve.
 // - Open files lives in the library head; an empty stage is a click target for it.
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
@@ -651,8 +653,10 @@ export const CSS = `
 .fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
-.fsp button, .fsp input { font: inherit; }
-.fsp-btn { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
+:where(.fsp button, .fsp input) { font: inherit; }
+.fsp[data-comp=full]:not([data-libshut]) .fsp-libbox { box-sizing: border-box; padding-top: max(0px, calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))); }
+.fsp:is([data-comp=handheld], [data-comp=glance], [data-libshut]) .fsp-src { padding-right: var(--stop-reserve, 0px); }
+.fsp-btn { font-size: .82rem; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
   border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
 .fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
 .fsp-btn:hover { border-color: var(--line-4); }
