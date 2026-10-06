@@ -17,6 +17,7 @@
    * or a pending write, and never forks the nav logic.
    */
   import Field from './ui/Field.svelte';
+  import { chipalign } from './ui/chipalign.js';
   import ActionField from './ui/ActionField.svelte';
   import FootStrip from './ui/FootStrip.svelte';
   import PageFoot from './ui/PageFoot.svelte';
@@ -464,7 +465,7 @@
 </script>
 
 {#snippet groupCard(item)}
-  <div class="card-body">
+  <div class="card-body" use:chipalign>
     {#each item.group.fields as f (f.uid)}
       {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
     {/each}

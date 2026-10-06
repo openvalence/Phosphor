@@ -19,6 +19,7 @@
   import { modTargetUid, reportedValue } from '../../model/settings.js';
   import { labelFor } from '../../model/format.js';
   import Field from '../Field.svelte';
+  import { chipalign } from '../chipalign.js';
   import ActionField from '../ActionField.svelte';
   import Roster from '../widgets/Roster.svelte';
   import { storeOfRoster, rosterOfStore } from '../widgets/roster.js';
@@ -72,7 +73,7 @@
 {/snippet}
 
 <div class="hero advgen">
-  <div class="card-body">
+  <div class="card-body" use:chipalign>
     <Field field={fields.running} />
     {#if fields.bgRun}<Field field={fields.bgRun} />{/if}
     {#if fields.mode}<Field field={fields.mode} />{/if}
@@ -81,7 +82,7 @@
 
   {#if modRows.length}
     <section class="block mods" class:adv={modsAdv}>
-      <div class="card-body">
+      <div class="card-body" use:chipalign>
         <h4 class="card-sub">Modulators{#if modsAdv}<span class="tag">adv</span>{/if}</h4>
         {#each modRows as { m, rides } (m.channelId)}{@render modulator(m, rides)}{/each}
       </div>

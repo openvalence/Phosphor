@@ -11,6 +11,7 @@
    * group disappears rather than showing three permanently-empty sliders.
    */
   import Field from '../Field.svelte';
+  import { chipalign } from '../chipalign.js';
 
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
@@ -29,7 +30,7 @@
 
 <div class="hero limits-hero">
   <p class="hint">Ceilings, not targets</p>
-  <div class="card-body">
+  <div class="card-body" use:chipalign>
     <h3 class="card-sub">Jog limits</h3>
     {#each jogKnobs as f (f.uid)}
       <Field field={f} />

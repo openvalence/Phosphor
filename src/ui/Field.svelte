@@ -644,7 +644,7 @@
         <input type="number" class="chip-num"
                min={field.min} max={field.max} step={step}
                value={inputNum(shown)} disabled={!enabled}
-               style="width: {chipChars}ch"
+               data-chars={chipChars} style="--w: {chipChars}ch"
                aria-label={'exact value for ' + labelFor(field)}
                onchange={(e) => commitTyped(e.currentTarget)} />
         <span class="unit">{unitOf(field)}</span>
@@ -926,6 +926,8 @@
   .field input[type='range'] {
     margin: var(--sp-3) 0 var(--sp-1);
   }
+  /* The thumb overhangs the 2 px track by half its height: the hint below clears it. */
+  .field input[type='range']:has(+ .field-desc) { margin-bottom: var(--sp-3); }
 
   /* RENDERING §11 dual-thumb range: two overlapping input[type=range], each
      stripped to a transparent hit-only layer (pointer-events live on the
@@ -1211,6 +1213,10 @@
     font-size: .76rem;
     text-align: right;
   }
+  /* mm/s and mm/s² take the same room, so a card's chips share one left edge. */
+  .field-value.typeable .unit:not(:empty) { min-width: 5ch; }
+  /* Beats the full-width control rule; the card's widest chip sets the width. */
+  .field .field-value input.chip-num { width: max(var(--chip-w, 0ch), var(--w)); }
   /* Touch: the 18px info/reset box keeps its look and gains an invisible
      40px hit area; the typeable chip grows to the fingertip floor. */
   @media (pointer: coarse) {
@@ -1419,6 +1425,7 @@
     .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100cqi; }
     .field-head .unit { flex: 0 1 auto; min-width: 0; overflow: hidden; }
     .field > input[type='range'] { margin: var(--sp-2) 0 0; }
+    .field > input[type='range']:has(+ .field-desc) { margin-bottom: var(--sp-3); }
     .range-dual { margin: var(--sp-2) 0 0; }
     .bitfield { gap: var(--sp-2) var(--sp-3); }
     .lamps { gap: var(--sp-2) var(--sp-3); }
