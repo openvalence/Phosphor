@@ -1,12 +1,13 @@
 /**
- * nest.test.mjs -- ph-e82.6, ph-e82.22: a nest is a fixed subgrid that grows
- * to fit its members, never a scroll region, and its frame still carries the
- * in-flight count (RENDERING §9 placement invariant, law 9; DESIGN §10.6).
+ * nest.test.mjs -- ph-e82.6, ph-e82.22: a nest is a fixed subgrid drawn at
+ * its members' height (unplaced; a saved one never grows, ph-cxvc), never a
+ * scroll region, and its frame still carries the in-flight count (RENDERING
+ * §9 placement invariant, law 9; DESIGN §10.6).
  *
  * The built app on a fake hub (Playwright's WebSocket route; the recorded
  * valencesim catalog pre-seeded in the etag cache). A category page's cards
- * are put into one short nest through the stored layout, with the scroll flag
- * an older build wrote (inert now). Every member must be inside the nest's
+ * are put into one unplaced nest through the stored layout, with the scroll
+ * flag an older build wrote (inert now). Every member must be inside the nest's
  * visible surface with nothing to scroll; a write is made on the last member
  * while the hub holds its echo and the frame shows the in-flight count until
  * the echo clears it. The member's own card head carries the same count after
@@ -169,10 +170,10 @@ let tab = -1, viewKey = '', cards = [];
 ok('found the Dash with two or more cards and a writable range', tab === 0, viewKey + ' ' + cards.length);
 if (tab < 0) { await browser.close(); srv.close(); process.exit(1); }
 
-// Every card into one short nest, through the stored layout; scroll and
-// collapsed are what an older build wrote, inert now.
+// Every card into one unplaced nest, through the stored layout: it is drawn at its members' height (a
+// saved short one would stay short and red, ph-cxvc); scroll and collapsed are what an older build wrote, inert now.
 const store = { active: 'Default', modules: {}, layouts: { Default: { [viewKey]: {
-  'nest:1': { x: 0, y: 0, w: 20, h: 5, nest: { title: 'Test nest', scroll: true, collapsed: true, map: Object.fromEntries(cards.map((id) => [id, null])) } },
+  'nest:1': { w: 20, nest: { title: 'Test nest', scroll: true, collapsed: true, map: Object.fromEntries(cards.map((id) => [id, null])) } },
 } } } };
 await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
 await page.reload();
@@ -197,7 +198,7 @@ const geo = await nest.evaluate((cell) => {
 });
 ok('the nest renders every card inside it, unfolded', geo.members === cards.length && geo.top.join() === 'nest:1', geo);
 ok('nothing in the nest scrolls on its own', geo.scrollers === 0 && geo.sh <= geo.ch + 1, geo);
-ok('the nest grows to fit: every member is inside its surface', geo.outside.length === 0 && geo.tall > 5 * 30, geo);
+ok('the nest is drawn at the height of its members: every member is inside its surface', geo.outside.length === 0 && geo.tall > 5 * 30, geo);
 ok('the nest offers no scroll or fold switch', await nest.locator('.nest-fold, button:has-text("Scrolling"), button:has-text("Fixed")').count() === 0);
 
 // ph-mdqo.10: a nest renames in place outside edit mode, by double-click or F2.
@@ -305,6 +306,15 @@ await nest2.locator('select').first().selectOption(cards[1]);
 await page.waitForTimeout(150);
 ok('Add moves a card into the nest and off the top level', (await membersOf(fresh)).join() === cards.slice(0, 2).join()
    && !(await topIds()).includes(cards[0]), await membersOf(fresh));
+// A nest never grows to fit (ph-cxvc): members past its rows red it, and nothing saves until it is resized.
+ok('members past its rows red the nest', await nest2.locator(':scope > .dash-item.fault').count() === 1);
+// Room first: arrows step it down into free rows, past the cards below; then Shift+ArrowDown grows it.
+const nestGrip = nest2.locator(':scope > .dash-item > .dash-head .handle.grab');
+for (let i = 0; i < 20; i++) { await nestGrip.focus(); await page.keyboard.press('ArrowDown'); }
+for (let i = 0; i < 200 && await page.locator('.dash-item.fault').count(); i++) { await nestGrip.focus(); await page.keyboard.press('Shift+ArrowDown'); }
+await page.waitForTimeout(150);
+ok('resized to hold them, it clears', await page.locator('.dash-item.fault').count() === 0,
+   await page.$$eval('.dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.title, e.closest('.dash-cell').style.cssText])));
 await nest2.locator('button:has-text("Save module")').click();
 await page.waitForTimeout(100);
 ok('Save module stores the nest by its members\' ids', JSON.stringify(Object.keys((await stored()).modules.Nest.members)) === JSON.stringify(cards.slice(0, 2)));

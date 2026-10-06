@@ -20,7 +20,7 @@
   import { flip } from 'svelte/animate';
   import { slide } from 'svelte/transition';
   import { hold } from './hold.js';
-  import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, renameLayout, dashEdit } from '../model/dashboard.svelte.js';
+  import { layouts, orderedLayoutNames, addLayout, moveLayout, deleteLayout, renameLayout, dashEdit, redHint } from '../model/dashboard.svelte.js';
   import { isStill } from '../ui/still.svelte.js';
 
   let { dashActive = false, onpick } = $props();
@@ -131,8 +131,8 @@
         </button>
       {/if}
       {#if on}
-        <button type="button" class="rail-wrench" aria-pressed={dashEdit.on}
-                title={dashEdit.on ? 'Done editing' : 'Edit layout'} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
+        <button type="button" class="rail-wrench" aria-pressed={dashEdit.on} disabled={dashEdit.on && !!redHint()}
+                title={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
                 onclick={() => (dashEdit.on = !dashEdit.on)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
         </button>
@@ -201,6 +201,8 @@
   }
   .rail-wrench svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .rail-wrench:hover, .rail-wrench[aria-pressed='true'] { color: var(--highlight); background: color-mix(in srgb, var(--highlight) 10%, transparent); }
+  /* Done blocked while a card is red (DESIGN §10.6). */
+  .rail-wrench:disabled { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 12%, transparent); cursor: not-allowed; }
   .sub-input {
     flex: 1 1 auto;
     min-width: 0;

@@ -56,7 +56,7 @@
   import { settingsEntries } from './shell/settingsSearch.js';
   import { presetList } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
-  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
+  import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
   // shell: the Tauri shell's strip row from main.js, null on the served page.
@@ -489,7 +489,7 @@
 
 {#snippet stripWrench()}
   <button type="button" class="strip-wrench" aria-pressed={dashEdit.on} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
-          title={dashEdit.on ? 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
+          disabled={dashEdit.on && !!redHint()} title={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
   </button>
 {/snippet}
@@ -956,6 +956,8 @@
   .tabs .strip-wrench { display: grid; place-items: center; min-width: var(--tap); padding: 0; }
   .tabs .strip-wrench svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .tabs .strip-wrench[aria-pressed='true'] { color: var(--highlight); border-color: var(--highlight); }
+  /* Done blocked while a card is red (DESIGN §10.6). */
+  .tabs .strip-wrench:disabled { color: var(--warn-ink); border-color: var(--warn); cursor: not-allowed; }
   .tabs .strip-add { flex: 0 0 auto; width: 10rem; min-height: var(--tap); padding: 0 var(--sp-4); background: var(--bg-sunken); border: 1px solid var(--highlight); border-radius: var(--radius); color: var(--ink); font: inherit; outline: none; }
   .tabs .strip-add[aria-invalid='true'] { border-color: var(--warn); }
   .tabs button.on {

@@ -12,6 +12,9 @@
  *   zoom on a subtree holding it is unproven (ph-gf8).
  * - One placement map per (renderer class, view) inside each named layout, so
  *   a desktop arrangement is never applied to the phone projection.
+ * - The store is never written while a card is red (DESIGN §10.6, grid.js
+ *   faults): edits stay in memory until the red clears, and ending edit mode
+ *   red goes back to the last write. A saved layout is valid by construction.
  */
 
 import * as G from './grid.js';
@@ -24,7 +27,53 @@ const ls = storage || mem;
 
 /** The named layouts store: { active, layouts, modules } (grid.js). */
 export const layouts = $state(G.loadStore(ls));
-const persist = () => G.saveStore(ls, $state.snapshot(layouts));
+
+// Edit-mode grids (DashGrid editGrid): their red counts gate every write, and a
+// write waits for their next measure, so a floor measured after a commit counts.
+const grids = $state({});
+let gridSeq = 0;
+let unsaved = false;
+let refused = false;
+let kept = $state.snapshot(layouts);
+/** Red cards across the mounted edit-mode grids; Done and every store write wait while any. */
+export const redCount = () => Object.values(grids).reduce((n, g) => n + (g ? g.red() : 0), 0);
+/** The blocked-save hint naming the count, or '' when the layout can be saved. */
+export const redHint = () => { const n = redCount(); return n ? n + (n === 1 ? ' card' : ' cards') + ' red, not saved' : ''; };
+function persist() {
+  unsaved = true;
+  const live = Object.values(grids).filter(Boolean);
+  if (live.length) for (const g of live) g.later();
+  else flush();
+}
+/** Write the store unless a card is red; an edit-mode grid calls it after each measure. */
+export function flush() {
+  if (!unsaved) return;
+  refused = redCount() > 0;
+  if (refused) return;
+  unsaved = false;
+  kept = $state.snapshot(layouts);
+  G.saveStore(ls, kept);
+}
+/**
+ * Register an edit-mode grid: `red()` its red card count, `later()` its next
+ * measure pass. The returned call unregisters; `leave` true when editing ends
+ * there, which drops red edits back to the last write (the active layout kept).
+ */
+export function editGrid(red, later) {
+  const k = ++gridSeq;
+  grids[k] = { red, later };
+  return (leave = false) => {
+    delete grids[k];
+    if (leave && unsaved && refused) {
+      const s = JSON.parse(JSON.stringify(kept));
+      layouts.layouts = s.layouts;
+      layouts.modules = s.modules;
+      layouts.order = s.order;
+      if (!Object.prototype.hasOwnProperty.call(s.layouts, layouts.active)) layouts.active = s.active;
+    }
+    flush();
+  };
+}
 
 // One level of undo over the whole store. Every edit in one synchronous burst
 // (Home's remove is a delete plus a commit) is one step: the snapshot is taken
@@ -116,12 +165,10 @@ function controller(key, read, write, members) {
     // `f` defaults to the registered one; a $derived passes its own, since the registry is not reactive.
     arrange: (items, cols, pin = null, f = fit()) => G.place(items, read(), cols, pin, f),
     move: edit((items, cols, pin) => (hold(G.commitPin(write(), items, cols, pin, fit())), true)),
-    // A repair the user did not make (DashGrid's grow to a measured floor): saved, never an undo step.
-    // A grow stores the grown rect alone: an unplaced card packs around it and is never written by it.
-    fit: (items, cols, grow) => {
-      const m = write();
-      if (grow) m[grow.id] = { ...m[grow.id], x: grow.x, y: grow.y, w: grow.w, h: grow.h };
-      else { held.delete(key); hold(G.commitPin(m, items, cols, null, fit())); }
+    // A repair the user did not make (an add written once measured): saved, never an undo step.
+    fit: (items, cols) => {
+      held.delete(key);
+      hold(G.commitPin(write(), items, cols, null, fit()));
       persist();
     },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
@@ -132,7 +179,7 @@ function controller(key, read, write, members) {
     measured: (fn) => { if (fn) fits.set(key, fn); else fits.delete(key); },
     /** Ids an add left unplaced until measured; the grid fixes them with fit(). */
     held: () => held.get(key) || null,
-    /** True when `id` has a stored rect; an unplaced card follows its content and is never written by a grow. */
+    /** True when `id` has a stored rect; an unplaced card follows its content. */
     saved: (id) => G.positioned(read()[id]),
   };
 }
@@ -143,7 +190,7 @@ function controller(key, read, write, members) {
  *   arrange(items, cols, pin?) -> [{...item, x, y, w, h}] in reading order; with
  *                                 `pin`, where the dragged item lands (grid.js place)
  *   move(items, cols, pin)     -> commit a drag/resize/keyboard step
- *   fit(items, cols, grow)     -> commit a repair (a grow to the content floor); no undo step
+ *   fit(items, cols)           -> write the adds held until measured; no undo step
  *   order(items, cols, ids)    -> commit a reading order
  *   measured(fn) / held()      -> the grid's content heights; adds waiting for them
  *   saved(id)                  -> whether `id` has a stored rect
@@ -213,6 +260,8 @@ export function stepScale(dir) {
 }
 
 if (hasWindow) {
+  // A write waiting for its grid's next measure still lands when the page goes away (red still holds it).
+  window.addEventListener('pagehide', flush);
   // After the module graph, so style.css (imported after App in main.js) is live.
   queueMicrotask(refresh);
   // The theme's scale is the base --s this module multiplies.

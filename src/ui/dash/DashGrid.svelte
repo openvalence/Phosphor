@@ -25,10 +25,11 @@
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
    *   writes the layout, so every intermediate frame is cancelable (Escape).
-   *   Placements are absolute (grid.js place): the dragged card is laid
-   *   exactly where asked and a card it covers moves to the first free row
-   *   below (and returns when the drag moves on); a resize stops at a neighbor rather than
-   *   pushing it.
+   *   Placements are absolute (grid.js place): a drop or a resize onto another
+   *   card overlaps it and nothing is displaced (operator ruling 2026-10-06).
+   * - Red (grid.js faults): in edit mode a card that overlaps another or is
+   *   under its floor wears --warn with a one-fragment tooltip, and the store
+   *   is not written while any is (dashboard.svelte.js editGrid, flush).
    * - An add (New nest, Insert, Duplicate) is committed at once, so the first
    *   free rect it was drawn at is where it stays.
    * - DOM order is reading order, frozen while a drag is in flight: moving the
@@ -36,27 +37,24 @@
    * - Nothing on the grid moves: a layout switch or a reflow lands at once,
    *   never as motion that could read as the machine. A card's first
    *   addition and the Layout menu fade in (opacity only, html.still off).
-   * - A resize never goes below the item's floor: per dimension the larger
-   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one), the
-   *   seed's floor width `s0` (the long side when vertical; only for an item
-   *   whose `floored(look)` holds: text and number-row fields, composites,
-   *   heroes, nests; a knob, toggle, indicator, action or safety op keeps
-   *   its measured minimum) and its measured content (grid.js floorOf): the ghost shows the refusal and
-   *   the live region says it, never a silent clamp. The measured height
-   *   binds at widths no wider than it was measured at, and never above the
-   *   height the resize started from.
+   * - A card's floor is per dimension the larger of its `min(look,
+   *   orientation)` cells (RESIZE_FLOOR without one), the seed's floor width
+   *   `s0` (the long side when vertical; only for an item whose
+   *   `floored(look)` holds: text and number-row fields, composites, heroes,
+   *   nests; a knob, toggle, indicator, action or safety op keeps its
+   *   measured minimum) and its measured content (grid.js floorOf). The
+   *   measured height binds at widths no wider than it was measured at. A
+   *   resize goes under the floor, stopping at RESIZE_FLOOR only (the ghost
+   *   shows that refusal): the content clips at the frame and the card is red.
    * - Content is measured per (id, orientation, presentation, cell edge):
    *   min-content width, never lowered in a session, with the title at zero
    *   width (it truncates) and a nest's subgrid replaced by its widest
    *   member's floor (the nested grid's `data-floor`); the height as last
    *   measured at each width the card was drawn at. A measure writes and
    *   restores inline styles in one task, so nothing paints and no observer
-   *   sees a size change. A committed card under its floor grows when it is
-   *   measured (load, a content, look or width change), width first (grid.js
-   *   growWidth, growHeight, layout.fit, no undo step), never later because
-   *   a neighbor moved away; one with no room clips at its frame. An
-   *   unplaced card is drawn at its content height (pack `fit`), and an add
-   *   is written once measured.
+   *   sees a size change. A card under its floor never grows, on load or
+   *   after: it clips at its frame. An unplaced card is drawn at its content
+   *   height (pack `fit`), and an add is written once measured.
    * - Rows are one cell (ph-29r): a card's rect is its cells, so the ghost
    *   is the committed rect and a pointer maps to a row by the cell pitch.
    * - Edit mode changes no geometry (ph-wia): its chrome is out of flow (the
@@ -67,6 +65,10 @@
    * - `ondropkey(key, rect)` takes a palette entry dragged onto the grid in
    *   edit mode (grid.js MODULE_MIME); `rect` is the cell area the drop target
    *   showed, null when stacked. A nest's grid hands it on with the nest's id.
+   * - `onaddmenu(clientX, clientY, rect)`: a right-click on the top grid in
+   *   edit mode asks the host for its add menu at the pointer, `rect` the
+   *   cell area a pick lands on (a palette drop's); a text control keeps the
+   *   native menu.
    * - The Dash (`editable`) has no pane head. Edit mode follows dashEdit (the
    *   sidebar wrench) and shows one sticky bar after the grid: undo, New nest,
    *   Modules, and a popover for density, reset, delete, export, import and
@@ -78,18 +80,19 @@
   import {
     dashboardLayout, grid, layouts, undo, undoLast, dashEdit,
     switchLayout, deleteLayout, moduleNames, deleteModule,
-    exportLayout, importLayout, density, setDensity, palette,
+    exportLayout, importLayout, density, setDensity, palette, editGrid, flush, redHint,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
-  import { cellCount, place, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
-    RESIZE_FLOOR, cellsFor, floorOf, growWidth, growHeight } from '../../model/grid.js';
+  import { cellCount, place, placeable, resizeRect, arrangePins, nudgePin, faults, DEFAULT_H, MODULE_MIME,
+    RESIZE_FLOOR, cellsFor, floorOf } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { onTheme } from '../../model/theme.js';
   import { view } from '../../model/viewport.svelte.js';
   import { FIELD_FLOOR_COLS } from '../../model/rclass.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, tool = null, editable = false, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
+    ondragout = null, target = false, ondelete = null, tool = null, editable = false, onduplicate = null, resolve = null, picked = $bindable(0),
+    onaddmenu = null } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
@@ -222,23 +225,24 @@
     const [px, py] = padOf(cell);
     return styled(it, 'width', Math.max(0, cells * grid.cell - px) + 'px', () => styled(it, 'height', 'auto', () => it.getBoundingClientRect().height)) + py;
   }
-  /** Cells of content height at width `w`: the tallest drawn at `w` or wider (narrower only wraps more); 0 unmeasured. */
+  /**
+   * Cells of content height at width `w`: as measured there; before that, the tallest drawn wider (narrower
+   * text only wraps more). A knob grows with its width, so a wider height never outranks one measured at `w`.
+   */
   function tallAt(m, w) {
+    if (m.hs[w] != null) return cellsFor(m.hs[w], grid.cell);
     let px = 0;
     for (const k in m.hs) if (+k >= w && m.hs[k] > px) px = m.hs[k];
     return cellsFor(px, grid.cell);
   }
-  /**
-   * The floor function for item `p` (grid.js resizeRect `min`): its height
-   * part never above `cap`, the height a resize started from.
-   */
-  const minOf = (p, cap = Infinity) => (w, h) => {
+  /** The floor [w, h] of item `p` drawn at w x h (grid.js floorOf): under it the card is red. */
+  const minOf = (p) => (w, h) => {
     const o = orientationOf(w, h);
     const fixed = [...((p.min && p.min(p.look, o)) || RESIZE_FLOOR)];
     const s0 = p.kind === 'section' || !(p.floored ? p.floored(p.look) : p.kind !== 'safety') ? 0 : Math.min(cols, (seedInfo[keyOf(p, 'h')] || {}).s0 || 0);
     fixed[o === 'h' ? 0 : 1] = Math.max(fixed[o === 'h' ? 0 : 1], s0);
     const m = need[keyOf(p, o)];
-    return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
+    return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), tallAt(m, w)] : []);
   };
   // The seed (grid.js pack `fit.w`, `fit`): per card, whatever orientation it is drawn in, `s0` its width in
   // cells (measured floor, never under a field floor of FIELD_FLOOR_COLS layout columns of 2 rem or its
@@ -266,16 +270,17 @@
   }
   fitH.w = seedOf;
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
-  // Ids measured since their last grow check: a card grows when its content
-  // is measured, never because a neighbor moved out of its way.
-  const fresh = new Set();
+  // Red cards (grid.js faults), drawn in edit mode; while any, the store is not written. Stacked there is
+  // no geometry to fault (a reading order, its own map per renderer class).
+  const red = $derived(seeded || stack ? [] : faults(placed, (p) => minOf(p)(p.w, p.h)));
+  const redBy = $derived(new Map(red.map((f) => [f.id, f.over ? 'overlaps ' + titleOf(f.over) : 'below its minimum'])));
   /**
-   * Measure what changed, is new or is drawn at a new width; re-clamp a
-   * resize in flight; write an add once measured; then grow one freshly
-   * measured card under its floor.
+   * Measure what changed, is new or is drawn at a new width; write an add
+   * once measured; then write the store unless a card is red.
    */
   function settle() {
     frame = 0;
+    if (stack) { flush(); return; }
     // Never before the grid knows its own width: a rect placed on a stale
     // column count would be measured and written there.
     if (stack || !gridEl || !width || cellCount(gridEl.clientWidth, grid.cell) !== cols) return;
@@ -298,7 +303,6 @@
       if ((drawn || fresh0) && !m) continue;
       let ne = o;
       if (drawn) {
-        fresh.add(p.id);
         // A content change forgets the heights drawn at other widths.
         const hs = { ...(o && !stale ? o.hs : {}), [p.w]: m.h };
         const w = Math.max(m.w, o ? o.w : 0);
@@ -317,22 +321,20 @@
     dirty.clear();
     // New measurements repack at once, in this task, so the frame at the old heights never paints.
     if (grew && chain < 4) { chain++; queueMicrotask(settle); }
-    if (seeded) return;
-    if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
+    if (seeded || pin) return;
     const held = layout.held();
-    if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols, null); return; }
-    // Only stored rects stop a grow: an unplaced card (a section row) packs around the grown one.
-    const fixed = placed.filter((q) => layout.saved(q.id));
-    for (const p of placed) {
-      if (!fresh.delete(p.id) || !layout.saved(p.id)) continue;
-      const [fw, fh] = minOf(p)(p.w, p.h);
-      const r = (p.w < fw && growWidth(fixed, p.id, fw, cols)) || (p.h < fh && growHeight(fixed, p.id, fh));
-      if (r) { layout.fit(all, cols, r); return; }
-    }
+    if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols); return; }
+    flush();
   }
   let frame = 0;
   let chain = 0;
   const later = () => { chain = 0; if (!frame) frame = requestAnimationFrame(settle); };
+  // Edit mode: this grid's red count gates every store write; the top grid ending edit mode drops red edits.
+  $effect(() => {
+    if (!editing || seeded) return;
+    const off = untrack(() => editGrid(() => red.length, later));
+    return () => off(!given);
+  });
   $effect(() => {
     // Any layout, scale or mode change may show a card at a size not yet measured.
     placed; grid.cell; editing; stack;
@@ -420,20 +422,10 @@
     if (pin.mode === 'move') { moveTo(id, c, clientX, clientY); return; }
     resizeTo(id, c);
   }
-  /** The resize in flight toward cell `c`: the ghost stops at the floor or at a neighbor. */
+  /** The resize in flight toward cell `c`: over a neighbor or under the floor it is red; it stops at RESIZE_FLOOR only. */
   function resizeTo(id, c) {
-    const p = placed.find((q) => q.id === id);
-    if (!p) return;
-    const r = resizeRect(pin.start, pin.edge, c, cols, minOf(p, pin.start.h));
-    if (!pin.c || pin.c.x !== c.x || pin.c.y !== c.y) pin = { ...pin, c };
+    const r = resizeRect(pin.start, pin.edge, c, cols);
     if (r.x === pin.x && r.y === pin.y && r.w === pin.w && r.h === pin.h && r.refused === pin.refused) return;
-    const b = blocker(placed, r, id);
-    if (b) {
-      if (!pin.blocked) announce(titleOf(id) + ': blocked by ' + titleOf(b.id));
-      pin = { ...pin, blocked: b.id };
-      return;
-    }
-    if (pin.blocked) pin = { ...pin, blocked: null };
     dragMoved = true;
     resizeNote(id, pin, r, pin.refused);
     pin = { ...pin, ...r };
@@ -502,7 +494,7 @@
       layout.move(all, cols, pin);
       const p = layout.arrange(all, cols).find((q) => q.id === id);
       const flip = p && pin.start && orientationOf(p.w, p.h) !== orientationOf(pin.start.w, pin.start.h);
-      if (p) announce(titleOf(id) + ' at ' + where(p) + (pin.refused ? ', its minimum' : '') + (pin.blocked ? ', blocked by ' + titleOf(pin.blocked) : '') + (flip ? ', now ' + ORIENT[orientationOf(p.w, p.h)] : ''));
+      if (p) announce(titleOf(id) + ' at ' + where(p) + (pin.refused ? ', its minimum' : '') + (redBy.get(id) ? ', ' + redBy.get(id) : '') + (flip ? ', now ' + ORIENT[orientationOf(p.w, p.h)] : ''));
     }
     pin = null;
     stackOrder = null;
@@ -607,15 +599,14 @@
   function keyResize(id, dw, dh) {
     const p = placed.find((q) => q.id === id);
     if (!p || stack) return;
-    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols, minOf(p, p.h));
-    const b = blocker(placed, r, id);
-    if (b) { announce(titleOf(id) + ': blocked by ' + titleOf(b.id)); return; }
+    const r = resizeRect(p, 'se', { x: p.x + p.w - 1 + dw, y: p.y + p.h - 1 + dh }, cols);
     layout.move(all, cols, { id, x: r.x, y: r.y, w: r.w, h: r.h });
     const q = layout.arrange(all, cols).find((x) => x.id === id);
     if (!q) return;
     if (r.refused) announce(titleOf(id) + ': minimum size, ' + q.w + ' by ' + q.h + ' cells');
     else announce(titleOf(id) + ' resized to ' + q.w + ' by ' + q.h + ' cells'
-      + (orientationOf(q.w, q.h) !== orientationOf(p.w, p.h) ? ', now ' + ORIENT[orientationOf(q.w, q.h)] : ''));
+      + (orientationOf(q.w, q.h) !== orientationOf(p.w, p.h) ? ', now ' + ORIENT[orientationOf(q.w, q.h)] : '')
+      + (redBy.get(id) ? ', ' + redBy.get(id) : ''));
   }
 
   // ---- palette drag-to-place --------------------------------------------------------
@@ -630,10 +621,14 @@
     e.dataTransfer.dropEffect = 'copy';
     if (given) { paletteOver = true; return; }
     if (stack) return;
-    const c = cellAt(e.clientX, e.clientY);
-    const w = Math.max(cols - c.x, Math.min(cols, MIN_DROP_W));
-    const r = { x: Math.min(c.x, cols - w), y: c.y, w, h: DEFAULT_H };
+    const r = dropAt(cellAt(e.clientX, e.clientY));
     if (!dropRect || r.x !== dropRect.x || r.y !== dropRect.y) dropRect = r;
+  }
+  const dropAt = (c) => { const w = Math.max(cols - c.x, Math.min(cols, MIN_DROP_W)); return { x: Math.min(c.x, cols - w), y: c.y, w, h: DEFAULT_H }; };
+  function contextMenu(e) {
+    if (!editing || given || !onaddmenu || (e.target.closest && e.target.closest('input, textarea, [contenteditable]'))) return;
+    e.preventDefault();
+    onaddmenu(e.clientX, e.clientY, stack ? null : dropAt(cellAt(e.clientX, e.clientY)));
   }
   function dragLeave(e) {
     if (!gridEl.contains(e.relatedTarget)) { dropRect = null; paletteOver = false; }
@@ -737,7 +732,7 @@
 
   <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-extent={placed.reduce((m, q) => Math.max(m, q.y + q.h), 0)} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols + (!given && editing && palette.shown && palette.open ? ';--reserve:' + palette.h + 'px' : '')} role="presentation"
-       ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
+       ondragover={dragOver} ondragleave={dragLeave} ondrop={drop} oncontextmenu={contextMenu}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
     {#each displayList as item (item.id)}
       <div class="dash-cell" data-id={item.id} data-floor={given ? minOf(item)(item.w, item.h)[0] : null} use:registerCell={item.id}
@@ -755,6 +750,7 @@
             dragging={pin?.id === item.id || !!pin?.group?.some((g) => g.id === item.id)}
             selected={selSet.has(item.id)}
             clip={!stack && !pin && short(item)}
+            fault={editing ? redBy.get(item.id) || null : null}
             onselect={(additive) => select(item.id, additive)}
             ongrabstart={(x, y) => grabStart(item.id, x, y)}
             ongrabmove={(x, y) => pointerMove(item.id, x, y)}
@@ -773,9 +769,9 @@
       </div>
     {/each}
     {#each ghosts as ghost (ghost.id || 'drop')}
-      <div class="drop-ghost" class:refused={pin?.refused || pin?.blocked} aria-hidden="true"
+      <div class="drop-ghost" class:refused={pin?.refused} aria-hidden="true"
            style={'grid-column:' + (ghost.x + 1) + ' / span ' + ghost.w + ';grid-row:' + (ghost.y + 1) + ' / span ' + ghost.h}>
-        <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.blocked ? ' · blocked' : ''}{pin?.start
+        <span class="ghost-size">{ghost.w} × {ghost.h}{pin?.refused ? ' · minimum' : ''}{pin?.start
           && orientationOf(ghost.w, ghost.h) !== orientationOf(pin.start.w, pin.start.h) ? ' · ' + ORIENT[orientationOf(ghost.w, ghost.h)] : ''}</span>
       </div>
     {/each}
@@ -792,8 +788,10 @@
     <div class="dash-slot">
       {#if selSet.size}
         {@render selbar()}
+      {:else if redHint()}
+        <span class="dash-hint red" role="status">{redHint()}</span>
       {:else}
-        <span class="dash-hint">Drag grips to move, edges to resize</span>
+        <span class="dash-hint">Drag cards to move, edges to resize; right-click to add</span>
       {/if}
     </div>
       <div class="edit-ops" role="group" aria-label="Layout editing">
@@ -862,11 +860,12 @@
   }
 
   /* The edit chrome: one row after the grid, sticky to the pane's bottom edge, so entering edit
-     mode moves nothing above it. The slot swaps the hint and the selection in place. */
+     mode moves nothing above it. The slot swaps the hint and the selection in place. It sits over
+     the scroll recess (style.css [data-shade], z 14) and casts its own, as the page footer does. */
   .dash-toolbar {
     position: sticky;
     bottom: 0;
-    z-index: 5;
+    z-index: 15;
     display: flex;
     align-items: center;
     gap: var(--sp-2);
@@ -875,6 +874,7 @@
     border-top: 1px solid var(--line-2);
   }
   .dash-toolbar.stack { flex-wrap: wrap; justify-content: flex-end; }
+  :global([data-shade-bottom]) .dash-toolbar { box-shadow: 0 -10px 12px -8px rgba(var(--shade-rgb), .75); }
   /* ponytail: clips past ~960 px with three or more selected; a menu for
      the align ops if that width ever edits. */
   .dash-slot {
@@ -895,6 +895,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .dash-hint.red { color: var(--warn-ink); }
   .dash-selbar {
     display: flex;
     align-items: center;

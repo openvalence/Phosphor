@@ -677,11 +677,12 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   a card whose content is text or a number row (the width of a horizontal
   placement, the long side of a vertical one); a knob, toggle, indicator,
   action or safety op keeps the floor its content measures (`settings.js`
-  `textFloored`). Ghost, handle and keyboard stop there;
-  a saved rect under it grows on load into free cells and never pushes a
-  neighbor, and one with no room keeps its rect and clips inside its surface.
+  `textFloored`). A resize may go under it (operator ruling 2026-10-06,
+  `ph-cxvc`): the content clips inside its surface and, in edit mode, the
+  card is red (§10.6); ghost, handle and keyboard stop only at
+  `RESIZE_FLOOR`. A card never grows to its floor, on load or after.
   Titles hold one line with an ellipsis (`DashGrid.svelte`, `grid.js`
-  `floorOf` and `growWidth`, `ph-e82.25`).
+  `floorOf` and `faults`, `ph-e82.25`).
 - Renderer-class selection (`src/model/rclass.js`, `viewport.svelte.js`) stays
   in CSS px and is independent of the grid.
 - One card body (operator ruling 2026-10-05): fields and composites lay out
@@ -703,7 +704,9 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
 
 ### 10.6 Nests and layouts
 
-- A NEST is a control holding a fixed subgrid that grows to fit its members.
+- A NEST is a control holding a fixed subgrid. An unplaced nest is drawn at
+  its members' height; a placed one never grows, and members past its rows
+  make it red until it is resized (§10.5, `ph-cxvc`).
   Nothing on the home or a category page scrolls or zooms on its own: no
   scrolling or folding nest, and a module that takes its own pointer and
   wheel (the node editor) is a still preview in the grid with Open (operator
@@ -725,11 +728,24 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   it, an add takes the first free rect, a remove leaves a hole, and nothing
   moves unless the user moves it. Compaction is gone; the flow survives only
   as the first-run seed (`src/model/grid.js` `place`, `pack`).
-- A drag displaces (operator ruling 2026-10-06, `ph-s7lj.2`): the dragged
-  card lands where the pointer puts it, every card it covers moves down to
-  the first free row below, live while the drag is in flight, and only the
-  cards it moved fall back upward. The rest keep their rects and the
-  dragged card's old slot stays a hole. A resize still stops at a neighbor.
+- Overlap and the floor are red (operator ruling 2026-10-06, `ph-cxvc`;
+  supersedes the displacement of `ph-s7lj.2`): a drop, a resize, Align or
+  Spread onto another card leaves both where they are, overlapping. A card
+  that overlaps another or sits under its floor (§10.5) draws in `--warn`,
+  border and a tinted plate, with a one-fragment tooltip ("overlaps
+  Telemetry", "below its minimum"). While any card is red the layout is not
+  saved: edits stay in memory, the edit footer names the count and Done is
+  disabled; the red clears and the layout saves the moment it is resolved,
+  and ending edit mode another way drops back to the last save. A saved
+  layout is valid by construction (`grid.js` `faults`,
+  `dashboard.svelte.js` `flush`). An add dropped at a cell is written there
+  at its content height once measured.
+- Edit mode (operator rulings 2026-10-06, `ph-cxvc`): the whole card moves
+  it, except a press that a control in it takes (form controls, ARIA
+  widgets, a resize edge, a plugin's body); stacked, the grip alone moves it.
+  A right-click on the grid opens the module palette's list at the pointer
+  and a pick lands at that cell. The edit footer sits over the scroll recess
+  and casts its own shade. Chrome never selects text (`src/ui/select.css`).
 - Surfaces (same ruling): a card is one `--bg-card` surface with one frame, a
   nest one `--bg-sunken` surface holding cards, no third tint; titles are
   text on the page. `src/style.css` `.surface-card`, `.surface-nest`.
@@ -1040,3 +1056,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-06 | §10.6 | A drag displaces: the dragged card lands where asked and pushes the cards it covers down, live; the cards it moved fall back upward; displacement over an insertion target because `place` already pushes down (`ph-s7lj.2`). | operator (gravity on the moved cards only, the old slot staying a hole, and Align taking the same push are the agent's, veto-able) |
 | 2026-10-06 | §10.5 | The Dash grid is centered: cells stay square and the remainder is split evenly on both sides; resolves `ph-mdqo.15` (`ph-s7lj.3`). | operator (every DashGrid, category pages and nest subgrids too, is the agent's, veto-able) |
 | 2026-10-06 | §10.5 | The resize floor is each card's own content minimum: the 16 rem field floor binds text and number-row cards only; a knob, toggle, indicator, action or safety op keeps its measured minimum and never grows on load to the field floor. Narrows the first 2026-10-06 floor row. | operator |
+| 2026-10-06 | §10.5, §10.6 | Overlap and under-floor are allowed while editing and drawn red (`--warn` border, tinted plate, one-fragment tooltip); nothing saves while any card is red and it saves the moment the red clears; the drag displacement of `ph-s7lj.2` and every grow to the content floor are gone, so a saved layout is valid by construction; right-click opens the add menu at the pointer, the whole card moves it, the edit footer sits over the scroll shade, chrome selects no text (`ph-cxvc`). | operator (a resize also overlapping, ending edit mode red dropping back to the last save, a placed nest no longer growing to fit a member, a dropped add written at its content height once measured, right-click in edit mode only, a plugin's body not moving its card and no red when stacked are the agent's, veto-able) |

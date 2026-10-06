@@ -7,23 +7,23 @@
  * members, and the single-field placement flag both ways; a placement's look
  * (presentation and config) through place, commits and storage; placements
  * are absolute (operator ruling 2026-10-02): no commit, add or remove ever
- * moves a card the user did not move. The content floor (ph-e82.25):
- * measured px to cells, the larger of static and measured, and the grow of
- * an under-floor rect that stops at a neighbor or the edge. Rows are cells
- * (ph-29r): growHeight is growWidth's twin, an unplaced item is packed at its
- * measured height (`fit`), and a commit holds an add never measured.
+ * moves a card the user did not move, and a drop onto a card overlaps it
+ * (ph-cxvc): faults names every overlapping or under-floor card. The content
+ * floor (ph-e82.25): measured px to cells, the larger of static and measured.
+ * Rows are cells (ph-29r): an unplaced item is packed at its measured height
+ * (`fit`), and a commit holds an add never measured.
  *
  * Run: node test/grid-model.test.mjs
  */
 import {
   CELL_DEVICE_PX, SCALE_STEPS, STORE_KEY,
-  cellCssPx, cellCount, allowedSteps, clampScale, stepScale, place, blocker, commitPin, commitOrder,
+  cellCssPx, cellCount, allowedSteps, clampScale, stepScale, place, faults, commitPin, commitOrder,
   loadStore, saveStore, viewMap, switchLayout, saveLayoutAs, renameLayout, deleteLayout, addLayout, moveLayout, layoutOrder,
   loadScale, saveScale,
   FIELDS_NESTS_ONLY, placeable, isNest, nestsIn, addNest, nestAdd, nestRemove, setNest, removeNest,
   saveModule, insertModule, deleteModule, resetMap, setLook, resizeRect, RESIZE_FLOOR, nestOut,
   arrangePins, instanceKey, baseKey, duplicate, nudgePin, exportLayout, importLayout,
-  DENSITY, layoutOpts, setDensity, cellsFor, floorOf, growWidth, growHeight, pack,
+  DENSITY, layoutOpts, setDensity, cellsFor, floorOf, pack,
 } from '../src/model/grid.js';
 import { minCells, orientationOf } from '../src/model/settings.js';
 
@@ -101,12 +101,14 @@ console.log('placement');
   ok('saved items keep their rects: no gravity, a gap stays a gap', p[0].id === 'b' && p[1].id === 'a' && p[1].y === 5 && p[1].x === 0,
      JSON.stringify(p.map((q) => [q.id, q.x, q.y])));
   const pinned = place(items('a', 'b'), saved, 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('a pin lands exactly where asked; the card it covers moves to the first free row below',
+  ok('a pin lands exactly where asked, over the card it covers, which stays',
      pinned.find((q) => q.id === 'a').y === 0 && pinned.find((q) => q.id === 'a').x === 4
-     && pinned.find((q) => q.id === 'b').y === 2 && pinned.find((q) => q.id === 'b').x === 4, JSON.stringify(pinned.map((q) => [q.id, q.x, q.y])));
+     && pinned.find((q) => q.id === 'b').y === 0 && pinned.find((q) => q.id === 'b').x === 4, JSON.stringify(pinned.map((q) => [q.id, q.x, q.y])));
   const m = { ...saved };
   commitPin(m, items('a', 'b'), 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('commitPin writes the pin and the card it moved', m.a.y === 0 && m.a.x === 4 && m.b.y === 2 && m.b.x === 4);
+  ok('commitPin writes the pin only', m.a.y === 0 && m.a.x === 4 && m.b === saved.b);
+  const both = place(items('a', 'b'), m, 40);
+  ok('a stored overlap is drawn as stored, never pushed apart', both.every((q) => q.x === m[q.id].x && q.y === m[q.id].y), JSON.stringify(both));
   const o = { a: { x: 0, y: 0, w: 40, h: 1 }, b: { x: 0, y: 1, w: 40, h: 1 } };
   commitOrder(o, items('a', 'b'), 40, ['b', 'a']);
   ok('commitOrder swaps reading order', o.b.y === 0 && o.a.y === 1);
@@ -127,67 +129,73 @@ console.log('placement');
   const narrowed = place(items('a', 'b'), wide, 30);
   ok('a narrower window draws a clash one row down and keeps the saved rect', at(narrowed, 'b').y === 1 && at(narrowed, 'b').x === 10
      && wide.b.x === 20 && wide.b.y === 0);
-  ok('blocker names what a rect would overlap', blocker(place(items('a', 'b'), wide, 40), { x: 15, y: 0, w: 10, h: 1 }, 'a').id === 'b'
-     && blocker(place(items('a', 'b'), wide, 40), { x: 0, y: 1, w: 10, h: 1 }, 'a') === null);
+  // The validity predicate (ph-cxvc): an overlap or a card under its floor is red.
+  const fl = (p) => ({ a: [4, 1], b: [12, 1], c: [1, 3] }[p.id] || [1, 1]);
+  const ids = (list) => JSON.stringify(list.map((f) => [f.id, f.over]));
+  ok('a layout with no overlap and every card at its floor is valid', faults(place(items('a', 'b'), wide, 40), fl).length === 0);
+  ok('edge to edge is not an overlap', faults([{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 4, y: 0, w: 4, h: 2 }, { id: 'c', x: 0, y: 2, w: 8, h: 1 }]).length === 0);
+  ok('an overlap reds both cards, each naming the other', ids(faults(both)) === '[["a","b"],["b","a"]]', ids(faults(both)));
+  ok('a card under its floor is red with no partner', ids(faults(place(items('a', 'b'), { a: { x: 0, y: 0, w: 3, h: 2 }, b: { x: 10, y: 0, w: 12, h: 1 } }, 40), fl)) === '[["a",null]]');
+  ok('either dimension counts', ids(faults([{ id: 'c', x: 0, y: 0, w: 9, h: 1 }], fl)) === '[["c",null]]');
+  ok('a section row is never red itself, a card on it is',
+     ids(faults([{ id: 's', kind: 'section', x: 0, y: 0, w: 40, h: 1 }, { id: 'a', x: 0, y: 0, w: 4, h: 2 }])) === '[["a","s"]]');
+  ok('no floor function: overlaps only', faults([{ id: 'a', x: 0, y: 0, w: 1, h: 1 }]).length === 0);
 
-  // Displacement: a chain pushes on, untouched cards keep their rects, the old slot stays a hole, the preview is pure.
-  const dmap = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 2 }, c: { x: 0, y: 4, w: 10, h: 2 },
-    d: { x: 20, y: 0, w: 6, h: 1 }, e: { x: 0, y: 10, w: 10, h: 1 } };
-  const dits = items('a', 'b', 'c', 'd', 'e');
-  const dpin = { id: 'd', x: 0, y: 2, w: 10, h: 2 };
-  const dp = place(dits, dmap, 40, dpin);
-  const dat = (id) => dp.find((q) => q.id === id);
-  ok('a pin on b pushes b, then c below it, the chain on', dat('d').x === 0 && dat('d').y === 2 && dat('b').y === 4 && dat('c').y === 6,
-     JSON.stringify(dp.map((q) => [q.id, q.x, q.y])));
-  ok('cards the pin never touched keep their rects, and the old slot stays a hole',
-     dat('a').y === 0 && dat('e').y === 10 && !dp.some((q) => q.id !== 'd' && q.x < 26 && 20 < q.x + q.w && q.y < 1 && 0 < q.y + q.h));
-  ok('the preview is pure: the pin moving on returns the pushed cards', place(dits, dmap, 40, { ...dpin, y: 8 }).find((q) => q.id === 'b').y === 2);
-  ok('a pushed card never ends above its saved row', place(dits, dmap, 40, { id: 'e', x: 0, y: 0, w: 10, h: 1 }).every((q) => q.id === 'e' || q.y >= dmap[q.id].y));
+  // No displacement (ph-cxvc): a pin over a chain overlaps the first card and moves nothing.
+  const dmap = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 2 }, c: { x: 0, y: 4, w: 10, h: 2 }, d: { x: 20, y: 0, w: 6, h: 1 } };
+  const dits = items('a', 'b', 'c', 'd');
+  const dp = place(dits, dmap, 40, { id: 'd', x: 0, y: 2, w: 10, h: 2 });
+  ok('a pin on b leaves b and c where they are; the old slot stays a hole',
+     dp.every((q) => q.id === 'd' ? q.x === 0 && q.y === 2 : q.x === dmap[q.id].x && q.y === dmap[q.id].y)
+     && !dp.some((q) => q.x < 26 && 20 < q.x + q.w && q.y < 1), JSON.stringify(dp.map((q) => [q.id, q.x, q.y])));
+  ok('the pin and b are red, nothing else', ids(faults(dp)) === '[["b","d"],["d","b"]]', ids(faults(dp)));
+  ok('a pin on free cells is valid', faults(place(dits, dmap, 40, { id: 'd', x: 20, y: 8, w: 10, h: 2 })).length === 0);
 
   // A card the pin never moved keeps its saved rect even where a narrow window draws it pushed.
   const narrowMap = { a: { x: 0, y: 0, w: 20, h: 1 }, b: { x: 20, y: 0, w: 20, h: 1 }, c: { x: 0, y: 5, w: 4, h: 1 } };
   commitPin(narrowMap, items('a', 'b', 'c'), 30, { id: 'c', x: 20, y: 6, w: 4, h: 1 });
   ok('a commit leaves an unmoved card at its saved rect, not at the narrow draw', narrowMap.b.x === 20 && narrowMap.b.y === 0, narrowMap.b);
 
-  // Property: a pin lands where asked, pushed cards only move down and only because something sits on them,
-  // nothing overlaps, and the commit draws exactly the preview.
+  // Property: a pin lands where asked, no other card moves (drawn or stored), the commit draws the preview,
+  // and every overlap involves a pin.
   let seed = 7;
   const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
   const hit = (q, r) => q.x < r.x + r.w && r.x < q.x + q.w && q.y < r.y + r.h && r.y < q.y + q.h;
-  let wrong = 0, overlapped = 0, differ = 0;
+  let wrong = 0, moved = 0, differ = 0, stray = 0;
   for (let t = 0; t < 300; t++) {
-    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const all = ['a', 'b', 'c', 'd', 'e', 'f'];
     const map = {};
-    for (const id of ids) if (rnd(5)) map[id] = { x: rnd(30), y: rnd(12), w: 1 + rnd(10), h: 1 + rnd(3) };
-    // A layout as commits leave it: saved rects never overlap; some cards still unplaced.
-    for (const q of place(items(...ids), map, 40)) if (map[q.id]) map[q.id] = { x: q.x, y: q.y, w: q.w, h: q.h };
-    const base = place(items(...ids), map, 40);
-    const pick = ids.filter(() => rnd(3) === 0).slice(0, 2);
+    for (const id of all) if (rnd(5)) map[id] = { x: rnd(30), y: rnd(12), w: 1 + rnd(10), h: 1 + rnd(3) };
+    // A layout as saves leave it: saved rects never overlap; some cards still unplaced.
+    for (const q of place(items(...all), map, 40)) if (map[q.id]) map[q.id] = { x: q.x, y: q.y, w: q.w, h: q.h };
+    for (const id of Object.keys(map)) for (const o of Object.keys(map)) if (id < o && map[id] && map[o] && hit(map[id], map[o])) delete map[o];
+    const base = place(items(...all), map, 40);
+    const pick = all.filter(() => rnd(3) === 0).slice(0, 2);
     const pins = (pick.length ? pick : ['a']).map((id) => ({ id, x: rnd(36), y: rnd(14), w: 1 + rnd(8), h: 1 + rnd(3) }));
-    const pre = place(items(...ids), map, 40, pins);
+    const pre = place(items(...all), map, 40, pins);
     const before = JSON.parse(JSON.stringify(map));
-    const p0 = pre.find((q) => q.id === pins[0].id);
-    if (p0.x !== Math.min(pins[0].x, 40 - pins[0].w) || p0.y !== pins[0].y) wrong++;
-    const shifted = pre.filter((q) => !pins.some((x) => x.id === q.id) && q.y !== base.find((b) => b.id === q.id).y);
-    for (const q of shifted) {
-      const b = base.find((x) => x.id === q.id);
-      if (q.y < b.y || q.x !== b.x || !(pre.some((r) => r !== q && (pins.some((x) => x.id === r.id) || shifted.includes(r)) && hit(b, r)))) wrong++;
+    for (const p of pins) {
+      const q = pre.find((x) => x.id === p.id);
+      if (q.x !== Math.min(p.x, 40 - p.w) || q.y !== p.y) wrong++;
     }
-    commitPin(map, items(...ids), 40, pins);
-    for (const id of ids) {
-      if (before[id] && before[id].y != null && !pins.some((x) => x.id === id) && !shifted.some((q) => q.id === id)
-        && JSON.stringify(map[id]) !== JSON.stringify(before[id])) wrong++;
+    for (const q of base) {
+      if (pins.some((x) => x.id === q.id) || !before[q.id] || before[q.id].y == null) continue;
+      const r = pre.find((x) => x.id === q.id);
+      if (r.x !== q.x || r.y !== q.y) moved++;
     }
-    const after = place(items(...ids), map, 40);
+    commitPin(map, items(...all), 40, pins);
+    for (const id of all) if (before[id] && before[id].y != null && !pins.some((x) => x.id === id) && JSON.stringify(map[id]) !== JSON.stringify(before[id])) moved++;
+    const after = place(items(...all), map, 40);
     for (const q of after) {
       const r = pre.find((x) => x.id === q.id);
       if (r.x !== q.x || r.y !== q.y || r.w !== q.w || r.h !== q.h) differ++;
-      for (const o of after) if (q !== o && hit(q, o)) overlapped++;
     }
+    for (const f of faults(after)) if (!pins.some((x) => x.id === f.id || x.id === f.over)) stray++;
   }
-  ok('300 random pins: the first lands where asked, a pushed card moves down only under something', wrong === 0, wrong);
+  ok('300 random pins: every pin lands exactly where asked', wrong === 0, wrong);
+  ok('300 random pins: no other card moves, drawn or stored', moved === 0, moved);
   ok('300 random pins: the commit draws exactly the preview', differ === 0, differ);
-  ok('300 random pins: nothing overlaps', overlapped === 0, overlapped);
+  ok('300 random pins: every overlap involves a pin', stray === 0, stray);
 }
 
 // ---- named layouts, inert ids, round trip --------------------------------------
@@ -482,16 +490,15 @@ console.log('selection');
   const group = [{ id: 'a', x: 12, y: 0, w: 4, h: 2 }, { id: 'b', x: 18, y: 0, w: 4, h: 2 }];
   const g = place(its, map, 40, group);
   const at = (id) => g.find((p) => p.id === id);
-  ok('a group pins every member where asked; d, which one lands on, moves below it', at('a').x === 12 && at('a').y === 0 && at('b').x === 18 && at('b').y === 0
-     && at('d').x === 20 && at('d').y === 2, JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
+  ok('a group pins every member where asked; d, which one lands on, stays under it', at('a').x === 12 && at('a').y === 0 && at('b').x === 18 && at('b').y === 0
+     && at('d').x === 20 && at('d').y === 0, JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
   ok('the rest keeps its rect: c does too', at('c').x === 0 && at('c').y === 2);
   const clash = place(its, map, 40, [{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 0, y: 0, w: 4, h: 2 }]);
   const cb = clash.find((p) => p.id === 'b');
-  ok('a pin that lands on an earlier pin moves down, never overlaps', cb.y === 2 && !clash.some((q) => q !== cb
-     && q.x < cb.x + cb.w && cb.x < q.x + q.w && q.y < cb.y + cb.h && cb.y < q.y + q.h), cb);
+  ok('a pin that lands on an earlier pin overlaps it, both red', cb.y === 0 && faults(clash).some((f) => f.id === 'b' && f.over === 'a'), cb);
   const m2 = JSON.parse(JSON.stringify(map));
   commitPin(m2, its, 40, group);
-  ok('a group commit writes the group and the card it moved, nothing else', m2.a.x === 12 && m2.b.x === 18 && m2.d.y === 2
+  ok('a group commit writes the group and nothing else', m2.a.x === 12 && m2.b.x === 18 && JSON.stringify(m2.d) === JSON.stringify(map.d)
      && JSON.stringify(m2.c) === JSON.stringify(map.c));
 
   const sel = [{ id: 'a', x: 2, y: 1, w: 4, h: 2 }, { id: 'b', x: 9, y: 3, w: 2, h: 2 }, { id: 'c', x: 20, y: 0, w: 6, h: 1 }];
@@ -584,29 +591,11 @@ console.log('floor');
   ok('the floor is the larger of static and measured, per dimension',
      JSON.stringify(floorOf([6, 2], [9, 1])) === '[9,2]' && JSON.stringify(floorOf([6, 2], [])) === '[6,2]'
      && JSON.stringify(floorOf(RESIZE_FLOOR, [1, 4])) === '[2,4]');
-  const at = (rects) => rects.map(([id, x, y, w, h]) => ({ id, x, y, w, h }));
-  ok('grows east into free cells', JSON.stringify(growWidth(at([['a', 0, 0, 1, 8]]), 'a', 6, 40)) === '{"id":"a","x":0,"y":0,"w":6,"h":8}');
-  ok('stops at an east neighbor, then grows west',
-     JSON.stringify(growWidth(at([['a', 10, 0, 1, 2], ['b', 13, 1, 4, 1]]), 'a', 6, 40)) === '{"id":"a","x":7,"y":0,"w":6,"h":2}');
-  ok('a neighbor in any of its rows stops it', JSON.stringify(growWidth(at([['a', 10, 0, 1, 4], ['b', 12, 3, 4, 1], ['c', 7, 2, 2, 1]]), 'a', 6, 40))
-     === '{"id":"a","x":9,"y":0,"w":3,"h":4}');
-  ok('the grid edge stops it', JSON.stringify(growWidth(at([['a', 38, 0, 1, 1], ['b', 30, 0, 7, 1]]), 'a', 6, 40)) === '{"id":"a","x":37,"y":0,"w":3,"h":1}');
-  const wedged = at([['l', 0, 0, 10, 2], ['a', 10, 0, 1, 2], ['r', 11, 0, 9, 2]]);
-  ok('no room: null, nothing moves', growWidth(wedged, 'a', 6, 40) === null
-     && JSON.stringify(wedged) === JSON.stringify(at([['l', 0, 0, 10, 2], ['a', 10, 0, 1, 2], ['r', 11, 0, 9, 2]])));
-  ok('wide enough or unknown: null', growWidth(at([['a', 0, 0, 6, 1]]), 'a', 6, 40) === null && growWidth([], 'a', 6, 40) === null);
-  const map = { a: { x: 10, y: 0, w: 1, h: 2 }, b: { x: 13, y: 1, w: 4, h: 1 } };
-  const items = [{ id: 'a' }, { id: 'b' }];
-  commitPin(map, items, 40, growWidth(place(items, map, 40), 'a', 6, 40));
-  ok('a grow commits like a resize: the neighbor keeps its rect', JSON.stringify(map) === '{"a":{"x":7,"y":0,"w":6,"h":2},"b":{"x":13,"y":1,"w":4,"h":1}}', JSON.stringify(map));
-
-  // Rows are cells (ph-29r): the height floor grows a card the same way.
-  ok('grows south into free cells', JSON.stringify(growHeight(at([['a', 0, 0, 8, 3]]), 'a', 5)) === '{"id":"a","x":0,"y":0,"w":8,"h":5}');
-  ok('stops at a south neighbor, then grows north',
-     JSON.stringify(growHeight(at([['a', 0, 4, 8, 3], ['b', 2, 8, 4, 2]]), 'a', 6)) === '{"id":"a","x":0,"y":2,"w":8,"h":6}');
-  ok('a neighbor under any of its columns stops it', growHeight(at([['a', 0, 0, 8, 3], ['b', 7, 3, 4, 2]]), 'a', 5) === null);
-  ok('no room: null, nothing moves; tall enough: null', growHeight(at([['t', 0, 0, 8, 2], ['a', 0, 2, 8, 3], ['u', 0, 5, 8, 2]]), 'a', 5) === null
-     && growHeight(at([['a', 0, 0, 8, 5]]), 'a', 5) === null);
+  ok('commitOrder never leaves an overlap', (() => {
+    const o = { a: { x: 0, y: 0, w: 10, h: 4 }, b: { x: 0, y: 4, w: 10, h: 1 }, c: { x: 0, y: 5, w: 10, h: 1 } };
+    commitOrder(o, items('a', 'b', 'c'), 40, ['b', 'a', 'c']);
+    return faults(place(items('a', 'b', 'c'), o, 40)).length === 0 && o.b.y === 0;
+  })());
   const fit = (it, w) => ({ a: 4, b: null }[it.id] ?? null) && (w === 40 ? 4 : 9);
   const packed = pack([{ id: 'a' }, { id: 'b' }], {}, 40, [], fit);
   ok('an unplaced item is packed at its measured height; an unmeasured one at the default',

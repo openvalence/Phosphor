@@ -143,6 +143,8 @@
       n.keys.filter((k) => !kept.has(k)).forEach((k) => remove(k, false));
     }
   }
+  // The add menu a right-click opens on the grid: {x, y} client px, `at` the cells a pick lands on.
+  let menu = $state(null);
   function duplicateId(id) {
     checkpoint();
     commit(items);
@@ -172,7 +174,12 @@
   {#if editing && builder}
     <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} onadd={add} onremove={remove} />
   {/if}
+  {#if menu && editing && builder}
+    <Palette entries={[...modules.values()]} {placed} nests={layout.nests()} {menu} onclose={() => (menu = null)}
+             onadd={(key, nest, pres) => { add(key, nest, pres, nest ? null : menu.at); menu = null; }} onremove={(key) => { remove(key); menu = null; }} />
+  {/if}
   <DashGrid viewId={VIEW} {items} bind:editing editable ondelete={builder ? removeIds : null} onduplicate={builder ? duplicateId : null}
+            onaddmenu={builder ? (x, y, at) => (menu = { x, y, at }) : null}
             resolve={(k) => modules.get(canon(k))?.title}
             ondropkey={builder ? (key, at, nest) => add(key, nest || '', null, at) : null} />
 </div>

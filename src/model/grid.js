@@ -120,7 +120,10 @@ export function pack(items, map, cols, placed = [], fit = null) {
     const fw = fit && fit.w && !(e && e.w != null) ? fit.w({ ...it, ...lookOf(e) }) : 0;
     const w = fw > 0 ? int(fw, 1, cols, cols) : w0;
     const h = Math.min(MAX_H, Math.max(h0, (fit && fit({ ...it, ...lookOf(e) }, w, h0)) || 0));
-    let r = null;
+    // A drop waiting for its measure (commitPin) keeps its cell while that is free, and never floats up.
+    const at = e && e.at && typeof e.at === 'object' ? { x: int(e.at.x, 0, cols - w, 0), y: int(e.at.y, 0, Infinity, 0), w, h } : null;
+    let r = at && !hits(placed, at) ? { ...it, ...at, ...lookOf(e) } : null;
+    if (r) { placed.push(r); continue; }
     for (let y = from; !r; y++) {
       for (let x = 0; x + w <= cols && !r; x++) if (!hits(placed, { x, y, w, h })) r = { ...it, x, y, w, h, ...lookOf(e) };
     }
@@ -154,15 +157,14 @@ export function pack(items, map, cols, placed = [], fit = null) {
  * ({[id]: {x, y, w, h}}). Pure: never writes `map`. Nothing has gravity:
  * - A saved item keeps its rect (x clamped to fit). Only a narrower window
  *   makes two saved rects clash; the later in reading order is drawn at the
- *   first free row below, and its saved rect waits for the wider window.
- * - An unplaced item (no entry, or no position yet) takes the first free rect
- *   of its size (pack).
+ *   first free row below, and its saved rect waits for the wider window. Two
+ *   saved rects that overlap as stored stay overlapped: the user drew that,
+ *   and both are red until resolved (faults, DESIGN §10.6).
  * - `pin` ({id, x, y, w, h}, or an array for a group) is the item under a
- *   drag: laid first, exactly where asked (below an earlier pin it clashes
- *   with). Every other item keeps its rect or moves to the first free row
- *   below. A pushed card returns as the pin moves on, because each preview
- *   starts from the saved map. Untouched cards keep their rects and the pin's
- *   old slot stays a hole.
+ *   drag: drawn exactly where asked, over whatever it lands on. Every other
+ *   saved item keeps its rect; nothing is displaced.
+ * - An unplaced item (no entry, or no position yet) takes the first free rect
+ *   of its size (pack), around the pins and the pinned cards' old slots.
  * - `fit` sizes an unplaced item's height (pack).
  * Returns [{...item, x, y, w, h}] in reading order (y, then x).
  */
@@ -173,34 +175,47 @@ export function place(items, map, cols, pin = null, fit = null) {
   const pinned = new Set(pins.map((p) => p.id));
   const saved = items.filter((it) => positioned(map[it.id]))
     .sort((a, b) => at(map[a.id], 'y') - at(map[b.id], 'y') || at(map[a.id], 'x') - at(map[b.id], 'x') || (a.id < b.id ? -1 : 1));
-  const flat = [];
+  const placed = [];
+  const stored = new Map();
   for (const it of saved) {
     const e = map[it.id];
     const { w, h } = sizeOf(e, cols);
-    const r = { ...it, x: Math.min(at(e, 'x'), cols - w), y: at(e, 'y'), w, h, ...lookOf(e) };
-    while (hits(flat, r)) r.y++;
-    flat.push(r);
+    const s = { x: at(e, 'x'), y: at(e, 'y'), w, h };
+    const r = { ...it, x: Math.min(s.x, cols - w), y: s.y, w, h, ...lookOf(e) };
+    const others = placed.filter((q) => !overlaps(stored.get(q), s));
+    while (hits(others, r)) r.y++;
+    placed.push(r);
+    stored.set(r, s);
   }
-  pack(items.filter((it) => !positioned(map[it.id])), map, cols, flat, fit);
-  if (!pins.length) return flat;
-  // The unpinned cards are drawn as they are without the pin; a pin lands on the ones it covers.
-  const placed = [];
+  const old = new Set(placed.filter((p) => pinned.has(p.id)));
   for (const p of pins) {
-    const { w, h } = sizeOf(p, cols);
-    const r = { ...byId.get(p.id), x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h, ...lookOf(map[p.id]) };
-    while (hits(placed, r)) r.y++;
-    placed.push(r);
+    const { w, h: h0 } = sizeOf(p, cols);
+    const it = { ...byId.get(p.id), ...lookOf(map[p.id]) };
+    // An add dropped at a cell is drawn at its content height once measured (pack's rule for an unplaced card).
+    const h = positioned(map[p.id]) || !fit ? h0 : Math.min(MAX_H, Math.max(h0, fit(it, w, h0) || 0));
+    placed.push({ ...it, x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h });
   }
-  for (const q of flat.filter((p) => !pinned.has(p.id))) {
-    const r = { ...q };
-    while (hits(placed, r)) r.y++;
-    placed.push(r);
-  }
-  return placed.sort(byReading);
+  pack(items.filter((it) => !positioned(map[it.id]) && !pinned.has(it.id)), map, cols, placed, fit);
+  return old.size ? placed.filter((p) => !old.has(p)) : placed;
 }
 
-/** The first item of `placed` other than `id` that rect `r` overlaps, or null: what stops a resize. */
-export const blocker = (placed, r, id) => placed.find((q) => q.id !== id && overlaps(r, q)) || null;
+/**
+ * The red cards of a place() result (DESIGN §10.6): [{id, over}] for every
+ * card that overlaps another (`over` the first one, in reading order) or is
+ * under its floor (`floor(p) -> [w, h]`; `over` null). A section row is never
+ * red itself, a card on it is. A layout is valid when this is empty; the store
+ * is not written otherwise (dashboard.svelte.js flush).
+ */
+export function faults(placed, floor = null) {
+  const out = [];
+  for (const p of placed) {
+    if (p.kind === 'section') continue;
+    const o = placed.find((q) => q !== p && overlaps(p, q));
+    const f = !o && floor ? floor(p) : null;
+    if (o || (f && (p.w < f[0] || p.h < f[1]))) out.push({ id: p.id, over: o ? o.id : null });
+  }
+  return out;
+}
 
 /** Smallest card any resize may leave, in cells, when the item declares no minimum of its own. */
 export const RESIZE_FLOOR = [2, 1];
@@ -208,34 +223,8 @@ export const RESIZE_FLOOR = [2, 1];
 /** Whole cells that hold `px` CSS px of measured content; 0 for no measurement. */
 export const cellsFor = (px, cell) => (px > 0 ? Math.ceil(px / cell - 1e-6) : 0);
 
-/** The resize floor [w, h]: per dimension, the larger of the static floor and the measured cells. */
+/** A card's floor [w, h]: per dimension, the larger of the static floor and the measured cells; under it the card is red. */
 export const floorOf = (fixed, measured) => [Math.max(fixed[0], measured[0] || 0), Math.max(fixed[1], measured[1] || 0)];
-
-/**
- * The rect item `id` of `placed` grows to so it is `need` cells wide: east
- * first, then west, one cell at a time, stopping at a neighbor or the grid's
- * edge (a resize never pushes). Null when it is wide enough or cannot grow.
- */
-export function growWidth(placed, id, need, cols) {
-  const p = placed.find((q) => q.id === id);
-  if (!p || p.w >= need) return null;
-  const others = placed.filter((q) => q.id !== id);
-  let x = p.x, w = p.w;
-  while (w < need && x + w < cols && !hits(others, { x, y: p.y, w: w + 1, h: p.h })) w++;
-  while (w < need && x > 0 && !hits(others, { x: x - 1, y: p.y, w: w + 1, h: p.h })) { x--; w++; }
-  return w > p.w ? { id, x, y: p.y, w, h: p.h } : null;
-}
-
-/** growWidth's twin for height: south first, then north, never past a neighbor. */
-export function growHeight(placed, id, need) {
-  const p = placed.find((q) => q.id === id);
-  if (!p || p.h >= need) return null;
-  const others = placed.filter((q) => q.id !== id);
-  let y = p.y, h = p.h;
-  while (h < need && h < MAX_H && !hits(others, { x: p.x, y, w: p.w, h: h + 1 })) h++;
-  while (h < need && h < MAX_H && y > 0 && !hits(others, { x: p.x, y: y - 1, w: p.w, h: h + 1 })) { y--; h++; }
-  return h > p.h ? { id, x: p.x, y, w: p.w, h } : null;
-}
 
 /**
  * Resize `start` ({x, y, w, h}) by dragging `edge` (n, s, e, w or a corner
@@ -300,8 +289,7 @@ export function setLook(map, id, look, at = null) {
  * Pins that align or spread the rects of a selection ([{id, x, y, w, h}]):
  * 'left' and 'top' move every edge to the selection's smallest; 'spread'
  * keeps the outermost two and spaces the rest evenly across, in x order.
- * A pin lands where asked and pushes the cards it covers down; only a pin
- * landing on an earlier pin moves down (place).
+ * A pin lands where asked; one landing on a card overlaps it, red (faults).
  */
 export function arrangePins(rects, how) {
   if (how === 'left') { const x = Math.min(...rects.map((r) => r.x)); return rects.map((r) => ({ ...r, x })); }
@@ -357,21 +345,22 @@ export function nudgePin(placed, id, dx, dy, cols) {
 }
 
 /**
- * Commit a drag or resize: write the pinned items, every card the pin moved
- * and every unplaced item at the rect it is drawn at now, so the commit equals
- * the preview and nothing the user did not touch moves later.
+ * Commit a drag or resize: write the pinned items, and every unplaced item at
+ * the rect it is drawn at now, so nothing the user did not touch moves later.
  * With `fit`, an unplaced item never measured is held: entered with no rect
  * (so a host that lists its map's keys still draws it) until its height is
- * known; returns the held ids.
+ * known; returns the held ids. A pinned add never measured (a drop) is held
+ * with its cell as `at`, so it is written there at its content height and
+ * never lands red for want of a measure.
  */
 export function commitPin(map, items, cols, pin, fit = null) {
   const ids = new Set([].concat(pin || []).map((p) => p && p.id));
   const held = [];
-  const base = ids.size ? new Map(place(items, map, cols, null, fit).map((p) => [p.id, p])) : null;
   write(map, place(items, map, cols, pin, fit).filter((p) => {
-    if (ids.has(p.id)) return true;
-    if (positioned(map[p.id])) { const b = base && base.get(p.id); return !!b && (b.x !== p.x || b.y !== p.y); }
-    if (fit && fit(p, p.w, p.h) == null) { held.push(p.id); map[p.id] = map[p.id] || {}; return false; }
+    const fresh = !positioned(map[p.id]) && fit && fit(p, p.w, p.h) == null;
+    if (ids.has(p.id) && fresh) { held.push(p.id); map[p.id] = { ...(map[p.id] || {}), w: p.w, at: { x: p.x, y: p.y } }; return false; }
+    if (ids.has(p.id) || positioned(map[p.id])) return ids.has(p.id);
+    if (fresh) { held.push(p.id); map[p.id] = map[p.id] || {}; return false; }
     return true;
   }));
   return held;
@@ -391,6 +380,11 @@ export function commitOrder(map, items, cols, orderedIds) {
     const o = own.get(id);
     if (o && cur[i]) tmp[id] = { x: cur[i].x, y: cur[i].y, w: o.w, h: o.h };
   });
+  const laid = [];
+  for (const [, e] of Object.entries(tmp).sort(([a, p], [b, q]) => p.y - q.y || p.x - q.x || (a < b ? -1 : 1))) {
+    while (hits(laid, e)) e.y++;
+    laid.push(e);
+  }
   write(map, place(items, tmp, cols));
 }
 
