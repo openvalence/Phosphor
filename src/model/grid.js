@@ -160,8 +160,9 @@ export function pack(items, map, cols, placed = [], fit = null) {
  * - `pin` ({id, x, y, w, h}, or an array for a group) is the item under a
  *   drag: laid first, exactly where asked (below an earlier pin it clashes
  *   with). Every other item keeps its rect or moves to the first free row
- *   below; only the cards that moved fall back upward, never above their saved
- *   row. Untouched cards keep their rects and the pin's old slot stays a hole.
+ *   below. A pushed card returns as the pin moves on, because each preview
+ *   starts from the saved map. Untouched cards keep their rects and the pin's
+ *   old slot stays a hole.
  * - `fit` sizes an unplaced item's height (pack).
  * Returns [{...item, x, y, w, h}] in reading order (y, then x).
  */
@@ -190,16 +191,10 @@ export function place(items, map, cols, pin = null, fit = null) {
     while (hits(placed, r)) r.y++;
     placed.push(r);
   }
-  const moved = [];
   for (const q of flat.filter((p) => !pinned.has(p.id))) {
     const r = { ...q };
     while (hits(placed, r)) r.y++;
     placed.push(r);
-    if (r.y > q.y) moved.push([r, q.y]);
-  }
-  for (const [r, y0] of moved.sort((a, b) => byReading(a[0], b[0]))) {
-    const others = placed.filter((q) => q !== r);
-    while (r.y > y0 && !hits(others, { x: r.x, y: r.y - 1, w: r.w, h: r.h })) r.y--;
   }
   return placed.sort(byReading);
 }
@@ -305,7 +300,8 @@ export function setLook(map, id, look, at = null) {
  * Pins that align or spread the rects of a selection ([{id, x, y, w, h}]):
  * 'left' and 'top' move every edge to the selection's smallest; 'spread'
  * keeps the outermost two and spaces the rest evenly across, in x order.
- * A pin landing on another card moves down (place).
+ * A pin lands where asked and pushes the cards it covers down; only a pin
+ * landing on an earlier pin moves down (place).
  */
 export function arrangePins(rects, how) {
   if (how === 'left') { const x = Math.min(...rects.map((r) => r.x)); return rects.map((r) => ({ ...r, x })); }

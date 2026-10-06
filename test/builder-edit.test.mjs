@@ -8,7 +8,7 @@
  *            size; the minimum is refused visibly; an orientation flip is
  *            announced (ph-e82.20.1); a resize stops at a neighbor, which
  *            never moves (ph-e82.22)
- *   drag     the dragged card lifts; no sibling moves while dragging or
+ *   drag     the dragged card lifts; no sibling moves into free cells while dragging or
  *            after the drop (ph-e82.22, placements are absolute); the ghost
  *            is the committed rect; a card dropped on a nest lights the nest
  *            and joins it; a member dragged out of its nest lands at the top
@@ -35,6 +35,9 @@
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
  *            (ph-e82.20.7)
+ *   displace a drag onto another card pushes it below the ghost; the release
+ *            commits the push, a reload keeps it, Escape restores every card
+ *            (ph-s7lj.2)
  *   floor    an action card under its measured content floor grows on load
  *            (saved, no undo step); pointer and keyboard stop at the floor;
  *            nothing spills past the frame; a card with no room keeps its
@@ -179,7 +182,7 @@ console.log('resize');
   // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
   const mw = g2 && Number((new RegExp('^(\\d+) × ' + h0 + ' · minimum$').exec(g2.text) || [])[1]);
   // A field card never resizes under 8 layout columns of 2 rem (the seed's floor width), though its container-type hides it from min-content.
-  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0] && mw >= Math.ceil(256 / cell), g2);
+  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw === Math.max(minCells(WIDGET.slider, 'h')[0], Math.ceil(256 / cell)), g2);
   ok('the refusal is announced', /its minimum$/.test(await said()), await said());
   s = (await stored())[SLIDER];
   ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
@@ -188,7 +191,7 @@ console.log('resize');
   ok('a corner drag past square flips the orientation, shown on the ghost', g3 && / · vertical$/.test(g3.text), g3);
   ok('the flip is announced', /now vertical/.test(await said()), await said());
   s = (await stored())[SLIDER];
-  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1], s);
+  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1] && s.h >= mw, s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
   await drag(page, c.locator('.edge-e'), 30 * cell, 0);
   s = await stored();
@@ -241,11 +244,12 @@ console.log('drag');
   const mc = await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').boundingBox();
   const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
   const gpad = await page.$eval('.home > .dash-wrap > .dash-grid', (g) => parseFloat(getComputedStyle(g).paddingLeft));
+  const mw0 = Math.round(mc.width / cell);
   const out = await drag(page, m, gb.x + gpad + 2 * cell - mc.x, 0,
     () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
-  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 8/.test(out.replace(/\s+/g, ' ')), out);
+  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && new RegExp('^3 / span ' + mw0).test(out.replace(/\s+/g, ' ')), out);
   const after = await stored();
-  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === 8
+  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === mw0
      && !Object.prototype.hasOwnProperty.call(after['nest:1'].nest.map, F3), JSON.stringify(after[F3]));
   ok('and is drawn at the top level only', await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell[data-id="' + F3 + '"]').count() === 1
      && await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 0);
@@ -390,7 +394,13 @@ console.log('displace');
   await editBtn(page).click();
   await page.waitForTimeout(300);
   const g1 = await geo();
-  await drag(page, card(F1).locator('.handle.grab'), 6 * cell, 0, async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(80); });
+  const cover = await drag(page, card(F1).locator('.handle.grab'), 0, -2 * cell, async () => {
+    const seen = { ghost: await page.$eval('.home .drop-ghost', (g) => g.getBoundingClientRect().bottom), other: (await rect(F2)).y };
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    return seen;
+  });
+  ok('Escape mid-drag: the covered card was drawn below the ghost', cover.other >= cover.ghost - 1, cover);
   ok('Escape mid-drag restores every card', await geo() === g1 && JSON.stringify(await stored()) === JSON.stringify(s2), g1);
   ok('the first layout was a different one', g0 !== g1);
   await ctx.close();

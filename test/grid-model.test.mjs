@@ -144,6 +144,11 @@ console.log('placement');
   ok('the preview is pure: the pin moving on returns the pushed cards', place(dits, dmap, 40, { ...dpin, y: 8 }).find((q) => q.id === 'b').y === 2);
   ok('a pushed card never ends above its saved row', place(dits, dmap, 40, { id: 'e', x: 0, y: 0, w: 10, h: 1 }).every((q) => q.id === 'e' || q.y >= dmap[q.id].y));
 
+  // A card the pin never moved keeps its saved rect even where a narrow window draws it pushed.
+  const narrowMap = { a: { x: 0, y: 0, w: 20, h: 1 }, b: { x: 20, y: 0, w: 20, h: 1 }, c: { x: 0, y: 5, w: 4, h: 1 } };
+  commitPin(narrowMap, items('a', 'b', 'c'), 30, { id: 'c', x: 20, y: 6, w: 4, h: 1 });
+  ok('a commit leaves an unmoved card at its saved rect, not at the narrow draw', narrowMap.b.x === 20 && narrowMap.b.y === 0, narrowMap.b);
+
   // Property: a pin lands where asked, pushed cards only move down and only because something sits on them,
   // nothing overlaps, and the commit draws exactly the preview.
   let seed = 7;
@@ -160,6 +165,7 @@ console.log('placement');
     const pick = ids.filter(() => rnd(3) === 0).slice(0, 2);
     const pins = (pick.length ? pick : ['a']).map((id) => ({ id, x: rnd(36), y: rnd(14), w: 1 + rnd(8), h: 1 + rnd(3) }));
     const pre = place(items(...ids), map, 40, pins);
+    const before = JSON.parse(JSON.stringify(map));
     const p0 = pre.find((q) => q.id === pins[0].id);
     if (p0.x !== Math.min(pins[0].x, 40 - pins[0].w) || p0.y !== pins[0].y) wrong++;
     const shifted = pre.filter((q) => !pins.some((x) => x.id === q.id) && q.y !== base.find((b) => b.id === q.id).y);
@@ -168,6 +174,10 @@ console.log('placement');
       if (q.y < b.y || q.x !== b.x || !(pre.some((r) => r !== q && (pins.some((x) => x.id === r.id) || shifted.includes(r)) && hit(b, r)))) wrong++;
     }
     commitPin(map, items(...ids), 40, pins);
+    for (const id of ids) {
+      if (before[id] && before[id].y != null && !pins.some((x) => x.id === id) && !shifted.some((q) => q.id === id)
+        && JSON.stringify(map[id]) !== JSON.stringify(before[id])) wrong++;
+    }
     const after = place(items(...ids), map, 40);
     for (const q of after) {
       const r = pre.find((x) => x.id === q.id);

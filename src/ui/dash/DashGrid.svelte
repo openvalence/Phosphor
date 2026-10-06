@@ -27,7 +27,7 @@
    *   writes the layout, so every intermediate frame is cancelable (Escape).
    *   Placements are absolute (grid.js place): the dragged card is laid
    *   exactly where asked and a card it covers moves to the first free row
-   *   below (then falls back up); a resize stops at a neighbor rather than
+   *   below (and returns when the drag moves on); a resize stops at a neighbor rather than
    *   pushing it.
    * - An add (New nest, Insert, Duplicate) is committed at once, so the first
    *   free rect it was drawn at is where it stays.
