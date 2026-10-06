@@ -7,15 +7,15 @@ framework-neutral ABI) live in [DESIGN.md](DESIGN.md) §2, §3, §4 and §9 and
 are not restated here. Status (what is verified, what is open) lives on the
 dev board, epic `ph-vdk`.
 
-## The one rule
+## Prime Rule
 
 A plugin adds features **through Valence, never around it**. It reads the
 model (catalog, reported values, write status) and writes through the shadow
-entry points, the same doors every built-in control uses, so a plugin write
+entry points, the ones every built-in control uses, so a plugin write
 gets the same pending, echo, fault lifecycle and the same refusal banner. The
 API object has no session, socket or transport handle, and
-`test/plugins.test.mjs` fails if one appears. A plugin that needs something
-the protocol lacks is an RFC in Valence, not a workaround.
+`test/plugins.test.mjs` fails if one appears. When a plugin needs something
+the protocol lacks, the change is a Valence RFC.
 
 ## Module shape
 
@@ -65,7 +65,7 @@ optional `cells: {h: [w, h], v: [w, h]}`, the minimum footprint in grid cells
 for a horizontal (w >= h) and a vertical placement; absent, the composite
 default applies, and a malformed value fails registration. `el` sits inside the
 placed cell, so a hero that cares about its orientation reads its own
-box. A hero that throws leaves the palette with its claims, exactly as above.
+box. A hero that throws leaves the palette with its claims, as above.
 
 **Replace mode (experimental, `ph-vdk.29`).** `registerHero` accepts an
 optional `replaces: '<built-in hero id>'`, or a list of them, each
@@ -74,10 +74,10 @@ suppressed when the claim succeeds (the id a built-in registers with in
 enabled and its own claim succeeds, `claimAll` skips the named built-in
 entirely for that pass (DESIGN §3: a tier-2 widget "renders instead", by the
 operator's explicit choice to enable the plugin). When the plugin's claim
-fails, or the plugin is disabled, the built-in claims normally — a `replaces`
-plugin can only ever add a substitution, never leave a field unclaimed. An
-unrecognized id is simply never matched: no built-in of that name to suppress,
-same "opportunity, never requirement" degrade as an unknown role.
+fails, or the plugin is disabled, the built-in claims normally. A `replaces`
+plugin adds a substitution and never leaves a field unclaimed. An
+unrecognized id matches nothing and suppresses nothing, the same way an
+unknown role is ignored.
 
 **Substituting a §10 pattern (RENDERING §10.2, RFC-068).** A plugin that
 replaces a built-in pattern puts every one of the pattern's essential
@@ -91,44 +91,48 @@ settings cards, render instead (item 5).
 **Pages.** `api.registerPage({id, label, icon, spec, mount})` gives a plugin a
 tab of its own: listed indented under Plugins in the sidebar's Phosphor
 section, selectable like any tab, found by F3 as `<label> · Phosphor ›
-Plugins`, its page region the plugin's to fill full width. `mount(el,
-fields)` is a hero's mount, returning `{update, unmount}`, and PluginSlot
-drives it the same way, so a plugin that already has a hero passes that
-hero's mount and the card and the page are two views of one instance. `spec`
-is optional and resolves like a hero's but **claims nothing**: a page never
-takes a field from a card or the generic tree. A spec the hub cannot meet
-leaves the tab in place with the note `Not on this hub`. `id` follows the
-name rule, `label` is one Blender-terse word or two (at most 24 characters;
-docs/COPY.md), `icon` is one SVG path `d` on a 16-unit viewBox drawn open
-at 1.5 stroke (src/ui/navIcons.js's style; absent, the Plugins glyph).
-Registering returns `withdraw()`; a page whose mount throws is dropped like a
-hero. The Plugins pane gives each plugin with a page a **Show tab** switch,
-persisted per plugin as `phosphor.plugins.pages.<name>` (`'1'` or `'0'`,
-in the prefs backup); absent, a factory plugin's pages show and an installed
-plugin's do not. The sidebar follows the switch at once. Host side:
-`src/plugins/host.js` `pages`, `pageShown`, `setPageShown`. Every page gets
-the shell's Fullscreen in its footer (DESIGN §10.3); the plugin draws
-nothing for it, and a mount that fills its element's height fills the window.
-A page registered with `mediaFullscreen: true` offers fullscreen itself and
-gets no footer button (F11 still works); its mode control dispatches
-`phosphor-page-fullscreen-mode` (`detail: {mode: 'window' | 'borderless'}`)
-and the shell stores pref `fullscreen`. The desktop shell keeps
-`<html data-fullscreen-mode>` at the current mode; absent, there is no
-Borderless. A page registered with `fill: true` (experimental, `ph-yuce`)
-is laid out as a column filling the desktop content pane's width and
-height (`main.pane.fill`, the page fullscreen geometry in place): a mount
-whose root is `height: 100%` gets a definite height and no bottom gap.
-Other pages keep their flow; the phone layout scrolls the window and is
-not filled.
-A page may also ask for it (experimental): a `phosphor-page-fullscreen`
-event dispatched from inside the page (bubbles, cancelable, `detail: {on, bare}`).
-The shell takes it only for the page on screen, and `preventDefault()` is
-its yes; `on` enters, `bare` (default true) hides the bar and strip with the
-stop pair floating (Borderless), `bare: false` keeps the hero bar and its rail
-and hides only the sidebar and pane chrome (In window); false leaves. Every change is announced on `window` as
-`phosphor-page-fullscreen-change` (`detail: {on}`), so a view a page draws
-for it (the funscript player's media fullscreen) ends with the shell's
-(Escape, the caret, F11, a page switch). Seam: `src/App.svelte`.
+Plugins`, its page region the plugin's to fill full width.
+
+- **Registration fields.** `mount(el, fields)` is a hero's mount, returning
+  `{update, unmount}`, and PluginSlot drives it the same way, so a plugin that
+  already has a hero passes that hero's mount and the card and the page are two
+  views of one instance. `spec` is optional and resolves like a hero's but
+  **claims nothing**: a page never takes a field from a card or the generic
+  tree. A spec the hub cannot meet leaves the tab in place with the note `Not
+  on this hub`. `id` follows the name rule, `label` is one or two words (at
+  most 24 characters; docs/COPY.md), `icon` is one SVG path `d` on a 16-unit
+  viewBox drawn open at 1.5 stroke (src/ui/navIcons.js's style; absent, the
+  Plugins glyph). Registering returns `withdraw()`; a page whose mount throws
+  is dropped like a hero.
+- **Show tab.** The Plugins pane gives each plugin with a page a **Show tab**
+  switch, persisted per plugin as `phosphor.plugins.pages.<name>` (`'1'` or
+  `'0'`, in the prefs backup); absent, a factory plugin's pages show and an
+  installed plugin's do not. The sidebar follows the switch at once. Host
+  side: `src/plugins/host.js` `pages`, `pageShown`, `setPageShown`.
+- **Fullscreen footer.** Every page gets the shell's Fullscreen in its footer
+  (DESIGN §10.3); the plugin draws nothing for it, and a mount that fills its
+  element's height fills the window.
+- **`mediaFullscreen: true`.** The page offers fullscreen itself and gets no
+  footer button (F11 still works). Its mode control dispatches
+  `phosphor-page-fullscreen-mode` (`detail: {mode: 'window' | 'borderless'}`)
+  and the shell stores pref `fullscreen`. The desktop shell keeps
+  `<html data-fullscreen-mode>` at the current mode; absent, there is no
+  Borderless.
+- **`fill: true`** (experimental, `ph-yuce`). The page is laid out as a column
+  filling the desktop content pane's width and height (`main.pane.fill`, the
+  page fullscreen geometry in place): a mount whose root is `height: 100%`
+  gets a definite height and no bottom gap. Other pages keep their flow; the
+  phone layout scrolls the window and is not filled.
+- **Page-requested fullscreen** (experimental). A `phosphor-page-fullscreen`
+  event dispatched from inside the page (bubbles, cancelable, `detail: {on,
+  bare}`). The shell takes it only for the page on screen, and
+  calling `preventDefault()` accepts it. `on` enters; `bare` (default true) hides the
+  bar and strip with the stop pair floating (Borderless); `bare: false` keeps
+  the hero bar and its rail and hides only the sidebar and pane chrome (In
+  window); `on` false leaves. Every change is announced on `window` as
+  `phosphor-page-fullscreen-change` (`detail: {on}`), so a view a page draws
+  for it (the funscript player's media fullscreen) ends with the shell's
+  (Escape, the caret, F11, a page switch). Seam: `src/App.svelte`.
 
 **Page layout by bucket** (DESIGN §10.12, `ph-cqz6`). The host publishes the
 window's width bucket, 1 (watch) to 5 (wide), as `<html data-bucket>`, with
@@ -190,7 +194,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `commitTrial()` / `revertTrial()` | a Promise of `{ok, error?}`: store, or put back, every trial value this client holds. Needs `intent` | experimental |
 | `trialPending` | read-only property: true while any client holds a trial value on this hub, from the machine's `meta.trial_pending` fields | experimental |
 | `gate(field)` | `''` or why the field cannot be written now, in words (law 3: no link, not authorized, refused by the machine's mask, read-only). On a motion-input field (a c2h STREAM's, e.g. `input.duration`), in order: `no hub link`, `session not authorized`, the latch words, `stop the pattern first` (a generator runs), `motion input in use by <plugin>`. A foreign-held control-owner slot never gates; a stream holding the rail is the hub's `SOURCE_CONFLICT`, which `submitSegments` returns as `refused: rail owned by <source>` | experimental |
-| `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is simply quiet | experimental |
+| `stale(field)` | `''` or the stale reason in words, by the host's one freshness rule (law 8). `age` is raw and grows on an on-change channel that is quiet | experimental |
 | `reason(field)` | `''` or the last refusal of the field's write, as the host's ladder words it (`refused: SOURCE_CONFLICT`) | experimental |
 | `modTarget(field)` | uid of the field the field's modulator entry rides (RFC-066 `mod_target`), or null | experimental |
 | `storeSlots(field)` | for an `action.store` writer: a Promise of every slot of the store its `store_id` names (RFC-070), `{slot, state, name}` with `state` one of `pending`, `item`, `empty`, `locked`, `error` (RENDERING §8.4 row 9); null when unlinked | experimental |
@@ -232,8 +236,8 @@ RFC-087): one segment `{input.target, input.duration}` with the end velocity
 horizon. Each new bundle supersedes the not-yet-started tail, so a newer line
 or a seek needs no flush.
 
-`submitSegments(list)` is the lookahead door (RFC-087), segments STREAM only,
-never a fallback. The host owns every timing fact: it reads hub now (from
+`submitSegments(list)` is the lookahead entry point (RFC-087), segments STREAM only,
+never a fallback. The host computes all timing: it reads hub now (from
 the kept CLOCK exchange with the least RTT/2 plus age x 50 ppm, SPEC §7.1) and
 `performance.now()` together, converts each execution start to hub time and
 stamps it `schedule_latency_us` earlier (RFC-059: execution = stamp +
@@ -250,7 +254,7 @@ the grant and takes nothing.
 input for its plugin until the latest sent end plus `MOTION_HOLD_MS` (500);
 an ok `submitMotion` until now plus its duration plus 500. Another plugin's
 `submitMotion` or `submitSegments` meanwhile returns `{ok: false, sent: 0,
-reason: 'motion input in use by <plugin>'}` without reaching the door, and its
+reason: 'motion input in use by <plugin>'}` without being sent, and its
 `gate` on a motion-input field says the same.
 
 **Trial writes.** The hub keeps each trial key's stored value and owns the
@@ -292,28 +296,29 @@ gated on live state, so its revert could be refused too.
 Validation lives in one place, `src/plugins/host.js` `validateManifest`. An
 invalid manifest is listed with its problems and its code is never run.
 
-## Permissions: honesty, not a sandbox
+## Permissions
 
-A plugin runs in the page with the page's full authority. The manifest
-declares what it means to do, the Plugins pane shows it before and after
-enabling, and the API refuses a gated call the manifest did not declare
-(`PermissionError`). That stops honest mistakes and makes the surface
-reviewable. It does **not** stop hostile code: nothing prevents a module from
-opening its own WebSocket. Install plugins you would install as any program.
+A plugin runs in the page with
+the page's full authority. The manifest declares what it means to do, the
+Plugins pane shows it before and after enabling, and the API refuses a gated
+call the manifest did not declare (`PermissionError`). This catches undeclared
+calls from a well-behaved plugin and makes each plugin's surface reviewable.
+It does **not** contain hostile code: a module can open its own WebSocket.
+Install a plugin only from a source you would trust with a program.
 
 Reading needs no permission. `intent` covers every settings/action/command
 write, `motion` covers motion input, and `net.listen:<port>` opens a TCP
 listener on **127.0.0.1 only** (`src-tauri/src/plugins.rs`; a LAN bind would
 be an unauthenticated control path, `ph-vdk.28`). `net.fetch` reaches HTTP(S)
 services that are not the machine; the hub's own origins are refused, so it
-never becomes a side channel around Valence (DESIGN §2).
+is not a side channel around Valence (DESIGN §2).
 
 Every call into plugin code (activate, deactivate, mount, update, unmount,
 settings, TCP line callbacks) is wrapped: a throw is recorded on the plugin,
 shown on its row in the Plugins pane, and logged to the Log pane tagged
 `plugin:<name>`. A hero that throws is dropped and its fields return to the
 generic renderer; a plugin whose `activate` throws has everything it
-registered rolled back. Nothing a plugin throws reaches the kernel.
+registered rolled back. No exception from plugin code propagates into the kernel.
 
 ## Loading
 
@@ -328,20 +333,23 @@ section (DESIGN §10.11) and appears once a hub's catalog is adopted.
 
 **CSP.** `tauri.conf.json` `security.csp` is the home. Its `script-src`
 carries `blob:` for this loader; drop it and every plugin shows an `import:`
-error on its row. It also carries `'wasm-unsafe-eval'` (WebAssembly compile only, not `eval`): the funscript player compiles the machine's planner in a worker, and without it the analyzer reads `Kinetic: fallback` (docs/plugins/FUNSCRIPT.md, Kinetic). A plugin runs under the page's policy, so `connect-src`
-(`ws:` plus Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
+error on its row. It also carries `'wasm-unsafe-eval'` (WebAssembly compile only, not
+`eval`): the funscript player compiles the machine's planner in a worker, and
+without it the analyzer reads `Kinetic: fallback` (docs/plugins/FUNSCRIPT.md,
+Kinetic). A plugin runs under the page's policy, so `connect-src` (`ws:` plus
+Tauri IPC) refuses its `fetch` to any http origin; HTTP goes
 through `net.fetch` (the `http:default` capability allows `http://**:*` and
-`https://**:*`; the `:*` is load-bearing, a URLPattern without a port
+`https://**:*`; `:*` is required, because a URLPattern without a port
 matches only the scheme's default port, so `http://**` refused Stash on
-30198) and loopback TCP through `net.listenTcp`. `img-src` and
-`media-src` take `blob:`, `http:` and `https:`, so a plugin plays a local file
-from an object URL or media from a library by URL (ruling R-B); `media-src`
+30198) and loopback TCP through `net.listenTcp`.
+`img-src` and `media-src` take `blob:`, `http:` and `https:`, so a plugin
+plays a local file from an object URL or media from a library by URL (ruling R-B); `media-src`
 otherwise falls back to `default-src 'self'` and nothing plays. Plugin files
 come through the `plugins_list` command, so no asset-protocol scope is
 involved.
 
-**The hub-served page never loads plugins.** A hub serves one file and
-nothing else. For development only, a `vite dev` build accepts
+**Hub-served page.** A hub serves only the one bundled file, and that page
+loads no plugins. For development only, a `vite dev` build accepts
 `?plugin=<url of the entry module>` (repeatable) and fetches `manifest.json`
 beside it, e.g.
 `http://localhost:5173/?hub=<hub>&plugin=/plugins/examples/stroke-gauge/index.js`.
@@ -351,14 +359,14 @@ Production builds compile that path out.
 
 - `plugins/examples/stroke-gauge/`: a read-only widget. Claims
   `telemetry.position` (window roles optional) and draws an SVG gauge, dimmed
-  when stale. Proves the hero seam works from outside the bundle, no
+  when stale. It shows the hero seam working from outside the bundle without a
   framework.
 - `plugins/examples/tcode-adapter/`: RFC-044 rung 1 as an adapter. The shell
   listens on 127.0.0.1:8000 (MultiFunPlayer's default endpoint port; the
   spec pins none, drafted as Valence RFC-061), each line is parsed for `L0`
   (`L0500I100` = 0.5 over 100 ms; other axes, `S` and device commands are
   ignored) and submitted with `submitMotion`, the `I` interval as its
-  duration. The hub never sees TCode.
+  duration. The hub receives Valence motion input only, never TCode.
 
 ## Factory plugins
 
@@ -376,8 +384,8 @@ A factory plugin ships with Phosphor. It lives in `plugins/factory/<name>/`
   `blob:` URL. It ships to every hub the shell meets, so it binds by role
   only, as a tier-1 widget must.
 
-An example is documentation: never loaded by default, installed by copying
-its folder.
+An example is documentation. It is never loaded by default; install one by
+copying its folder.
 
 Shipped:
 
@@ -402,26 +410,26 @@ Shipped:
   included. A handle's shape is its drag axis: a dot moves any direction, a
   vertical pill left-right only, a horizontal pill up-down only. A label
   reads name then value (`deep 85`, `shallow 10`, `in 70`, `out 45`, `in
-  accel 30`, `out accel 60`, `dwell 0.5`, `amp 40`, `offset 0`). It sits
-  beside its handle on the side square to the curve's tangent, clear of
+  accel 30`, `out accel 60`, `dwell 0.5`, `amp 40`, `offset 0`). A label
+  sits beside its handle on the side square to the curve's tangent, clear of
   every drawn line (the stroke, the 0 and 100 guides, the modifier graph's
-  top guide, amp axis and offset track), of the handles and of a plus's dot;
-  it tries one and two label heights further out before giving up, the most
+  top guide, amp axis and offset track), of the handles and of a plus's dot.
+  It tries one and two label heights further out before giving up, the most
   hemmed-in label places first, a three-word label with no clear side drops
   its side word (`accel 100`, the half shows the side), and only then does a
-  label wear a backing. The numeric rows hide behind an Inputs toggle right
+  label get a backing. The numeric rows hide behind an Inputs toggle right
   of the preset box (default hidden, `phosphor.advpen.inputs`); hidden, they
   are not rendered and the handles carry the arrow keys.
 
-  **The ladder, the house way.** The master and Classic sliders are host
+  **Styling.** The master and Classic sliders are host
   fields: `.field` with `data-shadow` (style.css GROUND TRUTH, the ring
   and line of docs/EFFECTS.md, the afterglow on each echo) and the host's
   value chip, value then unit (format.js `formatParts`). Start, the preset
   select and Run in background's track carry `data-shadow`, the inset ring
   of a surface without one. A handle shows its state by color only; the
-  words ride the plot's one-line note (`deep 51 · waiting`, amber for
-  `still waiting` and `refused`), never the label, so no state change
-  moves a label or a box. Focus, the open tab and a pressed tool wear
+  state text appears in the plot's one-line note (`deep 51 · waiting`, amber for
+  `still waiting` and `refused`), not in the label, so a state change
+  does not move a label or a box. Focus, the open tab and a pressed tool use
   `--highlight` (a handle's focus ring is the house 2 px outline, its
   hover 1 px); tabs hover with the house edge (`--line-4`). Controls are
   sentence case, the section head is the shell's uppercase head, field
@@ -461,7 +469,7 @@ Shipped:
   **Narrow** (the card under 480 px, a phone or a two-cell placement): the
   hint and the depth ticks drop and the modifier tabs pair up.
 
-  **Planned motion** (`planMotion`, pure): under the stroke editor and
+  **Planned motion** (`planMotion`, pure) under the stroke editor and
   above the rhythm section, the current parameters to scale over a fixed
   window (default 10 s, 2 to 60, a stepper right of the strip: up, number,
   down; steps 1, 5 or 10; kept in `api.prefs`) on a 1 s grid with thinned
@@ -471,7 +479,8 @@ Shipped:
   (floor 1 mm/s), a = v^2/d x (1 + 9 knob), d from `window.min`/`window.max`;
   a dwell holds dwell x (this half + the one before, the run's first
   counting twice); a half under 0.25 mm is a 50 ms rest that owes no dwell.
-  Every modulator applies per stroke through `BaseControl::modifiedValue`:
+  Every modulator applies per stroke through `BaseControl::modifiedValue`,
+  the firmware's modulator rule:
   value - (value - ref) x amount x `dropAt`, ref the control's minimum, and
   for the depth pair the other depth (max pulls toward min, min toward max),
   so a depth swing is amount of (max - min). The cycle index is
@@ -502,7 +511,7 @@ Shipped:
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
-  renders only where the hub has a segments STREAM (D1); the window, the
+  renders only where the hub has a segments STREAM (FUNSCRIPT.md D1); the window, the
   position, `limit.input.speed`, both generator run roles and the plan
   strip's elapsed and duration (automatic latency) are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
@@ -545,11 +554,10 @@ host under `src/plugins/` is scanned like the rest of the kernel.
 
 ## Promotion to tier 1
 
-A plugin that proves itself becomes standard by PR (DESIGN §3):
+A plugin is promoted to standard (tier 1) by PR (DESIGN §3):
 
 1. Rebind it to registry roles only. Any channel id or device field name has
-   to go; `check-device-knowledge.mjs` will fail the build otherwise, which
-   is the point.
+   to go; `check-device-knowledge.mjs` will fail the build otherwise.
 2. If it needed a role the registry lacks, that is a Valence RFC first.
 3. Port the widget into `src/ui/hero/` and register it in `src/ui/heroes.js`
    beside the built-ins, with a zone and its `cells`.
