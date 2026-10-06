@@ -49,6 +49,9 @@ export const KEYS = [
     { keys: 'Arrows, Page Up, Page Down', does: 'Move edge', where: 'Window edge', src: 'src/ui/hero/RailWidget.svelte' },
     { keys: 'Home, End', does: 'To rail end', where: 'Window, window edge', src: 'src/ui/hero/RailWidget.svelte' },
     { keys: 'Alt+drag', does: 'Send on release', where: 'Tape, window, edges', src: 'src/ui/hero/RailWidget.svelte' },
+    { keys: 'Shift+drag', does: 'Fine drag, a tenth of the gain', where: 'Tape, window, edges', src: 'src/ui/hero/RailWidget.svelte' },
+    { keys: 'Ctrl+drag', does: 'Snap to the range decade', where: 'Tape, window, edges', src: 'src/ui/hero/RailWidget.svelte' },
+    { keys: 'Ctrl+Arrows', does: 'Step to the next decade multiple', where: 'Tape, window, edges', src: 'src/ui/hero/RailWidget.svelte' },
   ] },
   { group: 'Grid', items: [
     { keys: 'Ctrl+Z', does: 'Undo last layout change', where: 'Edit layout', src: 'src/ui/dash/DashGrid.svelte' },
@@ -60,6 +63,21 @@ export const KEYS = [
     { keys: 'Delete, Backspace', does: 'Remove card', where: 'Card handle', src: 'src/ui/dash/DashItem.svelte' },
     { keys: 'Shift+click, Ctrl+click', does: 'Add to selection', where: 'Card handle', src: 'src/ui/dash/DashItem.svelte' },
     { keys: 'Arrows', does: 'Resize card', where: 'Resize handle', src: 'src/ui/dash/DashItem.svelte' },
+    { keys: 'F2, Double-click', does: 'Rename the card', where: 'Card title', src: 'src/ui/dash/DashItem.svelte' },
+  ] },
+  { group: 'Sidebar', items: [
+    { keys: 'F2, Double-click', does: 'Rename the layout', where: 'Layout row, not Default', src: 'src/shell/RailLayouts.svelte' },
+    { keys: 'Alt+Up, Alt+Down', does: 'Move the layout in the list', where: 'Layout row', src: 'src/shell/RailLayouts.svelte' },
+    { keys: 'Hold Enter, Space', does: 'Delete the layout', where: 'Layout x, one second', src: 'src/shell/RailLayouts.svelte' },
+  ] },
+  { group: 'Phosphor panes', items: [
+    { keys: 'F2, Double-click', does: 'Rename the saved hub', where: 'Hubs', src: 'src/shell/HubsPane.svelte' },
+    { keys: 'F2, Double-click', does: 'Rename the toy', where: 'ButtplugIO', src: 'src/shell/server/Devices.svelte' },
+  ] },
+  { group: 'Funscript player', items: [
+    { keys: 'g', does: 'Toggle the graph', where: 'Player card', src: 'plugins/factory/funscript-player/ui.js' },
+    { keys: 'Up, Down', does: 'Resize the wave card; Shift for one', where: 'Split bar', src: 'plugins/factory/funscript-player/ui.js' },
+    { keys: 'Ctrl+Arrows', does: 'Step to the next decade multiple', where: 'Offset, range pills', src: 'plugins/factory/funscript-player/ui.js' },
   ] },
   { group: 'Node editor', items: [
     { keys: 'Tab', does: 'Next node or socket', where: 'Node editor', src: 'src/ui/graph/GraphEditor.svelte' },
