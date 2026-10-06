@@ -197,10 +197,10 @@ export const CSS = `
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
 .fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 var(--sp-2);
-  max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 var(--sp-2); background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
+  max-width: calc(100% - var(--tap) * 2); max-height: calc(100% - 48px); overflow-y: auto; padding: 0 0 0 var(--sp-2); background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
   border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
 .fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
-.fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
+.fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 .85rem/1 var(--mono); cursor: pointer; }
 .fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 var(--sp-2); font-size: .72rem; }
 .fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }
 .fsp-zoom button:not(.fsp-btn):disabled { opacity: .35; cursor: default; }

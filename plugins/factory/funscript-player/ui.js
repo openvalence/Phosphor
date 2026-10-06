@@ -651,8 +651,8 @@ export const CSS = `
 .fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
-.fsp button, .fsp input { font: inherit; }
-.fsp-btn { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
+:where(.fsp button, .fsp input) { font: inherit; }
+.fsp-btn { font-size: .82rem; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
   border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
 .fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
 .fsp-btn:hover { border-color: var(--line-4); }
