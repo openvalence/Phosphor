@@ -64,5 +64,6 @@ if (argv.includes('--test-sign')) {
   run(tool('signtool.exe'), ['sign', '/fd', 'SHA256', '/f', pfx, '/p', pass, msix]);
   // Ship the trust step beside the package: the .cer and the installer script.
   copyFileSync(here + 'install-test-cert.ps1', out + 'install-test-cert.ps1');
+  copyFileSync(here + 'remove-test-cert.ps1', out + 'remove-test-cert.ps1');
 }
 console.log('msix: ' + msix + ' (' + version + ', SDK ' + sdk + ')');
