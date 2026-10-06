@@ -144,7 +144,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   sort.value = lib.sort;
   const dir = h('button', { class: 'og-btn fsp-dir', type: 'button' });
   const file = h('input', { type: 'file', multiple: '', accept: 'video/*,audio/*,.funscript', hidden: '' });
-  const open = h('button', { class: 'og-btn fsp-lib-open', type: 'button', text: COPY.open, 'data-search-key': 'open' });
+  const open = h('button', { class: 'og-btn fsp-lib-open', type: 'button', text: COPY.open });
   const grid = h('div', { class: 'fsp-grid' });
   const note = h('p', { class: 'fsp-note', role: 'status', 'aria-live': 'polite' });
   const connectBox = h('div', { hidden: '' });

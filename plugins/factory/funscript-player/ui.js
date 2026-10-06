@@ -30,14 +30,18 @@
 //   measured on a width change, on a Look change (the elapsed readout's box) and on an analyzer toggle,
 //   never on a state change.
 // - The strip (.fsp-tr) is the one transport row, twelve items in order: prev, play, next, elapsed, the
-//   heat (timeline.js, placed here), remaining, volume, rate, graph (g), screenshot, layout, close.
-//   Handheld drops screenshot and layout and wraps to two rows when narrow; glance keeps play and the time.
-// - Prev and next walk the library's loaded list (library.js step); close unloads the media. Rate
-//   scales the stroke speed shown and checked against the input limit. Layout cycles SPLITS (pref split).
+//   heat (timeline.js, placed here), remaining, volume, rate, graph (g), close.
+//   Handheld wraps to two rows when narrow; glance keeps play and the time.
+// - Prev and next step the script's chapters (metadata), else its bookmarks, the library's loaded list
+//   (library.js step) only when it has neither; close unloads the media and returns to the library. Rate
+//   scales the stroke speed shown and checked against the input limit.
+// - A double-click on the stage is the shell's page fullscreen (ask event): detail.bare is true in
+//   Borderless (no chrome) and false in In window (the shell keeps the hero rail). A single click waits
+//   DOUBLE_MS so a double never toggles Play.
 // - The split bar (.fsp-split, between the stage and the transport; its row is var(--tap) under a coarse
 //   pointer, its hit box never past the 4 px gaps otherwise) sizes the wave card: drag, arrows
-//   (8 px, Shift 1), double-click for the default; the stage keeps at least MIN_STAGE px: the applied
-//   height is clamped on every apply and resize, the stored pref never is. The pref
+//   (8 px, Shift 1), double-click for the default; the stage keeps at least MIN_STAGE px (a grid track
+//   minimum, so the card's min-height and the page scroll follow). The pref
 //   split holds the px, 0 the composition's default. Hiding the library or the page's Settings never
 //   shrinks the stage (page.js).
 // - The hover bar outside media fullscreen holds only Fullscreen and its mode (the transport has the rest;
@@ -71,7 +75,7 @@
 //   planner measure of the wire at scale 1 (ctl.fit, analyzer.js fit) replaces it when it lands. A
 //   card frames its analyzer while Auto is on, shown or not; glance keeps the curve's estimate.
 
-import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed } from './funscript.js';
+import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed, marksOf } from './funscript.js';
 import { createMediaClock, frameSource, createLoop, loopSpec, LOW, FALLBACK_AFTER_MS } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
 import { createStash } from './stash.js';
@@ -88,8 +92,7 @@ const PROBE_KEY = 'phosphor.funscript.probe';
 const PROBE_RING = 5000;
 const TRACE_MS = 8000;
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-// The wave card's heights the layout button cycles, px; 0 is the composition's default.
-export const SPLITS = [0, 160, 240];
+export const DOUBLE_MS = 250;
 export const SPLIT_MIN = 64, MIN_STAGE = 120;
 // Registry unit_ids: 0 mm, 1 mm_s.
 const UNIT_MM = 0, UNIT_MM_S = 1;
@@ -108,10 +111,7 @@ export const COPY = Object.freeze({
   next: 'Next',
   rate: 'Rate',
   graph: 'Graph (g)',
-  snap: 'Screenshot',
-  layout: 'Layout',
   close: 'Close',
-  snapFail: 'Frame not readable',
   split: 'Resize',
   invert: 'Invert',
   volume: 'Volume',
@@ -172,8 +172,6 @@ const ICON = {
   prev: ['M13 3v10L6 8z', 'M3 3v10'],
   next: ['M3 3v10l7-5z', 'M13 3v10'],
   graph: ['', 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8'],
-  snap: ['', 'M2 5h2.5l1-1.5h5L11.5 5H14v8H2zM8 6.5a2.2 2.2 0 100 4.4a2.2 2.2 0 000-4.4'],
-  layout: ['', 'M2 3h12v10H2zM2 9h12'],
   close: ['', 'M4 4l8 8M12 4l-8 8'],
 };
 
@@ -636,18 +634,21 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // The stage row is the only flexible row and may shrink to 0, so the fixed rows always fit the card.
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
-.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px; --fsp-sp: var(--sp-2);
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(0, 1fr) var(--fsp-sp) var(--fsp-bar) var(--fsp-detail) 20px;
+.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px; --fsp-sp: var(--sp-2); --fsp-stage-min: 120px; --fsp-detail-min: 64px;
+  min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min));
+  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
   grid-template-areas: "src lib" "stage lib" "sp lib" "tr lib" "tl lib" "st st"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
 .fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
 .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 2 + 56px); grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-sp) var(--fsp-bar) var(--fsp-detail) 20px;
+  grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
+  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min));
   grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) var(--fsp-sp) calc(var(--fsp-bar) * 2 + var(--sp-2)) var(--fsp-detail) 20px; }
+.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) calc(var(--fsp-bar) * 2 + var(--sp-2)) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
+  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) * 2 + var(--sp-2) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min)); }
 @media (pointer: coarse) { .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 3 + 56px); } }
-.fsp[data-comp=glance] { --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
+.fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
 .fsp button, .fsp input { font: inherit; }
@@ -683,7 +684,7 @@ export const CSS = `
 .fsp-tlbox { grid-area: tl; min-width: 0; }
 .fsp-split { grid-area: sp; position: relative; cursor: ns-resize; touch-action: none; outline: none; }
 .fsp-split::before { content: ''; position: absolute; inset: -4px 0; }
-.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--line-2); border-radius: 2px; }
+.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); border-radius: 2px; }
 @media (pointer: coarse) { .fsp-split::before { inset: 0; } }
 .fsp-split::after { transition: background var(--t-quick, 120ms); }
 .fsp-split:hover::after, .fsp-split[data-drag]::after, .fsp-split:focus-visible::after { background: var(--highlight); }
@@ -697,7 +698,7 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .fsp-meter { grid-area: meter; position: relative; display: none; border: 1px solid var(--line); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
-.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; margin-left: -1.5px; border-radius: 1.5px; }
+.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; border-radius: 1.5px; }
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
@@ -705,7 +706,7 @@ export const CSS = `
   border-left: 3px solid transparent; padding-left: var(--sp-2); background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
 .fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
 .fsp-tr { grid-area: tr; display: grid; gap: var(--sp-2); align-items: center; min-width: 0;
-  grid-template-columns: repeat(4, max-content) minmax(120px, 1fr) max-content minmax(48px, 96px) repeat(5, max-content); }
+  grid-template-columns: repeat(4, max-content) minmax(120px, 1fr) max-content minmax(48px, 96px) repeat(3, max-content); }
 .fsp-tr > * { min-width: 0; }
 .fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
 .fsp-tr .fsp-tb { display: grid; place-items: center; min-width: var(--fsp-bar); padding: 0; }
@@ -715,7 +716,6 @@ export const CSS = `
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
 .fsp-vol { width: 100%; height: var(--fsp-bar); margin: 0; accent-color: var(--highlight); cursor: pointer; }
 .fsp[data-comp=handheld] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(120px, 1fr) max-content minmax(32px, 64px) max-content repeat(2, var(--fsp-bar)); }
-.fsp[data-comp=handheld] :is(.fsp-snap, .fsp-layout) { display: none; }
 .fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(0, 1fr) max-content; grid-template-rows: repeat(2, var(--fsp-bar)); }
 .fsp[data-comp=handheld][data-narrow] .fsp-vol { grid-area: 2 / 1 / 3 / 4; }
 .fsp[data-comp=handheld][data-narrow] .fsp-rate { grid-area: 2 / 4; }
@@ -773,7 +773,7 @@ export const CSS = `
 .fsp-hb-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
 .fsp-hb-buf { background: color-mix(in srgb, var(--tx) 40%, transparent); }
 .fsp-hb-played { background: var(--highlight); }
-.fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
+.fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; translate: 0 -6px; border-radius: 50%;
   background: var(--highlight); transform: scale(0); transition: transform var(--t-quick, 120ms) var(--ease-out, ease); }
 .fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
 .fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); font: .75rem var(--mono); color: var(--tx);
@@ -796,6 +796,8 @@ export const CSS = `
 .fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; width: auto; height: auto; clip-path: none; justify-self: stretch;
   visibility: visible; border-radius: 0; }
 .fsp[data-media] .fsp-stage::before { display: none; }
+@keyframes fsp-enter { from { opacity: 0; } }
+.fsp[data-media] .fsp-stage { animation: fsp-enter var(--t-move, 200ms) var(--ease-out, ease); }
 .fsp[data-media] .fsp-stage:has(.fsp-hov:not([data-show])) { cursor: none; }
 `;
 
@@ -937,8 +939,19 @@ export function createPlayer(api) {
     const prevB = trBtn('fsp-prev', ICON.prev, COPY.prev), nextB = trBtn('fsp-next', ICON.next, COPY.next);
     const play = trBtn('fsp-play', ICON.play, COPY.playKey);
     play.addEventListener('click', () => ctl.toggle());
-    prevB.addEventListener('click', () => library && library.step(-1));
-    nextB.addEventListener('click', () => library && library.step(1));
+    const marks = () => (st.script ? marksOf(st.script) : []);
+    prevB.addEventListener('click', () => {
+      const m = marks(), t = ctl.mediaNow();
+      if (!m.length) { if (library) library.step(-1); return; }
+      const before = m.filter((x) => x < t - 1500);
+      ctl.seek(before.length ? before[before.length - 1] : 0);
+    });
+    nextB.addEventListener('click', () => {
+      const m = marks(), t = ctl.mediaNow();
+      if (!m.length) { if (library) library.step(1); return; }
+      const after = m.find((x) => x > t + 250);
+      if (after != null) ctl.seek(after);
+    });
     const time = h('output', { class: 'fsp-el fsp-time' }), rem = h('output', { class: 'fsp-rem' });
     const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     vol.addEventListener('input', () => { video.volume = clamp(+vol.value, 0, 1); if (video.volume > 0) video.muted = false; });
@@ -949,31 +962,9 @@ export function createPlayer(api) {
     graph.setAttribute('data-search-key', 'graph');
     graph.setAttribute('aria-pressed', 'false');
     graph.addEventListener('click', () => expand(!root.hasAttribute('data-an')));
-    const snapB = trBtn('fsp-snap', ICON.snap, COPY.snap);
-    snapB.addEventListener('click', () => {
-      if (!video.videoWidth) return;
-      const c = Object.assign(document.createElement('canvas'), { width: video.videoWidth, height: video.videoHeight });
-      try {
-        c.getContext('2d').drawImage(video, 0, 0);
-        c.toBlob((b) => {
-          if (!b) return;
-          const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(b),
-            download: ((st.scene && st.scene.title) || 'frame') + '-' + fmtTime(ctl.mediaNow()).replace(/[:.]/g, '-') + '.png' });
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-        }, 'image/png');
-      } catch (e) { api.log(COPY.snapFail, 'warn'); }   // a cross-origin stream taints the canvas
-    });
     let split = readPrefs(api).split;
-    // The applied height is the pref clamped so the stage keeps MIN_STAGE px; the pref itself is never rewritten.
-    const applySplit = () => {
-      if (!(split > 0)) { root.style.removeProperty('--fsp-detail'); return; }
-      root.style.setProperty('--fsp-detail', split + 'px');
-      const d = dtEl();
-      if (!d || root.hasAttribute('data-an') || root.hasAttribute('data-media') || comp === 'glance') return;
-      const room = d.getBoundingClientRect().height + stage.getBoundingClientRect().height - MIN_STAGE;
-      if (split > room) root.style.setProperty('--fsp-detail', Math.max(SPLIT_MIN, room) + 'px');
-    };
+    // The stage's 120 px and the wave card's 64 px floors are grid track minimums (CSS); the pref is the card's wanted height.
+    const applySplit = () => { if (split > 0) root.style.setProperty('--fsp-detail', split + 'px'); else root.style.removeProperty('--fsp-detail'); };
     const sp = h('div', { class: 'fsp-split', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', 'data-search-key': 'split', 'aria-label': COPY.split,
       'aria-valuemin': String(SPLIT_MIN), 'aria-valuemax': '480' });
     const detailH = () => Math.round(dtEl().getBoundingClientRect().height);
@@ -1013,10 +1004,8 @@ export function createPlayer(api) {
     });
     sp.addEventListener('dblclick', () => { split = 0; applySplit(); sp.removeAttribute('aria-valuenow'); writePref(api, 'split', 0); });
     sp.addEventListener('focus', () => sp.setAttribute('aria-valuenow', String(split || detailH())));
-    const layoutB = trBtn('fsp-layout', ICON.layout, COPY.layout);
-    layoutB.addEventListener('click', () => { split = SPLITS[(SPLITS.indexOf(split) + 1) % SPLITS.length]; writePref(api, 'split', split); applySplit(); });
     const closeB = trBtn('fsp-close', ICON.close, COPY.close);
-    closeB.addEventListener('click', () => ctl.unload());
+    closeB.addEventListener('click', () => { ctl.unload(); ctl.setView('library'); });
     const motion = btn('fsp-motion', COPY.motion, { 'data-search-key': 'motion' });
     motion.addEventListener('click', () => ctl.setMotion(!st.motion));
     const offIn = h('input', { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
@@ -1049,7 +1038,7 @@ export function createPlayer(api) {
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
-    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, vol, rate, graph, snapB, layoutB, closeB);
+    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, vol, rate, graph, closeB);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
       src, stage, sp, tlbox, lib, anbox, meter, status, tr);
@@ -1083,7 +1072,7 @@ export function createPlayer(api) {
     hbVol.addEventListener('change', saveAudio);
     // Shown on pointer movement, hidden after HOVER_IDLE_MS idle and on leave, kept while the pointer
     // rests on the bar or drags the seek. A touch on the hidden bar's video shows it without toggling.
-    let idle = 0, drag = null, tapShow = false;
+    let idle = 0, drag = null, tapShow = false, clickT = 0;
     const hide = () => { if (drag == null && !hb.matches(':hover')) hov.removeAttribute('data-show'); };
     const poke = () => { hov.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, HOVER_IDLE_MS); };
     stage.addEventListener('pointermove', poke);
@@ -1091,7 +1080,11 @@ export function createPlayer(api) {
     stage.addEventListener('pointerdown', (e) => { tapShow = e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
     stage.addEventListener('click', (e) => {
       if (!st.scene) { tapShow = false; file.click(); return; }
-      if (!tapShow && !e.target.closest('.fsp-hb')) ctl.toggle(); tapShow = false; });
+      clearTimeout(clickT);
+      if (!tapShow && !e.target.closest('.fsp-hb') && e.detail < 2) clickT = setTimeout(() => ctl.toggle(), DOUBLE_MS);
+      tapShow = false;
+    });
+    stage.addEventListener('dblclick', (e) => { if (!e.target.closest('.fsp-hb') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
     const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
     const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
     seek.addEventListener('pointerdown', (e) => {
@@ -1118,7 +1111,7 @@ export function createPlayer(api) {
     let media = false;
     const setMedia = (on) => { media = on; root.toggleAttribute('data-media', on); render(); };
     const fullscreen = () => {
-      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media } });
+      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: fsMode() !== 'window' } });
       if (!root.dispatchEvent(ask)) setMedia(!media);
     };
     const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
@@ -1199,8 +1192,9 @@ export function createPlayer(api) {
       play.disabled = !act && !ctl.canPlay();
       setIcon(hbPlay, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       hbPlay.disabled = play.disabled;
-      prevB.disabled = !(library && library.canStep(-1));
-      nextB.disabled = !(library && library.canStep(1));
+      const mk = marks(), mt = ctl.mediaNow();
+      prevB.disabled = mk.length ? !st.scene : !(library && library.canStep(-1));
+      nextB.disabled = mk.length ? !mk.some((x) => x > mt + 250) : !(library && library.canStep(1));
       closeB.disabled = !st.scene;
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
@@ -1215,6 +1209,8 @@ export function createPlayer(api) {
       inv.setAttribute('aria-pressed', String(st.T.invert));
       if (document.activeElement !== offIn && !offDrag) offIn.value = String(st.T.offsetMs);
       root.dataset.view = st.view;
+      const ob = lib.querySelector('.fsp-lib-open');
+      if (ob) { if (ob.getClientRects().length) ob.setAttribute('data-search-key', 'open'); else ob.removeAttribute('data-search-key'); }
       tabP.setAttribute('aria-selected', String(st.view === 'player'));
       tabL.setAttribute('aria-selected', String(st.view === 'library'));
       setText(title, st.scene ? st.scene.title : '');
@@ -1228,7 +1224,7 @@ export function createPlayer(api) {
       const m = ctl.mediaNow();
       const d = Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0;
       const tt = fmtTime(m) + ' / ' + fmtTime(d);
-      setText(time, comp === 'glance' ? tt : fmtTime(m));
+      setText(time, comp === 'glance' ? tt.replace(/\.\d/g, '') : fmtTime(m));
       setText(rem, '-' + fmtTime(Math.max(0, d - m)));
       if (d !== durSeen) { durSeen = d; time.style.minWidth = fmtTime(d).length + 'ch'; rem.style.minWidth = fmtTime(d).length + 1 + 'ch'; }
       setText(hbTime, tt);
@@ -1275,6 +1271,7 @@ export function createPlayer(api) {
       host() { stage.append(video); st.composition = comp || st.composition; },
       destroy() {
         clearTimeout(idle);
+        clearTimeout(clickT);
         window.removeEventListener('phosphor-page-fullscreen-change', onFull);
         ro.disconnect();
         tl.unmount();

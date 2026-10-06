@@ -165,7 +165,7 @@ export function zoomStep(ms, dir) {
 
 export const CSS = `
 .fsp-tl { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
-.fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
+.fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; translate: -1px 0; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
@@ -177,7 +177,7 @@ export const CSS = `
 .fsp-ov rect.win { fill: rgba(var(--highlight-rgb), .08); stroke: var(--highlight); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
-.fsp-scrub::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; border: 2px solid var(--highlight); }
+.fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
@@ -192,8 +192,8 @@ export const CSS = `
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
 .fsp-rh[data-key=hi] { left: var(--tap); }
-.fsp-rh::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--intent);
-  translate: 0 calc(clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
+.fsp-rh::after { width: 20px; height: 9px; border-radius: 4.5px; border: 2px solid var(--intent);
+  translate: -10px calc(-4.5px + clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
 .fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 var(--sp-2);

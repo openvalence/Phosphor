@@ -11,12 +11,13 @@
  * - The section mounts the registerSettings function itself, on open, so it
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted. Its
  *   button is the timeline's (ui.js opts.settings), open kept in settingsOpen.
- * - The card never changes size for the section: at 960 px of page width and up the
- *   section overlays the card's library column (320 px, the analyzer column's width
- *   beside the analyzer), so the card stays full; under 960 it sits below the card,
- *   reached by scrolling. The card keeps 340 px of height (a 120 px stage over the
- *   fixed rows); a shorter page scrolls. In media fullscreen
- *   (ui.js, data-media) the card takes the whole page and the section is hidden.
+ * - The card never changes size for the section, and the section never covers a card control: at 960 px
+ *   of page width and up, with a full card, the section overlays the card's library column (320 px)
+ *   while that column is open, or the analyzer column (its width, above the transport and status rows)
+ *   while the analyzer is open; otherwise (library collapsed, a narrower page) it sits below the card,
+ *   reached by scrolling. The card's own min-height is its fixed rows plus the 120 px stage (ui.js), so a
+ *   short page scrolls. In media fullscreen (ui.js, data-media) the card takes the whole page and the
+ *   section is hidden.
  * - mediaFullscreen: the hover bar offers fullscreen and its mode, so the
  *   shell's footer offers neither.
  */
@@ -31,12 +32,16 @@ export const SEARCH = [
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; }
-.fsp-page > .fsp-pcard { height: 100%; min-height: min(100%, 340px); }
-.fsp-page > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2; overflow-y: auto; padding: var(--sp-3);
-  background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
-.fsp-page:has(.fsp[data-an]) > .fsp-psec { width: clamp(320px, 40%, 560px); }
-@container (max-width: 959px) { .fsp-page > .fsp-psec { position: static; width: auto; max-height: none; padding: var(--sp-3) 0; box-shadow: none; background: none; } }
+.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; --pg-bot: calc(28px + 20px + 2 * var(--sp-2)); }
+@media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + 20px + 2 * var(--sp-2)); } }
+.fsp-page > .fsp-pcard { height: 100%; min-height: min-content; }
+.fsp-page > .fsp-psec { padding: var(--sp-3) 0; }
+@container (min-width: 960px) {
+  .fsp-page:has(.fsp[data-comp=full]:not([data-libshut], [data-an])) > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2;
+    overflow-y: auto; padding: var(--sp-3); background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
+  .fsp-page:has(.fsp[data-comp=full][data-an]) > .fsp-psec { position: absolute; top: 0; right: 0; bottom: var(--pg-bot); width: clamp(320px, 40%, 560px); z-index: 2;
+    overflow-y: auto; padding: var(--sp-3); background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
+}
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 

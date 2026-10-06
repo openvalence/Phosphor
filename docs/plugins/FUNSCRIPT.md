@@ -375,8 +375,7 @@ FULL
 |   (Play, mute, volume, time, mode, Fullscreen)  | tiles, paged,      |
 |   empty: 'Open a video' (click opens files)     |   never scrolled   |
 | transport 28: prev play next | 0:00 | heat |    |                    |
-|   -0:30 | volume | rate | graph (g) | shot |    |                    |
-|   layout | close                                |                    |
+|   -0:30 | volume | rate | graph (g) | close   |    |                    |
 | wave card 96 (draggable): automation curve,     |                    |
 |   reality trace, plan, range pills, speed;      |                    |
 |   corner plate: Motion | Offset ms | Invert |   |                    |
@@ -387,17 +386,24 @@ FULL
 ```
 
 - **Transport row** (operator ruling 2026-10-05, `ph-mdqo.7`): one fixed row
-  under the stage, twelve items in order: previous, Play, next, elapsed, the
+  under the stage, ten items in order: previous, Play, next, elapsed, the
   whole-script heat (the scrub), remaining, volume, rate (0.5x to 2x), graph
-  (the analyzer, key `g`), screenshot, layout, close. Previous and next walk
-  the library's loaded list (across its pages); screenshot saves the current
-  video frame as a PNG (a cross-origin stream cannot be read and says so in
-  the log); layout cycles the wave card's height (default, 160, 240 px, pref
-  `split`); close unloads the media. Rate scales the stroke speed shown and
+  (the analyzer, key `g`), close. Previous and next step the script's
+  chapters (`metadata.chapters` start times), else its bookmarks, and walk
+  the library's loaded list (across its pages) only when the script has
+  neither; previous within 1.5 s of a mark goes to the one before. Close
+  unloads the media and returns to the library. No screenshot and no layout
+  button (operator ruling 2026-10-05). Rate scales the stroke speed shown and
   checked against the input limit (the heat's stripes too). Outside media
   fullscreen the hover bar holds only Fullscreen and its mode (the row has
-  the rest; `m` mutes); in media fullscreen it is the whole bar. Handheld
-  drops screenshot and layout.
+  the rest; `m` mutes); in media fullscreen it is the whole bar.
+- **Fullscreen**: a double-click on the stage (or `f`, or the bar's button)
+  asks the shell for page fullscreen with the video alone. Borderless is no
+  chrome at all; In window fills the window and keeps only the hero rail
+  (the ask carries `bare: false`, `ph-mdqo.7` SEAM NEEDED: the shell honors
+  it). The mode is the bar's button and the shell's pref. A single click
+  waits 250 ms so a double never toggles Play; the stage fades in on the
+  duration tokens, still under `html.still`.
 - **Wave bundle**: Motion, Offset (labeled `ms`) and Invert sit with zoom,
   A-B and Settings on a raised plate flush with the wave card's top right
   corner. The wave card and the heat sit on `--screen` with the advanced
@@ -415,13 +421,18 @@ FULL
   slot (320 px, the analyzer column's width beside the analyzer; scrolling
   within) while the card is full, so the card keeps its size and composition;
   under 960 px of page width it sits below the card, reached by scrolling.
-  The card never loses height to it (`ph-mdqo.7`) and keeps 340 px
-  (a 120 px stage) on a shorter page, which scrolls. The phone layout is not filled.
+  The section never covers a control: it takes the library column's slot
+  while that column is open, the analyzer column's (above the transport and
+  status rows) while the analyzer is open, and goes below the card when the
+  library is collapsed. The card never loses height to it (`ph-mdqo.7`); its
+  min-height is its fixed rows plus the 120 px stage, so a shorter page
+  scrolls. The phone layout is not filled.
 - **Split bar** (`ph-mdqo.7`): a 4 px bar between the stage and the transport
   sizes the wave card: drag (up grows it), arrows 8 px (Shift 1), double-click
   for the default, never leaving the stage under 120 px, stored as pref
-  `split` in px (0 is the composition's default; the layout button cycles
-  0, 160, 240). Hiding the library or the Settings section never shrinks the
+  `split` in px (0 is the composition's default). The stage's 120 px and the
+  wave card's 64 px are grid track minimums, so a stored height yields to a
+  short window instead of squeezing the stage. Hiding the library or the Settings section never shrinks the
   stage. Not drawn in glance or beside the analyzer.
 - **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
   library column's edge, `Library`: it closes the column and the player
@@ -432,7 +443,7 @@ FULL
   is the side column) swap the one main region in place (a view switch,
   never a write; the video keeps playing under the library); the wave card two
   bundle rows plus 48 px (112 px; three rows under a coarse pointer);
-  the transport is one fixed row without screenshot and layout. Where it
+  the transport is one fixed row. Where it
   overflows the card (measured on a width change, a Look change and an
   analyzer toggle; at or under 412 px at the default Look, 454 at 1.4),
   `data-narrow` gives two fixed rows: prev, play, next, elapsed, heat,
@@ -531,7 +542,7 @@ FULL
   Offset, Invert; the hover bar's `Play (k)`, `Pause (k)`, `Mute
   (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`,
   `In window / Borderless`; the transport's `Previous`, `Next`, `Rate`, `Graph (g)`,
-  `Screenshot`, `Layout`, `Close`; the timeline's `Settings` (sliders); the caret's `Library`;
+  `Close`; the timeline's `Settings` (sliders); the caret's `Library`;
   `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,

@@ -125,6 +125,13 @@ if (prefs) {
       Math.abs(pillKey(0.5, 1) - 0.51) < 1e-9 && Math.abs(pillKey(0.5, 1, { shiftKey: true }) - 0.51) < 1e-9
       && Math.abs(pillKey(0.5, 1, { ctrlKey: true }) - 0.6) < 1e-9 && Math.abs(pillKey(0.55, -1, { ctrlKey: true }) - 0.5) < 1e-9);
   }
+  {
+    const { marksOf } = mods[P + 'funscript.js'];
+    const ch = marksOf({ metadata: { chapters: [{ startTime: '00:01:00.500' }, { startTime: '00:00:10.000' }, { startTime: 5000 }], bookmarks: [{ time: '00:00:01.000' }] } });
+    const bm = marksOf({ metadata: { bookmarks: [{ time: '00:30.250' }, { time: 'x' }, { time: '00:00:02.000' }] } });
+    ok('marks: chapters win and sort; clock strings and ms numbers both read', same(ch, [5000, 10000, 60500]), ch);
+    ok('marks: bookmarks are the fallback; none reads empty', same(bm, [2000, 30250]) && marksOf({}).length === 0 && marksOf(null).length === 0, bm);
+  }
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));
@@ -772,7 +779,7 @@ if (!LIVE) {
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);
   rects.ready = await chrome(page);
-  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand', 'fsp-snap', 'fsp-layout', 'fsp-close'];
+  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand', 'fsp-close'];
   const trow = await page.locator(C + ' .fsp-tr').evaluate((t, order) => {
     const r = t.getBoundingClientRect(), card = t.parentElement.getBoundingClientRect();
     const kids = [...t.children];
@@ -781,21 +788,12 @@ if (!LIVE) {
       ovBetween: kids.indexOf(t.querySelector('.fsp-ov')), inCard: r.left >= card.left && r.right <= card.right + 0.5,
       keyHint: t.querySelector('.fsp-expand').title };
   }, ORDER);
-  ok('transport: .fsp-tr holds the twelve items in order, in one row', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
+  ok('transport: .fsp-tr holds the ten items in order, in one row', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
   ok('transport: nothing of it sits outside the row; the graph button names its key', trow.outside.length === 0 && trow.inCard && /\(g\)/.test(trow.keyHint), trow);
   const rt = [];
   for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
   ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
-  // The hero cell composes handheld, which hides the button: click it through the DOM.
-  const layClick = () => page.locator(C + ' .fsp-layout').evaluate((e) => e.click());
-  const lay00 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
-  await layClick();
-  const lay1 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
-  await layClick();
-  const lay2 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
-  await layClick();
-  const lay0 = await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height));
-  ok('transport: layout cycles the wave card 160, 240 px, then the default', lay1 === 160 && lay2 === 240 && lay0 === lay00, [lay00, lay1, lay2, lay0]);
+  ok('transport: no screenshot and no layout button', (await page.locator(C + ' .fsp-snap, ' + C + ' .fsp-layout').count()) === 0);
   ok('idle: nothing is sent before Play', hub.bundles.length === 0, hub.bundles.length);
 
   // ---- preroll, then play ----
@@ -1290,7 +1288,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     const o = e.getBoundingClientRect();
     const r = (s) => { const x = e.querySelector(s); if (!x || !x.getClientRects().length) return null;
       const b = x.getBoundingClientRect(); return { x: b.x - o.x, y: b.y - o.y, width: b.width, height: b.height }; };
-    return { card: String(o.width), stage: r('.fsp-stage'), an: r('.fsa'), lib: r('.fsp-libbox'),
+    return { card: o.width + 'x' + o.height, stage: r('.fsp-stage'), an: r('.fsa'), lib: r('.fsp-libbox'),
       video: !!e.querySelector('.fsp-stage video'), dt: r('.fsp-dt') };
   });
   const before = await look();
@@ -1656,6 +1654,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(300);
   };
   ok('page settings: the page mounts the card', up && await toPage());
+  await page.waitForSelector(C + ' [data-search-key="open"]', { state: 'attached', timeout: 5000 }).catch(() => {});
   const skeys = await page.$$eval(C + ' [data-search-key]', (els) => els.map((e) => e.dataset.searchKey).sort());
   ok('search: the page lists motion, offset, invert, open, graph and split, each on a control', skeys.join() === 'graph,invert,motion,offset,open,split', skeys);
   await page.keyboard.press('F3');
@@ -1679,6 +1678,22 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: the card keeps its top, height and composition; the section overlays the library column, scrolling within (fill)',
     after[0] === before[0] && after[1] >= before[1] && sec.beside && sec.comp === 'full' && sec.scrolls, { before, after, sec });
   ok('page settings: opening Settings never shrinks the stage', (await stageH()) >= stage0, [stage0, await stageH()]);
+  const covered = () => page.evaluate((c) => [...document.querySelector(c).querySelectorAll('button, input:not([type=file]), select, [role=slider]')]
+    .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-libbox, .fsp-anbox, .fsp-hov, [hidden]'))
+    .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 2 && r.top >= 0 && r.bottom <= innerHeight; })
+    .filter((e) => { const r = e.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(t && (e === t || e.contains(t) || t.contains(e))); })
+    .map((e) => e.className || e.getAttribute('aria-label') || e.tagName), C);
+  ok('page settings: with the library open no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(400);
+  ok('page settings: with the analyzer open the section sits on its column, above the transport; no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(300);
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(300);
+  ok('page settings: with the library collapsed the section goes below the card; no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(300);
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
@@ -1719,7 +1734,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   console.log('(u) handheld viewports');
   const cat = advgenCatalog();
   cat.entries = decodeCatalog(cat.bytes);
-  for (const [w, hh] of [[200, 390], [390, 844], [412, 915], [844, 390]]) {
+  for (const [w, hh] of [[200, 390], [390, 844], [412, 915], [844, 390], [1024, 768]]) {
     const hub = makeHub(cat);
     hub.values[CH.config + ':window_min'] = 0;
     hub.values[CH.config + ':window_max'] = 100;
@@ -1742,15 +1757,49 @@ if (!LIVE && !args.includes('--stash-live')) {
           && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-hov, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
         const pg = root.closest('.fsp-page'), de = document.documentElement;
         return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],
-          stage: Math.round(root.querySelector('.fsp-stage').getBoundingClientRect().height) };
+          stage: Math.round(root.querySelector('.fsp-stage').getBoundingClientRect().height),
+          timeClip: (t => (t && t.getClientRects().length ? t.scrollWidth - t.clientWidth : 0))(root.querySelector('.fsp-time')) };
       }, C);
-      ok('handheld ' + w + 'x' + hh + ': no horizontal overflow, in the card or its page', m.wide.length === 0 && m.pageOverflow <= 0, m);
+      ok('handheld ' + w + 'x' + hh + ': no horizontal overflow, in the card or its page', m.wide.length === 0 && m.pageOverflow <= 0 && m.timeClip <= 1, m);
+      if (m.comp !== 'glance') ok('handheld ' + w + 'x' + hh + ': the stage keeps 120 px', m.stage >= 119, m);
       ok('handheld ' + w + 'x' + hh + ': every control is at least 40 px', m.small.length === 0, m);
       if (SHOTS) await page.screenshot({ path: join(SHOTS, 'bucket-' + w + 'x' + hh + '.png') });
     }
     clearInterval(hub.timer);
     await ctx.close();
   }
+}
+
+// ---- (v) prev and next step the script's chapters; close returns to the library ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(v) chapters');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  const { ctx, page } = await open({ cat, hub });
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+  await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
+  await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
+  await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).catch(() => {});
+  const chapters = { ...SCRIPT, metadata: { chapters: [{ name: 'a', startTime: '00:00:10.000', endTime: '00:00:20.000' }, { name: 'b', startTime: '00:00:20.000', endTime: '00:00:30.000' }] } };
+  ok('chapters: the clip with chapters loads', await loadClip(page, chapters));
+  const at = () => video(page, (v) => Math.round(v.currentTime));
+  const click = async (cls) => { await page.locator(C + ' .' + cls).evaluate((e) => e.click()); await page.waitForTimeout(500); };
+  await click('fsp-next');
+  const n1 = await at();
+  await click('fsp-next');
+  const n2 = await at();
+  const nextOff = await page.locator(C + ' .fsp-next').isDisabled();
+  await click('fsp-prev');
+  const p1 = await at();
+  ok('chapters: next goes to 10 s then 20 s, prev back to 10 s; next is off past the last chapter', n1 === 10 && n2 === 20 && p1 === 10 && nextOff, [n1, n2, p1, nextOff]);
+  await click('fsp-close');
+  ok('chapters: close unloads the media and shows the library', (await statusText(page)) === 'No scene loaded'
+    && (await page.locator(C).getAttribute('data-view')) === 'library');
+  clearInterval(hub.timer);
+  await ctx.close();
 }
 
 // ---- (m) the hover bar over the video, media fullscreen, the analyzer column (ph-mcfe, ph-tz5t) ----
@@ -1905,12 +1954,15 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.mouse.move(sb2.x + sb2.width / 2, sb2.y + sb2.height / 2 - 900, { steps: 6 });
   await page.mouse.up();
   const big = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split')));
-  await page.setViewportSize({ width: vp0.width, height: vp0.height - 60 });
-  await page.waitForTimeout(400);
-  const small = await page.locator(C).evaluate((e) => ({ stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height), card: Math.round(e.getBoundingClientRect().height) }));
-  console.log('  [NOTE] split clamp card height ' + small.card + ' px (the 120 px floor is asserted from 290)');
-  ok('split: dragged to the top then the window shortened, the stage keeps 120 px and the stored height stays', (small.card < 290 || small.stage >= 119)
-    && await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) === big, { big, small });
+  const floors = [];
+  for (const [vw, vh] of [[1280, 720], [1024, 768], [1280, 600]]) {
+    await page.setViewportSize({ width: vw, height: vh });
+    await page.waitForTimeout(400);
+    floors.push(await page.locator(C).evaluate((e) => ({ stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height),
+      past: Math.round(Math.max(...[...e.children].map((c) => c.getBoundingClientRect().bottom)) - e.getBoundingClientRect().bottom) })));
+  }
+  ok('split: dragged to the top, then 1280x720, 1024x768 and 1280x600: the stage keeps 120 px, nothing runs past the card, the stored height stays',
+    floors.every((x) => x.stage >= 119 && x.past <= 1) && await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) === big, { big, floors });
   await page.locator(C + ' .fsp-split').dblclick();
   await page.setViewportSize(vp0);
   await page.waitForTimeout(300);
@@ -1953,6 +2005,16 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
   ok('media fullscreen: f enters and leaves', fKey.media && fKey.bare && !(await fsLook()).full, fKey);
+  await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
+  const paused0 = await video(page, (v) => v.paused);
+  await page.locator(C + ' .fsp-stage').dblclick();
+  await page.waitForTimeout(500);
+  const dbl = await fsLook();
+  ok('media fullscreen: a double-click on the stage enters it (the ask carries bare unless In window) and never toggles Play',
+    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === (document.documentElement.dataset.fullscreenMode !== 'window'))) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
+  await page.locator(C + ' .fsp-stage').dblclick();
+  await page.waitForTimeout(500);
+  ok('media fullscreen: a second double-click leaves it', !(await fsLook()).media);
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
