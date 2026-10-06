@@ -330,6 +330,17 @@ if (!LIVE) {
     return { w: Math.round(r.width), grid: Math.round(g.width) };
   });
   ok('a card taller than 6 times its floor width seeds at the full row', tallFill.grid - tallFill.w < 36 && tallFill.w <= tallFill.grid, tallFill);
+  // The cell remainder splits evenly: the outermost cards sit as far from the left edge as from the right.
+  for (const [w, h] of [[1428, 900], [1024, 768]]) {
+    const cz = await open(w, h);
+    await cz.page.waitForTimeout(600);
+    const gap = await cz.page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => {
+      const g = els[0].parentElement.parentElement.getBoundingClientRect(), r = els.map((e) => e.getBoundingClientRect());
+      return { left: Math.min(...r.map((q) => q.left)) - g.left, right: g.right - Math.max(...r.map((q) => q.right)) };
+    });
+    ok('centered: ' + w + ' wide, left and right gaps agree within 1 px', gap.left > 0 && Math.abs(gap.left - gap.right) <= 1, gap);
+    await cz.ctx.close();
+  }
   await editBtn(page).click();
   await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
   await page.waitForTimeout(150);

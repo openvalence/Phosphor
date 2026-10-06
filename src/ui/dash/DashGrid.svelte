@@ -362,10 +362,11 @@
   const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
 
-  /** Client point -> cell: rows are one cell each, the same pitch as the columns. */
+  /** Client point -> cell: rows are one cell each, the same pitch as the columns; the centering padding is not a track. */
   function cellAt(clientX, clientY) {
     const r = gridEl.getBoundingClientRect();
-    return { x: Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left) / grid.cell))),
+    const pl = parseFloat(getComputedStyle(gridEl).paddingLeft) || 0;
+    return { x: Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left - pl) / grid.cell))),
       y: Math.max(0, Math.floor((clientY - r.top) / grid.cell)) };
   }
 
@@ -968,6 +969,8 @@
     min-width: 0;
     min-height: calc(var(--cell) * 3);
   }
+  /* The cell remainder splits evenly on both sides; percent padding resolves on the parent, so the measured width never feeds back into --cols. */
+  .dash-grid:not(.stack) { padding-inline: max(0px, calc((100% - var(--cols) * var(--cell)) / 2)); }
   /* Top grid only: a nest's subgrid inherits --reserve and must not grow by it. */
   .dash-grid.top { anchor-name: --dash-grid; min-height: max(calc(var(--cell) * 3), var(--reserve, 0px)); }
   .dash-grid.stack { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
@@ -977,6 +980,8 @@
       linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
       linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
     background-size: var(--cell) var(--cell);
+    background-origin: content-box;
+    background-clip: content-box;
   }
   /* A nest about to take a drop: the whole subgrid lights, since a joining
      member flows at the nest's end rather than at a cell. */
