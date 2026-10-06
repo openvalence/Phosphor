@@ -153,8 +153,10 @@
 
   function land(el, scroll) {
     if (!el) return;
-    const f = el.querySelector('input[type=range]:not(:disabled), [role=slider][tabindex="0"], [role=radio][tabindex="0"], [role=switch]:not(:disabled), select:not(:disabled)')
-      || el.querySelector('input:not(:disabled), textarea:not(:disabled), button:not(:disabled):not(.info), [tabindex="0"]');
+    // The key may sit on the control itself (a plugin's button), not only on a wrapper.
+    const within = (s) => (el.matches(s) ? el : el.querySelector(s));
+    const f = within('input[type=range]:not(:disabled), [role=slider][tabindex="0"], [role=radio][tabindex="0"], [role=switch]:not(:disabled), select:not(:disabled)')
+      || within('input:not(:disabled), textarea:not(:disabled), button:not(:disabled):not(.info), [tabindex="0"]');
     if (f) f.focus({ preventScroll: !scroll });
     if (scroll) el.scrollIntoView({ block: 'nearest' });
     const field = el.matches('.field') ? el : el.querySelector('.field[data-uid]');
@@ -252,7 +254,7 @@
     height: min(100%, 440px);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-3);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
@@ -262,7 +264,7 @@
   .lf-q {
     flex: none;
     min-height: var(--tap);
-    padding: 0 10px;
+    padding: 0 var(--sp-3);
     font: inherit;
     color: var(--ink-hi);
     background: var(--bg-sunken);
@@ -273,10 +275,10 @@
   .lf-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
   li {
     display: flex;
-    gap: 6px;
+    gap: var(--sp-2);
     align-items: baseline;
     min-height: 28px;
-    padding: 4px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border-radius: var(--radius);
     font-size: .82rem;
     white-space: nowrap;

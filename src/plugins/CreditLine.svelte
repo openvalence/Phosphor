@@ -23,6 +23,6 @@
   {#if credit.url}<button type="button" class="og-btn sm copy" title={credit.url} onclick={copy}>{done ? 'Copied' : 'Copy link'}</button>{/if}</span>
 
 <style>
-  .credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
   .copy { min-width: 8ch; }
 </style>
