@@ -5,6 +5,8 @@
    * for the rail back (`onshow`).
    */
   import { railReadout } from './RailWidget.svelte';
+  import { heroBar } from './heroBar.svelte.js';
+  import { view } from '../../model/viewport.svelte.js';
 
   let { onshow } = $props();
   const r = $derived(railReadout());
@@ -13,7 +15,7 @@
   const at = $derived(r ? r.posFrac : null);
 </script>
 
-<button type="button" class="mini" aria-label="Show rail" title="Show rail" onclick={onshow}>
+<button type="button" class="mini" aria-label="Show rail" title="Show rail" aria-expanded={view.bucket <= 2 ? heroBar.popup : undefined} onclick={onshow}>
   <span class="plate">
     <span class="band" style="left:{l}%; width:{w}%"></span>
     {#if at != null}<span class="pos" style="left:{at * 100}%"></span>{/if}

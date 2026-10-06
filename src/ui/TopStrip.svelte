@@ -149,18 +149,18 @@
   // (--num-cap), then the rail takes its mini form. Pure in viewport, prefs
   // and the user's taps (userShow, cleared by a resize); never of history.
   let winH = $state(0), winW = $state(0);
-  let chromeH = $state(34), tapPx = $state(49), padV = $state(6);
+  let chromeH = $state(34), tapPx = $state(49), padV = $state(6), gapV = $state(4);
   $effect(() => { void winH; void winW; heroBar.userShow = false; });
   $effect(() => {
     if (!winH) return;
     heroBar.budget = budgetOf(winH, view.bucket);
     const numMin = (winW >= 1024 ? 54 : 42) * .95 + 20;
-    const row = stacked ? numMin + padV + tapPx + 2 * padV : Math.max(numMin, tapPx) + 2 * padV;
+    const row = stacked ? numMin + gapV + tapPx + 2 * padV : Math.max(numMin, tapPx) + 2 * padV;
     const over = chromeH + row + heroBar.railH > heroBar.budget;
     // Handheld: the mini is the rail's permanent form; its pop-up is the rail.
     heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
   });
-  $effect(() => { if (!handheld || !rail) heroBar.popup = false; });
+  $effect(() => { if ((!handheld || !rail) && !(rail && rail.busy)) heroBar.popup = false; });
   // Outside tap closes the pop-up unless a scrub or window drag is live.
   function onPopupAway(e) {
     if (!heroBar.popup || (rail && rail.busy)) return;
@@ -291,6 +291,7 @@
     // The secondaries need three 11 px rows (num-h >= 3.4 x 11 + 20); short of that they go (ph-kl5u).
     smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
     padV = parseFloat(cs.paddingTop) || padV;
+    gapV = parseFloat(cs.rowGap) || gapV;
     chromeH = (stripEl.parentElement?.offsetHeight || 0) - stripEl.offsetHeight;
     tapPx = measureEl.querySelector('[data-k=tap]')?.offsetHeight || tapPx;
     // Stacked is decided at the numeral's design size, so the budget's shrink
@@ -338,7 +339,10 @@
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
   function onWindowKey(e) {
-    if (e.key === 'Escape' && heroBar.popup) heroBar.popup = false;
+    if (e.key === 'Escape' && heroBar.popup && !(rail && rail.busy)) {
+      heroBar.popup = false;
+      document.querySelector('.topstrip .mini')?.focus();
+    }
     if (e.key === 'Escape' && menuOpen) {
       menuOpen = false;
       menuEl?.querySelector('.home-btn')?.focus();
@@ -527,8 +531,9 @@
     display: flex;
     align-items: center;
     gap: var(--sp-2) var(--sp-4);
-    height: calc(max(var(--num-h), var(--tap)) + 2 * var(--sp-2));
-    padding: var(--sp-2) var(--gap);
+    --pad-v: calc(var(--sp-2) * 1.5);
+    height: calc(max(var(--num-h), var(--tap)) + 2 * var(--pad-v));
+    padding: var(--pad-v) var(--gap);
     position: relative;
   }
   /* Off-layout: the ops at their inline width, for the budget only. */
@@ -556,7 +561,7 @@
     --sb-h: var(--tap);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
-    height: calc(var(--num-h) + var(--sp-2) + var(--tap) + 2 * var(--sp-2));
+    height: calc(var(--num-h) + var(--pad-v) + var(--tap) + 2 * var(--pad-v));
   }
   .stacked .nums { grid-area: num; }
   .stacked .status { grid-area: status; }

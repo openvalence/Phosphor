@@ -701,7 +701,10 @@
   let dragStartX = 0;
   // The handheld pop-up draws the rail rotated 90 degrees (HeroStrip): travel runs down the screen.
   const vertical = $derived(heroBar.popup);
-  const axis = (e) => (vertical ? e.clientY : e.clientX);
+  // The orientation is latched at pointerdown: a pop-up closing mid-gesture must not remap the captured pointer.
+  let latched = null;
+  const isV = () => (latched ?? vertical);
+  const axis = (e) => (isV() ? e.clientY : e.clientX);
   let dragStartMin = 0;
   let dragStartMax = 0;
   let dragCurMin = 0, dragCurMax = 0, dragG = 1;   // the last written edges; Shift's gain re-bases here
@@ -716,6 +719,7 @@
   function startDrag(mode, e) {
     if (!dragAllowed(mode)) return;
     dragMode = mode;
+    latched = vertical;
     dragStartX = axis(e);
     dragStartMin = dragCurMin = minVal ?? lo;
     dragStartMax = dragCurMax = maxVal ?? hi;
@@ -730,7 +734,7 @@
     // from a stale dragStartX would jump the window on re-enable.
     if (!dragAllowed(dragMode)) { dragMode = null; pend = null; return; }
     const rect = hostEl.getBoundingClientRect();
-    const len = vertical ? rect.height : rect.width;
+    const len = isV() ? rect.height : rect.width;
     if (!len) return;
     // Shift: a tenth of the gain, relative to where Shift went down.
     const g = dragGain(e, 1);
@@ -738,12 +742,12 @@
     const dv = dir * ((axis(e) - dragStartX) / len) * span * g;
     const out = {};
     if (dragMode === 'min') {
-      out.min = snap(modSnap(clamp(dragStartMin + dv, lo, dragStartMax), e, lo, hi), min);
+      out.min = snap(clamp(modSnap(dragStartMin + dv, e, lo, hi), lo, dragStartMax), min);
     } else if (dragMode === 'max') {
-      out.max = snap(modSnap(clamp(dragStartMax + dv, dragStartMin, hi), e, lo, hi), max);
+      out.max = snap(clamp(modSnap(dragStartMax + dv, e, lo, hi), dragStartMin, hi), max);
     } else if (dragMode === 'band') {
       const width = dragStartMax - dragStartMin;
-      const newMin = modSnap(clamp(dragStartMin + dv, lo, hi - width), e, lo, hi);
+      const newMin = clamp(modSnap(dragStartMin + dv, e, lo, hi), lo, hi - width);
       out.min = snap(newMin, min);
       out.max = snap(newMin + width, max);
     }
@@ -763,23 +767,36 @@
     const p = pend, mode = dragMode;
     pend = null;
     dragMode = null;
+    latched = null;
     if (p && mode && e.type === 'pointerup' && dragAllowed(mode)) writeEdges(p);
   }
 
+  // An arrow's sign on the value: the screen's travel direction (down in the
+  // vertical pop-up), or up/down on the value in the flat rail. 0: not an arrow.
+  function arrow(e) {
+    const k = e.key;
+    if (k === 'ArrowRight' || (vertical && k === 'ArrowDown')) return dir;
+    if (k === 'ArrowLeft' || (vertical && k === 'ArrowUp')) return -dir;
+    if (!vertical && k === 'ArrowUp') return 1;
+    if (!vertical && k === 'ArrowDown') return -1;
+    return 0;
+  }
+  // One key step from `base`: Ctrl lands on the adjacent decade multiple.
+  const stepTo = (e, base, sgn, step, a, b) => (e.ctrlKey ? modSnap(base, e, a, b, sgn, step) : base + sgn * step);
+
   function onBandKey(e) {
     if (!bandEnabled) return;
+    // Arrows go through arrow(): ArrowRight (ArrowDown when vertical) is the travel direction.
     const width = (maxVal ?? hi) - (minVal ?? lo);
-    const step = modStep(e, min.step || max.step || Math.max(span / 100, 1e-6), lo, hi);
-    let dv = 0;
-    if (e.key === 'ArrowRight') dv = dir * step;
-    else if (e.key === 'ArrowLeft') dv = -dir * step;
-    else if (e.key === 'ArrowUp') dv = step;
-    else if (e.key === 'ArrowDown') dv = -step;
-    else if (e.key === 'Home') dv = lo - (minVal ?? lo);
-    else if (e.key === 'End') dv = hi - (maxVal ?? hi);
+    const step = min.step || max.step || Math.max(span / 100, 1e-6);
+    const sgn = arrow(e);
+    let nm;
+    if (sgn) nm = stepTo(e, minVal ?? lo, sgn, step, lo, hi);
+    else if (e.key === 'Home') nm = lo;
+    else if (e.key === 'End') nm = hi - width;
     else return;
     e.preventDefault();
-    const newMin = clamp((minVal ?? lo) + dv, lo, hi - width);
+    const newMin = clamp(nm, lo, hi - width);
     writeSetting(min, snap(newMin, min));
     writeSetting(max, snap(newMin + width, max));
   }
@@ -788,13 +805,11 @@
     const field = which === 'min' ? min : max;
     const ok = which === 'min' ? minEnabled : maxEnabled;
     if (!ok) return;
-    const step = modStep(e, field.step || Math.max(span / 100, 1e-6), lo, hi);
+    const step = field.step || Math.max(span / 100, 1e-6);
     let target;
     const cur = which === 'min' ? (minVal ?? lo) : (maxVal ?? hi);
-    if (e.key === 'ArrowRight') target = cur + dir * step;
-    else if (e.key === 'ArrowLeft') target = cur - dir * step;
-    else if (e.key === 'ArrowUp') target = cur + step;
-    else if (e.key === 'ArrowDown') target = cur - step;
+    const sgn = arrow(e);
+    if (sgn) target = stepTo(e, cur, sgn, step, lo, hi);
     else if (e.key === 'Home') target = lo;
     else if (e.key === 'End') target = hi;
     else if (e.key === 'PageUp') target = cur + step * 10;
@@ -893,9 +908,9 @@
   function moveValueFromPoint(e) {
     if (!tapeBarEl) return null;
     const rect = tapeBarEl.getBoundingClientRect();
-    const len = vertical ? rect.height : rect.width;
+    const len = isV() ? rect.height : rect.width;
     if (!len) return null;
-    const frac = clamp((axis(e) - (vertical ? rect.top : rect.left)) / len, 0, 1);
+    const frac = clamp((axis(e) - (isV() ? rect.top : rect.left)) / len, 0, 1);
     return flipped ? tapeHi - frac * tapeSpan : tapeLo + frac * tapeSpan;
   }
 
@@ -915,6 +930,7 @@
   function onTapePointerDown(e) {
     if (!moveEnabled) return;
     tapeAnchor = null;
+    latched = vertical;
     moveDragging = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
     onTapePointerMove(e);
@@ -925,12 +941,12 @@
   let ripples = $state([]);
   let rippleId = 0, rippleAt = 0;
   function spawnRipple(e) {
-    if (isStill() || !tapeTrackEl) return;
+    if (isStill() || !tapeBarEl) return;
     const now = performance.now();
     if (now - rippleAt < 140) return;
     rippleAt = now;
-    const r = tapeTrackEl.getBoundingClientRect();
-    const x = vertical ? e.clientY - r.top : e.clientX - r.left;
+    const r = tapeBarEl.getBoundingClientRect();
+    const x = (isV() ? e.clientY - r.top : e.clientX - r.left) - 1;   // 1: the tape's border; the overlay starts at its padding box
     ripples = [...ripples.slice(-2), { id: ++rippleId, x }];
   }
   function onTapePointerMove(e) {
@@ -941,7 +957,7 @@
     if (raw != null) {
       const g = dragGain(e, 1);
       if (!tapeAnchor || tapeAnchor.g !== g) tapeAnchor = { raw, out: tapeAnchor ? moveDragValue : raw, g };
-      v = modSnap(clamp(tapeAnchor.out + (raw - tapeAnchor.raw) * g, tapeLo, tapeHi), e, tapeLo, tapeHi);
+      v = clamp(modSnap(tapeAnchor.out + (raw - tapeAnchor.raw) * g, e, tapeLo, tapeHi), tapeLo, tapeHi);
     }
     moveDragValue = v;
     moveHeld = deferring(e);
@@ -951,6 +967,7 @@
   function onTapePointerUp(e) {
     if (!moveDragging) return;
     moveDragging = false;
+    latched = null;
     const held = moveHeld;
     moveHeld = false;
     // A cancelled live drag still requeues; a cancelled held one sends nothing.
@@ -965,13 +982,12 @@
   // not a reproduction of anything the original did.
   function onTapeKey(e) {
     if (!moveEnabled) return;
-    const step = modStep(e, (move && move.step) || Math.max(tapeSpan / 100, 1e-6), tapeLo, tapeHi);
+    // Arrows go through arrow(): ArrowRight (ArrowDown when vertical) is the travel direction.
+    const step = (move && move.step) || Math.max(tapeSpan / 100, 1e-6);
     const cur = tapeVal ?? tapeLo;
     let v;
-    if (e.key === 'ArrowRight') v = cur + dir * step;
-    else if (e.key === 'ArrowLeft') v = cur - dir * step;
-    else if (e.key === 'ArrowUp') v = cur + step;
-    else if (e.key === 'ArrowDown') v = cur - step;
+    const sgn = arrow(e);
+    if (sgn) v = stepTo(e, cur, sgn, step, tapeLo, tapeHi);
     else if (e.key === 'PageUp') v = cur + step * 10;
     else if (e.key === 'PageDown') v = cur - step * 10;
     else if (e.key === 'Home') v = tapeLo;
@@ -1037,7 +1053,7 @@
              track same as anywhere else). -->
         <div class="rail-tape-track" bind:this={tapeTrackEl} title={moveEnabled || !moveReason ? HINT : moveReason}
              role="slider" tabindex={moveEnabled ? 0 : -1}
-             aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
+             aria-label={'Jog: ' + labelFor(move)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
              aria-disabled={!moveEnabled}
              class:live={moveEnabled}
@@ -1046,14 +1062,12 @@
              onpointerup={onTapePointerUp}
              onpointercancel={onTapePointerUp}
              onkeydown={onTapeKey}>
-          <div class="rail-ripples" aria-hidden="true">
-            {#each ripples as rp (rp.id)}
-              <span class="rail-ripple" style="left:{rp.x}px"
-                    onanimationend={() => (ripples = ripples.filter((q) => q.id !== rp.id))}></span>
-            {/each}
-          </div>
           <div class="rail-tape live" bind:this={tapeBarEl}
                style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
+            {#each ripples as rp (rp.id)}
+              <span class="rail-ripple" aria-hidden="true" style="--x:{rp.x}px"
+                    onanimationend={() => (ripples = ripples.filter((q) => q.id !== rp.id))}></span>
+            {/each}
             {#if !moveEnabled && moveReason}
               <span class="rail-tape-micro rail-reason">{moveReason}</span>
             {:else}
@@ -1116,7 +1130,7 @@
            class:disabled={!bandEnabled}
            class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}
-           aria-label="Stroke window" aria-orientation="horizontal"
+           aria-label="Stroke window" aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={lo} aria-valuemax={hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={bandLabel}
            aria-disabled={!bandEnabled}
@@ -1135,7 +1149,7 @@
       <div class="rail-band-handle lo"
            class:disabled={!minEnabled}
            role="slider" tabindex={minEnabled ? 0 : -1}
-           aria-label={labelFor(min)} aria-orientation="horizontal"
+           aria-label={labelFor(min)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={lo} aria-valuemax={maxVal ?? hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={formatValue(min, minVal) + (unitOf(min) ? ' ' + unitOf(min) : '')}
            aria-disabled={!minEnabled}
@@ -1150,7 +1164,7 @@
       <div class="rail-band-handle hi"
            class:disabled={!maxEnabled}
            role="slider" tabindex={maxEnabled ? 0 : -1}
-           aria-label={labelFor(max)} aria-orientation="horizontal"
+           aria-label={labelFor(max)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={minVal ?? lo} aria-valuemax={hi} aria-valuenow={maxVal ?? hi}
            aria-valuetext={formatValue(max, maxVal) + (unitOf(max) ? ' ' + unitOf(max) : '')}
            aria-disabled={!maxEnabled}
@@ -1265,24 +1279,29 @@
     box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .6);
   }
   .rail-tape-assembly.drag-live .rail-tape { transition: none; }
-  .rail-ripples { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-  /* A ring from the pointer: a faint glow plus the tape's tick lines, lit only where the ring passes. */
+  /* A ring from the pointer, inside the tape (above its background, under the
+     caption and pip): the same 7 px tick lines as the tape's own, brightened
+     and revealed only where the ring passes, so they stay in register. */
+  @property --rr { syntax: '<length>'; inherits: false; initial-value: 0px; }
   .rail-ripple {
     position: absolute;
-    top: 0; bottom: 0;
-    --rw: 240px;
-    width: var(--rw);
-    margin-left: calc(var(--rw) / -2);
+    inset: 0;
+    pointer-events: none;
     background:
-      repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .45) 0 1px, transparent 1px 7px),
-      radial-gradient(closest-side, rgba(var(--intent-rgb), .14), transparent);
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 42%, #000 58%, transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 42%, #000 58%, transparent);
-    transform-origin: center;
+      repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .7) 0 1px, transparent 1px 7px),
+      linear-gradient(rgba(var(--intent-rgb), .12), rgba(var(--intent-rgb), .12));
+    -webkit-mask-image: radial-gradient(ellipse var(--rr) 400% at var(--x) 50%, transparent 55%, #000 80%, transparent 100%);
+    mask-image: radial-gradient(ellipse var(--rr) 400% at var(--x) 50%, transparent 55%, #000 80%, transparent 100%);
     animation: rail-ripple var(--t-slow) var(--ease-out) forwards;
   }
-  @keyframes rail-ripple { from { transform: scaleX(.15); opacity: 1; } to { transform: scaleX(1); opacity: 0; } }
+  @keyframes rail-ripple { from { --rr: 0px; opacity: 1; } to { --rr: 200px; opacity: 0; } }
   :global(html.still) .rail-ripple { display: none; }
+  /* The pop-up turns the rail; its labels turn back. */
+  :global(.hero-inner.popup) .rail-endcap { transform: rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-ghost { transform: translateX(-50%) rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-win { transform: translateX(-50%) rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-win.edge, :global(.hero-inner.popup) .rail-win.flank { transform: rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-band-label { transform: translate(-50%, -50%) rotate(-90deg); }
   .rail-tape-micro {
     font-size: max(11px, calc(var(--s) * 9px));
     letter-spacing: 0.18em;

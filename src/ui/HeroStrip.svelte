@@ -74,8 +74,9 @@
     visibility: visible;
     overflow: visible;
     box-sizing: content-box;
+    --pl: min(440px, calc(100dvh - var(--strip-h, 0px) - 4 * var(--gap)));
     width: var(--rh);
-    height: min(60vh, 440px);
+    height: var(--pl);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
@@ -83,7 +84,7 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
   }
   .popup .hero-slot {
-    width: min(60vh, 440px);
+    width: var(--pl);
     height: var(--rh);
     transform-origin: 0 0;
     transform: translateX(var(--rh)) rotate(90deg);

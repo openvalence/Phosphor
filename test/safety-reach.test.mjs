@@ -1116,6 +1116,19 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await page.waitForTimeout(500);
   const v1 = wire.writes.length;
   ok('handheld: the pop-up opens, travel runs down, a drag leaving it keeps it open and writes', mid === 1 && v1 > v0 && await pop() === 1, JSON.stringify([mid, v0, v1]));
+  // Vertical: ArrowDown runs the travel down, aria says vertical, Escape closes and returns to the mini.
+  const tape = page.locator('.rail-tape-track');
+  await tape.focus();
+  const t0 = +await tape.getAttribute('aria-valuenow'), n0 = wire.values.length;
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(600);
+  const sent = wire.values.slice(n0);
+  ok('handheld: the pop-up rail is vertical and ArrowDown runs the travel down', await tape.getAttribute('aria-orientation') === 'vertical' && sent.length > 0 && sent.every((v) => v > t0), t0 + ' -> ' + sent.join());
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  ok('handheld: Escape closes the pop-up and returns focus to the mini', await pop() === 0 && await page.evaluate(() => document.activeElement.classList.contains('mini')));
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(300);
   await page.mouse.click(10, 760);
   await page.waitForTimeout(300);
   ok('handheld: an outside tap closes the pop-up', await pop() === 0);
