@@ -196,7 +196,7 @@
     min-width: var(--sb-w, max(var(--tap), 96px));
     width: var(--sb-w, auto);
     height: var(--sb-h, auto);
-    padding: var(--sp-1) var(--sp-2) 1px;
+    padding: var(--sp-1) var(--sp-2);
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -217,7 +217,7 @@
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
   /* Icon above the word; the live subline sits below and never moves them. */
-  .row { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .row { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-block: auto; }
   /* The strip's one icon box and drawn stroke (TopStrip.svelte). */
   .ico { width: var(--sico, 28px); height: var(--sico, 28px); }
   .ico :global(*) { vector-effect: non-scaling-stroke; }
@@ -227,7 +227,9 @@
   .hints { height: 0; overflow: hidden; }
   .state, .hints small { line-height: 1; font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   /* Never widens the box: no intrinsic width, stretched to the button. */
-  .state { contain: inline-size; align-self: stretch; min-height: 1em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  /* Out of flow at the foot: the icon and word are centered in the box and the
+     line's slot never moves them. */
+  .state { contain: inline-size; position: absolute; inset-inline: var(--sp-1); bottom: 1px; min-height: 1em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   [data-shadow='overdue'] .state { color: var(--warn-ink, var(--warn)); }
   [data-shadow='fault'] .state { color: var(--warn-ink, var(--warn)); }
 
