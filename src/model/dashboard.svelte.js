@@ -74,7 +74,6 @@ export const addLayout = edit((n) => G.addLayout(layouts, n));
 /** Default refuses; `index` counts Default as 0. */
 export const moveLayout = edit((n, i) => G.moveLayout(layouts, n, i));
 export const switchLayout = (n) => saved(G.switchLayout(layouts, n));
-export const saveLayoutAs = edit((n) => G.saveLayoutAs(layouts, n));
 export const renameLayout = edit((a, b) => G.renameLayout(layouts, a, b));
 export const deleteLayout = edit((n) => G.deleteLayout(layouts, n));
 /** Layout `n` (default: the active one) as comparable JSON: the switch guard's baseline. */

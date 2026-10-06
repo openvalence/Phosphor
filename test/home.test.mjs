@@ -323,6 +323,12 @@ if (!LIVE) {
   ok('outside edit mode nothing drags', await page.locator('.home .handle').count() === 0);
   ok('no palette outside edit mode', await page.locator('.palette').count() === 0);
   ok('surfaces: the home reads as cards and nests only', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
+  // A card far taller than wide at its floor (the built-in advanced generator) takes the full row, leaving no hole beside it.
+  const tallFill = await page.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => {
+    const g = els[0].parentElement.getBoundingClientRect(), r = els.find((e) => e.dataset.id === 'hero:advanced-generator').getBoundingClientRect();
+    return { w: Math.round(r.width), grid: Math.round(g.width) };
+  });
+  ok('a card taller than 6 times its floor width seeds at the full row', tallFill.grid - tallFill.w < 36 && tallFill.w <= tallFill.grid, tallFill);
   await editBtn(page).click();
   await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
   await page.waitForTimeout(150);

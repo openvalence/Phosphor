@@ -1,8 +1,8 @@
 <script>
   /**
    * DashGrid.svelte -- the builder grid: square device-px cells (DESIGN §10.5),
-   * items placed at {x, y, w, h} in cells, named layouts and the scale
-   * control (§10.6). Math and storage: model/grid.js via
+   * items placed at {x, y, w, h} in cells and the Dash's edit chrome
+   * (§10.6). Math and storage: model/grid.js via
    * model/dashboard.svelte.js.
    *
    * Contract: <DashGrid viewId="cat2" items={items} bind:editing />, `items`
@@ -240,7 +240,13 @@
   // full row; a section header fills it.
   let seedInfo = $state({});
   let gen = 0;
-  const seedFor = (it, si) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? cols : si.s0));
+  const baseSeed = (it, si) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? cols : si.s0));
+  // A card more than 6 times taller than wide at its floor width seeds at the full row, like a plugin.
+  const TALL = 6;
+  const seedFor = (it, si) => {
+    const b = baseSeed(it, si);
+    return b > 0 && b < cols && si.sh[b] != null && si.sh[b] > TALL * b * grid.cell ? cols : b;
+  };
   const seedOf = (it) => { const si = seedInfo[keyOf(it, 'h')]; return si ? seedFor(it, si) : 0; };
   const floorH = (it) => ((it.min && it.min(it.look, 'h')) || RESIZE_FLOOR)[1];
   /** grid.js pack `fit`: an item's height in cells at width `w`. At its seed width, or flagged for the width a row end stretches to: the canonical measure (`sh`), null before. Elsewhere the last height drawn there. */
@@ -274,7 +280,10 @@
       const stale = dirty.has(p.id);
       const drawn = !o || stale || o.hs[p.w] == null;
       // Canonical heights wanted: at the seed width, and at the stretched width an unsaved card is drawn at.
-      const wantAt = (si) => { const sw = seedFor(p, si); return sw > 0 ? (p.w !== sw && !layout.saved(p.id) ? [sw, p.w] : [sw]) : []; };
+      const wantAt = (si) => {
+        const b = baseSeed(p, si), sw = seedFor(p, si);
+        return b > 0 ? [...new Set([b, sw, ...(!layout.saved(p.id) ? [p.w] : [])])] : [];
+      };
       const fresh0 = !so || so.gen !== gen;
       const seedMiss = fresh0 || stale || wantAt(so).some((x) => so.sh[x] == null);
       if (!el || !(drawn || seedMiss)) continue;
@@ -294,10 +303,13 @@
       const s0 = !fresh0 ? so.s0
         : Math.max(((p.min && p.min(p.look, 'h')) || RESIZE_FLOOR)[0], cellsFor(m ? m.w : (ne ? ne.w : 0), grid.cell), declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell));
       const si = { s0, gen, sh: !fresh0 && !stale ? { ...so.sh } : {} };
-      for (const x of wantAt(si)) if (si.sh[x] == null) { const h = measureAt(el, x); if (h != null) si.sh[x] = h; }
+      // Twice: the floor width first, then the full row it may lead to.
+      for (let pass = 0; pass < 2; pass++) for (const x of wantAt(si)) if (si.sh[x] == null) { const h = measureAt(el, x); if (h != null) si.sh[x] = h; }
       if (!so || JSON.stringify(si) !== JSON.stringify(so)) { seedInfo[kh] = si; grew = true; }
     }
     dirty.clear();
+    // New measurements repack at once, in this task, so the frame at the old heights never paints.
+    if (grew && chain < 4) { chain++; queueMicrotask(settle); }
     if (seeded) return;
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
     const held = layout.held();
@@ -312,7 +324,8 @@
     }
   }
   let frame = 0;
-  const later = () => { if (!frame) frame = requestAnimationFrame(settle); };
+  let chain = 0;
+  const later = () => { chain = 0; if (!frame) frame = requestAnimationFrame(settle); };
   $effect(() => {
     // Any layout, scale or mode change may show a card at a size not yet measured.
     placed; grid.cell; editing; stack;
@@ -772,7 +785,7 @@
       {#if selSet.size}
         {@render selbar()}
       {:else}
-        <span class="dash-hint" title="Drag grips to move, edges to resize">Drag grips to move, edges to resize</span>
+        <span class="dash-hint">Drag grips to move, edges to resize</span>
       {/if}
     </div>
       <div class="edit-ops" role="group" aria-label="Layout editing">
@@ -884,7 +897,7 @@
   }
   /* A nest's selection takes its bar's edit ops' place (Nest hides them
      meanwhile): `--bleed` is how far the subgrid reaches past the nest's
-     frame, 6 px the bar's gap above the subgrid. */
+     frame, --sp-2 the bar's gap above the subgrid. */
   .dash-selbar.over {
     position: absolute;
     z-index: 3;
@@ -1039,7 +1052,7 @@
      and every handle keeps its 40 px (law 12). */
   .dash-wrap[data-density='compact'] {
     --dash-cell-pad: var(--sp-2);
-    --dash-body-pad: 6px;
+    --dash-body-pad: var(--sp-2);
     --dash-title-size: .7rem;
   }
 
