@@ -223,11 +223,11 @@ const browser = await chromium.launch();
       el.focus();
       const after = sig(el);
       el.blur();
-      out.push({ sel, changed: before !== after });
+      out.push({ sel, changed: before !== after, who: el.className + ' ' + el.textContent.trim().slice(0, 20), before });
     }
     return out;
   });
-  for (const r of results) ok('focus-visible style differs from unfocused: ' + r.sel, r.changed);
+  for (const r of results) ok('focus-visible style differs from unfocused: ' + r.sel, r.changed, r.changed ? '' : r.who + ' | ' + r.before);
 
   // input[type=range]'s own box is a 2px hairline (T24) -- its focus ring
   // lives on the ::-webkit-slider-thumb pseudo-element, which getComputedStyle

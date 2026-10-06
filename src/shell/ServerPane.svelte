@@ -53,7 +53,7 @@
 <div class="pane-stack sp-pane">
   <section class="pane-sec og-panel" aria-labelledby="sp-title">
     <div class="pane-head">
-      <h2 id="sp-title">ButtplugIO</h2>
+      <h2 id="sp-title">Buttplug</h2>
       <span class="sp-state mono" data-on={s.running} title={summary}>{summary}</span>
     </div>
     <div class="sp-row">

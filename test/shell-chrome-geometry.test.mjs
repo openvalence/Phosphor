@@ -192,7 +192,7 @@ await sp.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloa
 await sp.waitForSelector('nav.rail .rail-sec.shell [role=tab]', { timeout: 15000 });
 await sp.waitForTimeout(300);
 const rect = (sel) => sp.evaluate((s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, width: r.width }; }, sel);
-const PANES = ['Hubs', 'ButtplugIO', 'Settings', 'About'];
+const PANES = ['Hubs', 'Buttplug', 'Settings', 'About'];
 
 const sec = await sp.evaluate(() => {
   const secs = [...document.querySelectorAll('nav.rail .rail-sec')];
@@ -605,8 +605,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.click('nav.rail .rail-wrench');
     await fp.hover(rowSel('Sofa'));
     const [dx, dy] = await center(rowSel('Sofa') + ' .sub-x');
-    await fp.mouse.move(dx, dy); await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
-    await fp.waitForTimeout(400); // the row's 200 ms slide-out keeps it listed
+    await fp.mouse.move(dx, dy); await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up(); await fp.waitForTimeout(350);
     ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
   }
   if (w >= 960) {

@@ -90,7 +90,7 @@ const PROBES = {
   'Sidebar|Alt+Up, Alt+Down': /e\.altKey[\s\S]*ArrowUp[\s\S]*moveLayout/,
   'Sidebar|Hold Enter, Space': /use:hold=\{\{ ms: 1000/,
   'Phosphor panes|F2, Double-click|Hubs': /opensName/,
-  'Phosphor panes|F2, Double-click|ButtplugIO': /e\.key === 'F2'\) nameFocus/,
+  'Phosphor panes|F2, Double-click|Buttplug': /e\.key === 'F2'\) nameFocus/,
   'Rail|Shift+drag': /dragGain\(e, 1\)/,
   'Rail|Ctrl+drag': /modSnap\(dragStartMin/,
   'Rail|Ctrl+Arrows': /e\.ctrlKey \? modSnap\(base, e, a, b, sgn, step\)/,
