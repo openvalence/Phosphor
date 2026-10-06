@@ -183,7 +183,8 @@ export const revertAll = once(async () => {
 $effect.root(() => {
   $effect(() => {
     const phase = machine.link.phase, ready = machine.catalog.ready;
-    const key = JSON.stringify(machine.link.hubIdentity || null) + '|' + machine.catalog.etag;
+    const id = machine.link.hubIdentity;
+    const key = (id ? id.hub_instance_id ?? id.hub_name : '') + '|' + machine.catalog.etag;
     untrack(() => {
       if (!ready || (baseline && key !== baseKey)) {
         baseline = null;
