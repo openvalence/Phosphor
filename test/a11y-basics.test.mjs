@@ -214,7 +214,7 @@ const browser = await chromium.launch();
       const cs = getComputedStyle(el);
       return [cs.outlineStyle, cs.outlineWidth, cs.outlineColor, cs.boxShadow, cs.borderColor].join('|');
     };
-    const sels = ['nav.rail [role=tab]', '.rail-collapse', '.og-btn', 'select'];
+    const sels = ['nav.rail [role=tab]', '.rail-collapse', '.og-btn:not(:disabled)', 'select'];
     const out = [];
     for (const sel of sels) {
       const el = document.querySelector(sel);
