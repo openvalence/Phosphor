@@ -284,20 +284,20 @@ export const COPY = Object.freeze({
 });
 
 export const CSS = `
-.fsp-interp { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: 4px 8px; align-items: center; }
+.fsp-interp { display: grid; grid-template-columns: 10ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: var(--sp-2) var(--sp-3); align-items: center; }
 .fsp-interp h4 { grid-column: 1 / -1; margin: 0; font-size: .85rem; color: var(--tx-mut); font-weight: 600; }
 .fsp-interp label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-interp select, .fsp-interp input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
-.fsp-interp select { grid-column: 2 / -1; background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2); border-radius: var(--r-s); padding: 0 6px; }
+.fsp-interp select { grid-column: 2 / -1; background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2); border-radius: var(--r-s); padding: 0 var(--sp-2); }
 .fsp-interp select:focus-visible, .fsp-interp input:focus-visible, .fsp-interp button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-interp .fsp-grow { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.fsp-interp .fsp-grow { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; }
 .fsp-interp .fsp-grow input { flex: 1 1 0; min-width: 0; }
-.fsp-interp button { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 0 8px; background: none; color: var(--tx);
+.fsp-interp button { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx);
   border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
 .fsp-interp button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
 .fsp-interp .fsp-gcell { display: grid; align-items: center; min-width: 0; }
 .fsp-interp .fsp-gcell input { width: 100%; box-sizing: border-box; background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2);
-  border-radius: var(--r-s); padding: 0 4px; font: .8rem var(--mono); text-align: right; }
+  border-radius: var(--r-s); padding: 0 var(--sp-2); font: .8rem var(--mono); text-align: right; }
 .fsp-interp output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
 .fsp-interp input:disabled { opacity: .4; }
 .fsp-interp input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }

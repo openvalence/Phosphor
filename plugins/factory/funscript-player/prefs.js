@@ -23,6 +23,7 @@ export const PREFS = deepFreeze({
   zoomMs: 10000,
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
+  split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
   interp: INTERP,
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
   // seekMs 0 = jump; lowLatency and autoLatency per scheduler.js setLatency.
@@ -71,6 +72,7 @@ const REPAIR = {
   audio: (a) => ({ ...a, vol: clamp(a.vol, 0, 1) }),
   lib: (l) => ({ ...l, sort: l.sort || PREFS.lib.sort, direction: l.direction === 'ASC' ? 'ASC' : 'DESC' }),
   view: (v) => (v === 'library' ? v : 'player'),
+  split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
   interp: cleanInterp,
   play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),

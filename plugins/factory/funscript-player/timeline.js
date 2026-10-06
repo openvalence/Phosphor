@@ -27,7 +27,6 @@
 //   through the detail at the same x, so the detail window holds m at the share m / duration.
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
-// - onExpand(on) asks for the analyzer; setExpanded(on) shows the answer on its button.
 // - onSettings(on), a page mount's, puts Settings at the cluster's right end; the button holds
 //   its own pressed state from settingsOpen, the page being its only other writer.
 // - frame's kin (the analyzer's Kinetic render, display only) draws --highlight under the script curve:
@@ -35,6 +34,12 @@
 // - setScript's script is the shaped one (interp.js shape(), display only: the hub draws its own curve
 //   through the wire's tangents). raw, when it is another Script, is the file's actions, drawn muted under
 //   it; the heat reads raw.
+// - The detail's top right is one control bundle on a plate flush with the corner: the caller's `bundle`
+//   elements (Motion, Offset, Invert), then zoom, A-B, Settings. The detail and the heat sit on
+//   --screen with the advanced generator's inset shadow.
+// - The heat is placed by the caller (`ovHost`, before `ovBefore`): it is the transport row's timeline.
+//   The playhead bar lives in the detail, at the same share of the script as the heat's grip.
+// - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
 
@@ -59,7 +64,6 @@ export const COPY = Object.freeze({
   zoomOut: 'Zoom out',
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
-  analyzer: 'Analyzer',
   settings: 'Settings',
   abGlyph: 'A-B',
   abStart: 'Set loop start',
@@ -68,6 +72,12 @@ export const COPY = Object.freeze({
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// The modifier rule (DESIGN 10.5), inlined: a key takes the 1 % step (Shift included), Ctrl the adjacent 10 % multiple.
+export function pillKey(v, dir, e = {}) {
+  if (!e.ctrlKey) return v + dir * 0.01;
+  const q = v / 0.1;
+  return (dir > 0 ? Math.floor(q + 1e-9) + 1 : Math.ceil(q - 1e-9) - 1) * 0.1;
+}
 const tf = (n, T) => T.lo + (T.invert ? 1 - n : n) * (T.hi - T.lo);
 
 /** The intent curve over [fromMs, toMs] as SVG polyline points in a W x H box; 1 at the top. */
@@ -154,9 +164,10 @@ export function zoomStep(ms, dir) {
 }
 
 export const CSS = `
-.fsp-tl { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.fsp-ph { position: absolute; top: 0; bottom: 12px; width: 2px; margin-left: -1px; background: var(--highlight); pointer-events: none; z-index: 1; }
+.fsp-tl { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; translate: -1px 0; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
+.fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
 .fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -166,7 +177,7 @@ export const CSS = `
 .fsp-ov rect.win { fill: rgba(var(--highlight-rgb), .08); stroke: var(--highlight); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fsp-scrub { position: absolute; top: 50%; width: var(--tap); height: var(--tap); margin: calc(var(--tap) / -2) 0 0 calc(var(--tap) / -2); outline: none; z-index: 1; }
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
-.fsp-scrub::after { width: 9px; height: 20px; margin: -10px -4.5px; border-radius: 4.5px; border: 2px solid var(--highlight); }
+.fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
@@ -181,16 +192,19 @@ export const CSS = `
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
 .fsp-rh[data-key=hi] { left: var(--tap); }
-.fsp-rh::after { width: 20px; height: 9px; margin: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--intent);
-  translate: 0 calc(clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
+.fsp-rh::after { width: 20px; height: 9px; border-radius: 4.5px; border: 2px solid var(--intent);
+  translate: -10px calc(-4.5px + clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
-.fsp-zoom { position: absolute; right: 0; top: 0; display: flex; z-index: 1; }
-.fsp-zoom button { width: var(--tap); height: var(--tap); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
-.fsp-zoom .fsp-ab { font-size: .72rem; }
-.fsp-zoom button:hover, .fsp-zoom button:focus-visible { color: var(--highlight); outline: none; }
-.fsp-zoom button:disabled { opacity: .35; cursor: default; }
-.fsp-zoom button[aria-pressed=true] { color: var(--highlight); }
+.fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 var(--sp-2);
+  max-width: calc(100% - var(--tap) * 2); padding: 0 0 0 var(--sp-2); background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
+  border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
+.fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
+.fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 1rem/1 var(--mono); cursor: pointer; }
+.fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 var(--sp-2); font-size: .72rem; }
+.fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }
+.fsp-zoom button:not(.fsp-btn):disabled { opacity: .35; cursor: default; }
+.fsp-zoom button:not(.fsp-btn)[aria-pressed=true] { color: var(--highlight); }
 .fsp-zoom svg { position: static; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; vertical-align: middle; }
 `;
 
@@ -210,7 +224,7 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, onExpand = null, onLoop = null,
+export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null,
   onSettings = null, settingsOpen = false }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
@@ -275,10 +289,6 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
-  const zAn = h('button', { type: 'button', class: 'fsp-expand', title: COPY.analyzer, 'aria-label': COPY.analyzer, 'aria-pressed': 'false' });
-  const icon = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
-  icon.append(s('path', { d: 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8' }));
-  zAn.append(icon);
   const zSet = h('button', { type: 'button', class: 'fsp-set', title: COPY.settings, 'aria-label': COPY.settings, 'aria-pressed': String(!!settingsOpen) });
   const gear = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
   gear.append(s('path', { d: 'M2 4h6.5M11.5 4H14M11.5 4a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M2 8h1.5M6.5 8H14M6.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'
@@ -293,8 +303,6 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
   const zAB = h('button', { type: 'button', class: 'fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
   zAB.hidden = !onLoop;
   zAB.addEventListener('click', () => onLoop && onLoop());
-  zAn.hidden = !onExpand;
-  zAn.addEventListener('click', () => onExpand && onExpand(zAn.getAttribute('aria-pressed') !== 'true'));
   const pills = ['lo', 'hi'].map((key) => {
     const p = h('div', { class: 'fsp-rh', role: 'slider', tabindex: '0', 'aria-label': COPY[key],
       'aria-orientation': 'vertical', 'aria-valuemin': '0', 'aria-valuemax': '100', 'data-key': key });
@@ -325,17 +333,19 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       const d = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
       if (!d) return;
       e.preventDefault();
-      move(eff()[key] + d * (e.shiftKey ? 0.1 : 0.01));
+      move(pillKey(eff()[key], d, e));
     });
     p.addEventListener('keyup', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') commit(); });
     p.addEventListener('blur', commit);
     return p;
   });
   const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, zOut, zIn, zAB, zAn, zSet));
+    h('div', { class: 'fsp-zoom' }, ...bundle, zOut, zIn, zAB, zSet), ...overlay);
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
-  const root = h('div', { class: 'fsp-tl' }, dt, ov, ph);
+  dt.append(ph);
+  const root = h('div', { class: 'fsp-tl' }, dt, ...(ovHost ? [] : [ov]));
   el.append(root);
+  if (ovHost) ovHost.insertBefore(ov, ovBefore);
 
   const eff = () => (preview ? { ...T, ...preview } : T);
 
@@ -404,9 +414,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
       kin = kr || null;
       draw();
     },
-    setExpanded(on) { zAn.setAttribute('aria-pressed', String(!!on)); },
     /** {a, b} media ms, either null: what the A-B button has set. */
     setLoop(x) { if (x && (x.a !== ab.a || x.b !== ab.b)) { ab = { a: x.a, b: x.b }; draw(); } },
-    unmount() { root.remove(); },
+    unmount() { root.remove(); ov.remove(); },
   };
 }

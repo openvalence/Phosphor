@@ -370,35 +370,70 @@ renderer-class thresholds: full at 960 px and wider (`FULL_UP`), handheld
 ```
 FULL
 +------------------------------------------------+--------------------+
-| source 24: Open files (compact), title, caret > | search, sort, dir  |
-| stage 16:9, object-fit contain, the hover bar   | tiles, paged,      |
-|   (Play, mute, volume, time, mode, Fullscreen)  |   never scrolled   |
-|   empty: 'Open a video'                         |                    |
-| strip 28: Motion | Offset | Invert | speed      | page n / m, N      |
-| detail 96: automation curve (intent), reality   |                    |
-|   trace, plan, range pills, zoom, A-B,          |                    |
-|   Analyzer, Settings (page only)                |                    |
-| overview 24: whole-script heat, window box,     |                    |
-|   vertical-pill scrub (40 px hit); its line     |                    |
-|   runs up through the detail: one playhead bar  |                    |
+| source 24: title, caret >                       | head: search, sort,|
+| stage 16:9, object-fit contain, the hover bar   |   dir, Open files  |
+|   (Play, mute, volume, time, mode, Fullscreen)  | tiles, paged,      |
+|   empty: 'Open a video' (click opens files)     |   never scrolled   |
+| transport 28: prev play next | 0:00 | heat |    |                    |
+|   -0:30 | volume | rate | graph (g) | close   |    |                    |
+| wave card 96 (draggable): automation curve,     |                    |
+|   reality trace, plan, range pills, speed;      |                    |
+|   corner plate: Motion | Offset ms | Invert |   |                    |
+|   zoom, A-B, Settings (page only)               | page n / m, N      |
 +------------------------------------------------+--------------------+
 | status slot 20, one line, aria-live                                  |
 +----------------------------------------------------------------------+
 ```
 
-- **Strip and source row** (operator ruling 2026-10-03, `ph-n4t7`): Motion,
-  Offset, Invert and the speed reading sit in one fixed 28 px row under the
-  video, left-aligned; Play and the time are the hover bar's, and the strip
-  draws them only where the bar cannot (glance, and the handheld analyzer's
-  thumbnail, three rows as before). The source row is 24 px with a compact
-  Open files. Under a coarse pointer both rows are `var(--tap)` (law 12).
+- **Transport row** (operator ruling 2026-10-05, `ph-mdqo.7`): one fixed row
+  under the stage, ten items in order: previous, Play, next, elapsed, the
+  whole-script heat (the scrub), remaining, volume, rate (0.5x to 2x), graph
+  (the analyzer, key `g`), close. Previous and next step the script's
+  chapters (`metadata.chapters` start times), else its bookmarks, and walk
+  the library's loaded list (across its pages) only when the script has
+  neither; previous within 1.5 s of a mark goes to the one before. Close
+  unloads the media and returns to the library. No screenshot and no layout
+  button (operator ruling 2026-10-05). Rate scales the stroke speed shown and
+  checked against the input limit (the heat's stripes too). Outside media
+  fullscreen the hover bar holds only Fullscreen and its mode (the row has
+  the rest; `m` mutes); in media fullscreen it is the whole bar.
+- **Fullscreen**: a double-click on the stage (or `f`, or the bar's button)
+  asks the shell for page fullscreen with the video alone. Borderless is no
+  chrome at all; In window fills the window and keeps only the hero rail
+  (the ask carries `bare: false`, `ph-mdqo.7` SEAM NEEDED: the shell honors
+  it). The mode is the bar's button and the shell's pref. A single click
+  waits 250 ms so a double never toggles Play; the stage fades in on the
+  duration tokens, still under `html.still`.
+- **Wave bundle**: Motion, Offset (labeled `ms`) and Invert sit with zoom,
+  A-B and Settings on a raised plate flush with the wave card's top right
+  corner. The wave card and the heat sit on `--screen` with the advanced
+  generator's inset shadow. The stroke speed reading rides the card's
+  bottom, right of the range pills. Under a coarse pointer the rows are
+  `var(--tap)` (law 12).
+- **F3 look-for** (`ph-mdqo.12`): the page registers `search` entries Motion, Offset, Invert, Open files, Graph, Split; each key is a `data-search-key` on its control, and the shell opens the page, scrolls to it and focuses its first enabled control.
+- **Open files** lives in the library head; an empty stage is a click
+  target for it.
 - **Page fill** (`ph-yuce`): the page registers `fill` (docs/PLUGINS.md,
   Pages), so on the desktop it is a column filling the content pane: the
   stage row grows (the video contained, letterboxed in the stage's dark),
   the strip, timeline and status keep their fixed heights, the library
-  column keeps 320 px. An open Settings section takes at most half the page
-  and scrolls within; the card yields height above it but never under
-  340 px (a 120 px stage). The phone layout is not filled.
+  column keeps 320 px. An open Settings section takes the library column's
+  slot (320 px, the analyzer column's width beside the analyzer; scrolling
+  within) while the card is full, so the card keeps its size and composition;
+  under 960 px of page width it sits below the card, reached by scrolling.
+  The section never covers a control: it takes the library column's slot
+  while that column is open, the analyzer column's (above the transport and
+  status rows) while the analyzer is open, and goes below the card when the
+  library is collapsed. The card never loses height to it (`ph-mdqo.7`); its
+  min-height is its fixed rows plus the 120 px stage, so a shorter page
+  scrolls. The phone layout is not filled.
+- **Split bar** (`ph-mdqo.7`): a 4 px bar between the stage and the transport
+  sizes the wave card: drag (up grows it), arrows 8 px (Shift 1), double-click
+  for the default, never leaving the stage under 120 px, stored as pref
+  `split` in px (0 is the composition's default). The stage's 120 px and the
+  wave card's 64 px are grid track minimums, so a stored height yields to a
+  short window instead of squeezing the stage. Hiding the library or the Settings section never shrinks the
+  stage. Not drawn in glance or beside the analyzer.
 - **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
   library column's edge, `Library`: it closes the column and the player
   takes the width, open again from the card's edge; a view switch kept in
@@ -406,17 +441,13 @@ FULL
 
 - **Handheld:** tabs Player | Library (shown only here; in full the library
   is the side column) swap the one main region in place (a view switch,
-  never a write; the video keeps playing under the library); detail 72 px;
-  the strip one fixed row. Its button columns are `max-content`
-  and the speed reading's floor is 10ch (`20000 mm/s`), so a label never
-  squeezes: an `auto` column shrank a button to its 40 px min-width and
-  cut a label without ever overflowing. Where the row overflows the card
-  (measured on a width change, a Look change and an analyzer toggle; at or
-  under 386 px at the default Look, 468 at 1.4), `data-narrow` gives two
-  fixed rows, Motion and Offset / Invert and speed; beside the analyzer,
-  three, Play and time / Motion and Offset / Invert and speed. The floor scales with the Look while the tier
-  thresholds stay the shell's px: at Look 1.4 the source row (tabs and
-  Open files) needs 304 px and cuts `Open files` below it.
+  never a write; the video keeps playing under the library); the wave card two
+  bundle rows plus 48 px (112 px; three rows under a coarse pointer);
+  the transport is one fixed row. Where it
+  overflows the card (measured on a width change, a Look change and an
+  analyzer toggle; at or under 412 px at the default Look, 454 at 1.4),
+  `data-narrow` gives two fixed rows: prev, play, next, elapsed, heat,
+  remaining / volume, rate, graph, close.
 - **Glance:** title, a 24 px stroke meter (an intent tick for the script,
   a reality tick for the measured position; ticks, not handles), Play,
   time, status. The video element stays mounted and visually hidden; the
@@ -459,11 +490,11 @@ FULL
   the heat, so the two never disagree); range low
   and high are horizontal pills at the detail's left edge, high one tap to
   the right of low so close values never stack (up-down; arrows 1 %, Shift
-  10 %). A pill's hit box stays inside the detail, which clips, and only
+  the same, Ctrl the adjacent 10 %). A pill's hit box stays inside the detail, which clips, and only
   the drawn pill rides the value to the edge (a clipped box took touches
   over 60 % of itself). They preview in the intent look and commit on release.
-  Offset is a strip number field (drag 5 ms per 2 px, type, arrows 5 ms,
-  Shift 50 ms). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
+  Offset is a number field in the bundle (drag 5 ms per 4 px, type, arrows 5 ms;
+  Shift: a drag at a tenth of the gain, a key the same 5 ms; Ctrl: the adjacent 100 ms multiple, DESIGN 10.5). Zoom is two buttons (5, 10, 20, 60 s); the wheel is never
   captured. Keys: Hover controls.
 - **Hover controls** (ph-mcfe, ruling 2026-10-03: familiar, YouTube's
   shape). Over the video in the card and the page: a bottom gradient bar
@@ -473,7 +504,8 @@ FULL
   The mode is a two-state glyph, `In window / Borderless`, in the desktop
   shell only: it asks the shell to set its pref `fullscreen` (docs/PLUGINS.md,
   Pages) and stores nothing itself; under 440 px of stage it yields with the
-  volume slider. It shows on
+  volume slider. Outside media fullscreen only the mode and Fullscreen are
+  drawn. It shows on
   pointer movement and hides after `HOVER_IDLE_MS` (2.5 s) idle and on
   pointer leave; it stays while the pointer rests on it, a seek drags or a
   control holds keyboard focus. A touch on the video while it is hidden
@@ -509,8 +541,8 @@ FULL
 - **Copy** (COPY.md): Play, Pause, Open files, Library, Player, Motion,
   Offset, Invert; the hover bar's `Play (k)`, `Pause (k)`, `Mute
   (m)`, `Unmute (m)`, `Seek`, `Fullscreen (f)`, `Exit fullscreen (f)`,
-  `In window / Borderless`; the timeline's `Analyzer` (a sine in a box) and
-  `Settings` (sliders); the caret's `Library`;
+  `In window / Borderless`; the transport's `Previous`, `Next`, `Rate`, `Graph (g)`,
+  `Close`; the timeline's `Settings` (sliders); the caret's `Library`;
   `Machine later (+) or earlier (-)`; `Search scenes`;
   `No scene loaded`, `No script for this video`, `No script for this
   scene`, `Positioning`, `Buffering`, `Format not playable here`,
@@ -685,8 +717,7 @@ The card (ph-smvd.13):
 
 ## Analyzer (ph-smvd.11)
 
-The expand button on the detail (Blender's maximize glyph, tooltip
-`Analyzer`) turns the heat into a tuning bench: the script with the hub's plan
+The graph button in the transport row (tooltip `Graph (g)`) turns the heat into a tuning bench: the script with the hub's plan
 (`plan.current`, `--intent` at reduced weight) and the measured position
 (`telemetry.position`, `--reality`) overlaid on a taller detail, a lag
 readout, and every tuning control the hub exposes. The card's outer rect

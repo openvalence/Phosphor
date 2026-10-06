@@ -26,6 +26,22 @@ const count = (n, word, verb) => n + ' ' + word + (n === 1 ? '' : 's') + ' ' + v
 
 function fail(words) { throw new Error(words); }
 
+/** A metadata time as ms: a number is ms, 'HH:MM:SS.mmm' or 'MM:SS.mmm' is a clock; else NaN. */
+function clockMs(t) {
+  if (typeof t === 'number') return t >= 0 ? t : NaN;
+  const m = typeof t === 'string' && /^(?:(\d+):)?(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/.exec(t.trim());
+  return m ? ((+m[1] || 0) * 3600 + +m[2] * 60 + +m[3]) * 1000 : NaN;
+}
+
+/** Sorted chapter start times (ms) from the script's metadata, else its bookmark times, else []. */
+export function marksOf(script) {
+  const md = script && script.metadata;
+  const pick = (list, key) => (Array.isArray(list) ? list.map((x) => clockMs(x && x[key])).filter(Number.isFinite) : []);
+  const ch = pick(md && md.chapters, 'startTime');
+  const out = ch.length ? ch : pick(md && md.bookmarks, 'time');
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
 export function parseFunscript(input, name = '') {
   let doc = input;
   if (typeof input === 'string') { try { doc = JSON.parse(input); } catch { fail('not a funscript'); } }
