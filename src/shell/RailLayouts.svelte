@@ -106,7 +106,7 @@
   {#each names as n (n)}
     {@const on = dashActive && layouts.active === n}
     <div class="sub-row" role="none" class:dragging={drag?.name === n} animate:flip={{ duration: isStill() ? 0 : 200 }}
-         transition:slide|local={{ duration: isStill() ? 0 : 200 }}>
+         transition:slide={{ duration: isStill() ? 0 : 200 }}>
       {#if renaming === n}
         <input class="sub-input" aria-label={'Rename ' + n} aria-invalid={taken} bind:value={name} use:selectOn
                oninput={() => (taken = false)}

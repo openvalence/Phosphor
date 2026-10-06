@@ -59,6 +59,7 @@ import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/regi
 import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
 import { compact } from '../src/model/format.js';
 import { STORE_KEY } from '../src/model/grid.js';
+import { settingsEntries } from '../src/shell/settingsSearch.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -356,8 +357,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await hctx.routeWebSocket(/:82\//, hub(wire));
   const hp = await hctx.newPage();
   await hp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const up = await hp.waitForSelector('.rail-tape-track[aria-disabled=false]', { timeout: 15000 }).then(() => true).catch(() => false);
+  // The tape stays mounted when the hero bar shows its mini rail (phones), so it is awaited attached, not visible.
+  const up = await hp.waitForSelector('.rail-tape-track[aria-disabled=false]', { state: 'attached', timeout: 15000 }).then(() => true).catch(() => false);
   ok(tag + ': the fixture hub is adopted and the tape is live', up);
+  if (up && await hp.locator('.topstrip .mini').count()) {
+    ok(tag + ': the mini rail shows and the popup is closed', await hp.locator('.topstrip .mini').isVisible() && await hp.locator('.hero-inner.popup').count() === 0);
+    await hp.locator('.topstrip .mini').click();
+    ok(tag + ': tapping the mini opens the rail', await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').isVisible());
+    await hp.keyboard.press('Escape');
+  }
   if (!up) { await hctx.close(); continue; }
   await hp.waitForTimeout(300);
   const idle = await heights(hp);
@@ -606,6 +614,19 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
       const landed = await fp.evaluate((k) => { const e = document.querySelector('[data-search-key="' + k + '"]'); const r = e && e.getBoundingClientRect(); return !!r && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }, key);
       ok(tag + ': F3 "' + q + '" lands on its Display row', landed, first.replace(/\s+/g, ' ').trim());
     }
+  }
+  if (w >= 960) {
+    // Drift: every data-search-key on the Display pane has an F3 entry, and every entry resolves to a row.
+    const dom = await fp.evaluate(() => ({ keys: [...document.querySelectorAll('main.pane [data-search-key]')].map((e) => e.dataset.searchKey),
+      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })) }));
+    const want = settingsEntries(dom.presets).filter((e) => !e.shell).map((e) => e.key);
+    const lost = dom.keys.filter((k) => !want.includes(k)), dead = want.filter((k) => !dom.keys.includes(k));
+    ok(tag + ': every Display row has an F3 entry and every entry has a row', dom.keys.length > 20 && !lost.length && !dead.length, 'rows without entry: ' + lost + ' entries without row: ' + dead);
+    await fp.keyboard.press('F3');
+    await fp.keyboard.type('afterglow');
+    const hit = await fp.locator('.lf-list [role=option]').first().textContent();
+    await fp.keyboard.press('Enter');
+    ok(tag + ': F3 finds a knob by its name', /Afterglow/.test(hit), hit.replace(/\s+/g, ' ').trim());
   }
   if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.

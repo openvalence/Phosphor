@@ -52,7 +52,8 @@
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
-  import { SETTINGS_ENTRIES } from './shell/settingsSearch.js';
+  import { settingsEntries } from './shell/settingsSearch.js';
+  import { presetList } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
@@ -241,7 +242,10 @@
   let tabsNav = $state(null);
   // The promoted group page open in the active category (RENDERING §11).
   let drill = $state(null);
+  // Set by a user page switch; the page fade (style.css) runs only then.
+  let switching = $state(false);
   function selectTab(id) {
+    if (id !== active) switching = true;
     active = id;
     drill = null;
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
@@ -255,7 +259,7 @@
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
   // F3 lists every Display and Settings entry and lands on its row.
   const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
-  $effect(() => registerSearch('settings', () => (settingsTab ? SETTINGS_ENTRIES
+  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(presetList())
     .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
     .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
       selectTab(settingsTab.id);
@@ -486,7 +490,7 @@
 
 {#snippet pane()}
   <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
-    <div class="pane-main">
+    <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
       {#key current.id}
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
@@ -604,22 +608,22 @@
                 {@const ops = railOps && current.id === t.id}
                 {@render railTab(t)}
                 {#if ops}
-                    <div class="rail-ops" role="group" aria-label="Page operations"
-                         style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
-                      {#if visibleGroups.diagAll}
-                        <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
-                      {/if}
-                      {#if visibleGroups.adv}
-                        <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
-                      {/if}
-                      {#if hasDefaults}
-                        <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
-                                use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                                title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
->{resetDone ? 'reset ✓' : 'reset'}</button>
-                      {/if}
+                  <div class="rail-ops" role="group" aria-label="Page operations"
+                       style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                    {#if visibleGroups.diagAll}
+                      <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                              title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                    {/if}
+                    {#if visibleGroups.adv}
+                      <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                              title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                    {/if}
+                    {#if hasDefaults}
+                      <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                              use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
+                              title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                              >{resetDone ? 'reset ✓' : 'reset'}</button>
+                    {/if}
                   </div>
                 {/if}
                 {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
@@ -972,9 +976,18 @@
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
   /* The host's stacked default (docs/PLUGINS.md, Pages): in buckets 1 and 2 a
-     page is one column at most the pane wide, whatever it declares. */
-  :global(:root[data-bucket='1']) .pane-main > :global(*),
-  :global(:root[data-bucket='2']) .pane-main > :global(*) { max-width: 100%; min-width: 0; }
+     plugin page is one full-width column of children at most the pane wide,
+     unless its root declares its own layout with a data-layout attribute. */
+  :global(:root[data-bucket='1']) .pane-main.plugin > :global(:not([data-layout])),
+  :global(:root[data-bucket='2']) .pane-main.plugin > :global(:not([data-layout])) {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  :global(:root[data-bucket='1']) .pane-main.plugin > :global(:not([data-layout])) > :global(*),
+  :global(:root[data-bucket='2']) .pane-main.plugin > :global(:not([data-layout])) > :global(*) { max-width: 100%; min-width: 0; }
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }

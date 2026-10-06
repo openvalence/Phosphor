@@ -139,9 +139,10 @@
   @media (max-width: 480px) {
     .sb-wbtn { width: 40px; }
   }
-  /* Narrower than the shell's minimum window (rclass.js FLOOR_W): no window buttons, so the bar never overflows. */
+  /* Close and its popover stay at any width (the OS close is routed to the
+     popover); only Minimize and Maximize give way. */
   @media (max-width: 300px) {
-    .sb-win { display: none; }
+    .sb-wbtn:not([aria-label='Close']) { display: none; }
   }
   .sb-wbtn:hover, .sb-wbtn[aria-expanded='true'] { color: var(--ink-hi); background: var(--line-soft); }
   .sb-wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.2; }

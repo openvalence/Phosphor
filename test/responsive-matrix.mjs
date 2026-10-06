@@ -471,6 +471,11 @@ for (const [w, h, dpr2] of VIEWPORTS) {
   }
 }
 // ---- scenarios: first run, reconnect, class switch ---------------------------
+// The dash page head's Edit layout, or the sidebar wrench once the page head is gone.
+const editClick = async (page) => {
+  const bar = page.locator('.dash-toolbar button:has-text("Edit layout")');
+  await (await bar.count() ? bar : page.locator('button[title="Edit layout"]:visible')).first().click();
+};
 const scen = (name, cond, extra) => {
   if (!cond) { table.push(['scenario', name, 'fail', extra || '']); total++; }
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
@@ -742,7 +747,7 @@ if (!ONLY || ONLY === 'home') {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
     await page.waitForTimeout(300);
     const f = [...await page.evaluate(measure, { phone: false }), ...await page.evaluate(stripCheck)];
@@ -770,7 +775,7 @@ if (!ONLY || ONLY === 'home') {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     const f = (await page.evaluate(measure, { phone: true })).filter(([k]) => k === 'overflow' || k === 'target');
     await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
     const open = await page.$eval('.dash-menu', (m) => {
@@ -791,7 +796,7 @@ if (!ONLY || ONLY === 'home') {
     page.on('pageerror', (e) => pageErrors.push('home: ' + e));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     const small = await page.$$eval('.dash-item .handle', (els) => els.map((e) => e.getBoundingClientRect())
       .filter((r) => r.width < 39.5 || r.height < 39.5).map((r) => Math.round(r.width) + 'x' + Math.round(r.height)));
     const n = await page.locator('.dash-item .handle').count();
@@ -816,7 +821,7 @@ if (!ONLY || ONLY === 'scale') {
     await page.waitForTimeout(300);
     // The scale lives in the edit-mode Layout menu (ph-e82.22).
     const applied = await (async () => {
-      await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+      await editClick(page);
       await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
       const t = await page.$eval('.dash-menu .scale [aria-label="Reset scale"]', (e) => e.textContent.trim());
       await page.keyboard.press('Escape');
@@ -932,7 +937,7 @@ if (!ONLY || ONLY === 'builder') {
     await page.waitForSelector(tabSel, { timeout: 15000 });
     if (tab > 0) await tabs.nth(tab).click();
     await page.waitForTimeout(300);
-    await page.locator('.dash-wrap[data-density] > .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[1] + '"] .handle.grab').click();
     await page.waitForTimeout(200);
     const ready = await page.evaluate(() => ({ compact: !!document.querySelector('.dash-wrap[data-density="compact"]'),
@@ -1019,10 +1024,28 @@ if (!ONLY || ONLY === 'pluginpages') {
       await page.waitForTimeout(500);
       // A plugin's thin heat strip is a strip, not a chart: the chart-height rule does not apply to pages.
       const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)].filter((x) => !(x[0] === 'measure' && /^chart svg/.test(x[1])));
-      const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - innerWidth,
+        (document.querySelector('.content')?.scrollWidth ?? 0) - (document.querySelector('.content')?.clientWidth ?? 0)));
       if (over > 0) f.push(['overflow', 'scrollWidth exceeds the window by ' + over]);
       scen(tag + ': ' + id + ' has no overflow and meets the targets', f.length === 0, f.map((x) => x.join(' ')).join('; '));
       if (SHOTS) await page.screenshot({ path: join(OUT, 'plugin-' + slug(id) + '-' + tag + '.png') });
+    }
+    if (w <= 300) scen(tag + ': Close stays visible in the shell bar', await page.locator(".sb-wbtn[aria-label='Close']").isVisible());
+    // The host's stacked default: a page root laying two 330 px children in a row stacks in buckets 1-2 and keeps
+    // its row with data-layout (it owns its layout then).
+    if (ids.length) {
+      await page.click('[data-tab-id="' + ids[0] + '"]');
+      await page.waitForTimeout(300);
+      const rows = await page.evaluate(() => {
+        const st = document.createElement('style'); st.textContent = '.syn{display:flex}.syn>div{flex:none;width:330px;height:20px}'; document.head.append(st);
+        const mk = (own) => { const d = document.createElement('div'); d.className = 'syn'; if (own) d.dataset.layout = 'row'; d.innerHTML = '<div></div><div></div>';
+          document.querySelector('.pane-main').append(d); const [a, b] = [...d.children].map((e) => e.getBoundingClientRect()); d.remove(); return b.top >= a.bottom - 1; };
+        const out = { stacked: mk(false), own: !mk(true) };
+        st.remove(); return out;
+      });
+      const small = Number(await page.evaluate(() => document.documentElement.dataset.bucket)) <= 2;
+      scen(tag + ': ' + (small ? 'a plugin page root stacks, and keeps its row with data-layout' : 'a plugin page root keeps its row'),
+        small ? rows.stacked && rows.own : !rows.stacked && rows.own, JSON.stringify(rows));
     }
     await ctx.close();
   }
