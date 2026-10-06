@@ -40,7 +40,9 @@
    * - `bare` (App's page fullscreen, bar hidden): the pair alone, top right,
    *   half opacity at rest and full on any pointer activity or focus; never
    *   hidden (RENDERING §8.4 row 11). The bar is hidden, never unmounted: the
-   *   shell's close gate lives in it.
+   *   shell's close gate lives in it. It publishes --stop-reserve on <html>
+   *   (the pair's reach from the right edge) and --stop-reserve-h (its bottom edge)
+   *   for pages to keep their top row clear of.
    * - The safety-intents channel is found by spec-core identity
    *   (specSafetyAction, law 2), a role tag being one more discovery path,
    *   never the only one: a hub that never annotated it keeps its e-stop.
@@ -82,6 +84,22 @@
       woke = false;
       for (const ev of ['pointermove', 'pointerdown']) window.removeEventListener(ev, wake);
     };
+  });
+
+  // Borderless: the pair's reach from the window's right edge, for a page to keep its top row clear of.
+  $effect(() => {
+    const pair = bare && stripEl?.querySelector('.pair');
+    if (!pair) return;
+    const root = document.documentElement;
+    const set = () => {
+      const r = pair.getBoundingClientRect();
+      root.style.setProperty('--stop-reserve', Math.ceil(window.innerWidth - r.left) + 'px');
+      root.style.setProperty('--stop-reserve-h', Math.ceil(r.bottom) + 'px');
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(pair);
+    return () => { ro.disconnect(); root.style.removeProperty('--stop-reserve'); root.style.removeProperty('--stop-reserve-h'); };
   });
 
   const isSafetyRole = (a) => typeof a.role === 'string' && a.role.startsWith('action.safety');
