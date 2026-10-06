@@ -301,3 +301,28 @@ Before the first run can pass, the remote needs what the workflow checks out:
 
 Trigger: push the workflow (`git push` in Phosphor), or with the GitHub CLI
 `gh workflow run build.yml -R openvalence/Phosphor`.
+
+## Lanes and parallel suites
+
+A multi-agent pass gives each lane its own worktree:
+
+```sh
+node tools/worktree.mjs create <lane>   # ../Phosphor-lp-<lane> on lp/<lane> from main
+node tools/worktree.mjs list
+node tools/worktree.mjs remove <lane>   # refuses a dirty lane or an lp/<lane> not merged into main
+```
+
+`node_modules` in a lane is a junction to the main checkout's, so `npm ci`
+runs only in the main checkout. Each lane gets an untracked, self-ignoring
+`test/evidence/.gitignore`, so its screenshots never reach a commit.
+
+Two browser runs can share one checkout when each loads its own build. The
+suites that load the web bundle read `dist/index.html` unless `PHOSPHOR_DIST`
+names another build folder; that run then writes its evidence to
+`<folder>/evidence`. The shell suites build their own bundle from `src/`, and
+every suite binds an ephemeral port. `dist*/` is gitignored, so:
+
+```sh
+npm run build:only -- --outDir dist-b
+PHOSPHOR_DIST=dist-b npm run test:browser
+```
