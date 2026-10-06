@@ -21,7 +21,7 @@
   import DashGrid from './dash/DashGrid.svelte';
   import Palette from './Palette.svelte';
   import Field from './Field.svelte';
-  import { chipalign } from './chipalign.js';
+  import { cardbody } from './cardbody.js';
   import ActionField from './ActionField.svelte';
   import Control from './widgets/Control.svelte';
   import LookEditor from './LookEditor.svelte';
@@ -160,7 +160,7 @@
   {:else if item.telemetry}
     <TelemetryChart />
   {:else}
-    <div class="home-fields card-body" use:chipalign>
+    <div class="home-fields card-body" use:cardbody>
       {#each item.fields as f (f.uid)}
         {#if f.widget === WIDGET.action}<ActionField action={f} />{:else}<Field field={f} />{/if}
       {/each}

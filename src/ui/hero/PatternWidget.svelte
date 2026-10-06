@@ -12,7 +12,7 @@
   import { writeSetting, displayValue, statusOf } from '../../model/shadow.svelte.js';
   import { optionLabel, labelFor } from '../../model/format.js';
   import Field from '../Field.svelte';
-  import { chipalign } from '../chipalign.js';
+  import { cardbody } from '../cardbody.js';
 
   let { fields } = $props();
   // Read through the prop rather than destructuring once — heroes.js hands us
@@ -108,7 +108,7 @@
   {/if}
 
   {#if knobs.length}
-    <div class="card-body" use:chipalign>
+    <div class="card-body" use:cardbody>
       {#each knobs as f (f.uid)}
         <Field field={f} />
       {/each}
