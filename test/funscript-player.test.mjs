@@ -17,7 +17,7 @@
  * - The export lists below are CONTRACT.md's; change both in one commit.
  * - Channel ids appear here and in fixtures only, never in the plugin.
  *
- * Run: node test/funscript-player.test.mjs --unit
+ * Run: node test/funscript-player.test.mjs --unit   (KINETIC_WASM=<path> renders through that build, not bytes.js)
  *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
@@ -238,7 +238,7 @@ if (an) {
   if (kn) {
     const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
     ok('Kinetic: the Tuning rows bind kinetic_tuning by member name, an _ms row to its _us member times 1000',
-      same(tuned.map((t) => t[0]).sort(), kn.TUNING.map((t) => t[0]).filter((n) => n !== 'overshoot_guard').sort())
+      same(tuned.map((t) => t[0]).sort(), kn.TUNING.map((t) => t[0]).filter((n) => !['overshoot_guard', 'lookahead_us', 'corner', 'react_us'].includes(n)).sort())
         && tuned.find((t) => t[0] === 'settle_grace_us')[3] === 20000, tuned.map((t) => t[0]));
     const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true }, T0k = { offsetMs: 0, lo: 0, hi: 1, invert: false };
     const sg = kn.segmentsOf(sc, Tk);
@@ -247,7 +247,7 @@ if (an) {
         && sg.segs[1][0] === 2 * kn.LEAD_MS + kn.PREROLL_MS && sg.segs[1][1] === Math.round(applyT(sc.pos[1], Tk) * 1e4)
         && sg.t0 === 30 - 2 * kn.LEAD_MS - kn.PREROLL_MS && sg.steps === Math.ceil(2 * kn.LEAD_MS + kn.PREROLL_MS + sc.durationMs + kn.TAIL_MS),
       sg.segs.slice(0, 2));
-    const k = await kn.instantiate();
+    const k = await kn.instantiate(process.env.KINETIC_WASM ? readFileSync(process.env.KINETIC_WASM).toString('base64') : undefined);
     const it = kn.renderCore(k, { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], ...sg, every: 5 });
     let r;
     do r = it.next(); while (!r.done);
@@ -266,10 +266,10 @@ if (an) {
     const after = knotV(ms.segs), before = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], -32768, x[4]] : x)));
     ok('Kinetic: each span ends at the endVel e3 of its knot (40 %/s here, 0 at the reversal, the end and the preroll)',
       same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, 0, 0]), ms.segs.map((x) => x[3]));
-    ok('Kinetic: a knot that is not a reversal keeps its speed (120 mm/s), unspecified stopped there',
-      after.every((v) => Math.abs(v - 120) < 12) && before.every((v) => v < 12), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
+    ok('Kinetic: a knot that is not a reversal keeps its speed (120 mm/s), unspecified nearly at rest there',
+      after.every((v) => Math.abs(v - 120) < 12) && before.every((v) => v < 30), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
-      === 'Kinetic: wasm  3 anomalies  guard 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
+      === 'Kinetic: wasm  3 anomalies  stretched 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
     // Wide shares 0.5, 0.8, 0.225 are window shares 0.5, 1.1, -0.05; the fourth sample lies past the span.
     const wr = Float32Array.from([0.5, 0.8, 0.225, 0.95]);
@@ -1380,7 +1380,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     && (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
   const k0 = await kinRead();
   ok('Kinetic: the analyzer renders through kinetic.wasm in a worker: the status word, the flag readouts, the line in the detail',
-    kinUp && /^nucleus [0-9a-f]{12} kinetic /.test(k0.tip), k0.text + ' | ' + k0.tip.replace(/\n/g, ', '));
+    kinUp && /^nucleus [0-9a-f]{12} kinetic2 /.test(k0.tip), k0.text + ' | ' + k0.tip.replace(/\n/g, ', '));
   const shot = async (name) => {
     if (!SHOT) return;
     await page.setViewportSize({ width: 1280, height: 800 });

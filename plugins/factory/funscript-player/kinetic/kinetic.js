@@ -4,12 +4,15 @@
 // Constraints:
 // - The wasm is bytes.js, base64 in a module, never a fetched file: an override copy of the plugin is one
 //   file (ruling R-C) and connect-src refuses a plugin's fetch. Compiling it needs 'wasm-unsafe-eval'.
-// - renderCore is stringified into the worker: it may reference nothing outside its own body.
+// - renderCore, instantiate and versionOf are stringified into the worker: each may reference nothing
+//   outside its own body (the shell build renames module bindings).
 // - Segments are submitted as the host sends them, LEAD_MS before their start (half the 250 ms horizon),
 //   and the clock steps at stepMs (the board ticks at 1 ms). Same calls in, same bits out (kinetic-trace test).
 // - A newer render supersedes: the older one resolves null and its handle is destroyed at its next chunk.
-// - TUNING mirrors kinetic_tuning (52 B) by member name; a catalog field binds by that name, and a
+// - Kinetic² only: the worker refuses a module whose kinetic_version() does not name kinetic2.
+// - TUNING mirrors kinetic_tuning (64 B) by member name; a catalog field binds by that name, and a
 //   name ending _ms binds its _us member times 1000. A member no field names keeps the factory value.
+//   Members Kinetic² ignores (chase_*, handoff_k, ...) stay bound so the struct is written whole.
 
 import { applyT, knotSlope, wireVel, dwellMerge } from '../scheduler.js';
 import { WASM } from './bytes.js';
@@ -19,10 +22,11 @@ export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'],
   ['chase_lookahead', 16, 'f'], ['handoff_k', 20, 'f'], ['smooth_budget', 24, 'f'], ['amplitude_budget', 28, 'f'],
   ['overshoot_guard', 32, 'f'], ['chase_dense_us', 36, 'u'], ['settle_grace_us', 40, 'u'], ['chase_ff', 44, 'b'],
   ['chase_accel_ff', 45, 'b'], ['chase_aim_extrap', 46, 'b'], ['curve_policy', 47, 'b'], ['infeasible_policy', 48, 'b'],
-  ['blend_steps', 49, 'b']]);
+  ['blend_steps', 49, 'b'], ['lookahead_us', 52, 'u'], ['corner', 56, 'b'], ['react_us', 60, 'u']]);
 export const FLAGS = Object.freeze(['busy', 'shaped', 'fallback', 'clamped', 'refused']);
+// kinetic2::AnomalyKind by bit; kinds Kinetic² never emits are blank.
 export const ANOMALIES = Object.freeze(['', 'plan failed', 'settle', 'end velocity clamped', 'deadline stretched',
-  'waveform fallback', 'waveform scaled', '', 'handoff bounded', 'smoothed', 'dwell zeroed']);
+  '', 'waveform scaled', '', '', '', 'dwell zeroed', 'knot refused']);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -65,7 +69,7 @@ export function segmentsOf(script, T) {
 export function* renderCore(k, q) {
   const L = q.limits, h = k.kinetic_create(L.vmax, L.amax, L.jmax, L.rail, L.horizonMs || 0);
   if (!h) throw new Error('limits refused');
-  const out = k.malloc(64), tb = k.malloc(52);
+  const out = k.malloc(64), tb = k.malloc(64);
   try {
     if (q.window && k.kinetic_set_window(h, q.window[0], q.window[1]) !== 1) throw new Error('window refused');
     const dv = new DataView(k.memory.buffer);
@@ -128,7 +132,12 @@ let k = null, latest = 0;
 onmessage = async (e) => {
   const q = e.data;
   if (q.wasm) {
-    try { k = await instantiate(q.wasm); postMessage({ ready: versionOf(k) }); } catch (err) { postMessage({ error: String(err && err.message || err) }); }
+    try {
+      const m = await instantiate(q.wasm), v = versionOf(m);
+      if (!/ kinetic2 /.test(v)) throw new Error('not a Kinetic² build: ' + v);
+      k = m;
+      postMessage({ ready: v });
+    } catch (err) { postMessage({ error: String(err && err.message || err) }); }
     return;
   }
   latest = q.id;

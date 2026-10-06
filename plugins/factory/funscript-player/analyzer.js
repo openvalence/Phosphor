@@ -62,7 +62,7 @@ export const COPY = Object.freeze({
   noLimits: 'no limits, window or rail',
   anomalies: 'anomalies',
   clamped: 'clamped',
-  guard: 'guard',
+  stretched: 'stretched',
   shaped: 'shaped',
 });
 
@@ -181,7 +181,7 @@ export function kinText(state, r) {
   if (r.error) return COPY.kinWasm + '  ' + r.error;
   const s = (n) => (n < 1000 ? n + ' ms' : (n / 1000).toFixed(1) + ' s');
   const a = r.anomalies.reduce((x, y) => x + y, 0);
-  return [COPY.kinWasm, a + ' ' + COPY.anomalies, ...[[COPY.clamped, 3], [COPY.guard, 2], [COPY.shaped, 1]]
+  return [COPY.kinWasm, a + ' ' + COPY.anomalies, ...[[COPY.clamped, 3], [COPY.stretched, 2], [COPY.shaped, 1]]
     .filter(([, b]) => r.counts[b]).map(([w, b]) => w + ' ' + s(r.counts[b]))].join('  ');
 }
 

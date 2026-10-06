@@ -656,7 +656,7 @@ export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LA
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> max |p - 0.5| in script units of a wall-free render's
   // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_* and T's Range
-export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  guard 250 ms'
+export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  stretched 250 ms'
 export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit
   // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
@@ -688,9 +688,9 @@ segmented field of more than two options renders as a select.
 ```js
 // bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
-export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (52 B), Nucleus tools/kinetic-wasm/README.md
+export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (64 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
 export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
-export const ANOMALIES;   // kinetic::AnomalyType names by value ('' for none and the retired 7)
+export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..11 ('' for none and the kinds Kinetic² never emits)
 export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, type, value]]: by member name, an
   // _ms field to its _us member times 1000; non-numbers skipped
 export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }
@@ -700,8 +700,8 @@ export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, 
 export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},
   // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS}; yields every
   // 8192 steps; returns KineticRender. Self-contained: the worker runs its source.
-export async function instantiate(b64 = WASM);   // -> the exports, _initialize() called
-export function versionOf(k);                    // -> kinetic_version(), 'nucleus <sha12> kinetic <x.y.z>'
+export async function instantiate(b64 = WASM);   // -> the exports, _initialize() called; the worker refuses a non-Kinetic² build
+export function versionOf(k);                    // -> kinetic_version(), 'nucleus <sha12> kinetic2 <x.y.z>'
 export function createKinetic();   // -> { ready: Promise<version>, render(q) -> Promise<KineticRender | {error}
   // | null>, close() }: one Worker from a blob URL; null when a newer render superseded it, {error} when the
   // planner refused the limits or the window; ready and render reject once the worker or the compile fails

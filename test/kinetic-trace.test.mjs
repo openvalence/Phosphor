@@ -1,14 +1,14 @@
 /**
- * kinetic-trace.test.mjs -- the vendored kinetic.wasm (kinetic/bytes.js) is the machine's planner bit for
- * bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic_trace.json as of Nucleus c9e9aee
- * (written by its native suite test_kinetic_wasm_trace, unchanged through the pin in kinetic/kinetic.pin),
- * replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
+ * kinetic-trace.test.mjs -- the vendored kinetic.wasm (kinetic/bytes.js) is the machine's Kinetic² planner
+ * bit for bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic2_trace.json as of Nucleus
+ * eff6aa5 (kernel Kinetic 321b4b0; written by its native suite test_kinetic_wasm_trace under
+ * pio test -e native_kinetic2), replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
  *
  * (1) every 1 ms sample of the 60 s script hashes as the native run did (all 64 bytes), p/v/a 0 ULP;
  * (2) renderCore, the worker's own loop, fed the fixture's segments before its tuning change, submits
  *     them on the same ticks and returns the same position_mm at every step.
  *
- * Run: node test/kinetic-trace.test.mjs
+ * Run: node test/kinetic-trace.test.mjs [kinetic.wasm]   (or KINETIC_WASM=<path>; default bytes.js)
  */
 import { readFileSync } from 'node:fs';
 import { instantiate, versionOf, renderCore } from '../plugins/factory/funscript-player/kinetic/kinetic.js';
@@ -20,9 +20,10 @@ const ok = (name, cond, extra) => {
 };
 
 const fx = JSON.parse(readFileSync(new URL('./fixtures/kinetic_trace.json', import.meta.url), 'utf8'));
-const k = await instantiate();
+const wasmPath = process.argv[2] || process.env.KINETIC_WASM;
+const k = await instantiate(wasmPath ? readFileSync(wasmPath).toString('base64') : undefined);
 console.log('kinetic.wasm: ' + versionOf(k));
-const SAMPLE = 64, TUNE = 52, TUNE_POLICY = 48, OFFSET = 0xcbf29ce484222325n, PRIME = 0x100000001b3n;
+const SAMPLE = 64, TUNE = 64, TUNE_POLICY = 48, OFFSET = 0xcbf29ce484222325n, PRIME = 0x100000001b3n;
 const TUNED_AT = fx.events.find((e) => e[1] === 'tune')[0];
 
 // (1) the replay

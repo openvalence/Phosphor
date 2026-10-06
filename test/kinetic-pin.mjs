@@ -2,11 +2,12 @@
  * kinetic-pin.mjs -- the vendored kinetic.wasm (plugins/factory/funscript-player/kinetic/bytes.js)
  * is the Nucleus build named in kinetic/kinetic.pin (docs/plugins/FUNSCRIPT.md, Kinetic).
  *
- * Always: the vendored bytes instantiate and report the pinned version string, never -dirty.
+ * Always: the vendored bytes instantiate and report the pinned version string, a Kinetic² build, never -dirty.
  * With emsdk (../.tools/emsdk or $EMSDK) and the sibling Nucleus clean at the pinned sha: rebuilds
  * tools/kinetic-wasm into a temp dir and byte-compares. Otherwise prints why it skipped and passes.
  *
  * Run: node test/kinetic-pin.mjs           check
+ *      node test/kinetic-pin.mjs <wasm>    check that file in place of bytes.js (or KINETIC_WASM=<wasm>)
  *      node test/kinetic-pin.mjs --write   build from Nucleus HEAD (clean) and rewrite bytes.js and kinetic.pin
  */
 import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -20,6 +21,8 @@ const KDIR = join(ROOT, 'plugins', 'factory', 'funscript-player', 'kinetic');
 const NUCLEUS = join(ROOT, '..', 'Nucleus');
 const EMSDK = process.env.EMSDK || join(ROOT, '..', '.tools', 'emsdk');
 const WRITE = process.argv.includes('--write');
+const WASM_PATH = process.argv.slice(2).find((a) => !a.startsWith('--')) || process.env.KINETIC_WASM;
+const KERNEL = / kinetic2 /;
 const fail = (m) => { console.log('kinetic-pin: FAIL ' + m); process.exit(1); };
 const git = (...a) => execFileSync('git', ['-C', NUCLEUS, ...a], { encoding: 'utf8', windowsHide: true }).trim();
 
@@ -58,7 +61,7 @@ if (WRITE) {
   const sha = git('rev-parse', 'HEAD');
   const bytes = build();
   const version = await versionOf(bytes);
-  if (/dirty|unknown/.test(version)) fail('built ' + version);
+  if (/dirty|unknown/.test(version) || !KERNEL.test(version)) fail('built ' + version);
   writeFileSync(join(KDIR, 'bytes.js'), '// kinetic.wasm from Nucleus ' + sha + ' (kinetic.pin). Written by test/kinetic-pin.mjs --write; never edit.\n'
     + 'export const WASM = \'' + Buffer.from(bytes).toString('base64') + '\';\n');
   writeFileSync(join(KDIR, 'kinetic.pin'), '# The Nucleus commit kinetic.wasm (bytes.js) was built from; bump with node test/kinetic-pin.mjs --write.\n'
@@ -68,9 +71,10 @@ if (WRITE) {
 }
 
 if (!pin.nucleus || !pin.version) fail('kinetic.pin lacks nucleus or version');
-const { WASM } = await import('../plugins/factory/funscript-player/kinetic/bytes.js');
-const vendored = new Uint8Array(Buffer.from(WASM, 'base64'));
+const vendored = WASM_PATH ? new Uint8Array(readFileSync(WASM_PATH))
+  : new Uint8Array(Buffer.from((await import('../plugins/factory/funscript-player/kinetic/bytes.js')).WASM, 'base64'));
 const version = await versionOf(vendored);
+if (!KERNEL.test(version)) fail('"' + version + '" is not a Kinetic² build');
 if (version !== pin.version) fail('bytes.js reports "' + version + '", kinetic.pin says "' + pin.version + '"');
 if (!version.includes(pin.nucleus.slice(0, 12)) || /dirty/.test(version)) fail('version "' + version + '" is not a clean build of ' + pin.nucleus);
 if (Number(pin.bytes) !== vendored.length) fail('bytes.js holds ' + vendored.length + ' B, kinetic.pin says ' + pin.bytes);
