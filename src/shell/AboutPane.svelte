@@ -66,5 +66,6 @@
 
 <style>
   .lic { margin-top: var(--sp-2); }
+  @media (pointer: coarse) { .lic summary { display: flex; align-items: center; min-height: var(--tap); } }
   .lic pre { white-space: pre-wrap; font-size: 0.8em; opacity: 0.8; }
 </style>

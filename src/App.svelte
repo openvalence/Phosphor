@@ -33,7 +33,7 @@
   import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
-  import { untrack } from 'svelte';
+  import { untrack, tick } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
   import { machine } from './model/machine.svelte.js';
@@ -51,7 +51,10 @@
   import { scrollshade } from './ui/scrollshade.js';
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
-  import { settingNeedsConfirm } from './model/actions.js';
+  import { resetNeedsModal } from './shell/resetGate.js';
+  import { settingsEntries } from './shell/settingsSearch.js';
+  import { presetList } from './model/theme.js';
+  import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit } from './model/dashboard.svelte.js';
   import './ui/select.css';
 
@@ -167,13 +170,28 @@
     osFull = want;
     import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
   });
+  // In-window page fullscreen keeps the hero bar (its rail): the page starts
+  // where the hero bar ends, --hero-b.
+  $effect(() => {
+    if (!isFull || full.bare) return;
+    const root = document.documentElement;
+    const strip = document.querySelector('.hero-strip');
+    const put = () => root.style.setProperty('--hero-b', Math.round(strip ? strip.getBoundingClientRect().bottom : 0) + 'px');
+    put();
+    const ro = new ResizeObserver(put);
+    if (strip) ro.observe(strip);
+    ro.observe(document.querySelector('.topstrip'));
+    addEventListener('resize', put);
+    return () => { ro.disconnect(); removeEventListener('resize', put); root.style.removeProperty('--hero-b'); };
+  });
   // A page's own request (docs/PLUGINS.md, Pages): cancelable, so the page
-  // knows it was taken; on is bare at once. The change event tells it the end.
+  // knows it was taken. Borderless (detail.bare) is the page alone under the
+  // stop pair; In window keeps the hero rail. The change event tells it the end.
   $effect(() => {
     const ask = (e) => {
       if (!current?.page?.fields) return;
       e.preventDefault();
-      full = e.detail?.on ? { on: true, bare: true } : OFF;
+      full = e.detail?.on ? { on: true, bare: e.detail.bare !== false } : OFF;
     };
     // The mode, for a page that offers it itself (mediaFullscreen): desktop shell only.
     const mode = (e) => { if (['window', 'borderless'].includes(e.detail?.mode)) setPref('fullscreen', e.detail.mode); };
@@ -239,7 +257,10 @@
   let tabsNav = $state(null);
   // The promoted group page open in the active category (RENDERING §11).
   let drill = $state(null);
+  // Set by a user page switch; the page fade (style.css) runs only then.
+  let switching = $state(false);
   function selectTab(id) {
+    if (id !== active) switching = true;
     active = id;
     drill = null;
     tabsNav?.scrollIntoView({ block: 'start', behavior: 'auto' });
@@ -251,6 +272,17 @@
     selectTab('machine');
   }
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
+  // F3 lists every Display and Settings entry and lands on its row.
+  const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
+  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(presetList())
+    .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
+    .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
+      selectTab(settingsTab.id);
+      await tick();
+      const el = document.querySelector('[data-search-key="' + e.key + '"]');
+      el?.scrollIntoView({ block: 'center' });
+      el?.querySelector('input, button')?.focus();
+    } })) : [])));
   // The tab strip's Add layout (the rail has RailLayouts' own).
   let stripAdding = $state(false);
   let stripName = $state('');
@@ -393,7 +425,7 @@
   // destructive flag): then the whole reset takes the modal (RENDERING §8.3).
   let resetDone = $state(false);
   function holdReset() {
-    if (resettable.some((f) => settingNeedsConfirm(f, machine.samples[f.channelId]?.[f.name], f.dflt))) { resetCategory(); return; }
+    if (resetNeedsModal(resettable, machine.samples)) { resetCategory(); return; }
     applyReset();
     resetDone = true;
     setTimeout(() => (resetDone = false), 1200);
@@ -473,7 +505,8 @@
 
 {#snippet pane()}
   <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
-    <div class="pane-main">
+    <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
+      {#key current.id}
       {#if current.pane}
         {#if current.pane.component}<current.pane.component />{:else}{@render current.pane.snippet?.()}{/if}
       {:else if !ready}
@@ -522,6 +555,7 @@
       {:else if current.id === 'plugins'}
         <PluginsPane />
       {/if}
+      {/key}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
       {#if current.page?.fields && !current.page.mediaFullscreen}
@@ -587,28 +621,26 @@
               {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
               {#each sec.tabs as t (t.id)}
                 {@const ops = railOps && current.id === t.id}
-                <div class="rail-pill" class:ops role="none">
-                  {@render railTab(t)}
-                  {#if ops}
-                    <div class="rail-ops" role="group" aria-label="Page operations"
-                         style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
-                      {#if visibleGroups.diagAll}
-                        <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                                title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
-                      {/if}
-                      {#if visibleGroups.adv}
-                        <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                                title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
-                      {/if}
-                      {#if hasDefaults}
-                        <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
-                                use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                                title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
->{resetDone ? 'reset ✓' : 'reset'}</button>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
+                {@render railTab(t)}
+                {#if ops}
+                  <div class="rail-ops" role="group" aria-label="Page operations"
+                       style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                    {#if visibleGroups.diagAll}
+                      <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                              title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                    {/if}
+                    {#if visibleGroups.adv}
+                      <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                              title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                    {/if}
+                    {#if hasDefaults}
+                      <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                              use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
+                              title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                              >{resetDone ? 'reset ✓' : 'reset'}</button>
+                    {/if}
+                  </div>
+                {/if}
                 {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
               {/each}
             </div>
@@ -755,16 +787,13 @@
   }
   /* The selected page's pill grows to hold its operations: inset, not
      indented, one row of two or three buttons. */
-  .rail-pill { display: contents; }
-  .rail-pill.ops {
-    display: flex;
-    flex-direction: column;
+  :global(.rail-tab.on):has(+ .rail-ops) { border-bottom-color: transparent; border-radius: var(--radius) var(--radius) 0 0; }
+  .rail-ops {
+    margin-top: calc(var(--sp-1) * -1);
     background: var(--bg-card);
     border: 1px solid var(--line-1);
-    border-radius: var(--radius);
-  }
-  .rail-pill.ops > :global(.rail-tab.on) { background: none; border-color: transparent; }
-  .rail-ops {
+    border-top: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
     display: grid;
     grid-template-columns: repeat(var(--n, 3), 1fr);
     gap: var(--sp-1);
@@ -961,18 +990,33 @@
     padding-block: 0;
   }
   .pane-main { flex: 1 0 auto; min-width: 0; }
+  /* The host's stacked default (docs/PLUGINS.md, Pages): in buckets 1 and 2 a
+     plugin page is one full-width column of children at most the pane wide,
+     unless its root declares its own layout with a data-layout attribute. */
+  :global(:root[data-bucket='1']) .pane-main.plugin > :global(:not([data-layout])),
+  :global(:root[data-bucket='2']) .pane-main.plugin > :global(:not([data-layout])) {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  :global(:root[data-bucket='1']) .pane-main.plugin > :global(:not([data-layout])) > :global(*),
+  :global(:root[data-bucket='2']) .pane-main.plugin > :global(:not([data-layout])) > :global(*) { max-width: 100%; min-width: 0; }
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
-     The page alone in the window below the top strip, dash Open full's
-     geometry; bare, the whole window, under the stop pair and the caret. */
+     In window: the page fills the window below the hero bar, so only the
+     hero rail stays (sidebar and pane chrome hidden); bare (Borderless): the
+     whole window, under the stop pair and the caret. */
   .app { --caret-h: 18px; }
   @media (pointer: coarse) { .app { --caret-h: var(--tap); } }
   .pane.full {
     position: fixed;
-    inset: var(--strip-h, 0px) 0 0 0;
+    inset: var(--hero-b, var(--strip-h, 0px)) 0 0 0;
+    transition: top var(--t-move) var(--ease-out);
     z-index: 20;
     min-height: 0;
     display: flex;
@@ -989,7 +1033,8 @@
   .content > .pane.fill > .pane-main > :global(*), .pane.full > .pane-main > :global(*) { flex: 1 1 auto; min-height: 0; }
   .full-caret {
     position: fixed;
-    top: var(--strip-h, 0px);
+    top: var(--hero-b, var(--strip-h, 0px));
+    transition: top var(--t-move) var(--ease-out);
     left: 50%;
     z-index: 31;
     transform: translateX(-50%);

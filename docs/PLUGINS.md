@@ -121,10 +121,11 @@ whose root is `height: 100%` gets a definite height and no bottom gap.
 Other pages keep their flow; the phone layout scrolls the window and is
 not filled.
 A page may also ask for it (experimental): a `phosphor-page-fullscreen`
-event dispatched from inside the page (bubbles, cancelable, `detail: {on}`).
+event dispatched from inside the page (bubbles, cancelable, `detail: {on, bare}`).
 The shell takes it only for the page on screen, and `preventDefault()` is
-its yes; `on` enters bare (bar and strip hidden, the stop pair floating),
-false leaves. Every change is announced on `window` as
+its yes; `on` enters, `bare` (default true) hides the bar and strip with the
+stop pair floating (Borderless), `bare: false` keeps the hero bar and its rail
+and hides only the sidebar and pane chrome (In window); false leaves. Every change is announced on `window` as
 `phosphor-page-fullscreen-change` (`detail: {on}`), so a view a page draws
 for it (the funscript player's media fullscreen) ends with the shell's
 (Escape, the caret, F11, a page switch). Seam: `src/App.svelte`.
@@ -134,12 +135,13 @@ window's width bucket, 1 (watch) to 5 (wide), as `<html data-bucket>`, with
 `--cols` (the width in 2 rem layout columns); a page reads
 `document.documentElement.dataset.bucket` (or styles `:root[data-bucket="1"]`
 in its CSS) and never `innerWidth`. It declares a layout per bucket, or takes
-the host's stacked default: buckets 1 and 2 are one column, 3 the page's
-handheld layout else stacked, 4 and 5 its full layout. The stacked default
-and the guarantee of no horizontal overflow in any bucket and 40 px targets
-in 1 and 2 (law 12) are the contract the host will honor (`ph-cqz6`, the
-shell's page frame), not behavior yet: a page keeps both itself. The
-bucket can change while the page stays mounted (resize, scale, theme, text
+the host's stacked default: buckets 1 and 2 (under 24 columns, about 860 px
+at 100 % scale; the edges are 12, 24, 48 and 96 columns) are one column, 3 the
+page's handheld layout else stacked, 4 and 5 its full layout. In buckets 1 and
+2 the host makes the page's root a full-width column and caps its children at
+the pane width; a page that lays itself out marks its root `data-layout` and
+keeps what it declares. The host also holds the page to no horizontal overflow
+and 40 px targets in 1 and 2 (law 12). The bucket can change while the page stays mounted (resize, scale, theme, text
 size), so a page watches `data-bucket` (a `MutationObserver`) or lets CSS
 do it.
 

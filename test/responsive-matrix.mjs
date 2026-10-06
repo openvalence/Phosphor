@@ -471,6 +471,11 @@ for (const [w, h, dpr2] of VIEWPORTS) {
   }
 }
 // ---- scenarios: first run, reconnect, class switch ---------------------------
+// The dash page head's Edit layout, or the sidebar wrench once the page head is gone.
+const editClick = async (page) => {
+  const bar = page.locator('.dash-toolbar button:has-text("Edit layout")');
+  await (await bar.count() ? bar : page.locator('button[title="Edit layout"]:visible')).first().click();
+};
 const scen = (name, cond, extra) => {
   if (!cond) { table.push(['scenario', name, 'fail', extra || '']); total++; }
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
@@ -548,16 +553,16 @@ if (!ONLY || ONLY === 'bucket') {
   await page.goto('http://127.0.0.1:' + PORT + '/');
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   const read = () => page.evaluate(() => ({ b: document.documentElement.dataset.bucket, c: getComputedStyle(document.documentElement).getPropertyValue('--cols').trim() }));
-  for (const [w, h, want] of [[200, 390, '1'], [390, 844, '2'], [844, 390, '3'], [1428, 900, '4'], [2560, 1440, '5']]) {
+  for (const [w, h, want] of [[200, 390, '1'], [412, 915, '1'], [844, 390, '2'], [880, 800, '3'], [1428, 900, '3'], [1920, 1080, '4'], [3840, 2160, '5']]) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(200);
     const r = await read();
     scen(w + 'x' + h + ' is bucket ' + want, r.b === want && Number(r.c) > 0, r.b + ' cols ' + r.c);
   }
-  await page.setViewportSize({ width: 1428, height: 900 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   // Ctrl+= through ScaleControl (the real path): 10 % steps stop at 140 % (knob max 1.6).
   for (let k = 0; k < 6; k++) await page.keyboard.press('Control+='); await page.waitForTimeout(200);
-  scen('140 % UI scale puts 1428 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
+  scen('140 % UI scale puts 1920 in bucket 3', (await read()).b === '3', JSON.stringify(await read()));
   await ctx.close();
 }
 
@@ -742,7 +747,7 @@ if (!ONLY || ONLY === 'home') {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
     await page.waitForTimeout(300);
     const f = [...await page.evaluate(measure, { phone: false }), ...await page.evaluate(stripCheck)];
@@ -770,7 +775,7 @@ if (!ONLY || ONLY === 'home') {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     const f = (await page.evaluate(measure, { phone: true })).filter(([k]) => k === 'overflow' || k === 'target');
     await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
     const open = await page.$eval('.dash-menu', (m) => {
@@ -791,7 +796,7 @@ if (!ONLY || ONLY === 'home') {
     page.on('pageerror', (e) => pageErrors.push('home: ' + e));
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
-    await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     const small = await page.$$eval('.dash-item .handle', (els) => els.map((e) => e.getBoundingClientRect())
       .filter((r) => r.width < 39.5 || r.height < 39.5).map((r) => Math.round(r.width) + 'x' + Math.round(r.height)));
     const n = await page.locator('.dash-item .handle').count();
@@ -816,7 +821,7 @@ if (!ONLY || ONLY === 'scale') {
     await page.waitForTimeout(300);
     // The scale lives in the edit-mode Layout menu (ph-e82.22).
     const applied = await (async () => {
-      await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+      await editClick(page);
       await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
       const t = await page.$eval('.dash-menu .scale [aria-label="Reset scale"]', (e) => e.textContent.trim());
       await page.keyboard.press('Escape');
@@ -932,7 +937,7 @@ if (!ONLY || ONLY === 'builder') {
     await page.waitForSelector(tabSel, { timeout: 15000 });
     if (tab > 0) await tabs.nth(tab).click();
     await page.waitForTimeout(300);
-    await page.locator('.dash-wrap[data-density] > .dash-toolbar button', { hasText: 'Edit layout' }).click();
+    await editClick(page);
     await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[1] + '"] .handle.grab').click();
     await page.waitForTimeout(200);
     const ready = await page.evaluate(() => ({ compact: !!document.querySelector('.dash-wrap[data-density="compact"]'),
@@ -985,6 +990,79 @@ if (!ONLY || ONLY === 'phosphor') {
       const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)];
       scen(tag + ': Phosphor > ' + id.slice(6) + ' passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
       if (SHOTS) await page.screenshot({ path: join(OUT, 'phosphor-' + id.slice(6) + '-' + tag + '.png') });
+    }
+    await ctx.close();
+  }
+  sh.close();
+}
+
+if (!ONLY || ONLY === 'pluginpages') {
+  console.log('\nplugin page scenarios (ph-cqz6)');
+  const SHELL = await buildShellPage();
+  const sh = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(SHELL); });
+  await new Promise((r) => sh.listen(0, '127.0.0.1', r));
+  for (const [w, h] of [[200, 390], [390, 844], [412, 915], [844, 390], [1428, 900]]) {
+    const phone = Math.min(w, h) < 600, tag = w + 'x' + h;
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: phone });
+    await ctx.addInitScript(TAURI_STUB);
+    await ctx.addInitScript(([etag, bytes]) => {
+      try {
+        if (!sessionStorage.getItem('pp.seeded')) { sessionStorage.setItem('pp.seeded', '1'); localStorage.clear(); }
+        localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+        localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'fixture', nickname: '', lastSeen: Date.now() }]));
+      } catch (e) { /* none */ }
+    }, [ETAG, toHex(CAT)]);
+    await ctx.routeWebSocket(/:82\//, (ws) => fakeHub(ws));
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('pluginpages: ' + e); });
+    await page.goto('http://127.0.0.1:' + sh.address().port + '/');
+    const up = await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 }).then(() => true).catch(() => false);
+    const ids = up ? await page.$$eval('[data-tab-id^="plugin:"]', (els) => els.map((e) => e.dataset.tabId)) : [];
+    scen(tag + ': the shell bundle lists plugin pages', ids.length > 0, JSON.stringify(ids));
+    for (const id of ids) {
+      await page.click('[data-tab-id="' + id + '"]');
+      await page.waitForTimeout(500);
+      // A plugin's thin heat strip is a strip, not a chart: the chart-height rule does not apply to pages.
+      const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)].filter((x) => !(x[0] === 'measure' && /^chart svg/.test(x[1])));
+      const over = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - innerWidth,
+        (document.querySelector('.content')?.scrollWidth ?? 0) - (document.querySelector('.content')?.clientWidth ?? 0)));
+      if (over > 0) f.push(['overflow', 'scrollWidth exceeds the window by ' + over]);
+      scen(tag + ': ' + id + ' has no overflow and meets the targets', f.length === 0, f.map((x) => x.join(' ')).join('; '));
+      if (SHOTS) await page.screenshot({ path: join(OUT, 'plugin-' + slug(id) + '-' + tag + '.png') });
+    }
+    if (w <= 300) scen(tag + ': Close stays visible in the shell bar', await page.locator(".sb-wbtn[aria-label='Close']").isVisible());
+    // Page fullscreen (the page's own ask): In window keeps the hero bar and its rail, Borderless is the page alone.
+    if (ids.length && w >= 960) {
+      const ask = (on, bare) => page.evaluate(([on, bare]) => document.querySelector('.pane-main').dispatchEvent(new CustomEvent('phosphor-page-fullscreen',
+        { bubbles: true, cancelable: true, detail: { on, bare } })), [on, bare]);
+      const geo = () => page.evaluate(() => { const p = document.querySelector('main.pane').getBoundingClientRect(), h = document.querySelector('.hero-strip')?.getBoundingClientRect();
+        const hit = (r) => document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
+        return { top: Math.round(p.top), heroBottom: h ? Math.round(h.bottom) : null, heroOpen: !!h && !!hit(h)?.closest('.hero-strip'),
+          sidebarHidden: !hit(document.querySelector('nav.rail').getBoundingClientRect())?.closest('nav.rail') }; });
+      await ask(true, false); await page.waitForTimeout(400);
+      const win = await geo();
+      scen(tag + ': In window fullscreen starts under the hero bar, rail on screen, sidebar covered', win.heroBottom != null && Math.abs(win.top - win.heroBottom) <= 1 && win.heroOpen && win.sidebarHidden, JSON.stringify(win));
+      await ask(false, false); await page.waitForTimeout(300);
+      await ask(true, true); await page.waitForTimeout(400);
+      const bare = await geo();
+      scen(tag + ': Borderless fullscreen is the page alone', bare.top === 0 && !bare.heroOpen && bare.sidebarHidden, JSON.stringify(bare));
+      await ask(false, true); await page.waitForTimeout(300);
+    }
+    // The host's stacked default: a page root laying two 330 px children in a row stacks in buckets 1-2 and keeps
+    // its row with data-layout (it owns its layout then).
+    if (ids.length) {
+      await page.click('[data-tab-id="' + ids[0] + '"]');
+      await page.waitForTimeout(300);
+      const rows = await page.evaluate(() => {
+        const st = document.createElement('style'); st.textContent = '.syn{display:flex}.syn>div{flex:none;width:330px;height:20px}'; document.head.append(st);
+        const mk = (own) => { const d = document.createElement('div'); d.className = 'syn'; if (own) d.dataset.layout = 'row'; d.innerHTML = '<div></div><div></div>';
+          document.querySelector('.pane-main').append(d); const [a, b] = [...d.children].map((e) => e.getBoundingClientRect()); d.remove(); return b.top >= a.bottom - 1; };
+        const out = { stacked: mk(false), own: !mk(true) };
+        st.remove(); return out;
+      });
+      const small = Number(await page.evaluate(() => document.documentElement.dataset.bucket)) <= 2;
+      scen(tag + ': ' + (small ? 'a plugin page root stacks, and keeps its row with data-layout' : 'a plugin page root keeps its row'),
+        small ? rows.stacked && rows.own : !rows.stacked && rows.own, JSON.stringify(rows));
     }
     await ctx.close();
   }

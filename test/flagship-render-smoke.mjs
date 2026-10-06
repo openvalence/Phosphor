@@ -137,7 +137,7 @@ await page.waitForSelector('.home .dash-grid', { timeout: 5000 });
 ok('the seeded home holds telemetry + card-zone hero modules', (await page.$$('.home .dash-item')).length >= 3,
    (await page.$$('.home .dash-item')).length + ' modules');
 ok('handles hidden while reading', (await page.$$('.dash-item .handle')).length === 0);
-await page.click('.home .dash-toolbar button:has-text("Edit layout")');
+{ const bar = page.locator('.home .dash-toolbar button:has-text("Edit layout")'); await (await bar.count() ? bar : page.locator('button[title="Edit layout"]:visible')).first().click(); }
 ok('handles appear in edit mode', (await page.$$('.dash-item .handle')).length > 0);
 const editButtons = await page.$$eval('.dash-toolbar button', (els) => els.map((e) => e.textContent.trim()));
 ok('edit mode offers Reset + Done', editButtons.join(',').includes('Reset') && editButtons.join(',').includes('Done'));

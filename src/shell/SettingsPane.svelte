@@ -55,15 +55,15 @@
 
   <section class="pane-sec og-panel" aria-labelledby="set-conn">
     <div class="pane-head"><h2 id="set-conn">Connection</h2></div>
-    <label class="og-switch">
+    <label class="og-switch" data-search-key="reconnect">
       <input type="checkbox" role="switch" checked={$prefs.reconnect} onchange={(e) => setPref('reconnect', e.currentTarget.checked)} />
       <span class="track"></span>Reconnect to the last hub on launch
     </label>
-    <label class="og-switch">
+    <label class="og-switch" data-search-key="estop-broadcast">
       <input type="checkbox" role="switch" checked={$prefs.estopDatagram} onchange={(e) => setPref('estopDatagram', e.currentTarget.checked)} />
       <span class="track"></span>Broadcast e-stop to every hub on the LAN
     </label>
-    <label class="rate">
+    <label class="rate" data-search-key="telemetry-rate">
       <span>Telemetry rate, Hz</span>
       <input type="number" class="og-num" min="1" step="1" placeholder="auto" value={$prefs.telemetryHz ?? ''}
              onchange={(e) => setPref('telemetryHz', e.currentTarget.value === '' ? null : Number(e.currentTarget.value))} />
@@ -72,7 +72,7 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="set-adv">
-    <div class="pane-head"><h2 id="set-adv">Backup</h2></div>
+    <div class="pane-head"><h2 id="set-adv" data-search-key="backup">Backup</h2></div>
     <p class="pane-note">Preferences, saved hubs and layouts as text</p>
     <label class="sr-only" for="set-backup">Backup text</label>
     <textarea id="set-backup" class="mono" rows="4" bind:value={backup} spellcheck="false"></textarea>

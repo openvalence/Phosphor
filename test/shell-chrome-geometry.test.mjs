@@ -59,6 +59,7 @@ import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/regi
 import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
 import { compact } from '../src/model/format.js';
 import { STORE_KEY } from '../src/model/grid.js';
+import { settingsEntries } from '../src/shell/settingsSearch.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -356,8 +357,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await hctx.routeWebSocket(/:82\//, hub(wire));
   const hp = await hctx.newPage();
   await hp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const up = await hp.waitForSelector('.rail-tape-track[aria-disabled=false]', { timeout: 15000 }).then(() => true).catch(() => false);
+  // The tape stays mounted when the hero bar shows its mini rail (phones), so it is awaited attached, not visible.
+  const up = await hp.waitForSelector('.rail-tape-track[aria-disabled=false]', { state: 'attached', timeout: 15000 }).then(() => true).catch(() => false);
   ok(tag + ': the fixture hub is adopted and the tape is live', up);
+  if (up && await hp.locator('.topstrip .mini').count()) {
+    ok(tag + ': the mini rail shows and the popup is closed', await hp.locator('.topstrip .mini').isVisible() && await hp.locator('.hero-inner.popup').count() === 0);
+    await hp.locator('.topstrip .mini').click();
+    ok(tag + ': tapping the mini opens the rail', await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').isVisible());
+    await hp.keyboard.press('Escape');
+  }
   if (!up) { await hctx.close(); continue; }
   await hp.waitForTimeout(300);
   const idle = await heights(hp);
@@ -411,9 +419,13 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await still('resume', () => hp.locator('.topstrip .btn-pause').click());
   ok(tag + ': the hub released pause (reads Pause)', (await pauseLbl()).trim() === 'Pause');
   await still('pattern start', () => wire.send(FRAME.STATE, RUN.id, patternState(true)));
-  ok(tag + ': pattern start flips visibility, both faces stay mounted', await faces() === 'visible:plan hidden:tape', await faces());
+  // The phone's mini rail hides both faces; the swap is the pop-up's business there.
+  const mini = await hp.locator('.topstrip .mini').count() > 0;
+  ok(tag + ': pattern start flips visibility, both faces stay mounted', mini ? (await faces()).split(' ').length === 2 : await faces() === 'visible:plan hidden:tape', await faces());
   await still('pattern stop', () => wire.send(FRAME.STATE, RUN.id, patternState(false)));
-  ok(tag + ': pattern stop flips it back', await faces() === 'hidden:plan visible:tape', await faces());
+  ok(tag + ': pattern stop flips it back', mini ? (await faces()).split(' ').length === 2 : await faces() === 'hidden:plan visible:tape', await faces());
+  // The rest drives the tape itself, which the phone's mini rail keeps behind its pop-up.
+  if (mini) { await hctx.close(); continue; }
 
   await hp.locator('.rail-tape-track').click();
   await hp.waitForSelector('.strip .status[data-kind=refusal]', { timeout: 3000 }).catch(() => {});
@@ -559,6 +571,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': the order is stored', JSON.stringify(stored) === '["Default","Couch","Bench"]', JSON.stringify(stored));
     // Hold the x: 0.5 s deletes nothing, 1 s does; Default has neither grip nor x.
     ok(tag + ': Default has no grip and no x', await fp.locator(rowSel('Default') + ' :is(.sub-grip, .sub-x)').count() === 0);
+    await fp.waitForTimeout(350);
     await fp.hover(rowSel('Bench'));
     if (process.env.LAYOUT_SHOT) await fp.screenshot({ path: process.env.LAYOUT_SHOT, clip: { x: 0, y: 0, width: 420, height: 800 } });
     const [xx, xy] = await center(rowSel('Bench') + ' .sub-x');
@@ -596,20 +609,45 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
   }
   if (w >= 960) {
+    // ph-mdqo.12: F3 lists the Display entries and Enter lands on the row.
+    for (const [q, key] of [['scrollbars', 'scrollbars'], ['rail hide', 'railhide'], ['motion reduced', 'motion']]) {
+      await fp.keyboard.press('F3');
+      await fp.keyboard.type(q);
+      const first = await fp.locator('.lf-list [role=option]').first().textContent();
+      await fp.keyboard.press('Enter');
+      await fp.waitForTimeout(250);
+      const landed = await fp.evaluate((k) => { const e = document.querySelector('[data-search-key="' + k + '"]'); const r = e && e.getBoundingClientRect(); return !!r && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; }, key);
+      ok(tag + ': F3 "' + q + '" lands on its Display row', landed, first.replace(/\s+/g, ' ').trim());
+    }
+  }
+  if (w >= 960) {
+    // Drift: every data-search-key on the Display pane has an F3 entry, and every entry resolves to a row.
+    const dom = await fp.evaluate(() => ({ keys: [...document.querySelectorAll('main.pane [data-search-key]')].map((e) => e.dataset.searchKey),
+      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })) }));
+    const want = settingsEntries(dom.presets).filter((e) => !e.shell).map((e) => e.key);
+    const lost = dom.keys.filter((k) => !want.includes(k)), dead = want.filter((k) => !dom.keys.includes(k));
+    ok(tag + ': every Display row has an F3 entry and every entry has a row', dom.keys.length > 20 && !lost.length && !dead.length, 'rows without entry: ' + lost + ' entries without row: ' + dead);
+    await fp.keyboard.press('F3');
+    await fp.keyboard.type('afterglow');
+    const hit = await fp.locator('.lf-list [role=option]').first().textContent();
+    await fp.keyboard.press('Enter');
+    ok(tag + ': F3 finds a knob by its name', /Afterglow/.test(hit), hit.replace(/\s+/g, ' ').trim());
+  }
+  if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.
     let hit = null;
     for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
       await fp.click('[data-tab-id="' + id + '"]');
       await fp.waitForTimeout(150);
-      if (await fp.locator('.rail-pill .rail-ops .reset').count()) { hit = id; break; }
+      if (await fp.locator('.rail-tab.on + .rail-ops .reset').count()) { hit = id; break; }
     }
     ok(tag + ': a category page grows its pill with the operations strip', !!hit, String(hit));
     if (hit) {
-      const strip = await fp.evaluate(() => { const p = document.querySelector('.rail-pill.ops'), o = p.querySelector('.rail-ops'), t = p.querySelector('.rail-tab');
+      const strip = await fp.evaluate(() => { const o = document.querySelector('.rail-tab.on + .rail-ops'), p = o.parentElement, t = o.previousElementSibling;
         return { inside: p.contains(o), labels: [...o.querySelectorAll('button')].map((b) => b.textContent.trim().replace(/^\d+/, '#')), cols: getComputedStyle(o).gridTemplateColumns.split(' ').length,
-          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-pill.ops').length,
+          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-ops').length,
           inset: o.getBoundingClientRect().left - t.getBoundingClientRect().left }; });
-      ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.inside && strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
+      ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
     }
     await fp.click('nav.rail .rail-collapse');
     await fp.waitForTimeout(150);

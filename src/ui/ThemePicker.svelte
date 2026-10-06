@@ -38,6 +38,7 @@
   import { formatWithUnit } from '../model/format.js';
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
+  import { ACCENTS, KNOB_NAMES } from '../shell/themeCopy.js';
   import './pane.css';
 
   let theme = $state(currentTheme());
@@ -46,25 +47,16 @@
   const d = $derived(deriveTokens(theme));
   const chips = $derived(presets.map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
 
-  const ACCENTS = [
-    ['reality', 'Reality', 'Measured truth'],
-    ['intent', 'Intent', 'Requested, not yet confirmed'],
-    ['highlight', 'Highlight', 'Focus, selection, hover'],
-  ];
   // The host's value-and-unit rule (format.js), never a local one.
   const unit = (u) => (v) => formatWithUnit({ unit: u, step: Number.isInteger(v) ? 1 : 0.1 }, v);
   const pct = (v) => unit('%')(Math.round(v * 100));
-  const KNOB_COPY = {
-    hue: ['Hue', 'Chassis hue', unit('°')],
-    tint: ['Tint', 'Chassis color strength', pct],
-    brightness: ['Brightness', 'Page lightness', pct],
-    contrast: ['Contrast', 'Ramp spread', pct],
-    glow: ['Glow', 'Glow strength', pct],
-    radius: ['Radius', 'Corner radius', unit('px')],
-    scale: ['Scale', 'Control scale', (v) => pct(v / KNOBS.look.scale[3])],
-    numWeight: ['Numerals', 'Readout numeral weight', (v) => String(v)],
-    motion: ['Motion', 'Echo afterglow; 0 holds still', (v) => (v ? unit('s')(v) : 'still')],
+  const KNOB_FMT = {
+    hue: unit('°'), tint: pct, brightness: pct, contrast: pct, glow: pct, radius: unit('px'),
+    scale: (v) => pct(v / KNOBS.look.scale[3]),
+    numWeight: (v) => String(v),
+    motion: (v) => (v ? unit('s')(v) : 'still'),
   };
+  const KNOB_COPY = Object.fromEntries(Object.entries(KNOB_NAMES).map(([k, n]) => [k, [...n, KNOB_FMT[k]]]));
   const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
     '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
 
@@ -142,10 +134,10 @@
 
 <div class="pane-stack theme-picker">
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
-    <div class="pane-head"><h2 id="tp-theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
+    <div class="pane-head"><h2 id="tp-theme" data-search-key="theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
     <div class="swatches" role="group" aria-label="Theme presets">
       {#each chips as { p, bg } (p.id)}
-        <span class="preset">
+        <span class="preset" data-search-key={'theme-' + p.id}>
           <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
                   data-theme-id={p.id} onclick={() => applyTheme(p)}>
             <span class="chassis" style="background:{bg}" aria-hidden="true">
@@ -168,11 +160,11 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-accents">
-    <div class="pane-head"><h2 id="tp-accents">Accents</h2></div>
+    <div class="pane-head"><h2 id="tp-accents" data-search-key="accents">Accents</h2></div>
     <div class="accents">
       {#each ACCENTS as [k, label, tip] (k)}
         {@const v = k === 'highlight' ? (theme.accents.highlight || theme.accents.reality) : theme.accents[k]}
-        <label class="accent" title={tip}>
+        <label class="accent" title={tip} data-search-key={'accent-' + k}>
           <span class="color-input"><input type="color" value={v.toLowerCase()} aria-label={label + ' color'}
                  oninput={(e) => setAccent(k, e.currentTarget.value)} /></span>
           <span class="accent-name">{label}</span><span class="mono hex">{v}</span>
@@ -188,10 +180,10 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-chassis">
-    <div class="pane-head"><h2 id="tp-chassis">Chassis</h2></div>
+    <div class="pane-head"><h2 id="tp-chassis" data-search-key="chassis">Chassis</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.chassis) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]}>
+        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.chassis[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'chassis.' + k} oninput={(e) => setKnob('chassis', k, Number(e.currentTarget.value))} />
@@ -213,10 +205,10 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-look">
-    <div class="pane-head"><h2 id="tp-look">Look</h2></div>
+    <div class="pane-head"><h2 id="tp-look" data-search-key="look">Look</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.look) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]}>
+        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.look[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'look.' + k} oninput={(e) => setKnob('look', k, Number(e.currentTarget.value))} />
@@ -228,7 +220,7 @@
 
   <section class="pane-sec og-panel" aria-labelledby="tp-adv">
     <details class="adv">
-      <summary><h2 id="tp-adv">Advanced</h2><span class="pane-note">{Object.keys(theme.overrides).length} pinned</span></summary>
+      <summary><h2 id="tp-adv" data-search-key="tokens">Advanced</h2><span class="pane-note">{Object.keys(theme.overrides).length} pinned</span></summary>
       <ul class="tokens">
         {#each TOKENS as k (k)}
           {@const v = refused === k ? 'Not a single CSS value' : d.base[k]}
@@ -247,7 +239,7 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-io">
-    <div class="pane-head"><h2 id="tp-io">Export / import</h2></div>
+    <div class="pane-head"><h2 id="tp-io" data-search-key="theme-io">Export / import</h2></div>
     <label class="sr-only" for="tp-json">Theme JSON</label>
     <textarea id="tp-json" class="mono" rows="3" spellcheck="false" placeholder="Paste theme JSON" bind:value={paste}></textarea>
     <div class="row">
@@ -259,21 +251,21 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-legibility">
-    <div class="pane-head"><h2 id="tp-legibility">Legibility</h2></div>
-    <label class="og-switch">
+    <div class="pane-head"><h2 id="tp-legibility" data-search-key="legibility">Legibility</h2></div>
+    <label class="og-switch" data-search-key="hivis">
       <input type="checkbox" role="switch" checked={hivis} onchange={(e) => flip('hivis', 'ui_hivis', (hivis = e.currentTarget.checked))} />
       <span class="track"></span>High legibility: brighter text, heavier numerals
     </label>
-    <label class="og-switch">
+    <label class="og-switch" data-search-key="terse">
       <input type="checkbox" role="switch" checked={terse} onchange={(e) => flip('terse', 'ui_terse', (terse = e.currentTarget.checked))} />
       <span class="track"></span>Terse instruments
     </label>
     <p class="pane-note">Hides card hints; descriptions move to info buttons</p>
-    <label class="og-switch">
+    <label class="og-switch" data-search-key="scrollbars">
       <input type="checkbox" role="switch" checked={$prefs.scrollbars} onchange={(e) => setPref('scrollbars', e.currentTarget.checked)} />
       <span class="track"></span>Scrollbars
     </label>
-    <div class="row">
+    <div class="row" data-search-key="motion">
       <span id="tp-motion" class="mo-label">Motion</span>
       <div class="og-seg" role="radiogroup" aria-labelledby="tp-motion">
         {#each MOTION as m (m)}
@@ -283,15 +275,15 @@
       </div>
     </div>
     <p class="pane-note">System follows the OS; theme motion 0 always holds still</p>
-    <label class="og-switch">
+    <label class="og-switch" data-search-key="railhide">
       <input type="checkbox" role="switch" checked={$prefs.railHide} onchange={(e) => setPref('railHide', e.currentTarget.checked)} />
       <span class="track"></span>Rail hide tab
     </label>
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-units">
-    <div class="pane-head"><h2 id="tp-units">Units</h2></div>
-    <label class="og-switch">
+    <div class="pane-head"><h2 id="tp-units" data-search-key="units">Units</h2></div>
+    <label class="og-switch" data-search-key="autorange">
       <input type="checkbox" role="switch" checked={$prefs.autorange} onchange={(e) => setPref('autorange', e.currentTarget.checked)} />
       <span class="track"></span>Autorange: 85 mV, not 0.085 V
     </label>
@@ -302,7 +294,7 @@
   </section>
 
   <section class="pane-sec og-panel" aria-labelledby="tp-class">
-    <div class="pane-head"><h2 id="tp-class">Renderer class</h2></div>
+    <div class="pane-head"><h2 id="tp-class" data-search-key="class">Renderer class</h2></div>
     <dl class="pane-facts">
       <dt>Class</dt><dd class="cls">{view.cls}</dd>
       <dt>Viewport</dt><dd class="mono">{vw} × {vh} CSS px, {dpr}× pixel ratio</dd>

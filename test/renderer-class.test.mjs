@@ -15,10 +15,11 @@ import { readFileSync } from 'node:fs';
 import {
   nextClass, promotes, projectGroups, CLASSES,
   FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER, FLOOR_W, FLOOR_H,
-  layoutCols, bucketOf, FIELD_FLOOR_COLS,
+  layoutCols, bucketOf, FIELD_FLOOR_COLS, BUCKET_FLOOR_COLS,
 } from '../src/model/rclass.js';
 import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
-import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY } from '../../Valence/clients/js/index.js';
+import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY, FIELD_ROLE } from '../../Valence/clients/js/index.js';
+import { resetNeedsModal } from '../src/shell/resetGate.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -129,17 +130,29 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
 
 // ---- layout buckets (DESIGN 10.12): 2 rem columns, field floor 8, doubling ---
 {
-  ok('field floor is 8 columns', FIELD_FLOOR_COLS === 8);
+  ok('field floor is 8 columns, the bucket floor 12', FIELD_FLOOR_COLS === 8 && BUCKET_FLOOR_COLS === 12);
   const R = 18;   // 36 px per column
   const at = (w) => bucketOf(layoutCols(w, R));
   ok('cols = floor(width / 2 rem)', layoutCols(288, R) === 8 && layoutCols(287, R) === 7);
-  const rows = [[199, 1], [200, 1], [287, 1], [288, 2], [573, 2], [575, 2], [576, 3], [1147, 3], [1151, 3],
-    [1152, 4], [2294, 4], [2303, 4], [2304, 5], [4000, 5]];
+  const rows = [[199, 1], [200, 1], [431, 1], [432, 2], [863, 2], [864, 3], [1727, 3], [1728, 4],
+    [3455, 4], [3456, 5], [4000, 5]];
   for (const [w, b] of rows) ok(w + ' px at 18 px rem is bucket ' + b, at(w) === b, String(at(w)));
   ok('the viewport matrix lands 1/2/3/4/5',
-     [200, 390, 844, 1428, 2560].map(at).join() === '1,2,3,4,5');
-  ok('a 200 % UI scale moves 1428 px down to bucket 3', bucketOf(layoutCols(1428, 36)) === 3);
+     [200, 412, 844, 1428, 1920, 3841].map(at).join() === '1,1,2,3,4,5');
+  ok('a 200 % UI scale moves 1920 px down to bucket 3', bucketOf(layoutCols(1920, 36)) === 3);
   ok('bucketOf is monotonic', [...Array(80).keys()].every((c) => bucketOf(c + 1) >= bucketOf(c)));
+}
+
+// ---- the held page reset asks the modal only for a confirm-gated field -------
+{
+  const plain = { channelId: 1, name: 'a', dflt: 3, role: 0 };
+  const flip = { channelId: 1, name: 'f', dflt: 1, role: FIELD_ROLE.axis_flipped };
+  const boom = { channelId: 1, name: 'd', dflt: 0, flagBits: { destructive: true } };
+  const bg = { channelId: 1, name: 'b', dflt: 1, role: FIELD_ROLE.source_background_run };
+  ok('reset gate: ordinary settings never ask', !resetNeedsModal([plain], {}));
+  ok('reset gate: a flip asks', resetNeedsModal([plain, flip], { 1: { f: 0 } }));
+  ok('reset gate: a destructive field asks', resetNeedsModal([plain, boom], {}));
+  ok('reset gate: background run asks only when it would turn on', resetNeedsModal([bg], { 1: { b: 0 } }) && !resetNeedsModal([bg], { 1: { b: 1 } }));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));

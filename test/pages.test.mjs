@@ -204,9 +204,9 @@ console.log('\n--- desktop 1280x800 ---');
   await page.waitForTimeout(200);
   const geo = await page.evaluate(() => {
     const p = document.querySelector('main.pane').getBoundingClientRect();
-    return [p.top, document.querySelector('.topstrip').getBoundingClientRect().bottom, p.left, p.right, p.bottom, innerWidth, innerHeight].map(Math.round);
+    return [p.top, (document.querySelector('.hero-strip') || document.querySelector('.topstrip')).getBoundingClientRect().bottom, p.left, p.right, p.bottom, innerWidth, innerHeight].map(Math.round);
   });
-  ok('full: the page takes the window below the top strip', geo[0] === geo[1] && geo[2] === 0 && geo[3] === geo[5] && geo[4] === geo[6], geo.join(','));
+  ok('full: in window the page takes the window below the hero bar', geo[0] === geo[1] && geo[2] === 0 && geo[3] === geo[5] && geo[4] === geo[6], geo.join(','));
   ok('full: in window by default, the window untouched', (await page.evaluate(() => window.__fs.length)) === 0);
   await shot(page, 'full-1280x800.png');
   await page.click('.full-caret');
