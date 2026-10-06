@@ -23,6 +23,7 @@
  * The unhomed pass needs a SECOND valencesim started with no --homed, e.g.
  *   valencesim.exe --duration 120 --port 8883 --http 8881
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -73,7 +74,7 @@ if (!(await probe(HOST, PORT))) {
 // when location.hostname === the ?hub host, so our own static server's own
 // origin must front the sim's real mint (a different port) for the page to
 // ever reach control tier.
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const srv = createServer((q, s) => {
   if (q.url.startsWith('/uitoken')) {
     fetch('http://' + HOST + ':' + HTTP + '/uitoken').then(async (r) => {

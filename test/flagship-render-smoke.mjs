@@ -29,6 +29,7 @@
  *        (valencesim --homed --port 8882 --http 8880)
  */
 
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -43,7 +44,7 @@ const PAGE_URL = 'http://' + HOST + (HOST.includes('/') ? '' : '/');
 
 /** dist/index.html on an ephemeral port, /uitoken proxied to the sim; returns the page's host, path and query. */
 async function serveBundle(wsPort, httpPort) {
-  const html = readFileSync(new URL('../dist/index.html', import.meta.url));
+  const html = readFileSync(DIST_HTML);
   const srv = createServer((q, s) => {
     if (!q.url.startsWith('/uitoken')) { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(html); return; }
     fetch('http://127.0.0.1:' + httpPort + '/uitoken').then(async (r) => {

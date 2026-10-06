@@ -13,6 +13,7 @@
  * Build first (`npm run build:only`).
  * Run: node test/console-panes.test.mjs   (no device needed)
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -24,7 +25,7 @@ import {
 } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);

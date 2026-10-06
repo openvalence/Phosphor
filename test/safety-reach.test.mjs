@@ -81,6 +81,7 @@
  *
  * Build first (`npm run build:only`). Run: node test/safety-reach.test.mjs
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -90,7 +91,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMIT
 import { catalogEtag, toHex } from '../../Valence/clients/js/sha256.js';
 import { CORE_CHANNEL, SAFETY_EVENT_KIND, SAFETY_OP, SOURCE_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const FIXTURE = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 
 // ---- the no-hero catalog: strip the rail's window roles, re-encode ---------

@@ -40,6 +40,7 @@
  *      node test/home.test.mjs --live [--port 8882] [--http 8880]
  *        (valencesim --homed --headless --port 8882 --http 8880)
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -62,7 +63,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const BEFORE = JSON.parse(readFileSync(new URL('./fixtures/overview-before.json', import.meta.url), 'utf8'));

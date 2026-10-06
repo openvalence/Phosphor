@@ -48,6 +48,7 @@
  *
  * Run: node test/shell-chrome-geometry.test.mjs   (no device needed)
  */
+import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -61,7 +62,7 @@ import { compact } from '../src/model/format.js';
 import { STORE_KEY } from '../src/model/grid.js';
 import { settingsEntries } from '../src/shell/settingsSearch.js';
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const SHELL = await buildShellPage();
 const TOKEN = JSON.stringify({ ok: true, token: '5a'.repeat(LIMITS.token_bytes) });
 const srv = createServer((q, s) => {
@@ -538,7 +539,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': the shade ink comes from the theme surface, not black', !/rgba?\(0, 0, 0/.test(rs.geo.ink), rs.geo.ink.slice(0, 160));
     ok(tag + ': a shade moves no rail tab', rs.same);
     ok(tag + ': the bottom shade holds through the last 2 px (off once, back on only past 2 px)', JSON.stringify(rs.flips) === '[false,true]', JSON.stringify(rs.flips));
-    await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/responsive/rail-shade.png' });
+    await fp.screenshot({ path: process.env.RAIL_SHOT || EVIDENCE + '/responsive/rail-shade.png' });
     await fp.setViewportSize({ width: w, height: h });
     await fp.waitForTimeout(200);
   }

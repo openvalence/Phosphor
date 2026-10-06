@@ -26,6 +26,7 @@
  *
  * Run: node test/dash-measure.test.mjs   (no device needed)
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -65,7 +66,7 @@ function fakeHub(ws) {
   });
 }
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const srv = createServer((_q, s) => { s.writeHead(200, { 'Content-Type': 'text/html' }); s.end(HTML); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;

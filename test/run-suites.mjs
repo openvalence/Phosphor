@@ -5,6 +5,7 @@
 // chromium; no check file binds a fixed port or writes a shared path (fake-stash and the
 // tmpdir users get unique ones). A suite that does must be named in SERIAL_LANE: it runs
 // one at a time, alongside the parallel pool. copy-lint runs last, after everything else.
+// PHOSPHOR_DIST=<dir> runs the browser suites against that build (test/dist.mjs).
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { cpus } from 'node:os';

@@ -34,6 +34,7 @@
  * Build first (npm run build:only). Run:
  *   node test/safety-live.mjs [--port 8882] [--http 8880]   (valencesim --homed)
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -120,7 +121,7 @@ async function moveTo(mm) {
 }
 
 // ---- the page --------------------------------------------------------------------
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const srv = createServer((q, r) => {
   if (q.url.startsWith('/uitoken')) {
     fetch('http://' + HOST + ':' + HTTP + '/uitoken').then(async (x) => { r.writeHead(x.status, { 'Content-Type': 'application/json' }); r.end(await x.text()); })

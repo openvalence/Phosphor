@@ -60,10 +60,11 @@
  * Run: node test/responsive-matrix.mjs [--only 360x800|picker|bucket|class|glance|home|scale|nest|builder|phosphor] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
+import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
@@ -76,11 +77,10 @@ const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1]
 const ONLY = argOf('--only', null);
 const SHOTS = !args.includes('--no-shots');
 
-const HERE = fileURLToPath(new URL('.', import.meta.url));
-const OUT = argOf('--out', null) || join(HERE, 'evidence', 'responsive');
+const OUT = argOf('--out', null) || join(EVIDENCE, 'responsive');
 mkdirSync(OUT, { recursive: true });
 
-const HTML = readFileSync(argOf('--html', null) || new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(argOf('--html', null) || DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
 const ENTRIES = decodeCatalog(CAT);
@@ -495,7 +495,7 @@ if (!ONLY || ONLY === 'picker') {
   console.log('\npicker scenarios');
   // file://: no hostname, no ?hub, nothing remembered.
   const htmlArg = argOf('--html', null);
-  const fileUrl = htmlArg ? pathToFileURL(resolve(htmlArg)).href : new URL('../dist/index.html', import.meta.url).href;
+  const fileUrl = htmlArg ? pathToFileURL(resolve(htmlArg)).href : pathToFileURL(DIST_HTML).href;
   for (const vp of [{ width: 360, height: 800 }, { width: 1280, height: 720 }]) {
     const { ctx, page } = await seeded(vp, null);
     await page.goto(fileUrl);

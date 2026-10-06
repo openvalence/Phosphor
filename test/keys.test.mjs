@@ -19,6 +19,7 @@
  * (`npm run build:only`).
  * Run: node test/keys.test.mjs [--shots <dir>]
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -129,7 +130,7 @@ ok('keys.js wording is terse (under eight words per field)', KEYS.every((g) => g
   [k.does, k.where].every((t) => t.split(/\s+/).length < 8 && !/\. /.test(t)))));
 
 // ---- the app on a fake hub ---------------------------------------------------
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
 const ENTRIES = decodeCatalog(CAT);

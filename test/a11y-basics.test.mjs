@@ -10,6 +10,7 @@
  * Build first (`npm run build:only`).
  * Run: node test/a11y-basics.test.mjs
  */
+import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -19,7 +20,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { STORE_KEY } from '../src/model/grid.js';
 
-const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
+const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
 const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim();
 const toHex = (b) => Buffer.from(b).toString('hex');
