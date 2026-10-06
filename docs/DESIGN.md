@@ -659,7 +659,9 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
 - Cells are square and sized in device pixels, about 32 to 40 at 3840x2160
   and 125 percent Windows scale, converted through `devicePixelRatio`. Cell
   count follows the window. Replaces the 12-column span model
-  (`dashboard.svelte.js`, `DashItem.svelte`).
+  (`dashboard.svelte.js`, `DashItem.svelte`). The grid is centered: the
+  remainder under one cell is split evenly on both sides, cells stay square
+  (operator ruling 2026-10-06, `ph-s7lj.3`).
 - A browser-style scale control multiplies the cell edge. It scales cells and
   tokens, never CSS `zoom` on a subtree holding a positional control, until a
   test proves `RailWidget`'s pointer mapping survives (`ph-gf8`).
@@ -667,9 +669,12 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   40 CSS px floor (law 12).
 - Each control is resizable in cells and switches between vertical and
   horizontal control layout by its own aspect.
-- A card never sizes below its content: the floor is the larger of the
-  static per-look minimum and the measured min-content width and height, in
-  cells, raised only within a session. Ghost, handle and keyboard stop there;
+- A card never sizes below its content: the floor is the largest of the
+  static per-look minimum, the measured min-content width and height, and
+  the seed's floor width (§10.12, `ph-z50z`: never under a field floor), in
+  cells, raised only within a session. The seed's floor binds the width of a
+  horizontal placement and the long side of a vertical one (operator ruling
+  2026-10-06, `ph-s7lj.1`). Ghost, handle and keyboard stop there;
   a saved rect under it grows on load into free cells and never pushes a
   neighbor, and one with no room keeps its rect and clips inside its surface.
   Titles hold one line with an ellipsis (`DashGrid.svelte`, `grid.js`
@@ -717,6 +722,11 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   it, an add takes the first free rect, a remove leaves a hole, and nothing
   moves unless the user moves it. Compaction is gone; the flow survives only
   as the first-run seed (`src/model/grid.js` `place`, `pack`).
+- A drag displaces (operator ruling 2026-10-06, `ph-s7lj.2`): the dragged
+  card lands where the pointer puts it, every card it covers moves down to
+  the first free row below, live while the drag is in flight, and only the
+  cards it moved fall back upward. The rest keep their rects and the
+  dragged card's old slot stays a hole. A resize still stops at a neighbor.
 - Surfaces (same ruling): a card is one `--bg-card` surface with one frame, a
   nest one `--bg-sunken` surface holding cards, no third tint; titles are
   text on the page. `src/style.css` `.surface-card`, `.surface-nest`.
@@ -1023,3 +1033,6 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-05 | plugins | Funscript player: the page's Settings take the library column's slot at full width instead of a half-page cap; the card turns handheld only when the card itself is narrow (`ph-mdqo.7`, supersedes the `ph-yuce` half-page cap). | agent, veto-able |
 | 2026-10-05 | §10.3 | The strip's safety buttons draw at 75 % of the first icon-above-word size; Flip's struck zero is the hero numerals' slashed zero (`ph-9zdy`). | operator |
 | 2026-10-05 | §10.12 | Bucket floor is 12 layout columns, doubling: under 12, 12 to 23, 24 to 47, 48 to 95, 96 and up; at 100 % about 430, 860, 1720 and 3441 CSS px; the field floor stays 8 columns. Bucket 3 now holds the launch window, so its seed rung is normal and plugin pages lay out by their card width there. | operator (the bucket 3 row is the agent's, veto-able) |
+| 2026-10-06 | §10.5 | The resize floor is the card's own floor at its density rung: the seed's floor width (`ph-z50z`) joins the static and measured minimums, so no handle or key sizes a card under what the seed gives it (`ph-s7lj.1`). | operator (the floor binding the long side of a vertical placement, not its width, is the agent's, veto-able) |
+| 2026-10-06 | §10.6 | A drag displaces: the dragged card lands where asked and pushes the cards it covers down, live; the cards it moved fall back upward; displacement over an insertion target because `place` already pushes down (`ph-s7lj.2`). | operator (gravity on the moved cards only, the old slot staying a hole, and Align taking the same push are the agent's, veto-able) |
+| 2026-10-06 | §10.5 | The Dash grid is centered: cells stay square and the remainder is split evenly on both sides; resolves `ph-mdqo.15` (`ph-s7lj.3`). | operator (every DashGrid, category pages and nest subgrids too, is the agent's, veto-able) |
