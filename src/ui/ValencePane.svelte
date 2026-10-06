@@ -249,7 +249,7 @@
   }
   th, td {
     text-align: left;
-    padding: 5px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border-bottom: 1px solid var(--line-soft);
     white-space: nowrap;
   }

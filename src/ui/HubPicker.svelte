@@ -85,10 +85,10 @@
   .picker {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--sp-4);
     width: min(100%, 52ch);
     margin: var(--gap) auto;
-    padding: 18px;
+    padding: var(--sp-5);
   }
   .pk-title {
     font-size: 0.8rem;
@@ -105,9 +105,9 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 12px;
-    margin-top: 6px;
-    padding: 6px 10px;
+    gap: var(--sp-3) var(--sp-4);
+    margin-top: var(--sp-3);
+    padding: var(--sp-3) var(--sp-3);
     border: 1px solid var(--warn);
     border-radius: var(--radius);
     color: var(--ink);

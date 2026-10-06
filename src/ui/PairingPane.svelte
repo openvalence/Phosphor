@@ -364,7 +364,7 @@
 </div>
 
 <style>
-  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
   .window.open { color: var(--reality); }
   .count { font-size: .75rem; color: var(--tx-mut); }
   .slot { color: var(--tx-ghost); min-width: 2ch; }
@@ -377,9 +377,9 @@
   .name { font-weight: 500; }
   .meta { color: var(--tx-mut); font-size: .75rem; }
   .src { color: var(--ink-dim); min-width: 9ch; }
-  .acts { display: flex; gap: 8px; margin-left: auto; }
+  .acts { display: flex; gap: var(--sp-3); margin-left: auto; }
   .acts button { min-width: 80px; }
-  .you { font-size: .7rem; color: var(--reality); border: 1px solid var(--reality); border-radius: var(--r-s); padding: 0 6px; margin-left: 6px; }
+  .you { font-size: .7rem; color: var(--reality); border: 1px solid var(--reality); border-radius: var(--r-s); padding: 0 var(--sp-3); margin-left: var(--sp-3); }
   .howto { font-size: .78rem; color: var(--ink-dim); }
   .howto summary { cursor: pointer; color: var(--ink); min-height: 30px; display: flex; align-items: center; }
   .howto ol { margin: .4rem 0 .4rem 1.1rem; padding: 0; max-width: 75ch; }

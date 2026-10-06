@@ -125,18 +125,18 @@
 
 <style>
   .gpal { position: absolute; z-index: 5; width: 280px; max-width: calc(100% - 16px); max-height: min(420px, calc(100% - 16px));
-    box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; padding: 6px;
+    box-sizing: border-box; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3);
     background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .5); }
   .gpal input { min-height: 32px; font-size: .9rem; }
   .gpal-list { overflow-y: auto; min-height: 0; }
-  .gpal-head, .gpal-item { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 3px 8px; text-align: left;
+  .gpal-head, .gpal-item { display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-height: 28px; padding: var(--sp-1) var(--sp-3); text-align: left;
     background: none; border: 0; border-radius: var(--radius); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
   .gpal-head { color: var(--tx-val); }
-  .gpal-item[data-nested] { padding-left: 24px; }
+  .gpal-item[data-nested] { padding-left: calc(var(--sp-5) * 1.333); }
   .gpal-caret { width: 10px; }
   .gpal-count { margin-left: auto; font-size: 11px; color: var(--ink-dim); }
   .gpal-head:hover, .gpal-item:hover, [data-cur] { background: var(--bg-card); color: var(--ink-hi); }
-  .gpal-none { margin: 6px 8px; font-size: .8rem; color: var(--ink-dim); }
+  .gpal-none { margin: var(--sp-3) var(--sp-3); font-size: .8rem; color: var(--ink-dim); }
   @media (pointer: coarse) {
     .gpal input, .gpal-head, .gpal-item { min-height: var(--tap); }
   }

@@ -43,13 +43,13 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
   }
   .he-host {
     flex: 1 1 14ch;
     min-width: 0;
     min-height: var(--tap);
-    padding: 2px 10px;
+    padding: var(--sp-1) var(--sp-3);
     background: var(--bg-sunken);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -60,11 +60,11 @@
     flex: 1 0 100%;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--sp-3);
   }
   .he-hub { color: var(--intent); }
   /* Shell bar: one compact row, sized like its neighbors. */
-  .dense { flex-wrap: nowrap; gap: 8px; }
+  .dense { flex-wrap: nowrap; gap: var(--sp-3); }
   .dense .he-host { flex: 0 0 130px; min-height: 36px; font-size: 0.72rem; }
   .dense .he-go { min-height: 36px; font-size: 12.5px; }
 </style>

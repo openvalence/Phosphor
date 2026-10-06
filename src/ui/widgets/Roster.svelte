@@ -70,13 +70,13 @@
 </div>
 
 <style>
-  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
   li {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--sp-3);
     min-height: var(--tap);
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     border-radius: var(--r-s);
     border: 1px solid var(--line);
   }

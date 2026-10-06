@@ -875,32 +875,32 @@
   .gwire-hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
   .gval { font-size: 11px; fill: var(--ink-hi); paint-order: stroke; stroke: var(--bg-sunken); stroke-width: 3px; font-family: var(--mono); }
 
-  .gnode { position: absolute; box-sizing: border-box; padding: 0 8px 6px; touch-action: none; cursor: grab;
+  .gnode { position: absolute; box-sizing: border-box; padding: 0 var(--sp-3) var(--sp-3); touch-action: none; cursor: grab;
     background: var(--bg-card); color: var(--ink); border: 1px solid var(--line-3); border-radius: var(--radius); }
   .gnode[data-kind='rel'][data-home='hub'] { border-color: var(--reality); }
   .gnode[data-kind='rel'][data-home='client'] { border-color: var(--intent); }
   .gnode[data-kind='draft'] { border-style: dashed; }
   .gnode[data-sel] { box-shadow: 0 0 0 2px var(--highlight); }
   .gnode[data-off] { filter: saturate(.5) brightness(.85); }
-  .ghead { display: flex; align-items: center; gap: 6px; height: 40px; }
+  .ghead { display: flex; align-items: center; gap: var(--sp-3); height: 40px; }
   .gicon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-dim); }
   .gname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; color: var(--ink-hi); }
-  .gbadge { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 4px; border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink-dim); cursor: help; }
+  .gbadge { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 1px var(--sp-2); border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink-dim); cursor: help; }
   .gbadge[data-home='hub'] { color: var(--reality); border-color: var(--reality); }
   .gbadge[data-home='client'] { color: var(--intent); border-color: var(--intent); }
-  .gline { margin: 0 0 2px; font-size: 11px; color: var(--ink-dim); overflow-wrap: anywhere; }
+  .gline { margin: 0 0 var(--sp-1); font-size: 11px; color: var(--ink-dim); overflow-wrap: anywhere; }
   .gline[data-stale] { opacity: .5; }
   /* After .gline: a ladder line wears its phase (law 5); refusals, faults, disarmed reasons amber (law 13). */
   [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn); }
   [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
   .gnum { font-family: var(--mono); font-size: 11px; color: var(--tx-val); }
-  .gcurve { display: block; width: 100%; height: 44px; margin: 2px 0 4px; background: var(--bg-sunken); border-radius: var(--radius); }
+  .gcurve { display: block; width: 100%; height: 44px; margin: var(--sp-1) 0 var(--sp-2); background: var(--bg-sunken); border-radius: var(--radius); }
   .gcurve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
   .gcurve circle { fill: var(--reality); }
-  .gparams { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; }
+  .gparams { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1) var(--sp-3); }
   .gparams label { display: flex; flex-direction: column; font-size: 11px; color: var(--ink-dim); min-width: 0; }
   .gparams .wide { grid-column: 1 / -1; }
-  .gparams .check { flex-direction: row; align-items: center; gap: 4px; }
+  .gparams .check { flex-direction: row; align-items: center; gap: var(--sp-2); }
   .gparams input:not([type='checkbox']) { min-height: 24px; min-width: 0; width: 100%; font-size: .75rem; }
   /* A live field reads as a value, never as a disabled placeholder. */
   .grow input, .gparams input { color: var(--tx-val); }
@@ -908,13 +908,13 @@
   /* Op input rows: ROW_H in the script must equal --grow. */
   .graph { --grow: 28px; --vt-float: var(--reality); --vt-bool: var(--intent);
     --vt-int: color-mix(in srgb, var(--reality) 50%, var(--intent)); }
-  .grow { display: flex; align-items: center; gap: 6px; height: var(--grow); font-size: 11px; color: var(--ink-dim); }
+  .grow { display: flex; align-items: center; gap: var(--sp-3); height: var(--grow); font-size: 11px; color: var(--ink-dim); }
   .grow select { flex: 1 1 auto; min-width: 0; min-height: 22px; font-size: .75rem; }
-  .grow .check { display: flex; align-items: center; gap: 4px; }
-  .gfield { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+  .grow .check { display: flex; align-items: center; gap: var(--sp-2); }
+  .gfield { display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-width: 0; }
   .gfield span { flex: 0 0 auto; }
   .gfield input { flex: 1 1 auto; min-width: 0; width: 100%; min-height: 22px; font-size: .75rem; }
-  .glabel { padding-left: 2px; }
+  .glabel { padding-left: var(--sp-1); }
   .gout { margin-left: auto; }
   .gnode[data-kind='op'] { border-color: color-mix(in srgb, var(--intent) 60%, var(--line-3)); }
 
