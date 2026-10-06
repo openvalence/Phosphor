@@ -72,7 +72,7 @@ export const KEYS = [
   ] },
   { group: 'Phosphor panes', items: [
     { keys: 'F2, Double-click', does: 'Rename the saved hub', where: 'Hubs', src: 'src/shell/HubsPane.svelte' },
-    { keys: 'F2, Double-click', does: 'Rename the toy', where: 'ButtplugIO', src: 'src/shell/server/Devices.svelte' },
+    { keys: 'F2, Double-click', does: 'Rename the toy', where: 'Buttplug', src: 'src/shell/server/Devices.svelte' },
   ] },
   { group: 'Funscript player', items: [
     { keys: 'g', does: 'Toggle the graph', where: 'Player card', src: 'plugins/factory/funscript-player/ui.js' },

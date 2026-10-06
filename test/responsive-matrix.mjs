@@ -566,6 +566,27 @@ if (!ONLY || ONLY === 'bucket') {
   await ctx.close();
 }
 
+if (!ONLY || ONLY === 'strip') {
+  console.log('\nstrip button scenarios (ph-9zdy)');
+  for (const [w, h] of [[1428, 900], [1024, 768], [390, 844]]) {
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('.topstrip .btn-pause', { timeout: 15000 });
+    await page.waitForTimeout(800);
+    const m = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .home-btn, .topstrip .strip .rw-flip, .topstrip .dock .safety-op .btn')].filter((e) => e.querySelector('.ico') && e.getBoundingClientRect().width && !e.closest('.menu-pop, [aria-hidden=true]')).map((bt) => {
+      const r = bt.getBoundingClientRect(), i = bt.querySelector('.ico').getBoundingClientRect(), l = bt.querySelector('.lbl').getBoundingClientRect();
+      const cs = getComputedStyle(bt), pb = parseFloat(cs.paddingBottom), pt = parseFloat(cs.paddingTop);
+      const foot = l.height ? l.bottom : i.bottom; // an icon-only Home has no word
+      return { n: bt.textContent.trim().slice(0, 7), h: Math.round(r.height), ico: Math.round(i.height), above: Math.round((i.top - r.top) * 10) / 10, below: Math.round((r.bottom - foot) * 10) / 10 };
+    }));
+    // Centered: the stack of icon and word has equal space above and below (the live line's slot is part of the stack's bottom).
+    scen(w + 'x' + h + ': the icon and word stack is vertically centered in every strip button', m.length >= 4 && m.every((b) => Math.abs(b.above - b.below) <= 1.5), JSON.stringify(m));
+    scen(w + 'x' + h + ': the strip glyph is at most 18 px', m.every((b) => b.ico <= 18), m.map((b) => b.ico).join());
+    if (SHOTS) await page.screenshot({ path: join(OUT, 'strip-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: Math.min(h, 340) } });
+    await ctx.close();
+  }
+}
+
 if (!ONLY || ONLY === 'railops') {
   console.log('\nrail operations scenarios (ph-lxea)');
   // Count the INTENT frames the page sends: a reset is one per resettable field.

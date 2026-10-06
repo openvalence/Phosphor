@@ -527,7 +527,7 @@
     /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
     --sb-w: 63px;
     --sb-h: min(51px, max(var(--num-h), var(--tap)));
-    --sico: clamp(12px, calc(var(--sb-h) - 30px), 21px);
+    --sico: clamp(12px, calc(var(--sb-h) - 33px), 17px);
     display: flex;
     align-items: center;
     gap: var(--sp-2) var(--sp-4);
@@ -676,11 +676,11 @@
   .home-menu { position: relative; }
   .btn.home-btn {
     flex-direction: column;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 1px;
     min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: var(--sp-1) var(--sp-2) 1px;
+    padding: var(--sp-1) var(--sp-2);
     font-size: max(11px, .54rem);
     line-height: 1;
   }
@@ -714,12 +714,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 1px;
     min-height: var(--tap);
     min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: var(--sp-1) var(--sp-2) 1px;
+    padding: var(--sp-1) var(--sp-2);
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
