@@ -5,9 +5,10 @@
  * only; the placement math is test/grid-model.test.mjs.
  *
  *   resize   every edge and corner resizes with a live ghost showing the
- *            size; the minimum is refused visibly; an orientation flip is
- *            announced (ph-e82.20.1); a resize stops at a neighbor, which
- *            never moves (ph-e82.22)
+ *            size; under the card's floor it trims and draws red, never
+ *            refused, until RESIZE_FLOOR; an orientation flip is announced
+ *            (ph-e82.20.1); a resize onto a neighbor overlaps it, both red,
+ *            and the neighbor never moves (ph-cxvc)
  *   drag     the dragged card lifts; no sibling moves into free cells while dragging or
  *            after the drop (ph-e82.22, placements are absolute); the ghost
  *            is the committed rect; a card dropped on a nest lights the nest
@@ -35,13 +36,19 @@
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
  *            (ph-e82.20.7)
- *   displace a drag onto another card pushes it below the ghost; the release
- *            commits the push, a reload keeps it, Escape restores every card
- *            (ph-s7lj.2)
- *   floor    an action card under its measured content floor grows on load
- *            (saved, no undo step); pointer and keyboard stop at the floor;
- *            nothing spills past the frame; a card with no room keeps its
- *            rect and clips; titles stay one line (ph-e82.25)
+ *   red      a drop onto a card leaves both in place, overlapping and red
+ *            (--warn border and plate, a one-fragment tooltip); the store
+ *            keeps the last valid layout, the edit footer names the count
+ *            and Done is disabled; resolving clears it and saves at once; a
+ *            reload brings back the last valid layout (ph-cxvc)
+ *   floor    a card under its measured content floor never grows on load:
+ *            it clips at its frame running and is red in edit mode; titles
+ *            stay one line; a resize past the floor clears it (ph-e82.25,
+ *            ph-cxvc)
+ *   chrome   right-click on the grid opens the add menu at the pointer and a
+ *            pick lands at that cell; a drag on a card's body moves it while
+ *            a control in it keeps its press; a drag across chrome selects
+ *            no text; the edit footer sits over the scroll shade (ph-cxvc)
  *   modes    edit mode draws what runs (ph-wia): the grid origin and every
  *            card rect are the same in both modes, the palette and an open
  *            look popover take no room; a self-labeled card is bare until
@@ -62,7 +69,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 import { buildSettingsModel, placeableControls, minCells, WIDGET } from '../src/model/settings.js';
-import { STORE_KEY } from '../src/model/grid.js';
+import { STORE_KEY, RESIZE_FLOOR } from '../src/model/grid.js';
 
 // The sidebar wrench drives edit mode (dashEdit); a layout is picked from the sidebar sub-items.
 const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
@@ -160,15 +167,22 @@ async function drag(page, loc, dx, dy, during = null) {
   await page.waitForTimeout(120);
   return seen;
 }
+/** Red state: per key the card's fault tooltip (null when valid), the footer hint and Done. */
+const redState = async (page, keys) => ({
+  faults: Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await page.locator('.home .dash-cell[data-id="' + k + '"] > .dash-item')
+    .evaluate((el) => (el.classList.contains('fault') ? el.getAttribute('title') : null)).catch(() => 'missing')]))),
+  hint: await page.locator('.home .dash-toolbar .dash-hint.red').textContent().catch(() => null),
+  done: await page.locator('button[aria-label="Done editing"]:visible').first().isDisabled().catch(() => null),
+});
 const ghost = (page) => page.$eval('.home .drop-ghost', (g) => ({ text: g.textContent.trim(), refused: g.classList.contains('refused') })).catch(() => null);
 
 // ---- resize from every edge (ph-e82.20.1) --------------------------------------
 console.log('resize');
 {
-  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 3 }, [F1]: { x: 20, y: 0, w: 8, h: 2 } });
+  const { ctx, page, cell, stored, said, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 12, h: 8 }, [F1]: { x: 24, y: 0, w: 10, h: 8 } });
   const c = card(SLIDER);
-  // Rows are cells (ph-29r): a card shorter than its content grew on load; these are the rects it runs at.
-  const h0 = (await stored())[SLIDER].h, f1 = JSON.stringify((await stored())[F1]);
+  const h0 = 8, f1 = JSON.stringify((await stored())[F1]);
+  ok('the fixture loads valid', Object.values((await redState(page, [SLIDER, F1])).faults).every((f) => f === null), await redState(page, [SLIDER, F1]));
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
   const g1 = await drag(page, c.locator('.edge-w'), -2 * cell, 0, () => ghost(page));
@@ -178,26 +192,36 @@ console.log('resize');
   await drag(page, c.locator('.edge-e'), 3 * cell, 0);
   s = (await stored())[SLIDER];
   ok('east edge: only the width grows', s.x === 2 && s.w === 17 && s.h === h0, s);
-  const g2 = await drag(page, c.locator('.edge-e'), -15 * cell, 0, () => ghost(page));
-  // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
-  const mw = g2 && Number((new RegExp('^(\\d+) × ' + h0 + ' · minimum$').exec(g2.text) || [])[1]);
-  // A field card never resizes under 8 layout columns of 2 rem (the seed's floor width), though its container-type hides it from min-content.
-  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw === Math.max(minCells(WIDGET.slider, 'h')[0], Math.ceil(256 / cell)), g2);
-  ok('the refusal is announced', /its minimum$/.test(await said()), await said());
-  s = (await stored())[SLIDER];
-  ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
-  // Tall enough that the vertical layout's own measured width still leaves it taller than wide.
-  const g3 = await drag(page, c.locator('.handle.resize'), -(mw - 2) * cell, 12 * cell, () => ghost(page));
-  ok('a corner drag past square flips the orientation, shown on the ghost', g3 && / · vertical$/.test(g3.text), g3);
+  // Under the floor (ph-cxvc): no refusal, the content trims and the card is red; the store keeps the last valid size.
+  const g2 = await drag(page, c.locator('.edge-s'), 0, -7 * cell, () => ghost(page));
+  ok('past the floor: the ghost follows, no refusal', g2 && g2.text === '17 × 1' && !g2.refused, g2);
+  let r = await redState(page, [SLIDER, F1]);
+  ok('under its floor the card is red, named in one fragment', r.faults[SLIDER] === 'below its minimum' && r.faults[F1] === null, r);
+  ok('the trim is announced', /below its minimum$/.test(await said()), await said());
+  ok('nothing is saved, the footer names the count and Done is disabled',
+     (await stored())[SLIDER].h === h0 && r.hint === '1 card red, not saved' && r.done === true, [await stored(), r]);
+  await drag(page, c.locator('.edge-s'), 0, 7 * cell);
+  r = await redState(page, [SLIDER, F1]);
+  ok('back over the floor: the red clears at once and the size saves', r.faults[SLIDER] === null && r.hint === null && r.done === false
+     && (await stored())[SLIDER].h === h0, r);
+  const g3 = await drag(page, c.locator('.edge-n'), 0, 30 * cell, () => ghost(page));
+  ok('RESIZE_FLOOR is the one stop, shown on the ghost', g3 && g3.refused && g3.text === '17 × ' + RESIZE_FLOOR[1] + ' · minimum', g3);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  ok('undo puts it back and saves', (await stored())[SLIDER].h === h0 && (await redState(page, [SLIDER])).faults[SLIDER] === null);
+  // Tall enough that it reads taller than wide.
+  const g4 = await drag(page, c.locator('.handle.resize'), -14 * cell, 12 * cell, () => ghost(page));
+  ok('a corner drag past square flips the orientation, shown on the ghost', g4 && / · vertical$/.test(g4.text), g4);
   ok('the flip is announced', /now vertical/.test(await said()), await said());
-  s = (await stored())[SLIDER];
-  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1] && s.h >= mw, s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
   await drag(page, c.locator('.edge-e'), 30 * cell, 0);
+  r = await redState(page, [SLIDER, F1]);
+  ok('a resize onto a neighbor overlaps it: both red, each naming the other', /^overlaps /.test(r.faults[SLIDER]) && /^overlaps /.test(r.faults[F1])
+     && r.hint === '2 cards red, not saved', r);
   s = await stored();
-  ok('a resize stops at a neighbor and says so', s[SLIDER].x + s[SLIDER].w <= 20 && s[SLIDER].w > 2 && /blocked by/.test(await said()),
-     [s[SLIDER], await said()]);
-  ok('the neighbor never moves', JSON.stringify(s[F1]) === f1, [s[F1], f1]);
+  ok('the neighbor never moves and nothing is saved', JSON.stringify(s[F1]) === f1 && s[SLIDER].w === 17, [s[SLIDER], s[F1], f1]);
   await ctx.close();
 }
 
@@ -206,11 +230,12 @@ console.log('small floor');
 {
   const { ctx, page, cell, stored, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 3, h: 7, look: { pres: 'knob' } } });
   const k0 = (await stored())[SLIDER];
-  ok('a saved 3-wide knob does not grow on load', k0.w === 3 && k0.h === 7, k0);
+  ok('a saved 3-wide knob does not grow on load and loads valid', k0.w === 3 && k0.h === 7 && (await redState(page, [SLIDER])).faults[SLIDER] === null,
+     [k0, await redState(page, [SLIDER])]);
   await drag(page, card(SLIDER).locator('.edge-e'), 4 * cell, 0);
-  const g = await drag(page, card(SLIDER).locator('.edge-e'), -10 * cell, 0, () => ghost(page));
+  await drag(page, card(SLIDER).locator('.edge-e'), -4 * cell, 0);
   const k1 = (await stored())[SLIDER];
-  ok('a knob resized far west stops at its own minimum, under the field floor', g && g.refused && k1.w === 3, [g, k1]);
+  ok('a knob resized back to 3 wide is valid and saved: no field floor binds it', k1.w === 3 && (await redState(page, [SLIDER])).faults[SLIDER] === null, k1);
   await ctx.close();
 }
 
@@ -218,8 +243,8 @@ console.log('small floor');
 console.log('drag');
 {
   const { ctx, page, cell, stored, said, card } = await open({
-    [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 0, y: 2, w: 10, h: 2 },
-    'nest:1': { x: 20, y: 0, w: 14, h: 6, nest: { title: 'Pump', scroll: false, map: { [F3]: { x: 0, y: 0, w: 6, h: 2 } } } },
+    [F1]: { x: 0, y: 0, w: 8, h: 4 }, [F2]: { x: 8, y: 0, w: 8, h: 4 },
+    'nest:1': { x: 16, y: 0, w: 13, h: 16, nest: { title: 'Pump', scroll: false, map: { [F3]: { x: 0, y: 0, w: 8, h: 4 } } } },
   });
   const area = (key) => card(key).evaluate((el) => el.style.gridColumn + ' / ' + el.style.gridRow);
   const areas = () => page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => Object.fromEntries(els
@@ -239,7 +264,7 @@ console.log('drag');
   ok('no sibling moves after the drop', siblingsMoved(before, await areas(), F1).length === 0, siblingsMoved(before, await areas(), F1));
   ok('the ghost is the cell rect the release commits', during.ghost === during.card, during);
   const s = await stored();
-  ok('the release commits what the ghost showed', during.card.replace(/\s+/g, ' ').startsWith((s[F1].x + 1) + ' / span 10 / ' + (s[F1].y + 1)), JSON.stringify(s[F1]));
+  ok('the release commits what the ghost showed', during.card.replace(/\s+/g, ' ').startsWith((s[F1].x + 1) + ' / span 8 / ' + (s[F1].y + 1)), JSON.stringify(s[F1]));
   ok('the card moved by the pointer\'s cells: the grabbed cell stays under it (ph-29r)', s[F1].x === 0 && s[F1].y === 6, JSON.stringify(s[F1]));
 
   const nestBody = card('nest:1').locator('.nest-body');
@@ -258,11 +283,11 @@ console.log('drag');
   const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
   const gpad = await page.$eval('.home > .dash-wrap > .dash-grid', (g) => parseFloat(getComputedStyle(g).paddingLeft));
   const mw0 = Math.round(mc.width / cell);
-  const out = await drag(page, m, gb.x + gpad + 2 * cell - mc.x, 0,
+  const out = await drag(page, m, gb.x + gpad - mc.x, 0,
     () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
-  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && new RegExp('^3 / span ' + mw0).test(out.replace(/\s+/g, ' ')), out);
+  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && new RegExp('^1 / span ' + mw0).test(out.replace(/\s+/g, ' ')), out);
   const after = await stored();
-  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === mw0
+  ok('released outside, it lands at the top level at that column, its width kept', after[F3] && after[F3].x === 0 && after[F3].w === mw0
      && !Object.prototype.hasOwnProperty.call(after['nest:1'].nest.map, F3), JSON.stringify(after[F3]));
   ok('and is drawn at the top level only', await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell[data-id="' + F3 + '"]').count() === 1
      && await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 0);
@@ -276,8 +301,8 @@ console.log('drag');
 console.log('select');
 {
   const { ctx, page, cell, stored, said, card } = await open({
-    [F1]: { x: 0, y: 0, w: 8, h: 2 }, [F2]: { x: 10, y: 0, w: 8, h: 2 }, [F3]: { x: 0, y: 2, w: 8, h: 2 },
-    'nest:1': { x: 20, y: 0, w: 12, h: 4, nest: { title: 'Pump', scroll: false, map: { [SLIDER]: { x: 0, y: 0, w: 8, h: 2 } } } },
+    [F1]: { x: 0, y: 0, w: 8, h: 4 }, [F2]: { x: 8, y: 0, w: 8, h: 4 }, [F3]: { x: 0, y: 4, w: 8, h: 4 },
+    'nest:1': { x: 16, y: 0, w: 13, h: 16, nest: { title: 'Pump', scroll: false, map: { [SLIDER]: { x: 0, y: 0, w: 8, h: 4 } } } },
   });
   const grip = (key) => card(key).locator(':scope > .dash-item > .dash-head .handle.grab');
   const pressed = async () => (await page.$$eval('.home > .dash-wrap > .dash-grid > .dash-cell', (els) => els
@@ -289,9 +314,9 @@ console.log('select');
   await grip(F2).click({ modifiers: ['Shift'] });
   ok('a grip click selects, Shift+click adds', JSON.stringify(await pressed()) === JSON.stringify([F1, F2].sort())
      && /2 selected/.test(await selbar().textContent()), await pressed());
-  await drag(page, grip(F1), 3 * cell, 0);
+  await drag(page, grip(F1), 0, 8 * cell);
   let s = await stored();
-  ok('dragging one selected card moves the group as one', s[F1].x === 3 && s[F2].x === 13 && s[F1].y === 0 && s[F2].y === 0,
+  ok('dragging one selected card moves the group as one', s[F1].x === 0 && s[F2].x === 8 && s[F1].y === 8 && s[F2].y === 8,
      JSON.stringify([s[F1], s[F2]]));
   ok('the move is announced for the group', /2 cards moved/.test(await said()), await said());
   ok('a drag is not a click: the selection stands', (await pressed()).length === 2);
@@ -312,8 +337,14 @@ console.log('select');
   await selbar().locator('button', { hasText: 'Align left' }).click();
   await page.waitForTimeout(100);
   s = await stored();
-  ok('align left puts every selected card on one left edge', s[F1].x === 0 && s[F2].x === 0 && s[F3].x === 0, JSON.stringify([s[F1].x, s[F2].x, s[F3].x]));
-  ok('aligned cards never overlap', new Set([F1, F2, F3].map((k) => s[k].y)).size === 3);
+  const lefts = await Promise.all([F1, F2, F3].map(async (k) => Math.round((await card(k).boundingBox()).x)));
+  const ar = await redState(page, [F1, F2, F3]);
+  ok('align left puts every selected card on one left edge', new Set(lefts).size === 1, lefts);
+  ok('an align that lands a card on another overlaps it, red, and is not saved (ph-cxvc)', /^overlaps /.test(ar.faults[F1]) && /^overlaps /.test(ar.faults[F2])
+     && ar.faults[F3] === null && s[F2].x === 8, [ar, s[F2]]);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  ok('undo resolves it', (await redState(page, [F1, F2])).hint === null);
 
   await selbar().locator('button', { hasText: 'Clear' }).click();
   await grip('nest:1').click();
@@ -349,7 +380,7 @@ console.log('nest');
 {
   const GHOST = 'uid:999:not-on-this-machine';
   const store = { active: 'Default', layouts: { Default: { 'full.machine': {
-    [F1]: { x: 0, y: 0, w: 8, h: 2 }, 'home:built': { x: 0, y: 40, w: 1, h: 1 },
+    [F1]: { x: 0, y: 0, w: 8, h: 4 }, 'home:built': { x: 0, y: 40, w: 1, h: 1 },
     'nest:1': { x: 10, y: 0, w: 12, h: 6, nest: { title: 'Empty', scroll: true, map: {} } },
   } } }, modules: { Kit: { title: 'Kit', scroll: false, w: 12, h: 4, members: { [F2]: null, [GHOST]: null } } } };
   const { ctx, page, stored, said, card } = await open(null, { store });
@@ -382,40 +413,50 @@ console.log('nest');
   await ctx.close();
 }
 
-// ---- a drag displaces what it lands on (ph-s7lj.2) -------------------------------------
-console.log('displace');
+// ---- a drop onto a card overlaps it, red, and blocks the save (ph-cxvc) -----------------
+console.log('red');
 {
-  const { ctx, page, cell, stored, card } = await open({ [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 14, y: 0, w: 10, h: 2 } });
+  const { ctx, page, cell, stored, card } = await open({ [F1]: { x: 0, y: 0, w: 10, h: 8 }, [F2]: { x: 14, y: 0, w: 10, h: 8 } });
   const rect = async (key) => (await card(key).boundingBox());
-  const geo = async () => JSON.stringify([await rect(F1), await rect(F2)]);
-  const g0 = await geo();
-  // The grip sits at the card's right end: pull F2 left by its distance to F1's column.
-  const dx = -14 * cell;
-  const mid = await drag(page, card(F2).locator('.handle.grab'), dx, 0, async () => ({
-    ghost: await page.$eval('.home .drop-ghost', (g) => { const b = g.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left }; }),
-    other: await rect(F1),
-  }));
-  ok('mid-drag the covered card is drawn below the ghost', mid.other.y >= mid.ghost.bottom - 1, mid);
-  const s = await stored();
-  ok('the release commits the drop and the push', s[F2].x === 0 && s[F2].y === 0 && s[F1].x === 0 && s[F1].y >= s[F2].h, JSON.stringify([s[F1], s[F2]]));
+  const s0 = JSON.stringify(await stored());
+  let r = await redState(page, [F1, F2]);
+  ok('the fixture loads valid: no red card, Done enabled', r.faults[F1] === null && r.faults[F2] === null && r.done === false, r);
+  await drag(page, card(F2).locator('.handle.grab'), -14 * cell, 0);
+  const a = await rect(F1), b = await rect(F2);
+  ok('a drop onto a card leaves both in place, overlapping', Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1, [a, b]);
+  r = await redState(page, [F1, F2]);
+  ok('both are red, each naming the other in one fragment', /^overlaps \S/.test(r.faults[F1]) && /^overlaps \S/.test(r.faults[F2]), r);
+  const paint = await card(F2).locator(':scope > .dash-item > .dash-body').evaluate((el) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--warn)';
+    document.body.append(probe);
+    const warn = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = getComputedStyle(el);
+    return { border: cs.borderTopColor, warn, plate: cs.backgroundImage };
+  });
+  ok('red is the warn token: border and a tinted plate', paint.border === paint.warn && /gradient/.test(paint.plate), paint);
+  ok('the store keeps the last valid layout', JSON.stringify(await stored()) === s0);
+  ok('the edit footer names the count; Done is disabled and says why', r.hint === '2 cards red, not saved' && r.done === true
+     && await page.locator('button[aria-label="Done editing"]:visible').first().getAttribute('title') === '2 cards red, not saved', r);
+  await drag(page, card(F2).locator('.handle.grab'), 14 * cell, 0);
+  r = await redState(page, [F1, F2]);
+  ok('resolving clears the red at once and Done returns', r.faults[F1] === null && r.faults[F2] === null && r.hint === null && r.done === false, r);
+  ok('the resolved layout is saved', (await stored())[F2].x === 14 && (await stored())[F2].y === 0);
+  await drag(page, card(F2).locator('.handle.grab'), -14 * cell, 0);
+  ok('red again', (await redState(page, [F2])).faults[F2] !== null);
   await page.reload();
   await page.waitForSelector('.home .dash-grid');
   await page.waitForTimeout(500);
   const s2 = await stored();
-  ok('the layout holds across a reload', JSON.stringify(s2[F1]) === JSON.stringify(s[F1]) && JSON.stringify(s2[F2]) === JSON.stringify(s[F2])
-    && (await rect(F1)).y >= (await rect(F2)).y + (await rect(F2)).height - 1, JSON.stringify([s2[F1], s2[F2]]));
+  ok('a reload brings back the last valid layout', s2[F2].x === 14 && Math.abs((await rect(F2)).x - (await rect(F1)).x) > cell, s2[F2]);
   await editBtn(page).click();
   await page.waitForTimeout(300);
-  const g1 = await geo();
-  const cover = await drag(page, card(F1).locator('.handle.grab'), 0, -2 * cell, async () => {
-    const seen = { ghost: await page.$eval('.home .drop-ghost', (g) => g.getBoundingClientRect().bottom), other: (await rect(F2)).y };
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(80);
-    return seen;
-  });
-  ok('Escape mid-drag: the covered card was drawn below the ghost', cover.other >= cover.ghost - 1, cover);
-  ok('Escape mid-drag restores every card', await geo() === g1 && JSON.stringify(await stored()) === JSON.stringify(s2), g1);
-  ok('the first layout was a different one', g0 !== g1);
+  await drag(page, card(F2).locator('.handle.grab'), -14 * cell, 0);
+  await pickLayout(page, 'Default');
+  await page.waitForTimeout(300);
+  ok('ending edit mode red drops back to the last write', (await stored())[F2].x === 14 && Math.abs((await rect(F2)).x - (await rect(F1)).x) > cell
+     && await page.locator('.home .dash-item.fault').count() === 0, (await stored())[F2]);
   await ctx.close();
 }
 
@@ -423,7 +464,7 @@ console.log('displace');
 console.log('keys');
 {
   const { ctx, page, cell, stored, said, card } = await open({
-    [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 0, y: 2, w: 10, h: 2 }, [SLIDER]: { x: 12, y: 0, w: 10, h: 3 },
+    [F1]: { x: 0, y: 0, w: 10, h: 4 }, [F2]: { x: 0, y: 4, w: 10, h: 4 }, [SLIDER]: { x: 12, y: 0, w: 10, h: 4 },
   });
   const grip = (key) => card(key).locator('.handle.grab');
   const focusedId = () => page.evaluate(() => document.activeElement?.closest('.dash-cell')?.dataset.id || null);
@@ -431,17 +472,17 @@ console.log('keys');
   await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(100);
   let s = await stored();
-  ok('ArrowUp onto a neighbor moves nothing and says so', s[F2].y === 2 && s[F1].y === 0 && /nothing free above/.test(await said()),
+  ok('ArrowUp onto a neighbor moves nothing and says so', s[F2].y === 4 && s[F1].y === 0 && /nothing free above/.test(await said()),
      [s[F1], s[F2], await said()]);
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(100);
   s = await stored();
-  ok('ArrowDown steps one cell into free space; the card above stays', s[F2].y === 3 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
+  ok('ArrowDown steps one cell into free space; the card above stays', s[F2].y === 5 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
   ok('focus stays on the moved grip', await focusedId() === F2 && await page.evaluate(() => document.activeElement.classList.contains('grab')));
   await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(100);
   s = await stored();
-  ok('ArrowUp steps back up one cell', s[F2].y === 2 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
+  ok('ArrowUp steps back up one cell', s[F2].y === 4 && s[F1].y === 0, JSON.stringify([s[F1], s[F2]]));
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Shift+ArrowRight');
   await page.waitForTimeout(100);
@@ -495,8 +536,8 @@ console.log('layouts');
 {
   const built = { 'home:built': { x: 0, y: 40, w: 1, h: 1 } };
   const store = { active: 'Default', modules: {}, layouts: {
-    Default: { 'full.machine': { [F1]: { x: 0, y: 0, w: 10, h: 2 }, ...built } },
-    Night: { 'full.machine': { [F2]: { x: 4, y: 0, w: 12, h: 2 }, ...built } },
+    Default: { 'full.machine': { [F1]: { x: 0, y: 0, w: 10, h: 4 }, ...built } },
+    Night: { 'full.machine': { [F2]: { x: 4, y: 0, w: 12, h: 4 }, ...built } },
   } };
   const { ctx, page, said, card } = await open(null, { store });
   const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
@@ -548,8 +589,9 @@ console.log('density');
 {
   const built = { 'home:built': { x: 0, y: 40, w: 1, h: 1 } };
   const store = { active: 'Default', modules: {}, layouts: {
-    Default: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 3 }, 'hero:pattern': { x: 14, y: 0, w: 16, h: 6 }, ...built } },
-    Spare: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 3 }, ...built } },
+    // The pattern card unplaced: it is drawn and written at its own content height.
+    Default: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 6 }, 'hero:pattern': {}, ...built } },
+    Spare: { 'full.machine': { [SLIDER]: { x: 0, y: 0, w: 12, h: 6 }, ...built } },
   } };
   const { ctx, page, said, card } = await open(null, { store });
   const all = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
@@ -607,15 +649,12 @@ console.log('floor');
 {
   const ACT = (CONTROLS.find((c) => c.key === 'role:action.store') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.action)).key;
   const NEST_TITLE = 'A nest title far longer than its card';
-  const { ctx, page, cell, stored, said, card } = await open({
+  const fix = {
     // Labels shown (ph-w4r makes a field bare by default): the title's one line is under test.
-    [ACT]: { x: 0, y: 0, w: 1, h: 8, look: { label: true } },
-    [F2]: { x: 8, y: 0, w: 9, h: 2 }, [F3]: { x: 18, y: 0, w: 9, h: 2 },
-    // No room: a one-column action card wedged between two cards.
-    [ACT + '#2']: { x: 17, y: 0, w: 1, h: 2, look: { label: true } },
-    'nest:1': { x: 0, y: 14, w: 2, h: 4, nest: { title: NEST_TITLE, map: {} } },
-    'nest:2': { x: 8, y: 14, w: 5, h: 4, nest: { title: 'Pair', map: { [F1]: { x: 0, y: 0, w: 8, h: 2 } } } },
-  });
+    [ACT]: { x: 0, y: 0, w: 1, h: 16, look: { label: true } },
+    'nest:1': { x: 0, y: 18, w: 2, h: 8, nest: { title: NEST_TITLE, map: {} } },
+  };
+  const { ctx, page, cell, stored, said, card } = await open(fix, { edit: false });
   // Px any element of the body pokes past the body's frame; the title's lines.
   const fit = (key) => card(key).evaluate((c) => {
     const body = c.querySelector('.dash-body');
@@ -623,74 +662,45 @@ console.log('floor');
     let out = 0;
     for (const e of body.querySelectorAll('*')) {
       const r = e.getBoundingClientRect();
-      if (r.width && r.height) out = Math.max(out, r.right - b.right, b.left - r.left);
+      if (r.width && r.height && getComputedStyle(body).overflowX !== 'clip') out = Math.max(out, r.right - b.right, b.left - r.left);
     }
     const t = c.querySelector('.dash-title');
-    return { out: Math.round(out), w: Math.round(b.width), lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight || '0') || 1),
-      titleH: t.getBoundingClientRect().height, font: parseFloat(getComputedStyle(t).fontSize), clip: getComputedStyle(body).overflowX,
-      cut: t.scrollWidth > t.clientWidth };
+    return { out: Math.round(out), titleH: t.getBoundingClientRect().height, font: parseFloat(getComputedStyle(t).fontSize),
+      clip: getComputedStyle(body).overflowX, cut: t.scrollWidth > t.clientWidth };
   });
-  ok('the grid holds the case', await page.$eval('.home > .dash-wrap > .dash-grid', (el) => Number(el.style.getPropertyValue('--cols'))) >= 27);
   let s = await stored();
-  const loaded = s;
-  const floor = s[ACT].w, ah = s[ACT].h;
-  // Rows are cells (ph-29r): it may also have grown downward into free rows.
-  ok('a saved rect under its floor grows on load and is saved', floor > 1 && s[ACT].x === 0 && s[ACT].y === 0 && ah >= 8, s[ACT]);
+  ok('a saved rect under its floor never grows on load', s[ACT].w === 1 && s[ACT].h === 16 && s['nest:1'].w === 2, [s[ACT], s['nest:1']]);
   let f = await fit(ACT);
-  ok('grown: nothing spills past the frame', f.out <= 0, f);
+  ok('running, it clips at its frame: nothing spills', f.clip === 'clip' && f.out <= 0, f);
   ok('the title keeps one line', f.titleH < 2 * f.font, f);
-
-  ok('a grow is no undo step', await page.locator('.home .dash-toolbar button', { hasText: 'Undo' }).isDisabled());
-
-  const g = await drag(page, card(ACT).locator('.edge-e'), -(floor + 4) * cell, 0, () => ghost(page));
-  ok('toward one column: the ghost stops at the floor', g && g.refused && g.text === floor + ' × ' + ah + ' · minimum', g);
-  s = await stored();
-  ok('the release commits the floor', s[ACT].w === floor && s[ACT].x === 0, s[ACT]);
-  await card(ACT).locator('.handle.resize').focus();
-  await page.keyboard.press('ArrowLeft');
-  await page.waitForTimeout(100);
-  ok('the keyboard refuses too', (await stored())[ACT].w === floor && /minimum size/.test(await said()), await said());
-  f = await fit(ACT);
-  ok('at the floor: nothing spills, one-line title', f.out <= 0 && f.titleH < 2 * f.font, f);
-  s = await stored();
-  // Wedged between two cards it cannot widen; free rows below may still take its height.
-  ok('no room to widen: the card keeps its column and width', s[ACT + '#2'].x === 17 && s[ACT + '#2'].y === 0 && s[ACT + '#2'].w === 1, s[ACT + '#2']);
-  ok('its neighbors never move', JSON.stringify(s[F2]) === JSON.stringify(loaded[F2]) && JSON.stringify(s[F3]) === JSON.stringify(loaded[F3]), [s[F2], s[F3]]);
-  f = await fit(ACT + '#2');
-  ok('its surface clips the overflow at the frame', f.clip === 'clip', f);
-  const over = await card(ACT + '#2').evaluate((c) => {
-    const b = c.querySelector('.dash-body').getBoundingClientRect(), h = c.querySelector('.dash-head').getBoundingClientRect();
-    return [b.top + b.height / 2, h.top + h.height / 2].some((y) => { const hit = document.elementFromPoint(b.right + 10, y); return !!(hit && c.contains(hit)); });
-  });
-  ok('nothing of it, head or body, is drawn over the next card', !over);
-
-  s = await stored();
-  ok('a nest under its floor grows too', s['nest:1'].w > 2, s['nest:1']);
-  // Its subgrid's columns are its own (ph-nnl): eight columns hold an eight-cell member.
-  ok('a nest holds its widest member at that member width', s['nest:2'].w >= 8 && s['nest:2'].nest.map[F1].w === 8, s['nest:2']);
-  f = await page.locator('.home .dash-cell[data-id="' + F1 + '"]').evaluate((c) => {
-    const n = c.closest('.dash-grid').closest('.dash-body').getBoundingClientRect(), r = c.firstElementChild.getBoundingClientRect();
-    return { inside: r.right <= n.right + 0.5 && r.left >= n.left - 0.5 };
-  });
-  ok('the member lies inside the nest frame', f.inside, f);
-  await doneBtn(page).click();
-  await page.waitForTimeout(150);
   f = await fit('nest:1');
   ok('a long title truncates on one line', f.titleH < 2 * f.font && f.cut, f);
-  // Edit mode clips every card at its frame (a host's in-body chrome); running, only one under its floor clips.
-  ok('outside edit mode a fitting card does not clip, one under its floor does', (await fit(ACT)).clip === 'visible' && (await fit(ACT + '#2')).clip === 'clip',
-     [(await fit(ACT)).clip, (await fit(ACT + '#2')).clip]);
+  await editBtn(page).click();
+  await page.waitForSelector('.dash-toolbar');
+  await page.locator('.dash-toolbar .palette-toggle').click();
+  await page.waitForTimeout(200);
+  let r = await redState(page, [ACT, 'nest:1']);
+  ok('in edit mode both are red, below their minimum; Done is disabled', r.faults[ACT] === 'below its minimum' && r.faults['nest:1'] === 'below its minimum'
+     && r.hint === '2 cards red, not saved' && r.done === true, r);
+  await drag(page, card(ACT).locator('.edge-e'), 15 * cell, 0);
+  r = await redState(page, [ACT, 'nest:1']);
+  ok('a resize past its floor clears that card; the other still blocks the save', r.faults[ACT] === null && r.hint === '1 card red, not saved'
+     && (await stored())[ACT].w === 1, [r, (await stored())[ACT]]);
+  await drag(page, card('nest:1').locator(':scope > .dash-item > .edge-e'), 12 * cell, 0);
+  r = await redState(page, [ACT, 'nest:1']);
+  s = await stored();
+  ok('the last red cleared: Done returns and the layout saves at once', r.hint === null && r.done === false && s[ACT].w === 16 && s['nest:1'].w === 14,
+     [r, s[ACT], s['nest:1']]);
   await ctx.close();
 }
 
-// The measured height binds a resize that changes height: alone on the grid, so no neighbor's rows inflate its own.
+// A shorter drag than the content trims it and draws red; the store keeps the last valid height.
 {
   const ACT = (CONTROLS.find((c) => c.key === 'role:action.store') || CONTROLS.find((c) => c.kind === 'field' && c.field.widget === WIDGET.action)).key;
-  const { ctx, page, cell, stored, card } = await open({ [ACT]: { x: 0, y: 0, w: 8, h: 40 } });
-  const rows = () => card(ACT).evaluate((c, k) => c.getBoundingClientRect().height / k, cell);
-  const gh = await drag(page, card(ACT).locator('.edge-s'), 0, -38 * cell, () => ghost(page));
-  const s = (await stored())[ACT];
-  ok('a shorter drag stops at the content height', gh && gh.refused && s.h < 40 && s.h > 2 && await rows() <= s.h + 0.02, [gh, s, await rows()]);
+  const { ctx, page, cell, stored, card } = await open({ [ACT]: { x: 0, y: 0, w: 8, h: 16 } });
+  const gh = await drag(page, card(ACT).locator('.edge-s'), 0, -12 * cell, () => ghost(page));
+  ok('a shorter drag follows the pointer, no refusal', gh && !gh.refused && /^8 × [2-5]( · horizontal)?$/.test(gh.text), gh);
+  ok('it is red and the store keeps 16 rows', (await redState(page, [ACT])).faults[ACT] === 'below its minimum' && (await stored())[ACT].h === 16);
   await ctx.close();
 }
 
@@ -782,6 +792,95 @@ console.log('modes');
     ok(tag + 'the strip tag is muted text on a quiet line, never red (ph-r2m)', tagTone[0] === MUT && tagTone[1] === LINE2 && !tagTone.includes(BAD), tagTone);
     await ctx.close();
   }
+}
+
+// ---- chrome: right-click add, a card body moves its card, no text selection, the footer over the shade (ph-cxvc) ----
+console.log('chrome');
+{
+  const { ctx, page, cell, stored, card, grid } = await open({ [F1]: { x: 0, y: 0, w: 10, h: 8 }, [SLIDER]: { x: 14, y: 8, w: 12, h: 8 } }, { h: 700 });
+  const gb = await grid.boundingBox();
+  const gpad = await grid.evaluate((g) => parseFloat(getComputedStyle(g).paddingLeft));
+  const px = gb.x + gpad + 14.5 * cell, py = gb.y + 2.5 * cell;
+  await page.mouse.click(px, py, { button: 'right' });
+  await page.waitForTimeout(150);
+  const menu = page.locator('.palette.menu');
+  const mb = await menu.boundingBox().catch(() => null);
+  ok('right-click on the grid opens the add menu at the pointer', !!mb && Math.abs(mb.x - px) < 2 && Math.abs(mb.y - py) < 2, [mb, px, py]);
+  ok('the menu lists what the palette lists', await menu.locator('li[data-key]').count() === await page.locator('.palette:not(.menu) li[data-key]').count()
+     || await page.locator('.palette:not(.menu)').count() === 0);
+  await menu.evaluate((m) => m.querySelectorAll('details').forEach((d) => { d.open = true; }));
+  await menu.locator('li[data-key="' + F2 + '"] > button').first().click();
+  await page.waitForTimeout(400);
+  let s = await stored();
+  ok('a pick lands at the right-clicked cell, valid, and the menu closes', s[F2] && s[F2].x === 14 && s[F2].y === 2 && await menu.count() === 0
+     && (await redState(page, [F2])).faults[F2] === null, [s[F2], await redState(page, [F2])]);
+  await page.mouse.click(px, py + 20 * cell > gb.y + gb.height ? py : py + 20 * cell, { button: 'right' });
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok('Escape closes the menu', await menu.count() === 0);
+
+  // (4) A press on the card's own surface that travels moves the card; a press on a control in it does not.
+  // A point on the card's own surface: no control, no resize zone under it.
+  const spot = await card(F1).locator(':scope > .dash-item > .dash-body').evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    for (let y = r.top + 20; y < r.bottom - 20; y += 6) for (let x = r.left + 20; x < r.right - 20; x += 6) {
+      const t = document.elementFromPoint(x, y);
+      if (t && b.contains(t) && !t.closest('input, select, textarea, button, a, summary, [role=slider], [role=button], [role=switch], [tabindex="0"], .edge')) return { x, y };
+    }
+    return null;
+  });
+  await page.mouse.move(spot.x, spot.y);
+  await page.mouse.down();
+  await page.mouse.move(spot.x, spot.y + 12 * cell, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  s = await stored();
+  ok('a drag on the card body moves the card', s[F1].x === 0 && s[F1].y === 12, s[F1]);
+  // A control the pointer really reaches (a dual range's track is the card; its inputs are not).
+  await card(SLIDER).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const sl = JSON.stringify((await stored())[SLIDER]);
+  const hit = await card(SLIDER).locator(':scope > .dash-item > .dash-body').evaluate((b) => {
+    for (const c of b.querySelectorAll('input, select, button, [role=slider], [role=switch]')) {
+      const r = c.getBoundingClientRect();
+      const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (t && t.closest('input, select, button, [role=slider], [role=switch]')) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    return null;
+  });
+  if (hit) {
+    await page.mouse.move(hit.x, hit.y);
+    await page.mouse.down();
+    await page.mouse.move(hit.x + 3 * cell, hit.y, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    ok('a press on a control in the card keeps it: the card stays', JSON.stringify((await stored())[SLIDER]) === sl, (await stored())[SLIDER]);
+  } else ok('the field card holds a control to press', false);
+
+  // (2) A drag across chrome selects no text; inputs stay selectable.
+  const hint = await page.locator('.home .dash-toolbar .dash-hint').boundingBox();
+  const pill = await page.locator('nav.rail .sub-layout[data-layout="Default"]').boundingBox();
+  await page.mouse.move(pill.x + 4, pill.y + pill.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hint.x + hint.width - 2, hint.y + hint.height / 2, { steps: 10 });
+  await page.mouse.up();
+  const sel = await page.evaluate(() => [String(window.getSelection()), getComputedStyle(document.querySelector('.home .dash-toolbar')).userSelect,
+    getComputedStyle(document.querySelector('.home .dash-head')).userSelect, getComputedStyle(document.querySelector('nav.rail')).userSelect,
+    getComputedStyle(document.querySelector('.home .layout-json')).userSelect]);
+  ok('a drag from a sidebar pill across cards to the footer selects no text; chrome is user-select none, inputs text',
+     sel[0] === '' && sel[1] === 'none' && sel[2] === 'none' && sel[3] === 'none' && sel[4] === 'text', sel);
+
+  // (3) The edit footer sits over the scroll shade and casts its own.
+  await page.evaluate(() => document.querySelector('.home').closest('[data-shade]')?.scrollTo(0, 0));
+  await page.waitForTimeout(200);
+  const foot = await page.evaluate(() => {
+    const sc = document.querySelector('.home').closest('[data-shade]');
+    const t = document.querySelector('.home .dash-toolbar');
+    return { bottom: sc && sc.hasAttribute('data-shade-bottom'), shade: sc && Number(getComputedStyle(sc, '::after').zIndex),
+      bar: Number(getComputedStyle(t).zIndex), cast: getComputedStyle(t).boxShadow };
+  });
+  ok('the footer stacks over the scroll shade and casts its own while the page scrolls on', foot.bottom && foot.bar > foot.shade && foot.cast !== 'none', foot);
+  await ctx.close();
 }
 
 ok('no page errors', pageErrors.length === 0, pageErrors);

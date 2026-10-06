@@ -530,6 +530,15 @@ if (!LIVE) {
   });
   ok('surfaces: a nest is one sunken surface holding cards', tones.nest && tones.member, tones);
   ok('surfaces: the home with a nest passes the rule', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
+  // A nest never grows to fit (ph-cxvc): a member that overflows it reds it until it is resized.
+  const nestGrip = page.locator('.home .dash-cell[data-id="' + nestId + '"] > .dash-item > .dash-head .handle.grab');
+  for (let i = 0; i < 40 && await page.locator('.home .dash-item.fault').count(); i++) {
+    await nestGrip.focus();
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.waitForTimeout(40);
+  }
+  ok('build: a nest resized to hold its member clears the red and Done returns', await page.locator('.home .dash-item.fault').count() === 0
+     && !(await doneBtn(page).isDisabled()));
   await doneBtn(page).click();
   await page.reload();
   await boot(page, 1280);
@@ -551,6 +560,22 @@ if (!LIVE) {
   await cell.locator('input[aria-label^="' + edge[0] + ' of"]').dispatchEvent('change');
   await cell.locator('select[aria-label^="Presentation of"]').selectOption('knob');
   await page.waitForTimeout(200);
+  // A look whose content outgrows the card reds it (ph-cxvc, no grow): arrows step it into free rows below the
+  // other cards, then Shift+ArrowDown sizes it to fit.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('look: a knob taller than its card reds it', /below its minimum/.test(await cell.locator(':scope > .dash-item').getAttribute('title') || ''));
+  for (let i = 0; i < 20; i++) { await cell.locator('.handle.grab').focus(); await page.keyboard.press('ArrowDown'); }
+  await page.waitForTimeout(150);
+  const rowsAt = [];
+  for (let i = 0; i < 20 && await page.locator('.home .dash-item.fault').count(); i++) {
+    await cell.locator('.handle.grab').focus();
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.waitForTimeout(120);
+    rowsAt.push(await cell.evaluate((c) => c.style.gridRow));
+  }
+  ok('look: the knob card sized to its content saves', await page.locator('.home .dash-item.fault').count() === 0,
+     [rowsAt, await page.$$eval('.home .dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.title]))]);
   await doneBtn(page).click();
   await page.reload();
   await boot(page, 1280);

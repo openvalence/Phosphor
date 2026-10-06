@@ -17,18 +17,31 @@
    *   open sections and the page scrolls, never the palette; the grid
    *   toolbar's Modules toggle (dashboard.svelte.js `palette`) puts it away
    *   so the cards under it can be reached.
+   * - With `menu` ({x, y} client px) it is the grid's right-click add menu
+   *   instead: the same list at the pointer, closed by a pick, Escape or a
+   *   press outside (`onclose`), never the overlay's state.
    */
   import { placeable, MODULE_MIME } from '../model/grid.js';
   import { palette } from '../model/dashboard.svelte.js';
 
-  let { entries, placed, nests = [], onadd, onremove } = $props();
+  let { entries, placed, nests = [], onadd, onremove, menu = null, onclose = null } = $props();
 
   let q = $state('');
   let into = $state('');
   $effect(() => {
+    if (menu) return;
     palette.shown = true;
     return () => { palette.shown = false; };
   });
+  let box = $state();
+  // Opens downward from the pointer, upward when the pointer is in the lower half.
+  const place = $derived(menu && (menu.y > innerHeight / 2
+    ? 'left:' + Math.min(menu.x, innerWidth - 336) + 'px;bottom:' + (innerHeight - menu.y) + 'px;max-height:' + (menu.y - 16) + 'px'
+    : 'left:' + Math.min(menu.x, innerWidth - 336) + 'px;top:' + menu.y + 'px;max-height:' + (innerHeight - menu.y - 16) + 'px'));
+  function dismiss(e) {
+    if (!menu) return;
+    if (e.type === 'keydown' ? e.key === 'Escape' : box && !box.contains(e.target)) onclose && onclose();
+  }
   const target = $derived(nests.some((n) => n.id === into) ? into : '');
   const sections = $derived.by(() => {
     const needle = q.trim().toLowerCase();
@@ -48,8 +61,19 @@
   }
 </script>
 
-{#if palette.open}
+<svelte:window onpointerdown={dismiss} onkeydown={dismiss} />
+
+{#if menu}
+<section class="palette surface-card menu" role="dialog" aria-label="Add a module" style={place} bind:this={box}>
+  {@render list()}
+</section>
+{:else if palette.open}
 <section class="palette surface-card" aria-label="Module palette" bind:offsetHeight={palette.h}>
+  {@render list()}
+</section>
+{/if}
+
+{#snippet list()}
   <div class="palette-bar">
     <input class="palette-filter" type="search" placeholder="Search modules or looks" aria-label="Search modules" bind:value={q} />
     {#if nests.length}
@@ -89,8 +113,7 @@
       </ul>
     </details>
   {/each}
-</section>
-{/if}
+{/snippet}
 
 <style>
   /* Over the grid, out of flow: anchored to the top grid's top right
@@ -108,6 +131,8 @@
   @supports (top: anchor(top)) {
     .palette { position-anchor: --dash-grid; top: anchor(top); right: anchor(right); margin: 0; }
   }
+  /* The right-click menu: fixed at the pointer, over the grid and its footer; a long list scrolls inside it. */
+  .palette.menu { position: fixed; z-index: 30; top: auto; right: auto; bottom: auto; overflow-y: auto; }
   @keyframes fade-in { from { opacity: 0; } }
   :global(html:not(.still)) .palette { animation: fade-in var(--t-move, 200ms) var(--ease-out, ease-out); }
   .palette-bar {

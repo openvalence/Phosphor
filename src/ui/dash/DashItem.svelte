@@ -23,11 +23,11 @@
    * the operator did (pointer positions, key presses) through callback
    * props, bound per-item by the parent's #each loop.
    *
-   * The grab handle is the ONLY draggable surface -- dashboard cards hold
-   * sliders, buttons and toggles, and a draggable card body would steal
-   * pointer gestures from every control inside it. `touch-action: none` is
-   * scoped to the two handles alone so the page still scrolls normally on a
-   * phone when you touch anywhere else on a card.
+   * In edit mode the whole card moves it (operator ruling 2026-10-06), except
+   * a press that a child takes (OWN: form controls, ARIA widgets, a resize
+   * edge, a nested grid, a plugin's body): the move starts only after the
+   * pointer travels, so a child's click still lands. Stacked (a phone) the
+   * grip alone moves, so the page still scrolls from a card.
    *
    * Both handles report raw client positions; DashGrid alone maps them to
    * cells, because only it knows the grid's tracks.
@@ -70,11 +70,18 @@
     // Edit-mode selection: a click on the grip selects; Shift, Ctrl or Cmd adds.
     selected = false,
     onselect = null,
-    // Under its content floor with no room to grow (DashGrid): the surface clips.
+    // Under its content floor (DashGrid): the surface clips.
     clip = false,
+    // Edit mode, overlapping or under its floor (DashGrid): the one-fragment reason; the card draws red.
+    fault = null,
   } = $props();
 
   const anchor = '--dash-card-' + ++seq;
+  // Presses a child takes; anything else on the card moves it in edit mode (a label too: a click on it still lands).
+  const OWN = 'input, select, textarea, button, a[href], summary, [contenteditable], [draggable="true"], [popover], .edge, '
+    + '[role=slider], [role=button], [role=switch], [role=checkbox], [role=radio], [role=tab], [role=separator], [role=textbox], '
+    + '[role=spinbutton], [role=combobox], [role=listbox], [role=application], [tabindex]:not([tabindex="-1"]):not(.dash-title)';
+  const MOVE_PX = 4;
   // A self-labeled control (item.selfLabeled: it names itself, as a field or a
   // safety op does) is bare by default (ph-w4r): its card label shows only
   // when the look opts in (look.label true).
@@ -142,6 +149,30 @@
   let renaming = $state(false);
   const toTitle = () => queueMicrotask(() => itemEl.querySelector('h3.dash-title')?.focus());
   const renameFocus = (el) => { if (renaming) { el.focus(); el.select(); } };
+  // ---- the card's own surface: a press that travels MOVE_PX moves the card ----
+  let press = null;
+  const movable = $derived(editing && !stack && !open);
+  function onCardPointerDown(e) {
+    if (!movable || (e.button !== undefined && e.button !== 0)) return;
+    const t = e.target;
+    if (t.closest('.dash-item') !== itemEl || t.closest(OWN) || t.classList.contains('dash-grid')
+      || ((item.kind === 'plugin' || item.hero?.plugin) && bodyEl.contains(t))) return;
+    press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  }
+  function onCardPointerMove(e) {
+    if (!press || e.pointerId !== press.id) return;
+    if (!itemEl.hasPointerCapture(e.pointerId)) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < MOVE_PX) return;
+      itemEl.setPointerCapture(e.pointerId);
+      ongrabstart && ongrabstart(press.x, press.y);
+    }
+    ongrabmove && ongrabmove(e.clientX, e.clientY);
+  }
+  function onCardPointerUp(e) {
+    if (!press || e.pointerId !== press.id) return;
+    press = null;
+    if (itemEl.hasPointerCapture(e.pointerId)) { itemEl.releasePointerCapture(e.pointerId); ongrabend && ongrabend(); }
+  }
   function onGrabKeyDown(e) {
     const key = e.key;
     if (key === 'F2' && item.retitle) { e.preventDefault(); const t = itemEl.querySelector('.dash-title-edit'); t?.focus(); t?.select(); return; }
@@ -187,7 +218,10 @@
 
 <svelte:window onkeydown={closeOnEscape} />
 
-<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip class:engaged bind:this={itemEl}
+<div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip class:engaged class:fault={!!fault} class:movable bind:this={itemEl}
+     title={fault} role="presentation" onpointerdown={onCardPointerDown} onpointermove={onCardPointerMove}
+     onpointerup={onCardPointerUp} onpointercancel={onCardPointerUp}
+     onlostpointercapture={() => { if (press) { press = null; ongrabend && ongrabend(); } }}
      style={'anchor-name:' + anchor + ';--card:' + anchor + ';--tools:' + tools}>
   {#if editing || !bare}
   <div class="dash-head card-head" class:over={bare}>
@@ -365,6 +399,14 @@
     outline: 2px solid var(--highlight);
     box-shadow: 0 0 18px 4px rgba(var(--highlight-rgb), .35);
   }
+  /* Red (DESIGN §10.6): an overlap or a card under its floor, the layout unsaved until it clears. */
+  .dash-item.fault > .dash-body {
+    border-color: var(--warn);
+    background-image: linear-gradient(rgba(var(--warn-rgb), .14), rgba(var(--warn-rgb), .14));
+  }
+  /* Edit mode: the card is its own move handle; touch pans from the gaps between cards. */
+  .dash-item.movable { cursor: grab; touch-action: none; }
+  .dash-item.movable :where(input, select, textarea, button, a, label, [role]) { cursor: auto; }
   /* Selection is highlight; intent means commanded (THEMES). */
   .dash-item.selected { outline: 2px solid var(--highlight); }
   /* An item with `retitle` (a nest) names itself in place, in edit mode, at
