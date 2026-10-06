@@ -444,7 +444,7 @@
           <span class="evkind">{edgeText}</span>
           <span class="evage">{ageText(now - latestSafety.at)}</span>
           {#if safetyStale}<span class="evtag">stale</span>{/if}
-          {#if unreadSafety}<span class="evtag">{unreadSafety} new</span>{/if}
+          {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword"> new</span></span>{/if}
         </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
@@ -816,7 +816,10 @@
      the tags yield first (ph-44q). */
   .evkind { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .evkind::first-letter { text-transform: uppercase; }
-  .evage, .evtag { flex: 0 1000 auto; min-width: 0; overflow: hidden; }
+  .evage, .evtag { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .evtag { flex: 0 0 auto; }
+  /* Handheld keeps the count, drops the word. */
+  @media (max-width: 479px) { .evword { display: none; } }
   .evage { font-family: var(--mono); font-size: 11px; color: var(--tx-mut); }
   .evtag {
     font-family: var(--mono);
