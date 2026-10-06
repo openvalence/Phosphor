@@ -88,6 +88,10 @@ Import-Certificate -FilePath src-tauri\target\msix\test.cer -CertStoreLocation C
 ```
 
 Then double-click the `.msix` or run `Add-AppxPackage src-tauri\target\msix\phosphor-x86_64.msix`.
+Or run `install-test-cert.ps1`, which `--test-sign` copies beside the package: it
+elevates itself, imports the `.cer` next to it into `LocalMachine\TrustedPeople`, and
+installs the `.msix` beside it (`-NoInstall` to trust only). Ship the three files
+together when handing a test build to someone.
 The current user's TrustedPeople store is not enough (0x800B0109). Without
 admin but with Developer Mode on, `Add-AppxPackage -Register src-tauri\target\msix\layout\AppxManifest.xml`
 installs the unsigned layout in place; a rebuild replaces that folder, so
