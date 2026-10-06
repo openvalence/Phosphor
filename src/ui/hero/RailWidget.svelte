@@ -77,10 +77,13 @@
   import { askConfirm } from '../confirm.svelte.js';
   import { writeSetting, sendCommand, displayValue, statusOf, shadowOf, STATUS } from '../../model/shadow.svelte.js';
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
+  import { heroBar } from './heroBar.svelte.js';
+  import { still, isStill } from '../still.svelte.js';
   import { ACCENT, ac } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
   import { deferring } from '../defer.js';
+  import { modStep, dragGain, snap as modSnap } from '../../model/nudge.js';
   import PlanStrip from '../widgets/PlanStrip.svelte';
   import { CH_CONTROL_OWNER } from '../../../../Valence/clients/js/index.js';
 
@@ -116,7 +119,7 @@
     return (machine.link.roles | 0) >= (e.access | 0);
   }
 
-  // A Shift-drag of the window holds its edges here (defer.js) until release.
+  // An Alt-drag of the window holds its edges here (defer.js) until release.
   let pend = $state(null); // null | {min?, max?}
   const minVal = $derived(pend && pend.min != null ? pend.min : displayValue(min, sampleOf(min)));
   const maxVal = $derived(pend && pend.max != null ? pend.max : displayValue(max, sampleOf(max)));
@@ -432,7 +435,12 @@
       get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
       get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
+      // A scrub or window drag in flight keeps the pop-up open.
+      get busy() { return moveDragging || dragMode !== null; },
       get flip() { return flip ? flipCtl : null; }, get playing() { return planShown; }, jog,
+      // The mini rail's window and live position, as screen fractions.
+      get haveWindow() { return haveWindow; }, get bandL() { return bandL; }, get bandR() { return bandR; },
+      get posFrac() { return fresh && posDisplay != null ? pct(posDisplay) : null; },
     };
     return () => { readout = null; };
   });
@@ -443,16 +451,7 @@
   // Reactive, not a one-time read: a preference toggled mid-session (T25 —
   // motion must honor a LIVE change, no reload) must reach the rAF loop
   // below, which reads this on every frame.
-  let reducedMotion = $state((typeof window !== 'undefined' && window.matchMedia)
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false);
-  $effect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => { reducedMotion = mq.matches; };
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  });
+  const reducedMotion = $derived(still.on);
 
   $effect(() => {
     if (!hostEl || !canvasEl) return;
@@ -700,8 +699,15 @@
 
   let dragMode = $state(null); // null | 'min' | 'max' | 'band'
   let dragStartX = 0;
+  // The handheld pop-up draws the rail rotated 90 degrees (HeroStrip): travel runs down the screen.
+  const vertical = $derived(heroBar.popup);
+  // The orientation is latched at pointerdown: a pop-up closing mid-gesture must not remap the captured pointer.
+  let latched = null;
+  const isV = () => (latched ?? vertical);
+  const axis = (e) => (isV() ? e.clientY : e.clientX);
   let dragStartMin = 0;
   let dragStartMax = 0;
+  let dragCurMin = 0, dragCurMax = 0, dragG = 1;   // the last written edges; Shift's gain re-bases here
 
   /** The gate for one drag mode. Asked at grab AND on every move: a handle the
       machine disables mid-gesture (mask, link loss, tier change) must stop
@@ -713,9 +719,11 @@
   function startDrag(mode, e) {
     if (!dragAllowed(mode)) return;
     dragMode = mode;
-    dragStartX = e.clientX;
-    dragStartMin = minVal ?? lo;
-    dragStartMax = maxVal ?? hi;
+    latched = vertical;
+    dragStartX = axis(e);
+    dragStartMin = dragCurMin = minVal ?? lo;
+    dragStartMax = dragCurMax = maxVal ?? hi;
+    dragG = 1;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
     e.preventDefault();
   }
@@ -726,19 +734,25 @@
     // from a stale dragStartX would jump the window on re-enable.
     if (!dragAllowed(dragMode)) { dragMode = null; pend = null; return; }
     const rect = hostEl.getBoundingClientRect();
-    if (!rect.width) return;
-    const dv = dir * ((e.clientX - dragStartX) / rect.width) * span;
+    const len = isV() ? rect.height : rect.width;
+    if (!len) return;
+    // Shift: a tenth of the gain, relative to where Shift went down.
+    const g = dragGain(e, 1);
+    if (g !== dragG) { dragG = g; dragStartX = axis(e); dragStartMin = dragCurMin; dragStartMax = dragCurMax; }
+    const dv = dir * ((axis(e) - dragStartX) / len) * span * g;
     const out = {};
     if (dragMode === 'min') {
-      out.min = snap(clamp(dragStartMin + dv, lo, dragStartMax), min);
+      out.min = snap(clamp(modSnap(dragStartMin + dv, e, lo, hi), lo, dragStartMax), min);
     } else if (dragMode === 'max') {
-      out.max = snap(clamp(dragStartMax + dv, dragStartMin, hi), max);
+      out.max = snap(clamp(modSnap(dragStartMax + dv, e, lo, hi), dragStartMin, hi), max);
     } else if (dragMode === 'band') {
       const width = dragStartMax - dragStartMin;
-      const newMin = clamp(dragStartMin + dv, lo, hi - width);
+      const newMin = clamp(modSnap(dragStartMin + dv, e, lo, hi), lo, hi - width);
       out.min = snap(newMin, min);
       out.max = snap(newMin + width, max);
     }
+    if (out.min != null) dragCurMin = out.min;
+    if (out.max != null) dragCurMax = out.max;
     if (deferring(e)) { pend = out; return; }
     pend = null;
     writeEdges(out);
@@ -748,28 +762,41 @@
     if (out.max != null) writeSetting(max, out.max);
   }
 
-  // A held Shift-drag writes on release only; a cancelled pointer writes nothing.
+  // A held Alt-drag writes on release only; a cancelled pointer writes nothing.
   function endDrag(e) {
     const p = pend, mode = dragMode;
     pend = null;
     dragMode = null;
+    latched = null;
     if (p && mode && e.type === 'pointerup' && dragAllowed(mode)) writeEdges(p);
   }
 
+  // An arrow's sign on the value: the screen's travel direction (down in the
+  // vertical pop-up), or up/down on the value in the flat rail. 0: not an arrow.
+  function arrow(e) {
+    const k = e.key;
+    if (k === 'ArrowRight' || (vertical && k === 'ArrowDown')) return dir;
+    if (k === 'ArrowLeft' || (vertical && k === 'ArrowUp')) return -dir;
+    if (!vertical && k === 'ArrowUp') return 1;
+    if (!vertical && k === 'ArrowDown') return -1;
+    return 0;
+  }
+  // One key step from `base`: Ctrl lands on the adjacent decade multiple.
+  const stepTo = (e, base, sgn, step, a, b) => (e.ctrlKey ? modSnap(base, e, a, b, sgn, step) : base + sgn * step);
+
   function onBandKey(e) {
     if (!bandEnabled) return;
+    // Arrows go through arrow(): ArrowRight (ArrowDown when vertical) is the travel direction.
     const width = (maxVal ?? hi) - (minVal ?? lo);
     const step = min.step || max.step || Math.max(span / 100, 1e-6);
-    let dv = 0;
-    if (e.key === 'ArrowRight') dv = dir * step;
-    else if (e.key === 'ArrowLeft') dv = -dir * step;
-    else if (e.key === 'ArrowUp') dv = step;
-    else if (e.key === 'ArrowDown') dv = -step;
-    else if (e.key === 'Home') dv = lo - (minVal ?? lo);
-    else if (e.key === 'End') dv = hi - (maxVal ?? hi);
+    const sgn = arrow(e);
+    let nm;
+    if (sgn) nm = stepTo(e, minVal ?? lo, sgn, step, lo, hi);
+    else if (e.key === 'Home') nm = lo;
+    else if (e.key === 'End') nm = hi - width;
     else return;
     e.preventDefault();
-    const newMin = clamp((minVal ?? lo) + dv, lo, hi - width);
+    const newMin = clamp(nm, lo, hi - width);
     writeSetting(min, snap(newMin, min));
     writeSetting(max, snap(newMin + width, max));
   }
@@ -781,10 +808,8 @@
     const step = field.step || Math.max(span / 100, 1e-6);
     let target;
     const cur = which === 'min' ? (minVal ?? lo) : (maxVal ?? hi);
-    if (e.key === 'ArrowRight') target = cur + dir * step;
-    else if (e.key === 'ArrowLeft') target = cur - dir * step;
-    else if (e.key === 'ArrowUp') target = cur + step;
-    else if (e.key === 'ArrowDown') target = cur - step;
+    const sgn = arrow(e);
+    if (sgn) target = stepTo(e, cur, sgn, step, lo, hi);
     else if (e.key === 'Home') target = lo;
     else if (e.key === 'End') target = hi;
     else if (e.key === 'PageUp') target = cur + step * 10;
@@ -843,7 +868,7 @@
   // ---------------------------------------------------------------------------
   let moveDragging = $state(false);
   let moveDragValue = $state(null);
-  let moveHeld = $state(false); // a Shift-drag holding its jog until release (defer.js)
+  let moveHeld = $state(false); // an Alt-drag holding its jog until release (defer.js)
   let tapeBarEl = $state(null);
 
   // BUG FIX (tap/scrub not registering): the pointer handlers used to live on
@@ -880,11 +905,12 @@
   const tapeStripHiPct = $derived(haveWindow && !override ? bandR : 1);
 
   /** clientX -> commandable value, mapped against the STRIP's own width (not the whole assembly) so a short window strip still reads its full drag travel as [tapeLo,tapeHi]. */
-  function moveValueFromClientX(clientX) {
+  function moveValueFromPoint(e) {
     if (!tapeBarEl) return null;
     const rect = tapeBarEl.getBoundingClientRect();
-    if (!rect.width) return null;
-    const frac = clamp((clientX - rect.left) / rect.width, 0, 1);
+    const len = isV() ? rect.height : rect.width;
+    if (!len) return null;
+    const frac = clamp((axis(e) - (isV() ? rect.top : rect.left)) / len, 0, 1);
     return flipped ? tapeHi - frac * tapeSpan : tapeLo + frac * tapeSpan;
   }
 
@@ -900,23 +926,48 @@
     get lo() { return tapeLo; }, get hi() { return tapeHi; }, get windowed() { return haveWindow && !override; },
   };
 
+  let tapeAnchor = null;
   function onTapePointerDown(e) {
     if (!moveEnabled) return;
+    tapeAnchor = null;
+    latched = vertical;
     moveDragging = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* unsupported: still works via window fallback */ }
     onTapePointerMove(e);
     e.preventDefault();
   }
+  // Display only: a ripple spreads from the pointer along the tape and lights its
+  // tick lines as it passes. Added after the jog is requested; never gates it.
+  let ripples = $state([]);
+  let rippleId = 0, rippleAt = 0;
+  function spawnRipple(e) {
+    if (isStill() || !tapeBarEl) return;
+    const now = performance.now();
+    if (now - rippleAt < 140) return;
+    rippleAt = now;
+    const r = tapeBarEl.getBoundingClientRect();
+    const x = (isV() ? e.clientY - r.top : e.clientX - r.left) - 1;   // 1: the tape's border; the overlay starts at its padding box
+    ripples = [...ripples.slice(-2), { id: ++rippleId, x }];
+  }
   function onTapePointerMove(e) {
     if (!moveDragging) return;
-    const v = moveValueFromClientX(e.clientX);
+    const raw = moveValueFromPoint(e);
+    // Shift: a tenth of the gain relative to where it went down; Ctrl: the decade grid.
+    let v = raw;
+    if (raw != null) {
+      const g = dragGain(e, 1);
+      if (!tapeAnchor || tapeAnchor.g !== g) tapeAnchor = { raw, out: tapeAnchor ? moveDragValue : raw, g };
+      v = clamp(modSnap(tapeAnchor.out + (raw - tapeAnchor.raw) * g, e, tapeLo, tapeHi), tapeLo, tapeHi);
+    }
     moveDragValue = v;
     moveHeld = deferring(e);
     if (!moveHeld) requestMove(v);
+    spawnRipple(e);
   }
   function onTapePointerUp(e) {
     if (!moveDragging) return;
     moveDragging = false;
+    latched = null;
     const held = moveHeld;
     moveHeld = false;
     // A cancelled live drag still requeues; a cancelled held one sends nothing.
@@ -931,13 +982,12 @@
   // not a reproduction of anything the original did.
   function onTapeKey(e) {
     if (!moveEnabled) return;
+    // Arrows go through arrow(): ArrowRight (ArrowDown when vertical) is the travel direction.
     const step = (move && move.step) || Math.max(tapeSpan / 100, 1e-6);
     const cur = tapeVal ?? tapeLo;
     let v;
-    if (e.key === 'ArrowRight') v = cur + dir * step;
-    else if (e.key === 'ArrowLeft') v = cur - dir * step;
-    else if (e.key === 'ArrowUp') v = cur + step;
-    else if (e.key === 'ArrowDown') v = cur - step;
+    const sgn = arrow(e);
+    if (sgn) v = stepTo(e, cur, sgn, step, tapeLo, tapeHi);
     else if (e.key === 'PageUp') v = cur + step * 10;
     else if (e.key === 'PageDown') v = cur - step * 10;
     else if (e.key === 'Home') v = tapeLo;
@@ -1003,7 +1053,7 @@
              track same as anywhere else). -->
         <div class="rail-tape-track" bind:this={tapeTrackEl} title={moveEnabled || !moveReason ? HINT : moveReason}
              role="slider" tabindex={moveEnabled ? 0 : -1}
-             aria-label={'Jog: ' + labelFor(move)} aria-orientation="horizontal"
+             aria-label={'Jog: ' + labelFor(move)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
              aria-disabled={!moveEnabled}
              class:live={moveEnabled}
@@ -1014,6 +1064,10 @@
              onkeydown={onTapeKey}>
           <div class="rail-tape live" bind:this={tapeBarEl}
                style="left:{tapeStripLoPct * 100}%; width:{Math.max(0, (tapeStripHiPct - tapeStripLoPct) * 100)}%">
+            {#each ripples as rp (rp.id)}
+              <span class="rail-ripple" aria-hidden="true" style="--x:{rp.x}px"
+                    onanimationend={() => (ripples = ripples.filter((q) => q.id !== rp.id))}></span>
+            {/each}
             {#if !moveEnabled && moveReason}
               <span class="rail-tape-micro rail-reason">{moveReason}</span>
             {:else}
@@ -1076,7 +1130,7 @@
            class:disabled={!bandEnabled}
            class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}
-           aria-label="Stroke window" aria-orientation="horizontal"
+           aria-label="Stroke window" aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={lo} aria-valuemax={hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={bandLabel}
            aria-disabled={!bandEnabled}
@@ -1095,7 +1149,7 @@
       <div class="rail-band-handle lo"
            class:disabled={!minEnabled}
            role="slider" tabindex={minEnabled ? 0 : -1}
-           aria-label={labelFor(min)} aria-orientation="horizontal"
+           aria-label={labelFor(min)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={lo} aria-valuemax={maxVal ?? hi} aria-valuenow={minVal ?? lo}
            aria-valuetext={formatValue(min, minVal) + (unitOf(min) ? ' ' + unitOf(min) : '')}
            aria-disabled={!minEnabled}
@@ -1110,7 +1164,7 @@
       <div class="rail-band-handle hi"
            class:disabled={!maxEnabled}
            role="slider" tabindex={maxEnabled ? 0 : -1}
-           aria-label={labelFor(max)} aria-orientation="horizontal"
+           aria-label={labelFor(max)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
            aria-valuemin={minVal ?? lo} aria-valuemax={hi} aria-valuenow={maxVal ?? hi}
            aria-valuetext={formatValue(max, maxVal) + (unitOf(max) ? ' ' + unitOf(max) : '')}
            aria-disabled={!maxEnabled}
@@ -1163,7 +1217,7 @@
   .rail-panel {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--s) * 4px);
+    gap: var(--sp-2);
   }
 
   /* ---- input tape (disabled command surface) ------------------------------ */
@@ -1203,7 +1257,7 @@
     justify-content: center;
     border-radius: var(--r-s);
     overflow: hidden;
-    transition: left .25s ease, width .25s ease;
+    transition: left var(--t-move) var(--ease-out), width var(--t-move) var(--ease-out);
   }
   /* Disabled (fallback: no move role, or this session may not command) —
      inert gray strip, same shape as the live one so the rhythm survives. */
@@ -1225,6 +1279,29 @@
     box-shadow: inset 0 2px 6px rgba(var(--shade-rgb), .6);
   }
   .rail-tape-assembly.drag-live .rail-tape { transition: none; }
+  /* A ring from the pointer, inside the tape (above its background, under the
+     caption and pip): the same 7 px tick lines as the tape's own, brightened
+     and revealed only where the ring passes, so they stay in register. */
+  @property --rr { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  .rail-ripple {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, rgba(var(--intent-rgb), .7) 0 1px, transparent 1px 7px),
+      linear-gradient(rgba(var(--intent-rgb), .12), rgba(var(--intent-rgb), .12));
+    -webkit-mask-image: radial-gradient(ellipse var(--rr) 400% at var(--x) 50%, transparent 55%, #000 80%, transparent 100%);
+    mask-image: radial-gradient(ellipse var(--rr) 400% at var(--x) 50%, transparent 55%, #000 80%, transparent 100%);
+    animation: rail-ripple var(--t-slow) var(--ease-out) forwards;
+  }
+  @keyframes rail-ripple { from { --rr: 0px; opacity: 1; } to { --rr: 200px; opacity: 0; } }
+  :global(html.still) .rail-ripple { display: none; }
+  /* The pop-up turns the rail; its labels turn back. */
+  :global(.hero-inner.popup) .rail-endcap { transform: rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-ghost { transform: translateX(-50%) rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-win { transform: translateX(-50%) rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-win.edge, :global(.hero-inner.popup) .rail-win.flank { transform: rotate(-90deg); }
+  :global(.hero-inner.popup) .rail-band-label { transform: translate(-50%, -50%) rotate(-90deg); }
   .rail-tape-micro {
     font-size: max(11px, calc(var(--s) * 9px));
     letter-spacing: 0.18em;
@@ -1253,10 +1330,10 @@
     box-shadow: 0 0 10px rgba(var(--intent-rgb), .7);
     opacity: 0;
     pointer-events: none;
-    transition: opacity .1s ease, left .12s ease;
+    transition: opacity var(--t-quick), left var(--t-quick) ease;
   }
   .rail-tape-pip.on { opacity: 1; }
-  .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity .1s ease; }
+  .rail-tape-assembly.drag-live .rail-tape-pip { transition: opacity var(--t-quick); }
   /* ---- rail host ----------------------------------------------------------- */
   .spine-rail-host {
     position: relative;
@@ -1275,19 +1352,19 @@
   .rail-ruler-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .rail-endcap {
     position: absolute;
-    bottom: 2px;
+    bottom: var(--sp-1);
     font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
     pointer-events: none;
   }
-  .rail-endcap.lo { left: 4px; }
-  .rail-endcap.hi { right: 4px; }
+  .rail-endcap.lo { left: var(--sp-2); }
+  .rail-endcap.hi { right: var(--sp-2); }
   .rail-endcap.yield, .rail-ghost.yield { visibility: hidden; }
   /* The mid label rides the endcaps' line, clear of the tick row (ph-hjo). */
   .rail-ghost {
     position: absolute;
     left: 50%;
-    bottom: 2px;
+    bottom: var(--sp-1);
     transform: translateX(-50%);
     font-size: max(11px, 0.56rem);
     color: var(--tx-ghost);
@@ -1329,7 +1406,7 @@
     transform: translateY(-50%);
     pointer-events: none;
     background: repeating-linear-gradient(135deg, rgba(var(--bad-rgb), .22) 0 3px, rgba(var(--bad-rgb), .03) 3px 7px);
-    transition: clip-path .25s ease;
+    transition: clip-path var(--t-move) var(--ease-out);
     z-index: 1;
   }
 
@@ -1345,7 +1422,7 @@
     box-shadow: 0 0 14px rgba(var(--intent-deep-rgb), .16), inset 0 0 18px rgba(var(--intent-deep-rgb), .07);
     cursor: grab;
     touch-action: none;
-    transition: left .12s ease, width .12s ease;
+    transition: left var(--t-quick) ease, width var(--t-quick) ease;
   }
   .rail-band:active { cursor: grabbing; }
   .rail-band.pending { border-left-style: dashed; border-right-style: dashed; }
@@ -1366,7 +1443,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    padding: 1px 6px;
+    padding: 1px var(--sp-2);
     border-radius: var(--r-s);
     background: var(--bg-sunken);
     font-size: max(11px, 0.6rem);
@@ -1379,7 +1456,7 @@
      outward so they never overlap. */
   .rail-win {
     position: absolute;
-    bottom: 2px;
+    bottom: var(--sp-1);
     left: clamp(2.2em, var(--at), calc(100% - 2.2em));
     transform: translateX(-50%);
     font-size: max(11px, 0.56rem);
@@ -1387,8 +1464,8 @@
     pointer-events: none;
   }
   /* At the window's extremes the value takes the axis mark's spot. */
-  .rail-win.edge.lo { left: 4px; transform: none; }
-  .rail-win.edge.hi { left: auto; right: 4px; transform: none; }
+  .rail-win.edge.lo { left: var(--sp-2); transform: none; }
+  .rail-win.edge.hi { left: auto; right: var(--sp-2); transform: none; }
   .rail-win.flank.lo { left: max(var(--at), 3.2em); transform: translateX(-100%); }
   .rail-win.flank.hi { left: min(var(--at), calc(100% - 3.2em)); transform: none; }
   /* Handles are siblings of the band (not nested — each positions from its own
@@ -1409,7 +1486,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: left .12s ease;
+    transition: left var(--t-quick) ease;
   }
   /* The OG 12px zone is a mouse-era number. On a touch screen the INVISIBLE
      hit area widens to the tap floor — the 3px visible bar is unchanged, so

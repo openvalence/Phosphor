@@ -20,6 +20,7 @@
    *   (docs/COPY.md rule 4): the name carries one only while ellipsized.
    */
   import { untrack } from 'svelte';
+  import { isStill } from './still.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
   import { bytes, since, hubTitle } from '../model/format.js';
@@ -157,10 +158,6 @@
     // changes (rare, catalog-driven), so a mid-session preference flip must
     // reach `tick()` (below, on its own setInterval) some other way — the
     // media-query listener updates this closure variable live (T25).
-    const mq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
-    let reduceMotion = mq ? mq.matches : false;
-    const onMqChange = (e) => { reduceMotion = e.matches; };
-    if (mq) mq.addEventListener('change', onMqChange);
 
     const dpr = window.devicePixelRatio || 1;
     const cssW = AG_COLS * (AG_CELL + AG_GAP);
@@ -235,7 +232,7 @@
 
     function tick() {
       const frame = rows.map(sampleFrac);
-      if (reduceMotion) {
+      if (isStill()) {
         // Freeze the scroll animation but keep painting current values: every
         // column shows the same live reading instead of a moving history, so
         // the grid holds still while still being honest about "now".
@@ -256,7 +253,7 @@
     // own ticks are untracked by construction (async, outside the scope).
     untrack(tick);
     const id = setInterval(tick, 220);
-    return () => { clearInterval(id); if (mq) mq.removeEventListener('change', onMqChange); };
+    return () => { clearInterval(id); };
   });
 </script>
 
@@ -310,7 +307,7 @@
   .linkbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     height: calc(32px + var(--chrome-inset-top, 0px));
     padding: var(--chrome-inset-top, 0px) var(--gap) 0;
     background: var(--bg-raised);
@@ -332,7 +329,7 @@
   .header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     flex: 0 1 auto;
     min-width: 6ch;
     overflow: hidden;
@@ -365,13 +362,13 @@
   .chips {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
   }
   .chips.pinned { flex: none; margin-left: auto; }
   /* Whatever does not fit on the one line wraps below a clipped edge, so the
      optional chips shed from their tail at ANY width, first in the bar. */
   .chips.opt {
-    gap: 2em 6px;
+    gap: 2em var(--sp-2);
     min-width: 0;
     flex: 0 1000 auto;
     flex-wrap: wrap;
@@ -386,10 +383,10 @@
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-2);
     font-size: .62rem;
     font-weight: 400;
-    padding: 3px 6px;
+    padding: var(--sp-1) var(--sp-2);
     border-radius: var(--radius);
     background: var(--chip);
     border: 1px solid var(--chip-line);

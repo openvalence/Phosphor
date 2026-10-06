@@ -196,22 +196,23 @@
     min-width: var(--sb-w, max(var(--tap), 96px));
     width: var(--sb-w, auto);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: var(--sp-1) var(--sp-2) 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
     font-weight: 500;
-    font-size: .72rem;
+    font-size: max(11px, .54rem);
+    line-height: 1;
     white-space: nowrap;
     user-select: none;
     -webkit-touch-callout: none;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   /* Narrower than the strip's pair at 96px (2 x 96 + 6 + 2 x --gap): the
      op sheds the 96px floor and its text wraps; --tap still holds. */
   @media (max-width: 221px) {
-    .btn { min-width: var(--tap); padding: 2px 6px; white-space: normal; }
+    .btn { min-width: var(--tap); padding: var(--sp-1) var(--sp-2); white-space: normal; }
   }
   .btn:disabled { opacity: .4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
@@ -224,9 +225,9 @@
   .lbls > *, .hints > * { grid-area: 1 / 1; }
   .ghost { visibility: hidden; }
   .hints { height: 0; overflow: hidden; }
-  .state, .hints small { font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
+  .state, .hints small { line-height: 1; font-size: max(11px, .56rem); color: var(--tx-mut); font-weight: 400; }
   /* Never widens the box: no intrinsic width, stretched to the button. */
-  .state { contain: inline-size; align-self: stretch; min-height: 1.2em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .state { contain: inline-size; align-self: stretch; min-height: 1em; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   [data-shadow='overdue'] .state { color: var(--warn-ink, var(--warn)); }
   [data-shadow='fault'] .state { color: var(--warn-ink, var(--warn)); }
 
@@ -251,8 +252,5 @@
   }
   @keyframes hold-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
-  @media (prefers-reduced-motion: reduce) {
-    .btn { transition: none; }
-    .hold { animation: none; }
-  }
+  :global(html.still) .hold { animation: none; }
 </style>
