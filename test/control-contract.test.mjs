@@ -1232,7 +1232,7 @@ if (!LIVE) {
     }
     ok(cells + ' cells: no head children overlap', (await page.evaluate(OVERLAPS)).length === 0, await page.evaluate(OVERLAPS));
     ok(cells + ' cells: ' + (cells < 8 ? 'compact' : 'normal') + ' rung head gap',
-      await gapOf('slider') === (cells < 8 ? '4px' : '8px'), await gapOf('slider'));
+      Math.abs(parseFloat(await gapOf('slider')) - (cells < 8 ? 4.48 : 8.96)) < 0.05, await gapOf('slider'));
   }
   await setW(page, 280);
   const ctxT = await browser.newContext({ viewport: { width: 1400, height: 900 }, hasTouch: true });

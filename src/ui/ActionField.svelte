@@ -21,7 +21,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
-  let { action } = $props();
+  let { action, titled = false } = $props();   // titled: the composite supplies the heading
 
   const opLabel = (i) => optionLabel(action, i).replace(/_/g, ' ');
   const ops = $derived(action.options
@@ -87,7 +87,7 @@
   <!-- One fixed line in the head row for the ladder, else the gate (laws 3,
        5), as Field carries it: no state changes the card's height. -->
   <div class="field-head">
-    <span class="field-label">{labelFor(action)}</span>
+    {#if !titled}<span class="field-label">{labelFor(action)}</span>{/if}
     <span class="state" class:why={!statusText} role="status"
           title={statusText || reasons.join('; ') || undefined}>{statusText || reasons.join('; ')}</span>
   </div>
@@ -121,8 +121,8 @@
 </div>
 
 <style>
-  .action { display: flex; flex-direction: column; gap: 6px; }
-  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .action { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   /* Field's label face (.76rem, 500, --tx-mut). */
   .field-label {
     flex: 0 1 auto;
@@ -137,11 +137,18 @@
     text-transform: lowercase;
     letter-spacing: .04em;
   }
-  .ops { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ops { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   /* Hub labels render as sent (COPY rule 8). */
-  .ops button { min-height: var(--tap); padding: 0 14px; }
-  .payload { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--ink-dim); }
-  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] { min-height: var(--tap); width: 12ch; }
+  .ops button { min-height: var(--tap); padding: 0 var(--sp-4); }
+  .payload { display: flex; flex-direction: column; gap: var(--sp-2); font-size: .8rem; color: var(--ink-dim); }
+  /* The recess without .og-num: a draft is not the action's state, so no state frame. */
+  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] {
+    min-height: var(--tap); width: 100%; padding: 0 var(--sp-3);
+    border: 1px solid var(--line-1); border-radius: var(--radius); background: var(--screen);
+    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); color: var(--tx-val);
+    font-family: var(--mono); font-size: .9rem;
+  }
+  .payload input:focus { outline: none; border-color: var(--highlight); }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   /* Field's .ladder slot: basis 0, one clipped 14 px line. */
   .state {

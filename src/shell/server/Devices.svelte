@@ -14,7 +14,9 @@
    *   last value, dimmed, with the reason (law 8). Nothing is shown before the
    *   first answer (law 9).
    */
+  import { tick } from 'svelte';
   import { SCAN_S } from '../bp-server.js';
+  import { nameInput } from '../rename.js';
 
   let { s, bp } = $props();
 
@@ -30,6 +32,16 @@
   function toggle(d) {
     open[d.key] = !open[d.key];
     if (open[d.key] && d.connected) for (const c of sensors(d)) bp.read(d, c);
+  }
+  // F2 or a double-click on the name opens the page's input (the row opens first).
+  async function nameFocus(d, e) {
+    e.preventDefault();
+    if (d.kind === 'machine') return;
+    if (!open[d.key]) toggle(d);
+    await tick();
+    const input = document.querySelector('.dv-body input[data-dev="' + CSS.escape(d.key) + '"]');
+    input?.focus();
+    input?.select();
   }
   function rename(e, d) {
     const v = e.currentTarget.value;
@@ -49,7 +61,8 @@
 {#snippet device(d)}
   {@const fixed = d.kind === 'machine'}
   <li class="dv" data-kind={d.kind} data-on={d.connected}>
-    <button class="dv-head" aria-expanded={!!open[d.key]} onclick={() => toggle(d)}>
+    <button class="dv-head" aria-expanded={!!open[d.key]} onclick={() => toggle(d)}
+            onkeydown={(e) => { if (e.key === 'F2') nameFocus(d, e); }} ondblclick={(e) => nameFocus(d, e)}>
       <span class="dv-kind mono">{d.kind}</span>
       <span class="dv-name">{d.name}</span>
       <span class="dv-conn">{d.connected ? 'connected' : 'not connected'}</span>
@@ -66,7 +79,7 @@
         {:else}
           <div class="sp-row">
             <label class="sp-field">name
-              <input value={d.display_name ?? ''} placeholder={d.device_name}
+              <input use:nameInput data-dev={d.key} value={d.display_name ?? ''} placeholder={d.device_name}
                      disabled={op('rename', d)?.phase === 'pending'} onchange={(e) => rename(e, d)} />
             </label>
             {#if op('rename', d)?.reason}<span class="sp-ladder" data-phase={op('rename', d).phase}>{op('rename', d).reason}</span>{/if}

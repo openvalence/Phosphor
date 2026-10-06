@@ -63,13 +63,13 @@
 </div>
 
 <style>
-  .toy { display: flex; flex-direction: column; gap: 6px; height: 100%; overflow: auto; }
-  .toy-head, .toy-row { display: flex; align-items: center; gap: 8px; }
+  .toy { display: flex; flex-direction: column; gap: var(--sp-2); height: 100%; overflow: auto; }
+  .toy-head, .toy-row { display: flex; align-items: center; gap: var(--sp-3); }
   .toy-name { flex: 1 1 auto; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .toy-ctl { padding: 4px 6px; border-radius: var(--radius); }
+  .toy-ctl { padding: var(--sp-2) var(--sp-2); border-radius: var(--radius); }
   .toy-label { flex: 1 1 auto; color: var(--ink-dim); font-size: .82rem; }
   .toy-row input[type='range'] { flex: 1 1 auto; min-height: var(--tap); }
-  .toy-ms { display: flex; align-items: center; gap: 4px; font-size: .75rem; color: var(--ink-dim); }
+  .toy-ms { display: flex; align-items: center; gap: var(--sp-2); font-size: .75rem; color: var(--ink-dim); }
   .toy-ms input { width: 6em; min-height: var(--tap); }
   .stale { opacity: .45; }
   .toy-ladder { margin: 0; min-height: 1.2em; font-size: 11px; color: var(--ink-dim); }

@@ -58,6 +58,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKE
 import { CORE_CHANNEL, SAFETY_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 import { FLOOR_W, FLOOR_H } from '../src/model/rclass.js';
 import { compact } from '../src/model/format.js';
+import { STORE_KEY } from '../src/model/grid.js';
 
 const HTML = readFileSync(new URL('../dist/index.html', import.meta.url));
 const SHELL = await buildShellPage();
@@ -528,6 +529,90 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.screenshot({ path: process.env.RAIL_SHOT || 'test/evidence/responsive/rail-shade.png' });
     await fp.setViewportSize({ width: w, height: h });
     await fp.waitForTimeout(200);
+  }
+  if (w >= 960) {
+    // ph-lxea: saved layouts are Dash sub-items; the wrench on the selected one flips edit mode; Add layout is last.
+    await fp.click('nav.rail [data-tab-id="machine"]');
+    const rows = () => fp.$$eval('nav.rail .rail-sub [data-layout]', (e) => e.map((b) => b.dataset.layout + (b.hasAttribute('aria-current') ? '*' : '')));
+    ok(tag + ': Dash selects Default, listed first, with Add layout last', JSON.stringify(await rows()) === '["Default*"]'
+      && await fp.$eval('nav.rail .rail-sub', (e) => e.lastElementChild.textContent.trim()) === '+ Add layout', JSON.stringify(await rows()));
+    const wr = fp.locator('nav.rail .rail-wrench');
+    await wr.click();
+    const pressed = await wr.getAttribute('aria-pressed');
+    await wr.click();
+    ok(tag + ': the wrench toggles edit mode', pressed === 'true' && await wr.getAttribute('aria-pressed') === 'false', pressed);
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Bench');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': Add layout creates and selects a named layout', JSON.stringify(await rows()) === '["Default","Bench*"]', JSON.stringify(await rows()));
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Couch');
+    await fp.keyboard.press('Enter');
+    // Drag Couch's grip above Bench: the order persists across a reload.
+    const center = async (q) => { const b = await fp.locator(q).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+    const rowSel = (n) => 'nav.rail .sub-row:has([data-layout="' + n + '"])';
+    await fp.hover(rowSel('Couch'));
+    const [gx, gy] = await center(rowSel('Couch') + ' .sub-grip'), [, by] = await center('nav.rail [data-layout="Bench"]');
+    await fp.mouse.move(gx, gy); await fp.mouse.down(); await fp.mouse.move(gx, by - 4, { steps: 6 }); await fp.mouse.up();
+    ok(tag + ': dragging a grip reorders the layouts', JSON.stringify(await rows()) === '["Default","Couch*","Bench"]', JSON.stringify(await rows()));
+    const stored = await fp.evaluate((k) => JSON.parse(localStorage.getItem(k) || '{}').order, STORE_KEY);
+    ok(tag + ': the order is stored', JSON.stringify(stored) === '["Default","Couch","Bench"]', JSON.stringify(stored));
+    // Hold the x: 0.5 s deletes nothing, 1 s does; Default has neither grip nor x.
+    ok(tag + ': Default has no grip and no x', await fp.locator(rowSel('Default') + ' :is(.sub-grip, .sub-x)').count() === 0);
+    await fp.hover(rowSel('Bench'));
+    if (process.env.LAYOUT_SHOT) await fp.screenshot({ path: process.env.LAYOUT_SHOT, clip: { x: 0, y: 0, width: 420, height: 800 } });
+    const [xx, xy] = await center(rowSel('Bench') + ' .sub-x');
+    await fp.mouse.move(xx, xy); await fp.mouse.down(); await fp.waitForTimeout(500); await fp.mouse.up();
+    const half = (await rows()).length;
+    await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
+    ok(tag + ': the x held 0.5 s deletes nothing, held 1 s deletes', half === 3 && (await rows()).map((r) => r.replace('*', '')).join() === 'Default,Couch', half + ' / ' + JSON.stringify(await rows()));
+    // ph-mdqo.10: F2 and double-click rename; Escape reverts; Default refuses.
+    await fp.dblclick('nav.rail [data-layout="Couch"]');
+    const live = () => fp.evaluate(() => { const a = document.activeElement; return a.matches('.sub-input') ? [a.selectionStart, a.selectionEnd, a.value] : null; });
+    ok(tag + ': a double-click opens the layout name with its text selected', JSON.stringify(await live()) === '[0,5,"Couch"]', JSON.stringify(await live()));
+    await fp.keyboard.type('Sofa');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': Enter keeps the new layout name', (await rows()).join() === 'Default,Sofa*', JSON.stringify(await rows()));
+    await fp.focus('nav.rail [data-layout="Sofa"]');
+    await fp.keyboard.press('F2');
+    await fp.keyboard.type('Zed');
+    await fp.keyboard.press('Escape');
+    ok(tag + ': F2 then Escape reverts', (await rows()).join() === 'Default,Sofa*', JSON.stringify(await rows()));
+    await fp.dblclick('nav.rail [data-layout="Default"]');
+    ok(tag + ': Default refuses to rename', await fp.locator('nav.rail .sub-input').count() === 0);
+    await fp.click('nav.rail [data-tab-id="machine"]');
+    ok(tag + ': Dash selects Default again', (await rows()).join() === 'Default*,Sofa', JSON.stringify(await rows()));
+    await fp.click('nav.rail .sub-layout.add');
+    await fp.keyboard.type('Sofa');
+    await fp.keyboard.press('Enter');
+    ok(tag + ': a taken name stays open, marked invalid', await fp.locator('nav.rail .sub-input[aria-invalid="true"]').count() === 1);
+    await fp.keyboard.press('Escape');
+    // Deleting the active layout with the wrench on turns edit mode off and moves focus to a neighbor.
+    await fp.click('nav.rail [data-layout="Sofa"]');
+    await fp.click('nav.rail .rail-wrench');
+    await fp.hover(rowSel('Sofa'));
+    const [dx, dy] = await center(rowSel('Sofa') + ' .sub-x');
+    await fp.mouse.move(dx, dy); await fp.mouse.down(); await fp.waitForTimeout(1250); await fp.mouse.up();
+    ok(tag + ': deleting the active layout ends edit mode', (await rows()).join() === 'Default*' && await fp.locator('nav.rail .rail-wrench').getAttribute('aria-pressed') === 'false', JSON.stringify(await rows()));
+  }
+  if (w >= 960) {
+    // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.
+    let hit = null;
+    for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
+      await fp.click('[data-tab-id="' + id + '"]');
+      await fp.waitForTimeout(150);
+      if (await fp.locator('.rail-pill .rail-ops .reset').count()) { hit = id; break; }
+    }
+    ok(tag + ': a category page grows its pill with the operations strip', !!hit, String(hit));
+    if (hit) {
+      const strip = await fp.evaluate(() => { const p = document.querySelector('.rail-pill.ops'), o = p.querySelector('.rail-ops'), t = p.querySelector('.rail-tab');
+        return { inside: p.contains(o), labels: [...o.querySelectorAll('button')].map((b) => b.textContent.trim().replace(/^\d+/, '#')), cols: getComputedStyle(o).gridTemplateColumns.split(' ').length,
+          foot: getComputedStyle(document.querySelector('main.pane .page-foot')).display, pills: document.querySelectorAll('.rail-pill.ops').length,
+          inset: o.getBoundingClientRect().left - t.getBoundingClientRect().left }; });
+      ok(tag + ': the strip sits inside the pill, one pill, no page footer', strip.inside && strip.pills === 1 && strip.foot === 'none' && strip.cols === strip.labels.length && strip.labels.at(-1) === 'reset', JSON.stringify(strip));
+    }
+    await fp.click('nav.rail .rail-collapse');
+    await fp.waitForTimeout(150);
   }
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;

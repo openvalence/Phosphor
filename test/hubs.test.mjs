@@ -157,6 +157,30 @@ console.log('\n--- ph-dwy: a remembered hub on 8282 ---');
   await ctx.close();
 }
 
+console.log('\n--- ph-mdqo.10: a saved hub renames on F2 and double-click ---');
+{
+  const { ctx, page, errors } = await boot({
+    'phosphor.hubs': JSON.stringify([{ id: '127.0.0.1:8282', host: '127.0.0.1', port: 8282, name: 'bench', nickname: 'Bench', lastSeen: Date.now() - 60000 }]),
+    shell_mode: 'ws',
+  }, []);
+  await untilLive(page);
+  const nick = 'section[aria-labelledby="hp-saved"] .nick input';
+  const sel = () => page.evaluate(() => { const a = document.activeElement; return a.matches('.nick input') ? [a.selectionStart, a.selectionEnd, a.value] : null; });
+  await page.focus('section[aria-labelledby="hp-saved"] li button:not([disabled])');
+  await page.keyboard.press('F2');
+  ok('F2 on the row opens the nickname with its text selected', JSON.stringify(await sel()) === '[0,5,"Bench"]', JSON.stringify(await sel()));
+  await page.keyboard.type('Rig');
+  await page.keyboard.press('Escape');
+  ok('Escape reverts and stores nothing', (await savedHub(page)).nickname === 'Bench' && await page.inputValue(nick) === 'Bench', await page.inputValue(nick));
+  await page.dblclick('section[aria-labelledby="hp-saved"] .meta');
+  ok('a double-click on the row opens it too', JSON.stringify(await sel()) === '[0,5,"Bench"]', JSON.stringify(await sel()));
+  await page.keyboard.type('Rig');
+  await page.keyboard.press('Enter');
+  ok('Enter keeps the new name', (await savedHub(page)).nickname === 'Rig', (await savedHub(page)).nickname);
+  ok('no page errors', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
 console.log('\n--- ph-dwy: the host field keeps the dialed port ---');
 {
   const before = { ...opens };
