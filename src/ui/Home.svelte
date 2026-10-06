@@ -31,7 +31,7 @@
   import { view } from '../model/viewport.svelte.js';
   import { specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { SAFETY_OP } from '../../../Valence/clients/js/index.js';
-  import { placeableControls, surfacedFields, minCells, WIDGET } from '../model/settings.js';
+  import { placeableControls, surfacedFields, minCells, textFloored, WIDGET } from '../model/settings.js';
   import { labelFor } from '../model/format.js';
 
   let { model, heroes } = $props();
@@ -73,7 +73,7 @@
     const fields = controls.filter((x) => x.kind === 'field');
     for (const sec of [...model.categories.map((c) => c.label), 'Other fields']) {
       for (const c of fields.filter((x) => (catOf.get(x.field.uid) || 'Other fields') === sec)) {
-        put(c.key, labelFor(c.field), sec, { kind: 'field', control: c, fields: [c.field], min: minOf(c), selfLabeled: true });
+        put(c.key, labelFor(c.field), sec, { kind: 'field', control: c, fields: [c.field], min: minOf(c), floored: (look) => textFloored((look && look.pres) || c.presentations[0]), selfLabeled: true });
       }
     }
     return out;

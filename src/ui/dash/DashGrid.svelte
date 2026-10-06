@@ -17,7 +17,7 @@
    * Host hooks (the home passes them; a category page does not):
    * `ondelete(ids)` removes from the surface, `onduplicate(id) -> id` places a
    * second instance, `resolve(key) -> title|null` names a module member this
-   * view can draw. An item may carry `min(look, orientation)`, `selfLabeled`
+   * view can draw. An item may carry `min(look, orientation)`, `floored(look)`, `selfLabeled`
    * and, for a nest, `retitle(name)`. Internal: `ondragout` and `target` wire a
    * nest's subgrid to its parent; `picked` (bindable) is the selection count,
    * so a nest's bar yields its row to its subgrid's selection.
@@ -25,8 +25,10 @@
    * Constraints:
    * - A drag or resize is a preview (`pin`) until pointer-up; only the commit
    *   writes the layout, so every intermediate frame is cancelable (Escape).
-   *   Placements are absolute (grid.js place): the preview moves the dragged
-   *   card only, and a resize stops at a neighbor rather than pushing it.
+   *   Placements are absolute (grid.js place): the dragged card is laid
+   *   exactly where asked and a card it covers moves to the first free row
+   *   below (and returns when the drag moves on); a resize stops at a neighbor rather than
+   *   pushing it.
    * - An add (New nest, Insert, Duplicate) is committed at once, so the first
    *   free rect it was drawn at is where it stays.
    * - DOM order is reading order, frozen while a drag is in flight: moving the
@@ -35,8 +37,11 @@
    *   never as motion that could read as the machine. A card's first
    *   addition and the Layout menu fade in (opacity only, html.still off).
    * - A resize never goes below the item's floor: per dimension the larger
-   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
-   *   its measured content (grid.js floorOf): the ghost shows the refusal and
+   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one), the
+   *   seed's floor width `s0` (the long side when vertical; only for an item
+   *   whose `floored(look)` holds: text and number-row fields, composites,
+   *   heroes, nests; a knob, toggle, indicator, action or safety op keeps
+   *   its measured minimum) and its measured content (grid.js floorOf): the ghost shows the refusal and
    *   the live region says it, never a silent clamp. The measured height
    *   binds at widths no wider than it was measured at, and never above the
    *   height the resize started from.
@@ -229,7 +234,9 @@
    */
   const minOf = (p, cap = Infinity) => (w, h) => {
     const o = orientationOf(w, h);
-    const fixed = (p.min && p.min(p.look, o)) || RESIZE_FLOOR;
+    const fixed = [...((p.min && p.min(p.look, o)) || RESIZE_FLOOR)];
+    const s0 = p.kind === 'section' || !(p.floored ? p.floored(p.look) : p.kind !== 'safety') ? 0 : Math.min(cols, (seedInfo[keyOf(p, 'h')] || {}).s0 || 0);
+    fixed[o === 'h' ? 0 : 1] = Math.max(fixed[o === 'h' ? 0 : 1], s0);
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
@@ -362,10 +369,11 @@
   const titleOf = (id) => (all.find((it) => it.id === id) || {}).title || id;
   const where = (p) => 'column ' + (p.x + 1) + ', row ' + (p.y + 1) + ', ' + p.w + ' by ' + p.h + ' cells';
 
-  /** Client point -> cell: rows are one cell each, the same pitch as the columns. */
+  /** Client point -> cell: rows are one cell each, the same pitch as the columns; the centering padding is not a track. */
   function cellAt(clientX, clientY) {
     const r = gridEl.getBoundingClientRect();
-    return { x: Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left) / grid.cell))),
+    const pl = parseFloat(getComputedStyle(gridEl).paddingLeft) || 0;
+    return { x: Math.max(0, Math.min(cols - 1, Math.floor((clientX - r.left - pl) / grid.cell))),
       y: Math.max(0, Math.floor((clientY - r.top) / grid.cell)) };
   }
 
@@ -968,6 +976,8 @@
     min-width: 0;
     min-height: calc(var(--cell) * 3);
   }
+  /* The cell remainder splits evenly on both sides; percent padding resolves on the parent, so the measured width never feeds back into --cols. */
+  .dash-grid:not(.stack) { padding-inline: max(0px, calc((100% - var(--cols) * var(--cell)) / 2)); }
   /* Top grid only: a nest's subgrid inherits --reserve and must not grow by it. */
   .dash-grid.top { anchor-name: --dash-grid; min-height: max(calc(var(--cell) * 3), var(--reserve, 0px)); }
   .dash-grid.stack { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
@@ -977,6 +987,8 @@
       linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
       linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
     background-size: var(--cell) var(--cell);
+    background-origin: content-box;
+    background-clip: content-box;
   }
   /* A nest about to take a drop: the whole subgrid lights, since a joining
      member flows at the nest's end rather than at a cell. */

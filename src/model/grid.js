@@ -158,36 +158,45 @@ export function pack(items, map, cols, placed = [], fit = null) {
  * - An unplaced item (no entry, or no position yet) takes the first free rect
  *   of its size (pack).
  * - `pin` ({id, x, y, w, h}, or an array for a group) is the item under a
- *   drag: placed where asked, or at the first free row below when that is
- *   taken. Every other item stays exactly where it is without the pin.
+ *   drag: laid first, exactly where asked (below an earlier pin it clashes
+ *   with). Every other item keeps its rect or moves to the first free row
+ *   below. A pushed card returns as the pin moves on, because each preview
+ *   starts from the saved map. Untouched cards keep their rects and the pin's
+ *   old slot stays a hole.
  * - `fit` sizes an unplaced item's height (pack).
  * Returns [{...item, x, y, w, h}] in reading order (y, then x).
  */
 export function place(items, map, cols, pin = null, fit = null) {
   const at = (e, k) => int(e[k], 0, Infinity, 0);
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const pins = (pin == null ? [] : [].concat(pin)).filter((p) => p && byId.has(p.id));
+  const pinned = new Set(pins.map((p) => p.id));
   const saved = items.filter((it) => positioned(map[it.id]))
     .sort((a, b) => at(map[a.id], 'y') - at(map[b.id], 'y') || at(map[a.id], 'x') - at(map[b.id], 'x') || (a.id < b.id ? -1 : 1));
-  const placed = [];
+  const flat = [];
   for (const it of saved) {
     const e = map[it.id];
     const { w, h } = sizeOf(e, cols);
     const r = { ...it, x: Math.min(at(e, 'x'), cols - w), y: at(e, 'y'), w, h, ...lookOf(e) };
-    while (hits(placed, r)) r.y++;
-    placed.push(r);
+    while (hits(flat, r)) r.y++;
+    flat.push(r);
   }
-  pack(items.filter((it) => !positioned(map[it.id])), map, cols, placed, fit);
-  const byId = new Map(items.map((it) => [it.id, it]));
-  const pins = (pin == null ? [] : [].concat(pin)).filter((p) => p && byId.has(p.id));
-  if (!pins.length) return placed;
-  const pinned = new Set(pins.map((p) => p.id));
-  const out = placed.filter((p) => !pinned.has(p.id));
+  pack(items.filter((it) => !positioned(map[it.id])), map, cols, flat, fit);
+  if (!pins.length) return flat;
+  // The unpinned cards are drawn as they are without the pin; a pin lands on the ones it covers.
+  const placed = [];
   for (const p of pins) {
     const { w, h } = sizeOf(p, cols);
     const r = { ...byId.get(p.id), x: int(p.x, 0, cols - w, 0), y: int(p.y, 0, Infinity, 0), w, h, ...lookOf(map[p.id]) };
-    while (hits(out, r)) r.y++;
-    out.push(r);
+    while (hits(placed, r)) r.y++;
+    placed.push(r);
   }
-  return out.sort(byReading);
+  for (const q of flat.filter((p) => !pinned.has(p.id))) {
+    const r = { ...q };
+    while (hits(placed, r)) r.y++;
+    placed.push(r);
+  }
+  return placed.sort(byReading);
 }
 
 /** The first item of `placed` other than `id` that rect `r` overlaps, or null: what stops a resize. */
@@ -291,7 +300,8 @@ export function setLook(map, id, look, at = null) {
  * Pins that align or spread the rects of a selection ([{id, x, y, w, h}]):
  * 'left' and 'top' move every edge to the selection's smallest; 'spread'
  * keeps the outermost two and spaces the rest evenly across, in x order.
- * A pin landing on another card moves down (place).
+ * A pin lands where asked and pushes the cards it covers down; only a pin
+ * landing on an earlier pin moves down (place).
  */
 export function arrangePins(rects, how) {
   if (how === 'left') { const x = Math.min(...rects.map((r) => r.x)); return rects.map((r) => ({ ...r, x })); }
@@ -347,8 +357,9 @@ export function nudgePin(placed, id, dx, dy, cols) {
 }
 
 /**
- * Commit a drag or resize: write the pinned items, and every unplaced item at
- * the rect it is drawn at now, so nothing the user did not touch moves later.
+ * Commit a drag or resize: write the pinned items, every card the pin moved
+ * and every unplaced item at the rect it is drawn at now, so the commit equals
+ * the preview and nothing the user did not touch moves later.
  * With `fit`, an unplaced item never measured is held: entered with no rect
  * (so a host that lists its map's keys still draws it) until its height is
  * known; returns the held ids.
@@ -356,8 +367,10 @@ export function nudgePin(placed, id, dx, dy, cols) {
 export function commitPin(map, items, cols, pin, fit = null) {
   const ids = new Set([].concat(pin || []).map((p) => p && p.id));
   const held = [];
+  const base = ids.size ? new Map(place(items, map, cols, null, fit).map((p) => [p.id, p])) : null;
   write(map, place(items, map, cols, pin, fit).filter((p) => {
-    if (ids.has(p.id) || positioned(map[p.id])) return ids.has(p.id);
+    if (ids.has(p.id)) return true;
+    if (positioned(map[p.id])) { const b = base && base.get(p.id); return !!b && (b.x !== p.x || b.y !== p.y); }
     if (fit && fit(p, p.w, p.h) == null) { held.push(p.id); map[p.id] = map[p.id] || {}; return false; }
     return true;
   }));

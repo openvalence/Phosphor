@@ -8,7 +8,7 @@
  *            size; the minimum is refused visibly; an orientation flip is
  *            announced (ph-e82.20.1); a resize stops at a neighbor, which
  *            never moves (ph-e82.22)
- *   drag     the dragged card lifts; no sibling moves while dragging or
+ *   drag     the dragged card lifts; no sibling moves into free cells while dragging or
  *            after the drop (ph-e82.22, placements are absolute); the ghost
  *            is the committed rect; a card dropped on a nest lights the nest
  *            and joins it; a member dragged out of its nest lands at the top
@@ -35,6 +35,9 @@
  *            label, never a handle or the font floor; a self-labeled card
  *            hides its label outside edit mode and keeps its field label
  *            (ph-e82.20.7)
+ *   displace a drag onto another card pushes it below the ghost; the release
+ *            commits the push, a reload keeps it, Escape restores every card
+ *            (ph-s7lj.2)
  *   floor    an action card under its measured content floor grows on load
  *            (saved, no undo step); pointer and keyboard stop at the floor;
  *            nothing spills past the frame; a card with no room keeps its
@@ -178,7 +181,8 @@ console.log('resize');
   const g2 = await drag(page, c.locator('.edge-e'), -15 * cell, 0, () => ghost(page));
   // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
   const mw = g2 && Number((new RegExp('^(\\d+) × ' + h0 + ' · minimum$').exec(g2.text) || [])[1]);
-  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0], g2);
+  // A field card never resizes under 8 layout columns of 2 rem (the seed's floor width), though its container-type hides it from min-content.
+  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw === Math.max(minCells(WIDGET.slider, 'h')[0], Math.ceil(256 / cell)), g2);
   ok('the refusal is announced', /its minimum$/.test(await said()), await said());
   s = (await stored())[SLIDER];
   ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
@@ -187,13 +191,26 @@ console.log('resize');
   ok('a corner drag past square flips the orientation, shown on the ghost', g3 && / · vertical$/.test(g3.text), g3);
   ok('the flip is announced', /now vertical/.test(await said()), await said());
   s = (await stored())[SLIDER];
-  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1], s);
+  ok('the vertical size is committed', s.h > s.w && s.h >= minCells(WIDGET.slider, 'v')[1] && s.h >= mw, s);
   ok('no ghost is left behind', await page.locator('.home .drop-ghost').count() === 0);
   await drag(page, c.locator('.edge-e'), 30 * cell, 0);
   s = await stored();
   ok('a resize stops at a neighbor and says so', s[SLIDER].x + s[SLIDER].w <= 20 && s[SLIDER].w > 2 && /blocked by/.test(await said()),
      [s[SLIDER], await said()]);
   ok('the neighbor never moves', JSON.stringify(s[F1]) === f1, [s[F1], f1]);
+  await ctx.close();
+}
+
+// ---- a small control keeps its own floor (ph-s7lj.1) -------------------------------------
+console.log('small floor');
+{
+  const { ctx, page, cell, stored, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 3, h: 7, look: { pres: 'knob' } } });
+  const k0 = (await stored())[SLIDER];
+  ok('a saved 3-wide knob does not grow on load', k0.w === 3 && k0.h === 7, k0);
+  await drag(page, card(SLIDER).locator('.edge-e'), 4 * cell, 0);
+  const g = await drag(page, card(SLIDER).locator('.edge-e'), -10 * cell, 0, () => ghost(page));
+  const k1 = (await stored())[SLIDER];
+  ok('a knob resized far west stops at its own minimum, under the field floor', g && g.refused && k1.w === 3, [g, k1]);
   await ctx.close();
 }
 
@@ -239,11 +256,13 @@ console.log('drag');
   // its cell's left edge onto column 2 moves its grabbed cell with it.
   const mc = await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').boundingBox();
   const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
-  const out = await drag(page, m, gb.x + 2 * cell - mc.x, 0,
+  const gpad = await page.$eval('.home > .dash-wrap > .dash-grid', (g) => parseFloat(getComputedStyle(g).paddingLeft));
+  const mw0 = Math.round(mc.width / cell);
+  const out = await drag(page, m, gb.x + gpad + 2 * cell - mc.x, 0,
     () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
-  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 6/.test(out.replace(/\s+/g, ' ')), out);
+  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && new RegExp('^3 / span ' + mw0).test(out.replace(/\s+/g, ' ')), out);
   const after = await stored();
-  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === 6
+  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === mw0
      && !Object.prototype.hasOwnProperty.call(after['nest:1'].nest.map, F3), JSON.stringify(after[F3]));
   ok('and is drawn at the top level only', await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell[data-id="' + F3 + '"]').count() === 1
      && await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 0);
@@ -360,6 +379,43 @@ console.log('nest');
   ok('Insert places it with the live member drawn and the inert one kept', await card('nest:2').locator('.nest-body .dash-cell').count() === 1
      && Object.keys((await stored())['nest:2'].nest.map).includes(GHOST) && /1 of 2 members/.test(await said()), await said());
   await page.keyboard.press('Escape');
+  await ctx.close();
+}
+
+// ---- a drag displaces what it lands on (ph-s7lj.2) -------------------------------------
+console.log('displace');
+{
+  const { ctx, page, cell, stored, card } = await open({ [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 14, y: 0, w: 10, h: 2 } });
+  const rect = async (key) => (await card(key).boundingBox());
+  const geo = async () => JSON.stringify([await rect(F1), await rect(F2)]);
+  const g0 = await geo();
+  // The grip sits at the card's right end: pull F2 left by its distance to F1's column.
+  const dx = -14 * cell;
+  const mid = await drag(page, card(F2).locator('.handle.grab'), dx, 0, async () => ({
+    ghost: await page.$eval('.home .drop-ghost', (g) => { const b = g.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left }; }),
+    other: await rect(F1),
+  }));
+  ok('mid-drag the covered card is drawn below the ghost', mid.other.y >= mid.ghost.bottom - 1, mid);
+  const s = await stored();
+  ok('the release commits the drop and the push', s[F2].x === 0 && s[F2].y === 0 && s[F1].x === 0 && s[F1].y >= s[F2].h, JSON.stringify([s[F1], s[F2]]));
+  await page.reload();
+  await page.waitForSelector('.home .dash-grid');
+  await page.waitForTimeout(500);
+  const s2 = await stored();
+  ok('the layout holds across a reload', JSON.stringify(s2[F1]) === JSON.stringify(s[F1]) && JSON.stringify(s2[F2]) === JSON.stringify(s[F2])
+    && (await rect(F1)).y >= (await rect(F2)).y + (await rect(F2)).height - 1, JSON.stringify([s2[F1], s2[F2]]));
+  await editBtn(page).click();
+  await page.waitForTimeout(300);
+  const g1 = await geo();
+  const cover = await drag(page, card(F1).locator('.handle.grab'), 0, -2 * cell, async () => {
+    const seen = { ghost: await page.$eval('.home .drop-ghost', (g) => g.getBoundingClientRect().bottom), other: (await rect(F2)).y };
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    return seen;
+  });
+  ok('Escape mid-drag: the covered card was drawn below the ghost', cover.other >= cover.ghost - 1, cover);
+  ok('Escape mid-drag restores every card', await geo() === g1 && JSON.stringify(await stored()) === JSON.stringify(s2), g1);
+  ok('the first layout was a different one', g0 !== g1);
   await ctx.close();
 }
 
@@ -655,8 +711,8 @@ console.log('modes');
     }, { w, h, edit: false });
     const geo = () => page.evaluate(() => {
       const g = document.querySelector('main.pane .home > .dash-wrap > .dash-grid');
-      const r = (el) => { const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
-      return { grid: r(g), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
+      const r = (el, pad = 0) => { const b = el.getBoundingClientRect(); return [b.left + pad, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
+      return { grid: r(g, parseFloat(getComputedStyle(g).paddingLeft)), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
     });
     const run = await geo();
     // Rows are cells (ph-29r): every card's box is its stored rect times the cell pitch.
