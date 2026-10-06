@@ -170,13 +170,28 @@
     osFull = want;
     import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
   });
+  // In-window page fullscreen keeps the hero bar (its rail): the page starts
+  // where the hero bar ends, --hero-b.
+  $effect(() => {
+    if (!isFull || full.bare) return;
+    const root = document.documentElement;
+    const strip = document.querySelector('.hero-strip');
+    const put = () => root.style.setProperty('--hero-b', Math.round(strip ? strip.getBoundingClientRect().bottom : 0) + 'px');
+    put();
+    const ro = new ResizeObserver(put);
+    if (strip) ro.observe(strip);
+    ro.observe(document.querySelector('.topstrip'));
+    addEventListener('resize', put);
+    return () => { ro.disconnect(); removeEventListener('resize', put); root.style.removeProperty('--hero-b'); };
+  });
   // A page's own request (docs/PLUGINS.md, Pages): cancelable, so the page
-  // knows it was taken; on is bare at once. The change event tells it the end.
+  // knows it was taken. Borderless (detail.bare) is the page alone under the
+  // stop pair; In window keeps the hero rail. The change event tells it the end.
   $effect(() => {
     const ask = (e) => {
       if (!current?.page?.fields) return;
       e.preventDefault();
-      full = e.detail?.on ? { on: true, bare: true } : OFF;
+      full = e.detail?.on ? { on: true, bare: e.detail.bare !== false } : OFF;
     };
     // The mode, for a page that offers it itself (mediaFullscreen): desktop shell only.
     const mode = (e) => { if (['window', 'borderless'].includes(e.detail?.mode)) setPref('fullscreen', e.detail.mode); };
@@ -993,13 +1008,15 @@
   .content > .pane.fill:not(.full) { height: 100%; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
-     The page alone in the window below the top strip, dash Open full's
-     geometry; bare, the whole window, under the stop pair and the caret. */
+     In window: the page fills the window below the hero bar, so only the
+     hero rail stays (sidebar and pane chrome hidden); bare (Borderless): the
+     whole window, under the stop pair and the caret. */
   .app { --caret-h: 18px; }
   @media (pointer: coarse) { .app { --caret-h: var(--tap); } }
   .pane.full {
     position: fixed;
-    inset: var(--strip-h, 0px) 0 0 0;
+    inset: var(--hero-b, var(--strip-h, 0px)) 0 0 0;
+    transition: top var(--t-move) var(--ease-out);
     z-index: 20;
     min-height: 0;
     display: flex;
@@ -1016,7 +1033,8 @@
   .content > .pane.fill > .pane-main > :global(*), .pane.full > .pane-main > :global(*) { flex: 1 1 auto; min-height: 0; }
   .full-caret {
     position: fixed;
-    top: var(--strip-h, 0px);
+    top: var(--hero-b, var(--strip-h, 0px));
+    transition: top var(--t-move) var(--ease-out);
     left: 50%;
     z-index: 31;
     transform: translateX(-50%);

@@ -398,6 +398,7 @@ for (const id of ['slate', 'ink', 'paper']) {
     ok(name + ': html.still is ' + wantStill, still === wantStill);
     ok(name + ': rail-tab hover transition ' + (wantHover ? 'runs' : 'is instant'), wantHover ? dur > 0 : dur === 0, String(dur));
     ok(name + ': a page switch ' + (wantHover ? 'fades in' : 'is instant'), wantHover ? fade === 'page-in' : fade === 'none', fade);
+    ok(name + ': nothing keeps running after the page fade', (await page.evaluate(() => document.getAnimations().filter((x) => x.animationName === 'page-in').length)) === 0);
     ok(name + ': no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await ctx.close();
   };

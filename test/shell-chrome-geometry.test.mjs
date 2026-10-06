@@ -419,9 +419,13 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await still('resume', () => hp.locator('.topstrip .btn-pause').click());
   ok(tag + ': the hub released pause (reads Pause)', (await pauseLbl()).trim() === 'Pause');
   await still('pattern start', () => wire.send(FRAME.STATE, RUN.id, patternState(true)));
-  ok(tag + ': pattern start flips visibility, both faces stay mounted', await faces() === 'visible:plan hidden:tape', await faces());
+  // The phone's mini rail hides both faces; the swap is the pop-up's business there.
+  const mini = await hp.locator('.topstrip .mini').count() > 0;
+  ok(tag + ': pattern start flips visibility, both faces stay mounted', mini ? (await faces()).split(' ').length === 2 : await faces() === 'visible:plan hidden:tape', await faces());
   await still('pattern stop', () => wire.send(FRAME.STATE, RUN.id, patternState(false)));
-  ok(tag + ': pattern stop flips it back', await faces() === 'hidden:plan visible:tape', await faces());
+  ok(tag + ': pattern stop flips it back', mini ? (await faces()).split(' ').length === 2 : await faces() === 'hidden:plan visible:tape', await faces());
+  // The rest drives the tape itself, which the phone's mini rail keeps behind its pop-up.
+  if (mini) { await hctx.close(); continue; }
 
   await hp.locator('.rail-tape-track').click();
   await hp.waitForSelector('.strip .status[data-kind=refusal]', { timeout: 3000 }).catch(() => {});
@@ -567,6 +571,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     ok(tag + ': the order is stored', JSON.stringify(stored) === '["Default","Couch","Bench"]', JSON.stringify(stored));
     // Hold the x: 0.5 s deletes nothing, 1 s does; Default has neither grip nor x.
     ok(tag + ': Default has no grip and no x', await fp.locator(rowSel('Default') + ' :is(.sub-grip, .sub-x)').count() === 0);
+    await fp.waitForTimeout(350);
     await fp.hover(rowSel('Bench'));
     if (process.env.LAYOUT_SHOT) await fp.screenshot({ path: process.env.LAYOUT_SHOT, clip: { x: 0, y: 0, width: 420, height: 800 } });
     const [xx, xy] = await center(rowSel('Bench') + ' .sub-x');

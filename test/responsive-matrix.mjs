@@ -1031,6 +1031,23 @@ if (!ONLY || ONLY === 'pluginpages') {
       if (SHOTS) await page.screenshot({ path: join(OUT, 'plugin-' + slug(id) + '-' + tag + '.png') });
     }
     if (w <= 300) scen(tag + ': Close stays visible in the shell bar', await page.locator(".sb-wbtn[aria-label='Close']").isVisible());
+    // Page fullscreen (the page's own ask): In window keeps the hero bar and its rail, Borderless is the page alone.
+    if (ids.length && w >= 960) {
+      const ask = (on, bare) => page.evaluate(([on, bare]) => document.querySelector('.pane-main').dispatchEvent(new CustomEvent('phosphor-page-fullscreen',
+        { bubbles: true, cancelable: true, detail: { on, bare } })), [on, bare]);
+      const geo = () => page.evaluate(() => { const p = document.querySelector('main.pane').getBoundingClientRect(), h = document.querySelector('.hero-strip')?.getBoundingClientRect();
+        const hit = (r) => document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
+        return { top: Math.round(p.top), heroBottom: h ? Math.round(h.bottom) : null, heroOpen: !!h && !!hit(h)?.closest('.hero-strip'),
+          sidebarHidden: !hit(document.querySelector('nav.rail').getBoundingClientRect())?.closest('nav.rail') }; });
+      await ask(true, false); await page.waitForTimeout(400);
+      const win = await geo();
+      scen(tag + ': In window fullscreen starts under the hero bar, rail on screen, sidebar covered', win.heroBottom != null && Math.abs(win.top - win.heroBottom) <= 1 && win.heroOpen && win.sidebarHidden, JSON.stringify(win));
+      await ask(false, false); await page.waitForTimeout(300);
+      await ask(true, true); await page.waitForTimeout(400);
+      const bare = await geo();
+      scen(tag + ': Borderless fullscreen is the page alone', bare.top === 0 && !bare.heroOpen && bare.sidebarHidden, JSON.stringify(bare));
+      await ask(false, true); await page.waitForTimeout(300);
+    }
     // The host's stacked default: a page root laying two 330 px children in a row stacks in buckets 1-2 and keeps
     // its row with data-layout (it owns its layout then).
     if (ids.length) {
