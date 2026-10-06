@@ -444,7 +444,7 @@
           <span class="evkind">{edgeText}</span>
           <span class="evage">{ageText(now - latestSafety.at)}</span>
           {#if safetyStale}<span class="evtag">stale</span>{/if}
-          {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword"> new</span></span>{/if}
+          {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword">&nbsp;new</span></span>{/if}
         </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
