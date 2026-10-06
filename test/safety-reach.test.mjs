@@ -299,7 +299,7 @@ for (const catalog of ['none', 'hero']) {
 // ---- ph-e82.5: an emptied home still leaves the strip's stop pair ------------
 for (const catalog of ['none', 'hero']) {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
-  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
+  await page.locator('button[title="Edit layout"]:visible').first().click();
   // The palette overlays the grid's top right (ph-wia): put it away to reach the cards under it.
   await page.locator('.home .dash-toolbar .palette-toggle').click();
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
