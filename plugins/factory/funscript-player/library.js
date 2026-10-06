@@ -49,18 +49,20 @@ const TILE_MIN = 150, TILE_MAX = 300;
 export const CSS = `
 .fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: ${GAP}px; height: 100%; min-height: 0; overflow: hidden; }
 .fsp-lib [hidden], .fsp-connect [hidden] { display: none !important; }
+.fsp-lib-head { gap: var(--sp-2) !important; }
 .fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
-.fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--radius);
+.fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--bg); color: var(--tx); font: .8rem var(--mono); }
 .fsp-in:focus { outline: none; border-color: var(--highlight); }
-.fsp-lib-head .fsp-in { flex: 1 1 120px; }
-.fsp-lib-head select { flex: 0 1 96px; width: auto; min-height: var(--tap); }
-.fsp-dir, .fsp-pg { width: var(--tap); padding: 0; }
+.fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 80px; }
+.fsp-lib-head .fsp-lib-open { min-width: 0; padding: 0 var(--sp-2); font: .72rem var(--mono); letter-spacing: 0; white-space: nowrap; }
+.fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
+.fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
 .fsp-grid { display: grid; gap: ${GAP}px; align-content: start; height: 100%; }
 .fsp-grid.busy { opacity: .5; }
-.fsp-tile { display: grid; grid-template-rows: auto 20px 18px; gap: 3px; min-width: 0; padding: 0; text-align: left; color: var(--tx); }
+.fsp-tile { display: grid; grid-template-rows: auto 20px 18px; gap: var(--sp-1); min-width: 0; padding: 0; text-align: left; color: var(--tx); }
 .fsp-shot { aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius); box-sizing: border-box; }
 .fsp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .fsp-tile:hover .fsp-shot { border-color: var(--line-4); }
@@ -68,14 +70,14 @@ export const CSS = `
 .fsp-tile:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
 .fsp-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; line-height: 20px; }
 .fsp-m { overflow: hidden; white-space: nowrap; font: .7rem/18px var(--mono); color: var(--tx-mut); }
-.fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 12px; text-align: center;
+.fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4); text-align: center;
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
 .fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
 .fsp-lib-foot .fsp-n { flex: 0 0 auto; min-width: 9ch; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: ${GAP}px; align-content: start; max-width: var(--measure); }
-.fsp-connect label { display: grid; gap: 4px; font-size: .78rem; color: var(--tx-mut); }
+.fsp-connect label { display: grid; gap: var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
 .fsp-status { margin: 0; height: 20px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .78rem; color: var(--tx-val); }
 .fsp-status[data-tone=ok] { color: var(--reality); }
 `;
@@ -130,11 +132,11 @@ function clockText(ms) {
 /**
  * @param {HTMLElement} el
  * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), onLocal(files), fetch?: Function}} o
- * @returns {{refresh(): void, unmount(): void}}
+ * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
  */
 export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netFetch = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
-  let page = 1, perPage = 0, seq = 0, picked = null, typing = 0, sizing = 0, connectOff = null;
+  let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
 
   const search = h('input', { class: 'fsp-in', type: 'search', placeholder: COPY.search, 'aria-label': COPY.search });
   search.value = lib.q;
@@ -181,12 +183,23 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
     const meta = [s.durationMs != null ? clockText(s.durationMs) : '', s.speed != null ? String(s.speed) : ''].filter(Boolean).join(' · ');
     const b = h('button', { class: 'fsp-tile', type: 'button', title: s.title, 'aria-current': String(s.key === picked) },
       shot, h('div', { class: 'fsp-t', text: s.title }), h('div', { class: 'fsp-m', text: meta }));
-    b.addEventListener('click', () => {
-      picked = s.key;
-      for (const t of grid.children) t.setAttribute('aria-current', String(t === b));
-      onPick(s);
-    });
+    b.addEventListener('click', () => pickScene(s));
     return b;
+  }
+  function pickScene(s) {
+    picked = s.key;
+    [...grid.children].forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
+    onPick(s);
+  }
+  /** The scene dir (+1 next, -1 previous) from the picked one on the loaded page, else across the page buttons. */
+  function canStep(dir) {
+    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
+    return !!list[j] || !(dir > 0 ? next : prev).disabled;
+  }
+  function step(dir) {
+    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
+    if (list[j]) pickScene(list[j]);
+    else if (!(dir > 0 ? next : prev).disabled) { want = dir; (dir > 0 ? next : prev).click(); }
   }
 
   function load() {
@@ -200,7 +213,9 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
       const pages = Math.max(1, Math.ceil(pg.count / perPage));
       if (page > pages) { page = pages; load(); return; }
       grid.classList.remove('busy');
-      grid.replaceChildren(...pg.scenes.map(tile));
+      list = pg.scenes;
+      grid.replaceChildren(...list.map(tile));
+      if (want && list.length) { const s = list[want > 0 ? 0 : list.length - 1]; want = 0; pickScene(s); }
       say(pg.scenes.length ? '' : lib.q ? COPY.noMatch : COPY.empty);
       pageOut.textContent = COPY.page + page + ' / ' + pages;
       countOut.textContent = pg.count + (pg.count === 1 ? COPY.scene : COPY.scenes);
@@ -210,6 +225,8 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
       if (my !== seq) return;
       grid.classList.remove('busy');
       grid.replaceChildren();
+      list = [];
+      want = 0;
       say(e.message, 'warn');
       prev.disabled = page <= 1;
       next.disabled = true;
@@ -282,7 +299,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   refresh();
 
   return {
-    refresh,
+    refresh, step, canStep,
     unmount() {
       seq++;
       clearTimeout(typing);

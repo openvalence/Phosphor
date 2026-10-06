@@ -153,8 +153,10 @@
 
   function land(el, scroll) {
     if (!el) return;
-    const f = el.querySelector('input[type=range]:not(:disabled), [role=slider][tabindex="0"], [role=radio][tabindex="0"], [role=switch]:not(:disabled), select:not(:disabled)')
-      || el.querySelector('input:not(:disabled), textarea:not(:disabled), button:not(:disabled):not(.info), [tabindex="0"]');
+    // The key may sit on the control itself (a plugin's button), not only on a wrapper.
+    const within = (s) => (el.matches(s) ? el : el.querySelector(s));
+    const f = within('input[type=range]:not(:disabled), [role=slider][tabindex="0"], [role=radio][tabindex="0"], [role=switch]:not(:disabled), select:not(:disabled)')
+      || within('input:not(:disabled), textarea:not(:disabled), button:not(:disabled):not(.info), [tabindex="0"]');
     if (f) f.focus({ preventScroll: !scroll });
     if (scroll) el.scrollIntoView({ block: 'nearest' });
     const field = el.matches('.field') ? el : el.querySelector('.field[data-uid]');
