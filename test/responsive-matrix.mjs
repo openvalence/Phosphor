@@ -819,15 +819,8 @@ if (!ONLY || ONLY === 'scale') {
     const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
     await page.waitForSelector(tabSel, { timeout: 15000 });
     await page.waitForTimeout(300);
-    // The scale lives in the edit-mode Layout menu (ph-e82.22).
-    const applied = await (async () => {
-      await editClick(page);
-      await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
-      const t = await page.$eval('.dash-menu .scale [aria-label="Reset scale"]', (e) => e.textContent.trim());
-      await page.keyboard.press('Escape');
-      await page.locator('.home .dash-toolbar .done-btn').click();
-      return t;
-    })().catch(() => '?');
+    // The applied step reads from the status row's scale control (ph-5q67).
+    const applied = await page.$eval('.footstrip .foot-scale output', (e) => e.textContent.trim()).catch(() => '?');
     const out = [];
     for (let i = 0; i < await page.locator(tabSel).count(); i++) {
       await page.locator(tabSel).nth(i).click();
@@ -868,7 +861,7 @@ if (!ONLY || ONLY === 'nest') {
     await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
     const tabs = page.locator('nav.tabs [role=tab]');
     let tab = -1, key = '', ids = [];
-    for (let i = 1; i < await tabs.count() && tab < 0; i++) {
+    for (let i = 0; i < await tabs.count() && tab < 0; i++) {
       await tabs.nth(i).click();
       await page.waitForTimeout(200);
       const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
@@ -921,12 +914,12 @@ if (!ONLY || ONLY === 'builder') {
     await page.waitForSelector(tabSel, { timeout: 15000 });
     const tabs = page.locator(tabSel);
     let tab = -1, key = '', ids = [];
-    for (let i = 1; i < await tabs.count() && tab < 0; i++) {
+    for (let i = 0; i < 1 && tab < 0; i++) { // the Dash is the only page with an edit mode
       await tabs.nth(i).click();
       await page.waitForTimeout(200);
       const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
         ids: [...el.children].map((c) => c.getAttribute('data-id')).filter(Boolean) })).catch(() => null);
-      if (g && g.ids.length >= 2) { tab = i; key = g.key; ids = g.ids; }
+      if (g && g.ids.length >= 3) { tab = i; key = g.key; ids = g.ids; }
     }
     const store = { active: 'Default', modules: {}, layouts: { Default: { opts: { density: 'compact' }, [key]: {
       'nest:1': { x: 0, y: 0, w: 20, h: 6, nest: { title: 'Folded', scroll: true, collapsed: true, map: { [ids[0]]: null } } },
@@ -938,7 +931,7 @@ if (!ONLY || ONLY === 'builder') {
     if (tab > 0) await tabs.nth(tab).click();
     await page.waitForTimeout(300);
     await editClick(page);
-    await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[1] + '"] .handle.grab').click();
+    await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[2] + '"] .handle.grab').click();
     await page.waitForTimeout(200);
     const ready = await page.evaluate(() => ({ compact: !!document.querySelector('.dash-wrap[data-density="compact"]'),
       member: !!document.querySelector('.dash-cell[data-id="nest:1"] .nest-body .dash-cell'), empty: !!document.querySelector('.nest-empty'),
