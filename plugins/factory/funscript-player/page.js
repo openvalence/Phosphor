@@ -11,26 +11,42 @@
  * - The section mounts the registerSettings function itself, on open, so it
  *   reads the prefs the Plugins pane wrote; closed, it is unmounted. Its
  *   button is the timeline's (ui.js opts.settings), open kept in settingsOpen.
- * - The page is a column: the card takes what the open section leaves, never
- *   under 340 px (a 120 px stage over the fixed rows), the section at most half
- *   the page, scrolling within. In media fullscreen
- *   (ui.js, data-media) the card takes the whole page and the section is hidden.
+ * - The card never changes size for the section, and the section never covers a card control: at 960 px
+ *   of page width and up, with a full card, the section overlays the card's library column (320 px)
+ *   while that column is open, or the analyzer column (its width, above the transport and status rows)
+ *   while the analyzer is open; otherwise (library collapsed, a narrower page) it sits below the card,
+ *   reached by scrolling. The card's own min-height is its fixed rows plus the 120 px stage (ui.js), so a
+ *   short page scrolls. In media fullscreen (ui.js, data-media) the card takes the whole page and the
+ *   section is hidden.
  * - mediaFullscreen: the hover bar offers fullscreen and its mode, so the
  *   shell's footer offers neither.
  */
 import { readPrefs, writePref } from './prefs.js';
 
+// F3 entries: each key is a [data-search-key] on the card (ui.js, library.js); the shell scrolls to it and focuses its first control.
+export const SEARCH = [
+  { label: 'Motion', key: 'motion' }, { label: 'Offset', key: 'offset' }, { label: 'Invert', key: 'invert' },
+  { label: 'Open files', key: 'open' }, { label: 'Graph', key: 'graph' }, { label: 'Split', key: 'split' },
+];
+
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.fsp-page > .fsp-pcard { flex: 1 1 auto; min-height: min(100%, 340px); }
-.fsp-page > .fsp-psec { flex: 0 1 auto; max-height: 50%; max-width: 640px; overflow-y: auto; padding: 8px 0; }
+.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; --pg-bot: calc(28px + 20px + 2 * var(--sp-2)); }
+@media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + 20px + 2 * var(--sp-2)); } }
+.fsp-page > .fsp-pcard { height: 100%; min-height: min-content; }
+.fsp-page > .fsp-psec { padding: var(--sp-3) 0; }
+@container (min-width: 960px) {
+  .fsp-page:has(.fsp[data-comp=full]:not([data-libshut], [data-an])) > .fsp-psec { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; z-index: 2;
+    overflow-y: auto; padding: var(--sp-3); background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
+  .fsp-page:has(.fsp[data-comp=full][data-an]) > .fsp-psec { position: absolute; top: 0; right: 0; bottom: var(--pg-bot); width: clamp(320px, 40%, 560px); z-index: 2;
+    overflow-y: auto; padding: var(--sp-3); background: var(--bg-card); box-shadow: -4px 0 12px rgba(var(--shade-rgb), .5); }
+}
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
 `;
 
 export function registerPlayerPage(api, player, spec, settings) {
-  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, mount(el, fields) {
+  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, search: SEARCH, mount(el, fields) {
     const style = Object.assign(document.createElement('style'), { textContent: CSS });
     const card = Object.assign(document.createElement('div'), { className: 'fsp-pcard' });
     const sec = Object.assign(document.createElement('div'), { className: 'fsp-psec' });

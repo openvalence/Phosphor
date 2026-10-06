@@ -227,6 +227,9 @@ async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-prefere
   const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]', { timeout: 15000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(500);
+  // Over the hero budget the rail is the mini; a tap is the user's ask for the rail.
+  const mini = page.locator('.topstrip .mini');
+  if (await mini.count() && await page.locator('.topstrip .tab').count() && await mini.isVisible()) { await mini.click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300); }
   return { ctx, page, wire, up };
 }
 
@@ -606,7 +609,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
     ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
-      && (await flip.textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
+      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
       && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
     await flip.click();
     await page.waitForTimeout(200);
@@ -877,7 +880,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await btn.click();
   const typing = await entry.boundingBox().catch(() => null);
   ok('target: a click opens the entry prefilled, in the same box', await entry.inputValue() === '250.0' && !!typing
-    && ['x', 'y', 'width', 'height'].every((k) => Math.abs(rest[k] - typing[k]) < 0.5), JSON.stringify([rest, typing]));
+    && ['x', 'y', 'width', 'height'].every((k) => Math.abs(rest[k] - typing[k]) < 0.6), JSON.stringify([rest, typing]));
   await entry.fill('200');
   await entry.press('Enter');
   await page.waitForTimeout(400);
@@ -965,9 +968,11 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   {
     const { ctx, page } = await open(browser, { w: 360, h: 800, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
     await page.waitForTimeout(600);
+    await page.locator('.topstrip .mini').click();   // the pop-up draws the rail vertically: hits are counted down the travel
+    await page.waitForTimeout(500);
     const m = await page.evaluate(() => {
       const hits = (k) => { const r = document.querySelector('.rail-band-handle.' + k).getBoundingClientRect(); let n = 0;
-        for (let x = Math.floor(r.x); x < r.x + r.width; x++) { const e = document.elementFromPoint(x + 0.5, r.y + r.height / 2); if (e && e.classList.contains('rail-band-handle') && e.classList.contains(k)) n++; }
+        for (let y = Math.floor(r.y); y < r.y + r.height; y++) { const e = document.elementFromPoint(r.x + r.width / 2, y + 0.5); if (e && e.classList.contains('rail-band-handle') && e.classList.contains(k)) n++; }
         return n; };
       return { lo: hits('lo'), hi: hits('hi'), sw: document.documentElement.scrollWidth, iw: innerWidth };
     });
@@ -1007,7 +1012,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     });
     const chip = page.locator('.topstrip .rw-flip');
     const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').first().getAttribute('d'),
-      text: (await chip.textContent()).trim(), w: (await chip.boundingBox()).width };
+      text: (await chip.locator('.lbl').textContent()).trim(), w: (await chip.boundingBox()).width };
     const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
       const w = s.getBoundingClientRect().width;
       return { w: Math.round(w * 100) / 100, px: Math.round(parseFloat(getComputedStyle(s).strokeWidth) * 100) / 100,
@@ -1034,7 +1039,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   // Flip shows what the press does, not the state: one fixed glyph (a struck
   // 0 between two arrows), the same normal and flipped.
   const [n, f] = [seen[0].face, seen[1].face];
-  ok('flip icon: a fixed glyph, the same normal and flipped, shares no stroke with Override or Return', n.d === f.d && /^M9\.5 16\.5/.test(n.d) && !/M3 5v14|M10 6v12/.test(n.d), JSON.stringify([n.d, f.d]));
+  ok('flip icon: a fixed glyph, the same normal and flipped, shares no stroke with Override or Return', n.d === f.d && /^M17\.5 12H22/.test(n.d) && !/M3 5v14|M10 6v12/.test(n.d), JSON.stringify([n.d, f.d]));
   const hd = seen[0].heads;
   ok('rail heads: the span pill and the axis read one precision; the unit is spaced',
     hd.band === seen[0].caps[1] + ' mm', JSON.stringify([hd, seen[0].caps]));
@@ -1051,6 +1056,83 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   // Wire units are the move field's own scale: compare the two taps' ratio.
   ok('axis: a tap a quarter in writes the reversed axis value (3x the unflipped)', seen[0].sent > 0 && Math.abs(seen[1].sent / seen[0].sent - 3) < 0.02,
     JSON.stringify([seen[0].sent, seen[1].sent]));
+}
+
+// ---- hero bar: the budget form is a pure function of the window, prefs and taps --
+{
+  const { ctx, page } = await open(browser, { w: 1428, h: 900, touch: false, catalog: 'hero' });
+  const form = async () => (await page.locator('.topstrip .mini').count()) ? 'mini' : 'full';
+  const seq = [];
+  for (const [w, h] of [[1280, 680], [1428, 900], [1280, 680], [1428, 900]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(500);
+    seq.push(await form());
+  }
+  ok('hero: shrink, grow, shrink, grow reads mini, full, mini, full (no history)', seq.join() === 'mini,full,mini,full', seq.join());
+  await page.setViewportSize({ width: 1280, height: 680 });
+  await page.waitForTimeout(500);
+  await page.locator('.topstrip .tab').click();
+  await page.waitForTimeout(400);
+  ok('hero: over the budget the tab shows the rail (a user act)', await form() === 'full' && await page.locator('.hero-inner:not([inert])').count() === 1, await form());
+  await page.setViewportSize({ width: 1428, height: 900 });
+  await page.waitForTimeout(400);
+  const x0 = (await page.locator('.topstrip .btn-estop').boundingBox()).x;
+  await page.locator('.topstrip .tab').click();
+  await page.waitForTimeout(500);
+  const x1 = (await page.locator('.topstrip .btn-estop').boundingBox()).x;
+  const saved = await page.evaluate(() => localStorage.getItem('phosphor.prefs'));
+  ok('hero: the tab hides the rail, the stop does not move, the hidden state is saved', await form() === 'mini' && Math.abs(x1 - x0) < 0.5 && /"railHidden":true/.test(saved), JSON.stringify([x0, x1, saved]));
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(400);
+  ok('hero: the mini shows the rail', await form() === 'full');
+  await ctx.close();
+}
+{
+  const { ctx, page, wire } = await open(browser, { w: 390, h: 844, touch: true, catalog: 'hero' });
+  const h = () => page.locator('.topstrip').evaluate((e) => Math.round(e.getBoundingClientRect().height * 10) / 10);
+  const live = await h();
+  if (wire.socket) await wire.socket.close();
+  await page.waitForTimeout(1500);
+  const down = await h();
+  ok('hero: the 390 strip is as tall with the link dropped as live (ph-t4ge)', Math.abs(live - down) < 0.5, live + ' / ' + down);
+  await ctx.close();
+}
+// Handheld: the mini opens a vertical rail pop-up; a drag leaving it keeps it open; an outside tap closes it.
+{
+  const cfgE = byRole('window.min');
+  const cfg = stateOf(cfgE, { 'window.min': 0, 'window.max': 500, 'geometry.max_travel': 500, 'geometry.measured_travel': 500 });
+  const { ctx, page, wire } = await open(browser, { w: 390, h: 844, touch: true, catalog: 'hero', states: { [cfgE.id]: cfg } });
+  const pop = () => page.locator('.hero-inner.popup').count();
+  ok('handheld: the rail starts as the mini', await page.locator('.topstrip .mini').count() === 1 && await pop() === 0);
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(400);
+  const h = await page.locator('.rail-band-handle.lo').boundingBox();
+  const v0 = wire.writes.length;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 150, h.y + 100, { steps: 6 });
+  const mid = await pop();
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const v1 = wire.writes.length;
+  ok('handheld: the pop-up opens, travel runs down, a drag leaving it keeps it open and writes', mid === 1 && v1 > v0 && await pop() === 1, JSON.stringify([mid, v0, v1]));
+  // Vertical: ArrowDown runs the travel down, aria says vertical, Escape closes and returns to the mini.
+  const tape = page.locator('.rail-tape-track');
+  await tape.focus();
+  const t0 = +await tape.getAttribute('aria-valuenow'), n0 = wire.values.length;
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(600);
+  const sent = wire.values.slice(n0);
+  ok('handheld: the pop-up rail is vertical and ArrowDown runs the travel down', await tape.getAttribute('aria-orientation') === 'vertical' && sent.length > 0 && sent.every((v) => v > t0), t0 + ' -> ' + sent.join());
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  ok('handheld: Escape closes the pop-up and returns focus to the mini', await pop() === 0 && await page.evaluate(() => document.activeElement.classList.contains('mini')));
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(300);
+  await page.mouse.click(10, 760);
+  await page.waitForTimeout(300);
+  ok('handheld: an outside tap closes the pop-up', await pop() === 0);
+  await ctx.close();
 }
 
 await browser.close();

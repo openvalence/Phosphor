@@ -110,9 +110,28 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
     interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
+  {
+    const { offsetKey, offsetDrag } = mods[P + 'ui.js'], { pillKey } = mods[P + 'timeline.js'];
+    ok('modifiers: an offset key steps 5 ms, Shift the same, Ctrl the adjacent 100 ms multiple',
+      offsetKey(0, 1) === 5 && offsetKey(0, 1, { shiftKey: true }) === 5 && offsetKey(0, 1, { ctrlKey: true }) === 100
+      && offsetKey(100, 1, { ctrlKey: true }) === 200 && offsetKey(130, -1, { ctrlKey: true }) === 100 && offsetKey(100, -1, { ctrlKey: true }) === 0
+      && offsetKey(500, 1) === 500);
+    ok('modifiers: the offset drag takes 4 px per 5 ms, Shift a tenth of that, Ctrl rounds to 100',
+      offsetDrag(0, 40) === 50 && offsetDrag(0, 40, { shiftKey: true }) === 5 && offsetDrag(0, 90, { ctrlKey: true }) === 100);
+    ok('modifiers: a range pill key steps 1 %, Shift the same, Ctrl the adjacent 10 %',
+      Math.abs(pillKey(0.5, 1) - 0.51) < 1e-9 && Math.abs(pillKey(0.5, 1, { shiftKey: true }) - 0.51) < 1e-9
+      && Math.abs(pillKey(0.5, 1, { ctrlKey: true }) - 0.6) < 1e-9 && Math.abs(pillKey(0.55, -1, { ctrlKey: true }) - 0.5) < 1e-9);
+  }
+  {
+    const { marksOf } = mods[P + 'funscript.js'];
+    const ch = marksOf({ metadata: { chapters: [{ startTime: '00:01:00.500' }, { startTime: '00:00:10.000' }, { startTime: 5000 }], bookmarks: [{ time: '00:00:01.000' }] } });
+    const bm = marksOf({ metadata: { bookmarks: [{ time: '00:30.250' }, { time: 'x' }, { time: '00:00:02.000' }] } });
+    ok('marks: chapters win and sort; clock strings and ms numbers both read', same(ch, [5000, 10000, 60500]), ch);
+    ok('marks: bookmarks are the fallback; none reads empty', same(bm, [2000, 30250]) && marksOf({}).length === 0 && marksOf(null).length === 0, bm);
+  }
   ok('PREFS is the contract shape', same(PREFS, want));
   ok('PREFS is frozen to the leaves', Object.isFrozen(PREFS) && Object.isFrozen(PREFS.T) && Object.isFrozen(PREFS.lib));
   ok('an empty store reads the defaults', same(readPrefs(fakeApi()), want));
@@ -562,8 +581,8 @@ const BUSY_PROBE = {
   }`,
 };
 
-async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, probe = null, prefs = {}, onPage = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: coarse });
+async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(SHELL_STUB, probe);
   await ctx.exposeFunction('__nodeFetch', nodeFetch);
@@ -589,13 +608,21 @@ async function open({ cat = advgenCatalog(), hub = null, coarse = false, width =
 }
 
 /** Finds the card: home first, then each category page. */
-async function toCard(page, sel = 'main.pane .fsp') {
+// The cell's height follows its content now, so the card rect comparisons below hold the width only.
+// The Funscript page's card is the full one; a dash hero cell is half the pane and re-composes as its box moves.
+const wide = async (page, sel) => {
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+  if (!await page.evaluate((s) => { const t = document.querySelector(s); if (t) t.click(); return !!t; }, TAB)) return true;
+  await page.waitForSelector('main.pane .fsp-page', { timeout: 3000 }).catch(() => {});
+  return page.locator(sel).first().isVisible().catch(() => false);
+};
+async function toCard(page, sel = 'main.pane .fsp', full = false) {
   for (let pass = 0; pass < 6; pass++) {
-    if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+    if (await page.locator(sel).first().isVisible().catch(() => false)) return full ? wide(page, sel) : true;
     for (const id of await page.$$eval('[role=tab][data-tab-id]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
       await page.click('[data-tab-id="' + id + '"]').catch(() => {});
       await page.waitForTimeout(150);
-      if (await page.locator(sel).first().isVisible().catch(() => false)) return true;
+      if (await page.locator(sel).first().isVisible().catch(() => false)) return full ? wide(page, sel) : true;
     }
     await page.waitForTimeout(300);
   }
@@ -656,7 +683,7 @@ const chrome = (page) => page.evaluate((c) => {
   const root = document.querySelector(c);
   const o = root.getBoundingClientRect();
   const out = {};
-  for (const sel of [':scope > :not(style)', '.fsp-tr > *', '.fsp-src > *', '.fsp-tlbox > *']) {
+  for (const sel of [':scope > :not(style)', '.fsp-tr > *', '.fsp-src > *', '.fsp-tlbox > *', '.fsp-zoom > *']) {
     root.querySelectorAll(sel).forEach((e, i) => {
       const r = e.getBoundingClientRect();
       if (!r.width || !r.height || getComputedStyle(e).visibility === 'hidden') return;
@@ -742,10 +769,31 @@ if (!LIVE) {
   const rects = { empty: await chrome(page) };
   ok('empty: the status reads No scene loaded', (await statusText(page)) === 'No scene loaded', await statusText(page));
   ok('empty: Play is grayed', await playBtn(page).isDisabled());
+  const chooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator(C + ' .fsp-stage').click()])
+    .then(() => true).catch(() => false);
+  ok('open: an empty stage is a click target for the file picker', chooser);
+  const openWhere = await page.evaluate((c) => [...document.querySelectorAll(c + ' button')].filter((b) => /Open files/.test(b.textContent))
+    .map((b) => b.closest('.fsp-lib-head') ? 'library head' : b.parentElement.className), C);
+  ok('open: Open files is in the library head, not the main bar', openWhere.length === 1 && openWhere[0] === 'library head', openWhere);
 
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);
   rects.ready = await chrome(page);
+  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand', 'fsp-close'];
+  const trow = await page.locator(C + ' .fsp-tr').evaluate((t, order) => {
+    const r = t.getBoundingClientRect(), card = t.parentElement.getBoundingClientRect();
+    const kids = [...t.children];
+    return { names: kids.map((e) => order.find((c) => e.classList.contains(c)) || e.className), tops: (() => { const c = kids.filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return (b.top + b.bottom) / 2; }); return Math.max(...c) - Math.min(...c) < 3 ? 1 : 2; })(),
+      outside: order.filter((c) => [...t.parentElement.querySelectorAll('.' + c)].some((e) => !t.contains(e))),
+      ovBetween: kids.indexOf(t.querySelector('.fsp-ov')), inCard: r.left >= card.left && r.right <= card.right + 0.5,
+      keyHint: t.querySelector('.fsp-expand').title };
+  }, ORDER);
+  ok('transport: .fsp-tr holds the ten items in order, in one row', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
+  ok('transport: nothing of it sits outside the row; the graph button names its key', trow.outside.length === 0 && trow.inCard && /\(g\)/.test(trow.keyHint), trow);
+  const rt = [];
+  for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
+  ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
+  ok('transport: no screenshot and no layout button', (await page.locator(C + ' .fsp-snap, ' + C + ' .fsp-layout').count()) === 0);
   ok('idle: nothing is sent before Play', hub.bundles.length === 0, hub.bundles.length);
 
   // ---- preroll, then play ----
@@ -936,6 +984,24 @@ if (!LIVE) {
     const r = sameChrome(rects.empty, rects[s]);
     ok('layout: chrome rects in ' + s + ' match empty', r.ok, r.diff.slice(0, 4));
   }
+  const bundle = await page.evaluate((c) => {
+    const dt = document.querySelector(c + ' .fsp-dt'), z = dt.querySelector('.fsp-zoom'), d = dt.getBoundingClientRect(), p = z.getBoundingClientRect();
+    const probe = document.createElement('i');
+    probe.style.background = 'var(--screen)';
+    document.body.append(probe);
+    const screen = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return { inTr: document.querySelectorAll(c + ' .fsp-tr :is(.fsp-motion, .fsp-off, .fsp-inv)').length,
+      inBundle: [...z.children].slice(0, 3).map((e) => e.className.replace('fsp-btn ', '')), unit: z.querySelector('.fsp-off').textContent,
+      corner: [Math.round(d.right - p.right), Math.round(p.top - d.top)], dtBg: getComputedStyle(dt).backgroundColor === screen,
+      ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
+      shadow: getComputedStyle(dt).boxShadow.includes('inset'), plate: getComputedStyle(z).boxShadow !== 'none' };
+  }, C);
+  ok('bundle: Motion, Offset and Invert sit in the detail bundle, none in the strip', bundle.inTr === 0
+    && bundle.inBundle.join() === 'fsp-motion,fsp-off,fsp-inv', bundle);
+  ok('bundle: Offset is labeled with its unit, ms', /Offset.*ms/.test(bundle.unit), bundle.unit);
+  ok('bundle: the plate is flush with the detail top right corner and shadowed', bundle.corner[0] <= 1 && bundle.corner[1] <= 1 && bundle.plate, bundle);
+  ok('bundle: the detail and the heat sit on --screen with the inset shadow', bundle.dtBg && bundle.ovBg && bundle.shadow, bundle);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
     for (const t of ['--bad', '--estop']) probe.style.color = 'var(' + t + ')';
@@ -948,6 +1014,16 @@ if (!LIVE) {
     }).length;
   }, C);
   ok('layout: nothing in the card wears --bad or --estop (law 13)', red === 0, red);
+  const still = await page.evaluate((c) => {
+    const bar = document.querySelector(c + ' .fsp-hb'), caret = document.querySelector(c + ' .fsp-libcaret svg');
+    const d = () => [getComputedStyle(bar).transitionDuration, getComputedStyle(caret).transitionDuration];
+    const was = d();
+    document.documentElement.classList.add('still');
+    const on = d();
+    document.documentElement.classList.remove('still');
+    return { was, on };
+  }, C);
+  ok('motion: the card transitions ride the duration tokens and stop under html.still', still.was.every((v) => v !== '0s') && still.on.every((v) => v === '0s'), still);
   // --warn is a mark, never text: Paper's white card reads it at 1.8:1.
   const warnText = await page.evaluate((c) => {
     const probe = document.createElement('i');
@@ -999,10 +1075,9 @@ if (!LIVE) {
   const gsp = await spill(page);
   ok('glance: every control lies inside the card, no label cut', gsp.out.length === 0 && gsp.cut.length === 0, gsp);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'glance.png') });
-  // Handheld from its floor up, every 2 px at the default Look and at 1.4: the transport goes
-  // to three rows where two do not fit, and no label or the speed reading's floor is cut.
-  // At Look 1.4 the source row (two tabs and Open files) needs 304 px: the floor scales with
-  // the Look, the tier thresholds stay the shell's px (rclass.js).
+  // Handheld from its floor up, every 2 px at the default Look and at 1.4: no label or the speed
+  // reading's floor is cut. At Look 1.4 the source row (two tabs and Open files) needs 304 px: the
+  // floor scales with the Look, the tier thresholds stay the shell's px (rclass.js).
   const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
   const sweep = [], firstNarrow = {};
   for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
@@ -1021,7 +1096,7 @@ if (!LIVE) {
     bad.length === 0, bad.slice(0, 6));
   console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
   // A Look change alone (no width change) re-measures the switch.
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '400px'; });
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '560px'; });
   await setLook(1.12);
   await page.waitForTimeout(100);
   const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
@@ -1032,12 +1107,26 @@ if (!LIVE) {
   await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
   ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
     { wide, big, bigSpill });
+  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '420px'; });
+  await page.waitForTimeout(200);
+  const vis = await page.locator(C).evaluate((e) => { const d = e.querySelector('.fsp-dt').getBoundingClientRect(), p = e.querySelector('.fsp-zoom').getBoundingClientRect(); return { dt: d.height, plate: p.height, free: d.bottom - p.bottom }; });
+  ok('handheld 420: at least 48 px of the wave shows under the control plate', vis.free >= 48, vis);
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);
     await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'handheld-326.png') });
+    await page.locator(C).evaluate((e) => { e.parentElement.style.width = '780px'; });
+    await page.waitForTimeout(150);
+    await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'handheld-780.png') });
   }
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
+  await loadClip(page);
+  await playBtn(page).click();
+  await page.waitForTimeout(600);
+  await page.locator(C + ' .fsp-close').click();
+  await page.waitForTimeout(200);
+  ok('transport: close unloads the media, the card is empty again, also while playing', (await statusText(page)) === 'No scene loaded' && await playBtn(page).isDisabled()
+    && await video(page, (v) => !v.getAttribute('src') && v.paused));
   ok('no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
@@ -1055,6 +1144,12 @@ if (!LIVE) {
       .map((e) => [e.className || e.getAttribute('aria-label') || e.tagName, e.getBoundingClientRect()])
       .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
     ok('targets: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
+    await p2.locator(C + ' .fsp-tr').evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    const stolen = await p2.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-tr > button')].filter((b) => b.getClientRects().length).map((b) => {
+      const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + 2);
+      return t && b.contains(t) ? null : b.className;
+    }).filter(Boolean), C);
+    ok('targets: the split bar steals no touch from the transport buttons', stolen.length === 0, stolen);
     // The box is not the target where a parent clips it: probe what a touch actually hits.
     // The hover bar's seek is a slider only while the bar shows: a pointer move shows it.
     const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].filter((e) => e.getClientRects().length).map((e) => {
@@ -1143,6 +1238,15 @@ if (!LIVE) {
         { ...mid, bundles: h3.bundles.length - n4 });
     }
     await playBtn(p3).click();
+    const cur = () => p3.locator(C + ' .fsp-tile').evaluateAll((t) => t.findIndex((e) => e.getAttribute('aria-current') === 'true'));
+    const i0 = await cur();
+    await p3.locator(C + ' .fsp-next').evaluate((e) => e.click());
+    await p3.waitForTimeout(300);
+    const i1 = await cur();
+    await p3.locator(C + ' .fsp-prev').evaluate((e) => e.click());
+    await p3.waitForTimeout(300);
+    const i2 = await cur();
+    ok('transport: next and prev walk the library list', i0 === 0 && i1 === 1 && i2 === 0, [i0, i1, i2]);
     ok('stash: the key never sits in the backup prefix', !(await p3.evaluate((sk) => Object.keys(localStorage)
       .some((k) => k.startsWith('phosphor.') && localStorage.getItem(k).includes(sk)), SK)));
     clearInterval(h3.timer);
@@ -1163,7 +1267,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   hub.values[CH.motion + ':pos_10um'] = 15;
   Object.assign(hub.values, KIN_VALUES);
   const { ctx, page, up, errors } = await open({ cat: tc, hub, coarse: true });
-  ok('analyzer: the shell adopts the tuning fixture and the card renders', up && await toCard(page));
+  ok('analyzer: the shell adopts the tuning fixture and the card renders', up && await toCard(page, 'main.pane .fsp', true));
   ok('analyzer: the clip loads', await loadClip(page));
   // ---- playhead ----
   await video(page, (v) => { v.currentTime = 15; });
@@ -1171,13 +1275,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   const bar = await page.evaluate((c) => {
     const q = (s) => document.querySelector(c + ' ' + s).getBoundingClientRect();
     const ph = q('.fsp-ph'), dt = q('.fsp-dt'), ov = q('.fsp-ov'), sc = q('.fsp-scrub');
-    return { top: ph.top - dt.top, bottom: ph.bottom - (ov.top + ov.height / 2), dx: ph.left + ph.width / 2 - (sc.left + sc.width / 2),
-      share: (ph.left + ph.width / 2 - ov.left) / ov.width, heatBelow: ov.top >= dt.bottom };
+    const tr = q('.fsp-tr');
+    return { top: ph.top - dt.top, bottom: ph.bottom - dt.bottom, share: (ph.left + ph.width / 2 - dt.left) / dt.width,
+      grip: (sc.left + sc.width / 2 - ov.left) / ov.width, heatInRow: ov.top >= tr.top - 1 && ov.bottom <= tr.bottom + 1 };
   }, C);
-  ok('playhead: one bar from the detail top down to the grip on the heat, the heat at the bottom',
-    Math.abs(bar.top) <= 1 && Math.abs(bar.bottom) <= 1 && Math.abs(bar.dx) <= 1 && bar.heatBelow, bar);
-  ok('playhead: at 15 s it sits at that share of the script in both bands',
-    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01, bar.share);
+  ok('playhead: one bar through the detail\'s height, the heat in the transport row', Math.abs(bar.top) <= 2 && Math.abs(bar.bottom) <= 2 && bar.heatInRow, bar);
+  ok('playhead: at 15 s the bar and the heat\'s grip sit at that share of the script',
+    Math.abs(bar.share - 15000 / ACTIONS[ACTIONS.length - 1].at) < 0.01 && Math.abs(bar.grip - bar.share) < 0.01, bar);
   // ---- expand ----
   // Rects relative to the card: a click or a scrollIntoView may scroll the page.
   const look = () => page.locator(C).evaluate((e) => {
@@ -1198,6 +1302,17 @@ if (!LIVE && !args.includes('--stash-live')) {
       && open1.stage.height <= 181 && !!open1.an && open1.an.height > 150 && !open1.lib
       && open1.dt.height > before.dt.height, open1);
   ok('expand: the button reads pressed', (await expandBtn.getAttribute('aria-pressed')) === 'true');
+  await page.locator(C).focus();
+  await page.keyboard.press('g');
+  await page.waitForTimeout(300);
+  const gOff = await page.locator(C + '[data-an]').count();
+  await page.keyboard.press('g');
+  await page.waitForTimeout(300);
+  ok('expand: g toggles the analyzer both ways', gOff === 0 && (await page.locator(C + '[data-an]').count()) === 1, gOff);
+  await page.locator(C + ' .fsp-off input').focus();
+  await page.keyboard.press('g');
+  await page.waitForTimeout(200);
+  ok('expand: g typed in the Offset field is ignored', (await page.locator(C + '[data-an]').count()) === 1);
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer.png') });
   const labels = await page.$$eval(C + ' .fsa-row .fsa-k', (els) => els.map((e) => e.textContent));
   ok('analyzer: one row per tuning control the catalog groups', labels.length === groups.flatMap((g) => g.fields).length,
@@ -1539,18 +1654,46 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(300);
   };
   ok('page settings: the page mounts the card', up && await toPage());
+  await page.waitForSelector(C + ' [data-search-key="open"]', { state: 'attached', timeout: 5000 }).catch(() => {});
+  const skeys = await page.$$eval(C + ' [data-search-key]', (els) => els.map((e) => e.dataset.searchKey).sort());
+  ok('search: the page lists motion, offset, invert, open, graph and split, each on a control', skeys.join() === 'graph,invert,motion,offset,open,split', skeys);
+  await page.keyboard.press('F3');
+  await page.keyboard.type('Offset');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(600);
+  ok('search: F3 Offset lands on the Offset field, focused', await page.evaluate((c) => document.activeElement === document.querySelector(c + ' .fsp-off input'), C));
   ok('page settings: closed by default, one Settings button, nothing mounted',
     (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
   await pageShot('page-settings-closed-1280x800');
   const before = await cardBox();
+  const stageH = () => page.locator(C + ' .fsp-stage').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+  const stage0 = await stageH();
   await page.click(SUM);
   await page.waitForTimeout(200);
   ok('page settings: Settings mounts the plugin settings card (connect, curve, playback)', same(await rows(), [1, 1, 1]), await rows());
   const after = await cardBox();
-  const sec = await page.evaluate(() => { const s = document.querySelector('main.pane .fsp-psec');
-    return { h: s.clientHeight, page: s.parentElement.clientHeight, scrolls: s.scrollHeight > s.clientHeight + 1 }; });
-  ok('page settings: the card keeps its top and yields height; the section at most half the page, scrolling within (fill)',
-    after[0] === before[0] && after[1] < before[1] && sec.h <= sec.page / 2 + 1 && sec.scrolls, { before, after, sec });
+  const sec = await page.evaluate((c) => { const s = document.querySelector('main.pane .fsp-psec'), k = document.querySelector(c).getBoundingClientRect(), r = s.getBoundingClientRect();
+    return { beside: r.left >= k.right - 330 && r.right <= k.right + 1 && r.width <= 330, comp: document.querySelector(c).dataset.comp, h: s.clientHeight, page: s.parentElement.clientHeight, scrolls: s.scrollHeight > s.clientHeight + 1 }; }, C);
+  ok('page settings: the card keeps its top, height and composition; the section overlays the library column, scrolling within (fill)',
+    after[0] === before[0] && after[1] >= before[1] && sec.beside && sec.comp === 'full' && sec.scrolls, { before, after, sec });
+  ok('page settings: opening Settings never shrinks the stage', (await stageH()) >= stage0, [stage0, await stageH()]);
+  const covered = () => page.evaluate((c) => [...document.querySelector(c).querySelectorAll('button, input:not([type=file]), select, [role=slider]')]
+    .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-libbox, .fsp-anbox, .fsp-hov, [hidden]'))
+    .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 2 && r.top >= 0 && r.bottom <= innerHeight; })
+    .filter((e) => { const r = e.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(t && (e === t || e.contains(t) || t.contains(e))); })
+    .map((e) => e.className || e.getAttribute('aria-label') || e.tagName), C);
+  ok('page settings: with the library open no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(400);
+  ok('page settings: with the analyzer open the section sits on its column, above the transport; no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-expand');
+  await page.waitForTimeout(300);
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(300);
+  ok('page settings: with the library collapsed the section goes below the card; no card control is covered', same(await covered(), []), await covered());
+  await page.click(C + ' .fsp-libcaret');
+  await page.waitForTimeout(300);
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
@@ -1582,6 +1725,79 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: closed persists and unmounts the card', same(await rows(), [0, 0, 0])
     && await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'false');
   ok('page settings: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
+// ---- (u) handheld sizes on a coarse pointer: no horizontal overflow, 40 px targets (ph-cqz6) ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(u) handheld viewports');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  for (const [w, hh] of [[200, 390], [390, 844], [412, 915], [844, 390], [1024, 768]]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page } = await open({ cat, hub, coarse: true, width: w, height: hh });
+    const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+    await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
+    await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
+    const there = await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).then(() => true, () => false);
+    ok('handheld ' + w + 'x' + hh + ': the page mounts the card', there);
+    if (there) {
+      await loadClip(page);
+      await page.waitForTimeout(500);
+      const m = await page.evaluate((c) => {
+        const root = document.querySelector(c), o = root.getBoundingClientRect();
+        const hits = [...root.querySelectorAll('button, input:not([type=file]), select, [role=slider]')].filter((e) => e.getClientRects().length
+          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]'));
+        const small = hits.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.width < 39.5 || r.height < 39.5); })
+          .map((e) => (e.className || e.getAttribute('aria-label') || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
+        const wide = [...root.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 0.5 || r.left < o.left - 0.5)
+          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-hov, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
+        const pg = root.closest('.fsp-page'), de = document.documentElement;
+        return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],
+          stage: Math.round(root.querySelector('.fsp-stage').getBoundingClientRect().height),
+          timeClip: (t => (t && t.getClientRects().length ? t.scrollWidth - t.clientWidth : 0))(root.querySelector('.fsp-time')) };
+      }, C);
+      ok('handheld ' + w + 'x' + hh + ': no horizontal overflow, in the card or its page', m.wide.length === 0 && m.pageOverflow <= 0 && m.timeClip <= 1, m);
+      if (m.comp !== 'glance') ok('handheld ' + w + 'x' + hh + ': the stage keeps 120 px', m.stage >= 119, m);
+      ok('handheld ' + w + 'x' + hh + ': every control is at least 40 px', m.small.length === 0, m);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'bucket-' + w + 'x' + hh + '.png') });
+    }
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+}
+
+// ---- (v) prev and next step the script's chapters; close returns to the library ----
+if (!LIVE && !args.includes('--stash-live')) {
+  console.log('(v) chapters');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  const { ctx, page } = await open({ cat, hub });
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+  await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
+  await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
+  await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).catch(() => {});
+  const chapters = { ...SCRIPT, metadata: { chapters: [{ name: 'a', startTime: '00:00:10.000', endTime: '00:00:20.000' }, { name: 'b', startTime: '00:00:20.000', endTime: '00:00:30.000' }] } };
+  ok('chapters: the clip with chapters loads', await loadClip(page, chapters));
+  const at = () => video(page, (v) => Math.round(v.currentTime));
+  const click = async (cls) => { await page.locator(C + ' .' + cls).evaluate((e) => e.click()); await page.waitForTimeout(500); };
+  await click('fsp-next');
+  const n1 = await at();
+  await click('fsp-next');
+  const n2 = await at();
+  const nextOff = await page.locator(C + ' .fsp-next').isDisabled();
+  await click('fsp-prev');
+  const p1 = await at();
+  ok('chapters: next goes to 10 s then 20 s, prev back to 10 s; next is off past the last chapter', n1 === 10 && n2 === 20 && p1 === 10 && nextOff, [n1, n2, p1, nextOff]);
+  await click('fsp-close');
+  ok('chapters: close unloads the media and shows the library', (await statusText(page)) === 'No scene loaded'
+    && (await page.locator(C).getAttribute('data-view')) === 'library');
   clearInterval(hub.timer);
   await ctx.close();
 }
@@ -1629,6 +1845,19 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(350);
   ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
   await shot('hover-1280x800');
+  if (SHOTS) {
+    const vp = page.viewportSize();
+    for (const [w, hh] of [[1428, 900], [1024, 768], [420, 860]]) {
+      await page.setViewportSize({ width: w, height: hh });
+      await page.waitForTimeout(500);
+      await overVideo();
+      await shot('page-' + w + 'x' + hh);
+    }
+    await page.setViewportSize(vp);
+    await page.waitForTimeout(400);
+  }
+  const hbKept = await page.locator(C + ' .fsp-hb-row > *, ' + C + ' .fsp-hb-seek').evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.className));
+  ok('hover: outside media fullscreen the bar keeps only Fullscreen and its mode', hbKept.every((c) => /fsp-hb-(full|mode|gap)/.test(c)) && hbKept.some((c) => /fsp-hb-full/.test(c)), hbKept);
   await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
   await overVideo(10);
@@ -1636,7 +1865,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(100);
   ok('hover: hidden on pointer leave', !(await shown()));
 
-  // Play and pause through the bar: the controller's preroll first, one hold after.
+  // Play and pause through the bar (its whole form is media fullscreen's): the controller's preroll first, one hold after.
+  const mediaOn = (on) => page.locator(C).evaluate((e, v) => e.toggleAttribute('data-media', v), on);
+  await mediaOn(true);
   const n0 = hub.bundles.length;
   await overVideo();
   await page.click(C + ' .fsp-hb-play');
@@ -1665,6 +1896,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover seek: the tooltip reads the time under the pointer', !tip.hidden && /^0:1[45]\.\d$/.test(tip.text), tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
+  await mediaOn(false);
   // Keys while the player has focus: k plays (through the preroll), m mutes, j seeks back 10 s, k pauses.
   await page.locator(C).focus();
   await page.keyboard.press('k');
@@ -1677,9 +1909,31 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(200);
   ok('keys: k plays and pauses, j seeks back 10 s, all through the controller', kPlay && tJ < CLIP_S / 2 - 8
     && await video(page, (v) => v.paused) && (await direct()).length === 0, { kPlay, tJ, direct: await direct() });
+  // The split bar: drag moves the wave card's height against the stage's, remembered.
+  const dims = () => page.locator(C).evaluate((e) => ({ dt: Math.round(e.querySelector('.fsp-dt').getBoundingClientRect().height),
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height) }));
+  const d0 = await dims();
+  const sb = await page.locator(C + ' .fsp-split').boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2 - 40, { steps: 4 });
+  await page.mouse.up();
+  const d1 = await dims();
+  ok('split: dragging the bar up 40 px grows the wave card by 40 and shrinks the stage by as much', Math.abs(d1.dt - d0.dt - 40) <= 2
+    && Math.abs(d0.stage - d1.stage - 40) <= 2, [d0, d1]);
+  await page.locator(C + ' .fsp-split').focus();
+  await page.keyboard.press('ArrowDown');
+  const d2 = await dims();
+  await page.keyboard.press('Shift+ArrowDown');
+  const d3 = await dims();
+  ok('split: ArrowDown shrinks the wave card 8 px, Shift 1 px', d1.dt - d2.dt === 8 && d2.dt - d3.dt === 1, [d1, d2, d3]);
+  const splitSaved = d3.dt;
+  ok('split: the height is stored as the pref split', Math.abs(await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) - d3.dt) <= 1);
   // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
-  ok('volume: one set, the hover bar\'s: the transport has no mute and no slider', await page.locator(C + ' .fsp-tr').evaluate((t) =>
-    !t.querySelector('input[type=range]') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
+  ok('volume: the transport has the slider, the hover bar the only mute', await page.locator(C + ' .fsp-tr').evaluate((t) =>
+    !!t.querySelector('input.fsp-vol') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
+  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.6'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  ok('volume: the transport slider sets the video volume', await video(page, (v) => Math.abs(v.volume - 0.6) < 0.01));
   await overVideo();
   await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.keyboard.press('m');
@@ -1691,6 +1945,27 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   await page.waitForTimeout(600);
   await toPage();
+  ok('split: the height comes back after a launch', Math.abs((await page.locator(C + ' .fsp-dt').evaluate((e) => Math.round(e.getBoundingClientRect().height))) - splitSaved) <= 2, splitSaved);
+  // The stage floor holds on resize: the stored height is clamped when applied, never rewritten.
+  const vp0 = page.viewportSize();
+  const sb2 = await page.locator(C + ' .fsp-split').boundingBox();
+  await page.mouse.move(sb2.x + sb2.width / 2, sb2.y + sb2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sb2.x + sb2.width / 2, sb2.y + sb2.height / 2 - 900, { steps: 6 });
+  await page.mouse.up();
+  const big = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split')));
+  const floors = [];
+  for (const [vw, vh] of [[1280, 720], [1024, 768], [1280, 600]]) {
+    await page.setViewportSize({ width: vw, height: vh });
+    await page.waitForTimeout(400);
+    floors.push(await page.locator(C).evaluate((e) => ({ stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height),
+      past: Math.round(Math.max(...[...e.children].map((c) => c.getBoundingClientRect().bottom)) - e.getBoundingClientRect().bottom) })));
+  }
+  ok('split: dragged to the top, then 1280x720, 1024x768 and 1280x600: the stage keeps 120 px, nothing runs past the card, the stored height stays',
+    floors.every((x) => x.stage >= 119 && x.past <= 1) && await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) === big, { big, floors });
+  await page.locator(C + ' .fsp-split').dblclick();
+  await page.setViewportSize(vp0);
+  await page.waitForTimeout(300);
   ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
     && (await page.locator(C + ' .fsp-hb-mute').getAttribute('aria-label')) === 'Unmute (m)');
   await page.locator(C + ' .fsp-hb-mute').evaluate((e) => e.click());
@@ -1730,6 +2005,16 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
   ok('media fullscreen: f enters and leaves', fKey.media && fKey.bare && !(await fsLook()).full, fKey);
+  await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
+  const paused0 = await video(page, (v) => v.paused);
+  await page.locator(C + ' .fsp-stage').dblclick();
+  await page.waitForTimeout(500);
+  const dbl = await fsLook();
+  ok('media fullscreen: a double-click on the stage enters it (the ask carries bare unless In window) and never toggles Play',
+    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === (document.documentElement.dataset.fullscreenMode !== 'window'))) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
+  await page.locator(C + ' .fsp-stage').dblclick();
+  await page.waitForTimeout(500);
+  ok('media fullscreen: a second double-click leaves it', !(await fsLook()).media);
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
@@ -1751,12 +2036,15 @@ if (!LIVE && !args.includes('--stash-live')) {
     && m1.b === 'true' && m2.pref === 'window' && m2.b === 'false', { m1, m2 });
   // The library caret: the column closes, the stage takes the width, remembered.
   const libW = () => page.locator(C).evaluate((e) => ({ lib: e.querySelector('.fsp-libbox').getClientRects().length > 0,
-    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width) }));
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width),
+    stageH: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height) }));
+  const open0 = await libW();
   await page.click(C + ' .fsp-libcaret');
   await page.waitForTimeout(200);
   const shut = await libW();
   ok('library: the caret closes the column and the stage takes the card width, remembered', !shut.lib && shut.stage === shut.card
     && await page.evaluate(() => localStorage.getItem('phosphor.funscript.libOpen')) === 'false', shut);
+  ok('library: closing the column never shrinks the stage height', shut.stageH >= open0.stageH, [open0.stageH, shut.stageH]);
   await page.click(C + ' .fsp-libcaret');
   await page.waitForTimeout(200);
   ok('library: the caret opens it again', (await libW()).lib);
@@ -1812,6 +2100,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(600);
   await page.evaluate(() => scrollTo(0, 0));
   if (await page.locator(C + '[data-an]').count()) await page.click(C + ' .fsp-expand');
+  await mediaOn(true);
   await overVideo();
   await page.waitForTimeout(300);
   const phone = await page.locator(C).evaluate((e) => {
@@ -1821,6 +2110,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     return { cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent, out: out.map((x) => x.className) };
   });
   ok('hover 390: the bar lies inside the stage, the time readout uncut', !phone.cut && phone.out.length === 0, phone);
+  await mediaOn(false);
   ok('hover: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

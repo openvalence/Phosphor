@@ -58,6 +58,11 @@
   import HeroNumerals from './hero/HeroNumerals.svelte';
   import PlanStrip from './widgets/PlanStrip.svelte';
   import { railReadout } from './hero/RailWidget.svelte';
+  import MiniRail from './hero/MiniRail.svelte';
+  import { heroBar, budgetOf, isCollapsed } from './hero/heroBar.svelte.js';
+  import { view } from '../model/viewport.svelte.js';
+  import { history } from '../model/history.svelte.js';
+  import { prefs, setPref } from '../model/prefs.js';
 
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. shell: the shell's window buttons (main.js), null on the
@@ -92,6 +97,17 @@
   );
 
   const rail = $derived(railReadout());
+  // The hide tab (Settings: Rail hide tab) and, while hidden, the mini rail.
+  const handheld = $derived(view.bucket <= 2);
+  const tab = $derived(!!rail && $prefs.railHide && !handheld);
+  const railHidden = $derived(!!rail && isCollapsed($prefs));
+  // A user act: shows the rail even over the budget, until the next resize.
+  const showRail = () => {
+    if (handheld) { heroBar.popup = !heroBar.popup; return; }
+    heroBar.userShow = true;
+    setPref('railHidden', false);
+  };
+  const toggleRail = () => (railHidden ? showRail() : setPref('railHidden', true));
   // Override/return is the rail's (RENDERING §8.4 `axis`): only with a rail,
   // and never on a hub whose op table lacks it (law 7).
   const hasOverride = $derived(!!rail && !!(specSafety && (specSafety.options || [])[SAFETY_OP.override]));
@@ -128,6 +144,30 @@
     if (onopenlog) onopenlog();
   }
 
+  // The hero budget (DESIGN §10.12): link bar + strip + rail fit a share of
+  // the window height. Order of giving way: the numeral shrinks to its floor
+  // (--num-cap), then the rail takes its mini form. Pure in viewport, prefs
+  // and the user's taps (userShow, cleared by a resize); never of history.
+  let winH = $state(0), winW = $state(0);
+  let chromeH = $state(34), tapPx = $state(49), padV = $state(6), gapV = $state(4);
+  $effect(() => { void winH; void winW; heroBar.userShow = false; });
+  $effect(() => {
+    if (!winH) return;
+    heroBar.budget = budgetOf(winH, view.bucket);
+    const numMin = (winW >= 1024 ? 54 : 42) * .95 + 20;
+    const row = stacked ? numMin + gapV + tapPx + 2 * padV : Math.max(numMin, tapPx) + 2 * padV;
+    const over = chromeH + row + heroBar.railH > heroBar.budget;
+    // Handheld: the mini is the rail's permanent form; its pop-up is the rail.
+    heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
+  });
+  $effect(() => { if ((!handheld || !rail) && !(rail && rail.busy)) heroBar.popup = false; });
+  // Outside tap closes the pop-up unless a scrub or window drag is live.
+  function onPopupAway(e) {
+    if (!heroBar.popup || (rail && rail.busy)) return;
+    if (e.target.closest && (e.target.closest('.hero-inner.popup') || e.target.closest('.mini'))) return;
+    heroBar.popup = false;
+  }
+
   // The phone tab strip sticks just below this strip (App.svelte .tabs).
   let stripH = $state(0);
   $effect(() => {
@@ -158,6 +198,7 @@
     if (unattended) return { kind: 'unattended', text: 'Unattended: no session in control' };
     if (lastRefusal.at) return { kind: 'refusal' };
     if (jogNote) return { kind: 'notice', text: jogNote };
+    if (history.msg) return { kind: 'notice', text: history.msg };
     if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
@@ -238,6 +279,7 @@
   let stripEl = $state(null), measureEl = $state(null), pairEl = $state(null), ovrEl = $state(null);
   let level = $state(0);
   let stacked = $state(false);
+  let smallNums = $state(false);
   let menuOpen = $state(false);
   let menuEl = $state(null);
   let flipW = 0, ovrW = 0;   // kept from when each was last inline (the popover unmounts them)
@@ -246,6 +288,20 @@
     const cs = getComputedStyle(stripEl);
     const content = stripEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const prim = stripEl.querySelector('.hn-primary')?.offsetWidth || 0;
+    // The secondaries need three 11 px rows (num-h >= 3.4 x 11 + 20); short of that they go (ph-kl5u).
+    smallNums = (stripEl.querySelector('.nums')?.offsetHeight || 999) < 58;
+    padV = parseFloat(cs.paddingTop) || padV;
+    gapV = parseFloat(cs.rowGap) || gapV;
+    chromeH = (stripEl.parentElement?.offsetHeight || 0) - stripEl.offsetHeight;
+    tapPx = measureEl.querySelector('[data-k=tap]')?.offsetHeight || tapPx;
+    // Stacked is decided at the numeral's design size, so the budget's shrink
+    // never feeds back into it (and a missing hub reads like a live one).
+    const W = innerWidth, F = W >= 1024 ? Math.min(80, Math.max(54, W * .062)) : Math.min(54, Math.max(42, W * .085));
+    const valEl = stripEl.querySelector('.hn-primary .hn-val');
+    const curF = valEl ? parseFloat(getComputedStyle(valEl).fontSize) : 0;
+    const primD = valEl && curF ? Math.max(stripEl.querySelector('.hn-primary .hn-label')?.offsetWidth || 0, valEl.offsetWidth * F / curF) : 3.5 * F;
+    const dCol = Math.min(21.6, (F * .95) / 3.4), colEl = stripEl.querySelector('.hn-col .hn-val');
+    const cCol = colEl ? parseFloat(getComputedStyle(colEl).fontSize) : 0;
     stripEl.style.setProperty('--prim-w', prim + 'px');
     const w = (k) => [...measureEl.querySelectorAll('[data-k=' + k + ']')].reduce((a, el) => a + el.offsetWidth + GAP, 0);
     const GAP = 6;
@@ -253,11 +309,16 @@
     if (fEl) flipW = fEl.offsetWidth + GAP;
     if (oEl) ovrW = oEl.offsetWidth + GAP;
     const pair = pairEl ? pairEl.offsetWidth : 0;
-    const ovr = hasOverride ? ovrW : 0, fl = flip ? flipW : 0;
-    const needs = [pair + ovr + fl + (ops.length > 1 ? w('menu') : w('op')), pair + ovr + (ops.length || flip ? w('icon') : 0),
-      pair + (ops.length || railCtl ? w('icon') : 0)];
-    const col = stripEl.querySelector('.hn-col')?.offsetWidth;
-    const oneRow = content - prim - (col ? col + 18 : 0) - Math.min(240, content * 0.25) - 24;
+    // Home, Flip and Override slots count whether or not the hub offers them,
+    // so the row choice never follows link state (ph-t4ge).
+    const slot = (pairEl ? pairEl.offsetWidth / 2 : 0) + GAP;
+    const ovr = ovrW || slot, fl = flipW || slot;
+    const homeW = ops.length > 1 ? w('menu') : ops.length ? w('op') : slot;
+    const iconW = ops.length ? w('icon') : slot;
+    const needs = [pair + ovr + fl + homeW, pair + ovr + iconW, pair + iconW];
+    const colW = stripEl.querySelector('.hn-col')?.offsetWidth;
+    const colD = colW && cCol ? colW * dCol / cCol : 11 * dCol + 40;
+    const oneRow = content - primD - colD - 18 - Math.min(240, content * 0.25) - 24;
     stacked = !needs.slice(0, 2).some((n) => n <= oneRow);
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
@@ -278,6 +339,10 @@
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
   function onWindowKey(e) {
+    if (e.key === 'Escape' && heroBar.popup && !(rail && rail.busy)) {
+      heroBar.popup = false;
+      document.querySelector('.topstrip .mini')?.focus();
+    }
     if (e.key === 'Escape' && menuOpen) {
       menuOpen = false;
       menuEl?.querySelector('.home-btn')?.focus();
@@ -326,23 +391,25 @@
           onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
          stroke-linejoin="round" aria-hidden="true">
-      <ellipse cx="12" cy="12" rx="3.2" ry="5.2"/><path d="M9.5 16.5l5-9M17 12h5M19.5 9.5L22 12l-2.5 2.5"/>
-      <path class="gray" d="M7 12H2M4.5 9.5L2 12l2.5 2.5"/>
+      <text class="zero" x="12" y="17" text-anchor="middle">0</text>
+      <path d="M17.5 12H22M20 9.5L22 12l-2 2.5"/>
+      <path class="gray" d="M6.5 12H2M4 9.5L2 12l2 2.5"/>
     </svg>
     <span class="lbl">Flip</span>
   </button>
 {/snippet}
 
-<svelte:window onkeydown={onWindowKey} />
-<svelte:document onclick={onDocClick} />
+<svelte:window onkeydown={onWindowKey} bind:innerHeight={winH} bind:innerWidth={winW} />
+<svelte:document onclick={onDocClick} onpointerdown={onPopupAway} />
 
-<div class="topstrip" class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
+<div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" class:stacked role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" class:stacked class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
       <span class="btn home-btn icon-only" data-k="icon">{@render homeFace()}</span>
+      <span data-k="tap" style="height: var(--tap)"></span>
     </div>
     <div class="nums">
       {#if rail && rail.posField}
@@ -359,7 +426,7 @@
          nothing moves when it fills. -->
     {#if rail}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
 
-    <div class="status" data-kind={slot.kind}>
+    <div class="status" class:hastab={tab || railHidden} data-kind={slot.kind}>
       {#if slot.kind === 'refusal'}
         <!-- The text is its own dismiss button: one target, no extra width. -->
         <div class="recovery" role="alert">
@@ -386,6 +453,17 @@
           <button type="button" class="btn" onclick={retryNow}>Retry</button>
         {/if}
       {/if}
+    {#if tab || railHidden}
+      <div class="railtab">
+        {#if railHidden}<MiniRail onshow={showRail} />{/if}
+        {#if tab}
+          <button type="button" class="tab" aria-label={railHidden ? 'Show rail' : 'Hide rail'} title={railHidden ? 'Show rail' : 'Hide rail'}
+                  aria-expanded={!railHidden} onclick={toggleRail}>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d={railHidden ? 'M2.5 4.5l3.5 3.5 3.5-3.5' : 'M2.5 7.5l3.5-3.5 3.5 3.5'}/></svg>
+          </button>
+        {/if}
+      </div>
+    {/if}
     </div>
 
     <div class="dock">
@@ -442,16 +520,20 @@
      --num-h mirrors HeroNumerals' primary clamp (.hn-primary .hn-val, line
      height .95, plus its label line): change both together. */
   .strip {
-    --num-h: calc(clamp(54px, 6.2vw, 80px) * .95 + 20px);
+    /* The hero budget caps the numeral (DESIGN §10.12): link bar, padding and, stacked, the control row come off it. */
+    --num-min: calc(54px * .95 + 20px);
+    --num-cap: max(var(--num-min), calc(var(--hb, 999px) - 46px));
+    --num-h: min(calc(clamp(54px, 6.2vw, 80px) * .95 + 20px), var(--num-cap));
     /* One box for Home, Flip, Override, Pause, Halt: icon above the word. */
-    --sb-w: 84px;
-    --sb-h: min(68px, max(var(--num-h), var(--tap)));
-    --sico: clamp(16px, calc(var(--sb-h) - 40px), 28px);
+    --sb-w: 63px;
+    --sb-h: min(51px, max(var(--num-h), var(--tap)));
+    --sico: clamp(12px, calc(var(--sb-h) - 30px), 21px);
     display: flex;
     align-items: center;
-    gap: 6px 12px;
-    height: calc(max(var(--num-h), var(--tap)) + 12px);
-    padding: 6px var(--gap);
+    gap: var(--sp-2) var(--sp-4);
+    --pad-v: calc(var(--sp-2) * 1.5);
+    height: calc(max(var(--num-h), var(--tap)) + 2 * var(--pad-v));
+    padding: var(--pad-v) var(--gap);
     position: relative;
   }
   /* Off-layout: the ops at their inline width, for the budget only. */
@@ -468,21 +550,22 @@
   }
   .measure > * { flex: none; }
   @media (max-width: 1023px) {
-    .strip { --num-h: calc(clamp(42px, 8.5vw, 54px) * .95 + 20px); }
+    .strip { --num-min: calc(42px * .95 + 20px); --num-h: min(calc(clamp(42px, 8.5vw, 54px) * .95 + 20px), var(--num-cap)); }
   }
   /* Stacked (the measured budget says one row cannot hold the group): the
      primary numeral and the status on one row, the controls on a second the
      grid guarantees (a wrapping flex row once pushed the pair onto a third,
      clipped line). */
   .strip.stacked {
-    --sb-h: calc(var(--tap) + 5px);
+    --num-cap: max(var(--num-min), calc(var(--hb, 999px) - 52px - var(--tap)));
+    --sb-h: var(--tap);
     display: grid;
     grid-template: "num status" var(--num-h) "dock dock" var(--tap) / min-content minmax(0, 1fr);
-    height: calc(var(--num-h) + 6px + var(--tap) + 12px);
+    height: calc(var(--num-h) + var(--pad-v) + var(--tap) + 2 * var(--pad-v));
   }
   .stacked .nums { grid-area: num; }
   .stacked .status { grid-area: status; }
-  .strip.stacked .dock { grid-area: dock; display: flex; justify-content: flex-end; gap: 6px; min-width: 0; }
+  .strip.stacked .dock { grid-area: dock; display: flex; justify-content: flex-end; gap: var(--sp-2); min-width: 0; }
   /* Watch-sized: no room beside the numeral. A current condition covers
      the numeral in its own cell; the edge history stays in the Log. */
   @media (max-width: 300px) {
@@ -498,6 +581,7 @@
      never cut short and a clipped neighbor never peeks in. Stacked, it
      reaches 12px into the row gap and the dock row; a wrapped row starts
      past the 18px row gap, outside either box. */
+  .small-nums .nums :global(.hn-col), .small-nums .readback { display: none; }
   .nums {
     flex: 0 1 auto;
     height: var(--num-h);
@@ -512,8 +596,8 @@
      status slot outranks it. */
   .readback {
     position: absolute;
-    top: 6px;
-    left: calc(var(--gap) + var(--prim-w, 0px) + 18px);
+    top: var(--sp-2);
+    left: calc(var(--gap) + var(--prim-w, 0px) + var(--sp-5));
     right: var(--gap);
     pointer-events: none;
   }
@@ -526,7 +610,7 @@
     overflow: hidden;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     justify-content: center;
     font-size: 12.5px;
   }
@@ -548,26 +632,45 @@
   .recovery {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-width: 0;
   }
 
   .dock { display: contents; }
 
+  /* Rides the status slot's right end: no width of its own in the strip's budget. */
+  .status { position: relative; }
+  .status.hastab { padding-right: calc(var(--tap) + var(--sp-3)); }
+  .railtab { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: var(--sp-2); }
+  .status.hastab:has(.mini) { padding-right: calc(var(--tap) + 64px + var(--sp-3) + var(--sp-2)); }
+  @media (max-width: 300px) { .railtab { display: none; } .status.hastab { padding-right: 0; } }
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    background: transparent;
+    border: 0;
+    color: var(--ink-dim);
+  }
+  .tab:hover { color: var(--ink); }
+  .tab svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
   /* Bare: out of flow at the window's top right, the pair alone. */
   .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
   .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
-  .topstrip.bare .strip { display: flex; height: auto; padding: 6px; }
-  .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity .15s; }
+  .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
+  .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
   /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
   .pair {
     flex: none;
     display: flex;
-    gap: 6px;
+    gap: var(--sp-2);
   }
   /* Never shrink, never scroll: the budget decides what is inline. */
-  .ovr, .ops, .home-menu { flex: none; display: flex; gap: 6px; }
+  .ovr, .ops, .home-menu { flex: none; display: flex; gap: var(--sp-2); }
   .ops:empty { display: none; }
 
   .home-menu { position: relative; }
@@ -575,9 +678,11 @@
     flex-direction: column;
     justify-content: flex-start;
     gap: 1px;
-    min-width: var(--sb-w, 84px);
+    min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: var(--sp-1) var(--sp-2) 1px;
+    font-size: max(11px, .54rem);
+    line-height: 1;
   }
   /* One icon box and one drawn stroke for every strip glyph. */
   .ico { width: var(--sico, 28px); height: var(--sico, 28px); }
@@ -587,13 +692,13 @@
      Opens toward the pair, mirrored with the dock. */
   .menu-pop {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + var(--sp-2));
     left: 0;
     z-index: 40;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 6px;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
     min-width: 100%;
     background: var(--bg-card);
     border: 1px solid var(--line-2);
@@ -612,17 +717,20 @@
     justify-content: flex-start;
     gap: 1px;
     min-height: var(--tap);
-    min-width: var(--sb-w, 84px);
+    min-width: var(--sb-w, 63px);
     height: var(--sb-h, auto);
-    padding: 4px 8px 2px;
+    padding: var(--sp-1) var(--sp-2) 1px;
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     color: var(--ink);
     font-weight: 500;
-    font-size: .72rem;
+    font-size: max(11px, .54rem);
+    line-height: 1;
   }
   .rw-flip .gray { stroke: var(--tx-ghost); }
+  /* The hero numerals' face and its slashed zero. */
+  .rw-flip .zero { font: 500 15px var(--mono); fill: currentColor; stroke: none; }
   .rw-flip[aria-pressed='true'] { border-color: var(--warn); }
   .rw-flip:disabled { opacity: .4; }
   .rw-flip:is([data-shadow='pending'], [data-shadow='overdue']) .ico { opacity: .5; }
@@ -638,12 +746,12 @@
   /* Phone: the safety ops drop their idle hint line and narrow to 64 px
      (--tap still holds, law 12); a live status line still shows. */
   @media (max-width: 479px) {
-    .strip { --sb-w: 64px; }
-    .dock :global(.safety-op .btn) { padding: 4px 4px 2px; }
+    .strip { --sb-w: var(--tap); }
+    .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-1) var(--sp-1); }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   }
   @media (max-width: 300px) {
-    .dock :global(.safety-op .btn) { padding: 2px 4px; }
+    .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-2); }
     .dock :global(.safety-op .ico) { display: none; }
   }
   .home-btn.icon-only { min-width: var(--tap); }
@@ -657,7 +765,7 @@
     justify-content: center;
     min-height: var(--tap);
     min-width: max(var(--tap), 56px);
-    padding: 0 12px;
+    padding: 0 var(--sp-4);
     background: transparent;
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
@@ -665,7 +773,7 @@
     font-weight: 500;
     font-size: .72rem;
     white-space: nowrap;
-    transition: border-color .12s, color .12s;
+    transition: border-color var(--t-quick), color var(--t-quick);
   }
   .btn:disabled { opacity: 0.4; }
   .btn:not(:disabled):hover { border-color: var(--line-4); }
@@ -676,10 +784,10 @@
   .st-dismiss {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     min-width: 0;
     min-height: var(--tap);
-    padding: 0 4px;
+    padding: 0 var(--sp-2);
     text-align: left;
     border-radius: var(--r-s);
   }
@@ -691,16 +799,16 @@
     max-width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-3);
     min-height: var(--tap);
-    padding: 0 8px;
+    padding: 0 var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);
     font-size: 12px;
     color: var(--ink);
     overflow: hidden;
     white-space: nowrap;
-    transition: border-color .12s;
+    transition: border-color var(--t-quick);
   }
   .evline:hover { border-color: var(--line-4); }
   .evline.stale { opacity: .55; }
@@ -715,11 +823,8 @@
     font-size: 11px;
     color: var(--ink-dim);
     border: 1px solid var(--line-2);
-    padding: 0 5px;
+    padding: 0 var(--sp-2);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .btn, .evline, .bare .pair { transition: none; }
-    .btn.hazard { animation: none; }
-  }
+  :global(html.still) .btn.hazard { animation: none; }
 </style>

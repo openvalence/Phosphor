@@ -218,7 +218,7 @@
   .hero-numerals {
     display: flex;
     align-items: flex-end;
-    gap: 18px;
+    gap: var(--sp-5);
   }
 
   /* Planned target, lag, speed: one column of "label value unit" rows beside
@@ -230,7 +230,7 @@
     display: grid;
     grid-template-columns: max-content max-content max-content;
     align-items: baseline;
-    column-gap: 6px;
+    column-gap: var(--sp-2);
     align-self: flex-end;
   }
   .hn-col .hn-secondary { display: contents; }
@@ -244,13 +244,13 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: var(--sp-1);
   }
 
   .hn-label {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-family: var(--font);
     font-size: .68rem;
     color: var(--tx-mut);
@@ -267,14 +267,14 @@
      dropping to a tighter clamp under 1024px so the hero row never wraps on
      a tablet (`webui-prerefactor` .hero-val breakpoints). */
   .hn-primary .hn-val {
-    font-size: clamp(54px, 6.2vw, 80px);
+    font-size: min(clamp(54px, 6.2vw, 80px), calc((var(--num-h, 999px) - 20px) / .95));
     line-height: 0.95;
     color: var(--reality);
     text-shadow: var(--glow-reality);
     font-variation-settings: 'wght' 500;
   }
   @media (max-width: 1023px) {
-    .hn-primary .hn-val { font-size: clamp(42px, 8.5vw, 54px); }
+    .hn-primary .hn-val { font-size: min(clamp(42px, 8.5vw, 54px), calc((var(--num-h, 999px) - 20px) / .95)); }
   }
   .hn-val.glow {
     color: var(--reality);
@@ -328,7 +328,7 @@
     color: var(--tx-mut);
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :global(html.still) {
     .hn-val { transition: none; }
   }
 </style>
