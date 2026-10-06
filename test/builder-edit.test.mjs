@@ -178,7 +178,8 @@ console.log('resize');
   const g2 = await drag(page, c.locator('.edge-e'), -15 * cell, 0, () => ghost(page));
   // The floor is the static minimum or the measured content, whichever is wider (ph-e82.25).
   const mw = g2 && Number((new RegExp('^(\\d+) × ' + h0 + ' · minimum$').exec(g2.text) || [])[1]);
-  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0], g2);
+  // A field card never resizes under 8 layout columns of 2 rem (the seed's floor width), though its container-type hides it from min-content.
+  ok('past the minimum: the ghost refuses visibly', g2 && g2.refused && mw >= minCells(WIDGET.slider, 'h')[0] && mw >= Math.ceil(256 / cell), g2);
   ok('the refusal is announced', /its minimum$/.test(await said()), await said());
   s = (await stored())[SLIDER];
   ok('the release commits the minimum, never smaller', s.w === mw && s.x === 2, s);
@@ -239,11 +240,12 @@ console.log('drag');
   // its cell's left edge onto column 2 moves its grabbed cell with it.
   const mc = await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').boundingBox();
   const gb = await page.locator('.home > .dash-wrap > .dash-grid').boundingBox();
-  const out = await drag(page, m, gb.x + 2 * cell - mc.x, 0,
+  const gpad = await page.$eval('.home > .dash-wrap > .dash-grid', (g) => parseFloat(getComputedStyle(g).paddingLeft));
+  const out = await drag(page, m, gb.x + gpad + 2 * cell - mc.x, 0,
     () => page.$eval('.home > .dash-wrap > .dash-grid > .drop-ghost', (g) => g.style.gridColumn).catch(() => null));
-  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 6/.test(out.replace(/\s+/g, ' ')), out);
+  ok('a member dragged out of its nest shows its landing rect on the top grid', !!out && /^3 \/ span 8/.test(out.replace(/\s+/g, ' ')), out);
   const after = await stored();
-  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === 6
+  ok('released outside, it lands at the top level at that column, its size kept', after[F3] && after[F3].x === 2 && after[F3].w === 8
      && !Object.prototype.hasOwnProperty.call(after['nest:1'].nest.map, F3), JSON.stringify(after[F3]));
   ok('and is drawn at the top level only', await page.locator('.home > .dash-wrap > .dash-grid > .dash-cell[data-id="' + F3 + '"]').count() === 1
      && await card('nest:1').locator('.nest-body .dash-cell[data-id="' + F3 + '"]').count() === 0);
@@ -655,8 +657,8 @@ console.log('modes');
     }, { w, h, edit: false });
     const geo = () => page.evaluate(() => {
       const g = document.querySelector('main.pane .home > .dash-wrap > .dash-grid');
-      const r = (el) => { const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
-      return { grid: r(g), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
+      const r = (el, pad = 0) => { const b = el.getBoundingClientRect(); return [b.left + pad, b.top, b.width, b.height].map((v) => Math.round(v * 10) / 10); };
+      return { grid: r(g, parseFloat(getComputedStyle(g).paddingLeft)), cards: Object.fromEntries([...g.querySelectorAll('.dash-cell')].map((c) => [c.dataset.id, r(c)])) };
     });
     const run = await geo();
     // Rows are cells (ph-29r): every card's box is its stored rect times the cell pitch.

@@ -35,8 +35,9 @@
    *   never as motion that could read as the machine. A card's first
    *   addition and the Layout menu fade in (opacity only, html.still off).
    * - A resize never goes below the item's floor: per dimension the larger
-   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
-   *   its measured content (grid.js floorOf): the ghost shows the refusal and
+   *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one), the
+   *   seed's floor width `s0` (the long side when vertical) and its measured
+   *   content (grid.js floorOf): the ghost shows the refusal and
    *   the live region says it, never a silent clamp. The measured height
    *   binds at widths no wider than it was measured at, and never above the
    *   height the resize started from.
@@ -229,7 +230,9 @@
    */
   const minOf = (p, cap = Infinity) => (w, h) => {
     const o = orientationOf(w, h);
-    const fixed = (p.min && p.min(p.look, o)) || RESIZE_FLOOR;
+    const fixed = [...((p.min && p.min(p.look, o)) || RESIZE_FLOOR)];
+    const s0 = p.kind === 'section' ? 0 : Math.min(cols, (seedInfo[keyOf(p, 'h')] || {}).s0 || 0);
+    fixed[o === 'h' ? 0 : 1] = Math.max(fixed[o === 'h' ? 0 : 1], s0);
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
