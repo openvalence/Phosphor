@@ -21,10 +21,10 @@
  *   (law 12); .og-btn.sm already does.
  */
 .pane-stack { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
-.pane-sec { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; min-width: 0; }
+.pane-sec { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); min-width: 0; }
 
 :root { --pane-head-h: 30px; }
-.pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 30px; }
+.pane-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); min-height: 30px; }
 /* Lifted: 12 px padding and the 1 px frame sideways; up by its height, a
    10 px gap (clear of .og-panel's 4 px outline) and the 11 px top inset. */
 html:not([data-rc=glance]) .pane-sec:has(> .pane-head:first-child) { margin-top: calc(var(--pane-head-h) + 10px); }
@@ -32,7 +32,7 @@ html:not([data-rc=glance]) .pane-sec > .pane-head:first-child {
   flex-wrap: nowrap;
   height: var(--pane-head-h);
   min-height: 0;
-  margin: calc(-1 * (var(--pane-head-h) + 21px)) -13px 13px;
+  margin: calc(-1 * (var(--pane-head-h) + 21px)) calc(var(--sp-4) * -1) var(--sp-4);
   white-space: nowrap;
 }
 html:not([data-rc=glance]) .pane-sec > .pane-head:first-child > :is(h2, h3) { overflow: hidden; text-overflow: ellipsis; }
@@ -48,21 +48,21 @@ html:not([data-rc=glance]) .pane-sec > .pane-head:first-child > :is(h2, h3) { ov
 .pane-facts {
   display: grid;
   grid-template-columns: minmax(10ch, max-content) minmax(0, 1fr);
-  gap: 4px 14px;
+  gap: var(--sp-2) var(--sp-4);
   margin: 0;
   font-size: .8rem;
 }
 .pane-facts dt { color: var(--tx-mut); }
 .pane-facts dd { margin: 0; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
 
-.pane-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pane-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
 .pane-list > li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
+  gap: var(--sp-2) var(--sp-3);
   min-height: var(--tap);
-  padding: 4px 8px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r-s);
   min-width: 0;

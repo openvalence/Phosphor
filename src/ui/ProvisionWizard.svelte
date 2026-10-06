@@ -105,21 +105,21 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-3);
     padding: var(--gap);
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     box-shadow: 0 8px 40px rgba(0, 0, 0, .6);
   }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
   h2 { margin: 0; font-size: 1rem; color: var(--ink-hi); }
   h3 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-dim); }
   .count { color: var(--ink-faint); font-size: .8rem; }
   .note, .status { margin: 0; color: var(--ink-dim); font-size: .875rem; }
-  .rail { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .rail { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
   .rail li.on .og-btn { color: var(--ink-hi); border-color: var(--line-3); }
-  .body { display: grid; gap: 14px; }
-  .acts { display: flex; gap: 8px; justify-content: flex-end; }
-  .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 16px; }
+  .body { display: grid; gap: var(--sp-4); }
+  .acts { display: flex; gap: var(--sp-3); justify-content: flex-end; }
+  .acts button { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-5); }
 </style>
