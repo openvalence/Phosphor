@@ -672,9 +672,12 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
 - A card never sizes below its content: the floor is the largest of the
   static per-look minimum, the measured min-content width and height, and
   the seed's floor width (§10.12, `ph-z50z`: never under a field floor), in
-  cells, raised only within a session. The seed's floor binds the width of a
-  horizontal placement and the long side of a vertical one (operator ruling
-  2026-10-06, `ph-s7lj.1`). Ghost, handle and keyboard stop there;
+  cells, raised only within a session. The floor is the card's own content
+  minimum (operator ruling 2026-10-06, `ph-s7lj.1`): the seed's floor binds
+  a card whose content is text or a number row (the width of a horizontal
+  placement, the long side of a vertical one); a knob, toggle, indicator,
+  action or safety op keeps the floor its content measures (`settings.js`
+  `textFloored`). Ghost, handle and keyboard stop there;
   a saved rect under it grows on load into free cells and never pushes a
   neighbor, and one with no room keeps its rect and clips inside its surface.
   Titles hold one line with an ellipsis (`DashGrid.svelte`, `grid.js`
@@ -1036,3 +1039,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-06 | §10.5 | The resize floor is the card's own floor at its density rung: the seed's floor width (`ph-z50z`) joins the static and measured minimums, so no handle or key sizes a card under what the seed gives it (`ph-s7lj.1`). | operator (the floor binding the long side of a vertical placement, not its width, is the agent's, veto-able) |
 | 2026-10-06 | §10.6 | A drag displaces: the dragged card lands where asked and pushes the cards it covers down, live; the cards it moved fall back upward; displacement over an insertion target because `place` already pushes down (`ph-s7lj.2`). | operator (gravity on the moved cards only, the old slot staying a hole, and Align taking the same push are the agent's, veto-able) |
 | 2026-10-06 | §10.5 | The Dash grid is centered: cells stay square and the remainder is split evenly on both sides; resolves `ph-mdqo.15` (`ph-s7lj.3`). | operator (every DashGrid, category pages and nest subgrids too, is the agent's, veto-able) |
+| 2026-10-06 | §10.5 | The resize floor is each card's own content minimum: the 16 rem field floor binds text and number-row cards only; a knob, toggle, indicator, action or safety op keeps its measured minimum and never grows on load to the field floor. Narrows the first 2026-10-06 floor row. | operator |
