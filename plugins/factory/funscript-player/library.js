@@ -53,7 +53,7 @@ export const CSS = `
 .fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
 .fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
-  background: var(--bg); color: var(--tx); font: .8rem var(--mono); }
+  background: var(--bg); color: var(--tx); font: .8rem var(--mono); font-variation-settings: 'wdth' 90; }
 .fsp-in:focus { outline: none; border-color: var(--highlight); }
 .fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 9ch; }
 .fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
