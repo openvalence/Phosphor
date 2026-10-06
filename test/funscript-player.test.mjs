@@ -1663,6 +1663,14 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
   ok('search: F3 Offset lands on the Offset field, focused', await page.evaluate((c) => document.activeElement === document.querySelector(c + ' .fsp-off input'), C));
+  for (const k of ['invert', 'split', 'graph']) {
+    await page.keyboard.press('F3');
+    await page.keyboard.type(k);
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    ok('search: F3 ' + k + ' then Enter, focus lands on that control (not BODY)', await page.evaluate(([c, key]) => { const a = document.activeElement, t = document.querySelector(c + ' [data-search-key="' + key + '"]'); return !!t && a !== document.body && (a === t || t.contains(a)); }, [C, k]), await page.evaluate(() => document.activeElement.tagName + '.' + document.activeElement.className));
+  }
   ok('page settings: closed by default, one Settings button, nothing mounted',
     (await page.locator(SUM).getAttribute('title')) === 'Settings' && same(await rows(), [0, 0, 0]), await rows());
   await pageShot('page-settings-closed-1280x800');
@@ -1981,11 +1989,12 @@ if (!LIVE && !args.includes('--stash-live')) {
       media: !!document.querySelector(c + '[data-media]'), stage: r(c + ' .fsp-stage'), tl: r(c + ' .fsp-tlbox'), tr: r(c + ' .fsp-tr'),
       settings: r(c + ' .fsp-set'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
   }, C);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
   await overVideo();
   await page.click(C + ' .fsp-hb-full');
   await page.waitForTimeout(400);
   const fs = await fsLook();
-  ok('media fullscreen: page fullscreen, bare, with the media flag', fs.full && fs.bare && fs.media, fs);
+  ok('media fullscreen: Borderless is page fullscreen, bare, with the media flag', fs.full && fs.bare && fs.media, fs);
   ok('media fullscreen: the video alone fills the window; timeline, transport and Settings hidden',
     !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr && !fs.settings, fs);
   ok('media fullscreen: the stop pair stays on screen (RENDERING §8.4 row 11)', !!fs.estop && !!fs.pause
@@ -1997,6 +2006,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const off = await fsLook();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('media fullscreen: Escape returns the page as it was', !off.full && !off.media && !!off.tl && !!off.tr && !!off.settings, off);
   await page.locator(C).focus();
   await page.keyboard.press('f');
@@ -2004,17 +2014,20 @@ if (!LIVE && !args.includes('--stash-live')) {
   const fKey = await fsLook();
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
-  ok('media fullscreen: f enters and leaves', fKey.media && fKey.bare && !(await fsLook()).full, fKey);
+  ok('media fullscreen: f enters and leaves (In window keeps the rail, so not bare)', fKey.media && fKey.full && !fKey.bare && !(await fsLook()).full, fKey);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
+  await page.waitForTimeout(200);
   await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
   const paused0 = await video(page, (v) => v.paused);
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   const dbl = await fsLook();
-  ok('media fullscreen: a double-click on the stage enters it (the ask carries bare unless In window) and never toggles Play',
+  ok('media fullscreen: a double-click on the stage enters it (Borderless: the ask carries bare) and never toggles Play',
     dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === (document.documentElement.dataset.fullscreenMode !== 'window'))) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   ok('media fullscreen: a second double-click leaves it', !(await fsLook()).media);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
