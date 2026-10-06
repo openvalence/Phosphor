@@ -1,18 +1,18 @@
 /**
- * dash-measure.test.mjs -- is a dashboard card's content column readable?
+ * dash-measure.test.mjs -- does a dashboard card's body follow the field floor?
  *
- * The operator's report: "cards too wide to track left-to-right at 1440px."
- * An unsized settings card fills the row (model/grid.js pack), the full pane at
- * these widths, so its `.card-body` column is whatever the pane happens to be.
+ * DESIGN 10.12: a card body's columns are at least --field-floor (16rem, 8
+ * layout columns) wide and the remainder stretches, so no card ends in a
+ * gutter. This reads the .card-body rule out of the stylesheet, applies it to
+ * a probe element at the pane widths a full-row card gets, and checks the
+ * column count, the floor and the no-gutter fit.
  *
  * Second half (ph-e82.3): the grid's cell edge, measured from the rendered
  * track at deviceScaleFactor 1.25 and 2, is CELL_DEVICE_PX device px, and the
  * scale control multiplies it.
  *
- * No device is needed and none is used: this reads the `.card-body` rule out
- * of the shipped stylesheet, applies it to a probe element at the pane widths
- * a 12-span card actually gets, and measures the resolved track against the
- * page's own font. A change to the rule changes the measurement.
+ * No device is needed and none is used. A change to the rule changes the
+ * measurement.
  *
  * Deliberately NOT part of `npm run check`, same reason as
  * shell-chrome-geometry.test.mjs: that script runs inside every firmware
@@ -102,13 +102,11 @@ const res = await page.evaluate(({ cases, railPx }) => {
     }
   }
   const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap')) || 12;
-
-  const ruler = document.createElement('span');
-  ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:var(--font);font-size:1rem';
-  ruler.textContent = 'The quick brown fox jumps over the lazy dog and settles at window minimum.';
-  document.body.appendChild(ruler);
-  const avgCharPx = ruler.getBoundingClientRect().width / ruler.textContent.length;
-  ruler.remove();
+  const probeFloor = document.createElement('div');
+  probeFloor.style.cssText = 'position:absolute;visibility:hidden;width:var(--field-floor)';
+  document.body.appendChild(probeFloor);
+  const floorPx = probeFloor.getBoundingClientRect().width;
+  probeFloor.remove();
 
   const out = [];
   for (const c of cases) {
@@ -122,9 +120,9 @@ const res = await page.evaluate(({ cases, railPx }) => {
     const trackPx = cell.getBoundingClientRect().width;
     const tracks = getComputedStyle(probe).gridTemplateColumns.split(' ').length;
     probe.remove();
-    out.push({ label: c.label, inner, trackPx, tracks, chars: trackPx / avgCharPx });
+    out.push({ label: c.label, inner, trackPx, tracks });
   }
-  return { tpl, sel, avgCharPx, out };
+  return { tpl, sel, floorPx, gap, out };
 }, { cases: paneCases, railPx: RAIL_PX });
 
 ok('the .card-body rule constrains its columns', !!res.tpl,
@@ -132,14 +130,12 @@ ok('the .card-body rule constrains its columns', !!res.tpl,
 
 for (const r of res.out) {
   console.log('  at ' + r.label + ': card content ' + r.inner.toFixed(0) + 'px -> '
-    + r.tracks + ' column(s) of ' + r.trackPx.toFixed(0) + 'px = ' + r.chars.toFixed(0) + ' characters');
-  // 65 characters is the target measure; the band is what "near 65" means
-  // before a column reads as either a stretched row or a cramped gutter.
-  ok('at ' + r.label + ': a card column stays near 65 characters of measure',
-     r.chars >= 45 && r.chars <= 75, r.chars.toFixed(0) + ' chars');
-  ok('at ' + r.label + ': the card still fills its pane',
-     r.tracks * r.trackPx > r.inner * 0.55,
-     r.tracks + ' x ' + r.trackPx.toFixed(0) + 'px in ' + r.inner.toFixed(0) + 'px');
+    + r.tracks + ' column(s) of ' + r.trackPx.toFixed(0) + 'px');
+  ok('at ' + r.label + ': as many columns as the floor allows',
+     r.tracks === Math.floor((r.inner + res.gap) / (res.floorPx + res.gap)), r.tracks + ' columns, floor ' + res.floorPx + 'px');
+  ok('at ' + r.label + ': no column under the field floor', r.trackPx >= res.floorPx - 0.5, r.trackPx.toFixed(1) + 'px');
+  ok('at ' + r.label + ': the columns span the card, no gutter at the end',
+     Math.abs(r.tracks * r.trackPx + (r.tracks - 1) * res.gap - r.inner) < 1.5, r.tracks + ' x ' + r.trackPx.toFixed(1) + 'px in ' + r.inner.toFixed(0) + 'px');
 }
 
 // A narrow card must collapse to ONE column, never overflow its own box.
@@ -232,5 +228,5 @@ for (const [dpr, scale] of [[1.25, 1], [2, 1], [1.25, 1.25]]) {
 
 await browser.close();
 srv.close();
-console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- card columns hold the measure.'));
+console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS -- card bodies follow the field floor.'));
 process.exit(fails ? 1 : 0);

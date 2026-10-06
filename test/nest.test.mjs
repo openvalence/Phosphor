@@ -149,23 +149,23 @@ await page.goto('http://127.0.0.1:' + PORT + '/');
 await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
 await page.waitForTimeout(400);
 
-// A category page with at least two group cards, one of them holding a writable range.
+// Nests live on the Dash only (a category page lays out from the seed). The Dash is the first rail tab.
 // A section header row (DESIGN §10.11) is not a card: it never joins a nest.
 const notSection = (id) => !id.startsWith('section:');
 const tabs = page.locator('nav.rail [role=tab]');
 let tab = -1, viewKey = '', cards = [];
-for (let i = 1; i < await tabs.count() && tab < 0; i++) {
-  await tabs.nth(i).click();
-  await page.waitForTimeout(250);
+{
+  await tabs.nth(0).click();
+  await page.waitForTimeout(400);
   const r = await page.evaluate(() => {
     const g = document.querySelector('.dash-grid[data-view]');
     if (!g) return null;
     const ids = [...g.children].map((c) => c.getAttribute('data-id')).filter((id) => !id.startsWith('section:'));
     return { key: g.getAttribute('data-view'), ids, range: !!g.querySelector('input[type=range]:not([disabled])') };
   });
-  if (r && r.range && r.ids.filter((id) => id.startsWith('group:')).length >= 2) { tab = i; viewKey = r.key; cards = r.ids; }
+  if (r && r.range && r.ids.length >= 2) { tab = 0; viewKey = r.key; cards = r.ids; }
 }
-ok('found a category page with two or more group cards and a writable range', tab > 0, viewKey + ' ' + cards.length);
+ok('found the Dash with two or more cards and a writable range', tab === 0, viewKey + ' ' + cards.length);
 if (tab < 0) { await browser.close(); srv.close(); process.exit(1); }
 
 // Every card into one short nest, through the stored layout; scroll and
@@ -213,11 +213,11 @@ await rn.fill('Renamed'); await rn.press('Enter');
 ok('Enter keeps the new name', await rn.count() === 0 && (await nestTitle.textContent()).trim() === 'Renamed', await nestName());
 
 // F2 on the grip in edit mode focuses the name input (ph-mdqo.10).
-await page.click('button:has-text("Edit layout")');
+await page.click('button[title="Edit layout"]:visible');
 await nest.locator(':scope > .dash-item > .dash-head .handle.grab').focus();
 await page.keyboard.press('F2');
 ok('edit mode: F2 on the grip focuses the name input', await rn.evaluate((el) => document.activeElement === el));
-await page.click('button:has-text("Done")');
+await page.click('button[title="Done editing"]:visible');
 
 // The last member with a writable range: write it while the hub holds the echo.
 const target = await nest.evaluate((cell) => {
@@ -290,7 +290,7 @@ const topIds = () => page.$$eval('.dash-grid[data-view] > .dash-cell', (els) => 
   .then((ids) => ids.filter(notSection));
 const membersOf = (id) => page.$$eval('.dash-cell[data-id="' + id + '"] .nest-body .dash-cell', (els) => els.map((e) => e.getAttribute('data-id')));
 const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORE_KEY);
-await page.click('button:has-text("Edit layout")');
+await page.click('button[title="Edit layout"]:visible');
 await nest.locator('button:has-text("Ungroup")').click();
 await page.waitForTimeout(150);
 ok('ungroup returns every card to the top level', (await topIds()).sort().join() === [...cards].sort().join(), await topIds());
@@ -322,23 +322,20 @@ await page.waitForTimeout(150);
 const nests = (await topIds()).filter((id) => id.startsWith('nest:'));
 const placedMod = nests.find((id) => id !== fresh);
 ok('Insert places the module as a new nest with its members', nests.length === 2 && (await membersOf(placedMod)).join() === cards.slice(0, 2).join(), nests);
-await page.click('button:has-text("Done")');
+await page.click('button[title="Done editing"]:visible');
 
 // ph-e82.10: a view whose map does not exist yet still draws its first nest.
-let bare = -1, bareKey = '';
-for (let i = 1; i < await tabs.count() && bare < 0; i++) {
-  if (i === tab) continue;
-  await tabs.nth(i).click();
-  await page.waitForTimeout(200);
-  const k = await page.evaluate(() => document.querySelector('.dash-grid[data-view]')?.getAttribute('data-view'));
-  if (k && !Object.prototype.hasOwnProperty.call((await stored()).layouts.Default, k)) { bare = i; bareKey = k; }
-}
-ok('found a category page with no stored map', bare > 0, bareKey);
-await page.click('button:has-text("Edit layout")');
+await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: {} } })]);
+await page.reload();
+await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+await tabs.nth(0).click();
+await page.waitForTimeout(400);
+ok('the Dash has no stored map', !Object.prototype.hasOwnProperty.call((await stored()).layouts.Default, viewKey), viewKey);
+await page.click('button[title="Edit layout"]:visible');
 await page.click('button:has-text("New nest")');
 await page.waitForTimeout(150);
 ok('New nest on a view with no map draws at once (ph-e82.10)', (await topIds()).some((id) => id.startsWith('nest:')), await topIds());
-await page.click('button:has-text("Done")');
+await page.click('button[title="Done editing"]:visible');
 ok('no page errors', pageErrors.length === 0, pageErrors);
 
 await browser.close();

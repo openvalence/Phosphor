@@ -254,8 +254,9 @@ const surfaceFaults = (page) => page.evaluate(() => {
   }
   return [...new Set(out)];
 });
-const editBtn = (page) => page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' });
-const doneBtn = (page) => page.locator('.home .dash-toolbar .done-btn');
+// The sidebar wrench drives edit mode (dashEdit); the dash has no pane head.
+const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
 
 /** Everything a derived category page shows: field uids, action labels, card titles. */
 async function harvestDerived(page) {
@@ -278,7 +279,7 @@ async function harvestDerived(page) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     await collect();
@@ -305,6 +306,8 @@ function checkReach(tag, before, seen) {
   for (const t of ['Pattern', 'Limits']) ok(tag + ': the ' + t + ' card is on a category page', seen.titles.has(t));
 }
 
+// A page's operations live in the selected page's rail pill; a narrow shell keeps them in the page foot.
+const OPS = 'main.pane .page-foot, nav.rail .rail-ops';
 if (!LIVE) {
   // ---- full class ------------------------------------------------------------
   console.log('\n[full 1280x900]');
@@ -320,6 +323,12 @@ if (!LIVE) {
   ok('outside edit mode nothing drags', await page.locator('.home .handle').count() === 0);
   ok('no palette outside edit mode', await page.locator('.palette').count() === 0);
   ok('surfaces: the home reads as cards and nests only', (await surfaceFaults(page)).length === 0, await surfaceFaults(page));
+  // A card far taller than wide at its floor (the built-in advanced generator) takes the full row, leaving no hole beside it.
+  const tallFill = await page.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => {
+    const g = els[0].parentElement.getBoundingClientRect(), r = els.find((e) => e.dataset.id === 'hero:advanced-generator').getBoundingClientRect();
+    return { w: Math.round(r.width), grid: Math.round(g.width) };
+  });
+  ok('a card taller than 6 times its floor width seeds at the full row', tallFill.grid - tallFill.w < 36 && tallFill.w <= tallFill.grid, tallFill);
   await editBtn(page).click();
   await page.$$eval('.palette details', (els) => els.forEach((d) => { d.open = true; }));
   await page.waitForTimeout(150);
@@ -330,7 +339,7 @@ if (!LIVE) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator('main.pane .adv-toggle[aria-expanded="false"]');
+    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
@@ -373,7 +382,7 @@ if (!LIVE) {
   ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
   await page.waitForTimeout(600);
   const geo0 = await cellGeo();
-  const advBtn = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' });
+  const advBtn = page.locator(OPS).locator('button[title$=" advanced"]');
   await advBtn.click();
   await page.waitForTimeout(600);
   const geoHidden = await cellGeo();
@@ -384,12 +393,40 @@ if (!LIVE) {
   const still = Object.keys(geo0).filter((id) => geo0[id][1] <= geo0[headId][1]);
   ok('sections: the advanced toggle moves neither the header nor any card above it',
      still.length > 1 && still.every((id) => JSON.stringify(geoHidden[id]) === JSON.stringify(geo0[id])), still);
-  // A row's last card stretches to the grid edge (DESIGN §10.5), so only such a card may change width.
-  const gridEdge = Math.max(...Object.values(geo0).map((g) => g[0] + g[2]));
-  const rowEnd = (g) => g[0] + g[2] >= gridEdge - 1;
-  ok('sections: no card changes width but a row-end one, and the round trip lands where it began (a toggle may repack columns)',
-     Object.keys(geoHidden).every((id) => geoHidden[id][2] === geo0[id][2] || rowEnd(geoHidden[id]) || rowEnd(geo0[id]))
-     && JSON.stringify(geoBack) === JSON.stringify(geo0), [geoHidden, geoBack]);
+  // A page that does not come back the same after hide/show is a defect: the seed's inputs are canonical.
+  ok('sections: hiding and showing the advanced cards lands every card where it began', JSON.stringify(geoBack) === JSON.stringify(geo0), [geo0, geoBack]);
+  // The same holds across a resize: 1428 -> 1024 equals a fresh 1024 load.
+  const geoOf = (pg) => pg.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => Object.fromEntries(els.map((c) => {
+    const r = c.getBoundingClientRect();
+    return [c.dataset.id, [r.x, r.y, r.width, r.height].map(Math.round)];
+  })));
+  await page.setViewportSize({ width: 1428, height: 900 });
+  await page.waitForTimeout(900);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(1200);
+  const resized = await geoOf(page);
+  const fr = await open(1024, 768);
+  await fr.page.click('nav.rail [role=tab][title="Motion"]');
+  await fr.page.waitForTimeout(150);
+  const shutFresh = fr.page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
+  for (let i = 0; i < 40 && await shutFresh.count(); i++) await shutFresh.first().click();
+  await fr.page.waitForTimeout(1500);
+  const fresh = await geoOf(fr.page);
+  ok('sections: a 1428 -> 1024 resize lays out the same as a fresh 1024 load', JSON.stringify(resized) === JSON.stringify(fresh), [resized, fresh]);
+  await fr.ctx.close();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(600);
+  // A category page never edits and lays out from the seed; a placement saved for it is inert and survives untouched.
+  ok('a category page has no toolbar, no grip and no edit entry', await page.locator('main.pane .dash-toolbar, main.pane .handle.grab').count() === 0);
+  const inert = JSON.stringify({ active: 'Default', modules: {}, layouts: { Default: { 'full.cat2': { 'group:2:ungrouped': { x: 9, y: 9, w: 5, h: 5 } } } } });
+  await page.evaluate(([k, v]) => localStorage.setItem(k, v), ['phosphor.layouts', inert]);
+  await page.reload();
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.waitForTimeout(1200);
+  const seededAt = (await geoOf(page))['group:2:ungrouped'];
+  ok('a saved category placement is ignored: the card sits where the seed puts it', !!seededAt && seededAt[1] < 600, seededAt);
+  ok('and the store is left as it was', await page.evaluate((k) => localStorage.getItem(k), 'phosphor.layouts') === inert);
   await page.click('nav.rail [role=tab] >> nth=0');
   await page.waitForTimeout(150);
 
@@ -530,7 +567,7 @@ if (!LIVE) {
     await page.waitForTimeout(150);
     if (await page.locator('main.pane .dash-cell[data-id="hero:pattern"]').count()) break;
   }
-  ok('bar: the Pattern page offers Reset', await page.locator('main.pane .page-foot .reset-cat').count() === 1);
+  ok('bar: the Pattern page offers Reset', await page.locator('nav.rail .rail-ops .reset').count() === 1);
   ok('bar: no card of send-only fields', await page.locator('main.pane .dash-cell[data-id$=":ungrouped"]').count() === 0,
     await page.$$eval('main.pane .dash-cell', (els) => els.map((e) => e.dataset.id)));
   hub.mode = 'hold';
@@ -540,10 +577,10 @@ if (!LIVE) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await page.waitForTimeout(150);
-  const busyText = () => page.locator('main.pane .page-foot .cat-busy').textContent();
+  const busyText = () => page.locator('main.pane .dash-cell[data-id="hero:pattern"] .dash-busy').first().textContent({ timeout: 1000 }).catch(() => '');
   ok('bar: a held write inside the Pattern card is counted in flight', (await busyText()).trim() === '1 in flight', await busyText());
   await release();
-  await page.waitForFunction(() => !document.querySelector('main.pane .page-foot .cat-busy').textContent.trim(), null, { timeout: 3000 }).catch(() => {});
+  await page.waitForFunction(() => !document.querySelector('main.pane .dash-cell[data-id="hero:pattern"] .dash-busy'), null, { timeout: 3000 }).catch(() => {});
   ok('bar: the echo clears the count', !(await busyText()).trim(), await busyText());
 
   // roster (ph-zri, ph-6a2): the hub's pattern in reality, intent only while a
@@ -584,10 +621,10 @@ if (!LIVE) {
     if (await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"]').count()) break;
   }
   const advShape = await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .advgen').evaluate((el) => ({
-    gridHasMods: !!el.querySelector(':scope > .grid .mod'),
-    mods: el.querySelectorAll(':scope > .mods .mod').length,
+    gridHasMods: !!el.querySelector(':scope > .card-body .card-sub'),
+    mods: el.querySelectorAll(':scope > .mods .field').length,
     fieldTags: [...el.querySelectorAll(':scope > .mods .field .tag.adv')].filter((t) => getComputedStyle(t).display !== 'none').length,
-    blockTag: !!el.querySelector(':scope > .mods > h4 .tag'),
+    blockTag: !!el.querySelector(':scope > .mods h4 .tag'),
   }));
   ok('advanced generator: modulators in their own block, one adv tag for it (ph-55r)',
     !advShape.gridHasMods && advShape.mods > 0 && advShape.fieldTags === 0 && advShape.blockTag, advShape);

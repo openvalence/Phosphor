@@ -1,8 +1,8 @@
 <script>
   /**
    * DashGrid.svelte -- the builder grid: square device-px cells (DESIGN §10.5),
-   * items placed at {x, y, w, h} in cells, named layouts and the scale
-   * control (§10.6). Math and storage: model/grid.js via
+   * items placed at {x, y, w, h} in cells and the Dash's edit chrome
+   * (§10.6). Math and storage: model/grid.js via
    * model/dashboard.svelte.js.
    *
    * Contract: <DashGrid viewId="cat2" items={items} bind:editing />, `items`
@@ -31,8 +31,9 @@
    *   free rect it was drawn at is where it stays.
    * - DOM order is reading order, frozen while a drag is in flight: moving the
    *   node that holds pointer capture drops the capture.
-   * - Nothing on the grid transitions or animates: a layout switch or a
-   *   reflow lands at once, never as motion that could read as the machine.
+   * - Nothing on the grid moves: a layout switch or a reflow lands at once,
+   *   never as motion that could read as the machine. A card's first
+   *   addition and the Layout menu fade in (opacity only, html.still off).
    * - A resize never goes below the item's floor: per dimension the larger
    *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one) and
    *   its measured content (grid.js floorOf): the ghost shows the refusal and
@@ -61,19 +62,21 @@
    * - `ondropkey(key, rect)` takes a palette entry dragged onto the grid in
    *   edit mode (grid.js MODULE_MIME); `rect` is the cell area the drop target
    *   showed, null when stacked. A nest's grid hands it on with the nest's id.
-   * - Outside edit mode the toolbar is the layout picker and Edit layout only;
-   *   scale, density and the layout and module operations sit in one popover
-   *   menu (test/responsive-matrix.mjs).
+   * - The Dash (`editable`) has no pane head. Edit mode follows dashEdit (the
+   *   sidebar wrench) and shows one sticky bar after the grid: undo, New nest,
+   *   Modules, and a popover for density, reset, delete, export, import and
+   *   saved modules. Any other top grid is a category page: no bar, no edit,
+   *   laid out from the rank seed.
    */
   import DashItem from './DashItem.svelte';
   import Nest from './Nest.svelte';
   import {
-    dashboardLayout, grid, stepScale, layouts, layoutNames, undo, undoLast,
-    switchLayout, saveLayoutAs, renameLayout, deleteLayout, moduleNames, deleteModule,
-    layoutJson, restoreLayout, exportLayout, importLayout, density, setDensity, palette, edited,
+    dashboardLayout, grid, layouts, undo, undoLast, dashEdit,
+    switchLayout, deleteLayout, moduleNames, deleteModule,
+    exportLayout, importLayout, density, setDensity, palette,
   } from '../../model/dashboard.svelte.js';
   import { tick, untrack } from 'svelte';
-  import { cellCount, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
+  import { cellCount, place, placeable, resizeRect, arrangePins, nudgePin, blocker, DEFAULT_H, MODULE_MIME,
     RESIZE_FLOOR, cellsFor, floorOf, growWidth, growHeight } from '../../model/grid.js';
   import { orientationOf } from '../../model/settings.js';
   import { onTheme } from '../../model/theme.js';
@@ -81,11 +84,11 @@
   import { FIELD_FLOOR_COLS } from '../../model/rclass.js';
 
   let { viewId = '', items, editing = $bindable(false), layout: given = null, onremove = null, ondropkey = null,
-    ondragout = null, target = false, ondelete = null, tool = null, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
+    ondragout = null, target = false, ondelete = null, tool = null, editable = false, onduplicate = null, resolve = null, picked = $bindable(0) } = $props();
   const menuId = 'dash-menu-' + Math.random().toString(36).slice(2, 8);
 
   const layout = $derived(given || dashboardLayout(viewId, view.cls));
-  const nests = $derived(given ? [] : layout.nests());
+  const nests = $derived(given || !editable ? [] : layout.nests());
   const all = $derived.by(() => {
     if (!nests.length) return items;
     const byId = new Map(items.map((it) => [it.id, it]));
@@ -113,24 +116,17 @@
   // drops the capture and strands the drag.
   let stackOrder = $state(null);
   let announceMsg = $state('');
-  let nameDraft = $state('');
   let moduleDraft = $state('');
   let sel = $state([]);          // selected ids (edit mode)
-  // The active layout as it was when editing began (or it became active while
-  // editing): the switch guard compares against it. Layouts save on every
-  // edit, so "changes" means the user's edits since then (a grow to the
-  // content floor is a repair, not one), which Discard can take back.
-  let baseline = $state(null);
-  let baseEdits = 0;
-  let pendingSwitch = $state(null);
   let layoutText = $state('');
+  // The Dash edits while the sidebar wrench says so (dashEdit); a category page never edits and lays out
+  // from the rank seed, its saved placements left untouched (law 10).
+  const seeded = !given && !editable;
   $effect(() => {
-    const a = layouts.active;
-    const on = !given && editing;
-    // untrack (T23): the snapshot reads the whole layout and must not subscribe to it.
-    untrack(() => { baseline = on ? layoutJson(a) : null; baseEdits = edited(); pendingSwitch = null; });
+    if (given || !editable) return;
+    editing = dashEdit.on;
+    if (!dashEdit.on) untrack(() => { pin = null; stackOrder = null; sel = []; });
   });
-  const changed = () => baseline !== null && edited() !== baseEdits && layoutJson() !== baseline;
   let marquee = $state(null);    // {x0, y0, x1, y1, add} client px while a marquee is drawn
   let dragMoved = false;         // the grip's click after a real drag is not a selection
 
@@ -144,7 +140,7 @@
   // Each placed item carries its entry's `look` (grid.js pack) and a setter
   // bound to THIS grid's map, so one control in two nests keeps two looks.
   const live = $derived(pin && pin.mode !== 'stack' && !pin.into && !pin.out ? (pin.group ? groupPins(pin) : pin) : null);
-  const placed = $derived(layout.arrange(all, cols, live, fitH)
+  const placed = $derived((seeded ? place(all, {}, cols, null, fitH) : layout.arrange(all, cols, live, fitH))
     .map((p) => ({ ...p, setLook: (look) => layout.setLook(p.id, look, p) })));
   // The drop targets: where the dragged cards or the palette entry land on release.
   const ghosts = $derived(stack ? [] : live ? placed.filter((p) => (pin.group || [pin]).some((g) => g.id === p.id))
@@ -172,7 +168,12 @@
   let gridEl;
   /** @type {Map<string, HTMLElement>} */
   const cellEls = new Map();
+  // A card added after the grid has settled fades in; the first draw (a page switch) does not.
+  let drawnAt = performance.now();
+  let drawnView = untrack(() => viewId);
   function registerCell(node, id) {
+    if (viewId !== drawnView) { drawnView = viewId; drawnAt = performance.now(); }
+    else if (performance.now() - drawnAt > 600) node.classList.add('enter');
     cellEls.set(id, node);
     return { destroy() { if (cellEls.get(id) === node) cellEls.delete(id); } };
   }
@@ -209,6 +210,13 @@
     const [px, py] = padOf(cell);
     return { w: minWidth(it) + px, h: styled(it, 'height', 'auto', () => it.getBoundingClientRect().height) + py };
   }
+  /** Card `cell`'s height in px (gutter included) as if it were `cells` wide: the seed's canonical height, whatever width it is drawn at. */
+  function measureAt(cell, cells) {
+    const it = cell.firstElementChild;
+    if (!it || it.classList.contains('open')) return null;
+    const [px, py] = padOf(cell);
+    return styled(it, 'width', Math.max(0, cells * grid.cell - px) + 'px', () => styled(it, 'height', 'auto', () => it.getBoundingClientRect().height)) + py;
+  }
   /** Cells of content height at width `w`: the tallest drawn at `w` or wider (narrower only wraps more); 0 unmeasured. */
   function tallAt(m, w) {
     let px = 0;
@@ -225,24 +233,31 @@
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
   };
-  /** grid.js pack `fit`: an item's floor height in cells at width `w`, null before it was drawn there. */
-  function fitH(it, w, h) {
+  // The seed (grid.js pack `fit.w`, `fit`): per card, whatever orientation it is drawn in, `s0` its width in
+  // cells (measured floor, never under a field floor of FIELD_FLOOR_COLS layout columns of 2 rem or its
+  // declared cells; kept from the first measure so a write in flight never moves a card) and `sh` its
+  // canonical height in px per width, measured with the card forced to that width. A plugin seeds at the
+  // full row; a section header fills it.
+  let seedInfo = $state({});
+  let gen = 0;
+  const baseSeed = (it, si) => (it.kind === 'section' ? 0 : Math.min(cols, it.kind === 'plugin' || (it.hero && it.hero.plugin) ? cols : si.s0));
+  // A card more than 6 times taller than wide at its floor width seeds at the full row, like a plugin.
+  const TALL = 6;
+  const seedFor = (it, si) => {
+    const b = baseSeed(it, si);
+    return b > 0 && b < cols && si.sh[b] != null && si.sh[b] > TALL * b * grid.cell ? cols : b;
+  };
+  const seedOf = (it) => { const si = seedInfo[keyOf(it, 'h')]; return si ? seedFor(it, si) : 0; };
+  const floorH = (it) => ((it.min && it.min(it.look, 'h')) || RESIZE_FLOOR)[1];
+  /** grid.js pack `fit`: an item's height in cells at width `w`. At its seed width, or flagged for the width a row end stretches to: the canonical measure (`sh`), null before. Elsewhere the last height drawn there. */
+  function fitH(it, w, h, stretched = false) {
+    const si = seedInfo[keyOf(it, 'h')];
+    if (si && si.sh[w] != null) return Math.max(floorH(it), cellsFor(si.sh[w], grid.cell));
+    if (stretched || (si && seedFor(it, si) === w)) return null;
     const m = need[keyOf(it, orientationOf(w, h))];
     return m && m.hs[w] != null ? minOf(it)(w, h)[1] : null;
   }
-  // The seed's width for an unplaced card: its measured floor, never under a field floor
-  // (FIELD_FLOOR_COLS layout columns of 2 rem), kept from first measure so a later content
-  // change (a write in flight) never moves a card; a section header fills the row.
-  const seedW = new Map();
-  fitH.w = (it) => {
-    const k = keyOf(it, 'h');
-    if (it.kind === 'section' || !(seedW.has(k) || need[k])) return 0;
-    if (!seedW.has(k)) {
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      seedW.set(k, Math.max(minOf(it)(cols, 1)[0], Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell)));
-    }
-    return seedW.get(k);
-  };
+  fitH.w = seedOf;
   const short = (p) => { const [w, h] = minOf(p)(p.w, p.h); return p.w < w || p.h < h; };
   // Ids measured since their last grow check: a card grows when its content
   // is measured, never because a neighbor moved out of its way.
@@ -260,18 +275,42 @@
     let grew = false;
     for (const p of placed) {
       const el = cellEls.get(p.id);
-      const k = keyOf(p, orientationOf(p.w, p.h));
-      const o = need[k];
-      if (!el || (o && !dirty.has(p.id) && o.hs[p.w] != null)) continue;
-      const m = measure(el);
-      if (!m) continue;
-      fresh.add(p.id);
-      // A content change forgets the heights drawn at other widths.
-      const hs = { ...(o && !dirty.has(p.id) ? o.hs : {}), [p.w]: m.h };
-      const w = Math.max(m.w, o ? o.w : 0);
-      if (!o || w !== o.w || JSON.stringify(hs) !== JSON.stringify(o.hs)) { need[k] = { w, hs }; grew = true; }
+      const k = keyOf(p, orientationOf(p.w, p.h)), kh = keyOf(p, 'h');
+      const o = need[k], so = seedInfo[kh];
+      const stale = dirty.has(p.id);
+      const drawn = !o || stale || o.hs[p.w] == null;
+      // Canonical heights wanted: at the seed width, and at the stretched width an unsaved card is drawn at.
+      const wantAt = (si) => {
+        const b = baseSeed(p, si), sw = seedFor(p, si);
+        return b > 0 ? [...new Set([b, sw, ...(!layout.saved(p.id) ? [p.w] : [])])] : [];
+      };
+      const fresh0 = !so || so.gen !== gen;
+      const seedMiss = fresh0 || stale || wantAt(so).some((x) => so.sh[x] == null);
+      if (!el || !(drawn || seedMiss)) continue;
+      const m = drawn || fresh0 ? measure(el) : null;
+      if ((drawn || fresh0) && !m) continue;
+      let ne = o;
+      if (drawn) {
+        fresh.add(p.id);
+        // A content change forgets the heights drawn at other widths.
+        const hs = { ...(o && !stale ? o.hs : {}), [p.w]: m.h };
+        const w = Math.max(m.w, o ? o.w : 0);
+        ne = { w, hs };
+        if (!o || JSON.stringify(ne) !== JSON.stringify(o)) { need[k] = ne; grew = true; }
+      }
+      const declared = (p.hero && p.hero.cells && p.hero.cells.h[0]) || 0;
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const s0 = !fresh0 ? so.s0
+        : Math.max(((p.min && p.min(p.look, 'h')) || RESIZE_FLOOR)[0], cellsFor(m ? m.w : (ne ? ne.w : 0), grid.cell), declared, Math.ceil((FIELD_FLOOR_COLS * 2 * rem) / grid.cell));
+      const si = { s0, gen, sh: !fresh0 && !stale ? { ...so.sh } : {} };
+      // Twice: the floor width first, then the full row it may lead to.
+      for (let pass = 0; pass < 2; pass++) for (const x of wantAt(si)) if (si.sh[x] == null) { const h = measureAt(el, x); if (h != null) si.sh[x] = h; }
+      if (!so || JSON.stringify(si) !== JSON.stringify(so)) { seedInfo[kh] = si; grew = true; }
     }
     dirty.clear();
+    // New measurements repack at once, in this task, so the frame at the old heights never paints.
+    if (grew && chain < 4) { chain++; queueMicrotask(settle); }
+    if (seeded) return;
     if (pin) { if (grew && pin.mode === 'resize' && pin.c) resizeTo(pin.id, pin.c); return; }
     const held = layout.held();
     if (held && placed.some((p) => held.has(p.id) && fitH(p, p.w, p.h) != null)) { layout.fit(all, cols, null); return; }
@@ -285,7 +324,8 @@
     }
   }
   let frame = 0;
-  const later = () => { if (!frame) frame = requestAnimationFrame(settle); };
+  let chain = 0;
+  const later = () => { chain = 0; if (!frame) frame = requestAnimationFrame(settle); };
   $effect(() => {
     // Any layout, scale or mode change may show a card at a size not yet measured.
     placed; grid.cell; editing; stack;
@@ -298,7 +338,7 @@
     return () => l.measured(null);
   });
   // The look scale resizes every font without touching the DOM.
-  $effect(() => onTheme(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); }));
+  $effect(() => onTheme(() => { gen++; for (const id of cellEls.keys()) dirty.add(id); later(); }));
   $effect(() => {
     // A card's content changed (catalog adoption, a presentation, an option list, a nest member's floor): measure it again.
     const top = (n) => { while (n && n.parentElement !== gridEl) n = n.parentElement; return n; };
@@ -306,8 +346,8 @@
       for (const r of recs) { const c = top(r.target); if (c && c.dataset.id) dirty.add(c.dataset.id); }
       if (dirty.size) later();
     });
-    mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor'] });
-    document.fonts?.ready.then(() => { seedW.clear(); for (const id of cellEls.keys()) dirty.add(id); later(); });
+    mo.observe(gridEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-floor', 'data-extent'] });
+    document.fonts?.ready.then(() => { gen++; for (const id of cellEls.keys()) dirty.add(id); later(); });
     return () => { mo.disconnect(); if (frame) cancelAnimationFrame(frame); frame = 0; };
   });
   const ORIENT = { h: 'horizontal', v: 'vertical' };
@@ -608,39 +648,6 @@
     stackOrder = null;
     announce('Layout reset to default');
   }
-  function setEditing(on) {
-    editing = on;
-    pin = null;
-    stackOrder = null;
-    sel = [];
-    announce('Layout edit mode ' + (on ? 'on' : 'off'));
-  }
-  // ---- layout switching: no motion, a guard for changes, JSON in and out ----------
-  function pick(e) {
-    const to = e.currentTarget.value;
-    e.currentTarget.value = layouts.active;
-    if (to === layouts.active) return;
-    if (changed()) {
-      pendingSwitch = to;
-      announce(layouts.active + ' changed while editing: keep or discard');
-      return;
-    }
-    doSwitch(to);
-  }
-  function doSwitch(to) {
-    const from = layouts.active;
-    pendingSwitch = null;
-    pin = null;
-    stackOrder = null;
-    sel = [];
-    if (switchLayout(to)) announce('Layout ' + to + (from !== to ? ', was ' + from : ''));
-  }
-  function resolveSwitch(how) {
-    const to = pendingSwitch;
-    if (how === 'stay' || !to) { pendingSwitch = null; announce('Staying on ' + layouts.active); return; }
-    if (how === 'discard') restoreLayout(layouts.active, baseline);
-    doSwitch(to);
-  }
   function exportText() {
     layoutText = exportLayout(layouts.active);
     navigator.clipboard?.writeText(layoutText).then(() => announce('Layout ' + layouts.active + ' copied'), () => {});
@@ -650,19 +657,11 @@
     try {
       const name = importLayout(layoutText);
       layoutText = '';
-      if (changed()) {
-        pendingSwitch = name;
-        announce('Imported layout ' + name + ': keep or discard ' + layouts.active + ' changes');
-      } else {
-        doSwitch(name);
-        announce('Imported layout ' + name);
-      }
+      pin = null; stackOrder = null; sel = [];
+      if (switchLayout(name)) announce('Imported layout ' + name);
     } catch (err) {
       announce('Not imported: ' + err.message);
     }
-  }
-  function nameOp(fn, ok, fail) {
-    if (fn(nameDraft)) { announce(ok + ' ' + nameDraft.trim()); nameDraft = ''; } else announce(fail);
   }
   /** Fix a new unplaced entry at the first free rect it is drawn at (grid.js addNest). */
   const settleNew = (id) => {
@@ -724,100 +723,11 @@
 {/snippet}
 
 <div class="dash-wrap" data-density={given ? null : density()}>
-  {#if !given}
-  <!-- One row in both modes: the status slot swaps the hint, the selection
-       and the switch guard in place, so the grid never moves. -->
-  <div class="dash-toolbar" class:stack>
-    <select class="layout-pick" aria-label="Layout" title="Layout" value={layouts.active} onchange={pick}>
-      {#each layoutNames() as n (n)}<option value={n}>{n}</option>{/each}
-    </select>
-    {#if editing}
-    <div class="dash-slot">
-      {#if pendingSwitch}
-        <div class="dash-selbar dash-switchbar" role="group" aria-label="Switch layout">
-          <span class="sel-n">{layouts.active} changed while editing</span>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('keep')}>Keep and switch</button>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('discard')}>Discard and switch</button>
-          <button type="button" class="og-btn sm" onclick={() => resolveSwitch('stay')}>Stay</button>
-        </div>
-      {:else if selSet.size}
-        {@render selbar()}
-      {:else}
-        <span class="dash-hint" title="Drag grips to move, edges to resize">Drag grips to move, edges to resize</span>
-      {/if}
-    </div>
-      <div class="edit-ops" role="group" aria-label="Layout editing">
-        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
-                onclick={undoOnce}>Undo</button>
-        <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
-        {#if palette.shown}
-          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
-                  onclick={() => (palette.open = !palette.open)}>Modules</button>
-        {/if}
-        <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
-      </div>
-      <div class="dash-menu og-panel" id={menuId} popover role="group" aria-label={'Layout ' + layouts.active}
-           style={'position-anchor: --' + menuId}>
-        <input class="layout-name" type="text" aria-label="Layout name" placeholder="Name" bind:value={nameDraft} />
-        <div class="menu-row">
-          <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
-                  onclick={() => nameOp(saveLayoutAs, 'Saved layout', 'That name is taken')}>Save as</button>
-          <button type="button" class="og-btn sm" disabled={!nameDraft.trim()}
-                  onclick={() => nameOp((n) => renameLayout(layouts.active, n), 'Renamed to', 'That name is taken')}>Rename</button>
-          <button type="button" class="og-btn sm" disabled={layoutNames().length < 2}
-                  onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
-          <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
-        </div>
-        <div class="menu-row view-row">
-          <div class="scale" role="group" aria-label="Scale">
-            <button type="button" class="og-btn sm" aria-label="Scale down" title="Scale down"
-                    disabled={grid.scale === grid.steps[0]} onclick={() => stepScale(-1)}>−</button>
-            <button type="button" class="og-btn sm" aria-label="Reset scale"
-                    title="Reset scale" onclick={() => stepScale(0)}>{Math.round(grid.scale * 100)}%</button>
-            <button type="button" class="og-btn sm" aria-label="Scale up" title="Scale up"
-                    disabled={grid.scale === grid.steps[grid.steps.length - 1]} onclick={() => stepScale(1)}>+</button>
-          </div>
-          <label class="og-switch density">
-            <input type="checkbox" role="switch" checked={density() === 'compact'}
-                   onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
-            <span class="track"></span>Compact cards
-          </label>
-        </div>
-        <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
-                  placeholder="Paste layout JSON to import" bind:value={layoutText}></textarea>
-        <div class="menu-row">
-          <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
-          <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
-        </div>
-        {#if moduleNames().length}
-          <div class="menu-row">
-            <select class="layout-pick" aria-label="Module" bind:value={moduleDraft}>
-              <option value="">Module…</option>
-              {#each moduleNames() as n (n)}<option value={n}>{n}</option>{/each}
-            </select>
-            <button type="button" class="og-btn sm" disabled={!moduleDraft} onclick={insertModule}>Insert</button>
-            <button type="button" class="og-btn sm" disabled={!moduleDraft}
-                    onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
-          </div>
-          {#if preview}
-            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here</p>
-            <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
-              {#each preview as m (m.key)}
-                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not on this machine)'}</li>
-              {/each}
-            </ul>
-          {/if}
-        {/if}
-      </div>
-    {/if}
-    <button type="button" class="og-btn sm edit-toggle" class:done-btn={editing} aria-pressed={editing}
-            onclick={() => setEditing(!editing)}>{editing ? 'Done' : 'Edit layout'}</button>
-  </div>
-  {:else if editing && selSet.size}
+  {#if given && editing && selSet.size}
     {@render selbar()}
   {/if}
 
-  <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-view={given ? null : view.cls + '.' + viewId}
+  <div class="dash-grid" class:stack class:editing class:top={!given} class:into={target || paletteOver} bind:this={gridEl} bind:clientWidth={width} data-extent={placed.reduce((m, q) => Math.max(m, q.y + q.h), 0)} data-view={given ? null : view.cls + '.' + viewId}
        style={'--cell:' + grid.cell + 'px;--cols:' + cols + (!given && editing && palette.shown && palette.open ? ';--reserve:' + palette.h + 'px' : '')} role="presentation"
        ondragover={dragOver} ondragleave={dragLeave} ondrop={drop}
        onpointerdown={marqueeStart} onpointermove={marqueeMove} onpointerup={marqueeEnd} onpointercancel={() => (marquee = null)}>
@@ -867,6 +777,69 @@
   </div>
 
   <div class="sr-only" aria-live="polite">{announceMsg}</div>
+  {#if !given && editable && editing}
+  <!-- Out of the grid's flow, after it: entering edit mode moves nothing above (ph-wia). The sidebar
+       wrench ends editing. -->
+  <div class="dash-toolbar" class:stack>
+    <div class="dash-slot">
+      {#if selSet.size}
+        {@render selbar()}
+      {:else}
+        <span class="dash-hint">Drag grips to move, edges to resize</span>
+      {/if}
+    </div>
+      <div class="edit-ops" role="group" aria-label="Layout editing">
+        <button type="button" class="og-btn sm" disabled={!undo.can} title="Undo last change (Ctrl+Z)"
+                onclick={undoOnce}>Undo</button>
+        <button type="button" class="og-btn sm" onclick={newNest}>New nest</button>
+        {#if palette.shown}
+          <button type="button" class="og-btn sm palette-toggle" aria-pressed={palette.open} title="Module palette"
+                  onclick={() => (palette.open = !palette.open)}>Modules</button>
+        {/if}
+        <button type="button" class="og-btn sm" popovertarget={menuId} style={'anchor-name: --' + menuId}>Layout…</button>
+      </div>
+      <div class="dash-menu og-panel" id={menuId} popover role="group" aria-label={'Layout ' + layouts.active}
+           style={'position-anchor: --' + menuId}>
+        <div class="menu-row">
+          <button type="button" class="og-btn sm" disabled={layouts.active === 'Default'}
+                  onclick={() => { const n = layouts.active; if (deleteLayout(n)) announce('Deleted layout ' + n); }}>Delete</button>
+          <button type="button" class="og-btn sm" onclick={resetLayout}>Reset layout</button>
+        </div>
+        <div class="menu-row view-row">
+          <label class="og-switch density">
+            <input type="checkbox" role="switch" checked={density() === 'compact'}
+                   onchange={(e) => { setDensity(e.currentTarget.checked ? 'compact' : 'comfortable'); announce('Layout ' + layouts.active + ' is ' + density()); }} />
+            <span class="track"></span>Compact cards
+          </label>
+        </div>
+        <textarea class="layout-json" rows="3" spellcheck="false" aria-label="Layout JSON"
+                  placeholder="Paste layout JSON to import" bind:value={layoutText}></textarea>
+        <div class="menu-row">
+          <button type="button" class="og-btn sm" onclick={exportText}>Export</button>
+          <button type="button" class="og-btn sm" disabled={!layoutText.trim()} onclick={importText}>Import</button>
+        </div>
+        {#if moduleNames().length}
+          <div class="menu-row">
+            <select class="layout-pick" aria-label="Module" bind:value={moduleDraft}>
+              <option value="">Module…</option>
+              {#each moduleNames() as n (n)}<option value={n}>{n}</option>{/each}
+            </select>
+            <button type="button" class="og-btn sm" disabled={!moduleDraft} onclick={insertModule}>Insert</button>
+            <button type="button" class="og-btn sm" disabled={!moduleDraft}
+                    onclick={() => { const n = moduleDraft; if (deleteModule(n)) { moduleDraft = ''; announce('Deleted module ' + n); } }}>Delete module</button>
+          </div>
+          {#if preview}
+            <p class="module-sum">{preview.filter((m) => m.title).length} of {preview.length} available here</p>
+            <ul class="module-preview" aria-label={'Members of ' + moduleDraft}>
+              {#each preview as m (m.key)}
+                <li class:inert={!m.title}>{m.title || m.key}{m.title ? '' : ' (not on this machine)'}</li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </div>
+  </div>
+  {/if}
 </div>
 
 <style>
@@ -877,16 +850,21 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-2);
   }
 
-  /* One row: the slot between the picker and the edit group swaps its
-     contents in place. Only the stacked phone grid wraps (ph-e82.7 owes
-     its ruling): the picker keeps the first row, the edit group follows. */
+  /* The edit chrome: one row after the grid, sticky to the pane's bottom edge, so entering edit
+     mode moves nothing above it. The slot swaps the hint and the selection in place. */
   .dash-toolbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
+    padding: var(--sp-3) 0;
+    background: var(--bg-card);
+    border-top: 1px solid var(--line-2);
   }
   .dash-toolbar.stack { flex-wrap: wrap; justify-content: flex-end; }
   /* ponytail: clips past ~960 px with three or more selected; a menu for
@@ -898,11 +876,9 @@
     align-items: center;
     overflow: hidden;
   }
-  .scale { display: flex; gap: 2px; }
-  .view-row { align-items: center; gap: 12px; }
-  .scale button { min-width: 40px; font-variant-numeric: tabular-nums; }
-  .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: 5px 28px 5px 10px; margin-right: auto; }
-  .edit-ops { display: flex; gap: 6px; }
+  .view-row { align-items: center; gap: var(--sp-4); }
+  .layout-pick { width: auto; min-width: 0; max-width: 14em; padding: var(--sp-2) calc(var(--sp-5) + var(--sp-3)) var(--sp-2) var(--sp-3); margin-right: auto; }
+  .edit-ops { display: flex; gap: var(--sp-2); }
   .dash-hint {
     min-width: 0;
     font-size: .72rem;
@@ -914,24 +890,24 @@
   .dash-selbar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-2);
     font-size: .8rem;
     color: var(--ink-hi);
     white-space: nowrap;
   }
   /* A nest's selection takes its bar's edit ops' place (Nest hides them
      meanwhile): `--bleed` is how far the subgrid reaches past the nest's
-     frame, 6 px the bar's gap above the subgrid. */
+     frame, --sp-2 the bar's gap above the subgrid. */
   .dash-selbar.over {
     position: absolute;
     z-index: 3;
     right: var(--bleed, 0px);
-    bottom: calc(100% + 6px);
+    bottom: calc(100% + var(--sp-2));
     max-width: calc(100% - 2 * var(--bleed, 0px));
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .sel-n { margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .sel-n { margin-right: var(--sp-2); font-variant-numeric: tabular-nums; }
   .marquee {
     position: absolute;
     z-index: 2;
@@ -944,17 +920,17 @@
      page. Without anchor positioning it opens centered (the UA default). */
   .dash-menu {
     flex-direction: column;
-    gap: 8px;
-    padding: 10px;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
     max-width: calc(100vw - 32px);
     color: var(--tx);
   }
   .dash-menu:popover-open { display: flex; }
   @supports (top: anchor(bottom)) {
-    .dash-menu { inset: auto; top: anchor(bottom); right: anchor(right); margin: 6px 0 0; position-try-fallbacks: flip-block, flip-inline; }
+    .dash-menu { inset: auto; top: anchor(bottom); right: anchor(right); margin: var(--sp-2) 0 0; position-try-fallbacks: flip-block, flip-inline; }
   }
   .dash-menu .layout-pick { margin-right: 0; }
-  .menu-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .menu-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   .module-sum { margin: 0; font-size: .75rem; color: var(--ink-dim); }
   .module-preview {
     margin: 0;
@@ -967,7 +943,7 @@
   .module-preview .inert { color: var(--ink-faint); font-style: italic; }
   .layout-json {
     width: 100%;
-    padding: 6px 8px;
+    padding: var(--sp-2) var(--sp-3);
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: var(--bg);
@@ -975,21 +951,6 @@
     font-family: var(--mono);
     font-size: .72rem;
     resize: vertical;
-  }
-  .layout-name {
-    width: 100%;
-    padding: 6px 8px;
-    border: 1px solid var(--line-2);
-    border-radius: var(--radius);
-    background: var(--bg);
-    color: var(--tx);
-    font: inherit;
-    font-size: .82rem;
-  }
-  @media (pointer: coarse) { .layout-name { min-height: 40px; } }
-  .done-btn {
-    color: var(--ink-hi);
-    border-color: var(--line-4);
   }
 
   /* Tracks are exactly one cell, rows too; the spacing lives inside
@@ -1026,7 +987,7 @@
   }
   .drop-ghost {
     z-index: 1;
-    margin: 3px;
+    margin: var(--sp-1);
     border: 1.5px dashed var(--intent);
     border-radius: var(--radius);
     background: color-mix(in srgb, var(--intent) 8%, transparent);
@@ -1041,8 +1002,8 @@
      high ink, never in a safety color (law 13 keeps those for hazards). */
   .drop-ghost.refused { border-style: solid; border-color: var(--ink-hi); }
   .ghost-size {
-    margin: 4px;
-    padding: 1px 6px;
+    margin: var(--sp-2);
+    padding: 1px var(--sp-2);
     border-radius: var(--radius);
     background: var(--bg-raised);
     color: var(--ink-hi);
@@ -1053,16 +1014,19 @@
 
   /* The gutter between cards; a selected card's outline sits inside it. */
   .dash-cell {
-    padding: var(--dash-cell-pad, 7px);
+    padding: var(--dash-cell-pad, var(--sp-3));
     min-width: 0;
   }
+  @keyframes fade-in { from { opacity: 0; } }
+  :global(html:not(.still)) .dash-cell:global(.enter) { animation: fade-in var(--t-move, 200ms) var(--ease-out, ease-out) backwards; }
+  :global(html:not(.still)) .dash-menu:popover-open { animation: fade-in var(--t-quick, 120ms) var(--ease-out, ease-out); }
   /* A section's header row (DESIGN §10.11): text and a hairline on the page,
      never a band or a third tint, in the card titles' type step. The label
      sits on the row's floor, over the cards it heads. */
   .dash-section {
     display: flex;
     align-items: flex-end;
-    gap: 10px;
+    gap: var(--sp-3);
     height: 100%;
     font-size: var(--dash-title-size, .8rem);
     font-weight: 500;
@@ -1087,8 +1051,8 @@
      The label stays at 11 px or more (test/responsive-matrix.mjs font floor)
      and every handle keeps its 40 px (law 12). */
   .dash-wrap[data-density='compact'] {
-    --dash-cell-pad: 4px;
-    --dash-body-pad: 6px;
+    --dash-cell-pad: var(--sp-2);
+    --dash-body-pad: var(--sp-2);
     --dash-title-size: .7rem;
   }
 

@@ -73,7 +73,7 @@
   .nest {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-2);
     height: 100%;
     min-height: 0;
   }
@@ -81,7 +81,7 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px 12px;
+    gap: var(--sp-2) var(--sp-4);
     height: 30px;
     font-size: .8rem;
     color: var(--ink-dim);
@@ -103,12 +103,12 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     align-items: center;
-    gap: 6px 12px;
+    gap: var(--sp-2) var(--sp-4);
   }
   .nest-ops.yield { visibility: hidden; }
   .nest-body {
     position: relative;
-    --bleed: calc(var(--dash-cell-pad, 7px) + 1px + var(--dash-body-pad, var(--gap)));
+    --bleed: calc(var(--dash-cell-pad, var(--sp-3)) + 1px + var(--dash-body-pad, var(--gap)));
     margin-inline: calc(-1 * var(--bleed));
   }
   /* Over the subgrid, never in its way: a drop still lands on the grid below. */
