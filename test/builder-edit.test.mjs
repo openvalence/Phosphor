@@ -201,6 +201,19 @@ console.log('resize');
   await ctx.close();
 }
 
+// ---- a small control keeps its own floor (ph-s7lj.1) -------------------------------------
+console.log('small floor');
+{
+  const { ctx, page, cell, stored, card } = await open({ [SLIDER]: { x: 4, y: 0, w: 3, h: 7, look: { pres: 'knob' } } });
+  const k0 = (await stored())[SLIDER];
+  ok('a saved 3-wide knob does not grow on load', k0.w === 3 && k0.h === 7, k0);
+  await drag(page, card(SLIDER).locator('.edge-e'), 4 * cell, 0);
+  const g = await drag(page, card(SLIDER).locator('.edge-e'), -10 * cell, 0, () => ghost(page));
+  const k1 = (await stored())[SLIDER];
+  ok('a knob resized far west stops at its own minimum, under the field floor', g && g.refused && k1.w === 3, [g, k1]);
+  await ctx.close();
+}
+
 // ---- drag feedback, into and out of a nest (ph-e82.20.2) ----------------------------
 console.log('drag');
 {

@@ -812,6 +812,10 @@ const MIN_CELLS = {
   [WIDGET.datetime]: { h: [6, 1], v: [4, 2] },
 };
 const COMPOSITE_CELLS = { h: [8, 4], v: [4, 8] };
+const SMALL_CONTROLS = new Set([WIDGET.knob, WIDGET.toggle, WIDGET.indicator, WIDGET.action]);
+
+/** True when a field's presentation is text or a number row: the 16 rem field floor binds it. A knob, toggle, indicator or action keeps its measured minimum. */
+export const textFloored = (presentation) => !SMALL_CONTROLS.has(presentation);
 const SAFETY_CELLS = { h: [3, 2], v: [2, 3] };
 
 /** Orientation follows a control's own aspect: w >= h is horizontal. */

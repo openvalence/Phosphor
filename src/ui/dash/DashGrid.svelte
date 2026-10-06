@@ -17,7 +17,7 @@
    * Host hooks (the home passes them; a category page does not):
    * `ondelete(ids)` removes from the surface, `onduplicate(id) -> id` places a
    * second instance, `resolve(key) -> title|null` names a module member this
-   * view can draw. An item may carry `min(look, orientation)`, `selfLabeled`
+   * view can draw. An item may carry `min(look, orientation)`, `floored(look)`, `selfLabeled`
    * and, for a nest, `retitle(name)`. Internal: `ondragout` and `target` wire a
    * nest's subgrid to its parent; `picked` (bindable) is the selection count,
    * so a nest's bar yields its row to its subgrid's selection.
@@ -38,8 +38,10 @@
    *   addition and the Layout menu fade in (opacity only, html.still off).
    * - A resize never goes below the item's floor: per dimension the larger
    *   of its `min(look, orientation)` cells (RESIZE_FLOOR without one), the
-   *   seed's floor width `s0` (the long side when vertical) and its measured
-   *   content (grid.js floorOf): the ghost shows the refusal and
+   *   seed's floor width `s0` (the long side when vertical; only for an item
+   *   whose `floored(look)` holds: text and number-row fields, composites,
+   *   heroes, nests; a knob, toggle, indicator, action or safety op keeps
+   *   its measured minimum) and its measured content (grid.js floorOf): the ghost shows the refusal and
    *   the live region says it, never a silent clamp. The measured height
    *   binds at widths no wider than it was measured at, and never above the
    *   height the resize started from.
@@ -233,7 +235,7 @@
   const minOf = (p, cap = Infinity) => (w, h) => {
     const o = orientationOf(w, h);
     const fixed = [...((p.min && p.min(p.look, o)) || RESIZE_FLOOR)];
-    const s0 = p.kind === 'section' ? 0 : Math.min(cols, (seedInfo[keyOf(p, 'h')] || {}).s0 || 0);
+    const s0 = p.kind === 'section' || !(p.floored ? p.floored(p.look) : p.kind !== 'safety') ? 0 : Math.min(cols, (seedInfo[keyOf(p, 'h')] || {}).s0 || 0);
     fixed[o === 'h' ? 0 : 1] = Math.max(fixed[o === 'h' ? 0 : 1], s0);
     const m = need[keyOf(p, o)];
     return floorOf(fixed, m ? [cellsFor(m.w, grid.cell), Math.min(cap, tallAt(m, w))] : []);
