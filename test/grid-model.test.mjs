@@ -101,11 +101,12 @@ console.log('placement');
   ok('saved items keep their rects: no gravity, a gap stays a gap', p[0].id === 'b' && p[1].id === 'a' && p[1].y === 5 && p[1].x === 0,
      JSON.stringify(p.map((q) => [q.id, q.x, q.y])));
   const pinned = place(items('a', 'b'), saved, 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('a pin on a taken rect lands at the first free row below; the sibling stays', pinned.find((q) => q.id === 'a').y === 1
-     && pinned.find((q) => q.id === 'b').y === 0, JSON.stringify(pinned.map((q) => [q.id, q.x, q.y])));
+  ok('a pin lands exactly where asked; the card it covers moves to the first free row below',
+     pinned.find((q) => q.id === 'a').y === 0 && pinned.find((q) => q.id === 'a').x === 4
+     && pinned.find((q) => q.id === 'b').y === 2 && pinned.find((q) => q.id === 'b').x === 4, JSON.stringify(pinned.map((q) => [q.id, q.x, q.y])));
   const m = { ...saved };
   commitPin(m, items('a', 'b'), 40, { id: 'a', x: 4, y: 0, w: 10, h: 2 });
-  ok('commitPin writes the pin only', m.a.y === 1 && m.a.x === 4 && m.b === saved.b);
+  ok('commitPin writes the pin and the card it moved', m.a.y === 0 && m.a.x === 4 && m.b.y === 2 && m.b.x === 4);
   const o = { a: { x: 0, y: 0, w: 40, h: 1 }, b: { x: 0, y: 1, w: 40, h: 1 } };
   commitOrder(o, items('a', 'b'), 40, ['b', 'a']);
   ok('commitOrder swaps reading order', o.b.y === 0 && o.a.y === 1);
@@ -129,10 +130,26 @@ console.log('placement');
   ok('blocker names what a rect would overlap', blocker(place(items('a', 'b'), wide, 40), { x: 15, y: 0, w: 10, h: 1 }, 'a').id === 'b'
      && blocker(place(items('a', 'b'), wide, 40), { x: 0, y: 1, w: 10, h: 1 }, 'a') === null);
 
-  // Property: whatever is pinned, no other card moves (drawn or stored), nothing overlaps.
+  // Displacement: a chain pushes on, untouched cards keep their rects, the old slot stays a hole, the preview is pure.
+  const dmap = { a: { x: 0, y: 0, w: 10, h: 2 }, b: { x: 0, y: 2, w: 10, h: 2 }, c: { x: 0, y: 4, w: 10, h: 2 },
+    d: { x: 20, y: 0, w: 6, h: 1 }, e: { x: 0, y: 10, w: 10, h: 1 } };
+  const dits = items('a', 'b', 'c', 'd', 'e');
+  const dpin = { id: 'd', x: 0, y: 2, w: 10, h: 2 };
+  const dp = place(dits, dmap, 40, dpin);
+  const dat = (id) => dp.find((q) => q.id === id);
+  ok('a pin on b pushes b, then c below it, the chain on', dat('d').x === 0 && dat('d').y === 2 && dat('b').y === 4 && dat('c').y === 6,
+     JSON.stringify(dp.map((q) => [q.id, q.x, q.y])));
+  ok('cards the pin never touched keep their rects, and the old slot stays a hole',
+     dat('a').y === 0 && dat('e').y === 10 && !dp.some((q) => q.id !== 'd' && q.x < 26 && 20 < q.x + q.w && q.y < 1 && 0 < q.y + q.h));
+  ok('the preview is pure: the pin moving on returns the pushed cards', place(dits, dmap, 40, { ...dpin, y: 8 }).find((q) => q.id === 'b').y === 2);
+  ok('a pushed card never ends above its saved row', place(dits, dmap, 40, { id: 'e', x: 0, y: 0, w: 10, h: 1 }).every((q) => q.id === 'e' || q.y >= dmap[q.id].y));
+
+  // Property: a pin lands where asked, pushed cards only move down and only because something sits on them,
+  // nothing overlaps, and the commit draws exactly the preview.
   let seed = 7;
   const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
-  let moved = 0, overlapped = 0;
+  const hit = (q, r) => q.x < r.x + r.w && r.x < q.x + q.w && q.y < r.y + r.h && r.y < q.y + q.h;
+  let wrong = 0, overlapped = 0, differ = 0;
   for (let t = 0; t < 300; t++) {
     const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
     const map = {};
@@ -142,18 +159,25 @@ console.log('placement');
     const base = place(items(...ids), map, 40);
     const pick = ids.filter(() => rnd(3) === 0).slice(0, 2);
     const pins = (pick.length ? pick : ['a']).map((id) => ({ id, x: rnd(36), y: rnd(14), w: 1 + rnd(8), h: 1 + rnd(3) }));
-    const before = JSON.parse(JSON.stringify(map));
+    const pre = place(items(...ids), map, 40, pins);
+    const p0 = pre.find((q) => q.id === pins[0].id);
+    if (p0.x !== Math.min(pins[0].x, 40 - pins[0].w) || p0.y !== pins[0].y) wrong++;
+    const shifted = pre.filter((q) => !pins.some((x) => x.id === q.id) && q.y !== base.find((b) => b.id === q.id).y);
+    for (const q of shifted) {
+      const b = base.find((x) => x.id === q.id);
+      if (q.y < b.y || q.x !== b.x || !(pre.some((r) => r !== q && (pins.some((x) => x.id === r.id) || shifted.includes(r)) && hit(b, r)))) wrong++;
+    }
     commitPin(map, items(...ids), 40, pins);
     const after = place(items(...ids), map, 40);
-    for (const q of base) {
-      if (pins.some((x) => x.id === q.id)) continue;
-      const r = after.find((x) => x.id === q.id);
-      if (r.x !== q.x || r.y !== q.y || r.w !== q.w || r.h !== q.h || (before[q.id] && JSON.stringify(map[q.id]) !== JSON.stringify(before[q.id]))) moved++;
+    for (const q of after) {
+      const r = pre.find((x) => x.id === q.id);
+      if (r.x !== q.x || r.y !== q.y || r.w !== q.w || r.h !== q.h) differ++;
+      for (const o of after) if (q !== o && hit(q, o)) overlapped++;
     }
-    for (const q of after) for (const r of after) if (q !== r && q.x < r.x + r.w && r.x < q.x + q.w && q.y < r.y + r.h && r.y < q.y + q.h) overlapped++;
   }
-  ok('300 random commits: no sibling ever moves, drawn or stored', moved === 0, moved);
-  ok('300 random commits: nothing overlaps', overlapped === 0, overlapped);
+  ok('300 random pins: the first lands where asked, a pushed card moves down only under something', wrong === 0, wrong);
+  ok('300 random pins: the commit draws exactly the preview', differ === 0, differ);
+  ok('300 random pins: nothing overlaps', overlapped === 0, overlapped);
 }
 
 // ---- named layouts, inert ids, round trip --------------------------------------
@@ -276,14 +300,14 @@ console.log('nests');
   const id = addNest(top, { title: 'Pump' });
   const first = place([...items('a', 'b', 'c', 'd'), { id }], top, 40).find((p) => p.id === id);
   ok('addNest makes an unplaced nest, drawn at the first free rect', isNest(top[id]) && top[id].y === undefined && id === 'nest:1'
-     && first.x === 10 && first.y === 3, JSON.stringify(first));
+     && first.x === 0 && first.y === 5, JSON.stringify(first));
   ok('a second nest gets its own id', addNest(top) === 'nest:2' && removeNest(top, 'nest:2') && !top['nest:2']);
   ok('members join unplaced', nestAdd(top, id, 'a') && nestAdd(top, id, 'b') && nestAdd(top, id, 'c') && top[id].nest.map.a === null);
   ok('a member cannot join twice, a nest cannot join a nest', !nestAdd(top, id, 'a') && !nestAdd(top, id, 'nest:9'));
   const n = top[id].nest.map;
   commitPin(n, items('a', 'b', 'c'), 12, { id: 'c', x: 0, y: 0, w: 12, h: 3 });
-  ok('the subgrid places like any grid: the pin lands below the taken rows, the rest fixed where drawn',
-     n.c.y === 2 && n.c.h === 3 && n.a.y === 0 && n.b.y === 1, JSON.stringify(n));
+  ok('the subgrid places like any grid: the pin lands where asked, the covered rows move below it',
+     n.c.y === 0 && n.c.h === 3 && n.a.y === 3 && n.b.y === 4, JSON.stringify(n));
   const topItems = [...items('d'), { id, title: 'Pump' }];
   commitPin(top, topItems, 40, { id, x: 0, y: 0, w: 20, h: 6 });
   ok('moving the nest keeps its contents', isNest(top[id]) && top[id].w === 20 && top[id].nest.map.c.h === 3);
@@ -317,7 +341,7 @@ console.log('nests');
   const sub = other[nid].nest.map;
   const present = items('a', 'c', 'x').filter((it) => own(sub, it.id));
   ok('reinsertion keeps the inert member', nestsIn(other)[0].keys.join() === 'a,b,c' && JSON.stringify(sub.b) === JSON.stringify(mod.members.b));
-  ok('the inert member is never placed, never an error', ids(place(present, sub, 12)) === 'a,c', ids(place(present, sub, 12)));
+  ok('the inert member is never placed, never an error', ids(place(present, sub, 12)) === 'c,a', ids(place(present, sub, 12)));
   commitPin(sub, present, 12, { id: 'a', x: 0, y: 0, w: 6, h: 1 });
   ok('a commit under the other catalog leaves the inert member untouched', JSON.stringify(sub.b) === JSON.stringify(mod.members.b) && sub.a.w === 6);
   ok('an unknown module inserts nothing', insertModule(back, other, 'Nope') === null && nestsIn(other).length === 1);
@@ -419,7 +443,7 @@ console.log('drag');
   commitPin(m2, its, 40, pin);
   ok('the preview is exactly what the commit writes', pre.every((p) => p.x === m2[p.id].x && p.y === m2[p.id].y && p.w === m2[p.id].w && p.h === m2[p.id].h),
      JSON.stringify(pre.map(({ id, x, y, w, h }) => [id, x, y, w, h])));
-  ok('the preview moves the dragged card only: it lands where dropped, the siblings keep their rects',
+  ok('a pin on free cells moves the dragged card only: it lands where dropped, the siblings keep their rects',
      pre.find((p) => p.id === 'a').y === 5 && pre.find((p) => p.id === 'a').x === 20 && pre.find((p) => p.id === 'b').y === 2
      && pre.find((p) => p.id === 'c').x === 10, JSON.stringify(pre.map(({ id, x, y }) => [id, x, y])));
   ok('the preview keeps looks', pre.find((p) => p.id === 'b').look.pres === 'knob');
@@ -448,16 +472,16 @@ console.log('selection');
   const group = [{ id: 'a', x: 12, y: 0, w: 4, h: 2 }, { id: 'b', x: 18, y: 0, w: 4, h: 2 }];
   const g = place(its, map, 40, group);
   const at = (id) => g.find((p) => p.id === id);
-  ok('a group pins every member where asked; one landing on d moves down', at('a').x === 12 && at('a').y === 0 && at('b').x === 18 && at('b').y === 1,
-     JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
-  ok('the rest never yields: d and c keep their rects', at('d').x === 20 && at('d').y === 0 && at('c').y === 2);
+  ok('a group pins every member where asked; d, which one lands on, moves below it', at('a').x === 12 && at('a').y === 0 && at('b').x === 18 && at('b').y === 0
+     && at('d').x === 20 && at('d').y === 2, JSON.stringify(g.map(({ id, x, y }) => [id, x, y])));
+  ok('the rest keeps its rect: c does too', at('c').x === 0 && at('c').y === 2);
   const clash = place(its, map, 40, [{ id: 'a', x: 0, y: 0, w: 4, h: 2 }, { id: 'b', x: 0, y: 0, w: 4, h: 2 }]);
   const cb = clash.find((p) => p.id === 'b');
-  ok('a pin that lands on an earlier pin moves down, never overlaps', cb.y === 3 && !clash.some((q) => q !== cb
+  ok('a pin that lands on an earlier pin moves down, never overlaps', cb.y === 2 && !clash.some((q) => q !== cb
      && q.x < cb.x + cb.w && cb.x < q.x + q.w && q.y < cb.y + cb.h && cb.y < q.y + q.h), cb);
   const m2 = JSON.parse(JSON.stringify(map));
   commitPin(m2, its, 40, group);
-  ok('a group commit writes the group and nothing else', m2.a.x === 12 && m2.b.x === 18 && JSON.stringify(m2.d) === JSON.stringify(map.d)
+  ok('a group commit writes the group and the card it moved, nothing else', m2.a.x === 12 && m2.b.x === 18 && m2.d.y === 2
      && JSON.stringify(m2.c) === JSON.stringify(map.c));
 
   const sel = [{ id: 'a', x: 2, y: 1, w: 4, h: 2 }, { id: 'b', x: 9, y: 3, w: 2, h: 2 }, { id: 'c', x: 20, y: 0, w: 6, h: 1 }];

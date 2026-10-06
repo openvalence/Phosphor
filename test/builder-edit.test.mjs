@@ -365,6 +365,37 @@ console.log('nest');
   await ctx.close();
 }
 
+// ---- a drag displaces what it lands on (ph-s7lj.2) -------------------------------------
+console.log('displace');
+{
+  const { ctx, page, cell, stored, card } = await open({ [F1]: { x: 0, y: 0, w: 10, h: 2 }, [F2]: { x: 14, y: 0, w: 10, h: 2 } });
+  const rect = async (key) => (await card(key).boundingBox());
+  const geo = async () => JSON.stringify([await rect(F1), await rect(F2)]);
+  const g0 = await geo();
+  // The grip sits at the card's right end: pull F2 left by its distance to F1's column.
+  const dx = -14 * cell;
+  const mid = await drag(page, card(F2).locator('.handle.grab'), dx, 0, async () => ({
+    ghost: await page.$eval('.home .drop-ghost', (g) => { const b = g.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left }; }),
+    other: await rect(F1),
+  }));
+  ok('mid-drag the covered card is drawn below the ghost', mid.other.y >= mid.ghost.bottom - 1, mid);
+  const s = await stored();
+  ok('the release commits the drop and the push', s[F2].x === 0 && s[F2].y === 0 && s[F1].x === 0 && s[F1].y >= s[F2].h, JSON.stringify([s[F1], s[F2]]));
+  await page.reload();
+  await page.waitForSelector('.home .dash-grid');
+  await page.waitForTimeout(500);
+  const s2 = await stored();
+  ok('the layout holds across a reload', JSON.stringify(s2[F1]) === JSON.stringify(s[F1]) && JSON.stringify(s2[F2]) === JSON.stringify(s[F2])
+    && (await rect(F1)).y >= (await rect(F2)).y + (await rect(F2)).height - 1, JSON.stringify([s2[F1], s2[F2]]));
+  await editBtn(page).click();
+  await page.waitForTimeout(300);
+  const g1 = await geo();
+  await drag(page, card(F1).locator('.handle.grab'), 6 * cell, 0, async () => { await page.keyboard.press('Escape'); await page.waitForTimeout(80); });
+  ok('Escape mid-drag restores every card', await geo() === g1 && JSON.stringify(await stored()) === JSON.stringify(s2), g1);
+  ok('the first layout was a different one', g0 !== g1);
+  await ctx.close();
+}
+
 // ---- keyboard (ph-e82.20.5) ----------------------------------------------------------
 console.log('keys');
 {
