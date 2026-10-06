@@ -85,6 +85,18 @@ const PROBES = {
   'Grid|Delete, Backspace': /key === 'Delete' \|\| key === 'Backspace'/,
   'Grid|Shift+click, Ctrl+click': /onselect\(e\.shiftKey \|\| e\.ctrlKey/,
   'Grid|Arrows|Resize handle': /function onResizeKeyDown/,
+  'Grid|F2, Double-click': /key === 'F2' && item\.retitle/,
+  'Sidebar|F2, Double-click': /e\.key === 'F2'[\s\S]*startRename/,
+  'Sidebar|Alt+Up, Alt+Down': /e\.altKey[\s\S]*ArrowUp[\s\S]*moveLayout/,
+  'Sidebar|Hold Enter, Space': /use:hold=\{\{ ms: 1000/,
+  'Phosphor panes|F2, Double-click|Hubs': /opensName/,
+  'Phosphor panes|F2, Double-click|ButtplugIO': /e\.key === 'F2'\) nameFocus/,
+  'Rail|Shift+drag': /dragGain\(e, 1\)/,
+  'Rail|Ctrl+drag': /modSnap\(dragStartMin/,
+  'Rail|Ctrl+Arrows': /e\.ctrlKey \? modSnap\(base, e, a, b, sgn, step\)/,
+  'Funscript player|g': /k === 'g' && comp !== 'glance'/,
+  'Funscript player|Up, Down': /e\.key === 'ArrowUp' \? 1[\s\S]*e\.shiftKey \? 1 : 8/,
+  'Funscript player|Ctrl+Arrows': /export function offsetKey[\s\S]*e\.ctrlKey/,
   'Node editor|Tab': /Tab reaches each node and socket/,
   'Node editor|Enter': /Enter on a socket starts or finishes a wire/,
   'Node editor|Arrows': /ArrowLeft: \[-1, 0\][\s\S]*e\.shiftKey \? 5 : 1/,
@@ -267,9 +279,10 @@ console.log('\n[help] F1 key help');
   ok('F1 keeps the browser help shut (default prevented)', await page.evaluate(() => window.__prevented?.F1 === true));
   ok('nothing in the layout moves', await layout(page) === before);
   ok('full: the panel is inside the viewport, below the top strip', await inView(page, '.kh'));
-  ok('full: two columns', await page.locator('.kh-list').evaluate((el) => getComputedStyle(el).columnCount) === '2');
+  ok('full: two columns', await page.locator('.kh-cols').evaluate((el) => getComputedStyle(el).columnCount) === '2');
+  ok('full: every group is reachable by vertical scroll', await page.locator('.kh-list').evaluate((el) => el.scrollWidth <= el.clientWidth + 1));
   ok('focus moves into the panel', await page.evaluate(() => !!document.activeElement.closest('.kh')));
-  ok('the panel lists every group', (await page.locator('.kh h3').allTextContents()).join() === KEYS.map((g) => g.group).join());
+  ok('the panel lists every group', (await page.locator('.kh h3').allTextContents()).join() === KEYS.filter((g) => g.items.some((k) => !k.src.startsWith('src/shell/'))).map((g) => g.group).join());
   // ph-gz8, ph-0wf: key names in text ink (never intent), each on one line;
   // no shell-only row on the served page; the panes' heading face.
   const kh = await page.evaluate(() => {
@@ -414,16 +427,15 @@ console.log('\n[index] F3 indexes every page and every layout, and rebuilds on c
   const before = await find('Zed layout');
   ok('a layout not yet saved is not listed', !before.some((r) => r.startsWith('Zed layout')), before.slice(0, 3));
   await page.keyboard.press('Escape');
-  await page.locator('.home .dash-toolbar button', { hasText: 'Edit layout' }).click();
-  await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
-  await page.locator('input[aria-label="Layout name"]').fill('Zed layout');
-  await page.locator('.dash-menu button', { hasText: 'Save as' }).click();
-  await page.keyboard.press('Escape');
+  await page.locator('.sub-layout.add').click();
+  await page.locator('input[aria-label="New layout name"]').fill('Zed layout');
+  await page.keyboard.press('Enter');
+  await sleep(300);
   const after = await find('Zed layout');
   ok('a layout saved while the app runs is listed without a reload', after.some((r) => r.startsWith('Zed layout')), after.slice(0, 3));
   await page.keyboard.press('Enter');
   await sleep(300);
-  ok('Enter on a layout makes it the active one', await page.locator('.layout-pick').first().inputValue() === 'Zed layout');
+  ok('Enter on a layout makes it the active one', await page.locator('.sub-layout.on').first().getAttribute('data-layout') === 'Zed layout');
   await ctx.close();
 }
 

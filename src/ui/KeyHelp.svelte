@@ -71,6 +71,7 @@
       </div>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="kh-list" class:two={view.cls === 'full'} tabindex="0" aria-label="Key table">
+        <div class="kh-cols">
         {#each GROUPS as g (g.group)}
           <section>
             <h3>{g.group}</h3>
@@ -82,6 +83,7 @@
             </dl>
           </section>
         {/each}
+        </div>
       </div>
     </div>
   </div>
@@ -119,7 +121,8 @@
   h2 { margin: 0; font-size: .8rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--tx-val); }
   .kh-close { min-height: var(--tap); padding: 0 var(--sp-5); }
   .kh-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-  .kh-list.two { columns: 2; column-gap: calc(var(--gap) * 2); }
+  /* Columns sit on the inner box so the list scrolls vertically, never sideways. */
+  .kh-list.two .kh-cols { columns: 2; column-gap: calc(var(--gap) * 2); }
   section { break-inside: avoid; margin-bottom: var(--gap); }
   h3 {
     margin: 0 0 var(--sp-2);
