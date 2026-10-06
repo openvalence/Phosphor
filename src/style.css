@@ -781,7 +781,15 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--field-floor)), 1fr));
   gap: var(--sp-3) var(--gap);
 }
+/* Fields wrap like the grid does (same floor, same column count) but the last
+   row's fields take the row's leftover width, so no card ends in a gutter. The
+   pattern tiles keep the grid: their last row must not stretch. */
+.card-body:not(.pattern-grid) { display: flex; flex-wrap: wrap; }
+.card-body:not(.pattern-grid) > * { flex: 1 1 min(100%, var(--field-floor)); min-width: 0; }
 /* A sub-group title inside a card body: one type step, spans the row. */
+.card-body > .card-sub {
+  flex: 0 0 100%;
+}
 .card-sub {
   grid-column: 1 / -1;
   margin: 0;
