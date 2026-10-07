@@ -749,8 +749,8 @@ export function mountInterp(el, { value, onChange, gain });   // -> unmount(); t
 ```
 
 The controller schedules `wire(script)` (`ctl.wire`, the Kinetic preview's script too): one segment per action,
-ending at the mode's tangent through knotSlope (kept at a reversal, so the mode's overshoot reaches the hub); the segments grant declares
-`curve_family` c1_cubic (motion.js, host-wide on the segments STREAM) because every mode is a cubic Hermite per span, so the hub renders the player's curve instead of a C2 quintic; a hub downgrade is logged once (SPEC 9.6 item 5). `PlayerState.shaped` (`shape(script)`)
+ending at the mode's tangent through knotSlope (kept at a reversal, so the mode's overshoot reaches the hub), no
+`curve_family`; the hub draws the curve between actions (SPEC 9.6 item 5). `PlayerState.shaped` (`shape(script)`)
 is what the timeline, the heat and the speed meter draw. Tests: `test/funscript-core.test.mjs` (interp section).
 
 ---

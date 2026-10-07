@@ -21,7 +21,6 @@
 import { ROLE } from './roles.js';
 import { reportedValue } from './settings.js';
 import { CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PACKED, FIELD_ROLE } from '../../../Valence/clients/js/index.js';
-import { CURVE_FAMILY, CURVE_FAMILY_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
 
 const first = (byRole, role) => {
   const l = byRole && byRole.get(role);
@@ -245,16 +244,8 @@ export function createMotionDoor(deps) {
     if (a === 'refused') return 'refused';
     if (a !== 'pending') {
       asked.set(id, 'pending');
-      // Every segment the door sends is a cubic Hermite span: the segments grant declares c1_cubic.
-      const wish = [ch, st.entry.maxRateHz || FALLBACK_RATE_HZ];
-      if (st.duration) wish.push(null, CURVE_FAMILY.c1_cubic);
-      s.publish([wish]).then(
-        (g) => {
-          const r = g.find((x) => x.channel === ch);
-          asked.set(id, r ? 'granted' : 'refused');
-          const eff = r && r.curveFamily;
-          if (wish[3] != null && eff != null && eff !== wish[3]) deps.log('warn', 'curve family downgraded to ' + (CURVE_FAMILY_NAME[eff] || eff) + ' by the hub');
-        },
+      s.publish([[ch, st.entry.maxRateHz || FALLBACK_RATE_HZ]]).then(
+        (g) => asked.set(id, g.some((r) => r.channel === ch) ? 'granted' : 'refused'),
         (e) => { asked.set(id, 'refused'); deps.log('warn', 'motion input: ' + e.message); },
       );
     }

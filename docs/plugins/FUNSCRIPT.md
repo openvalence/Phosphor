@@ -91,9 +91,8 @@ A larger hub horizon (500, 1000 for poor WiFi) widens the lead to 250 or
 everything from its `t_base` (RFC-087 item 5).
 
 Content goes as authored (SPEC §9.6 clauses 2, 4, 5): one segment per
-action gap carrying the knot's end velocity (Sync item 8), the grant
-declaring `curve_family` c1_cubic (every mode is a cubic Hermite per span, so
-the machine renders the player's curve exactly), no client feasibility past the handoff bound. Dense scripts are sent as authored
+action gap carrying the knot's end velocity (Sync item 8), no
+`curve_family`, no client feasibility past the handoff bound. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
 ## Interpolation
@@ -104,8 +103,8 @@ the hub draws through and the curve the detail view draws. Linear is the default
 byte. Every other setting still sends one segment per action (`wire()`,
 SPEC §9.6 item 5): the action's position over its span, ending at the
 mode's tangent there (`vel`, Sync item 8; kept at a reversal, so the
-mode's overshoot reaches the hub, within 1.5 x the lesser chord), and the
-segments grant declares `curve_family` c1_cubic: the hub draws the curve between actions. Smoothing and
+mode's overshoot reaches the hub, within 1.5 x the lesser chord), and no
+`curve_family`: the hub draws the curve between actions. Smoothing and
 slew move each action to the filtered curve's value there and send the
 chord rule. The drawn curve (`shape()`, pieces of at most 40 ms,
 `STEP_MS`) is display only: the detail view and the speed meter (the heat
@@ -1010,10 +1009,9 @@ Decisions (veto-able):
   ambiguous across the call). The existing `submitMotion` segment stamp
   (`now + latency`, executing at now + 2 x latency) is flagged for its
   owner, not changed here.
-- **D4** As authored: the knot's end velocity (Sync item 8), the
-  grant declaring `curve_family` c1_cubic (SPEC §9.6 clauses 2 and 5; ruled
-  2026-10-06: the machine must render the player's curve, which `unspecified`
-  and a quintic reconstruction do not).
+- **D4** As authored: the knot's end velocity (Sync item 8), no
+  `curve_family` (SPEC §9.6 clauses 2 and 5). `unspecified` was the first
+  ruling; it stopped at same-direction knots on silicon (G3, ph-t9go).
 - **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 25 ms step (between
   one 60 Hz vsync, slewed, and one dropped 30 fps frame, stepped: a 40 ms
   step slewed a dropped frame out over 6 s). Design 2's EMA is weaker on
