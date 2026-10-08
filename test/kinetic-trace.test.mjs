@@ -1,7 +1,7 @@
 /**
  * kinetic-trace.test.mjs -- the vendored kinetic.wasm (kinetic/bytes.js) is the machine's Kinetic² planner
  * bit for bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic_trace.json as of Nucleus
- * 4762768 (kernel Kinetic 04c1439; written by its native suite test_kinetic_wasm_trace under
+ * ff45f6a (kernel Kinetic 540938d, expect_ms 500; written by its native suite test_kinetic_wasm_trace under
  * pio test -e native), replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
  *
  * (1) every 1 ms sample of the 60 s script hashes as the native run did (all 64 bytes), p/v/a 0 ULP;
@@ -29,9 +29,10 @@ const SAMPLE = 64, OFFSET = 0xcbf29ce484222325n, PRIME = 0x100000001b3n;
 const [vmax, amax, jmax, rail, horizon] = fx.create;
 const h = k.kinetic_create(vmax, amax, jmax, rail, horizon);
 k.kinetic_set_window(h, fx.window[0], fx.window[1]);
+k.kinetic_expect(h, fx.expect_ms);
 const out = k.malloc(SAMPLE);
 const posMm = new Float32Array(fx.steps);
-let next = 0, hash = OFFSET, accepted = 0, bad = 0, badTrace = 0;
+let next = 0, hash = OFFSET, accepted = 0, bad = 0, badTrace = 0, mask = 0;
 for (let tick = 0; tick < fx.steps; tick++) {
   for (; next < fx.events.length && fx.events[next][0] === tick; next++) {
     const e = fx.events[next];
@@ -40,6 +41,7 @@ for (let tick = 0; tick < fx.steps; tick++) {
   k.kinetic_step(h, fx.dt_s, out);
   const dv = new DataView(k.memory.buffer, out, SAMPLE);
   posMm[tick] = dv.getFloat32(44, true);
+  mask |= dv.getUint32(52, true);
   for (const b of new Uint8Array(k.memory.buffer, out, SAMPLE)) hash = BigInt.asUintN(64, (hash ^ BigInt(b)) * PRIME);
   if ((tick + 1) % fx.block === 0) {
     if (hash.toString(16).padStart(16, '0') !== fx.hashes[(tick + 1) / fx.block - 1]) bad++;
@@ -55,12 +57,13 @@ k.free(out);
 ok('every 1 ms sample of ' + fx.steps + ' bit-identical to the native run', bad === 0, (fx.hashes.length - bad) + '/' + fx.hashes.length + ' blocks');
 ok('p/v/a every ' + fx.trace_every + ' ms: 0 ULP', badTrace === 0, badTrace + ' differ');
 ok('accepted segments as native', accepted === fx.summary.accepted, accepted + ' vs ' + fx.summary.accepted);
+ok('anomaly mask as native', mask === fx.summary.anomaly_mask, mask + ' vs ' + fx.summary.anomaly_mask);
 
 // (2) the worker's loop on the same input
 const segs = fx.events.filter((e) => e[1] === 'seg').map((e) => [e[5] / 1000, e[2], e[3], e[4]]);
 const lead = segs[0][0] - fx.events[0][0];
 const it = renderCore(k, { limits: { vmax, amax, jmax, rail, horizonMs: horizon }, window: fx.window, tuning: [],
-  segs, steps: fx.steps, stepMs: fx.dt_s * 1000, every: 1, leadMs: lead });
+  segs, steps: fx.steps, stepMs: fx.dt_s * 1000, every: 1, leadMs: lead, expectMs: fx.expect_ms });
 const t = performance.now();
 let r;
 do r = it.next(); while (!r.done);

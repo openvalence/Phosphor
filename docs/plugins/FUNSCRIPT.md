@@ -91,8 +91,8 @@ A larger hub horizon (500, 1000 for poor WiFi) widens the lead to 250 or
 everything from its `t_base` (RFC-087 item 5).
 
 Content goes as authored (SPEC §9.6 clauses 2, 4, 5): one segment per
-action gap, a same-direction knot carrying its end velocity and every other
-knot free (Sync item 8), the grant declaring no curve family (the hub's
+action gap, every knot free but the rests the player sees (Sync item 8),
+the grant declaring no curve family (the hub's
 `smoothness` shapes a free knot, Interpolation), no client feasibility past the handoff bound. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
@@ -159,12 +159,12 @@ window on the last: Kinetic² renders a reversal flat at every
 
 - **I1** One segment per action (operator ruling 2026-10-04) stays; "ending
   at the mode's tangent" is superseded by the retirement above (2026-10-08):
-  the tangent is the hub's, except at a same-direction knot (I7).
+  the tangent is the hub's (I8).
 - **I6** Auto measures in script units against the Range, not the window:
   a narrow Range scales an overshoot the window would still hold. Veto:
   fit the window (the Range's center then moves with it).
 - **I7** A knot between two chords of one sign carries their mean (at most
-  1.5 x the lesser, scheduler.js `knotSlope`); a reversal, a hold edge, the
+  1.5 x the lesser); a reversal, a hold edge, the
   ends and the seek glide's landing are free. A free knot rests until its
   successor is scheduled (SPEC §9.6, RFC-058), and at the 125 ms lead the
   hub then re-shapes only the last 125 ms of the piece toward it. Measured
@@ -175,9 +175,41 @@ window on the last: Kinetic² renders a reversal flat at every
   (`--live-playback`) the plan's speed through non-reversal knots read 0.28
   of the span peak free and 0.94 to 0.97 with the mean. Cost: `smoothness`
   does not reach a same-direction knot (RFC-108 item 6: an authored knot
-  keeps its angle), only reversals, hold edges and ends. Veto: every knot
-  free, once the hub stops resting a free knot whose successor is due
-  inside the horizon.
+  keeps its angle), only reversals, hold edges and ends. Superseded by I8
+  (2026-10-08, ph-hcof).
+- **I8** The hub carries the tangent; the sender declares the rests it can
+  see. Nucleus 0.1.32 (val-g62) arms Kinetic `Engine::expect` on every stream
+  segment for the larger of `stream_quiet_release_ms` (500) and the grant's
+  horizon: the newest free knot renders through toward a provisional
+  successor at chord speed instead of at rest. So every knot is free
+  (`endVel` null), reversals included, except where the player knows motion
+  stops (scheduler.js `knotVel`, `endVel` 0, has_v): the script's last
+  action, an action whose successor is over `EXPECT_MS` (500) of wall time
+  away (media ms / rate), the A-B loop's last action before the wrap (the
+  successor is not the script's next action) and a seek's landing.
+  `EXPECT_MS` restates the registry's `stream_quiet_release_ms`: the plugin
+  API publishes no grant horizon, and the hub's window is never shorter.
+  The expectation is fixed at solve time, so a stream that stops passes
+  its last free knot moving and brakes past it by v²/2a of the chord speed
+  (5 mm at 1000 mm/s and 100000 mm/s²); the hub cannot see the end, the
+  player can. Measured on the twin (Nucleus 74ff1cb, Kinetic 540938d; vmax
+  1200 mm/s, amax 100000, jerk 2e7, window 100-400 mm; staircase 20..80 by
+  15 and back, 400 to 500 ms spans, 3 laps, 18 same-direction knots): knot
+  speed over the chords' mean 1.07 (least 0.84, max 1.36) with the
+  expectation, 0.60 (least 0.56) without it. The least is the second knot
+  after the start from rest; on a 10..90 by 10 staircase the knots inside a
+  run read 0.99 mean (least 0.84); at uniform 450 ms spans the middle knot
+  of a 4-knot run reads 0.935. The hub's curve sets these, not the wire:
+  the speed overshoots the chord after a reversal and settles under it
+  mid-run. A fast run to the end (20, 50, 80 at 200 ms): rested, 0.13 mm
+  past the last action; left free, 2.28 mm. A knot before a 1.5 s
+  successor is reached at 0.02 mm/s. A reversal is newest before its
+  successor too: on the real-shaped browser script the 260 ms flicks' top
+  reversal reads 1.0e-4 of the window high in the Auto measure (one 0.01
+  grid step: Auto may read `0.00–0.99`), and a rest landing on the window
+  edge reads f32 noise (1e-7) as `clamped` for a few ms. Sent at 0, the
+  reversal reads 1.0000000. Veto: the I7 mean on same-direction
+  knots (0.97, least 0.95), which keeps `smoothness` off them.
 
 ## Sync
 
@@ -244,20 +276,18 @@ window on the last: Kinetic² renders a reversal flat at every
    mid-play. The filter belongs in Valence's `clients/js` `syncClock`
    (SPEC §7.1), where every consumer shares it; the door's copy goes when
    that lands.
-8. **End velocity on the wire** (ph-t9go, ph-1qs5.1). Every segment
-   carries `input.end_velocity` (SPEC §9.6 item 5). A knot between two
-   chords of one sign ends at their mean, never past `segment_handoff_k`
-   (1.5) x the lesser chord, the bound the hub applies only once the
-   successor is scheduled, so a slow span never has to arrive fast; in
-   norm/s: slope x 1000 x rate x (hi - lo), negated under invert. A
-   reversal, a hold edge, the ends and the seek glide's landing are
-   `unspecified`: free knots the hub's `smoothness` shapes (Interpolation,
-   I7, with the measurement). Stop, preroll and home end at 0, since
-   nothing is scheduled after them.
+8. **End velocity on the wire** (ph-t9go, ph-1qs5.1, ph-hcof). Every knot
+   is `unspecified` (`input.end_velocity` absent, SPEC §9.6 item 5): the
+   hub expects successors on a stream and its `smoothness` shapes the knot.
+   The rests the player can see are sent at 0: the script's last action, an
+   action whose successor is over `EXPECT_MS` (500 ms) of wall time away,
+   the loop's last action before the wrap and the seek glide's landing
+   (Interpolation, I8, with the measurement). Stop, preroll and home end at
+   0, since nothing is scheduled after them.
 9. **Every knot is sent.** A same-direction step under
    `segment_dwell_span` (0.02 of the window) is a knot like any other: the
    hub zeroes no declared velocity on it. Measured on the twin (a 1 to 4
-   point random walk, 120 knots at 200 ms, the mean on same-direction
+   point random walk, 120 knots at 200 ms, the I7 mean on same-direction
    knots): no anomaly, no non-reversal knot at rest, 0.07 mm at the knots;
    merging those steps into their neighbors' span cost 7.4 mm there.
 10. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
@@ -804,7 +834,7 @@ behaves the same on the machine, without rendering anything on the hub.
   once and answers render requests; the page thread never runs the planner.
 - **Input.** The wire Script's segments (`ctl.wire`, scale.js `wire()`,
   through `segmentsOf`) as the host sends them: one per span ending at the
-  same end velocity or free, no curve family, each
+  same end velocity (free, or 0 at a rest, I8), no curve family, each
   submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
@@ -813,7 +843,9 @@ behaves the same on the machine, without rendering anything on the hub.
   `smoothness`, `handle_floor`, `trim_max` and `react_us`; `chase_dense_us`
   is bound and ignored (on the board it is the samples grant's latency). The values are the ones the analyzer shows: in Preview
   the hub's trial values, during a drag the draft, before anything is
-  written. Any change re-renders; a newer render supersedes the older, which
+  written. Every render calls `kinetic_expect` with the scheduler's
+  `EXPECT_MS`, so the preview and the Auto fit render the hub's expectation.
+  Any change re-renders; a newer render supersedes the older, which
   frees its handle at its next 8192-step chunk.
 - **Output.** 1 ms steps, kept every 5 ms (more on scripts past 1000 s, at
   most `KIN_MAX_SAMPLES`): `position_mm` (what an on-time LP core renders),
@@ -849,10 +881,12 @@ behaves the same on the machine, without rendering anything on the hub.
   `funscript-player.test.mjs --unit` against that build.
 - **Determinism.** `test/kinetic-trace.test.mjs` (in `npm run check`)
   replays Nucleus' native Kinetic² fixture (`test/fixtures/kinetic_trace.json`,
-  copied from Nucleus 4762768 `test/fixtures/kinetic_trace.json`, kernel
-  Kinetic 04c1439) through bytes.js:
-  600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP; `renderCore`
-  on the same segments returns the same `position_mm` at all 60,000 steps.
+  copied from Nucleus ff45f6a `test/fixtures/kinetic_trace.json`, kernel
+  Kinetic 540938d, `expect_ms` 500) through bytes.js:
+  600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP, the
+  accepted count and the anomaly mask (10) as native; `renderCore` on the
+  same segments with the same expectation returns the same `position_mm` at
+  all 60,000 steps.
 - **CSP.** Compiling wasm needs `'wasm-unsafe-eval'` in `script-src`
   (PLUGINS.md); section (k) shows the compile refused without it.
 - **Measured** 2026-10-06 (Chromium, section (k), Kinetic²): 60 s at 1 ms
@@ -1003,8 +1037,8 @@ Decisions (veto-able):
   ambiguous across the call). The existing `submitMotion` segment stamp
   (`now + latency`, executing at now + 2 x latency) is flagged for its
   owner, not changed here.
-- **D4** As authored: a same-direction knot's end velocity, every other
-  knot free (Sync item 8, I7), no curve family (SPEC §9.6 clauses 2 and 5;
+- **D4** Every knot free but the rests the player sees (Sync item 8, I8),
+  no curve family (SPEC §9.6 clauses 2 and 5;
   RFC-108: the hub's `smoothness` shapes a free knot).
 - **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 25 ms step (between
   one 60 Hz vsync, slewed, and one dropped 30 fps frame, stepped: a 40 ms

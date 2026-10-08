@@ -9,11 +9,12 @@
 // - Segments are submitted as the host sends them, LEAD_MS before their start (half the 250 ms horizon),
 //   and the clock steps at stepMs (the board ticks at 1 ms). Same calls in, same bits out (kinetic-trace test).
 // - A newer render supersedes: the older one resolves null and its handle is destroyed at its next chunk.
+// - Every render expects successors for the scheduler's EXPECT_MS (kinetic_expect), as the hub does for a stream.
 // - Kinetic² only: the worker refuses a module whose kinetic_version() does not name kinetic2.
 // - TUNING mirrors kinetic_tuning (32 B) by member name; a catalog field binds by that name, and a
 //   name ending _ms binds its _us member times 1000. A member no field names keeps the factory value.
 
-import { applyT, knotSlope, wireVel } from '../scheduler.js';
+import { applyT, knotVel, EXPECT_MS } from '../scheduler.js';
 import { WASM } from './bytes.js';
 
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
@@ -43,18 +44,15 @@ export function tuningOf(pairs) {
 /**
  * The script as the render's segments [startMs, pos_e4, durMs, endVelE3] on the engine clock, and
  * t0, the media ms of engine 0: a preroll to the first knot arriving at media 0, then one segment per span.
- * The scheduler's knots, each span ending at its knot's endVel at rate 1 (knotSlope, wireVel) or FREE, packed as the host
- * packs it; the preroll ends at rest.
+ * The scheduler's knots, each span ending at its knot's endVel at rate 1 (knotVel): 0 at a rest, else FREE; the
+ * preroll ends at rest.
  * The preroll is submitted LEAD_MS in: the window set parks and reseeds on the first tick, dropping
  * anything queued before it.
  */
 export function segmentsOf(script, T) {
   const pad = 2 * LEAD_MS + PREROLL_MS, { at, pos } = script;
   const e4 = (n) => Math.round(clamp(applyT(n, T), 0, 1) * 10000);
-  const e3 = (k) => {
-    const v = wireVel(knotSlope((j) => at[j], (j) => pos[j], k, at.length), T);
-    return v == null ? FREE : Math.sign(v) * Math.round(Math.min(32767, Math.abs(v) * 1000));
-  };
+  const e3 = (k) => (knotVel((j) => at[j], (j) => j, k, at.length) === 0 ? 0 : FREE);
   const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0]];
   for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k)]);
   return { segs, t0: (T.offsetMs || 0) - pad, steps: Math.ceil(pad + at[at.length - 1] + TAIL_MS) };
@@ -62,9 +60,9 @@ export function segmentsOf(script, T) {
 
 /**
  * q: {limits: {vmax, amax, jmax, rail, horizonMs}, window: [lo, hi] mm, tuning: tuningOf(), segs,
- * steps, stepMs = 1, every = 1, leadMs = LEAD_MS}. Yields between chunks; returns position_mm,
- * velocity_mm_s, accel_mm_s2 and raw (the plan's p, a window share before the window clamp: overshoot
- * included) every `every` steps, the flags ORed over each, and counts over every step.
+ * steps, stepMs = 1, every = 1, leadMs = LEAD_MS, expectMs (kinetic_expect; absent: the create default)}.
+ * Yields between chunks; returns position_mm, velocity_mm_s, accel_mm_s2 and raw (the plan's p, a window share
+ * before the window clamp: overshoot included) every `every` steps, the flags ORed over each, and counts over every step.
  */
 export function* renderCore(k, q) {
   const L = q.limits, h = k.kinetic_create(L.vmax, L.amax, L.jmax, L.rail, L.horizonMs || 0);
@@ -79,6 +77,7 @@ export function* renderCore(k, q) {
       else dv.setUint32(tb + off, Math.max(0, Math.round(v)), true);
     }
     k.kinetic_set_tuning(h, tb);
+    if (q.expectMs != null) k.kinetic_expect(h, q.expectMs);
     const step = q.stepMs || 1, every = Math.max(1, q.every | 0), lead = q.leadMs ?? 125, n = Math.ceil(q.steps / every);
     const pos = new Float32Array(n), vel = new Float32Array(n), acc = new Float32Array(n), raw = new Float32Array(n), flags = new Uint8Array(n);
     const anomalies = new Uint32Array(32), counts = new Uint32Array(4), segs = q.segs;
@@ -193,7 +192,7 @@ export function createKinetic() {
       const id = ++seq;
       return new Promise((res, rej) => {
         pending = { id, res, rej };
-        ready.then(() => { if (pending && pending.id === id) w.postMessage({ ...q, id }); }, () => {});
+        ready.then(() => { if (pending && pending.id === id) w.postMessage({ expectMs: EXPECT_MS, ...q, id }); }, () => {});
       });
     },
     close() { w.terminate(); if (pending) pending.res(null); pending = null; dead = dead || new Error('closed'); },

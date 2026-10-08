@@ -69,7 +69,8 @@ scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funsc
   norm: number,               // 0..1 across the hub's stroke window (submitMotion's meaning)
   durationMs: number,         // > 0, wall ms
   endVel?: number | null }    // velocity at its end, norm/s (input.end_velocity, SPEC 9.6); null or absent: unspecified,
-                              // a free knot the hub's smoothness shapes (RFC-106, RFC-108), at rest until its successor arrives
+                              // a free knot the hub's smoothness shapes (RFC-106, RFC-108); on a stream the hub expects a
+                              // successor and passes it moving (Nucleus val-g62), so a real stop is sent as 0
 
 // SegResult: api.submitSegments(list)
 { ok: true,  sent: number, rateHz: number }             // sent = leading items consumed (packed, or dropped as short or colliding)
@@ -197,10 +198,11 @@ export const TRANSIENT;   // frozen Set: 'waiting for the stream grant', 'NO_CLO
 export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (T.hi - T.lo)
 export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
                                                            // at rate 1; the caller scales it by the rate
-export const HANDOFF_K = 1.5;   // registry limits.segment_handoff_k, restated (a plugin imports nothing outside its folder)
-export function knotSlope(t, p, j, n);   // knot j's slope, pos per media ms, over accessors t(j), p(j): between two
-  // chords of one sign their mean, at most HANDOFF_K x the lesser; null (free) at either end, a reversal and beside a hold
-export function wireVel(slope, T, rate = 1);   // -> norm/s: slope x 1000 x rate x (hi - lo), negated under invert; null stays null
+export const EXPECT_MS = 500;   // registry limits.stream_quiet_release_ms, restated: the least window the hub expects
+  // successors for (it takes the larger of this and the grant's horizon, which the plugin API does not publish)
+export function knotVel(t, i, j, n, rate = 1);   // knot j's endVel over accessors t(j) (media ms), i(j) (script index):
+  // 0 at the last knot, before a successor over EXPECT_MS of wall time away ((t(j+1) - t(j)) / rate) and at a loop
+  // wrap (i(j+1) !== i(j) + 1); else null (free)
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
 // log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.
@@ -216,7 +218,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               from the cursor, advances by result.sent only.
 //                               Span k (knot k-1 -> k): atMs = clock.displayAt(at[k-1]) + T.offsetMs,
 //                               durationMs = (at[k] - at[k-1]) / clock.rate, norm = applyT(pos[k], T),
-//                               endVel = wireVel(knotSlope(knot k), T, clock.rate), null where the knot is free.
+//                               endVel = knotVel(knot k, clock.rate): 0 at a rest the player sees, else null.
 //                               A TRANSIENT reason is fatal false (retry next tick); RATE_EXCEEDED first
 //                               re-thins the unsent script at 1000 / rateHz ms, once per rate. Any other
 //                               reason is fatal true. The thinning covers the unsent tail from knot
@@ -249,7 +251,7 @@ export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, 
 //                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
 //   restart(clock, transitionMs = 0)   transitionMs > 0 (a seek): the first segment is {atMs: now,
 //                               norm: applyT(script at mediaAt(now + transitionMs - offset)), durationMs:
-//                               transitionMs, endVel: null}; that span
+//                               transitionMs, endVel: 0} (the landing is a rest); that span
 //                               follows from its end, the knots
 //                               inside are passed over
 //   observePlan(arrivalMs, elapsedMs, durationMs)   one plan strip sample (plan.elapsed, plan.duration in ms;
@@ -687,10 +689,11 @@ export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, typ
   // _ms field to its _us member times 1000; non-numbers skipped
 export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3][], t0, steps }
   // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
-  // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 packed as the host packs it, FREE
+  // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 (knotVel): 0 at a rest, FREE
   // (-32768, registry segment_end_vel_unspecified) where the knot is free (the preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
 export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},
-  // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS}; yields every
+  // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS, expectMs}
+  // (kinetic_expect when given; createKinetic's render passes EXPECT_MS unless q names one); yields every
   // 8192 steps; returns KineticRender. Self-contained: the worker runs its source.
 export async function instantiate(b64 = WASM);   // -> the exports, _initialize() called; the worker refuses a non-Kinetic² build
 export function versionOf(k);                    // -> kinetic_version(), 'nucleus <sha12> kinetic2 <x.y.z>'

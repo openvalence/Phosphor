@@ -15,7 +15,7 @@ import {
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
-  HOME_MIN_MS, LAG_MIN, COMP_STEP_MS,
+  HOME_MIN_MS, LAG_MIN, COMP_STEP_MS, EXPECT_MS,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
@@ -407,23 +407,18 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
 }
 
 {
-  // One segment per action, a 1 point step included (Kinetic² zeroes no repeated target): only a knot between two chords
-  // of one sign carries a velocity; a reversal, a hold edge and the end are free (null), the hub's smoothness shapes them.
+  // One segment per action, a 1 point step included (Kinetic² zeroes no repeated target). Every knot is free (the hub
+  // expects successors and carries the tangent) except the rests the sender sees: a successor over EXPECT_MS away, the end.
   const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }, { at: 1500, pos: 100 },
-    { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 2700, pos: 21 }, { at: 3000, pos: 80 }] });
+    { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 2700, pos: 21 }, { at: 3000, pos: 80 }, { at: 3800, pos: 90 }, { at: 4000, pos: 50 }] });
   const ev = (o) => play(s, o).host.sent.map((g) => g.endVel);
   const sent = play(s).host.sent, lin = ev();
-  ok('one segment per action at its position, the 1 point step kept', sent.length === 7 && sent.every((g, i) => near(g.norm, s.pos[i + 1], 1e-6)),
+  ok('one segment per action at its position, the 1 point step kept', sent.length === 9 && sent.every((g, i) => near(g.norm, s.pos[i + 1], 1e-6)),
     sent.map((g) => g.norm.toFixed(2)).join());
-  ok('same direction: the mean of the two chords (0.85), bounded to 1.5 x the lesser (0.45; 0.05 at the step); the rest free',
-    near(lin[0], 0.85, 1e-6) && near(lin[1], 0.45, 1e-6) && lin[2] === null && lin[3] === null && lin[4] === null && near(lin[5], 0.05, 1e-6) && lin[6] === null, lin.join());
+  ok('every knot free (same direction, reversal, hold edge) but the rests: before an ' + EXPECT_MS + '+ ms successor and the last',
+    lin.slice(0, 6).every((v) => v === null) && lin[6] === 0 && lin[7] === null && lin[8] === 0, lin.join());
   const tr = ev({ rate: 2 });
-  ok('rate 2 doubles it', near(tr[0], 1.7, 1e-6) && near(tr[1], 0.9, 1e-6) && tr[2] === null, tr.join());
-  const inv = play(s, { rate: 1 }), T = { ...T0, lo: 0.2, hi: 0.6, invert: true };
-  const sch = createScheduler({ submit: inv.host.submit, now: inv.now });
-  sch.load(s); sch.setTransform(T); inv.clock.anchor(0, inv.now(), 1); sch.restart(inv.clock); sch.tick(inv.clock);
-  const g = inv.host.calls.at(-1);
-  ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
+  ok('the window is wall time: at rate 2 the 800 ms successor is 400 ms away, free', tr[6] === null && tr[8] === 0, tr.join());
 }
 {
   // A restart that changes only timing keeps what the hub holds: re-sending the in-progress span repeats its target.
@@ -473,6 +468,9 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   const seams = host.sent.filter((g) => near(g.durationMs, 1200 - 2900 + 2000, 1e-9));
   ok('loop: each seam is one span, last knot before b to the first after a (no jump, no gap)', seams.length === 2
     && seams.every((g) => near(g.norm, s.pos[2], 1e-6)), seams.length + ' seams');
+  const wraps = seams.map((g) => host.sent[host.sent.indexOf(g) - 1]);
+  ok('loop: the last knot before each wrap is a rest (endVel 0), the seam knot free',
+    wraps.every((g) => g.endVel === 0) && seams.every((g) => g.endVel === null), wraps.map((g) => g.endVel).join());
   ok('loop: three plays of a..b, then the tail to the last action', host.sent.length === 5 + 4 + 6 && near(ends.at(-1), 4000 + 4000, 1e-6),
     host.sent.length + ' spans, last end ' + ends.at(-1).toFixed(1));
   const fh = fakeHost(now);
@@ -538,7 +536,7 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   sch.tick(clock);
   const [a, b] = host.calls[0];
   ok('seek: one segment from now over the delay to the script position delay ahead', a.atMs === 7000 && a.durationMs === 500 && near(a.norm, posAt(s, 1900), 1e-6));
-  ok('seek: the transition ends free (the hub shapes the landing)', a.endVel === null);
+  ok('seek: the landing is a rest the sender declares (endVel 0)', a.endVel === 0);
   ok('seek: the next span starts at its end and keeps its knot', b.atMs === 7500 && near(b.atMs + b.durationMs, clock.displayAt(2000), 1e-9) && near(b.norm, 1, 1e-6));
   while (t < 10000) { sch.tick(clock); t += VSYNC; }
   ok('seek: the knots inside the delay are passed over, the rest tile', tiles(host.sent) <= 0.001 && host.sent.length === 3, host.sent.length + ' sent');

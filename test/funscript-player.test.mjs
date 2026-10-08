@@ -46,7 +46,8 @@ const CONTRACT = {
   [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
     'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
-    'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'applyT', 'strokeSpeed', 'createScheduler'],
+    'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'EXPECT_MS', 'applyT', 'knotVel', 'strokeSpeed',
+    'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
@@ -266,19 +267,51 @@ if (an) {
     const want = (ms) => 100 + 300 * applyT(posAt(sc, ms - 30), Tk);
     ok('Kinetic: the render lands on every knot of a feasible script within 1 mm on the media axis, the first after the preroll',
       sc.at.every((t) => Math.abs(at(t + 30) - want(t + 30)) < 1) && r.value.accepted === sg.segs.length, [kn.versionOf(k), at(5030), want(5030)]);
-    // The preview submits the wire as the host does: a same-direction knot at its chords' mean, the rest free.
+    // The preview submits the wire as the host does: every knot free, the rests the sender sees at 0, the hub's expectation on.
     const mono = parseFunscript({ actions: [0, 20, 40, 60, 80, 20].map((pos, i) => ({ at: i * 500, pos })) });
-    const ms = kn.segmentsOf(mono, T0k), knotV = (segs) => {
-      const it2 = kn.renderCore(k, { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], ...ms, segs, every: 1 });
+    const ms = kn.segmentsOf(mono, T0k);
+    ok('Kinetic: every knot free (segment_end_vel_unspecified), the last a rest, the preroll at rest',
+      same(ms.segs.map((x) => x[3]), [0, kn.FREE, kn.FREE, kn.FREE, kn.FREE, 0]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
+    const LIM = { vmax: 1200, amax: 100000, jmax: 2e7, rail: 500 };
+    const run = (sg2, expectMs, segs = sg2.segs) => {
+      const it2 = kn.renderCore(k, { limits: LIM, window: [100, 400], tuning: [], ...sg2, segs, every: 1, expectMs });
       let q;
       do q = it2.next(); while (!q.done);
-      return [500, 1000, 1500].map((m) => Math.abs(q.value.vel[Math.round(m - ms.t0)]));
+      return q.value;
     };
-    const after = knotV(ms.segs), free = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], kn.FREE, x[4]] : x)));
-    ok('Kinetic: a same-direction knot ends at its chords\u2019 mean e3 (40 %/s here); the reversal and the end free (segment_end_vel_unspecified), the preroll at rest',
-      same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, kn.FREE, kn.FREE]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
-    ok('Kinetic: through a same-direction knot the planner keeps the chord speed (120 mm/s); left free it dips at the 125 ms lead',
-      after.every((v) => Math.abs(v - 120) < 12) && free.some((v) => v < 100), JSON.stringify({ after: after.map(Math.round), free: free.map(Math.round) }));
+    // A staircase 20..80 by 15 and back, 400..500 ms spans, 3 laps: each same-direction knot's speed over its chords' mean.
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, stair = [];
+    let t = 0;
+    for (let lap = 0; lap < 3; lap++) for (const pos of [20, 35, 50, 65, 80, 65, 50, 35]) { stair.push({ at: t, pos }); t += 400 + Math.round(rnd() * 100); }
+    stair.push({ at: t, pos: 20 });
+    const st = parseFunscript({ actions: stair }), ss = kn.segmentsOf(st, T0k);
+    const shares = (v) => {
+      const out = [];
+      for (let j = 1; j < st.at.length - 1; j++) {
+        const a = (st.pos[j] - st.pos[j - 1]) / (st.at[j] - st.at[j - 1]), b = (st.pos[j + 1] - st.pos[j]) / (st.at[j + 1] - st.at[j]);
+        if (a * b > 0) out.push(Math.abs(v.vel[Math.round(st.at[j] - ss.t0)]) / (300e3 * (Math.abs(a) + Math.abs(b)) / 2));
+      }
+      return { mean: out.reduce((x, y) => x + y) / out.length, least: Math.min(...out), n: out.length };
+    };
+    const on = shares(run(ss, mods[P + 'scheduler.js'].EXPECT_MS)), off = shares(run(ss, 0));
+    ok('Kinetic: all free, the expectation passes same-direction knots near the chord speed (mean >= 0.95, least >= 0.8); without it they dip',
+      on.mean >= 0.95 && on.least >= 0.8 && off.mean < 0.7, JSON.stringify({ on, off }));
+    // A fast same-direction run to the end, and the same run into a 1.5 s successor: both knots are rests the sender declares.
+    const endS = parseFunscript({ actions: [[0, 20], [200, 50], [400, 80], [1900, 85], [2100, 20]].map(([at, pos]) => ({ at, pos })) });
+    const lastS = parseFunscript({ actions: [[0, 20], [200, 50], [400, 80]].map(([at, pos]) => ({ at, pos })) });
+    const knot = 100 + 300 * 0.8, past = (sg2, v, to) => {
+      let m = -Infinity;
+      for (let i = Math.round(400 - sg2.t0); i < Math.round(to - sg2.t0); i++) m = Math.max(m, v.pos[i] - knot);
+      return m;
+    };
+    const ls = kn.segmentsOf(lastS, T0k), gs = kn.segmentsOf(endS, T0k);
+    const lv = run(ls, 500), lf = run(ls, 500, ls.segs.map((x, i) => (i ? [x[0], x[1], x[2], kn.FREE] : x))), gv = run(gs, 500);
+    const endOver = past(ls, lv, ls.steps + ls.t0), freeOver = past(ls, lf, ls.steps + ls.t0), gapV = Math.abs(gv.vel[Math.round(400 - gs.t0)]);
+    ok('Kinetic: the script end rests on its last action (left free, the expectation passes it moving and brakes beyond)',
+      endOver < 0.5 && freeOver > 1, JSON.stringify({ endOver: +endOver.toFixed(3), freeOver: +freeOver.toFixed(3) }));
+    ok('Kinetic: a knot before a successor over EXPECT_MS away is reached at rest on its action',
+      gs.segs[2][3] === 0 && gapV < 1 && Math.abs(gv.pos[Math.round(400 - gs.t0)] - knot) < 0.5, gapV.toFixed(2) + ' mm/s');
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0] })
       === 'Kinetic: wasm  3 anomalies  clamped 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
@@ -1568,17 +1601,19 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('B: the fastest span reads --highlight and its hue is never the hazard red (law 13)',
     !(topHue >= 345 || (topHue >= 0 && topHue <= 15)) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, hue: topHue, highlight: band.highlight, ups: want[top] && want[top].ups });
   // ---- C: Auto measures the planner's own render of the free knots; the saved curve pref loaded as Scale only ----
+  // The hub's expectation passes a 260 ms flick's top reversal 1.0e-4 of the window high before its successor lands
+  // (FUNSCRIPT.md I8), one grid step on the fit; a rest landing on the window edge reads f32 noise as clamped.
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
   const autoBtn = page.locator('main.pane .fsp-psec .fsp-scale button[aria-label="Auto"]');
   await autoBtn.click({ timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
-    return o && /^\d\.\d\d–\d\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
+    return o && /^0\.00–(1\.00|0\.99)$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
   }, C, { timeout: 15000 }).then(() => true, () => false);
   const readout = await page.locator('main.pane .fsp-psec .fsp-scale .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
   console.log('  [NOTE] Auto on the real-shaped script: ' + readout + ' (' + await kinText() + ')');
-  ok('C: Auto reads where 0 and 1 land from the planner render, clamped 0 (free knots at the twin smoothness)', fit, readout);
+  ok('C: Auto reads where 0 and 1 land from the planner render within one grid step, clamped under 10 ms (free knots at the twin smoothness)', fit, readout);
   const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), r = o.getBoundingClientRect(),
     g = o.closest('.fsp-scale').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
   ok('C: the Auto readout fits its cell', fits.sw <= fits.cw + 1 && fits.right <= fits.gr + 0.5, fits);
