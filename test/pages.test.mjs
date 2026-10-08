@@ -133,7 +133,7 @@ const shot = (page, name, opts = {}) => (SHOTS ? page.screenshot({ path: join(SH
 // ---- desktop ---------------------------------------------------------------
 console.log('\n--- desktop 1280x800 ---');
 {
-  const { ctx, page, errors } = await boot({ width: 1280, height: 800 });
+  const { ctx, page, errors } = await boot({ width: 1280, height: 800 }, { probe: true });
   const rail = await page.$$eval('nav.rail .rail-sec.shell [role=tab]', (ts) => ts.map((t) => ({
     id: t.dataset.tabId, sub: t.classList.contains('sub'), d: t.querySelector('path')?.getAttribute('d'),
     nameX: t.querySelector('.rail-name')?.getBoundingClientRect().x, label: t.textContent.trim() })));
@@ -218,11 +218,11 @@ console.log('\n--- desktop 1280x800 ---');
   await shot(page, 'sidebar-collapsed-1280x800.png');
   await page.click('.rail-collapse');
 
-  // Page fullscreen.
-  await page.click(TAB);
-  await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
-  // The player owns its fullscreen (mediaFullscreen): no foot button; F11 enters.
-  ok('full: a page owning its fullscreen has no foot button', await page.locator('main.pane .page-foot button').count() === 0);
+  // Page fullscreen. A footer page (the probe) keeps In window / Borderless.
+  await page.click('[data-tab-id="' + PROBE_ID + '"]');
+  await page.waitForSelector('main.pane .probe', { timeout: 5000 });
+  ok('full: a footer page has the foot button and the mode', await page.locator('main.pane .page-foot button', { hasText: 'Fullscreen' }).count() === 1
+    && await page.locator('main.pane .page-foot select[aria-label="Fullscreen mode"]').count() === 1);
   await page.keyboard.press('F11');
   await page.waitForTimeout(200);
   const geo = await page.evaluate(() => {
@@ -232,7 +232,26 @@ console.log('\n--- desktop 1280x800 ---');
   ok('full: in window the page takes the window below the hero bar', geo[0] === geo[1] && geo[2] === 0 && geo[3] === geo[5] && geo[4] === geo[6], geo.join(','));
   ok('full: in window by default, the window untouched', (await page.evaluate(() => window.__fs.length)) === 0);
   await shot(page, 'full-1280x800.png');
-  await page.click('.full-caret');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  await page.selectOption('main.pane .page-foot select[aria-label="Fullscreen mode"]', 'borderless');
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('full: Borderless sets the window fullscreen and clears it on leave', (await page.evaluate(() => window.__fs.join(','))) === 'true,false',
+    await page.evaluate(() => window.__fs.join(',')));
+  ok('full: the mode persists', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.prefs')).fullscreen === 'borderless'));
+  await page.selectOption('main.pane .page-foot select[aria-label="Fullscreen mode"]', 'window');
+  await page.evaluate(() => { window.__fs = []; });
+
+  // The player owns its fullscreen (mediaFullscreen): no foot button, and one
+  // mode, bare (ph-5u0g.6): F11 enters bare and sets the window fullscreen
+  // with pref fullscreen at its default.
+  await page.click(TAB);
+  await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+  ok('full: a page owning its fullscreen has no foot button', await page.locator('main.pane .page-foot button').count() === 0);
+  await page.keyboard.press('F11');
   await page.waitForTimeout(300);
   const bareState = () => page.evaluate(() => {
     const shown = (sel) => [...document.querySelectorAll(sel)].some((el) => el.getClientRects().length > 0);
@@ -245,7 +264,10 @@ console.log('\n--- desktop 1280x800 ---');
       paneTop: Math.round(document.querySelector('main.pane').getBoundingClientRect().top), opacity: getComputedStyle(pair).opacity };
   });
   const b1 = await bareState();
-  ok('full: the caret hides the bar, the strip and the footer', !b1.bar && !b1.rest && !b1.foot && b1.paneTop === 0, JSON.stringify(b1));
+  ok('full: a media page enters bare: no bar, strip or footer', !b1.bar && !b1.rest && !b1.foot && b1.paneTop === 0, JSON.stringify(b1));
+  ok('full: F11 on the player sets the window fullscreen, pref at its default', (await page.evaluate(() => window.__fs.join(','))) === 'true'
+    && await page.evaluate(() => (JSON.parse(localStorage.getItem('phosphor.prefs') || '{}').fullscreen || 'window') === 'window'),
+    await page.evaluate(() => window.__fs.join(',')));
   ok('full: the stop pair alone stays, top right, uncovered, full size', b1.ops === 2 && b1.hit && b1.tap && b1.right < 16 && b1.top < 16, JSON.stringify(b1));
   ok('full: the pair rests at half opacity', b1.opacity === '0.5', b1.opacity);
   await shot(page, 'full-bare-1280x800.png');
@@ -258,12 +280,15 @@ console.log('\n--- desktop 1280x800 ---');
   await page.click('.full-caret');
   await page.waitForTimeout(200);
   ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
+  await page.click('.full-caret');
+  await page.waitForTimeout(200);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
-  ok('full: Escape leaves', await page.locator('main.pane.full').count() === 0 && await page.locator('nav.rail').isVisible());
+  ok('full: Escape leaves and clears the window fullscreen', await page.locator('main.pane.full').count() === 0 && await page.locator('nav.rail').isVisible()
+    && (await page.evaluate(() => window.__fs.join(','))) === 'true,false', await page.evaluate(() => window.__fs.join(',')));
   await page.keyboard.press('F11');
   await page.waitForTimeout(150);
-  ok('full: F11 enters', await page.locator('main.pane.full').count() === 1);
+  ok('full: F11 enters', await page.locator('main.pane.full.bare').count() === 1);
   await page.keyboard.press('F1');
   await page.waitForTimeout(150);
   await page.keyboard.press('Escape');
@@ -272,15 +297,13 @@ console.log('\n--- desktop 1280x800 ---');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
   ok('full: Escape leaves after F1 closed', await page.locator('main.pane.full').count() === 0);
-  await page.locator('main.pane .fsp-hb-mode').evaluate((e) => e.click());
+  // The page's own ask with bare: false is still bare for a media page.
+  const asked = await page.evaluate(() => { const e = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: true, bare: false } });
+    document.querySelector('main.pane .fsp').dispatchEvent(e); return e.defaultPrevented; });
   await page.waitForTimeout(150);
-  await page.keyboard.press('F11');
-  await page.waitForTimeout(150);
+  ok('full: a media page asking bare: false still goes bare', asked && await page.locator('main.pane.full.bare').count() === 1);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  ok('full: Borderless sets the window fullscreen and clears it on leave', (await page.evaluate(() => window.__fs.join(','))) === 'true,false',
-    await page.evaluate(() => window.__fs.join(',')));
-  ok('full: the mode persists', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.prefs')).fullscreen === 'borderless'));
   ok('no page errors (desktop)', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -493,6 +516,61 @@ for (const [w, h] of [[1428, 900], [1024, 768]]) {
   await openProbe(page);
   const glyph = await page.evaluate(() => window.__probeIcon || '');
   ok('api.icons.quickRail is the shell glyph', /^M[\d.\sMmLlHhVvZz-]+$/.test(glyph), glyph);
+  await ctx.close();
+}
+
+// ---- the compact hero (ph-5u0g.6) --------------------------------------------
+const heroOf = (page) => page.evaluate(() => {
+  const strip = document.querySelector('.topstrip .strip'), r = strip.getBoundingClientRect();
+  const hs = document.querySelector('.hero-strip');
+  const btns = [...strip.querySelectorAll('.dock button')].filter((b) => b.getClientRects().length && !b.closest('.menu-pop'))
+    .map((b) => { const q = b.getBoundingClientRect(); return { l: (b.getAttribute('aria-label') || b.textContent).trim().slice(0, 10), w: Math.round(q.width), h: Math.round(q.height), mid: Math.round(q.top + q.height / 2) }; });
+  const pair = [...document.querySelectorAll('.topstrip .pair .safety-op button')].map((b) => { const q = b.getBoundingClientRect();
+    return b.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2)) && q.right <= innerWidth + 0.5; });
+  const num = strip.querySelector('.hn-primary .hn-val'), nb = num && num.getBoundingClientRect();
+  const mini = strip.querySelector('.mini'), mb = mini && mini.getBoundingClientRect();
+  return { h: Math.round(document.querySelector('.topstrip').getBoundingClientRect().height + (hs ? hs.getBoundingClientRect().height : 0)),
+    strip: Math.round(r.height), compact: strip.classList.contains('compact'), btns, pair,
+    label: !!strip.querySelector('.hn-primary .hn-label')?.getClientRects().length, col: !!strip.querySelector('.hn-col')?.getClientRects().length,
+    num: nb ? { mid: Math.round(nb.top + nb.height / 2), r: Math.round(nb.right) } : null, mini: mb ? { l: Math.round(mb.left), mid: Math.round(mb.top + mb.height / 2) } : null,
+    over: strip.scrollWidth > strip.clientWidth + 1 };
+});
+for (const [w, h] of [[420, 860], [860, 420]]) {
+  const tag = 'compact ' + w + 'x' + h;
+  console.log('\n--- ' + tag + ' ---');
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
+  await page.waitForSelector('[data-tab-id="pairing"]', { timeout: 15000 });
+  await page.$eval('[data-tab-id="pairing"]', (t) => t.click());
+  await page.waitForTimeout(300);
+  const plain = await heroOf(page);
+  await openProbe(page);
+  await page.waitForTimeout(300);
+  const c = await heroOf(page);
+  ok(tag + ': a compactHero page draws the hero as one row', c.compact && !c.label && !c.col && !c.over
+    && c.btns.every((b) => Math.abs(b.mid - c.btns[0].mid) <= 1) && !!c.mini && Math.abs(c.mini.mid - c.btns[0].mid) <= 2, JSON.stringify(c));
+  ok(tag + ': all five strip buttons, the mini and the numeral stay', c.btns.length >= 5 && !!c.num, JSON.stringify(c.btns.map((b) => b.l)));
+  ok(tag + ': at least 40 px shorter than on a plain page', plain.h - c.h >= 40, plain.h + ' -> ' + c.h);
+  ok(tag + ': every strip button keeps the 40 px target', c.btns.every((b) => b.w >= 40 && b.h >= 40), JSON.stringify(c.btns));
+  ok(tag + ': the stop pair is reachable', c.pair.length === 2 && c.pair.every(Boolean), JSON.stringify(c.pair));
+  await shot(page, 'compact-' + w + 'x' + h + '.png');
+  // A condition takes the numeral's place; the mini and the buttons hold still.
+  await page.evaluate(() => document.querySelector('.topstrip .btn-pause').click());
+  await page.waitForTimeout(400);
+  const p = await heroOf(page);
+  ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(c.btns.map((b) => [b.w, b.h, b.mid]))
+    && p.mini && p.mini.l === c.mini.l && p.strip === c.strip, JSON.stringify([c.mini, p.mini, c.strip, p.strip]));
+  await page.$eval('[data-tab-id="pairing"]', (t) => t.click());
+  await page.waitForTimeout(300);
+  ok(tag + ': other pages keep the full hero', !(await heroOf(page)).compact && (await heroOf(page)).h === plain.h);
+  ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+for (const [w, h] of [[1428, 900], [1024, 768]]) {
+  const { ctx, page } = await boot({ width: w, height: h }, { probe: true });
+  await openProbe(page);
+  const c = await heroOf(page);
+  ok('compact ' + w + 'x' + h + ': buckets 3 and up keep the full hero', !c.compact && c.label, JSON.stringify({ compact: c.compact, label: c.label }));
+  await shot(page, 'compact-' + w + 'x' + h + '.png');
   await ctx.close();
 }
 

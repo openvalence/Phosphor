@@ -69,7 +69,9 @@
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. shell: the shell's window buttons (main.js), null on the
   // served page.
-  let { onopenlog = null, shell = null, bare = false } = $props();
+  // compact: App's compactHero page in buckets 1 and 2 (DESIGN §10.3): one row,
+  // the numeral without its label line, the mini, all five strip buttons.
+  let { onopenlog = null, shell = null, bare = false, compact = false } = $props();
 
   let woke = $state(false);
   // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
@@ -223,7 +225,7 @@
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
     if (latestSafety) return { kind: 'edge' };
-    if (link.virtual) return { kind: 'notice', text: 'Virtual: nothing moves' };
+    if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
   });
   // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.
@@ -343,6 +345,7 @@
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
     level = fit < 0 ? 2 : fit;
+    if (compact) { stacked = false; level = 0; }
   }
   $effect(() => {
     if (!stripEl || !measureEl) return;
@@ -351,10 +354,12 @@
     return () => ro.disconnect();
   });
   // A rail mounting or the op set changing moves the budget too.
-  $effect(() => { void rail; void ops.length; void railCtl; queueMicrotask(measure); });
-  const menuShown = $derived(ops.length > 1 || level >= 1);
-  const flipInMenu = $derived(level >= 1 && !!flip);
-  const ovrInMenu = $derived(level === 2 && hasOverride);
+  $effect(() => { void rail; void ops.length; void railCtl; void compact; queueMicrotask(measure); });
+  // Compact keeps Flip and Override inline and Home as its icon.
+  const iconHome = $derived(level >= 1 || (compact && ops.length > 0));
+  const menuShown = $derived(ops.length > 1 || iconHome);
+  const flipInMenu = $derived(level >= 1 && !!flip && !compact);
+  const ovrInMenu = $derived(level === 2 && hasOverride && !compact);
   function onDocClick(e) {
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
@@ -427,7 +432,7 @@
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" class:stacked class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" class:stacked class:compact class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
@@ -447,7 +452,7 @@
     <!-- The plan readback (ph-ryi7), on the primary label's line from the
          secondaries rightward: out of flow, above every control's box, so
          nothing moves when it fills. -->
-    {#if rail}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
+    {#if rail && !compact}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
 
     <div class="status" class:hastab={tab || railHidden} data-kind={slot.kind}>
       {#if slot.kind === 'refusal'}
@@ -494,7 +499,7 @@
         <div class="ops">{#each ops as op (op.key)}{@render opButton(op)}{/each}</div>
       {:else}
         <div class="home-menu" bind:this={menuEl}>
-          <button type="button" class="btn home-btn" class:icon-only={level >= 1} class:hazard={homeNeeded}
+          <button type="button" class="btn home-btn" class:icon-only={iconHome} class:hazard={homeNeeded}
                   aria-haspopup="true" aria-expanded={menuOpen}
                   aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
                   title={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
@@ -625,6 +630,24 @@
     pointer-events: none;
   }
   .stacked:has(.status:not([data-kind=idle])) .readback { display: none; }
+  /* The phone's mini rides the status slot's right end: the readback stops short of it. */
+  .stacked:has(:global(.mini)) .readback { right: calc(var(--gap) + 64px + var(--sp-3)); }
+
+  /* Compact (DESIGN §10.3): one row at the tap height. The numeral loses its
+     label line and the planned stack; a current condition takes the
+     numeral's place (the watch-size rule), so the mini and the controls never
+     move; the safety-edge history stays in the Log. */
+  /* Buttons at the 40 px floor (law 12), the row's gaps tight: the row
+     returns 40 px or more at 860x420, where the full hero is already one row. */
+  .strip.compact { --tap: 40px; --num-h: var(--tap); --num-cap: var(--tap); --pad-v: var(--sp-1); gap: var(--sp-2); }
+  .compact .nums { flex: none; clip-path: none; }
+  /* Each button as wide as its word, never under the target: a label is never clipped. */
+  .compact .dock :global(:is(.safety-op .btn, .rw-flip)) { width: auto; min-width: var(--tap); }
+  .compact .nums :global(:is(.hn-primary .hn-label, .hn-col)) { display: none; }
+  .compact .nums :global(.hn-primary .hn-val) { font-size: 1.35rem; }
+  .compact .status { min-width: calc(64px + var(--sp-3)); }
+  .compact .status[data-kind=edge] .evline { display: none; }
+  .compact:has(.status:not([data-kind=idle], [data-kind=edge], [data-kind=virtual])) .nums { display: none; }
 
   .status {
     flex: 1 1 0;
@@ -650,7 +673,7 @@
     color: var(--ink-dim);
   }
   [data-kind='fault'] .st-text, .recovery .st-text,
-  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn-ink, var(--warn)); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text { color: var(--warn-ink, var(--warn)); }
 
   .recovery {
     display: flex;

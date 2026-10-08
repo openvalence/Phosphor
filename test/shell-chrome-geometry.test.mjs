@@ -349,7 +349,24 @@ const heights = (p) => p.evaluate(() => {
     nameClipped: !!word && word.scrollWidth > word.clientWidth,
     slot: document.querySelector('.strip .status')?.dataset.kind };
 });
-for (const [w, h] of [[1440, 900], [390, 844]]) {
+// ph-5u0g peeve 10: nothing in the hero clips its own text vertically; the
+// numeral column stays inside the numerals cell's clip.
+const heroClip = (p) => p.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('.topstrip .strip *, .hero-strip *')) {
+    if (!el.getClientRects().length || !el.textContent.trim()) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[title]')) continue;
+    if (el.scrollHeight > el.clientHeight + 1) out.push(el.className + ' ' + el.scrollHeight + '>' + el.clientHeight);
+  }
+  const nums = document.querySelector('.topstrip .nums')?.getBoundingClientRect();
+  for (const el of document.querySelectorAll('.topstrip .nums .hn-col .hn-val')) {
+    const r = el.getBoundingClientRect();
+    if (el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && nums && r.bottom > nums.bottom + 6.5) out.push('hn-col below the numerals cell ' + Math.round(r.bottom) + '>' + Math.round(nums.bottom));
+  }
+  return out;
+});
+for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
   const tag = w + 'x' + h;
   const wire = {};
   const hctx = await browser.newContext({ viewport: { width: w, height: h } });
@@ -430,6 +447,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await still('resume', () => hp.locator('.topstrip .btn-pause').click());
   ok(tag + ': the hub released pause (reads Pause)', (await pauseLbl()).trim() === 'Pause');
   await still('pattern start', () => wire.send(FRAME.STATE, RUN.id, patternState(true)));
+  await hp.locator('.strip .st-dismiss').click().catch(() => {});
+  await hp.waitForTimeout(200);
+  // A long style name, as the hub may send: the meta wraps to a second line.
+  await hp.evaluate(() => { const m = document.querySelector('.topstrip .readback .plan-mode'); if (m) m.append(' · style waveform with a long name'); });
+  await hp.waitForTimeout(100);
+  const clip = await heroClip(hp);
+  const rb = await hp.evaluate(() => !!document.querySelector('.topstrip .readback .plan-rb')?.getClientRects().length);
+  ok(tag + ': a pattern running, the readback shows and no element in the hero clips its own text (peeve 10)', rb && clip.length === 0, rb + ' ' + clip.slice(0, 3).join(' / '));
+  if (process.env.HERO_SHOTS && (w === 420 || w === 860)) await hp.screenshot({ path: process.env.HERO_SHOTS + '/hero-running-' + tag + '.png', clip: { x: 0, y: 0, width: w, height: Math.min(h, 220) } });
   // The phone's mini rail hides both faces; the swap is the pop-up's business there.
   const mini = await hp.locator('.topstrip .mini').count() > 0;
   ok(tag + ': pattern start flips visibility, both faces stay mounted', mini ? (await faces()).split(' ').length === 2 : await faces() === 'visible:plan hidden:tape', await faces());

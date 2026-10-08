@@ -682,7 +682,14 @@ question in §10.8).
   and without the planned target, lag and speed stack, the mini rail, and the
   five strip buttons; nothing leaves the hero and the stop pair never moves.
   About 50 px of an 860 px phone return to the page. Other pages and other
-  buckets keep the hero as above. Seams: `src/ui/HeroStrip.svelte`,
+  buckets keep the hero as above. The row's buttons sit at the 40 px floor,
+  each as wide as its word, and a status condition takes the numeral's
+  place (the watch-size rule), so the mini and the buttons never move; the
+  safety-edge history stays in the Log there (`ph-5u0g.6`, the agent's
+  readings, veto-able).
+- Nothing in the hero clips its own text vertically (operator 2026-10-08,
+  `ph-5u0g` peeve 10): the plan readback beside the numeral is one line, or
+  two where the width runs short, each ellipsized, ending short of the mini. Seams: `src/ui/HeroStrip.svelte`,
   `src/ui/TopStrip.svelte`.
 
 ### 10.4 Full width

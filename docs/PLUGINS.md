@@ -113,11 +113,18 @@ Plugins`, its page region the plugin's to fill full width.
   (DESIGN §10.3); the plugin draws nothing for it, and a mount that fills its
   element's height fills the window.
 - **`mediaFullscreen: true`.** The page offers fullscreen itself and gets no
-  footer button (F11 still works). Its mode control dispatches
-  `phosphor-page-fullscreen-mode` (`detail: {mode: 'window' | 'borderless'}`)
-  and the shell stores pref `fullscreen`. The desktop shell keeps
-  `<html data-fullscreen-mode>` at the current mode; absent, there is no
-  Borderless.
+  footer button (F11 still works). Its fullscreen is one mode, always bare:
+  the page alone under the stop pair, and in the desktop shell the window
+  fullscreen too, whatever pref `fullscreen` says (DESIGN §10.3, "fullscreen
+  or not", `ph-5u0g.6`). `bare: false` in its ask is not honored and there is
+  no mode event for it. Footer pages keep In window / Borderless; the
+  desktop shell keeps `<html data-fullscreen-mode>` at that pref.
+- **`compactHero: true`** (experimental, `ph-5u0g.6`). In buckets 1 and 2,
+  while the page is on screen, the hero is one row: the position numeral
+  without its label line or the planned target, lag and speed, the mini
+  rail, and the five strip buttons at the 40 px target; a status condition
+  takes the numeral's place. About 40 to 65 px return to the page. Other
+  buckets draw the hero as usual.
 - **`status: true`** (experimental, `ph-5u0g.3`). On the phone class
   (buckets 1 and 2) the page gets a footer with one status slot, even with no
   page controls. The page dispatches `phosphor-page-status` from inside its
@@ -244,7 +251,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `icons.quickRail` | the quick rail's glyph, one SVG path `d` (Pages, The quick rail) | experimental |
-| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
+| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 

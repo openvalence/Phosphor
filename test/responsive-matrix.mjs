@@ -1053,9 +1053,12 @@ if (!ONLY || ONLY === 'pluginpages') {
         const hit = (r) => document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
         return { top: Math.round(p.top), heroBottom: h ? Math.round(h.bottom) : null, heroOpen: !!h && !!hit(h)?.closest('.hero-strip'),
           sidebarHidden: !hit(document.querySelector('nav.rail').getBoundingClientRect())?.closest('nav.rail') }; });
+      // A footer page keeps In window; a media page (no foot Fullscreen) is always bare (ph-5u0g.6).
+      const footer = await page.locator('main.pane .page-foot button', { hasText: 'Fullscreen' }).count() > 0;
       await ask(true, false); await page.waitForTimeout(400);
       const win = await geo();
-      scen(tag + ': In window fullscreen starts under the hero bar, rail on screen, sidebar covered', win.heroBottom != null && Math.abs(win.top - win.heroBottom) <= 1 && win.heroOpen && win.sidebarHidden, JSON.stringify(win));
+      if (footer) scen(tag + ': In window fullscreen starts under the hero bar, rail on screen, sidebar covered', win.heroBottom != null && Math.abs(win.top - win.heroBottom) <= 1 && win.heroOpen && win.sidebarHidden, JSON.stringify(win));
+      else scen(tag + ': a media page asking In window is bare, the page alone', win.top === 0 && !win.heroOpen && win.sidebarHidden, JSON.stringify(win));
       await ask(false, false); await page.waitForTimeout(300);
       await ask(true, true); await page.waitForTimeout(400);
       const bare = await geo();

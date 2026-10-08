@@ -169,7 +169,8 @@
     return () => window.removeEventListener('phosphor-close-ask', show);
   });
   $effect(() => {
-    const want = osFullscreen({ on: isFull }, $prefs.fullscreen, OS_SHELL);
+    // A media page's fullscreen is always bare and Borderless (DESIGN §10.3, "fullscreen or not").
+    const want = osFullscreen({ on: isFull }, current?.page?.mediaFullscreen ? 'borderless' : $prefs.fullscreen, OS_SHELL);
     if (!OS_SHELL || want === osFull) return;
     osFull = want;
     import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
@@ -190,18 +191,16 @@
   });
   // A page's own request (docs/PLUGINS.md, Pages): cancelable, so the page
   // knows it was taken. Borderless (detail.bare) is the page alone under the
-  // stop pair; In window keeps the hero rail. The change event tells it the end.
+  // stop pair; In window keeps the hero rail; a media page is always bare.
+  // The change event tells it the end.
   $effect(() => {
     const ask = (e) => {
       if (!current?.page?.fields) return;
       e.preventDefault();
-      full = e.detail?.on ? { on: true, bare: e.detail.bare !== false } : OFF;
+      full = e.detail?.on ? { on: true, bare: current.page.mediaFullscreen || e.detail.bare !== false } : OFF;
     };
-    // The mode, for a page that offers it itself (mediaFullscreen): desktop shell only.
-    const mode = (e) => { if (['window', 'borderless'].includes(e.detail?.mode)) setPref('fullscreen', e.detail.mode); };
     window.addEventListener('phosphor-page-fullscreen', ask);
-    window.addEventListener('phosphor-page-fullscreen-mode', mode);
-    return () => { window.removeEventListener('phosphor-page-fullscreen', ask); window.removeEventListener('phosphor-page-fullscreen-mode', mode); };
+    return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
   // The footer status slot (docs/PLUGINS.md, Pages, `status`): the latest
@@ -251,7 +250,7 @@
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
   function onFullKey(e) {
-    if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full); }
+    if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full, current.page.mediaFullscreen); }
     // After every listener: an overlay's own Escape (F1, F3) prevents it.
     else if (e.key === 'Escape' && full.on) setTimeout(() => { if (!e.defaultPrevented) full = OFF; });
   }
@@ -648,7 +647,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} onopenlog={() => selectTab('log')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because

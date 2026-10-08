@@ -400,16 +400,18 @@
     height: 100%;
   }
   /* One line: numbers that do not fit wrap whole onto a clipped second. */
+  /* One line, or two where the width runs short (the meta wraps whole to
+     the second); each line ellipsizes, never clipped vertically (ph-5u0g
+     peeve 10). Out of flow in the strip, so the second line moves nothing. */
   .plan-rb {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0 var(--sp-4);
-    height: 1.1rem;
     min-width: 0;
-    overflow: hidden;
     white-space: nowrap;
   }
+  .plan-rb > * { max-width: 100%; min-width: 0; overflow: hidden; }
   /* HeroNumerals' .hn-label face. */
   .plan-mode {
     max-width: 100%;
@@ -423,13 +425,13 @@
   }
   /* Hub text renders as sent (docs/COPY.md rule 8). */
   .plan-owner { text-transform: none; color: var(--reality); }
+  /* Inline flow, so the line ellipsizes instead of cutting a value. */
   .plan-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
     font-size: .75rem;
     color: var(--tx-val);
+    text-overflow: ellipsis;
   }
+  .plan-meta > * { display: inline-block; vertical-align: middle; margin-right: var(--sp-3); }
   .unit { color: var(--tx-mut); font-family: var(--font); font-size: .9em; }
 
   .plan-lane {
