@@ -379,8 +379,8 @@ if (!LIVE) {
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }]), await sectionRuns());
   await page.click('nav.rail [role=tab][title="Motion"]');
   await page.waitForTimeout(150);
-  const TUNING = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Settling',
-    'Active plan', 'Planner', 'Anomalies', 'Plan time', 'Stream ingress'];
+  const TUNING = ['Motion behavior', 'Streaming', 'Curve', 'Infeasible moves', 'Sample streams', 'Re-planning',
+    'Anomalies', 'Active plan', 'Planner', 'Stream ingress', 'Plan time'];
   ok('sections: Motion shows one Tuning section header with its eleven cards under it',
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Tuning', cards: TUNING }]), await sectionRuns());
   const headTint = await page.$eval('main.pane .dash-section', (h) => {

@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
-import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, CBOR_FIELD, CHANNEL_CLASS, PACKED_SIZE } from '../../Valence/clients/js/frames.js';
+import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, CBOR_FIELD, CHANNEL_CLASS, PACKED, PACKED_SIZE } from '../../Valence/clients/js/frames.js';
 import { defaultSnapshot, schemaByKey } from '../../Valence/clients/js/index.js';
 
 const args = process.argv.slice(2);
@@ -34,7 +34,7 @@ const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.m
 const ENTRIES = decodeCatalog(CAT);
 const toHex = (b) => Buffer.from(b).toString('hex');
 const ID = 'feedc0de00000001';
-const FIELD_UID = '4386:blend_steps'; // kinetic-waveform, an unroled u8 setting on 0x3120 key 18
+const FIELD_UID = '4386:amplitude_budget'; // kinetic-waveform, an unroled f32 setting on 0x3120 key 17
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined ? '  -- ' + extra : '')); if (!c) fails++; };
@@ -93,7 +93,8 @@ function fakeHub(ws) {
         const snap = wire.snaps.get(st.id);
         let off = 0;
         for (const x of st.layout) { if (x === f) break; off += PACKED_SIZE[x.type]; }
-        snap[off] = val[0][1];
+        if (f.type === PACKED.f32) new DataView(snap.buffer, snap.byteOffset).setFloat32(off, val[0][1], true);
+        else snap[off] = val[0][1];
         send(FRAME.STATE, st.id, snap);
       } else if (header.type === FRAME.PING) {
         send(FRAME.PONG, header.channel, payload);
@@ -178,16 +179,11 @@ for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [.
 }
 ok('the setting renders on a category page', !!field);
 if (field) {
-  const range = field.locator('input[type=range]');
-  if (await range.count()) {
-    await range.evaluate((el) => { el.value = '9'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
-  } else {
-    for (let i = 0; i < 3; i++) { await field.locator('.stepper button').nth(1).click(); await page.waitForTimeout(120); }
-  }
+  await field.locator('input[type=range]').evaluate((el) => { el.value = '0.5'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
 }
 const staged = await until(async () => {
   const s = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.merge') || '{}'));
-  return s[ID] && s[ID][FIELD_UID] && s[ID][FIELD_UID].value === 9;
+  return s[ID] && s[ID][FIELD_UID] && s[ID][FIELD_UID].value === 0.5;
 });
 ok('the echoed write staged for the machine', staged,
   await page.evaluate(() => localStorage.getItem('phosphor.merge')));
@@ -222,17 +218,17 @@ ok('one socket, to the fake hub', wire.opens === 1, wire.opens);
 await openTab('shell:merge');
 const row = page.locator('.mrows li[data-uid="' + FIELD_UID + '"]');
 ok('the merge row is listed', await until(async () => (await row.count()) === 1));
-ok('it shows the hub value and the staged value', (await row.locator('.old').innerText()) === '6' && (await row.locator('.new').innerText()) === '9',
+ok('it shows the hub value and the staged value', (await row.locator('.old').innerText()) === '0.25' && (await row.locator('.new').innerText()) === '0.50',
   (await row.locator('.old').innerText()) + ' -> ' + (await row.locator('.new').innerText()));
 ok('it is pre-ticked', await row.locator('input[type=checkbox]').isChecked());
 if (SHOTS) await page.screenshot({ path: join(SHOTS, 'merge-pane.png') });
 await page.getByRole('button', { name: 'Apply ticked' }).click();
 ok('the row settles on the echo', await until(async () => (await row.getAttribute('data-phase')) === 'settled'), await row.locator('.state').innerText());
 ok('one intent, the staged value, on the setting channel',
-  wire.intents.length === 1 && wire.intents[0].ch === 0x3120 && wire.intents[0].val[0][0] === 18 && wire.intents[0].val[0][1] === 9,
+  wire.intents.length === 1 && wire.intents[0].ch === 0x3120 && wire.intents[0].val[0][0] === 17 && wire.intents[0].val[0][1] === 0.5,
   JSON.stringify(wire.intents));
 ok('staging is empty', await page.evaluate((id) => !JSON.parse(localStorage.getItem('phosphor.merge') || '{}')[id], ID));
-ok('the hub value now reads the applied one', await until(async () => (await row.locator('.old').innerText()) === '9'));
+ok('the hub value now reads the applied one', await until(async () => (await row.locator('.old').innerText()) === '0.50'));
 
 console.log('virtual: the desktop sidecar');
 await openTab('shell:hubs');

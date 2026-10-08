@@ -229,7 +229,7 @@ async function main() {
   console.log('\n19-channel sim-fidelity write plane (2026-07-28 follow-on):');
   const CH19 = {
     MACHINE_MODES: 0x1030, MODES_SET: 0x3030,
-    SM_LIMITS: 0x1120, SM_CHASE: 0x1121, SM_WAVEFORM: 0x1122, SM_SET: 0x3120,
+    SM_LIMITS: 0x1120, SM_WAVEFORM: 0x1122, SM_SET: 0x3120,
     PATTERN_ADVANCED: 0x1210,
     AP_MOD_SPEEDIN: 0x1211, AP_MOD_SPEEDOUT: 0x1212, AP_MOD_ACCELIN: 0x1213,
     AP_MOD_ACCELOUT: 0x1214, AP_MOD_DEPTH1: 0x1215, AP_MOD_DEPTH2: 0x1216,
@@ -244,11 +244,11 @@ async function main() {
   const absent = Object.entries(CH19).filter(([, id]) => !has(id)).map(([n]) => n);
   if (absent.length) info('not in this catalog, skipped: ' + absent.join(', '));
   s1.subscribe([
-    CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_CHASE, CH19.SM_WAVEFORM,
+    CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_WAVEFORM,
     CH19.PATTERN_ADVANCED, CH19.AP_MOD_SPEEDIN, CH19.AP_MOD_SPEEDOUT, CH19.AP_MOD_ACCELIN,
     CH19.AP_MOD_ACCELOUT, CH19.AP_MOD_DEPTH1, CH19.AP_MOD_DEPTH2, CH19.PATTERN_PRESETS_ROSTER,
   ].filter(has).map((id) => [id, 0, PRIORITY.background]));
-  const want19 = [CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_CHASE, CH19.SM_WAVEFORM,
+  const want19 = [CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_WAVEFORM,
     CH19.PATTERN_ADVANCED, CH19.PATTERN_PRESETS_ROSTER].filter(has);
   for (let i = 0; i < 60 && !want19.every((c) => seen1.states.has(c)); i++) await delay(50);
   ok('every newly-subscribed 19-channel STATE delivered its initial push (was UNKNOWN_CHANNEL-only before this pass)',
@@ -257,21 +257,21 @@ async function main() {
 
   // ---- machine-modes (0x1030) / modes-set (0x3030) ------------------------
   {
-    // Key 3 (stream_speed_mode) is a permanent gap like keys 1/2, so the one
-    // live mode is overshoot_clamp (key 4): flip it and put it back.
-    const was = seen1.states.get(CH19.MACHINE_MODES)?.overshoot_clamp ?? 1;
-    const alt = was ? 0 : 1;
+    // Keys 1 to 4 are permanent gaps; home_speed (key 9) is the mode this
+    // moves and puts back (flipped and schedule_horizon reshape the rail).
+    const was = seen1.states.get(CH19.MACHINE_MODES)?.home_speed ?? 20;
+    const alt = was > 20 ? was - 10 : was + 10;
     const reflectedP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.MACHINE_MODES && sm.overshoot_clamp === alt,
+      (ch, sm) => ch === CH19.MACHINE_MODES && Math.abs(sm.home_speed - alt) < 0.01,
       2000, 'machine-modes reflect').then(() => true).catch(() => false);
-    const echo = await s1.sendModesSet({ 4: alt });
-    ok('modes-set ECHO carries the post-clamp APPLIED overshoot_clamp',
-      echo.applied[4] === alt, JSON.stringify(echo.applied));
+    const echo = await s1.sendModesSet({ 9: alt });
+    ok('modes-set ECHO carries the post-clamp APPLIED home_speed',
+      Math.abs(echo.applied[9] - alt) < 0.01, JSON.stringify(echo.applied));
     ok('0x1030 machine-modes STATE reflects the applied mode', await reflectedP);
-    const restore = await s1.sendModesSet({ 4: was });
-    ok('modes-set RESTORED', restore.applied[4] === was);
+    const restore = await s1.sendModesSet({ 9: was });
+    ok('modes-set RESTORED', Math.abs(restore.applied[9] - was) < 0.01);
 
-    // Keys 1/2/3 (blend_mode/transport/stream_speed_mode) are PERMANENT GAPS — the catalog
+    // Keys 1 to 4 are PERMANENT GAPS — the catalog
     // declares no schema field for them at all anymore (see addModesSet's own
     // comment), so a client-side encode of {1:...} throws locally before a
     // frame is even sent; that is the client-side half of the same "no live
@@ -284,42 +284,40 @@ async function main() {
       !!nacked && nacked.name === 'INVALID_VALUE', nacked ? nacked.name : 'no NACK!');
   }
 
-  // ---- kinetic tuning: sm-limits/chase/waveform (0x1120-2) / sm-set (0x3120)
+  // ---- kinetic tuning: kinetic-limits/waveform (0x1120, 0x1122) / kinetic-set (0x3120)
   {
-    // One sm-set write touches all THREE STATE cards in the same hub tick, so
+    // One kinetic-set write touches BOTH STATE cards in the same hub tick, so
     // every waitFor listener is armed BEFORE the write goes out (not chained
     // after each other) — the sim's WS client can deliver a tick's several
     // STATE frames as one synchronous burst, and a listener registered only
     // after an earlier await already resolved can miss a sibling frame from
     // the SAME burst (a real race, not a hypothetical one — this is exactly
     // what an earlier draft of this test hit).
+    const vmax0 = seen1.states.get(CH19.SM_LIMITS)?.vmax_ovr ?? 0;
+    const dense0 = seen1.states.get(CH19.SM_WAVEFORM)?.chase_dense_ms ?? 50;
+    const dense = dense0 === 250 ? 200 : 250;
     const limP = waitFor(s1, 'state',
       (ch, sm) => ch === CH19.SM_LIMITS && Math.abs(sm.vmax_ovr - 20) < 0.01,
-      2000, 'sm-limits reflect').then(() => true).catch(() => false);
-    const chaseP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.SM_CHASE && Math.abs(sm.handoff_k - 2.5) < 0.01,
-      2000, 'sm-chase reflect').then(() => true).catch(() => false);
+      2000, 'kinetic-limits reflect').then(() => true).catch(() => false);
     const wavP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.SM_WAVEFORM && sm.blend_steps === 3,
-      2000, 'sm-waveform reflect').then(() => true).catch(() => false);
+      (ch, sm) => ch === CH19.SM_WAVEFORM && Math.abs(sm.chase_dense_ms - dense) < 0.01,
+      2000, 'kinetic-waveform reflect').then(() => true).catch(() => false);
 
-    const echo = await s1.sendIntent(CH19.SM_SET, { 2: 999, 12: 2.5, 18: 3 });
-    ok('sm-set ECHO carries post-clamp APPLIED values',
-      Math.abs(echo.applied[12] - 2.5) < 0.01 && echo.applied[18] === 3,
-      JSON.stringify(echo.applied));
-    ok('sm-set CLAMPS an out-of-range override (vmax_ovr=999 -> 20, the catalog\'s own max)',
+    const echo = await s1.sendIntent(CH19.SM_SET, { 2: 999, 10: dense });
+    ok('kinetic-set ECHO carries post-clamp APPLIED values',
+      Math.abs(echo.applied[10] - dense) < 0.01, JSON.stringify(echo.applied));
+    ok('kinetic-set CLAMPS an out-of-range override (vmax_ovr=999 -> 20, the catalog\'s own max)',
       Math.abs(echo.applied[2] - 20) < 0.01, 'applied[2]=' + echo.applied[2]);
 
-    const [reflectedLim, reflectedChase, reflectedWav] = await Promise.all([limP, chaseP, wavP]);
+    const [reflectedLim, reflectedWav] = await Promise.all([limP, wavP]);
     ok('0x1120 kinetic-limits STATE reflects the clamped vmax_ovr', reflectedLim);
-    ok('0x1121 kinetic-chase STATE reflects handoff_k', reflectedChase);
-    ok('0x1122 kinetic-waveform STATE reflects blend_steps', reflectedWav);
+    ok('0x1122 kinetic-waveform STATE reflects chase_dense_ms', reflectedWav);
 
-    await s1.sendIntent(CH19.SM_SET, { 2: 0, 12: 1.5, 18: 6 }); // restore factory defaults
+    await s1.sendIntent(CH19.SM_SET, { 2: vmax0, 10: dense0 });
 
     let nacked = null;
     try { await s1.sendIntent(CH19.SM_SET, {}); } catch (e) { nacked = e; }
-    ok('sm-set: an empty write (no keys touched) NACKs INVALID_VALUE',
+    ok('kinetic-set: an empty write (no keys touched) NACKs INVALID_VALUE',
       !!nacked && nacked.name === 'INVALID_VALUE', nacked ? nacked.name : 'no NACK!');
   }
 

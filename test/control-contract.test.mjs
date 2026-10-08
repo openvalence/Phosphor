@@ -72,7 +72,7 @@ const ok = (name, cond, extra) => {
 };
 
 // The recorded catalog has no writable text field, no writable named-bit
-// bitfield and no destructive toggle, so one synthetic setting channel pair
+// bitfield and no unroled toggle, so one synthetic setting channel pair
 // carrying them is appended, and the etag is the hash of the bytes served.
 const XS = 0x7e00, XI = 0x7e01;
 const CAT = withExtras(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
@@ -88,10 +88,12 @@ function withExtras(raw) {
       lf('label_text', PACKED.str16, 1),
       lf('lamp_bits', PACKED.bitfield8, 2, [[7, cbMap([[0, cbTstr('alpha')], [1, cbTstr('beta')], [2, cbTstr('gamma')]])]]),
       lf('arm', PACKED.u8, 3, [[10, off], [15, cbUint(SETTING_FLAG.destructive)]]),
+      lf('lamp', PACKED.u8, 4, [[10, off]]),
+      lf('long_advanced_toggle_label', PACKED.u8, 5, [[10, off], [15, cbUint(SETTING_FLAG.advanced)]]),
     ])], [14, cbUint(XI)]]);
   const intent = cbMap([[1, cbUint(XI)], [2, cbTstr('fixture-extras-set')], [3, cbUint(2)], [4, cbUint(1)], [5, cbUint(1)],
     [6, cbF32(5)], [7, cbUint(1)], [9, cbMap([[1, sf('label_text', CBOR_FIELD.tstr_t)], [2, sf('lamp_bits', CBOR_FIELD.uint_t)],
-      [3, sf('arm', CBOR_FIELD.uint_t)]])]]);
+      [3, sf('arm', CBOR_FIELD.uint_t)], [4, sf('lamp', CBOR_FIELD.uint_t)], [5, sf('long_advanced_toggle_label', CBOR_FIELD.uint_t)]])]]);
   return concatBytes([head(4, n + 2), raw.subarray(hl), state, intent]);
 }
 const ETAG = toHex(catalogEtag(CAT, LIMITS.etag_bytes));
@@ -289,7 +291,7 @@ const SMALL = MODEL.fields.find((f) => f.uid !== FIELD.uid && !f.options && f.mi
 const unroled = (w) => MODEL.fields.filter((f) => !f.readOnly && !f.role && f.widget === w && f.channelId !== XS);
 const CHOICES = unroled(WIDGET.segmented);
 const LADDER = {
-  toggle: unroled(WIDGET.toggle).find((f) => !(f.flagBits && f.flagBits.destructive)),
+  toggle: MODEL.fields.find((f) => f.uid === XS + ':lamp'),
   segmented: CHOICES[0],
   select: CHOICES[1],
   text: MODEL.fields.find((f) => f.uid === XS + ':label_text'),
@@ -298,10 +300,9 @@ const LADDER = {
 const ARM = MODEL.fields.find((f) => f.uid === XS + ':arm');
 // ph-0h8: a writable f32 with a fractional step, shown in a stepper.
 const F32 = MODEL.fields.find((f) => !f.readOnly && f.type === PACKED.f32 && f.step > 0 && f.step < 1 && f.min != null && f.max != null);
-// ph-62w: a merged min/max pair; ph-z5o: the longest advanced toggle label.
+// ph-62w: a merged min/max pair; ph-z5o: a long advanced toggle label.
 const RANGE = placeableControls(MODEL).find((c) => c.field && c.field.widget === WIDGET.range);
-const LONG = MODEL.fields.filter((f) => f.advanced && !f.readOnly && f.widget === WIDGET.toggle && f.channelId !== XS)
-  .sort((a, b) => b.label.length - a.label.length)[0];
+const LONG = MODEL.fields.find((f) => f.uid === XS + ':long_advanced_toggle_label');
 // Placement looks (RFC-080 by ruling, ph-huv), drawn through Control: a toggle
 // writing options 1 and 2 of a three-option field, and a slider narrowed to
 // the middle half of another field's range, on its step grid.

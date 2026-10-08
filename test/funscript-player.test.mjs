@@ -206,12 +206,12 @@ const an = mods[P + 'analyzer.js'];
 if (an) {
   const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
   const names = tg.map((g) => g.name);
-  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Settling'];
+  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Re-planning'];
   ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
     same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
       && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);
   const fs = tg.flatMap((g) => g.fields);
-  ok('only writable controls, no readout', fs.length > 15 && fs.every((f) => !f.readOnly && f.writeChannel != null
+  ok('only writable controls, no readout', fs.length >= 15 && fs.every((f) => !f.readOnly && f.writeChannel != null
     && ['slider', 'stepper', 'toggle', 'segmented', 'select'].includes(f.widget)), fs.length);
   ok('limit.input.* by role, nothing else from its group',
     same(tg.find((g) => g.name === 'Machine-driven limits').fields.map((f) => f.role).sort(), [...an.LIMIT_ROLES].sort()));
@@ -238,8 +238,8 @@ if (an) {
   if (kn) {
     const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
     ok('Kinetic: the Tuning rows bind kinetic_tuning by member name, an _ms row to its _us member times 1000',
-      same(tuned.map((t) => t[0]).sort(), kn.TUNING.map((t) => t[0]).filter((n) => !['overshoot_guard', 'lookahead_us', 'corner', 'react_us'].includes(n)).sort())
-        && tuned.find((t) => t[0] === 'settle_grace_us')[3] === 20000, tuned.map((t) => t[0]));
+      same(tuned.map((t) => t[0]).sort(), ['amax_ovr', 'amplitude_budget', 'chase_dense_us', 'corner', 'curve_policy', 'infeasible_policy', 'jmax_ovr', 'react_us', 'vmax_ovr'])
+        && tuned.find((t) => t[0] === 'react_us')[3] === 20000, tuned.map((t) => t[0]));
     const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true }, T0k = { offsetMs: 0, lo: 0, hi: 1, invert: false };
     const sg = kn.segmentsOf(sc, Tk);
     ok('Kinetic: a preroll to the first knot arriving at media 0, then one segment per span at its start, after T',
