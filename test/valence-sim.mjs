@@ -229,7 +229,7 @@ async function main() {
   console.log('\n19-channel sim-fidelity write plane (2026-07-28 follow-on):');
   const CH19 = {
     MACHINE_MODES: 0x1030, MODES_SET: 0x3030,
-    SM_LIMITS: 0x1120, SM_WAVEFORM: 0x1122, SM_SET: 0x3120,
+    SM_LIMITS: 0x1120, SM_PLANNER: 0x1122, SM_SET: 0x3120,
     PATTERN_ADVANCED: 0x1210,
     AP_MOD_SPEEDIN: 0x1211, AP_MOD_SPEEDOUT: 0x1212, AP_MOD_ACCELIN: 0x1213,
     AP_MOD_ACCELOUT: 0x1214, AP_MOD_DEPTH1: 0x1215, AP_MOD_DEPTH2: 0x1216,
@@ -244,11 +244,11 @@ async function main() {
   const absent = Object.entries(CH19).filter(([, id]) => !has(id)).map(([n]) => n);
   if (absent.length) info('not in this catalog, skipped: ' + absent.join(', '));
   s1.subscribe([
-    CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_WAVEFORM,
+    CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_PLANNER,
     CH19.PATTERN_ADVANCED, CH19.AP_MOD_SPEEDIN, CH19.AP_MOD_SPEEDOUT, CH19.AP_MOD_ACCELIN,
     CH19.AP_MOD_ACCELOUT, CH19.AP_MOD_DEPTH1, CH19.AP_MOD_DEPTH2, CH19.PATTERN_PRESETS_ROSTER,
   ].filter(has).map((id) => [id, 0, PRIORITY.background]));
-  const want19 = [CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_WAVEFORM,
+  const want19 = [CH19.MACHINE_MODES, CH19.SM_LIMITS, CH19.SM_PLANNER,
     CH19.PATTERN_ADVANCED, CH19.PATTERN_PRESETS_ROSTER].filter(has);
   for (let i = 0; i < 60 && !want19.every((c) => seen1.states.has(c)); i++) await delay(50);
   ok('every newly-subscribed 19-channel STATE delivered its initial push (was UNKNOWN_CHANNEL-only before this pass)',
@@ -284,7 +284,7 @@ async function main() {
       !!nacked && nacked.name === 'INVALID_VALUE', nacked ? nacked.name : 'no NACK!');
   }
 
-  // ---- kinetic tuning: kinetic-limits/waveform (0x1120, 0x1122) / kinetic-set (0x3120)
+  // ---- kinetic tuning: kinetic-limits/planner (0x1120, 0x1122) / kinetic-set (0x3120)
   {
     // One kinetic-set write touches BOTH STATE cards in the same hub tick, so
     // every waitFor listener is armed BEFORE the write goes out (not chained
@@ -294,26 +294,26 @@ async function main() {
     // the SAME burst (a real race, not a hypothetical one — this is exactly
     // what an earlier draft of this test hit).
     const vmax0 = seen1.states.get(CH19.SM_LIMITS)?.vmax_ovr ?? 0;
-    const dense0 = seen1.states.get(CH19.SM_WAVEFORM)?.chase_dense_ms ?? 50;
+    const dense0 = seen1.states.get(CH19.SM_PLANNER)?.chase_dense_ms ?? 50;
     const dense = dense0 === 250 ? 200 : 250;
     const limP = waitFor(s1, 'state',
       (ch, sm) => ch === CH19.SM_LIMITS && Math.abs(sm.vmax_ovr - 20) < 0.01,
       2000, 'kinetic-limits reflect').then(() => true).catch(() => false);
     const wavP = waitFor(s1, 'state',
-      (ch, sm) => ch === CH19.SM_WAVEFORM && Math.abs(sm.chase_dense_ms - dense) < 0.01,
-      2000, 'kinetic-waveform reflect').then(() => true).catch(() => false);
+      (ch, sm) => ch === CH19.SM_PLANNER && Math.abs(sm.chase_dense_ms - dense) < 0.01,
+      2000, 'kinetic-planner reflect').then(() => true).catch(() => false);
 
-    const echo = await s1.sendIntent(CH19.SM_SET, { 2: 999, 10: dense });
+    const echo = await s1.sendIntent(CH19.SM_SET, { 2: 999, 7: dense });
     ok('kinetic-set ECHO carries post-clamp APPLIED values',
-      Math.abs(echo.applied[10] - dense) < 0.01, JSON.stringify(echo.applied));
+      Math.abs(echo.applied[7] - dense) < 0.01, JSON.stringify(echo.applied));
     ok('kinetic-set CLAMPS an out-of-range override (vmax_ovr=999 -> 20, the catalog\'s own max)',
       Math.abs(echo.applied[2] - 20) < 0.01, 'applied[2]=' + echo.applied[2]);
 
     const [reflectedLim, reflectedWav] = await Promise.all([limP, wavP]);
     ok('0x1120 kinetic-limits STATE reflects the clamped vmax_ovr', reflectedLim);
-    ok('0x1122 kinetic-waveform STATE reflects chase_dense_ms', reflectedWav);
+    ok('0x1122 kinetic-planner STATE reflects chase_dense_ms', reflectedWav);
 
-    await s1.sendIntent(CH19.SM_SET, { 2: vmax0, 10: dense0 });
+    await s1.sendIntent(CH19.SM_SET, { 2: vmax0, 7: dense0 });
 
     let nacked = null;
     try { await s1.sendIntent(CH19.SM_SET, {}); } catch (e) { nacked = e; }

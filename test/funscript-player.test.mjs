@@ -181,8 +181,8 @@ const index = mods[P + 'index.js'];
 const ENTRIES = decodeCatalog(new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url))));
 const SEG_CH = 0x2101;   // valencesim motion-segment (registry 0x2101), test-side only
 // Tuning fixture, test-side ids: the recording (valencesim 0.1.7-p4hub) carries RFC-094 'Tuning / '
-// groups, trial_mask (meta.trial_pending) on the waveform STATE and settings-trial (core 0x16, RFC-099).
-const CH_WAVE = 0x1122, CH_TRIAL = 0x16;
+// groups, trial_mask (meta.trial_pending) on the kinetic-planner STATE and settings-trial (core 0x16, RFC-099).
+const CH_PLANNER = 0x1122, CH_TRIAL = 0x16;
 function tuningCatalog() {
   const bytes = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
   return { bytes, etag: readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.meta.url), 'utf8').trim() };
@@ -217,12 +217,12 @@ const an = mods[P + 'analyzer.js'];
 if (an) {
   const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
   const names = tg.map((g) => g.name);
-  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Infeasible moves', 'Re-planning'];
+  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Ceilings', 'Re-planning'];
   ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
     same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
       && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);
   const fs = tg.flatMap((g) => g.fields);
-  ok('only writable controls, no readout', fs.length >= 15 && fs.every((f) => !f.readOnly && f.writeChannel != null
+  ok('only writable controls, no readout', fs.length >= 14 && fs.every((f) => !f.readOnly && f.writeChannel != null
     && ['slider', 'stepper', 'toggle', 'segmented', 'select'].includes(f.widget)), fs.length);
   ok('limit.input.* by role, nothing else from its group',
     same(tg.find((g) => g.name === 'Machine-driven limits').fields.map((f) => f.role).sort(), [...an.LIMIT_ROLES].sort()));
@@ -249,7 +249,7 @@ if (an) {
   if (kn) {
     const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
     ok('Kinetic: the Tuning rows bind kinetic_tuning by member name, an _ms row to its _us member times 1000',
-      same(tuned.map((t) => t[0]).sort(), ['amax_ovr', 'amplitude_budget', 'chase_dense_us', 'corner', 'curve_policy', 'infeasible_policy', 'jmax_ovr', 'react_us', 'vmax_ovr'])
+      same(tuned.map((t) => t[0]).sort(), ['amax_ovr', 'chase_dense_us', 'handle_floor', 'jmax_ovr', 'react_us', 'smoothness', 'trim_max', 'vmax_ovr'])
         && tuned.find((t) => t[0] === 'react_us')[3] === 20000, tuned.map((t) => t[0]));
     const Tk = { offsetMs: 30, lo: 0.2, hi: 0.8, invert: true }, T0k = { offsetMs: 0, lo: 0, hi: 1, invert: false };
     const sg = kn.segmentsOf(sc, Tk);
@@ -279,8 +279,8 @@ if (an) {
       same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, kn.FREE, kn.FREE]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
     ok('Kinetic: through a same-direction knot the planner keeps the chord speed (120 mm/s); left free it dips at the 125 ms lead',
       after.every((v) => Math.abs(v - 120) < 12) && free.some((v) => v < 100), JSON.stringify({ after: after.map(Math.round), free: free.map(Math.round) }));
-    ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
-      === 'Kinetic: wasm  3 anomalies  stretched 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
+    ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0] })
+      === 'Kinetic: wasm  3 anomalies  clamped 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
     // Wide shares 0.5, 0.8, 0.225 are window shares 0.5, 1.1, -0.05; the fourth sample lies past the span.
     const wr = Float32Array.from([0.5, 0.8, 0.225, 0.95]);
@@ -515,13 +515,13 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           hub.intents.push({ ch, value: Object.fromEntries(val), trial });
           const st = cat.entries.find((e) => e.settingChannel === ch && e.layout);
           if (st) for (const [k, v] of val) { const f = st.layout.find((x) => x.settingKey === k); if (f) hub.values[st.id + ':' + f.name] = v; }
-          if (ch === CH_TRIAL) hub.values[CH_WAVE + ':trial_mask'] = 0;
-          else if (trial) hub.values[CH_WAVE + ':trial_mask'] = 1;
+          if (ch === CH_TRIAL) hub.values[CH_PLANNER + ':trial_mask'] = 0;
+          else if (trial) hub.values[CH_PLANNER + ':trial_mask'] = 1;
           const enc = (v) => (typeof v === 'boolean' ? CB.cbBool(v) : Number.isInteger(v) ? (v < 0 ? CB.cbInt(v) : cbUint(v)) : cbF32(v));
           hub.send(FRAME.ECHO, ch, cbMap([[K.intent_id, cbUint(q.get(K.intent_id))],
             [K.applied, cbMap([...val].sort((a, b) => a[0] - b[0]).map(([k, v]) => [k, enc(v)]))]].sort((a, b) => a[0] - b[0])), header.seq);
           if (st) hub.state(st.id);
-          if (entry(CH_WAVE)) hub.state(CH_WAVE);
+          if (entry(CH_PLANNER)) hub.state(CH_PLANNER);
         } else if (t === FRAME.PING) {
           hub.send(FRAME.PONG, header.channel, payload);
         }
@@ -1589,6 +1589,23 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-auto-1280x800.png') });
     await page.locator('main.pane .fsp-psec .fsp-scale').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-scale-row.png') }).catch(() => {});
   }
+  // ---- D: the hub's smoothness reaches the twin: smoothness at the analyzer row's top (a drag: rendered, never written) re-renders ----
+  // Kinetic² renders a reversal flat at every smoothness, so a top-only tease no longer overshoots; Auto stays 0.00–1.00 there.
+  const pts = () => page.evaluate((c) => document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '', C);
+  const p0 = await pts(), nW = hub.intents.length;
+  const smoothed = await page.evaluate((c) => {
+    const row = [...document.querySelectorAll(c + ' .fsa-row')].find((r) => r.querySelector('.fsa-k').textContent === 'Smoothness');
+    const i = row && row.querySelector('input[type=range]');
+    if (!i) return null;
+    const was = i.value;
+    i.value = i.max;
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+    return [was, i.value];
+  }, C);
+  const reSmooth = await page.waitForFunction(([c, p]) => (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '') !== p, [C, p0], { timeout: 10000 })
+    .then(() => true, () => false);
+  // ponytail: >= 0.95: the f32 step (0.05000000074) snaps the range's top to 0.95 (bd ph-y3mg note).
+  ok('D: smoothness at its top re-renders the twin, nothing written', !!smoothed && +smoothed[1] >= 0.95 && reSmooth && hub.intents.length === nW, smoothed);
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

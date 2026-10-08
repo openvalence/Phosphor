@@ -1,4 +1,4 @@
 # The Nucleus commit kinetic.wasm (bytes.js) was built from; bump with node test/kinetic-pin.mjs --write.
-nucleus 91243d4a39983b58796a2a0867a5368c7bb0871c
-version nucleus 91243d4a3998 kinetic2 2.0.0-dev
-bytes 86496
+nucleus cc4888bb7ba8294db16e3c7faeed684de6d56057
+version nucleus cc4888bb7ba8 kinetic2 2.0.0-dev
+bytes 90173

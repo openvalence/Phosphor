@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const KDIR = join(ROOT, 'plugins', 'factory', 'funscript-player', 'kinetic');
-const NUCLEUS = join(ROOT, '..', 'Nucleus');
+const NUCLEUS = process.env.NUCLEUS_DIR || join(ROOT, '..', 'Nucleus'); // a clean worktree when the checkout's beads export dirties it
 const EMSDK = process.env.EMSDK || join(ROOT, '..', '.tools', 'emsdk');
 const WRITE = process.argv.includes('--write');
 const WASM_PATH = process.argv.slice(2).find((a) => !a.startsWith('--')) || process.env.KINETIC_WASM;

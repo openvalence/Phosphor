@@ -34,7 +34,7 @@ const ETAG = readFileSync(new URL('./fixtures/valencesim-catalog.etag', import.m
 const ENTRIES = decodeCatalog(CAT);
 const toHex = (b) => Buffer.from(b).toString('hex');
 const ID = 'feedc0de00000001';
-const FIELD_UID = '4386:amplitude_budget'; // kinetic-waveform, an unroled f32 setting on 0x3120 key 17
+const FIELD_UID = '4386:smoothness'; // kinetic-planner, an unroled f32 setting on 0x3120 key 4
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra !== undefined ? '  -- ' + extra : '')); if (!c) fails++; };
@@ -218,14 +218,14 @@ ok('one socket, to the fake hub', wire.opens === 1, wire.opens);
 await openTab('shell:merge');
 const row = page.locator('.mrows li[data-uid="' + FIELD_UID + '"]');
 ok('the merge row is listed', await until(async () => (await row.count()) === 1));
-ok('it shows the hub value and the staged value', (await row.locator('.old').innerText()) === '0.25' && (await row.locator('.new').innerText()) === '0.50',
+ok('it shows the hub value and the staged value', (await row.locator('.old').innerText()) === '0.00' && (await row.locator('.new').innerText()) === '0.50',
   (await row.locator('.old').innerText()) + ' -> ' + (await row.locator('.new').innerText()));
 ok('it is pre-ticked', await row.locator('input[type=checkbox]').isChecked());
 if (SHOTS) await page.screenshot({ path: join(SHOTS, 'merge-pane.png') });
 await page.getByRole('button', { name: 'Apply ticked' }).click();
 ok('the row settles on the echo', await until(async () => (await row.getAttribute('data-phase')) === 'settled'), await row.locator('.state').innerText());
 ok('one intent, the staged value, on the setting channel',
-  wire.intents.length === 1 && wire.intents[0].ch === 0x3120 && wire.intents[0].val[0][0] === 17 && wire.intents[0].val[0][1] === 0.5,
+  wire.intents.length === 1 && wire.intents[0].ch === 0x3120 && wire.intents[0].val[0][0] === 4 && wire.intents[0].val[0][1] === 0.5,
   JSON.stringify(wire.intents));
 ok('staging is empty', await page.evaluate((id) => !JSON.parse(localStorage.getItem('phosphor.merge') || '{}')[id], ID));
 ok('the hub value now reads the applied one', await until(async () => (await row.locator('.old').innerText()) === '0.50'));

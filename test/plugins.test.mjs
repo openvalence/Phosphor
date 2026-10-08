@@ -289,7 +289,7 @@ console.log('plan.flags');
   const [f] = model.byRole.get(ROLE.planFlags) || [];
   const [s] = model.byRole.get(ROLE.planStart) || [];
   ok('plan.flags rides the plan strip beside plan.start', !!f && !!s && f.channelId === s.channelId);
-  ok('its bit labels are the registry words in bit order', !!f && f.bits.slice(0, 4).join() === planFlagNames(0x0f).join());
+  ok('its bit labels are the registry words in bit order', !!f && f.bits.filter(Boolean).join() === planFlagNames(0xff).join(), f && f.bits);
   ok('a clean plan names nothing; any set bit names its word',
     planFlagNames(0).length === 0 && planFlagNames(PLAN_FLAG.stretched | PLAN_FLAG.clamped).join() === 'stretched,clamped');
 }

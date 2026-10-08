@@ -648,7 +648,7 @@ export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LA
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> [min, max] in script units of a wall-free render's
   // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_*, T's Range and invert
-export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  stretched 250 ms'
+export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  clamped 250 ms'
 export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit
   // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
@@ -680,12 +680,12 @@ segmented field of more than two options renders as a select.
 ```js
 // bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, FREE = -32768;
-export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (64 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
-export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
-export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..12 ('' for none and the reserved kinds; 12 renders, never a drop)
+export const TUNING;      // [[member, byte offset, 'f'|'u']]: kinetic_tuning (32 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
+export const FLAGS = ['busy', 'shaped', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..3
+export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..6 ('' for none; 6, piece over ceiling, renders, never a drop)
 export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, type, value]]: by member name, an
   // _ms field to its _us member times 1000; non-numbers skipped
-export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }
+export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3][], t0, steps }
   // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
   // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 packed as the host packs it, FREE
   // (-32768, registry segment_end_vel_unspecified) where the knot is free (the preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
@@ -702,7 +702,7 @@ export function createKinetic();   // -> { ready: Promise<version>, render(q) ->
 { pos: Float32Array /* position_mm */, vel: Float32Array /* velocity_mm_s */, acc: Float32Array /* accel_mm_s2 */,
   raw: Float32Array /* the plan's p, a window share before the window clamp */,
   flags: Uint8Array /* ORed over the samples' steps */, anomalies: Uint32Array(32) /* steps with bit k */,
-  counts: Uint32Array(5) /* steps with FLAGS[b] */, accepted, refused, plans, ms /* worker render time */ }
+  counts: Uint32Array(4) /* steps with FLAGS[b] */, accepted, refused, plans, ms /* worker render time */ }
 ```
 
 `kinetic.pin` holds `nucleus <sha>`, `version <kinetic_version()>` and

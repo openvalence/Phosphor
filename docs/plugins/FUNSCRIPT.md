@@ -148,11 +148,14 @@ doubled window, in glance or in the fallback the map stays `[0, 1]`.
 The fit needs the whole script, so it stays in Phosphor: the hub never sees
 the whole script.
 
-Measured 2026-10-08 on the browser test's real-shaped script (window 0-100
-mm, the vendored twin at Nucleus 91243d4, whose renderer is crisp only):
-Auto reads `0.00–1.00`, clamped 0 ms, since a crisp curve passes no action.
-The fit has an overshoot to measure once the twin renders `smoothness` (the
-Nucleus wasm re-layout, RFC-108 item 7).
+Measured 2026-10-08 (window 0-100 mm, the vendored twin at Nucleus cc4888b,
+Kinetic 04c1439, which renders `smoothness`): Auto reads `0.00–1.00` on the
+browser test's real-shaped script. At `smoothness` 0 and 1 the twin's
+unclamped plan stays inside `[0, 1]` (to 1e-4) on a top-only 100-70-100
+tease, on rises through a same-direction knot to the top and on an 80-knot
+seeded script, while `smoothness` moves the plan by up to 0.24 of the
+window on the last: Kinetic² renders a reversal flat at every
+`smoothness`, so these scripts give the fit no overshoot to measure.
 
 - **I1** One segment per action (operator ruling 2026-10-04) stays; "ending
   at the mode's tangent" is superseded by the retirement above (2026-10-08):
@@ -720,7 +723,7 @@ timeline's box. Collapsing restores the card as it was.
 - **Controls.** Bound by the catalog, never by channel: the writable
   fields of every group whose first segment is the registry's `Tuning`
   subgroup (RFC-094; on valencesim: motion behavior, streaming, sample
-  streams, curve, infeasible moves, settling), the writable fields that
+  streams, curve, ceilings, re-planning), the writable fields that
   share a write channel with those (the kinetic ceiling overrides), and
   `limit.input.*` by role. Each row draws the field's derived
   presentation: slider (a vertical-pill thumb, one write on release),
@@ -806,9 +809,9 @@ behaves the same on the machine, without rendering anything on the hub.
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
   (`window.min`, `window.max`) by role; the Tuning rows by `kinetic_tuning`
-  member name (K2; 64 B). Kinetic² reads the ceiling overrides,
-  `infeasible_policy`, `amplitude_budget`, `curve_policy`, `lookahead_us`,
-  `corner` and `react_us`, and ignores the chase members. The values are the ones the analyzer shows: in Preview
+  member name (K2; 32 B). Kinetic² reads the ceiling overrides,
+  `smoothness`, `handle_floor`, `trim_max` and `react_us`; `chase_dense_us`
+  is bound and ignored (on the board it is the samples grant's latency). The values are the ones the analyzer shows: in Preview
   the hub's trial values, during a drag the draft, before anything is
   written. Any change re-renders; a newer render supersedes the older, which
   frees its handle at its next 8192-step chunk.
@@ -817,8 +820,8 @@ behaves the same on the machine, without rendering anything on the hub.
   velocity and accel, the flags ORed per kept sample, and counts over every
   step. The detail draws the position as the intent curve (`--intent`); the
   analyzer's Kinetic line reads `Kinetic: wasm  n anomalies` and each nonzero
-  flag time: `clamped`, `stretched` (the fallback bit; Kinetic² never sets
-  it) and `shaped` (a knot trimmed toward its predecessor). Its tooltip holds
+  flag time: `clamped` (the raw plan outside the window) and `shaped` (a
+  knot trimmed toward its predecessor). Its tooltip holds
   the version string, the render time and the anomaly kinds (`knot refused`
   among them: a knot not after the newest is refused, never replaced; and
   `piece over ceiling`: a span no trim keeps inside a limit renders at its
@@ -837,18 +840,19 @@ behaves the same on the machine, without rendering anything on the hub.
   size. The bytes are "the machine" only for firmware built from that
   commit; a `-dirty` build is never vendored. Bump with `node
   test/kinetic-pin.mjs --write` (Nucleus clean at the new commit, emsdk at
-  `../.tools/emsdk` or `$EMSDK`); a plain run checks bytes.js against the
+  `../.tools/emsdk` or `$EMSDK`; `NUCLEUS_DIR=<dir>` builds from a clean
+  worktree at that commit, beside `../Kinetic` and `../Valence`, when the
+  checkout's beads export dirties it); a plain run checks bytes.js against the
   pin and, when Nucleus HEAD is the pin, rebuilds and byte-compares;
   `node test/kinetic-pin.mjs <wasm>` checks that file instead of bytes.js.
   `KINETIC_WASM=<wasm>` runs `kinetic-trace.test.mjs` and
   `funscript-player.test.mjs --unit` against that build.
 - **Determinism.** `test/kinetic-trace.test.mjs` (in `npm run check`)
   replays Nucleus' native Kinetic² fixture (`test/fixtures/kinetic_trace.json`,
-  copied from Nucleus 3566f17 `test/fixtures/kinetic_trace.json`, kernel
-  Kinetic 2518117) through bytes.js:
+  copied from Nucleus 4762768 `test/fixtures/kinetic_trace.json`, kernel
+  Kinetic 04c1439) through bytes.js:
   600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP; `renderCore`
-  on the same segments returns the same `position_mm` at all 50,000 steps
-  before the fixture's tuning change.
+  on the same segments returns the same `position_mm` at all 60,000 steps.
 - **CSP.** Compiling wasm needs `'wasm-unsafe-eval'` in `script-src`
   (PLUGINS.md); section (k) shows the compile refused without it.
 - **Measured** 2026-10-06 (Chromium, section (k), Kinetic²): 60 s at 1 ms
@@ -868,9 +872,9 @@ Decisions (veto-able):
   shell bundle (35 KB gzipped against 26 KB for the raw wasm).
 - **K2** The Tuning rows bind `kinetic_tuning` by member name (the 0x3120
   card's fields carry the struct's names; an `_ms` row binds its `_us`
-  member): the contract's one binding that is not a role. `overshoot_guard`
-  has no row on valencesim and keeps the factory value; `schedule_horizon`
-  is not bound (the render uses 250 ms). Veto: registry roles for the
+  member): the contract's one binding that is not a role. Every member has
+  a row on valencesim (kinetic-limits 0x1120, kinetic-planner 0x1122);
+  `schedule_horizon` is not bound (the render uses 250 ms). Veto: registry roles for the
   tuning members, an RFC.
 - **K3** The render starts from rest at 0 mm with a preroll, not from the
   measured position: the same script renders the same motion every time.

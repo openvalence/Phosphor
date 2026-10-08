@@ -10,9 +10,8 @@
 //   and the clock steps at stepMs (the board ticks at 1 ms). Same calls in, same bits out (kinetic-trace test).
 // - A newer render supersedes: the older one resolves null and its handle is destroyed at its next chunk.
 // - Kinetic² only: the worker refuses a module whose kinetic_version() does not name kinetic2.
-// - TUNING mirrors kinetic_tuning (64 B) by member name; a catalog field binds by that name, and a
+// - TUNING mirrors kinetic_tuning (32 B) by member name; a catalog field binds by that name, and a
 //   name ending _ms binds its _us member times 1000. A member no field names keeps the factory value.
-//   Members Kinetic² ignores (chase_*, handoff_k, ...) stay bound so the struct is written whole.
 
 import { applyT, knotSlope, wireVel } from '../scheduler.js';
 import { WASM } from './bytes.js';
@@ -20,15 +19,12 @@ import { WASM } from './bytes.js';
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
 // Registry limits.segment_end_vel_unspecified: a free knot (the hub's smoothness shapes it). Restated: a plugin imports nothing outside its folder.
 export const FREE = -32768;
-export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'], ['amax_ovr', 8, 'f'], ['chase_gain', 12, 'f'],
-  ['chase_lookahead', 16, 'f'], ['handoff_k', 20, 'f'], ['smooth_budget', 24, 'f'], ['amplitude_budget', 28, 'f'],
-  ['overshoot_guard', 32, 'f'], ['chase_dense_us', 36, 'u'], ['settle_grace_us', 40, 'u'], ['chase_ff', 44, 'b'],
-  ['chase_accel_ff', 45, 'b'], ['chase_aim_extrap', 46, 'b'], ['curve_policy', 47, 'b'], ['infeasible_policy', 48, 'b'],
-  ['blend_steps', 49, 'b'], ['lookahead_us', 52, 'u'], ['corner', 56, 'b'], ['react_us', 60, 'u']]);
-export const FLAGS = Object.freeze(['busy', 'shaped', 'fallback', 'clamped', 'refused']);
-// kinetic2::AnomalyKind by bit; reserved kinds are blank. 'piece over ceiling' renders: never a drop.
-export const ANOMALIES = Object.freeze(['', 'plan failed', 'settle', 'end velocity clamped', 'deadline stretched',
-  '', 'waveform scaled', '', '', '', 'dwell zeroed', 'knot refused', 'piece over ceiling']);
+export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'], ['amax_ovr', 8, 'f'],
+  ['chase_dense_us', 12, 'u'], ['react_us', 16, 'u'], ['smoothness', 20, 'f'], ['handle_floor', 24, 'f'], ['trim_max', 28, 'f']]);
+export const FLAGS = Object.freeze(['busy', 'shaped', 'clamped', 'refused']);
+// kinetic2::AnomalyKind by bit. 'piece over ceiling' renders: never a drop.
+export const ANOMALIES = Object.freeze(['', 'settle', 'end velocity clamped', 'knot trimmed', 'dwell zeroed',
+  'knot refused', 'piece over ceiling']);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -45,7 +41,7 @@ export function tuningOf(pairs) {
 }
 
 /**
- * The script as the render's segments [startMs, pos_e4, durMs, endVelE3, family] on the engine clock, and
+ * The script as the render's segments [startMs, pos_e4, durMs, endVelE3] on the engine clock, and
  * t0, the media ms of engine 0: a preroll to the first knot arriving at media 0, then one segment per span.
  * The scheduler's knots, each span ending at its knot's endVel at rate 1 (knotSlope, wireVel) or FREE, packed as the host
  * packs it; the preroll ends at rest.
@@ -59,8 +55,8 @@ export function segmentsOf(script, T) {
     const v = wireVel(knotSlope((j) => at[j], (j) => pos[j], k, at.length), T);
     return v == null ? FREE : Math.sign(v) * Math.round(Math.min(32767, Math.abs(v) * 1000));
   };
-  const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0, 0]];
-  for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k), 0]);
+  const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0]];
+  for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k)]);
   return { segs, t0: (T.offsetMs || 0) - pad, steps: Math.ceil(pad + at[at.length - 1] + TAIL_MS) };
 }
 
@@ -73,24 +69,23 @@ export function segmentsOf(script, T) {
 export function* renderCore(k, q) {
   const L = q.limits, h = k.kinetic_create(L.vmax, L.amax, L.jmax, L.rail, L.horizonMs || 0);
   if (!h) throw new Error('limits refused');
-  const out = k.malloc(64), tb = k.malloc(64);
+  const out = k.malloc(64), tb = k.malloc(32);
   try {
     if (q.window && k.kinetic_set_window(h, q.window[0], q.window[1]) !== 1) throw new Error('window refused');
     const dv = new DataView(k.memory.buffer);
     k.kinetic_default_tuning(tb);
     for (const [, off, type, v] of q.tuning || []) {
       if (type === 'f') dv.setFloat32(tb + off, v, true);
-      else if (type === 'u') dv.setUint32(tb + off, Math.max(0, Math.round(v)), true);
-      else dv.setUint8(tb + off, Math.max(0, Math.min(255, Math.round(v))));
+      else dv.setUint32(tb + off, Math.max(0, Math.round(v)), true);
     }
     k.kinetic_set_tuning(h, tb);
     const step = q.stepMs || 1, every = Math.max(1, q.every | 0), lead = q.leadMs ?? 125, n = Math.ceil(q.steps / every);
     const pos = new Float32Array(n), vel = new Float32Array(n), acc = new Float32Array(n), raw = new Float32Array(n), flags = new Uint8Array(n);
-    const anomalies = new Uint32Array(32), counts = new Uint32Array(5), segs = q.segs;
+    const anomalies = new Uint32Array(32), counts = new Uint32Array(4), segs = q.segs;
     let next = 0, accepted = 0, refused = 0;
     for (let i = 0; i < q.steps; i++) {
       for (; next < segs.length && segs[next][0] - lead <= i * step; next++) {
-        const s = segs[next], r = k.kinetic_submit_segment(h, s[1], s[2], s[3], Math.round(s[0] * 1000), s[4]);
+        const s = segs[next], r = k.kinetic_submit_segment(h, s[1], s[2], s[3], Math.round(s[0] * 1000));
         if (r === 1) accepted++; else if (r === 0) refused++;
       }
       k.kinetic_step(h, step / 1000, out);
@@ -100,7 +95,7 @@ export function* renderCore(k, q) {
         raw[j] = dv.getFloat64(out + 8, true);
       }
       flags[j] |= f;
-      for (let b = 0; b < 5; b++) if ((f >> b) & 1) counts[b]++;
+      for (let b = 0; b < 4; b++) if ((f >> b) & 1) counts[b]++;
       for (let a = dv.getUint32(out + 52, true); a; a &= a - 1) anomalies[31 - Math.clz32(a & -a)]++;
       if ((i & 8191) === 8191) yield i;
     }
