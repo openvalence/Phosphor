@@ -690,7 +690,7 @@ segmented field of more than two options renders as a select.
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
 export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (64 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
 export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
-export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..11 ('' for none and the kinds Kinetic² never emits)
+export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..12 ('' for none and the reserved kinds; 12 renders, never a drop)
 export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, type, value]]: by member name, an
   // _ms field to its _us member times 1000; non-numbers skipped
 export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }

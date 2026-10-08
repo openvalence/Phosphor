@@ -266,8 +266,8 @@ if (an) {
     const after = knotV(ms.segs), before = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], -32768, x[4]] : x)));
     ok('Kinetic: each span ends at the endVel e3 of its knot (40 %/s here, 0 at the reversal, the end and the preroll)',
       same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, 0, 0]), ms.segs.map((x) => x[3]));
-    ok('Kinetic: a knot that is not a reversal keeps its speed (120 mm/s), unspecified nearly at rest there',
-      after.every((v) => Math.abs(v - 120) < 12) && before.every((v) => v < 30), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
+    ok('Kinetic: a knot that is not a reversal keeps the wire\'s speed (120 mm/s); unspecified, the planner picks its own',
+      after.every((v) => Math.abs(v - 120) < 12) && before.some((v) => Math.abs(v - 120) >= 12), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
       === 'Kinetic: wasm  3 anomalies  stretched 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');

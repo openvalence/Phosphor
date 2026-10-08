@@ -24,9 +24,9 @@ export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'],
   ['chase_accel_ff', 45, 'b'], ['chase_aim_extrap', 46, 'b'], ['curve_policy', 47, 'b'], ['infeasible_policy', 48, 'b'],
   ['blend_steps', 49, 'b'], ['lookahead_us', 52, 'u'], ['corner', 56, 'b'], ['react_us', 60, 'u']]);
 export const FLAGS = Object.freeze(['busy', 'shaped', 'fallback', 'clamped', 'refused']);
-// kinetic2::AnomalyKind by bit; kinds Kinetic² never emits are blank.
+// kinetic2::AnomalyKind by bit; reserved kinds are blank. 'piece over ceiling' renders: never a drop.
 export const ANOMALIES = Object.freeze(['', 'plan failed', 'settle', 'end velocity clamped', 'deadline stretched',
-  '', 'waveform scaled', '', '', '', 'dwell zeroed', 'knot refused']);
+  '', 'waveform scaled', '', '', '', 'dwell zeroed', 'knot refused', 'piece over ceiling']);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 

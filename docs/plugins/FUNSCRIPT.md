@@ -828,10 +828,12 @@ behaves the same on the machine, without rendering anything on the hub.
   velocity and accel, the flags ORed per kept sample, and counts over every
   step. The detail draws the position `--highlight` under the script curve; the
   analyzer's Kinetic line reads `Kinetic: wasm  n anomalies` and each nonzero
-  flag time: `clamped`, `stretched` (the fallback bit: Stretch moved a
-  deadline later) and `shaped` (Blend spent amplitude). Its tooltip holds the
-  version string, the render time and the anomaly kinds (`knot refused`
-  among them: a knot not after the newest is refused, never replaced).
+  flag time: `clamped`, `stretched` (the fallback bit; Kinetic² never sets
+  it) and `shaped` (a knot trimmed toward its predecessor). Its tooltip holds
+  the version string, the render time and the anomaly kinds (`knot refused`
+  among them: a knot not after the newest is refused, never replaced; and
+  `piece over ceiling`: a span no trim keeps inside a limit renders at its
+  least-over trim, never a drop).
 - **What it replaces.** There was no JS planner model. The analyzer's only
   picture of the machine was the shaped script itself (interp.js `shape()`
   through `applyT`, the intent curve) with the limit judged by chord speed
@@ -855,8 +857,8 @@ behaves the same on the machine, without rendering anything on the hub.
   `funscript-player.test.mjs --unit` against that build.
 - **Determinism.** `test/kinetic-trace.test.mjs` (in `npm run check`)
   replays Nucleus' native Kinetic² fixture (`test/fixtures/kinetic_trace.json`,
-  copied from Nucleus eff6aa5 `test/fixtures/kinetic2_trace.json`, kernel
-  Kinetic 321b4b0) through bytes.js:
+  copied from Nucleus 9216e08 `test/fixtures/kinetic_trace.json`, kernel
+  Kinetic 4b991cb) through bytes.js:
   600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP; `renderCore`
   on the same segments returns the same `position_mm` at all 50,000 steps
   before the fixture's tuning change.
@@ -865,8 +867,8 @@ behaves the same on the machine, without rendering anything on the hub.
 - **Measured** 2026-10-06 (Chromium, section (k), Kinetic²): 60 s at 1 ms
   with every sample kept, 18.8 ms in the worker, 18.9 ms to the page; the
   30 s test clip in the analyzer, 10 ms. The shell bundle grows by about
-  82 KB raw, about 35 KB gzipped (the wasm is about 62 KB; `kinetic.pin`
-  holds the exact size); the hub-served build carries
+  82 KB raw, about 35 KB gzipped (the wasm was about 62 KB then; `kinetic.pin`
+  holds the current size); the hub-served build carries
   no factory plugin and does not grow (`npm run build:only`: no wasm in it).
 - **What it is not.** The emitter is ideal and the tick exact: the board's
   task jitter and edge quantization are absent (Nucleus

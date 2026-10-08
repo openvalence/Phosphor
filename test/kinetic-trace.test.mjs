@@ -1,8 +1,8 @@
 /**
  * kinetic-trace.test.mjs -- the vendored kinetic.wasm (kinetic/bytes.js) is the machine's Kinetic² planner
- * bit for bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic2_trace.json as of Nucleus
- * eff6aa5 (kernel Kinetic 321b4b0; written by its native suite test_kinetic_wasm_trace under
- * pio test -e native_kinetic2), replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
+ * bit for bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic_trace.json as of Nucleus
+ * 9216e08 (kernel Kinetic 4b991cb; written by its native suite test_kinetic_wasm_trace under
+ * pio test -e native), replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
  *
  * (1) every 1 ms sample of the 60 s script hashes as the native run did (all 64 bytes), p/v/a 0 ULP;
  * (2) renderCore, the worker's own loop, fed the fixture's segments before its tuning change, submits
