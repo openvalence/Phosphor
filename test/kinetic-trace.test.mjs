@@ -1,7 +1,7 @@
 /**
  * kinetic-trace.test.mjs -- the vendored kinetic.wasm (kinetic/bytes.js) is the machine's Kinetic² planner
  * bit for bit: test/fixtures/kinetic_trace.json is Nucleus test/fixtures/kinetic_trace.json as of Nucleus
- * 9216e08 (kernel Kinetic 4b991cb; written by its native suite test_kinetic_wasm_trace under
+ * 3566f17 (kernel Kinetic 2518117; written by its native suite test_kinetic_wasm_trace under
  * pio test -e native), replayed the way Nucleus tools/kinetic-wasm/check.mjs replays it.
  *
  * (1) every 1 ms sample of the 60 s script hashes as the native run did (all 64 bytes), p/v/a 0 ULP;
