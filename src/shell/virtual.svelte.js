@@ -10,64 +10,95 @@
  * - Never remembered, never auto-connected, never the reconnect target: no
  *   shell_host or shell_mode write, and settings-pane.js saves no virtual hub.
  * - Staging takes only what the virtual hub ECHOed (merge.js).
- * - Desktop: the built-in machine is valencesim, a sidecar the shell runs
- *   (src-tauri/src/virtual_sim.rs). It is a real hub on loopback, joined by
- *   the normal WS connect; only its origin marks it (onSim). It stops on any
- *   disconnect. Without the sidecar (mobile, a build without it) the
- *   built-in machine is the replay below.
+ * - The built-in machine is the Nucleus twin compiled to wasm (integral.worker.js), on every platform. It
+ *   is a full hub joined by the normal connect over an in-page socket; only its host marks it (onSim). It
+ *   stops on any disconnect; its state blob persists in localStorage under STATE_KEY.
  */
 import { untrack } from 'svelte';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { createLocalHub } from '../../../Valence/clients/js/index.js';
-import builtinUrl from '../../test/fixtures/valencesim-catalog.bin?url';
+import IntegralWorker from '../model/integral.worker.js?worker&inline';
+import { WASM } from '../model/integral/bytes.js';
+import { bridgeIntegral } from '../model/integral-bridge.js';
+import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
 import { connect, disconnect, machine } from '../model/machine.svelte.js';
-import { loadMachine, builtinMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
+import { loadMachine, hubOptions, catalogStoreFor } from '../model/vault.js';
 import { loadStaging, saveStaging, stageEcho } from '../model/merge.js';
 import { hubs } from './hubs.svelte.js';
 
-/** The running sidecar: {host, port, http, version, etag}, else null. */
-export const sim = $state({ info: null });
+const HOST = 'builtin';
+const STATE_KEY = 'phosphor.builtin.state';
 
-/** The live link is the sidecar's endpoint. */
+/** The running built-in machine: {version, etag}, else null. */
+export const sim = $state({ info: null });
+let worker = null;
+
+/** The live link is the built-in machine. */
 export function onSim() {
-  const l = machine.link, i = sim.info;
-  return !!i && l.phase !== 'idle' && l.host === i.host && l.port === i.port;
+  const l = machine.link;
+  return !!sim.info && l.phase !== 'idle' && l.host === HOST;
+}
+
+function stopSim() {
+  if (worker) worker.terminate();
+  worker = null;
+  sim.info = null;
 }
 
 $effect.root(() => {
   $effect(() => {
-    const l = machine.link, i = sim.info;
-    if (i && (l.phase === 'idle' || l.host !== i.host || l.port !== i.port)) {
-      untrack(() => { sim.info = null; invoke('virtual_stop').catch(() => {}); });
-    }
+    const l = machine.link;
+    if (sim.info && (l.phase === 'idle' || l.host !== HOST)) untrack(stopSim);
   });
 });
 
 const LEVEL = { T: 0, D: 1, I: 2, W: 3, E: 4, F: 5 };   // registry log_levels
-listen('virtual-log', ({ payload }) => {
-  const m = /^\[([TDIWEF])\] ?(.*)$/.exec(payload) || [null, 'I', payload];
+function logLine(line) {
+  const m = /^\[([TDIWEF])\] ?(.*)$/.exec(line) || [null, 'I', line];
   const ring = machine.events.log;
-  ring.push({ channel: null, channelName: 'sim', at: Date.now(), body: { level: LEVEL[m[1]], tag: 'sim', message: m[2] } });
+  ring.push({ channel: null, channelName: BUILTIN_MACHINE_NAME, at: Date.now(), body: { level: LEVEL[m[1]], tag: BUILTIN_MACHINE_NAME, message: m[2] } });
   if (ring.length > 400) ring.splice(0, ring.length - 400);
-}).catch(() => {});
-// The sim ended on its own: drop its session rather than retry a dead port.
-listen('virtual-exit', () => { if (onSim()) disconnect(); sim.info = null; }).catch(() => {});
+}
 
-// Desktop: start the sidecar and dial it like a LAN hub. False when there is
-// no sidecar to start.
+function loadState() {
+  try {
+    const b = localStorage.getItem(STATE_KEY);
+    return b ? Uint8Array.from(atob(b), (c) => c.charCodeAt(0)) : null;
+  } catch { return null; }
+}
+function saveState(blob) {
+  let s = '';
+  for (const b of blob) s += String.fromCharCode(b);
+  try { localStorage.setItem(STATE_KEY, btoa(s)); } catch { /* no storage: the next boot is a new hub */ }
+}
+
+// Homed with the pairing window open at boot (the twin has no PAIR button): the shell's knock lands as
+// push-to-pair and the pairing persists in the state blob.
 async function openSim() {
-  let info;
-  try { info = await invoke('virtual_start'); } catch (e) {
-    console.warn('valencesim sidecar unavailable, replaying the catalog:', e);
-    return false;
-  }
   disconnect();
+  stopSim();
+  const w = worker = new IntegralWorker();
+  let bridge;
+  const up = new Promise((resolve, reject) => {
+    w.onerror = (e) => reject(new Error(e.message || 'worker failed'));
+    bridge = bridgeIntegral(w, (m) => {
+      if (m.op === 'up') resolve(m);
+      else if (m.op === 'down') reject(new Error(m.error));
+      else if (m.op === 'log') logLine(m.line);
+      else if (m.op === 'state') saveState(m.blob);
+    });
+  });
+  bridge.boot(Uint8Array.from(atob(WASM), (c) => c.charCodeAt(0)), loadState(), { homed: true, pairing_window: true });
+  let info;
+  try { info = await up; } catch (e) {
+    if (worker === w) stopSim();
+    hubs.note = BUILTIN_MACHINE_NAME + ' failed: ' + e.message;
+    return;
+  }
+  if (worker !== w) return;
   hubs.mode = 'ws';
   hubs.note = '';
-  connect({ host: info.host, port: info.port, http: info.http });
-  sim.info = info;
-  return true;
+  connect({ host: HOST, label: BUILTIN_MACHINE_NAME, WebSocketImpl: bridge.WebSocket, token: bridge.token });
+  sim.info = { version: info.version, etag: info.etag };
 }
 
 /** {machineKey: {uid: staged}}, persisted under merge.js MERGE_KEY. */
@@ -77,25 +108,15 @@ export function persistStaging() {
   saveStaging($state.snapshot(staging));
 }
 
-// The build inlines the fixture as a data URL; the shell's CSP has no data:
-// in connect-src, so it is decoded here, never fetched. Dev serves a path.
-async function builtinBytes() {
-  if (builtinUrl.startsWith('data:')) {
-    const b = atob(builtinUrl.slice(builtinUrl.indexOf(',') + 1));
-    return Uint8Array.from(b, (c) => c.charCodeAt(0));
-  }
-  return new Uint8Array(await (await fetch(builtinUrl)).arrayBuffer());
-}
-
 /**
- * Open Virtual Valence on a remembered machine's vault record, or on the
+ * Open Virtual Valence on a remembered machine's vault record, or the
  * built-in machine when `key` is null.
  * @param {string|null} key vault.js key (prefs.js hubKey)
  * @param {string} [name] the name the picker shows for it
  */
 export async function openVirtual(key = null, name = '') {
-  if (!key && await openSim()) return;
-  const m = key ? loadMachine(key) : builtinMachine(await builtinBytes());
+  if (!key) return openSim();
+  const m = loadMachine(key);
   if (!m) { hubs.note = 'No cached catalog for that hub'; return; }
   disconnect();
   hubs.mode = 'virtual';
@@ -103,7 +124,7 @@ export async function openVirtual(key = null, name = '') {
   const hub = createLocalHub(hubOptions(m));
   connect({
     host: 'virtual.' + m.key,
-    virtual: { key: m.key, name: key ? (name || m.name || m.key) : '' },
+    virtual: { key: m.key, name: name || m.name || m.key },
     WebSocketImpl: hub.WebSocket,
     catalogStore: catalogStoreFor(m),
     onEcho: (ch, echo) => {

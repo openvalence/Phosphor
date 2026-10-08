@@ -3,8 +3,6 @@ mod buttplug;
 mod discovery;
 mod estop_udp;
 mod plugins;
-#[cfg(desktop)]
-mod virtual_sim;
 
 /// The webview's own errors (window.onerror, unhandled rejections, console.error)
 /// land in the log plugin's file so a field failure is readable without devtools.
@@ -33,10 +31,6 @@ pub fn run() {
     .plugin(tauri_plugin_http::init())
     .plugin(tauri_plugin_blec::init())
     .manage(plugins::TcpListeners::default());
-  #[cfg(desktop)]
-  let builder = builder
-    .plugin(tauri_plugin_shell::init())
-    .manage(virtual_sim::Sim::default());
   builder
     .invoke_handler(tauri::generate_handler![
       js_log,
@@ -85,14 +79,10 @@ pub fn run() {
       buttplug::bp_clients,
       #[cfg(desktop)]
       buttplug::bp_client_disconnect,
-      #[cfg(desktop)]
-      virtual_sim::virtual_start,
-      #[cfg(desktop)]
-      virtual_sim::virtual_stop,
     ])
     .setup(|app| {
-      // Release builds log too (file + stdout): js_log's webview errors and the
-      // sidecar lines are the only field diagnostics an operator has.
+      // Release builds log too (file + stdout): js_log's webview errors are the
+      // only field diagnostics an operator has.
       {
         use tauri_plugin_log::{Target, TargetKind};
         let mut b = tauri_plugin_log::Builder::default()
@@ -110,10 +100,5 @@ pub fn run() {
     })
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
-    .run(|_app, _event| {
-      #[cfg(desktop)]
-      if let tauri::RunEvent::Exit = _event {
-        virtual_sim::stop_on_exit(_app);
-      }
-    });
+    .run(|_, _| {});
 }

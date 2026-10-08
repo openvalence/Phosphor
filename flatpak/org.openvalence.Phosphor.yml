@@ -1,6 +1,6 @@
 # Phosphor as a Flatpak, packaged from the Linux .deb CI's ubuntu-22.04 job
-# builds (the Tauri binary and its valencesim sidecar). CI copies that .deb
-# here as phosphor.deb before flatpak-builder runs.
+# builds. CI copies that .deb here as phosphor.deb before flatpak-builder
+# runs.
 #
 # Runtime is GNOME, not bare freedesktop: webkit2gtk-4.1 ships only in the
 # GNOME runtime. GNOME 50 sits on freedesktop 25.08.
@@ -17,7 +17,7 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
-  # Hubs over WebSocket, UDP discovery, the datagram e-stop, the sidecar on loopback.
+  # Hubs over WebSocket, UDP discovery, the datagram e-stop.
   - --share=network
   # Serial and HID toys through the embedded buttplug server; covers the GPU (dri) too.
   - --device=all
@@ -38,8 +38,7 @@ modules:
     build-commands:
       - ar -x phosphor.deb
       - tar -xf data.tar.gz
-      # Tauri resolves the sidecar beside its own binary: both stay in /app/bin.
-      - install -Dm755 -t /app/bin usr/bin/phosphor usr/bin/valencesim
+      - install -Dm755 -t /app/bin usr/bin/phosphor
       - install -Dm644 usr/share/icons/hicolor/128x128/apps/phosphor.png /app/share/icons/hicolor/128x128/apps/org.openvalence.Phosphor.png
       - install -Dm644 org.openvalence.Phosphor.svg /app/share/icons/hicolor/scalable/apps/org.openvalence.Phosphor.svg
       - install -Dm644 -t /app/share/applications org.openvalence.Phosphor.desktop

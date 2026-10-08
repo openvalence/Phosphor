@@ -497,7 +497,7 @@ question in §10.8).
   budget, since a datagram's sender cannot see the latch. Opt-out, default on
   (RFC-053 item 3; Settings > Connection). Every hub on the segment that
   honors RFC-053 latches, not only the connected one; a Virtual Valence
-  session never broadcasts, the sidecar sim included. A press needs a live link to reach the hook,
+  session never broadcasts, the built-in machine included. A press needs a live link to reach the hook,
   because the strip disables the e-stop without one. Seams:
   `noteEstopPress` (`src/model/actions.js`, runAction's first call),
   `src/shell/estop-udp.js`, `src-tauri/src/estop_udp.rs` (`ph-y4er`).
@@ -808,7 +808,7 @@ single-column cards. Top-strip safety applies on phones. Whether a desktop
 layout ever projects onto handheld stays `ph-e82.7`'s question; layouts stay
 per class.
 
-### 10.10 Virtual Valence: demo and configure mode
+### 10.10 Virtual: demo and configure mode
 
 Operator request 2026-10-02: configure the UI and try modes with no machine
 connected, then merge the setting changes onto the machine, ticked per item.
@@ -825,31 +825,30 @@ connected, then merge the setting changes onto the machine, ticked per item.
   latches the safety ops and arbitrates sources; nothing moves and telemetry
   holds at its snapshot. It never sends a `hub_instance_id`. Sim on a saved
   hub is always this replay.
-- **The sidecar** (desktop shell; operator ruling 2026-10-03, `ph-wrml`):
-  the built-in machine is valencesim, the Nucleus host simulator, bundled as
-  a Tauri sidecar (`bundle.externalBin`, `src-tauri/src/virtual_sim.rs`). It
-  is a full hub: patterns, Kinetic, telemetry, and it moves. Connect starts it
-  on two free ports, dialed on loopback, with a state prefix under the app
-  data dir (presets, settings, pairings and its `hub_instance_id` persist).
-  It starts homed (`--homed`, ready to move) and with the pairing window open
-  (`--pairing-window`, the sim's stand-in for the PAIR button tap), so the
-  shell's knock lands as push-to-pair and nobody waits on an approval no one
-  can give; on later runs the window is harmless. Discovery, mDNS and the
-  RFC-053 datagram are always off: it never broadcasts. Both ports bind
-  loopback only (`--bind 127.0.0.1`; `/uitoken` always does), and the session
-  mints at the returned HTTP port. The shell waits for its banner, and the
-  normal WS connect dials it like a LAN hub; the
-  session is not marked virtual and is recorded in the vault like any hub.
-  Only its origin sets it apart: never saved, never the reconnect target, no
-  RFC-053 datagram. Any disconnect stops it, and the shell kills it on exit.
-  Its stdout lands in the Log tab as `sim` lines. Without a sidecar (mobile,
-  a build without it) the built-in machine is the replay above.
-- **Picker**: the Hubs pane lists Virtual Valence last, always, marked
-  virtual; alone it runs the built-in machine (the sidecar on desktop, read
-  `Virtual Valence · sim <version>` with a Stop while it runs; else the
-  valencesim fixture replayed). Each
-  saved hub with a vault record offers Sim. Never auto-connected, never saved,
-  never the reconnect target.
+- **The built-in machine** (operator rulings 2026-10-08, `ph-5u0g.1`): the
+  user sees `Virtual` (row name) and `ν virtual` (badge), both from
+  `src/model/builtin.js`; how it works is never a UI string. Virtual is
+  Neutrino, the hub firmware built to wasm, running in process (the
+  emulator; Nucleus `sim/valencesim/wasm`, files still `integral.*`),
+  vendored in `src/model/integral/` and pinned in `integral.pin`, on every
+  platform. A worker (`src/model/integral.worker.js`, inlined
+  into the bundle) owns it and its clock; the page joins it through
+  `src/model/integral-bridge.js`, a WebSocket stand-in handed to the normal
+  `connect()` and a token provider that mints at its `/uitoken`. It is a full
+  hub: patterns, Kinetic, telemetry, and it moves. It boots homed and with the
+  pairing window open (the twin's stand-in for the PAIR button tap), so the
+  shell's knock lands as push-to-pair. It opens no socket, so it never
+  broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
+  persists as one blob in `phosphor.builtin.state`. The session is not marked
+  virtual and is recorded in the vault like any hub; only its host
+  (`builtin`) sets it apart: never saved, never the reconnect target, no
+  RFC-053 datagram. Any disconnect stops it (the worker is terminated). Its
+  log lines land in the Log tab under its name. The exe is standalone.
+- **Picker**: the Hubs pane lists Virtual last, always, badged `ν virtual`;
+  the subline reads `The hub as software`, then `Nucleus <version>` with a
+  Stop while it runs; Connect boots it.
+  Each saved hub with a vault record offers Sim (the replay above). Never
+  auto-connected, never saved, never the reconnect target.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
   `virtual` (warn) where a machine reads `live`, and the hub chip reads
   `virtual`. The strip stays rendered and acts on the virtual hub.
@@ -1057,3 +1056,5 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-06 | §10.5 | The Dash grid is centered: cells stay square and the remainder is split evenly on both sides; resolves `ph-mdqo.15` (`ph-s7lj.3`). | operator (every DashGrid, category pages and nest subgrids too, is the agent's, veto-able) |
 | 2026-10-06 | §10.5 | The resize floor is each card's own content minimum: the 16 rem field floor binds text and number-row cards only; a knob, toggle, indicator, action or safety op keeps its measured minimum and never grows on load to the field floor. Narrows the first 2026-10-06 floor row. | operator |
 | 2026-10-06 | §10.5, §10.6 | Overlap and under-floor are allowed while editing and drawn red (`--warn` border, tinted plate, one-fragment tooltip); nothing saves while any card is red and it saves the moment the red clears; the drag displacement of `ph-s7lj.2` and every grow to the content floor are gone, so a saved layout is valid by construction; right-click opens the add menu at the pointer, the whole card moves it, the edit footer sits over the scroll shade, chrome selects no text (`ph-cxvc`). | operator (a resize also overlapping, ending edit mode red dropping back to the last save, a placed nest no longer growing to fit a member, a dropped add written at its content height once measured, right-click in edit mode only, a plugin's body not moving its card and no red when stacked are the agent's, veto-able) |
+| 2026-10-08 | §10.10 | The built-in machine runs in process on every platform as wasm (the Nucleus twin, `integral.wasm`, in a worker); the desktop sidecar is retired and the exe is standalone; Android's built-in machine moves (`ph-5u0g.1`, Nucleus `val-atu`). | operator (the worker, the inlined bundle, the pinned vendored wasm, state in `localStorage` and the built-in replay's removal are the agent's, veto-able) |
+| 2026-10-08 | §10.10 | The end user sees just "Virtual": the picker row reads `Virtual` and the badge `ν virtual`, from one constant (`src/model/builtin.js`); no "Valence", "sim" or "emulator" where a user reads. Neutrino is the tool's name in the repos and docs (the hub firmware built to wasm, formerly valencesim), never a UI string: "an end user doesn't need to know how it works under the hood, if it acts the same to a user, that's all they need to know". | operator |

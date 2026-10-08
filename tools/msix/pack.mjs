@@ -30,16 +30,11 @@ if (!sdk) { console.error('msix: no makeappx.exe under ' + kits + '; install the
 const tool = (name) => kits + sdk + '/x64/' + name;
 const run = (file, args) => execFileSync(file, args, { stdio: 'inherit', windowsHide: true });
 
-const sidecar = root + 'src-tauri/binaries/valencesim-x86_64-pc-windows-msvc.exe';
-for (const f of [exeDir + 'phosphor.exe', sidecar]) {
-  if (!existsSync(f)) { console.error('msix: missing ' + f + '; run npx tauri build (and npm run sidecar) first'); process.exit(1); }
-}
+if (!existsSync(exeDir + 'phosphor.exe')) { console.error('msix: missing ' + exeDir + 'phosphor.exe; run npm run build:app first'); process.exit(1); }
 
 rmSync(layout, { recursive: true, force: true });
 mkdirSync(layout + 'Assets', { recursive: true });
 copyFileSync(exeDir + 'phosphor.exe', layout + 'phosphor.exe');
-// Tauri's sidecar lookup is <exe dir>/valencesim.exe, the name the NSIS bundle installs.
-copyFileSync(sidecar, layout + 'valencesim.exe');
 for (const a of ['StoreLogo', 'Square44x44Logo', 'Square71x71Logo', 'Square150x150Logo']) {
   copyFileSync(root + 'src-tauri/icons/' + a + '.png', layout + 'Assets/' + a + '.png');
 }

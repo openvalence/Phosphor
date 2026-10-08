@@ -398,8 +398,8 @@ export function connect(opts = {}) {
   machine.link.host = host;
   machine.link.port = opts.port || 82;
   machine.link.virtual = opts.virtual || null;
-  machine.link.dialed = opts.virtual ? 'virtual'
-    : endpointLabel(host, machine.link.port, opts.WebSocketImpl ? (opts.bleName || '') : null);
+  machine.link.dialed = opts.label || (opts.virtual ? 'virtual'
+    : endpointLabel(host, machine.link.port, opts.WebSocketImpl ? (opts.bleName || '') : null));
   machine.link.attempts = 0;
   machine.link.retryAt = 0;
 
@@ -427,7 +427,7 @@ export function connect(opts = {}) {
     clientName: opts.clientName || 'Phosphor',
     instanceId: getInstanceId(),
     // The virtual hub grants its tier to every session; there is no /uitoken to ask.
-    token: opts.virtual ? null : (h, origin) => acquireToken(origin),
+    token: opts.virtual ? null : opts.token || ((h, origin) => acquireToken(origin)),
     catalogStore: opts.catalogStore,
     subscriptions: HELLO_WISHES,
     autoReconnect: true,

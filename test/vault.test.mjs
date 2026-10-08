@@ -16,7 +16,7 @@ const storage = {
 };
 Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
 
-const { recorder, loadMachine, hasMachine, builtinMachine, hubOptions, catalogStoreFor, VAULT_PREFIX, BUILTIN_KEY } =
+const { recorder, loadMachine, hasMachine, hubOptions, catalogStoreFor, VAULT_PREFIX } =
   await import('../src/model/vault.js');
 const { exportBackup } = await import('../src/model/prefs.js');
 const { createLocalHub, createSession, encodeFrame, FRAME, catalogEtag, LIMITS, toHex } =
@@ -64,19 +64,18 @@ assert.deepEqual([...loadMachine(ID).snapshots[0x1000]], [4, 5, 6], 'a new sessi
 assert.equal(loadMachine('nope'), null);
 assert.equal(hasMachine('nope'), false);
 
-// The built-in machine replays through createLocalHub and the etag fast path.
-const b = builtinMachine(CAT);
-assert.equal(b.key, BUILTIN_KEY);
+// A recorded machine replays through createLocalHub and the etag fast path.
+const b = loadMachine(ID);
 const cs = catalogStoreFor(b);
 assert.equal(toHex(cs.load().etag), toHex(catalogEtag(CAT, LIMITS.etag_bytes)));
 const hub = createLocalHub(hubOptions(b));
-const s = createSession({ host: 'virtual.builtin', autoReconnect: false, catalogStore: cs, WebSocketImpl: hub.WebSocket,
+const s = createSession({ host: 'virtual.' + ID, autoReconnect: false, catalogStore: cs, WebSocketImpl: hub.WebSocket,
   subscriptions: [[0x0003, 0, 3]] });
 let cached = null;
 s.on('catalog', (_e, _m, meta) => { cached = meta.cached; });
 await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('no LIVE')), 3000); s.on('live', () => { clearTimeout(t); res(); }); s.connect(); });
 assert.equal(cached, true, 'the vault catalog is the etag fast path');
-assert.equal(s.identity.hub_name, 'Virtual Valence');
+assert.equal(s.identity.hub_name, 'Bench (virtual)');
 assert.equal(s.identity.hub_instance_id, null, 'a replay never claims the machine id');
 s.close();
 

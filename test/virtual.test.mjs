@@ -1,17 +1,17 @@
 /**
- * virtual.test.mjs -- Virtual Valence and the Merge pane on the shell bundle
+ * virtual.test.mjs -- Virtual Valence, the built-in machine and the Merge pane on the shell bundle
  * (stub Tauri runtime), ph-6iu.
  *
  * A saved hub with a vault record (written by vault.js's own recorder) is on
- * the Hubs pane beside the always-present Virtual Valence row. With no
+ * the Hubs pane beside the always-present built-in machine row. With no
  * network, Sim opens the virtual hub and reaches LIVE; the bar reads virtual
  * and a setting write stages. Then the same hub_instance_id comes up as "the
  * real machine" (Playwright's fake hub): the Merge pane lists the row with
  * the hub's value and the staged one, pre-ticked; Apply sends one intent,
- * the hub echoes, the row settles and staging empties. Last, the desktop
- * sidecar: with virtual_start stubbed, Virtual Valence's Connect dials the
- * returned loopback endpoint as a LAN hub, the row reads the sim's version
- * and offers Stop, nothing is remembered, and Stop calls virtual_stop.
+ * the hub echoes, the row settles and staging empties. Last, the built-in
+ * machine: Connect boots the real Nucleus twin (wasm, in a worker) and joins
+ * it over no socket, the row reads its version and offers Stop, its state
+ * blob persists, nothing is remembered, and it boots again from that state.
  *
  * Run: node test/virtual.test.mjs [--shots <dir>]   (no device needed)
  */
@@ -122,20 +122,6 @@ await ctx.addInitScript(([seed, etag, bytes, id]) => {
   } catch (e) { /* no storage */ }
 }, [SEED, ETAG, toHex(CAT), ID]);
 await ctx.addInitScript(TAURI_STUB);
-// The sidecar's two commands (src-tauri/src/virtual_sim.rs); every other command still rejects.
-const SIM = { host: '127.0.0.1', port: 47999, http: 48000, version: '9.9.9-test', etag: 'ab' };
-await ctx.addInitScript((sim) => {
-  const base = window.__TAURI_INTERNALS__.invoke;
-  window.__simCalls = [];
-  window.__fetches = [];
-  window.__TAURI_INTERNALS__.invoke = (cmd, args, opts) => {
-    if (cmd === 'virtual_start' || cmd === 'virtual_stop') window.__simCalls.push(cmd);
-    if (cmd === 'plugin:http|fetch') window.__fetches.push(args && args.clientConfig && args.clientConfig.url);
-    if (cmd === 'virtual_start') return Promise.resolve(sim);
-    if (cmd === 'virtual_stop') return Promise.resolve(null);
-    return base(cmd, args, opts);
-  };
-}, SIM);
 await ctx.routeWebSocket(/./, fakeHub);
 const page = await ctx.newPage();
 const errors = [];
@@ -152,11 +138,11 @@ async function until(fn, ms = 8000) {
   return false;
 }
 
-console.log('virtual: Virtual Valence from the Hubs pane, then Merge onto the real machine');
+console.log('virtual: Sim from the Hubs pane, then Merge onto the real machine');
 await openTab('shell:hubs');
 const rows = page.locator('.pane-list.rows').first().locator('li');
-ok('Virtual Valence is the last saved-hub row, marked virtual',
-  (await rows.last().innerText()).includes('Virtual Valence') && await rows.last().locator('.mark').innerText() === 'virtual');
+ok('the built-in machine is the last saved-hub row, badged virtual',
+  (await rows.last().locator('.name').innerText()).startsWith('Virtual') && await rows.last().locator('.mark').innerText() === 'ν virtual');
 const sim = page.getByRole('button', { name: 'Sim Bench' });
 ok('the saved hub offers Sim from its vault record', await sim.isEnabled());
 if (SHOTS) await page.screenshot({ path: join(SHOTS, 'hubs-pane.png') });
@@ -230,25 +216,26 @@ ok('one intent, the staged value, on the setting channel',
 ok('staging is empty', await page.evaluate((id) => !JSON.parse(localStorage.getItem('phosphor.merge') || '{}')[id], ID));
 ok('the hub value now reads the applied one', await until(async () => (await row.locator('.old').innerText()) === '0.50'));
 
-console.log('virtual: the desktop sidecar');
+console.log('virtual: the built-in machine (Nucleus twin as wasm, in a worker)');
 await openTab('shell:hubs');
 const vrow = () => page.locator('.pane-list.rows').first().locator('li.virtual');
+ok('the last row is the built-in machine', (await vrow().locator('.name').innerText()).startsWith('Virtual'), await vrow().locator('.name').innerText());
+const opensBefore = wire.opens;
 await vrow().getByRole('button', { name: 'Connect' }).click();
-ok('Connect starts the sidecar', await until(() => page.evaluate(() => window.__simCalls.join() === 'virtual_start')),
-  await page.evaluate(() => window.__simCalls.join()));
-ok('...and dials its endpoint like a LAN hub', await until(async () => wire.urls.at(-1)?.startsWith('ws://127.0.0.1:47999') && (await chip()) === 'live'),
-  wire.urls.at(-1) + ' ' + await chip());
-ok('...and mints at its http port', await until(() => page.evaluate(() => window.__fetches.includes('http://127.0.0.1:48000/uitoken'))),
-  await page.evaluate(() => window.__fetches.join()));
-ok('the row reads the sim version', (await vrow().locator('.name').innerText()).includes('Virtual Valence · sim 9.9.9-test'),
-  await vrow().locator('.name').innerText());
+ok('Connect boots it and reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());
+ok('...over no socket', wire.opens === opensBefore, wire.opens);
+ok('the Transport reads In app', await until(() => page.evaluate(() => document.querySelector('.pane-facts')?.innerText.includes('In app'))),
+  await page.locator('.pane-facts').first().innerText());
+ok('the row reads the Nucleus version', /^Nucleus \d/.test(await vrow().locator('.meta').innerText()), await vrow().locator('.meta').innerText());
 ok('the row offers Stop', await vrow().getByRole('button', { name: 'Stop' }).isVisible());
-const simKept = await page.evaluate(() => [localStorage.getItem('shell_port'), JSON.parse(localStorage.getItem('phosphor.hubs')).map((h) => h.port).join()]);
-ok('the sim endpoint is never remembered', simKept[0] !== '47999' && simKept[1] === '82', JSON.stringify(simKept));
+ok('its state blob persists', await until(() => page.evaluate(() => !!localStorage.getItem('phosphor.builtin.state'))));
+const simKept = await page.evaluate(() => [localStorage.getItem('shell_host'), JSON.parse(localStorage.getItem('phosphor.hubs')).length]);
+ok('the built-in machine is never remembered', simKept[0] !== 'builtin' && simKept[1] === 1, JSON.stringify(simKept));
 await vrow().getByRole('button', { name: 'Stop' }).click();
-ok('Stop calls virtual_stop', await until(() => page.evaluate(() => window.__simCalls.join() === 'virtual_start,virtual_stop')),
-  await page.evaluate(() => window.__simCalls.join()));
-ok('...and the row is back to Connect', await until(() => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
+ok('Stop ends the session', await until(async () => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
+await vrow().getByRole('button', { name: 'Connect' }).click();
+ok('a second boot from the saved state reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());
+await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('no page errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();

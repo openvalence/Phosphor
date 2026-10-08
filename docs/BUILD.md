@@ -1,35 +1,64 @@
 # Building Phosphor
 
-Every platform builds the same three things: the web bundle (`vite`), the
-valencesim sidecar (CMake, from Nucleus) and the Tauri shell that bundles both.
+Every platform builds the same two things: the web bundle (`vite`) and the
+Tauri shell around it. The built-in machine rides inside the web bundle, so
+the exe is standalone.
 
-## Layout and the sidecar contract
+## Layout
 
 The repos sit side by side in one parent directory:
 
 ```
 Phosphor/     this repo
 Valence/      the JS client Phosphor imports (../../Valence/clients/js)
-Nucleus/      sim/valencesim, the sidecar; it compiles Valence's sources too
+Nucleus/      Neutrino's sources (sim/valencesim) and the native exe the suites run
+Kinetic/      the planner Neutrino compiles in
 ButtplugIO/   branch `valence`, Cargo path deps of src-tauri
 ```
 
-The sidecar is `src-tauri/binaries/valencesim-<target triple>`, plus `.exe` on
-Windows, declared as `bundle.externalBin: ["binaries/valencesim"]`. That folder
-is gitignored. `npm run sidecar` copies `../Nucleus/sim/valencesim/build/valencesim[.exe]`
-there under the host triple (`npm run sidecar -- <path>` for another source).
-Bundles install it beside the Phosphor binary with the triple stripped.
+## The built-in machine
+
+The built-in machine, Virtual in the UI (`src/model/builtin.js`), is
+Neutrino, the emulator: the Nucleus hub firmware built to wasm, run in process
+in a worker in every build: Windows, macOS, Linux and Android (DESIGN 10.10).
+Its files keep the name `integral.*` until Nucleus renames them (`val-7ai`).
+
+- `src/model/integral/` holds the vendored build: `integral.js` (the
+  emscripten loader, verbatim), `bytes.js` (`integral.wasm` as base64; the
+  page posts the bytes to the worker) and `integral.pin` (the Nucleus sha,
+  the boot etag, and the size and SHA-256 of both files). About 541 KB of
+  wasm, 722 KB as base64, 169 KB gzipped.
+- `node test/integral-pin.mjs` (in `npm run check`) checks both files against
+  the pin and boots the machine to its pinned etag. `--rebuild` also rebuilds
+  from the sibling Nucleus when it sits clean at the pinned sha and
+  byte-compares.
+- Rebuild after a Nucleus change (Nucleus clean at the commit to pin, `.beads`
+  aside; needs the workspace emsdk at `../.tools/emsdk` or `$EMSDK`, plus
+  `cmake` and `ninja` on PATH):
+
+  ```sh
+  node test/integral-pin.mjs --write
+  node test/valence-sim.mjs --integral
+  ```
+
+  `--write` builds `../Nucleus/sim/valencesim/wasm` in a temp dir and rewrites
+  the three files. Commit them together.
+- `node test/valence-sim.mjs --integral` (in `npm run check`) runs the
+  end-to-end client proof against the vendored wasm through the app's own
+  bridge (`src/model/integral-bridge.js`) and jogs it.
+- The native exe (`Nucleus/sim/valencesim/build/valencesim[.exe]`) is not
+  bundled. It stays for the suites that dial a real WebSocket hub
+  (`test/valence-sim.mjs` without `--integral`, the `--live` modes,
+  `test/pairing-roundtrip.mjs`, `test/buttplug-estop-sim.mjs`), the bench,
+  and recording `test/fixtures/valencesim-catalog.*`. Its build is Nucleus
+  `sim/valencesim/README.md`.
 
 ## Windows
 
-WinLibs MinGW-w64 GCC for the sim (Nucleus `sim/valencesim/README.md` has the
-PATH line), Rust MSVC, Node 22.
+Rust MSVC, Node 22.
 
 ```sh
-cmake -S ../Nucleus/sim/valencesim -B ../Nucleus/sim/valencesim/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc
-cmake --build ../Nucleus/sim/valencesim/build
 npm ci
-npm run sidecar
 npm run build:app -- --bundles nsis
 ```
 
@@ -70,8 +99,8 @@ by SignPath. The Microsoft Store route is retired (operator ruling,
    (`release-signing`).
 
 Only the installer is signed. SignPath cannot open an NSIS installer, so the
-`phosphor.exe` and `valencesim.exe` inside it stay unsigned. Signing them
-means signing the binaries before NSIS packs them (a second SignPath request
+`phosphor.exe` inside it stays unsigned. Signing it means signing the binary
+before NSIS packs it (a second SignPath request
 between `tauri build --no-bundle` and `tauri bundle`); not built.
 
 ### What CI does
@@ -102,13 +131,12 @@ between `tauri build --no-bundle` and `tauri bundle`); not built.
 
 `node tools/msix/pack.mjs` builds an MSIX for local testing only; CI does
 not build one. It turns a release build into
-`src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npm run build:app` and
-`npm run sidecar` first, and the Windows SDK's `makeappx.exe` (the newest
+`src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npm run build:app`
+first, and the Windows SDK's `makeappx.exe` (the newest
 `Windows Kits\10\bin\<version>\x64` that has it). The package is a full-trust
-desktop app (`runFullTrust`), so the sidecar, UDP broadcast, loopback and
-Bluetooth behave as in the NSIS install. The layout holds `phosphor.exe`,
-the sidecar as `valencesim.exe` beside it (where Tauri looks for it, as in
-the NSIS install), four tile and logo PNGs from `src-tauri/icons` under
+desktop app (`runFullTrust`), so UDP broadcast, loopback and Bluetooth
+behave as in the NSIS install. The layout holds `phosphor.exe`, four tile and
+logo PNGs from `src-tauri/icons` under
 `Assets/`, and the manifest filled from `tools/msix/AppxManifest.xml`.
 The package version is the `tauri.conf.json` version plus `.0`.
 `tools/msix/identity.json` holds the package identity (`name`, `publisher`,
@@ -157,19 +185,15 @@ uninstalls either one.
 
 ## macOS (the M4 Air, aarch64)
 
-Untested: nothing here has run on a Mac yet. The sim builds clean with Clang
-and libc++ on Linux, which is the closest stand-in available.
+Untested: nothing here has run on a Mac yet.
 
 ```sh
 xcode-select --install                               # Apple Clang, git
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install cmake node
+brew install node
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # host aarch64-apple-darwin
 
-cmake -S ../Nucleus/sim/valencesim -B ../Nucleus/sim/valencesim/build -DCMAKE_BUILD_TYPE=Release
-cmake --build ../Nucleus/sim/valencesim/build --parallel
 npm ci
-npm run sidecar
 npx tauri build --bundles app,dmg
 ```
 
@@ -201,13 +225,13 @@ password) and `APPLE_TEAM_ID`. Then the workflow's `APPLE_SIGNING_IDENTITY: '-'`
 becomes `${{ secrets.APPLE_SIGNING_IDENTITY }}` and the other five go into the
 same `env`.
 
-Intel and universal Macs are not built: that needs the sim built for x86_64
-too and joined with `lipo` into `valencesim-universal-apple-darwin`.
+Intel and universal Macs are not built (`--target universal-apple-darwin`
+is untried).
 
 ## Linux (Arch on WSL)
 
 ```sh
-sudo pacman -Syu --needed base-devel cmake ninja git nodejs npm rustup \
+sudo pacman -Syu --needed base-devel git nodejs npm rustup \
   webkit2gtk-4.1 librsvg libappindicator-gtk3 xdotool openssl
 rustup default stable
 ```
@@ -218,25 +242,21 @@ binaries. The WSL root had about 3 GB free on 2026-10-03; a Tauri release
 build needs several.
 
 ```sh
-cmake -S ../Nucleus/sim/valencesim -B ~/valencesim-build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build ~/valencesim-build
 npm ci
-npm run sidecar -- ~/valencesim-build/valencesim
 npx tauri build --bundles deb,appimage
 ```
 
 Ubuntu and Debian take the packages CI installs:
 `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libudev-dev
-libusb-1.0-0-dev libdbus-1-dev`, plus a C++23 compiler (GCC 13 or newer) for
-the sim.
+libusb-1.0-0-dev libdbus-1-dev`.
 
 ## Flatpak
 
-`flatpak/org.openvalence.Phosphor.yml` packages the `.deb` (Tauri binary and
-sidecar) on the GNOME 50 runtime. GNOME, not bare freedesktop, because only the
+`flatpak/org.openvalence.Phosphor.yml` packages the `.deb` (the Tauri
+binary) on the GNOME 50 runtime. GNOME, not bare freedesktop, because only the
 GNOME runtime ships webkit2gtk-4.1. Verified by hand on WSL2 Arch under WSLg,
-2026-10-04: CI's bundle and a local build both reach a live Virtual Valence
-session at the control access tier with the catalog adopted.
+2026-10-04: CI's bundle and a local build both reach a live session at the
+control access tier with the catalog adopted.
 
 By hand, with CI's `.deb` (built on ubuntu-22.04, so its glibc is older than
 any runtime's):
@@ -250,13 +270,10 @@ flatpak build-bundle repo phosphor.flatpak org.openvalence.Phosphor
 flatpak install --user phosphor.flatpak
 ```
 
-- App data (logs, plugins, the sim's state) lives in
+- App data (logs, plugins) lives in
   `~/.var/app/org.openvalence.Phosphor/data/com.phosphor.app/`, the Tauri
   identifier nested under the Flatpak app id. A `.deb` install's
   `~/.local/share/com.phosphor.app/` is not visible to the Flatpak.
-- The sidecar runs as `/app/bin/valencesim` inside the sandbox and exits on a
-  normal close. A hard kill of `phosphor` leaves it running in the sandbox
-  until `flatpak kill org.openvalence.Phosphor` (ph-y853).
 - `fallback-x11` grants X11 only when there is no Wayland socket: forcing
   `GDK_BACKEND=x11` on a Wayland session panics with "Failed to initialize
   GTK" unless the run adds `--socket=x11`.
@@ -314,8 +331,8 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   On a build tree from before the vector, Gradle's incremental resource merge
   loses `drawable/ic_launcher_foreground` (AAPT: not found): delete
   `gen/android/app/build/intermediates/incremental` once.
-- No sidecar on Android: `src-tauri/tauri.android.conf.json` drops
-  `bundle.externalBin`, and Virtual Valence falls back to the catalog replay.
+- The built-in machine runs on Android as everywhere else (The built-in
+  machine, above).
 - Delete the old APK before a rebuild: the Gradle debug build updates it in
   place without compacting, so the file doubles (448 MB seen 2026-10-08).
 - A debug APK is debug-signed (about 230 MB, symbols kept). A release needs a
@@ -359,19 +376,18 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
 
 Each bundle job checks out Phosphor, Nucleus (`main`), Valence and Kinetic at
-the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO (`valence`), builds the sim (MinGW-w64
-from MSYS2 on Windows, Apple Clang, GCC 13 on Ubuntu), names it for Tauri,
-then runs tauri-action, whose `beforeBuildCommand` runs `npm run check`
-first. A `v*` tag also opens one draft release with every bundle; the
+the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO
+(`valence`), then runs tauri-action, whose `beforeBuildCommand` runs
+`npm run check` first, the built-in machine's pin among it. CI never builds
+the wasm: it is vendored. A `v*` tag also opens one draft release with every bundle; the
 Windows job then signs its installer (Windows signing, above).
 
 Before the first run can pass, the remote needs what the workflow checks out:
 
 - `openvalence/ButtplugIO` with branch `valence` (the fork's `valence` branch
   exists only locally today; its `origin` is upstream buttplug).
-- The `valence.pin` sha on `openvalence/Valence`, the `kinetic.pin` sha on
-  `openvalence/Kinetic`, and the Nucleus sim
-  portability commit on `openvalence/Nucleus` `main`.
+- The `valence.pin` sha on `openvalence/Valence` and the `kinetic.pin` sha on
+  `openvalence/Kinetic`.
 
 Trigger: push the workflow (`git push` in Phosphor), or with the GitHub CLI
 `gh workflow run build.yml -R openvalence/Phosphor`.

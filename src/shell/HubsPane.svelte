@@ -15,9 +15,9 @@
    * - Rows never move: found rows keep first-seen order and their last-seen
    *   time; status lines are fixed slots.
    * - Saved hubs are prefs.js's; a hub is saved once it is live over WiFi.
-   * - Virtual Valence (virtual.svelte.js) is always the last row, marked
-   *   virtual; Sim opens it on a saved hub's vault record. On desktop its
-   *   Connect starts the sidecar sim, which reads its version and offers Stop.
+   * - The built-in machine (virtual.svelte.js) is always the last row; its
+   *   Connect boots it and offers Stop. Sim on a saved hub opens the replay
+   *   of its vault record.
    */
   import HostEntry from '../ui/HostEntry.svelte';
   import { advFlags } from './ble-adv.js';
@@ -27,7 +27,8 @@
   import { savedHubs, renameHub, forgetHub, hubLabel } from '../model/prefs.js';
   import { nameInput, opensName } from './rename.js';
   import { since, endpointLabel } from '../model/format.js';
-  import { hasMachine, BUILTIN_KEY } from '../model/vault.js';
+  import { hasMachine } from '../model/vault.js';
+  import { BUILTIN_MACHINE_NAME, BUILTIN_MACHINE_BADGE } from '../model/builtin.js';
   import { openVirtual, sim, onSim } from './virtual.svelte.js';
   import '../ui/pane.css';
 
@@ -56,8 +57,7 @@
   });
   const dialedWs = (host, port) => link.phase !== 'idle' && link.dialed === endpointLabel(host, port, null);
   const onVirtual = (key) => link.phase !== 'idle' && !!link.virtual && link.virtual.key === key;
-  const builtinMeta = $derived(sim.info ? sim.info.host + ':' + sim.info.port
-    : onVirtual(BUILTIN_KEY) ? 'built-in machine · nothing moves' : 'built-in machine');
+  const builtinMeta = $derived(sim.info ? 'Nucleus ' + sim.info.version : 'The hub as software');
   const discoveryText = $derived(hubs.finding ? 'Searching LAN'
     : hubs.scanning ? 'Scanning Bluetooth'
       : hubs.note);
@@ -68,7 +68,7 @@
     <div class="pane-head"><h2 id="hp-link">Connection</h2></div>
     <dl class="pane-facts">
       <dt>Hub</dt><dd class:mono={!!link.dialed}>{link.dialed || '--'}</dd>
-      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : onSim() ? 'Virtual (sidecar sim)' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
+      <dt>Transport</dt><dd>{idle ? '--' : link.virtual ? 'Virtual (in page)' : onSim() ? 'In app' : hubs.mode === 'ble' ? 'Bluetooth' : 'WiFi (WebSocket)'}</dd>
       <dt>Link</dt><dd>{link.phase}</dd>
       <dt>Bluetooth wire</dt><dd class:mono={!!hubs.stats}>{hubs.stats || '--'}</dd>
     </dl>
@@ -110,15 +110,15 @@
         {/each}
         <li class="virtual">
           <span class="who">
-            <span class="name">Virtual Valence{sim.info ? ' · sim ' + sim.info.version : ''}<span class="mark virt">virtual</span></span>
+            <span class="name">{BUILTIN_MACHINE_NAME}<span class="mark virt">{BUILTIN_MACHINE_BADGE}</span></span>
             <span class="meta mono" title={builtinMeta}>{builtinMeta}</span>
           </span>
-          <span class="seen mono">{onSim() || onVirtual(BUILTIN_KEY) ? 'connected' : 'built in'}</span>
+          <span class="seen mono">{onSim() ? 'connected' : 'built in'}</span>
           <span class="acts">
             {#if sim.info}
               <button type="button" class="og-btn sm" onclick={disconnect}>Stop</button>
             {:else}
-              <button type="button" class="og-btn sm" disabled={onVirtual(BUILTIN_KEY)} onclick={() => openVirtual()}>Connect</button>
+              <button type="button" class="og-btn sm" onclick={() => openVirtual()}>Connect</button>
             {/if}
           </span>
         </li>

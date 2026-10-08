@@ -50,8 +50,6 @@ buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server
 buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
 async-trait = "0.1"
 futures = "0.3"
-# Virtual Valence's valencesim sidecar (src/virtual_sim.rs, DESIGN section 10.10).
-tauri-plugin-shell = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

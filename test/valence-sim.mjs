@@ -12,6 +12,8 @@
  *   Run it: ../Nucleus/sim/valencesim/build/valencesim.exe machine \
  *             --homed --headless --duration 240 --port 82 --http 80 --no-mdns
  *   Then:   node test/valence-sim.mjs [--host 127.0.0.1] [--port 82] [--http 80]
+ *   Or:     node test/valence-sim.mjs --integral   (no exe: the app's built-in machine, the
+ *           vendored wasm through src/model/integral-bridge.js over a MessageChannel; no fixture write)
  *
  * KILL ANY STALE VALENCESIM ON 80/82 FIRST or you are testing the wrong binary.
  *
@@ -45,6 +47,22 @@ const argOf = (flag, def) => { const i = args.indexOf(flag); return i >= 0 ? arg
 const HOST = argOf('--host', '127.0.0.1');
 const PORT = parseInt(argOf('--port', '82'), 10);
 const HTTP = argOf('--http', null);
+const INTEGRAL = args.includes('--integral');
+
+// The app's own path: hostIntegral is what integral.worker.js runs, bridgeIntegral what the page runs.
+let bridge = null;
+if (INTEGRAL) {
+  const { hostIntegral, bridgeIntegral } = await import('../src/model/integral-bridge.js');
+  const { default: createIntegral } = await import('../src/model/integral/integral.js');
+  const { WASM } = await import('../src/model/integral/bytes.js');
+  const { port1, port2 } = new MessageChannel();
+  hostIntegral(port1, createIntegral);
+  const up = new Promise((res, rej) => {
+    bridge = bridgeIntegral(port2, (m) => (m.op === 'up' ? res(m) : m.op === 'down' ? rej(new Error(m.error)) : null));
+  });
+  bridge.boot(new Uint8Array(Buffer.from(WASM, 'base64')), null, { homed: true });
+  console.log('integral: Nucleus ' + (await up).version);
+}
 
 let failures = 0;
 const ok = (name, cond, extra) => {
@@ -84,7 +102,8 @@ async function openSession(label, extra = {}) {
     catalogStore,
     // Bare sessions land at watch; every intent below needs control, so each
     // connect mints a single-use /uitoken (HTTP on port 80).
-    token: (h) => acquireToken(HTTP ? h + ':' + HTTP : h),
+    token: bridge ? bridge.token : (h) => acquireToken(HTTP ? h + ':' + HTTP : h),
+    WebSocketImpl: bridge ? bridge.WebSocket : undefined,
     subscriptions: [
       [CH.SAFETY, 0, PRIORITY.critical],
       [CH.MACHINE_CONFIG, 0, PRIORITY.elevated],
@@ -112,7 +131,7 @@ async function openSession(label, extra = {}) {
 }
 
 async function main() {
-  console.log('valence-js ⇆ valencesim  ws://' + HOST + ':' + PORT + '/\n');
+  console.log('valence-js ⇆ ' + (INTEGRAL ? 'the built-in machine (wasm)' : 'valencesim  ws://' + HOST + ':' + PORT + '/') + '\n');
 
   // ========================================================================
   // SESSION 1 — cold: no cached catalog, so the full RFC-015 gate runs.
@@ -167,11 +186,13 @@ async function main() {
   // ========================================================================
   // Write the golden fixture for the offline test.
   // ========================================================================
-  const here = dirname(fileURLToPath(import.meta.url));
-  mkdirSync(here + '/fixtures', { recursive: true });
-  writeFileSync(here + '/fixtures/valencesim-catalog.bin', Buffer.from(s1.catalogBytes));
-  writeFileSync(here + '/fixtures/valencesim-catalog.etag', toHex(w.catalogEtag) + '\n');
-  info('fixture written: test/fixtures/valencesim-catalog.{bin,etag}');
+  if (!INTEGRAL) {
+    const here = dirname(fileURLToPath(import.meta.url));
+    mkdirSync(here + '/fixtures', { recursive: true });
+    writeFileSync(here + '/fixtures/valencesim-catalog.bin', Buffer.from(s1.catalogBytes));
+    writeFileSync(here + '/fixtures/valencesim-catalog.etag', toHex(w.catalogEtag) + '\n');
+    info('fixture written: test/fixtures/valencesim-catalog.{bin,etag}');
+  }
 
   // ========================================================================
   // INTENT → post-clamp ECHO, encoded from the catalog's own schema.
@@ -467,6 +488,15 @@ async function main() {
   const echo2 = await s2.sendConfigSet({ 1: origMin, 2: origMax });
   ok('a second back-to-back session can still write (ownership teardown clean)',
     typeof echo2.applied[1] === 'number');
+  if (INTEGRAL) {
+    // The built-in machine moves: a jog lands (the Nucleus wasm/check.mjs proof, through the app's bridge).
+    const move = (s2.catalog || []).find((e) => e.name === 'move');
+    const pos = () => seen2.states.get(CH.MOTION) && seen2.states.get(CH.MOTION).pos_10um;
+    if (move) await s2.sendIntent(move.id, { 1: 80 }).catch((e) => ok('jog accepted', false, e.message));
+    let p = pos();
+    for (let i = 0; i < 160 && !(Math.abs(p - 80) < 0.5); i++) { await delay(50); p = pos(); }
+    ok('the built-in machine moves: a jog lands at 80 mm', !!move && Math.abs(p - 80) < 0.5, p + ' mm');
+  }
   s2.close();
   await delay(300);
 

@@ -19,7 +19,6 @@ import { FRAME, parseFrames, toHex, fromHex, catalogEtag, LIMITS } from '../../.
 import { hubKey } from './prefs.js';
 
 export const VAULT_PREFIX = 'phosphor.vault.';
-export const BUILTIN_KEY = 'builtin';
 const THROTTLE_MS = 2000;
 
 const store = () => { try { return globalThis.localStorage || null; } catch (e) { return null; } };
@@ -53,11 +52,6 @@ export function loadMachine(key, storage = store()) {
 /** Does this machine have a replayable picture? */
 export function hasMachine(key, storage = store()) {
   try { return !!(storage && key && storage.getItem(VAULT_PREFIX + key + '.catalog')); } catch (e) { return false; }
-}
-
-/** The built-in machine: the recorded valencesim catalog, every STATE at its catalog default. */
-export function builtinMachine(catalogBytes) {
-  return { key: BUILTIN_KEY, name: '', identity: { product: 'valencesim' }, catalogBytes, snapshots: {}, items: [], savedAt: 0 };
 }
 
 /** The createLocalHub options for a stored machine. */

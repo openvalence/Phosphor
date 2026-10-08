@@ -6,7 +6,7 @@
  * Constraints:
  * - A hub is recorded only on a LIVE WS session; a BLE address is not a
  *   dialable endpoint, and a BLE session that hops to WS is recorded then.
- *   A virtual session, the sidecar sim's included, is never recorded
+ *   A virtual session, the built-in machine's included, is never recorded
  *   (virtual.svelte.js).
  * - The redial dials the saved host AND port exactly (ph-dwy).
  */

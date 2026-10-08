@@ -342,7 +342,7 @@ export function bytes(n) {
  * the machine it replays.
  */
 export function hubTitle(identity, liveName, virtual = null) {
-  if (virtual) return virtual.name ? virtual.name + ' (virtual)' : 'Virtual Valence';
+  if (virtual) return virtual.name + ' (virtual)';
   return liveName || (identity && identity.hub_name) || (identity && identity.product) || '--';
 }
 

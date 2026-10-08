@@ -11,8 +11,9 @@
  *   fires first and runAction still sends the op (actions.js noteEstopPress).
  * - A broadcast stops every hub on the segment that honors RFC-053, not only
  *   the one this window drives.
- * - A Virtual Valence session never broadcasts, the sidecar sim included:
- *   its e-stop belongs to the sim or a replay, not to a machine on the LAN.
+ * - A Virtual Valence session never broadcasts, the built-in machine included:
+ *   its e-stop belongs to the built-in machine or a replay, not to a machine
+ *   on the LAN.
  * - Tauri IPC is JSON: the 12 bytes travel as a number array.
  */
 
