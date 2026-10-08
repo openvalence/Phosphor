@@ -30,7 +30,7 @@ cmake -S ../Nucleus/sim/valencesim -B ../Nucleus/sim/valencesim/build -G Ninja -
 cmake --build ../Nucleus/sim/valencesim/build
 npm ci
 npm run sidecar
-npx tauri build --bundles nsis
+npm run build:app -- --bundles nsis
 ```
 
 ## Windows MSIX (Microsoft Store)
@@ -40,7 +40,7 @@ and the Store signs the package. Windows installs, updates and removes an MSIX
 as a unit. The NSIS installer stays for direct downloads.
 
 `node tools/msix/pack.mjs` turns a release build into
-`src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npx tauri build` and
+`src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npm run build:app` and
 `npm run sidecar` first, and the Windows SDK's `makeappx.exe` (the newest
 `Windows Kits\10\bin\<version>\x64` that has it). The package is a full-trust
 desktop app (`runFullTrust`), so the sidecar, UDP broadcast, loopback and
