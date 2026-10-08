@@ -307,7 +307,8 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   (Versioning, below). The icon sources live in `src-tauri/icons/android/`:
   the adaptive icon is the solid chassis color behind a vector foreground
   (`drawable/ic_launcher_foreground.xml`, also the themed-icon monochrome
-  layer), the mark inside the 66 dp safe zone of the 108 dp canvas.
+  layer), the whole mark on the 52 dp circle keyline of the 108 dp canvas
+  (Android asks 48 to 66 dp).
   `npm run icons` regenerates the mipmap PNGs (unused at minSdk 26, kept
   for the template) and reapplies the copy.
   On a build tree from before the vector, Gradle's incremental resource merge
