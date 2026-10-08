@@ -112,7 +112,7 @@ the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
 ## Builds
 
 Windows, macOS (aarch64) and Linux bundles, each carrying the valencesim
-sidecar, plus a Flatpak, an Android build and an MSIX package: local recipes, what CI
+sidecar, plus a Flatpak, an Android build and the SignPath-signed Windows installer: local recipes, what CI
 (`.github/workflows/build.yml`) produces and what it needs on the remote are
 in [docs/BUILD.md](docs/BUILD.md).
 

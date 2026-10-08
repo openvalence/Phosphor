@@ -1,6 +1,6 @@
 # Phosphor bundles for Windows, macOS and Linux, each with its valencesim
-# sidecar, plus an MSIX from the Windows build and a Flatpak built from the
-# Linux .deb. docs/BUILD.md is the map.
+# sidecar, plus a Flatpak built from the Linux .deb. SignPath signs the
+# Windows installer outside pull requests. docs/BUILD.md is the map.
 # A v* tag also opens a draft release holding every bundle.
 name: build
 
@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write # the draft release on a tag
+  actions: read # SignPath reads the job that produced the artifact
 
 jobs:
   bundle:
@@ -33,7 +34,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       # The sibling layout Phosphor builds against: Valence (the JS client),
-      # Nucleus (the sim), ButtplugIO (Cargo path deps), all beside Phosphor.
+      # Nucleus (the sim), Kinetic (the sim's planner), ButtplugIO (Cargo path
+      # deps), all beside Phosphor.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -53,6 +55,16 @@ jobs:
           repository: openvalence/Valence
           ref: ${{ steps.pin.outputs.sha }}
           path: Valence
+      - name: Kinetic at Nucleus's kinetic.pin
+        id: kpin
+        shell: bash
+        run: echo "sha=$(tr -d '[:space:]' < Nucleus/kinetic.pin)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          repository: openvalence/Kinetic
+          ref: ${{ steps.kpin.outputs.sha }}
+          path: Kinetic
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -133,6 +145,7 @@ jobs:
 
       # The .app ships inside the .dmg: an artifact zip drops its exec bits.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
         with:
           name: phosphor-${{ matrix.triple }}
           if-no-files-found: error
@@ -142,18 +155,32 @@ jobs:
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/deb/*.deb
             Phosphor/src-tauri/target/${{ matrix.triple }}/release/bundle/appimage/*.AppImage
 
-      # Unsigned on purpose: the Store signs on submission. tools/msix/identity.json
-      # holds the Partner Center identity (docs/BUILD.md, MSIX).
-      - name: MSIX (Windows)
-        if: runner.os == 'Windows'
-        working-directory: Phosphor
-        run: node tools/msix/pack.mjs --exe-dir src-tauri/target/${{ matrix.triple }}/release
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: runner.os == 'Windows'
+      # Skipped, not failed, until the SignPath variables exist (docs/BUILD.md,
+      # Windows signing). The artifact zip holds nsis/<installer>.exe.
+      - name: Sign the installer (SignPath)
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
-          name: phosphor-x86_64.msix
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: runner.os == 'Windows' && github.event_name != 'pull_request' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        with:
+          name: phosphor-${{ matrix.triple }}-signed
           if-no-files-found: error
-          path: Phosphor/src-tauri/target/msix/phosphor-x86_64.msix
+          path: signed/nsis/*.exe
+      # Same file name, so the signed installer replaces the unsigned one.
+      - name: Signed installer into the draft release
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" signed/nsis/*.exe --clobber -R "${{ github.repository }}"
 
   flatpak:
     needs: bundle
