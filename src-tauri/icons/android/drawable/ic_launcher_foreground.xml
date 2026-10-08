@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive foreground: the Valence mark from Valence/assets/icons/icon-app.svg
+     (its 1024 units), scaled so the ring's outer diameter is about 61 of the
+     108 dp canvas. Keep it inside the 66 dp safe zone: the launcher masks the rest. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group android:translateX="54" android:translateY="54" android:scaleX="0.09" android:scaleY="0.09">
+    <path android:pathData="M-297.99,34.71 A300,300 0 0,1 -118.94,-275.42 M118.94,-275.42 A300,300 0 0,1 297.99,34.71 M179.05,240.71 A300,300 0 0,1 -179.05,240.71"
+        android:strokeColor="#A78BFA" android:strokeWidth="80" android:strokeLineCap="round"/>
+    <path android:pathData="M-136,0 a136,136 0 1,0 272,0 a136,136 0 1,0 -272,0 M-54,-300 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0 M205.81,150 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0 M-313.81,150 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0"
+        android:fillColor="#4DA6FF"/>
+  </group>
+</vector>

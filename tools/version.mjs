@@ -9,6 +9,7 @@
 //                                    bundle; never commit the result)
 // node tools/version.mjs --check     the committed bases agree (npm run check)
 // node tools/version.mjs --tauri -- <args>   npx tauri build with the version
+// node tools/version.mjs --android -- <args> npx tauri android build, same
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +50,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     stamp(files.pkg, /"version": "[^"]+"/, `"version": "${v}"`);
     stamp(files.meta, /<release version="[^"]+" date="[^"]+"\/>/, `<release version="${v}" date="${new Date().toISOString().slice(0, 10)}"/>`);
     console.log('version: ' + v);
-  } else if (argv[0] === '--tauri') {
+  } else if (argv[0] === '--tauri' || argv[0] === '--android') {
     const v = buildVersion();
     const rest = argv.slice(argv[1] === '--' ? 2 : 1);
     console.log('version: ' + v);
@@ -57,7 +58,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const cfg = root + 'src-tauri/target/version.conf.json';
     mkdirSync(root + 'src-tauri/target', { recursive: true });
     writeFileSync(cfg, JSON.stringify({ version: v }));
-    execFileSync('npx', ['tauri', 'build', '--config', cfg, ...rest], { cwd: root, stdio: 'inherit', shell: true });
+    const cmd = argv[0] === '--android' ? ['android', 'build'] : ['build'];
+    execFileSync('npx', ['tauri', ...cmd, '--config', cfg, ...rest], { cwd: root, stdio: 'inherit', shell: true });
   } else {
     console.log(buildVersion());
   }

@@ -292,7 +292,7 @@ Set `ANDROID_HOME`, `NDK_HOME` (the `ndk/<version>` folder) and `JAVA_HOME`.
 
 ```sh
 npx tauri android init --ci
-npx tauri android build --apk --target aarch64 --debug --ci
+npm run build:android -- --apk --target aarch64 --debug --ci
 adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
@@ -302,6 +302,17 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
 - `bundle.android.minSdkVersion` is 26, the BLE plugin's floor. Its Bluetooth
   and location permissions merge in from the plugin's own manifest; Tauri's
   template carries `INTERNET`. The debug app id is `com.phosphor.app.debug`.
+- `build:android` copies the launcher icon into the generated project
+  (`tools/android-icons.mjs`) and builds with the computed version
+  (Versioning, below). The icon sources live in `src-tauri/icons/android/`:
+  the adaptive icon is the solid chassis color behind a vector foreground
+  (`drawable/ic_launcher_foreground.xml`, also the themed-icon monochrome
+  layer), the mark inside the 66 dp safe zone of the 108 dp canvas.
+  `npm run icons` regenerates the mipmap PNGs (unused at minSdk 26, kept
+  for the template) and reapplies the copy.
+  On a build tree from before the vector, Gradle's incremental resource merge
+  loses `drawable/ic_launcher_foreground` (AAPT: not found): delete
+  `gen/android/app/build/intermediates/incremental` once.
 - No sidecar on Android: `src-tauri/tauri.android.conf.json` drops
   `bundle.externalBin`, and Virtual Valence falls back to the catalog replay.
 - Delete the old APK before a rebuild: the Gradle debug build updates it in
@@ -329,7 +340,8 @@ file edited by hand (`package.json` and the metainfo release mirror it;
 `tools/version.mjs` computes PATCH as the commit count since the tag
 `base/MAJOR.MINOR` (`git tag base/0.2 && git push origin base/0.2` when the
 minor moves). CI stamps the three files before every bundle; locally
-`npm run build:app -- --bundles nsis` does the same through `--config`, and
+`npm run build:app -- --bundles nsis` and `npm run build:android` do the same
+through `--config`, and
 `tools/msix/pack.mjs` uses the computed version too. No step commits a
 stamped file. Android's versionCode is major*1e6 + minor*1e3 + patch, so a
 minor must move before the patch reaches 1000.

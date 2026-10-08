@@ -1,12 +1,12 @@
 // icons.mjs -- regenerates every Phosphor and site icon from the sources in
 // ../Valence/assets/icons (README there names the variants and sizes).
 // Run: npm run icons
-// Writes src-tauri/icons/, flatpak/org.openvalence.Phosphor.svg and
+// Writes src-tauri/icons/ (Android: see below), flatpak/org.openvalence.Phosphor.svg and
 // ../openvalence.github.io/icons/ (site.webmanifest there is hand-written).
 // Layers at 16 to 32 px come from icon-16.svg and icon-small.svg, never a
 // downscale of the 1024.
 import { chromium } from 'playwright';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,6 +65,19 @@ const mac = await render('icon-app.svg', 1024, join(tmp, 'mac.png'), { mac: true
 execSync(`npx tauri icon "${app}" --ios-color "${CHASSIS}"`, { cwd: root, stdio: 'inherit' });
 execSync(`npx tauri icon "${mac}" -o "${join(tmp, 'mac')}"`, { cwd: root, stdio: 'inherit' });
 copyFileSync(join(tmp, 'mac', 'icon.icns'), out + 'icon.icns');
+
+// tauri icon writes Android into gen/ when that exists, else into
+// icons/android. Keep its legacy mipmaps; the adaptive icon is the
+// hand-written vector (tools/android-icons.mjs), never a foreground PNG.
+const gen = root + 'src-tauri/gen/android/app/src/main/res/';
+for (const d of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+  for (const f of ['ic_launcher.png', 'ic_launcher_round.png']) {
+    if (existsSync(gen + `mipmap-${d}/${f}`)) copyFileSync(gen + `mipmap-${d}/${f}`, out + `android/mipmap-${d}/${f}`);
+  }
+  rmSync(out + `android/mipmap-${d}/ic_launcher_foreground.png`, { force: true });
+}
+execSync('git checkout -- src-tauri/icons/android/mipmap-anydpi-v26', { cwd: root, stdio: 'inherit' });
+if (existsSync(gen)) execSync('node tools/android-icons.mjs', { cwd: root, stdio: 'inherit' });
 
 await render('icon-small.svg', 32, out + '32x32.png', { pad: 1 });
 await render('icon-small.svg', 30, out + 'Square30x30Logo.png', { pad: 1 });

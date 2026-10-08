@@ -9,6 +9,7 @@
     "build": "npm run check && vite build",
     "build:only": "vite build",
     "build:app": "node tools/version.mjs --tauri --",
+    "build:android": "node tools/android-icons.mjs && node tools/version.mjs --android --",
     "preview": "vite preview",
     "icons": "node tools/icons.mjs",
     "check": "node test/run-suites.mjs check",
