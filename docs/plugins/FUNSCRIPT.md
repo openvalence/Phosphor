@@ -370,9 +370,158 @@ window on the last: Kinetic² renders a reversal flat at every
 
 ## The card (player-ui)
 
+### The page redesign (operator rulings 2026-10-08, `ph-1qs5`, `ph-5u0g`)
+
+Accepted as drawn ("yes, I like this") on the redesign mockup, with three
+amendments: on phones fullscreen is a real fullscreen (Android immersive,
+DESIGN §10.3); the quick rail is one design, vertical on phones and
+horizontal on the desktop; the quick rail is reachable inside fullscreen on
+both. Same day: the desktop has no bottom dock; its quick rail exists only in
+fullscreen. Operator, peeve 8: "this is where a portion of users will spend a
+significant amount of time." Merges the ten style findings (`ph-1qs5` notes)
+and Android peeves 5 to 9 (`ph-5u0g` notes). The ids PR1 to PR18 follow the
+mockup's callout numbers. Superseded rulings below are marked in place.
+
+The page has three classes, read from the shell's bucket (DESIGN §10.12):
+PHONE PORTRAIT and PHONE LANDSCAPE are buckets 1 and 2 (landscape when the
+window is wider than tall), DESKTOP is bucket 3 and up. The Dash card keeps
+its own box-driven compositions (full, handheld, glance, below); its full
+and handheld compositions take the player bar (PR5) and the timeline head
+(PR7) too, because they are one code path, and glance is unchanged.
+
+```
+PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
++------------------------------+    +--------------------------------------+--------------+
+| 01 PLAYER  title  [Player|Library]| 01 PLAYER  title   Open video  Open  | 02 LIBRARY   |
+| stage: video aspect, or the  |    |   script  Close                      | search, sort |
+|   120 px strip (open buttons,|    | stage, fill (ph-yuce)                | rows, paged  |
+|   or the stroke meter)       |    | split bar                            |   (or 03     |
+| TIMELINE head: A-B offset Inv|    | TIMELINE head: zoom - + span, A-B,   |   SETTINGS   |
+|   Graph (collapsible)        |    |   Offset, Invert, Graph              |   in this    |
+| wave screen                  |    | wave screen                          |   slot)      |
+| scrub: 0:41  heat  -3:01     |    | bar: prev Play next 0:41 heat -3:01  |              |
+| bar: prev Play next Motion   |    |   volume Motion rate Fullscreen Sett.|              |
+|   rate Fullscreen Rail Sett. |    | status row, 3 px tone bar            | page n / m   |
++------------------------------+    +--------------------------------------+--------------+
+| page footer: status slot     |
++------------------------------+
+```
+
+- **PR1 Shell card chrome.** Player (01), Library (02) and Settings (03) are
+  shell cards (`.surface-card`) under numbered uppercase heads; the Player
+  head's title slot carries the media name (the old source row goes). No
+  private frame inside: no framed status box, no shadowed overlay, no boxed
+  meter or stage. The `--screen` plates of the wave and the heat stay.
+  Resolves finding 7.
+- **PR2 Stage.** On phones the stage follows the video's aspect: its height
+  is the width over the aspect, capped by the room above the fixed rows, so
+  a portrait video stands tall and a landscape one is a strip. Empty, it is
+  a 120 px strip. The desktop keeps the filled stage row (`ph-yuce`).
+- **PR3 Open video and Open script**, either order: on the empty stage and
+  in the Player head, with Close beside them once something is loaded (on
+  phones the head holds a Media menu: Open video, Open script, Close). A
+  video opened later attaches to the loaded script and a script to the
+  loaded video. Open video's picker is `multiple` and also takes
+  `.funscript`, so a pair picked together still pairs by base name
+  (`pairFiles`); Open script takes `.funscript` only. Peeve 7.
+- **PR4 Motion only.** A script with no video plays against the clock and
+  the stage strip shows the stroke meter (an intent tick for the script, a
+  reality tick for the measured position, glance's look). Fullscreen is
+  grayed with the reason `No video`. Peeve 7.
+- **PR5 One player bar,** at the bottom of the Player card, directly above
+  the footer: loading a video or collapsing the timeline never moves it, the
+  stage and the gap above absorb the change. Phones: a full-width scrub row
+  (elapsed, heat, remaining) over a button row: previous, Play, next,
+  Motion, rate, Fullscreen, quick rail, Settings. Desktop: one row:
+  previous, Play, next, elapsed, heat, remaining, volume, Motion, rate,
+  Fullscreen, Settings (no quick rail inline on the desktop, PR11). Every
+  target is at least 40 px under a coarse pointer (law 12). Graph moves to
+  the timeline head, Close to the Player head, volume into Settings on
+  phones (the hardware keys work as well).
+- **PR6 Motion beside Play,** in the shell's on look (`.og-btn.on`, reality
+  and its glow): the switch that lets Play move the machine. Resolves
+  finding 1.
+- **PR7 Timeline head row.** The timeline band has its own head: a caret and
+  TIMELINE, then (desktop) zoom − + with its span, A-B, Offset (`.og-num`,
+  ms), Invert, Graph. The wave screen sits under it with nothing over it.
+  On phones the band collapses to its head by the user's own tap (kept as
+  pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
+- **PR8 Fullscreen or not.** Fullscreen is one mode, a player-bar button: the
+  shell's page fullscreen, bare (DESIGN §10.3). The window goes fullscreen
+  on the desktop; Android is immersive. No In window / Borderless mode and
+  no mode glyph; the page never sends `bare: false` or
+  `phosphor-page-fullscreen-mode`. Peeve 9.
+- **PR9 The hover bar is fullscreen only.** It keeps the `ph-mcfe` shape,
+  the round seek dot and the idle timer; its bottom row is the player bar
+  (previous, Play, next, time, Motion, rate, timeline toggle, quick rail,
+  Settings, Exit fullscreen). The timeline toggle shows a 72 px wave over
+  the video, above the scrub. Inline there is no overlay: a tap on the video
+  toggles Play, a double-tap goes fullscreen. The under-130 px rule goes
+  with the inline bar.
+- **PR10 Stop pair** top right in fullscreen at full hit size and half
+  opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
+  Restated, unchanged. No floating collapse chevrons.
+- **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
+  PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
+  fullscreen (the vertical pop-up on the right); on the desktop only in
+  fullscreen (the horizontal pop-up at the bottom), absent inline.
+- **PR12 Settings.** Phone portrait: a bottom sheet, at most 65 % of the
+  height, scrolling inside, dismissed by a tap outside or a drag down, the
+  stage visible above it. Landscape fullscreen: a drawer from the right,
+  like the library. Desktop: a card in the library column's slot
+  (`ph-mdqo.7`'s slot rule stands), no shadow. It never covers the wave.
+  Peeves 5 and 8.
+- **PR13 Library.** Phone portrait: a tab (Player | Library in the head,
+  D19 stands) with rows (title, duration · actions), paged and never
+  scrolled, and a now-playing row at the bottom (title, position, Pause).
+  Landscape fullscreen: a drawer from the right under the stop pair (which
+  never moves), closed by a pick or a tap outside. Desktop: the side column
+  with its caret (`ph-n4t7`'s caret stands there).
+- **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
+  page registers `status`). Desktop: the Player card's last row, unframed.
+  Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
+  Findings 7 and 9.
+- **PR15 Shell controls by construction.** Every button is `.og-btn` (`.sm`
+  in the 28 px rows, its min-height reconciled with the bar) and the private
+  button blocks go (finding 2); persistent on-states (Motion, Invert, the
+  switches, the analyzer's Preview) take `.on`, and `--highlight` stays for
+  focus, the momentary press and the open tab (finding 1); Offset is
+  `.og-num` and the selects take the global rule (finding 3); ranges take
+  the global square thumb, the private thumbs and the dead `accent-color`
+  go (finding 4); section heads are `.card-sub` and the analyzer's group
+  header loses its band (finding 5); button words and status prose use the
+  body face, mono stays for numerals (finding 6); bars and markers read
+  `var(--r-s)` or 0 (finding 8); the library's warn text takes `--warn-ink`
+  and its gaps the spacing scale, and `test/spacing-lint.mjs` learns
+  `${...}px` (finding 9). Kept as ruled: the timeline's scrub and range
+  pills (advpen vocabulary), the fullscreen seek dot (`ph-mcfe`), the open
+  tab in `--highlight`. Text inputs (search, Stash URL, API key) stay mono
+  until the operator rules the text-input face for shell and player alike.
+- **PR17 Landscape with a video is fullscreen.** On the phone class, turning
+  to landscape with a video loaded enters fullscreen and turning back leaves
+  it; an Exit fullscreen in landscape holds until the next rotation. With no
+  video (empty or motion only) landscape stays a page: stage left, library
+  or controls right, the hero in its compact row. Peeve 8.
+- **PR18 Native settings rows:** label, control, value chip (Field's form);
+  Auto scale is a switch row, not a button in the slider track; a row with
+  no setting is not drawn. Row labels are lowercase (`.field-label`).
+  Resolves finding 10.
+- **Compact hero.** The page registers `compactHero` and `status`
+  (docs/PLUGINS.md, Pages), so on phones the hero is one row and the page
+  has a footer with the status slot.
+
+Out of scope: the analyzer's contents (only its toggle moves), the
+scheduler, Scale math, Kinetic, Stash protocol and the keyboard map.
+
+### The card before the redesign
+
+The rulings below stand except where marked superseded.
+
 Composition follows the card's own box (ResizeObserver), with the
 renderer-class thresholds: full at 960 px and wider (`FULL_UP`), handheld
 264 to 959 (`GLANCE_UP`), glance under 264.
+
+*(The FULL diagram is superseded 2026-10-08 by the redesign diagram above.)*
 
 ```
 FULL
@@ -404,6 +553,7 @@ FULL
   checked against the input limit (the heat's stripes too). Outside media
   fullscreen the hover bar holds only Fullscreen and its mode (the row has
   the rest; `m` mutes); in media fullscreen it is the whole bar.
+  *(Superseded 2026-10-08 by PR5 (one player bar; Close to the head, Graph to the timeline head) and PR9 (the hover bar only in fullscreen).)*
 - **Fullscreen**: a double-click on the stage (or `f`, or the bar's button)
   asks the shell for page fullscreen with the video alone. Borderless is no
   chrome at all; In window fills the window and keeps only the hero rail
@@ -411,15 +561,19 @@ FULL
   it). The mode is the bar's button and the shell's pref. A single click
   waits 250 ms so a double never toggles Play; the stage fades in on the
   duration tokens, still under `html.still`.
+  *(Superseded 2026-10-08 by PR8: one bare mode, no In window, no `bare: false`; the double-click stays.)*
 - **Wave bundle**: Motion, Offset (labeled `ms`) and Invert sit with zoom,
   A-B and Settings on a raised plate flush with the wave card's top right
   corner. The wave card and the heat sit on `--screen` with the advanced
   generator's inset shadow. The stroke speed reading rides the card's
   bottom, right of the range pills. Under a coarse pointer the rows are
   `var(--tap)` (law 12).
+  *(Superseded 2026-10-08 by PR6 (Motion beside Play) and PR7 (the timeline head row replaces the corner plate; Settings to the player bar). The `--screen` plates stay.)*
 - **F3 look-for** (`ph-mdqo.12`): the page registers `search` entries Motion, Offset, Invert, Open files, Graph, Split; each key is a `data-search-key` on its control, and the shell opens the page, scrolls to it and focuses its first enabled control.
+  *(Superseded 2026-10-08 by PR3: the entries read Open video and Open script for Open files; the rest stand.)*
 - **Open files** lives in the library head; an empty stage is a click
   target for it.
+  *(Superseded 2026-10-08 by PR3.)*
 - **Page fill** (`ph-yuce`): the page registers `fill` (docs/PLUGINS.md,
   Pages), so on the desktop it is a column filling the content pane: the
   stage row grows (the video contained, letterboxed in the stage's dark),
@@ -434,6 +588,7 @@ FULL
   library is collapsed. The card never loses height to it (`ph-mdqo.7`); its
   min-height is its fixed rows plus the 120 px stage, so a shorter page
   scrolls. The phone layout is not filled.
+  *(Stands on the desktop; the phone stage is PR2 and the Settings slot keeps this rule, PR12.)*
 - **Split bar** (`ph-mdqo.7`): a 4 px bar between the stage and the transport
   sizes the wave card: drag (up grows it), arrows 8 px (Shift 1), double-click
   for the default, never leaving the stage under 120 px, stored as pref
@@ -441,10 +596,12 @@ FULL
   wave card's 64 px are grid track minimums, so a stored height yields to a
   short window instead of squeezing the stage. Hiding the library or the Settings section never shrinks the
   stage. Not drawn in glance or beside the analyzer.
+  *(Stands on the desktop, between the stage and the timeline band; PR7.)*
 - **Library caret** (`ph-n4t7`): a tab at the source row's right end, on the
   library column's edge, `Library`: it closes the column and the player
   takes the width, open again from the card's edge; a view switch kept in
   pref `libOpen`. Full only: handheld has its tabs.
+  *(Stands on the desktop; the phone forms are PR13.)*
 
 - **Handheld:** tabs Player | Library (shown only here; in full the library
   is the side column) swap the one main region in place (a view switch,
@@ -455,6 +612,7 @@ FULL
   analyzer toggle; at or under 412 px at the default Look, 454 at 1.4),
   `data-narrow` gives two fixed rows: prev, play, next, elapsed, heat,
   remaining / volume, rate, graph, close.
+  *(Superseded 2026-10-08 by PR5 for the transport and its `data-narrow` rows; the tabs stand.)*
 - **Glance:** title, a 24 px stroke meter (an intent tick for the script,
   a reality tick for the measured position; ticks, not handles), Play,
   time, status. The video element stays mounted and visually hidden; the
@@ -526,6 +684,7 @@ FULL
   mute and volume. The bar is its own size container: under 130 px of stage
   height it is not drawn (the analyzer's handheld thumbnail), under 440 px
   of width the volume slider yields so the time stays whole.
+  *(Superseded 2026-10-08 by PR9 for the inline bar, and PR8 for the mode glyph; the shape, seek dot, idle timer and keys stand.)*
 - **Media fullscreen.** The bar's Fullscreen asks the shell for page
   fullscreen, bare (docs/PLUGINS.md, Pages): the window holds the video
   alone, the hover bar over it, the stop pair floating top right and the
@@ -536,6 +695,7 @@ FULL
   `mediaFullscreen`, so its footer has no Fullscreen (`ph-n4t7`); F11
   still takes the whole page; the dash hero has no Fullscreen
   (page fullscreen is for pages).
+  *(Superseded 2026-10-08 by PR8 for "the bar's mode applies"; the rest stands, with the quick rail and drawers of PR11 to PR13.)*
 - **Speed meter.** The current stroke's speed in mm/s when the window's
   unit allows, else %/s, against `limit.input.speed` with `--warn` past it.
   Display only (SPEC §9.6: limits are for display and optional
@@ -543,6 +703,7 @@ FULL
   quintic), so it under-warns.
 - **Motion switch.** Off, the video plays and nothing is sent. On by
   default: Play is the act that moves the machine.
+  *(Placement superseded 2026-10-08 by PR6; the behavior stands.)*
 - **Targets.** Every control is at least `var(--tap)` (40 px floor under a
   coarse pointer, law 12).
 - **Copy** (COPY.md): Play, Pause, Open files, Library, Player, Motion,
@@ -558,10 +719,12 @@ FULL
   `actions sorted`, ` (+N more)` after the first) and
   refusals (`script longer than 24 hours`); the host's gate and door
   words as sent.
+  *(2026-10-08: Open files, `In window / Borderless` and the transport's Close are superseded; added: Open video, Open script, Close, Media, Motion only, Timeline, Settings, Exit fullscreen, Rail (the quick rail icon's title) and the gate reason `No video`.)*
 - **Local files.** One `input type=file multiple` (video, audio,
   `.funscript`); `pairFiles` matches by base name; the video gets an object
   URL, revoked on replace and dispose. No drag and drop: Tauri intercepts
   drops, and turning that off risks the builder palette.
+  *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name) and Open script; no drag and drop stands.)*
 
 ## Stash
 

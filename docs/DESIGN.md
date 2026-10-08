@@ -594,6 +594,16 @@ question in §10.8).
   controls. Where the sidebar is a rail, the advanced and diagnostic toggles
   and Reset live in the selected page's sidebar pill instead (§10.11), so a
   category page has no footer there; the tab strip classes keep them here.
+  On the phone class (buckets 1 and 2, §10.12; operator ruling 2026-10-08,
+  `ph-5u0g` peeve 1) the page footer and the bottom status row are pinned to
+  the viewport's bottom edge: fixed, one height that never grows as the page
+  scrolls, the scroll ending above them, the footer owning the bottom
+  safe-area inset as everywhere. A page registered `status` (docs/PLUGINS.md,
+  Pages) gets one status slot in its footer there, so that page has a footer
+  even with no page controls: one line, the 3 px tone bar at its left edge,
+  the text in `--tx` and never `--warn` (law 13), ellipsized with the full
+  text in `title`, its width reserved up front. The footer stays 48 px on
+  every page (the redesign mockup's 40 px is not adopted: one footer height).
 - The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
   side margin. The top bar, the hero bar and the bottom status row are full
   bleed; the sidebar sits flush on the window's left edge, and the frame
@@ -628,6 +638,45 @@ question in §10.8).
   (`prefs.js` `fullscreen`), the state never does. A page registered
   `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`). Seams:
   `src/model/fullscreen.js`, `isFull` in `src/App.svelte`, `bare` in
+  `src/ui/TopStrip.svelte`.
+  *(Superseded 2026-10-08 for `mediaFullscreen` pages, operator ruling
+  "fullscreen or not", `ph-1qs5`: such a page's fullscreen is always bare,
+  Borderless in the desktop shell, and it offers no In window / Borderless
+  choice; `bare: false` and `phosphor-page-fullscreen-mode` are not honored
+  for it. Footer pages keep the mode as above. On Android the app is
+  immersive at all times (below), so a bare page fullscreen there is the
+  whole screen.)*
+- Immersive on Android (operator ruling 2026-10-08, `ph-5u0g` peeve 1, and
+  the redesign's amendment (a): an actual fullscreen mode, not only the page
+  going bare): the app hides the system bars like a game,
+  `WindowInsetsController.hide(systemBars())` with
+  `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`, applied by the activity on create
+  and on every window focus gain; an edge swipe shows them for a moment. The
+  web side keeps `env(safe-area-inset-*)` for the gesture pill and the
+  cutout. The state never changes, so there is no JS bridge. Seam:
+  `src-tauri/gen/android/app/src/main/java/com/phosphor/app/MainActivity.kt`.
+- The quick rail (operator rulings 2026-10-08, `ph-5u0g` peeve 6, amended the
+  same day): one rail design, the hero's own rail opened elsewhere, never a
+  second copy and never a dock. A mini-rail icon (one glyph,
+  `src/ui/navIcons.js`) opens it from a page's control bar: the page footer on
+  native pages, a plugin page's own bar through the host (docs/PLUGINS.md,
+  Pages, `phosphor-quick-rail`). On the phone class it is the vertical pop-up
+  on the right edge (the bucket 1 and 2 rail pop-up above), in the page and in
+  page fullscreen. On the desktop it exists only in page fullscreen: the icon
+  opens the rail in its horizontal form as a pop-up along the bottom edge,
+  above the page's bar, so the user pauses and jogs without leaving the video;
+  inline the hero rail is on screen and the icon is absent. Either form
+  overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
+  open while a scrub or window drag is in progress, and never covers the stop
+  pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
+  `src/App.svelte`, `src/plugins/host.js`.
+- Compact hero (operator ruling 2026-10-08, the redesign's open item, the
+  agent's pick standing): a page registered `compactHero` draws the hero in
+  buckets 1 and 2 as one row: the position numeral without its label line
+  and without the planned target, lag and speed stack, the mini rail, and the
+  five strip buttons; nothing leaves the hero and the stop pair never moves.
+  About 50 px of an 860 px phone return to the page. Other pages and other
+  buckets keep the hero as above. Seams: `src/ui/HeroStrip.svelte`,
   `src/ui/TopStrip.svelte`.
 
 ### 10.4 Full width
@@ -804,7 +853,8 @@ is build configuration, never code" clause (amendments below). Seam:
 
 Resolved by §10.12 (operator rulings 2026-10-05, `ph-mdqo`): phones are
 buckets 1 and 2, the rail's mini with its vertical pop-up, the tab strip and
-single-column cards. Top-strip safety applies on phones. Whether a desktop
+single-column cards (the tab strip superseded 2026-10-08 by the phone menu,
+§10.12). Top-strip safety applies on phones. Whether a desktop
 layout ever projects onto handheld stays `ph-e82.7`'s question; layouts stay
 per class.
 
@@ -940,8 +990,8 @@ derives from one unit, and no size is tuned by hand.
 
 | Bucket | Hero budget | Rail | Sidebar | Card body | Seed rung | Plugin page |
 |---|---|---|---|---|---|---|
-| 1 | 45 % of the height | the mini; tap opens the vertical rail | menu stack at glance, else tab strip | 1 column | compact | the host's stacked default |
-| 2 | 45 % | the mini; tap opens the vertical rail | tab strip | 1 column | compact | stacked default |
+| 1 | 45 % of the height | the mini; tap opens the vertical rail | the phone menu (2026-10-08; was: menu stack at glance, else tab strip) | 1 column | compact | the host's stacked default |
+| 2 | 45 % | the mini; tap opens the vertical rail | the phone menu (2026-10-08; was: tab strip) | 1 column | compact | stacked default |
 | 3 | 33 % | horizontal in the hero bar, hideable to the mini | by the renderer class: tab strip, or the rail at `full` | field floors across the card | normal | the page's own layout by its card width |
 | 4 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
 | 5 | 33 % | horizontal, hideable | rail | field floors across the card | normal | the page's full layout |
@@ -951,6 +1001,14 @@ derives from one unit, and no size is tuned by hand.
   grows, the numeral scales inside the budget (`--num-h`), and the plan
   strip draws one row. The stop pair never moves (RENDERING §8.4 row 11).
   45 % keeps the strip under half of the 390 px floor (§10.4).
+- The phone menu (operator ruling 2026-10-08, `ph-5u0g` peeve 2): in buckets
+  1 and 2 the sidebar collapses to a hamburger at the left end of the top
+  bar; it opens the desktop sidebar's content (§10.11: the three tiers, the
+  Dash's layouts with `+ Add layout`, the plugin pages, the page pill's
+  operations) as a drawer from the left edge over the page, closed by a pick,
+  a tap outside or Escape. The tab strip, whose row overflowed at phone width,
+  is retired there; the Dash's + moves into the menu. The drawer overlays,
+  so nothing shifts. Seams: `src/App.svelte`, `src/ui/TopStrip.svelte`.
 - Sidebar: the renderer class (§10.4, RFC-062 draft) still picks the nav
   model, rail or tab strip; the bucket decides everything inside it. On the
   tab strip the page operations stay in the page footer (§10.3).
@@ -1058,3 +1116,10 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-06 | §10.5, §10.6 | Overlap and under-floor are allowed while editing and drawn red (`--warn` border, tinted plate, one-fragment tooltip); nothing saves while any card is red and it saves the moment the red clears; the drag displacement of `ph-s7lj.2` and every grow to the content floor are gone, so a saved layout is valid by construction; right-click opens the add menu at the pointer, the whole card moves it, the edit footer sits over the scroll shade, chrome selects no text (`ph-cxvc`). | operator (a resize also overlapping, ending edit mode red dropping back to the last save, a placed nest no longer growing to fit a member, a dropped add written at its content height once measured, right-click in edit mode only, a plugin's body not moving its card and no red when stacked are the agent's, veto-able) |
 | 2026-10-08 | §10.10 | The built-in machine runs in process on every platform as wasm (the Nucleus twin, `integral.wasm`, in a worker); the desktop sidecar is retired and the exe is standalone; Android's built-in machine moves (`ph-5u0g.1`, Nucleus `val-atu`). | operator (the worker, the inlined bundle, the pinned vendored wasm, state in `localStorage` and the built-in replay's removal are the agent's, veto-able) |
 | 2026-10-08 | §10.10 | The end user sees just "Virtual": the picker row reads `Virtual` and the badge `ν virtual`, from one constant (`src/model/builtin.js`); no "Valence", "sim" or "emulator" where a user reads. Neutrino is the tool's name in the repos and docs (the hub firmware built to wasm, formerly valencesim), never a UI string: "an end user doesn't need to know how it works under the hood, if it acts the same to a user, that's all they need to know". | operator |
+| 2026-10-08 | §10.3 | On the phone class the page footer and the bottom status row are pinned to the viewport's bottom edge at one fixed height; a page registered `status` gets a footer status slot (3 px tone bar, `--tx` text, never `--warn`) and so a footer of its own (`ph-5u0g` peeve 1, the redesign's callout 14). | operator ("yes, I like this" on the redesign; the footer staying 48 px instead of the mockup's 40 is the agent's, veto-able) |
+| 2026-10-08 | §10.3 | Android is immersive at all times: system bars hidden, shown for a moment by an edge swipe; a media page's fullscreen there owns the screen (`ph-5u0g` peeve 1, redesign amendment (a)). | operator (always immersive rather than only in fullscreen, and so no JS bridge, is the agent's, veto-able) |
+| 2026-10-08 | §10.11, §10.12 | Buckets 1 and 2 replace the tab strip with a hamburger at the left of the top bar opening the sidebar's content as a left drawer; the Dash's + moves into it (`ph-5u0g` peeve 2). | operator (the drawer form and bucket 2 included are the agent's, veto-able) |
+| 2026-10-08 | §10.3 | The quick rail: the hero's rail opened from a mini-rail icon in a page's control bar (footer on native pages, the host for plugin pages). Phones: the vertical pop-up on the right, in the page and in fullscreen. Desktop: no bottom dock; the rail stays in the hero, and only in page fullscreen the icon opens the horizontal rail as a pop-up, to pause and jog without leaving the video. Supersedes the redesign mockup's 76 px desktop dock and its "dock while the hero rail shows?" question (`ph-5u0g` peeve 6, redesign amendments (b) and (c)). | operator (the icon absent inline on the desktop, rather than inert, is the agent's, veto-able) |
+| 2026-10-08 | §10.3 | Compact hero: a page registered `compactHero` draws the bucket 1 and 2 hero as one row (numeral without its label line or planned stack, mini rail, the five strip buttons); the funscript player asks for it. | operator (the agent's pick on the redesign's open item stood unvetoed; what the one row keeps is the agent's, veto-able) |
+| 2026-10-08 | §10.3 | Fullscreen or not: a `mediaFullscreen` page's fullscreen is always bare (Borderless on the desktop shell); its In window / Borderless choice goes. Supersedes, for such pages, `ph-wb4j`'s mode and `ph-n4t7`'s mode glyph in the hover bar; footer pages keep the mode. | operator (ruled 2026-10-08, `ph-5u0g` peeve 9) |
+| 2026-10-08 | plugins | Funscript player redesign: shell card chrome, the stage at the video's aspect on phones, Open video and Open script, motion-only play, one player bar with Motion beside Play, a timeline head row, fullscreen as one mode, the hover bar in fullscreen only, Settings as sheet / drawer / side card, the Library as tab / drawer / column, status in the footer slot or the card's last row, landscape with a video as fullscreen, native settings rows with lowercase labels. Supersedes the 2026-10-05 plugins row's corner plate and ten-item transport and parts of `ph-mdqo.7`, `ph-n4t7` and `ph-mcfe`; text in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md), The card (`ph-1qs5`, `ph-5u0g` peeves 5 to 9). | operator ("yes, I like this", accepted as drawn with three amendments; the card compositions adopting the bar and head, and the agent's other readings named in FUNSCRIPT.md, veto-able) |
