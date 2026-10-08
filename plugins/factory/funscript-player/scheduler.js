@@ -27,8 +27,9 @@
 //   strip naming the next piece early (Nucleus val-0ep), not lateness to undo.
 // - Every knot is free (endVel null): the hub expects successors for EXPECT_MS and carries the tangent
 //   (Nucleus val-g62). The sender declares the rests it can see (endVel 0): the last knot, a knot whose
-//   successor is over EXPECT_MS of wall time away, a loop's last knot before the wrap and the seek
-//   landing. Left free, a real stop is passed moving and braked beyond (FUNSCRIPT.md, I8).
+//   successor is over EXPECT_MS of wall time away, a loop's last knot before the wrap, the seek
+//   landing, a reversal and a hold edge. Left free, a real stop is passed moving and braked beyond
+//   (FUNSCRIPT.md, I8).
 //   Stop, preroll and home end at 0.
 // - A restart that changes only timing never re-sends a span the hub holds: the first unsent span
 //   joins the end of what was sent and absorbs the shift.
@@ -56,12 +57,18 @@ export function applyT(norm, T) {
 }
 
 /**
- * Knot j's endVel over accessors t(j) (media ms) and i(j) (its script index) of n knots at the clock rate:
- * 0 (a rest the sender sees) at the last knot, before a successor over EXPECT_MS of wall time away and at a
- * loop wrap (the successor is not the script's next action); else null (free, the hub's tangent).
+ * Knot j's endVel over accessors t(j) (media ms), i(j) (its script index) and p(j) (its position) of n knots at
+ * the clock rate: 0 (a rest the sender sees) at the last knot, before a successor over EXPECT_MS of wall time
+ * away, at a loop wrap (the successor is not the script's next action), at a reversal (the chord's sign flips)
+ * and at a hold edge (a flat chord on either side); else null (free, the hub's tangent). A reversal left free is
+ * rendered moving on along the last chord while its successor has not arrived (ph-hcof).
  */
-export const knotVel = (t, i, j, n, rate = 1) =>
-  (j >= n - 1 || (t(j + 1) - t(j)) / rate > EXPECT_MS || i(j + 1) !== i(j) + 1 ? 0 : null);
+export const knotVel = (t, i, j, n, rate = 1, p = null) => {
+  if (j >= n - 1 || (t(j + 1) - t(j)) / rate > EXPECT_MS || i(j + 1) !== i(j) + 1) return 0;
+  if (!p) return null;
+  const d1 = p(j + 1) - p(j), d0 = j > 0 ? p(j) - p(j - 1) : d1;
+  return d0 * d1 > 0 ? null : 0;
+};
 
 /** Display only (SPEC §9.6): the authored chord speed scaled by the range. */
 export function strokeSpeed(script, mediaMs, T, spanMm) {
@@ -233,7 +240,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
         const join = k === sch.cursor && joinAt != null;
         const atMs = join ? joinAt : clock.displayAt(tl.t(k - 1)) + o;
         list.push({ atMs, norm: applyT(tl.p(k), T), durationMs: join ? clock.displayAt(tl.t(k)) + o - joinAt : (tl.t(k) - tl.t(k - 1)) / clock.rate,
-          endVel: knotVel(tl.t, tl.idx, k, tl.n, clock.rate) });
+          endVel: knotVel(tl.t, tl.idx, k, tl.n, clock.rate, tl.p) });
       }
       if (!list.length) return done();
       const r = submit(list);

@@ -270,8 +270,8 @@ if (an) {
     // The preview submits the wire as the host does: every knot free, the rests the sender sees at 0, the hub's expectation on.
     const mono = parseFunscript({ actions: [0, 20, 40, 60, 80, 20].map((pos, i) => ({ at: i * 500, pos })) });
     const ms = kn.segmentsOf(mono, T0k);
-    ok('Kinetic: every knot free (segment_end_vel_unspecified), the last a rest, the preroll at rest',
-      same(ms.segs.map((x) => x[3]), [0, kn.FREE, kn.FREE, kn.FREE, kn.FREE, 0]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
+    ok('Kinetic: same-direction knots free (segment_end_vel_unspecified), the reversal and the last a rest, the preroll at rest',
+      same(ms.segs.map((x) => x[3]), [0, kn.FREE, kn.FREE, kn.FREE, 0, 0]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
     const LIM = { vmax: 1200, amax: 100000, jmax: 2e7, rail: 500 };
     const run = (sg2, expectMs, segs = sg2.segs) => {
       const it2 = kn.renderCore(k, { limits: LIM, window: [100, 400], tuning: [], ...sg2, segs, every: 1, expectMs });
@@ -1600,20 +1600,20 @@ if (!LIVE && !args.includes('--stash-live')) {
   const topHue = hue(topRgb);
   ok('B: the fastest span reads --highlight and its hue is never the hazard red (law 13)',
     !(topHue >= 345 || (topHue >= 0 && topHue <= 15)) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, hue: topHue, highlight: band.highlight, ups: want[top] && want[top].ups });
-  // ---- C: Auto measures the planner's own render of the free knots; the saved curve pref loaded as Scale only ----
-  // The hub's expectation passes a 260 ms flick's top reversal 1.0e-4 of the window high before its successor lands
-  // (FUNSCRIPT.md I8), one grid step on the fit; a rest landing on the window edge reads f32 noise as clamped.
+  // ---- C: Auto measures the planner's own render of the knots; the saved curve pref loaded as Scale only ----
+  // Reversals and hold edges go at rest (FUNSCRIPT.md I8, ph-hcof), so 0 and 1 land exactly.
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
   const autoBtn = page.locator('main.pane .fsp-psec .fsp-scale button[aria-label="Auto"]');
   await autoBtn.click({ timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
-    return o && /^0\.00–(1\.00|0\.99)$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
+    return o && /^0\.00–1\.00$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
   }, C, { timeout: 15000 }).then(() => true, () => false);
   const readout = await page.locator('main.pane .fsp-psec .fsp-scale .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
   console.log('  [NOTE] Auto on the real-shaped script: ' + readout + ' (' + await kinText() + ')');
-  ok('C: Auto reads where 0 and 1 land from the planner render within one grid step, clamped under 10 ms (free knots at the twin smoothness)', fit, readout);
+  // A rest landing on the window edge reads f32 noise (1e-7) as clamped for a few ms.
+  ok('C: Auto reads where 0 and 1 land from the planner render exactly, clamped under 10 ms (reversals at rest, the twin smoothness)', fit, readout);
   const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), r = o.getBoundingClientRect(),
     g = o.closest('.fsp-scale').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
   ok('C: the Auto readout fits its cell', fits.sw <= fits.cw + 1 && fits.right <= fits.gr + 0.5, fits);

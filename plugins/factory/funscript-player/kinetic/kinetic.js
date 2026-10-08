@@ -52,7 +52,7 @@ export function tuningOf(pairs) {
 export function segmentsOf(script, T) {
   const pad = 2 * LEAD_MS + PREROLL_MS, { at, pos } = script;
   const e4 = (n) => Math.round(clamp(applyT(n, T), 0, 1) * 10000);
-  const e3 = (k) => (knotVel((j) => at[j], (j) => j, k, at.length) === 0 ? 0 : FREE);
+  const e3 = (k) => (knotVel((j) => at[j], (j) => j, k, at.length, 1, (j) => pos[j]) === 0 ? 0 : FREE);
   const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0]];
   for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k)]);
   return { segs, t0: (T.offsetMs || 0) - pad, steps: Math.ceil(pad + at[at.length - 1] + TAIL_MS) };

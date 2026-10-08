@@ -200,9 +200,10 @@ export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | n
                                                            // at rate 1; the caller scales it by the rate
 export const EXPECT_MS = 500;   // registry limits.stream_quiet_release_ms, restated: the least window the hub expects
   // successors for (it takes the larger of this and the grant's horizon, which the plugin API does not publish)
-export function knotVel(t, i, j, n, rate = 1);   // knot j's endVel over accessors t(j) (media ms), i(j) (script index):
-  // 0 at the last knot, before a successor over EXPECT_MS of wall time away ((t(j+1) - t(j)) / rate) and at a loop
-  // wrap (i(j+1) !== i(j) + 1); else null (free)
+export function knotVel(t, i, j, n, rate = 1, p = null);   // knot j's endVel over accessors t(j) (media ms), i(j)
+  // (script index), p(j) (position): 0 at the last knot, before a successor over EXPECT_MS of wall time away
+  // ((t(j+1) - t(j)) / rate), at a loop wrap (i(j+1) !== i(j) + 1), at a reversal (the chord's sign flips) and
+  // at a hold edge (a flat chord either side; both need p); else null (free)
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
 // log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.

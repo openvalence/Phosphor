@@ -181,12 +181,17 @@ window on the last: Kinetic² renders a reversal flat at every
   see. Nucleus 0.1.32 (val-g62) arms Kinetic `Engine::expect` on every stream
   segment for the larger of `stream_quiet_release_ms` (500) and the grant's
   horizon: the newest free knot renders through toward a provisional
-  successor at chord speed instead of at rest. So every knot is free
-  (`endVel` null), reversals included, except where the player knows motion
-  stops (scheduler.js `knotVel`, `endVel` 0, has_v): the script's last
-  action, an action whose successor is over `EXPECT_MS` (500) of wall time
-  away (media ms / rate), the A-B loop's last action before the wrap (the
-  successor is not the script's next action) and a seek's landing.
+  successor at chord speed instead of at rest. So every same-direction knot
+  is free (`endVel` null), and the sender declares the rests it can see:
+  ends, gaps, loop wraps, seek landings, reversals and hold edges
+  (scheduler.js `knotVel`, `endVel` 0, has_v): the script's last action, an
+  action whose successor is over `EXPECT_MS` (500) of wall time away (media
+  ms / rate), the A-B loop's last action before the wrap (the successor is
+  not the script's next action), a seek's landing, a reversal (the chord's
+  sign flips) and a hold edge (a flat chord on either side). Amended
+  2026-10-08 (`ph-hcof`): on the machine a free reversal whose span outlasts
+  the 125 ms lead was rendered moving on along the last chord before its
+  successor arrived (the plan dipped past a trough and came back).
   `EXPECT_MS` restates the registry's `stream_quiet_release_ms`: the plugin
   API publishes no grant horizon, and the hub's window is never shorter.
   The expectation is fixed at solve time, so a stream that stops passes
@@ -203,13 +208,14 @@ window on the last: Kinetic² renders a reversal flat at every
   the speed overshoots the chord after a reversal and settles under it
   mid-run. A fast run to the end (20, 50, 80 at 200 ms): rested, 0.13 mm
   past the last action; left free, 2.28 mm. A knot before a 1.5 s
-  successor is reached at 0.02 mm/s. A reversal is newest before its
-  successor too: on the real-shaped browser script the 260 ms flicks' top
-  reversal reads 1.0e-4 of the window high in the Auto measure (one 0.01
-  grid step: Auto may read `0.00–0.99`), and a rest landing on the window
-  edge reads f32 noise (1e-7) as `clamped` for a few ms. Sent at 0, the
-  reversal reads 1.0000000. Veto: the I7 mean on same-direction
-  knots (0.97, least 0.95), which keeps `smoothness` off them.
+  successor is reached at 0.02 mm/s. Left free, the real-shaped browser
+  script's 260 ms flicks' top reversal read 1.0e-4 of the window high in
+  the Auto measure; sent at rest it reads 1.0000000 and Auto reads
+  `0.00–1.00` (a rest landing on the window edge still reads f32 noise,
+  1e-7, as `clamped` for a few ms). The vendored twin renders a free reversal flat on a 300 ms
+  sine (`test/kinetic-trace.test.mjs` (3)), so the machine's dip is not
+  reproduced there; the test guards the rest. Veto: the I7 mean on
+  same-direction knots (0.97, least 0.95), which keeps `smoothness` off them.
 
 ## Sync
 
