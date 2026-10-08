@@ -82,7 +82,7 @@ import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor, latchWords } from './motion.js';
 import { noteEstopPress } from './actions.js';
-import { NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { NACK, NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -131,6 +131,7 @@ export const lastRefusal = $state({
 });
 
 const NO_ANSWER = 'no answer from the hub';
+const NOT_TRIALABLE = 'not trialable here, write directly';
 /** A fault's words: only a NACK reads as the hub refusing (ph-xec). */
 const whyOf = (err) => (err && err.code != null ? 'refused: ' + (err.name || NACK_NAME[err.code]) : NO_ANSWER);
 
@@ -236,10 +237,13 @@ async function sendQueued(session, channelId, entries, trial, mine) {
     }
     if (echo && echo.cfgGen != null) machine.link.cfgGen = echo.cfgGen;
   } catch (err) {
-    const msg = whyOf(err);
+    // RFC-107 (draft): UNSUPPORTED_OP on a trial means this key is not trialable here.
+    const noTrial = trial && err && err.code === NACK.UNSUPPORTED_OP;
+    const msg = noTrial ? NOT_TRIALABLE : whyOf(err);
     for (const [, rec] of entries) {
       const sh = mine(rec);
       if (sh) fail(sh, msg, err);
+      if (noTrial && rec.noTrial) rec.noTrial();
     }
   }
 }
@@ -345,8 +349,9 @@ function begin(sh, value) {
  *
  * @param {Object} field a field from buildSettingsModel (must not be readOnly)
  * @param {number|string|boolean} value the value the operator chose
- * @param {{trial?: boolean}} [o] trial: applied live, not stored until a
+ * @param {{trial?: boolean, noTrial?: function}} [o] trial: applied live, not stored until a
  *        settings-trial commit (RFC-099). Only for a hub that declares it.
+ *        noTrial: called when the hub NACKs the trial UNSUPPORTED_OP.
  */
 export function writeSetting(field, value, o = {}) {
   if (!field || field.readOnly || field.writeChannel == null) return;
@@ -358,7 +363,7 @@ export function writeSetting(field, value, o = {}) {
   // history sees the value the machine reported, never a request.
   const prev = q.pending.get(field.settingKey);
   const before = prev ? prev.before : reportedValue(field, machine.samples[field.channelId]);
-  q.pending.set(field.settingKey, { value, shadowKey, seq, trial: !!o.trial, field, before, hist: o.hist || null });
+  q.pending.set(field.settingKey, { value, shadowKey, seq, trial: !!o.trial, field, before, hist: o.hist || null, noTrial: o.noTrial });
   schedule(field.writeChannel);
 }
 

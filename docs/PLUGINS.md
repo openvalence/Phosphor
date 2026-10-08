@@ -263,7 +263,11 @@ nothing reaches the machine's flash until `commitTrial()`. A key one client
 has on trial refuses every other client's write, trial or not, with
 `TRIAL_CONFLICT` (it lands in `reason(field)`). The flip, the schedule horizon
 and the chase interval are refused as trials on the reference hub: each is
-gated on live state, so its revert could be refused too.
+gated on live state, so its revert could be refused too. A trial NACKed
+`UNSUPPORTED_OP` marks that channel and key as not trialable for the session
+(Valence RFC-107, draft): `writeTrial` never retries it, the field's status reads
+`not trialable here, write directly`, and the next `writeTrial` on it goes as a
+durable `write`, behind the host confirm. A new session starts the marks over.
 
 ## Manifest (`manifest.json`, beside the module)
 

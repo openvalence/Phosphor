@@ -89,7 +89,9 @@ class PermissionError extends Error {
  *   write(field, value, payload)  -> routes to the right shadow entry point,
  *                                    behind the host-rendered confirm
  *   trialCapable()                -> the hub declares settings-trial (RFC-099)
- *   writeTrial(field, value)      -> the setting shadow's trial write
+ *   writeTrial(field, value, noTrial) -> the setting shadow's trial write; it calls
+ *                                    noTrial() when the hub NACKs it UNSUPPORTED_OP
+ *   session()                     -> id of the live link session, null when none
  *   trialOp('commit'|'revert')    -> Promise<{ok, error?}>, this session's trials
  *   trialPending()                -> some meta.trial_pending bit is set
  *   gate(field, busy)             -> '' or why the field cannot be written (law 3);
@@ -116,7 +118,10 @@ export function createPluginHost(deps) {
   // One motion producer at a time: interleaved inputs from two plugins would
   // share one stream source on the hub.
   let lock = { name: '', until: -Infinity };
-  const busyFor = (name) => (lock.name && lock.name !== name && now() < lock.until
+  // RFC-107 (draft): the channel:key pairs the hub refused as trials this session.
+  let noTrial = new Set();
+  let noTrialSid = null;
+  const busyFor =(name) => (lock.name && lock.name !== name && now() < lock.until
     ? 'motion input in use by ' + lock.name : '');
 
   function changed() {
@@ -188,7 +193,12 @@ export function createPluginHost(deps) {
         need(rec, 'intent');
         if (!deps.trialCapable || !deps.trialCapable()) return { ok: false, error: 'hub has no trial writes' };
         if (!field || field.readOnly || field.writeChannel == null) return { ok: false, error: 'not a setting' };
-        return deps.writeTrial(field, value);
+        const sid = deps.session ? deps.session() : null;
+        if (sid !== noTrialSid) { noTrial = new Set(); noTrialSid = sid; }
+        const key = field.writeChannel + ':' + field.settingKey;
+        // A refused trial is never retried: the edit goes durable, behind the host confirm.
+        if (noTrial.has(key)) return deps.write(field, value);
+        return deps.writeTrial(field, value, () => noTrial.add(key));
       },
       commitTrial: () => {
         need(rec, 'intent');
