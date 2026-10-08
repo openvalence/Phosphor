@@ -23,28 +23,23 @@
 // - Compensation: lag = plan start (arrival - plan.elapsed, the least of a plan's samples)
 //   minus the sent atMs. It is measured against the stamp, so it does not depend on compMs:
 //   no feedback loop. It includes the STATE frame's one-way transport, which it cannot see.
-// - The low latency lead caps the offer at LEAD_LOW_MS (RFC-087 item 3: a low-latency client
-//   stamps 50 ms ahead under the same horizon); it shrinks the stall tolerance to about 30 ms.
-// - Every segment carries endVel (SPEC 9.6 item 5): `unspecified` resolves to rest at every knot
-//   whose successor is not yet scheduled. A span ends at its knot's slope (knotSlope); the seek
-//   transition at the chord it lands in. Stop, preroll and home end at 0: nothing is scheduled
-//   after them, and a hub coasts a moving end before it brakes.
-// - No segment repeats the previous target within DWELL_SPAN while the line moves on: the hub reads
-//   that as a hold and zeroes its end velocity (SPEC 9.6 dwell rule), a stop mid-stroke. So the
-//   knots run through dwellMerge, and a restart that changes only timing never re-sends a span the
-//   hub holds: the first unsent span joins the end of what was sent and absorbs the shift.
+//   It is never applied below 0: a plan never starts before its stamp, so a negative lag is the plan
+//   strip naming the next piece early (Nucleus val-0ep), not lateness to undo.
+// - A knot between two chords of one sign carries their mean as endVel (knotSlope): left free, the hub
+//   rests it until its successor arrives half a horizon ahead and passes it at about half the chord
+//   speed (FUNSCRIPT.md, Interpolation). Every other knot and the seek transition are free (endVel null):
+//   the hub's smoothness shapes them (RFC-106, RFC-108). Stop, preroll and home end at 0.
+// - A restart that changes only timing never re-sends a span the hub holds: the first unsent span
+//   joins the end of what was sent and absorbs the shift.
 
-import { posAt, indexAfter, speedAt, thin, MAX_SPAN_MS } from './funscript.js';
+import { posAt, indexAfter, speedAt, thin } from './funscript.js';
 
 export const STOP_MS = 200, PREROLL_MIN_MS = 400, PREROLL_STROKE_MS = 1200, PREROLL_SKIP = 0.05, OFFER_MAX = 32;
 export const TRANSIENT = Object.freeze(new Set(['waiting for the stream grant', 'NO_CLOCK', 'NOT_SENT', 'RATE_EXCEEDED']));
-export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
+export const HOME_MIN_MS = 400;
 export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
-// Registry limits.segment_handoff_k (SPEC 9.6): the hub bounds a handoff to k x the lesser adjoining chord,
-// but only once the successor is scheduled. A plugin imports nothing outside its folder, so it is restated.
+// Registry limits.segment_handoff_k (SPEC 9.6), restated: a plugin imports nothing outside its folder.
 export const HANDOFF_K = 1.5;
-// Registry limits.segment_dwell_span (SPEC 9.6), restated the same way: a target within it of the previous one is a hold.
-export const DWELL_SPAN = 0.02;
 
 const T0 = Object.freeze({ offsetMs: 0, lo: 0, hi: 1, invert: false });
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -59,39 +54,17 @@ export function applyT(norm, T) {
 }
 
 /**
- * Knot j's slope in pos per media ms over accessors t(j), p(j) of n knots: 0 at either end and beside a hold;
- * else vel(j) (the curve mode's tangent, kept at a reversal: its overshoot is the mode's) or, without vel, the
- * mean of the two chords of their sign, 0 at a reversal; at most HANDOFF_K x the lesser chord.
+ * Knot j's slope in pos per media ms over accessors t(j), p(j) of n knots: between two chords of one sign their
+ * mean, at most HANDOFF_K x the lesser; null (free) at a reversal, beside a hold and at either end.
  */
-export function knotSlope(t, p, j, n, vel = null) {
-  if (!(j > 0 && j < n - 1)) return 0;
+export function knotSlope(t, p, j, n) {
+  if (!(j > 0 && j < n - 1)) return null;
   const a = (p(j) - p(j - 1)) / (t(j) - t(j - 1)), b = (p(j + 1) - p(j)) / (t(j + 1) - t(j));
-  const m = vel ? vel(j) : (a + b) / 2;
-  if (!a || !b || (!vel && (!(a * b > 0) || !(m * a > 0)))) return 0;
-  return Math.sign(m) * Math.min(Math.abs(m), HANDOFF_K * Math.min(Math.abs(a), Math.abs(b)));
+  return a * b > 0 ? Math.sign(a) * Math.min(Math.abs(a + b) / 2, HANDOFF_K * Math.min(Math.abs(a), Math.abs(b))) : null;
 }
 
-/**
- * The script without the knots a hub would read as holds: a knot that moves on in the same direction but less
- * than DWELL_SPAN (through T) past the last kept knot. Ends, flat knots, reversals and knots the curve rests on
- * (vel packs as 0, so the hub zeroes nothing) stay; vel follows.
- */
-export function dwellMerge(script, T) {
-  const { at, pos, vel } = script, n = at.length, s = Math.abs(T.hi - T.lo);
-  const keep = [0];
-  for (let j = 1; j < n - 1; j++) {
-    const i = keep[keep.length - 1], a = pos[j] - pos[i];
-    const rests = vel && Math.abs(vel[j]) * 1000 * s < 5e-4;
-    if (!(a * (pos[j + 1] - pos[j]) > 0 && Math.abs(a) * s < DWELL_SPAN * 1.05 && !rests && at[j + 1] - at[i] <= MAX_SPAN_MS)) keep.push(j);
-  }
-  if (n > 1) keep.push(n - 1);
-  if (keep.length === n) return script;
-  return { ...script, at: Float64Array.from(keep, (j) => at[j]), pos: Float32Array.from(keep, (j) => pos[j]),
-    vel: vel ? Float64Array.from(keep, (j) => vel[j]) : null };
-}
-
-/** A script slope (pos per media ms) as a Seg's endVel: norm/s through T and the clock rate. */
-export const wireVel = (slope, T, rate = 1) => slope * 1000 * rate * (T.invert ? -1 : 1) * (T.hi - T.lo);
+/** A script slope (pos per media ms) as a Seg's endVel, norm/s through T and the clock rate; null stays null (free). */
+export const wireVel = (slope, T, rate = 1) => (slope == null ? null : slope * 1000 * rate * (T.invert ? -1 : 1) * (T.hi - T.lo));
 
 /** Display only (SPEC §9.6): the authored chord speed scaled by the range. */
 export function strokeSpeed(script, mediaMs, T, spanMm) {
@@ -131,7 +104,7 @@ function timeline(src, loop) {
 
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} }) {
   let script = null, src = null, tl = null, T = T0, next = T0, thinnedFor = 0, thinFrom = Infinity, lastReason = '';
-  let nextHome = null, loop = null, nextLoop = null, low = false, auto = false, comp = 0;
+  let nextHome = null, loop = null, nextLoop = null, auto = false, comp = 0;
   let lead = null, joinAt = null, lastEnd = null, builtFor = null, builtKey = '';
   const sentLog = [], lags = [];
   let plan = null;
@@ -143,7 +116,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 
   const keyOf = () => JSON.stringify([T.lo, T.hi, T.invert, loop]);
   function build() {
-    src = script && dwellMerge(script, T);
+    src = script;
     tl = src ? timeline(src, loop) : null;
     thinnedFor = 0; thinFrom = Infinity;
     builtFor = script; builtKey = keyOf();
@@ -155,8 +128,6 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     const t0 = tl.t(j - 1), t1 = tl.t(j);
     return tl.p(j - 1) + (tl.p(j) - tl.p(j - 1)) * ((u - t0) / (t1 - t0));
   }
-  /** Knot j's endVel at this rate; the shaped curve's own slope (src.vel) when it has one. */
-  const endVelAt = (j, rate) => wireVel(knotSlope(tl.t, tl.p, j, tl.n, src.vel ? (i) => src.vel[tl.idx(i)] : null), T, rate);
   function supersede(t) {
     for (let i = sentLog.length - 1; i >= 0; i--) if (sentLog[i].atMs >= t) sentLog.splice(i, 1);
   }
@@ -179,7 +150,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     at.set(src.at.subarray(0, c)); at.set(tail.at, c);
     pos.set(src.pos.subarray(0, c)); pos.set(tail.pos, c);
     log('motion: thinned to ' + rateHz + ' Hz, ' + (src.at.length - at.length) + ' actions dropped', 'info');
-    src = { ...src, at, pos, vel: null };
+    src = { ...src, at, pos };
     tl = timeline(src, loop);
     sch.cursor = Math.max(1, tl.after(tPrev));
     thinnedFor = rateHz; thinFrom = c;
@@ -208,8 +179,8 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
     setHome(h) { nextHome = h || null; },
     /** loopSpec(...) | null, in the clock's unrolled media time */
     setLoop(l) { nextLoop = l || null; },
-    /** {low, auto}: low caps the offer at LEAD_LOW_MS; auto feeds the measured lag into the offset. */
-    setLatency(o = {}) { low = !!o.low; auto = !!o.auto; },
+    /** {auto}: feeds the measured lag into the offset. */
+    setLatency(o = {}) { auto = !!o.auto; },
     /** One plan strip sample: arrival performance.now() ms, plan.elapsed and plan.duration in ms. */
     observePlan(arrivalMs, elapsedMs, durationMs) {
       if (![arrivalMs, elapsedMs, durationMs].every(Number.isFinite) || durationMs <= 0) return;
@@ -241,8 +212,8 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       supersede(now());
       if (transitionMs > 0) {
         const t = now(), uEnd = clock.mediaAt(t + transitionMs - off());
-        const k = tl.after(uEnd), chord = k > 0 && k < tl.n ? (tl.p(k) - tl.p(k - 1)) / (tl.t(k) - tl.t(k - 1)) : 0;
-        lead = { atMs: t, norm: applyT(posV(uEnd), T), durationMs: transitionMs, endVel: wireVel(chord, T, clock.rate) };
+        const k = tl.after(uEnd);
+        lead = { atMs: t, norm: applyT(posV(uEnd), T), durationMs: transitionMs, endVel: null };
         sch.cursor = Math.max(1, k);
         joinAt = t + transitionMs;
       } else sch.cursor = k;
@@ -251,7 +222,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       if (!src) return done();
       if (!clock.ready) return result({ ok: false, reason: 'NO_CLOCK' });
       const lag = sch.lagMs;
-      const want = auto && Number.isFinite(lag) ? clamp(lag, -COMP_MAX_MS, COMP_MAX_MS) : 0;
+      const want = auto && Number.isFinite(lag) ? clamp(lag, 0, COMP_MAX_MS) : 0;
       if (Math.abs(want - comp) >= COMP_STEP_MS || (want === 0 && comp !== 0)) {
         log('motion: latency compensation ' + want.toFixed(1) + ' ms', 'info');
         comp = want;
@@ -264,9 +235,8 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
       for (let k = sch.cursor; k < n && list.length < OFFER_MAX; k++) {
         const join = k === sch.cursor && joinAt != null;
         const atMs = join ? joinAt : clock.displayAt(tl.t(k - 1)) + o;
-        if (low && atMs > t + LEAD_LOW_MS) break;
-        list.push({ atMs, norm: applyT(tl.p(k), T),
-          durationMs: join ? clock.displayAt(tl.t(k)) + o - joinAt : (tl.t(k) - tl.t(k - 1)) / clock.rate, endVel: endVelAt(k, clock.rate) });
+        list.push({ atMs, norm: applyT(tl.p(k), T), durationMs: join ? clock.displayAt(tl.t(k)) + o - joinAt : (tl.t(k) - tl.t(k - 1)) / clock.rate,
+          endVel: wireVel(knotSlope(tl.t, tl.p, k, tl.n), T, clock.rate) });
       }
       if (!list.length) return done();
       const r = submit(list);

@@ -130,7 +130,10 @@ looping-script motion provider also defaults to Pchip.
 
 ### Mapping onto the segments lookahead
 
-- **Linear** is what the player sends today: one segment per span, end
+Superseded 2026-10-08: the player has no client curve modes; the hub's
+`smoothness` shapes the curve (FUNSCRIPT.md, Interpolation).
+
+- **Linear** is what the player sent then: one segment per span, end
   velocity `unspecified`, no `curve_family` (D4). The hub derives each
   boundary velocity from the adjoining chords when the successor is
   scheduled and resolves to rest when it is not (SPEC §9.6, RFC-058).

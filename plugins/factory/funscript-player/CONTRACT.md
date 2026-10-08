@@ -29,17 +29,17 @@ Rules for every module:
 | scheduler | ph-smvd.4 | `clock.js`, `scheduler.js`, `test/funscript-scheduler.test.mjs`, `test/funscript-sync-live.mjs` |
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
-| interp | ph-smvd.10 | `interp.js`, `test/funscript-core.test.mjs` (the interp section) |
+| scale | ph-smvd.10, ph-1qs5.1 | `scale.js`, `test/funscript-core.test.mjs` (the scale section) |
 | analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
 | kinetic | ph-ge35 | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin`, `test/kinetic-trace.test.mjs`, `test/kinetic-pin.mjs`, `test/fixtures/kinetic_trace.json`; the render glue in `analyzer.js`, `timeline.js`; sections (c2) and (k) of `test/funscript-player.test.mjs` |
 | integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
-no cycles: `index -> ui, prefs, library, interp`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funscript, scheduler, kinetic`;
+no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
+scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
-`prefs -> interp`; `interp -> funscript`.
+`prefs -> scale`.
 
 ---
 
@@ -57,7 +57,6 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
   ignored: string[],          // other axes seen ('R0', 'roll', ...), never driven
   notes: string[],            // terse facts: 'range ignored', '3 duplicates dropped', '12 positions clamped'
   metadata: object | null,    // the file's metadata object, untouched
-  vel?: Float64Array | null,  // shape() only: the curve's slope at each knot, pos per ms; null when a filter moved the knots
 }
 
 // Transform T: client content transforms, global (prefs key 'T').
@@ -69,8 +68,8 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 { atMs: number,               // performance.now() ms at which the machine STARTS EXECUTING it
   norm: number,               // 0..1 across the hub's stroke window (submitMotion's meaning)
   durationMs: number,         // > 0, wall ms
-  endVel?: number }           // velocity at its end, norm/s (input.end_velocity, SPEC 9.6); absent: unspecified, which
-                              // the hub resolves to rest without a scheduled successor
+  endVel?: number | null }    // velocity at its end, norm/s (input.end_velocity, SPEC 9.6); null or absent: unspecified,
+                              // a free knot the hub's smoothness shapes (RFC-106, RFC-108), at rest until its successor arrives
 
 // SegResult: api.submitSegments(list)
 { ok: true,  sent: number, rateHz: number }             // sent = leading items consumed (packed, or dropped as short or colliding)
@@ -98,9 +97,9 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
   stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
-  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: true},
+  interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
-         seekMs: 500, lowLatency: false, autoLatency: false} }
+         seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
 // play repairs: loopCount 0..99 integer (0 = forever), homeAfterMs 1000..60000 step 500, homePoint 0..1,
 // homeSpeed 0.05..2 norm/s, seekMs 0..3000 step 50 (0 = jump).
 // Every key but stash is also mirrored to localStorage phosphor.funscript.<key> (the prefix the prefs
@@ -175,14 +174,12 @@ export function createMediaClock();   // -> MediaClock
 //       seen since the reset: after play() or a seek the first frame repeats for several vsyncs.
 //   displayAt(mediaMs) -> performance.now() ms the frame is SHOWN (NaN before ready),
 //   mediaAt(displayMs) -> media ms (NaN before ready) }
-export function frameSource(video, onFrame, now = () => performance.now(), fallbackMs = () => FALLBACK_AFTER_MS);   // -> stop()
+export function frameSource(video, onFrame, now = () => performance.now());   // -> stop()
   // onFrame(mediaMs, displayMs). requestVideoFrameCallback when present: (md.mediaTime * 1000,
   // md.expectedDisplayTime). A rAF loop reports (video.currentTime * 1000, now()) only while no
-  // rVFC frame came for fallbackMs() (audio only, hidden video, glance).
+  // rVFC frame came for FALLBACK_AFTER_MS (audio only, hidden video, glance).
 // Playback (ph-smvd.12):
-export const LOW = {window: 8, slew: 15, fallbackMs: 100}, WRAP_EARLY_MS = 34;
-// createMediaClock({window = CLOCK_WINDOW, slew = SLEW_MS_PER_S} = {}); MediaClock gains tune({window, slew})
-//   (LOW, or {} for the defaults), in force at once.
+export const WRAP_EARLY_MS = 34;
 export function loopSpec(a, b, count = 0, durationMs = Infinity);   // -> {a, b, count} | null
   // media ms; null when b - a < 1000 or count is 1; b bounded by durationMs. count 0 = forever, N = the
   // a..b section plays N times in all, then plays on.
@@ -201,14 +198,9 @@ export function applyT(norm, T);   // -> T.lo + (T.invert ? 1 - norm : norm) * (
 export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | null -> {v, unit: 'mm/s' | '%/s'};
                                                            // at rate 1; the caller scales it by the rate
 export const HANDOFF_K = 1.5;   // registry limits.segment_handoff_k, restated (a plugin imports nothing outside its folder)
-export const DWELL_SPAN = 0.02;   // registry limits.segment_dwell_span, restated: a target within it of the previous is a hold
-export function dwellMerge(script, T);   // -> the script without a knot that moves on in the same direction less than
-  // DWELL_SPAN x |hi - lo| past the last kept one (ends, flat knots, reversals and knots whose vel packs as 0 stay);
-  // the script itself when none goes. The scheduler and kinetic.segmentsOf run on it.
-export function knotSlope(t, p, j, n, vel = null);   // knot j's slope, pos per media ms, over accessors t(j), p(j):
-  // 0 at either end, at a reversal and beside a hold; else vel(j) or the mean of the two chords, of their sign
-  // and at most HANDOFF_K x the lesser
-export function wireVel(slope, T, rate = 1);   // -> norm/s: slope x 1000 x rate x (hi - lo), negated under invert
+export function knotSlope(t, p, j, n);   // knot j's slope, pos per media ms, over accessors t(j), p(j): between two
+  // chords of one sign their mean, at most HANDOFF_K x the lesser; null (free) at either end, a reversal and beside a hold
+export function wireVel(slope, T, rate = 1);   // -> norm/s: slope x 1000 x rate x (hi - lo), negated under invert; null stays null
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
 // log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.
@@ -224,7 +216,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //                               from the cursor, advances by result.sent only.
 //                               Span k (knot k-1 -> k): atMs = clock.displayAt(at[k-1]) + T.offsetMs,
 //                               durationMs = (at[k] - at[k-1]) / clock.rate, norm = applyT(pos[k], T),
-//                               endVel = wireVel(knotSlope(knot k, script.vel), T, clock.rate).
+//                               endVel = wireVel(knotSlope(knot k), T, clock.rate), null where the knot is free.
 //                               A TRANSIENT reason is fatal false (retry next tick); RATE_EXCEEDED first
 //                               re-thins the unsent script at 1000 / rateHz ms, once per rate. Any other
 //                               reason is fatal true. The thinning covers the unsent tail from knot
@@ -243,7 +235,7 @@ export function createScheduler({ submit, now = () => performance.now(), log = (
 //
 // Playback (ph-smvd.12). The offset in force everywhere above is T.offsetMs - compMs. A transform or
 // loop change is pending until restart; preroll and home read the pending ones.
-export const HOME_MIN_MS = 400, LEAD_LOW_MS = 50;
+export const HOME_MIN_MS = 400;
 export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, LAG_MATCH_MS = 100;
 // Scheduler gains:
 //   setHome(home | null)        home: {point: 0..1 script space, speed: norm/s}; in force at once
@@ -253,12 +245,11 @@ export const COMP_MAX_MS = 100, COMP_STEP_MS = 2, LAG_WINDOW = 32, LAG_MIN = 8, 
 //                               delta = 1 when hereNorm is null, endVel 0. The caller submits it once a
 //                               pause has lasted afterMs
 //   setLoop(loopSpec | null)    pending until restart
-//   setLatency({low, auto})     in force at once. low: the offer stops at atMs > now + LEAD_LOW_MS.
-//                               auto: when |clamp(lagMs, +-COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
+//   setLatency({auto})          in force at once. auto: when |clamp(lagMs, 0, COMP_MAX_MS) - compMs| >= COMP_STEP_MS the next
 //                               tick sets compMs and restarts; off (or no lag yet) returns compMs to 0
 //   restart(clock, transitionMs = 0)   transitionMs > 0 (a seek): the first segment is {atMs: now,
 //                               norm: applyT(script at mediaAt(now + transitionMs - offset)), durationMs:
-//                               transitionMs, endVel: wireVel(the chord of the span it lands in)}; that span
+//                               transitionMs, endVel: null}; that span
 //                               follows from its end, the knots
 //                               inside are passed over
 //   observePlan(arrivalMs, elapsedMs, durationMs)   one plan strip sample (plan.elapsed, plan.duration in ms;
@@ -280,15 +271,14 @@ and clock do none of it:
   each playing tick a new sample (its `api.age` dropped, or its elapsed
   changed) goes to `observePlan(now() - api.age(planEl), elapsed ms,
   duration ms)`, converted from the field's unit (us, ms, s).
-- `scheduler.load(wire)`: interp.js `wire()`, one knot per action, never the shaped Script.
+- `scheduler.load(wire)`: scale.js `wire()`, one knot per action.
 - Pause home: Pause (a stop to ready from playing) or the end arms it at
   `now() + homeAfterMs`; each tick past that while ready submits
   `scheduler.home(here())` once (a transient refusal retries next tick),
   unless `play.home` is off, Motion is off or the gate reads; Play, a load
   and a Motion change disarm it. Probe mark `home` when it went out.
 - Prefs `play` map to `setHome(home ? {point, speed} : null)`,
-  `setLatency({low: lowLatency, auto: autoLatency})`, `clock.tune(low ? LOW : {})`,
-  `frameSource(..., () => low ? LOW.fallbackMs : FALLBACK_AFTER_MS)`, and a
+  `setLatency({auto: autoLatency})`, and a
   `seeked` restart as `restart(clock, seekMs)`; every other restart passes 0.
 - Loop: `loop.set(loopSpec(a, b, loopCount, video.duration * 1000))` and
   `setLoop(loop.spec)` (a, b the timeline's A-B points, else 0 and the
@@ -546,18 +536,18 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //       opts.fullscreen: the hover bar offers media fullscreen and the shell's mode (the page mount, page.js)
 //       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
-//   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
-//   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
-//   scale,               the map in force, [lower, upper] (Auto's fit or interp.mapOf(interp)), read by the settings card's Scale row
+//   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
+//   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
+//   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
-//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), get low and get wire;
-//   Auto Scale: get scale, get fit (under scaleAuto the wire at scale 1 for the analyzer to measure, else null),
-//   fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to interp.fitMap(extent)). Under
-//   scaleAuto a load, a mode, parameter, filter or Range change first sets fitMap(curveExtent(script)).
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
+//   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
+//   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
+//   fitMap(extent)). A new script starts at [0, 1] until the measure lands.
 export const PLAY_CSS;
 export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
-  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Low latency, Auto latency;
+  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency;
   // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
@@ -568,6 +558,7 @@ export const ZOOMS = [5000, 10000, 20000, 60000], HEAT_BINS = 200, TRACE_MS = 80
 export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;          // heat speeds, units/s: --reality, then --highlight
 export const CSS, COPY;
 export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
+export function dotPath(script, fromMs, toMs, W, H, T);      // -> 'Mx,yh0...': the actions as round-capped dots
 export function kinPoints(render, fromMs, toMs, W, H);        // -> 'x,y ...', at most 2000; '' without pos
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mix in oklab to --reality at HEAT_MID_UPS,
@@ -587,8 +578,9 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
   // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setExpanded(on), setLoop({a, b}), unmount() }
-  // kin: the analyzer's Kinetic render (analyzer.kinetic) or null, drawn --highlight under the script curve
-  // script: the shaped Script (intent curve, display only); raw: the parsed one, drawn muted when it differs; the heat
+  // kin: the analyzer's Kinetic render (analyzer.kinetic) or null: the intent curve (--intent, data-kin), moved back by
+  // T.offsetMs; without it or during a Range drag, straight lines between the actions
+  // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
   // is heatStops(raw or script) as one linearGradient of hard stops over the overview, over-limit runs striped --warn
   // ceiling: {vmax: number | null, spanMm: number | null}
   // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
@@ -660,7 +652,7 @@ export function kinText(state: 'wasm'|'fallback', render | {error} | null);   //
 export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit
   // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
-  // kinetic: the latest render of script() through kinetic.wasm with limit.input.*, geometry.max_travel and
+  // kinetic: the latest render of the current script() (null while a newer script renders) through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
   // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle
   // half of a window twice as wide (pos_e4 and endVelE3 through WIDE_*), the wall guards out of reach: extent is
@@ -673,8 +665,8 @@ the video moves to an in-card thumbnail (full: the analyzer column's width,
 `clamp(320px, 40%, 560px)` of the card, by 180 at the top right; handheld:
 one tap high in the source row), never picture-in-picture (law 1).
 Head: Live | Preview, Apply, Discard; a 20 px line with `Lag n ms  Plan n ms`
-(or the last refusal); a 20 px Kinetic line (`kinText` after a `--highlight` swatch, the legend of the
-timeline's Kinetic line; the version, the render time and
+(or the last refusal); a 20 px Kinetic line (`kinText` after an `--intent` swatch, the legend of the
+timeline's intent curve, the render itself; the version, the render time and
 the anomaly kinds in its tooltip); then the rows, one `var(--tap)` each, in a list that
 scrolls inside its box. Live writes through `api.write`; Preview through
 `api.writeTrial`, Apply `api.commitTrial()`, Discard `api.revertTrial()`;
@@ -687,7 +679,7 @@ segmented field of more than two options renders as a select.
 
 ```js
 // bytes.js: export const WASM;   // base64 kinetic.wasm, written by node test/kinetic-pin.mjs --write; never edited
-export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
+export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5, FREE = -32768;
 export const TUNING;      // [[member, byte offset, 'f'|'u'|'b']]: kinetic_tuning (64 B, Kinetic²), Nucleus tools/kinetic-wasm/README.md
 export const FLAGS = ['busy', 'shaped', 'fallback', 'clamped', 'refused'];   // kinetic_sample.flags bits 0..4
 export const ANOMALIES;   // kinetic2::AnomalyKind names by value 0..12 ('' for none and the reserved kinds; 12 renders, never a drop)
@@ -695,8 +687,8 @@ export function tuningOf(pairs: [field, value][]);   // -> [[member, offset, typ
   // _ms field to its _us member times 1000; non-numbers skipped
 export function segmentsOf(script, T);   // -> { segs: [startMs, pos_e4, durMs, endVelE3, family][], t0, steps }
   // engine clock: a preroll to the first knot (start 2 x LEAD_MS, PREROLL_MS long) arriving at media 0, then one
-  // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 packed as the host packs it (the
-  // preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
+  // segment per span at pad + at[k-1], endVelE3 the scheduler's endVel at rate 1 packed as the host packs it, FREE
+  // (-32768, registry segment_end_vel_unspecified) where the knot is free (the preroll 0); t0 = T.offsetMs - pad is the media ms of engine 0; steps runs TAIL_MS past
 export function* renderCore(k, q);   // k: the wasm exports; q: {limits: {vmax, amax, jmax, rail, horizonMs},
   // window: [lo, hi] mm, tuning: tuningOf(), segs, steps, stepMs = 1, every = 1, leadMs = LEAD_MS}; yields every
   // 8192 steps; returns KineticRender. Self-contained: the worker runs its source.
@@ -719,42 +711,28 @@ emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
 
 ---
 
-## interp: `interp.js`
+## scale: `scale.js`
 
 ```js
-export const STEP_MS = 40;            // the longest piece shape() cuts a curved span into (display only)
-export const MODES;                   // frozen {id -> its parameter key | null}: linear, step, smoothstep, cosine,
-                                      // catmull 'tension', hermite 'bias', monotone, pchip, akima, makima
-export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000, scale 0.25..1}
-                                      // with steps
-export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0,
-                                      // scale: 1, scaleAuto: true}
-export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it; scaleAuto
-                                      // a stored boolean else true; map kept only as a fit (never stored)
-export function mapOf(interp);        // -> [lower, upper]: interp.map, else [0.5 - 0.5 / scale, 0.5 + 0.5 / scale]
+export const RANGES;                  // frozen {scale: {min 0.25, max 1, step 0.01}}
+export const SCALE;                   // frozen default {scale: 1, scaleAuto: true}
+export function cleanScale(v);        // -> {scale, scaleAuto, map?}; prefs.js repairs the key 'interp' with it: scale clamped,
+                                      // scaleAuto a stored boolean else true, map kept only as a fit (never stored)
+export function mapOf(I);             // -> [lower, upper]: I.map, else [0.5 - 0.5 / scale, 0.5 + 0.5 / scale]
 export function fitMap([min, max]);   // -> [min(0, min) floored, max(1, max) ceiled] on the 0.01 grid (1e-4 slack),
                                       // within [-1.5, 2.5] (the 0.25 gain's reach); [0, 1] when inside the window
-export function curveExtent(script, interp);   // -> [min, max] of the mode's curve before the clamp and the filters
-export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
-export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
-  // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
-  // off without spanMm); linear with both off returns `script` itself. Display only, never sent
-export function wire(script, interp, ctx);     // -> Script the scheduler sends: the actions' own knots; vel the mode's
-  // slope at each (cubic modes; 0 for step, smoothstep, cosine); with smoothing or slew each action takes the filtered
-  // curve's value and vel is null; linear with both off returns `script` itself, so the scheduler runs byte-identical
-  // shape() and wire() first map every action, p' = (p - lower) / (upper - lower) with mapOf(interp) (the controller
-  // passes Auto's fit as interp.map); at [0, 1] nothing moves
+export function wire(script, I);      // -> the Script the scheduler sends: every action p' = (p - lower) / (upper - lower);
+                                      // `script` itself at [0, 1], so the scheduler runs byte-identical
 export const COPY, CSS;
-export function mountInterp(el, { value, onChange, gain });   // -> unmount(); the settings card rows, onChange(interp)
-  // on commit; Scale: Auto toggle, slider and typed value 0.25..1 (manual), or the readout '0.01–0.97' (where
-  // 0 and 1 land) from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto);
-  // an overshooting mode's menu carries COPY.overTip
+export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale row, onChange(scale)
+  // on commit: Auto toggle, slider and typed value 0.25..1 (manual), or the readout '0.01–0.97' (where 0 and 1 land)
+  // from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto)
 ```
 
-The controller schedules `wire(script)` (`ctl.wire`, the Kinetic preview's script too): one segment per action,
-ending at the mode's tangent through knotSlope (kept at a reversal, so the mode's overshoot reaches the hub); the segments grant declares
-`curve_family` c1_cubic (motion.js, host-wide on the segments STREAM) because every mode is a cubic Hermite per span, so the hub renders the player's curve instead of a C2 quintic; a hub downgrade is logged once (SPEC 9.6 item 5). `PlayerState.shaped` (`shape(script)`)
-is what the timeline, the heat and the speed meter draw. Tests: `test/funscript-core.test.mjs` (interp section).
+The controller schedules `wire(script)` (`ctl.wire`, `PlayerState.shaped`, the Kinetic preview's script too): one
+segment per action, a same-direction knot at its chords' mean, every other knot free; the segments grant declares
+no curve family (RFC-108: the hub's `smoothness` shapes a free knot). Tests: `test/funscript-core.test.mjs` (scale
+section), `test/funscript-scheduler.test.mjs` (the end velocity).
 
 ---
 
@@ -772,7 +750,7 @@ export function activate(api);   // -> deactivate()
 //                         vmax: 'limit.input.speed', patRun: 'pattern.running', advRun: 'advgen.running',
 //                         planEl: 'plan.elapsed', planDur: 'plan.duration' } },
 //     mount: (el, fields) => player.mount(el, fields) });
-//   api.registerSettings((el) => mountConnect + mountInterp (gain: player.scale) + mountPlay, one unmount for the three);
+//   api.registerSettings((el) => mountConnect + mountScale (gain: player.scale) + mountPlay, one unmount for the three);
 //   registerPlayerPage(api, player, HERO.spec, that same function);   // page.js: the card, then a Settings section mounting it;
 //     registered fill and mediaFullscreen (docs/PLUGINS.md, Pages): the card takes the pane, the section at most half
 //   return () => player.dispose();
@@ -793,5 +771,5 @@ export named here, the prefs and the hero spec; the default run is the
 fake-hub browser test (`npm run check:funscript`, in `test:browser`); `--live
 --port P --http P+7` runs the card against valencesim on spare ports, and
 `--live-playback --port P --http P+7 [--shots dir]` plays a 60 s clip there
-with auto latency, a seek glide, a 14 s gap held as one span, a pause home, an A-B loop, low
-latency and a Preview write, printing one `PB-RESULT` JSON line.
+with auto latency, a seek glide, a 14 s gap held as one span, a pause home, an A-B loop and a
+Preview write, printing one `PB-RESULT` JSON line.

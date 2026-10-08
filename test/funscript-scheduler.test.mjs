@@ -11,15 +11,14 @@
  * Run: node test/funscript-scheduler.test.mjs
  */
 import {
-  createMediaClock, frameSource, CLOCK_WINDOW, FALLBACK_AFTER_MS, LOW, createLoop, loopSpec, WRAP_EARLY_MS,
+  createMediaClock, frameSource, CLOCK_WINDOW, FALLBACK_AFTER_MS, createLoop, loopSpec, WRAP_EARLY_MS,
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
-  HOME_MIN_MS, LEAD_LOW_MS, LAG_MIN, COMP_STEP_MS, DWELL_SPAN, dwellMerge,
+  HOME_MIN_MS, LAG_MIN, COMP_STEP_MS,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
-import { MODES, wire } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -408,19 +407,23 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
 }
 
 {
-  // The hub's dwell rule (SPEC 9.6) zeroes the end velocity of a target within DWELL_SPAN of the previous one.
-  const s = parseFunscript({ actions: [{ at: 0, pos: 20 }, { at: 300, pos: 21 }, { at: 600, pos: 40 }, { at: 900, pos: 40 },
-    { at: 1200, pos: 41 }, { at: 1500, pos: 30 }, { at: 1800, pos: 31 }] });
-  const m = dwellMerge(s, T0);
-  ok('dwellMerge drops a small step that moves on; keeps the ends, a hold and a reversal', JSON.stringify([...m.at]) === '[0,600,900,1200,1500,1800]', [...m.at].join());
-  ok('dwellMerge reads the step through T: 5 points at hi - lo 0.3 is a hold', dwellMerge(parseFunscript({ actions: [{ at: 0, pos: 0 },
-    { at: 300, pos: 5 }, { at: 600, pos: 50 }] }), { ...T0, lo: 0.3, hi: 0.6 }).at.length === 2 && dwellMerge(s, { ...T0, hi: 0.01 }) !== s);
-  const big = strokes(4);
-  ok('dwellMerge returns the script itself when no knot is a hold', dwellMerge(big, T0) === big);
-  // A curve mode: no two consecutive targets within DWELL_SPAN while the line moves on.
-  const sent = play(wire(big, { mode: 'makima' })).host.sent;
-  const rep = sent.slice(1).filter((g, i) => Math.abs(g.norm - sent[i].norm) < DWELL_SPAN && g.endVel !== 0).length;
-  ok('makima: no segment repeats the previous target within DWELL_SPAN while moving', rep === 0, rep + ' of ' + sent.length);
+  // One segment per action, a 1 point step included (Kinetic² zeroes no repeated target): only a knot between two chords
+  // of one sign carries a velocity; a reversal, a hold edge and the end are free (null), the hub's smoothness shapes them.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }, { at: 1500, pos: 100 },
+    { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 2700, pos: 21 }, { at: 3000, pos: 80 }] });
+  const ev = (o) => play(s, o).host.sent.map((g) => g.endVel);
+  const sent = play(s).host.sent, lin = ev();
+  ok('one segment per action at its position, the 1 point step kept', sent.length === 7 && sent.every((g, i) => near(g.norm, s.pos[i + 1], 1e-6)),
+    sent.map((g) => g.norm.toFixed(2)).join());
+  ok('same direction: the mean of the two chords (0.85), bounded to 1.5 x the lesser (0.45; 0.05 at the step); the rest free',
+    near(lin[0], 0.85, 1e-6) && near(lin[1], 0.45, 1e-6) && lin[2] === null && lin[3] === null && lin[4] === null && near(lin[5], 0.05, 1e-6) && lin[6] === null, lin.join());
+  const tr = ev({ rate: 2 });
+  ok('rate 2 doubles it', near(tr[0], 1.7, 1e-6) && near(tr[1], 0.9, 1e-6) && tr[2] === null, tr.join());
+  const inv = play(s, { rate: 1 }), T = { ...T0, lo: 0.2, hi: 0.6, invert: true };
+  const sch = createScheduler({ submit: inv.host.submit, now: inv.now });
+  sch.load(s); sch.setTransform(T); inv.clock.anchor(0, inv.now(), 1); sch.restart(inv.clock); sch.tick(inv.clock);
+  const g = inv.host.calls.at(-1);
+  ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
 }
 {
   // A restart that changes only timing keeps what the hub holds: re-sending the in-progress span repeats its target.
@@ -535,7 +538,7 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   sch.tick(clock);
   const [a, b] = host.calls[0];
   ok('seek: one segment from now over the delay to the script position delay ahead', a.atMs === 7000 && a.durationMs === 500 && near(a.norm, posAt(s, 1900), 1e-6));
-  ok('seek: the transition ends at the chord it lands in (1600 -> 2000: 2.5 norm/s)', near(a.endVel, 2.5, 1e-9), a.endVel);
+  ok('seek: the transition ends free (the hub shapes the landing)', a.endVel === null);
   ok('seek: the next span starts at its end and keeps its knot', b.atMs === 7500 && near(b.atMs + b.durationMs, clock.displayAt(2000), 1e-9) && near(b.norm, 1, 1e-6));
   while (t < 10000) { sch.tick(clock); t += VSYNC; }
   ok('seek: the knots inside the delay are passed over, the rest tile', tiles(host.sent) <= 0.001 && host.sent.length === 3, host.sent.length + ' sent');
@@ -547,27 +550,8 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   ok('seek: the delay is wall ms, so rate 2 aims 1000 media ms ahead', r2.cursor === 4);
 }
 {
-  // End velocity (SPEC 9.6 item 5): knot k's slope rides span k, in norm/s through T and the rate.
-  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }, { at: 1500, pos: 100 },
-    { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 3000, pos: 80 }] });
-  const ev = (o, sc = s) => play(sc, o).host.sent.map((g) => g.endVel);
-  const lin = ev();
-  ok('linear: the mean of the two chords (0.85), bounded to 1.5 x the lesser (0.45), 0 at a reversal, beside a hold and at the end',
-    lin.length === 6 && near(lin[0], 0.85, 1e-6) && near(lin[1], 0.45, 1e-6) && lin.slice(2).every((v) => v === 0), lin.join());
-  const tr = ev({ rate: 2 }).map((v, i) => v / lin[i]), inv = play(s, { rate: 1 });
-  ok('rate 2 doubles it', near(tr[0], 2, 1e-9) && near(tr[1], 2, 1e-9));
-  const T = { ...T0, lo: 0.2, hi: 0.6, invert: true };
-  const sch = createScheduler({ submit: inv.host.submit, now: inv.now });
-  sch.load(s); sch.setTransform(T); inv.clock.anchor(0, inv.now(), 1); sch.restart(inv.clock); sch.tick(inv.clock);
-  const g = inv.host.calls.at(-1);
-  ok('T scales it by hi - lo and an invert flips its sign', near(g[0].endVel, -0.85 * 0.4, 1e-6) && near(g[1].endVel, -0.45 * 0.4, 1e-6), g[0].endVel);
-  // One segment per action in every mode (SPEC 9.6 item 5): the hub draws the curve between them.
-  const per = Object.keys(MODES).filter((m) => { const g = play(wire(s, { mode: m })).host.sent; return g.length !== 6 || g.some((x, i) => x.norm !== s.pos[i + 1]); });
-  ok('every mode: one segment per action, at its position', per.length === 0, per.join());
-  ok('step, smoothstep and cosine: every action ends at rest', ['step', 'smoothstep', 'cosine'].every((m) => ev({}, wire(s, { mode: m })).every((v) => v === 0)));
-  const crv = ev({}, wire(s, { mode: 'catmull' }));
-  ok('catmull-rom: an action ends at its tangent ((85 - 0) / 1000 ms = 0.85 norm/s)', near(crv[0], 0.85, 1e-6), crv[0]);
-  ok('catmull-rom: a reversal keeps its tangent (the overshoot), bounded to 1.5 x the lesser chord (-0.65 -> -0.45)', near(crv[2], -0.45, 1e-6), crv[2]);
+  // Stop, preroll and home declare rest: nothing is scheduled after them.
+  const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }] });
   const t = 50, o = createScheduler({ submit: () => ({ ok: true, sent: 1 }), now: () => t });
   o.load(s); o.setHome({ point: 0.5, speed: 0.3 });
   ok('preroll and home end at rest', o.preroll(700, 0).endVel === 0 && o.home(0).endVel === 0);
@@ -609,38 +593,52 @@ const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent
   ok('compensation: no lag reads before ' + LAG_MIN + ' plans match', Number.isNaN(fresh.lagMs));
 }
 {
-  // Low latency: the offer never reaches past LEAD_LOW_MS; the clock tunes to LOW.
-  const s = strokes(12, 5, [20, 60]);
-  let t = 0;
-  const calls = [];
-  const sch = createScheduler({ submit: (l) => { calls.push({ t, l }); return { ok: true, sent: l.length, rateHz: 50 }; }, now: () => t });
+  // A plan strip that reads every plan 20 ms before its stamp (Nucleus val-0ep): the lag reads negative, nothing is applied.
+  const s = strokes(9, 20);
+  let t = 1000;
+  const host = fakeHost(() => t);
+  const sch = createScheduler({ submit: host.submit, now: () => t });
   const clock = createMediaClock();
-  clock.anchor(0, 0, 1);
-  sch.load(s); sch.setLatency({ low: true }); sch.restart(clock);
-  while (t < 3000) { sch.tick(clock); t += VSYNC; }
-  ok('low latency: every offered start lies within ' + LEAD_LOW_MS + ' ms', calls.length > 10 && calls.every(({ t: c, l }) => l.every((g) => g.atMs <= c + LEAD_LOW_MS)));
-  // A display latency change of 12 ms after the ring fills: LOW slews it out 3 x faster.
-  const settle = (c) => {
-    c.anchor(0, 0, 1);
-    let k = 1;
-    for (; k <= 64; k++) c.observe(k * 33, k * 33);
-    const from = k * 33;
-    for (; c.displayAt(k * 33) - k * 33 < 11 && k < 2000; k++) c.observe(k * 33, k * 33 + 12);
-    return k * 33 - from;
-  };
-  const dflt = settle(createMediaClock()), fast = settle(createMediaClock(LOW));
-  ok('low latency: a 12 ms display change is followed at least 2.5 x sooner', fast * 2.5 <= dflt, fast + ' ms vs ' + dflt + ' ms');
-  const c = createMediaClock(LOW);
-  c.tune({});
-  ok('tune({}) restores the default filter', settle(c) === dflt);
+  clock.anchor(0, t, 1);
+  sch.load(s); sch.setLatency({ auto: true }); sch.restart(clock);
+  let nextSample = t;
+  while (clock.mediaAt(t) < 10000) {
+    sch.tick(clock);
+    if (t >= nextSample) {
+      nextSample += 50;
+      const g = host.sent.findLast((x) => x.atMs - 20 <= t);
+      if (g && g.atMs - 20 + g.durationMs > t) sch.observePlan(t, t - (g.atMs - 20), g.durationMs);
+    }
+    t += VSYNC;
+  }
+  ok('compensation: a negative lag (an early plan strip) is never applied', sch.lagMs < -15 && sch.compMs === 0, 'lag ' + sch.lagMs.toFixed(2) + ', comp ' + sch.compMs);
+}
+{
+  // The one clock filter (Low latency retired 2026-10-08, FUNSCRIPT.md Playback): 30 fps on 60 Hz with +-2 ms
+  // compositor jitter keeps the map within 1 ms p95; a 12 ms display change is followed to 11 ms within 3 s.
+  const r = rng(7), c = createMediaClock(), errs = [];
+  c.anchor(0, 0, 1);
+  for (let i = 1; i < 1800; i++) {
+    const m = i * 1000 / 30;
+    c.observe(m, Math.round(m / VSYNC) * VSYNC + (r() - 0.5) * 4);
+    if (i > 60) errs.push(Math.abs(c.displayAt(m) - m));
+  }
+  ok('clock: the map stays within 1 ms p95 under vsync jitter', quantile(errs, 0.95) <= 1, quantile(errs, 0.95).toFixed(2) + ' ms');
+  const d = createMediaClock();
+  d.anchor(0, 0, 1);
+  let k = 1;
+  for (; k <= 64; k++) d.observe(k * 33, k * 33);
+  const from = k * 33;
+  for (; d.displayAt(k * 33) - k * 33 < 11 && k < 2000; k++) d.observe(k * 33, k * 33 + 12);
+  ok('clock: a 12 ms display change is followed within 3 s, slewed', k * 33 - from <= 3000, k * 33 - from + ' ms');
 }
 {
   const fake = (seed = {}) => ({ prefs: { get: (k) => seed[k] ?? null, set: () => {} } });
   ok('prefs: play defaults (loop off, home off, seek 500 ms, latency off)', JSON.stringify(readPrefs(fake()).play) === JSON.stringify(PREFS.play)
     && PREFS.play.seekMs === 500 && !PREFS.play.home && !PREFS.play.autoLatency && Object.isFrozen(PREFS.play));
-  const p = readPrefs(fake({ play: { loopCount: 3.6, homeAfterMs: 120000, homePoint: 2, homeSpeed: 0, seekMs: 777, lowLatency: 'y' } })).play;
-  ok('prefs: play values repaired to their ranges', p.loopCount === 4 && p.homeAfterMs === 60000 && p.homePoint === 1 && p.homeSpeed === 0.05
-    && p.seekMs === 800 && p.lowLatency === false, JSON.stringify(p));
+  const p = readPrefs(fake({ play: { loopCount: 3.6, homeAfterMs: 120000, homePoint: 2, homeSpeed: 0, seekMs: 777, lowLatency: true } })).play;
+  ok('prefs: play values repaired to their ranges, a stored lowLatency dropped', p.loopCount === 4 && p.homeAfterMs === 60000 && p.homePoint === 1 && p.homeSpeed === 0.05
+    && p.seekMs === 800 && !('lowLatency' in p), JSON.stringify(p));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

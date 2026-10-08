@@ -22,9 +22,6 @@
 //   displayAt() is not capped: a clamped span would break the tiling above.
 // - frameSource's rAF fallback reports only while the video is not paused: a paused
 //   currentTime against a running now() would read as a step on every frame.
-// - LOW (the low latency setting) narrows the ring and raises the slew: the map follows a
-//   display-latency change in a quarter second instead of six, and passes more vsync jitter
-//   into the stamps. STEP_MS stays: below one vsync it would step on every cadence slip.
 // - A loop runs the clock in unrolled media time (createLoop): lap L adds L x (b - a), so the
 //   map stays one affine line across the wrap and the landing frame's seek delay is a residual.
 //   A wrap counts only after wrap() and only on a frame in the section's first half: wrap() is
@@ -32,7 +29,6 @@
 //   (a loop set at the playhead wraps at once). A user seek is the caller's seeked().
 
 export const CLOCK_WINDOW = 32, SLEW_MS_PER_S = 5, STEP_MS = 25, FALLBACK_AFTER_MS = 250;
-export const LOW = Object.freeze({ window: 8, slew: 15, fallbackMs: 100 });
 export const WRAP_EARLY_MS = 34;   // one 30 fps frame: a whole-media loop wraps before 'ended'
 const STEP_WINDOW = 8;
 const FRAME_MS = 34;    // one 30 fps frame
@@ -52,11 +48,6 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
   const clock = {
     ready: false,
     rate: 1,
-    /** {window, slew}: LOW or the defaults; takes effect at once, the ring trimmed to fit. */
-    tune(o = {}) {
-      win = o.window || CLOCK_WINDOW; slew = o.slew || SLEW_MS_PER_S;
-      if (ring.length >= win) { ring = ring.slice(-win); filled = true; }
-    },
     anchor(mediaMs, displayMs, rate = clock.rate) {
       m0 = mediaMs; c0 = displayMs; clock.rate = Number.isFinite(rate) && rate > 0 ? rate : 1;
       ring = []; filled = false; lastAt = cAnchor = displayMs; lastM = mediaMs; clock.ready = true;
@@ -95,8 +86,8 @@ export function createMediaClock({ window: win = CLOCK_WINDOW, slew = SLEW_MS_PE
   return clock;
 }
 
-/** fallbackMs: () => ms without an rVFC frame before rAF reports currentTime (LOW.fallbackMs or the default). */
-export function frameSource(video, onFrame, now = () => performance.now(), fallbackMs = () => FALLBACK_AFTER_MS) {
+/** Without an rVFC frame for FALLBACK_AFTER_MS, rAF reports currentTime. */
+export function frameSource(video, onFrame, now = () => performance.now()) {
   let stopped = false, lastFrame = now(), vfcId = 0, rafId = 0, warned = false, prev = null;
   const vfc = typeof video.requestVideoFrameCallback === 'function';
   const onVfc = (t, md) => {
@@ -120,7 +111,7 @@ export function frameSource(video, onFrame, now = () => performance.now(), fallb
   const onRaf = () => {
     if (stopped) return;
     const t = now();
-    if (t - lastFrame >= fallbackMs() && !video.paused) onFrame(video.currentTime * 1000, t);
+    if (t - lastFrame >= FALLBACK_AFTER_MS && !video.paused) onFrame(video.currentTime * 1000, t);
     rafId = requestAnimationFrame(onRaf);
   };
   if (vfc) vfcId = video.requestVideoFrameCallback(onVfc);

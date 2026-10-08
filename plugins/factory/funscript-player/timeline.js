@@ -8,7 +8,7 @@
 // - Intent (--intent) is the script as commanded after T; reality (--reality)
 //   is telemetry.position as a window share, drawn only where reported
 //   (law 9) and dimmed where stale (law 8); --highlight is the playhead, focus
-//   and the Kinetic line; --warn marks heat past the input speed limit. No red (law 13).
+//   and focus; --warn marks heat past the input speed limit. No red (law 13).
 // - The heat is the funscript speed heatmap: one hard-edged color run per action span
 //   of the file's actions by |dpos| / dt (units/s, pos 0..100), from the chassis dark
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
@@ -29,11 +29,10 @@
 //   the hub's own command, under the script's.
 // - onSettings(on), a page mount's, puts Settings at the cluster's right end; the button holds
 //   its own pressed state from settingsOpen, the page being its only other writer.
-// - frame's kin (the analyzer's Kinetic render, display only) draws --highlight under the script curve:
-//   the machine's own planner, rendered ahead.
-// - setScript's script is the shaped one (interp.js shape(), display only: the hub draws its own curve
-//   through the wire's tangents). raw, when it is another Script, is the file's actions, drawn muted under
-//   it; the heat reads raw.
+// - The intent curve is frame's kin (the twin's render of the wire, display only), moved back by the
+//   offset so it runs through the actions; without it, or during a Range drag, straight lines between
+//   the actions. setScript's script is the wire (scale.js wire()), its actions drawn as dots; raw is the
+//   file's actions, which the heat reads.
 // - The detail's top right is one control bundle on a plate flush with the corner: the caller's `bundle`
 //   elements (Motion, Offset, Invert), then zoom, A-B, Settings. The detail and the heat sit on
 //   --screen with the advanced generator's inset shadow.
@@ -91,6 +90,16 @@ export function curvePoints(script, fromMs, toMs, W, H, T = T0) {
   }
   pts.push(x(toMs) + ',' + y(posAt(script, toMs)));
   return pts.join(' ');
+}
+
+/** The actions in [fromMs, toMs] as an SVG path of dots (zero-length round-capped strokes) in a W x H box. */
+export function dotPath(script, fromMs, toMs, W, H, T = T0) {
+  if (!script || !(toMs > fromMs)) return '';
+  let d = '';
+  for (let i = indexAfter(script, fromMs); i < script.at.length && script.at[i] <= toMs; i++) {
+    d += 'M' + ((script.at[i] - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - tf(script.pos[i], T) * H).toFixed(1) + 'h0';
+  }
+  return d;
 }
 
 /** A Kinetic render ({t0, dtMs, pos mm, lo, hi}) as polyline points from fromMs to toMs, at most 2000. */
@@ -181,13 +190,12 @@ export const CSS = `
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
   container-type: size; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
-.fsp-dt .raw { stroke: var(--line-4); stroke-width: 1; }
+.fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
 .fsp-dt .int.draft { stroke-dasharray: 6 4; }
 .fsp-dt .real { stroke: var(--reality); stroke-width: 1.5; }
 .fsp-dt .real.stale { opacity: .4; }
 .fsp-dt .plan { stroke: var(--intent); stroke-width: 1; opacity: .55; }
-.fsp-dt .kin { stroke: var(--highlight); stroke-width: 1.25; }
 .fsp-dt .rg { stroke: var(--line-2); stroke-dasharray: 4 4; }
 .fsp-rh { position: absolute; left: 0; width: var(--tap); height: var(--tap); margin-top: calc(var(--tap) / -2); outline: none; touch-action: none; cursor: ns-resize; z-index: 1;
   top: clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2)); }
@@ -278,12 +286,11 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
   const dtSvg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const rgLo = s('line', { class: 'rg', x1: '0', x2: '1000' });
   const rgHi = s('line', { class: 'rg', x1: '0', x2: '1000' });
-  const rawLine = s('polyline', { class: 'raw' });
   const curve = s('polyline', { class: 'int' });
-  const kinLine = s('polyline', { class: 'kin' });
+  const dots = s('path', { class: 'dots' });
   const real = s('g');
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
-  dtSvg.append(rgLo, rgHi, abA, abB, rawLine, kinLine, curve, real);
+  dtSvg.append(rgLo, rgHi, abA, abB, curve, dots, real);
   const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
   const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
@@ -359,10 +366,11 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
   function draw() {
     const d = dur(), Te = eff();
     const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
-    curve.setAttribute('points', curvePoints(script, from, to, 1000, 100, Te));
-    rawLine.setAttribute('points', raw && raw !== script ? curvePoints(raw, from, to, 1000, 100, Te) : '');
+    const k = kin && !preview ? { ...kin, t0: kin.t0 - (Te.offsetMs || 0) } : null;
+    curve.setAttribute('points', k ? kinPoints(k, from, to, 1000, 100) : curvePoints(script, from, to, 1000, 100, Te));
+    curve.toggleAttribute('data-kin', !!k);
     curve.classList.toggle('draft', !!preview);
-    kinLine.setAttribute('points', kinPoints(kin, from, to, 1000, 100));
+    dots.setAttribute('d', dotPath(script, from, to, 1000, 100, Te));
     real.replaceChildren(...traceLines(trace.map((x) => ({ m: x.m, u: x.p })), from, to, 1000, 100).map((l) => s('polyline', {
       class: 'plan', points: l.points })), ...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
       class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));

@@ -11,7 +11,7 @@
  * - No DOM or window at import time: node imports this module.
  */
 
-import { INTERP, cleanInterp } from './interp.js';
+import { SCALE, cleanScale } from './scale.js';
 
 export const PREFS = deepFreeze({
   T: { offsetMs: 0, lo: 0, hi: 1, invert: false },
@@ -24,11 +24,11 @@ export const PREFS = deepFreeze({
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
   split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
-  interp: INTERP,
+  interp: SCALE, // scale.js; fit() drops any other stored field
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;
-  // seekMs 0 = jump; lowLatency and autoLatency per scheduler.js setLatency.
+  // seekMs 0 = jump; autoLatency per scheduler.js setLatency.
   play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,
-    seekMs: 500, lowLatency: false, autoLatency: false },
+    seekMs: 500, autoLatency: false },
 });
 
 const MIRROR = 'phosphor.funscript.';
@@ -74,7 +74,7 @@ const REPAIR = {
   view: (v) => (v === 'library' ? v : 'player'),
   split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
-  interp: cleanInterp,
+  interp: cleanScale,
   play: (p) => ({ ...p, loopCount: clamp(Math.round(p.loopCount), 0, 99), homeAfterMs: clamp(Math.round(p.homeAfterMs / 500) * 500, 1000, 60000),
     homePoint: clamp(p.homePoint, 0, 1), homeSpeed: clamp(p.homeSpeed, 0.05, 2), seekMs: clamp(Math.round(p.seekMs / 50) * 50, 0, 3000) }),
 };

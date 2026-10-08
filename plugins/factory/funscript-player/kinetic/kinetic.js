@@ -14,10 +14,12 @@
 //   name ending _ms binds its _us member times 1000. A member no field names keeps the factory value.
 //   Members Kinetic² ignores (chase_*, handoff_k, ...) stay bound so the struct is written whole.
 
-import { applyT, knotSlope, wireVel, dwellMerge } from '../scheduler.js';
+import { applyT, knotSlope, wireVel } from '../scheduler.js';
 import { WASM } from './bytes.js';
 
 export const LEAD_MS = 125, PREROLL_MS = 1200, TAIL_MS = 1000, EVERY = 5;
+// Registry limits.segment_end_vel_unspecified: a free knot (the hub's smoothness shapes it). Restated: a plugin imports nothing outside its folder.
+export const FREE = -32768;
 export const TUNING = Object.freeze([['jmax_ovr', 0, 'f'], ['vmax_ovr', 4, 'f'], ['amax_ovr', 8, 'f'], ['chase_gain', 12, 'f'],
   ['chase_lookahead', 16, 'f'], ['handoff_k', 20, 'f'], ['smooth_budget', 24, 'f'], ['amplitude_budget', 28, 'f'],
   ['overshoot_guard', 32, 'f'], ['chase_dense_us', 36, 'u'], ['settle_grace_us', 40, 'u'], ['chase_ff', 44, 'b'],
@@ -45,16 +47,18 @@ export function tuningOf(pairs) {
 /**
  * The script as the render's segments [startMs, pos_e4, durMs, endVelE3, family] on the engine clock, and
  * t0, the media ms of engine 0: a preroll to the first knot arriving at media 0, then one segment per span.
- * The scheduler's knots (dwellMerge); each span ends at its endVel at rate 1 (knotSlope, wireVel), packed as the host packs it.
+ * The scheduler's knots, each span ending at its knot's endVel at rate 1 (knotSlope, wireVel) or FREE, packed as the host
+ * packs it; the preroll ends at rest.
  * The preroll is submitted LEAD_MS in: the window set parks and reseeds on the first tick, dropping
  * anything queued before it.
  */
 export function segmentsOf(script, T) {
-  script = dwellMerge(script, T);
   const pad = 2 * LEAD_MS + PREROLL_MS, { at, pos } = script;
   const e4 = (n) => Math.round(clamp(applyT(n, T), 0, 1) * 10000);
-  const t = (j) => at[j], p = (j) => pos[j], vel = script.vel ? (j) => script.vel[j] : null;
-  const e3 = (k) => { const v = clamp(wireVel(knotSlope(t, p, k, at.length, vel), T) * 1000, -32767, 32767); return Math.sign(v) * Math.round(Math.abs(v)); };
+  const e3 = (k) => {
+    const v = wireVel(knotSlope((j) => at[j], (j) => pos[j], k, at.length), T);
+    return v == null ? FREE : Math.sign(v) * Math.round(Math.min(32767, Math.abs(v) * 1000));
+  };
   const segs = [[2 * LEAD_MS, e4(pos[0]), PREROLL_MS, 0, 0]];
   for (let k = 1; k < at.length; k++) if (at[k] > at[k - 1]) segs.push([pad + at[k - 1], e4(pos[k]), at[k] - at[k - 1], e3(k), 0]);
   return { segs, t0: (T.offsetMs || 0) - pad, steps: Math.ceil(pad + at[at.length - 1] + TAIL_MS) };

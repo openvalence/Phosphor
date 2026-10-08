@@ -43,7 +43,6 @@
 
 import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND, PLAN_FLAG, planFlagNames } from '../../Valence/clients/js/index.js';
-import { CURVE_FAMILY } from '../../Valence/clients/js/generated/registry_vocab.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
@@ -413,14 +412,7 @@ console.log('(e) motion door routing');
     eq(s6.sent[0].segs, [{ pos: 0.6, len: 120, ev: LIMITS.segment_end_vel_unspecified / 1000 }]));
   ok('lead equals the grant\'s schedule_latency_us, no constant', s6.sent[0].anchor === 1_000_000 + 61000);
   ok('the path names the horizon and lead once', o6.log.filter((l) => /segments STREAM.*500 ms.*61000 us/.test(l.msg)).length === 1);
-  ok('the segments wish declares c1_cubic', s6.asked[0][0][3] === CURVE_FAMILY.c1_cubic);
-  ok('a samples wish declares no family', (() => { const s = fakeSession(); const { d: dd } = door(both, s); dd(0.6); return s.asked[0][0].length === 2; })());
-  const s7 = fakeSession();
-  s7.publish = (w) => { s7.asked.push(w); s7.state.grantedPublishes.set(w[0][0], { channel: w[0][0], rate: 50, scheduleLatencyUs: 1000, scheduleHorizonMs: 250 }); return Promise.resolve([{ channel: w[0][0], curveFamily: CURVE_FAMILY.c2_quintic, requestedCurveFamily: CURVE_FAMILY.c1_cubic }]); };
-  s7.publishSegment = () => ({ seq: 0, n: 1 });
-  const { d: d7, out: o7 } = door(both, s7);
-  d7(0.6, 120); await tick(); d7(0.6, 120); d7(0.7, 120); await tick();
-  ok('a downgrade echo logs once, by name', o7.log.filter((l) => l.msg === 'curve family downgraded to c2_quintic by the hub').length === 1);
+  ok('the segments wish declares no curve family (RFC-108: the hub shapes free knots)', s6.asked[0][0].length === 2);
   d6(0.2); await tick();
   ok('an untimed point rides the samples STREAM', d6(0.2).ok && s6.sent.at(-1).ch === 0x7000);
 

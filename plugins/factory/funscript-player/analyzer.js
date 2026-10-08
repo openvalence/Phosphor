@@ -18,12 +18,13 @@
 // - Rows are var(--tap) high and the head rows fixed; the list scrolls inside
 //   its own box, so a state change moves nothing.
 // - lagOf is a scope, not a measurement: telemetry arrives on its own cadence.
-// - The motion preview is the machine's own planner (kinetic/kinetic.js), fed the wire Script (interp.js
+// - The motion preview is the machine's own planner (kinetic/kinetic.js), fed the wire Script (scale.js
 //   wire(), one segment per action), the limits and window by role and the Tuning rows as shown (a drag's
 //   draft included); every change re-renders and a newer render supersedes. When the worker fails the line
-//   reads 'Kinetic: fallback' and nothing is drawn over the shaped curve and the heat (the JS picture).
+//   reads 'Kinetic: fallback' and the timeline draws straight lines between the actions.
 // - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step; the readout's
-//   --highlight swatch is the legend of the timeline's Kinetic line.
+//   --intent swatch is the legend of the timeline's intent curve, the render itself.
+// - kinetic is the latest render of the current script() only: a render of another script is never drawn.
 // - fit() (Auto Scale): once the preview is current, one more render of that Script measures the planner's
 //   own min and max with the walls out of reach: the same mm geometry in the middle half of a window twice as
 //   wide, so the window guards (end velocity cut, clamp) never bend it. Without the rail room for that window
@@ -31,7 +32,7 @@
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
-import { createKinetic, segmentsOf, tuningOf, ANOMALIES, EVERY } from './kinetic/kinetic.js';
+import { createKinetic, segmentsOf, tuningOf, ANOMALIES, EVERY, FREE } from './kinetic/kinetic.js';
 
 export const TUNING = 'Tuning';
 export const LIMIT_ROLES = Object.freeze(['limit.input.speed', 'limit.input.accel', 'limit.input.jerk']);
@@ -126,7 +127,7 @@ export const CSS = `
 .fsa-head .fsp-btn { padding: 0 var(--sp-3); }
 .fsa-head .fsa-gap { flex: 1 1 0; }
 .fsa-lag { height: 20px; line-height: 20px; font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: var(--sp-2); vertical-align: middle; background: var(--highlight); }
+.fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: var(--sp-2); vertical-align: middle; background: var(--intent); }
 .fsa-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--r-s); }
 .fsa-g { height: 20px; line-height: 20px; padding: 0 var(--sp-2); font-size: .72rem; color: var(--tx-mut); background: var(--bg-sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-row { position: relative; height: var(--tap); display: grid; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2) 0 var(--sp-3);
@@ -238,14 +239,14 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     };
     if (sc !== kinSc || key !== kinKey) {
       kinSc = sc; kinKey = key;
-      run(sc, win, null, (r, t0, every) => { kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1] }; });
+      run(sc, win, null, (r, t0, every) => { kinR = r.error ? { error: r.error } : { ...r, t0, dtMs: every, lo: win[0], hi: win[1], sc }; });
       return;
     }
     const f = fit();
     if (busy || !f || (fitR && fitR.sc === f && fitR.key === key)) return;
     const w = win[1] - win[0], c = clamp((win[0] + win[1]) / 2, w, limits.rail - w);
     if (!(limits.rail >= 2 * w)) { fitR = { sc: f, key, extent: null }; return; }
-    run(f, [c - w, c + w], ([a, p, d, v, fam]) => [a, Math.round(WIDE_AT * 10000 + p * WIDE_SPAN), d, Math.round(v * WIDE_SPAN), fam], (r, t0, every) => {
+    run(f, [c - w, c + w], ([a, p, d, v, fam]) => [a, Math.round(WIDE_AT * 10000 + p * WIDE_SPAN), d, v === FREE ? v : Math.round(v * WIDE_SPAN), fam], (r, t0, every) => {
       fitR = { sc: f, key, extent: r.error ? null : wideExtent(r.raw, t0, every, f.at[0] + (t.offsetMs || 0), f.at[f.at.length - 1] + (t.offsetMs || 0), t) };
     });
   }
@@ -365,7 +366,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   return {
     frame,
     get mode() { return mode; },
-    get kinetic() { return kinR && kinR.pos ? kinR : null; },
+    get kinetic() { return kinR && kinR.pos && kinR.sc === script() ? kinR : null; },
     get fit() { return fitR; },
     unmount() { if (kin) kin.close(); root.remove(); },
   };

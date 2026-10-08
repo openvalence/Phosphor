@@ -73,19 +73,20 @@
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
 // - Changing the loop while playing holds and re-anchors: the unrolled clock cannot jump.
-// - Auto Scale (interp scaleAuto): the drawn curve's extent sets the map at once; the analyzer's
-//   planner measure of the wire at scale 1 (ctl.fit, analyzer.js fit) replaces it when it lands. A
-//   card frames its analyzer while Auto is on, shown or not; glance keeps the curve's estimate.
+// - Auto Scale (prefs interp scaleAuto): a new script starts at [0, 1]; the analyzer's planner measure
+//   of the wire at scale 1 (ctl.fit, analyzer.js fit) sets the map when it lands.
+// - A card outside glance frames its analyzer, shown or not: its twin render is the timeline's intent
+//   curve and Auto's measure. Glance draws no curve.
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed, marksOf } from './funscript.js';
-import { createMediaClock, frameSource, createLoop, loopSpec, LOW, FALLBACK_AFTER_MS } from './clock.js';
+import { createMediaClock, frameSource, createLoop, loopSpec } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
 import { createStash } from './stash.js';
 import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
-import { shape, wire, fitMap, curveExtent, mapOf } from './interp.js';
+import { wire, fitMap, mapOf } from './scale.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -143,8 +144,6 @@ export const COPY = Object.freeze({
   seekMs: 'Seek glide',
   seekTip: 'Glide to a seek target',
   jump: 'jump',
-  low: 'Low latency',
-  lowTip: '50 ms lead, faster clock',
   playKey: 'Play (k)',
   pauseKey: 'Pause (k)',
   muteKey: 'Mute (m)',
@@ -264,7 +263,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let seekT = 0;        // the seek transition the next restart carries
   let homeAt = Infinity; // the pause home's due time
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
-  let autoMap = [0, 1], autoFor = null, autoKey = '', autoWire = null;
+  let autoMap = [0, 1], autoFor = null;
   const trace = [];
   scheduler.setTransform(state.T);
 
@@ -292,8 +291,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   function applyPlay() {
     const p = state.play;
     scheduler.setHome(p.home ? { point: p.homePoint, speed: p.homeSpeed } : null);
-    scheduler.setLatency({ low: p.lowLatency, auto: p.autoLatency });
-    if (clock.tune) clock.tune(p.lowLatency ? LOW : {});
+    scheduler.setLatency({ auto: p.autoLatency });
     setLoopSpec();
     if (state.phase === 'playing' && clock.ready) restart = true;
   }
@@ -443,22 +441,13 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.motion && state.script && fields && !gate()) submit([]);
   }
 
-  /** The scheduler and the Kinetic preview run wire() (one knot per action); shaped is display only. */
+  /** The scheduler, the timeline and the Kinetic preview run wire() (one knot per action); shaped is the same Script. */
   function reshape() {
-    const s = state.script, ctx = { spanMm: fields ? ceilingOf(api, fields).spanMm : 0, lo: state.T.lo, hi: state.T.hi };
-    if (s && interp.scaleAuto) {
-      const key = JSON.stringify([interp, ctx]);
-      if (s !== autoFor || key !== autoKey) {
-        autoFor = s; autoKey = key;
-        autoWire = wire(s, { ...interp, scale: 1 }, ctx);
-        autoMap = fitMap(curveExtent(s, interp));
-      }
-    }
-    const I = interp.scaleAuto ? { ...interp, map: autoMap } : interp;
-    const next = s ? shape(s, I, ctx) : null;
+    const s = state.script;
+    if (s !== autoFor) { autoFor = s; autoMap = [0, 1]; }
+    const next = s ? wire(s, interp.scaleAuto ? { ...interp, map: autoMap } : interp) : null;
     if (next === state.shaped) return;
-    state.shaped = next;
-    wired = s ? wire(s, I, ctx) : null;
+    state.shaped = wired = next;
     scheduler.load(wired);
     peak = next ? peakSpeed(next) : 0;
     if (state.phase === 'playing' && clock.ready) restart = true;
@@ -604,15 +593,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 
   return {
     state, trace, play, tick, onFrame, load, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
-    get low() { return !!state.play.lowLatency; },
     get wire() { return wired; },
-    /** The map in force, [lower, upper] (interp.js mapOf): Auto's fit or the operator's gain. */
+    /** The map in force, [lower, upper] (scale.js mapOf): Auto's fit or the operator's gain. */
     get scale() { return interp.scaleAuto ? autoMap : mapOf(interp); },
-    /** Under Auto, the Script the analyzer measures (the wire at scale 1); else null. */
-    get fit() { return interp.scaleAuto && state.script ? autoWire : null; },
-    /** The analyzer's measure of fit: e the planner's [min, max] (analyzer.js wideExtent); null keeps the estimate. */
+    /** Under Auto, the Script the analyzer measures (the wire at scale 1: the script itself); else null. */
+    get fit() { return interp.scaleAuto ? state.script : null; },
+    /** The analyzer's measure of fit: e the planner's [min, max] (analyzer.js wideExtent); null keeps the map. */
     fitKinetic(sc, e) {
-      if (!interp.scaleAuto || sc !== autoWire || e == null) return;
+      if (!interp.scaleAuto || !sc || sc !== state.script || e == null) return;
       const m = fitMap(e);
       if (m[0] !== autoMap[0] || m[1] !== autoMap[1]) { autoMap = m; reshape(); changed(); }
     },
@@ -621,7 +609,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     halt: () => { if (active()) stop('held'); },
     canPlay,
     setFields(f) { fields = f; reshape(); warm(); changed(); },
-    setInterp(v) { interp = v; if (!v.scaleAuto) autoFor = null; reshape(); changed(); },
+    setInterp(v) { interp = v; reshape(); changed(); },
     update() { if (gate() && active()) stop('held', '', true); else changed(); },
     dispose() {
       if (active()) stop('held');
@@ -845,7 +833,7 @@ export function createPlayer(api) {
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
   const views = [];
   const ctl = createControl({ api, video, clock, scheduler, submit, probe, onChange: () => views.forEach((v) => v.render()) });
-  const stopFrames = frameSource(video, ctl.onFrame, undefined, () => (ctl.low ? LOW.fallbackMs : FALLBACK_AFTER_MS));
+  const stopFrames = frameSource(video, ctl.onFrame);
 
   let stash = null, stashId = '';
   const getStash = () => {
@@ -1239,9 +1227,9 @@ export function createPlayer(api) {
       attr(seek, 'aria-valuemax', String(Math.round(d)));
       attr(seek, 'aria-valuenow', String(Math.round(m)));
       attr(seek, 'aria-valuetext', tt);
-      if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && root.hasAttribute('data-an') ? analyzer.kinetic : null);
-      if (ctl.fit && comp && comp !== 'glance') anMount();
-      if (analyzer && comp !== 'glance' && (root.hasAttribute('data-an') || ctl.fit)) {
+      if (comp && comp !== 'glance') anMount();
+      if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
+      if (analyzer && comp !== 'glance') {
         analyzer.frame();
         const fr = analyzer.fit;
         if (fr && fr !== fitSeen) { fitSeen = fr; ctl.fitKinetic(fr.sc, fr.extent); }
@@ -1333,7 +1321,6 @@ const PLAY_ROWS = [
   ['homePoint', COPY.homePoint, '', 0, 1, 0.05, (v) => Math.round(v * 100) + ' %'],
   ['homeSpeed', COPY.homeSpeed, '', 0.05, 2, 0.05, (v) => Math.round(v * 100) + ' %/s'],
   ['seekMs', COPY.seekMs, COPY.seekTip, 0, 3000, 50, (v) => (v ? v + ' ms' : COPY.jump)],
-  ['lowLatency', COPY.low, COPY.lowTip],
   ['autoLatency', COPY.auto, COPY.autoTip],
 ];
 

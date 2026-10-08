@@ -529,9 +529,9 @@ Shipped:
   button opens the analyzer in the card's own box: the hub's Tuning
   controls (and `limit.input.*`), written Live through `api.write` or as a
   Preview through `api.writeTrial` with Apply and Discard, so the manifest
-  declares `intent`. Its settings card holds the Stash connect card, the
-  motion curve and the playback rows (loop, auto-home, seek glide, low and
-  automatic latency); the detail's A-B button loops a section. Operator values persist
+  declares `intent`. Its settings card holds the Stash connect card,
+  Scale and the playback rows (loop, auto-home, seek glide, automatic
+  latency); the hub shapes the curve between actions. The detail's A-B button loops a section. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
   Plugins (`page.js`), mounts the same card full width. Design and decisions:

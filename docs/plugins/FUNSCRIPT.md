@@ -32,8 +32,8 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
 | player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, the strip, status slot, layout tiers |
 | stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
-| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, curve, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
-| interp | `interp.js` | ten curves between actions, smoothing and a slew limit; the settings card's curve rows (Interpolation) |
+| plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, Scale, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
+| scale | `scale.js` | the map every action takes before the wire, Manual or Auto; the settings card's Scale row (Interpolation) |
 | analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
 | kinetic | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin` | the machine's planner (Nucleus kinetic.wasm, pinned) in a Worker: the analyzer's motion preview (Kinetic) |
 
@@ -91,57 +91,34 @@ A larger hub horizon (500, 1000 for poor WiFi) widens the lead to 250 or
 everything from its `t_base` (RFC-087 item 5).
 
 Content goes as authored (SPEC §9.6 clauses 2, 4, 5): one segment per
-action gap carrying the knot's end velocity (Sync item 8), the grant
-declaring `curve_family` c1_cubic (every mode is a cubic Hermite per span, so
-the machine renders the player's curve exactly), no client feasibility past the handoff bound. Dense scripts are sent as authored
+action gap, a same-direction knot carrying its end velocity and every other
+knot free (Sync item 8), the grant declaring no curve family (the hub's
+`smoothness` shapes a free knot, Interpolation), no client feasibility past the handoff bound. Dense scripts are sent as authored
 and thinned only after a `RATE_EXCEEDED`, at the grant rate, extrema kept.
 
 ## Interpolation
 
-`interp.js` (ph-smvd.10) bends the content between actions: the tangents
-the hub draws through and the curve the detail view draws. Linear is the default, and with smoothing and slew off
-`wire()` returns the parsed Script itself: everything above holds byte for
-byte. Every other setting still sends one segment per action (`wire()`,
-SPEC §9.6 item 5): the action's position over its span, ending at the
-mode's tangent there (`vel`, Sync item 8; kept at a reversal, so the
-mode's overshoot reaches the hub, within 1.5 x the lesser chord), and the
-segments grant declares `curve_family` c1_cubic: the hub draws the curve between actions. Smoothing and
-slew move each action to the filtered curve's value there and send the
-chord rule. The drawn curve (`shape()`, pieces of at most 40 ms,
-`STEP_MS`) is display only: the detail view and the speed meter (the heat
-reads the file's actions, Look).
+Retired 2026-10-08 (ph-1qs5.1; operator: "retire now, re-write the funscript
+settings to work with [the K2 set] ... trim the surface"; RFC-106, RFC-108).
+The hub shapes the curve between actions: its `smoothness` on the Tuning card
+(0 crisp, 1 smooth), with its handle floor and maximum trim; the analyzer
+lists them when the hub carries them (it binds the Tuning rows by catalog).
+The player sends one segment per action and declares no curve family; the
+client modes, tension, bias, Smoothing and the slew limit are gone. A saved
+`interp` pref keeps `scale` and `scaleAuto` and drops the rest. The detail
+view draws the twin's render of the wire (Kinetic) as the intent curve and
+the actions as dots; without the twin, or during a Range drag, straight lines
+between the actions. Scale stays.
 
-| mode | rule | parameter | leaves its two actions |
-|---|---|---|---|
-| Linear | the authored meaning | | no |
-| Step | hold, then the move (drawn); at rest on every action on the wire | | no |
-| Smoothstep | `3u^2 - 2u^3`, at rest on every action | | no |
-| Cosine | `(1 - cos(pi u)) / 2`, at rest on every action | | no |
-| Catmull-Rom | cardinal: `(1 - tension)(y[k+1] - y[k-1]) / (t[k+1] - t[k-1])` | tension 0..1 | yes |
-| Hermite | Kochanek-Bartels bias: `((1 + b) d_in + (1 - b) d_out) / 2` | bias -1..1 | yes |
-| Monotone | Fritsch-Carlson | | no |
-| PCHIP | Fritsch-Butland, MultiFunPlayer's rule | | no |
-| Akima | Akima 1970 | | slightly |
-| Makima | MATLAB makima, MultiFunPlayer's rule, symmetric second phantom | | slightly |
-
-The cubic modes start and end the script at rest; every value is clamped to
-0..1. After any mode, a smoothing window (a centered box, 0 to 500 ms, no
-lag) and then a slew limit (0 to 2000 mm/s, causal, over the window's length
-in mm times the Range share; off without the length) apply. Prefs key
-`interp`, mirrored as `phosphor.funscript.interp`: `{mode, tension, bias,
-smoothMs, slewMmS, scale, scaleAuto}`; the controls sit on the plugin's settings card
-(and the page's Settings section, the same card). The
-detail view draws the shaped curve as intent and the file's actions muted
-under it.
-
-**Scale** (ph-6e36, ph-bk6h). The overshooting modes (Catmull-Rom, Hermite,
-Akima, Makima) reach past an action, so a stroke that touches the window's
-end is cut there by the hub: its wall guard trims the end velocity and the
-clamp holds the position (RFC-100 `clamped`). Every action takes the affine
-map `p' = (p - lower) / (upper - lower)` before the mode: the wire (still one
-segment per action, the tangents and the scheduler's handoff slopes scaled
-with it), the drawn curve and the Kinetic preview all run on the mapped
-actions.
+**Scale** (ph-6e36, ph-bk6h). A curve the hub renders above `smoothness` 0
+overshoots by construction (RFC-106 item 3), so a stroke that touches the
+window's end is cut there by the hub: its wall guard trims the end velocity
+and the clamp holds the position (RFC-100 `clamped`). Every action takes the
+affine map `p' = (p - lower) / (upper - lower)` before the wire (`scale.js`
+`wire()`): the scheduler, the drawn curve and the Kinetic preview all run on
+the mapped actions. Prefs key `interp`, mirrored as
+`phosphor.funscript.interp`: `{scale, scaleAuto}`; the row sits on the
+plugin's settings card (and the page's Settings section, the same card).
 
 - **Manual**: one symmetric gain g, 0.25 to 1.00 (`scale`, default 1.00):
   `lower = 0.5 - 0.5 / g`, `upper = 0.5 + 0.5 / g`, so every action moves
@@ -157,69 +134,47 @@ actions.
 The row: an Auto toggle (`Fit the curve to the window`), the slider
 (`Scale`) and a typed value. Under Auto the slider grays at the overall
 gain `1 / (upper - lower)` and the value reads where the script's 0 and 1
-land, `0.01–0.97`. The overshooting modes' menu tooltip reads
-`Reaches past the actions, so Auto shrinks it`. The extent comes, in script
-units (the curve fits the Range, the whole window at the default Range):
-
-- at once from the drawn curve before its clamp (`curveExtent`), on a load
-  and on a mode, parameter, filter or Range change;
-- then from the machine's planner when its measure lands (analyzer.js
-  `fit`, `wideExtent`): the wire at scale 1 rendered by Kinetic with the
-  same mm geometry in the middle half of a window twice as wide, so the
-  wall guards never bend it and the extent is the hub's own render through
-  the tangents, read back through the Range and invert. The guards are why
-  the preview's own render cannot be measured: at the real window they
-  already trimmed the overshoot. A card frames its analyzer while Auto is
-  on, shown or not; without rail room for the doubled window, in glance or
-  in the fallback the curve's estimate stays.
+land, `0.01–0.97`. A new script starts at `[0, 1]`; the extent then comes,
+in script units (the curve fits the Range, the whole window at the default
+Range), from the machine's planner when its measure lands (analyzer.js
+`fit`, `wideExtent`): the wire at scale 1 rendered by Kinetic with the same
+mm geometry in the middle half of a window twice as wide, so the wall guards
+never bend it and the extent is the hub's own render, read back through the
+Range and invert. The guards are why the preview's own render cannot be
+measured: at the real window they already trimmed the overshoot. Every card
+outside glance frames its analyzer, shown or not; without rail room for the
+doubled window, in glance or in the fallback the map stays `[0, 1]`.
 
 The fit needs the whole script, so it stays in Phosphor: the hub never sees
 the whole script.
 
-Measured on the browser test's real-shaped script (window 0-100 mm, 1000
-mm/s, 50000 mm/s2, jerk 2e6 mm/s3, the vendored twin; Makima and the tease
-in the browser suite with the hub's Tuning rows, the other modes in node
-without them):
+Measured 2026-10-08 on the browser test's real-shaped script (window 0-100
+mm, the vendored twin at Nucleus 91243d4, whose renderer is crisp only):
+Auto reads `0.00–1.00`, clamped 0 ms, since a crisp curve passes no action.
+The fit has an overshoot to measure once the twin renders `smoothness` (the
+Nucleus wasm re-layout, RFC-108 item 7).
 
-| mode | planner [min, max] | map | readout | symmetric gain it replaces | curve estimate |
-| --- | --- | --- | --- | --- | --- |
-| Makima | -0.0033, 1.0263 | -0.01, 1.03 | `0.01–0.97` | 0.94 | -0.1076, 1.0146 |
-| Akima | -0.0082, 1.0153 | -0.01, 1.02 | `0.01–0.98` | 0.97 | -0.0813, 1.0084 |
-| Catmull-Rom | -0.0067, 1.0221 | -0.01, 1.03 | `0.01–0.97` | 0.95 | -0.0939, 1.0227 |
-| Hermite | -0.0726, 1.0255 | -0.08, 1.03 | `0.07–0.97` | 0.87 | -0.1318, 1.0268 |
-| PCHIP, Linear | 0.0000, 1.0000 | 0, 1 | `0.00–1.00` | 0.99 | 0, 1 |
-
-Makima clamps 5 ms at scale 1 and 0 ms under Auto. A top-only tease (a hold
-at 0, then 100, 70, 100 every 250 ms) under Makima measures [0.0000,
-1.0012]: map [0, 1.01], `0.00–0.99`, clamped 0 ms, its bottom actions
-unmoved. The symmetric fit read 0.99 on PCHIP and Linear from the planner's
-e4 noise; the 1e-4 slack keeps them at 1.
-
+- **I1** One segment per action (operator ruling 2026-10-04) stays; "ending
+  at the mode's tangent" is superseded by the retirement above (2026-10-08):
+  the tangent is the hub's, except at a same-direction knot (I7).
 - **I6** Auto measures in script units against the Range, not the window:
   a narrow Range scales an overshoot the window would still hold. Veto:
   fit the window (the Range's center then moves with it).
-
-Veto-able (ph-smvd.10):
-
-- **I1** One segment per action in every mode, ending at the mode's
-  tangent, no curve family (operator ruling 2026-10-04). The 40 ms pieces
-  it replaces jittered between waveform and hold on silicon. Measured on
-  the machine's planner (Nucleus kinetic-wasm, 500 mm rail, three 60 s
-  scripts): 410-930 segments/min down to 109-143 (the action count), the
-  error at every action 1-11 mm (step aside) down to 0. Cost: between actions the hub
-  draws its quintic through the tangents, not the JS curve: 3-15 mm from it
-  where the pieces held 1-20 mm (linear's own: 11-27 mm).
-- **I2** Step is offered (the notes advise against it). On the wire it
-  rests on every action like smoothstep; a true hold-then-jump would take
-  two segments per action.
-- **I3** The slew limit is a content transform the operator sets, like
-  Range; `limit.input.speed` on the hub stays the bound (SPEC §9.6). Off by
-  default.
-- **I4** Makima uses the symmetric second phantom, not MFP's `pm2`: it
-  matches MFP from the third span on (tested) and rests on the first action.
-- **I5** The slew limit reads the window length when the script loads, the
-  hero's fields change or the Range commits; a window resize alone does not
-  reshape.
+- **I7** A knot between two chords of one sign carries their mean (at most
+  1.5 x the lesser, scheduler.js `knotSlope`); a reversal, a hold edge, the
+  ends and the seek glide's landing are free. A free knot rests until its
+  successor is scheduled (SPEC §9.6, RFC-058), and at the 125 ms lead the
+  hub then re-shapes only the last 125 ms of the piece toward it. Measured
+  on the twin (Nucleus 91243d4; 400 to 697 ms staircase spans; vmax 1200
+  mm/s, amax 100000, jerk 2e7): left free, the carriage passed
+  same-direction knots at 0.52 of the chord speed (least 0.43; 0.81 at a
+  240 ms lead); with the mean, 0.97 (least 0.95). On valencesim 0.1.30
+  (`--live-playback`) the plan's speed through non-reversal knots read 0.28
+  of the span peak free and 0.94 to 0.97 with the mean. Cost: `smoothness`
+  does not reach a same-direction knot (RFC-108 item 6: an authored knot
+  keeps its angle), only reversals, hold edges and ends. Veto: every knot
+  free, once the hub stops resting a free knot whose successor is due
+  inside the horizon.
 
 ## Sync
 
@@ -286,33 +241,22 @@ Veto-able (ph-smvd.10):
    mid-play. The filter belongs in Valence's `clients/js` `syncClock`
    (SPEC §7.1), where every consumer shares it; the door's copy goes when
    that lands.
-8. **End velocity on the wire** (ph-t9go). Every segment carries
-   `input.end_velocity` (SPEC §9.6 item 5). Left `unspecified`, the hub
-   resolves a knot to rest whenever its successor is not yet scheduled
-   (RFC-058), and at a 125 ms lead that is every span over 125 ms: the
-   carriage stopped at each knot (chunky on silicon). Span k ends at knot
-   k's slope: the shaped curve's own (`interp.js` `vel`, step 0) or, for
-   linear and filtered curves, the mean of the two chords; 0 at a reversal,
-   beside a hold and at the ends; never past `segment_handoff_k` (1.5) x
-   the lesser chord, the bound the hub applies only once the successor is
-   scheduled, so a slow span never has to arrive fast. In norm/s: slope x
-   1000 x rate x (hi - lo), negated under invert. The seek glide ends at
-   the chord it lands in; stop, preroll and home end at 0, since nothing is
-   scheduled after them and a hub coasts a moving end before it brakes.
-   Measured on valencesim (live-playback, 400 to 697 ms spans): non-reversal
-   knots at rest 9 of 10, median plan speed 1 % of the span peak, before;
-   0 of 9, median 86 %, after.
-9. **No knot reads as a hold.** For the dwell rule (5) the scheduler runs on
-   `dwellMerge(script, T)`: a knot that moves on in the same direction but
-   less than 0.02 of the window (through Range) past the last kept knot is
-   dropped, so its neighbors make one span through it. Ends, flat knots,
-   reversals and knots the curve rests on stay. With one segment per
-   action it rarely fires. Measured
-   on the machine's planner (Nucleus kinetic-wasm, the sim's limits),
-   before: a 1-4 point random walk dwell-zeroed 36 knots and stopped at 37
-   of 79 that are not reversals; 30 ms clock steps every 1.5-4.5 s stopped
-   the staircase at 9 knots; makima on the staircase dwell-zeroed 1140 of
-   1439 pieces. After: none.
+8. **End velocity on the wire** (ph-t9go, ph-1qs5.1). Every segment
+   carries `input.end_velocity` (SPEC §9.6 item 5). A knot between two
+   chords of one sign ends at their mean, never past `segment_handoff_k`
+   (1.5) x the lesser chord, the bound the hub applies only once the
+   successor is scheduled, so a slow span never has to arrive fast; in
+   norm/s: slope x 1000 x rate x (hi - lo), negated under invert. A
+   reversal, a hold edge, the ends and the seek glide's landing are
+   `unspecified`: free knots the hub's `smoothness` shapes (Interpolation,
+   I7, with the measurement). Stop, preroll and home end at 0, since
+   nothing is scheduled after them.
+9. **Every knot is sent.** A same-direction step under
+   `segment_dwell_span` (0.02 of the window) is a knot like any other: the
+   hub zeroes no declared velocity on it. Measured on the twin (a 1 to 4
+   point random walk, 120 knots at 200 ms, the mean on same-direction
+   knots): no anomaly, no non-reversal knot at rest, 0.07 mm at the knots;
+   merging those steps into their neighbors' span cost 7.4 mm there.
 10. **Error budget on the sim.** Clock under 0.3 ms, t_off grid 0.1 ms,
    duration rounding 0.5 ms, display map quantized to half a vsync (8 ms at
    60 Hz). Panel lag and Bluetooth audio delay are physical: the offset
@@ -489,7 +433,7 @@ FULL
 - **Look.** Script curve and intent tick `--intent`; measured
   `telemetry.position` (as a share of `window.min/max`, drawn only when the
   window is reported, law 9; dimmed when stale, law 8) `--reality`;
-  playhead, selected tile, focus and the analyzer's Kinetic line `--highlight`; gates and over-cap
+  playhead, selected tile and focus `--highlight`; gates and over-cap
   `--warn`, as a mark only: the status slot's 3 px bar, the speed bar,
   striped heat. Text stays `--tx`: `--warn` is locked (law 13) and reads
   1.8:1 on Paper's white card. Muted text (title, the Offset label, zoom
@@ -680,17 +624,24 @@ key `play`. Each choice below is veto-able.
   instant: knots keep their times, the tiling holds, and the knots inside
   the delay are passed over. 500 ms by default, 0 jumps as before. The
   hub's input speed limit still bounds a short delay.
-- **Low latency** (off by default). RFC-087 item 3 names no 100 ms horizon:
-  a low-latency segments client stamps 50 ms ahead under the same 250 ms
-  horizon. So the setting caps the offer at `LEAD_LOW_MS` (50), narrows the
-  clock ring to 8 frames and raises the slew to 15 ms/s (a display-latency
-  change followed in about 0.9 s instead of 2.7), and lets the rAF fallback
-  take over after 100 ms without a frame. It does not move the alignment:
-  stamps are absolute, so a lookahead player's felt latency is the offset,
-  not the lead. What it costs is stall tolerance (about 105 ms down to 30)
-  and more vsync jitter in the stamps; the CPU cost is nil in a page, where
-  the rAF loop already runs every frame (MFP's precise sleep has no
-  analog).
+- **Low latency** retired 2026-10-08 (ph-1qs5.1). It capped the offer at
+  50 ms, narrowed the clock ring to 8 frames and raised the slew to 15 ms/s.
+  It moved no alignment (stamps are absolute: the felt latency is the
+  offset), and measured worse on every axis but one, so the one clock
+  filter (32 frames, 5 ms/s) and the 125 ms lead stay; a stored
+  `lowLatency` is dropped. Measured against the default (node, seeded; the
+  twin at Nucleus 91243d4):
+
+  | | default | low latency |
+  |---|---|---|
+  | clock map error p95, 30 fps on 60 Hz with +-2 ms compositor jitter | 0.72 ms | 1.09 ms |
+  | stamp change frame to frame, p95 | 0.17 ms | 0.51 ms |
+  | a 12 ms display change followed to 11 ms | 2.7 s | 0.86 s |
+  | stall tolerance | about 105 ms | about 30 ms |
+  | twin render, max off a 240 ms lead render: real-shaped script | 6.5 mm | 11.1 mm |
+  | the same, staircase | 5.8 mm | 7.2 mm |
+
+  A 3:2 pulldown and a single late frame moved neither filter.
 - **Automatic compensation** (off by default). The scheduler reads the plan
   strip the way `test/funscript-sync-live.mjs` does (start = arrival -
   `plan.elapsed`, the least of a plan's samples), matches each plan to the
@@ -702,14 +653,23 @@ key `play`. Each choice below is veto-able.
   and the 14 ms floor on the sim (Tests, what the sync bars do not cover) is not split between hub
   lateness and observation, so it can make the machine early by that much.
   It sits on top of the declared `schedule_latency_us` (RFC-059 forbids
-  bidding that down) and beside the operator's offset.
+  bidding that down) and beside the operator's offset. It is never applied
+  below 0 (ph-1qs5.1): a plan cannot start before its stamp, so a negative
+  lag is the strip's misreport. A Kinetic² hub's plan strip names the next
+  piece early once a submit lands in the later half of a piece (Nucleus
+  val-0ep): elapsed 0 and an arrival before that piece starts. On valencesim
+  0.1.30 (`--live-playback`, 2026-10-08) the lag read -30 to -56 ms with an
+  authored end velocity on the staircase (held at 0; applied, it made the
+  machine that much late) and 14.6 ms with every knot free. Keep it off on a
+  Kinetic² hub until val-0ep lands; it stays because nothing else aligns the
+  hub's own lateness.
 
 The card (ph-smvd.13):
 
-- **Controls.** The plugin's settings card carries nine Playback rows under
-  the curve rows: Loop (the whole video), Loop count (`forever` at 0), Pause
+- **Controls.** The plugin's settings card carries eight Playback rows under
+  the Scale row: Loop (the whole video), Loop count (`forever` at 0), Pause
   home, After pause, Home point, Home speed (%/s), Seek glide (`jump` at 0),
-  Low latency, Auto latency; toggles read On or Off in a fixed box, sliders
+  Auto latency; toggles read On or Off in a fixed box, sliders
   wear the analyzer's vertical-pill thumb. A change applies at once: the
   loop at the next restart (a playing card restarts), home and latency in
   force.
@@ -741,9 +701,7 @@ The card (ph-smvd.13):
   times with no hole in the schedule and no NACK; on two of the three wraps the seek
   landed late enough to step the clock, so the seam span was re-sent 48.9 ms later
   (a cut, not a hole; an adaptive wrap lead is open), and the largest position change between samples was 0.0883 of the
-  window against 0.0935 in plain play. Low latency kept every offer within
-  49.5 ms with 19 bundles in 7.5 s and no NACK; compensation held
-  14.55 ms (lag 14.26 ms).
+  window against 0.0935 in plain play.
 
 ## Analyzer (ph-smvd.11)
 
@@ -781,10 +739,11 @@ timeline's box. Collapsing restores the card as it was.
   between -100 and 400 ms. A scope like the trace, not a measurement:
   telemetry arrives on its own cadence (ph-smvd.12's compensation is the
   measured path).
-- **Legend.** The detail's lines: the shaped script curve `--intent` (2 px),
-  the file's actions muted (`--line-4`) under it, `plan.current` `--intent`
-  at reduced weight, the measured position `--reality`, and the Kinetic
-  preview `--highlight`, named by the swatch before the Kinetic readout.
+- **Legend.** The detail's lines: the Kinetic render as the intent curve
+  `--intent` (2 px; straight lines between the actions without it), the
+  actions as `--intent` dots, `plan.current` `--intent` at reduced weight and
+  the measured position `--reality`; the `--intent` swatch before the Kinetic
+  readout names the curve.
 
 Decisions (veto-able):
 
@@ -840,9 +799,9 @@ behaves the same on the machine, without rendering anything on the hub.
   artifact everywhere (dev, the shell, an override). `kinetic/kinetic.js`
   starts one Worker from a blob URL per open analyzer, instantiates the wasm
   once and answers render requests; the page thread never runs the planner.
-- **Input.** The wire Script's segments (`ctl.wire`, interp.js `wire()`,
+- **Input.** The wire Script's segments (`ctl.wire`, scale.js `wire()`,
   through `segmentsOf`) as the host sends them: one per span ending at the
-  same end velocity, no curve family, each
+  same end velocity or free, no curve family, each
   submitted `LEAD_MS` (125, half the 250 ms horizon) before its start, after
   a 1200 ms preroll from rest at 0 mm to the first knot at media 0. Limits
   (`limit.input.*`), the rail (`geometry.max_travel`) and the window
@@ -856,7 +815,7 @@ behaves the same on the machine, without rendering anything on the hub.
 - **Output.** 1 ms steps, kept every 5 ms (more on scripts past 1000 s, at
   most `KIN_MAX_SAMPLES`): `position_mm` (what an on-time LP core renders),
   velocity and accel, the flags ORed per kept sample, and counts over every
-  step. The detail draws the position `--highlight` under the script curve; the
+  step. The detail draws the position as the intent curve (`--intent`); the
   analyzer's Kinetic line reads `Kinetic: wasm  n anomalies` and each nonzero
   flag time: `clamped`, `stretched` (the fallback bit; Kinetic² never sets
   it) and `shaped` (a knot trimmed toward its predecessor). Its tooltip holds
@@ -864,14 +823,12 @@ behaves the same on the machine, without rendering anything on the hub.
   among them: a knot not after the newest is refused, never replaced; and
   `piece over ceiling`: a span no trim keeps inside a limit renders at its
   least-over trim, never a drop).
-- **What it replaces.** There was no JS planner model. The analyzer's only
-  picture of the machine was the shaped script itself (interp.js `shape()`
-  through `applyT`, the intent curve) with the limit judged by chord speed
-  against `limit.input.speed` (timeline.js `heatStops`, the speed meter's
-  `strokeSpeed`). That stays the card's picture, and the analyzer's fallback.
+- **The card's picture.** The render is the intent curve; the limit is
+  judged by chord speed against `limit.input.speed` (timeline.js
+  `heatStops`, the speed meter's `strokeSpeed`).
 - **Fallback.** When the worker cannot start or the compile is refused, the
-  line reads `Kinetic: fallback` and nothing is drawn over the shaped curve
-  and the heat. A planner refusal is not a fallback: `Kinetic: wasm  window
+  line reads `Kinetic: fallback` and the intent curve is straight lines
+  between the actions. A planner refusal is not a fallback: `Kinetic: wasm  window
   refused`; without the limits, window or rail: `no limits, window or rail`.
   A module whose `kinetic_version()` does not name `kinetic2` is refused at
   start (`not a Kinetic² build: <version>` in the tooltip): a fallback.
@@ -917,7 +874,7 @@ Decisions (veto-able):
   tuning members, an RFC.
 - **K3** The render starts from rest at 0 mm with a preroll, not from the
   measured position: the same script renders the same motion every time.
-- **K4** It renders only while the analyzer is open.
+- **K4** It renders whenever the card is not in glance, shown or not: it is the intent curve (ph-1qs5.1).
 
 ## Tests
 
@@ -982,7 +939,7 @@ Decisions (veto-able):
   and script (400 to 697 ms spans of 25 to 75, inside the sim's speed limit,
   so plans keep their durations, and a 14 s gap), auto latency on, a seek
   glide, the gap sent as its one span with nothing homed, a pause that homes
-  once after `homeAfterMs`, an A-B loop, low latency through the settings card, and a
+  once after `homeAfterMs`, an A-B loop, and a
   Preview write the sim must show with its trial mark and then drop on
   Discard; one `PB-RESULT` JSON line. After it the caller restarts the sim on
   the same `--state`: the previewed field must read its stored value
@@ -1042,10 +999,9 @@ Decisions (veto-able):
   ambiguous across the call). The existing `submitMotion` segment stamp
   (`now + latency`, executing at now + 2 x latency) is flagged for its
   owner, not changed here.
-- **D4** As authored: the knot's end velocity (Sync item 8), the
-  grant declaring `curve_family` c1_cubic (SPEC §9.6 clauses 2 and 5; ruled
-  2026-10-06: the machine must render the player's curve, which `unspecified`
-  and a quintic reconstruction do not).
+- **D4** As authored: a same-direction knot's end velocity, every other
+  knot free (Sync item 8, I7), no curve family (SPEC §9.6 clauses 2 and 5;
+  RFC-108: the hub's `smoothness` shapes a free knot).
 - **D5** Design 1's clock: rVFC, median, 5 ms/s slew, 25 ms step (between
   one 60 Hz vsync, slewed, and one dropped 30 fps frame, stepped: a 40 ms
   step slewed a dropped frame out over 6 s). Design 2's EMA is weaker on
@@ -1079,7 +1035,7 @@ Decisions (veto-able):
   playback until the operator's Play; a stall holds and continues on
   `playing` (Play is still in force).
 - **D17** Local files by file input only; no drag and drop.
-- **D18** Funscript literal semantics: linear between actions by default (Interpolation),
+- **D18** Funscript literal semantics: the hub's curve between actions (Interpolation),
   `range` ignored, `inverted` honored, only L0 drives the rail, other axes
   named in the status.
 - **D19** Library pages, never scrolls (DESIGN §10.6); the library is a side

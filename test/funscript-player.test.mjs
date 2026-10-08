@@ -43,23 +43,21 @@ const P = '../plugins/factory/funscript-player/';
 const CONTRACT = {
   [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
     'indexAfter', 'speedAt', 'peakSpeed', 'thin', 'heat', 'fmtTime'],
-  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'LOW', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
+  [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
     'loopSpec', 'createLoop'],
   [P + 'scheduler.js']: ['STOP_MS', 'PREROLL_MIN_MS', 'PREROLL_STROKE_MS', 'PREROLL_SKIP', 'OFFER_MAX', 'TRANSIENT',
-    'HOME_MIN_MS', 'LEAD_LOW_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS',
-    'HANDOFF_K', 'DWELL_SPAN', 'dwellMerge', 'applyT', 'knotSlope', 'wireVel', 'strokeSpeed', 'createScheduler'],
+    'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'applyT', 'strokeSpeed', 'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
-  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints',
+  [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
-  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'mapOf', 'fitMap', 'curveExtent', 'sample', 'shape', 'wire', 'COPY', 'CSS',
-    'mountInterp'],
+  [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
-  [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
+  [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
@@ -111,8 +109,8 @@ if (prefs) {
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
     stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
-    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: true },
-    play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
+    interp: { scale: 1, scaleAuto: true },
+    play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
     const { offsetKey, offsetDrag } = mods[P + 'ui.js'], { pillKey } = mods[P + 'timeline.js'];
     ok('modifiers: an offset key steps 5 ms, Shift the same, Ctrl the adjacent 100 ms multiple',
@@ -142,13 +140,24 @@ if (prefs) {
   const t = readPrefs(fakeApi({ T: { offsetMs: 512, lo: 0.2, hi: 0.8, invert: true } })).T;
   ok('offset clamps to 500, a valid range and invert survive', same(t, { offsetMs: 500, lo: 0.2, hi: 0.8, invert: true }), t);
   ok('offset rounds to its 5 ms step', readPrefs(fakeApi({ T: { offsetMs: -12 } })).T.offsetMs === -10);
-  const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999, scale: 0.1, scaleAuto: 'yes' } })).interp;
-  ok('interp: an unknown mode is linear, ranges clamp, scale to 0.25, scaleAuto a boolean (else on)',
-    same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0, scale: 0.25, scaleAuto: true }), ip);
+  const ip = readPrefs(fakeApi({ interp: { mode: 'makima', tension: 0.5, bias: 1, smoothMs: 120, slewMmS: 500, scale: 0.1, scaleAuto: 'yes' } })).interp;
+  ok('interp: a saved curve pref migrates: scale (clamped to 0.25) and scaleAuto (a boolean, else on) kept, the retired fields dropped',
+    same(ip, { scale: 0.25, scaleAuto: true }), ip);
   const io = readPrefs(fakeApi({ interp: { mode: 'makima', scaleAuto: false } })).interp;
-  ok('interp: a saved Auto off stays off', io.scaleAuto === false, io);
+  ok('interp: a saved Auto off stays off', same(io, { scale: 1, scaleAuto: false }), io);
   const ia = readPrefs(fakeApi({ interp: { mode: 'makima', scale: 0.9, scaleAuto: true } })).interp;
   ok('interp: Scale and Auto read back (phosphor.funscript.interp scale, scaleAuto)', ia.scale === 0.9 && ia.scaleAuto === true, ia);
+  ls.set('phosphor.funscript.interp', JSON.stringify({ mode: 'pchip', smoothMs: 40, scale: 0.8, scaleAuto: false }));
+  const im = readPrefs(fakeApi()).interp;
+  ls.delete('phosphor.funscript.interp');
+  ok('interp: a restored backup of the curve pref (mirror only) migrates the same way', same(im, { scale: 0.8, scaleAuto: false }), im);
+  let crashed = '';
+  for (const v of ['makima', 7, [1, 2], { scale: 'x', scaleAuto: null, map: [-9, 9] }, { scale: NaN }]) {
+    try { if (!same(readPrefs(fakeApi({ interp: v })).interp, want.interp)) crashed += JSON.stringify(v) + ' '; } catch (e) { crashed += e.message + ' '; }
+  }
+  ok('interp: a malformed saved pref never crashes a load and reads the defaults', !crashed, crashed);
+  const pl = readPrefs(fakeApi({ play: { lowLatency: true, autoLatency: true } })).play;
+  ok('play: a stored lowLatency is dropped, autoLatency kept', !('lowLatency' in pl) && pl.autoLatency === true, pl);
   ok('an array is not an object pref', same(readPrefs(fakeApi({ audio: [1, 2] })).audio, want.audio));
   const a = fakeApi();
   writePref(a, 'T', { offsetMs: 45, lo: 0.1, hi: 0.9, invert: false });
@@ -257,7 +266,7 @@ if (an) {
     const want = (ms) => 100 + 300 * applyT(posAt(sc, ms - 30), Tk);
     ok('Kinetic: the render lands on every knot of a feasible script within 1 mm on the media axis, the first after the preroll',
       sc.at.every((t) => Math.abs(at(t + 30) - want(t + 30)) < 1) && r.value.accepted === sg.segs.length, [kn.versionOf(k), at(5030), want(5030)]);
-    // The preview submits the wire's end velocity: through a knot that is not a reversal the planner keeps moving.
+    // The preview submits the wire as the host does: a same-direction knot at its chords' mean, the rest free.
     const mono = parseFunscript({ actions: [0, 20, 40, 60, 80, 20].map((pos, i) => ({ at: i * 500, pos })) });
     const ms = kn.segmentsOf(mono, T0k), knotV = (segs) => {
       const it2 = kn.renderCore(k, { limits: { vmax: 1000, amax: 50000, jmax: 2e6, rail: 500 }, window: [100, 400], tuning: [], ...ms, segs, every: 1 });
@@ -265,11 +274,11 @@ if (an) {
       do q = it2.next(); while (!q.done);
       return [500, 1000, 1500].map((m) => Math.abs(q.value.vel[Math.round(m - ms.t0)]));
     };
-    const after = knotV(ms.segs), before = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], -32768, x[4]] : x)));
-    ok('Kinetic: each span ends at the endVel e3 of its knot (40 %/s here, 0 at the reversal, the end and the preroll)',
-      same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, 0, 0]), ms.segs.map((x) => x[3]));
-    ok('Kinetic: a knot that is not a reversal keeps the wire\'s speed (120 mm/s); unspecified, the planner picks its own',
-      after.every((v) => Math.abs(v - 120) < 12) && before.some((v) => Math.abs(v - 120) >= 12), JSON.stringify({ before: before.map(Math.round), after: after.map(Math.round) }));
+    const after = knotV(ms.segs), free = knotV(ms.segs.map((x, i) => (i ? [x[0], x[1], x[2], kn.FREE, x[4]] : x)));
+    ok('Kinetic: a same-direction knot ends at its chords\u2019 mean e3 (40 %/s here); the reversal and the end free (segment_end_vel_unspecified), the preroll at rest',
+      same(ms.segs.map((x) => x[3]), [0, 400, 400, 400, kn.FREE, kn.FREE]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
+    ok('Kinetic: through a same-direction knot the planner keeps the chord speed (120 mm/s); left free it dips at the 125 ms lead',
+      after.every((v) => Math.abs(v - 120) < 12) && free.some((v) => v < 100), JSON.stringify({ after: after.map(Math.round), free: free.map(Math.round) }));
     ok('Kinetic: the readout counts the wasm flags and anomalies', an.kinText('wasm', { anomalies: [0, 2, 1], counts: [0, 1500, 250, 0, 0] })
       === 'Kinetic: wasm  3 anomalies  stretched 250 ms  shaped 1.5 s' && an.kinText('fallback', null) === 'Kinetic: fallback'
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
@@ -1379,11 +1388,11 @@ if (!LIVE && !args.includes('--stash-live')) {
     && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
   // ---- Kinetic: the machine's own planner renders the preview in a worker ----
   const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
-    return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '' }; }, C);
+    return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);
   const kinUp = await page.waitForFunction((c) => /^Kinetic: wasm {2}\d+ anomalies/.test(document.querySelector(c + ' .fsa-kin').textContent)
-    && (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
+    && (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
   const k0 = await kinRead();
-  ok('Kinetic: the analyzer renders through kinetic.wasm in a worker: the status word, the flag readouts, the line in the detail',
+  ok('Kinetic: the analyzer renders through kinetic.wasm in a worker: the status word, the flag readouts, the intent curve in the detail',
     kinUp && /^nucleus [0-9a-f]{12} kinetic2 /.test(k0.tip), k0.text + ' | ' + k0.tip.replace(/\n/g, ', '));
   const shot = async (name) => {
     if (!SHOT) return;
@@ -1404,7 +1413,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     return was;
   }, [C, v, ev]);
   const speedWas = await speedIn(100, ['input']);
-  const kinRe = await page.waitForFunction(([c, p]) => (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '') !== p, [C, k0.pts], { timeout: 10000 })
+  const kinRe = await page.waitForFunction(([c, p]) => (document.querySelector(c + ' .fsp-dt .int').getAttribute('points') || '') !== p, [C, k0.pts], { timeout: 10000 })
     .then(() => true, () => false);
   await page.waitForTimeout(300);
   const k1 = await kinRead();
@@ -1493,17 +1502,17 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.locator(C + ' .fsp-expand').click();
   const fb = await page.waitForFunction((c) => document.querySelector(c + ' .fsa-kin').textContent === 'Kinetic: fallback', C, { timeout: 10000 })
     .then(() => true, () => false);
-  const fbPts = await page.locator(C + ' .fsp-dt .kin').getAttribute('points');
+  const fbPts = await page.locator(C + ' .fsp-dt .int[data-kin]').count();
   const fbInt = await page.locator(C + ' .fsp-dt .int').getAttribute('points');
-  ok('fallback: the analyzer says Kinetic: fallback, draws no render, keeps the shaped curve', fb && !fbPts && !!fbInt, { fb, fbPts });
+  ok('fallback: the analyzer says Kinetic: fallback; the intent curve is straight lines between the actions, no render', fb && !fbPts && !!fbInt, { fb, fbPts });
   ok('fallback: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
 }
 
-// ---- (v) the planner line, the speed heat and Scale (ph-rsb5, ph-6e36): the real-shaped script under Makima ----
+// ---- (v) the planner's curve, the speed heat and Scale (ph-rsb5, ph-6e36, ph-1qs5.1): the real-shaped script ----
 if (!LIVE && !args.includes('--stash-live')) {
-  console.log('(v) planner line, speed heat, Scale');
+  console.log('(v) planner curve, speed heat, Scale');
   const tc = tuningCatalog();
   tc.entries = decodeCatalog(tc.bytes);
   const hub = makeHub(tc);
@@ -1518,22 +1527,23 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.locator(C + ' .fsp-expand').click();
   const kinText = () => page.evaluate((c) => document.querySelector(c + ' .fsa-kin').textContent, C);
   const rendered = await page.waitForFunction((c) => /^Kinetic: wasm {2}\d+ anomalies/.test(document.querySelector(c + ' .fsa-kin').textContent)
-    && (document.querySelector(c + ' .fsp-dt .kin').getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
+    && (document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '').split(' ').length > 50, C, { timeout: 10000 }).then(() => true, () => false);
   await video(page, (v) => { v.currentTime = 7.5; });
   await page.waitForTimeout(600);
   if (SHOT) {
     await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-analyzer-1280x800.png') });
     await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-timeline.png') });
   }
-  // ---- A: the planner's line is --highlight, the script curve keeps --intent, the readout carries the swatch ----
+  // ---- A: the planner's render is the intent curve (--intent), the actions its dots, the readout carries the swatch ----
   const col = await page.evaluate((c) => {
     const q = (s) => document.querySelector(c + ' ' + s);
     const tok = (v) => { const i = document.createElement('i'); i.style.color = v; document.body.append(i); const x = getComputedStyle(i).color; i.remove(); return x; };
-    return { kin: getComputedStyle(q('.fsp-dt .kin')).stroke, int: getComputedStyle(q('.fsp-dt .int')).stroke,
-      swatch: getComputedStyle(q('.fsa-kin'), '::before').backgroundColor, highlight: tok('var(--highlight)'), intent: tok('var(--intent)') };
+    return { int: getComputedStyle(q('.fsp-dt .int[data-kin]')).stroke, dots: getComputedStyle(q('.fsp-dt .dots')).stroke,
+      nDots: (q('.fsp-dt .dots').getAttribute('d').match(/M/g) || []).length,
+      swatch: getComputedStyle(q('.fsa-kin'), '::before').backgroundColor, intent: tok('var(--intent)') };
   }, C);
-  ok('A: the Kinetic line strokes --highlight, the script curve keeps --intent, the Kinetic readout carries a --highlight swatch (the legend)',
-    rendered && col.kin === col.highlight && col.int === col.intent && col.swatch === col.highlight && col.highlight !== col.intent, col);
+  ok('A: the Kinetic render is the intent curve (--intent), the actions are --intent dots, the Kinetic readout carries the --intent swatch (the legend)',
+    rendered && col.int === col.intent && col.dots === col.intent && col.nDots > 5 && col.swatch === col.intent, col);
   // ---- B: one hard-edged color run per action span, dark to --reality to --highlight, no red ----
   const fsm = mods[P + 'funscript.js'], tlm = mods[P + 'timeline.js'];
   const want = tlm.heatStops ? tlm.heatStops(fsm.parseFunscript(REAL_SCRIPT), { offsetMs: 0, lo: 0, hi: 1, invert: false }) : [];
@@ -1557,48 +1567,28 @@ if (!LIVE && !args.includes('--stash-live')) {
   const topHue = hue(topRgb);
   ok('B: the fastest span reads --highlight and its hue is never the hazard red (law 13)',
     !(topHue >= 345 || (topHue >= 0 && topHue <= 15)) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, hue: topHue, highlight: band.highlight, ups: want[top] && want[top].ups });
-  // ---- C: Makima clips at Scale 1; Auto fits the planner's own render into the window ----
-  const clampedMs = (t) => { const m = / clamped (\d+(?:\.\d+)?) (ms|s)/.exec(t); return m ? +m[1] * (m[2] === 's' ? 1000 : 1) : 0; };
-  const t1 = await kinText();
+  // ---- C: Auto measures the planner's own render of the free knots; the saved curve pref loaded as Scale only ----
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
-  const autoBtn = page.locator('main.pane .fsp-psec .fsp-interp button[aria-label="Auto"]');
+  const autoBtn = page.locator('main.pane .fsp-psec .fsp-scale button[aria-label="Auto"]');
   await autoBtn.click({ timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
-    const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
+    const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
     return o && /^\d\.\d\d–\d\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
   }, C, { timeout: 15000 }).then(() => true, () => false);
-  await page.waitForTimeout(600);
-  const t2 = await kinText();
-  const readout = await page.locator('main.pane .fsp-psec .fsp-interp .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
-  const im = mods[P + 'interp.js'], est = im.curveExtent(fsm.parseFunscript(REAL_SCRIPT), { mode: 'makima' });
-  console.log('  [NOTE] clamped at Scale 1: ' + clampedMs(t1) + ' ms (' + t1 + '); with Auto: ' + clampedMs(t2) + ' ms (' + t2 + '), ' + readout
-    + '; the curve alone: [' + est.map((x) => x.toFixed(4)) + '] -> ' + im.fitMap(est));
-  ok('C: Makima on the real-shaped script clamps at Scale 1; Auto fits it (clamped 0) and reads where 0 and 1 land',
-    clampedMs(t1) > 0 && fit && clampedMs(t2) === 0 && /^\d\.\d\d–\d\.\d\d$/.test(readout), { t1, t2, readout });
-  const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), r = o.getBoundingClientRect(),
-    g = o.closest('.fsp-interp').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
+  const readout = await page.locator('main.pane .fsp-psec .fsp-scale .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
+  console.log('  [NOTE] Auto on the real-shaped script: ' + readout + ' (' + await kinText() + ')');
+  ok('C: Auto reads where 0 and 1 land from the planner render, clamped 0 (free knots at the twin smoothness)', fit, readout);
+  const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), r = o.getBoundingClientRect(),
+    g = o.closest('.fsp-scale').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
   ok('C: the Auto readout fits its cell', fits.sw <= fits.cw + 1 && fits.right <= fits.gr + 0.5, fits);
-  const mode = await page.locator('main.pane .fsp-psec .fsp-interp select').getAttribute('title');
-  ok('C: an overshooting mode carries the hint on its menu', mode === im.COPY.overTip, mode);
+  ok('C: the card carries no curve controls', await page.locator('main.pane .fsp-psec select, main.pane .fsp-psec input[aria-label="Smoothing"]').count() === 0);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.interp') || '{}'));
-  ok('C: Auto persists in the interp pref (phosphor.funscript.interp scaleAuto)', stored.scaleAuto === true && stored.scale === 1, stored);
+  ok('C: a saved curve pref (mode makima) loaded; Auto persists as Scale only (phosphor.funscript.interp)', same(stored, { scale: 1, scaleAuto: true }), stored);
   if (SHOT) {
     await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-auto-1280x800.png') });
-    await page.locator('main.pane .fsp-psec .fsp-interp').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-scale-row.png') }).catch(() => {});
+    await page.locator('main.pane .fsp-psec .fsp-scale').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-scale-row.png') }).catch(() => {});
   }
-  // ---- D: a top-only overshoot keeps its bottom: holds at 0 rest the planner there, the 100-70-100 tease overshoots the top ----
-  const cyc = [[0, 0], [400, 0], [650, 100], [900, 70], [1150, 100]];
-  const teaseActs = [];
-  for (let k = 0; k < 8; k++) for (const [t, p] of cyc) teaseActs.push({ at: 500 + k * 1400 + t, pos: p });
-  const teased = await loadClip(page, { version: '1.0', inverted: false, range: 100, actions: [...teaseActs, { at: 500 + 8 * 1400, pos: 0 }] });
-  const topOnly = await page.waitForFunction((c) => {
-    const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
-    return o && /^0\.00–0\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
-  }, C, { timeout: 15000 }).then(() => true, () => false);
-  const r2 = await page.locator('main.pane .fsp-psec .fsp-interp .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
-  console.log('  [NOTE] top-only tease under Makima, Auto: ' + r2 + ' (' + await kinText() + ')');
-  ok('D: a top-only overshoot pulls the top in and keeps the bottom at 0.00, clamped 0', teased && topOnly, r2);
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
@@ -1662,7 +1652,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.setViewportSize({ width: 1280, height: 800 });
   const TAB = '[data-tab-id="plugin:funscript-player:player"]', SUM = C + ' .fsp-set';
   const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
-  const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-interp', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > .fsp-psec ' + s).length));
+  const rows = () => page.evaluate(() => ['.fsp-connect', '.fsp-scale', '.fsp-pset'].map((s) => document.querySelectorAll('main.pane .fsp-page > .fsp-psec ' + s).length));
   const cardBox = () => page.locator(C).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.top - e.closest('.pane-main').getBoundingClientRect().top, r.height].map(Math.round); });
   // The viewport, and the whole page region (card and section) on a viewport tall enough to hold it.
   const pageShot = async (name) => {
@@ -2154,8 +2144,7 @@ if (!LIVE && !args.includes('--stash-live')) {
 
 // ---- (p) live playback (--live-playback): valencesim plays the 60 s script with a 14 s gap ----
 // Auto latency on from the start; a seek with the glide; the gap held as one span, then a pause
-// that homes after the delay; an A-B loop;
-// low latency on; a Preview tuning write the sim marks, then Discard. Prints the numbers as
+// that homes after the delay; an A-B loop; a Preview tuning write the sim marks, then Discard. Prints the numbers as
 // one 'PB-RESULT' JSON line; the stored-value recheck after a sim restart is the caller's.
 if (PB) {
   console.log('(p) live playback: valencesim on ' + SIM_PORT + ' (http ' + SIM_HTTP + ')');
@@ -2202,7 +2191,7 @@ if (PB) {
   await sleep(500);
 
   const frames = { bundles: 0, nacks: [] };
-  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: true };
+  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: true };
   const { ctx, page, up, errors } = await open({ width: 1280, prefs: { 'phosphor.funscript.play': PLAY }, onPage: (pg) => pg.on('websocket', (ws) => {
     ws.on('framesent', ({ payload }) => {
       if (typeof payload === 'string') return;
@@ -2297,13 +2286,13 @@ if (PB) {
   const latOf = async (t0) => {
     const l = await since(t0, 'lat');
     const lagged = l.filter((x) => Number.isFinite(x.lag));
-    const conv = lagged.find((x) => x.comp !== 0 && Math.abs(Math.max(-100, Math.min(100, x.lag)) - x.comp) < 2);
+    const conv = lagged.find((x) => Math.abs(Math.max(0, Math.min(100, x.lag)) - x.comp) < 2);
     return { samples: l.length, firstLagS: lagged.length ? +((lagged[0].t - t0) / 1000).toFixed(1) : null,
       convergedS: conv ? +((conv.t - t0) / 1000).toFixed(1) : null, lag: lagged.length ? +lagged.at(-1).lag.toFixed(2) : null,
       comp: l.length ? +l.at(-1).comp.toFixed(2) : null, comps: [...new Set(l.map((x) => +x.comp.toFixed(1)))] };
   };
 
-  // ---- 1: play, low latency off, auto compensation ----
+  // ---- 1: play, auto compensation ----
   let t0 = await pnow();
   await playBtn(page).click();
   await page.waitForTimeout(13000);
@@ -2315,7 +2304,9 @@ if (PB) {
     measured: [+Math.min(...us).toFixed(3), +Math.max(...us).toFixed(3)], maxStep: +maxStep(tStart + 2000, Infinity).toFixed(4) };
   ok('pb normal: bundles flow, the lead within half the horizon, no NACK on the segments STREAM, the machine strokes',
     frames.bundles > 20 && R.normal.maxLeadMs <= 127 && segNacks() === 0 && R.normal.measured[1] - R.normal.measured[0] > 0.3, R.normal);
-  ok('pb normal: auto compensation measures a lag and converges on it', R.normal.lat.lag != null && R.normal.lat.convergedS != null, R.normal.lat);
+  ok('pb normal: auto compensation measures a lag and converges on it, never below 0', R.normal.lat.lag != null && R.normal.lat.convergedS != null
+    && R.normal.lat.comps.every((c) => c >= 0), R.normal.lat);
+  if (R.normal.lat.lag < 0) console.log('  [NOTE] the plan strip read a plan starting ' + -R.normal.lat.lag + ' ms before its stamp (Nucleus val-0ep); compensation held at 0');
   R.knots = knotVel(tStart + 2000, performance.timeOrigin + performance.now());
   ok('pb knots: the plan carries its velocity through every knot that is not a reversal (end velocity on the wire)',
     R.knots.nonReversal >= 5 && R.knots.restNonReversal === 0, R.knots);
@@ -2388,29 +2379,14 @@ if (PB) {
     && R.loop.maxStep <= R.normal.maxStep * 1.5 + 0.01 && tEnd >= a0 - 100 && tEnd <= b0 + 100, R.loop);
   await ab.click();
 
-  // ---- 5: low latency on (the settings card), compensation again ----
-  await playBtn(page).click();
   const setRow = async (fn) => {
     await page.click('[data-tab-id="plugins"]');
     await page.waitForSelector('.fsp-pset', { timeout: 5000 });
     await fn(page.locator('.fsp-pset'));
     await page.waitForTimeout(200);
   };
-  const toggle = (label) => setRow((el) => el.locator('button[aria-label="' + label + '"]').click());
-  await toggle('Low latency');
-  await toCard(page);
-  await video(page, (v) => { v.currentTime = 2; });
-  await page.waitForTimeout(300);
-  t0 = await pnow();
-  const nb = frames.bundles, nn = segNacks();
-  await playBtn(page).click();
-  await page.waitForTimeout(10000);
-  segs = (await since(t0, 'seg')).filter((x) => x.t > t0 + 2500);
-  R.low = { bundles: frames.bundles - nb, maxLeadMs: +lead(segs).toFixed(1), holes: holes(sched(segs)), lat: await latOf(t0), segNacks: segNacks() - nn };
-  ok('pb low latency: every offer within 50 ms, bundles flow, compensation converges, no NACK',
-    R.low.maxLeadMs <= 52 && R.low.bundles > 10 && R.low.lat.convergedS != null && R.low.segNacks === 0, R.low);
 
-  // ---- 6: a Preview tuning write the sim marks, then Discard ----
+  // ---- 5: a Preview tuning write the sim marks, then Discard ----
   await page.locator(C + ' .fsp-expand').click();
   await page.waitForTimeout(600);
   await cardShot('analyzer-1280x800');
@@ -2432,19 +2408,16 @@ if (PB) {
   await playBtn(page).click();
   await page.locator(C + ' .fsp-expand').click();
 
-  // ---- screenshots: the interpolation preview, then the phone width ----
+  // ---- screenshots: the settings card and the hub's curve, then the phone width ----
   if (SHOTS) {
-    await setRow(async () => {
-      await page.selectOption('.fsp-interp select', 'makima');
-      await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '120'; i.dispatchEvent(new Event('change')); });
-    });
-    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await setRow(async () => {});
+    await page.locator('.fsp-scale').evaluate((e) => e.scrollIntoView());
     await shot('settings-1280x800.png');
     await toCard(page);
     await video(page, (v) => { v.currentTime = 9; });
     await page.waitForTimeout(800);
-    await cardShot('interp-preview-1280x800');
-    await shot('interp-preview-timeline-1280.png', C + ' .fsp-tlbox');
+    await cardShot('curve-1280x800');
+    await shot('curve-timeline-1280.png', C + ' .fsp-tlbox');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(800);
     await toCard(page);
@@ -2455,14 +2428,11 @@ if (PB) {
     await cardShot('analyzer-390x844');
     await page.locator(C + ' .fsp-expand').click();
     await page.waitForTimeout(300);
-    await shot('interp-preview-timeline-390.png', C + ' .fsp-tlbox');
+    await shot('curve-timeline-390.png', C + ' .fsp-tlbox');
     await setRow(async () => {});
-    await page.locator('.fsp-interp').evaluate((e) => e.scrollIntoView());
+    await page.locator('.fsp-scale').evaluate((e) => e.scrollIntoView());
     await shot('settings-390x844.png');
-    await page.selectOption('.fsp-interp select', 'linear');
-    await page.locator('.fsp-interp input[aria-label="Smoothing"]').evaluate((i) => { i.value = '0'; i.dispatchEvent(new Event('change')); });
   }
-  await toggle('Low latency');
   ok('pb: no page error', errors.length === 0, errors.slice(0, 3));
   R.nacks = Object.entries(frames.nacks.reduce((o, n) => { const k = '0x' + n.ch.toString(16) + ' ' + (NACK_NAME[n.code] || n.code); o[k] = (o[k] || 0) + 1; return o; }, {}));
   console.log('PB-RESULT ' + JSON.stringify(R));
