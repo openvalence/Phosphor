@@ -598,7 +598,8 @@ question in §10.8).
   `ph-5u0g` peeve 1) the page footer and the bottom status row are pinned to
   the viewport's bottom edge: fixed, one height that never grows as the page
   scrolls, the scroll ending above them, the footer owning the bottom
-  safe-area inset as everywhere. A page registered `status` (docs/PLUGINS.md,
+  safe-area inset as everywhere (the status row sits directly above it, and
+  owns the inset itself on a page with no footer). A page registered `status` (docs/PLUGINS.md,
   Pages) gets one status slot in its footer there, so that page has a footer
   even with no page controls: one line, the 3 px tone bar at its left edge,
   the text in `--tx` and never `--warn` (law 13), ellipsized with the full
@@ -654,7 +655,8 @@ question in §10.8).
   and on every window focus gain; an edge swipe shows them for a moment. The
   web side keeps `env(safe-area-inset-*)` for the gesture pill and the
   cutout. The state never changes, so there is no JS bridge. Seam:
-  `src-tauri/gen/android/app/src/main/java/com/phosphor/app/MainActivity.kt`.
+  `src-tauri/android/MainActivity.kt`, copied into the generated project's
+  `MainActivity.kt` by `tools/android-icons.mjs` (docs/BUILD.md, Android).
 - The quick rail (operator rulings 2026-10-08, `ph-5u0g` peeve 6, amended the
   same day): one rail design, the hero's own rail opened elsewhere, never a
   second copy and never a dock. A mini-rail icon (one glyph,

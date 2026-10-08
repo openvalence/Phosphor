@@ -319,13 +319,16 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
 - `bundle.android.minSdkVersion` is 26, the BLE plugin's floor. Its Bluetooth
   and location permissions merge in from the plugin's own manifest; Tauri's
   template carries `INTERNET`. The debug app id is `com.phosphor.app.debug`.
-- `build:android` copies the launcher icon into the generated project
-  (`tools/android-icons.mjs`) and builds with the computed version
+- `build:android` copies the launcher icon and the activity into the
+  generated project (`tools/android-icons.mjs`) and builds with the computed version
   (Versioning, below). The icon sources live in `src-tauri/icons/android/`:
   the adaptive icon is the solid chassis color behind a vector foreground
   (`drawable/ic_launcher_foreground.xml`, also the themed-icon monochrome
   layer), the whole mark on the 52 dp circle keyline of the 108 dp canvas
   (Android asks 48 to 66 dp).
+  The activity's source is `src-tauri/android/MainActivity.kt` (immersive
+  mode, DESIGN §10.3); edit it there, never in `gen/android`, which the copy
+  overwrites.
   `npm run icons` regenerates the mipmap PNGs (unused at minSdk 26, kept
   for the template) and reapplies the copy.
   On a build tree from before the vector, Gradle's incremental resource merge

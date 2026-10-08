@@ -30,6 +30,7 @@ import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 import { PAGE_ICON } from '../plugins/factory/funscript-player/page.js';
+import { THEMES } from '../src/model/theme.js';
 
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
@@ -72,16 +73,35 @@ function fakeHub(ws) {
   });
 }
 
+// A test page through the shell's plugins_list (an installed plugin): the
+// seam's flags (status, compactHero), a tall body so the page scrolls, and
+// the host's quick-rail glyph exposed for the assertions.
+const PROBE = {
+  dir: 'probe', path: 'test/probe',
+  manifest: { name: 'probe', version: '0', api: 1, kind: 'widget', entry: 'index.js', permissions: [] },
+  source: `export function activate(api) {
+    window.__probeIcon = api.icons && api.icons.quickRail;
+    api.registerPage({ id: 'probe', label: 'Probe', status: true, compactHero: true, mount(el) {
+      const d = document.createElement('div'); d.className = 'probe'; d.style.height = '1400px'; d.textContent = 'probe';
+      el.append(d);
+      window.__probeEl = d;
+      return { update() {}, unmount() {} };
+    } });
+  }`,
+};
+const PROBE_ID = 'plugin:probe:probe';
+
 const browser = await chromium.launch();
-async function boot(viewport) {
-  const ctx = await browser.newContext({ viewport });
+async function boot(viewport, { probe = false, store = {}, touch = false } = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch: touch });
   await ctx.addInitScript(TAURI_STUB);
-  await ctx.addInitScript(() => {
+  await ctx.addInitScript((pr) => {
     const inner = window.__TAURI_INTERNALS__.invoke;
     window.__fs = [];
     window.__TAURI_INTERNALS__.invoke = (cmd, a) => (cmd === 'plugin:window|set_fullscreen'
-      ? (window.__fs.push(a.value), Promise.resolve()) : inner(cmd, a));
-  });
+      ? (window.__fs.push(a.value), Promise.resolve())
+      : cmd === 'plugins_list' && pr ? Promise.resolve({ dir: 'test', plugins: [pr] }) : inner(cmd, a));
+  }, probe ? PROBE : null);
   await ctx.addInitScript(([etag, bytes]) => {
     try {
       if (!sessionStorage.getItem('booted')) { sessionStorage.setItem('booted', '1'); localStorage.clear(); }
@@ -91,6 +111,9 @@ async function boot(viewport) {
       }
     } catch (e) { /* no storage */ }
   }, [ETAG, Buffer.from(CAT).toString('hex')]);
+  // Once per context, after the first boot's clear: a reload keeps what the page changed.
+  await ctx.addInitScript((kv) => { try { if (sessionStorage.getItem('seeded')) return; sessionStorage.setItem('seeded', '1'); for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); } catch (e) { /* no storage */ } },
+    probe ? { 'phosphor.plugins.pages.probe': '1', ...store } : store);
   await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   const errors = [];
@@ -276,6 +299,65 @@ console.log('\n--- phone 390x844 ---');
   await shot(page, 'glance-menu-390x844.png');
   ok('phone: no horizontal page scroll', await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1));
   ok('no page errors (phone)', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// ---- the footer status slot (ph-5u0g.3) -------------------------------------
+const PTAB = '[data-tab-id="' + PROBE_ID + '"]';
+const send = (page, ev, detail) => page.evaluate(([ev, d]) => window.__probeEl.dispatchEvent(new CustomEvent(ev, { bubbles: true, cancelable: true, detail: d })), [ev, detail]);
+async function openProbe(page) {
+  await page.waitForSelector(PTAB, { timeout: 15000 });
+  await page.$eval(PTAB, (t) => t.click());
+  await page.waitForSelector('main.pane .probe', { timeout: 5000 });
+  await page.waitForTimeout(150);
+}
+const PAPER = THEMES.find((t) => t.id === 'paper');
+for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]]]) {
+  console.log('\n--- status slot ' + name + ' ---');
+  const { ctx, page, errors } = await boot({ width: vp[0], height: vp[1] }, { probe: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
+  await openProbe(page);
+  const SLOT = 'main.pane .page-foot .foot-status';
+  ok(name + ': a page registered status has a footer with the slot', await page.locator(SLOT).isVisible());
+  const rects = () => page.evaluate(() => ['main.pane .page-foot', 'main.pane .page-foot .foot-status', '.footstrip']
+    .map((q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '));
+  const r0 = await rects();
+  const moved = [], seen = [];
+  for (const d of [{ text: 'Loaded scene.mp4', tone: 'ok' }, { text: 'A long status line '.repeat(8), tone: 'warn', title: 'the full text' },
+    { text: 'refused', tone: 'bad' }, { text: '', tone: null }]) {
+    await send(page, 'phosphor-page-status', d);
+    await page.waitForTimeout(60);
+    const r = await rects();
+    if (r !== r0) moved.push(r);
+    seen.push(await page.evaluate(() => {
+      const e = document.querySelector('main.pane .page-foot .foot-status'), t = e.firstElementChild;
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--tx)';
+      document.body.append(probe);
+      const tx = getComputedStyle(probe).color;
+      probe.remove();
+      return { text: e.textContent.trim().slice(0, 20), tone: e.dataset.tone || null, tx: getComputedStyle(e).color === tx, bar: getComputedStyle(e).borderLeftWidth,
+        title: e.title, ellipsis: t.scrollWidth <= e.clientWidth || getComputedStyle(t).textOverflow === 'ellipsis' };
+    }));
+  }
+  ok(name + ': the slot shows each status and tone', seen[0].text === 'Loaded scene.mp4' && seen[0].tone === 'ok' && seen[1].tone === 'warn'
+    && seen[2].tone === 'bad' && seen[3].tone === null && seen[3].text === '', JSON.stringify(seen));
+  ok(name + ': the text is --tx in every tone, with the 3 px tone bar', seen.every((x) => x.tx && x.bar === '3px'), JSON.stringify(seen));
+  ok(name + ': a long text ellipsizes with its full form in title', seen[1].title === 'the full text' && seen[1].ellipsis, JSON.stringify(seen[1]));
+  ok(name + ': a status or tone change moves no rect', moved.length === 0, r0 + ' -> ' + moved[0]);
+  await send(page, 'phosphor-page-status', { text: 'Loaded scene.mp4', tone: 'ok' });
+  await shot(page, 'status-slot-' + name.replace(' ', '-') + '.png');
+  ok('no page errors (status ' + name + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+for (const vp of [{ width: 1428, height: 900 }, { width: 1024, height: 768 }]) {
+  const { ctx, page, errors } = await boot(vp, { probe: true });
+  await openProbe(page);
+  await send(page, 'phosphor-page-status', { text: 'Loaded', tone: 'ok' });
+  await page.waitForTimeout(60);
+  ok(vp.width + 'x' + vp.height + ': outside buckets 1 and 2 the shell draws no slot', await page.locator('main.pane .foot-status').count() === 0
+    && await page.evaluate(() => +document.documentElement.dataset.bucket >= 3));
+  await shot(page, 'status-page-' + vp.width + 'x' + vp.height + '.png');
+  ok('no page errors (' + vp.width + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
 

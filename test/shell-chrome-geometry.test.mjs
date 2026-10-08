@@ -181,7 +181,8 @@ ok('phone scrolled: strip stays at the top', Math.abs(g.stripTop) < 1, 'top=' + 
 const stripBottom = await page.evaluate(() => document.querySelector('.topstrip').getBoundingClientRect().bottom);
 ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
    'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
-ok('phone: nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
+// ph-5u0g.3: the scrolling layout pins the status row (and a page footer) to the bottom edge, nothing else.
+ok('phone: only the status row is fixed to the bottom edge', /^footer\.footstrip[^ ]* pinned$/.test(g.bottomFixed.replace(/ svelte-\w+/g, '')), g.bottomFixed || 'none');
 const fsPhone = await footRow();
 ok('phone: the status row is still one line (ph-wt7r)', fsPhone.tops === 1 && fsPhone.h === fsH && !fsPhone.wide, JSON.stringify(fsPhone));
 
@@ -468,7 +469,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
 // theme's, +/- step it, Reset shows only off 100% and moves nothing, and
 // Ctrl+=, Ctrl+0 and Ctrl+wheel scale --s without zooming the page, except
 // over a surface that takes the wheel itself.
-for (const [w, h] of [[1280, 800], [390, 844]]) {
+for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   const tag = w + 'x' + h + ' footer';
   const fctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 960 });
   await fctx.addInitScript(([etag, bytes]) => {
@@ -653,6 +654,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.click('nav.rail .rail-collapse');
     await fp.waitForTimeout(150);
   }
+  const unpinned = [];
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
   for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
@@ -705,17 +707,22 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
         if ((st[0] === 'true') !== st[1]) onState.push(id + ' toggle ' + i + ' ' + JSON.stringify(st));
       }
     }
+    // ph-5u0g.3: in the scrolling layout the footer and the status row are pinned: the same rects at scroll top and end.
     const end = await fp.evaluate(async () => {
       const se = document.querySelector('.content') || document.scrollingElement;
+      const fr = () => ['main.pane .page-foot', '.footstrip'].map((q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); }).join(' | ');
+      const at0 = fr();
       se.scrollTop = se.scrollHeight;
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const cards = [...document.querySelectorAll('main.pane :is(.dash-cell, .drill-page, .cat-empty)')];
       const last = Math.max(...cards.map((c) => c.getBoundingClientRect().bottom));
-      const top = document.querySelector('main.pane .page-foot').getBoundingClientRect().top;
+      const top = Math.min(...['main.pane .page-foot', '.footstrip'].map((q) => document.querySelector(q).getBoundingClientRect().top));
+      const atEnd = fr();
       se.scrollTop = 0;
-      return { last, top };
+      return { last, top, at0, atEnd, scrolled: se.scrollHeight > se.clientHeight + 2 };
     });
     if (!(end.last <= end.top + 0.5)) under.push(id + ' ' + JSON.stringify(end));
+    if (w < 960 && end.at0 !== end.atEnd) unpinned.push(id + ' ' + end.at0 + ' -> ' + end.atEnd);
   }
   const [, , , fh] = [...boxes][0]?.split(',').map(Number) || [];
   ok(tag + ': the status row is one box on every page', rowMoved.length === 0, rowMoved.join(' '));
@@ -730,6 +737,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   ok(tag + ': footer and its controls hold still for 30 frames across every toggle', flips > 0 && shifts.length === 0,
     flips + ' flips; ' + shifts.slice(0, 2).join(' / '));
   ok(tag + ': scrolled to its end, the last card ends above the footer', under.length === 0, under.join(' / '));
+  if (w < 960) ok(tag + ': the footer and the status row hold one rect at scroll top and end (pinned)', unpinned.length === 0, unpinned.slice(0, 2).join(' / '));
   if (w >= 960) {
     const look = () => fp.evaluate(() => ({ s: getComputedStyle(document.documentElement).getPropertyValue('--s').trim(),
       out: document.querySelector('.footstrip .foot-scale output').textContent.trim(),

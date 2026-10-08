@@ -505,6 +505,8 @@ export function createPluginHost(deps) {
           fill: !!p.def.fill,
           search: (p.def.search || []).map((e) => ({ label: e.label, key: e.key })),
           mediaFullscreen: !!p.def.mediaFullscreen,
+          status: !!p.def.status,
+          compactHero: !!p.def.compactHero,
           plugin: rec.manifest.name,
           slot: p,
         });

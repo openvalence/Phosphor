@@ -864,7 +864,8 @@
      the scroll recess (style.css [data-shade], z 14) and casts its own, as the page footer does. */
   .dash-toolbar {
     position: sticky;
-    bottom: 0;
+    /* Above the pinned bottom stack in the scrolling layout (style.css .app). */
+    bottom: calc(var(--foot-strip-h, 0px) + var(--page-foot-reserve, 0px));
     z-index: 15;
     display: flex;
     align-items: center;

@@ -118,6 +118,17 @@ Plugins`, its page region the plugin's to fill full width.
   and the shell stores pref `fullscreen`. The desktop shell keeps
   `<html data-fullscreen-mode>` at the current mode; absent, there is no
   Borderless.
+- **`status: true`** (experimental, `ph-5u0g.3`). On the phone class
+  (buckets 1 and 2) the page gets a footer with one status slot, even with no
+  page controls. The page dispatches `phosphor-page-status` from inside its
+  element (bubbles, `detail: {text, tone, title?}`, `tone` one of `null`,
+  `'ok'`, `'warn'`, `'bad'`); the shell keeps the latest per page and draws it
+  while the page is on screen: one line, a 3 px tone bar at its left edge, the
+  text in `--tx` whatever the tone, ellipsized with `title` (else the text) on
+  hover, its width reserved so a change moves nothing. Outside buckets 1 and 2
+  the shell draws nothing for it: the page reads `<html data-bucket>` and
+  draws its own status row there. A status sent from the page's card on the
+  Dash is ignored. Seam: `src/App.svelte`.
 - **`fill: true`** (experimental, `ph-yuce`). The page is laid out as a column
   filling the desktop content pane's width and height (`main.pane.fill`, the
   page fullscreen geometry in place): a mount whose root is `height: 100%`
@@ -207,7 +218,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
-| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
+| `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 

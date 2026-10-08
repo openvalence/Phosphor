@@ -355,8 +355,8 @@ function stripCheck() {
     || !pause || pause.getBoundingClientRect().right > r.left + 0.5)) out.push(['strip', 'the e-stop is not the outermost control']);
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
-    // The page footer is the one bar ruled onto the bottom edge (DESIGN §10.3).
-    if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none' || el.matches('.page-foot')) continue;
+    // The page footer and the pinned status row are the bars ruled onto the bottom edge (DESIGN §10.3).
+    if (cs.position !== 'fixed' || cs.pointerEvents === 'none' || cs.display === 'none' || el.matches('.page-foot, .footstrip.pinned')) continue;
     const b = el.getBoundingClientRect();
     if (b.width > 0 && b.height > 0 && b.bottom >= innerHeight - 1) out.push(['strip', 'fixed bar at the bottom edge: ' + el.className]);
   }

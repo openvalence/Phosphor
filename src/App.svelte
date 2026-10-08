@@ -201,6 +201,21 @@
     return () => { window.removeEventListener('phosphor-page-fullscreen', ask); window.removeEventListener('phosphor-page-fullscreen-mode', mode); };
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
+  // The footer status slot (docs/PLUGINS.md, Pages, `status`): the latest
+  // phosphor-page-status per page, drawn only on the phone class.
+  const TONES = ['ok', 'warn', 'bad'];
+  let pageStatus = $state({});
+  $effect(() => {
+    const put = (e) => {
+      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const d = e.detail || {};
+      pageStatus[current.id] = { text: String(d.text ?? ''), tone: TONES.includes(d.tone) ? d.tone : null,
+        title: d.title == null ? '' : String(d.title) };
+    };
+    window.addEventListener('phosphor-page-status', put);
+    return () => window.removeEventListener('phosphor-page-status', put);
+  });
+  const statusSlot = $derived(current?.page?.status && view.bucket <= 2 ? pageStatus[current.id] || { text: '', tone: null, title: '' } : null);
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
@@ -561,6 +576,11 @@
       {/key}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
+      {#if statusSlot}
+        <span class="foot-status" data-tone={statusSlot.tone} role="status" title={statusSlot.title || statusSlot.text || undefined}>
+          <span>{statusSlot.text}</span>
+        </span>
+      {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
         <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
                 onclick={() => (full = toggle(full))}>Fullscreen</button>
@@ -694,7 +714,7 @@
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
     </button>
   {/if}
-  <FootStrip />
+  <FootStrip pinned={!isDesktop} />
   <ConfirmLayer onreview={() => selectTab('pairing')} knocksShown={current?.id === 'pairing'} />
   <KeyHelp />
   <LookFor {tabs} go={selectTab} />
@@ -1011,6 +1031,24 @@
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
+
+  /* The page's status slot (DESIGN §10.3): one line, its width reserved, a
+     3 px tone bar; the text is --tx in every tone, never --warn (law 13). */
+  .foot-status {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: calc(var(--sp-5) * 1.5);
+    padding-left: var(--sp-2);
+    border-left: 3px solid var(--line-2);
+    color: var(--tx);
+    font-size: .8rem;
+  }
+  .foot-status > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .foot-status[data-tone='ok'] { border-left-color: var(--good); }
+  .foot-status[data-tone='warn'] { border-left-color: var(--warn); }
+  .foot-status[data-tone='bad'] { border-left-color: var(--bad); }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the

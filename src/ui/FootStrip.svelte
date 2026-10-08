@@ -25,16 +25,27 @@
    * here too — every value is `--` until the machine (or the session itself)
    * has actually produced it.
    *
-   * No props — reads the one machine spine directly. Wire it in bare:
-   *   <FootStrip />
+   * Reads the one machine spine directly. `pinned` (App's scrolling layout):
+   * fixed to the viewport's bottom above the page footer (DESIGN §10.3).
    *
    * Constraints:
+   * - Pinned, one height whatever the scroll; it owns the bottom inset only
+   *   while no page footer is under it, and publishes --foot-strip-h, which
+   *   `.app` reserves (style.css).
    * - A live value never moves its neighbors: each holds a fixed slot (--w,
    *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
    */
   import { machine } from '../model/machine.svelte.js';
   import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
+
+  let { pinned = false } = $props();
+  let fsH = $state(0);
+  $effect(() => {
+    if (!pinned || !fsH) return;
+    document.documentElement.style.setProperty('--foot-strip-h', fsH + 'px');
+    return () => document.documentElement.style.removeProperty('--foot-strip-h');
+  });
 
   // A page full of "since" readouts needs its own clock, or the age freezes
   // the instant this component last happened to re-render.
@@ -71,7 +82,7 @@
   const buildId = typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : '--';
 </script>
 
-<footer class="footstrip" aria-label="Link diagnostics">
+<footer class="footstrip" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">
@@ -106,6 +117,17 @@
     color: var(--ink-faint);
     font-size: 11px;
   }
+
+  .footstrip.pinned {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--page-foot-reserve, 0px);
+    z-index: 15;
+    margin: 0;
+    padding-bottom: calc(.727em + env(safe-area-inset-bottom, 0px));
+  }
+  :global(.app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: .727em; }
 
   .fs-label {
     flex: 0 0 auto;
