@@ -1,0 +1,5 @@
+# The Nucleus commit integral.js and integral.wasm (bytes.js) were built from; bump with node test/integral-pin.mjs --write.
+nucleus 74ff1cb2c2d58142ea86bd110471b7b3d5c77307
+etag 1156bca7f02f424a
+wasm 541152 45f62ee43133c9edb1f115934074fe81712e1a140fe1352480f2a7721c7d3209
+glue 12408 d1d756b36843c54aa854a65072bf555274fd56c307bdc9ebde40c90f8c422d2f

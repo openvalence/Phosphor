@@ -1,0 +1,2 @@
+# The vendored loader is hashed in integral.pin: byte-exact, never line-ending converted.
+src/model/integral/integral.js -text
