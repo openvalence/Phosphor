@@ -639,7 +639,7 @@
      move; the safety-edge history stays in the Log. */
   /* Buttons at the 40 px floor (law 12), the row's gaps tight: the row
      returns 40 px or more at 860x420, where the full hero is already one row. */
-  .strip.compact { --tap: 40px; --num-h: var(--tap); --num-cap: var(--tap); --pad-v: var(--sp-1); gap: var(--sp-2); }
+  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); --pad-v: 0px; gap: var(--sp-2); }
   .compact .nums { flex: none; clip-path: none; }
   /* Each button as wide as its word, never under the target: a label is never clipped. */
   .compact .dock :global(:is(.safety-op .btn, .rw-flip)) { width: auto; min-width: var(--tap); }

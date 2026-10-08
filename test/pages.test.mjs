@@ -471,6 +471,25 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await ctx.close();
 }
 
+// A media page's bare fullscreen on the phone class: the ask opens the vertical pop-up, clear of the stop pair.
+for (const [w, h] of [[420, 860], [860, 420]]) {
+  const tag = 'quick media ' + w + 'x' + h;
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { touch: true });
+  await page.waitForSelector(TAB, { state: 'attached', timeout: 15000 });
+  await page.$eval(TAB, (t) => t.click());
+  await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(300);
+  ok(tag + ': F11 enters bare', await page.locator('main.pane.full.bare').count() === 1);
+  ok(tag + ': the page ask is accepted', await ask(page, true, 'main.pane .fsp'));
+  await page.waitForTimeout(200);
+  const s = await quickState(page);
+  ok(tag + ': data-quick-rail="vertical", the pop-up shown, clear of the stop pair', s.attr === 'vertical' && !!s.pop && s.pop.form === 'vertical' && !s.pop.pair, JSON.stringify(s));
+  await shot(page, 'quick-media-' + w + 'x' + h + '.png');
+  ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
 for (const [w, h] of [[1428, 900], [1024, 768]]) {
   const tag = 'quick ' + w + 'x' + h;
   console.log('\n--- ' + tag + ' ---');

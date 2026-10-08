@@ -123,7 +123,8 @@ Plugins`, its page region the plugin's to fill full width.
   while the page is on screen, the hero is one row: the position numeral
   without its label line or the planned target, lag and speed, the mini
   rail, and the five strip buttons at the 40 px target; a status condition
-  takes the numeral's place. About 40 to 65 px return to the page. Other
+  takes the numeral's place. At least 40 px return to the page at 420x860
+  and 860x420. Other
   buckets draw the hero as usual.
 - **`status: true`** (experimental, `ph-5u0g.3`). On the phone class
   (buckets 1 and 2) the page gets a footer with one status slot, even with no

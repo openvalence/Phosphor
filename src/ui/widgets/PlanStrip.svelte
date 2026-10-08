@@ -399,7 +399,6 @@
     position: relative;
     height: 100%;
   }
-  /* One line: numbers that do not fit wrap whole onto a clipped second. */
   /* One line, or two where the width runs short (the meta wraps whole to
      the second); each line ellipsizes, never clipped vertically (ph-5u0g
      peeve 10). Out of flow in the strip, so the second line moves nothing. */
