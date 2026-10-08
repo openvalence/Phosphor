@@ -19,7 +19,7 @@
  */
 
 import {
-  PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE,
+  PACKED, UI_RANK, UI_ARCHETYPE, VALUE_ASPECT, UI_CATEGORY, SAFETY_OP, FIELD_ROLE, LIMITS,
 } from '../../../Valence/clients/js/index.js';
 import { ROLE, ROLE_LABEL, isActionRole } from './roles.js';
 import { isPersistentAction } from './actions.js';
@@ -402,13 +402,15 @@ function mergeColor(fields) {
 const mergeComposites = (fields) => mergeColor(mergeRangePairs(fields));
 
 /**
- * A group string as {section, title}: the first " / " splits the section from
- * the card title; none is a card with no section (DESIGN §10.11, Valence
- * RFC-096 draft). The wire string is unchanged; `name` stays the card's key.
+ * A group string as {section, title}: the first LIMITS.group_section_separator
+ * splits the section from the card title; none is a card with no section
+ * (RENDERING §3, RFC-096; DESIGN §10.11). The wire string is unchanged; `name`
+ * stays the card's key.
  */
 export function splitGroup(name) {
-  const i = name.indexOf(' / ');
-  return i < 0 ? { section: '', title: name } : { section: name.slice(0, i), title: name.slice(i + 3) };
+  const sep = LIMITS.group_section_separator;
+  const i = name.indexOf(sep);
+  return i < 0 ? { section: '', title: name } : { section: name.slice(0, i), title: name.slice(i + sep.length) };
 }
 
 // ---------------------------------------------------------------------------

@@ -885,8 +885,8 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   pages of their category (RENDERING §11), not sidebar rows. A group is
   promoted by its whole field count, shown or not, so the advanced toggle
   never moves a page.
-- Sections (operator ruling 2026-10-02; Valence RFC-096 draft, a
-  presentation choice under RFC-080). A group string's first " / " splits
+- Sections (operator ruling 2026-10-02; Valence RFC-096 landed,
+  RENDERING §3; a presentation choice under RFC-080). A group string's first " / " splits
   it into a section and a card title: `Tuning / Planner` is the Planner
   card in section Tuning; an unprefixed group is a card with no section.
   The wire string is RENDERING §3's free-text subgroup, unchanged, and stays
@@ -1013,7 +1013,7 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-02 | §10.10 | Virtual Valence (demo and configure mode) and the Merge pane established (`ph-6iu`). | operator (request) |
 | 2026-10-02 | §10.3 | The page footer: the category page bar moves to a fixed bottom bar on every page, carrying the UI scale control and its Ctrl shortcuts (`ph-vdk.60.12`). | operator |
 | 2026-10-02 | §10.1, §10.11 | Navigation follows Valence RFC-094's three tiers (Machine, Valence, Phosphor), replacing the client's own Machine/Console/Phosphor rule; the home page is named Dash, the protocol view Link, category 1 Generator; one registry-keyed icon table. | operator (RFC-094 ruling) |
-| 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 draft); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
+| 2026-10-02 | §10.11 | Sections: a " / " in a group string names a section (Valence RFC-096 landed, RENDERING §3); a folded subgroup keeps one card per heading under one header row, unsectioned cards first (`ph-efai`). | operator (the page order is the agent's, veto-able) |
 | 2026-10-02 | §10.3 | The shell's e-stop press also broadcasts the RFC-053 ESTOP datagram on every IPv4 interface, opt-out by a Settings pref, default on (`ph-y4er`). | operator (RFC-053 ruling 2026-07-29; the LAN-wide reach is the agent's reading, veto-able) |
 | 2026-10-03 | §10.3 | Page fullscreen for plugin pages: in window or borderless, a caret hides the bar and strip, the stop pair stays top right at half opacity at rest (`ph-wb4j`). | operator (the pair's wake on pointer movement and its backing are the agent's, veto-able) |
 | 2026-10-03 | §10.3 | The UI scale moves from the page footer into the right end of the bottom status row; a page with no controls has no footer; the rail and content outer edges match the hero panel's frame (`ph-5q67`). | operator (hiding the empty footer is the agent's, veto-able) |
