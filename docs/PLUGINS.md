@@ -266,8 +266,10 @@ and the chase interval are refused as trials on the reference hub: each is
 gated on live state, so its revert could be refused too. A trial NACKed
 `UNSUPPORTED_OP` marks that channel and key as not trialable for the session
 (Valence RFC-107, draft): `writeTrial` never retries it, the field's status reads
-`not trialable here, write directly`, and the next `writeTrial` on it goes as a
-durable `write`, behind the host confirm. A new session starts the marks over.
+`not trialable here, write directly`, and the next `writeTrial` on it returns
+`{ ok: false }` without sending: a preview never writes durably in a trial's
+place; the operator writes the key from the settings page. A new session
+starts the marks over.
 
 ## Manifest (`manifest.json`, beside the module)
 

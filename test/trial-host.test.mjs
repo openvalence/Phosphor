@@ -122,17 +122,17 @@ hub.trials.length = 0;
 api.writeTrial(CHASE, 30);
 await Promise.resolve();
 ok('the first edit goes out as a trial', hub.trials.length === 1 && hub.trials[0][1] === 30, JSON.stringify(hub.trials));
-await api.writeTrial(CHASE, 40);
-ok('the next edit is a durable write of the new value', hub.durable.length === 1 && hub.durable[0][0] === CHASE.uid && hub.durable[0][1] === 40,
-  JSON.stringify(hub.durable));
+const refused = await api.writeTrial(CHASE, 40);
+ok('the next edit is refused by the host, not written: no durable write in the trial\'s place (RFC-107 item 4)',
+  refused && refused.ok === false && /settings page/.test(refused.error) && hub.durable.length === 0, JSON.stringify([refused, hub.durable]));
 ok('and the trial is not retried', hub.trials.length === 1, hub.trials.length);
 api.writeTrial(OTHER, 50);
-ok('the mark is channel:key, not the key alone', hub.trials.length === 2 && hub.durable.length === 1);
+ok('the mark is channel:key, not the key alone', hub.trials.length === 2 && hub.durable.length === 0);
 api.writeTrial(SPEED, 660);
 ok('another key still goes as a trial', hub.trials.length === 3 && hub.sample.speed === 660);
 hub.sid = 2;
 api.writeTrial(CHASE, 60);
-ok('a new session starts the mark over: the key is tried again', hub.trials.length === 4 && hub.durable.length === 1);
+ok('a new session starts the mark over: the key is tried again', hub.trials.length === 4 && hub.durable.length === 0);
 await api.revertTrial();
 
 console.log(fails ? fails + ' FAILED' : 'all passed');

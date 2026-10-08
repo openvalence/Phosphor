@@ -196,8 +196,10 @@ export function createPluginHost(deps) {
         const sid = deps.session ? deps.session() : null;
         if (sid !== noTrialSid) { noTrial = new Set(); noTrialSid = sid; }
         const key = field.writeChannel + ':' + field.settingKey;
-        // A refused trial is never retried: the edit goes durable, behind the host confirm.
-        if (noTrial.has(key)) return deps.write(field, value);
+        // A refused trial is never retried and never turned into a durable write
+        // by the preview (RFC-107 item 4): the operator writes it from the
+        // settings page, where the write is their own action.
+        if (noTrial.has(key)) return { ok: false, error: 'not trialable here, write it from the settings page' };
         return deps.writeTrial(field, value, () => noTrial.add(key));
       },
       commitTrial: () => {
