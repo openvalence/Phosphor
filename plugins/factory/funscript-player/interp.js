@@ -41,9 +41,10 @@
 // - wire() carries `vel`, the mode's slope at each action (pos per ms; 0 for step, smoothstep and cosine;
 //   null for linear), only while no filter is on. With smoothing or slew each action takes the filtered
 //   curve's value there and vel is null: the scheduler reads the knots' chords.
-// - scale moves every action about the window center, p' = 0.5 + (p - 0.5) x scale, before the mode: shape()
-//   and wire() both run on the moved actions, so the drawn curve, the wire and the Kinetic preview agree; sample()
-//   is unscaled. scaleAuto is the controller's (ui.js): it picks the scale with fitGain and passes it in.
+// - Every action takes the affine map p' = (p - lower) / (upper - lower) before the mode: [lower, upper] is
+//   interp.map when set (Auto's fit, fitMap), else the symmetric gain's [0.5 - 0.5 / scale, 0.5 + 0.5 / scale].
+//   shape() and wire() both run on the mapped actions, so the drawn curve, the wire and the Kinetic preview
+//   agree; sample() is unmapped. scaleAuto is the controller's (ui.js): it fits the map and passes it in.
 // - Pure, no DOM at import time; mountInterp touches the DOM only when called.
 
 import { posAt, indexAfter, MAX_SPAN_MS } from './funscript.js';
@@ -63,25 +64,39 @@ export const RANGES = Object.freeze({
   slewMmS: Object.freeze({ min: 0, max: 2000, step: 10 }),
   scale: Object.freeze({ min: 0.25, max: 1, step: 0.01 }),
 });
-export const INTERP = Object.freeze({ mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false });
+export const INTERP = Object.freeze({ mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: true });
+/** How far past 0..1 a fit reaches: the floor gain's. */
+const REACH = 0.5 / RANGES.scale.min - 0.5;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-/** Any value -> a well-formed interp: an unknown mode is linear, numbers are clamped to RANGES. */
+/** Any value -> a well-formed interp: an unknown mode is linear, numbers are clamped to RANGES, map kept only when it is a fit. */
 export function cleanInterp(v) {
   const s = v && typeof v === 'object' ? v : {};
   const num = (k) => (typeof s[k] === 'number' && Number.isFinite(s[k]) ? clamp(s[k], RANGES[k].min, RANGES[k].max) : INTERP[k]);
+  const m = s.map, fit = Array.isArray(m) && m[0] <= 0 && m[0] >= -REACH && m[1] >= 1 && m[1] <= 1 + REACH;
   return { mode: Object.hasOwn(MODES, s.mode) ? s.mode : 'linear',
     tension: num('tension'), bias: num('bias'), smoothMs: num('smoothMs'), slewMmS: num('slewMmS'), scale: num('scale'),
-    scaleAuto: s.scaleAuto === true };
+    scaleAuto: typeof s.scaleAuto === 'boolean' ? s.scaleAuto : INTERP.scaleAuto, ...(fit ? { map: [m[0], m[1]] } : {}) };
 }
 
-/** The actions moved about the window center by g; the script itself at 1. */
-const scaled = (script, g) => (g === 1 ? script : { ...script, pos: Float32Array.from(script.pos, (p) => 0.5 + (p - 0.5) * g) });
+/** [lower, upper], the script values the window's 0 and 1 take: interp.map, else the symmetric gain's. */
+export const mapOf = (I) => I.map || [0.5 - 0.5 / I.scale, 0.5 + 0.5 / I.scale];
 
-/** The largest scale on the 0.01 grid, down to RANGES.scale.min, that keeps an excursion e (max |p - 0.5| at scale 1) in 0..1. */
-export function fitGain(e) {
-  return e > 0.5 ? clamp(Math.floor(50 / e + 1e-6) / 100, RANGES.scale.min, 1) : 1;
+/** The actions through mapOf(I); the script itself at [0, 1]. */
+function scaled(script, I) {
+  const [a, b] = mapOf(I);
+  return a === 0 && b === 1 ? script : { ...script, pos: Float32Array.from(script.pos, (p) => (p - a) / (b - a)) };
+}
+
+/**
+ * An extent [min, max] at scale 1 -> the map that pulls in only the ends past 0..1, on the 0.01 grid, at most REACH
+ * out. An end within 1e-4 of the grid stays on it: the planner's e4 positions and float32 shares carry that much noise.
+ */
+export function fitMap([lo, hi]) {
+  const a = Number.isFinite(lo) ? Math.floor(Math.min(0, lo) * 100 + 0.01) / 100 : 0;
+  const b = Number.isFinite(hi) ? Math.ceil(Math.max(1, hi) * 100 - 0.01) / 100 : 1;
+  return [Math.max(-REACH, a), Math.min(1 + REACH, b)];
 }
 
 // ---- slopes, pos per ms, one per knot -----------------------------------------
@@ -133,6 +148,8 @@ function hermite(x0, y0, x1, y1, s0, s1, x) {
 }
 
 const CUBIC = new Set(['catmull', 'hermite', 'monotone', 'pchip', 'akima', 'makima']);
+/** The modes that reach past their two actions. */
+const OVER = new Set(['catmull', 'hermite', 'akima', 'makima']);
 
 /** (script, interp) -> t => 0..1; slopes computed once. Holds outside the script like posAt. */
 function curveOf(script, I) {
@@ -153,17 +170,16 @@ function curveOf(script, I) {
   };
 }
 
-/** max |p - 0.5| of the mode's curve before its 0..1 clamp and the filters, 16 samples a span: Auto's measure without a render. */
+/** [min, max] of the mode's curve before its 0..1 clamp and the filters, 16 samples a span: Auto's measure without a render. */
 export function curveExtent(script, interp) {
   const I = cleanInterp(interp), { at, pos } = script, m = CUBIC.has(I.mode) ? slopes(at, pos, I) : null;
-  let e = 0;
+  let lo = Infinity, hi = -Infinity;
+  const see = (y) => { lo = Math.min(lo, y); hi = Math.max(hi, y); };
   for (let i = 0; i < at.length; i++) {
-    e = Math.max(e, Math.abs(pos[i] - 0.5));
-    for (let j = 1; m && i && j < 16; j++) {
-      e = Math.max(e, Math.abs(hermite(at[i - 1], pos[i - 1], at[i], pos[i], m[i - 1], m[i], at[i - 1] + (at[i] - at[i - 1]) * j / 16) - 0.5));
-    }
+    see(pos[i]);
+    for (let j = 1; m && i && j < 16; j++) see(hermite(at[i - 1], pos[i - 1], at[i], pos[i], m[i - 1], m[i], at[i - 1] + (at[i] - at[i - 1]) * j / 16));
   }
-  return e;
+  return [lo, hi];
 }
 
 const cache = new WeakMap();
@@ -218,7 +234,7 @@ function slewOf(I, ctx) {
 export function shape(script, interp, ctx = {}) {
   if (!script) return script;
   const I = cleanInterp(interp), perMs = slewOf(I, ctx);
-  script = scaled(script, I.scale);
+  script = scaled(script, I);
   if (I.mode === 'linear' && !I.smoothMs && !perMs) return script;
   const f = curveOf(script, I), { at, pos } = script, n = at.length;
   const T = [at[0]];
@@ -256,7 +272,7 @@ export function wire(script, interp, ctx = {}) {
     const d = shape(script, I, ctx);
     return { ...script, pos: Float32Array.from(script.at, (t) => posAt(d, t)), vel: null };
   }
-  script = scaled(script, I.scale);
+  script = scaled(script, I);
   if (I.mode === 'linear') return script;
   const vel = CUBIC.has(I.mode) ? slopes(script.at, script.pos, I) : new Float64Array(script.at.length);
   return { ...script, vel };
@@ -268,6 +284,7 @@ export const COPY = Object.freeze({
   heading: 'Motion curve',
   mode: 'Curve',
   modeTip: 'Curve between actions',
+  overTip: 'Reaches past the actions, so Auto shrinks it',
   tension: 'Tension',
   bias: 'Bias',
   none: 'No setting',
@@ -278,7 +295,7 @@ export const COPY = Object.freeze({
   scale: 'Scale',
   auto: 'Auto',
   autoTip: 'Fit the curve to the window',
-  autoOut: 'auto ',
+  autoTo: '–',
   labels: Object.freeze({ linear: 'Linear', step: 'Step', smoothstep: 'Smoothstep', cosine: 'Cosine', catmull: 'Catmull-Rom',
     hermite: 'Hermite', monotone: 'Monotone', pchip: 'PCHIP', akima: 'Akima', makima: 'Makima' }),
 });
@@ -313,7 +330,7 @@ const fmt = { tension: (v) => v.toFixed(2), bias: (v) => (v > 0 ? '+' : '') + v.
 
 /**
  * Settings card rows: mode, its parameter, smoothing, slew, Scale; -> unmount(). A mode swap relabels, never reflows.
- * gain() -> the scale in force (the player's); Auto reads it out, polled at 4 Hz.
+ * gain() -> the map in force, [lower, upper] (the player's); Auto reads out where 0 and 1 land, polled at 4 Hz.
  */
 export function mountInterp(el, { value, onChange, gain = () => null }) {
   let v = cleanInterp(value);
@@ -348,14 +365,15 @@ export function mountInterp(el, { value, onChange, gain = () => null }) {
 
   function drawGain() {
     if (!v.scaleAuto) return;
-    const g = gain() ?? 1;
-    gainOut.value = COPY.autoOut + g.toFixed(2);
-    sc.input.value = String(g);
+    const [a, b] = gain() ?? [0, 1], w = b - a;
+    gainOut.value = (-a / w).toFixed(2) + COPY.autoTo + ((1 - a) / w).toFixed(2);
+    sc.input.value = String(1 / w);
   }
 
   function draw() {
     const key = MODES[v.mode];
     sel.value = v.mode;
+    sel.title = OVER.has(v.mode) ? COPY.overTip : COPY.modeTip;
     parLabel.textContent = key ? COPY[key] : COPY.none;
     par.input.setAttribute('aria-label', parLabel.textContent);
     par.input.disabled = !key;

@@ -54,7 +54,7 @@ const CONTRACT = {
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'kinPoints',
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
-  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'fitGain', 'curveExtent', 'sample', 'shape', 'wire', 'COPY', 'CSS',
+  [P + 'interp.js']: ['STEP_MS', 'MODES', 'RANGES', 'INTERP', 'cleanInterp', 'mapOf', 'fitMap', 'curveExtent', 'sample', 'shape', 'wire', 'COPY', 'CSS',
     'mountInterp'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
@@ -111,7 +111,7 @@ if (prefs) {
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
     stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
-    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false },
+    interp: { mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, lowLatency: false, autoLatency: false } };
   {
     const { offsetKey, offsetDrag } = mods[P + 'ui.js'], { pillKey } = mods[P + 'timeline.js'];
@@ -143,8 +143,10 @@ if (prefs) {
   ok('offset clamps to 500, a valid range and invert survive', same(t, { offsetMs: 500, lo: 0.2, hi: 0.8, invert: true }), t);
   ok('offset rounds to its 5 ms step', readPrefs(fakeApi({ T: { offsetMs: -12 } })).T.offsetMs === -10);
   const ip = readPrefs(fakeApi({ interp: { mode: 'spline', tension: 0.5, smoothMs: 9999, scale: 0.1, scaleAuto: 'yes' } })).interp;
-  ok('interp: an unknown mode is linear, ranges clamp, scale to 0.25, scaleAuto a boolean',
-    same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0, scale: 0.25, scaleAuto: false }), ip);
+  ok('interp: an unknown mode is linear, ranges clamp, scale to 0.25, scaleAuto a boolean (else on)',
+    same(ip, { mode: 'linear', tension: 0.5, bias: 0, smoothMs: 500, slewMmS: 0, scale: 0.25, scaleAuto: true }), ip);
+  const io = readPrefs(fakeApi({ interp: { mode: 'makima', scaleAuto: false } })).interp;
+  ok('interp: a saved Auto off stays off', io.scaleAuto === false, io);
   const ia = readPrefs(fakeApi({ interp: { mode: 'makima', scale: 0.9, scaleAuto: true } })).interp;
   ok('interp: Scale and Auto read back (phosphor.funscript.interp scale, scaleAuto)', ia.scale === 0.9 && ia.scaleAuto === true, ia);
   ok('an array is not an object pref', same(readPrefs(fakeApi({ audio: [1, 2] })).audio, want.audio));
@@ -273,8 +275,10 @@ if (an) {
       && an.kinText('wasm', { error: 'window refused' }) === 'Kinetic: wasm  window refused');
     // Wide shares 0.5, 0.8, 0.225 are window shares 0.5, 1.1, -0.05; the fourth sample lies past the span.
     const wr = Float32Array.from([0.5, 0.8, 0.225, 0.95]);
-    ok('Auto: the wall-free measure reads back through WIDE_* and the Range, over the script span only',
-      Math.abs(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0, hi: 1 }) - 0.6) < 1e-6 && Math.abs(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0.2, hi: 0.8 }) - 1) < 1e-6);
+    const near2 = (e, w) => e.every((x, i) => Math.abs(x - w[i]) < 1e-6);
+    ok('Auto: the wall-free measure reads back [min, max] through WIDE_*, the Range and invert, over the script span only',
+      near2(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0, hi: 1 }), [-0.05, 1.1]) && near2(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0.2, hi: 0.8 }), [-0.4166667, 1.5])
+      && near2(an.wideExtent(wr, 0, 5, 0, 10, { lo: 0, hi: 1, invert: true }), [-0.1, 1.05]));
   }
 }
 
@@ -1506,7 +1510,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   hub.values[CH.config + ':window_min'] = 0;
   hub.values[CH.config + ':window_max'] = 100;
   Object.assign(hub.values, KIN_VALUES);
-  const { ctx, page, up, errors } = await open({ cat: tc, hub, width: 1280, prefs: { 'phosphor.funscript.interp': { mode: 'makima' } } });
+  const { ctx, page, up, errors } = await open({ cat: tc, hub, width: 1280, prefs: { 'phosphor.funscript.interp': { mode: 'makima', scaleAuto: false } } });
   await page.setViewportSize({ width: 1280, height: 800 });
   const onPage = up && await page.click('[data-tab-id="plugin:funscript-player:player"]').then(() => page.waitForSelector(C, { timeout: 5000 }))
     .then(() => true, () => false);
@@ -1562,20 +1566,39 @@ if (!LIVE && !args.includes('--stash-live')) {
   await autoBtn.click({ timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
-    return o && /^auto 0\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
+    return o && /^\d\.\d\d–\d\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
   }, C, { timeout: 15000 }).then(() => true, () => false);
   await page.waitForTimeout(600);
   const t2 = await kinText();
   const readout = await page.locator('main.pane .fsp-psec .fsp-interp .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
-  console.log('  [NOTE] clamped at Scale 1: ' + clampedMs(t1) + ' ms (' + t1 + '); with Auto: ' + clampedMs(t2) + ' ms (' + t2 + '), ' + readout);
-  ok('C: Makima on the real-shaped script clamps at Scale 1; Auto fits it (clamped 0) and reads the applied gain',
-    clampedMs(t1) > 0 && fit && clampedMs(t2) === 0 && /^auto 0\.\d\d$/.test(readout), { t1, t2, readout });
+  const im = mods[P + 'interp.js'], est = im.curveExtent(fsm.parseFunscript(REAL_SCRIPT), { mode: 'makima' });
+  console.log('  [NOTE] clamped at Scale 1: ' + clampedMs(t1) + ' ms (' + t1 + '); with Auto: ' + clampedMs(t2) + ' ms (' + t2 + '), ' + readout
+    + '; the curve alone: [' + est.map((x) => x.toFixed(4)) + '] -> ' + im.fitMap(est));
+  ok('C: Makima on the real-shaped script clamps at Scale 1; Auto fits it (clamped 0) and reads where 0 and 1 land',
+    clampedMs(t1) > 0 && fit && clampedMs(t2) === 0 && /^\d\.\d\d–\d\.\d\d$/.test(readout), { t1, t2, readout });
+  const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), r = o.getBoundingClientRect(),
+    g = o.closest('.fsp-interp').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
+  ok('C: the Auto readout fits its cell', fits.sw <= fits.cw + 1 && fits.right <= fits.gr + 0.5, fits);
+  const mode = await page.locator('main.pane .fsp-psec .fsp-interp select').getAttribute('title');
+  ok('C: an overshooting mode carries the hint on its menu', mode === im.COPY.overTip, mode);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.interp') || '{}'));
   ok('C: Auto persists in the interp pref (phosphor.funscript.interp scaleAuto)', stored.scaleAuto === true && stored.scale === 1, stored);
   if (SHOT) {
     await page.screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-auto-1280x800.png') });
     await page.locator('main.pane .fsp-psec .fsp-interp').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'v-scale-row.png') }).catch(() => {});
   }
+  // ---- D: a top-only overshoot keeps its bottom: holds at 0 rest the planner there, the 100-70-100 tease overshoots the top ----
+  const cyc = [[0, 0], [400, 0], [650, 100], [900, 70], [1150, 100]];
+  const teaseActs = [];
+  for (let k = 0; k < 8; k++) for (const [t, p] of cyc) teaseActs.push({ at: 500 + k * 1400 + t, pos: p });
+  const teased = await loadClip(page, { version: '1.0', inverted: false, range: 100, actions: [...teaseActs, { at: 500 + 8 * 1400, pos: 0 }] });
+  const topOnly = await page.waitForFunction((c) => {
+    const o = document.querySelector('main.pane .fsp-psec .fsp-interp .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
+    return o && /^0\.00–0\.\d\d$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped /.test(t);
+  }, C, { timeout: 15000 }).then(() => true, () => false);
+  const r2 = await page.locator('main.pane .fsp-psec .fsp-interp .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
+  console.log('  [NOTE] top-only tease under Makima, Auto: ' + r2 + ' (' + await kinText() + ')');
+  ok('D: a top-only overshoot pulls the top in and keeps the bottom at 0.00, clamped 0', teased && topOnly, r2);
   ok('visuals: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

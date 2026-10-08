@@ -16,7 +16,7 @@
 import {
   MAX_SPAN_MS, MAX_ACTIONS, AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
-import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape, wire, fitGain, curveExtent } from '../plugins/factory/funscript-player/interp.js';
+import { INTERP, MODES, STEP_MS, cleanInterp, sample, shape, wire, fitMap, curveExtent, mapOf } from '../plugins/factory/funscript-player/interp.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -335,9 +335,13 @@ console.log('interp');
   const c = cleanInterp({ mode: 'bogus', tension: 9, bias: -9, smoothMs: NaN, slewMmS: '5' });
   ok('cleanInterp repairs', c.mode === 'linear' && c.tension === 1 && c.bias === -1 && c.smoothMs === 0 && c.slewMmS === 0
     && cleanInterp(null).mode === 'linear' && cleanInterp({ mode: 'makima' }).mode === 'makima');
-  const cs = [cleanInterp({ scale: 3, scaleAuto: 1 }), cleanInterp({ scale: 0.1, scaleAuto: true }), cleanInterp({})];
-  ok('cleanInterp: scale clamps to 0.25..1, scaleAuto only a true boolean, defaults 1 and off',
-    cs[0].scale === 1 && cs[0].scaleAuto === false && cs[1].scale === 0.25 && cs[1].scaleAuto === true && cs[2].scale === 1 && cs[2].scaleAuto === false);
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const cs = [cleanInterp({ scale: 3, scaleAuto: 1 }), cleanInterp({ scale: 0.1, scaleAuto: false }), cleanInterp({})];
+  ok('cleanInterp: scale clamps to 0.25..1, scaleAuto a boolean (a saved false stays), defaults 1 and on',
+    cs[0].scale === 1 && cs[0].scaleAuto === true && cs[1].scale === 0.25 && cs[1].scaleAuto === false && cs[2].scale === 1 && cs[2].scaleAuto === true);
+  ok('cleanInterp: map kept only as a fit (lower <= 0, upper >= 1, within the floor gain reach)',
+    eq(cleanInterp({ map: [-0.1, 1.2] }).map, [-0.1, 1.2]) && !('map' in cleanInterp({ map: [0.1, 1] })) && !('map' in cleanInterp({ map: [-2, 1] }))
+    && !('map' in cleanInterp({ map: 'x' })) && !('map' in cleanInterp({})));
 
   // ---- Scale: p' = 0.5 + (p - 0.5) x g on the wire and the drawn curve ----
   const ws = wire(s, I('linear', { scale: 0.5 }));
@@ -351,15 +355,27 @@ console.log('interp');
   for (let t = 0; t <= s.at[n - 1]; t += 7) dev = Math.max(dev, Math.abs(posAt(sc8, t) - (0.5 + (posAt(sc1, t) - 0.5) * 0.8)));
   ok('scale: the drawn curve is the unscaled one moved about the center (where it never clamped)', dev < 2e-3, dev);
 
-  // ---- Auto: fitGain over a synthetic curve's extent ----
-  ok('fitGain: inside the window is 1; else the largest 0.01 step that fits; floored at 0.25',
-    fitGain(0.5) === 1 && fitGain(0) === 1 && fitGain(0.6) === 0.83 && 0.6 * 0.83 <= 0.5 && fitGain(10) === 0.25 && fitGain(NaN) === 1);
-  const tease = parseFunscript(acts([0, 0], [260, 100], [520, 70], [780, 100], [1040, 0], [1300, 100]));
-  const ex = curveExtent(tease, I('catmull'));
-  ok('curveExtent: catmull over a top tease passes the window, linear and the monotone modes do not',
-    ex > 0.5 && curveExtent(tease, I('linear')) === 0.5 && curveExtent(tease, I('pchip')) === 0.5 && curveExtent(tease, I('monotone')) === 0.5, ex);
-  const gt = fitGain(ex), moved = wire(tease, I('linear', { scale: gt })), exg = curveExtent(moved, I('catmull'));
-  ok('Auto from the curve: at fitGain(extent) the curve of the moved actions stays inside the window before any clamp', gt < 1 && exg <= 0.5 && exg > 0.49, { gt, exg });
+  ok('mapOf: the manual gain is the symmetric map; a map wins', eq(mapOf(I('linear', { scale: 0.5 })), [-0.5, 1.5]) && eq(mapOf(I('linear')), [0, 1])
+    && eq(mapOf(I('linear', { scale: 0.5, map: [-0.1, 1] })), [-0.1, 1]));
+
+  // ---- Auto: fitMap over a synthetic curve's extent; top-only, bottom-only and both ----
+  ok('fitMap: inside the window is [0, 1]; each end past it on the 0.01 grid outward, on its own; at most the 0.25 gain reach; planner noise under 1e-4 stays on the grid',
+    eq(fitMap([0, 1]), [0, 1]) && eq(fitMap([0.2, 0.7]), [0, 1]) && eq(fitMap([0.1, 1.234]), [0, 1.24]) && eq(fitMap([-0.031, 0.9]), [-0.04, 1])
+    && eq(fitMap([-0.03, 1.03]), [-0.03, 1.03]) && eq(fitMap([-9, 9]), [-1.5, 2.5]) && eq(fitMap([NaN, NaN]), [0, 1]) && eq(fitMap([-5e-5, 1 + 5e-5]), [0, 1]));
+  const top = parseFunscript(acts([0, 0], [260, 100], [520, 70], [780, 100], [1040, 0], [1300, 100]));
+  const bottom = parseFunscript(acts(...[[0, 0], [260, 100], [520, 70], [780, 100], [1040, 0], [1300, 100]].map(([t, p]) => [t, 100 - p])));
+  const both = parseFunscript(acts([0, 50], [260, 100], [520, 70], [780, 100], [1040, 0], [1300, 30], [1560, 0], [1820, 50]));
+  const [et, eb, e2] = [top, bottom, both].map((s) => curveExtent(s, I('catmull')));
+  ok('curveExtent: catmull over a top tease passes the top only, its mirror the bottom only, a tease at each end both',
+    et[1] > 1 && et[0] === 0 && eb[0] < 0 && eb[1] === 1 && e2[0] < 0 && e2[1] > 1, { et, eb, e2 });
+  ok('curveExtent: linear and the monotone modes stay on the actions',
+    ['linear', 'pchip', 'monotone'].every((m) => eq(curveExtent(top, I(m)), [0, 1])));
+  for (const [name, s, e] of [['top', top, et], ['bottom', bottom, eb], ['both', both, e2]]) {
+    const m = fitMap(e), moved = wire(s, I('linear', { map: m })), [lo, hi] = curveExtent(moved, I('catmull'));
+    const still = name === 'top' ? [...s.pos].every((p, i) => p > 0 || moved.pos[i] === 0) : name === 'bottom' ? [...s.pos].every((p, i) => p < 1 || moved.pos[i] === 1) : true;
+    ok('Auto from the curve, ' + name + ': the curve of the mapped actions stays inside 0..1, touching the end it pulled; an end inside the window keeps its actions',
+      lo >= -1e-6 && hi <= 1 + 1e-6 && (m[0] < 0 ? lo < 0.01 : lo === 0) && (m[1] > 1 ? hi > 0.99 : hi === 1) && still, { m, lo, hi });
+  }
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

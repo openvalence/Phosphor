@@ -73,7 +73,7 @@
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
 // - Changing the loop while playing holds and re-anchors: the unrolled clock cannot jump.
-// - Auto Scale (interp scaleAuto): the drawn curve's extent sets the gain at once; the analyzer's
+// - Auto Scale (interp scaleAuto): the drawn curve's extent sets the map at once; the analyzer's
 //   planner measure of the wire at scale 1 (ctl.fit, analyzer.js fit) replaces it when it lands. A
 //   card frames its analyzer while Auto is on, shown or not; glance keeps the curve's estimate.
 
@@ -85,7 +85,7 @@ import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
-import { shape, wire, fitGain, curveExtent } from './interp.js';
+import { shape, wire, fitMap, curveExtent, mapOf } from './interp.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -264,7 +264,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   let seekT = 0;        // the seek transition the next restart carries
   let homeAt = Infinity; // the pause home's due time
   let planAge = Infinity, planEl = NaN, latAt = -Infinity;
-  let autoGain = 1, autoFor = null, autoKey = '', autoWire = null;
+  let autoMap = [0, 1], autoFor = null, autoKey = '', autoWire = null;
   const trace = [];
   scheduler.setTransform(state.T);
 
@@ -451,10 +451,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       if (s !== autoFor || key !== autoKey) {
         autoFor = s; autoKey = key;
         autoWire = wire(s, { ...interp, scale: 1 }, ctx);
-        autoGain = fitGain(curveExtent(s, interp));
+        autoMap = fitMap(curveExtent(s, interp));
       }
     }
-    const I = { ...interp, scale: interp.scaleAuto ? autoGain : interp.scale };
+    const I = interp.scaleAuto ? { ...interp, map: autoMap } : interp;
     const next = s ? shape(s, I, ctx) : null;
     if (next === state.shaped) return;
     state.shaped = next;
@@ -606,15 +606,15 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     state, trace, play, tick, onFrame, load, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
     get low() { return !!state.play.lowLatency; },
     get wire() { return wired; },
-    /** The scale in force: Auto's fit or the operator's. */
-    get scale() { return interp.scaleAuto ? autoGain : interp.scale; },
+    /** The map in force, [lower, upper] (interp.js mapOf): Auto's fit or the operator's gain. */
+    get scale() { return interp.scaleAuto ? autoMap : mapOf(interp); },
     /** Under Auto, the Script the analyzer measures (the wire at scale 1); else null. */
     get fit() { return interp.scaleAuto && state.script ? autoWire : null; },
-    /** The analyzer's measure of fit: e the planner's widest excursion (analyzer.js wideExtent); null keeps the estimate. */
+    /** The analyzer's measure of fit: e the planner's [min, max] (analyzer.js wideExtent); null keeps the estimate. */
     fitKinetic(sc, e) {
       if (!interp.scaleAuto || sc !== autoWire || e == null) return;
-      const g = fitGain(e);
-      if (g !== autoGain) { autoGain = g; reshape(); changed(); }
+      const m = fitMap(e);
+      if (m[0] !== autoMap[0] || m[1] !== autoMap[1]) { autoMap = m; reshape(); changed(); }
     },
     pause: () => { if (active()) stop('ready'); },
     toggle: () => (active() ? stop('ready') : play()),

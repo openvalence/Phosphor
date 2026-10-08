@@ -134,36 +134,66 @@ smoothMs, slewMmS, scale, scaleAuto}`; the controls sit on the plugin's settings
 detail view draws the shaped curve as intent and the file's actions muted
 under it.
 
-**Scale** (ph-6e36). The overshooting modes (Catmull-Rom, Hermite, Akima,
-Makima) reach past an action, so a stroke that touches the window's end is
-cut there by the hub: its wall guard trims the end velocity and the clamp
-holds the position (RFC-100 `clamped`). Scale moves every action about the
-window center before the mode, `p' = 0.5 + (p - 0.5) x g`, g 0.25 to 1.00
-(default 1.00, `scale`): the wire (still one segment per action, the
-tangents scaled with it), the drawn curve and the Kinetic preview all run
-on the moved actions. The row: an Auto toggle (`Fit the curve to the
-window`), the slider (`Scale`) and a typed value; under Auto the slider
-grays and the value reads the gain in force, `auto 0.92`. Auto
-(`scaleAuto`) takes `g = min(1, 0.5 / max|p - 0.5|)` on the 0.01 grid
-(`fitGain`), in script units, so the curve fits the Range (the whole
-window at the default Range):
+**Scale** (ph-6e36, ph-bk6h). The overshooting modes (Catmull-Rom, Hermite,
+Akima, Makima) reach past an action, so a stroke that touches the window's
+end is cut there by the hub: its wall guard trims the end velocity and the
+clamp holds the position (RFC-100 `clamped`). Every action takes the affine
+map `p' = (p - lower) / (upper - lower)` before the mode: the wire (still one
+segment per action, the tangents and the scheduler's handoff slopes scaled
+with it), the drawn curve and the Kinetic preview all run on the mapped
+actions.
+
+- **Manual**: one symmetric gain g, 0.25 to 1.00 (`scale`, default 1.00):
+  `lower = 0.5 - 0.5 / g`, `upper = 0.5 + 0.5 / g`, so every action moves
+  about the window center. There is one slider, not one per end.
+- **Auto** (`scaleAuto`, default on; a stored `false` stays off) fits each
+  end on its own from the whole script's extent `[min, max]` at scale 1:
+  `lower = min(0, min)`, `upper = max(1, max)`, each rounded outward to the
+  0.01 grid (`fitMap`; an end within 1e-4 of the grid stays on it, the
+  planner's own e4 and float32 noise), at most the 0.25 gain's reach
+  (`[-1.5, 2.5]`). A script that overshoots only the top keeps its bottom
+  actions where they are, and the reverse.
+
+The row: an Auto toggle (`Fit the curve to the window`), the slider
+(`Scale`) and a typed value. Under Auto the slider grays at the overall
+gain `1 / (upper - lower)` and the value reads where the script's 0 and 1
+land, `0.01–0.97`. The overshooting modes' menu tooltip reads
+`Reaches past the actions, so Auto shrinks it`. The extent comes, in script
+units (the curve fits the Range, the whole window at the default Range):
 
 - at once from the drawn curve before its clamp (`curveExtent`), on a load
   and on a mode, parameter, filter or Range change;
 - then from the machine's planner when its measure lands (analyzer.js
-  `fit`): the wire at scale 1 rendered by Kinetic with the same mm geometry
-  in the middle half of a window twice as wide, so the wall guards never
-  bend it and the excursion is the hub's own quintic through the tangents.
-  The guards are why the preview's own render cannot be measured: at the
-  real window they already trimmed the overshoot (Makima on the test's
-  script: excursion 0.5000 at the window, 0.5407 wall-free). A card frames
-  its analyzer while Auto is on, shown or not; without rail room for the
-  doubled window, in glance or in the fallback the curve's estimate stays.
+  `fit`, `wideExtent`): the wire at scale 1 rendered by Kinetic with the
+  same mm geometry in the middle half of a window twice as wide, so the
+  wall guards never bend it and the extent is the hub's own render through
+  the tangents, read back through the Range and invert. The guards are why
+  the preview's own render cannot be measured: at the real window they
+  already trimmed the overshoot. A card frames its analyzer while Auto is
+  on, shown or not; without rail room for the doubled window, in glance or
+  in the fallback the curve's estimate stays.
+
+The fit needs the whole script, so it stays in Phosphor: the hub never sees
+the whole script.
 
 Measured on the browser test's real-shaped script (window 0-100 mm, 1000
-mm/s, 50000 mm/s2, Kinetic²): Makima clamps 1 ms at scale 1; Auto picks
-0.92 (the curve alone says 0.82) and the render clamps 0 ms. The monotone
-modes and Linear stay at 1.
+mm/s, 50000 mm/s2, jerk 2e6 mm/s3, the vendored twin; Makima and the tease
+in the browser suite with the hub's Tuning rows, the other modes in node
+without them):
+
+| mode | planner [min, max] | map | readout | symmetric gain it replaces | curve estimate |
+| --- | --- | --- | --- | --- | --- |
+| Makima | -0.0033, 1.0263 | -0.01, 1.03 | `0.01–0.97` | 0.94 | -0.1076, 1.0146 |
+| Akima | -0.0082, 1.0153 | -0.01, 1.02 | `0.01–0.98` | 0.97 | -0.0813, 1.0084 |
+| Catmull-Rom | -0.0067, 1.0221 | -0.01, 1.03 | `0.01–0.97` | 0.95 | -0.0939, 1.0227 |
+| Hermite | -0.0726, 1.0255 | -0.08, 1.03 | `0.07–0.97` | 0.87 | -0.1318, 1.0268 |
+| PCHIP, Linear | 0.0000, 1.0000 | 0, 1 | `0.00–1.00` | 0.99 | 0, 1 |
+
+Makima clamps 5 ms at scale 1 and 0 ms under Auto. A top-only tease (a hold
+at 0, then 100, 70, 100 every 250 ms) under Makima measures [0.0000,
+1.0012]: map [0, 1.01], `0.00–0.99`, clamped 0 ms, its bottom actions
+unmoved. The symmetric fit read 0.99 on PCHIP and Linear from the planner's
+e4 noise; the 1e-4 slack keeps them at 1.
 
 - **I6** Auto measures in script units against the Range, not the window:
   a narrow Range scales an overshoot the window would still hold. Veto:

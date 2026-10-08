@@ -98,7 +98,7 @@ scheduler, stash, library, timeline, prefs, interp, analyzer`; `analyzer -> funs
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
   stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
-  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: false},
+  interp: {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0, scale: 1, scaleAuto: true},
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, lowLatency: false, autoLatency: false} }
 // play repairs: loopCount 0..99 integer (0 = forever), homeAfterMs 1000..60000 step 500, homePoint 0..1,
@@ -548,13 +548,13 @@ export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ce
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(interp),   reshape the loaded Script (interp.js shape) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, clock.tune, the loop)
-//   scale,               the gain in force (Auto's fit or interp.scale), read by the settings card's Scale row
+//   scale,               the map in force, [lower, upper] (Auto's fit or interp.mapOf(interp)), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
 //   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), get low and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the wire at scale 1 for the analyzer to measure, else null),
-//   fitKinetic(sc, extent) (the analyzer's measure of fit; sets the gain to interp.fitGain(extent)). Under
-//   scaleAuto a load, a mode, parameter, filter or Range change first sets fitGain(curveExtent(script)).
+//   fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to interp.fitMap(extent)). Under
+//   scaleAuto a load, a mode, parameter, filter or Range change first sets fitMap(curveExtent(script)).
 export const PLAY_CSS;
 export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
   // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Low latency, Auto latency;
@@ -654,8 +654,8 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
-export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> max |p - 0.5| in script units of a wall-free render's
-  // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_* and T's Range
+export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> [min, max] in script units of a wall-free render's
+  // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_*, T's Range and invert
 export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  stretched 250 ms'
 export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit
@@ -728,11 +728,13 @@ export const MODES;                   // frozen {id -> its parameter key | null}
 export const RANGES;                  // frozen {tension 0..1, bias -1..1, smoothMs 0..500, slewMmS 0..2000, scale 0.25..1}
                                       // with steps
 export const INTERP;                  // frozen default {mode: 'linear', tension: 0, bias: 0, smoothMs: 0, slewMmS: 0,
-                                      // scale: 1, scaleAuto: false}
-export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it
-export function fitGain(e);           // -> the largest scale on the 0.01 grid (>= 0.25) keeping an excursion e (max |p - 0.5|
-                                      // at scale 1) in 0..1; 1 when e <= 0.5
-export function curveExtent(script, interp);   // -> max |p - 0.5| of the mode's curve before the clamp and the filters
+                                      // scale: 1, scaleAuto: true}
+export function cleanInterp(v);       // -> a well-formed interp; prefs.js repairs the key 'interp' with it; scaleAuto
+                                      // a stored boolean else true; map kept only as a fit (never stored)
+export function mapOf(interp);        // -> [lower, upper]: interp.map, else [0.5 - 0.5 / scale, 0.5 + 0.5 / scale]
+export function fitMap([min, max]);   // -> [min(0, min) floored, max(1, max) ceiled] on the 0.01 grid (1e-4 slack),
+                                      // within [-1.5, 2.5] (the 0.25 gain's reach); [0, 1] when inside the window
+export function curveExtent(script, interp);   // -> [min, max] of the mode's curve before the clamp and the filters
 export function sample(script, interp, tMs);   // -> 0..1, the mode alone; linear is posAt exactly
 export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script: every action kept, pieces <= STEP_MS,
   // collinear pieces merged (<= MAX_SPAN_MS), then smoothing (centered box) and slew (mm/s over spanMm x (hi - lo),
@@ -740,12 +742,13 @@ export function shape(script, interp, ctx);    // ctx {spanMm, lo, hi} -> Script
 export function wire(script, interp, ctx);     // -> Script the scheduler sends: the actions' own knots; vel the mode's
   // slope at each (cubic modes; 0 for step, smoothstep, cosine); with smoothing or slew each action takes the filtered
   // curve's value and vel is null; linear with both off returns `script` itself, so the scheduler runs byte-identical
-  // shape() and wire() first move every action about the window center, p' = 0.5 + (p - 0.5) x interp.scale (the
-  // controller passes Auto's gain as scale); at 1 nothing moves
+  // shape() and wire() first map every action, p' = (p - lower) / (upper - lower) with mapOf(interp) (the controller
+  // passes Auto's fit as interp.map); at [0, 1] nothing moves
 export const COPY, CSS;
 export function mountInterp(el, { value, onChange, gain });   // -> unmount(); the settings card rows, onChange(interp)
-  // on commit; Scale: Auto toggle, slider and typed value 0.25..1 (manual), or the readout 'auto 0.87' from gain()
-  // (polled at 4 Hz) with the slider disabled (Auto)
+  // on commit; Scale: Auto toggle, slider and typed value 0.25..1 (manual), or the readout '0.01–0.97' (where
+  // 0 and 1 land) from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto);
+  // an overshooting mode's menu carries COPY.overTip
 ```
 
 The controller schedules `wire(script)` (`ctl.wire`, the Kinetic preview's script too): one segment per action,

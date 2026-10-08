@@ -25,7 +25,7 @@
 // - The readouts are the wasm sample flags and anomaly bits, counted over every 1 ms step; the readout's
 //   --highlight swatch is the legend of the timeline's Kinetic line.
 // - fit() (Auto Scale): once the preview is current, one more render of that Script measures the planner's
-//   own excursion with the walls out of reach: the same mm geometry in the middle half of a window twice as
+//   own min and max with the walls out of reach: the same mm geometry in the middle half of a window twice as
 //   wide, so the window guards (end velocity cut, clamp) never bend it. Without the rail room for that window
 //   the measure is null and the controller keeps its curve estimate.
 
@@ -164,14 +164,17 @@ const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 
 /**
- * A wall-free render's widest excursion from the Range center, script units: raw (window shares of the wide
- * window, one every dtMs from media t0) over [fromMs, toMs], back through WIDE_* and T's Range.
+ * A wall-free render's [min, max], script units: raw (window shares of the wide window, one every dtMs from
+ * media t0) over [fromMs, toMs], back through WIDE_* and T's Range and invert.
  */
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T) {
   const span = T.hi - T.lo, j0 = Math.max(0, Math.ceil((fromMs - t0) / dtMs)), j1 = Math.min(raw.length, Math.floor((toMs - t0) / dtMs) + 1);
-  let e = 0;
-  for (let j = j0; j < j1; j++) e = Math.max(e, Math.abs(((raw[j] - WIDE_AT) / WIDE_SPAN - T.lo) / span - 0.5));
-  return e;
+  let lo = Infinity, hi = -Infinity;
+  for (let j = j0; j < j1; j++) {
+    const n = ((raw[j] - WIDE_AT) / WIDE_SPAN - T.lo) / span, p = T.invert ? 1 - n : n;
+    lo = Math.min(lo, p); hi = Math.max(hi, p);
+  }
+  return [lo, hi];
 }
 
 /** The Kinetic readout: the status word, the anomaly count and each flag's nonzero time, or the refusal. */
