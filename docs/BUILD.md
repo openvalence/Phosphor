@@ -33,13 +33,75 @@ npm run sidecar
 npm run build:app -- --bundles nsis
 ```
 
-## Windows MSIX (Microsoft Store)
+## Windows signing (SignPath)
 
-The Microsoft Store is the Windows distribution target. Listing costs nothing
-and the Store signs the package. Windows installs, updates and removes an MSIX
-as a unit. The NSIS installer stays for direct downloads.
+The NSIS installer from CI is the Windows distribution, Authenticode-signed
+by SignPath. The Microsoft Store route is retired (operator ruling,
+2026-10-08): the Store does not let OpenValence distribute the MSIX itself.
 
-`node tools/msix/pack.mjs` turns a release build into
+### One-time setup (operator)
+
+1. Apply to the SignPath Foundation OSS program
+   (https://signpath.org). It needs the public repo
+   (`openvalence/Phosphor`) and its OSS license (Apache-2.0).
+2. In SignPath, create the project `Phosphor`.
+3. Trusted build systems: link the predefined `GitHub.com` system to the
+   project. Installing the SignPath GitHub App on `openvalence/Phosphor` is
+   optional (it lets SignPath evaluate the audit log).
+4. Artifact configuration (the project default). The CI artifact is a zip
+   holding `nsis/<installer>.exe`:
+
+   ```xml
+   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+     <zip-file>
+       <pe-file path="nsis/Phosphor_*-setup.exe">
+         <authenticode-sign />
+       </pe-file>
+     </zip-file>
+   </artifact-configuration>
+   ```
+
+5. Signing policy `release-signing` (a `test-signing` policy for trials is
+   optional; CI never signs pull requests).
+6. In GitHub, `openvalence/Phosphor` > Settings > Secrets and variables >
+   Actions: secret `SIGNPATH_API_TOKEN` (a SignPath user with submitter
+   permission), variables `SIGNPATH_ORGANIZATION_ID`,
+   `SIGNPATH_PROJECT_SLUG` (`Phosphor`) and `SIGNPATH_POLICY_SLUG`
+   (`release-signing`).
+
+Only the installer is signed. SignPath cannot open an NSIS installer, so the
+`phosphor.exe` and `valencesim.exe` inside it stay unsigned. Signing them
+means signing the binaries before NSIS packs them (a second SignPath request
+between `tauri build --no-bundle` and `tauri bundle`); not built.
+
+### What CI does
+
+- Pull requests: the unsigned installer artifact
+  (`phosphor-x86_64-pc-windows-msvc`), no signing request.
+- Pushes to `main` and `v*` tags, once `SIGNPATH_ORGANIZATION_ID` is set:
+  the unsigned artifact goes to SignPath, the job waits for the signature
+  (10 minute limit), and the signed installer is uploaded as
+  `phosphor-x86_64-pc-windows-msvc-signed`. Without the variable the
+  signing steps are skipped, not failed.
+- `v*` tags: the signed installer replaces the unsigned one (same file name)
+  in the draft release.
+
+### Release checklist
+
+1. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+2. Approve the signing request in SignPath if the policy requires manual
+   approval.
+3. When every job is green, open the draft release `Phosphor vX.Y.Z` and
+   check the Windows installer is signed (Properties > Digital Signatures,
+   or `signtool verify /pa <installer>.exe`).
+4. Download the release assets, run `sha256sum * > SHA256SUMS` and attach
+   `SHA256SUMS`.
+5. Publish the release.
+
+## Windows MSIX (local packages)
+
+`node tools/msix/pack.mjs` builds an MSIX for local testing only; CI does
+not build one. It turns a release build into
 `src-tauri/target/msix/phosphor-x86_64.msix`. It needs `npm run build:app` and
 `npm run sidecar` first, and the Windows SDK's `makeappx.exe` (the newest
 `Windows Kits\10\bin\<version>\x64` that has it). The package is a full-trust
@@ -48,28 +110,15 @@ Bluetooth behave as in the NSIS install. The layout holds `phosphor.exe`,
 the sidecar as `valencesim.exe` beside it (where Tauri looks for it, as in
 the NSIS install), four tile and logo PNGs from `src-tauri/icons` under
 `Assets/`, and the manifest filled from `tools/msix/AppxManifest.xml`.
-The package version is the `tauri.conf.json` version plus `.0`; the Store
-reserves the fourth field.
+The package version is the `tauri.conf.json` version plus `.0`.
+`tools/msix/identity.json` holds the package identity (`name`, `publisher`,
+`publisherDisplay`).
 
-- WebView2 is not bundled. Windows 11 and current Windows 10 ship it; the
-  NSIS installer's bootstrapper has no MSIX equivalent.
+- WebView2 is not bundled. Windows 11 and current Windows 10 ship it.
 - App data: files under `%APPDATA%` and `%LOCALAPPDATA%` that already exist
   (an earlier NSIS install's `com.phosphor.app`) are read and written in
   place; new ones go to `%LOCALAPPDATA%\Packages\<family name>\LocalCache` and
   leave with the package.
-
-### Store identity
-
-`tools/msix/identity.json` holds the three identity strings from Partner
-Center (the app > Product management > Product identity): `name` is
-`Package/Identity/Name`, `publisher` is `Package/Identity/Publisher`,
-`publisherDisplay` is `Package/Properties/PublisherDisplayName`. The listing
-is reserved as "OpenValence Phosphor" because the bare name was held by someone
-else's unsubmitted reservation. The exe, window and package name stay Phosphor.
-Store ID 9NCK3K06QFVD, package family
-`OpenValence.OpenValencePhosphor_tdbgarf26mbq2`. Submissions upload the
-unsigned CI package; the Store signs it. Once the listing is live,
-`winget install --id 9NCK3K06QFVD -s msstore` installs it.
 
 ### Local test install
 
@@ -105,8 +154,6 @@ admin but with Developer Mode on,
 installs the unsigned layout in place; a rebuild replaces that folder, so copy
 it elsewhere first. `Get-AppxPackage OpenValence.OpenValencePhosphor | Remove-AppxPackage`
 uninstalls either one.
-
-winget needs no OpenValence manifest; the `msstore` source serves the listing.
 
 ## macOS (the M4 Air, aarch64)
 
@@ -257,6 +304,8 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   template carries `INTERNET`. The debug app id is `com.phosphor.app.debug`.
 - No sidecar on Android: `src-tauri/tauri.android.conf.json` drops
   `bundle.externalBin`, and Virtual Valence falls back to the catalog replay.
+- Delete the old APK before a rebuild: the Gradle debug build updates it in
+  place without compacting, so the file doubles (448 MB seen 2026-10-08).
 - A debug APK is debug-signed (about 230 MB, symbols kept). A release needs a
   keystore and a signing config in `gen/android/app/build.gradle.kts`, and
   `usesCleartextTraffic` set to true there: the template allows cleartext
@@ -291,22 +340,24 @@ Runs on every push to `main`, every pull request, every `v*` tag and by hand.
 
 | job | runner | produces (artifact) |
 |---|---|---|
-| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`) and unsigned MSIX (`phosphor-x86_64.msix`) |
+| `x86_64-pc-windows-msvc` | windows-latest | NSIS installer (`phosphor-x86_64-pc-windows-msvc`), SignPath-signed outside pull requests (`phosphor-x86_64-pc-windows-msvc-signed`) |
 | `aarch64-apple-darwin` | macos-latest | `.dmg` holding the ad-hoc signed `.app` (`phosphor-aarch64-apple-darwin`) |
 | `x86_64-unknown-linux-gnu` | ubuntu-22.04 | `.deb` and `.AppImage` (`phosphor-x86_64-unknown-linux-gnu`) |
 | `flatpak` | ubuntu-24.04, GNOME 50 container | `phosphor-x86_64.flatpak` |
 
-Each bundle job checks out Phosphor, Nucleus (`main`), Valence at the sha in
-Nucleus's `valence.pin` and ButtplugIO (`valence`), builds the sim (MinGW-w64
+Each bundle job checks out Phosphor, Nucleus (`main`), Valence and Kinetic at
+the shas in Nucleus's `valence.pin` and `kinetic.pin`, and ButtplugIO (`valence`), builds the sim (MinGW-w64
 from MSYS2 on Windows, Apple Clang, GCC 13 on Ubuntu), names it for Tauri,
 then runs tauri-action, whose `beforeBuildCommand` runs `npm run check`
-first. A `v*` tag also opens one draft release with every bundle.
+first. A `v*` tag also opens one draft release with every bundle; the
+Windows job then signs its installer (Windows signing, above).
 
 Before the first run can pass, the remote needs what the workflow checks out:
 
 - `openvalence/ButtplugIO` with branch `valence` (the fork's `valence` branch
   exists only locally today; its `origin` is upstream buttplug).
-- The `valence.pin` sha on `openvalence/Valence`, and the Nucleus sim
+- The `valence.pin` sha on `openvalence/Valence`, the `kinetic.pin` sha on
+  `openvalence/Kinetic`, and the Nucleus sim
   portability commit on `openvalence/Nucleus` `main`.
 
 Trigger: push the workflow (`git push` in Phosphor), or with the GitHub CLI
