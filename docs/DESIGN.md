@@ -667,7 +667,11 @@ question in §10.8).
   page fullscreen. On the desktop it exists only in page fullscreen: the icon
   opens the rail in its horizontal form as a pop-up along the bottom edge,
   above the page's bar, so the user pauses and jogs without leaving the video;
-  inline the hero rail is on screen and the icon is absent. Either form
+  inline the hero rail is on screen and the icon is absent, and so in the In
+  window fullscreen, which keeps the hero bar: the quick rail exists in the
+  bare (Borderless) one. A native page shows the icon only in a footer it has
+  anyway; no footer is added for it, the hero's mini opens the same pop-up
+  there. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
   pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,

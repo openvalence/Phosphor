@@ -179,11 +179,13 @@
     heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
   });
   $effect(() => { if ((!handheld || !rail) && !(rail && rail.busy)) heroBar.popup = false; });
-  // Outside tap closes the pop-up unless a scrub or window drag is live.
+  // Outside tap closes a pop-up unless a scrub or window drag is live; a
+  // quick-rail icon ([data-quick-rail-toggle]) toggles it itself.
   function onPopupAway(e) {
-    if (!heroBar.popup || (rail && rail.busy)) return;
-    if (e.target.closest && (e.target.closest('.hero-inner.popup') || e.target.closest('.mini'))) return;
+    if (!(heroBar.popup || heroBar.quick) || (rail && rail.busy)) return;
+    if (e.target.closest?.('.hero-inner.popup, .hero-inner.quick, .mini, [data-quick-rail-toggle]')) return;
     heroBar.popup = false;
+    heroBar.quick = false;
   }
 
   // The phone tab strip sticks just below this strip (App.svelte .tabs).
@@ -357,9 +359,12 @@
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
   function onWindowKey(e) {
-    if (e.key === 'Escape' && heroBar.popup && !(rail && rail.busy)) {
+    // Prevented, so page fullscreen stays (App.svelte onFullKey).
+    if (e.key === 'Escape' && (heroBar.popup || heroBar.quick) && !(rail && rail.busy)) {
+      e.preventDefault();
+      if (heroBar.popup) document.querySelector('.topstrip .mini')?.focus();
       heroBar.popup = false;
-      document.querySelector('.topstrip .mini')?.focus();
+      heroBar.quick = false;
     }
     if (e.key === 'Escape' && menuOpen) {
       menuOpen = false;

@@ -361,6 +361,141 @@ for (const vp of [{ width: 1428, height: 900 }, { width: 1024, height: 768 }]) {
   await ctx.close();
 }
 
+// ---- the quick rail (ph-5u0g.5) ----------------------------------------------
+const quickState = (page) => page.evaluate(() => {
+  const pop = document.querySelector('.hero-inner.popup, .hero-inner.quick'), pair = document.querySelector('.topstrip .pair');
+  const r = pop && pop.getBoundingClientRect(), p = pair.getBoundingClientRect();
+  return { attr: document.documentElement.dataset.quickRail || null, open: document.documentElement.hasAttribute('data-quick-rail-open'),
+    pop: pop ? { form: pop.classList.contains('popup') ? 'vertical' : 'horizontal', l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height),
+      rail: !!pop.querySelector('.rail-panel'), pair: !(r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) } : null,
+    icons: document.querySelectorAll('.quick-rail').length, iw: innerWidth, ih: innerHeight, last: window.__qrc && window.__qrc.at(-1) };
+});
+const beneath = (page) => page.evaluate(() => ['.topstrip', 'main.pane', '.footstrip', 'main.pane .page-foot', '.hero-strip']
+  .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '));
+const listenQrc = (page) => page.evaluate(() => { window.__qrc = []; addEventListener('phosphor-quick-rail-change', (e) => window.__qrc.push(e.detail)); });
+const ask = (page, open, from) => page.evaluate(([open, from]) => {
+  const e = new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open } });
+  (from ? document.querySelector(from) : window.__probeEl).dispatchEvent(e);
+  return e.defaultPrevented;
+}, [open, from || null]);
+const outsideTap = (page) => page.evaluate(() => document.querySelector('main.pane').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+
+for (const [w, h] of [[420, 860], [860, 420]]) {
+  const tag = 'quick ' + w + 'x' + h;
+  console.log('\n--- ' + tag + ' ---');
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
+  await openProbe(page);
+  await listenQrc(page);
+  let s = await quickState(page);
+  ok(tag + ': the phone class has the vertical quick rail', s.attr === 'vertical' && !s.open && !s.pop, JSON.stringify(s));
+  ok(tag + ': an ask from outside the page is not taken', !(await ask(page, true, 'body')) && !(await quickState(page)).pop);
+  const before = await beneath(page);
+  ok(tag + ': the page ask is accepted', await ask(page, true));
+  await page.waitForTimeout(150);
+  s = await quickState(page);
+  ok(tag + ': it opens the hero rail as the vertical pop-up on the right', !!s.pop && s.pop.form === 'vertical' && s.pop.rail && s.open
+    && s.iw - s.pop.r < 24, JSON.stringify(s));
+  ok(tag + ': the change event says so', !!s.last && s.last.available && s.last.open && s.last.form === 'vertical', JSON.stringify(s.last));
+  const after = await beneath(page);
+  ok(tag + ': opening changes no rect beneath', after === before, before + ' -> ' + after);
+  ok(tag + ': the pop-up never covers the stop pair', !!s.pop && !s.pop.pair, JSON.stringify(s.pop));
+  await shot(page, 'quick-open-' + w + 'x' + h + '.png');
+  // Held open during a scrub: shell-chrome-geometry (a live tape). An outside tap closes it.
+  await outsideTap(page);
+  await page.waitForTimeout(80);
+  s = await quickState(page);
+  ok(tag + ': an outside tap closes it', !s.open && !s.pop && !!s.last && !s.last.open, JSON.stringify(s));
+  await ask(page, 'toggle');
+  await page.waitForTimeout(80);
+  const toggled = (await quickState(page)).open;
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  ok(tag + ': toggle opens, Escape closes', toggled && !(await quickState(page)).open);
+  // Page fullscreen: still the vertical pop-up.
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(200);
+  await ask(page, true);
+  await page.waitForTimeout(150);
+  s = await quickState(page);
+  ok(tag + ': in page fullscreen the ask opens it too, clear of the stop pair', await page.locator('main.pane.full').count() === 1 && s.attr === 'vertical' && !!s.pop && !s.pop.pair, JSON.stringify(s));
+  await shot(page, 'quick-full-' + w + 'x' + h + '.png');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  ok(tag + ': Escape closes the pop-up first, fullscreen stays', !(await quickState(page)).open && await page.locator('main.pane.full').count() === 1);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  // A native page: the icon in its footer opens the same pop-up.
+  const cat = await page.$$eval('nav.tabs [role=tab][data-tab-id^="cat"]', (ts) => ts.map((t) => t.dataset.tabId));
+  let icon = false;
+  for (const id of cat) {
+    await page.$eval('[data-tab-id="' + id + '"]', (t) => t.click());
+    await page.waitForTimeout(150);
+    if (await page.locator('main.pane .page-foot .quick-rail').count()) { icon = true; break; }
+  }
+  ok(tag + ': a native page footer carries the icon', icon);
+  if (icon) {
+    await page.click('main.pane .page-foot .quick-rail');
+    await page.waitForTimeout(120);
+    s = await quickState(page);
+    ok(tag + ': the footer icon opens the vertical pop-up', !!s.pop && s.pop.form === 'vertical'
+      && await page.$eval('main.pane .page-foot .quick-rail', (b) => b.getAttribute('aria-expanded') === 'true'), JSON.stringify(s));
+    await shot(page, 'quick-native-' + w + 'x' + h + '.png');
+    await page.click('main.pane .page-foot .quick-rail');
+    await page.waitForTimeout(120);
+    ok(tag + ': and toggles it closed', !(await quickState(page)).open);
+  }
+  ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+for (const [w, h] of [[1428, 900], [1024, 768]]) {
+  const tag = 'quick ' + w + 'x' + h;
+  console.log('\n--- ' + tag + ' ---');
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true });
+  await openProbe(page);
+  await listenQrc(page);
+  let s = await quickState(page);
+  ok(tag + ': inline, no quick rail and no icon', !s.attr && s.icons === 0, JSON.stringify(s));
+  ok(tag + ': inline, the ask is not taken', !(await ask(page, true)));
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(200);
+  ok(tag + ': In window keeps the hero rail, no quick rail', !(await quickState(page)).attr);
+  await page.click('.full-caret');
+  await page.waitForTimeout(250);
+  s = await quickState(page);
+  ok(tag + ': bare page fullscreen: data-quick-rail="horizontal"', s.attr === 'horizontal' && !!s.last && s.last.available && s.last.form === 'horizontal', JSON.stringify(s));
+  // The page's bar: the pop-up opens above the element that asked.
+  await page.evaluate(() => { const b = document.createElement('div'); b.className = 'probe-bar';
+    b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;height:48px'; window.__probeEl.append(b); });
+  const before = await beneath(page);
+  ok(tag + ': the page ask is accepted', await ask(page, true, '.probe-bar'));
+  await page.waitForTimeout(150);
+  s = await quickState(page);
+  ok(tag + ': it sits above the page bar', !!s.pop && s.pop.b <= s.ih - 48, JSON.stringify(s.pop));
+  ok(tag + ': it opens the horizontal pop-up along the bottom', !!s.pop && s.pop.form === 'horizontal' && s.pop.rail && s.ih - s.pop.b < 80 && s.pop.w > s.iw * 0.8, JSON.stringify(s));
+  const after = await beneath(page);
+  ok(tag + ': opening changes no rect beneath', after === before, before + ' -> ' + after);
+  ok(tag + ': the pop-up never covers the stop pair', !!s.pop && !s.pop.pair, JSON.stringify(s.pop));
+  await shot(page, 'quick-open-' + w + 'x' + h + '.png');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  ok(tag + ': Escape closes it, fullscreen stays', !(await quickState(page)).open && await page.locator('main.pane.full').count() === 1);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  s = await quickState(page);
+  ok(tag + ': leaving fullscreen takes the quick rail away', !s.attr && !!s.last && !s.last.available, JSON.stringify(s.last));
+  ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+// The host hands every page the one glyph.
+{
+  const { ctx, page } = await boot({ width: 1280, height: 800 }, { probe: true });
+  await openProbe(page);
+  const glyph = await page.evaluate(() => window.__probeIcon || '');
+  ok('api.icons.quickRail is the shell glyph', /^M[\d.\sMmLlHhVvZz-]+$/.test(glyph), glyph);
+  await ctx.close();
+}
+
 await browser.close();
 srv.close();
 console.log(fails ? '\nFAIL -- ' + fails + ' assertion(s)' : '\nPASS -- plugin pages');

@@ -129,6 +129,31 @@ Plugins`, its page region the plugin's to fill full width.
   the shell draws nothing for it: the page reads `<html data-bucket>` and
   draws its own status row there. A status sent from the page's card on the
   Dash is ignored. Seam: `src/App.svelte`.
+- **The quick rail** (experimental, `ph-5u0g.5`; DESIGN §10.3). The hero's
+  own rail opened from the page's bar: on the phone class the vertical pop-up
+  on the right edge (in the page and in page fullscreen), on the desktop the
+  horizontal pop-up along the bottom in a bare page fullscreen only (inline
+  and In window the hero rail is on screen). The page draws the icon itself:
+  - `api.icons.quickRail` is the glyph, one SVG path `d` on a 16-unit viewBox
+    drawn open at 1.5 stroke, so every page draws the same icon. Title
+    `Rail`.
+  - `<html data-quick-rail="vertical" | "horizontal">` is present only while
+    the quick rail exists for the page on screen (and a rail is mounted);
+    draw the icon only then. `<html data-quick-rail-open>` is present while
+    it is open.
+  - Ask: dispatch `phosphor-quick-rail` from the icon (bubbles, cancelable,
+    `detail: {open: true | false | 'toggle'}`). The shell takes it only for
+    the page on screen and only while `data-quick-rail` is present, calling
+    `preventDefault()`. The horizontal pop-up opens above the element that
+    asked (the page's bar), never past the stop pair.
+  - Mark the icon `data-quick-rail-toggle`: the pop-up's outside-tap close
+    skips it, so a tap toggles instead of closing and reopening.
+  - State: `phosphor-quick-rail-change` on `window`, `detail: {available,
+    open, form}` (`form` `'vertical'`, `'horizontal'` or null), fired on every
+    change of availability (bucket, fullscreen, page switch) or open state;
+    the icon's `aria-expanded` follows `open`.
+  - Escape and a tap outside close it; a scrub or window drag holds it open.
+  Seams: `src/App.svelte`, `src/ui/hero/heroBar.svelte.js` `openQuick`.
 - **`fill: true`** (experimental, `ph-yuce`). The page is laid out as a column
   filling the desktop content pane's width and height (`main.pane.fill`, the
   page fullscreen geometry in place): a mount whose root is `height: 100%`
@@ -218,6 +243,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
+| `icons.quickRail` | the quick rail's glyph, one SVG path `d` (Pages, The quick rail) | experimental |
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |

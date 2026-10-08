@@ -366,6 +366,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     ok(tag + ': the mini rail shows and the popup is closed', await hp.locator('.topstrip .mini').isVisible() && await hp.locator('.hero-inner.popup').count() === 0);
     await hp.locator('.topstrip .mini').click();
     ok(tag + ': tapping the mini opens the rail', await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').isVisible());
+    // ph-5u0g.5: a scrub on the pop-up's tape holds it open against an outside tap (the quick rail is this pop-up).
+    const tb = await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').boundingBox();
+    await hp.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+    await hp.mouse.down();
+    await hp.evaluate(() => document.querySelector('main.pane').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    await hp.waitForTimeout(80);
+    ok(tag + ': held open while a scrub is live', await hp.locator('.hero-inner.popup').count() === 1);
+    await hp.mouse.up();
+    await hp.waitForTimeout(80);
     await hp.keyboard.press('Escape');
   }
   if (!up) { await hctx.close(); continue; }

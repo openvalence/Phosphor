@@ -34,6 +34,9 @@
   import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
+  import QuickRail from './ui/QuickRail.svelte';
+  import { railReadout } from './ui/hero/RailWidget.svelte';
+  import { heroBar, openQuick } from './ui/hero/heroBar.svelte.js';
   import { untrack, tick } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
@@ -214,6 +217,34 @@
     };
     window.addEventListener('phosphor-page-status', put);
     return () => window.removeEventListener('phosphor-page-status', put);
+  });
+  // The quick rail (DESIGN §10.3; docs/PLUGINS.md, Pages): where a rail is
+  // mounted, the vertical pop-up on the phone class, the horizontal one in a
+  // bare page fullscreen on the desktop (In window keeps the hero rail on
+  // screen); absent otherwise.
+  const rail = $derived(railReadout());
+  const quickForm = $derived(!rail ? null : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
+  const quickOpen = $derived(quickForm === 'vertical' ? heroBar.popup : quickForm === 'horizontal' ? heroBar.quick : false);
+  function askQuick(open, from) {
+    if (!quickForm) return false;
+    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from);
+    return true;
+  }
+  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) heroBar.quick = false; });
+  $effect(() => {
+    const root = document.documentElement;
+    if (quickForm) root.dataset.quickRail = quickForm; else delete root.dataset.quickRail;
+    root.toggleAttribute('data-quick-rail-open', quickOpen);
+    window.dispatchEvent(new CustomEvent('phosphor-quick-rail-change', { detail: { available: !!quickForm, open: quickOpen, form: quickForm } }));
+  });
+  $effect(() => {
+    const ask = (e) => {
+      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const o = e.detail?.open;
+      if ((o === true || o === false || o === 'toggle') && askQuick(o, e.target)) e.preventDefault();
+    };
+    window.addEventListener('phosphor-quick-rail', ask);
+    return () => window.removeEventListener('phosphor-quick-rail', ask);
   });
   const statusSlot = $derived(current?.page?.status && view.bucket <= 2 ? pageStatus[current.id] || { text: '', tone: null, title: '' } : null);
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
@@ -580,6 +611,10 @@
         <span class="foot-status" data-tone={statusSlot.tone} role="status" title={statusSlot.title || statusSlot.text || undefined}>
           <span>{statusSlot.text}</span>
         </span>
+      {/if}
+      <!-- Only in a footer the page has anyway: the hero's mini opens the same pop-up. -->
+      {#if quickForm && (statusSlot || (current.page?.fields && !current.page.mediaFullscreen) || (catPage && !railOps))}
+        <QuickRail open={quickOpen} onclick={(e) => askQuick('toggle', e.currentTarget)} />
       {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
         <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
