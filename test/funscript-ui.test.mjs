@@ -20,7 +20,7 @@ import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
 import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS }
   from '../plugins/factory/funscript-player/timeline.js';
-import { createControl, compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
+import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
 
 let fails = 0;
@@ -75,6 +75,9 @@ console.log('(b) helpers');
 {
   ok('composition thresholds', compositionOf(1200) === 'full' && compositionOf(960) === 'full' && compositionOf(959) === 'handheld'
     && compositionOf(264) === 'handheld' && compositionOf(263) === 'glance');
+  ok('page class: buckets 1 and 2 the phone (landscape when wider than tall), 3 and up the desktop',
+    pageClass(1, 420, 860) === 'portrait' && pageClass(2, 860, 420) === 'landscape' && pageClass(2, 600, 900) === 'portrait'
+    && pageClass(3, 1024, 768) === 'desktop' && pageClass(5, 800, 1200) === 'desktop');
   ok('offset: 5 ms grid, -500..500', clampOffset(7) === 5 && clampOffset(8) === 10 && clampOffset(503) === 500
     && clampOffset(-1000) === -500 && clampOffset('x') === 0);
   ok('windowShare: reported window only (law 9)', windowShare(50, 0, 100) === 0.5 && windowShare(150, 0, 100) === 1

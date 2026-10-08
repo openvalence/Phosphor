@@ -20,7 +20,7 @@ export const COPY = Object.freeze({
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
-  open: 'Open files',
+
   prev: 'Previous page',
   next: 'Next page',
   page: 'page ',
@@ -58,7 +58,7 @@ export const CSS = `
 .fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 9ch; }
 .fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
 .fsp-lib[data-off] .fsp-lib-foot { display: none; }
-.fsp-lib-head .fsp-lib-open { min-width: 0; padding: 0 var(--sp-2); font: .72rem var(--mono); letter-spacing: 0; white-space: nowrap; }
+
 .fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
@@ -133,10 +133,10 @@ function clockText(ms) {
 
 /**
  * @param {HTMLElement} el
- * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), onLocal(files), fetch?: Function}} o
+ * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function}} o
  * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
  */
-export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netFetch = null }) {
+export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
 
@@ -145,8 +145,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   const sort = h('select', { 'aria-label': COPY.sort }, ...SORTS.map(([v, t]) => h('option', { value: v, text: t })));
   sort.value = lib.sort;
   const dir = h('button', { class: 'og-btn fsp-dir', type: 'button' });
-  const file = h('input', { type: 'file', multiple: '', accept: 'video/*,audio/*,.funscript', hidden: '' });
-  const open = h('button', { class: 'og-btn fsp-lib-open', type: 'button', text: COPY.open });
+
   const grid = h('div', { class: 'fsp-grid' });
   const note = h('p', { class: 'fsp-note', role: 'status', 'aria-live': 'polite' });
   const connectBox = h('div', { hidden: '' });
@@ -156,7 +155,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   const pageOut = h('output');
   const countOut = h('output', { class: 'fsp-n' });
   const root = h('div', { class: 'fsp-lib' }, h('style', { text: CSS }),
-    h('div', { class: 'fsp-lib-head' }, search, sort, dir, open, file),
+    h('div', { class: 'fsp-lib-head' }, search, sort, dir),
     body,
     h('div', { class: 'fsp-lib-foot' }, prev, pageOut, next, countOut));
   el.append(root);
@@ -288,8 +287,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   });
   sort.addEventListener('change', () => { lib.sort = sort.value; requery(); });
   dir.addEventListener('click', () => { lib.direction = lib.direction === 'ASC' ? 'DESC' : 'ASC'; showDir(); requery(); });
-  open.addEventListener('click', () => file.click());
-  file.addEventListener('change', () => { if (file.files && file.files.length) onLocal(file.files); file.value = ''; });
+
   prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
   next.addEventListener('click', () => { page++; load(); });
   grid.addEventListener('keydown', (e) => {

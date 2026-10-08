@@ -434,6 +434,26 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   the stage strip shows the stroke meter (an intent tick for the script, a
   reality tick for the measured position, glance's look). Fullscreen is
   grayed with the reason `No video`. Peeve 7.
+- **As built, PR1 to PR4 (`ph-1qs5.2`, where it differs from the text):**
+  Close is always drawn in the desktop head and grayed while nothing is
+  loaded (fixed geometry: a state change never moves a control); on phones
+  it is the Media menu's third row, grayed the same way. The Media menu is
+  a popover (a tap outside or Escape closes it). Open video's picker takes
+  `video/*`, the audio a webview plays (`audio/mpeg`, `audio/mp4`,
+  `audio/aac`, `audio/ogg`, `audio/wav`, `audio/flac`, `audio/webm` and the
+  extensions `.mp3 .m4a .aac .ogg .oga .opus .wav .flac .weba`) and
+  `.funscript`; never `audio/*`, which lets the OS picker offer MIDI
+  (operator ruling 2026-10-08). The library head has no Open files. Phone
+  landscape without a video is the full composition (stage left, library
+  right) until the compact hero lands. Phone portrait: the split bar is
+  not drawn and the wave keeps 96 px, so the stage row has the room PR2
+  needs; the page fills to the window's bottom from its own top (the host
+  fills pages on the desktop only; `ph-1qs5.8` hands that to the host's
+  phone footer). Motion only: a script picked alone is a scene with no
+  stream; the controller runs a silent clock over the script's duration
+  (play, pause, seek, rate and end as a video's). The motion-only meter is
+  horizontal at every class. The 120 px strip and the stroke meter's track
+  are `--screen`; the empty stage wears a dashed `--line-3` edge.
 - **PR5 One player bar,** at the bottom of the Player card, directly above
   the footer: loading a video or collapsing the timeline never moves it, the
   stage and the gap above absorb the change. Phones: a full-width scrub row
@@ -730,7 +750,7 @@ FULL
   `.funscript`); `pairFiles` matches by base name; the video gets an object
   URL, revoked on replace and dispose. No drag and drop: Tauri intercepts
   drops, and turning that off risks the builder palette.
-  *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name) and Open script; no drag and drop stands.)*
+  *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name; video, the webview's audio types, never `audio/*`) and Open script (`.funscript`); no drag and drop stands.)*
 
 ## Stash
 

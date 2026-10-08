@@ -495,17 +495,16 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 // library.js
 export const CSS, COPY;
 export function fitGrid(W, H);   // -> {cols, rows, perPage}: tiles 150..300 px wide that fit, at least one
-export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch });   // -> { refresh(), unmount() }
+export function mountLibrary(el, { getStash, prefs, onPick, fetch });   // -> { refresh(), unmount() }
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
-  // prefs: {get(k), set(k, v)}; onPick(scene); onLocal(FileList); fetch: api.net.fetch, for the Test of
+  // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())
 export function mountConnect(el, { api, onSaved, client });   // -> unmount(); client(v) -> StashClient
   // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
 `mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; Open files, `.fsp-lib-open`, which the player's
-full layout hides because its source row carries one), a tile grid that
+debounce; sort; direction; the pickers are the player's, PR3), a tile grid that
 never scrolls (per page = cols x rows fitted by a ResizeObserver), and a
 foot row (`←` Previous page, `page n / m`, `→` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
 box with a lazy screenshot, a one-line title, `duration · speed`. With no
@@ -533,16 +532,23 @@ export function createPlayer(api);   // -> Player
 export function createControl(deps);   // the controller without DOM: every boundary injected, for the node test
 export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ceilingOf(api, fields),
   localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
+export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'desktop': the page's class (PR1-PR4),
+  // buckets 1 and 2 the phone (landscape when w > h), 3 and up the desktop
 // Player = {
 //   mount(el, fields, opts = {}) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
 //       opts.fullscreen: the hover bar offers media fullscreen and the shell's mode (the page mount, page.js)
 //       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
+//       opts.page: the page mount: composition by pageClass (portrait handheld, landscape and desktop full),
+//         the Player and Library shell cards (PR1); the dash card composes by its own box (compositionOf)
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
 //   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
+// The controller's media is the video while a scene has a stream, else a silent clock over the script's duration
+//   (motion only, PR4: a LocalScene {key 'script:...', title, stream: null}); attach(script) gives the loaded scene
+//   a script without touching its media (Open script on a video, PR3).
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
 //   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
