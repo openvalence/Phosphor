@@ -293,7 +293,7 @@ const CHOICES = unroled(WIDGET.segmented);
 const LADDER = {
   toggle: MODEL.fields.find((f) => f.uid === XS + ':lamp'),
   segmented: CHOICES[0],
-  select: CHOICES[1],
+  select: CHOICES[1] || CHOICES[0],
   text: MODEL.fields.find((f) => f.uid === XS + ':label_text'),
   bitfield: MODEL.fields.find((f) => f.uid === XS + ':lamp_bits'),
 };
