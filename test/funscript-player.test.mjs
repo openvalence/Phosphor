@@ -1278,6 +1278,92 @@ if (!LIVE && !STASH_LIVE) {
   await stash.close();
 }
 
+// ---- (q) host wiring (ph-1qs5.8, PR11, PR14, compact hero): the footer status, the quick rail, the one-row hero ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(q) host wiring');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const clip = { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO };
+  const fun = { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) };
+  const railState = (page) => page.evaluate(() => {
+    const pop = document.querySelector('.hero-inner.popup, .hero-inner.quick'), pair = document.querySelector('.topstrip .pair');
+    const r = pop && pop.getBoundingClientRect(), p = pair && pair.getBoundingClientRect();
+    return { attr: document.documentElement.dataset.quickRail || null, open: document.documentElement.hasAttribute('data-quick-rail-open'),
+      form: pop ? (pop.classList.contains('popup') ? 'vertical' : 'horizontal') : null,
+      overPair: !!(r && p) && !(r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) };
+  });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('host ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    const rail = C + ' .fsp-rail';
+    if (cls !== 'desktop') {
+      // compactHero is the shell's to draw: short of width for its one row (the fixture's five strip operations at
+      // 420 px upright) it keeps the full hero by its own rule (TopStrip compactFits), so upright only reports it.
+      const hero = await page.evaluate(() => !!document.querySelector('.topstrip .strip.compact'));
+      if (cls === 'portrait' && !hero) console.log('  [NOTE] hero ' + at + ': the shell kept the full hero (its one row does not fit this hub\'s operations)');
+      // PR14: the footer's slot carries the player's status; the card draws no status row; a change moves no rect.
+      const foot = () => page.evaluate(() => { const e = document.querySelector('main.pane .page-foot .foot-status'); if (!e) return null;
+        const b = e.getBoundingClientRect(); return { text: e.textContent.trim(), rect: [b.x, b.y, b.width, b.height].map(Math.round) }; });
+      const empty = await foot();
+      await page.setInputFiles(C + ' .fsp-files', [fun]);
+      await page.waitForTimeout(500);
+      const mo = await foot();
+      const ownRow = await page.locator(C + ' .fsp-slot').evaluate((e) => !!e.getClientRects().length);
+      ok('host ' + at + ': ' + (cls === 'landscape' ? 'the hero is one row; ' : '') + 'the footer slot carries the player\'s status (No scene loaded, Motion only) and moves nothing',
+        (hero || cls === 'portrait') && !!empty && /No scene loaded/.test(empty.text) && !!mo && /Motion only/.test(mo.text) && same(empty.rect, mo.rect) && !ownRow, { hero, empty, mo, ownRow });
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+      await page.waitForTimeout(600);
+      const inline = await page.locator(rail).isVisible();
+      if (inline) {
+        await page.locator(rail).click();
+        await page.waitForTimeout(400);
+        const r1 = await railState(page);
+        const exp = await page.locator(rail).getAttribute('aria-expanded');
+        if (SHOTS) await page.screenshot({ path: join(SHOTS, 'rail-open-' + at + '.png') });
+        await page.evaluate(() => document.querySelector('main.pane').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+        await page.waitForTimeout(300);
+        const r2 = await railState(page);
+        ok('host ' + at + ': the bar\'s rail opens the vertical pop-up clear of the stop pair, aria-expanded follows, an outside tap closes it',
+          r1.open && r1.form === 'vertical' && !r1.overPair && exp === 'true' && !r2.open, { r1, exp, r2 });
+      } else ok('host ' + at + ': the bar draws the rail on the phone class', false, await railState(page));
+    } else {
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+      await page.waitForTimeout(600);
+      ok('host ' + at + ': no rail inline on the desktop; the status is the card\'s last row, --tx text', !(await page.locator(rail).isVisible())
+        && await page.locator(C).evaluate((r) => { const s = r.querySelector('.fsp-slot'), kids = [...r.children].filter((e) => e.getClientRects().length && e !== s && !e.matches('.fsp-pframe, .fsp-libbox'));
+          const probe = document.createElement('i'); probe.style.color = 'var(--tx)'; document.body.append(probe); const tx = getComputedStyle(probe).color; probe.remove();
+          return !!s.getClientRects().length && kids.every((k) => k.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1) && getComputedStyle(s).color === tx; }));
+    }
+    // In fullscreen the rail sits in the hover row: the vertical pop-up on phones, the horizontal one on the desktop.
+    await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+    await page.mouse.move(Math.round(w / 2), Math.round(hh / 2));
+    await page.waitForTimeout(200);
+    const fsRail = await page.locator(C + ' .fsp-hb ' + '.fsp-rail').isVisible();
+    let f1 = null;
+    if (fsRail) {
+      await page.locator(C + ' .fsp-hb .fsp-rail').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      f1 = await railState(page);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'rail-fullscreen-' + at + '.png') });
+    }
+    ok('host ' + at + ': in fullscreen the hover row\'s rail opens the ' + (cls === 'desktop' ? 'horizontal' : 'vertical') + ' pop-up, never over the stop pair',
+      fsRail && !!f1 && f1.open && f1.form === (cls === 'desktop' ? 'horizontal' : 'vertical') && !f1.overPair, { fsRail, f1 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    ok('host ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+}
+
 // ---- (t) the theme (operator 2026-10-08): every player color follows the shell's preset ----
 // The player in two presets whose chassis and accents both differ: a color that stays put is a literal, unless it is a
 // locked safety token (law 13). With --shots, the page at 420x860 and 1428x900 under every preset, in <shots>/themes/.

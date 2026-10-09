@@ -575,6 +575,18 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
   Findings 7 and 9.
+- **As built, PR11, PR14 and the compact hero (`ph-1qs5.8`):** the page
+  registers `compactHero` and `status`. On the phone class the card sends
+  `phosphor-page-status` on every change (`tone` `warn` or null; the notes
+  as `title`) and draws no status row; the dash card keeps its own row.
+  The Rail button shows wherever the host publishes `data-quick-rail` (the
+  phone inline, any bare fullscreen in the hover row). The compact hero is
+  the shell's to draw: at 420 x 860 with five strip operations its one row
+  does not fit and the shell keeps the full hero (its own fallback). The
+  shell still fills a page on the desktop only (docs/PLUGINS.md, `fill`),
+  so the phone page keeps filling itself to the window's bottom (now
+  measured past the shell's phone footer) until the host fills buckets 1
+  and 2.
 - **PR15 Shell controls by construction.** Every button is `.og-btn` (`.sm`
   in the 28 px rows, its min-height reconciled with the bar) and the private
   button blocks go (finding 2); persistent on-states (Motion, Invert, the

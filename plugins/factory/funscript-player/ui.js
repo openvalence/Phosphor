@@ -645,14 +645,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 30px; --fsp-bar: 30px; --fsp-sp: var(--sp-2);
-  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar);
-  min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + 20px + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
+  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 20px;
+  min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-columns: minmax(0, 1fr) 320px;
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
+  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "tr lib" "sp lib" "tlh lib" "tl lib" "st lib"; }
 /* The desktop (the full card) draws the bar under the stage (review 2026-10-08); phones keep it at the bottom. */
 .fsp[data-comp=full][data-cls=landscape]:not([data-an]) {
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) 20px;
+  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "sp lib" "tlh lib" "tl lib" "tr lib" "st lib"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
 /* PR5: one player bar; on phones and the handheld card its scrub row over its button row (data-rows2). */
@@ -664,8 +664,8 @@ export const CSS = `
 .fsp[data-comp=full][data-cls=landscape][data-libshut]:not([data-an]) { grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
 .fsp[data-comp=handheld] { grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) 20px;
-  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + 20px + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
+  grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
+  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
 .fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
@@ -762,6 +762,9 @@ export const CSS = `
 .fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   border-left: 3px solid var(--line-3); padding-left: var(--sp-3); }
 .fsp-slot[data-tone=warn] { border-left-color: var(--warn); }
+/* PR14: on the phone class the page's status is the shell footer's slot (phosphor-page-status); no row of its own. */
+.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) { --fsp-st: 0px; }
+.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) .fsp-slot { display: none; }
 .fsp-tr { grid-area: tr; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
 @container (max-width: 22em) { .fsp-tr .fsp-vol { display: none; } }
 .fsp-tr > * { flex: none; min-width: 0; }
@@ -821,7 +824,7 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px);
-  grid-template-rows: var(--fsp-src) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) 20px;
+  grid-template-rows: var(--fsp-src) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src stage" "tlh stage" "tl stage" "tl an" "tr tr" "st st"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-page][data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) calc(clamp(320px, 40%, 560px) + 2 * var(--sp-4)); }
@@ -829,7 +832,7 @@ export const CSS = `
 .fsp[data-media] { min-height: 0 !important; }
 .fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--sp-3); }
 .fsp[data-media] .fsp-vbox { border: 0; border-radius: 0; }
-.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) 20px;
+.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src" "tlh" "tl" "tr" "st"; }
 .fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + var(--sp-4)); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
@@ -1516,7 +1519,7 @@ export function createPlayer(api) {
     if (opts.page) window.addEventListener('resize', recompose);
     ro.observe(root);
 
-    let tlKey = null, durSeen = -1;
+    let tlKey = null, durSeen = -1, lastStatus = '';
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
@@ -1545,7 +1548,7 @@ export function createPlayer(api) {
       fullB.disabled = noVid;
       setIcon(fullB, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full);
       const rp = railPath();
-      railB.hidden = !rp || !/^(portrait|landscape)$/.test(root.dataset.cls || '');
+      railB.hidden = !rp;
       if (rp && railB.firstChild.children[1].getAttribute('d') !== rp) railB.firstChild.children[1].setAttribute('d', rp);
       if (document.activeElement !== offIn && !offDrag) offIn.value = String(st.T.offsetMs);
       root.dataset.view = st.view;
@@ -1570,6 +1573,15 @@ export function createPlayer(api) {
       mo.hidden = !noVid;
       setText(status, st.status.text);
       status.dataset.tone = st.status.tone;
+      // PR14: the phone footer's slot carries the page's status (docs/PLUGINS.md, Pages, status); sent on change only.
+      if (opts.page && /^(portrait|landscape)$/.test(root.dataset.cls || '')) {
+        const sent = st.status.text + '\n' + st.status.tone + '\n' + st.status.notes.join('\n');
+        if (sent !== lastStatus) {
+          lastStatus = sent;
+          root.dispatchEvent(new CustomEvent('phosphor-page-status', { bubbles: true,
+            detail: { text: st.status.text, tone: st.status.tone === 'warn' ? 'warn' : null, title: st.status.notes.join('\n') || st.status.text } }));
+        }
+      } else lastStatus = '';
       const tip = st.status.notes.join('\n');
       if (status.title !== tip) status.title = tip;
     }

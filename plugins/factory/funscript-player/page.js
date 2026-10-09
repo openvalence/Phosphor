@@ -63,7 +63,7 @@ const CLOSE_D = 'M4 4l8 8M12 4l-8 8';
 const DRAG_CLOSE = 60;   // px down the sheet's head that closes it
 
 export function registerPlayerPage(api, player, spec, settings) {
-  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, search: SEARCH, mount(el, fields) {
+  api.registerPage({ id: 'player', label: 'Funscript', icon: PAGE_ICON, spec, fill: true, mediaFullscreen: true, compactHero: true, status: true, search: SEARCH, mount(el, fields) {
     const style = Object.assign(document.createElement('style'), { textContent: CSS });
     const card = Object.assign(document.createElement('div'), { className: 'fsp-pcard' });
     const sec = Object.assign(document.createElement('div'), { className: 'fsp-psec surface-card' });
@@ -111,23 +111,24 @@ export function registerPlayerPage(api, player, spec, settings) {
     const undrag = () => { drag = null; sec.style.translate = ''; };
     head.addEventListener('pointerup', undrag);
     head.addEventListener('pointercancel', undrag);
-    // ponytail: the host fills a page on the desktop only, so on the phone class the page fills to the window's
-    // bottom from its own top; ph-1qs5.8 drops this when the host's phone footer lands.
+    // ponytail: the host fills a page on the desktop only (docs/PLUGINS.md, fill), so on the phone class the page fills
+    // to the window's bottom from its own top, the shell's phone footer included; it goes when the host fills buckets 1-2.
+    // Also the Settings form per class (PR12): the drawer in fullscreen, the sheet on a phone upright, else the slot.
     function fit() {
       let top = root.getBoundingClientRect().top;
       for (let e = root.parentElement; e; e = e.parentElement) top += e.scrollTop;
       const room = innerHeight - top;
-      // Under FIT_MIN of room (a watch, a short landscape) the page keeps its own height and scrolls.
-      // In media fullscreen the shell's page fullscreen sizes the page.
       const media = !!root.querySelector('.fsp[data-media]'), phone = (+document.documentElement.dataset.bucket || 3) <= 2;
       const form = media ? 'drawer' : phone && innerWidth <= innerHeight ? 'sheet' : '';
       if ((root.dataset.sform || '') !== form) { if (form) root.dataset.sform = form; else delete root.dataset.sform; }
+      // Under FIT_MIN of room (a watch, a short landscape) the page keeps its own height and scrolls; in media
+      // fullscreen the shell's page fullscreen sizes it.
       const fill = phone && room >= FIT_MIN && !media;
       // The sheet stops under the stage, so the stage stays in view above it.
       const vb = root.querySelector('.fsp-vbox');
       if (vb) root.style.setProperty('--fsp-sheet', Math.max(FIT_MIN / 2, innerHeight - vb.getBoundingClientRect().bottom - 8) + 'px');
       root.style.height = fill ? room + 'px' : '';
-      // The pane's own padding and border below the page: take back what now overflows the window.
+      // The pane's padding and the footer below the page: take back what now overflows the window.
       const s = document.scrollingElement, over = fill && s ? s.scrollHeight - s.clientHeight : 0;
       if (over > 0) root.style.height = Math.max(FIT_MIN, room - over) + 'px';
     }
