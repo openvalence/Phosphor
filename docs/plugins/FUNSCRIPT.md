@@ -530,6 +530,19 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   like the library. Desktop: a card in the library column's slot
   (`ph-mdqo.7`'s slot rule stands), no shadow. It never covers the wave.
   Peeves 5 and 8.
+- **As built, PR12 and PR18 (`ph-1qs5.5`):** the sheet is at most 65 % of
+  the height and stops under the stage, so on a phone upright it covers the
+  timeline band and the bar while open (the mockup's P5 does the same; the
+  "never covers the wave" holds on the desktop slot and the drawer, whose
+  wave is off unless the timeline toggle is on). Any fullscreen (desktop
+  too) puts Settings in the drawer, which starts under the stop pair. With
+  the library collapsed, the section sits below the card (`ph-mdqo.7`); the
+  1024 x 768 desktop's session-collapsed library counts as collapsed. A
+  tap outside the sheet or drawer closes it (the bar's Settings toggles
+  itself). The rows are `rows.js` (label, control, value chip; Fit to
+  window and the toggles are the shell's switch); the typed Scale field
+  goes, the chip shows the value or Auto's readout. The volume row is drawn
+  on phones only. The Stash fields come after Scale and Playback.
 - **PR13 Library.** Phone portrait: a tab (Player | Library in the head,
   D19 stands) with rows (title, duration · actions), paged and never
   scrolled, and a now-playing row at the bottom (title, position, Pause).

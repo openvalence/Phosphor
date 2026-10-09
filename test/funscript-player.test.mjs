@@ -56,6 +56,7 @@ const CONTRACT = {
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
+  [P + 'rows.js']: ['CSS', 'rowsBox', 'sub', 'sliderRow', 'switchRow'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
@@ -963,6 +964,72 @@ if (!LIVE && !STASH_LIVE) {
     ok('redesign ' + at + ': script then video ends loaded and paired', p1.src && p1.play && !p1.mo, p1);
     if (cls === 'portrait') ok('redesign ' + at + ': a 16:9 video gives a stage of width x 9/16', Math.abs(loaded.vbox[3] - loaded.vbox[2] * 9 / 16) <= 1.5, loaded);
     await shot('loaded');
+    // PR12/PR18: Settings per class: the library slot (desktop), a bottom sheet (phone portrait), a drawer (fullscreen).
+    if (cls !== 'landscape') {
+      const card0 = await page.locator(C).evaluate((r) => { const b = r.getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      const sx = await page.evaluate((c) => {
+        const sec = document.querySelector('main.pane .fsp-psec'), s = sec.getBoundingClientRect(), root = document.querySelector(c);
+        const dt = root.querySelector('.fsp-dt').getBoundingClientRect(), vb = root.querySelector('.fsp-vbox').getBoundingClientRect();
+        const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const rows = [...sec.querySelectorAll('.fsp-rows')].flatMap((g) => [...g.children].filter((e) => e.matches('.fsp-rl')).map((l) => {
+          const c1 = l.nextElementSibling, c2 = c1 && c1.nextElementSibling;
+          return { label: l.textContent, tt: getComputedStyle(l).textTransform, ctl: c1 && (c1.matches('input[type=range]') ? 'range' : c1.matches('.og-switch') ? 'switch' : c1.tagName),
+            chip: c1 && c1.matches('input[type=range]') ? !!(c2 && c2.matches('output.fsp-rv')) : true };
+        }));
+        return { form: sec.parentElement.dataset.sform || 'slot', h: s.height, vh: innerHeight, scrolls: sec.scrollHeight > sec.clientHeight + 1,
+          shadow: getComputedStyle(sec).boxShadow, overWave: hit(s, dt), stageClear: vb.bottom <= s.top + 1, rows,
+          card: [Math.round(root.getBoundingClientRect().width), Math.round(root.getBoundingClientRect().height)],
+          noSetting: /No setting/.test(sec.textContent) };
+      }, C);
+      const rowsOk = sx.rows.length >= 9 && sx.rows.every((r) => r.tt === 'lowercase' && r.chip) && sx.rows.some((r) => /fit to window/i.test(r.label) && r.ctl === 'switch') && !sx.noSetting;
+      ok('settings ' + at + ': native rows (label, control, value chip), Auto a switch row, lowercase labels, no empty row (PR18)', rowsOk, sx.rows);
+      if (cls === 'desktop') {
+        ok('settings ' + at + ': a card in the library slot without a shadow, the Player card the same size, never over the wave (PR12)'
+          + (libShut ? '; the session-collapsed library puts it below the card (the slot rule)' : ''),
+          sx.form === 'slot' && sx.shadow === 'none' && same(sx.card, card0) && !sx.overWave, { sx, card0 });
+      } else {
+        ok('settings ' + at + ': a bottom sheet at most 65 % high, scrolling inside, the stage clear above it (PR12)',
+          sx.form === 'sheet' && sx.h <= 0.65 * sx.vh + 1 && sx.scrolls && sx.stageClear, sx);
+      }
+      await shot('settings');
+      if (cls === 'portrait') {
+        await page.mouse.click(200, 120);
+        await page.waitForTimeout(300);
+        const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(300);
+        const hb = await page.locator('main.pane .fsp-shead').boundingBox();
+        await page.mouse.move(hb.x + 40, hb.y + hb.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(hb.x + 40, hb.y + hb.height / 2 + 90, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        const dragShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        ok('settings ' + at + ': a tap outside and a drag down close the sheet', tapShut && dragShut, { tapShut, dragShut });
+      } else {
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(200);
+      }
+    } else {
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(600);
+      await page.mouse.move(400, 200);
+      await page.locator(C + ' .fsp-hb .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      const dr = await page.evaluate(() => {
+        const s = document.querySelector('main.pane .fsp-psec').getBoundingClientRect(), hit = (a, b) => !!b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const pair = ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((q) => document.querySelector(q)).filter((e) => e && e.getClientRects().length).map((e) => e.getBoundingClientRect());
+        return { form: document.querySelector('main.pane .fsp-page').dataset.sform, right: Math.round(innerWidth - s.right), w: Math.round(s.width), pairs: pair.length, covers: pair.some((p) => hit(s, p)) };
+      });
+      ok('settings ' + at + ': in fullscreen a drawer from the right that never covers the stop pair (PR12)', dr.form === 'drawer' && dr.right === 0 && dr.pairs > 0 && !dr.covers, dr);
+      if (EVID) await page.screenshot({ path: join(EVID, 'settings-fullscreen-' + at + '.png') });
+      await page.mouse.click(60, 300);
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(400);
+    }
     // Video only, then the script (video, then script).
     await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-src .fsp-close'); if (b.getClientRects().length) b.click(); else r.querySelector('.fsp-mclose').click(); });
     await page.waitForTimeout(200);
@@ -1931,8 +1998,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   // Reversals and hold edges go at rest (FUNSCRIPT.md I8, ph-hcof), so 0 and 1 land exactly.
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
-  const autoBtn = page.locator('main.pane .fsp-psec .fsp-scale button[aria-label="Auto"]');
-  await autoBtn.click({ timeout: 3000 }).catch(() => {});
+  await page.locator('main.pane .fsp-psec .fsp-scale input[aria-label="Auto"]').evaluate((e) => e.click(), null, { timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
     return o && /^0\.00–1\.00$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
@@ -2098,25 +2164,25 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
-  await page.click('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]');
+  await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => e.click());
   await page.waitForTimeout(100);
   ok('page settings: a change there reaches the store', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.play') || '{}').loop) === true);
   await page.click('[data-tab-id="plugins"]');
   await page.waitForSelector('.fsp-pset', { timeout: 5000 });
-  ok('page settings: the Plugins pane card reads it back', (await page.locator('.fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'true');
-  await page.locator('.fsp-pset button[aria-label="Loop"]').click();
+  ok('page settings: the Plugins pane card reads it back', await page.locator('.fsp-pset input[aria-label="Loop"]').evaluate((e) => e.checked));
+  await page.locator('.fsp-pset input[aria-label="Loop"]').evaluate((e) => e.click());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   await page.waitForTimeout(600);
   await toPage();
   ok('page settings: open is remembered across a launch, and the pane change reads back here', same(await rows(), [1, 1, 1])
-    && (await page.locator('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'false');
+    && !(await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => e.checked)));
   if (SHOTS) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
     await page.locator(SUM).evaluate((e) => e.scrollIntoView());
     await pageShot('page-settings-open-390x844');
-    await page.locator(SUM).click();
+    await page.locator(SUM).evaluate((e) => e.click());
     await page.waitForTimeout(300);
     await page.evaluate(() => scrollTo(0, 0));
     await pageShot('page-settings-closed-390x844');

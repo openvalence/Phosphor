@@ -83,6 +83,7 @@ import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
+import { rowsBox, sub, sliderRow, switchRow } from './rows.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -159,8 +160,7 @@ export const COPY = Object.freeze({
   fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
-  on: 'On',
-  off: 'Off',
+
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1262,14 +1262,8 @@ export function createPlayer(api) {
     fullB.addEventListener('click', () => fullscreen());
     const setB = trBtn('fsp-set', ICON.gear, COPY.settings);
     setB.hidden = !opts.settings;
-    setB.setAttribute('aria-pressed', String(!!(opts.settings && opts.settings.open)));
-    setB.classList.toggle('on', !!(opts.settings && opts.settings.open));
-    setB.addEventListener('click', () => {
-      const on = setB.getAttribute('aria-pressed') !== 'true';
-      setB.setAttribute('aria-pressed', String(on));
-      setB.classList.toggle('on', on);
-      opts.settings.toggle(on);
-    });
+    // Pressed from the page's own state (opts.settings.open), which the sheet's close and outside tap also change.
+    setB.addEventListener('click', () => { opts.settings.toggle(!opts.settings.open); render(); });
     // Host seam (PR11, wired by ph-1qs5.8): the quick rail icon shows only where the host offers one.
     const railB = trBtn('fsp-rail', ['', ''], COPY.rail);
     railB.setAttribute('data-quick-rail-toggle', '');
@@ -1496,6 +1490,9 @@ export function createPlayer(api) {
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
 
+      const so = !!(opts.settings && opts.settings.open);
+      attr(setB, 'aria-pressed', String(so));
+      setB.classList.toggle('on', so);
       attr(motion, 'aria-pressed', String(st.motion));
       motion.classList.toggle('on', st.motion);
       attr(inv, 'aria-pressed', String(st.T.invert));
@@ -1603,6 +1600,11 @@ export function createPlayer(api) {
     },
     setInterp(v) { ctl.setInterp(v); },
     setPlay(v) { ctl.setPlay(v); },
+    /** The video's volume, the settings card's phone row (PR12): a set unmutes and is stored as prefs audio. */
+    volume: {
+      get: () => (video.muted ? 0 : video.volume),
+      set(x) { video.volume = clamp(+x || 0, 0, 1); video.muted = false; writePref(api, 'audio', { vol: video.volume, muted: false }); views.forEach((w) => w.render()); },
+    },
     get scale() { return ctl.scale; },
     get state() { return ctl.state; },
   };
@@ -1610,25 +1612,12 @@ export function createPlayer(api) {
 
 // ---- the settings card's playback rows -------------------------------------
 
+// The rows' grid is rows.js's (PR18); this is the playback card's own: the volume row shows on phones only (PR5, PR12).
 export const PLAY_CSS = `
-.fsp-pset { display: grid; grid-template-columns: 12ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: var(--sp-2) var(--sp-3); align-items: center; margin-top: var(--sp-3); }
-.fsp-pset h4 { grid-column: 1 / -1; margin: 0; font-size: .85rem; color: var(--tx-mut); font-weight: 600; }
-.fsp-pset label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fsp-pset input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
-.fsp-pset input:focus-visible, .fsp-pset button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-pset button { justify-self: start; min-height: var(--tap); min-width: calc(var(--tap) * 2); padding: 0 var(--sp-3); background: none; color: var(--tx);
-  border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
-.fsp-pset button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp-pset output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
-.fsp-pset input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }
-.fsp-pset input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
-.fsp-pset input[type=range]::-moz-range-track { height: 2px; background: var(--line-2); }
-.fsp-pset input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 20px; margin-top: -9px; border-radius: 4.5px;
-  border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
-.fsp-pset input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+:root:not([data-bucket='1'], [data-bucket='2']) .fsp-pset > .fsp-volrow { display: none; }
 `;
 
-// [key, label, tip, min, max, step, format]: ranges are prefs.js's repairs.
+// [key, label, tip, min, max, step, format]: ranges are prefs.js's repairs; a row without a range is a switch.
 const PLAY_ROWS = [
   ['loop', COPY.loop, COPY.loopTip],
   ['loopCount', COPY.loopCount, '', 0, 99, 1, (v) => (v ? v + 'x' : COPY.forever)],
@@ -1640,28 +1629,37 @@ const PLAY_ROWS = [
   ['autoLatency', COPY.auto, COPY.autoTip],
 ];
 
-/** Settings card rows for the play prefs, one var(--tap) row each; -> unmount(). onChange(partial) on commit. */
-export function mountPlay(el, { value, onChange }) {
+/**
+ * The settings card's playback rows (PR18: label, control, value chip; switches for the toggles); -> unmount().
+ * onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row.
+ */
+export function mountPlay(el, { value, onChange, volume = null }) {
   let v = { ...value };
-  const root = h('div', { class: 'fsp-pset', role: 'group', 'aria-label': COPY.playHeading }, h('style', { text: PLAY_CSS }),
-    h('h4', { text: COPY.playHeading }));
+  const box = rowsBox(COPY.playHeading);
+  box.classList.add('fsp-pset');
+  box.prepend(h('style', { text: PLAY_CSS }));
+  box.append(sub(COPY.playHeading));
   const draws = PLAY_ROWS.map(([key, label, tip, min, max, step, fmt]) => {
-    const lab = h('label', { text: label, ...(tip ? { title: tip } : {}) });
-    const out = h('output');
     if (min == null) {
-      const b = h('button', { type: 'button', 'aria-label': label, ...(tip ? { title: tip } : {}) });
-      b.addEventListener('click', () => { v = { ...v, [key]: !v[key] }; draw(); onChange({ [key]: v[key] }); });
-      root.append(lab, b, out);
-      return () => { b.setAttribute('aria-pressed', String(!!v[key])); setText(b, v[key] ? COPY.on : COPY.off); };
+      const s = switchRow(box, label, { tip });
+      s.addEventListener('change', () => { v = { ...v, [key]: s.checked }; onChange({ [key]: v[key] }); });
+      return () => { s.checked = !!v[key]; };
     }
-    const i = h('input', { type: 'range', min: String(min), max: String(max), step: String(step), 'aria-label': label });
+    const { input: i, out } = sliderRow(box, label, { min, max, step, tip });
     i.addEventListener('input', () => setText(out, fmt(+i.value)));
     i.addEventListener('change', () => { v = { ...v, [key]: +i.value }; draw(); onChange({ [key]: v[key] }); });
-    root.append(lab, i, out);
     return () => { if (document.activeElement !== i) i.value = String(v[key]); setText(out, fmt(v[key])); };
   });
+  if (volume) {
+    const n = box.children.length;
+    const { input: i, out } = sliderRow(box, COPY.volume, { min: 0, max: 1, step: 0.05 });
+    [...box.children].slice(n).forEach((e) => e.classList.add('fsp-volrow'));
+    const fmt = (x) => Math.round(x * 100) + ' %';
+    i.addEventListener('input', () => { volume.set(+i.value); setText(out, fmt(+i.value)); });
+    draws.push(() => { const x = volume.get(); if (document.activeElement !== i) i.value = String(x); setText(out, fmt(x)); });
+  }
   const draw = () => draws.forEach((d) => d());
-  el.append(root);
+  el.append(box);
   draw();
-  return () => root.remove();
+  return () => box.remove();
 }

@@ -36,7 +36,7 @@ Rules for every module:
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funscript, scheduler, kinetic`;
+scheduler, stash, library, timeline, prefs, scale, analyzer, rows`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
 `prefs -> scale`.
@@ -539,7 +539,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
 //       opts.fullscreen: the bar offers media fullscreen, one mode, always bare (PR8; the page mount, page.js); the hover
 //         bar exists only there, its row the player bar's own buttons (PR9); phone rotation enters and leaves it (PR17)
-//       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
+//       opts.settings: {open (read on every render), toggle(on)}: the bar's Settings button (the page mount); the page's
+//         section is a card in the library slot (desktop), a bottom sheet (phone portrait) or a drawer (fullscreen), PR12
 //       opts.page: the page mount: composition by pageClass (portrait handheld, landscape and desktop full),
 //         the Player and Library shell cards (PR1); the dash card composes by its own box (compositionOf)
 // Host seam, the quick rail (docs/PLUGINS.md, Pages, The quick rail; PR11): the bar's Rail button (.fsp-rail,
@@ -560,9 +561,10 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
 //   fitMap(extent)). A new script starts at [0, 1] until the measure lands.
 export const PLAY_CSS;
-export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
-  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency;
-  // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
+export function mountPlay(el, { value, onChange, volume });   // -> unmount(); the settings card's playback rows:
+  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency, and Volume on phones
+  // (volume: Player.volume {get, set}); rows.js's form (PR18): switches, sliders over prefs.js's repair ranges with
+  // a value chip; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
 //   composition: 'full'|'handheld'|'glance', ab: {a, b} (media ms | null, runtime only), play: Prefs.play }
@@ -743,8 +745,13 @@ export function fitMap([min, max]);   // -> [min(0, min) floored, max(1, max) ce
 export function wire(script, I);      // -> the Script the scheduler sends: every action p' = (p - lower) / (upper - lower);
                                       // `script` itself at [0, 1], so the scheduler runs byte-identical
 export const COPY, CSS;
-export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale row, onChange(scale)
-  // on commit: Auto toggle, slider and typed value 0.25..1 (manual), or the readout '0.01–0.97' (where 0 and 1 land)
+export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale rows, onChange(scale)
+  // on commit (rows.js's form): Fit to window (the Auto switch), the slider 0.25..1 with its chip, or the chip's
+  // readout '0.01–0.97' (where 0 and 1 land)
+// rows.js (PR18): the settings rows' one form, label | control | value chip, Field's voice restated
+export const CSS;
+export function rowsBox(label), sub(text), sliderRow(box, label, {min, max, step, tip}) /* -> {input, out} */,
+  switchRow(box, label, {tip}) /* -> the checkbox of a shell .og-switch */;
   // from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto)
 ```
 
