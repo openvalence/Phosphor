@@ -585,8 +585,8 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
   // is heatStops(raw or script) as one linearGradient of hard stops over the overview, over-limit runs striped --warn
   // ceiling: {vmax: number | null, spanMm: number | null}
-  // trace: Array<{m: media ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
-  //   media axis, last 8 s; p is plan.current as a window share (null when stale or absent), drawn under the script
+  // trace: Array<{m: media ms, at: performance.now() ms, u: 0..1 | null, stale: boolean, p?: 0..1 | null}>, telemetry.position on the
+  //   media axis, last 8 s by media time and by age (a loop wrap folds m back); p is plan.current as a window share (null when stale or absent), drawn under the script
 ```
 
 One `Player` per activation owns the single `<video>` (no `controls`,

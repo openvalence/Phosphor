@@ -396,12 +396,14 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (state.phase === 'playing' && clock.ready && fields && fields.pos) {
       const m = fold(clock.mediaAt(now() - state.T.offsetMs + scheduler.compMs));
       if (Number.isFinite(m)) {
-        trace.push({ m, u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
+        trace.push({ m, at: now(), u: windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)),
           stale: !!api.stale(fields.pos), p: planShare() });
       }
     }
     const cur = mediaNow();
     while (trace.length && trace[0].m < cur - TRACE_MS) trace.shift();
+    // Never trim by media time alone: a loop wrap folds m back and the previous laps would stay.
+    while (trace.length && trace[0].at < trace[trace.length - 1].at - TRACE_MS / clock.rate) trace.shift();
     if (trace.length && trace[trace.length - 1].m > cur + 1000) trace.length = 0;
     refresh();
   }
