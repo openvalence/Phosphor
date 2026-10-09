@@ -510,6 +510,16 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
 - **PR10 Stop pair** top right in fullscreen at full hit size and half
   opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
   Restated, unchanged. No floating collapse chevrons.
+- **As built, PR8 to PR10 and PR17 (`ph-1qs5.4`):** the hover bar's row is
+  the player bar's own buttons, moved into it on entry and back on exit
+  (one set of controls and listeners); it has no mute or volume (`m` mutes,
+  volume is the bar's or the hardware keys'). On a narrow fullscreen (a
+  phone upright, under 34 em) the time takes its own line above the
+  buttons. Only a rotation enters or leaves fullscreen on the phone class,
+  so an Exit in landscape holds until the next turn with no extra state; a
+  window resized from the desktop into a phone class is not a rotation.
+  A click that a control's own button made never toggles Play (an Exit
+  fullscreen moves its button out of the stage before the click reaches it).
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in

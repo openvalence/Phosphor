@@ -45,6 +45,7 @@ const CSS = `
 .fsp-page:has(.fsp[data-comp=full][data-an]) > .fsp-psec { position: absolute; top: 0; right: 0; bottom: var(--pg-bot); width: clamp(320px, 40%, 560px); z-index: 2;
   margin: 0; overflow-y: auto; }
 .fsp-page:has(.fsp[data-media]) > .fsp-psec { display: none; }
+.fsp-page:has(.fsp[data-media]) > .fsp-pcard { min-height: 0; }
 `;
 
 export function registerPlayerPage(api, player, spec, settings) {
@@ -75,7 +76,8 @@ export function registerPlayerPage(api, player, spec, settings) {
       for (let e = root.parentElement; e; e = e.parentElement) top += e.scrollTop;
       const room = innerHeight - top;
       // Under FIT_MIN of room (a watch, a short landscape) the page keeps its own height and scrolls.
-      const fill = (+document.documentElement.dataset.bucket || 3) <= 2 && room >= FIT_MIN;
+      // In media fullscreen the shell's page fullscreen sizes the page.
+      const fill = (+document.documentElement.dataset.bucket || 3) <= 2 && room >= FIT_MIN && !root.querySelector('.fsp[data-media]');
       root.style.height = fill ? room + 'px' : '';
       // The pane's own padding and border below the page: take back what now overflows the window.
       const s = document.scrollingElement, over = fill && s ? s.scrollHeight - s.clientHeight : 0;
@@ -84,10 +86,12 @@ export function registerPlayerPage(api, player, spec, settings) {
     const ro = new ResizeObserver(fit);
     ro.observe(document.documentElement);
     addEventListener('resize', fit);
+    const onFs = () => requestAnimationFrame(fit);
+    addEventListener('phosphor-page-fullscreen-change', onFs);
     fit();
     return {
       update: () => inst.update(),
-      unmount() { ro.disconnect(); removeEventListener('resize', fit); inst.unmount(); if (off) off(); root.remove(); },
+      unmount() { ro.disconnect(); removeEventListener('resize', fit); removeEventListener('phosphor-page-fullscreen-change', onFs); inst.unmount(); if (off) off(); root.remove(); },
     };
   } });
 }

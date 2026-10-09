@@ -696,7 +696,7 @@ const C = 'main.pane .fsp';
 const statusText = (page) => page.locator(C + ' > .fsp-slot').textContent().then((t) => t.trim());
 // Play is the hover bar's (the strip shows its own only at glance and beside the handheld analyzer).
 const playBtn = (page) => {
-  const l = page.locator(C + ' .fsp-hb-play');
+  const l = page.locator(C + ' .fsp-play');
   return { click: () => l.evaluate((e) => e.click()), isDisabled: () => l.isDisabled(),
     textContent: () => l.getAttribute('aria-label').then((t) => t.replace(/ \(k\)$/, '')) };
 };
@@ -931,7 +931,7 @@ if (!LIVE && !STASH_LIVE) {
     await page.waitForTimeout(300);
     const mo = await look();
     const moUi = await page.evaluate((c) => {
-      const r = document.querySelector(c), f = r.querySelector('.fsp-hb-full');
+      const r = document.querySelector(c), f = r.querySelector('.fsp-full');
       return { mo: r.hasAttribute('data-mo'), meter: !!r.querySelector('.fsp-mo .fsp-meter').getClientRects().length,
         full: f.disabled && f.getAttribute('aria-label') === 'No video', open: !!r.querySelector('.fsp-mo .og-btn').getClientRects().length };
     }, C);
@@ -980,6 +980,16 @@ if (!LIVE && !STASH_LIVE) {
       await page.waitForTimeout(500);
       const p3 = await paired();
       ok('redesign: a two-file pick in Open video ends loaded and paired', p3.src && p3.play && !p3.mo, p3);
+      await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(500);
+      await page.mouse.move(700, 400);
+      await page.waitForTimeout(300);
+      if (EVID) await page.screenshot({ path: join(EVID, 'fullscreen-1428x900.png') });
+      const ask = await page.evaluate(() => window.__fsAsk);
+      ok('fullscreen: one mode, the ask bare; no mode glyph (PR8)', !!ask && ask.bare === true && await page.locator(C + ' .fsp-hb-mode').count() === 0, ask);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
     }
     if (cls === 'desktop' && w === 1428) {
       const span = () => page.locator(C + ' .fsp-zoom output').textContent();
@@ -1016,6 +1026,24 @@ if (!LIVE && !STASH_LIVE) {
       ok('redesign ' + at + ': a 9:16 video stands tall up to the room its row has', tall.vbox[3] > loaded.vbox[3]
         && Math.abs(tall.vbox[3] - Math.min(tall.vbox[2] * 16 / 9, tall.stage[3])) <= 1.5, { vbox: tall.vbox, stage: tall.stage });
       await shot('loaded-tall');
+      // PR17: a turn to landscape with a video is fullscreen, the turn back leaves it; an Exit in landscape holds.
+      const fsNow = () => page.locator(C).evaluate((r) => r.hasAttribute('data-media'));
+      await page.setViewportSize({ width: 860, height: 420 });
+      await page.waitForTimeout(700);
+      const turned = await fsNow();
+      if (EVID) await page.screenshot({ path: join(EVID, 'fullscreen-860x420.png') });
+      await page.setViewportSize({ width: 420, height: 860 });
+      await page.waitForTimeout(700);
+      const back = await fsNow();
+      await page.setViewportSize({ width: 860, height: 420 });
+      await page.waitForTimeout(700);
+      await page.locator(C).focus();
+      await page.keyboard.press('f');
+      await page.waitForTimeout(700);
+      const held = await fsNow();
+      ok('rotation: landscape with a video enters fullscreen, portrait leaves it, an Exit in landscape holds (PR17)', turned && !back && !held, { turned, back, held });
+      await page.setViewportSize({ width: 420, height: 860 });
+      await page.waitForTimeout(500);
     }
     ok('redesign ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
     clearInterval(hub.timer);
@@ -2211,24 +2239,33 @@ if (!LIVE && !args.includes('--stash-live')) {
     v.pause = () => { log('pause'); return pause(); };
     Object.defineProperty(v, 'currentTime', { configurable: true, get() { return d.get.call(v); }, set(x) { log('seek'); d.set.call(v, x); } });
   }, C);
+  // PR9: inline there is no overlay at all; the hover bar is fullscreen's.
+  await overVideo();
+  await page.waitForTimeout(350);
+  ok('hover: no hover bar inline, even under the pointer (PR9)', await page.locator(HOV).evaluate((e) => !e.getClientRects().length));
+  await page.locator(C + ' .fsp-full').click();
+  await page.waitForTimeout(500);
+  ok('hover: the bar\'s Fullscreen enters media fullscreen', await page.locator(C + '[data-media]').count() === 1);
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden at rest', !(await shown()) && (await opacity()) === 0);
   await overVideo();
   await page.waitForTimeout(350);
   ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
   await shot('hover-1280x800');
-  if (SHOTS) {
-    const vp = page.viewportSize();
-    for (const [w, hh] of [[1428, 900], [1024, 768], [420, 860]]) {
-      await page.setViewportSize({ width: w, height: hh });
-      await page.waitForTimeout(500);
-      await overVideo();
-      await shot('page-' + w + 'x' + hh);
-    }
-    await page.setViewportSize(vp);
-    await page.waitForTimeout(400);
-  }
-  const hbKept = await page.locator(C + ' .fsp-hb-row > *, ' + C + ' .fsp-hb-seek').evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.className));
-  ok('hover: outside media fullscreen the bar keeps only Fullscreen and its mode', hbKept.every((c) => /fsp-hb-(full|mode|gap)/.test(c)) && hbKept.some((c) => /fsp-hb-full/.test(c)), hbKept);
+  const hbRow = await page.locator(C + ' .fsp-hb-row').evaluate((r) => [...r.children].filter((e) => e.getClientRects().length)
+    .map((e) => e.className.split(' ').find((k) => /^fsp-(prev|play|next|hb-time|motion|rate|tltog|rail|set|full)$/.test(k))).filter(Boolean));
+  ok('hover: its row is the player bar: prev, Play, next, time, Motion, rate, timeline, (rail,) Settings, Exit fullscreen',
+    same(hbRow.filter((k) => k !== 'fsp-rail'), ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-hb-time', 'fsp-motion', 'fsp-rate', 'fsp-tltog', 'fsp-set', 'fsp-full']), hbRow);
+  await page.locator(C + ' .fsp-tltog').click();
+  await page.waitForTimeout(200);
+  const wave = await page.locator(C).evaluate((r) => { const d = r.querySelector('.fsp-hb .fsp-dt'), s = r.querySelector('.fsp-hb-seek');
+    return { h: d ? Math.round(d.getBoundingClientRect().height) : 0, above: !!d && d.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1 }; });
+  ok('hover: the timeline toggle draws a 72 px wave over the video, above the scrub (PR9)', Math.abs(wave.h - 72) <= 1 && wave.above, wave);
+  await shot('fullscreen-wave-1280x800');
+  await page.locator(C + ' .fsp-tltog').click();
+  await overVideo();
+  ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
   await overVideo(10);
@@ -2236,12 +2273,10 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(100);
   ok('hover: hidden on pointer leave', !(await shown()));
 
-  // Play and pause through the bar (its whole form is media fullscreen's): the controller's preroll first, one hold after.
-  const mediaOn = (on) => page.locator(C).evaluate((e, v) => e.toggleAttribute('data-media', v), on);
-  await mediaOn(true);
+  // Play and pause through the fullscreen bar: the controller's preroll first, one hold after.
   const n0 = hub.bundles.length;
   await overVideo();
-  await page.click(C + ' .fsp-hb-play');
+  await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(150);
   const pre = hub.bundles[n0];
   ok('hover play: the controller prerolls first (one positioning segment), the video still paused', !!pre && pre.segs.length === 1
@@ -2250,7 +2285,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(1500);
   ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
   await overVideo(-10);
-  await page.click(C + ' .fsp-hb-play');
+  await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);
   ok('hover pause: paused by the controller', await video(page, (v) => v.paused) && await vids('pause') >= 1
     && await playBtn(page).textContent() === 'Play');
@@ -2267,12 +2302,17 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover seek: the tooltip reads the time under the pointer', !tip.hidden && /^0:1[45]\.\d$/.test(tip.text), tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
-  await mediaOn(false);
+  await overVideo();
+  await page.click(C + ' .fsp-hb .fsp-full');
+  await page.waitForTimeout(400);
+  ok('hover: Exit fullscreen puts the bar back as it was', await page.locator(C + '[data-media]').count() === 0 && same((await barOrder(page)).rows, [BAR_DESK]));
   // Keys while the player has focus: k plays (through the preroll), m mutes, j seeks back 10 s, k pauses.
   await page.locator(C).focus();
+  const kAt = await page.evaluate(() => document.activeElement.className + ' | ' + (window.__funscriptProbe || []).filter((x) => x.k === 'mark').slice(-3).map((x) => x.name).join());
   await page.keyboard.press('k');
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
   const kPlay = await video(page, (v) => !v.paused);
+  if (!kPlay) console.log('  [NOTE] k did not play: ' + kAt + ' | ' + await statusText(page) + ' | ' + await page.evaluate(() => (window.__funscriptProbe || []).filter((x) => x.k === 'mark').slice(-3).map((x) => x.name).join()));
   await page.keyboard.press('j');
   await page.waitForTimeout(300);
   const tJ = await video(page, (v) => v.currentTime);
@@ -2300,17 +2340,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('split: ArrowDown shrinks the wave card 8 px, Shift 1 px', d1.dt - d2.dt === 8 && d2.dt - d3.dt === 1, [d1, d2, d3]);
   const splitSaved = d3.dt;
   ok('split: the height is stored as the pref split', Math.abs(await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) - d3.dt) <= 1);
-  // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
-  ok('volume: the transport has the slider, the hover bar the only mute', await page.locator(C + ' .fsp-tr').evaluate((t) =>
-    !!t.querySelector('input.fsp-vol') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
-  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.6'; e.dispatchEvent(new Event('input', { bubbles: true })); });
-  ok('volume: the transport slider sets the video volume', await video(page, (v) => Math.abs(v.volume - 0.6) < 0.01));
-  await overVideo();
-  await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  // Volume and mute: the video's own, kept in prefs audio across a launch; the bar's slider and m.
+  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.locator(C).focus();
   await page.keyboard.press('m');
   await page.waitForTimeout(100);
   const audio = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.audio') || '{}'));
-  ok('volume: the bar sets the video volume, m mutes, both stored', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
+  ok('volume: the bar\'s slider sets the video volume, m mutes, both stored', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
     && Math.abs(audio.vol - 0.4) < 0.01 && audio.muted === true, audio);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
@@ -2337,12 +2373,11 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.locator(C + ' .fsp-split').dblclick();
   await page.setViewportSize(vp0);
   await page.waitForTimeout(300);
-  ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
-    && (await page.locator(C + ' .fsp-hb-mute').getAttribute('aria-label')) === 'Unmute (m)');
-  await page.locator(C + ' .fsp-hb-mute').evaluate((e) => e.click());
-  ok('volume: the bar mute button unmutes, its icon follows', await video(page, (v) => !v.muted)
-    && await page.locator(C + ' .fsp-hb-mute path.s').getAttribute('d') === 'M11.5 5.5a3.5 3.5 0 010 5');
-  ok('hover: Fullscreen is offered on the page', await page.locator(C + ' .fsp-hb-full').evaluate((e) => !e.hidden));
+  ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted));
+  await page.locator(C).focus();
+  await page.keyboard.press('m');
+  ok('volume: m unmutes', await video(page, (v) => !v.muted));
+  ok('hover: Fullscreen is offered on the page, in the bar', await page.locator(C + ' .fsp-tr .fsp-full').evaluate((e) => !e.hidden));
   await loadClip(page);
   // Media fullscreen: the shell's page fullscreen, bare, the video alone, the stop pair over it.
   const fsLook = () => page.evaluate((c) => {
@@ -2353,18 +2388,19 @@ if (!LIVE && !args.includes('--stash-live')) {
       settings: r(c + ' .fsp-set'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
   }, C);
   await overVideo();
-  await page.click(C + ' .fsp-hb-full');
+  await page.click(C + ' .fsp-full');
   await page.waitForTimeout(400);
   const fs = await fsLook();
   ok('media fullscreen: Borderless is page fullscreen, bare, with the media flag', fs.full && fs.bare && fs.media, fs);
-  ok('media fullscreen: the video alone fills the window; timeline, transport and Settings hidden',
-    !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr && !fs.settings, fs);
+  ok('media fullscreen: the video alone fills the window; the timeline and the inline bar hidden, Settings in the hover bar (PR9)',
+    !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr
+    && await page.locator(C + ' .fsp-hb .fsp-set').count() === 1, fs);
   ok('media fullscreen: the stop pair stays on screen (RENDERING §8.4 row 11)', !!fs.estop && !!fs.pause
     && fs.estop[0] >= 0 && fs.estop[0] + fs.estop[2] <= fs.vw && fs.estop[1] >= 0, fs);
   await overVideo();
   await page.waitForTimeout(300);
   await shot('media-1280x800');
-  ok('media fullscreen: the bar offers the way out', (await page.locator(C + ' .fsp-hb-full').getAttribute('aria-label')) === 'Exit fullscreen (f)');
+  ok('media fullscreen: the bar offers the way out', (await page.locator(C + ' .fsp-hb .fsp-full').getAttribute('aria-label')) === 'Exit fullscreen (f)');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const off = await fsLook();
@@ -2431,8 +2467,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   if (SHOTS) {
     await overVideo();
     await page.waitForTimeout(300);
-    await shot('hover-1920x1080');
-    await page.click(C + ' .fsp-hb-full');
+    await page.click(C + ' .fsp-full');
     await page.waitForTimeout(400);
     await overVideo();
     await page.waitForTimeout(300);
@@ -2443,8 +2478,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.evaluate(() => scrollTo(0, 0));
     await overVideo();
     await page.waitForTimeout(300);
-    await shot('hover-390x844');
-    await page.click(C + ' .fsp-hb-full').catch(() => {});
+    await page.click(C + ' .fsp-full').catch(() => {});
     await page.waitForTimeout(400);
     await overVideo();
     await page.waitForTimeout(300);
@@ -2460,7 +2494,8 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(600);
   await page.evaluate(() => scrollTo(0, 0));
   if (await page.locator(C + '[data-an]').count()) await page.click(C + ' .fsp-expand');
-  await mediaOn(true);
+  await page.locator(C + ' .fsp-full').click();
+  await page.waitForTimeout(400);
   await overVideo();
   await page.waitForTimeout(300);
   const phone = await page.locator(C).evaluate((e) => {
@@ -2470,7 +2505,8 @@ if (!LIVE && !args.includes('--stash-live')) {
     return { cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent, out: out.map((x) => x.className) };
   });
   ok('hover 390: the bar lies inside the stage, the time readout uncut', !phone.cut && phone.out.length === 0, phone);
-  await mediaOn(false);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
   ok('hover: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();

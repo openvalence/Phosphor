@@ -537,7 +537,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 // Player = {
 //   mount(el, fields, opts = {}) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
-//       opts.fullscreen: the hover bar offers media fullscreen and the shell's mode (the page mount, page.js)
+//       opts.fullscreen: the bar offers media fullscreen, one mode, always bare (PR8; the page mount, page.js); the hover
+//         bar exists only there, its row the player bar's own buttons (PR9); phone rotation enters and leaves it (PR17)
 //       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
 //       opts.page: the page mount: composition by pageClass (portrait handheld, landscape and desktop full),
 //         the Player and Library shell cards (PR1); the dash card composes by its own box (compositionOf)

@@ -34,17 +34,17 @@
 // - Prev and next step the script's chapters (metadata), else its bookmarks, the library's loaded list
 //   (library.js step) only when it has neither; Close (the head's) unloads the media and returns to the
 //   library. Rate scales the stroke speed shown and checked against the input limit.
-// - A double-click on the stage is the shell's page fullscreen (ask event): detail.bare is true in
-//   Borderless (no chrome) and false in In window (the shell keeps the hero rail). A single click waits
-//   DOUBLE_MS so a double never toggles Play.
+// - Fullscreen is one mode (PR8): the shell's page fullscreen, the ask always bare; the bar's button, f and a
+//   double-click on the stage ask it. A single click waits DOUBLE_MS so a double never toggles Play. On the phone
+//   class a turn to landscape with a video enters it and the turn back leaves it (PR17).
 // - The split bar (.fsp-split, between the stage and the timeline head, desktop only; its row is var(--tap) under a coarse
 //   pointer, its hit box never past the 4 px gaps otherwise) sizes the wave card: drag, arrows
 //   (8 px, Shift 1), double-click for the default; the stage keeps at least MIN_STAGE px (a grid track
 //   minimum, so the card's min-height and the page scroll follow). The pref
 //   split holds the px, 0 the composition's default. Hiding the library or the page's Settings never
 //   shrinks the stage (page.js).
-// - The hover bar outside media fullscreen holds only Fullscreen and its mode (the transport has the rest;
-//   m mutes); in media fullscreen it is the whole bar.
+// - The hover bar exists in media fullscreen only (PR9); its row is the player bar's own buttons, moved in on entry
+//   and back on exit. m mutes.
 // - The top row keeps clear of the Borderless stop pair: the library column (full) starts below it, else
 //   the source row pads by the shell's --stop-reserve.
 // - Open video and Open script (PR3) sit on the empty stage and in the head (the Media menu on the handheld
@@ -61,12 +61,8 @@
 //   never picture-in-picture or element fullscreen (law 1: nothing may cover the strip).
 // - The hover bar acts through the controller (toggle, seek): it never
 //   calls the video's play() or pause() or sets currentTime. Volume and mute are the video's
-//   own, stored as prefs audio; the bar holds the card's only mute and volume. Its fullscreen
-//   is the shell's page fullscreen, bare (the stop
-//   pair stays): a page mount only (opts.fullscreen), asked by the cancelable
-//   'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
-//   Its mode button shows only where the shell sets <html data-fullscreen-mode> (the
-//   desktop shell) and asks by 'phosphor-page-fullscreen-mode' {mode}; it never stores the pref.
+//   own, stored as prefs audio (the bar's volume, m). Fullscreen is a page mount's only (opts.fullscreen),
+//   asked by the cancelable 'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
@@ -159,7 +155,7 @@ export const COPY = Object.freeze({
   unmuteKey: 'Unmute (m)',
   seek: 'Seek',
   full: 'Fullscreen (f)',
-  mode: 'In window / Borderless',
+
   fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
@@ -176,8 +172,7 @@ const ICON = {
   muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
   full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
   unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
-  win: ['', 'M2 3.5h12v9H2zM2 6h12'],
-  bdl: ['', 'M1.5 2.5h13v9h-13zM6 14h4M8 11.5V14'],
+
   caret: ['', 'M6.5 5l3 3-3 3'],
   prev: ['M13 3v10L6 8z', 'M3 3v10'],
   next: ['M3 3v10l7-5z', 'M13 3v10'],
@@ -839,6 +834,7 @@ export const CSS = `
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-page][data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) calc(clamp(320px, 40%, 560px) + 2 * var(--sp-4)); }
 .fsp[data-media] > .fsp-stage { margin: 0; }
+.fsp[data-media] { min-height: 0 !important; }
 .fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--sp-3); }
 .fsp[data-media] .fsp-vbox { border: 0; border-radius: 0; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) 20px;
@@ -852,13 +848,14 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
 .fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
-.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: var(--sp-5) var(--sp-2) 0;
+.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px auto; padding: var(--sp-5) var(--sp-2) 0;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
   opacity: 0; transition: opacity var(--t-move, 200ms) var(--ease-out, ease); pointer-events: none; }
 .fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
-@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: var(--sp-3); } }
-@container (max-height: 129px) { .fsp-hb { display: none; } }
-@container (max-width: 439px) { .fsp-hb-vol, .fsp-hov .fsp-hb-mode { display: none; } }
+@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; padding-top: var(--sp-3); } }
+/* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
+@container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
+
 .fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 var(--sp-2); cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
 .fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
@@ -871,17 +868,13 @@ export const CSS = `
 .fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
 .fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); font: .75rem var(--mono); color: var(--tx);
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }
-.fsp:not([data-media]) :is(.fsp-hb-seek, .fsp-hb-play, .fsp-hb-mute, .fsp-hb-vol, .fsp-hb-time) { display: none; }
-.fsp:not([data-media]) .fsp-hb { grid-template-rows: var(--tap); padding-top: var(--sp-3); }
+.fsp:not([data-media]) .fsp-hov { display: none; }
+.fsp[data-fswave] .fsp-hb { grid-template-rows: 72px 16px auto; --fsp-detail: 72px; }
+@media (pointer: coarse) { .fsp[data-fswave] .fsp-hb { grid-template-rows: 72px var(--tap) auto; } }
+.fsp-hb > .fsp-tl { margin: 0 var(--sp-2) var(--sp-2); }
+.fsp-hb-row > .og-btn { flex: none; min-height: var(--tap); }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-.fsp-hb-b { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); padding: 0; color: var(--tx); background: none;
-  border: 0; border-radius: var(--r-s); cursor: pointer; }
-.fsp-hb-b:hover { color: var(--tx-hi); }
-.fsp-hb-b:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
-.fsp-hb-b:disabled { opacity: .4; cursor: default; }
-.fsp-hb-b svg { width: 20px; height: 20px; fill: currentColor; }
-.fsp-hb-b svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-hb-vol { flex: 0 1 80px; min-width: 48px; height: var(--tap); margin: 0; accent-color: var(--highlight); cursor: pointer; }
+
 .fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
@@ -1081,7 +1074,7 @@ export function createPlayer(api) {
 
   function makeView(el, fields, opts) {
     const st = ctl.state;
-    let comp = '';
+    let comp = '', prevCls = '';
     const picker = (accept, multiple, fn) => {
       const f = h('input', { type: 'file', accept, hidden: '', ...(multiple ? { multiple: '' } : {}) });
       f.addEventListener('change', () => { if (f.files && f.files.length) fn(f.files); f.value = ''; });
@@ -1154,7 +1147,6 @@ export function createPlayer(api) {
     const status = h('div', { class: 'fsp-slot', 'aria-live': 'polite' });
     const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
 
-    const hbBtn = (cls) => { const b = h('button', { type: 'button', class: 'fsp-hb-b ' + cls }); b.append(icon()); return b; };
     const setIcon = (b, [f, k], tip) => {
       const [pf, pk] = b.firstChild.children;
       if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
@@ -1286,7 +1278,8 @@ export function createPlayer(api) {
     window.addEventListener('phosphor-quick-rail-change', onRail);
     railB.addEventListener('click', () => railB.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open: 'toggle' } })));
     const railPath = () => (api.icons && api.icons.quickRail && document.documentElement.dataset.quickRail ? api.icons.quickRail : '');
-    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, h('span', { class: 'fsp-brk' }), vol, motion, rate, fullB, railB, setB);
+    const brk = h('span', { class: 'fsp-brk' });
+    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, brk, vol, motion, rate, fullB, railB, setB);
     const tlCaret = h('button', { type: 'button', class: 'fsp-tlcaret', 'aria-expanded': 'true' });
     tlCaret.append(icon(), h('span', { text: COPY.timeline }));
     tlCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
@@ -1308,11 +1301,9 @@ export function createPlayer(api) {
     for (const t of META) vel.addEventListener(t, onMeta);
     applySplit();
     // ---- the hover bar over the video ----
-    const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full'), hbMode = hbBtn('fsp-hb-mode');
-    hbFull.hidden = !opts.fullscreen;
-    const fsMode = () => document.documentElement.dataset.fullscreenMode || '';
-    hbMode.addEventListener('click', () => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode',
-      { detail: { mode: fsMode() === 'borderless' ? 'window' : 'borderless' } })));
+    // PR9: the timeline toggle shows a 72 px wave over the video, above the scrub (fullscreen only).
+    const tlTog = trBtn('fsp-tltog', ICON.scr, COPY.timeline);
+    tlTog.setAttribute('aria-pressed', 'false');
     const libCaret = h('button', { type: 'button', class: 'fsp-libcaret', title: COPY.library, 'aria-label': COPY.library });
     libCaret.append(icon());
     libCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
@@ -1321,35 +1312,51 @@ export function createPlayer(api) {
     const setLib = (on) => { root.toggleAttribute('data-libshut', !on); libCaret.setAttribute('aria-expanded', String(on)); if (comp) recompose(); };
     setLib(readPrefs(api).libOpen);
     src.append(libCaret);
-    const hbVol = h('input', { class: 'fsp-hb-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     const hbTime = h('span', { class: 'fsp-hb-time' });
     const hbBuf = h('i', { class: 'fsp-hb-buf' }), hbPlayed = h('i', { class: 'fsp-hb-played' });
     const hbTip = h('span', { class: 'fsp-hb-tip', hidden: '' });
     const seek = h('div', { class: 'fsp-hb-seek', role: 'slider', tabindex: '0', 'aria-label': COPY.seek, 'aria-valuemin': '0' },
       h('div', { class: 'fsp-hb-track' }, hbBuf, hbPlayed), hbTip);
-    const hb = h('div', { class: 'fsp-hb' }, seek,
-      h('div', { class: 'fsp-hb-row' }, hbPlay, hbMute, hbVol, hbTime, h('span', { class: 'fsp-hb-gap' }), hbMode, hbFull));
+    // PR9: the hover bar exists in fullscreen only; its row is the player bar's own buttons, moved in on entry and
+    // back on exit (one set of controls, one set of listeners): prev, Play, next, time, Motion, rate, the timeline
+    // toggle, the quick rail, Settings, Exit fullscreen.
+    const hbRow = h('div', { class: 'fsp-hb-row' }, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
+    const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);
     const hov = h('div', { class: 'fsp-hov' }, hb);
     vbox.append(hov);
-    hbPlay.addEventListener('click', () => ctl.toggle());
-    hbMute.addEventListener('click', () => setMuted(!video.muted));
-    hbVol.addEventListener('input', () => { video.volume = clamp(+hbVol.value, 0, 1); if (video.volume > 0) video.muted = false; });
-    hbVol.addEventListener('change', saveAudio);
-    // Shown on pointer movement, hidden after HOVER_IDLE_MS idle and on leave, kept while the pointer
-    // rests on the bar or drags the seek. A touch on the hidden bar's video shows it without toggling.
+    const trKids = () => [prevB, play, nextB, time, tr.querySelector('.fsp-ov'), rem, brk, vol, motion, rate, fullB, railB, setB].filter(Boolean);
+    const toBar = (on) => {
+      if (on) {
+        hbTime.before(prevB, play, nextB);
+        tlTog.before(motion, rate);
+        tlTog.after(railB, setB, fullB);
+      } else tr.append(...trKids());
+    };
+    const fsWave = (on) => {
+      const w = tlbox.querySelector('.fsp-tl') || hb.querySelector('.fsp-tl');
+      if (on) hb.prepend(w); else tlbox.append(w);
+      root.toggleAttribute('data-fswave', on);
+      tlTog.setAttribute('aria-pressed', String(on));
+      tlTog.classList.toggle('on', on);
+    };
+    tlTog.addEventListener('click', () => fsWave(!root.hasAttribute('data-fswave')));
+    // Inline there is no overlay: a click or tap toggles Play (DOUBLE_MS apart from a double, which is fullscreen).
+    // In fullscreen the bar shows on pointer movement and hides after HOVER_IDLE_MS idle and on leave, kept while the
+    // pointer rests on it or drags the seek; a touch on the hidden bar's video shows it without toggling.
     let idle = 0, drag = null, tapShow = false, clickT = 0;
     const hide = () => { if (drag == null && !hb.matches(':hover')) hov.removeAttribute('data-show'); };
     const poke = () => { hov.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, HOVER_IDLE_MS); };
     stage.addEventListener('pointermove', poke);
     stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
-    stage.addEventListener('pointerdown', (e) => { tapShow = e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
+    stage.addEventListener('pointerdown', (e) => { tapShow = media && e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
     stage.addEventListener('click', (e) => {
       if (!st.scene || !st.scene.stream) { tapShow = false; return; }
       clearTimeout(clickT);
-      if (!tapShow && !e.target.closest('.fsp-hb') && e.detail < 2) clickT = setTimeout(() => ctl.toggle(), DOUBLE_MS);
+      // A control's click is not the video's (an Exit fullscreen has already moved its button out of the stage).
+      if (!tapShow && vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && e.detail < 2) clickT = setTimeout(() => ctl.toggle(), DOUBLE_MS);
       tapShow = false;
     });
-    stage.addEventListener('dblclick', (e) => { if (!e.target.closest('.fsp-hb') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
+    stage.addEventListener('dblclick', (e) => { if (vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
     const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
     const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
     seek.addEventListener('pointerdown', (e) => {
@@ -1373,8 +1380,16 @@ export function createPlayer(api) {
     seek.addEventListener('pointercancel', endDrag);
     seek.addEventListener('pointerleave', () => { if (drag == null) hbTip.hidden = true; });
     // Media fullscreen: the shell's page fullscreen, bare, with the video alone until it ends.
+    // PR8: one mode, the shell's page fullscreen, always bare.
     let media = false;
-    const setMedia = (on) => { media = on; root.toggleAttribute('data-media', on); render(); };
+    const setMedia = (on) => {
+      if (on === media) return;
+      media = on;
+      if (!on && root.hasAttribute('data-fswave')) fsWave(false);
+      toBar(on);
+      root.toggleAttribute('data-media', on);
+      render();
+    };
     const fullscreen = () => {
       if (!media && st.scene && !st.scene.stream) return;
       const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: true } });
@@ -1382,7 +1397,6 @@ export function createPlayer(api) {
     };
     const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
     if (opts.fullscreen) window.addEventListener('phosphor-page-fullscreen-change', onFull);
-    hbFull.addEventListener('click', fullscreen);
 
     const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
     root.addEventListener('keydown', (e) => {
@@ -1430,6 +1444,13 @@ export function createPlayer(api) {
     const recompose = () => {
       const cls = opts.page ? pageClass(+document.documentElement.dataset.bucket || 3, innerWidth, innerHeight) : '';
       if (cls) attr(root, 'data-cls', cls);
+      // PR17: on the phone class a turn to landscape with a video enters fullscreen and the turn back leaves it; only a
+      // rotation does, so an Exit in landscape holds until the next one.
+      if (opts.fullscreen && prevCls && cls !== prevCls && (prevCls === 'portrait' || prevCls === 'landscape')) {
+        if (cls === 'landscape' && !media && st.scene && st.scene.stream) fullscreen();
+        else if (cls === 'portrait' && media) fullscreen();
+      }
+      prevCls = cls;
       const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
       if (c !== comp) {
         comp = c;
@@ -1464,24 +1485,17 @@ export function createPlayer(api) {
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setIcon(play, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       play.disabled = !act && !ctl.canPlay();
-      setIcon(hbPlay, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
-      hbPlay.disabled = play.disabled;
+
       const mk = marks(), mt = ctl.mediaNow();
       prevB.disabled = mk.length ? !st.scene : !(library && library.canStep(-1));
       nextB.disabled = mk.length ? !mk.some((x) => x > mt + 250) : !(library && library.canStep(1));
       closeH.disabled = mClose.disabled = !st.scene;
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
-      hbFull.disabled = noVid;
+
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
-      setIcon(hbMute, video.muted ? ICON.muted : ICON.vol, video.muted ? COPY.unmuteKey : COPY.muteKey);
-      setIcon(hbFull, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full);
-      const fm = fsMode();
-      hbMode.hidden = !opts.fullscreen || !fm;
-      setIcon(hbMode, fm === 'borderless' ? ICON.bdl : ICON.win, COPY.mode);
-      attr(hbMode, 'aria-pressed', String(fm === 'borderless'));
-      if (document.activeElement !== hbVol) hbVol.value = String(video.muted ? 0 : video.volume);
+
       attr(motion, 'aria-pressed', String(st.motion));
       motion.classList.toggle('on', st.motion);
       attr(inv, 'aria-pressed', String(st.T.invert));
