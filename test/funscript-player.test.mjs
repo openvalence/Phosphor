@@ -1117,6 +1117,92 @@ if (!LIVE && !STASH_LIVE) {
     await ctx.close();
   }
 }
+// ---- (l) the library per class (ph-1qs5.6, PR13): rows and now-playing on the phone, the fullscreen drawer, the column ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(l) library');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('library ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    if (cls === 'portrait') await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+    if (await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'))) await page.locator(C + ' .fsp-libcaret').click();
+    await page.waitForTimeout(300);
+    const connect = await page.locator(C + ' .fsp-connect').evaluate((c) => ({ rows: !!c.querySelector('.fsp-rows'),
+      labels: [...c.querySelectorAll('.fsp-rl')].map((l) => getComputedStyle(l).textTransform) })).catch(() => null);
+    ok('library ' + at + ': the Stash connect card takes the settings rows\' form', !!connect && connect.rows && connect.labels.length === 2
+      && connect.labels.every((t) => t === 'lowercase'), connect);
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-tile', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const lk = () => page.locator(C).evaluate((r) => { const box = r.querySelector('.fsp-libbox'), g = r.querySelector('.fsp-grid');
+      return { rows: r.querySelector('.fsp-lib').hasAttribute('data-rows'), n: g.children.length, page: r.querySelector('.fsp-lib-foot output').textContent,
+        scroll: box.scrollHeight - box.clientHeight, gscroll: g.scrollHeight - g.clientHeight }; });
+    const l0 = await lk();
+    if (cls === 'portrait') {
+      ok('library ' + at + ': the Library tab shows rows, paged, with no scroller (D19)', l0.rows && l0.n > 0 && l0.scroll <= 0 && l0.gscroll <= 0, l0);
+      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      await page.waitForTimeout(500);
+      const l1 = await lk();
+      ok('library ' + at + ': paging moves to the next page', /^page 2 \//.test(l1.page), [l0.page, l1.page]);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+      await page.waitForTimeout(300);
+      const nowShown = await page.locator(C + ' .fsp-now').isVisible();
+      await page.locator(C + ' .fsp-nowb').click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+      const playing = await video(page, (v) => !v.paused);
+      await page.locator(C + ' .fsp-nowb').click();
+      await page.waitForTimeout(300);
+      const paused = await video(page, (v) => v.paused);
+      ok('library ' + at + ': the now-playing row (title, position, Play/Pause) plays and pauses the scene under the tab',
+        nowShown && playing && paused && (await page.locator(C + ' .fsp-nowt').textContent()).length > 0, { nowShown, playing, paused });
+      ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').textContent()) === '02Library');
+    } else if (cls === 'desktop') {
+      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
+        head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
+      ok('library ' + at + ': the side column with its caret, tiles, under 02 LIBRARY', col.caret && col.tiles && col.head === '02Library' && l0.n > 0, col);
+    } else {
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(600);
+      await page.mouse.move(300, 200);
+      await page.locator(C + ' .fsp-hb .fsp-libb').evaluate((e) => e.click());
+      await page.waitForTimeout(600);
+      const dr = await page.evaluate((c) => {
+        const b = document.querySelector(c + ' .fsp-libbox').getBoundingClientRect(), hit = (a, x) => a.left < x.right && a.right > x.left && a.top < x.bottom && a.bottom > x.top;
+        const pair = ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((q) => document.querySelector(q)).filter((e) => e && e.getClientRects().length).map((e) => e.getBoundingClientRect());
+        return { right: Math.round(innerWidth - b.right), w: Math.round(b.width), pairs: pair.length, covers: pair.some((p) => hit(b, p)) };
+      }, C);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-drawer-' + at + '.png') });
+      const before = await page.locator(C + ' .fsp-title').textContent();
+      await page.locator(C + ' .fsp-tile').nth(1).click();
+      await page.waitForTimeout(600);
+      const closed = !(await page.locator(C).evaluate((r) => r.hasAttribute('data-libdrawer')));
+      const after = await page.locator(C + ' .fsp-title').textContent();
+      ok('library ' + at + ': in fullscreen the drawer opens at the right edge clear of the stop pair; a pick loads and closes it',
+        dr.right === 0 && dr.pairs > 0 && !dr.covers && closed && after !== before, { dr, closed, before, after });
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+    }
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-' + at + '.png') });
+    ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  await stash.close();
+}
+
 // ---- (t) the theme (operator 2026-10-08): every player color follows the shell's preset ----
 // The player in two presets whose chassis and accents both differ: a color that stays put is a literal, unless it is a
 // locked safety token (law 13). With --shots, the page at 420x860 and 1428x900 under every preset, in <shots>/themes/.

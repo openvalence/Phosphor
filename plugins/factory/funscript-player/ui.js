@@ -174,6 +174,7 @@ const ICON = {
   unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
 
   caret: ['', 'M6.5 5l3 3-3 3'],
+  lib: ['', 'M2 2.5h5v5H2zM9 2.5h5v5H9zM2 9.5h5v4H2zM9 9.5h5v4H9z'],
   prev: ['M13 3v10L6 8z', 'M3 3v10'],
   next: ['M3 3v10l7-5z', 'M13 3v10'],
   graph: ['', 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8'],
@@ -879,6 +880,19 @@ export const CSS = `
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
+/* PR13: the fullscreen library drawer, under the stop pair; the phone tab's now-playing row. */
+.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
+  right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) var(--sp-4); visibility: visible; box-sizing: border-box;
+  background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
+.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: flex; }
+.fsp-libb { display: none; }
+.fsp[data-media] .fsp-libb { display: inline-flex; }
+.fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
+.fsp[data-comp=handheld][data-view=library]:not([data-media]) .fsp-now { display: flex; }
+.fsp-nowt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
+.fsp-nowm { flex: none; font: .76rem var(--mono); color: var(--tx-val); }
+.fsp[data-comp=handheld] .fsp-libbox { display: flex; flex-direction: column; }
+.fsp[data-comp=handheld] .fsp-lib { flex: 1 1 auto; min-height: 0; }
 .fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; width: auto; height: auto; clip-path: none; justify-self: stretch;
   visibility: visible; border-radius: 0; }
 .fsp[data-media] .fsp-stage::before { display: none; }
@@ -1127,7 +1141,13 @@ export function createPlayer(api) {
       menu.style.top = r.bottom + 4 + 'px';
       menu.style.left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
     });
-    const head = opts.page ? h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '01' }), COPY.player) : '';
+    const head = opts.page ? h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '01' }), h('span', { text: COPY.player })) : '';
+    // PR13: the phone's Library tab ends in a now-playing row: Play or Pause, the title, the position.
+    const nowB = h('button', { type: 'button', class: 'og-btn sm fsp-ic fsp-nowb' });
+    nowB.append(icon());
+    nowB.addEventListener('click', () => ctl.toggle());
+    const nowT = h('span', { class: 'fsp-nowt' }), nowM = h('output', { class: 'fsp-nowm' });
+    const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM);
     const src = h('div', { class: 'fsp-src' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
       openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, h('span', { role: 'tablist' }, tabP, tabL), fileV, fileS);
 
@@ -1314,7 +1334,14 @@ export function createPlayer(api) {
     // PR9: the hover bar exists in fullscreen only; its row is the player bar's own buttons, moved in on entry and
     // back on exit (one set of controls, one set of listeners): prev, Play, next, time, Motion, rate, the timeline
     // toggle, the quick rail, Settings, Exit fullscreen.
-    const hbRow = h('div', { class: 'fsp-hb-row' }, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
+    // PR13: in fullscreen the library is a drawer from the right under the stop pair, closed by a pick or a tap outside.
+    const libB = trBtn('fsp-libb', ICON.lib, COPY.library);
+    libB.setAttribute('aria-pressed', 'false');
+    const setDrawer = (on) => { root.toggleAttribute('data-libdrawer', on); libB.setAttribute('aria-pressed', String(on)); libB.classList.toggle('on', on); };
+    libB.addEventListener('click', () => setDrawer(!root.hasAttribute('data-libdrawer')));
+    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) setDrawer(false); };
+    document.addEventListener('pointerdown', drawerOut, true);
+    const hbRow = h('div', { class: 'fsp-hb-row' }, libB, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
     const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);
     const hov = h('div', { class: 'fsp-hov' }, hb);
     vbox.append(hov);
@@ -1380,6 +1407,7 @@ export function createPlayer(api) {
       if (on === media) return;
       media = on;
       if (!on && root.hasAttribute('data-fswave')) fsWave(false);
+      if (!on) setDrawer(false);
       toBar(on);
       root.toggleAttribute('data-media', on);
       render();
@@ -1444,6 +1472,7 @@ export function createPlayer(api) {
         if (cls === 'landscape' && !media && st.scene && st.scene.stream) fullscreen();
         else if (cls === 'portrait' && media) fullscreen();
       }
+      if (library && cls !== prevCls) library.fit();
       prevCls = cls;
       const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -1451,7 +1480,9 @@ export function createPlayer(api) {
         root.dataset.comp = c;
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
-          library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, fetch: (u, i) => api.net.fetch(u, i) });
+          library = mountLibrary(lib, { getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
+            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media });
+          lib.append(now);
           if (opts.page) lib.prepend(h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '02' }), COPY.library));
         }
       }
@@ -1513,6 +1544,14 @@ export function createPlayer(api) {
       tabP.setAttribute('aria-selected', String(st.view === 'player'));
       tabL.setAttribute('aria-selected', String(st.view === 'library'));
       setText(title, st.scene ? st.scene.title : '');
+      setText(nowT, st.scene ? st.scene.title : '');
+      setIcon(nowB, act ? ICON.pause : ICON.play, act ? COPY.pause : COPY.play);
+      nowB.disabled = play.disabled;
+      if (head) {
+        const libTab = comp === 'handheld' && st.view === 'library';
+        setText(head.firstChild, libTab ? '02' : '01');
+        setText(head.lastChild, libTab ? COPY.library : COPY.player);
+      }
       empty.hidden = !!st.scene;
       mo.hidden = !noVid;
       setText(status, st.status.text);
@@ -1528,6 +1567,7 @@ export function createPlayer(api) {
       setText(rem, '-' + fmtTime(Math.max(0, d - m)));
       if (d !== durSeen) { durSeen = d; time.style.minWidth = fmtTime(d).length + 'ch'; rem.style.minWidth = fmtTime(d).length + 1 + 'ch'; }
       setText(hbTime, tt);
+      setText(nowM, fmtTime(m));
       let buf = 0;
       for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
       hbPlayed.style.width = (d > 0 ? clamp(m / d, 0, 1) * 100 : 0) + '%';
@@ -1576,6 +1616,7 @@ export function createPlayer(api) {
         clearTimeout(clickT);
         window.removeEventListener('phosphor-page-fullscreen-change', onFull);
         window.removeEventListener('resize', recompose);
+        document.removeEventListener('pointerdown', drawerOut, true);
         window.removeEventListener('phosphor-quick-rail-change', onRail);
         for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();

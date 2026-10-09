@@ -14,9 +14,11 @@
 // - fitGrid(W, H) is exported for the node test.
 
 import { COPY as STASH_COPY, SORTS, normalizeBase, createStash } from './stash.js';
+import { rowsBox, sub } from './rows.js';
 
 export const COPY = Object.freeze({
   search: 'Search',
+  stash: 'Stash',
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
@@ -45,6 +47,8 @@ const LIB = { q: '', sort: 'date', direction: 'DESC' };
 const GAP = 8;
 const TILE_TEXT = 44;   // px under the 16:9 shot: title 20 + meta 18 + two 3 px gaps (CSS .fsp-tile)
 const TILE_MIN = 150, TILE_MAX = 300;
+// Rows (phone portrait, PR13): a 16:9 thumbnail ROW_H high beside the title and the meta.
+export const ROW_H = 56;
 
 export const CSS = `
 .fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: ${GAP}px; height: 100%; min-height: 0; overflow: hidden; }
@@ -79,7 +83,13 @@ export const CSS = `
 .fsp-lib-foot .fsp-n { flex: 0 0 auto; min-width: 9ch; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: ${GAP}px; align-content: start; max-width: var(--measure); }
-.fsp-connect label { display: grid; gap: var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
+.fsp-connect .fsp-rows > .fsp-in { grid-column: 2 / -1; }
+.fsp-connect .fsp-row { grid-column: 2 / -1; }
+.fsp-lib[data-rows] .fsp-tile { grid-template-columns: calc(${ROW_H}px * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 20px 18px 1fr; column-gap: var(--sp-3);
+  height: ${ROW_H}px; }
+.fsp-lib[data-rows] .fsp-shot { grid-area: 1 / 1 / 5 / 2; height: ${ROW_H}px; }
+.fsp-lib[data-rows] .fsp-t { grid-area: 2 / 2; }
+.fsp-lib[data-rows] .fsp-m { grid-area: 3 / 2; }
 .fsp-status { margin: 0; height: 20px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .78rem; color: var(--tx-val); }
 .fsp-status[data-tone=ok] { color: var(--reality); }
 `;
@@ -136,7 +146,7 @@ function clockText(ms) {
  * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function}} o
  * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
  */
-export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null }) {
+export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null, rows = () => false }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
 
@@ -263,7 +273,10 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
   }
 
   function fit() {
-    const f = fitGrid(body.clientWidth, body.clientHeight);
+    const asRows = rows();
+    root.toggleAttribute('data-rows', asRows);
+    const n = Math.max(1, Math.floor((body.clientHeight + GAP) / (ROW_H + GAP)));
+    const f = asRows ? { cols: 1, rows: n, perPage: n } : fitGrid(body.clientWidth, body.clientHeight);
     grid.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
     if (f.perPage === perPage) return;
     const first = (page - 1) * perPage;
@@ -300,7 +313,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
   refresh();
 
   return {
-    refresh, step, canStep,
+    refresh, step, canStep, fit,
     unmount() {
       seq++;
       clearTimeout(typing);
@@ -328,8 +341,13 @@ export function mountConnect(el, { api, onSaved, client }) {
   const saveBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.save });
   const testBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.test });
   const status = h('p', { class: 'fsp-status', role: 'status', 'aria-live': 'polite' });
-  const root = h('div', { class: 'fsp-connect' }, h('style', { text: CSS }),
-    h('label', {}, COPY.url, url), h('label', {}, COPY.key, key), h('div', { class: 'fsp-row' }, saveBtn, testBtn), status);
+  // The settings rows' form (PR13, rows.js): label | the field across the control and value cells.
+  const rowsEl = rowsBox(COPY.stash);
+  rowsEl.append(sub(COPY.stash), h('span', { class: 'fsp-rl', text: COPY.url }), url, h('span', { class: 'fsp-rl', text: COPY.key }), key,
+    h('span'), h('div', { class: 'fsp-row' }, saveBtn, testBtn));
+  url.setAttribute('aria-label', COPY.url);
+  key.setAttribute('aria-label', COPY.key);
+  const root = h('div', { class: 'fsp-connect' }, h('style', { text: CSS }), rowsEl, status);
   el.append(root);
 
   let seq = 0;

@@ -495,7 +495,9 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 // library.js
 export const CSS, COPY;
 export function fitGrid(W, H);   // -> {cols, rows, perPage}: tiles 150..300 px wide that fit, at least one
-export function mountLibrary(el, { getStash, prefs, onPick, fetch });   // -> { refresh(), unmount() }
+export function mountLibrary(el, { getStash, prefs, onPick, fetch, rows });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+  // rows: () -> boolean, the phone's row form (PR13: a 56 px thumbnail beside the title and the meta, ROW_H); fit()
+  // re-measures the page size after a form change
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
   // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())

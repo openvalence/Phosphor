@@ -549,6 +549,15 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   Landscape fullscreen: a drawer from the right under the stop pair (which
   never moves), closed by a pick or a tap outside. Desktop: the side column
   with its caret (`ph-n4t7`'s caret stands there).
+- **As built, PR13 (`ph-1qs5.6`):** a row is the 16:9 thumbnail 56 px
+  high beside the title and `duration · speed` (the mockup's P6; no other
+  actions), one per line, as many as fit (`ROW_H`). The now-playing row
+  holds Play or Pause, the title and the position; on the tab the head
+  reads 02 LIBRARY. The fullscreen drawer opens from a Library button at
+  the start of the hover bar's row, on any fullscreen (desktop too), and
+  closes on a pick, a tap outside or the end of fullscreen. The Stash
+  connect card is rows.js's form (label, the field across the control and
+  value cells).
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
