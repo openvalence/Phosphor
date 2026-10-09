@@ -182,7 +182,7 @@ export const CSS = `
 .fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; translate: -1px 0; background: var(--highlight); pointer-events: none; z-index: 1; }
 .fsp-tl > * { box-sizing: border-box; }
 .fsp-ov, .fsp-dt { background: var(--screen); box-shadow: inset 0 2px 8px rgba(var(--shade-rgb), .7); }
-.fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); touch-action: none; user-select: none; cursor: pointer; }
+.fsp-ov { position: relative; height: 24px; flex: none; border: 1px solid var(--line); border-radius: var(--r-s); user-select: none; cursor: pointer; }
 .fsp-ov::before { content: ''; position: absolute; inset: -8px 0; }
 .fsp-ov svg, .fsp-dt svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .fsp-ov rect.bin.over { fill: var(--warn); }
@@ -231,7 +231,7 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
+export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
@@ -254,23 +254,13 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {},
     const r = ov.getBoundingClientRect();
     return seekAt(e.clientX - r.left, r.width, dur());
   };
-  let scrubId = null;
-  ov.addEventListener('pointerdown', (e) => {
-    if (!script) return;
-    e.preventDefault();
-    ov.setPointerCapture(e.pointerId);
-    scrubId = e.pointerId;
-    scrub.focus({ preventScroll: true });
-    onScrub('start', at(e));
+  // The kit's drag (ph-5u0g peeve 14): a touch scrubs only after horizontal intent or a hold, so a vertical swipe scrolls.
+  ui.drag(ov, {
+    filter: () => !!script,
+    onStart(d, e) { scrub.focus({ preventScroll: true }); onScrub('start', at(e)); },
+    onMove(e) { onScrub('move', at(e)); },
+    onEnd(e, ok) { if (ok) onScrub('end', at(e)); },
   });
-  ov.addEventListener('pointermove', (e) => { if (e.pointerId === scrubId) onScrub('move', at(e)); });
-  const scrubEnd = (e) => {
-    if (e.pointerId !== scrubId) return;
-    scrubId = null;
-    onScrub('end', at(e));
-  };
-  ov.addEventListener('pointerup', scrubEnd);
-  ov.addEventListener('pointercancel', scrubEnd);
   scrub.addEventListener('keydown', (e) => {
     if (!script) return;
     const d = SEEK_KEYS[e.key];

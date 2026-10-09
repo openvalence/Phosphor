@@ -449,18 +449,7 @@
   .dash-head.over .tools { pointer-events: auto; }
   .editing .dash-name, .editing .dash-title-edit { max-width: calc(100% - var(--tools-w)); }
   .dash-item { outline-offset: 2px; }
-  .dash-title {
-    font-family: var(--font);
-    font-size: var(--dash-title-size, .8rem);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    color: var(--tx-val);
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  /* The card title's voice and its index (.dash-title, [data-pidx]) are style.css's: the plugin kit wears them too. */
   /* One line at any width: zero width keeps the title and its count out of
      the card's measured content floor (DashGrid), so a count appearing never
      raises the floor or moves a control; the pair grows into what is left. */
@@ -481,27 +470,7 @@
     color: var(--intent);
   }
   .dash-busy.overdue { color: var(--warn); }
-  /* Runtime index, not a CSS counter: mirrors the OG's renumberPanels() --
-     a counter renumbers by DOM order and breaks across hidden/filtered
-     panes, so DashGrid computes the 1-based position and stamps it here. */
-  .dash-title[data-pidx]::before {
-    content: attr(data-pidx) "\2002\25B8\2002";
-    font-family: var(--mono);
-    font-size: .62rem;
-    /* weight/width axis pinned rather than inherited from .dash-title's 500 --
-       OG's card-head h2[data-pidx]::before verbatim (og-ref/style.css). */
-    font-weight: 400;
-    font-variation-settings: 'wght' var(--num-wght), 'wdth' 90;
-    letter-spacing: normal;
-    text-transform: none;
-    color: var(--tx-faint);
-    vertical-align: 1px;
-  }
-  .dash-title:not([data-pidx])::before {
-    content: "\25B8 ";
-    letter-spacing: normal;
-    color: var(--line-3);
-  }
+
 
   /* Fills the rest of the frame, so a resize in cells shows on the surface. */
   .dash-body {

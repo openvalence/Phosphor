@@ -49,15 +49,14 @@ const CONTRACT = {
     'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'EXPECT_MS', 'applyT', 'knotVel', 'strokeSpeed',
     'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
-  [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
+  [P + 'library.js']: ['CSS', 'COPY', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
     'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
-  [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
+  [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
-  [P + 'rows.js']: ['CSS', 'rowsBox', 'sub', 'sliderRow', 'switchRow'],
-  [P + 'queue.js']: ['COPY', 'LONG_PRESS_MS', 'CSS', 'toStored', 'fromStored', 'move', 'mountQueue'],
+  [P + 'queue.js']: ['COPY', 'toStored', 'fromStored', 'move', 'mountQueue'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
@@ -115,13 +114,8 @@ if (prefs) {
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
-    const { offsetKey, offsetDrag } = mods[P + 'ui.js'], { pillKey } = mods[P + 'timeline.js'];
-    ok('modifiers: an offset key steps 5 ms, Shift the same, Ctrl the adjacent 100 ms multiple',
-      offsetKey(0, 1) === 5 && offsetKey(0, 1, { shiftKey: true }) === 5 && offsetKey(0, 1, { ctrlKey: true }) === 100
-      && offsetKey(100, 1, { ctrlKey: true }) === 200 && offsetKey(130, -1, { ctrlKey: true }) === 100 && offsetKey(100, -1, { ctrlKey: true }) === 0
-      && offsetKey(500, 1) === 500);
-    ok('modifiers: the offset drag takes 4 px per 5 ms, Shift a tenth of that, Ctrl rounds to 100',
-      offsetDrag(0, 40) === 50 && offsetDrag(0, 40, { shiftKey: true }) === 5 && offsetDrag(0, 90, { ctrlKey: true }) === 100);
+    // The offset's keys and drag are the kit's number box (src/plugins/kit.js stepper; test/plugin-ui-kit.test.mjs).
+    const { pillKey } = mods[P + 'timeline.js'];
     ok('modifiers: a range pill key steps 1 %, Shift the same, Ctrl the adjacent 10 %',
       Math.abs(pillKey(0.5, 1) - 0.51) < 1e-9 && Math.abs(pillKey(0.5, 1, { shiftKey: true }) - 0.51) < 1e-9
       && Math.abs(pillKey(0.5, 1, { ctrlKey: true }) - 0.6) < 1e-9 && Math.abs(pillKey(0.55, -1, { ctrlKey: true }) - 0.5) < 1e-9);
@@ -871,7 +865,7 @@ if (!LIVE && !STASH_LIVE) {
     const chromeOk = await page.evaluate(([c, cls]) => {
       const root = document.querySelector(c), pg = root.closest('.fsp-page');
       const heads = [...pg.querySelectorAll('.fsp-h')].filter((e) => e.getClientRects().length)
-        .map((e) => e.textContent + '|' + getComputedStyle(e).textTransform);
+        .map((e) => (e.dataset.pidx || '') + e.textContent + '|' + getComputedStyle(e).textTransform);
       const probe = document.createElement('i');
       document.body.append(probe);
       const tok = (t) => { probe.style.background = 'var(' + t + ')'; return getComputedStyle(probe).backgroundColor; };
@@ -879,7 +873,7 @@ if (!LIVE && !STASH_LIVE) {
       probe.remove();
       const frame = root.querySelector('.fsp-pframe');
       const lib = root.querySelector('.fsp-libbox');
-      const boxes = [...root.querySelectorAll('*')].filter((e) => e.getClientRects().length && !e.closest('.fsp-libbox, .fsp-pframe, .fsp-zoom, .fsp-hov, .fsp-menu, .fsp-anbox, svg'))
+      const boxes = [...root.querySelectorAll('*')].filter((e) => e.getClientRects().length && !e.closest('.fsp-libbox, .fsp-pframe, .fsp-zoom, .ui-stage-overlay, .fsp-menu, .fsp-anbox, svg'))
         .filter((e) => { const s = getComputedStyle(e); return s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== screen && parseFloat(s.borderTopWidth) > 0; })
         .map((e) => e.className || e.tagName);
       return { heads, frame: !!frame && frame.classList.contains('surface-card') && getComputedStyle(frame).backgroundColor === card,
@@ -937,7 +931,7 @@ if (!LIVE && !STASH_LIVE) {
         document.body.append(ink);
         const warnInk = getComputedStyle(ink).color;
         ink.remove();
-        const note = root.querySelector('.fsp-note');
+        const note = root.querySelector('.ui-list-note');
         const tone = note ? note.dataset.tone : null;
         if (note) note.dataset.tone = 'warn';
         const noteColor = note ? getComputedStyle(note).color : warnInk;
@@ -965,7 +959,7 @@ if (!LIVE && !STASH_LIVE) {
     ok('head ' + at + ': no element sits over the wave screen', over.length === 0, over);
     const opens = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-empty button')].map((b) => b.textContent), C);
     ok('redesign ' + at + ': the empty stage offers Open video and Open script, no center Play', same(opens, ['Open video', 'Open script'])
-      && await page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display === 'none'), opens);
+      && await page.locator(C + ' .ui-stage-center').evaluate((e) => getComputedStyle(e).display === 'none'), opens);
     await shot('empty');
     // Script only: motion only (PR4).
     await page.setInputFiles(C + ' .fsp-files', [fun()]);
@@ -975,10 +969,11 @@ if (!LIVE && !STASH_LIVE) {
     const moUi = await page.evaluate((c) => {
       const r = document.querySelector(c), f = r.querySelector('.fsp-full');
       return { mo: r.hasAttribute('data-mo'), meter: !!r.querySelector('.fsp-mo .fsp-meter').getClientRects().length,
-        full: f.disabled && f.getAttribute('aria-label') === 'No video', open: !!r.querySelector('.fsp-mo .og-btn').getClientRects().length };
+        full: f.disabled && f.getAttribute('aria-label') === 'No video', open: !!r.querySelector('.fsp-mo .og-btn').getClientRects().length,
+        center: getComputedStyle(r.querySelector('.ui-stage-center')).display === 'none' };
     }, C);
-    ok('redesign ' + at + ': script only is motion only: the stroke meter, Open video, Fullscreen grayed (No video)',
-      moUi.mo && moUi.meter && moUi.full && moUi.open && mo.status === 'Motion only', { moUi, status: mo.status });
+    ok('redesign ' + at + ': script only is motion only: the stroke meter, Open video, Fullscreen grayed (No video), no center Play over the meter (ph-1qs5.11)',
+      moUi.mo && moUi.meter && moUi.full && moUi.open && moUi.center && mo.status === 'Motion only', { moUi, status: mo.status });
     if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 120 px strip', Math.abs(mo.vbox[3] - 120) <= 1, mo.vbox);
     if (cls === 'desktop' && w === 1428) {
       const n0 = hub.bundles.length;
@@ -1014,16 +1009,16 @@ if (!LIVE && !STASH_LIVE) {
         const sec = document.querySelector('main.pane .fsp-psec'), s = sec.getBoundingClientRect(), root = document.querySelector(c);
         const dt = root.querySelector('.fsp-dt').getBoundingClientRect(), vb = root.querySelector('.fsp-vbox').getBoundingClientRect();
         const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-        const rows = [...sec.querySelectorAll('.fsp-rows')].flatMap((g) => [...g.children].filter((e) => e.matches('.fsp-rl')).map((l) => {
-          const c1 = l.nextElementSibling, c2 = c1 && c1.nextElementSibling;
-          return { label: l.textContent, tt: getComputedStyle(l).textTransform, ctl: c1 && (c1.matches('input[type=range]') ? 'range' : c1.matches('.og-switch') ? 'switch' : c1.tagName),
-            chip: c1 && c1.matches('input[type=range]') ? !!(c2 && c2.matches('output.fsp-rv')) : true };
-        }));
-        return { form: sec.parentElement.dataset.sform || 'slot', h: s.height, vh: innerHeight, scrolls: sec.scrollHeight > sec.clientHeight + 1,
+        const rows = [...sec.querySelectorAll('.ui-rows > .ui-row')].map((r) => {
+          const l = r.children[0], c1 = r.children[1], c2 = r.children[2];
+          return { label: l.textContent, tt: getComputedStyle(l).textTransform, ctl: c1 && (c1.matches('.ui-slider') ? 'range' : c1.matches('.og-switch') ? 'switch' : c1.tagName),
+            chip: c1 && c1.matches('.ui-slider') ? !!(c2 && c2.matches('output.field-value')) : true };
+        }).filter((r) => r.label);
+        return { form: sec.dataset.form, h: s.height, vh: innerHeight, scrolls: sec.scrollHeight > sec.clientHeight + 1,
           shadow: getComputedStyle(sec).boxShadow, overWave: hit(s, dt), stageClear: vb.bottom <= s.top + 1, rows,
           card: [Math.round(root.getBoundingClientRect().width), Math.round(root.getBoundingClientRect().height)],
           noSetting: /No setting/.test(sec.textContent),
-          rangeW: Math.min(...[...sec.querySelectorAll('.fsp-rows > input[type=range]')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect().width)) };
+          rangeW: Math.min(...[...sec.querySelectorAll('.ui-row .ui-slider')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect().width)) };
       }, C);
       const rowsOk = sx.rows.length >= 9 && sx.rows.every((r) => r.tt === 'lowercase' && r.chip) && sx.rows.some((r) => /fit to window/i.test(r.label) && r.ctl === 'switch')
         && !sx.noSetting && sx.rangeW >= 80;
@@ -1048,23 +1043,23 @@ if (!LIVE && !STASH_LIVE) {
         await page.waitForTimeout(400);
         await page.mouse.up();
         await page.waitForTimeout(600);
-        const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => !e.hasAttribute('data-open'));
         const kept = (await video(page, (v) => v.paused)) === paused0 && hub.bundles.length === sent0;
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.waitForTimeout(300);
-        await page.mouse.click(...await page.locator('main.pane .fsp-sclose').boundingBox().then((b) => [b.x + b.width / 2, b.y + b.height / 2]));
+        await page.mouse.click(...await page.locator('main.pane .fsp-psec .ui-sheet-x').boundingBox().then((b) => [b.x + b.width / 2, b.y + b.height / 2]));
         await page.waitForTimeout(300);
-        const xShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        const xShut = await page.locator('main.pane .fsp-psec').evaluate((e) => !e.hasAttribute('data-open'));
         ok('settings ' + at + ': a stage tap closes the sheet and never toggles Play; the sheet\'s close button closes it', tapShut && kept && xShut, { tapShut, kept, xShut });
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.waitForTimeout(300);
-        const hb = await page.locator('main.pane .fsp-shead').boundingBox();
+        const hb = await page.locator('main.pane .fsp-psec .ui-sheet-head').boundingBox();
         await page.mouse.move(hb.x + 40, hb.y + hb.height / 2);
         await page.mouse.down();
         await page.mouse.move(hb.x + 40, hb.y + hb.height / 2 + 90, { steps: 6 });
         await page.mouse.up();
         await page.waitForTimeout(300);
-        const dragShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        const dragShut = await page.locator('main.pane .fsp-psec').evaluate((e) => !e.hasAttribute('data-open'));
         ok('settings ' + at + ': a tap outside and a drag down close the sheet', tapShut && dragShut, { tapShut, dragShut });
         // ph-5wsk.3: a tap on the strip's Pause while the sheet is open reaches Pause (counted on the button; it sends nothing).
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
@@ -1075,7 +1070,7 @@ if (!LIVE && !STASH_LIVE) {
         await page.waitForTimeout(300);
         const pz = await page.evaluate(() => window.__pz);
         ok('settings ' + at + ': with the sheet open, a tap on the strip\'s Pause reaches Pause (never swallowed)', pz === 1, { pz });
-        if (!(await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))) await page.locator('main.pane .fsp-sclose').click();
+        if (!(await page.locator('main.pane .fsp-psec').evaluate((e) => !e.hasAttribute('data-open')))) await page.locator('main.pane .fsp-psec .ui-sheet-x').click();
       } else {
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.waitForTimeout(200);
@@ -1089,7 +1084,7 @@ if (!LIVE && !STASH_LIVE) {
       const dr = await page.evaluate(() => {
         const s = document.querySelector('main.pane .fsp-psec').getBoundingClientRect(), hit = (a, b) => !!b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
         const pair = ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((q) => document.querySelector(q)).filter((e) => e && e.getClientRects().length).map((e) => e.getBoundingClientRect());
-        return { form: document.querySelector('main.pane .fsp-page').dataset.sform, right: Math.round(innerWidth - s.right), w: Math.round(s.width), pairs: pair.length, covers: pair.some((p) => hit(s, p)) };
+        return { form: document.querySelector('main.pane .fsp-psec').dataset.form, right: Math.round(innerWidth - s.right), w: Math.round(s.width), pairs: pair.length, covers: pair.some((p) => hit(s, p)) };
       });
       ok('settings ' + at + ': in fullscreen a drawer from the right that never covers the stop pair (PR12)', dr.form === 'drawer' && dr.right === 0 && dr.pairs > 0 && !dr.covers, dr);
       if (EVID) await page.screenshot({ path: join(EVID, 'settings-fullscreen-' + at + '.png') });
@@ -1099,7 +1094,7 @@ if (!LIVE && !STASH_LIVE) {
       await page.waitForTimeout(400);
       await page.mouse.up();
       await page.waitForTimeout(600);
-      ok('settings ' + at + ': a stage tap closes the drawer and never toggles Play', (await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))
+      ok('settings ' + at + ': a stage tap closes the drawer and never toggles Play', (await page.locator('main.pane .fsp-psec').evaluate((e) => !e.hasAttribute('data-open')))
         && (await video(page, (v) => v.paused)) === paused1 && hub.bundles.length === sent1);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(400);
@@ -1132,12 +1127,12 @@ if (!LIVE && !STASH_LIVE) {
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
       // The center Play (operator 2026-10-08): shown while paused, a stage tap toggles with a flash, hidden while playing.
-      const cp = () => page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display !== 'none');
+      const cp = () => page.locator(C + ' .ui-stage-center').evaluate((e) => getComputedStyle(e).display !== 'none');
       const shownPaused = await cp();
       const vb2 = await page.locator(C + ' .fsp-vbox').boundingBox();
       await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
       await page.waitForTimeout(350);
-      const flashed = await page.locator(C + ' .fsp-cplay').evaluate((e) => e.hasAttribute('data-flash'));
+      const flashed = await page.locator(C + ' .ui-stage-center').evaluate((e) => e.hasAttribute('data-flash'));
       await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
       await page.waitForTimeout(700);
       const hiddenPlaying = !(await cp()) && await video(page, (v) => !v.paused);
@@ -1172,7 +1167,7 @@ if (!LIVE && !STASH_LIVE) {
       const kept = await page.locator(C).evaluate((r) => r.hasAttribute('data-tlshut'));
       ok('head ' + at + ': the caret collapses the band to its head, the bar keeps its rect, the state survives a reload',
         shutUi.shut && !shutUi.dt && same(shut.bar, bar0) && kept, { bar0, bar: shut.bar, shutUi, kept });
-      await page.locator(C + ' .fsp-tab', { hasText: 'Player' }).click();
+      await page.locator(C + ' .fsp-tabs button', { hasText: 'Player' }).click();
       await page.locator(C + ' .fsp-tlcaret').click();
       await page.waitForTimeout(200);
       await page.setInputFiles(C + ' .fsp-filev', [clip, fun()]);
@@ -1222,11 +1217,11 @@ if (!LIVE && !STASH_LIVE) {
     const at = w + 'x' + hh;
     if (!await toPluginPage(page)) { ok('library ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
     await page.waitForTimeout(400);
-    if (cls === 'portrait') await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+    if (cls === 'portrait') await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click();
     if (await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'))) await page.locator(C + ' .fsp-libcaret').click();
     await page.waitForTimeout(300);
-    const connect = await page.locator(C + ' .fsp-connect').evaluate((c) => ({ rows: !!c.querySelector('.fsp-rows'),
-      labels: [...c.querySelectorAll('.fsp-rl')].map((l) => getComputedStyle(l).textTransform) })).catch(() => null);
+    const connect = await page.locator(C + ' .fsp-connect').evaluate((c) => ({ rows: !!c.querySelector('.ui-rows'),
+      labels: [...c.querySelectorAll('.ui-row > .field-label')].filter((l) => l.textContent).map((l) => getComputedStyle(l).textTransform) })).catch(() => null);
     ok('library ' + at + ': the Stash connect card takes the settings rows\' form', !!connect && connect.rows && connect.labels.length === 2
       && connect.labels.every((t) => t === 'lowercase'), connect);
     await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
@@ -1234,19 +1229,19 @@ if (!LIVE && !STASH_LIVE) {
     await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
     await page.waitForSelector(C + ' .fsp-tile', { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(500);
-    const lk = () => page.locator(C).evaluate((r) => { const box = r.querySelector('.fsp-libbox'), g = r.querySelector('.fsp-grid');
-      return { rows: r.querySelector('.fsp-lib').hasAttribute('data-rows'), n: g.children.length, page: r.querySelector('.fsp-lib-foot output').textContent,
+    const lk = () => page.locator(C).evaluate((r) => { const box = r.querySelector('.fsp-libbox'), g = r.querySelector('.fsp-lib .ui-list-items');
+      return { rows: r.querySelector('.fsp-lib').dataset.form === 'rows', n: g.children.length, page: r.querySelector('.fsp-lib .ui-list-page').textContent,
         scroll: box.scrollHeight - box.clientHeight, gscroll: g.scrollHeight - g.clientHeight }; });
     const l0 = await lk();
     if (cls === 'portrait') {
       ok('library ' + at + ': the Library tab shows rows, paged, with no scroller (D19)', l0.rows && l0.n > 0 && l0.scroll <= 0 && l0.gscroll <= 0, l0);
-      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      await page.locator(C + ' .fsp-lib .ui-list-next').click();
       await page.waitForTimeout(500);
       const l1 = await lk();
       ok('library ' + at + ': paging moves to the next page', /^page 2 \//.test(l1.page), [l0.page, l1.page]);
       await page.locator(C + ' .fsp-tile').first().click();
       await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
-      await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+      await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click();
       await page.waitForTimeout(300);
       const nowShown = await page.locator(C + ' .fsp-now').isVisible();
       await page.locator(C + ' .fsp-nowb').click();
@@ -1257,15 +1252,15 @@ if (!LIVE && !STASH_LIVE) {
       const paused = await video(page, (v) => v.paused);
       ok('library ' + at + ': the now-playing row (title, position, Play/Pause) plays and pauses the scene under the tab',
         nowShown && playing && paused && (await page.locator(C + ' .fsp-nowt').textContent()).length > 0, { nowShown, playing, paused });
-      ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').textContent()) === '02Library');
+      ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').evaluate((e) => e.dataset.pidx + e.textContent)) === '02Library');
       const foot = await page.locator(C).evaluate((r) => { const nw = r.querySelector('.fsp-now').getBoundingClientRect(), box = r.querySelector('.fsp-libbox').getBoundingClientRect(),
-        st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-n');
+        st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-lib .ui-list-count');
         return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
       });
       ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
-      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
-        head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
+      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: r.querySelector('.fsp-lib').dataset.form === 'grid',
+        head: r.querySelector('.fsp-libbox > .fsp-h').dataset.pidx + r.querySelector('.fsp-libbox > .fsp-h').textContent }));
       ok('library ' + at + ': the side column with its caret, tiles, under 02 LIBRARY', col.caret && col.tiles && col.head === '02Library' && l0.n > 0, col);
     } else {
       await page.locator(C + ' .fsp-tile').first().click();
@@ -1313,7 +1308,7 @@ if (!LIVE && !STASH_LIVE) {
     const at = w + 'x' + hh;
     if (!await toPluginPage(page)) { ok('queue ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
     await page.waitForTimeout(400);
-    const tab = (t) => page.locator(C + (cls === 'portrait' ? ' .fsp-tab' : ' .fsp-seg'), { hasText: new RegExp('^' + t + '$') }).click();
+    const tab = (t) => page.locator(C + (cls === 'portrait' ? ' .fsp-tabs button' : ' .fsp-libseg button'), { hasText: new RegExp('^' + t + '$') }).click();
     await tab('Library');
     await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
     await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
@@ -1324,13 +1319,13 @@ if (!LIVE && !STASH_LIVE) {
     for (let i = 0; i < 3; i++) {
       await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(400);
-      titles.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+      titles.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
       await page.locator(C + ' .fsp-qadd').first().click();
-      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      await page.locator(C + ' .fsp-lib .ui-list-next').click();
     }
     await tab('Queue');
     await page.waitForTimeout(300);
-    const rows = () => page.$$eval(C + ' .fsp-q-row .fsp-t', (e) => e.map((x) => x.textContent));
+    const rows = () => page.$$eval(C + ' .fsp-q-row .ui-tile-t', (e) => e.map((x) => x.textContent));
     const q0 = await rows();
     ok('queue ' + at + ': Add to queue from the library fills the Queue tab in order', same(q0, titles), { q0, titles });
     if (SHOTS) await page.screenshot({ path: join(SHOTS, 'queue-' + at + '.png') });
@@ -1377,9 +1372,9 @@ if (!LIVE && !STASH_LIVE) {
       const more = [];
       for (let i = 0; i < 2; i++) {
         await page.waitForTimeout(400);
-        more.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+        more.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
         await page.locator(C + ' .fsp-qadd').first().click();
-        await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+        await page.locator(C + ' .fsp-lib .ui-list-next').click();
       }
       await tab('Queue');
       await page.waitForTimeout(300);
@@ -1425,7 +1420,7 @@ if (!LIVE && !STASH_LIVE) {
       await page.waitForTimeout(500);
       await tab('Queue');
       await page.waitForTimeout(300);
-      const metaOf = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-q-row')].map((r) => r.querySelector('.fsp-t').textContent + '|' + r.querySelector('.fsp-m').textContent), C);
+      const metaOf = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-q-row')].map((r) => r.querySelector('.ui-tile-t').textContent + '|' + r.querySelector('.ui-tile-m').textContent), C);
       const before = await metaOf();
       await page.setInputFiles(C + ' .fsp-filev', [{ name: 'second.webm', mimeType: 'video/webm', buffer: VIDEO }]);
       await page.waitForTimeout(500);
@@ -1895,7 +1890,7 @@ if (!LIVE) {
   }, C);
   ok('layout: nothing in the card wears --bad or --estop (law 13)', red === 0, red);
   const still = await page.evaluate((c) => {
-    const bar = document.querySelector(c + ' .fsp-hb'), caret = document.querySelector(c + ' .fsp-libcaret svg');
+    const bar = document.querySelector(c + ' .ui-stage-overlay'), caret = document.querySelector(c + ' .fsp-libcaret svg');
     const d = () => [getComputedStyle(bar).transitionDuration, getComputedStyle(caret).transitionDuration];
     const was = d();
     document.documentElement.classList.add('still');
@@ -2054,7 +2049,7 @@ if (!LIVE) {
     const h3 = makeHub(cat);
     const { ctx: c3, page: p3 } = await open({ cat, hub: h3 });
     await toCard(p3);
-    const libTab = p3.locator(C + ' .fsp-tab', { hasText: 'Library' });
+    const libTab = p3.locator(C + ' .fsp-tabs button', { hasText: 'Library' });
     if (await libTab.isVisible()) await libTab.click();
     const url = p3.locator(C + ' .fsp-connect input[type=url]');
     ok('stash: with no base the connect card fills the library', await url.isVisible().catch(() => false));
@@ -2062,7 +2057,7 @@ if (!LIVE) {
     await p3.locator(C + ' .fsp-connect input[type=password]').fill(SK);
     await p3.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
     const tiles = await p3.waitForSelector(C + ' .fsp-tile img', { timeout: STASH_LIVE ? 15000 : 5000 }).then(() => true).catch(() => false);
-    ok('stash: Save shows interactive tiles', tiles, STASH_LIVE ? await p3.locator(C + ' .fsp-n').textContent() : undefined);
+    ok('stash: Save shows interactive tiles', tiles, STASH_LIVE ? await p3.locator(C + ' .fsp-lib .ui-list-count').textContent() : undefined);
     if (STASH_LIVE) {
       const shots = await p3.waitForFunction((c) => {
         const t = document.querySelectorAll(c + ' .fsp-tile');
@@ -2576,7 +2571,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     after[0] === before[0] && after[1] >= before[1] && sec.beside && sec.comp === 'full' && sec.scrolls, { before, after, sec });
   ok('page settings: opening Settings never shrinks the stage', (await stageH()) >= stage0, [stage0, await stageH()]);
   const covered = () => page.evaluate((c) => [...document.querySelector(c).querySelectorAll('button, input:not([type=file]), select, [role=slider]')]
-    .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-libbox, .fsp-anbox, .fsp-hov, [hidden]'))
+    .filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-libbox, .fsp-anbox, .ui-stage-overlay, [hidden]'))
     .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 2 && r.top >= 0 && r.bottom <= innerHeight; })
     .filter((e) => { const r = e.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(t && (e === t || e.contains(t) || t.contains(e))); })
     .map((e) => e.className || e.getAttribute('aria-label') || e.tagName), C);
@@ -2649,7 +2644,7 @@ if (!LIVE && !args.includes('--stash-live')) {
         const small = hits.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.width < 39.5 || r.height < 39.5); })
           .map((e) => (e.className || e.getAttribute('aria-label') || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
         const wide = [...root.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 0.5 || r.left < o.left - 0.5)
-          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.fsp-hov, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
+          && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.ui-stage-overlay, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
         const pg = root.closest('.fsp-page'), de = document.documentElement;
         return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],
           stage: Math.round(root.querySelector('.fsp-stage').getBoundingClientRect().height),
@@ -2713,9 +2708,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   const IDLE = mods[P + 'ui.js'].HOVER_IDLE_MS;
   const TAB = '[data-tab-id="plugin:funscript-player:player"]';
   const toPage = () => page.click(TAB).then(() => page.waitForSelector(C, { timeout: 5000 })).then(() => true).catch(() => false);
-  const HOV = C + ' .fsp-hov', HB = C + ' .fsp-hb';
-  const shown = () => page.evaluate((s) => document.querySelector(s).hasAttribute('data-show'), HOV);
-  const opacity = () => page.evaluate((s) => +getComputedStyle(document.querySelector(s)).opacity, HB);
+  const HOV = C + ' .ui-stage-overlay', STAGE = C + ' .fsp-stage';
+  const shown = () => page.evaluate((s) => document.querySelector(s).hasAttribute('data-show'), STAGE);
+  const opacity = () => page.evaluate((s) => +getComputedStyle(document.querySelector(s)).opacity, HOV);
   const stageBox = () => page.locator(C + ' .fsp-stage').boundingBox();
   const overVideo = async (dx = 0) => { const b = await stageBox(); await page.mouse.move(b.x + b.width / 2 + dx, b.y + b.height / 3); };
   const shot = async (name) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, name + '.png') }); };
@@ -2790,7 +2785,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   const sk = await page.locator(C + ' .fsp-hb-seek').boundingBox();
   await page.mouse.move(sk.x + sk.width / 2, sk.y + sk.height / 2);
   await page.waitForTimeout(100);
-  const tip = await page.locator(C + ' .fsp-hb-tip').evaluate((e) => ({ hidden: e.hidden, text: e.textContent }));
+  const tip = await page.locator(C + ' .fsp-hb-seek .ui-scrub-tip').evaluate((e) => ({ hidden: e.hidden, text: e.textContent }));
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForTimeout(400);
@@ -2837,7 +2832,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   const splitSaved = d3.dt;
   ok('split: the height is stored as the pref split', Math.abs(await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) - d3.dt) <= 1);
   // Volume and mute: the video's own, kept in prefs audio across a launch; the bar's slider and m.
-  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.locator(C + ' .fsp-vol input').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
   await page.locator(C).focus();
   await page.keyboard.press('m');
   await page.waitForTimeout(100);

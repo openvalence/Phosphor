@@ -26,7 +26,8 @@ tauri = { version = "2.11.3", features = ["devtools"] }
 tauri-plugin-log = "2"
 # Rust-side fetch: /uitoken minting from a native origin (main.js shell branch)
 tauri-plugin-http = "2"
-# BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android
+# BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android.
+# Also asks Android's Bluetooth permission before a toy scan (bp_scan_start).
 tauri-plugin-blec = "0.12"
 # Plugin TCP line service (src/plugins.rs). Already in the tree via tauri;
 # named here only to enable net + io-util, and time for the buttplug
@@ -38,18 +39,29 @@ tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "
 if-addrs = "0.14"
 
 # Embedded buttplug server (src/buttplug.rs, docs/BUTTPLUG.md): path deps on the
-# fork beside this repo, branch `valence`. Desktop only; Android is its own
-# later question (DESIGN section 10.8).
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# fork beside this repo, branch `valence`. Desktop and Android; serial and HID
+# toys are desktop only.
+[target.'cfg(not(target_os = "ios"))'.dependencies]
 buttplug_core = { path = "../../ButtplugIO/crates/buttplug_core" }
 buttplug_server = { path = "../../ButtplugIO/crates/buttplug_server" }
 buttplug_server_device_config = { path = "../../ButtplugIO/crates/buttplug_server_device_config" }
 buttplug_transport_websocket_tungstenite = { path = "../../ButtplugIO/crates/buttplug_transport_websocket_tungstenite" }
 buttplug_server_hwmgr_btleplug = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_btleplug" }
-buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_serial" }
-buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
 async-trait = "0.1"
 futures = "0.3"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_serial" }
+buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
+
+# Toy BLE on Android is btleplug's own backend: its init (JNI_OnLoad, lib.rs)
+# takes jni 0.19's JNIEnv, and the runtime that attaches every thread to the JVM
+# needs rt-multi-thread (src/buttplug.rs, mod android). Its Java half is built
+# by src-tauri/android/btleplug.
+[target.'cfg(target_os = "android")'.dependencies]
+btleplug = "0.12"
+jni = "0.19"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

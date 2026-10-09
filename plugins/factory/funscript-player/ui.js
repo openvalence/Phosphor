@@ -83,7 +83,7 @@ import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
-import { rowsBox, sub, sliderRow, switchRow } from './rows.js';
+
 import { mountQueue, toStored, fromStored, move, COPY as QCOPY } from './queue.js';
 
 export const FULL_UP = 960;
@@ -165,26 +165,6 @@ export const COPY = Object.freeze({
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-// Hover bar icons on a 16-unit box: [filled path, stroked path].
-const ICON = {
-  play: ['M5 3l9 5-9 5z', ''],
-  pause: ['M4 3h3v10H4zM9 3h3v10H9z', ''],
-  vol: ['M2 6h3l4-3.5v11L5 10H2z', 'M11.5 5.5a3.5 3.5 0 010 5'],
-  muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
-  full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
-  unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
-  caret: ['', 'M6.5 5l3 3-3 3'],
-  lib: ['', 'M2 2.5h5v5H2zM9 2.5h5v5H9zM2 9.5h5v4H2zM9 9.5h5v4H9z'],
-  prev: ['M13 3v10L6 8z', 'M3 3v10'],
-  next: ['M3 3v10l7-5z', 'M13 3v10'],
-  graph: ['', 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8'],
-  close: ['', 'M4 4l8 8M12 4l-8 8'],
-  gear: ['', 'M2 4h6.5M11.5 4H14M11.5 4a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M2 8h1.5M6.5 8H14M6.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'
-    + 'M2 12h5.5M10.5 12H14M10.5 12a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'],
-  vid: ['', 'M1.5 4.5h9v7h-9zM10.5 7l4-2v6l-4-2'],
-  scr: ['', 'M1 11l2.5-6 2.5 6 2.5-6 2.5 6 2.5-6'],
-  more: ['M2.5 7h2v2h-2zM7 7h2v2H7zM11.5 7h2v2h-2z', ''],
-};
 // Open video (PR3): video, the audio a webview plays (no audio/* wildcard: it offers MIDI), and .funscript to pair by base name.
 const VIDEO_ACCEPT = 'video/*,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/flac,audio/webm,'
   + '.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac,.weba,.funscript';
@@ -200,21 +180,8 @@ export function pageClass(bucket, w, h) {
   return bucket >= 3 ? 'desktop' : w > h ? 'landscape' : 'portrait';
 }
 
-// The modifier rule (DESIGN 10.5), inlined as plugins do: a key takes the declared step (Shift included),
-// Ctrl the adjacent multiple of the decade below the range's span; a drag's Shift is a tenth of its gain.
+// The offset's grid; its keys and drags are the kit's number box (DESIGN 10.5).
 export const OFFSET_STEP = 5, OFFSET_MAX = 500;
-const OFFSET_DECADE = 100;   // decade below the 1000 ms span
-/** Offset after one key press: dir +1/-1, the 5 ms step, Ctrl the adjacent 100 ms multiple. */
-export function offsetKey(v, dir, e = {}) {
-  if (!e.ctrlKey) return clampOffset(v + dir * OFFSET_STEP);
-  const q = v / OFFSET_DECADE;
-  return clampOffset((dir > 0 ? Math.floor(q + 1e-9) + 1 : Math.ceil(q - 1e-9) - 1) * OFFSET_DECADE);
-}
-/** Offset after a label drag of dx px from v0: 5 ms per 4 px, a tenth with Shift, Ctrl rounds to 100 ms. */
-export function offsetDrag(v0, dx, e = {}) {
-  const raw = v0 + (dx / 4) * OFFSET_STEP * (e.shiftKey ? 0.1 : 1);
-  return clampOffset(e.ctrlKey ? Math.round(raw / OFFSET_DECADE) * OFFSET_DECADE : raw);
-}
 
 /** Offset ms on the 5 ms grid inside -500..500. */
 export function clampOffset(v) {
@@ -691,46 +658,32 @@ export const CSS = `
 .fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
   background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius);
   padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
-.fsp[data-page][data-comp=full] .fsp-lib { flex: 1 1 auto; min-height: 0; }
+.fsp[data-page][data-comp=full] .fsp-libv { flex: 1 1 auto; min-height: 0; }
+/* Heads are the card title's voice (style.css .dash-title, its index); this places them. */
 .fsp-libbox > .fsp-h { display: none; }
-.fsp[data-page][data-comp=full] .fsp-libbox > .fsp-h { display: flex; }
-.fsp-h { flex: none; display: flex; align-items: baseline; gap: var(--sp-3); margin: 0; font: 500 .8rem/30px var(--font); letter-spacing: .12em;
-  text-transform: uppercase; color: var(--tx-val); white-space: nowrap; }
-.fsp-ix { font: 400 .62rem var(--mono); letter-spacing: normal; color: var(--tx-faint); }
-.fsp-ic svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
-.fsp-ic svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-ic:not(:has(span)) { width: 30px; padding: 0; }
-@media (pointer: coarse) { .fsp-ic:not(:has(span)) { width: var(--tap); } }
+.fsp[data-page][data-comp=full] .fsp-libbox > .fsp-h { display: block; }
+.fsp-h { flex: none; margin: 0; line-height: 30px; }
+/* The kit's buttons take each row's height. */
+.fsp-src { --ui-btn-h: var(--fsp-src); }
+.fsp-tr, .fsp-tlh { --ui-btn-h: var(--fsp-bar); }
 .fsp-src > .og-btn { flex: none; }
 .fsp-src > :is(.fsp-openv, .fsp-opens, .fsp-close), .fsp-media { display: none; }
 .fsp[data-comp=full] .fsp-src > :is(.fsp-openv, .fsp-opens, .fsp-close), .fsp[data-comp=handheld] .fsp-media { display: inline-flex; }
-.fsp-menu:popover-open { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
-  background: var(--bg-raised); border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--tx); }
-.fsp-menu .og-btn { justify-content: flex-start; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.fsp-libcaret { display: none; flex: none; place-items: center; width: 30px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
-  background: none; border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; }
-@media (pointer: coarse) { .fsp-libcaret { width: var(--tap); } }
-.fsp[data-comp=full]:not([data-an]) .fsp-libcaret { display: grid; }
-.fsp-libcaret:hover { color: var(--tx-hi); }
-.fsp-libcaret:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
-.fsp-libcaret svg { width: 14px; height: 14px; fill: none; }
-.fsp-libcaret svg .s { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-libcaret svg { transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
-.fsp[data-libshut] .fsp-libcaret svg { transform: rotate(180deg); }
+.fsp-libcaret { display: none; }
+.fsp[data-comp=full]:not([data-an]) .fsp-libcaret { display: inline-flex; }
+.fsp-libcaret .ui-icon { transition: transform var(--t-move) var(--ease-out); }
+.fsp[data-libshut] .fsp-libcaret .ui-icon { transform: rotate(180deg); }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
 .fsp[data-page] .fsp-title { margin-left: auto; text-align: right; }
-.fsp-src > [role=tablist] { display: flex; flex: none; gap: var(--sp-2); }
-.fsp-tab { display: none; }
-/* The open tab wears --highlight (the advpen precedent, finding 1). */
-.fsp-tab[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp[data-comp=handheld] .fsp-tab { display: inline-flex; }
+.fsp-tabs { display: none; flex: none; }
+.fsp[data-comp=handheld] .fsp-tabs { display: flex; }
 .fsp[data-comp=glance] .fsp-title { font-size: .75rem; line-height: 20px; }
-.fsp-stage { grid-area: stage; position: relative; min-height: 0; overflow: hidden; }
+/* The stage is the kit's; the card's grid sizes it, so the kit's own aspect sizing stands down. */
+.fsp-stage { grid-area: stage; position: relative; min-height: 0; overflow: hidden; aspect-ratio: auto; max-height: none; }
 .fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
-.fsp-vbox { position: absolute; inset: 0; background: var(--screen); border-radius: var(--r-s); overflow: hidden; }
 .fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px dashed var(--line-3); }
-.fsp-vbox video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.fsp-stage .ui-stage-overlay { container-type: inline-size; }
 /* Phone portrait (PR2): the stage at the video's aspect, capped by its row; empty or motion only, a 120 px strip. */
 /* The split bar is the desktop's (PR7). */
 .fsp:is([data-cls=portrait], [data-cls=landscape]) { --fsp-sp: 0px; }
@@ -738,7 +691,6 @@ export const CSS = `
 .fsp[data-cls=portrait]:not([data-an]) .fsp-stage::before { display: none; }
 .fsp[data-cls=portrait]:not([data-an], [data-media]) .fsp-vbox { bottom: auto; height: var(--fsp-stage-min); }
 .fsp[data-cls=portrait][data-ar]:not([data-an], [data-mo], [data-media]) .fsp-vbox { right: auto; width: 100%; height: auto; aspect-ratio: var(--fsp-ar); max-height: 100%; }
-.fsp-empty { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: var(--sp-3); }
 .fsp[data-an] .fsp-empty > * { display: none; }
 .fsp-mo { position: absolute; inset: 0; display: grid; grid-template: "k b" auto "m m" 24px / minmax(0, 1fr) auto; align-content: center; align-items: center;
   gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
@@ -746,23 +698,17 @@ export const CSS = `
 .fsp-mo .fsp-meter { grid-area: m; display: block; height: 24px; box-shadow: inset 0 0 0 1px var(--line-2); }
 .fsp[data-an] .fsp-mo > :not(.fsp-meter) { display: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
-.fsp-split { grid-area: sp; position: relative; cursor: ns-resize; touch-action: none; outline: none; }
-.fsp-split::before { content: ''; position: absolute; inset: -4px 0; }
-.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); }
-@media (pointer: coarse) { .fsp-split::before { inset: 0; } }
-.fsp-split::after { transition: background var(--t-quick, 120ms); }
-.fsp-split:hover::after, .fsp-split[data-drag]::after, .fsp-split:focus-visible::after { background: var(--highlight); }
+.fsp-split { grid-area: sp; }
 .fsp[data-an] .fsp-split, .fsp[data-comp=glance] .fsp-split { display: none; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-.fsp[data-comp=full] .fsp-lib { min-height: 400px; }
+.fsp[data-comp=full] .fsp-libv { min-height: 400px; }
 .fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 7 / 2; }
 .fsp[data-comp=handheld]:is([data-view=library], [data-view=queue]) :is(.fsp-stage, .fsp-split, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
-.fsp-libbox[data-lv=queue] > .fsp-lib, .fsp-libbox:not([data-lv=queue]) > .fsp-qbox { display: none; }
+.fsp-libbox[data-lv=queue] > .fsp-libv, .fsp-libbox:not([data-lv=queue]) > .fsp-qbox { display: none; }
 .fsp-qbox { flex: 1 1 auto; min-height: 0; }
 .fsp-libbox { display: flex; flex-direction: column; }
-.fsp-libbox > .fsp-lib { flex: 1 1 auto; min-height: 0; }
-.fsp-seg[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp-libseg { display: flex; gap: var(--sp-2); flex: none; }
+.fsp-libbox > .fsp-libv { flex: 1 1 auto; min-height: 0; }
+.fsp-libseg { flex: none; }
 .fsp[data-comp=handheld]:not([data-media]) .fsp-libseg { display: none; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
@@ -773,9 +719,8 @@ export const CSS = `
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-.fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  border-left: 3px solid var(--line-3); padding-left: var(--sp-3); }
-.fsp-slot[data-tone=warn] { border-left-color: var(--warn); }
+/* The status is the kit's (style.css .foot-status); this places it in the card's last row. */
+.fsp-slot { grid-area: st; height: var(--fsp-st); }
 /* PR14: on the phone class the page's status is the shell footer's slot (phosphor-page-status); no row of its own. */
 .fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) { --fsp-st: 0px; }
 .fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) .fsp-slot { display: none; }
@@ -786,7 +731,7 @@ export const CSS = `
 .fsp-tr > .fsp-ov { flex: 1 1 60px; }
 .fsp-tr .fsp-rate { min-width: 5ch; padding-inline: var(--sp-2); font: .75rem var(--mono); }
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
-.fsp-vol { flex: 0 1 96px; min-width: 48px; height: var(--fsp-bar); margin: 0; cursor: pointer; }
+.fsp-vol { flex: 0 1 96px; min-width: 48px; height: var(--fsp-bar); display: grid; align-items: center; }
 .fsp-brk { display: none; }
 .fsp[data-rows2] .fsp-tr { flex-wrap: wrap; align-content: space-between; row-gap: var(--sp-2); }
 .fsp[data-rows2] .fsp-tr > :is(.fsp-el, .fsp-ov, .fsp-rem, .fsp-brk) { order: -1; }
@@ -801,27 +746,20 @@ export const CSS = `
 /* PR7: the timeline band's head: caret and TIMELINE, zoom and its span (the full card), A-B, Offset, Invert, Graph. */
 .fsp-tlh { grid-area: tlh; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
 /* A narrow head drops words before controls: the unit, then TIMELINE (the caret stays). */
-@container (max-width: 20em) { .fsp-tlh .fsp-offu { display: none; } }
+@container (max-width: 20em) { .fsp-tlh .fsp-off .unit { display: none; } }
 @container (max-width: 18.5em) { .fsp-tlcaret > span { display: none; } }
 .fsp-tlh > * { flex: none; }
 .fsp-tlh > .og-btn { min-height: var(--fsp-bar); }
 .fsp-tlgap { flex: 1 1 0; }
-.fsp-tlcaret { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; background: none; border: 0;
-  color: var(--tx-val); font: 500 .8rem/1 var(--font); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
-.fsp-tlcaret svg { width: 14px; height: 14px; fill: none; transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
-.fsp-tlcaret svg .s { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-tlcaret[aria-expanded=true] svg { transform: rotate(90deg); }
-.fsp-tlcaret:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
+.fsp-tlh > .fsp-tlcaret { flex: none; min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; }
 .fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh .fsp-zoom { display: none; }
 .fsp[data-comp=glance] :is(.fsp-tlh, .fsp-tlbox) { display: none; }
 .fsp[data-comp=glance] .fsp-speed { display: none; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-off { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--fsp-bar); }
-.fsp-offu { color: var(--tx-mut); font-size: .76rem; }
-.fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .76rem; font-weight: 500; letter-spacing: .04em;
-  text-transform: lowercase; min-height: var(--fsp-bar); display: grid; align-items: center; }
+.fsp-offk { min-height: var(--fsp-bar); }
 .fsp[data-rows2] :is(.fsp-offk, .fsp-zoom output) { display: none; }
-.fsp-off input.og-num { width: 7ch; min-height: var(--fsp-bar); padding-block: 0; }
+.fsp-off input.og-num { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp[data-comp=handheld] .fsp-off input.og-num { width: 6ch; }
 .fsp-speed { position: absolute; left: calc(var(--tap) * 2 + 4px); bottom: 3px; z-index: 1; height: 18px; min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center;
   pointer-events: none; }
@@ -853,52 +791,31 @@ export const CSS = `
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
 .fsp[data-an][data-comp=handheld] .fsp-stage::before { display: none; }
-.fsp[data-an][data-comp=handheld] .fsp-tab { display: none; }
+.fsp[data-an][data-comp=handheld] .fsp-tabs { display: none; }
 .fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
-.fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
-.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px auto; padding: var(--sp-5) var(--sp-2) 0;
-  background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
-  opacity: 0; transition: opacity var(--t-move, 200ms) var(--ease-out, ease); pointer-events: none; }
-.fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
-@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; padding-top: var(--sp-3); } }
+/* The hover bar is the stage's overlay (the kit's: it shows on movement, hides when idle); this lays out its rows. */
+.fsp-hb { display: grid; grid-template-rows: 16px auto; }
+@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; } }
 /* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
 @container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
-.fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 var(--sp-2); cursor: pointer; touch-action: none; outline: none; }
-.fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
-.fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
-.fsp-hb-seek:is(:hover, [data-drag]) .fsp-hb-track { height: 5px; }
-.fsp-hb-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
-.fsp-hb-buf { background: color-mix(in srgb, var(--tx) 40%, transparent); }
-.fsp-hb-played { background: var(--highlight); }
-.fsp-hb-played::after { content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; translate: 0 -6px; border-radius: 50%;
-  background: var(--highlight); transform: scale(0); transition: transform var(--t-quick, 120ms) var(--ease-out, ease); }
-.fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
-.fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); font: .75rem var(--mono); color: var(--tx);
-  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }
-.fsp:not([data-media]) .fsp-hov { display: none; }
+.fsp-hb-seek { margin: 0 var(--sp-2); }
 .fsp[data-fswave] .fsp-hb { grid-template-rows: 72px 16px auto; --fsp-detail: 72px; }
 @media (pointer: coarse) { .fsp[data-fswave] .fsp-hb { grid-template-rows: 72px var(--tap) auto; } }
 .fsp-hb > .fsp-tl { margin: 0 var(--sp-2) var(--sp-2); }
-.fsp-hb-row > .og-btn { flex: none; min-height: var(--tap); }
+.fsp-hb-row { --ui-btn-h: var(--tap); }
+.fsp-hb-row > .og-btn { flex: none; }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 .fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
-.fsp-cplay { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; translate: -50% -50%; display: none; place-items: center;
-  border-radius: 50%; background: rgba(var(--shade-rgb), .55); color: var(--tx-hi); pointer-events: none; z-index: 1; }
-.fsp-cplay svg { width: 32px; height: 32px; fill: currentColor; }
-.fsp-cplay svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; }
-.fsp[data-paused]:not([data-an], [data-comp=glance]) .fsp-cplay, .fsp:not([data-comp=glance]) .fsp-cplay[data-flash] { display: grid; }
-@keyframes fsp-flash { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.3; } }
-.fsp-cplay[data-flash] { animation: fsp-flash 500ms var(--ease-out, ease) forwards; }
-html.still .fsp-cplay[data-flash] { animation-duration: 1ms; }
-/* PR13: the fullscreen library drawer, under the stop pair; the phone tab's now-playing row. */
+/* PR13: the fullscreen library drawer, under the stop pair, its content clear of the screen's corners; the phone
+   tab's now-playing row. */
 .fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
-  right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) var(--sp-4); visibility: visible; box-sizing: border-box;
-  background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
-.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: flex; }
+  right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) max(var(--sp-4), var(--corner-inset)) max(var(--sp-3), var(--corner-inset)) var(--sp-4);
+  visibility: visible; box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
+.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: block; }
 .fsp-libb { display: none; }
 .fsp[data-media] .fsp-libb { display: inline-flex; }
 .fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
@@ -906,13 +823,15 @@ html.still .fsp-cplay[data-flash] { animation-duration: 1ms; }
 .fsp-nowt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
 .fsp-nowm { flex: none; font: .76rem var(--mono); color: var(--tx-val); }
 .fsp[data-comp=handheld] .fsp-libbox { display: flex; flex-direction: column; }
-.fsp[data-comp=handheld] .fsp-lib { flex: 1 1 auto; min-height: 0; }
-.fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; width: auto; height: auto; clip-path: none; justify-self: stretch;
+.fsp[data-comp=handheld] .fsp-libv { flex: 1 1 auto; min-height: 0; }
+.fsp-now { --ui-btn-h: var(--tap); }
+/* The stage stays in the card's grid in fullscreen (the page already owns the window), under the library drawer. */
+.fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; z-index: auto; inset: auto; width: auto; height: auto; clip-path: none; justify-self: stretch;
   visibility: visible; border-radius: 0; }
 .fsp[data-media] .fsp-stage::before { display: none; }
 @keyframes fsp-enter { from { opacity: 0; } }
 .fsp[data-media] .fsp-stage { animation: fsp-enter var(--t-move, 200ms) var(--ease-out, ease); }
-.fsp[data-media] .fsp-stage:has(.fsp-hov:not([data-show])) { cursor: none; }
+
 `;
 
 const h = (tag, attrs = {}, ...kids) => {
@@ -924,21 +843,9 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
-/** The click that follows a pointerdown which closed a sheet or drawer: swallowed, so the tap outside never reaches
- *  the stage (a stage click toggles Play, which moves the machine). Never a tap on the top strip or the stop pair:
- *  a safety control always takes its tap (ph-5wsk.3). */
-export function swallowClick(down) {
-  if (down && down.target && down.target.closest && down.target.closest('.topstrip')) return;
-  const eat = (e) => { e.stopPropagation(); e.preventDefault(); done(); };
-  // However long the tap is held, its click is eaten; the guard ends at the next pointerdown (a later tap), never on a
-  // timer, so a long press cannot slip through.
-  const done = () => { document.removeEventListener('click', eat, true); document.removeEventListener('pointerdown', done, true); };
-  document.addEventListener('click', eat, true);
-  setTimeout(() => document.addEventListener('pointerdown', done, true), 0);
-}
+const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 // A meter tick's left at share u, its 3 px inside the meter at either end.
 const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
  * The controller's media: the video element while a scene has a stream, else a silent clock over
@@ -1164,120 +1071,81 @@ export function createPlayer(api) {
   }
 
   function makeView(el, fields, opts) {
-    const st = ctl.state;
+    const st = ctl.state, ui = api.ui;
     let comp = '', prevCls = '';
-    const picker = (accept, multiple, fn) => {
-      const f = h('input', { type: 'file', accept, hidden: '', ...(multiple ? { multiple: '' } : {}) });
-      f.addEventListener('change', () => { if (f.files && f.files.length) fn(f.files); f.value = ''; });
-      return f;
-    };
-    const fileV = picker(VIDEO_ACCEPT, true, openVideo), fileS = picker('.funscript', false, (fl) => openScript(fl[0]));
-    fileV.className = 'fsp-filev';
-    fileS.className = 'fsp-files';
-    const btn = (cls, text, attrs = {}) => h('button', { type: 'button', class: 'og-btn sm ' + cls, text, ...attrs });
-    const tabP = btn('fsp-tab', COPY.player, { role: 'tab' });
-    const tabL = btn('fsp-tab', COPY.library, { role: 'tab' });
-    tabP.addEventListener('click', () => ctl.setView('player'));
-    tabL.addEventListener('click', () => ctl.setView('library'));
-    const tabQ = btn('fsp-tab', QCOPY.queue, { role: 'tab' });
-    tabQ.addEventListener('click', () => ctl.setView('queue'));
+    // The kit draws every control (api.ui, docs/PLUGINS.md The UI kit); this view composes them.
+    const fileV = ui.files({ accept: VIDEO_ACCEPT, multiple: true, onFiles: openVideo, class: 'fsp-filev' });
+    const fileS = ui.files({ accept: '.funscript', onFiles: (fl) => openScript(fl[0]), class: 'fsp-files' });
+    const tabs = ui.segmented({ tabs: true, class: 'fsp-tabs', value: st.view, onChange: (v) => ctl.setView(v),
+      options: [{ value: 'player', label: COPY.player }, { value: 'queue', label: QCOPY.queue }, { value: 'library', label: COPY.library }] });
     // Desktop and the drawer: Library | Queue at the head of the column (a view switch for the session).
     let libView = 'library';
-    const segL = btn('fsp-seg', COPY.library, { role: 'tab' }), segQ = btn('fsp-seg', QCOPY.queue, { role: 'tab' });
-    segL.addEventListener('click', () => { libView = 'library'; render(); });
-    segQ.addEventListener('click', () => { libView = 'queue'; render(); });
-    const libseg = h('div', { class: 'fsp-libseg', role: 'tablist' }, segL, segQ);
+    const libseg = ui.segmented({ tabs: true, class: 'fsp-libseg', value: libView, onChange: (v) => { libView = v; render(); },
+      options: [{ value: 'library', label: COPY.library }, { value: 'queue', label: QCOPY.queue }] });
     const qbox = h('div', { class: 'fsp-qbox' });
     let qv = null, qSeen = null;
     const title = h('span', { class: 'fsp-title' });
-    const icon = () => {
-      const s = document.createElementNS(SVG_NS, 'svg');
-      s.setAttribute('viewBox', '0 0 16 16');
-      s.setAttribute('aria-hidden', 'true');
-      const k = document.createElementNS(SVG_NS, 'path');
-      k.setAttribute('class', 's');
-      s.append(document.createElementNS(SVG_NS, 'path'), k);
-      return s;
-    };
-    // Open video, Open script and Close (PR3): shell buttons, an icon and a word; the Media menu holds them on phones.
-    const ogBtn = (cls, ic, text, tip = text, attrs = {}) => {
-      const b = h('button', { type: 'button', class: 'og-btn sm fsp-ic ' + cls, title: tip, 'aria-label': tip, ...attrs });
-      b.append(icon());
-      b.firstChild.children[0].setAttribute('d', ic[0]);
-      b.firstChild.children[1].setAttribute('d', ic[1]);
-      if (text) b.append(h('span', { text }));
+    // Open video, Open script and Close (PR3): an icon and a word; the Media menu holds them on phones.
+    const openV = (cls, attrs = {}) => {
+      const b = ui.button({ icon: 'video', label: COPY.openVideo, class: cls, onClick: () => fileV.open() });
+      for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
       return b;
     };
-    const openV = (cls, attrs) => { const b = ogBtn(cls, ICON.vid, COPY.openVideo, COPY.openVideo, attrs); b.addEventListener('click', () => fileV.click()); return b; };
-    const openS = (cls, attrs) => { const b = ogBtn(cls, ICON.scr, COPY.openScript, COPY.openScript, attrs); b.addEventListener('click', () => fileS.click()); return b; };
-    const closeH = ogBtn('fsp-close', ICON.close, '', COPY.close);
+    const openS = (cls, attrs = {}) => {
+      const b = ui.button({ icon: 'script', label: COPY.openScript, class: cls, onClick: () => fileS.open() });
+      for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
+      return b;
+    };
     const doClose = () => { ctl.unload(); ctl.setView('library'); };
-    closeH.addEventListener('click', doClose);
-    // The phones' Media menu: a popover (light dismiss: a tap outside or Escape closes it), closed by a pick.
-    const menu = h('div', { class: 'fsp-menu', popover: 'auto', role: 'menu', 'aria-label': COPY.media });
-    const mClose = ogBtn('fsp-mclose', ICON.close, COPY.close);
-    mClose.addEventListener('click', doClose);
-    menu.append(openV('fsp-mopenv', { role: 'menuitem' }), openS('fsp-mopens', { role: 'menuitem' }), mClose);
-    menu.addEventListener('click', (e) => { if (e.target.closest('button') && menu.hidePopover) menu.hidePopover(); });
-    const mediaB = ogBtn('fsp-media', ICON.more, '', COPY.media, { 'aria-haspopup': 'menu' });
-    mediaB.addEventListener('click', () => {
-      if (!menu.showPopover) return;
-      if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
-      menu.showPopover();
-      const r = mediaB.getBoundingClientRect();
-      menu.style.top = r.bottom + 4 + 'px';
-      menu.style.left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
-    });
-    const head = opts.page ? h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '01' }), h('span', { text: COPY.player })) : '';
+    const closeH = ui.button({ icon: 'close', title: COPY.close, class: 'fsp-close', onClick: doClose });
+    // The phones' Media menu: the kit's popover under its button, closed by a pick, a tap outside or Escape.
+    const mediaB = ui.button({ icon: 'more', title: COPY.media, class: 'fsp-media', onClick: () => { menu.open = !menu.open; } });
+    mediaB.setAttribute('aria-haspopup', 'menu');
+    const menu = ui.sheet({ form: 'popover', anchor: mediaB, title: COPY.media, class: 'fsp-menu' });
+    const mClose = ui.button({ icon: 'close', label: COPY.close, class: 'fsp-mclose', onClick: doClose });
+    menu.body.append(openV('fsp-mopenv', { role: 'menuitem' }), openS('fsp-mopens', { role: 'menuitem' }), mClose);
+    mClose.setAttribute('role', 'menuitem');
+    const head = opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '01', text: COPY.player }) : '';
     // PR13: the phone's Library tab ends in a now-playing row: Play or Pause, the title, the position.
-    const nowB = h('button', { type: 'button', class: 'og-btn sm fsp-ic fsp-nowb' });
-    nowB.append(icon());
-    nowB.addEventListener('click', () => ctl.toggle());
+    const nowB = ui.button({ icon: 'play', title: COPY.play, class: 'fsp-nowb', onClick: () => ctl.toggle() });
     const nowT = h('span', { class: 'fsp-nowt' }), nowM = h('output', { class: 'fsp-nowm' });
     // The Autoplay chip (ph-1qs5.9): the settings switch's twin on the now-playing row.
-    const autoB = h('button', { type: 'button', class: 'og-btn sm fsp-autob', title: QCOPY.autoplayTip });
-    autoB.addEventListener('click', () => setAutoplay(!autoplay));
+    const autoB = ui.button({ label: QCOPY.autoplay, title: QCOPY.autoplayTip, pressed: autoplay, class: 'fsp-autob', onClick: () => setAutoplay(autoB.pressed) });
     const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM, autoB);
     const src = h('div', { class: 'fsp-src' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
-      openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, h('span', { role: 'tablist' }, tabP, tabQ, tabL), fileV, fileS);
+      openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, tabs, fileV, fileS);
 
-    const empty = h('div', { class: 'fsp-empty' }, openV('fsp-eopenv'), openS('fsp-eopens'));
+    // Motion only (PR4): the stroke meter in glance's look, and the way to attach a video.
     const tickI = h('i', { class: 'fsp-tick int' });
     const tickR = h('i', { class: 'fsp-tick real' });
     const meter = h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, tickI, tickR);
-    // Motion only (PR4): the stroke meter in glance's look, and the way to attach a video.
     const moI = h('i', { class: 'fsp-tick int' }), moR = h('i', { class: 'fsp-tick real' });
     const mo = h('div', { class: 'fsp-mo' }, h('span', { class: 'fsp-mo-k', text: COPY.motionOnly }), openV('fsp-moopenv'),
       h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, moI, moR));
-    // The center Play (operator 2026-10-08, PR9): a large glyph over the paused stage (video or motion only, never the
-    // empty stage) and a brief glyph flash when a tap on the stage toggles. Decorative: the stage's own click acts.
-    const cplay = h('div', { class: 'fsp-cplay', 'aria-hidden': 'true' });
-    cplay.append(icon());
-    const flash = () => {
-      setIcon(cplay, ctl.state.phase === 'playing' || ctl.state.phase === 'preroll' ? ICON.play : ICON.pause, '');
-      cplay.removeAttribute('data-flash');
-      void cplay.offsetWidth;
-      cplay.setAttribute('data-flash', '');
-    };
-    cplay.addEventListener('animationend', () => cplay.removeAttribute('data-flash'));
-    const vbox = h('div', { class: 'fsp-vbox' }, empty, mo, cplay);
-    const stage = h('div', { class: 'fsp-stage' }, vbox);
+    // The stage (the kit's): a tap toggles Play once the double window passes, a double asks fullscreen, a turn
+    // to landscape with a video enters it and the turn back leaves (PR17), the hover bar is its fullscreen overlay.
+    const act = () => st.phase === 'playing' || st.phase === 'preroll';
+    const stage = ui.stage({ class: 'fsp-stage', rotate: !!opts.fullscreen,
+      onTap: () => { if (!st.scene) return; ctl.toggle(); flash(); },
+      onDouble: () => { if (opts.fullscreen) fullscreen(); },
+      onFullscreen: (on) => setMedia(on) });
+    const vbox = stage.box;
+    vbox.classList.add('fsp-vbox');
+    stage.empty.classList.add('fsp-empty');
+    stage.empty.append(openV('fsp-eopenv'), openS('fsp-eopens'));
+    stage.empty.after(mo);
+    // The center glyph (operator 2026-10-08, PR9) over a video only: motion only, the meter is the stage and the
+    // bar's Play is right there (ph-1qs5.11). Decorative: the stage's own tap acts.
+    const flash = () => { if (st.scene && st.scene.stream && comp !== 'glance') stage.flash(act() ? 'play' : 'pause'); };
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
     const anbox = h('div', { class: 'fsp-anbox' });
-    const status = h('div', { class: 'fsp-slot', 'aria-live': 'polite' });
+    // Its own row on the desktop and the dash card; the page footer's slot on the phone class (PR14).
+    const status = ui.status({ class: 'fsp-slot' });
     const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
 
-    const setIcon = (b, [f, k], tip) => {
-      const [pf, pk] = b.firstChild.children;
-      if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
-      if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
-    };
-    const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
-    const trBtn = (cls, ic, tip) => { const b = h('button', { type: 'button', class: 'og-btn sm fsp-ic ' + cls }); b.append(icon()); setIcon(b, ic, tip); return b; };
-    const prevB = trBtn('fsp-prev', ICON.prev, COPY.prev), nextB = trBtn('fsp-next', ICON.next, COPY.next);
-    const play = trBtn('fsp-play', ICON.play, COPY.playKey);
-    play.addEventListener('click', () => ctl.toggle());
+    const prevB = ui.button({ icon: 'prev', title: COPY.prev, class: 'fsp-prev' }), nextB = ui.button({ icon: 'next', title: COPY.next, class: 'fsp-next' });
+    const play = ui.button({ icon: 'play', title: COPY.playKey, class: 'fsp-play', onClick: () => ctl.toggle() });
     const marks = () => (st.script ? marksOf(st.script) : []);
     prevB.addEventListener('click', () => {
       const m = marks(), t = ctl.mediaNow();
@@ -1292,112 +1160,60 @@ export function createPlayer(api) {
       if (after != null) ctl.seek(after);
     });
     const time = h('output', { class: 'fsp-el fsp-time' }), rem = h('output', { class: 'fsp-rem' });
-    const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
-    vol.addEventListener('input', () => { video.volume = clamp(+vol.value, 0, 1); if (video.volume > 0) video.muted = false; });
-    vol.addEventListener('change', () => saveAudio());
-    const rate = h('button', { type: 'button', class: 'og-btn sm fsp-rate', title: COPY.rate, 'aria-label': COPY.rate });
-    rate.addEventListener('click', () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); });
-    const graph = trBtn('fsp-expand', ICON.graph, COPY.graph);
+    const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
+    const vol = ui.slider({ min: 0, max: 1, step: 0.05, label: COPY.volume, class: 'fsp-vol',
+      onInput: (x) => { video.volume = clamp(x, 0, 1); if (video.volume > 0) video.muted = false; }, onChange: () => saveAudio() });
+    vol.title = COPY.volume;
+    const rate = ui.button({ label: '1x', title: COPY.rate, class: 'fsp-rate',
+      onClick: () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); } });
+    rate.setAttribute('aria-label', COPY.rate);
+    const graph = ui.button({ icon: 'graph', title: COPY.graph, pressed: false, class: 'fsp-expand', onClick: () => expand(graph.pressed) });
     graph.setAttribute('data-search-key', 'graph');
-    graph.setAttribute('aria-pressed', 'false');
-    graph.addEventListener('click', () => expand(!root.hasAttribute('data-an')));
     let split = readPrefs(api).split;
     // The stage's 120 px and the wave card's 64 px floors are grid track minimums (CSS); the pref is the card's wanted height.
     const applySplit = () => { if (split > 0) root.style.setProperty('--fsp-detail', split + 'px'); else root.style.removeProperty('--fsp-detail'); };
-    const sp = h('div', { class: 'fsp-split', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', 'data-search-key': 'split', 'aria-label': COPY.split,
-      'aria-valuemin': String(SPLIT_MIN), 'aria-valuemax': '480' });
-    const detailH = () => Math.round(dtEl().getBoundingClientRect().height);
     const dtEl = () => tlbox.querySelector('.fsp-dt');
-    const setSplit = (px, save) => {
-      split = clamp(Math.round(px), SPLIT_MIN, 480);
-      applySplit();
-      sp.setAttribute('aria-valuenow', String(split));
-      if (save) writePref(api, 'split', split);
-    };
-    let spDrag = null;
-    sp.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      sp.setPointerCapture(e.pointerId);
-      sp.setAttribute('data-drag', '');
-      const h0 = detailH();
-      spDrag = { id: e.pointerId, y: e.clientY, h: h0, max: Math.max(h0, h0 + stage.getBoundingClientRect().height - MIN_STAGE) };
-    });
-    sp.addEventListener('pointermove', (e) => {
-      if (spDrag && e.pointerId === spDrag.id) setSplit(clamp(spDrag.h - (e.clientY - spDrag.y), SPLIT_MIN, spDrag.max), false);
-    });
-    const spUp = (e) => {
-      if (!spDrag || e.pointerId !== spDrag.id) return;
-      spDrag = null;
-      sp.removeAttribute('data-drag');
-      writePref(api, 'split', split);
-    };
-    sp.addEventListener('pointerup', spUp);
-    sp.addEventListener('pointercancel', spUp);
-    sp.addEventListener('keydown', (e) => {
-      const d = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
-      if (!d) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const cur = detailH();
-      setSplit(clamp(cur + d * (e.shiftKey ? 1 : 8), SPLIT_MIN, Math.max(cur, cur + stage.getBoundingClientRect().height - MIN_STAGE)), true);
-    });
-    sp.addEventListener('dblclick', () => { split = 0; applySplit(); sp.removeAttribute('aria-valuenow'); writePref(api, 'split', 0); });
-    sp.addEventListener('focus', () => sp.setAttribute('aria-valuenow', String(split || detailH())));
+    const detailH = () => Math.round(dtEl().getBoundingClientRect().height);
+    // The split (the kit's) between the stage and the timeline head: the stage keeps MIN_STAGE, so the wave card's
+    // ceiling is its height plus what the stage has past that floor (their sum holds through a drag).
+    const sp = ui.split({ class: 'fsp-split', min: SPLIT_MIN, max: 480, label: COPY.split, value: split > 0 ? split : null, size: detailH,
+      onChange: (px, commit) => {
+        if (px == null) split = 0;
+        else { const cur = detailH(); split = clamp(px, SPLIT_MIN, Math.max(cur, cur + stage.getBoundingClientRect().height - MIN_STAGE)); sp.value = split; }
+        applySplit();
+        if (commit) writePref(api, 'split', split);
+      } });
+    sp.setAttribute('data-search-key', 'split');
+    sp.addEventListener('focus', () => { if (sp.value == null) sp.setAttribute('aria-valuenow', String(detailH())); });
 
     // PR6: Motion beside Play, the switch that lets Play move the machine, in the shell's on look.
-    const motion = h('button', { type: 'button', class: 'og-btn sm fsp-motion', text: COPY.motion, 'data-search-key': 'motion' });
-    motion.addEventListener('click', () => ctl.setMotion(!st.motion));
-    const offIn = h('input', { class: 'og-num', type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
-    const offK = h('span', { class: 'fsp-offk', text: COPY.offset, title: COPY.offsetTip });
-    const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offIn, h('span', { class: 'fsp-offu', text: COPY.offsetUnit }));
-    const commitOff = (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); offIn.value = String(st.T.offsetMs); };
-    offIn.addEventListener('change', () => commitOff(offIn.value));
-    offIn.addEventListener('keydown', (e) => {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-      e.preventDefault();
-      offIn.value = String(offsetKey(+offIn.value || 0, e.key === 'ArrowUp' ? 1 : -1, e));
-    });
-    offIn.addEventListener('keyup', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') commitOff(offIn.value); });
-    let offDrag = null;
-    offK.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      offK.setPointerCapture(e.pointerId);
-      offDrag = { id: e.pointerId, x: e.clientX, v: st.T.offsetMs };
-    });
-    offK.addEventListener('pointermove', (e) => {
-      if (offDrag && e.pointerId === offDrag.id) offIn.value = String(offsetDrag(offDrag.v, e.clientX - offDrag.x, e));
-    });
-    const offUp = (e) => { if (offDrag && e.pointerId === offDrag.id) { offDrag = null; commitOff(offIn.value); } };
-    offK.addEventListener('pointerup', offUp);
-    offK.addEventListener('pointercancel', offUp);
-    const inv = h('button', { type: 'button', class: 'og-btn sm fsp-inv', text: COPY.invert, 'data-search-key': 'invert' });
-    inv.addEventListener('click', () => ctl.setT({ invert: !st.T.invert }));
+    const motion = ui.button({ label: COPY.motion, pressed: st.motion, class: 'fsp-motion', onClick: () => ctl.setMotion(motion.pressed) });
+    motion.setAttribute('data-search-key', 'motion');
+    // Offset: the kit's number box, typed, arrowed (5 ms, Ctrl the 100 ms decade) or dragged sideways (5 ms per 4 px).
+    const offN = ui.stepper({ min: -OFFSET_MAX, max: OFFSET_MAX, step: OFFSET_STEP, buttons: false, drag: true, unit: COPY.offsetUnit, label: COPY.offset,
+      value: st.T.offsetMs, onChange: (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); } });
+    offN.input.title = COPY.offsetTip;
+    const offK = h('span', { class: 'field-label fsp-offk', text: COPY.offset, title: COPY.offsetTip });
+    const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offN);
+    const inv = ui.button({ label: COPY.invert, pressed: st.T.invert, class: 'fsp-inv', onClick: () => ctl.setT({ invert: inv.pressed }) });
+    inv.setAttribute('data-search-key', 'invert');
     const speedBar = h('i');
     const speedTxt = h('span');
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
-    const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
     // The bar's Fullscreen and Settings are the page's (the dash card's hero has neither).
-    const fullB = trBtn('fsp-full', ICON.full, COPY.full);
+    const fullB = ui.button({ icon: 'full', title: COPY.full, class: 'fsp-full', onClick: () => fullscreen() });
     fullB.hidden = !opts.fullscreen;
-    fullB.addEventListener('click', () => fullscreen());
-    const setB = trBtn('fsp-set', ICON.gear, COPY.settings);
-    setB.hidden = !opts.settings;
     // Pressed from the page's own state (opts.settings.open), which the sheet's close and outside tap also change.
-    setB.addEventListener('click', () => { opts.settings.toggle(!opts.settings.open); render(); });
-    // Host seam (PR11, wired by ph-1qs5.8): the quick rail icon shows only where the host offers one.
-    const railB = trBtn('fsp-rail', ['', ''], COPY.rail);
-    railB.setAttribute('data-quick-rail-toggle', '');
-    railB.setAttribute('aria-expanded', 'false');
-    const onRail = (e) => { railB.setAttribute('aria-expanded', String(!!(e.detail && e.detail.open))); render(); };
-    window.addEventListener('phosphor-quick-rail-change', onRail);
-    railB.addEventListener('click', () => railB.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open: 'toggle' } })));
-    const railPath = () => (api.icons && api.icons.quickRail && document.documentElement.dataset.quickRail ? api.icons.quickRail : '');
+    const setB = ui.button({ icon: 'gear', title: COPY.settings, pressed: false, class: 'fsp-set', onClick: () => { opts.settings.toggle(setB.pressed); render(); } });
+    setB.hidden = !opts.settings;
+    // The quick rail (PR11): the kit's Rail button, shown only where the host offers the rail.
+    const railB = ui.quickRail({ class: 'fsp-rail' });
     const brk = h('span', { class: 'fsp-brk' });
     const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, brk, vol, motion, rate, fullB, railB, setB);
-    const tlCaret = h('button', { type: 'button', class: 'fsp-tlcaret', 'aria-expanded': 'true' });
-    tlCaret.append(icon(), h('span', { text: COPY.timeline }));
-    tlCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
+    // The timeline head's caret and TIMELINE: the kit's caret in the card title's voice.
+    const tlCaret = h('button', { type: 'button', class: 'ui-caret fsp-tlcaret', 'aria-expanded': 'true' }, ui.icon('caret'),
+      h('span', { class: 'dash-title', text: COPY.timeline }));
     const setTl = (on) => { root.toggleAttribute('data-tlshut', !on); tlCaret.setAttribute('aria-expanded', String(on)); };
     tlCaret.addEventListener('click', () => { const on = root.hasAttribute('data-tlshut'); setTl(on); writePref(api, 'tlOpen', on); });
     const tlh = h('div', { class: 'fsp-tlh' }, tlCaret, h('span', { class: 'fsp-tlgap' }), off, inv, graph);
@@ -1406,46 +1222,45 @@ export function createPlayer(api) {
       pframe, src, stage, sp, tlh, tlbox, lib, anbox, meter, status, tr);
     setTl(readPrefs(api).tlOpen);
     root.toggleAttribute('data-page', !!opts.page);
-    // The video's aspect for the phone stage (PR2); unknown (no picture yet, audio) keeps the strip.
+    // The video's aspect for the phone stage (PR2) and the turn into fullscreen (PR17); unknown (no picture yet,
+    // audio) keeps the strip.
     const onMeta = () => {
       const ok = !!(st.scene && st.scene.stream && vel.videoWidth && vel.videoHeight);
       root.toggleAttribute('data-ar', ok);
       if (ok) root.style.setProperty('--fsp-ar', vel.videoWidth + ' / ' + vel.videoHeight);
+      stage.aspect = ok ? vel.videoWidth / vel.videoHeight : null;
     };
     const META = ['loadedmetadata', 'resize', 'emptied'];
     for (const t of META) vel.addEventListener(t, onMeta);
     applySplit();
-    // ---- the hover bar over the video ----
     // PR9: the timeline toggle shows a 72 px wave over the video, above the scrub (fullscreen only).
-    const tlTog = trBtn('fsp-tltog', ICON.scr, COPY.timeline);
-    tlTog.setAttribute('aria-pressed', 'false');
-    const libCaret = h('button', { type: 'button', class: 'fsp-libcaret', title: COPY.library, 'aria-label': COPY.library });
-    libCaret.append(icon());
-    libCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
+    const tlTog = ui.button({ icon: 'script', title: COPY.timeline, pressed: false, class: 'fsp-tltog', onClick: () => fsWave(tlTog.pressed) });
+    const libCaret = ui.button({ icon: 'caret', title: COPY.library, class: 'fsp-libcaret' });
     let libTouched = false, libAuto = false;
     libCaret.addEventListener('click', () => { const on = root.hasAttribute('data-libshut'); libTouched = true; libAuto = false; setLib(on); writePref(api, 'libOpen', on); });
     const setLib = (on) => { root.toggleAttribute('data-libshut', !on); libCaret.setAttribute('aria-expanded', String(on)); if (comp) recompose(); };
     setLib(readPrefs(api).libOpen);
     src.append(libCaret);
     const hbTime = h('span', { class: 'fsp-hb-time' });
-    const hbBuf = h('i', { class: 'fsp-hb-buf' }), hbPlayed = h('i', { class: 'fsp-hb-played' });
-    const hbTip = h('span', { class: 'fsp-hb-tip', hidden: '' });
-    const seek = h('div', { class: 'fsp-hb-seek', role: 'slider', tabindex: '0', 'aria-label': COPY.seek, 'aria-valuemin': '0' },
-      h('div', { class: 'fsp-hb-track' }, hbBuf, hbPlayed), hbTip);
-    // PR9: the hover bar exists in fullscreen only; its row is the player bar's own buttons, moved in on entry and
-    // back on exit (one set of controls, one set of listeners): prev, Play, next, time, Motion, rate, the timeline
-    // toggle, the quick rail, Settings, Exit fullscreen.
-    // PR13: in fullscreen the library is a drawer from the right under the stop pair, closed by a pick or a tap outside.
-    const libB = trBtn('fsp-libb', ICON.lib, COPY.library);
-    libB.setAttribute('aria-pressed', 'false');
-    const setDrawer = (on) => { root.toggleAttribute('data-libdrawer', on); libB.setAttribute('aria-pressed', String(on)); libB.classList.toggle('on', on); };
-    libB.addEventListener('click', () => setDrawer(!root.hasAttribute('data-libdrawer')));
-    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) { setDrawer(false); swallowClick(e); } };
-    document.addEventListener('pointerdown', drawerOut, true);
+    let lastSeek = NaN;
+    const seek = ui.scrub({ label: COPY.seek, format: fmtTime, class: 'fsp-hb-seek',
+      onSeek: (v, phase) => { if (phase === 'start') root.focus({ preventScroll: true }); if (v !== lastSeek) { lastSeek = v; ctl.seek(v); } } });
+    // PR9: the hover bar exists in fullscreen only (the stage's overlay); its row is the player bar's own buttons,
+    // moved in on entry and back on exit (one set of controls, one set of listeners): prev, Play, next, time,
+    // Motion, rate, the timeline toggle, the quick rail, Settings, Exit fullscreen.
+    // PR13: in fullscreen the library is a drawer from the right under the stop pair, closed by a pick or a tap
+    // outside (the kit's outside rule: swallowed, never on the stop pair).
+    let drawerOff = null;
+    const setDrawer = (on) => {
+      root.toggleAttribute('data-libdrawer', on);
+      libB.pressed = on;
+      if (on && !drawerOff) drawerOff = ui.outside(lib, () => setDrawer(false), [libB]);
+      else if (!on && drawerOff) { drawerOff(); drawerOff = null; }
+    };
+    const libB = ui.button({ icon: 'library', title: COPY.library, pressed: false, class: 'fsp-libb', onClick: () => setDrawer(libB.pressed) });
     const hbRow = h('div', { class: 'fsp-hb-row' }, libB, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
     const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);
-    const hov = h('div', { class: 'fsp-hov' }, hb);
-    vbox.append(hov);
+    stage.overlay.append(hb);
     const trKids = () => [prevB, play, nextB, time, tr.querySelector('.fsp-ov'), rem, brk, vol, motion, rate, fullB, railB, setB].filter(Boolean);
     const toBar = (on) => {
       if (on) {
@@ -1458,51 +1273,9 @@ export function createPlayer(api) {
       const w = tlbox.querySelector('.fsp-tl') || hb.querySelector('.fsp-tl');
       if (on) hb.prepend(w); else tlbox.append(w);
       root.toggleAttribute('data-fswave', on);
-      tlTog.setAttribute('aria-pressed', String(on));
-      tlTog.classList.toggle('on', on);
+      tlTog.pressed = on;
     };
-    tlTog.addEventListener('click', () => fsWave(!root.hasAttribute('data-fswave')));
-    // Inline there is no overlay: a click or tap toggles Play (DOUBLE_MS apart from a double, which is fullscreen).
-    // In fullscreen the bar shows on pointer movement and hides after HOVER_IDLE_MS idle and on leave, kept while the
-    // pointer rests on it or drags the seek; a touch on the hidden bar's video shows it without toggling.
-    let idle = 0, drag = null, tapShow = false, clickT = 0;
-    const hide = () => { if (drag == null && !hb.matches(':hover')) hov.removeAttribute('data-show'); };
-    const poke = () => { hov.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, HOVER_IDLE_MS); };
-    stage.addEventListener('pointermove', poke);
-    stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
-    stage.addEventListener('pointerdown', (e) => { tapShow = media && e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
-    stage.addEventListener('click', (e) => {
-      if (!st.scene) { tapShow = false; return; }
-      clearTimeout(clickT);
-      // A control's click is not the video's (an Exit fullscreen has already moved its button out of the stage).
-      if (!tapShow && vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && e.detail < 2) clickT = setTimeout(() => { ctl.toggle(); flash(); }, DOUBLE_MS);
-      tapShow = false;
-    });
-    stage.addEventListener('dblclick', (e) => { if (vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
-    const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
-    const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
-    seek.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      root.focus({ preventScroll: true });
-      seek.setPointerCapture(e.pointerId);
-      drag = e.pointerId;
-      seek.setAttribute('data-drag', '');
-      ctl.seek(msAt(e.clientX));
-    });
-    seek.addEventListener('pointermove', (e) => {
-      const r = seek.getBoundingClientRect();
-      hbTip.hidden = false;
-      setText(hbTip, fmtTime(msAt(e.clientX)));
-      const w2 = hbTip.offsetWidth / 2;
-      hbTip.style.left = clamp(e.clientX - r.left, w2, r.width - w2) + 'px';
-      if (drag === e.pointerId) ctl.seek(msAt(e.clientX));
-    });
-    const endDrag = (e) => { if (drag === e.pointerId) { drag = null; seek.removeAttribute('data-drag'); } };
-    seek.addEventListener('pointerup', endDrag);
-    seek.addEventListener('pointercancel', endDrag);
-    seek.addEventListener('pointerleave', () => { if (drag == null) hbTip.hidden = true; });
-    // Media fullscreen: the shell's page fullscreen, bare, with the video alone until it ends.
-    // PR8: one mode, the shell's page fullscreen, always bare.
+    // PR8: one mode, the shell's page fullscreen, always bare (the stage asks it); the video alone until it ends.
     let media = false;
     const setMedia = (on) => {
       if (on === media) return;
@@ -1515,11 +1288,8 @@ export function createPlayer(api) {
     };
     const fullscreen = () => {
       if (!media && st.scene && !st.scene.stream) return;
-      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: true } });
-      if (!root.dispatchEvent(ask)) setMedia(!media);
+      stage.fullscreen = !media;
     };
-    const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
-    if (opts.fullscreen) window.addEventListener('phosphor-page-fullscreen-change', onFull);
 
     const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
     root.addEventListener('keydown', (e) => {
@@ -1532,12 +1302,13 @@ export function createPlayer(api) {
       else if (k === 'f' && opts.fullscreen) fullscreen();
       else return;
       e.preventDefault();
-      poke();
+      stage.poke();
     });
     el.append(root);
 
     let zoomMs = readPrefs(api).zoomMs;
     const tl = mountTimeline(tlbox, {
+      ui,
       ovHost: tr,
       ovBefore: rem,
       overlay: [speed],
@@ -1553,8 +1324,7 @@ export function createPlayer(api) {
     let library = null, analyzer = null;
     function expand(on) {
       root.toggleAttribute('data-an', on);
-      graph.setAttribute('aria-pressed', String(on));
-      graph.classList.toggle('on', on);
+      graph.pressed = on;
       recompose();
       if (on) anMount();
     }
@@ -1567,12 +1337,6 @@ export function createPlayer(api) {
     const recompose = () => {
       const cls = opts.page ? pageClass(+document.documentElement.dataset.bucket || 3, innerWidth, innerHeight) : '';
       if (cls) attr(root, 'data-cls', cls);
-      // PR17: on the phone class a turn to landscape with a video enters fullscreen and the turn back leaves it; only a
-      // rotation does, so an Exit in landscape holds until the next one.
-      if (opts.fullscreen && prevCls && cls !== prevCls && (prevCls === 'portrait' || prevCls === 'landscape')) {
-        if (cls === 'landscape' && !media && st.scene && st.scene.stream) fullscreen();
-        else if (cls === 'portrait' && media) fullscreen();
-      }
       if (library && cls !== prevCls) library.fit();
       prevCls = cls;
       const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
@@ -1581,13 +1345,13 @@ export function createPlayer(api) {
         root.dataset.comp = c;
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
-          library = mountLibrary(lib, { getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
+          library = mountLibrary(lib, { ui, getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
             onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media, onQueue: (s) => Q.add(s) });
           lib.append(qbox, now);
-          lib.insertBefore(libseg, lib.querySelector('.fsp-lib'));
+          lib.insertBefore(libseg, lib.querySelector('.fsp-libv'));
           qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
-            onReopen: () => fileV.click() });
-          if (opts.page) lib.prepend(h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '02' }), COPY.library));
+            onReopen: () => fileV.open() }, ui);
+          if (opts.page) lib.prepend(h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }));
         }
       }
       const gapPx = parseFloat(getComputedStyle(root).columnGap) || 0;
@@ -1605,38 +1369,33 @@ export function createPlayer(api) {
     if (opts.page) window.addEventListener('resize', recompose);
     ro.observe(root);
 
-    let tlKey = null, durSeen = -1, lastStatus = '';
+    let tlKey = null, durSeen = -1;
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
       if (!tlKey || key.some((k, i) => k !== tlKey[i])) { tlKey = key; tl.setScript(st.shaped || st.script, st.T, { ...ceil, vmax: ceil.vmax && ceil.vmax / rt }, st.script); }
       tl.setLoop(st.ab);
-      const act = st.phase === 'playing' || st.phase === 'preroll';
-      setIcon(play, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
-      play.disabled = !act && !ctl.canPlay();
+      const on = act();
+      play.icon = on ? 'pause' : 'play';
+      play.title = on ? COPY.pauseKey : COPY.playKey;
+      play.disabled = !on && !ctl.canPlay();
       const mk = marks(), mt = ctl.mediaNow();
       prevB.disabled = mk.length ? !st.scene : !(library && library.canStep(-1));
       nextB.disabled = mk.length ? !mk.some((x) => x > mt + 250) : !(library && library.canStep(1));
       closeH.disabled = mClose.disabled = !st.scene;
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
-      root.toggleAttribute('data-paused', !!st.scene && !act);
-      if (!cplay.hasAttribute('data-flash')) setIcon(cplay, ICON.play, '');
-      setText(rate, (video.playbackRate || 1) + 'x');
-      if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
-      const so = !!(opts.settings && opts.settings.open);
-      attr(setB, 'aria-pressed', String(so));
-      setB.classList.toggle('on', so);
-      attr(motion, 'aria-pressed', String(st.motion));
-      motion.classList.toggle('on', st.motion);
-      attr(inv, 'aria-pressed', String(st.T.invert));
-      inv.classList.toggle('on', st.T.invert);
+      root.toggleAttribute('data-paused', !!st.scene && !on);
+      stage.center(st.scene && st.scene.stream && !on && !root.hasAttribute('data-an') && comp !== 'glance' ? 'play' : null);
+      rate.label = (video.playbackRate || 1) + 'x';
+      if (document.activeElement !== vol.input) vol.value = video.muted ? 0 : video.volume;
+      setB.pressed = !!(opts.settings && opts.settings.open);
+      motion.pressed = st.motion;
+      inv.pressed = st.T.invert;
       fullB.disabled = noVid;
-      setIcon(fullB, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full);
-      const rp = railPath();
-      railB.hidden = !rp;
-      if (rp && railB.firstChild.children[1].getAttribute('d') !== rp) railB.firstChild.children[1].setAttribute('d', rp);
-      if (document.activeElement !== offIn && !offDrag) offIn.value = String(st.T.offsetMs);
+      fullB.icon = media ? 'unfull' : 'full';
+      fullB.title = media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full;
+      if (document.activeElement !== offN.input) offN.value = st.T.offsetMs;
       root.dataset.view = st.view;
       // F3's Open video and Open script land on the head's buttons, or the Media menu's button where it holds them.
       const inMenu = comp === 'handheld';
@@ -1644,41 +1403,27 @@ export function createPlayer(api) {
         if (inMenu) b.removeAttribute('data-search-key'); else attr(b, 'data-search-key', k);
       }
       if (inMenu) attr(mediaB, 'data-search-key', 'openVideo'); else mediaB.removeAttribute('data-search-key');
-      tabP.setAttribute('aria-selected', String(st.view === 'player'));
-      tabL.setAttribute('aria-selected', String(st.view === 'library'));
-      tabQ.setAttribute('aria-selected', String(st.view === 'queue'));
+      tabs.value = st.view;
       const lv = comp === 'handheld' ? (st.view === 'queue' ? 'queue' : 'library') : libView;
       attr(lib, 'data-lv', lv);
-      segL.setAttribute('aria-selected', String(lv === 'library'));
-      segQ.setAttribute('aria-selected', String(lv === 'queue'));
+      libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
-      setText(autoB, QCOPY.autoplay);
-      attr(autoB, 'aria-pressed', String(autoplay));
-      autoB.classList.toggle('on', autoplay);
+      autoB.pressed = autoplay;
+      // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
+      railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');
       setText(nowT, st.scene ? st.scene.title : '');
-      setIcon(nowB, act ? ICON.pause : ICON.play, act ? COPY.pause : COPY.play);
+      nowB.icon = on ? 'pause' : 'play';
+      nowB.title = on ? COPY.pause : COPY.play;
       nowB.disabled = play.disabled;
       if (head) {
         const libTab = comp === 'handheld' && st.view !== 'player';
-        setText(head.firstChild, libTab ? '02' : '01');
-        setText(head.lastChild, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
+        head.dataset.pidx = libTab ? '02' : '01';
+        setText(head, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
       }
-      empty.hidden = !!st.scene;
+      stage.empty.hidden = !!st.scene;
       mo.hidden = !noVid;
-      setText(status, st.status.text);
-      status.dataset.tone = st.status.tone;
-      // PR14: the phone footer's slot carries the page's status (docs/PLUGINS.md, Pages, status); sent on change only.
-      if (opts.page && /^(portrait|landscape)$/.test(root.dataset.cls || '')) {
-        const sent = st.status.text + '\n' + st.status.tone + '\n' + st.status.notes.join('\n');
-        if (sent !== lastStatus) {
-          lastStatus = sent;
-          root.dispatchEvent(new CustomEvent('phosphor-page-status', { bubbles: true,
-            detail: { text: st.status.text, tone: st.status.tone === 'warn' ? 'warn' : null, title: st.status.notes.join('\n') || st.status.text } }));
-        }
-      } else lastStatus = '';
-      const tip = st.status.notes.join('\n');
-      if (status.title !== tip) status.title = tip;
+      status.set({ text: st.status.text, tone: st.status.tone || null, title: st.status.notes.join('\n') || st.status.text });
     }
     function frame() {
       const m = ctl.mediaNow();
@@ -1691,11 +1436,10 @@ export function createPlayer(api) {
       setText(nowM, fmtTime(m));
       let buf = 0;
       for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
-      hbPlayed.style.width = (d > 0 ? clamp(m / d, 0, 1) * 100 : 0) + '%';
-      hbBuf.style.width = (d > 0 ? clamp(buf / d, 0, 1) * 100 : 0) + '%';
-      attr(seek, 'aria-valuemax', String(Math.round(d)));
-      attr(seek, 'aria-valuenow', String(Math.round(m)));
-      attr(seek, 'aria-valuetext', tt);
+      seek.max = d;
+      seek.value = m;
+      seek.buffered = buf;
+      lastSeek = NaN;
       if (comp && comp !== 'glance') anMount();
       if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
       if (analyzer && comp !== 'glance') {
@@ -1705,13 +1449,13 @@ export function createPlayer(api) {
       }
       const ceil = ceilingOf(api, fields);
       if (st.script) {
-        const sp = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm), rt = video.playbackRate || 1;
-        sp.v *= rt;
-        const cap = sp.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
-        setText(speedTxt, Math.round(sp.v) + ' ' + sp.unit);
-        speedBar.style.width = cap ? clamp(sp.v / cap, 0, 1) * 100 + '%' : '0';
-        speed.toggleAttribute('data-over', !!cap && sp.v > cap);
-        speed.title = cap && sp.v > cap ? COPY.speedOver : COPY.speed;
+        const sp2 = strokeSpeed(st.shaped || st.script, m, st.T, ceil.spanMm), rt = video.playbackRate || 1;
+        sp2.v *= rt;
+        const cap = sp2.unit === 'mm/s' && ceil.vmax ? ceil.vmax : 0;
+        setText(speedTxt, Math.round(sp2.v) + ' ' + sp2.unit);
+        speedBar.style.width = cap ? clamp(sp2.v / cap, 0, 1) * 100 + '%' : '0';
+        speed.toggleAttribute('data-over', !!cap && sp2.v > cap);
+        speed.title = cap && sp2.v > cap ? COPY.speedOver : COPY.speed;
         const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
         for (const t of [tickI, moI]) { t.hidden = false; t.style.left = at; }
       } else {
@@ -1727,18 +1471,15 @@ export function createPlayer(api) {
       }
       render();
     }
-    const hosting = () => vel.parentNode === vbox;
+    const hosting = () => vel.parentNode === stage.media;
     render();
     return {
       fields, render, frame, hosting,
-      host() { vbox.prepend(vel); st.composition = comp || st.composition; },
+      host() { stage.media.append(vel); st.composition = comp || st.composition; },
       destroy() {
-        clearTimeout(idle);
-        clearTimeout(clickT);
-        window.removeEventListener('phosphor-page-fullscreen-change', onFull);
         window.removeEventListener('resize', recompose);
-        document.removeEventListener('pointerdown', drawerOut, true);
-        window.removeEventListener('phosphor-quick-rail-change', onRail);
+        if (drawerOff) drawerOff();
+        menu.open = false;
         for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();
         tl.unmount();
@@ -1777,7 +1518,7 @@ export function createPlayer(api) {
 
 // ---- the settings card's playback rows -------------------------------------
 
-// The rows' grid is rows.js's (PR18); this is the playback card's own: the volume row shows on phones only (PR5, PR12).
+// The rows are the kit's (PR18); this is the playback card's own: the volume row shows on phones only (PR5, PR12).
 export const PLAY_CSS = `
 :root:not([data-bucket='1'], [data-bucket='2']) .fsp-pset > .fsp-volrow { display: none; }
 `;
@@ -1795,43 +1536,27 @@ const PLAY_ROWS = [
 ];
 
 /**
- * The settings card's playback rows (PR18: label, control, value chip; switches for the toggles); -> unmount().
- * onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row; autoplay:
- * {get(), set(on)}, the Autoplay switch.
+ * The settings card's playback rows (PR18, the kit's rows: label, control, value chip; switches for the toggles);
+ * -> unmount(). onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row;
+ * autoplay: {get(), set(on)}, the Autoplay switch. ui: api.ui.
  */
-export function mountPlay(el, { value, onChange, volume = null, autoplay = null }) {
+export function mountPlay(el, { ui, value, onChange, volume = null, autoplay = null }) {
   let v = { ...value };
-  const box = rowsBox(COPY.playHeading);
-  box.classList.add('fsp-pset');
+  const box = ui.rows({ title: COPY.playHeading, class: 'fsp-pset' });
   box.prepend(h('style', { text: PLAY_CSS }));
-  box.append(sub(COPY.playHeading));
-  const draws = PLAY_ROWS.map(([key, label, tip, min, max, step, fmt]) => {
-    if (min == null) {
-      const s = switchRow(box, label, { tip });
-      s.addEventListener('change', () => { v = { ...v, [key]: s.checked }; onChange({ [key]: v[key] }); });
-      return () => { s.checked = !!v[key]; };
-    }
-    const { input: i, out } = sliderRow(box, label, { min, max, step, tip });
-    i.addEventListener('input', () => setText(out, fmt(+i.value)));
-    i.addEventListener('change', () => { v = { ...v, [key]: +i.value }; draw(); onChange({ [key]: v[key] }); });
-    return () => { if (document.activeElement !== i) i.value = String(v[key]); setText(out, fmt(v[key])); };
-  });
+  for (const [key, label, tip, min, max, step, format] of PLAY_ROWS) {
+    const set = (x) => { v = { ...v, [key]: x }; onChange({ [key]: x }); };
+    const control = min == null ? ui.switch({ value: !!v[key], onChange: set }) : ui.slider({ min, max, step, format, value: v[key], onChange: set });
+    box.append(ui.row({ label, control, tip }));
+  }
   if (autoplay) {
     // ph-1qs5.9: Autoplay, its own pref (prefs autoplay), the queue's.
-    const s = switchRow(box, QCOPY.autoplay, { tip: QCOPY.autoplayTip });
-    s.addEventListener('change', () => autoplay.set(s.checked));
-    draws.push(() => { s.checked = !!autoplay.get(); });
+    box.append(ui.row({ label: QCOPY.autoplay, tip: QCOPY.autoplayTip, control: ui.switch({ value: !!autoplay.get(), onChange: (on) => autoplay.set(on) }) }));
   }
   if (volume) {
-    const n = box.children.length;
-    const { input: i, out } = sliderRow(box, COPY.volume, { min: 0, max: 1, step: 0.05 });
-    [...box.children].slice(n).forEach((e) => e.classList.add('fsp-volrow'));
-    const fmt = (x) => Math.round(x * 100) + ' %';
-    i.addEventListener('input', () => { volume.set(+i.value); setText(out, fmt(+i.value)); });
-    draws.push(() => { const x = volume.get(); if (document.activeElement !== i) i.value = String(x); setText(out, fmt(x)); });
+    const vol = ui.slider({ min: 0, max: 1, step: 0.05, format: (x) => Math.round(x * 100) + ' %', value: volume.get(), onInput: (x) => volume.set(x) });
+    box.append(ui.row({ label: COPY.volume, control: vol, class: 'fsp-volrow' }));
   }
-  const draw = () => draws.forEach((d) => d());
   el.append(box);
-  draw();
   return () => box.remove();
 }

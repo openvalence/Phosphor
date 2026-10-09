@@ -48,6 +48,7 @@ import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
+import { KIT } from '../src/plugins/kit.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -82,6 +83,7 @@ function makeHost(over = {}) {
     registerTheme: () => {},
     listenTcp: null,
     prefs: null,
+    ui: KIT,
     log: (name, level, msg) => logs.push({ name, level, msg }),
     ...over,
   };
@@ -233,6 +235,14 @@ console.log('(c) the plugin API cannot reach the socket');
   host.add({ ...gaugeManifest, name: 'spy' }, { activate(a) { api = a; } });
   ok('plugin received an api', !!api);
   ok('api is frozen', Object.isFrozen(api) && Object.isFrozen(api.net) && Object.isFrozen(api.prefs));
+  const UI = ['button', 'files', 'segmented', 'switch', 'slider', 'stepper', 'select', 'text', 'page', 'card', 'rows', 'row', 'bar', 'stage',
+    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon'];
+  ok('api.ui is the frozen kit, version 1, every documented factory a function (docs/PLUGINS.md, The UI kit)',
+    Object.isFrozen(api.ui) && api.ui.version === 1 && UI.every((k) => typeof api.ui[k] === 'function') && Object.isFrozen(api.ui.icons)
+    && ['play', 'pause', 'close', 'quickRail'].every((k) => Array.isArray(api.ui.icons[k])), UI.filter((k) => typeof api.ui[k] !== 'function'));
+  let threw = '';
+  try { api.ui.button({ lable: 'typo' }); } catch (e) { threw = e.message; }
+  ok('api.ui: an unknown option throws (a typo fails at mount)', /unknown option "lable"/.test(threw), threw);
   const FORBIDDEN = /session|socket|^ws$|transport|sendintent|sendframe|sendraw|websocket/i;
   const seen = new Set();
   const leaks = [];

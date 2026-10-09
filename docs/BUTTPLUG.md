@@ -19,8 +19,8 @@ the dev board (`ph-e82.8`).
 
 The fork is a path dependency (`../../ButtplugIO`, branch `valence`). Its
 own Valence hardware manager (`buttplug_server_hwmgr_valence`, a second
-session) is not linked. Desktop only: the buttplug crates are not built for
-Android or iOS.
+session) is not linked. Desktop and Android (Android, below); iOS builds
+without it.
 
 ## IPC contract
 
@@ -180,6 +180,46 @@ any spec version, so the setting would drive nothing.
   included, stopped every device.
 - **Sensors** are read on mount and every 30 s; a failed read keeps the last
   value dimmed, with the reason (law 8).
+
+## Android
+
+The same server, IPC and pane. Apps on the phone (a browser page, an app
+that expects Intiface) connect to `ws://127.0.0.1:12345`; the listener stays
+loopback. The machine enters the intent path exactly as on desktop.
+
+- **Toys** are BLE only, through btleplug's own Android backend, beside the
+  BLE plugin's Kotlin central that carries the Valence link. Serial and HID
+  build nothing on Android; their settings are kept and ignored.
+- **Init.** btleplug's init runs in `JNI_OnLoad` (`src-tauri/src/lib.rs`), the
+  one native context whose class lookups see the app's classes; it caches
+  its Java classes there. The backend calls into Java from whatever thread
+  polls it and never attaches that thread, so Tauri's async runtime on
+  Android attaches each of its threads to the JVM (`src/buttplug.rs`, `mod
+  android`). If init failed, a start logs `BLE toys off: <reason>` on
+  `bp://log` and runs without BLE; the machine still works.
+- **Java.** btleplug's Java (`com.nonpolynomial.btleplug.*`,
+  `io.github.gedgygedgy.rust.*`) is compiled into the APK by the Gradle module
+  `src-tauri/android/btleplug`, from cargo's copy of the btleplug sources at
+  the version `Cargo.lock` pins. `build.rs` adds the module to the generated
+  project. Its consumer rules keep the classes through R8 in release builds.
+- **Permissions.** `BLUETOOTH_SCAN` (never for location) and
+  `BLUETOOTH_CONNECT` merge in from the BLE plugin's manifest and are granted
+  at run time: `bp_scan_start` asks through the BLE plugin, which shows the
+  system prompt on first use, and refuses with `Bluetooth not allowed: ...`
+  until granted. After a second denial Android stops prompting; the grant is
+  then in system Settings, Apps, Phosphor, Permissions, Nearby devices. The
+  template's `INTERNET` covers the listener.
+- **Lifetime.** The server lives in the app process and serves only while
+  Phosphor is on screen: full screen, split screen or a pop-up window. There
+  is no foreground service. Off screen, Android may freeze the process
+  (Android 14 and later freeze cached apps shortly after they leave the
+  screen) or kill it; the connected app then sees the server stop answering,
+  and the webview that carries the machine's motion stops with it. Run a
+  buttplug app beside Phosphor in split screen. `start_on_launch` starts the
+  server again when the app starts.
+- **Scan limit.** Android allows an app five scan starts in 30 seconds, the
+  toy scans and the Valence BLE scans counted together; past that a scan
+  finds nothing for a while.
 
 ## Tests
 

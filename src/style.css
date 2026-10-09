@@ -825,10 +825,160 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
   box-shadow: var(--glow-reality);
 }
 
+/* ---- Shared component looks ----
+   One copy for the shell's components and the plugin kit (src/plugins/kit.js):
+   the field label and value chip (Field.svelte), the stepper, the free-text
+   entry, the card title with its index (DashItem.svelte), the footer status
+   (App.svelte). A component adds its own states on top, never a second base. */
+
+/* The quiet label voice: the hero numerals' .hn-label recipe, the OG base
+   `label` size. One line: it ellipsizes before the value chip overflows. */
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-family: var(--font);
+  font-size: .76rem;
+  font-weight: 500;
+  color: var(--tx-mut);
+  text-transform: lowercase;
+  letter-spacing: .04em;
+}
+/* One visible line that still wraps anywhere underneath: its min-content stays
+   one glyph, so a long label never raises a card's measured floor. */
+.field-label-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.field-value {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-variation-settings: 'wdth' 90;
+  font-weight: var(--num-wght);
+  font-size: .76rem;
+  color: var(--tx-val);
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  padding: 1px 0;
+}
+/* Unit suffix: Chakra Petch, tx-ghost, a literal .64rem so it stays legible
+   at the chip's smallest sizes. */
+.field-value .unit {
+  margin-left: var(--sp-1);
+  font-family: var(--font);
+  font-weight: 500;
+  font-size: .64rem;
+  color: var(--tx-ghost);
+}
+/* Free text and secrets: the numeral recess, left-aligned. */
+.value-input {
+  background: var(--screen);
+  box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
+  border: 1px solid var(--line-1);
+  color: var(--tx-val);
+  font-family: var(--mono);
+  font-variation-settings: 'wdth' 90;
+  font-weight: var(--num-wght);
+  border-radius: var(--r-s);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+}
+
+/* Stepper: the value box fills between the nudges, digits centered. */
+.stepper {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+}
+.stepper input {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+.stepper button {
+  flex: 0 0 34px;
+  min-height: 34px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  border-radius: var(--r-s);
+  border: 1px solid var(--line-2);
+  background: var(--bg-sunken);
+  color: var(--tx-mut);
+  font-family: var(--mono);
+  font-size: .9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--t-quick), color var(--t-quick);
+}
+.stepper button:hover:not(:disabled) {
+  border-color: var(--line-4);
+  color: var(--tx);
+}
+.stepper button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+/* The card title: uppercase head voice, one line. */
+.dash-title {
+  font-family: var(--font);
+  font-size: var(--dash-title-size, .8rem);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--tx-val);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The runtime index, stamped by the host (DashGrid's position), never a CSS
+   counter: a counter renumbers by DOM order across hidden panes. */
+.dash-title[data-pidx]::before {
+  content: attr(data-pidx) "\2002\25B8\2002";
+  font-family: var(--mono);
+  font-size: .62rem;
+  font-weight: 400;
+  font-variation-settings: 'wght' var(--num-wght), 'wdth' 90;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--tx-faint);
+  vertical-align: 1px;
+}
+.dash-title:not([data-pidx])::before {
+  content: "\25B8 ";
+  letter-spacing: normal;
+  color: var(--line-3);
+}
+/* The status line: one line, a 3 px tone bar, the text in --tx whatever the
+   tone (law 13: --warn is a mark, never text). */
+.foot-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: calc(var(--sp-5) * 1.5);
+  padding-left: var(--sp-2);
+  border-left: 3px solid var(--line-2);
+  color: var(--tx);
+  font-size: .8rem;
+}
+.foot-status > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.foot-status[data-tone='ok'] { border-left-color: var(--good); }
+.foot-status[data-tone='warn'] { border-left-color: var(--warn); }
+.foot-status[data-tone='bad'] { border-left-color: var(--bad); }
+.foot-status[data-tone='intent'] { border-left-color: var(--intent); }
+
 /* ---- touch: every control clears the 40px fingertip floor -------------- */
 @media (pointer: coarse) {
   :root { --range-hit: 19px; }
   .og-btn.sm, .og-seg button, select, .og-switch, .og-num { min-height: 40px; }
+  .stepper button { flex-basis: 40px; min-height: 40px; }
 }
 
 /* ---- app frame --------------------------------------------------------- */
@@ -885,3 +1035,227 @@ html[data-rc=glance] nav.tabs { position: static; }
 html[data-rc=glance] nav.tabs > [role=tablist] { flex-direction: column; overflow-x: visible; }
 html[data-rc=glance] nav.tabs > [role=tablist] > [role=tab] { white-space: normal; text-align: left; }
 html[data-rc=glance] .app:has(.drill-page) nav.tabs { display: none; }
+
+/* =========================================================================
+   PLUGIN KIT -- api.ui's layout primitives (docs/PLUGINS.md, The UI kit;
+   src/plugins/kit.js). Its controls wear the control language above.
+
+   Constraints:
+   - --corner-r is the display's corner radius: the Android activity publishes
+     it inline on <html> (the largest of its four corners, beside
+     --corner-tl/-tr/-bl/-br; ph-5u0g peeve 16), so this 0 holds elsewhere. A kit
+     surface on a screen edge keeps its content --corner-inset (0.3 r, just past
+     r(1 - 1/sqrt 2)) clear of a corner.
+   - Nothing here moves a box on a state change: a hidden overlay is
+     transparent, a shown one sits over the stage, never beside it.
+   - A drag (data-drag) never takes the page's scroll: kit.js drag() owns the
+     touch-action of what it drags.
+   ========================================================================= */
+:root {
+  --corner-r: 0px;
+  --corner-inset: calc(var(--corner-r) * .3);
+  --bar-h: 30px;
+  --ui-btn-h: 30px;
+  --ui-row-h: 3.5rem;
+}
+@media (pointer: coarse) { :root { --bar-h: var(--tap); --ui-btn-h: 40px; } }
+
+.ui-icon { flex: none; width: 16px; height: 16px; fill: currentColor; }
+.ui-icon .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ui-btn { min-height: var(--ui-btn-h); }
+.ui-btn:not(:has(> .ui-btn-l)) { width: var(--ui-btn-h); padding: 0; }
+.ui-btn-l { white-space: nowrap; }
+.ui-seg { flex-wrap: nowrap; }
+.ui-seg > button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 0 var(--sp-3); }
+/* A tab list: the open tab wears --highlight (the advanced generator's precedent). */
+.ui-seg[role='tablist'] > button[aria-selected='true'] { color: var(--highlight); border-color: var(--highlight); }
+.ui-switch-l:empty { display: none; }
+.ui-switch.is-disabled { opacity: .45; cursor: not-allowed; }
+/* The range takes no pointer: kit.js drag() owns the press, so a vertical swipe scrolls (peeve 14). */
+.ui-slider { min-width: 5rem; cursor: pointer; }
+.ui-slider > input[type='range'] { display: block; width: 100%; margin: 0; pointer-events: none; }
+.ui-slider[data-drag] > input[type='range']::-webkit-slider-thumb { border-color: var(--highlight); box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb), .5); }
+.ui-slider[data-drag] > input[type='range']::-moz-range-thumb { border-color: var(--highlight); box-shadow: 0 0 0 2px var(--bg), 0 0 10px rgba(var(--highlight-rgb), .5); }
+.ui-chip { justify-content: flex-end; white-space: nowrap; }
+.ui-stepper { min-width: 0; }
+.ui-stepper > .og-num { width: var(--ui-num-w, 100%); min-width: 5ch; }
+.ui-bar .ui-stepper > :is(.og-num, button) { min-height: var(--bar-h); padding-block: 0; }
+.ui-stepper > .unit { align-self: center; font-size: .76rem; color: var(--tx-mut); }
+.ui-dragnum:not(:focus) { cursor: ew-resize; user-select: none; }
+.ui-select { width: auto; min-height: var(--ui-btn-h); }
+.ui-text { min-width: 0; min-height: var(--ui-btn-h); font-size: .82rem; }
+
+/* ---- page, card, rows ---- */
+.ui-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); min-width: 0; }
+.ui-page[data-fill] { height: 100%; }
+:root:not([data-bucket='1'], [data-bucket='2']) .ui-page:has(> .ui-page-aside):not([data-aside-shut]) { grid-template-columns: minmax(0, 1fr) 320px; }
+.ui-page[data-aside-shut] > .ui-page-aside { display: none; }
+.ui-page-main, .ui-page-aside { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; min-height: 0; }
+.ui-card { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; min-height: 0; padding: var(--sp-3) var(--sp-4); }
+.ui-card-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; min-height: var(--bar-h); }
+.ui-card-head > :is(.dash-title, .ui-caret) { flex: 1 1 auto; min-width: 0; }
+.ui-card-act { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.ui-card-act:empty { display: none; }
+.ui-card-body { display: flex; flex-direction: column; gap: var(--sp-3); flex: 1 1 auto; min-width: 0; min-height: 0; }
+.ui-card[data-shut] > .ui-card-body { display: none; }
+.ui-caret { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--bar-h); padding: 0; color: var(--tx-val); text-align: left; }
+.ui-caret > .ui-icon { width: 14px; height: 14px; transition: transform var(--t-move) var(--ease-out); }
+.ui-caret[aria-expanded='true'] > .ui-icon { transform: rotate(90deg); }
+.ui-caret > .dash-title { flex: 1 1 auto; }
+.ui-rows { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr) max-content; gap: var(--sp-2) var(--sp-3); align-items: center; min-width: 0; }
+.ui-rows > .card-sub { margin-top: var(--sp-2); }
+.ui-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-width: 0; min-height: var(--ui-btn-h); }
+.ui-row > .field-label { min-width: 0; }
+.ui-row > :nth-child(2):last-child { grid-column: 2 / -1; }
+.ui-row > .og-switch:last-child { justify-self: end; }
+
+/* ---- bar ---- */
+.ui-bar {
+  --ui-btn-h: var(--bar-h);
+  --bar-center-min: 8rem;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-areas: "l c r";
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.ui-bar[data-rows='2'] { grid-template-areas: "c c c" "l . r"; }
+.ui-bar-l, .ui-bar-c, .ui-bar-r { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; min-height: var(--bar-h); }
+.ui-bar-l { grid-area: l; }
+.ui-bar-c { grid-area: c; }
+.ui-bar-r { grid-area: r; justify-content: flex-end; }
+.ui-bar-l > *, .ui-bar-r > * { flex: none; }
+.ui-bar-c > * { flex: 1 1 auto; min-width: 0; }
+.ui-bar-c:empty { display: none; }
+.ui-dropped { display: none !important; }
+
+/* ---- stage ---- */
+.ui-stage { position: relative; min-width: 0; min-height: 0; aspect-ratio: var(--ui-ar, 16 / 9); max-height: var(--ui-stage-max, 60dvh); }
+.ui-stage-box { position: absolute; inset: 0; overflow: hidden; background: var(--screen); border-radius: var(--r-s); }
+.ui-stage-media { position: absolute; inset: 0; }
+.ui-stage-media > :is(video, img, canvas) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ui-stage-empty { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-3); }
+.ui-stage-empty:empty { display: none; }
+.ui-stage-center {
+  position: absolute; left: 50%; top: 50%; z-index: 1; display: none; place-items: center;
+  width: 72px; height: 72px; translate: -50% -50%; border-radius: 50%;
+  background: rgba(var(--shade-rgb), .55); color: var(--tx-hi); pointer-events: none;
+}
+.ui-stage-center > .ui-icon { width: 32px; height: 32px; }
+.ui-stage[data-center] .ui-stage-center, .ui-stage-center[data-flash] { display: grid; }
+@keyframes ui-flash { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.3; } }
+.ui-stage-center[data-flash] { animation: ui-flash 500ms var(--ease-out) forwards; }
+html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
+.ui-stage-dock, .ui-stage-overlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; transition: opacity var(--t-move) var(--ease-out); }
+.ui-stage-dock { pointer-events: none; }
+.ui-stage-dock:empty { display: none; }
+.ui-stage[data-show] .ui-stage-dock { opacity: 0; }
+.ui-stage-overlay {
+  display: grid; gap: var(--sp-2); padding: var(--sp-5) var(--sp-2) var(--sp-2);
+  opacity: 0; pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
+}
+.ui-stage[data-show] .ui-stage-overlay, .ui-stage-overlay:has(:focus-visible) { opacity: 1; pointer-events: auto; }
+.ui-stage-overlay:empty, .ui-stage[data-overlay='fullscreen']:not([data-full]) .ui-stage-overlay { display: none; }
+/* Fullscreen: the shell's bare page fullscreen owns the window; the stage covers it under the stop pair (TopStrip z 30). */
+.ui-stage[data-full] { position: fixed; inset: 0; z-index: 25; aspect-ratio: auto; max-height: none; }
+.ui-stage[data-full] .ui-stage-box { border-radius: 0; }
+.ui-stage[data-full] :is(.ui-stage-overlay, .ui-stage-dock) {
+  padding-inline: max(var(--sp-2), var(--corner-inset));
+  padding-bottom: max(var(--sp-2), var(--corner-inset), env(safe-area-inset-bottom, 0px));
+}
+.ui-stage[data-full]:not([data-show]) { cursor: none; }
+
+/* ---- scrub, split ---- */
+.ui-scrub { position: relative; display: grid; align-items: center; min-height: 16px; cursor: pointer; outline: none; }
+@media (pointer: coarse) { .ui-scrub { min-height: var(--tap); } }
+.ui-scrub-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick) var(--ease-out); }
+.ui-scrub:is(:hover, [data-drag]) .ui-scrub-track { height: 5px; }
+.ui-scrub:focus-visible .ui-scrub-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
+.ui-scrub-track > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
+.ui-scrub-buf { background: color-mix(in srgb, var(--tx) 40%, transparent); }
+.ui-scrub-played { background: var(--highlight); }
+.ui-scrub-played::after {
+  content: ''; position: absolute; right: -6px; top: 50%; width: 12px; height: 12px; translate: 0 -6px; border-radius: 50%;
+  background: var(--highlight); transform: scale(0); transition: transform var(--t-quick) var(--ease-out);
+}
+.ui-scrub:is(:hover, [data-drag], :focus-visible) .ui-scrub-played::after { transform: none; }
+.ui-scrub-tip {
+  position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2);
+  font: .75rem var(--mono); color: var(--tx); background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s);
+  white-space: nowrap; pointer-events: none;
+}
+.ui-split { position: relative; min-height: var(--sp-2); cursor: ns-resize; outline: none; }
+.ui-split::before { content: ''; position: absolute; inset: calc(var(--sp-2) * -1) 0; }
+.ui-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); transition: background var(--t-quick); }
+.ui-split:is(:hover, [data-drag], :focus-visible)::after { background: var(--highlight); }
+@media (pointer: coarse) { .ui-split { min-height: var(--tap); } .ui-split::before { inset: 0; } }
+
+/* ---- sheet: the top layer, below the strip, never over the stop pair ---- */
+.ui-sheet {
+  display: none; flex-direction: column; gap: var(--sp-3); margin: 0; padding: var(--sp-3) var(--sp-4);
+  color: var(--tx); overscroll-behavior: contain; box-shadow: 0 8px 24px rgba(var(--shade-rgb), .6);
+}
+.ui-sheet:popover-open, .ui-sheet[data-form='slot'][data-open] { display: flex; }
+/* The slot form is a card where the plugin put its slot: in flow, no shadow, never over a control. */
+.ui-sheet[data-form='slot'] { box-shadow: none; }
+.ui-sheet[data-form='sheet'] {
+  position: fixed; inset: auto 0 0 0; width: auto; max-height: min(65dvh, var(--ui-sheet-max, 65dvh)); overflow-y: auto; border-radius: var(--r-s) var(--r-s) 0 0;
+  padding-inline: max(var(--sp-4), var(--corner-inset));
+  padding-bottom: max(var(--sp-3), var(--corner-inset), env(safe-area-inset-bottom, 0px));
+}
+.ui-sheet[data-form='drawer'] {
+  position: fixed; inset: max(var(--strip-h, 0px), var(--stop-reserve-h, 0px)) 0 0 auto; width: min(360px, 85vw); height: auto; max-height: none;
+  overflow-y: auto; padding-right: max(var(--sp-4), var(--corner-inset));
+  padding-bottom: max(var(--sp-3), var(--corner-inset), env(safe-area-inset-bottom, 0px));
+}
+.ui-sheet[data-form='popover'] { position: fixed; inset: auto; width: max-content; max-width: calc(100vw - 2 * var(--sp-3)); padding: var(--sp-2); }
+.ui-sheet-grab { display: none; width: 40px; height: 4px; margin: 0 auto; border-radius: var(--r-s); background: var(--line-3); }
+.ui-sheet[data-form='sheet'] .ui-sheet-grab { display: block; }
+.ui-sheet-head { display: flex; align-items: center; gap: var(--sp-3); }
+.ui-sheet-head > .dash-title { flex: 1 1 auto; }
+.ui-sheet[data-form='popover'] .ui-sheet-head { display: none; }
+.ui-sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; min-width: 0; }
+.ui-sheet[data-form='popover'] .ui-sheet-body { gap: var(--sp-2); }
+.ui-sheet[data-form='popover'] .ui-sheet-body > .og-btn { justify-content: flex-start; width: 100%; }
+
+/* ---- status ---- */
+.ui-status[data-routed] { display: none; }
+
+
+/* ---- list, tile ---- */
+.ui-list { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--sp-3); min-width: 0; min-height: 0; height: 100%; }
+.ui-list:not([data-paged]) { grid-template-rows: minmax(0, 1fr); }
+.ui-list:not([data-paged]) > .ui-list-foot { display: none; }
+.ui-list-body { position: relative; min-height: 0; overflow: hidden; }
+.ui-list:not([data-paged]) > .ui-list-body { overflow-y: auto; }
+.ui-list-items { display: grid; gap: var(--sp-3); align-content: start; }
+.ui-list-items[aria-busy='true'] { opacity: .5; }
+.ui-list-note {
+  position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4);
+  text-align: center; font-size: .82rem; color: var(--tx-mut); pointer-events: none;
+}
+.ui-list-note:empty { display: none; }
+.ui-list-note[data-tone='warn'] { color: var(--warn-ink); }
+.ui-list-foot { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; min-height: var(--ui-btn-h); }
+.ui-list-page { flex: 1 0 auto; text-align: center; white-space: nowrap; font: .74rem var(--mono); color: var(--tx-val); }
+.ui-list-count { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: .74rem var(--mono); color: var(--tx-val); }
+.ui-tile { position: relative; display: grid; min-width: 0; }
+.ui-tile-b { display: grid; grid-template-rows: auto 1.25rem 1.125rem; gap: var(--sp-1); min-width: 0; padding: 0; text-align: left; color: var(--tx); }
+.ui-tile-shot { aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius); }
+.ui-tile-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ui-tile-b:hover .ui-tile-shot { border-color: var(--line-4); }
+.ui-tile-b[aria-current='true'] .ui-tile-shot { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
+.ui-tile-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; line-height: 1.25rem; }
+.ui-tile-m { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: .7rem/1.125rem var(--mono); color: var(--tx-mut); }
+.ui-tile-act { position: absolute; top: var(--sp-2); right: var(--sp-2); display: flex; gap: var(--sp-1); }
+.ui-tile-act > .og-btn { background: var(--bg-card); }
+.ui-list[data-form='rows'] .ui-tile { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--sp-3); height: var(--ui-row-h); }
+.ui-list[data-form='rows'] .ui-tile-b { grid-template-columns: calc(var(--ui-row-h) * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 1.25rem 1.125rem 1fr; column-gap: var(--sp-3); height: var(--ui-row-h); }
+.ui-list[data-form='rows'] .ui-tile-shot { grid-area: 1 / 1 / 5 / 2; height: var(--ui-row-h); aspect-ratio: auto; }
+.ui-list[data-form='rows'] .ui-tile-t { grid-area: 2 / 2; }
+.ui-list[data-form='rows'] .ui-tile-m { grid-area: 3 / 2; }
+.ui-list[data-form='rows'] .ui-tile-act { position: static; }
+.ui-tile[data-drag] { opacity: .6; cursor: grabbing; }
+.ui-tile[data-over] { box-shadow: 0 -2px 0 var(--highlight); }

@@ -492,25 +492,24 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 // 'refused: <status>', 'Stash: <errors[0].message cut to 50 chars>', 'not a Stash server'.
 // The key never reaches a log line.
 
-// library.js
+// library.js (the kit draws the list, its pager and tiles, the inputs and the rows: api.ui, docs/PLUGINS.md)
 export const CSS, COPY;
-export function fitGrid(W, H, gap = 8);   // -> {cols, rows, perPage}: tiles 150..300 px wide, gap px apart, that fit, at least one
-export function mountLibrary(el, { getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
-  // onQueue(scene): each tile and row carries Add to queue (+), a sibling of the tile's button
-  // rows: () -> boolean, the phone's row form (PR13: a 56 px thumbnail beside the title and the meta, ROW_H); fit()
-  // re-measures the page size after a form change
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+  // ui: api.ui; onQueue(scene): each tile and row carries Add to queue (+), a kit tile action
+  // rows: () -> boolean, the phone's row form (PR13: the kit list's rows, a 16:9 thumbnail beside the title and the
+  // meta, --ui-row-h high); fit() sets the form and the kit list refits its page
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
   // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())
-export function mountConnect(el, { api, onSaved, client });   // -> unmount(); client(v) -> StashClient
+export function mountConnect(el, { ui, api, onSaved, client });   // -> unmount(); client(v) -> StashClient
   // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
 `mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; the pickers are the player's, PR3), a tile grid that
-never scrolls (per page = cols x rows fitted by a ResizeObserver), and a
-foot row (`←` Previous page, `page n / m`, `→` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
-box with a lazy screenshot, a one-line title, `duration · speed`. With no
+debounce; sort; direction; the pickers are the player's, PR3), and a kit list
+that never scrolls (per page = the whole tiles that fit, the kit's fit) with
+its pager (Previous page, `page n / m`, Next page, `N scenes`). Tiles are the
+kit's: a 16:9 box with a lazy screenshot, a one-line title, `duration · speed`. With no
 base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
 (`Stash v<version>` or the error words), stored in `api.prefs` `stash`.
@@ -567,10 +566,10 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
 //   fitMap(extent)). A new script starts at [0, 1] until the measure lands.
 export const PLAY_CSS;
-export function mountPlay(el, { value, onChange, volume });   // -> unmount(); the settings card's playback rows:
-  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency, and Volume on phones
-  // (volume: Player.volume {get, set}); rows.js's form (PR18): switches, sliders over prefs.js's repair ranges with
-  // a value chip; onChange(partial) on commit
+export function mountPlay(el, { ui, value, onChange, volume, autoplay });   // -> unmount(); the settings card's playback rows:
+  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency, Autoplay, and Volume on
+  // phones (volume: Player.volume {get, set}); the kit's rows (PR18): switches, sliders over prefs.js's repair ranges
+  // with a value chip; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
 //   composition: 'full'|'handheld'|'glance', ab: {a, b} (media ms | null, runtime only), play: Prefs.play }
@@ -592,7 +591,8 @@ export function traceLines(trace, fromMs, toMs, W, H), clampRange(T, key, v), zo
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onLoop, ovHost, ovBefore, overlay });
+export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onLoop, ovHost, ovBefore, overlay });
+  // ui: api.ui; the heat scrubs through ui.drag (a touch after horizontal intent or a hold, ph-5u0g peeve 14).
   // Nothing rides the detail but the playhead, the range pills and overlay (PR7); the returned zoomEl (zoom out,
   // the span in s, zoom in) and abEl (A-B) are the caller's to place in its timeline head. Two touches on the
   // detail pinch the zoom (pinchZoom); touch-action pan-x pan-y keeps the page's scroll.
@@ -635,23 +635,19 @@ observations, marks) only while localStorage `phosphor.funscript.probe` is
 before `video.pause()` and `seek` before a `currentTime` set (`wrap` for a
 loop), so a test can prove no other path drives the video.
 
-Hover bar (ph-mcfe), in the stage of every view: the seek bar (role slider,
-played and buffered fill, a time tooltip), Play/Pause, Mute, volume, the
-time and, with `opts.fullscreen`, the mode and Fullscreen. The mode shows
-where the shell sets `<html data-fullscreen-mode>` and dispatches
-`phosphor-page-fullscreen-mode` (`detail: {mode}`); the shell stores it. Shown on pointer movement,
-hidden after `HOVER_IDLE_MS` idle and on pointer leave; not drawn under 130
-px of stage height. Play/Pause is `ctl.toggle()`, a seek `ctl.seek(ms)`;
-volume and mute set the video's own and store pref `audio`; they are the
-card's only mute and volume. Play and the time are the bar's; the strip
-under the video (Motion, Offset, Invert, speed) draws its own only at glance
-and beside the handheld analyzer. Keys on the
-card root: Space and K toggle, J/L 10 s, arrows 5 s, M mute, F fullscreen.
-Fullscreen dispatches `phosphor-page-fullscreen` (bubbles, cancelable,
-`detail: {on}`) from the card; the shell's `preventDefault()` is the
-yes, and the card takes `data-media` (the stage alone; page.js hides the
-Settings section) until `phosphor-page-fullscreen-change` reads
-`{on: false}`.
+Hover bar (ph-mcfe, PR9): the kit stage's overlay (api.ui stage), in
+fullscreen only: the kit scrub (role slider, played and buffered fill, a
+time tooltip) over the player bar's own buttons, moved in on entry and back
+on exit. Shown on pointer movement, hidden after `HOVER_IDLE_MS` (the kit's
+idle) and on pointer leave. Play/Pause is `ctl.toggle()`, a seek
+`ctl.seek(ms)`; volume and mute set the video's own and store pref
+`audio`. Keys on the card root: Space and K toggle, J/L 10 s, arrows 5 s,
+M mute, F fullscreen. Fullscreen is the kit stage's ask
+(`phosphor-page-fullscreen`, bare); the shell's `preventDefault()` is the
+yes, and the card takes `data-media` (the stage alone; the settings sheet
+turns into the kit's drawer) until the shell's fullscreen ends. The kit
+stage's center glyph shows Play over a paused video only, never in motion
+only (ph-1qs5.11).
 
 The trial notice `Preview: not saved` (tone `intent`, an `--intent` bar)
 follows the gate in the slot order and stands while `api.trialPending`.
@@ -750,22 +746,19 @@ export function fitMap([min, max]);   // -> [min(0, min) floored, max(1, max) ce
                                       // within [-1.5, 2.5] (the 0.25 gain's reach); [0, 1] when inside the window
 export function wire(script, I);      // -> the Script the scheduler sends: every action p' = (p - lower) / (upper - lower);
                                       // `script` itself at [0, 1], so the scheduler runs byte-identical
-export const COPY, CSS;
-export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale rows, onChange(scale)
-  // on commit (rows.js's form): Fit to window (the Auto switch), the slider 0.25..1 with its chip, or the chip's
-  // readout '0.01–0.97' (where 0 and 1 land)
+export const COPY;
+export function mountScale(el, { ui, value, onChange, gain });   // -> unmount(); the settings card's Scale rows, onChange(scale)
+  // on commit (the kit's rows): Fit to window (the Auto switch), the slider 0.25..1 with its chip, or the chip's
+  // readout '0.01–0.97' (where 0 and 1 land) from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at
+  // the overall gain (Auto)
 // queue.js (ph-1qs5.9): the play queue
-export const COPY, CSS, LONG_PRESS_MS = 400;
+export const COPY;
 export function toStored(entry), fromStored(stored, key);   // pure: a Stash scene without its key / with the key in force;
   // a file by name (files null until reopened); null for anything else
 export function move(list, from, to);   // pure: the list with one item moved, indexes clamped
-export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) });   // -> { render(), unmount() }
+export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) }, ui);   // -> { render(), unmount() }
+  // the kit's list in its row form: paged, a row drags to reorder (a mouse at once, a touch after the kit's hold)
   // Entry = {kind: 'stash', key, title, durationMs, scene} | {kind: 'file', key, title, name, durationMs, files: File[] | null}
-// rows.js (PR18): the settings rows' one form, label | control | value chip, Field's voice restated
-export const CSS;
-export function rowsBox(label), sub(text), sliderRow(box, label, {min, max, step, tip}) /* -> {input, out} */,
-  switchRow(box, label, {tip}) /* -> the checkbox of a shell .og-switch */;
-  // from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto)
 ```
 
 The controller schedules `wire(script)` (`ctl.wire`, `PlayerState.shaped`, the Kinetic preview's script too): one

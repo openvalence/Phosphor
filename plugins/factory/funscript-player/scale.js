@@ -10,7 +10,6 @@
 //   controller's (ui.js): it fits the map and passes it in.
 // - Pure, no DOM at import time; mountScale touches the DOM only when called.
 
-import { rowsBox, sub, sliderRow, switchRow } from './rows.js';
 
 export const RANGES = Object.freeze({ scale: Object.freeze({ min: 0.25, max: 1, step: 0.01 }) });
 export const SCALE = Object.freeze({ scale: 1, scaleAuto: true });
@@ -57,43 +56,37 @@ export const COPY = Object.freeze({
   autoTo: '–',
 });
 
-export const CSS = `
-.fsp-scale { min-width: 0; }
-`;
-
 /**
- * The settings card's Scale rows (PR18): fit to window, a switch (Auto), and the scale slider with its value chip, which
- * reads where 0 and 1 land under Auto; -> unmount(). gain() -> the map in force, [lower, upper] (the player's), polled at 4 Hz.
+ * The settings card's Scale rows (PR18, the kit's rows): fit to window, a switch (Auto), and the scale slider whose
+ * value chip reads where 0 and 1 land under Auto; -> unmount(). gain() -> the map in force, [lower, upper] (the
+ * player's), polled at 4 Hz. ui: api.ui.
  */
-export function mountScale(el, { value, onChange, gain = () => null }) {
+export function mountScale(el, { ui, value, onChange, gain = () => null }) {
   let v = cleanScale(value);
   const r = RANGES.scale;
-  const box = rowsBox(COPY.scale);
-  box.classList.add('fsp-scale');
-  box.prepend(Object.assign(document.createElement('style'), { textContent: CSS }));
-  box.append(sub(COPY.scale));
-  const auto = switchRow(box, COPY.fit, { tip: COPY.autoTip });
-
-  const { input: sc, out: gainOut } = sliderRow(box, COPY.scale, { min: r.min, max: r.max, step: r.step });
+  const commit = (partial) => { v = cleanScale({ ...v, ...partial }); draw(); onChange(v); };
+  const auto = ui.switch({ onChange: (on) => commit({ scaleAuto: on }) });
+  const sc = ui.slider({ min: r.min, max: r.max, step: r.step, format: (x) => x.toFixed(2), onChange: (x) => commit({ scale: x }) });
+  const gainOut = sc.chip;
   gainOut.classList.add('fsp-gain');
+  // The Auto reading ('-0.12–1.05') is the chip's widest: reserved, so the 4 Hz poll never moves the row.
+  gainOut.style.minWidth = '11ch';
+  const box = ui.rows({ title: COPY.scale, class: 'fsp-scale' });
+  box.append(ui.row({ label: COPY.fit, control: auto, tip: COPY.autoTip }), ui.row({ label: COPY.scale, control: sc }));
   el.append(box);
 
   function drawGain() {
     if (!v.scaleAuto) return;
     const [a, b] = gain() ?? [0, 1], w = b - a;
+    sc.value = 1 / w;
     gainOut.value = (-a / w).toFixed(2) + COPY.autoTo + ((1 - a) / w).toFixed(2);
-    sc.value = String(1 / w);
   }
   function draw() {
-    auto.checked = v.scaleAuto;
+    auto.value = v.scaleAuto;
     sc.disabled = v.scaleAuto;
-    if (!v.scaleAuto) sc.value = gainOut.value = v.scale.toFixed(2);
+    if (!v.scaleAuto) sc.value = v.scale;
     drawGain();
   }
-  const commit = (partial) => { v = cleanScale({ ...v, ...partial }); draw(); onChange(v); };
-  auto.addEventListener('change', () => commit({ scaleAuto: auto.checked }));
-  sc.addEventListener('input', () => { gainOut.value = (+sc.value).toFixed(2); });
-  sc.addEventListener('change', () => commit({ scale: +sc.value }));
   draw();
   // ponytail: polls the player's gain at 4 Hz; a player change event when a second readout needs one.
   const poll = setInterval(drawGain, 250);

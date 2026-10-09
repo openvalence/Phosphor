@@ -33,11 +33,12 @@ export const HERO = Object.freeze({
 export function activate(api) {
   const player = createPlayer(api);
   api.registerHero({ ...HERO, mount: (el, fields) => player.mount(el, fields) });
+  const ui = api.ui;
   const settings = (el) => {
-    const b = mountScale(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); },
+    const b = mountScale(el, { ui, value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); },
       gain: () => player.scale });
-    const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p), volume: player.volume, autoplay: player.autoplay });
-    const a = mountConnect(el, { api });
+    const c = mountPlay(el, { ui, value: readPrefs(api).play, onChange: (p) => player.setPlay(p), volume: player.volume, autoplay: player.autoplay });
+    const a = mountConnect(el, { ui, api });
     return () => { a(); b(); c(); };
   };
   api.registerSettings(settings);

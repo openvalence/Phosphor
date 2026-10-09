@@ -133,6 +133,11 @@ export const LOCKED = {
   '--font': 'bundled font',
   '--mono': 'bundled font',
   '--og-brackets': 'derived from the lines',
+  '--corner-r': 'published by the Android activity (MainActivity, inline on <html>)',
+  '--corner-inset': 'derived from the display corner',
+  '--bar-h': 'touch floor (law 12)',
+  '--ui-btn-h': 'touch floor (law 12)',
+  '--ui-row-h': 'plugin kit row height',
 };
 /** The safety swatches the editor shows locked. */
 export const SAFETY = ['--warn', '--bad', '--estop'];

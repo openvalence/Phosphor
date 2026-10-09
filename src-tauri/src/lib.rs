@@ -1,4 +1,4 @@
-#[cfg(desktop)]
+#[cfg(not(target_os = "ios"))]
 mod buttplug;
 mod discovery;
 mod estop_udp;
@@ -16,8 +16,19 @@ fn js_log(level: String, msg: String) {
   }
 }
 
+/// Runs once, on the thread that loads this library: the only native context
+/// whose FindClass sees the app's classes, which btleplug's init needs.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _: *mut std::ffi::c_void) -> jni::sys::jint {
+  buttplug::android::on_load(vm);
+  jni::sys::JNI_VERSION_1_6
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  #[cfg(target_os = "android")]
+  buttplug::android::set_runtime();
   // NVIDIA's proprietary driver cannot back WebKitGTK's DMABUF renderer: the
   // window stays blank on X11 and the Wayland connection dies with protocol
   // error 71 (measured on a Quadro RTX 5000, driver 610, 2026-10-04). Must be
@@ -43,45 +54,45 @@ pub fn run() {
       report::save_report,
       #[cfg(desktop)]
       report::open_report_url,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_status,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_start,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_stop,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_scan_start,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_scan_stop,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_devices,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_machine_present,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_toy_scalar,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_toy_linear,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_toy_rotate,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_toy_stop,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_toy_read,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_stop_all,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_settings,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_settings_set,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_rename,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_forget,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_device_disconnect,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_clients,
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       buttplug::bp_client_disconnect,
     ])
     .setup(|app| {
@@ -95,7 +106,7 @@ pub fn run() {
         if cfg!(debug_assertions) { b = b.target(Target::new(TargetKind::Webview)); }
         app.handle().plugin(b.build())?;
       }
-      #[cfg(desktop)]
+      #[cfg(not(target_os = "ios"))]
       {
         use tauri::Manager;
         app.manage(buttplug::init(app.handle()));

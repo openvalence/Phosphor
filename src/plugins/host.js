@@ -110,6 +110,7 @@ class PermissionError extends Error {
  *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
  *   isHub(URL)                    -> true for the connected hub's own origins
  *   prefs                         -> Storage-like {getItem, setItem} or null
+ *   ui                            -> the plugin UI kit (kit.js KIT), one frozen object; null where none
  *   log(pluginName, level, msg)   -> the log pane
  */
 export function createPluginHost(deps) {
@@ -171,6 +172,8 @@ export function createPluginHost(deps) {
       apiVersion: API_VERSION,
       // One glyph per shell surface a page draws itself (docs/PLUGINS.md, Pages).
       icons: Object.freeze({ quickRail: NAV_ICONS.quickRail }),
+      // The shell's controls and layout primitives (docs/PLUGINS.md, The UI kit).
+      ui: deps.ui || null,
       manifest: Object.freeze(JSON.parse(JSON.stringify(rec.manifest))),
 
       // ---- read: the model, never the wire ----
