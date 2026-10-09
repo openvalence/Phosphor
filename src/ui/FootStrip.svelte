@@ -17,7 +17,7 @@
    * (the @media rules below, breakpoints measured): clock offset, clock rtt,
    * deadman, state pushes, session, reconnects, last rx; under 442 px the
    * "LINK" label goes too. The scale control and "UI build:etag" (screenshot
-   * debugging) never drop.
+   * debugging) never drop; the build cell may ellipsize.
    *
    * Read-only and quiet on purpose: the one control is the UI scale at the
    * right end (ScaleControl) and the session clock toggle; the rest only
@@ -31,7 +31,8 @@
    * Constraints:
    * - Pinned, one height whatever the scroll; it owns the bottom inset only
    *   while no page footer is under it, and publishes --foot-strip-h, which
-   *   `.app` reserves (style.css).
+   *   `.app` reserves (style.css). Its ends clear the screen's rounded
+   *   corners whenever it is the bottom row (style.css, the inset vars).
    * - A live value never moves its neighbors: each holds a fixed slot (--w,
    *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
    */
@@ -80,6 +81,8 @@
   // Vite global (vite.config.js `define`) — short git hash, or a UTC build
   // timestamp in a repo-less checkout. Never a hand-maintained literal.
   const buildId = typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : '--';
+  // The cell may ellipsize (.fact-ui), so its title carries it whole.
+  const uiCell = $derived(buildId + ':' + (etag ? etag.slice(0, 10) : '--'));
 </script>
 
 <footer class="footstrip" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
@@ -92,7 +95,7 @@
     <span class="fact d2" title={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
     <span class="fact d3" title={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
     <span class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
-    <span class="fact" title="UI build {buildId}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{buildId}:{etag ? etag.slice(0, 10) : '--'}</span></span>
+    <span class="fact fact-ui" title="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
     <button type="button" class="fact fact-btn d5" onclick={() => (sessionMs = !sessionMs)}
             title={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
       <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
@@ -118,7 +121,9 @@
     font-size: 11px;
   }
 
+  /* --fy: the row's height above the screen edge; R less it bounds the arc. */
   .footstrip.pinned {
+    --fy: max(var(--page-foot-reserve, 0px), env(safe-area-inset-bottom, 0px));
     position: fixed;
     left: 0;
     right: 0;
@@ -126,6 +131,8 @@
     z-index: 15;
     margin: 0;
     padding-bottom: calc(.727em + env(safe-area-inset-bottom, 0px));
+    padding-left: max(1.09em, var(--corner-bl, 0px) - var(--fy));
+    padding-right: max(1.09em, var(--corner-br, 0px) - var(--fy));
   }
   :global(.app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: .727em; }
   /* The phone class (DESIGN §10.12): one line at the tap height, its 40 px
@@ -157,6 +164,10 @@
     gap: var(--sp-2);
     white-space: nowrap;
   }
+  /* The build id is static, so it alone may narrow and ellipsize where the
+     corner insets take the row's ends; the live cells keep their slots. */
+  .fact-ui { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .fact-ui .v { flex: 0 1 auto; min-width: 0; }
   /* A fact that happens to be clickable stays a fact: same metrics, no button
      chrome, so the strip does not grow a control that looks like a control. */
   .fact-btn {

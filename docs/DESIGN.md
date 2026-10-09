@@ -653,10 +653,35 @@ question in §10.8).
   `WindowInsetsController.hide(systemBars())` with
   `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`, applied by the activity on create
   and on every window focus gain; an edge swipe shows them for a moment. The
-  web side keeps `env(safe-area-inset-*)` for the gesture pill and the
-  cutout. The state never changes, so there is no JS bridge. Seam:
+  web side keeps `env(safe-area-inset-bottom)` for the gesture pill; side
+  cutouts are not handled yet (`ph-5u0g.12`, open). The bar state never
+  changes, so there is no JS bridge for it. Seam:
   `src-tauri/android/MainActivity.kt`, copied into the generated project's
   `MainActivity.kt` by `tools/android-icons.mjs` (docs/BUILD.md, Android).
+- The screen's shape (operator 2026-10-09, `ph-5u0g` peeves 12, 20 and 23):
+  edge to edge, content must stay out of the rounded corners and the camera
+  cutout. The activity reads the window's rounded corners (API 31+) and its
+  top cutout's bounding rect (API 28+) on every layout of the webview and
+  pushes them one way into the page as CSS px on `<html>` (`--corner-tl`,
+  `-tr`, `-bl`, `-br` and `--corner-r`, the largest of the four;
+  `--cutout-l`, `-r`, `-w`, `-h` with `data-cutout-top`), now and at the
+  start of every later load; elsewhere they read as 0. A side cutout (a
+  phone on its side) is not published and nothing clears it yet
+  (`ph-5u0g.12`, open). Every edge row clears the arc: its ends are inset by the
+  radius less the row's distance from that edge (the top bar, the bottom
+  status row while it is the bottom row, the page footer), the bare stop
+  pair sits on the corner's diagonal, the phone menu ends above the bottom
+  corner. Beside a top cutout the top bar rises into the cutout's band
+  instead of padding under the inset: the hamburger and the name end short
+  of the cutout, the chips start past it, and the bare caret sits left of it,
+  away from the stop pair. Where the phase and tier chips do not fit right
+  of the cutout (a 360 px phone), the bar pads under the inset as without
+  one, until the next resize.
+  The suites assume 48 px corners and a centered 28 x 36 hole at the phone
+  sizes (`test/pages.test.mjs`, the arc check). Seams: `MainActivity.kt`,
+  the vars' note in `src/style.css`, `LinkBar`, `FootStrip`, `PageFoot`,
+  `PhoneMenu`, `TopStrip` (`ph-5u0g.8`; the radius-less-distance bound is
+  the agent's, veto-able).
 - The quick rail (operator rulings 2026-10-08, `ph-5u0g` peeve 6, amended the
   same day): one rail design, the hero's own rail opened elsewhere, never a
   second copy and never a dock. A mini-rail icon (one glyph,
@@ -671,7 +696,8 @@ question in §10.8).
   window fullscreen, which keeps the hero bar: the quick rail exists in the
   bare (Borderless) one. A native page shows the icon only in a footer it has
   anyway; no footer is added for it, the hero's mini opens the same pop-up
-  there. Either form
+  there. One icon per screen (operator 2026-10-09, `ph-5u0g` peeve 11): the
+  footer's hides while a plugin page shows its own. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
   pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
@@ -681,9 +707,21 @@ question in §10.8).
   buckets 1 and 2 as one row: the position numeral without its label line
   and without the planned target, lag and speed stack, the mini rail, and the
   five strip buttons; nothing leaves the hero and the stop pair never moves.
-  At least 40 px return to the page at 420x860 and 860x420. Other pages and other
+  About 70 px return to the page at 420x860 and 27 at 860x420, with a live
+  numeral as with none. Other pages and other
   buckets keep the hero as above. The row's buttons sit at the 40 px floor,
-  each as wide as its word, and a status condition takes the numeral's
+  each as wide as its word, with the full hero's padding and its gaps at
+  that width: tight where the full hero stacks its controls, the one-row
+  group gaps (Home | Flip Override | Pause Halt) where it does not
+  (operator 2026-10-09, `ph-5u0g` peeve 27). The numeral sits centered in
+  the row at the strip's inset (peeve 28). Pause and Halt stand a clear gap
+  apart in every form and no hit area spans it (peeve 16). Short of width
+  the numeral shrinks to fit, from 1.35 rem down to .85 rem, and the idle
+  hint line reserves no width. The row stands only where the numeral fits
+  at that floor with all five buttons counted, judged before any value
+  streams or the hub offers its ops, so neither a live value nor the link
+  flips the form: at the default scale 412 px and wider keep the one row,
+  a 360 px phone keeps the full hero from the start. A status condition takes the numeral's
   place (the watch-size rule), so the mini and the buttons never move; the
   safety-edge history stays in the Log there (`ph-5u0g.6`, the agent's
   readings, veto-able). Seams: `src/ui/HeroStrip.svelte`,
@@ -1024,7 +1062,11 @@ derives from one unit, and no size is tuned by hand.
   is retired there; the Dash's + moves into the menu. The drawer overlays,
   so nothing shifts. It starts under the top strip, so the hamburger and the
   stop pair stay uncovered; focus moves to the selected entry on open and
-  back to the hamburger on close. The page operations ride the drawer's pill
+  back to the hamburger on close. The drawer is compact (operator
+  2026-10-09, `ph-5u0g` peeve 13): one narrow width (12 rem), as tall as its
+  rows and ending clear of the bottom corner (scrolling past that), every row
+  at the compact tap height, the Phosphor section in flow like the others;
+  the desktop rail's shaded foot block is the rail's alone. The page operations ride the drawer's pill
   and stay in the page footer too, one tap from the thumb (`ph-5u0g.4`, the
   agent's reading, veto-able). Seams: `src/App.svelte` (`sideTabs`, shared
   with the desktop rail), `src/ui/PhoneMenu.svelte`, the hamburger in
@@ -1154,3 +1196,7 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-08 | §10.3 | Fullscreen or not: a `mediaFullscreen` page's fullscreen is always bare (Borderless on the desktop shell); its In window / Borderless choice goes. Supersedes, for such pages, `ph-wb4j`'s mode and `ph-n4t7`'s mode glyph in the hover bar; footer pages keep the mode. | operator (ruled 2026-10-08, `ph-5u0g` peeve 9) |
 | 2026-10-08 | plugins | Funscript player redesign: shell card chrome, the stage at the video's aspect on phones, Open video and Open script, motion-only play, one player bar with Motion beside Play, a timeline head row, fullscreen as one mode, the hover bar in fullscreen only, Settings as sheet / drawer / side card, the Library as tab / drawer / column, status in the footer slot or the card's last row, landscape with a video as fullscreen, native settings rows with lowercase labels. Supersedes the 2026-10-05 plugins row's corner plate and ten-item transport and parts of `ph-mdqo.7`, `ph-n4t7` and `ph-mcfe`; text in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md), The card (`ph-1qs5`, `ph-5u0g` peeves 5 to 9). | operator ("yes, I like this", accepted as drawn with three amendments; the card compositions adopting the bar and head, and the agent's other readings named in FUNSCRIPT.md, veto-able) |
 | 2026-10-09 | §10.12, plugins | The plugin UI kit: `api.ui` hands a plugin the shell's own controls and layout primitives in plain DOM (one look, the global classes the shell's components wear; no page shifting, the 40 px targets, the touch-intent rule, the modifier keys, the overlays' swallowed outside tap with the safety strip exempt, the footer status, the corner inset by construction); the funscript player ports onto it ([PLUGINS.md](PLUGINS.md), The UI kit, `ph-5wsk`). | operator ("make it EASY for plugin developers"; plain-DOM factories over custom elements or mounted Svelte components, the element as its own handle, top-layer overlays, the 0.3 r corner inset and the bar's overflow order are the agent's, veto-able) |
+| 2026-10-09 | §10.3 | One quick-rail icon per screen: the footer's hides while a plugin page shows its own (`ph-5u0g` peeve 11). | operator |
+| 2026-10-09 | §10.3 | Pause and Halt stand a clear gap apart in every hero form and no hit area spans it; the compact hero keeps the full hero's padding and its gaps at that width (tight where the full hero stacks, its one-row group gaps where it does not), so it returns about 70 px at 420x860 and 27 at 860x420 (was 40 at both); its numeral sits centered in the row and shrinks to fit (1.35 to .85 rem) instead of the row falling back to the full hero when a value streams (`ph-5u0g` peeves 16, 27, 28). | operator (the shrinking numeral is Fable's pick; the 9 px pair gap, the full hero's 7 px padding kept at the cost of 13 px at 860x420, and reading "the same gaps" per width are the agent's, veto-able) |
+| 2026-10-09 | §10.3 | The screen's shape: the activity pushes the rounded corners and the top cutout into the page; edge rows clear the corners, the top bar rises into the cutout's band and lays out either side of it (`ph-5u0g` peeves 12, 20, 23). Side cutouts stay open (`ph-5u0g.12`). | operator (the radius-less-distance inset, the evaluateJavascript plus document-start push and `--corner-r` as the largest radius are the agent's, veto-able) |
+| 2026-10-09 | §10.12 | The phone menu's drawer is compact: one narrow width, as tall as its rows, rows at the compact tap height, the Phosphor section in flow (`ph-5u0g` peeve 13). | operator (12 rem, the 40 px floor scaled as the tap, no shading on the drawer's Phosphor section, are the agent's, veto-able) |

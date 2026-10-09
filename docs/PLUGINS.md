@@ -118,7 +118,11 @@ Plugins`, its page region the plugin's to fill full width.
   fullscreen too, whatever pref `fullscreen` says (DESIGN §10.3, "fullscreen
   or not", `ph-5u0g.6`). `bare: false` in its ask is not honored and there is
   no mode event for it. Footer pages keep In window / Borderless; the
-  desktop shell keeps `<html data-fullscreen-mode>` at that pref.
+  desktop shell keeps `<html data-fullscreen-mode>` at that pref. On a phone
+  the bare page owns the screen's edges: keep its own edge rows out of the
+  rounded corners and the top cutout with `--corner-tl`, `-tr`, `-bl`, `-br`,
+  `--corner-r` (the largest of the four) and `--cutout-l`, `-w`, `-h` on
+  `<html>` (CSS px, 0 where absent; DESIGN §10.3, The screen's shape).
 - **`compactHero: true`** (experimental, `ph-5u0g.6`). In buckets 1 and 2,
   while the page is on screen, the hero is one row: the position numeral
   without its label line or the planned target, lag and speed, the mini
@@ -155,7 +159,10 @@ Plugins`, its page region the plugin's to fill full width.
     `preventDefault()`. The horizontal pop-up opens above the element that
     asked (the page's bar), never past the stop pair.
   - Mark the icon `data-quick-rail-toggle`: the pop-up's outside-tap close
-    skips it, so a tap toggles instead of closing and reopening.
+    skips it, so a tap toggles instead of closing and reopening, and the
+    footer's own icon hides while the page shows one (one per screen). A
+    page hides its icon with the `hidden` attribute; any other hiding counts
+    as shown.
   - State: `phosphor-quick-rail-change` on `window`, `detail: {available,
     open, form}` (`form` `'vertical'`, `'horizontal'` or null), fired on every
     change of availability (bucket, fullscreen, page switch) or open state;

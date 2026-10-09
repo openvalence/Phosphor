@@ -303,6 +303,8 @@
   let compactFits = $state(true);
   const cmp = $derived(compact && compactFits);
   let stacked = $state(false);
+  // Compact only: the full hero would be one row here, so the compact row takes its group gaps.
+  let spread = $state(false);
   let smallNums = $state(false);
   let menuOpen = $state(false);
   let menuEl = $state(null);
@@ -348,9 +350,27 @@
     const fit = needs.findIndex((n) => n <= budget);
     level = fit < 0 ? 2 : fit;
     if (cmp) {
-      // Short of width for the one row (the 200 px floor), the full hero stands until the next resize.
-      if (stripEl.scrollWidth > stripEl.clientWidth + 1) compactFits = false;
-      else { stacked = false; level = 0; }
+      // Short of width the numeral gives first, down to its floor (a mono
+      // numeral's width is linear in its size, so one step lands). The row
+      // stands only where the numeral fits at its floor, measured before it
+      // streams too, and Home, Flip and Override count before the hub offers
+      // them (ph-t4ge), so neither a live value nor the link flips the form;
+      // past that the full hero stands until the next resize.
+      const over = stripEl.scrollWidth - stripEl.clientWidth;
+      const st = stripEl.querySelector('.status');
+      let fits = over <= 1;
+      if (st) {
+        const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        const spare = st.offsetWidth - (parseFloat(getComputedStyle(st).minWidth) || 0) - Math.max(0, over);
+        const nw = valEl?.offsetWidth || 0;
+        // The numeral's room once every button is in.
+        const room = nw + spare - ((ops.length ? 0 : 1) + (flip ? 0 : 1) + (hasOverride ? 0 : 1)) * slot;
+        fits = room >= (nw ? nw * .85 * rem / curF : measureEl.querySelector('[data-k=num]')?.offsetWidth || 0);
+        const want = nw ? Math.min(1.35 * rem, curF * room / nw) : 0;
+        if (fits && nw && Math.abs(want - curF) > .5) stripEl.style.setProperty('--cnum', want.toFixed(1) + 'px');
+      }
+      if (!fits) compactFits = false;
+      else { spread = !stacked; stacked = false; level = 0; }
     }
   }
   $effect(() => {
@@ -360,7 +380,7 @@
     return () => ro.disconnect();
   });
   // A rail mounting or the op set changing moves the budget too.
-  $effect(() => { void rail; void ops.length; void railCtl; void cmp; queueMicrotask(measure); });
+  $effect(() => { void rail; void ops.length; void railCtl; void cmp; void spread; queueMicrotask(measure); });
   // Compact keeps Flip and Override inline and Home as its icon.
   const iconHome = $derived(level >= 1 || (cmp && ops.length > 0));
   const menuShown = $derived(ops.length > 1 || iconHome);
@@ -438,12 +458,13 @@
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" class:stacked class:compact={cmp} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
       <span class="btn home-btn icon-only" data-k="icon">{@render homeFace()}</span>
       <span data-k="tap" style="height: var(--tap)"></span>
+      <span class="mono num-floor" data-k="num">000.0</span>
     </div>
     <div class="nums">
       {#if rail && rail.posField}
@@ -583,6 +604,8 @@
     pointer-events: none;
   }
   .measure > * { flex: none; }
+  /* The compact numeral at its floor (measure(), --cnum). */
+  .measure .num-floor { font-size: .85rem; }
   @media (max-width: 1023px) {
     .strip { --num-min: calc(42px * .95 + 20px); --num-h: min(calc(clamp(42px, 8.5vw, 54px) * .95 + 20px), var(--num-cap)); }
   }
@@ -643,14 +666,18 @@
      label line and the planned stack; a current condition takes the
      numeral's place (the watch-size rule), so the mini and the controls never
      move; the safety-edge history stays in the Log. */
-  /* Buttons at the 40 px floor (law 12), the row's gaps tight: the row
-     returns 40 px or more at 860x420, where the full hero is already one row. */
-  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); --pad-v: 0px; gap: var(--sp-2); }
-  .compact .nums { flex: none; clip-path: none; }
+  /* Buttons at the 40 px floor (law 12); the padding and the gaps are the
+     full hero's at the same width (ph-5u0g peeve 27): tight where it would
+     stack, its one-row group gaps where it would not. A wider gap costs the
+     row's fit (compactFits) on a narrow phone; nothing else may grow it. */
+  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); gap: var(--sp-2); }
+  .strip.compact.spread { gap: var(--sp-2) var(--sp-4); }
+  .compact .nums { flex: none; clip-path: none; display: flex; align-items: center; }
   /* Each button as wide as its word, never under the target: a label is never clipped. */
   .compact .dock :global(:is(.safety-op .btn, .rw-flip)) { width: auto; min-width: var(--tap); }
   .compact .nums :global(:is(.hn-primary .hn-label, .hn-col)) { display: none; }
-  .compact .nums :global(.hn-primary .hn-val) { font-size: 1.35rem; }
+  /* --cnum: measure() shrinks the numeral to fit the row (1.35rem down to .85rem). */
+  .compact .nums :global(.hn-primary .hn-val) { font-size: var(--cnum, 1.35rem); }
   .compact .status { min-width: calc(64px + var(--sp-3)); }
   .compact .status[data-kind=edge] .evline { display: none; }
   .compact:has(.status:not([data-kind=idle], [data-kind=edge], [data-kind=virtual])) .nums { display: none; }
@@ -709,17 +736,20 @@
   .tab:hover { color: var(--ink); }
   .tab svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
-  /* Bare: out of flow at the window's top right, the pair alone. */
-  .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
+  /* Bare: out of flow at the window's top right, the pair alone, its corner
+     on the screen corner's diagonal clear of the arc (.3 R > R(1 - 1/√2)). */
+  .topstrip.bare { position: fixed; top: calc(var(--corner-tr, 0px) * .3); right: calc(var(--corner-tr, 0px) * .3); margin: 0; background: none; border: 0; }
   .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
   .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
-  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
+  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). The
+     gap between Pause and Halt is clear and belongs to neither (ph-5u0g
+     peeve 16): no hit area may grow into it. */
   .pair {
     flex: none;
     display: flex;
-    gap: var(--sp-2);
+    gap: var(--sp-3);
   }
   /* Never shrink, never scroll: the budget decides what is inline. */
   .ovr, .ops, .home-menu { flex: none; display: flex; gap: var(--sp-2); }
@@ -802,6 +832,8 @@
     .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-1) var(--sp-1); }
     .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   }
+  /* The compact row at every width: no reserve for the idle hint line. */
+  .compact .dock :global(.safety-op :is(.state.hint, .hints)) { display: none; }
   @media (max-width: 300px) {
     .dock :global(.safety-op .btn) { padding: var(--sp-1) var(--sp-2); }
     .dock :global(.safety-op .ico) { display: none; }
