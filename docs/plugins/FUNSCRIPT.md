@@ -1195,8 +1195,8 @@ behaves the same on the machine, without rendering anything on the hub.
   `funscript-player.test.mjs --unit` against that build.
 - **Determinism.** `test/kinetic-trace.test.mjs` (in `npm run check`)
   replays Nucleus' native Kinetic² fixture (`test/fixtures/kinetic_trace.json`,
-  copied from Nucleus ff45f6a `test/fixtures/kinetic_trace.json`, kernel
-  Kinetic 540938d, `expect_ms` 500) through bytes.js:
+  copied from Nucleus c72bb35 `test/fixtures/kinetic_trace.json`, kernel
+  Kinetic 920836b, `expect_ms` 500) through bytes.js:
   600 of 600 blocks of 1 ms samples bit-identical, p/v/a 0 ULP, the
   accepted count and the anomaly mask (10) as native; `renderCore` on the
   same segments with the same expectation returns the same `position_mm` at
