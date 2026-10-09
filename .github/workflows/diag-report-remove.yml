@@ -1,0 +1,32 @@
+# Deletes a diagnostic report when its author comments /remove on it
+# (docs/DESIGN.md §10.14).
+# Constraints: the comment is only compared inside `if:`, never put in a
+# shell; GITHUB_TOKEN gets no permissions and cannot delete issues, so the
+# step uses secrets.DIAG_REMOVE_TOKEN, an operator-owned token whose user is a
+# repo admin (with the org setting that lets admins delete issues on). The
+# run log is the audit trail.
+name: diag-report-remove
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  remove:
+    if: >-
+      !github.event.issue.pull_request &&
+      contains(github.event.issue.labels.*.name, 'diag-report') &&
+      github.event.comment.user.login == github.event.issue.user.login &&
+      contains(fromJSON('["/remove", "/remove\n", "/remove\r\n", "/remove ", " /remove", "/remove\n\n", "/remove\r\n\r\n"]'), github.event.comment.body)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the issue
+        env:
+          GH_TOKEN: ${{ secrets.DIAG_REMOVE_TOKEN }}
+          ISSUE_ID: ${{ github.event.issue.node_id }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api graphql -f query='mutation($id: ID!) { deleteIssue(input: {issueId: $id}) { clientMutationId } }' -f id="$ISSUE_ID"
+          echo "Removed diagnostic report #$NUMBER at its author's request"

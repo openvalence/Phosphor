@@ -3,6 +3,7 @@ mod buttplug;
 mod discovery;
 mod estop_udp;
 mod plugins;
+mod report;
 
 /// The webview's own errors (window.onerror, unhandled rejections, console.error)
 /// land in the log plugin's file so a field failure is readable without devtools.
@@ -39,6 +40,9 @@ pub fn run() {
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,
+      report::save_report,
+      #[cfg(desktop)]
+      report::open_report_url,
       #[cfg(desktop)]
       buttplug::bp_status,
       #[cfg(desktop)]

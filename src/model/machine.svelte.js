@@ -168,6 +168,7 @@ export const machine = $state({
 });
 
 let session = null;
+let _ws = null; // the newest socket: the health system reads its bufferedAmount
 let _cap = null; // this session's vault recorder, flushed on disconnect
 let _host = '';
 let _lastOpts = {};
@@ -194,6 +195,11 @@ let safetyEdgeSeen = false;
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
   return session;
+}
+
+/** The newest socket, or null (health.svelte.js's backlog reading). */
+export function currentSocket() {
+  return _ws;
 }
 
 /** Is the hub plane usable for writes right now? */
@@ -257,7 +263,17 @@ function stampingSocket(Impl, onData) {
   if (!Base) return undefined;
   return function StampingSocket(url, protocols) {
     const ws = new Base(url, protocols);
-    const stamp = (ev) => { machine.stats.lastRxMs = Date.now(); if (onData && ev) onData(ev.data); };
+    _ws = ws;
+    // Counted at the socket: one WS message is one frame count, its bytes as they arrived (ph-cmz).
+    const stamp = (ev) => {
+      const st = machine.stats;
+      st.lastRxMs = Date.now();
+      st.framesIn++;
+      st.bytesIn += (ev && ev.data && (ev.data.byteLength ?? ev.data.length)) || 0;
+      if (onData && ev) onData(ev.data);
+    };
+    const send = ws.send;
+    ws.send = function (d) { machine.stats.framesOut++; return send.call(this, d); };
     if (typeof ws.addEventListener === 'function') {
       ws.addEventListener('message', stamp);
     } else {

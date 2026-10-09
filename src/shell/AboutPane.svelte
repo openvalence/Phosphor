@@ -17,6 +17,7 @@
   import { PROTO_VER, WS_SUBPROTOCOL } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { pluginsUi } from '../plugins/plugins.svelte.js';
   import CreditLine from '../plugins/CreditLine.svelte';
+  import SentReports from '../ui/health/SentReports.svelte';
   import '../ui/pane.css';
   import BP_LICENSE from '../../../ButtplugIO/LICENSE?raw';
 
@@ -54,6 +55,7 @@
       <dt>Protocol</dt><dd class="mono">v{PROTO_VER} ({WS_SUBPROTOCOL})</dd>
     </dl>
   </section>
+  <SentReports />
   <section class="pane-sec og-screen" aria-labelledby="ab-notices">
     <div class="pane-head"><h2 id="ab-notices">Notices</h2></div>
     <dl class="pane-facts">

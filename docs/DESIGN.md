@@ -1082,6 +1082,78 @@ derives from one unit, and no size is tuned by hand.
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets; no component reads the media query itself.
 
+### 10.14 Health (operator rulings 2026-10-09, `ph-9t5l`, `ph-9t5l.1`)
+
+When something degrades, Phosphor says what and why, in plain words, with
+one thing to do. Nothing degrades silently, and nothing leaves the device on
+its own: no continuous telemetry, ever.
+
+- Three areas: Link, This device, Machine. The 26 conditions, their
+  thresholds, holds and words are one table, `CONDITIONS` in
+  `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
+  condition shows a short line (COPY.md), then one plain sentence for an
+  average DIYer and one action. Jargon (milliseconds, RTT) lives only in the
+  evidence line under it.
+- The flagship case is a stream cutout, classified by cause, first match
+  wins: CLIENT (a move left after the hub's last one ended, or with less lead
+  than the hub needs; or the hub ran dry right after this page stalled or
+  hid), NETWORK (the uplink delay, CLOCK at 2 Hz while streaming, ate the
+  lead; or a position-update gap while this page ran), HUB (the hub reported
+  no plan in flight while moves it was sent should run, nothing else
+  explains it, and it logged warnings), else UNKNOWN. Phase 1 has no
+  hub-side arrival stamps: CLIENT from the send itself is decisive, every
+  other verdict is marked likely. The hub's own word on a starvation is read
+  from roles alone (`plan.duration`, `plan.elapsed`); the first second after
+  a stream starts is the hub ramping in and is never a cutout.
+- Hysteresis: a condition enters after its hold and clears after its clear
+  hold; same-condition episodes within 10 s are one; a re-entry within 60 s
+  of a clear reopens the incident (count + 1); severity rises inside an
+  incident (warn to act by rate, 3 cutouts in 60 s) and falls only when it
+  closes. A measured cause is never overwritten by an inferred one.
+- Where it shows: one Log line per incident (tag `health`), its text updated
+  in place, the plain sentence, action, evidence and Send report folded under
+  it; the Health view (Log page, Health tab) with the three cards, the Link
+  card's 2-minute strip (round trip, sent ahead, pauses) and the incident
+  list; the top strip's status slot takes act and warn, below link fault,
+  unattended, refusal, the jog note, the history message and the latch
+  notices, act above the safety edge, warn below it, a 5 s minimum dwell
+  (`health.slot`; wiring the slot is TopStrip's).
+- Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
+  stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
+  in memory and the last 5 in `localStorage` so a reload keeps them.
+- A machine value with no role (WiFi signal and drops, arrival lead, late
+  plans, faults, hub memory, log drops) reads "not reported by this
+  machine": those conditions bind when the Health roles RFC lands, never by
+  a field name.
+
+Reports (`ph-9t5l.1`): a report is a conversation, so it is a public GitHub
+issue the user submits under their own account; Phosphor sends nothing.
+
+- The review lists the exact bundle (`phosphor.health-report/1`), one row
+  per field (plain name, what, why, value, raw JSON) from the one table the
+  builder walks (`FIELDS` in `src/model/health/report.js`), so no field
+  leaves without a row. The builder is an allowlist: numbers, fixed enums
+  and version-shaped strings only; times count from the incident; no script
+  or video name, position, clock time or date, machine name, address,
+  session or instance id, token or log text.
+- Hold to send (1.5 s, `hold.js`) opens
+  `issues/new?template=diag-report.yml` with the title and the `bundle`
+  field filled in; over 7,500 encoded characters the full bundle is saved as
+  `diag-report-<id>.json` to attach and the link carries the summary. Save
+  report writes the same JSON with no account. In the shell the two acts are
+  `src-tauri/src/report.rs` (the system browser, the Downloads folder).
+- Sent reports (About in the shell, the foot of Health on the served page):
+  id, local date, size, View, Request removal, Forget. Removal copies
+  `/remove` and opens the issue; `.github/workflows/diag-report-remove.yml`
+  deletes a `diag-report` issue when its author comments `/remove`.
+- Operator setup: create the `diag-report` label (the form applies only an
+  existing label), and the `DIAG_REMOVE_TOKEN` repository secret: a token
+  whose user is an admin of openvalence/Phosphor, with the org setting that
+  lets repository admins delete issues on; a fine-grained token scoped to
+  Phosphor with Issues read/write (whether `deleteIssue` also wants
+  Administration write is checked at setup). The workflow's run log is the
+  audit trail.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1153,3 +1225,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-08 | §10.3 | Compact hero: a page registered `compactHero` draws the bucket 1 and 2 hero as one row (numeral without its label line or planned stack, mini rail, the five strip buttons); the funscript player asks for it. | operator (the agent's pick on the redesign's open item stood unvetoed; what the one row keeps is the agent's, veto-able) |
 | 2026-10-08 | §10.3 | Fullscreen or not: a `mediaFullscreen` page's fullscreen is always bare (Borderless on the desktop shell); its In window / Borderless choice goes. Supersedes, for such pages, `ph-wb4j`'s mode and `ph-n4t7`'s mode glyph in the hover bar; footer pages keep the mode. | operator (ruled 2026-10-08, `ph-5u0g` peeve 9) |
 | 2026-10-08 | plugins | Funscript player redesign: shell card chrome, the stage at the video's aspect on phones, Open video and Open script, motion-only play, one player bar with Motion beside Play, a timeline head row, fullscreen as one mode, the hover bar in fullscreen only, Settings as sheet / drawer / side card, the Library as tab / drawer / column, status in the footer slot or the card's last row, landscape with a video as fullscreen, native settings rows with lowercase labels. Supersedes the 2026-10-05 plugins row's corner plate and ten-item transport and parts of `ph-mdqo.7`, `ph-n4t7` and `ph-mcfe`; text in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md), The card (`ph-1qs5`, `ph-5u0g` peeves 5 to 9). | operator ("yes, I like this", accepted as drawn with three amendments; the card compositions adopting the bar and head, and the agent's other readings named in FUNSCRIPT.md, veto-able) |
+| 2026-10-09 | §10.14 | Health: three areas (Link, This device, Machine), 26 conditions in plain words with one action each, the stream cutout classified CLIENT / NETWORK / HUB / UNKNOWN, hysteresis, Log lines, the Health view and the status slot; a local ring and incident snapshots, no telemetry; reports as public GitHub issues the user submits, reviewed field by field, Hold to send, Save report, Sent reports with removal by `/remove` (`ph-9t5l`, `ph-9t5l.1`). | operator (no continuous telemetry; plain language with one action; nothing degrades silently; the GitHub issue flow, ruled 2026-10-09. The Health view as a Log page tab until it gets its own row, the 1 s ramp-in exemption, CLIENT likely on a starvation after a page stall, the 5 s uplink look-back and saving to Downloads without a dialog are the agent's, veto-able) |
