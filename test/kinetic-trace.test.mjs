@@ -76,9 +76,9 @@ ok('renderCore accepts what the replay accepted', r2.accepted === accepted, r2.a
 ok('renderCore: position_mm identical at all ' + fx.steps + ' steps', diff === 0, diff + ' differ');
 console.log('  [NOTE] renderCore, ' + fx.steps / 1000 + ' s at 1 ms in node: ' + ms.toFixed(0) + ' ms');
 
-// (3) ph-hcof: a reversal is sent at rest, so the twin never renders a trough or crest moving on past its knot
-// (a free reversal was carried along the last chord while its successor was beyond the lead). Tolerance kin-554's,
-// 0.2 % of the window.
+// (3) ph-hcof guard: with reversals sent at rest the twin renders no sample past a reversal knot (kin-554's tolerance,
+// 0.2 % of the window). It does not reproduce the machine's dip: this twin renders a free reversal flat as well (the
+// all-free figure is printed beside), so the check guards the rest, it does not prove the fix.
 {
   const at = [], pos = [];
   for (let i = 0; i <= 40; i++) { at.push(i * 300); pos.push(i % 2 ? 0.8 : 0.2); }
@@ -102,7 +102,7 @@ console.log('  [NOTE] renderCore, ' + fx.steps / 1000 + ' s at 1 ms in node: ' +
   const { segs, steps } = segmentsOf(sc, { offsetMs: 0, lo: 0, hi: 1, invert: false });
   const worst = past(segs, steps);
   const free = past(segs.map((s, i) => (i > 0 && i < segs.length - 1 ? [s[0], s[1], s[2], FREE] : s)), steps);
-  ok('reversals at rest: no plan sample past a reversal knot by over 0.2 % of the window (300 ms spans)', worst <= 0.002,
+  ok('no-overshoot guard: reversals at rest, no plan sample past a reversal knot by over 0.2 % of the window (300 ms spans)', worst <= 0.002,
     (worst * 100).toFixed(3) + ' % (all free: ' + (free * 100).toFixed(3) + ' %)');
 }
 

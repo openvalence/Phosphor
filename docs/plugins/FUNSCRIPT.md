@@ -454,9 +454,11 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   (play, pause, seek, rate and end as a video's). The motion-only meter is
   horizontal at every class. The 120 px strip and the stroke meter's track
   are `--screen`; the empty stage wears a dashed `--line-3` edge.
-- **PR5 One player bar,** at the bottom of the Player card, directly above
-  the footer: loading a video or collapsing the timeline never moves it, the
-  stage and the gap above absorb the change. Phones: a full-width scrub row
+- **PR5 One player bar.** Desktop: directly under the stage, above the
+  timeline head (as the mockup draws it; review 2026-10-08). Phones: at the
+  bottom of the Player card, directly above the footer: loading a video or
+  collapsing the timeline never moves it, the stage and the gap above absorb
+  the change. Phones: a full-width scrub row
   (elapsed, heat, remaining) over a button row: previous, Play, next,
   Motion, rate, Fullscreen, quick rail, Settings. Desktop: one row:
   previous, Play, next, elapsed, heat, remaining, volume, Motion, rate,
@@ -473,11 +475,13 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   On phones the band collapses to its head by the user's own tap (kept as
   pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
 - **As built, PR5 to PR7 (`ph-1qs5.3`, where it differs from the text):**
-  the bar takes its two rows (scrub over buttons) on phones, on the
-  handheld dash card and wherever the player column is under 600 px
-  (`BAR_ROW_MIN`); the 1024 x 768 desktop is such a place (the column
-  beside the 320 px library is about 450 px, and the one row needs about
-  520), so it keeps volume in the button row. Phones hide the bar's volume
+  the bar takes its two rows (scrub over buttons) on phones and on the
+  handheld dash card. A desktop page whose player column would drop under
+  600 px (`BAR_ROW_MIN`) beside the 320 px library shuts the library for
+  the session so the bar keeps its one row (1024 x 768: the column is about
+  450 px; the row needs about 520); the pref `libOpen` is not written, and
+  the caret reopens it (the bar then wraps). The media name shows in the
+  phone head too, ellipsized. Phones hide the bar's volume
   (hardware keys; its Settings row comes with `ph-1qs5.5`). A narrow bar
   (under 22 em) drops volume; a narrow head drops the `ms` unit (under 20
   em), then the word TIMELINE (under 18.5 em; the caret stays). The zoom

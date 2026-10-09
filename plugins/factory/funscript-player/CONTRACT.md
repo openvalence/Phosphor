@@ -541,6 +541,10 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
 //       opts.page: the page mount: composition by pageClass (portrait handheld, landscape and desktop full),
 //         the Player and Library shell cards (PR1); the dash card composes by its own box (compositionOf)
+// Host seam, the quick rail (docs/PLUGINS.md, Pages, The quick rail; PR11): the bar's Rail button (.fsp-rail,
+//   data-quick-rail-toggle) draws api.icons.quickRail and shows only while <html data-quick-rail> is present (phones);
+//   it dispatches phosphor-quick-rail {open: 'toggle'} (bubbles, cancelable) from itself; its aria-expanded follows
+//   phosphor-quick-rail-change {available, open, form} on window. Absent seam: the button stays hidden.
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)

@@ -75,7 +75,11 @@ export function registerPlayerPage(api, player, spec, settings) {
       for (let e = root.parentElement; e; e = e.parentElement) top += e.scrollTop;
       const room = innerHeight - top;
       // Under FIT_MIN of room (a watch, a short landscape) the page keeps its own height and scrolls.
-      root.style.height = (+document.documentElement.dataset.bucket || 3) <= 2 && room >= FIT_MIN ? room + 'px' : '';
+      const fill = (+document.documentElement.dataset.bucket || 3) <= 2 && room >= FIT_MIN;
+      root.style.height = fill ? room + 'px' : '';
+      // The pane's own padding and border below the page: take back what now overflows the window.
+      const s = document.scrollingElement, over = fill && s ? s.scrollHeight - s.clientHeight : 0;
+      if (over > 0) root.style.height = Math.max(FIT_MIN, room - over) + 'px';
     };
     const ro = new ResizeObserver(fit);
     ro.observe(document.documentElement);

@@ -848,7 +848,17 @@ if (!LIVE && !STASH_LIVE) {
       return { cls: root.dataset.cls, comp: root.dataset.comp, bar: rel(root.querySelector('.fsp-tr')), vbox: rel(root.querySelector('.fsp-vbox')),
         stage: rel(root.querySelector('.fsp-stage')), status: root.querySelector('.fsp-slot').textContent };
     }, C);
-    const shot = async (name) => { if (EVID) await page.screenshot({ path: join(EVID, name + '-' + at + '.png') }); };
+    // Landscape: the card runs past the window, so a second shot scrolled to the bar.
+    const shot = async (name) => {
+      if (!EVID) return;
+      await page.locator(C).evaluate((r) => r.scrollIntoView({ block: 'start' }));
+      await page.screenshot({ path: join(EVID, name + '-' + at + '.png') });
+      if (cls === 'landscape') {
+        await page.locator(C + ' .fsp-tr').evaluate((e) => e.scrollIntoView({ block: 'end' }));
+        await page.screenshot({ path: join(EVID, name + '-' + at + '-bar.png') });
+        await page.locator(C).evaluate((r) => r.scrollIntoView({ block: 'start' }));
+      }
+    };
     const empty = await look();
     ok('redesign ' + at + ': the page class is ' + cls, empty.cls === cls && empty.comp === (cls === 'portrait' ? 'handheld' : 'full'), empty);
     // PR1: the shell's numbered heads on shell cards; no private box inside the Player card but the --screen plates.
@@ -867,20 +877,27 @@ if (!LIVE && !STASH_LIVE) {
         .filter((e) => { const s = getComputedStyle(e); return s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== screen && parseFloat(s.borderTopWidth) > 0; })
         .map((e) => e.className || e.tagName);
       return { heads, frame: !!frame && frame.classList.contains('surface-card') && getComputedStyle(frame).backgroundColor === card,
-        lib: cls !== 'portrait' ? getComputedStyle(lib).backgroundColor === card : true, boxes };
+        lib: cls !== 'portrait' && lib.getClientRects().length ? getComputedStyle(lib).backgroundColor === card : true, boxes };
     }, [C, cls]);
-    const wantHeads = cls === 'portrait' ? ['01Player|uppercase'] : ['01Player|uppercase', '02Library|uppercase'];
-    ok('redesign ' + at + ': heads 01 PLAYER' + (cls === 'portrait' ? '' : ', 02 LIBRARY') + ' on shell cards; no private box in the Player card',
+    // 1024x768: the library shuts for the session so the bar keeps one row (BAR_ROW_MIN); the caret reopens it.
+    const libShut = w === 1024;
+    ok('redesign ' + at + ': the library column ' + (libShut ? 'shut for the session, the pref untouched' : 'as the pref says'),
+      (await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'))) === libShut
+      && (await page.evaluate(() => localStorage.getItem('phosphor.funscript.libOpen'))) !== 'false');
+    const wantHeads = cls === 'portrait' || libShut ? ['01Player|uppercase'] : ['01Player|uppercase', '02Library|uppercase'];
+    ok('redesign ' + at + ': heads 01 PLAYER' + (wantHeads.length === 1 ? '' : ', 02 LIBRARY') + ' on shell cards; no private box in the Player card',
       same(chromeOk.heads, wantHeads) && chromeOk.frame && chromeOk.lib && chromeOk.boxes.length === 0, chromeOk);
     if (cls === 'portrait') ok('redesign ' + at + ': the empty stage is a 120 px strip', Math.abs(empty.vbox[3] - 120) <= 1, empty.vbox);
     // PR5: the bar's order; every target 40 px under a coarse pointer (law 12).
     const bo = await barOrder(page);
-    // The 1024 desktop's player column (beside the 320 px library) is under BAR_ROW_MIN: the two rows, volume kept.
-    const want = w === 1428 ? [BAR_DESK] : cls === 'desktop' ? [BAR_PHONE[0], [...BAR_PHONE[1].slice(0, 3), 'fsp-vol', ...BAR_PHONE[1].slice(3).filter((c) => c !== 'fsp-rail')]]
-      : BAR_PHONE.map((r) => r.filter((c) => c !== 'fsp-rail'));
-    ok('bar ' + at + ': ' + (w === 1428 ? 'one row: prev, Play, next, elapsed, heat, remaining, volume, Motion, rate, Fullscreen, Settings'
-      : 'the scrub row over prev, Play, next, ' + (cls === 'desktop' ? 'volume, ' : '') + 'Motion, rate, Fullscreen, Settings (the rail where the host has one)') + (cls === 'desktop' ? '' : '; 40 px targets'),
+    const want = cls === 'desktop' ? [BAR_DESK] : BAR_PHONE.map((r) => r.filter((c) => c !== 'fsp-rail'));
+    ok('bar ' + at + ': ' + (cls === 'desktop' ? 'one row under the stage: prev, Play, next, elapsed, heat, remaining, volume, Motion, rate, Fullscreen, Settings'
+      : 'the scrub row over prev, Play, next, Motion, rate, Fullscreen, Settings (the rail where the host has one); 40 px targets'),
     same(bo.rows, want) && (cls === 'desktop' || bo.small.length === 0), bo);
+    const below = await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-tr').getBoundingClientRect(), s = r.querySelector('.fsp-stage').getBoundingClientRect(),
+      t = r.querySelector('.fsp-tlh').getBoundingClientRect(); return { underStage: Math.abs(b.top - s.bottom) < 12 && b.bottom <= t.top, atBottom: b.top > t.bottom }; });
+    ok('bar ' + at + ': ' + (cls === 'desktop' ? 'directly under the stage, above the timeline head' : 'at the card\'s bottom, under the timeline'),
+      cls === 'desktop' ? below.underStage : below.atBottom, below);
     const sp0 = await spill(page);
     ok('bar ' + at + ': every control inside the card, no label cut', sp0.out.length === 0 && sp0.cut.length === 0, sp0);
     // PR6: Motion is the shell's on look.
