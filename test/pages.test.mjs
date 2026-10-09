@@ -716,6 +716,135 @@ for (const [w, h] of [[1428, 900], [1024, 768]]) {
   await ctx.close();
 }
 
+// ---- the screen's shape (ph-5u0g.8) and the phone menu (ph-5u0g.9) -------------
+// MainActivity.kt publishes the rounded corners and a top cutout on <html>
+// (style.css); the suite assumes the phone's: 48 px corners (operator ruling
+// 2026-10-09) and a 28 x 36 punch hole centered on the top edge. The phone
+// shell has no window buttons (ShellStrip), so they go. A point is hidden
+// past a corner's arc or inside the hole; only drawn content counts (text,
+// glyphs, bordered boxes), clipped by its overflow ancestors in the surface.
+const R = 48, HOLE = { w: 28, h: 36 };
+const shapeOn = (page) => page.evaluate(([R, hole]) => {
+  const r = document.documentElement, l = Math.round((innerWidth - hole.w) / 2);
+  for (const c of ['tl', 'tr', 'bl', 'br']) r.style.setProperty('--corner-' + c, R + 'px');
+  for (const [k, v] of [['l', l], ['r', innerWidth - l - hole.w], ['w', hole.w], ['h', hole.h]]) r.style.setProperty('--cutout-' + k, v + 'px');
+  r.toggleAttribute('data-cutout-top', true);
+  document.querySelector('.sb-win')?.remove();
+}, [R, HOLE]);
+const hiddenIn = (page, surfaces) => page.evaluate(([R, hole, surfaces]) => {
+  const W = innerWidth, H = innerHeight, hl = Math.round((W - hole.w) / 2);
+  const arc = (x, y) => { const cx = x < R ? R : x > W - R ? W - R : null, cy = y < R ? R : y > H - R ? H - R : null;
+    return cx != null && cy != null && Math.hypot(x - cx, y - cy) > R + 0.5; };
+  const ink = /rgba\(\d+, \d+, \d+, 0\)|transparent/;
+  const out = [];
+  for (const s of surfaces.flatMap((q) => [...document.querySelectorAll(q)])) {
+    const clipped = (q, e) => {
+      let [l, t, r, b] = [q.left, q.top, q.right, q.bottom];
+      for (let a = e; a; a = a === s ? null : a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (a !== e && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
+          const ar = a.getBoundingClientRect();
+          [l, t, r, b] = [Math.max(l, ar.left), Math.max(t, ar.top), Math.min(r, ar.right), Math.min(b, ar.bottom)];
+        }
+        if (cs.visibility === 'hidden' || cs.opacity === '0') return null;
+      }
+      return r - l > 0.5 && b - t > 0.5 ? { l, t, r, b, e } : null;
+    };
+    const walk = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walk.nextNode());) {
+      if (!n.textContent.trim()) continue;
+      const g = document.createRange();
+      g.selectNodeContents(n);
+      for (const q of g.getClientRects()) out.push(clipped(q, n.parentElement));
+    }
+    for (const e of [s, ...s.querySelectorAll('*')]) {
+      const cs = getComputedStyle(e);
+      const drawn = e.matches('svg, canvas, img') || (e !== s && parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' && !ink.test(cs.borderTopColor));
+      if (drawn) for (const q of e.getClientRects()) out.push(clipped(q, e));
+    }
+  }
+  const seen = out.filter(Boolean);
+  const bad = seen.filter((q) => [[q.l, q.t], [q.r, q.t], [q.l, q.b], [q.r, q.b]].some(([x, y]) => arc(x, y))
+    || (q.r > hl + 0.5 && q.l < hl + hole.w - 0.5 && q.t < hole.h - 0.5))
+    .map((q) => (q.e.getAttribute('class') || q.e.tagName) + ' "' + q.e.textContent.trim().slice(0, 14) + '" ' + [q.l, q.t, q.r, q.b].map(Math.round).join(','));
+  return { n: seen.length, bad: bad.slice(0, 6), sane: arc(2, 2) && arc(W - 2, H - 2) && !arc(W / 2, 2) };
+}, [R, HOLE, surfaces]);
+// The screen drawn over the shot: what the phone hides.
+const shapeShot = async (page, name) => {
+  if (!SHOTS) return;
+  await page.evaluate(([R, hole]) => {
+    const m = document.createElement('div'), c = document.createElement('div'), l = Math.round((innerWidth - hole.w) / 2);
+    m.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;border-radius:' + R + 'px;box-shadow:0 0 0 200px #000';
+    c.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:#000;border-radius:50%;left:' + l + 'px;top:' + (hole.h - hole.w) + 'px;width:' + hole.w + 'px;height:' + hole.w + 'px';
+    m.id = 'shape-m';
+    c.id = 'shape-c';
+    document.body.append(m, c);
+  }, [R, HOLE]);
+  await shot(page, name);
+  await page.evaluate(() => { document.getElementById('shape-m').remove(); document.getElementById('shape-c').remove(); });
+};
+const BARS = ['.linkbar', '.footstrip', 'main.pane .page-foot'];
+for (const [w, h] of [[420, 860], [860, 420]]) {
+  for (const theme of [null, PAPER]) {
+    const tag = 'shape ' + w + 'x' + h + (theme ? ' paper' : '');
+    console.log('\n--- ' + tag + ' ---');
+    const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
+    await page.waitForSelector('.menu-btn', { timeout: 15000 });
+    await shapeOn(page);
+    await page.waitForTimeout(300);
+    const check = async (what, surfaces, file) => {
+      const r = await hiddenIn(page, surfaces);
+      ok(tag + ': ' + what + ': nothing drawn past a corner arc or in the cutout', r.sane && r.n > 0 && r.bad.length === 0, r.n + ' boxes; ' + r.bad.join(' | '));
+      await shapeShot(page, file + '-' + w + 'x' + h + (theme ? '-paper' : '') + '.png');
+    };
+    // The top bar takes the cutout's band: no inset row under it, its items either side of the hole.
+    const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar').getBoundingClientRect(); return [Math.round(b.top), Math.round(b.height)]; });
+    ok(tag + ': the top bar rises into the cutout band', bar[0] === 0 && bar[1] <= Math.max(41, HOLE.h + 1), JSON.stringify(bar));
+    // The check itself: rows at the edge with a bare gutter are caught.
+    const bare = await page.addStyleTag({ content: '.linkbar, .footstrip.pinned { padding-inline: 4px !important; }' });
+    const neg = await hiddenIn(page, BARS);
+    ok(tag + ': the arc check catches edge rows with a bare gutter', neg.bad.length > 0, neg.bad.join(' | '));
+    await bare.evaluate((e) => e.remove());
+    await page.waitForTimeout(100);
+    await check('home (the status row is the bottom row)', BARS, 'shape-home');
+    await openProbe(page);
+    await page.waitForTimeout(150);
+    await check('a page with a footer', BARS, 'shape-footer');
+    // The phone menu (ph-5u0g.9): narrow, rows at the tap height, the Phosphor section in flow, clear of the corner.
+    await page.click('.menu-btn');
+    await page.waitForSelector('.phone-menu', { timeout: 5000 });
+    await page.waitForTimeout(150);
+    const m = await page.evaluate(() => {
+      const d = document.querySelector('.phone-menu'), b = d.getBoundingClientRect(), sh = d.querySelector('.rail-sec.shell');
+      const rows = [...d.querySelectorAll('.rail-tab')].filter((t) => t.getClientRects().length).map((t) => Math.round(t.getBoundingClientRect().height));
+      return { w: Math.round(b.width), bottom: Math.round(b.bottom), rows, shBg: sh && getComputedStyle(sh).backgroundColor, shMt: sh && getComputedStyle(sh).marginTop,
+        fits: d.scrollHeight > d.clientHeight + 1 || Math.abs(d.clientHeight - d.scrollHeight) <= 1 };
+    });
+    ok(tag + ': menu: one narrow width', m.w <= 240, JSON.stringify(m.w));
+    ok(tag + ': menu: every row at the tap height', m.rows.length > 5 && m.rows.every((r) => r >= 40 && r <= 48), JSON.stringify(m.rows));
+    ok(tag + ': menu: the Phosphor section in flow, no slab', /rgba\(0, 0, 0, 0\)|transparent/.test(m.shBg) && m.shMt === '0px', JSON.stringify([m.shBg, m.shMt]));
+    ok(tag + ': menu: as tall as its rows, ending clear of the bottom corner', m.fits && m.bottom <= h - R, JSON.stringify(m));
+    await check('menu, top', ['.linkbar', '.phone-menu'], 'shape-menu');
+    await page.$eval('.phone-menu', (d) => { d.scrollTop = d.scrollHeight; });
+    await page.waitForTimeout(100);
+    await check('menu, scrolled to its end', ['.phone-menu'], 'shape-menu-end');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    await ask(page, true);
+    await page.waitForTimeout(200);
+    await check('the quick rail', ['.hero-inner.popup'], 'shape-quick');
+    await page.keyboard.press('Escape');
+    // The player in its bare fullscreen: the stop pair and the caret.
+    await goTab(page, ID);
+    await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+    await page.keyboard.press('F11');
+    await page.waitForTimeout(400);
+    await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
+    ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
+}
+
 await browser.close();
 srv.close();
 console.log(fails ? '\nFAIL -- ' + fails + ' assertion(s)' : '\nPASS -- plugin pages');

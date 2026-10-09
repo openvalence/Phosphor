@@ -31,7 +31,8 @@
    * Constraints:
    * - Pinned, one height whatever the scroll; it owns the bottom inset only
    *   while no page footer is under it, and publishes --foot-strip-h, which
-   *   `.app` reserves (style.css).
+   *   `.app` reserves (style.css). Its ends clear the screen's rounded
+   *   corners whenever it is the bottom row (style.css, the inset vars).
    * - A live value never moves its neighbors: each holds a fixed slot (--w,
    *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
    */
@@ -118,7 +119,9 @@
     font-size: 11px;
   }
 
+  /* --fy: the row's height above the screen edge; R less it bounds the arc. */
   .footstrip.pinned {
+    --fy: max(var(--page-foot-reserve, 0px), env(safe-area-inset-bottom, 0px));
     position: fixed;
     left: 0;
     right: 0;
@@ -126,6 +129,8 @@
     z-index: 15;
     margin: 0;
     padding-bottom: calc(.727em + env(safe-area-inset-bottom, 0px));
+    padding-left: max(1.09em, var(--corner-bl, 0px) - var(--fy));
+    padding-right: max(1.09em, var(--corner-br, 0px) - var(--fy));
   }
   :global(.app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: .727em; }
   /* The phone class (DESIGN §10.12): one line at the tap height, its 40 px

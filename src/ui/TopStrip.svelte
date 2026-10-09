@@ -714,8 +714,9 @@
   .tab:hover { color: var(--ink); }
   .tab svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
-  /* Bare: out of flow at the window's top right, the pair alone. */
-  .topstrip.bare { position: fixed; top: 0; right: 0; margin: 0; background: none; border: 0; }
+  /* Bare: out of flow at the window's top right, the pair alone, its corner
+     on the screen corner's diagonal clear of the arc (.3 R > R(1 - 1/√2)). */
+  .topstrip.bare { position: fixed; top: calc(var(--corner-tr, 0px) * .3); right: calc(var(--corner-tr, 0px) * .3); margin: 0; background: none; border: 0; }
   .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
   .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }

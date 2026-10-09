@@ -118,7 +118,11 @@ Plugins`, its page region the plugin's to fill full width.
   fullscreen too, whatever pref `fullscreen` says (DESIGN §10.3, "fullscreen
   or not", `ph-5u0g.6`). `bare: false` in its ask is not honored and there is
   no mode event for it. Footer pages keep In window / Borderless; the
-  desktop shell keeps `<html data-fullscreen-mode>` at that pref.
+  desktop shell keeps `<html data-fullscreen-mode>` at that pref. On a phone
+  the bare page owns the screen's edges: keep its own edge rows out of the
+  rounded corners and the top cutout with `--corner-tl`, `-tr`, `-bl`, `-br`
+  and `--cutout-l`, `-w`, `-h` on `<html>` (CSS px, 0 where absent; DESIGN
+  §10.3, The screen's shape).
 - **`compactHero: true`** (experimental, `ph-5u0g.6`). In buckets 1 and 2,
   while the page is on screen, the hero is one row: the position numeral
   without its label line or the planned target, lag and speed, the mini

@@ -13,6 +13,9 @@
    * - Phase and tier are the last chips to shed at any width.
    * - Shell shading (--shell-*) applies only when `shell` is set; the served
    *   page has no shell chrome.
+   * - The ends clear the screen's rounded corners, and beside a top cutout
+   *   the row takes the band and lays out left and right of it (style.css,
+   *   the inset vars); nothing in the row may overlap the cutout.
    * - Reads machine.* and the catalog's own role-tagged fields, never a
    *   device fact the machine did not send.
    * - Every chip value is mono; only a chip that reports measured liveness
@@ -313,25 +316,39 @@
   /* The rule under the bar is an inset shadow, not a border, so the window
      buttons get the bar's full height. */
   .linkbar {
+    /* --it: the row's distance from the screen's top edge. The ends clear the
+       screen's rounded corners: R - it bounds the arc for a row that far down. */
+    --it: var(--chrome-inset-top, 0px);
+    --row: 32px;
+    --pl: max(var(--gap), var(--corner-tl, 0px) - var(--it));
+    --pr: max(var(--gap), var(--corner-tr, 0px) - var(--it));
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    height: calc(32px + var(--chrome-inset-top, 0px));
-    padding: var(--chrome-inset-top, 0px) var(--gap) 0;
+    height: calc(var(--row) + var(--it));
+    padding: var(--it) var(--pr) 0 var(--pl);
     background: var(--bg-raised);
     box-shadow: inset 0 -1px 0 var(--line);
   }
   @media (pointer: coarse) {
-    .linkbar { height: calc(40px + var(--chrome-inset-top, 0px)); }
+    .linkbar { --row: 40px; }
+  }
+  /* A top cutout (style.css): the row rises into the band beside it, the
+     left group ending short of it and the chips starting past it. */
+  :global(:root[data-cutout-top]) .linkbar { --it: 0px; height: max(var(--row), var(--cutout-h, 0px)); }
+  :global(:root[data-cutout-top]) .header-left {
+    flex: none;
+    width: calc(var(--cutout-l, 0px) - var(--pl) - var(--sp-3));
+    margin-right: calc(var(--cutout-w, 0px) + var(--sp-3));
   }
   /* Shell chrome: the operator's window, not the machine's UI. The window
-     buttons sit flush at the right edge. */
+     buttons sit flush at the right edge; a phone shell has none. */
   .linkbar.shell {
-    padding-right: 0;
     background: var(--shell-bg);
     color: var(--shell-fg);
     box-shadow: inset 0 -1px 0 var(--shell-border);
   }
+  .linkbar.shell:has(:global(.sb-win)) { padding-right: 0; }
 
   /* A 40 px target in a 32 or 40 px bar: it overhangs the bar's box, never grows it. */
   .menu-btn {
