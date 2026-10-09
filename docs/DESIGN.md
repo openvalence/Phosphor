@@ -671,7 +671,8 @@ question in §10.8).
   window fullscreen, which keeps the hero bar: the quick rail exists in the
   bare (Borderless) one. A native page shows the icon only in a footer it has
   anyway; no footer is added for it, the hero's mini opens the same pop-up
-  there. Either form
+  there. One icon per screen (operator 2026-10-09, `ph-5u0g` peeve 11): the
+  footer's hides while a plugin page shows its own. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
   pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
@@ -1153,3 +1154,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-08 | §10.3 | Compact hero: a page registered `compactHero` draws the bucket 1 and 2 hero as one row (numeral without its label line or planned stack, mini rail, the five strip buttons); the funscript player asks for it. | operator (the agent's pick on the redesign's open item stood unvetoed; what the one row keeps is the agent's, veto-able) |
 | 2026-10-08 | §10.3 | Fullscreen or not: a `mediaFullscreen` page's fullscreen is always bare (Borderless on the desktop shell); its In window / Borderless choice goes. Supersedes, for such pages, `ph-wb4j`'s mode and `ph-n4t7`'s mode glyph in the hover bar; footer pages keep the mode. | operator (ruled 2026-10-08, `ph-5u0g` peeve 9) |
 | 2026-10-08 | plugins | Funscript player redesign: shell card chrome, the stage at the video's aspect on phones, Open video and Open script, motion-only play, one player bar with Motion beside Play, a timeline head row, fullscreen as one mode, the hover bar in fullscreen only, Settings as sheet / drawer / side card, the Library as tab / drawer / column, status in the footer slot or the card's last row, landscape with a video as fullscreen, native settings rows with lowercase labels. Supersedes the 2026-10-05 plugins row's corner plate and ten-item transport and parts of `ph-mdqo.7`, `ph-n4t7` and `ph-mcfe`; text in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md), The card (`ph-1qs5`, `ph-5u0g` peeves 5 to 9). | operator ("yes, I like this", accepted as drawn with three amendments; the card compositions adopting the bar and head, and the agent's other readings named in FUNSCRIPT.md, veto-able) |
+| 2026-10-09 | §10.3 | One quick-rail icon per screen: the footer's hides while a plugin page shows its own (`ph-5u0g` peeve 11). | operator |

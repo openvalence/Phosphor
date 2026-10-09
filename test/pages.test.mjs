@@ -504,6 +504,7 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await listenQrc(page);
   let s = await quickState(page);
   ok(tag + ': the phone class has the vertical quick rail', s.attr === 'vertical' && !s.open && !s.pop, JSON.stringify(s));
+  ok(tag + ': a page without its own icon keeps the footer\'s', await page.locator('main.pane .page-foot .quick-rail').isVisible());
   ok(tag + ': an ask from outside the page is not taken', !(await ask(page, true, 'body')) && !(await quickState(page)).pop);
   const before = await beneath(page);
   ok(tag + ': the page ask is accepted', await ask(page, true));
@@ -572,6 +573,10 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await page.waitForTimeout(300);
   await goTab(page, ID);
   await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+  await page.waitForTimeout(200);
+  // ph-5u0g.7: one icon per screen; the player draws its own, so the footer's hides.
+  const icons = await page.$$eval('[data-quick-rail-toggle]', (bs) => bs.filter((b) => b.getClientRects().length).map((b) => !!b.closest('.pane-main.plugin')));
+  ok(tag + ': one quick-rail icon on screen, the page\'s own', icons.length === 1 && icons[0], JSON.stringify(icons));
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
   ok(tag + ': F11 enters bare', await page.locator('main.pane.full.bare').count() === 1);
