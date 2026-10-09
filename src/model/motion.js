@@ -399,12 +399,13 @@ export function createMotionDoor(deps) {
     lastCode = '';
     const f = list[head[0].i], l = list[head[head.length - 1].i], sid = s.state.sessionId;
     const last = tail && tail.sid === sid && !tail.now && p - tail.at < 5000 ? tail : null;
-    if (deps.sent) {
+    // A listener's throw never reaches motion: the bundle is sent and the tiling still advances.
+    if (deps.sent) try {
       const gap = last && f.atMs < p - 1 && p + lat / 1000 > last.end ? p + lat / 1000 - last.end : null;
       deps.sent({ leadMs: last && (gap || Math.abs(f.atMs - last.end) < 2) ? f.atMs - p : null,
         gapMs: gap, latMs: lat / 1000, horizonMs: grant.scheduleHorizonMs, fromMs: Math.max(f.atMs, p + lat / 1000), toMs: l.atMs + l.durationMs,
         fresh: !last });
-    }
+    } catch (e) { /* the health system's fault, never the stream's */ }
     tail = { end: l.atMs + l.durationMs, now: Math.abs(l.atMs - p) < 2, sid, at: p };
     return { ok: true, sent: head[head.length - 1].i + 1, rateHz };
   }

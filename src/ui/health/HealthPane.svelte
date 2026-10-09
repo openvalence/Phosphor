@@ -46,16 +46,16 @@
     <div class="pane-head"><h2 id="hp-link">Link</h2></div>
     <dl class="pane-facts">
       <dt>Status</dt><dd class="st" data-sev={L.status?.sev}>{L.status?.text ?? '--'}</dd>
-      <dt>Round trip</dt><dd class="mono">{ms(L.rttMs)}{L.jitterMs != null ? ' · jitter ' + Math.round(L.jitterMs) + ' ms' : ''}</dd>
+      <dt>Round trip</dt><dd class="mono">{ms(L.rttMs)}{L.rttSlowMs != null ? ' · slowest ' + Math.round(L.rttSlowMs) + ' ms' : ''}</dd>
       <dt>Sent ahead (least)</dt><dd class="mono">{ms(L.leadMinMs)}</dd>
       <dt>Arrived ahead (least)</dt><dd class="nr">{NR}</dd>
       <dt>Update gaps (2 min)</dt><dd class="mono">{L.gaps ?? '--'}{L.longestGapMs != null ? ' · longest ' + Math.round(L.longestGapMs) + ' ms' : ''}</dd>
       <dt>Data waiting</dt><dd class="mono">{L.backlog != null ? B(L.backlog) : '--'}</dd>
-      <dt>Frames per second</dt><dd class="mono">{L.inPerS ?? '--'} in · {L.outPerS ?? '--'} out</dd>
+      <dt>Updates per second</dt><dd class="mono">{L.inPerS ?? '--'} from it · {L.outPerS ?? '--'} to it</dd>
       <dt>Machine signal</dt><dd class="nr">{NR}</dd>
       <dt>Machine WiFi drops</dt><dd class="nr">{NR}</dd>
       <dt>Reconnects</dt><dd class="mono">{L.reconnects ?? '--'}</dd>
-      <dt>Update-rate cuts</dt><dd class="mono">{L.cuts ?? '--'}</dd>
+      <dt>Times it sent fewer updates</dt><dd class="mono">{L.cuts ?? '--'}</dd>
     </dl>
     <figure class="strip" aria-label="Round trip and sent ahead, last 2 minutes">
       <svg viewBox={'0 0 ' + W + ' ' + H} preserveAspectRatio="none" aria-hidden="true">
@@ -75,7 +75,7 @@
       <dt>Frame rate</dt><dd class="mono">{D.fps != null ? D.fps + ' fps' : D.visible === false ? 'not measured while hidden' : '--'}</dd>
       <dt>Memory</dt><dd class:mono={D.heapMb != null} class:nr={D.heapMb == null}>{D.heapMb != null ? Math.round(D.heapMb) + ' MB' + (D.heapTrendMb != null ? ' · ' + (D.heapTrendMb >= 0 ? '+' : '') + D.heapTrendMb.toFixed(1) + ' MB in 10 min' : '') : NM}</dd>
       <dt>Processor load</dt><dd class:nr={!D.pressure}>{D.pressure ?? NM}</dd>
-      <dt>Workers</dt><dd class="mono">{D.workers ?? '--'}</dd>
+      <dt>Background tasks</dt><dd class="mono">{D.workers ?? '--'}</dd>
       <dt>Slowing over time</dt><dd class="st" data-sev={D.growth ? 'warn' : null}>{D.growth ? 'yes: reload Phosphor' : 'no'}</dd>
     </dl>
   </section>
@@ -108,7 +108,7 @@
     {:else}
       <ul class="pane-list incs">
         {#each health.incidents as inc (inc.id)}
-          <li data-sev={inc.sev} data-cond={inc.cond} data-cause={inc.cause}>
+          <li data-sev={inc.sev} data-cond={inc.cond} data-cause={inc.cause} data-at={inc.wallAt}>
             <details>
               <summary>
                 <time class="mono">{when(inc.wallAt)}</time>

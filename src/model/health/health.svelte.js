@@ -122,8 +122,10 @@ function attach(s) {
     anyClockAt = t;
     exch.push({ at: t, ...c });
     if (exch.length > 32) exch.shift();
-    // A round trip spanning a stall of this page timed the stall: kept out of the link's statistics.
-    if (!(max(vals(inWin(lags, t - c.rttUs / 1000 - 100, t))) > LAG_HEALTHY_MS)) rtts.push({ t, v: c.rttUs / 1000 });
+    // An exchange that overlaps a stall of this page timed the stall, not the link: no round trip,
+    // no uplink sample, no spike and no late arrival from it.
+    if (stalledOver(t, c.rttUs / 1000)) return;
+    rtts.push({ t, v: c.rttUs / 1000 });
     const best = bestOffsetUs(t);
     // CLOCK's own algebra: t1 - t0 = offset + rtt/2, so the uplink leg is that less the true offset.
     const owd = best == null ? null : (c.offsetUs + c.rttUs / 2 - best) / 1000;
@@ -258,14 +260,10 @@ function cutout(t, { overlap, ...extra }, sizeMs) {
   tracker.event(CUTOUT[c.cause], t, { sizeMs: Math.max(0, sizeMs), overlap, cause: c.cause, confidence: c.confidence, why: c.why, evidence: ev });
 }
 
-/**
- * One RTT or uplink sample over 4x the median and 100 ms: a Log-only spike. A round trip that spans a
- * stall of this page measured the stall; only its uplink leg (stamped before the reply) counts then.
- */
+/** One RTT or uplink sample over 4x the median and 100 ms: a Log-only spike. */
 function spikeCheck(t, rtt, owd) {
   const med = quantile(vals(inWin(rtts, t - 60000, t - 1)), 0.5);
-  const stalled = max(vals(inWin(lags, t - rtt - 100, t))) > LAG_HEALTHY_MS;
-  const v = stalled ? owd || 0 : Math.max(rtt, owd || 0);
+  const v = Math.max(rtt, owd || 0);
   if (med != null && v > 4 * med && v > 100) tracker.event('delay-spike', t, { sizeMs: 0, peakMs: Math.round(v), evidence: evidenceAt(t) });
 }
 
@@ -445,11 +443,16 @@ function tempFields() {
 }
 
 // ---- the 100 ms tick ------------------------------------------------------------
-let due = 0, tickN = 0, lastReconnects = 0, fineAcc = null;
+let due = 0, tickN = 0, lastReconnects = 0, fineAcc = null, lastTickAt = 0;
+/** This page stalled within `span` ms before t: a recorded lag, or the 100 ms tick overdue right now. */
+function stalledOver(t, span) {
+  return max(vals(inWin(lags, t - span - 100, t))) > LAG_HEALTHY_MS || t - lastTickAt > 100 + LAG_HEALTHY_MS;
+}
 
 function tick() {
   const t = now();
   const lag = Math.max(0, t - due);
+  lastTickAt = t;
   due = t + 100;
   setTimeout(tick, 100);
   const vis = visible();
@@ -516,14 +519,14 @@ function cards(t) {
   const gapFloor = Math.max(3 * (rate > 0 ? 1000 / rate : 0), 100);
   const gaps = vals(inWin(posGaps, t - 120000, t)).filter((g) => g >= gapFloor);
   const worst = (area) => Object.values(tracker.incidents).filter((i) => i.closedAt == null && CONDITIONS[i.cond].area === area && !CONDITIONS[i.cond].logOnly)
-    .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev])[0];
+    .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev] || b.lastAt - a.lastAt)[0];
   const status = (area) => { const w = worst(area); return w ? { sev: w.sev, text: CONDITIONS[w.cond].short } : { sev: null, text: 'Good' }; };
   const io = machine.stats;
   const perS = prevIo && io.framesIn >= prevIo.in ? { in: io.framesIn - prevIo.in, out: io.framesOut - prevIo.out } : {};
   prevIo = { in: io.framesIn, out: io.framesOut };
   health.link = {
     status: status('link'),
-    rttMs: p50, jitterMs: r.length >= 3 ? quantile(r, 0.95) - p50 : null,
+    rttMs: p50, rttSlowMs: r.length >= 3 ? quantile(r, 0.95) : null,
     leadMinMs: lead2, gaps: gaps.length, longestGapMs: max(gaps), backlog: (ring[ring.length - 1] || {}).backlog || 0,
     inPerS: perS.in ?? null, outPerS: perS.out ?? null, reconnects: io.reconnects, cuts: throttleCuts,
     streaming: streaming(t),
@@ -571,9 +574,10 @@ export function context() {
   };
 }
 
-/** Hub log warn and error counts around an incident (counts only, never the text). */
+/** Hub log warn and error counts around an incident (counts only, never the text); null when unknown (a restored incident). */
 export function hubLogCounts(t0) {
-  const a = t0 == null ? [] : inWin(hubLogs, t0 - 60000, t0 + 30000);
+  if (t0 == null) return null;
+  const a = inWin(hubLogs, t0 - 60000, t0 + 30000);
   return { warn: a.filter((x) => x.level === LEVEL.warn).length, error: a.filter((x) => x.level > LEVEL.warn).length };
 }
 

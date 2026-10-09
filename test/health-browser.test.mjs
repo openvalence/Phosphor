@@ -149,7 +149,7 @@ async function play(page) {
   await page.locator(C + ' .fsp-play').evaluate((e) => e.click());
 }
 const incidents = (page) => page.evaluate(() => [...document.querySelectorAll('.incs > li')].map((li) => ({
-  cond: li.dataset.cond, cause: li.dataset.cause, sev: li.dataset.sev, text: li.querySelector('.text').textContent })));
+  cond: li.dataset.cond, cause: li.dataset.cause, sev: li.dataset.sev, at: +li.dataset.at, text: li.querySelector('.text').textContent })));
 const logLines = (page) => page.evaluate(() => [...document.querySelectorAll('#lp-feed-log .line')]
   .filter((l) => /health/.test(l.textContent)).map((l) => l.querySelector('.text').textContent));
 async function toHealth(page) {
@@ -175,6 +175,7 @@ await page.evaluate(() => { const t = performance.now(); while (performance.now(
 await page.waitForTimeout(11000);
 await page.evaluate(() => { const t = performance.now(); while (performance.now() - t < 700) { /* busy */ } });
 await page.waitForTimeout(3000);
+const delayAt = Date.now();
 delay.ms = 300;
 await page.waitForTimeout(2000);
 delay.ms = 0;
@@ -197,6 +198,8 @@ const net = all.find((i) => i.cond === 'cutout-network');
 ok('client stalls of 300 and 700 ms: classified CLIENT, twice', client && client.cause === 'client' && /×2/.test(client.text), all);
 ok('client stall: a freeze line besides', all.some((i) => i.cond === 'freeze'), all);
 ok('network delay: classified NETWORK (likely), not blamed on this device', net && net.cause === 'network' && /likely/.test(net.text), all);
+ok('a stall here is never WiFi: no delay spike or WiFi cutout opened before the injected delay',
+  !all.some((i) => (i.cond === 'delay-spike' || i.cond === 'cutout-network') && i.at < delayAt), all.map((i) => [i.cond, i.at - delayAt]));
 ok('no cause guessed: no hub or unknown cutout', !all.some((i) => i.cond === 'cutout-hub' || i.cond === 'cutout-unknown'), all);
 ok('page hidden while streaming: "Phosphor is in the background"', all.some((i) => i.cond === 'background'), all);
 ok('the Link card shows how far ahead moves left', /\d+ ms/.test(await page.textContent('.health dl.pane-facts dd:nth-of-type(3)')));

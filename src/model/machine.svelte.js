@@ -775,6 +775,7 @@ export function disconnect() {
   if (_cap) _cap.flush();
   try { session.close(); } catch (e) { /* ignore */ }
   session = null;
+  _ws = null;
   machine.link.phase = 'idle';
   machine.link.virtual = null;
   forgetDevice();

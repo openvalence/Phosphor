@@ -15,7 +15,7 @@
    *   the full bundle as a file to attach first.
    */
   import { health, snapshot, context, hubLogCounts, putSent } from '../../model/health/health.svelte.js';
-  import { FIELDS, NOT_INCLUDED, PRIVACY, PRIVACY_SHORT, URL_BUDGET, buildBundle, fileName, get, issueUrl, openUrl, reportSource, saveFile } from '../../model/health/report.js';
+  import { FIELDS, NOT_INCLUDED, PRIVACY, PRIVACY_SHORT, URL_BUDGET, fileName, get, issueUrl, openUrl, reportSource, saveFile } from '../../model/health/report.js';
   import { CONDITIONS } from '../../model/health/core.js';
   import { untrack } from 'svelte';
   import { hold } from '../../shell/hold.js';
@@ -30,8 +30,9 @@
   const ctx = context();
   const src = $derived(inc ? reportSource({ inc, snap, ctx, hubLog: hubLogCounts(inc.t0), protocol: PROTO_VER,
     others: health.incidents.filter((o) => o.id !== id) }) : null);
-  const bundle = $derived(src ? buildBundle(src) : null);
   const out = $derived(src ? issueUrl(src) : null);
+  // The bundle as the issue and its file carry it (attachment named when over the budget).
+  const bundle = $derived(out ? JSON.parse(out.full) : null);
   const SECTION = { schema: 'Report', id: 'Report', app: 'This app', machine: 'Machine', incident: 'Problem', settings: 'Settings',
     evidence: 'Measurements', window: 'History', events: 'Events', hub_log: 'Machine log', attachment: 'Attachment' };
   const groups = $derived.by(() => {

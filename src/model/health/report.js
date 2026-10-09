@@ -6,8 +6,10 @@
  *
  * Constraints:
  * - The builder is an allowlist: it walks FIELDS and reads only those paths
- *   from its source, never filters a larger object. A free string must match
- *   STR_OK or goes null; an enum outside its values goes null.
+ *   from its source, never filters a larger object. Every string has a shape
+ *   (`re`) or a fixed set (`values`) and goes null outside it; the only free
+ *   strings are the three version strings, and their shapes refuse an
+ *   address, a date, a position or a name.
  * - No clock time or date in a bundle: every time counts from the incident.
  *   `sentAt` lives in the local store only.
  * - Phosphor sends nothing: Send opens a prefilled public issue the user
@@ -16,11 +18,20 @@
  *   the page.
  */
 
+import { CONDITIONS } from './core.js';
+
 export const REPO = 'openvalence/Phosphor';
 export const SCHEMA = 'phosphor.health-report/1';
 /** GitHub refuses much longer new-issue URLs; the encoded query stays under this. */
 export const URL_BUDGET = 7500;
-export const STR_OK = /^[0-9A-Za-z.+_-]{1,32}$/;
+const ID_RE = /^[A-Z2-7]{8}$/;
+/** x.y.z with an optional suffix; this app's build may also be a short git sha (one letter at least, so no digit run passes) or b<yyyymmddhhmm> (vite.config.js). */
+const SEMVER = '\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}([+-][0-9A-Za-z.+_-]{1,24})?';
+const FIRMWARE_RE = new RegExp('^' + SEMVER + '$');
+const VERSION_RE = new RegExp('^(' + SEMVER + '|(?=[0-9]*[a-f])[0-9a-f]{7,12}|b\\d{12})$');
+const ENGINE_RE = /^(chromium|webkit|gecko)-\d{1,4}(\.\d{1,4}){0,3}$/;
+const FILE_RE = /^diag-report-[A-Z2-7]{8}\.json$/;
+const CONDITION_VALUES = ['cutout', ...Object.keys(CONDITIONS).filter((k) => !k.startsWith('cutout-'))];
 const STORE = 'phosphor.reports.v1';
 
 const ms = 'ms', n = 'num', s = 'str', b = 'bool';
@@ -32,21 +43,21 @@ const SERIES = (unit) => ({ type: 'series', unit });
  */
 export const FIELDS = [
   { path: 'schema', name: 'Report format', what: 'The layout version of this report', why: 'Lets a reader decode it', type: 'enum', values: [SCHEMA] },
-  { path: 'id', name: 'Report id', what: 'A random code made for this report', why: 'Finds the issue again to take it down', type: s },
-  { path: 'app.version', name: 'Phosphor version', what: 'The build of Phosphor you run', why: 'Ties the problem to the code', type: s },
+  { path: 'id', name: 'Report id', what: 'A random code made for this report', why: 'Finds the issue again to take it down', type: s, re: ID_RE },
+  { path: 'app.version', name: 'Phosphor version', what: 'The build of Phosphor you run', why: 'Ties the problem to the code', type: s, re: VERSION_RE },
   { path: 'app.platform', name: 'System', what: 'Windows, macOS, Linux, Android or a browser', why: 'Some problems only happen on one system', type: 'enum', values: ['windows', 'macos', 'linux', 'android', 'ios', 'web'] },
-  { path: 'app.engine', name: 'Web engine', what: 'The engine that draws Phosphor, and its version', why: 'Timing and memory differ by engine', type: s },
+  { path: 'app.engine', name: 'Web engine', what: 'The engine that draws Phosphor, and its version', why: 'Timing and memory differ by engine', type: s, re: ENGINE_RE },
   { path: 'app.shell', name: 'Desktop app', what: 'Whether this is the installed app or a web page', why: 'The app and the page run differently', type: b },
-  { path: 'machine.firmware', name: 'Machine firmware', what: "The machine's firmware version", why: 'Ties a machine-side cause to its code', type: s },
-  { path: 'machine.protocol', name: 'Protocol', what: 'The Valence protocol version', why: 'Rules out a version mismatch', type: 'int' },
+  { path: 'machine.firmware', name: 'Machine firmware', what: "The machine's firmware version", why: 'Ties a machine-side cause to its code', type: s, re: FIRMWARE_RE },
+  { path: 'machine.protocol', name: "This app's protocol version", what: 'The Valence protocol version Phosphor speaks', why: 'Rules out a version mismatch', type: 'int' },
   { path: 'machine.transport', name: 'Connection', what: 'WiFi (WebSocket) or Bluetooth', why: 'The two links fail differently', type: 'enum', values: ['ws', 'ble'] },
-  { path: 'incident.condition', name: 'Problem', what: 'Which health condition this is', why: 'The starting point for the reader', type: s },
+  { path: 'incident.condition', name: 'Problem', what: 'Which health condition this is', why: 'The starting point for the reader', type: 'enum', values: CONDITION_VALUES },
   { path: 'incident.cause', name: 'Cause', what: 'Where the delay came from, as Phosphor judged it', why: 'Points at this device, the WiFi or the machine', type: 'enum', values: ['client', 'network', 'hub', 'unknown'] },
   { path: 'incident.confidence', name: 'Confidence', what: 'Whether the cause was measured or inferred', why: 'An inferred cause needs a second look', type: 'enum', values: ['decisive', 'likely'] },
   { path: 'incident.severity', name: 'Severity', what: 'How serious Phosphor rated it', why: 'Sorts reports', type: 'enum', values: ['info', 'warn', 'act'] },
   { path: 'incident.count', name: 'Times', what: 'How many times it happened in this incident', why: 'Once is a hiccup, often is a pattern', type: 'int' },
   { path: 'incident.lasted_ms', name: 'Duration', what: 'How long it lasted in total', why: 'Sizes the problem', type: 'int', unit: ms },
-  { path: 'settings.stream_buffer_ms', name: 'Stream buffer', what: "The machine's stream buffer setting", why: 'A longer buffer rides out delays', type: 'int', unit: ms },
+  { path: 'settings.stream_buffer_ms', name: 'Look-ahead window', what: 'How far ahead the machine accepts moves', why: 'A longer window rides out delays', type: 'int', unit: ms },
   { path: 'settings.schedule_latency_us', name: 'Machine planning time', what: 'How long the machine says it needs to plan a move', why: 'Sets the deadline moves must meet', type: 'int', unit: 'us' },
   { path: 'settings.lookahead_ms', name: 'Send-ahead time', what: 'How far ahead Phosphor sends moves', why: 'The margin against delays', type: 'int', unit: ms },
   { path: 'evidence.lead_send_ms_min', name: 'Sent ahead (least)', what: 'The least time a move left before it was due', why: 'Low means this device sent late', type: n, unit: ms },
@@ -84,7 +95,7 @@ export const FIELDS = [
   { path: 'events', name: 'Events', what: 'Other problems near this one, with their time and cause', why: 'Shows what happened together', type: 'events' },
   { path: 'hub_log.warn', name: 'Machine warnings', what: 'Warning lines in the machine log around the problem (count only)', why: 'Points at the machine', type: 'int' },
   { path: 'hub_log.error', name: 'Machine errors', what: 'Error lines in the machine log around the problem (count only)', why: 'Points at the machine', type: 'int' },
-  { path: 'attachment', name: 'Attached file', what: 'The file name holding the full report, when it was too long for the link', why: 'Tells the reader to look for it', type: s },
+  { path: 'attachment', name: 'Attached file', what: 'The file name holding the full report, when it was too long for the link', why: 'Tells the reader to look for it', type: s, re: FILE_RE },
 ];
 
 /** What a report never holds, said on the review screen. */
@@ -103,7 +114,7 @@ const EVENT_KINDS = new Set(['cutout', 'freeze', 'spike', 'stall', 'drop', 'busy
 
 function clean(f, v) {
   switch (f.type) {
-    case 'str': return typeof v === 'string' && STR_OK.test(v) ? v : null;
+    case 'str': return typeof v === 'string' && f.re.test(v) ? v : null;
     case 'enum': return f.values.includes(v) ? v : null;
     case 'bool': return typeof v === 'boolean' ? v : null;
     case 'int': return round(v);
@@ -159,12 +170,16 @@ export const fileName = (id) => 'diag-report-' + id + '.json';
  * @returns {{url: string, attach: boolean, full: string}} full = the compact JSON of the whole bundle
  */
 export function issueUrl(src) {
-  const full = JSON.stringify(buildBundle(src));
-  const id = clean({ type: 'str' }, src.id) || 'unknown';
+  const id = ID_RE.test(src.id) ? src.id : 'unknown';
   const head = 'template=diag-report.yml&title=' + encodeURIComponent('Diagnostic report ' + id) + '&bundle=';
+  let full = JSON.stringify(buildBundle(src));
   let q = head + encodeURIComponent(full);
   const attach = q.length > URL_BUDGET;
-  if (attach) q = head + encodeURIComponent(JSON.stringify(buildBundle({ ...src, attachment: fileName(id) }, { summary: true })));
+  if (attach) {
+    // The file and the link both name the file, so the review shows what the issue will say.
+    full = JSON.stringify(buildBundle({ ...src, attachment: fileName(id) }));
+    q = head + encodeURIComponent(JSON.stringify(buildBundle({ ...src, attachment: fileName(id) }, { summary: true })));
+  }
   return { url: 'https://github.com/' + REPO + '/issues/new?' + q, attach, full };
 }
 
@@ -181,7 +196,7 @@ export function saveSent(list) {
 }
 
 /** The issue for report `id` by the unauthenticated title search (10 per minute per address), or null. */
-export async function lookupIssue(id, f = fetch) {
+export async function lookupIssue(id, f = apiFetch) {
   try {
     const q = encodeURIComponent('repo:' + REPO + ' label:diag-report in:title ' + id);
     const r = await f('https://api.github.com/search/issues?q=' + q, { headers: { Accept: 'application/vnd.github+json' } });
@@ -192,7 +207,7 @@ export async function lookupIssue(id, f = fetch) {
 }
 
 /** 'removed' when the issue was deleted (410), 'open' or 'closed', null when unknown. */
-export async function issueState(url, f = fetch) {
+export async function issueState(url, f = apiFetch) {
   const m = /^https:\/\/github\.com\/openvalence\/Phosphor\/issues\/(\d+)$/.exec(url || '');
   if (!m) return null;
   try {
@@ -212,6 +227,10 @@ export function parseIssueLink(text) {
 
 const SHELL = !!import.meta.env?.TAURI_ENV_PLATFORM;
 const invoke = async (cmd, args) => (await import('@tauri-apps/api/core')).invoke(cmd, args);
+/** The shell's CSP refuses the page's fetch to api.github.com; its HTTP plugin answers (plugins.svelte.js shellFetch). */
+async function apiFetch(url, init) {
+  return SHELL ? (await import('@tauri-apps/plugin-http')).fetch(url, init) : fetch(url, init);
+}
 
 /** Opens url in the system browser. false when nothing could (the caller copies it instead). */
 export async function openUrl(url) {
@@ -254,8 +273,9 @@ export function series(rows, key, agg, from, to, step) {
  * {rows, fine} with t relative to the incident; ctx: {app, machine} from
  * health.svelte.js context(); others: incidents for the events list.
  */
-export function reportSource({ inc, snap, ctx, hubLog = {}, protocol = null, others = [] }) {
+export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, others = [] }) {
   const e = inc.evidence || {};
+  const hl = hubLog || {};
   const st = inc.settings || {};
   const rows = (snap && snap.rows) || [];
   const fine = (snap && snap.fine) || [];
@@ -300,7 +320,7 @@ export function reportSource({ inc, snap, ctx, hubLog = {}, protocol = null, oth
     'window.fine.series.owd_up_ms': series(fine, 'owd', maxOf, ...F),
     'window.fine.series.downlink_gap_ms': series(fine, 'gap', maxOf, ...F),
     events,
-    'hub_log.warn': hubLog.warn, 'hub_log.error': hubLog.error,
+    'hub_log.warn': hl.warn, 'hub_log.error': hl.error,
     attachment: null,
   };
 }

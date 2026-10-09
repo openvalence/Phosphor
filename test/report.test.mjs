@@ -49,6 +49,21 @@ function get(o, p) { return p.split('.').reduce((a, k) => (a == null ? undefined
 console.log('\n--- the allowlist ---');
 const leaked = SECRET.filter((s) => json.includes(s));
 ok('no script or video name, position, hub name, address, session id, token, log text, date or time of day', !leaked.length, leaked);
+// The fuzz: every source path the builder reads x every secret, in the shape that path takes.
+const FUZZ = [...SECRET, '192.168.1.118:82', 'ossm.local', '2026-10-09T21:47:03Z', '21:47:03', 'Bedroom OSSM', 'C:/Users/me/Videos/a.mp4',
+  '0.42', '-0.4242', '48151623', 'e3b0c442-98fc-1c14-9afb-f4c8996fb924'];
+const shaped = (f, sec) => (f.type === 'series' ? [sec, sec] : f.type === 'events' ? [{ t_ms: sec, kind: sec, cause: sec }] : sec);
+const leaks = [];
+for (const f of FIELDS) {
+  for (const sec of FUZZ) if (JSON.stringify(buildBundle({ ...src, [f.path]: shaped(f, sec) })).includes(sec)) leaks.push(f.path + ' <- ' + sec);
+}
+ok('fuzz: no secret leaves through any of the ' + FIELDS.length + ' paths (' + FIELDS.length * FUZZ.length + ' cases)', !leaks.length, leaks);
+const free = FIELDS.filter((f) => f.type === 'str'
+  && JSON.stringify(buildBundle({ ...src, [f.path]: 'deadbeef' })).includes('deadbeef')).map((f) => f.path);
+ok('the only free string is the app build id (a short sha); ids, file names and conditions are shapes and sets',
+  free.join() === 'app.version' && buildBundle({ ...src, id: 'abcdefgh' }).id === null
+  && buildBundle({ ...src, attachment: 'notes.json' }).attachment === null
+  && buildBundle({ ...src, 'incident.condition': 'my-script' }).incident.condition === null, free);
 ok('free strings match the pattern or go null', buildBundle({ ...src, 'machine.firmware': 'fw 1.0; rm -rf' }).machine.firmware === null);
 ok('an enum outside its values goes null', buildBundle({ ...src, 'incident.cause': 'aliens' }).incident.cause === null);
 ok('times count from the incident: the window spans -60 s to +30 s at 2 s', b.window.from_ms === -60000 && b.window.series.rtt_ms.length === 46
@@ -69,7 +84,8 @@ for (const k of Object.keys(big)) if (k.startsWith('window.') && Array.isArray(b
 const ub = issueUrl(big);
 const sb = JSON.parse(new URLSearchParams(ub.url.split('?')[1]).get('bundle'));
 ok('over the budget: the full bundle goes to a file, the URL carries the summary', ub.attach && ub.url.split('?')[1].length <= URL_BUDGET
-  && sb.attachment === fileName(inc.id) && !sb.window && !sb.events && sb.evidence && JSON.parse(ub.full).window, ub.url.length);
+  && sb.attachment === fileName(inc.id) && !sb.window && !sb.events && sb.evidence && JSON.parse(ub.full).window
+  && JSON.parse(ub.full).attachment === fileName(inc.id), ub.url.length);
 ok('ids are 8 base32 characters, the file name follows', /^[A-Z2-7]{8}$/.test(reportId()) && /^diag-report-[A-Z2-7]{8}\.json$/.test(fileName(reportId())));
 
 console.log('\n--- the issue lookups ---');

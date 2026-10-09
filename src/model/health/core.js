@@ -19,15 +19,15 @@ export const CONDITIONS = {
   'cutout-client': { area: 'link', sev: 'warn', act: { n: 3, ms: 60000 }, clear: 30000, cause: 'client',
     short: 'Motion paused: this device fell behind',
     detail: 'This computer was too busy to send the next moves in time, so the machine stopped and waited.',
-    action: 'Close other apps, or reload Phosphor' },
+    action: 'Close other apps' },
   'cutout-network': { area: 'link', sev: 'warn', act: { n: 3, ms: 60000 }, clear: 30000, cause: 'network',
     short: 'Motion paused: WiFi delay',
     detail: 'The moves left this device on time but reached the machine late, so it stopped and waited.',
-    action: 'Move closer to the router, or set Stream buffer to 1000 ms' },
+    action: 'Move closer to the router' },
   'cutout-hub': { area: 'link', sev: 'warn', clear: 30000, cause: 'hub',
     short: 'Motion paused: machine fell behind',
     detail: 'The moves arrived on time, but the machine took too long to plan them.',
-    action: 'Lower smoothness or speed; send a report' },
+    action: 'Send a report' },
   'cutout-unknown': { area: 'link', sev: 'info', clear: 30000, cause: 'unknown',
     short: 'Motion paused: cause unknown',
     detail: 'The machine stopped briefly and the cause could not be pinned down.',
@@ -49,10 +49,10 @@ export const CONDITIONS = {
   backlog: { area: 'link', sev: 'act', hold: 2000, clear: 10000,
     short: 'Connection jammed',
     detail: 'This device has data waiting that the network is not taking.',
-    action: 'Check the WiFi; Phosphor reconnects if it lasts' },
+    action: 'Check the WiFi' },
   throttled: { area: 'link', sev: 'info', hold: 0, clear: 5000,
     short: 'Machine reduced update rate',
-    detail: 'The machine is sending fewer updates because the connection is congested.',
+    detail: 'The machine is sending fewer updates because the connection is too busy.',
     action: 'Disconnect other devices using the machine' },
   drops: { area: 'link', sev: 'warn', hold: 0, clear: 0,
     short: 'Connection keeps dropping',
@@ -61,7 +61,7 @@ export const CONDITIONS = {
   'weak-signal': { area: 'link', sev: 'warn', hold: 30000, clear: 60000, needs: 'link.rssi',
     short: 'Machine WiFi signal weak',
     detail: 'The machine hears the router faintly, which causes delays.',
-    action: 'Move the router closer; keep the antenna clear of metal' },
+    action: 'Move the router closer' },
   'hub-wifi-drop': { area: 'link', sev: 'warn', clear: 60000, needs: 'link.drops',
     short: 'Machine WiFi dropped',
     detail: 'The machine lost its WiFi connection and rejoined.',
@@ -80,12 +80,12 @@ export const CONDITIONS = {
   growth: { area: 'device', sev: 'warn', hold: 0, clear: Infinity,
     short: 'Phosphor slows down over time',
     detail: 'Something in Phosphor keeps using more memory and time the longer it runs.',
-    action: 'Reload Phosphor, then send a report' },
+    action: 'Reload Phosphor' },
   // D6: workers past the session's baseline + 2 raise growth, in its words; never an incident of its own.
   workers: { area: 'device', sev: 'warn', fold: 'growth',
     short: 'Phosphor slows down over time',
     detail: 'Something in Phosphor keeps using more memory and time the longer it runs.',
-    action: 'Reload Phosphor, then send a report' },
+    action: 'Reload Phosphor' },
   overloaded: { area: 'device', sev: 'warn', hold: 0, clear: 60000,
     short: 'This computer is overloaded',
     detail: "The computer's processor is near its limit.",
@@ -96,9 +96,9 @@ export const CONDITIONS = {
     action: 'Keep Phosphor in front while playing' },
 
   'late-plans': { area: 'machine', sev: 'warn', hold: 60000, clear: 120000, needs: 'plan.late',
-    short: 'Machine planner running late',
-    detail: 'The machine sometimes finishes planning a move after it should have started.',
-    action: 'Lower smoothness; send a report' },
+    short: 'Machine falling behind on moves',
+    detail: 'The machine sometimes works out a move after it should have started.',
+    action: 'Send a report' },
   fault: { area: 'machine', sev: 'act', hold: 0, clear: 0, needs: 'health.fault',
     short: 'Machine reports a fault',
     detail: 'The machine reports a fault and switched something off.',
@@ -110,7 +110,7 @@ export const CONDITIONS = {
   hot: { area: 'machine', sev: 'warn', hold: 10000, clear: 30000,
     short: 'Machine running hot',
     detail: 'A part of the machine is close to its temperature limit.',
-    action: 'Let it cool; check airflow' },
+    action: 'Let it cool' },
   'log-drops': { area: 'machine', sev: 'info', clear: 60000, needs: 'health.log_drops',
     short: 'Machine skipped log lines', detail: '', action: '' },
   restarted: { area: 'machine', sev: 'info', logOnly: true, clear: 30000,
@@ -168,7 +168,7 @@ export function classify(e) {
   // A bundle reaches the hub owd_up after it left: late once that eats the lead less the hub's own budget.
   // A starvation the hub reports looks back 5 s: it can still be draining what a delay held up.
   const owd = e.starved && e.owdRecentMaxMs != null ? Math.max(e.owdRecentMaxMs, e.owdUpMaxMs ?? 0) : e.owdUpMaxMs;
-  if (owd != null && lead != null && owd > lead - lat - TICK_MS) {
+  if (healthy && owd != null && lead != null && owd > lead - lat - TICK_MS) {
     return { cause: 'network', confidence: 'likely', why: 'uplink delay ' + Math.round(owd) + ' ms against ' + Math.round(lead) + ' ms sent ahead' };
   }
   if (e.posGapMaxMs != null && e.posGapMaxMs >= Math.max(3 * (e.periodMs || 0), 100) && healthy) {

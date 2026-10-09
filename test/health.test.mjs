@@ -20,6 +20,9 @@ const bad = Object.entries(CONDITIONS).filter(([, c]) => !c.short || c.short.len
 ok('every short line is one fragment under 60 characters (COPY.md)', !bad.length, bad.map((b) => b[0]));
 const silent = Object.entries(CONDITIONS).filter(([id, c]) => !c.logOnly && !['log-drops', 'restarted'].includes(id) && (!c.detail || !c.action));
 ok('every surfaced condition has its plain sentence and one action', !silent.length, silent.map((s) => s[0]));
+const two = Object.entries(CONDITIONS).filter(([, c]) => /;|, or |, then | then /.test(c.action || ''));
+ok('every action is one act', !two.length, two.map((t) => t[0] + ': ' + t[1].action));
+ok('no device setting and no jargon in the words', Object.values(CONDITIONS).every((c) => !/stream buffer|smoothness|planner|congest|jitter/i.test(c.short + c.detail + c.action)));
 ok('every detail is one sentence', Object.values(CONDITIONS).every((c) => !c.detail || (c.detail.match(/\. |\.$/g) || []).length === 1));
 ok('a cutout per cause', Object.values(CUTOUT).every((id) => CONDITIONS[id] && CONDITIONS[id].cause));
 
@@ -36,6 +39,8 @@ const T = [
   ['starved, delivered on time, the machine warned', { starved: true, hubWarn: 3 }, 'hub', 'likely'],
   ['starved with no machine word', { starved: true }, 'unknown', 'likely'],
   ['starved 4 s after a measured uplink delay', { starved: true, hubWarn: 3, owdRecentMaxMs: 300 }, 'network', 'likely'],
+  ['measured: a stall here inflates the uplink and the gap, never WiFi', { latMs: 1, rttP50Ms: 14, leadSendMinMs: 35, owdUpMaxMs: 95,
+    loopLagMaxMs: 92, posGapMaxMs: 140, periodMs: 20 }, 'unknown', 'likely'],
   ['a 5 s old delay does not explain a send', { owdRecentMaxMs: 300 }, 'unknown', 'likely'],
   ['starved right after this page stalled', { starved: true, loopLagMaxMs: 310, leadSendMinMs: 17 }, 'client', 'likely'],
   ['starved while the page hid', { starved: true, hidden: true }, 'client', 'likely'],
