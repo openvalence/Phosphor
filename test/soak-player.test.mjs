@@ -141,15 +141,15 @@ const C = 'main.pane .fsp';
 const TAB = '[data-tab-id="plugin:funscript-player:player"]';
 await page.waitForSelector(TAB, { timeout: 15000 });
 await page.click(TAB);
-await page.waitForSelector(C + ' .fsp-src input[type=file]', { state: 'attached', timeout: 10000 });
-await page.setInputFiles(C + ' .fsp-src input[type=file]', [
+await page.waitForSelector(C + ' .fsp-filev', { state: 'attached', timeout: 10000 });
+await page.setInputFiles(C + ' .fsp-filev', [
   { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
   { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(SCRIPT) },
 ]);
-await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-hb-play').disabled, C, { timeout: 15000 });
+await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 15000 });
 await page.locator(C + ' .fsp-expand').evaluate((e) => e.click());
 await page.waitForTimeout(500);
-await page.locator(C + ' .fsp-hb-play').evaluate((e) => e.click());
+await page.locator(C + ' .fsp-play').evaluate((e) => e.click());
 await page.waitForTimeout(1000);
 
 // ---- churn probe (--churn N): page switches and plugin reloads, workers counted ----
@@ -176,12 +176,12 @@ if (CHURN) {
     console.log('churn ' + i + ': reload ' + rl + ', worker targets ' + await workerTargets() + ', live Worker objects ' + await page.evaluate(() => window.__soak.workers)
       + ', heapMB ' + MB((await cdp.send('Runtime.getHeapUsage')).usedSize) + ', nodes ' + dc.nodes + ', listeners ' + dc.jsEventListeners + ', documents ' + dc.documents);
   }
-  await page.setInputFiles(C + ' .fsp-src input[type=file]', [
+  await page.setInputFiles(C + ' .fsp-filev', [
     { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
     { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(SCRIPT) },
   ]);
-  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-hb-play').disabled, C, { timeout: 15000 });
-  await page.locator(C + ' .fsp-hb-play').evaluate((e) => e.click());
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 15000 });
+  await page.locator(C + ' .fsp-play').evaluate((e) => e.click());
 }
 
 // ---- sampling ----
