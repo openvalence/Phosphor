@@ -1,20 +1,19 @@
-// library.js -- Stash library grid and connect card; the grid pages, never scrolls
+// library.js -- the Stash library (a kit list of scene tiles, paged) and the connect card
 // Contract: CONTRACT.md, module stash (ph-smvd.3).
 //
 // Constraints:
-// - No DOM at import time (node imports this module); fitGrid is pure.
-// - Fixed geometry: head, body and foot keep their boxes in every state; loading, empty, error and
-//   the connect card render inside the body box. Per page is the tiles that fit, never a scroll.
-// - Tokens only: highlight is the picked tile and focus, warn an error; no red (law 13).
-// - getStash() is read on every refresh and must return the same client until base or key change
-//   (the client holds the caches), and a client once a Save stored a base.
-// - mountLibrary takes an optional `fetch` (api.net.fetch) for the Test of the connect card it shows
-//   in its place. Without it, that Test stores the fields and tests getStash().
+// - No DOM at import time (node imports this module).
+// - The kit draws every control, the list, its pager and its tiles (api.ui, docs/PLUGINS.md The UI kit); this
+//   file holds the Stash wiring and the head row's layout only.
+// - Fixed geometry: head, list and pager keep their boxes in every state; loading, empty, error and the connect
+//   card render inside the list's box. Per page is the tiles that fit, never a scroll (D19).
+// - getStash() is read on every refresh and must return the same client until base or key change (the client
+//   holds the caches), and a client once a Save stored a base.
+// - mountLibrary takes an optional `fetch` (api.net.fetch) for the Test of the connect card it shows in its
+//   place. Without it, that Test stores the fields and tests getStash().
 // - mountConnect takes an optional `client(v)` that builds the client its Test asks.
-// - fitGrid(W, H) is exported for the node test.
 
 import { COPY as STASH_COPY, SORTS, normalizeBase, createStash } from './stash.js';
-import { rowsBox, sub } from './rows.js';
 
 export const COPY = Object.freeze({
   search: 'Search',
@@ -24,9 +23,6 @@ export const COPY = Object.freeze({
   asc: 'Ascending',
   desc: 'Descending',
 
-  prev: 'Previous page',
-  next: 'Next page',
-  page: 'page ',
   scenes: ' scenes',
   scene: ' scene',
   loading: 'Loading scenes',
@@ -45,75 +41,23 @@ export const COPY = Object.freeze({
 });
 
 const LIB = { q: '', sort: 'date', direction: 'DESC' };
-const GAP_PX = 8;   // var(--sp-3) at the default scale: the grid math reads the drawn gap (fit), this when none
-const TILE_TEXT = 44;   // px under the 16:9 shot: title 20 + meta 18 + two 3 px gaps (CSS .fsp-tile)
-const TILE_MIN = 150, TILE_MAX = 300;
-// Rows (phone portrait, PR13): a 16:9 thumbnail ROW_H high beside the title and the meta.
-export const ROW_H = 56;
 
 export const CSS = `
-.fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: var(--sp-3); height: 100%; min-height: 0; overflow: hidden; }
-.fsp-lib [hidden], .fsp-connect [hidden] { display: none !important; }
-.fsp-lib-head { gap: var(--sp-2) !important; }
-.fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: var(--sp-3); align-items: stretch; min-width: 0; }
-.fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
-.fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
-  background: var(--bg); color: var(--tx); font: .8rem var(--mono); font-variation-settings: 'wdth' 90; }
-.fsp-in:focus { outline: none; border-color: var(--highlight); }
-.fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 9ch; }
-.fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
-.fsp-lib[data-off] .fsp-lib-foot { display: none; }
-
-.fsp-lib-head select { flex: none; width: auto; min-height: var(--tap); }
-.fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
-.fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
-.fsp-grid { display: grid; gap: var(--sp-3); align-content: start; height: 100%; }
-.fsp-grid.busy { opacity: .5; }
-.fsp-tile { display: grid; grid-template-rows: auto 20px 18px; gap: var(--sp-1); min-width: 0; padding: 0; text-align: left; color: var(--tx); }
-.fsp-shot { aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius); box-sizing: border-box; }
-.fsp-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.fsp-tile:hover .fsp-shot { border-color: var(--line-4); }
-.fsp-tile[aria-current=true] .fsp-shot { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
-.fsp-tile:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
-.fsp-cell { position: relative; min-width: 0; display: grid; }
-.fsp-qadd { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 30px; padding: 0; background: var(--bg-card); }
-@media (pointer: coarse) { .fsp-qadd { width: var(--tap); } }
-.fsp-lib[data-rows] .fsp-qadd { top: 50%; translate: 0 -50%; right: 0; }
-.fsp-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; line-height: 20px; }
-.fsp-m { overflow: hidden; white-space: nowrap; font: .7rem/18px var(--mono); color: var(--tx-mut); }
-.fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4); text-align: center;
-  font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
-.fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
-.fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
-.fsp-lib-foot .fsp-n { display: block; align-self: center; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.fsp-lib-foot output:not(.fsp-n) { flex: 1 0 auto; }
-.fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
+.fsp-libv { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr); gap: var(--sp-3); height: 100%; min-height: 0; overflow: hidden; }
+.fsp-libv [hidden] { display: none !important; }
+.fsp-lib-head { --ui-btn-h: var(--tap); display: flex; gap: var(--sp-2); align-items: stretch; min-width: 0; }
+.fsp-lib-head > .ui-text { flex: 1 1 120px; min-width: 9ch; }
+.fsp-lib-head > :is(.ui-select, .og-btn) { flex: none; min-height: var(--tap); }
+.fsp-libv[data-off] .ui-list-foot { visibility: hidden; }
+.fsp-libbody { position: relative; min-height: 0; }
+.fsp-libbody > .fsp-connectbox { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
-.fsp-connect .fsp-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
-.fsp-connect .fsp-rows > .fsp-in { grid-column: 2 / -1; }
-.fsp-connect .fsp-row { grid-column: 2 / -1; }
-.fsp-lib { --fsp-row-h: 56px; }   /* ROW_H; the two must agree */
-.fsp-lib[data-rows] .fsp-tile { grid-template-columns: calc(var(--fsp-row-h) * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 20px 18px 1fr; column-gap: var(--sp-3);
-  height: var(--fsp-row-h); }
-.fsp-lib[data-rows] .fsp-shot { grid-area: 1 / 1 / 5 / 2; height: var(--fsp-row-h); }
-.fsp-lib[data-rows] .fsp-t { grid-area: 2 / 2; }
-.fsp-lib[data-rows] .fsp-m { grid-area: 3 / 2; }
+.fsp-connect .ui-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
+.fsp-row { display: flex; gap: var(--sp-3); }
 .fsp-status { margin: 0; height: 20px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .78rem; color: var(--tx-val); }
+.fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-status[data-tone=ok] { color: var(--reality); }
 `;
-
-/** Columns and rows of tiles that fit a W x H box without scrolling, GAP px apart; at least one tile. */
-export function fitGrid(W, H, GAP = GAP_PX) {
-  let best = { cols: 1, rows: 1, perPage: 1 };
-  for (let cols = 1; cols <= 64; cols++) {
-    const tw = (W - GAP * (cols - 1)) / cols;
-    if (cols > 1 && tw < TILE_MIN) break;
-    if (tw > TILE_MAX && (W - GAP * cols) / (cols + 1) >= TILE_MIN) continue;
-    const rows = Math.max(1, Math.floor((H + GAP) / (tw * 9 / 16 + TILE_TEXT + GAP)));
-    if (cols * rows > best.perPage) best = { cols, rows, perPage: cols * rows };
-  }
-  return best;
-}
 
 const h = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
@@ -124,25 +68,6 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 
-// The column scrolls where the card is shorter than the connect form needs; the shell's style.css
-// draws the recess from these attributes and hides the scrollbar (src/ui/scrollshade.js is the contract).
-function shade(node) {
-  const mark = () => {
-    node.toggleAttribute('data-shade-top', node.scrollTop > 0);
-    node.toggleAttribute('data-shade-bottom', node.scrollTop + node.clientHeight < node.scrollHeight - 1);
-  };
-  const ro = new ResizeObserver(mark);
-  ro.observe(node);
-  ro.observe(node.firstElementChild);
-  node.setAttribute('data-shade', '');
-  node.addEventListener('scroll', mark, { passive: true });
-  return () => {
-    ro.disconnect();
-    node.removeEventListener('scroll', mark);
-    for (const a of ['data-shade', 'data-shade-top', 'data-shade-bottom']) node.removeAttribute(a);
-  };
-}
-
 const two = (n) => String(n).padStart(2, '0');
 function clockText(ms) {
   const s = Math.round(ms / 1000), hr = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
@@ -151,109 +76,83 @@ function clockText(ms) {
 
 /**
  * @param {HTMLElement} el
- * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function}} o
- * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
+ * @param {{ui, getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function, rows?: () => boolean, onQueue?: Function}} o
+ * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, fit(): void, unmount(): void}}
  */
-export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null, rows = () => false, onQueue = null }) {
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch = null, rows = () => false, onQueue = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
-  let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
+  let seq = 0, picked = null, list = [], want = 0, typing = 0, connectOff = null;
 
-  const search = h('input', { class: 'fsp-in', type: 'search', placeholder: COPY.search, 'aria-label': COPY.search });
-  search.value = lib.q;
-  const sort = h('select', { 'aria-label': COPY.sort }, ...SORTS.map(([v, t]) => h('option', { value: v, text: t })));
-  sort.value = lib.sort;
-  const dir = h('button', { class: 'og-btn fsp-dir', type: 'button' });
-
-  const grid = h('div', { class: 'fsp-grid' });
-  const note = h('p', { class: 'fsp-note', role: 'status', 'aria-live': 'polite' });
-  const connectBox = h('div', { hidden: '' });
-  const body = h('div', { class: 'fsp-lib-body' }, grid, note, connectBox);
-  const prev = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '←', title: COPY.prev, 'aria-label': COPY.prev });
-  const next = h('button', { class: 'og-btn fsp-pg', type: 'button', text: '→', title: COPY.next, 'aria-label': COPY.next });
-  const pageOut = h('output');
-  const countOut = h('output', { class: 'fsp-n' });
-  const root = h('div', { class: 'fsp-lib' }, h('style', { text: CSS }),
-    h('div', { class: 'fsp-lib-head' }, search, sort, dir),
-    body,
-    h('div', { class: 'fsp-lib-foot' }, prev, pageOut, next, countOut));
+  const requery = () => { grid.page = 1; save(); load(); };
+  const search = ui.text({ type: 'search', placeholder: COPY.search, label: COPY.search, value: lib.q,
+    onInput: () => { clearTimeout(typing); typing = setTimeout(() => { lib.q = search.value.trim(); requery(); }, 300); } });
+  search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(typing); lib.q = search.value.trim(); requery(); } });
+  const sort = ui.select({ label: COPY.sort, options: SORTS.map(([value, label]) => ({ value, label })), value: lib.sort,
+    onChange: (v) => { lib.sort = v; requery(); } });
+  const dir = ui.button({ class: 'fsp-dir', onClick: () => { lib.direction = lib.direction === 'ASC' ? 'DESC' : 'ASC'; showDir(); requery(); } });
+  const grid = ui.list({ form: rows() ? 'rows' : 'grid', class: 'fsp-lib', count: (n) => n + (n === 1 ? COPY.scene : COPY.scenes), onPage: () => load() });
+  const next = grid.querySelector('.ui-list-next'), prev = grid.querySelector('.ui-list-prev');
+  const connectBox = h('div', { class: 'fsp-connectbox', hidden: '' });
+  const root = h('div', { class: 'fsp-libv' }, h('style', { text: CSS }), h('div', { class: 'fsp-lib-head' }, search, sort, dir),
+    h('div', { class: 'fsp-libbody' }, grid, connectBox));
   el.append(root);
-  const unshade = shade(el);
+  const unshade = ui.shade(el);
 
   const save = () => prefs.set('lib', { ...lib });
-  const say = (text, tone = '') => { note.textContent = text; note.dataset.tone = tone; };
   function showDir() {
     const asc = lib.direction === 'ASC';
-    dir.textContent = asc ? '↑' : '↓';
-    dir.setAttribute('aria-label', asc ? COPY.asc : COPY.desc);
+    dir.icon = asc ? 'up' : 'down';
     dir.title = asc ? COPY.asc : COPY.desc;
   }
   function setControls(on) {
     root.toggleAttribute('data-off', !on);
     for (const c of [search, sort, dir]) c.disabled = !on;
-    if (!on) { prev.disabled = next.disabled = true; pageOut.textContent = ''; countOut.textContent = ''; }
   }
 
   function tile(s) {
-    const shot = h('div', { class: 'fsp-shot' });
-    if (s.screenshot) {
-      const img = h('img', { src: s.screenshot, alt: '', loading: 'lazy', decoding: 'async' });
-      img.onerror = () => img.remove();
-      shot.append(img);
-    }
     const meta = [s.durationMs != null ? clockText(s.durationMs) : '', s.speed != null ? String(s.speed) : ''].filter(Boolean).join(' · ');
-    const b = h('button', { class: 'fsp-tile', type: 'button', title: s.title, 'aria-current': String(s.key === picked) },
-      shot, h('div', { class: 'fsp-t', text: s.title }), h('div', { class: 'fsp-m', text: meta }));
-    b.addEventListener('click', () => pickScene(s));
-    if (!onQueue) return b;
-    // ph-1qs5.9: Add to queue, over the tile's shot (a sibling: a button never holds a button).
-    const add = h('button', { class: 'og-btn sm fsp-qadd', type: 'button', text: '+', title: COPY.addQueue, 'aria-label': COPY.addQueue });
-    add.addEventListener('click', () => onQueue(s));
-    return h('div', { class: 'fsp-cell' }, b, add);
+    // ph-1qs5.9: Add to queue, over the tile's shot.
+    const add = onQueue ? [ui.button({ label: '+', title: COPY.addQueue, class: 'fsp-qadd', onClick: () => onQueue(s) })] : [];
+    const t = ui.tile({ image: s.screenshot, title: s.title, meta, current: s.key === picked, actions: add, class: 'fsp-cell', onClick: () => pickScene(s) });
+    t.button.classList.add('fsp-tile');
+    return t;
   }
   function pickScene(s) {
     picked = s.key;
-    grid.querySelectorAll('.fsp-tile').forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
+    grid.querySelectorAll('.ui-tile').forEach((t, i) => { t.current = list[i] === s; });
     onPick(s);
   }
   /** The scene dir (+1 next, -1 previous) from the picked one on the loaded page, else across the page buttons. */
-  function canStep(dir) {
-    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
-    return !!list[j] || !(dir > 0 ? next : prev).disabled;
+  function canStep(d) {
+    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (d > 0 ? 0 : list.length - 1) : i + d;
+    return !!list[j] || !(d > 0 ? next : prev).disabled;
   }
-  function step(dir) {
-    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (dir > 0 ? 0 : list.length - 1) : i + dir;
+  function step(d) {
+    const i = list.findIndex((s) => s.key === picked), j = i < 0 ? (d > 0 ? 0 : list.length - 1) : i + d;
     if (list[j]) pickScene(list[j]);
-    else if (!(dir > 0 ? next : prev).disabled) { want = dir; (dir > 0 ? next : prev).click(); }
+    else if (!(d > 0 ? next : prev).disabled) { want = d; (d > 0 ? next : prev).click(); }
   }
 
   function load() {
-    const stash = getStash();
-    if (!stash || !perPage) return;
+    const stash = getStash(), perPage = grid.perPage, page = grid.page;
+    if (!stash || !(perPage > 0)) return;
     const my = ++seq;
-    grid.classList.add('busy');
-    if (!grid.children.length) say(COPY.loading);
+    grid.busy = true;
+    if (!list.length) grid.note(COPY.loading);
     stash.scenes({ q: lib.q, page, perPage, sort: lib.sort, direction: lib.direction }).then((pg) => {
       if (my !== seq) return;
-      const pages = Math.max(1, Math.ceil(pg.count / perPage));
-      if (page > pages) { page = pages; load(); return; }
-      grid.classList.remove('busy');
+      grid.busy = false;
       list = pg.scenes;
-      grid.replaceChildren(...list.map(tile));
+      grid.show(list.map(tile), pg.count);
       if (want && list.length) { const s = list[want > 0 ? 0 : list.length - 1]; want = 0; pickScene(s); }
-      say(pg.scenes.length ? '' : lib.q ? COPY.noMatch : COPY.empty);
-      pageOut.textContent = COPY.page + page + ' / ' + pages;
-      countOut.textContent = pg.count + (pg.count === 1 ? COPY.scene : COPY.scenes);
-      prev.disabled = page <= 1;
-      next.disabled = page >= pages;
+      grid.note(pg.scenes.length ? '' : lib.q ? COPY.noMatch : COPY.empty);
     }, (e) => {
       if (my !== seq) return;
-      grid.classList.remove('busy');
-      grid.replaceChildren();
+      grid.busy = false;
       list = [];
       want = 0;
-      say(e.message, 'warn');
-      prev.disabled = page <= 1;
-      next.disabled = true;
+      grid.show([], 0);
+      grid.note(e.message, 'warn');
     });
   }
 
@@ -261,14 +160,15 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
     const stash = getStash();
     if (!stash) {
       seq++;
-      grid.replaceChildren();
+      list = [];
+      grid.show([], 0);
+      grid.note('');
       grid.hidden = true;
-      say('');
       setControls(false);
       if (!connectOff) {
         connectBox.hidden = false;
         connectOff = mountConnect(connectBox, {
-          api: { prefs }, onSaved: refresh,
+          ui, api: { prefs }, onSaved: refresh,
           client: (v) => {
             if (netFetch) return createStash({ fetch: netFetch, ...v });
             prefs.set('stash', v);
@@ -284,45 +184,10 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
     load();
   }
 
-  function fit() {
-    const asRows = rows();
-    root.toggleAttribute('data-rows', asRows);
-    const gap = parseFloat(getComputedStyle(grid).rowGap) || GAP_PX;
-    const n = Math.max(1, Math.floor((body.clientHeight + gap) / (ROW_H + gap)));
-    const f = asRows ? { cols: 1, rows: n, perPage: n } : fitGrid(body.clientWidth, body.clientHeight, gap);
-    grid.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
-    if (f.perPage === perPage) return;
-    const first = (page - 1) * perPage;
-    perPage = f.perPage;
-    page = Math.floor(first / perPage) + 1;
-    load();
-  }
-  const ro = new ResizeObserver(() => { clearTimeout(sizing); sizing = setTimeout(fit, perPage ? 120 : 0); });
-  ro.observe(body);
-
-  const requery = () => { page = 1; save(); load(); };
-  search.addEventListener('input', () => {
-    clearTimeout(typing);
-    typing = setTimeout(() => { lib.q = search.value.trim(); requery(); }, 300);
-  });
-  search.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    clearTimeout(typing);
-    lib.q = search.value.trim();
-    requery();
-  });
-  sort.addEventListener('change', () => { lib.sort = sort.value; requery(); });
-  dir.addEventListener('click', () => { lib.direction = lib.direction === 'ASC' ? 'DESC' : 'ASC'; showDir(); requery(); });
-
-  prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
-  next.addEventListener('click', () => { page++; load(); });
-  grid.addEventListener('keydown', (e) => {
-    if (e.key === 'PageDown' && !next.disabled) { e.preventDefault(); next.click(); }
-    if (e.key === 'PageUp' && !prev.disabled) { e.preventDefault(); prev.click(); }
-  });
+  /** The phone's row form (PR13) or tiles, by the caller's rows(). */
+  function fit() { grid.form = rows() ? 'rows' : 'grid'; }
 
   showDir();
-  prev.disabled = next.disabled = true;
   refresh();
 
   return {
@@ -330,8 +195,6 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
     unmount() {
       seq++;
       clearTimeout(typing);
-      clearTimeout(sizing);
-      ro.disconnect();
       unshade();
       if (connectOff) connectOff();
       root.remove();
@@ -340,26 +203,20 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
 }
 
 /**
- * The Stash URL and API key card, stored in prefs 'stash'.
+ * The Stash URL and API key card (the settings rows' form), stored in prefs 'stash'.
  * @param {HTMLElement} el
- * @param {{api: {prefs, net?}, onSaved?: (v) => void, client?: (v) => Object}} o
+ * @param {{ui, api: {prefs, net?}, onSaved?: (v) => void, client?: (v) => Object}} o
  * @returns {() => void} unmount
  */
-export function mountConnect(el, { api, onSaved, client }) {
+export function mountConnect(el, { ui, api, onSaved, client }) {
   const cur = api.prefs.get('stash') || {};
-  const url = h('input', { class: 'fsp-in', type: 'url', placeholder: COPY.urlHint, spellcheck: 'false', autocomplete: 'off' });
-  url.value = cur.base || '';
-  const key = h('input', { class: 'fsp-in', type: 'password', placeholder: COPY.keyHint, autocomplete: 'off' });
-  key.value = cur.key || '';
-  const saveBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.save });
-  const testBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.test });
+  const url = ui.text({ type: 'url', placeholder: COPY.urlHint, label: COPY.url, value: cur.base || '' });
+  const key = ui.text({ type: 'password', placeholder: COPY.keyHint, label: COPY.key, value: cur.key || '' });
+  const saveBtn = ui.button({ label: COPY.save }), testBtn = ui.button({ label: COPY.test });
   const status = h('p', { class: 'fsp-status', role: 'status', 'aria-live': 'polite' });
-  // The settings rows' form (PR13, rows.js): label | the field across the control and value cells.
-  const rowsEl = rowsBox(COPY.stash);
-  rowsEl.append(sub(COPY.stash), h('span', { class: 'fsp-rl', text: COPY.url }), url, h('span', { class: 'fsp-rl', text: COPY.key }), key,
-    h('span'), h('div', { class: 'fsp-row' }, saveBtn, testBtn));
-  url.setAttribute('aria-label', COPY.url);
-  key.setAttribute('aria-label', COPY.key);
+  const rowsEl = ui.rows({ title: COPY.stash });
+  rowsEl.append(ui.row({ label: COPY.url, control: url }), ui.row({ label: COPY.key, control: key }),
+    ui.row({ label: '', control: h('div', { class: 'fsp-row' }, saveBtn, testBtn) }));
   const root = h('div', { class: 'fsp-connect' }, h('style', { text: CSS }), rowsEl, status);
   el.append(root);
 

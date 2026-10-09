@@ -521,15 +521,17 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   A click that a control's own button made never toggles Play (an Exit
   fullscreen moves its button out of the stage before the click reaches it).
   The center Play (operator ruling 2026-10-08): a large Play glyph on a
-  translucent disc (`--shade-rgb`) over the paused stage, the video or the
-  motion-only meter, never the empty stage; a tap anywhere on the stage
+  translucent disc (`--shade-rgb`) over a paused video, never the
+  motion-only meter (operator ruling 2026-10-09, `ph-1qs5.11`: the meter is
+  the stage and the bar's Play is right there) nor the empty stage; a tap anywhere on the stage
   toggles Play (inline and in fullscreen, after the 250 ms double-tap
   wait, so a double-tap still enters fullscreen) and flashes the glyph
   briefly. The glyph is decorative (`aria-hidden`); the bar's Play is the
   control. A tap outside an open Settings sheet or library drawer only
   closes it: its click is swallowed however long the tap is held (the
   guard ends at the next pointerdown, never on a timer), so it never
-  reaches the stage.
+  reaches the stage; a tap on the top strip or the stop pair is never
+  swallowed (`ph-5wsk.3`, the kit's outside rule).
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in
@@ -549,7 +551,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   the library collapsed, the section sits below the card (`ph-mdqo.7`); the
   1024 x 768 desktop's session-collapsed library counts as collapsed. A
   tap outside the sheet or drawer closes it (the bar's Settings toggles
-  itself). The rows are `rows.js` (label, control, value chip; Fit to
+  itself). The rows are the kit's (api.ui rows: label, control, value chip; Fit to
   window and the toggles are the shell's switch); the typed Scale field
   goes, the chip shows the value or Auto's readout. The volume row is drawn
   on phones only. The Stash fields come after Scale and Playback. Ruled
@@ -566,12 +568,12 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   with its caret (`ph-n4t7`'s caret stands there).
 - **As built, PR13 (`ph-1qs5.6`):** a row is the 16:9 thumbnail 56 px
   high beside the title and `duration · speed` (the mockup's P6; no other
-  actions), one per line, as many as fit (`ROW_H`). The now-playing row
+  actions), one per line, as many as fit (the kit list's `--ui-row-h`). The now-playing row
   holds Play or Pause, the title and the position; on the tab the head
   reads 02 LIBRARY. The fullscreen drawer opens from a Library button at
   the start of the hover bar's row, on any fullscreen (desktop too), and
   closes on a pick, a tap outside or the end of fullscreen. The Stash
-  connect card is rows.js's form (label, the field across the control and
+  connect card is the kit's rows (label, the field across the control and
   value cells).
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
@@ -612,9 +614,24 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   header is a sub-group title without the band; its Lag/Plan/Kinetic lines
   are in the body face. Ticks, the speed bar, the split bar and the
   analyzer's state markers are square. The library's grid gaps are
-  `var(--sp-3)`, and the grid math reads the drawn gap (`fitGrid`'s third
-  argument); the row height is the CSS var `--fsp-row-h` (`ROW_H` agrees).
+  `var(--sp-3)`, and the grid math reads the drawn gap (the kit list's fit);
+  the row height is the kit's `--ui-row-h`.
   `test/spacing-lint.mjs` flags `${...}px` on spacing properties.
+- **As built, the UI kit port (`ph-5wsk.2`, operator 2026-10-09: "make it
+  EASY for plugin developers"):** the card draws no control and no overlay
+  of its own. The buttons, tabs, number box, sliders, switches, inputs,
+  settings rows, file pickers, the Media menu, the Settings sheet (the
+  kit's auto form: bottom sheet, drawer or the slot card), the library and
+  queue lists and tiles with the pager and the queue's drag reorder, the
+  stage (center glyph, the hover bar as its overlay, the tap and double,
+  fullscreen and the turn into it), the hover bar's seek, the split bar,
+  the status (the footer slot or the card's row), the Rail button and the
+  page's fill are api.ui's (docs/PLUGINS.md, The UI kit); the heat bar's
+  scrub rides `ui.drag`. A touch on a slider, the heat, the seek or the
+  number box acts only after horizontal intent or a hold, so a vertical
+  swipe scrolls (`ph-5u0g` peeve 14). What stays the player's: the grid
+  composition per class, the timeline wave and its pills, the meter, the
+  analyzer, the controller and the media clock.
 - **PR17 Landscape with a video is fullscreen.** On the phone class, turning
   to landscape with a video loaded enters fullscreen and turning back leaves
   it; an Exit fullscreen in landscape holds until the next rotation. With no

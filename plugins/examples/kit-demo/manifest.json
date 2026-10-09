@@ -1,0 +1,9 @@
+{
+  "name": "kit-demo",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "widget",
+  "entry": "index.js",
+  "description": "The UI kit in one page and one settings card",
+  "permissions": []
+}

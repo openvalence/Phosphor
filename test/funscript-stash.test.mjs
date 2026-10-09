@@ -13,7 +13,8 @@ import { readFileSync } from 'node:fs';
 import {
   SCENES_QUERY, SORTS, COPY, normalizeBase, rebase, withKey, toScene, createStash,
 } from '../plugins/factory/funscript-player/stash.js';
-import { COPY as LIB_COPY, fitGrid } from '../plugins/factory/funscript-player/library.js';
+import { COPY as LIB_COPY } from '../plugins/factory/funscript-player/library.js';
+import { fitGrid } from '../src/plugins/kit.js';
 import { startFakeStash } from './fixtures/fake-stash.mjs';
 
 let fails = 0;
