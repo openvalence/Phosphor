@@ -76,8 +76,8 @@ export const KEYS = [
   ] },
   { group: 'Funscript player', items: [
     { keys: 'g', does: 'Toggle the graph', where: 'Player card', src: 'plugins/factory/funscript-player/ui.js' },
-    { keys: 'Up, Down', does: 'Resize the wave card; Shift for one', where: 'Split bar', src: 'plugins/factory/funscript-player/ui.js' },
-    { keys: 'Ctrl+Arrows', does: 'Step to the next decade multiple', where: 'Offset, range pills', src: 'plugins/factory/funscript-player/ui.js' },
+    { keys: 'Up, Down', does: 'Resize the wave card; Shift for one', where: 'Split bar', src: 'src/plugins/kit.js' },
+    { keys: 'Ctrl+Arrows', does: 'Step to the next decade multiple', where: 'Offset, range pills', src: 'src/plugins/kit.js' },
   ] },
   { group: 'Node editor', items: [
     { keys: 'Tab', does: 'Next node or socket', where: 'Node editor', src: 'src/ui/graph/GraphEditor.svelte' },

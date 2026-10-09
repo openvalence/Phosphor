@@ -686,7 +686,9 @@ Shipped:
   latency); the hub shapes the curve between actions. The detail's A-B button loops a section. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
-  Plugins (`page.js`), mounts the same card full width. Design and decisions:
+  Plugins (`page.js`), mounts the same card full width. Every control,
+  overlay, list and the stage are the UI kit's (`api.ui`); the player keeps
+  its composition, the timeline wave and the analyzer. Design and decisions:
   [docs/plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md); module signatures:
   `plugins/factory/funscript-player/CONTRACT.md`.
 
