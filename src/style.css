@@ -1081,7 +1081,7 @@ html[data-rc=glance] .app:has(.drill-page) nav.tabs { display: none; }
 .ui-stepper > .unit { align-self: center; font-size: .76rem; color: var(--tx-mut); }
 .ui-dragnum:not(:focus) { cursor: ew-resize; user-select: none; }
 .ui-select { width: auto; min-height: var(--ui-btn-h); }
-.ui-text { min-width: 0; min-height: var(--ui-btn-h); }
+.ui-text { min-width: 0; min-height: var(--ui-btn-h); font-size: .82rem; }
 
 /* ---- page, card, rows ---- */
 .ui-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); min-width: 0; }
@@ -1154,7 +1154,7 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
   opacity: 0; pointer-events: none;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
 }
-.ui-stage[data-show] .ui-stage-overlay, .ui-stage-overlay:focus-within { opacity: 1; pointer-events: auto; }
+.ui-stage[data-show] .ui-stage-overlay, .ui-stage-overlay:has(:focus-visible) { opacity: 1; pointer-events: auto; }
 .ui-stage-overlay:empty, .ui-stage[data-overlay='fullscreen']:not([data-full]) .ui-stage-overlay { display: none; }
 /* Fullscreen: the shell's bare page fullscreen owns the window; the stage covers it under the stop pair (TopStrip z 30). */
 .ui-stage[data-full] { position: fixed; inset: 0; z-index: 25; aspect-ratio: auto; max-height: none; }
@@ -1220,8 +1220,9 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
 
 /* ---- status, quick rail ---- */
 .ui-status[data-routed] { display: none; }
-/* A page that shows its own Rail button: the footer's goes (one per screen, ph-5u0g peeve 11). */
-main.pane:has(> .pane-main .ui-quick:not([hidden])) > .page-foot .quick-rail { display: none; }
+/* A plugin page that shows its own Rail button: the footer's goes (one per screen, ph-5u0g peeve 11). A native
+   page keeps its footer icon. */
+main.pane:has(> .pane-main.plugin .ui-quick:not([hidden])) > .page-foot .quick-rail { display: none; }
 
 /* ---- list, tile ---- */
 .ui-list { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--sp-3); min-width: 0; min-height: 0; height: 100%; }

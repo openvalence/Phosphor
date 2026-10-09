@@ -60,6 +60,7 @@ export const ICONS = Object.freeze({
   plus: Object.freeze(['', 'M8 3v10M3 8h10']),
   minus: Object.freeze(['', 'M3 8h10']),
   up: Object.freeze(['', 'M8 13V3M4 7l4-4 4 4']),
+  down: Object.freeze(['', 'M8 3v10M4 9l4 4 4-4']),
   left: Object.freeze(['', 'M10 3L5 8l5 5']),
   right: Object.freeze(['', 'M6 3l5 5-5 5']),
 });
@@ -146,9 +147,10 @@ function setIcon(svg, x) {
 
 /**
  * A pointer drag along an axis that never steals a scroll. A mouse begins at
- * once; a touch or pen after INTENT_PX more along the axis than across (when
- * `intent`) or a HOLD_MS hold (when `hold`); more across first gives the
- * gesture to the page. -> off()
+ * once (with `intent` false, after INTENT_PX of movement, so a plain click
+ * still clicks); a touch or pen after INTENT_PX more along the axis than
+ * across (when `intent`) or a HOLD_MS hold (when `hold`); more across first
+ * gives the gesture to the page. -> off()
  */
 export function drag(el, o) {
   const { axis = 'x', intent = true, hold = true, filter = null, onStart = null, onMove = null, onEnd = null } =
@@ -172,8 +174,8 @@ export function drag(el, o) {
   };
   const down = (e) => {
     if (s || (e.pointerType === 'mouse' && e.button !== 0) || (filter && !filter(e))) return;
-    s = { id: e.pointerId, x: e.clientX, y: e.clientY, down: e, on: false, t: 0 };
-    if (e.pointerType === 'mouse') begin(e);
+    s = { id: e.pointerId, x: e.clientX, y: e.clientY, down: e, on: false, t: 0, mouse: e.pointerType === 'mouse' };
+    if (s.mouse) { if (intent) begin(e); }
     else if (hold) s.t = setTimeout(() => { if (s && !s.on) begin(s.down); }, HOLD_MS);
   };
   const move = (e) => {
@@ -182,7 +184,7 @@ export function drag(el, o) {
     if (!s.on) {
       const along = Math.abs(axis === 'y' ? dy : dx), across = Math.abs(axis === 'y' ? dx : dy);
       if (Math.max(along, across) < INTENT_PX) return;
-      if (!intent || across >= along) { clearTimeout(s.t); s = null; return; }
+      if (!s.mouse && (!intent || across >= along)) { clearTimeout(s.t); s = null; return; }
       begin(e);
     }
     if (onMove) onMove(e, dx, dy);
@@ -550,7 +552,8 @@ export function page(o = {}) {
       for (let e = el.parentElement; e; e = e.parentElement) top += e.scrollTop;
       const room = innerHeight - top - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--foot-strip-h')) || 0)
         - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-foot-reserve')) || 0);
-      el.style.height = Math.max(remPx() * 20, room) + 'px';
+      // Under 20 rem of room (a phone on its side) the page keeps its own height and the window scrolls.
+      el.style.height = room >= remPx() * 20 ? room + 'px' : '';
     };
     let seen = false;
     const ro = new ResizeObserver(() => { if (el.isConnected) { seen = true; fit(); } else if (seen) ro.disconnect(); });
@@ -559,7 +562,8 @@ export function page(o = {}) {
     fit = () => {
       fit0();
       const s = document.scrollingElement, over = el.style.height && s ? s.scrollHeight - s.clientHeight : 0;
-      if (over > 0) el.style.height = Math.max(remPx() * 20, parseFloat(el.style.height) - over) + 'px';
+      const left = parseFloat(el.style.height) - over;
+      if (over > 0) el.style.height = left >= remPx() * 20 ? left + 'px' : '';
     };
     ro.observe(document.documentElement);
     winOn(el, 'resize', fit);
@@ -672,7 +676,8 @@ export function stage(o = {}) {
   const el = h('div', { class: cls('ui-stage', o), 'data-overlay': o.overlay || 'fullscreen' }, box);
   let aspect = null, full = false, idle = 0, tapShow = false;
   const live = () => full || el.dataset.overlay === 'always';
-  const hide = () => { if (!overlay.matches(':hover, :focus-within') && !overlay.querySelector('[data-drag]')) el.removeAttribute('data-show'); };
+  // Kept while hovered, dragged or holding keyboard focus; a clicked button's focus does not keep it.
+  const hide = () => { if (!overlay.matches(':hover') && !overlay.querySelector('[data-drag], :focus-visible')) el.removeAttribute('data-show'); };
   const poke = () => { el.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, IDLE_MS); };
   el.addEventListener('pointermove', poke);
   el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !overlay.querySelector('[data-drag]')) { clearTimeout(idle); el.removeAttribute('data-show'); } });
