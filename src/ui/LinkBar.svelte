@@ -131,15 +131,15 @@
     return () => { ro.disconnect(); mo.disconnect(); removeEventListener('resize', retry); };
   });
 
-  /** The full name as a tooltip only while the bar ellipsizes it. */
-  function fullTitle(el) {
-    void title;
+  /** The full text as a tooltip only while the bar ellipsizes it; a new `text` re-runs it. */
+  const fullTitle = (text) => (el) => {
+    void text;
     const set = () => { el.title = el.scrollWidth > el.clientWidth + 0.5 ? el.textContent : ''; };
     const ro = new ResizeObserver(set);
     ro.observe(el);
     set();
     return () => ro.disconnect();
-  }
+  };
 
   // ===========================================================================
   // Activity heatmap — rows = live telemetry series discovered by ROLE, plus a
@@ -298,7 +298,7 @@
       </button>
     {/if}
     <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
-    <span class="wordmark" {@attach fullTitle}>{title}</span>
+    <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
   </div>
 
   <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
@@ -316,7 +316,7 @@
     <span class="chip chip-opt" class:tone-warn={!!machine.link.virtual}
           title={machine.link.virtual ? 'Virtual: nothing moves' : undefined}>
       <span class="chip-lbl">hub</span>
-      <span class="mono">{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
+      <span class="mono" {@attach fullTitle(hubLabel + fwLabel)}>{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
     </span>
     <span class="chip chip-opt">
       <span class="chip-lbl">catalog</span><span class="mono">{catalogLabel}</span>
@@ -444,6 +444,9 @@
     overflow: hidden;
   }
   .chips.opt:empty { display: none; }
+  /* The line's first chip (hub) cannot wrap away: past the edge it ellipsizes, never cuts mid-text. */
+  .chips.opt > .chip:first-child { max-width: 100%; }
+  .chips.opt > .chip:first-child .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
   /* OG .chip (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every chip
      wears these exact metrics; a chip that matters more says so with its tone
