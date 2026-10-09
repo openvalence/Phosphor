@@ -336,9 +336,18 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   `gen/android/app/build/intermediates/incremental` once.
 - The built-in machine runs on Android as everywhere else (The built-in
   machine, above).
+- The embedded buttplug server builds for Android too, with BLE toys through
+  btleplug's Android backend ([BUTTPLUG.md](BUTTPLUG.md), Android: permissions
+  and the server's lifetime). Its Java is compiled by the Gradle module
+  `src-tauri/android/btleplug` from cargo's copy of the btleplug sources at
+  the `Cargo.lock` version, so the module fails the build with a message when
+  `$CARGO_HOME/registry/src` lacks them. `build.rs` adds the module to the
+  generated project on every Android build; an existing `gen/android` needs
+  no new `init`.
 - Delete the old APK before a rebuild: the Gradle debug build updates it in
   place without compacting, so the file doubles (448 MB seen 2026-10-08).
-- A debug APK is debug-signed (about 230 MB, symbols kept). A release needs a
+- A debug APK is debug-signed (about 355 MB with the buttplug server,
+  symbols kept). A release needs a
   keystore and a signing config in `gen/android/app/build.gradle.kts`, and
   `usesCleartextTraffic` set to true there: the template allows cleartext
   only in debug, and hubs speak plain `ws://` and `http://`.

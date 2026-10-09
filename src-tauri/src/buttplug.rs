@@ -457,7 +457,7 @@ impl Buttplug {
       b.comm_manager(MachineManagerBuilder(self.sh.clone()));
     }
     if real {
-      toy_managers(&mut b, &st);
+      toy_managers(&mut b, &st, &self.sh);
     } else {
       b.add_simulated_devices_if_configured();
     }
@@ -742,18 +742,89 @@ impl Buttplug {
   }
 }
 
-fn toy_managers(b: &mut ServerDeviceManagerBuilder, st: &Settings) {
+fn toy_managers(b: &mut ServerDeviceManagerBuilder, st: &Settings, sh: &Shared) {
   use buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder;
-  use buttplug_server_hwmgr_hid::HidCommunicationManagerBuilder;
-  use buttplug_server_hwmgr_serial::SerialPortCommunicationManagerBuilder;
   if st.ble {
-    b.comm_manager(BtlePlugCommunicationManagerBuilder::default());
+    #[cfg(target_os = "android")]
+    let ready = android::ble();
+    #[cfg(not(target_os = "android"))]
+    let ready: Result<(), String> = Ok(());
+    match ready {
+      Ok(()) => {
+        b.comm_manager(BtlePlugCommunicationManagerBuilder::default());
+      }
+      Err(e) => sh.log(log::Level::Warn, format!("BLE toys off: {e}")),
+    }
   }
-  if st.serial {
-    b.comm_manager(SerialPortCommunicationManagerBuilder::default());
+  // Settings keep serial and hid on Android; there they build nothing.
+  #[cfg(desktop)]
+  {
+    use buttplug_server_hwmgr_hid::HidCommunicationManagerBuilder;
+    use buttplug_server_hwmgr_serial::SerialPortCommunicationManagerBuilder;
+    if st.serial {
+      b.comm_manager(SerialPortCommunicationManagerBuilder::default());
+    }
+    if st.hid {
+      b.comm_manager(HidCommunicationManagerBuilder::default());
+    }
   }
-  if st.hid {
-    b.comm_manager(HidCommunicationManagerBuilder::default());
+}
+
+/// btleplug's Android backend calls into Java from whichever thread polls it,
+/// through a JNIEnv it never attaches itself, and caches its Java classes in
+/// init. So: init runs in JNI_OnLoad (lib.rs), and Tauri's async runtime,
+/// where the server and every buttplug task run, attaches each thread.
+#[cfg(target_os = "android")]
+pub mod android {
+  use std::sync::OnceLock;
+
+  static VM: OnceLock<jni::JavaVM> = OnceLock::new();
+  static BLE: OnceLock<Result<(), String>> = OnceLock::new();
+
+  pub fn on_load(raw: *mut jni::sys::JavaVM) {
+    let r = match unsafe { jni::JavaVM::from_raw(raw) } {
+      Ok(vm) => init(VM.get_or_init(|| vm)),
+      Err(e) => Err(e.to_string()),
+    };
+    let _ = BLE.set(r);
+  }
+
+  fn init(vm: &jni::JavaVM) -> Result<(), String> {
+    let env = vm.get_env().map_err(|e| e.to_string())?;
+    // init unwraps its class lookups: a class missing from the APK panics,
+    // and a panic must not unwind into the JVM.
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| btleplug::platform::init(&env)));
+    let _ = env.exception_clear();
+    match r {
+      Ok(r) => r.map_err(|e| e.to_string()),
+      Err(_) => Err("btleplug's Java classes are missing from the APK (src-tauri/android/btleplug)".into()),
+    }
+  }
+
+  /// Why BLE toys are off, if they are.
+  pub fn ble() -> Result<(), String> {
+    BLE.get().cloned().unwrap_or_else(|| Err("JNI_OnLoad never ran".into()))
+  }
+
+  /// Tauri's default runtime with one change: every thread joins the JVM as a
+  /// daemon (detached when the thread exits). Must run before anything spawns.
+  pub fn set_runtime() {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    if RT.get().is_some() {
+      return;
+    }
+    let rt = RT.get_or_init(|| {
+      tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .on_thread_start(|| {
+          if let Some(vm) = VM.get() {
+            let _ = vm.attach_current_thread_as_daemon();
+          }
+        })
+        .build()
+        .expect("tokio runtime")
+    });
+    tauri::async_runtime::set(rt.handle().clone());
   }
 }
 
@@ -1235,6 +1306,12 @@ pub async fn bp_stop(bp: State<'_, Buttplug>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn bp_scan_start(bp: State<'_, Buttplug>, seconds: Option<u32>) -> Result<(), String> {
+  // Android grants Bluetooth at run time; the BLE plugin's check shows the
+  // system prompt on first use and answers false until it is granted.
+  #[cfg(target_os = "android")]
+  if bp.settings().ble && !tauri_plugin_blec::check_permissions(false).map_err(|e| e.to_string())? {
+    return Err("Bluetooth not allowed: allow Nearby devices for Phosphor, then scan again".into());
+  }
   bp.scan_for(seconds).await
 }
 
