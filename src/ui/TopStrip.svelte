@@ -69,7 +69,9 @@
   // onopenlog: called after the strip points LogPane at its Safety feed; App
   // switches nav. shell: the shell's window buttons (main.js), null on the
   // served page.
-  let { onopenlog = null, shell = null, bare = false } = $props();
+  // compact: App's compactHero page in buckets 1 and 2 (DESIGN §10.3): one row,
+  // the numeral without its label line, the mini, all five strip buttons.
+  let { onopenlog = null, shell = null, bare = false, compact = false } = $props();
 
   let woke = $state(false);
   // Latched or paused: the pair never dims (RENDERING §8.4 row 11).
@@ -168,7 +170,7 @@
   // and the user's taps (userShow, cleared by a resize); never of history.
   let winH = $state(0), winW = $state(0);
   let chromeH = $state(34), tapPx = $state(49), padV = $state(6), gapV = $state(4);
-  $effect(() => { void winH; void winW; heroBar.userShow = false; });
+  $effect(() => { void winH; void winW; heroBar.userShow = false; compactFits = true; });
   $effect(() => {
     if (!winH) return;
     heroBar.budget = budgetOf(winH, view.bucket);
@@ -179,11 +181,13 @@
     heroBar.form = handheld || ($prefs.railHide && !heroBar.userShow && over) ? 'mini' : 'full';
   });
   $effect(() => { if ((!handheld || !rail) && !(rail && rail.busy)) heroBar.popup = false; });
-  // Outside tap closes the pop-up unless a scrub or window drag is live.
+  // Outside tap closes a pop-up unless a scrub or window drag is live; a
+  // quick-rail icon ([data-quick-rail-toggle]) toggles it itself.
   function onPopupAway(e) {
-    if (!heroBar.popup || (rail && rail.busy)) return;
-    if (e.target.closest && (e.target.closest('.hero-inner.popup') || e.target.closest('.mini'))) return;
+    if (!(heroBar.popup || heroBar.quick) || (rail && rail.busy)) return;
+    if (e.target.closest?.('.hero-inner.popup, .hero-inner.quick, .mini, [data-quick-rail-toggle]')) return;
     heroBar.popup = false;
+    heroBar.quick = false;
   }
 
   // The phone tab strip sticks just below this strip (App.svelte .tabs).
@@ -221,7 +225,7 @@
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
     if (latestSafety) return { kind: 'edge' };
-    if (link.virtual) return { kind: 'notice', text: 'Virtual: nothing moves' };
+    if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
   });
   // A SOURCE_CONFLICT names the source holding the rail when the hub labels it.
@@ -296,6 +300,8 @@
   const homeOp = $derived(ops.find((o) => isHomeRole(o.action) && o.value === HOME_OP.home) || null);
   let stripEl = $state(null), measureEl = $state(null), pairEl = $state(null), ovrEl = $state(null);
   let level = $state(0);
+  let compactFits = $state(true);
+  const cmp = $derived(compact && compactFits);
   let stacked = $state(false);
   let smallNums = $state(false);
   let menuOpen = $state(false);
@@ -341,6 +347,11 @@
     const budget = stacked ? content : oneRow;
     const fit = needs.findIndex((n) => n <= budget);
     level = fit < 0 ? 2 : fit;
+    if (cmp) {
+      // Short of width for the one row (the 200 px floor), the full hero stands until the next resize.
+      if (stripEl.scrollWidth > stripEl.clientWidth + 1) compactFits = false;
+      else { stacked = false; level = 0; }
+    }
   }
   $effect(() => {
     if (!stripEl || !measureEl) return;
@@ -349,17 +360,22 @@
     return () => ro.disconnect();
   });
   // A rail mounting or the op set changing moves the budget too.
-  $effect(() => { void rail; void ops.length; void railCtl; queueMicrotask(measure); });
-  const menuShown = $derived(ops.length > 1 || level >= 1);
-  const flipInMenu = $derived(level >= 1 && !!flip);
-  const ovrInMenu = $derived(level === 2 && hasOverride);
+  $effect(() => { void rail; void ops.length; void railCtl; void cmp; queueMicrotask(measure); });
+  // Compact keeps Flip and Override inline and Home as its icon.
+  const iconHome = $derived(level >= 1 || (cmp && ops.length > 0));
+  const menuShown = $derived(ops.length > 1 || iconHome);
+  const flipInMenu = $derived(level >= 1 && !!flip && !cmp);
+  const ovrInMenu = $derived(level === 2 && hasOverride && !cmp);
   function onDocClick(e) {
     if (menuOpen && menuEl && !e.composedPath().includes(menuEl)) menuOpen = false;
   }
   function onWindowKey(e) {
-    if (e.key === 'Escape' && heroBar.popup && !(rail && rail.busy)) {
+    // Prevented, so page fullscreen stays (App.svelte onFullKey).
+    if (e.key === 'Escape' && (heroBar.popup || heroBar.quick) && !(rail && rail.busy)) {
+      e.preventDefault();
+      if (heroBar.popup) document.querySelector('.topstrip .mini')?.focus();
       heroBar.popup = false;
-      document.querySelector('.topstrip .mini')?.focus();
+      heroBar.quick = false;
     }
     if (e.key === 'Escape' && menuOpen) {
       menuOpen = false;
@@ -422,7 +438,7 @@
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" class:stacked class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" class:stacked class:compact={cmp} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
@@ -442,7 +458,7 @@
     <!-- The plan readback (ph-ryi7), on the primary label's line from the
          secondaries rightward: out of flow, above every control's box, so
          nothing moves when it fills. -->
-    {#if rail}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
+    {#if rail && !cmp}<div class="readback"><PlanStrip readback playing={rail.playing} /></div>{/if}
 
     <div class="status" class:hastab={tab || railHidden} data-kind={slot.kind}>
       {#if slot.kind === 'refusal'}
@@ -489,7 +505,7 @@
         <div class="ops">{#each ops as op (op.key)}{@render opButton(op)}{/each}</div>
       {:else}
         <div class="home-menu" bind:this={menuEl}>
-          <button type="button" class="btn home-btn" class:icon-only={level >= 1} class:hazard={homeNeeded}
+          <button type="button" class="btn home-btn" class:icon-only={iconHome} class:hazard={homeNeeded}
                   aria-haspopup="true" aria-expanded={menuOpen}
                   aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
                   title={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
@@ -620,6 +636,24 @@
     pointer-events: none;
   }
   .stacked:has(.status:not([data-kind=idle])) .readback { display: none; }
+  /* The phone's mini rides the status slot's right end: the readback stops short of it. */
+  .stacked:has(:global(.mini)) .readback { right: calc(var(--gap) + 64px + var(--sp-3)); }
+
+  /* Compact (DESIGN §10.3): one row at the tap height. The numeral loses its
+     label line and the planned stack; a current condition takes the
+     numeral's place (the watch-size rule), so the mini and the controls never
+     move; the safety-edge history stays in the Log. */
+  /* Buttons at the 40 px floor (law 12), the row's gaps tight: the row
+     returns 40 px or more at 860x420, where the full hero is already one row. */
+  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); --pad-v: 0px; gap: var(--sp-2); }
+  .compact .nums { flex: none; clip-path: none; }
+  /* Each button as wide as its word, never under the target: a label is never clipped. */
+  .compact .dock :global(:is(.safety-op .btn, .rw-flip)) { width: auto; min-width: var(--tap); }
+  .compact .nums :global(:is(.hn-primary .hn-label, .hn-col)) { display: none; }
+  .compact .nums :global(.hn-primary .hn-val) { font-size: 1.35rem; }
+  .compact .status { min-width: calc(64px + var(--sp-3)); }
+  .compact .status[data-kind=edge] .evline { display: none; }
+  .compact:has(.status:not([data-kind=idle], [data-kind=edge], [data-kind=virtual])) .nums { display: none; }
 
   .status {
     flex: 1 1 0;
@@ -645,7 +679,7 @@
     color: var(--ink-dim);
   }
   [data-kind='fault'] .st-text, .recovery .st-text,
-  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text { color: var(--warn-ink, var(--warn)); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text { color: var(--warn-ink, var(--warn)); }
 
   .recovery {
     display: flex;

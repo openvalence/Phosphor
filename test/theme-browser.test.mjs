@@ -14,6 +14,7 @@
  *   With a directory, also saves the Display pane and the home page under
  *   the default, a chassis-varied and the light preset.
  */
+import { goTab } from './nav.mjs';
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -137,9 +138,10 @@ async function boot(viewport, seed = {}) {
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
   return { ctx, page, errors };
 }
+// The rail, the tab strip, or the phone menu's drawer (nav.mjs).
 const openTab = async (page, id) => {
-  await page.waitForSelector('[data-tab-id="' + id + '"]', { timeout: 15000 });
-  await page.click('[data-tab-id="' + id + '"]');
+  await page.waitForSelector('[data-tab-id="' + id + '"], .menu-btn', { timeout: 15000 });
+  await goTab(page, id);
   await page.waitForTimeout(250);
 };
 const css = (page, name) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);

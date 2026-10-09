@@ -17,6 +17,8 @@
  * See: docs/PLUGINS.md
  */
 
+import { NAV_ICONS } from '../ui/navIcons.js';
+
 /** Host API major. Bumped only by a breaking change, which the freeze forbids once one external plugin exists. */
 export const API_VERSION = 1;
 
@@ -167,6 +169,8 @@ export function createPluginHost(deps) {
     const prefix = 'plugin.' + name + '.';
     const api = {
       apiVersion: API_VERSION,
+      // One glyph per shell surface a page draws itself (docs/PLUGINS.md, Pages).
+      icons: Object.freeze({ quickRail: NAV_ICONS.quickRail }),
       manifest: Object.freeze(JSON.parse(JSON.stringify(rec.manifest))),
 
       // ---- read: the model, never the wire ----
@@ -505,6 +509,8 @@ export function createPluginHost(deps) {
           fill: !!p.def.fill,
           search: (p.def.search || []).map((e) => ({ label: e.label, key: e.key })),
           mediaFullscreen: !!p.def.mediaFullscreen,
+          status: !!p.def.status,
+          compactHero: !!p.def.compactHero,
           plugin: rec.manifest.name,
           slot: p,
         });

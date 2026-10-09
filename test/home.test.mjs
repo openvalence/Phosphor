@@ -40,6 +40,7 @@
  *      node test/home.test.mjs --live [--port 8882] [--http 8880]
  *        (valencesim --homed --headless --port 8882 --http 8880)
  */
+import { goTab, tabIds } from './nav.mjs';
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -215,8 +216,9 @@ async function open(w, h, store = null) {
   return { ctx, page, up };
 }
 async function boot(page, w) {
-  const sel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
-  const up = await page.waitForSelector(sel, { timeout: 15000 }).then(() => true).catch(() => false);
+  // Under 960 the phone menu (DESIGN §10.12): its drawer lists the tabs once the catalog is in.
+  const up = w >= 960 ? await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).then(() => true).catch(() => false)
+    : await page.waitForFunction(() => document.querySelector('.menu-btn') && document.querySelector('.hero-strip'), null, { timeout: 15000 }).then(() => true).catch(() => false);
   await page.waitForTimeout(500);
   return up;
 }
@@ -275,9 +277,9 @@ async function harvestDerived(page) {
     r.actions.forEach((a) => seen.actions.add(a));
     r.titles.forEach((t) => seen.titles.add(t));
   };
-  const cats = await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))]);
+  const cats = await tabIds(page, 'cat');
   for (const id of cats) {
-    await page.click('[data-tab-id="' + id + '"]');
+    await goTab(page, id);
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
     const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
@@ -746,13 +748,16 @@ if (!LIVE) {
   console.log('\n[handheld 390x844]');
   const hh = await open(390, 844);
   ok('catalog adopted', hh.up);
-  const hl = await hh.page.$$eval('nav.tabs [role=tab]', (els) => els.map((e) => e.textContent.trim()));
+  await hh.page.click('.menu-btn');
+  const hl = await hh.page.$$eval('.phone-menu [role=tab]', (els) => els.map((e) => e.textContent.trim()));
   ok('no Overview tab', !hl.includes('Overview') && hl[0] === 'Dash', hl);
   ok('the home is today\'s auto-built page', JSON.stringify(await topTitles(hh.page)) === JSON.stringify(BEFORE.handheld.map((c) => c.title)),
     await topTitles(hh.page));
+  // The drawer is open: its Dash row carries the layout wrench.
   await editBtn(hh.page).click();
   ok('no palette outside the full class (ph-e82.7)', await hh.page.locator('.palette').count() === 0);
   await doneBtn(hh.page).click();
+  await hh.page.keyboard.press('Escape');
   checkReach('handheld', BEFORE.handheld, await harvestDerived(hh.page));
   await hh.ctx.close();
 } else {

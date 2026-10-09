@@ -216,6 +216,8 @@ html, body { margin: 0; padding: 0; }
    multiplier entirely once left every rem-based size ~11% smaller than the OG
    at the same --s, which is why --s still has to be part of this rule. */
 html { font-size: calc(var(--s) * 100%); }
+/* Scrolled into view (focus, F3, a link) clears the sticky top strip and the pinned bottom stack. */
+html { scroll-padding: var(--strip-h, 0px) 0 calc(var(--foot-strip-h, 0px) + var(--page-foot-reserve, 0px)); }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -225,7 +227,6 @@ body {
      px value here would peg body text regardless of --s. */
   line-height: 1.45;
   -webkit-text-size-adjust: 100%;
-  padding-bottom: env(safe-area-inset-bottom);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: none; }
@@ -836,6 +837,10 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
      measure (--measure). The top strip (ui/TopStrip.svelte) is in flow, so
      no chrome reserve lives here. */
   padding-inline: var(--app-pad);
+  /* The pinned bottom stack (the scrolling layout; both 0 otherwise): the
+     status row (FootStrip) and the page footer (PageFoot) publish their
+     heights, so the last card ends above them. */
+  padding-bottom: calc(var(--foot-strip-h, 0px) + var(--page-foot-reserve, 0px));
 }
 /* The desktop frame owns its insets (App.svelte .frame): the sidebar sits
    flush on the window's left edge and the bars run full bleed. The tab-strip
@@ -844,31 +849,23 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
 :root { --app-pad: 0px; }
 .app:not(:has(> .frame)) { --app-pad: var(--gap); }
 
-/* Mobile: a normally-scrolling page. Only the page footer is fixed to the
-   bottom edge (DESIGN §10.3); it reserves its own height here
-   (ui/PageFoot.svelte). Breakpoint matches App.svelte's `isDesktop` (960px). */
-@media (max-width: 959px) {
-  .app {
-    min-height: 100vh;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-}
+/* The two scroll modes follow App.svelte's `isDesktop` (class `full`,
+   html[data-rc], model/viewport.svelte.js), never a width query: the phone
+   class keeps a 990 px phone on its side out of `full`.
+   Mobile: a normally-scrolling page; the page footer and the status row are
+   pinned to the bottom edge and own the bottom inset (DESIGN §10.3). */
+html:not([data-rc=full]) .app { min-height: 100vh; }
 
 /* Desktop: the page NEVER scrolls as a page. .app is a viewport-height flex
    column (dvh with a vh fallback for browsers that lack it); App.svelte's
    .frame (the nav+pane row) is the one region with its own scroll/overflow,
-   so the column's total height always fits without spilling the viewport.
-   Breakpoint matches App.svelte's `isDesktop` (class `full`, 960px up);
-   glance can sit past 960 (no pointer, rclass.js) and mounts the scrolling
-   tab-strip page, so it keeps the page scroll. */
-@media (min-width: 960px) {
-  html:not([data-rc=glance]) .app {
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+   so the column's total height always fits without spilling the viewport. */
+html[data-rc=full] .app {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Short desktop windows (a laptop browser is ~650px tall): the pinned hero
