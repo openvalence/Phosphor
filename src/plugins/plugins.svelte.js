@@ -26,6 +26,7 @@ import { askConfirm } from '../ui/confirm.svelte.js';
 import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount } from '../ui/widgets/roster.js';
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
+import { KIT } from './kit.js';
 import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
 } from '../../../Valence/clients/js/index.js';
@@ -198,6 +199,7 @@ export const host = createPluginHost({
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
+  ui: KIT,
   log: logLine,
 });
 

@@ -965,33 +965,8 @@
   .range-track { left: 0; right: 0; background: var(--line-2); }
   .range-fill { background: var(--reality); box-shadow: 0 0 6px rgba(var(--reality-rgb), .35); }
 
-  /* Quiet label voice — same recipe as the hero numerals' .hn-label. Size
-     matches the OG stylesheet's base `label` rule (.76rem, Chakra Petch 500,
-     tx-mut) verified against og-ref/style.css. One line: the text ellipsizes
-     before the value chip can overflow, and its tags stay after it (ph-z5o). */
-  .field-label {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    font-family: var(--font);
-    font-size: .76rem;
-    font-weight: 500;
-    color: var(--tx-mut);
-    text-transform: lowercase;
-    letter-spacing: .04em;
-  }
-
-  /* One visible line that still wraps anywhere underneath: its min-content
-     stays one glyph, so a long label never raises a card's measured floor
-     (DashGrid min-content). */
-  .field-label-text {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
-    min-width: 0;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-  }
+  /* The label voice (.field-label, .field-label-text) and the value chip's
+     base (.field-value, its .unit) are style.css's: the plugin kit wears them too. */
 
   .tag {
     display: inline-block;
@@ -1149,28 +1124,6 @@
   /* The value chip. A read value is bare digits; only a typeable chip wears
      the recess, so editable looks editable and read-only does not (ph-5y6).
      The transparent border keeps both the same height. */
-  .field-value {
-    display: inline-flex;
-    align-items: center;
-    font-family: var(--mono);
-    font-variation-settings: 'wdth' 90;
-    font-weight: var(--num-wght);
-    font-size: .76rem;
-    color: var(--tx-val);
-    border: 1px solid transparent;
-    border-radius: var(--r-s);
-    padding: 1px 0;
-  }
-  /* Unit suffix — OG's .field-val em: Chakra Petch (not mono), tx-ghost,
-     .64rem literal (not a relative em) so it stays legible at the chip's
-     smallest sizes. */
-  .field-value .unit {
-    margin-left: var(--sp-1);
-    font-family: var(--font);
-    font-weight: 500;
-    font-size: .64rem;
-    color: var(--tx-ghost);
-  }
 
   /* Read-only bounded numeric (readout archetype) — the OG "Power card"
      instrument voice: the value glows reality-blue like a live measurement
@@ -1275,21 +1228,7 @@
     color: var(--ink-dim);
   }
 
-  /* Free-text/secret value entries — same recess as .field-value/.og-num
-     (OG .num verbatim), left-aligned since the content isn't numeric (SSID
-     strings, passphrases). */
-  .value-input {
-    background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6);
-    border: 1px solid var(--line-1);
-    color: var(--tx-val);
-    font-family: var(--mono);
-    font-variation-settings: 'wdth' 90;
-    font-weight: var(--num-wght);
-    border-radius: var(--r-s);
-    padding: var(--sp-2) var(--sp-3);
-    text-align: left;
-  }
+  /* .value-input (free text, secrets) is style.css's: the plugin kit wears it too. */
 
   /* Layout-only: full-width controls, chrome untouched. */
   .field :is(input[type='range'], input[type='number'], input[type='text'],
@@ -1315,45 +1254,7 @@
     cursor: not-allowed;
   }
 
-  /* Stepper: the value box fills between the nudges, digits centered. */
-  .stepper {
-    display: flex;
-    align-items: stretch;
-    gap: var(--sp-2);
-  }
-  .stepper input {
-    flex: 1 1 auto;
-    min-width: 0;
-    text-align: center;
-  }
-  .stepper button {
-    flex: 0 0 34px;
-    min-height: 34px;
-    touch-action: manipulation;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: none;
-    border-radius: var(--r-s);
-    border: 1px solid var(--line-2);
-    background: var(--bg-sunken);
-    color: var(--tx-mut);
-    font-family: var(--mono);
-    font-size: .9rem;
-    line-height: 1;
-    cursor: pointer;
-    transition: border-color var(--t-quick), color var(--t-quick);
-  }
-  .stepper button:hover:not(:disabled) {
-    border-color: var(--line-4);
-    color: var(--tx);
-  }
-  .stepper button:disabled {
-    opacity: .45;
-    cursor: not-allowed;
-  }
-  @media (pointer: coarse) {
-    .stepper button { flex-basis: 40px; min-height: 40px; }
-  }
+  /* The stepper (.stepper and its nudges) is style.css's: the plugin kit wears it too. */
 
   /* Status lamps (indicator archetype). Same wrap cadence as .bitfield so a
      read-only status byte and a writable one read as the same kind of thing;

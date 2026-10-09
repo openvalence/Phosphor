@@ -1084,21 +1084,8 @@
 
   /* The page's status slot (DESIGN §10.3): one line, its width reserved, a
      3 px tone bar; the text is --tx in every tone, never --warn (law 13). */
-  .foot-status {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    height: calc(var(--sp-5) * 1.5);
-    padding-left: var(--sp-2);
-    border-left: 3px solid var(--line-2);
-    color: var(--tx);
-    font-size: .8rem;
-  }
-  .foot-status > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .foot-status[data-tone='ok'] { border-left-color: var(--good); }
-  .foot-status[data-tone='warn'] { border-left-color: var(--warn); }
-  .foot-status[data-tone='bad'] { border-left-color: var(--bad); }
+  /* .foot-status's look is style.css's: the plugin kit's status row wears it too. */
+  .foot-status { flex: 1 1 0; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the
