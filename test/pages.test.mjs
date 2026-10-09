@@ -428,6 +428,8 @@ async function openProbe(page) {
   await page.waitForTimeout(150);
 }
 const PAPER = THEMES.find((t) => t.id === 'paper');
+// The compact hero's floor of what it returns to the page, with the full hero's padding (DESIGN §10.3).
+const RETURNS = { 420: 40, 860: 20 };
 for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]]]) {
   console.log('\n--- status slot ' + name + ' ---');
   const { ctx, page, errors } = await boot({ width: vp[0], height: vp[1] }, { probe: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
@@ -647,7 +649,17 @@ const heroOf = (page) => page.evaluate(() => {
     return b.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2)) && q.right <= innerWidth + 0.5; });
   const num = strip.querySelector('.hn-primary .hn-val'), nb = num && num.getBoundingClientRect();
   const mini = strip.querySelector('.mini'), mb = mini && mini.getBoundingClientRect();
+  // Gaps between neighbors, left to right (ph-5u0g.10), and what a hit at the Pause/Halt gap's middle lands on.
+  const row = [...strip.querySelectorAll('.dock button')].filter((b) => b.getClientRects().length && !b.closest('.menu-pop'))
+    .map((b) => b.getBoundingClientRect()).sort((a, b) => a.left - b.left);
+  const gaps = row.slice(1).map((q, i) => Math.round((q.left - row[i].right) * 10) / 10);
+  const [pz, hz] = [...document.querySelectorAll('.topstrip .pair .safety-op button')].map((b) => b.getBoundingClientRect());
+  const gapHit = pz && hz ? document.elementFromPoint((pz.right + hz.left) / 2, (pz.top + pz.bottom) / 2)?.closest('button') : null;
+  const sc = getComputedStyle(strip);
   return { h: Math.round(document.querySelector('.topstrip').getBoundingClientRect().height + (hs ? hs.getBoundingClientRect().height : 0)),
+    gaps, pairGap: pz && hz ? Math.round((hz.left - pz.right) * 10) / 10 : null, gapHit: gapHit ? gapHit.className : null,
+    padTop: row.length ? Math.round(row[0].top - r.top) : null, contentL: Math.round(r.left + parseFloat(sc.paddingLeft)),
+    numL: nb ? Math.round(nb.left) : null,
     strip: Math.round(r.height), compact: strip.classList.contains('compact'), btns, pair,
     label: !!strip.querySelector('.hn-primary .hn-label')?.getClientRects().length, col: !!strip.querySelector('.hn-col')?.getClientRects().length,
     num: nb ? { mid: Math.round(nb.top + nb.height / 2), r: Math.round(nb.right) } : null, mini: mb ? { l: Math.round(mb.left), mid: Math.round(mb.top + mb.height / 2) } : null,
@@ -668,8 +680,18 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   ok(tag + ': a compactHero page draws the hero as one row', c.compact && !c.label && !c.col && !c.over
     && c.btns.every((b) => Math.abs(b.mid - c.btns[0].mid) <= 1) && !!c.mini && Math.abs(c.mini.mid - c.btns[0].mid) <= 2, JSON.stringify(c));
   ok(tag + ': all five strip buttons, the mini and the numeral stay', c.btns.length >= 5 && !!c.num, JSON.stringify(c.btns.map((b) => b.l)));
-  ok(tag + ': at least 40 px shorter than on a plain page', plain.h - c.h >= 40, plain.h + ' -> ' + c.h);
+  ok(tag + ': at least ' + RETURNS[w] + ' px shorter than on a plain page', plain.h - c.h >= RETURNS[w], plain.h + ' -> ' + c.h);
   ok(tag + ': every strip button keeps the 40 px target', c.btns.every((b) => b.w >= 40 && b.h >= 40), JSON.stringify(c.btns));
+  // ph-5u0g.10: the full hero's padding and its gaps at this width (Home | Flip Override | Pause Halt);
+  // the full hero may hold Flip in its popover, so the groups' gaps are compared, not the list.
+  ok(tag + ': the row keeps the full hero\'s gaps (Home | Flip Override | Pause Halt)', c.gaps.length === 4
+    && c.gaps[1] <= c.gaps[0] && c.gaps[0] === plain.gaps[0] && c.gaps[2] === plain.gaps.at(-2) && c.gaps[3] === plain.gaps.at(-1), JSON.stringify([c.gaps, plain.gaps]));
+  ok(tag + ': the buttons keep the full hero\'s padding off the bar', c.padTop >= 5, JSON.stringify(c.padTop));
+  for (const [f, x] of [['compact', c], ['plain', plain]]) {
+    ok(tag + ' ' + f + ': Pause and Halt stand at least 8 px apart, and a hit in the gap is neither', x.pairGap >= 8 && !x.gapHit, JSON.stringify([x.pairGap, x.gapHit]));
+  }
+  // ph-5u0g.11: the readout sits mid-row at the strip's content inset.
+  ok(tag + ': the numeral sits mid-row at the strip\'s inset', !!c.num && Math.abs(c.num.mid - c.btns[0].mid) <= 2 && Math.abs(c.numL - c.contentL) <= 1, JSON.stringify([c.num, c.btns[0].mid, c.numL, c.contentL]));
   ok(tag + ': the stop pair is reachable', c.pair.length === 2 && c.pair.every(Boolean), JSON.stringify(c.pair));
   await shot(page, 'compact-' + w + 'x' + h + '.png');
   // A condition takes the numeral's place; the mini and the buttons hold still.
@@ -689,6 +711,7 @@ for (const [w, h] of [[1428, 900], [1024, 768]]) {
   await openProbe(page);
   const c = await heroOf(page);
   ok('compact ' + w + 'x' + h + ': buckets 3 and up keep the full hero', !c.compact && c.label, JSON.stringify({ compact: c.compact, label: c.label }));
+  ok('compact ' + w + 'x' + h + ': Pause and Halt stand at least 8 px apart, and a hit in the gap is neither', c.pairGap >= 8 && !c.gapHit, JSON.stringify([c.pairGap, c.gapHit]));
   await shot(page, 'compact-' + w + 'x' + h + '.png');
   await ctx.close();
 }

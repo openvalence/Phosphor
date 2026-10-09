@@ -303,6 +303,8 @@
   let compactFits = $state(true);
   const cmp = $derived(compact && compactFits);
   let stacked = $state(false);
+  // Compact only: the full hero would be one row here, so the compact row takes its group gaps.
+  let spread = $state(false);
   let smallNums = $state(false);
   let menuOpen = $state(false);
   let menuEl = $state(null);
@@ -350,7 +352,7 @@
     if (cmp) {
       // Short of width for the one row (the 200 px floor), the full hero stands until the next resize.
       if (stripEl.scrollWidth > stripEl.clientWidth + 1) compactFits = false;
-      else { stacked = false; level = 0; }
+      else { spread = !stacked; stacked = false; level = 0; }
     }
   }
   $effect(() => {
@@ -438,7 +440,7 @@
 
 <div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} />
-  <div class="strip" class:stacked class:compact={cmp} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
@@ -643,10 +645,13 @@
      label line and the planned stack; a current condition takes the
      numeral's place (the watch-size rule), so the mini and the controls never
      move; the safety-edge history stays in the Log. */
-  /* Buttons at the 40 px floor (law 12), the row's gaps tight: the row
-     returns 40 px or more at 860x420, where the full hero is already one row. */
-  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); --pad-v: 0px; gap: var(--sp-2); }
-  .compact .nums { flex: none; clip-path: none; }
+  /* Buttons at the 40 px floor (law 12); the padding and the gaps are the
+     full hero's at the same width (ph-5u0g peeve 27): tight where it would
+     stack, its one-row group gaps where it would not. A wider gap costs the
+     row's fit (compactFits) on a narrow phone; nothing else may grow it. */
+  .strip.compact { --tap: max(40px, calc(var(--s) * 40px)); --num-h: var(--tap); --num-cap: var(--tap); gap: var(--sp-2); }
+  .strip.compact.spread { gap: var(--sp-2) var(--sp-4); }
+  .compact .nums { flex: none; clip-path: none; display: flex; align-items: center; }
   /* Each button as wide as its word, never under the target: a label is never clipped. */
   .compact .dock :global(:is(.safety-op .btn, .rw-flip)) { width: auto; min-width: var(--tap); }
   .compact .nums :global(:is(.hn-primary .hn-label, .hn-col)) { display: none; }
@@ -715,11 +720,13 @@
   .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }
-  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). */
+  /* The fixed pair; each control sizes itself (SafetyOp.svelte, law 12). The
+     gap between Pause and Halt is clear and belongs to neither (ph-5u0g
+     peeve 16): no hit area may grow into it. */
   .pair {
     flex: none;
     display: flex;
-    gap: var(--sp-2);
+    gap: var(--sp-3);
   }
   /* Never shrink, never scroll: the budget decides what is inline. */
   .ovr, .ops, .home-menu { flex: none; display: flex; gap: var(--sp-2); }

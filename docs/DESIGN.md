@@ -682,9 +682,16 @@ question in §10.8).
   buckets 1 and 2 as one row: the position numeral without its label line
   and without the planned target, lag and speed stack, the mini rail, and the
   five strip buttons; nothing leaves the hero and the stop pair never moves.
-  At least 40 px return to the page at 420x860 and 860x420. Other pages and other
+  About 70 px return to the page at 420x860 and 27 at 860x420. Other pages and other
   buckets keep the hero as above. The row's buttons sit at the 40 px floor,
-  each as wide as its word, and a status condition takes the numeral's
+  each as wide as its word, with the full hero's padding and its gaps at
+  that width: tight where the full hero stacks its controls, the one-row
+  group gaps (Home | Flip Override | Pause Halt) where it does not
+  (operator 2026-10-09, `ph-5u0g` peeve 27). The numeral sits centered in
+  the row at the strip's inset (peeve 28). Pause and Halt stand a clear gap
+  apart in every form and no hit area spans it (peeve 16). The row fits a
+  five-character numeral at 448 and 489 px wide with no width to spare, so
+  any wider gap sends a narrow phone back to the full hero. A status condition takes the numeral's
   place (the watch-size rule), so the mini and the buttons never move; the
   safety-edge history stays in the Log there (`ph-5u0g.6`, the agent's
   readings, veto-able). Seams: `src/ui/HeroStrip.svelte`,
@@ -1155,3 +1162,4 @@ derives from one unit, and no size is tuned by hand.
 | 2026-10-08 | §10.3 | Fullscreen or not: a `mediaFullscreen` page's fullscreen is always bare (Borderless on the desktop shell); its In window / Borderless choice goes. Supersedes, for such pages, `ph-wb4j`'s mode and `ph-n4t7`'s mode glyph in the hover bar; footer pages keep the mode. | operator (ruled 2026-10-08, `ph-5u0g` peeve 9) |
 | 2026-10-08 | plugins | Funscript player redesign: shell card chrome, the stage at the video's aspect on phones, Open video and Open script, motion-only play, one player bar with Motion beside Play, a timeline head row, fullscreen as one mode, the hover bar in fullscreen only, Settings as sheet / drawer / side card, the Library as tab / drawer / column, status in the footer slot or the card's last row, landscape with a video as fullscreen, native settings rows with lowercase labels. Supersedes the 2026-10-05 plugins row's corner plate and ten-item transport and parts of `ph-mdqo.7`, `ph-n4t7` and `ph-mcfe`; text in [plugins/FUNSCRIPT.md](plugins/FUNSCRIPT.md), The card (`ph-1qs5`, `ph-5u0g` peeves 5 to 9). | operator ("yes, I like this", accepted as drawn with three amendments; the card compositions adopting the bar and head, and the agent's other readings named in FUNSCRIPT.md, veto-able) |
 | 2026-10-09 | §10.3 | One quick-rail icon per screen: the footer's hides while a plugin page shows its own (`ph-5u0g` peeve 11). | operator |
+| 2026-10-09 | §10.3 | Pause and Halt stand a clear gap apart in every hero form and no hit area spans it; the compact hero keeps the full hero's padding and its gaps at that width (tight where the full hero stacks, its one-row group gaps where it does not), so it returns about 70 px at 420x860 and 27 at 860x420 (was 40 at both); its numeral sits centered in the row (`ph-5u0g` peeves 16, 27, 28). | operator (the 9 px pair gap, the full hero's 7 px padding kept at the cost of 13 px at 860x420, and reading "the same gaps" per width are the agent's, veto-able) |
