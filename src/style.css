@@ -1041,9 +1041,11 @@ html[data-rc=glance] .app:has(.drill-page) nav.tabs { display: none; }
    src/plugins/kit.js). Its controls wear the control language above.
 
    Constraints:
-   - --corner-r is the display's corner radius (0 until the Android activity
-     publishes it, ph-5u0g peeve 16). A kit surface on a screen edge keeps its
-     content --corner-inset (0.3 r, just past r(1 - 1/sqrt 2)) clear of a corner.
+   - --corner-r is the display's corner radius: the Android activity publishes
+     it inline on <html> (the largest of its four corners, beside
+     --corner-tl/-tr/-bl/-br; ph-5u0g peeve 16), so this 0 holds elsewhere. A kit
+     surface on a screen edge keeps its content --corner-inset (0.3 r, just past
+     r(1 - 1/sqrt 2)) clear of a corner.
    - Nothing here moves a box on a state change: a hidden overlay is
      transparent, a shown one sits over the stage, never beside it.
    - A drag (data-drag) never takes the page's scroll: kit.js drag() owns the
@@ -1218,11 +1220,9 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
 .ui-sheet[data-form='popover'] .ui-sheet-body { gap: var(--sp-2); }
 .ui-sheet[data-form='popover'] .ui-sheet-body > .og-btn { justify-content: flex-start; width: 100%; }
 
-/* ---- status, quick rail ---- */
+/* ---- status ---- */
 .ui-status[data-routed] { display: none; }
-/* A plugin page that shows its own Rail button: the footer's goes (one per screen, ph-5u0g peeve 11). A native
-   page keeps its footer icon. */
-main.pane:has(> .pane-main.plugin .ui-quick:not([hidden])) > .page-foot .quick-rail { display: none; }
+
 
 /* ---- list, tile ---- */
 .ui-list { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--sp-3); min-width: 0; min-height: 0; height: 100%; }

@@ -101,7 +101,12 @@ const onGrid = (v, min, max, step) => {
   if (step > 0 && Number.isFinite(min)) v = min + Math.round((v - min) / step) * step;
   return Math.round(clamp(v, min, max) * 1e6) / 1e6;
 };
-const pairOf = (x) => (typeof x === 'string' && Object.hasOwn(ICONS, x) ? ICONS[x] : ['', String(x || '')]);
+/** A glyph name or one stroke path `d`; a word that names no glyph is a typo and throws. */
+const pairOf = (x) => {
+  if (typeof x === 'string' && Object.hasOwn(ICONS, x)) return ICONS[x];
+  if (typeof x === 'string' && /^[a-z][\w-]*$/i.test(x) && !/^[MmZzLlHhVvCcSsQqTtAa]$/.test(x)) throw new Error('ui.icon: unknown icon "' + x + '"');
+  return ['', String(x || '')];
+};
 // The shell's page fullscreen (phosphor-page-fullscreen-change), read by the overlays' auto form.
 let pageFull = false, pageFullSeen = false;
 const watchFull = () => {
@@ -245,7 +250,11 @@ export function gestures(el, o) {
 
 /** The click that follows a pointerdown which closed an overlay: eaten, so the tap never reaches the page beneath. */
 function swallow() {
-  const eat = (e) => { e.stopPropagation(); e.preventDefault(); done(); };
+  // A click on the top strip or the stop pair is never eaten (a key's Enter or Space on Halt after a cancelled tap too).
+  const eat = (e) => {
+    if (e.target instanceof Element && e.target.closest(STRIP)) { done(); return; }
+    e.stopPropagation(); e.preventDefault(); done();
+  };
   // Ends at the next pointerdown, never on a timer, so a long press cannot slip through.
   const done = () => { document.removeEventListener('click', eat, true); document.removeEventListener('pointerdown', done, true); };
   document.addEventListener('click', eat, true);
@@ -258,13 +267,16 @@ function swallow() {
  */
 export function outside(el, onOutside, except = []) {
   const fn = (e) => {
+    // An overlay that left the document while open takes its rule with it: no swallow is left behind.
+    if (!el.isConnected) { off(); return; }
     const t = e.target;
     if (!(t instanceof Node) || el.contains(t) || except.some((x) => x && x.contains(t))) return;
     onOutside(e);
     if (!(t instanceof Element && t.closest(STRIP))) swallow();
   };
+  const off = () => document.removeEventListener('pointerdown', fn, true);
   document.addEventListener('pointerdown', fn, true);
-  return () => document.removeEventListener('pointerdown', fn, true);
+  return off;
 }
 
 // ---- controls ---------------------------------------------------------------------
@@ -508,11 +520,19 @@ export function stepper(o = {}) {
 export function select(o = {}) {
   check('select', o, ['options', 'value', 'label', 'disabled', 'onChange']);
   const el = h('select', { class: cls('ui-select', o), 'aria-label': o.label || null });
-  const build = (list) => el.replaceChildren(...(list || []).map((x) => h('option', { value: x.value, text: x.label ?? x.value })));
+  // `value` is the option's own value (a number stays a number), never the DOM's string.
+  let vals = [];
+  const build = (list) => {
+    vals = (list || []).map((x) => x.value);
+    el.replaceChildren(...(list || []).map((x, i) => h('option', { value: String(i), text: x.label ?? String(x.value) })));
+  };
   build(o.options);
-  el.addEventListener('change', (e) => { if (o.onChange) o.onChange(el.value, e); });
-  def(el, { options: { get: () => [...el.options].map((x) => x.value), set: build } });
-  if (o.value != null) el.value = String(o.value);
+  el.addEventListener('change', (e) => { if (o.onChange) o.onChange(vals[el.selectedIndex], e); });
+  def(el, {
+    options: { get: () => vals.slice(), set(list) { const v = vals[el.selectedIndex]; build(list); el.selectedIndex = vals.indexOf(v); } },
+    value: { get: () => vals[el.selectedIndex], set(v) { el.selectedIndex = vals.indexOf(v); } },
+  });
+  if (o.value != null) el.value = o.value;
   el.disabled = !!o.disabled;
   return el;
 }
@@ -851,9 +871,13 @@ export function sheet(o = {}) {
     el.style.top = Math.max(top0 + 4, up ? r.top - el.offsetHeight - 4 : r.bottom + 4) + 'px';
     el.style.left = clamp(r.right - el.offsetWidth, 8, innerWidth - el.offsetWidth - 8) + 'px';
   };
-  const onKey = (e) => { if (e.key === 'Escape' && isOpen()) { e.preventDefault(); e.stopPropagation(); close(e); } };
+  const onKey = (e) => {
+    if (!el.isConnected) { hide(); return; }
+    if (e.key === 'Escape' && isOpen()) { e.preventDefault(); e.stopPropagation(); close(e); }
+  };
   const show = () => {
-    if (open) return;
+    if (open && (el.isConnected || borrowed)) return;
+    if (open) hide();
     open = true;
     form = resolve();
     el.dataset.form = form;
@@ -953,15 +977,19 @@ export function quickRail(o = {}) {
   const b = button({ icon: 'quickRail', title: 'Rail', class: 'ui-quick' + (o.class ? ' ' + o.class : '') });
   b.setAttribute('data-quick-rail-toggle', '');
   b.setAttribute('aria-expanded', 'false');
-  b.hidden = !document.documentElement.dataset.quickRail;
+  // Hidden (the attribute, so the shell counts it out) while the host offers no rail or the plugin says so.
+  let available = !!document.documentElement.dataset.quickRail, shown = true;
+  const draw = () => { b.hidden = !shown || !available; };
+  draw();
   b.addEventListener('click', () => b.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open: 'toggle' } })));
   winOn(b, 'phosphor-quick-rail-change', (e) => {
     const d = e.detail || {};
-    b.hidden = !d.available;
+    available = !!d.available;
+    draw();
     b.setAttribute('aria-expanded', String(!!d.open));
     b.classList.toggle('on', !!d.open);
   });
-  return b;
+  return def(b, { shown: { get: () => shown, set(v) { shown = !!v; draw(); } } });
 }
 
 /** Columns and rows of W-wide tiles (min..max px) that fit W x H without scrolling, gap px apart; at least one. */

@@ -257,7 +257,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
-| `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | experimental |
+| `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | **the kit only grows**: v1 is a contract; additive only |
 
 **Freeze.** Operator ruling (DESIGN §4): the widget API freezes the moment the
 first external plugin exists, the way Valence's public headers are frozen:
@@ -324,16 +324,24 @@ starts the marks over.
 Operator ruling 2026-10-09 (`ph-5wsk`): "make it EASY for plugin developers,
 otherwise nobody makes a plugin". A plugin builds its UI from the shell's own
 controls and layout primitives, so the shell's layout rules hold by
-construction. Plain DOM, no framework (DESIGN §9). `api.ui.version` is 1; the
-kit only grows, and it freezes with the rest of the API (`ph-vdk.30`).
-Seam: `src/plugins/kit.js`, handed to every plugin by the host.
+construction. Plain DOM, no framework (DESIGN §9). `api.ui.version` is 1 and
+v1 is a contract: the kit only grows (new factories, options and handle
+properties), nothing is removed or changes meaning. Seam:
+`src/plugins/kit.js`, handed to every plugin by the host.
 
 **Shape.** A factory takes one options object and returns the live element,
 ready to append. Its handle is properties on that element (`value`,
 `disabled`, `label`, ...): a setter redraws in place and never calls back. A
 callback option (`onChange(value, event)`, `onClick(event)`) fires on the
-user's act only. `class` adds the plugin's own class names, for its CSS and
-its tests. An unknown option throws, so a typo fails at mount.
+user's act only. Every control takes `disabled` at creation too. `class`
+adds the plugin's own class names, for its CSS and its tests. An unknown
+option or an unknown icon name throws, so a typo fails at mount.
+
+**Teardown needs nothing.** Kit elements live inside the plugin's mount and
+go with it; a window listener a kit element holds removes itself once the
+element has left the document, and an open sheet that leaves it closes its
+outside rule and its key rule. Put a sheet anywhere in the mount (it shows
+in the top layer); one never appended is borrowed into `<body>` while open.
 
 **Rules carried by every element** (nothing for the plugin to remember):
 
@@ -359,11 +367,12 @@ its tests. An unknown option throws, so a typo fails at mount.
   is swallowed, so it never reaches the page beneath (a stage tap starts
   motion), except a tap on the top strip or the stop pair: a safety control
   always takes its tap.
-- Screen corners: `<html>` carries `--corner-r`, the display's corner radius
-  (0 until the Android activity publishes it, `ph-5u0g` peeve 16; the tests
-  assume 48 px). A kit surface on a screen edge (a sheet, a drawer, a
-  fullscreen stage's bars) keeps its content `--corner-inset` (0.3 r) clear
-  of each corner.
+- Screen corners: the Android activity publishes `--corner-r` inline on
+  `<html>` (the largest of its four corners, beside `--corner-tl`, `-tr`,
+  `-bl`, `-br`; `ph-5u0g` peeve 16); elsewhere the kit's default is 0, and
+  the tests assume 48 px. A kit surface on a screen edge (a sheet, a drawer,
+  a fullscreen stage's bars) keeps its content `--corner-inset` (0.3 r)
+  clear of each corner.
 
 **Icons.** `ui.icons` is the shell's glyph set by name (the sidebar's and
 the media glyphs: `play`, `pause`, `prev`, `next`, `full`, `unfull`,
@@ -378,11 +387,11 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 |---|---|---|
 | `button` | `label`, `icon`, `title` (an icon-only button's name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `pressed`, `disabled` |
 | `files` | `accept`, `multiple`, `onFiles(files)` (an array) | a hidden file input: `open()` shows the picker; append it anywhere in the mount |
-| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled` |
+| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
 | `switch` | `label` (beside the track), `value`, `onChange` | `value`, `disabled` |
 | `slider` | `min`, `max`, `step`, `value`, `label` (accessible name), `format(v)` (its value chip, `el.chip`, as wide as its widest reading), `onInput` (live), `onChange` (on release) | `value`, `disabled`, `chip`, `input` |
 | `stepper` | `min`, `max`, `step`, `value`, `unit`, `label`, `buttons` (default true: minus, number, plus with hold-repeat; false: the number box alone), `drag` (the box drags sideways, one step per 4 px; a press without a drag types), `onChange` | `value`, `disabled`, `input` |
-| `select` | `options: [{value, label}]`, `value`, `label`, `onChange` | `value`, `disabled` |
+| `select` | `options: [{value, label}]`, `value`, `label`, `onChange` | `value` (the option's own value, a number stays a number), `disabled`, `options` (settable: the list is rebuilt, the chosen value kept when it is still there) |
 | `text` | `type` (`text`, `search`, `url`, `password`), `value`, `placeholder`, `label`, `onInput`, `onChange` | `value`, `disabled` |
 
 **Layout.**
@@ -390,25 +399,31 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | factory | options | handle |
 |---|---|---|
 | `page` | `main` and `aside` (element lists), `fill` (the page fills to the window's bottom on every class, the phone class included) | `main`, `aside` (their boxes), `asideOpen`. Bucket 3 and up: `aside` is a 320 px column at the right; buckets 1 and 2: one column. |
-| `card` | `index` (`'01'`), `title`, `actions` (elements at the head's right), `caret` (the title collapses the body), `open`, `onToggle` | `body` (append here), `head`, `title`, `index`, `open` |
+| `card` | `index` (`'01'`), `title`, `actions` (elements at the head's right), `caret` (the title collapses the body), `open`, `onToggle` | `body` (append here), `head`, `actions` (the head's right end: append more there), `title`, `index`, `open` |
 | `rows` | `title` (its `card-sub` head) | the grid `row`s go in |
 | `row` | `label`, `control`, `chip` (default: the control's own `chip`), `tip` | label, control and chip on one line (the settings row) |
-| `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
-| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle, kept while hovered, focused or dragged), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
+| `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | `left`, `center`, `right` (the groups), `refit()` (after a group's content changes width; a resize refits by itself). One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
+| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle, kept while hovered, dragged or holding keyboard focus), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |
 | `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'`. On the phone class it is the page footer's slot (the page registers `status`) and draws nothing in place; elsewhere it is a one-line row where the plugin placed it. |
-| `quickRail` | none | the Rail button: shown only while the host offers the quick rail, it opens and closes it; the footer's own icon hides while a page shows one |
-| `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits) |
+| `quickRail` | none | the Rail button: it opens and closes the quick rail; `shown` (default true): it is hidden (the `hidden` attribute, so the shell counts it out and shows the footer's own icon) while the host offers no rail or `shown` is false |
+| `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades and asks for everything once), `tile: {min, max}` (grid tile widths in px), `count(total)` (the foot's count words), `onPage(page, perPage)` (show that page: call `show`), `onMove(from, to)` (rows drag to reorder: a mouse at once, a touch after a hold; the drag is no pick) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, over the body), `busy`, `page`, `perPage`, `form` (settable: the page refits), `refit()` (measure the page size again) |
 | `tile` | `image`, `title`, `meta`, `current`, `actions` (kit buttons over the shot, or at a row's end), `onClick` | `current`, `button` (the tile's own button); the parent `list`'s form draws it as a tile or a row |
 
 **Helpers** for a plugin's own drawing, each returning `off()`:
 
 - `ui.drag(el, {axis, intent, hold, filter, onStart, onMove, onEnd})`: the
   touch rule above for a handle the plugin draws itself. `axis` `'x'` or
-  `'y'`; a mouse begins at once, a touch after `intent` (default true) or
-  the hold (default true); `onMove(e, dx, dy)`, `onEnd(e, ok)`.
+  `'y'`. With `intent` (default true) a mouse begins at once and a touch or
+  pen after 8 px more along the axis than across, or the 400 ms `hold`
+  (default true); with `intent` false a mouse begins after 8 px of movement
+  (a plain click still clicks) and a touch only by the hold.
+  `filter(downEvent)` returning false ignores that press.
+  `onStart(down, e)` (the press and the event that began the drag),
+  `onMove(e, dx, dy)` (from the press), `onEnd(e, ok, down)` (`ok` false on
+  a cancel).
 - `ui.gestures(el, {tap, double, hold, pinch, filter})`: a tap once the
   double window passes, a double, a 400 ms hold, and a two-finger pinch
   reporting its scale since the last call.

@@ -123,19 +123,14 @@
 <style>
   .action { display: flex; flex-direction: column; gap: var(--sp-2); }
   .field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-  /* Field's label face (.76rem, 500, --tx-mut). */
+  /* The label's voice is style.css's .field-label; here one line that ellipsizes (a block, not its inline-flex). */
   .field-label {
+    display: block;
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font);
-    font-size: .76rem;
-    font-weight: 500;
-    color: var(--tx-mut);
-    text-transform: lowercase;
-    letter-spacing: .04em;
   }
   .ops { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   /* Hub labels render as sent (COPY rule 8). */

@@ -47,12 +47,14 @@ console.log('\n--- one look ---');
   const SHARED = ['.field-label', '.field-label-text', '.field-value', '.value-input', '.stepper', '.stepper button', '.dash-title', '.foot-status'];
   ok('style.css holds the one base rule of each shared look', SHARED.every((s) => base(s).test(css)), SHARED.filter((s) => !base(s).test(css)));
   const comp = { 'src/ui/Field.svelte': ['.field-label', '.field-label-text', '.field-value', '.value-input', '.stepper', '.stepper button'],
-    'src/ui/dash/DashItem.svelte': ['.dash-title'] };
-  // A component's own state rules nest deeper (a container query); its base rules sit at the style block's first level.
+    'src/ui/dash/DashItem.svelte': ['.dash-title'], 'src/ui/ActionField.svelte': ['.field-label'] };
+  // A component may place a shared look (layout, an ellipsis) but never restate its voice: no font, color, case,
+  // tracking, background or border in its own rule for the class.
+  const VOICE = /(^|[;{\s])(font(-family|-size|-weight)?|color|text-transform|letter-spacing|background|border)\s*:/;
   const esc = (sel) => sel.replace(/[.[\]]/g, '\\$&');
-  const top = (sel) => new RegExp('\n  ' + esc(sel) + ' \\{');
-  const restated = Object.entries(comp).flatMap(([f, sels]) => sels.filter((s) => top(s).test(src(f).replace(/\r/g, ''))).map((s) => f + ' ' + s));
-  ok('no component restates a shared base look (Field, DashItem)', restated.length === 0, restated);
+  const blocks = (text, sel) => [...text.matchAll(new RegExp('\\n\\s*' + esc(sel) + '\\s*\\{([^}]*)\\}', 'g'))].map((m) => m[1]);
+  const restated = Object.entries(comp).flatMap(([f, sels]) => sels.filter((s) => blocks(src(f).replace(/\r/g, ''), s).some((b) => VOICE.test(b))).map((s) => f + ' ' + s));
+  ok('no component restates a shared look\'s voice (Field, DashItem, ActionField)', restated.length === 0, restated);
   ok('App.svelte keeps only the footer slot\'s flex on .foot-status', /\.foot-status \{ flex: 1 1 0; \}/.test(src('src/App.svelte'))
     && !/\.foot-status \{\s*\n\s*flex: 1 1 0;\s*\n\s*min-width/.test(src('src/App.svelte')));
 }
@@ -107,6 +109,7 @@ const PROBE_SRC = `export function activate(api) {
     K.sel = ui.select({ options: [{ value: 'x', label: 'Ex' }, { value: 'y', label: 'Why' }], value: 'x', onChange: on('sel') });
     K.txt = ui.text({ type: 'search', placeholder: 'Search', label: 'Search', onChange: on('txt') });
     K.files = ui.files({ accept: '.json', onFiles: (f) => log.push(['files', f.length]) });
+    K.el = el;
     K.rows = ui.rows({ title: 'Rows' });
     K.rows.append(ui.row({ label: 'Enabled', control: K.sw }), ui.row({ label: 'Speed', control: K.sl }),
       ui.row({ label: 'Count', control: K.st }), ui.row({ label: 'Mode', control: K.sel }));
@@ -264,7 +267,7 @@ console.log('\n--- desktop 1428x900 dark ---');
   await page.locator('main.pane .ui-row .og-switch').first().click();
   await page.locator('main.pane .ui-stepper:not(:has(.unit)) button[aria-label=Increase]').click();
   await page.locator('main.pane .og-seg:not([role=tablist]) button', { hasText: 'Alpha' }).click();
-  await page.selectOption('main.pane .ui-row select', 'x');
+  await page.selectOption('main.pane .ui-row select', { label: 'Ex' });
   await page.locator('main.pane [role=tablist] button', { hasText: 'Library' }).click();
   await page.fill('main.pane .ui-text', 'query');
   await page.keyboard.press('Enter');
@@ -345,6 +348,25 @@ console.log('\n--- desktop 1428x900 dark ---');
   ok('sheet: with it open, a tap on the stop pair\'s Pause reaches Pause (never swallowed, ph-5wsk.3)', await page.evaluate(() => window.__pz) === 1);
   await page.keyboard.press('Escape');
   await k(page, () => { window.__k.sheet.open = false; });
+  // A cancelled tap outside (a pointerdown with no click) arms the swallow; a key's click on Pause still reaches it.
+  await k(page, () => { window.__pz = 0; window.__k.gear.pressed = true; window.__k.sheet.open = true; });
+  await k(page, () => window.__k.btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, pointerType: 'touch' })));
+  await page.locator('.topstrip .btn-pause').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  ok('sheet: after a cancelled outside tap, Enter on Pause still reaches Pause (the swallow skips the strip)', await page.evaluate(() => window.__pz) === 1
+    && !(await k(page, () => window.__k.sheet.open)), await page.evaluate(() => window.__pz));
+  // A sheet unmounted while open leaves no rule behind: a later tap on the page reaches its control.
+  await clearLog(page);
+  await k(page, () => { window.__k.gear.pressed = true; window.__k.sheet.open = true; window.__k.sheet.remove(); });
+  const gone = await center(page, 'main.pane .p-btn');
+  await page.mouse.click(gone.x, gone.y);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const left = await log(page);
+  await k(page, () => { window.__k.el.append(window.__k.sheet); window.__k.sheet.open = true; });
+  const back = await k(page, () => { const s = window.__k.sheet, r = s.matches(':popover-open'); s.open = false; return r; });
+  ok('sheet: unmounted while open, it leaves no swallow and no key rule; appended again it opens', left.some((e) => e[0] === 'btn') && back, { left, back });
 
   // the popover menu: under its anchor; a pick closes it; an outside tap on the stage is no stage tap
   await clearLog(page);
@@ -449,8 +471,17 @@ console.log('\n--- phone 420x860 dark (touch) ---');
       docOver: document.documentElement.scrollWidth - innerWidth };
   });
   ok('bar: at 420 the center takes its own row, nothing overflows, targets stay at least 40 px', bar.rows === '2' && bar.over <= 0 && bar.minH >= 40 && bar.docOver <= 0, bar);
-  const qr = await k(page, () => ({ mine: !window.__k.qr.hidden, foot: [...document.querySelectorAll('.page-foot .quick-rail')].filter((e) => e.getClientRects().length).length }));
-  ok('quick rail: the page\'s Rail button shows on the phone class and the footer\'s own icon hides (one per screen)', qr.mine && qr.foot === 0, qr);
+  const qr = await k(page, () => {
+    const b = window.__k.qr, mine = !b.hidden;
+    b.shown = false;
+    const off = b.hidden;
+    window.dispatchEvent(new CustomEvent('phosphor-quick-rail-change', { detail: { available: true, open: false, form: 'vertical' } }));
+    const kept = b.hidden;
+    b.shown = true;
+    return { mine, off, kept, on: !b.hidden };
+  });
+  ok('quick rail: the page\'s Rail button shows on the phone class; shown = false hides it (the hidden attribute) through the host\'s updates',
+    qr.mine && qr.off && qr.kept && qr.on, qr);
 
   // touch: a vertical drag scrolls and changes nothing; a tap changes nothing; a horizontal drag does
   await clearLog(page);
