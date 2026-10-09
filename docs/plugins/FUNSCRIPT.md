@@ -842,6 +842,35 @@ FULL
   drops, and turning that off risks the builder palette.
   *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name; video, the webview's audio types, never `audio/*`) and Open script (`.funscript`); no drag and drop stands.)*
 
+### Queue and Autoplay (operator 2026-10-08, `ph-1qs5.9`)
+
+Operator: "add a queue and an autoplay option which plays the next video in
+the queue, a tab to manage the queue". Design (Fable, veto-able), as built:
+
+- **Where.** The queue lives where the library lives: on the phone a third
+  tab, Player | Queue | Library, in the head (the head reads 02 QUEUE); on
+  the desktop and in the fullscreen drawer a Library | Queue switch at the
+  head of the column (a session view switch, never stored).
+- **Rows.** The library's row form (a 56 px thumbnail, the title, the
+  duration), paged and never scrolled (D19), each with Play next (↑, to the
+  top) and Remove (×). A drag reorders (a mouse at once, a touch after a
+  400 ms hold, so the page still scrolls). A tap on a row plays it now and
+  takes it off the queue. Library tiles and rows carry Add to queue (+).
+  Several videos picked in one Open video: the first plays, the others are
+  queued, each with its same-named script.
+- **Autoplay.** A switch in Settings, Playback (pref `autoplay`) and a chip
+  on the now-playing row. When a scene ends with Autoplay on, the queue's
+  first scene loads, leaves the queue and plays once it can (its script
+  loaded, the gate open); Motion follows the Motion switch as for any Play,
+  and the preroll and pause-home rules apply between scenes. The queue's
+  end stops. Loop (per scene) and an A-B section win while on: a looping
+  scene never ends.
+- **Stored.** Pref `queue` (`phosphor.funscript.queue`): a Stash scene with
+  its URLs stored without the API key (the key in force is added when read
+  back, so the key never reaches the prefs backup); a local file by name
+  only. A File cannot be stored, so after a launch a file's row reads
+  Reopen, and Open video given a file of that name resolves it.
+
 ## Stash
 
 Configuration: a connect card (Stash URL, API key as a password field,

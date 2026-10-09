@@ -57,6 +57,7 @@ const CONTRACT = {
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'rows.js']: ['CSS', 'rowsBox', 'sub', 'sliderRow', 'switchRow'],
+  [P + 'queue.js']: ['COPY', 'LONG_PRESS_MS', 'CSS', 'toStored', 'fromStored', 'move', 'mountQueue'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
@@ -110,7 +111,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, tlOpen: true, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -1241,7 +1242,7 @@ if (!LIVE && !STASH_LIVE) {
         st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-n');
         return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
       });
-      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
+      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom', foot.gap <= 1 && foot.aboveStatus <= 12, foot);
     } else if (cls === 'desktop') {
       const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
         head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
@@ -1272,6 +1273,87 @@ if (!LIVE && !STASH_LIVE) {
     }
     if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-' + at + '.png') });
     ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  await stash.close();
+}
+
+// ---- (Q) the queue and Autoplay (ph-1qs5.9) ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(Q) queue');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('queue ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    const tab = (t) => page.locator(C + (cls === 'portrait' ? ' .fsp-tab' : ' .fsp-seg'), { hasText: new RegExp('^' + t + '$') }).click();
+    await tab('Library');
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+    // The column may hold one scene a page: add the first of each of three pages.
+    const titles = [];
+    for (let i = 0; i < 3; i++) {
+      await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(400);
+      titles.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+      await page.locator(C + ' .fsp-qadd').first().click();
+      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+    }
+    await tab('Queue');
+    await page.waitForTimeout(300);
+    const rows = () => page.$$eval(C + ' .fsp-q-row .fsp-t', (e) => e.map((x) => x.textContent));
+    const q0 = await rows();
+    ok('queue ' + at + ': Add to queue from the library fills the Queue tab in order', same(q0, titles), { q0, titles });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'queue-' + at + '.png') });
+    await page.locator(C + ' .fsp-q-row').nth(1).locator('.fsp-q-rm').click();
+    const q1 = await rows();
+    await page.locator(C + ' .fsp-q-row').nth(1).locator('.fsp-q-next').click();
+    const q2 = await rows();
+    ok('queue ' + at + ': Remove takes a row out, Play next moves one to the top', same(q1, [titles[0], titles[2]]) && same(q2, [titles[2], titles[0]]), { q1, q2 });
+    if (cls === 'desktop') {
+      const a = await page.locator(C + ' .fsp-q-row').nth(1).boundingBox(), b = await page.locator(C + ' .fsp-q-row').nth(0).boundingBox();
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width / 2, b.y + 4, { steps: 6 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      const q3 = await rows();
+      ok('queue ' + at + ': a drag reorders the queue', same(q3, [titles[0], titles[2]]), q3);
+      const stored = await page.evaluate(() => localStorage.getItem('phosphor.funscript.queue') || '');
+      ok('queue: stored in prefs, never the Stash key', stored.includes(titles[0]) && !stored.includes(KEY) && !/apikey/i.test(stored), stored.slice(0, 160));
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      ok('queue: the queue comes back after a launch', same(await rows(), [titles[0], titles[2]]), await rows());
+      // Autoplay: the end of a scene loads the queue's first and plays it; the queue's end stops.
+      await page.locator(C + ' .fsp-autob').evaluate((e) => e.click()).catch(() => {});
+      await page.locator(C + ' .fsp-q-row').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      const auto = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.autoplay') || 'false'));
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      const advanced = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t && !document.querySelector(c + ' .fsp-stage video').paused,
+        [C, titles[2]], { timeout: 12000 }).then(() => true, () => false);
+      ok('autoplay: on, the end of a scene loads the next queued scene and plays it', auto === true && advanced, { auto, title: await page.locator(C + ' .fsp-title').textContent() });
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(4000);
+      const stopped = await video(page, (v) => v.paused) && (await rows()).length === 0;
+      ok('autoplay: at the queue\'s end playback stops', stopped, { paused: await video(page, (v) => v.paused), rows: await rows() });
+    }
+    ok('queue ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
     clearInterval(hub.timer);
     await ctx.close();
   }

@@ -20,6 +20,7 @@ import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
 import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
+import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
 import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
 
@@ -77,6 +78,15 @@ console.log('(b) helpers');
 {
   ok('composition thresholds', compositionOf(1200) === 'full' && compositionOf(960) === 'full' && compositionOf(959) === 'handheld'
     && compositionOf(264) === 'handheld' && compositionOf(263) === 'glance');
+  {
+    const sc = { key: 'stash:7', id: '7', title: 'Seven', durationMs: 1000, stream: 'http://s/scene/7/stream?apikey=K', screenshot: 'http://s/7.jpg?x=1&apikey=K' };
+    const st = toStored({ kind: 'stash', scene: sc });
+    const back = fromStored(JSON.parse(JSON.stringify(st)), 'K2');
+    ok('queue: the stored form drops the Stash key, the read form takes the key in force; a file reads back unopened',
+      !JSON.stringify(st).includes('apikey') && back.scene.stream === 'http://s/scene/7/stream?apikey=K2' && /x=1&apikey=K2$/.test(back.scene.screenshot)
+      && fromStored(toStored({ kind: 'file', key: 'file:a', title: 'a', name: 'a.mp4', files: [] })).files === null && fromStored({ kind: 'x' }) === null, back);
+    ok('queue: move clamps and keeps every item', move([1, 2, 3], 2, 0).join() === '3,1,2' && move([1, 2, 3], 0, 9).join() === '2,3,1' && move([1, 2], 5, 0).join() === '1,2');
+  }
   ok('page class: buckets 1 and 2 the phone (landscape when wider than tall), 3 and up the desktop',
     pageClass(1, 420, 860) === 'portrait' && pageClass(2, 860, 420) === 'landscape' && pageClass(2, 600, 900) === 'portrait'
     && pageClass(3, 1024, 768) === 'desktop' && pageClass(5, 800, 1200) === 'desktop');

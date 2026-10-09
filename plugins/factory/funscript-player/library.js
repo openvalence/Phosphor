@@ -19,6 +19,7 @@ import { rowsBox, sub } from './rows.js';
 export const COPY = Object.freeze({
   search: 'Search',
   stash: 'Stash',
+  addQueue: 'Add to queue',
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
@@ -74,14 +75,18 @@ export const CSS = `
 .fsp-tile:hover .fsp-shot { border-color: var(--line-4); }
 .fsp-tile[aria-current=true] .fsp-shot { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
 .fsp-tile:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+.fsp-cell { position: relative; min-width: 0; display: grid; }
+.fsp-qadd { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 30px; padding: 0; background: var(--bg-card); }
+@media (pointer: coarse) { .fsp-qadd { width: var(--tap); } }
+.fsp-lib[data-rows] .fsp-qadd { top: 50%; translate: 0 -50%; right: 0; }
 .fsp-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; line-height: 20px; }
 .fsp-m { overflow: hidden; white-space: nowrap; font: .7rem/18px var(--mono); color: var(--tx-mut); }
 .fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4); text-align: center;
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
 .fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
-.fsp-lib-foot .fsp-n { flex: none; min-width: max-content; }
-.fsp-lib-foot output:not(.fsp-n) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fsp-lib-foot .fsp-n { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fsp-lib-foot output:not(.fsp-n) { flex: 1 0 auto; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
 .fsp-connect .fsp-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
@@ -149,7 +154,7 @@ function clockText(ms) {
  * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function}} o
  * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
  */
-export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null, rows = () => false }) {
+export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null, rows = () => false, onQueue = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
 
@@ -199,11 +204,15 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
     const b = h('button', { class: 'fsp-tile', type: 'button', title: s.title, 'aria-current': String(s.key === picked) },
       shot, h('div', { class: 'fsp-t', text: s.title }), h('div', { class: 'fsp-m', text: meta }));
     b.addEventListener('click', () => pickScene(s));
-    return b;
+    if (!onQueue) return b;
+    // ph-1qs5.9: Add to queue, over the tile's shot (a sibling: a button never holds a button).
+    const add = h('button', { class: 'og-btn sm fsp-qadd', type: 'button', text: '+', title: COPY.addQueue, 'aria-label': COPY.addQueue });
+    add.addEventListener('click', () => onQueue(s));
+    return h('div', { class: 'fsp-cell' }, b, add);
   }
   function pickScene(s) {
     picked = s.key;
-    [...grid.children].forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
+    grid.querySelectorAll('.fsp-tile').forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
     onPick(s);
   }
   /** The scene dir (+1 next, -1 previous) from the picked one on the loaded page, else across the page buttons. */

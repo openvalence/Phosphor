@@ -97,7 +97,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows`; `scale -> ro
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, tlOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -495,7 +495,8 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 // library.js
 export const CSS, COPY;
 export function fitGrid(W, H, gap = 8);   // -> {cols, rows, perPage}: tiles 150..300 px wide, gap px apart, that fit, at least one
-export function mountLibrary(el, { getStash, prefs, onPick, fetch, rows });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+export function mountLibrary(el, { getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+  // onQueue(scene): each tile and row carries Add to queue (+), a sibling of the tile's button
   // rows: () -> boolean, the phone's row form (PR13: a 56 px thumbnail beside the title and the meta, ROW_H); fit()
   // re-measures the page size after a form change
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
@@ -552,6 +553,9 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
+//   queue: {list(), add(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue (queue.js toStored)
+//   autoplay: {get(), set(on)},   prefs autoplay: the end of a scene plays the queue's first unless it loops
+//   volume: {get(), set(v)},      the video's volume (the phone's Settings row)
 //   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
 // The controller's media is the video while a scene has a stream, else a silent clock over the script's duration
@@ -750,6 +754,13 @@ export const COPY, CSS;
 export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale rows, onChange(scale)
   // on commit (rows.js's form): Fit to window (the Auto switch), the slider 0.25..1 with its chip, or the chip's
   // readout '0.01–0.97' (where 0 and 1 land)
+// queue.js (ph-1qs5.9): the play queue
+export const COPY, CSS, LONG_PRESS_MS = 400;
+export function toStored(entry), fromStored(stored, key);   // pure: a Stash scene without its key / with the key in force;
+  // a file by name (files null until reopened); null for anything else
+export function move(list, from, to);   // pure: the list with one item moved, indexes clamped
+export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) });   // -> { render(), unmount() }
+  // Entry = {kind: 'stash', key, title, durationMs, scene} | {kind: 'file', key, title, name, durationMs, files: File[] | null}
 // rows.js (PR18): the settings rows' one form, label | control | value chip, Field's voice restated
 export const CSS;
 export function rowsBox(label), sub(text), sliderRow(box, label, {min, max, step, tip}) /* -> {input, out} */,

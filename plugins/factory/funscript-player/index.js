@@ -36,7 +36,7 @@ export function activate(api) {
   const settings = (el) => {
     const b = mountScale(el, { value: readPrefs(api).interp, onChange: (v) => { writePref(api, 'interp', v); player.setInterp(v); },
       gain: () => player.scale });
-    const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p), volume: player.volume });
+    const c = mountPlay(el, { value: readPrefs(api).play, onChange: (p) => player.setPlay(p), volume: player.volume, autoplay: player.autoplay });
     const a = mountConnect(el, { api });
     return () => { a(); b(); c(); };
   };

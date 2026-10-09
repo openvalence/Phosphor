@@ -84,6 +84,7 @@ import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
 import { rowsBox, sub, sliderRow, switchRow } from './rows.js';
+import { mountQueue, toStored, fromStored, move, COPY as QCOPY } from './queue.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -749,7 +750,14 @@ export const CSS = `
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .fsp[data-comp=full] .fsp-lib { min-height: 400px; }
 .fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 7 / 2; }
-.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-split, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
+.fsp[data-comp=handheld]:is([data-view=library], [data-view=queue]) :is(.fsp-stage, .fsp-split, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
+.fsp-libbox[data-lv=queue] > .fsp-lib, .fsp-libbox:not([data-lv=queue]) > .fsp-qbox { display: none; }
+.fsp-qbox { flex: 1 1 auto; min-height: 0; }
+.fsp-libbox { display: flex; flex-direction: column; }
+.fsp-libbox > .fsp-lib { flex: 1 1 auto; min-height: 0; }
+.fsp-seg[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp-libseg { display: flex; gap: var(--sp-2); flex: none; }
+.fsp[data-comp=handheld]:not([data-media]) .fsp-libseg { display: none; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -888,7 +896,7 @@ html.still .fsp-cplay[data-flash] { animation-duration: 1ms; }
 .fsp-libb { display: none; }
 .fsp[data-media] .fsp-libb { display: inline-flex; }
 .fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
-.fsp[data-comp=handheld][data-view=library]:not([data-media]) .fsp-now { display: flex; }
+.fsp[data-comp=handheld]:is([data-view=library], [data-view=queue]):not([data-media]) .fsp-now { display: flex; }
 .fsp-nowt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
 .fsp-nowm { flex: none; font: .76rem var(--mono); color: var(--tx-val); }
 .fsp[data-comp=handheld] .fsp-libbox { display: flex; flex-direction: column; }
@@ -1044,7 +1052,23 @@ export function createPlayer(api) {
   }
   /** Open video (PR3): a video alone attaches to a loaded script without one; a .funscript picked with it pairs by base name. */
   function openVideo(files) {
-    const { video: v, script } = pairFiles([...files]);
+    files = [...files];
+    // A file the queue knows by name (a row reading Reopen) takes this pick's file and its same-named script.
+    for (const e of queue) if (e.kind === 'file' && !e.files) {
+      const vf = files.find((f) => f.name === e.name);
+      if (vf) e.files = [vf, ...files.filter((f) => { const ax = axisOf(f.name); return ax && ax.base.toLowerCase() === stemOf(vf.name); })];
+    }
+    // Several videos in one pick: the first plays, the others join the queue, each with its same-named script.
+    const vids = files.filter((f) => !axisOf(f.name));
+    if (vids.length > 1) {
+      for (const vf of vids.slice(1)) {
+        const fs = [vf, ...files.filter((f) => { const ax = axisOf(f.name); return ax && ax.base.toLowerCase() === stemOf(vf.name); })];
+        queue = [...queue, { kind: 'file', key: 'file:' + vf.name + ':' + vf.size, title: vf.name.replace(/\.[^.]+$/, ''), name: vf.name, durationMs: null, files: fs }];
+      }
+      saveQueue();
+      files = files.filter((f) => !vids.slice(1).includes(f) && !(axisOf(f.name) && vids.slice(1).some((vf) => axisOf(f.name).base.toLowerCase() === stemOf(vf.name))));
+    } else if (queue.some((e) => e.kind === 'file')) saveQueue();
+    const { video: v, script } = pairFiles(files);
     const st = ctl.state;
     if (st.view !== 'player') ctl.setView('player');
     if (!v) { if (script) openScript(script); return; }
@@ -1060,8 +1084,33 @@ export function createPlayer(api) {
   }
 
   let raf = 0;
+  // ---- the queue and Autoplay (ph-1qs5.9) ----
+  const stashKey = () => (readPrefs(api).stash || {}).key || '';
+  const stemOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
+  let queue = readPrefs(api).queue.map((s) => fromStored(s, stashKey())).filter(Boolean);
+  let autoplay = readPrefs(api).autoplay, autoPending = false;
+  const setAutoplay = (on) => { autoplay = !!on; writePref(api, 'autoplay', autoplay); views.forEach((w) => w.render()); };
+  const saveQueue = () => { writePref(api, 'queue', queue.map(toStored)); views.forEach((w) => w.render()); };
+  const loadEntry = (e) => { if (e.kind === 'stash') pick(e.scene); else if (e.files) openLocal(e.files); };
+  const Q = {
+    list: () => queue,
+    add(scene) { queue = [...queue, { kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }]; saveQueue(); },
+    remove(i) { queue = queue.filter((_, k) => k !== i); saveQueue(); },
+    next(i) { queue = move(queue, i, 0); saveQueue(); },
+    move(from, to) { queue = move(queue, from, to); saveQueue(); },
+    play(i) { const e = queue[i]; if (!e) return; queue = queue.filter((_, k) => k !== i); saveQueue(); loadEntry(e); },
+  };
+  // Autoplay: a scene that ends (not a loop's wrap; a looping scene never ends) loads the queue's first and plays it
+  // once it can (its script loaded, the gate open). Loop and A-B are per scene and win while on.
+  video.addEventListener('ended', () => {
+    const p = ctl.state.play;
+    if (!autoplay || !queue.length || p.loop || ctl.state.ab.b != null) return;
+    Q.play(0);
+    autoPending = true;
+  });
   const loop = () => {
     if (video.silent) { video.poll(); if (!video.paused) ctl.onFrame(video.currentTime * 1000, performance.now()); }
+    if (autoPending && ctl.canPlay()) { autoPending = false; ctl.play(); }
     ctl.tick();
     for (const v of views) v.frame();
     raf = views.length ? requestAnimationFrame(loop) : 0;
@@ -1109,6 +1158,16 @@ export function createPlayer(api) {
     const tabL = btn('fsp-tab', COPY.library, { role: 'tab' });
     tabP.addEventListener('click', () => ctl.setView('player'));
     tabL.addEventListener('click', () => ctl.setView('library'));
+    const tabQ = btn('fsp-tab', QCOPY.queue, { role: 'tab' });
+    tabQ.addEventListener('click', () => ctl.setView('queue'));
+    // Desktop and the drawer: Library | Queue at the head of the column (a view switch for the session).
+    let libView = 'library';
+    const segL = btn('fsp-seg', COPY.library, { role: 'tab' }), segQ = btn('fsp-seg', QCOPY.queue, { role: 'tab' });
+    segL.addEventListener('click', () => { libView = 'library'; render(); });
+    segQ.addEventListener('click', () => { libView = 'queue'; render(); });
+    const libseg = h('div', { class: 'fsp-libseg', role: 'tablist' }, segL, segQ);
+    const qbox = h('div', { class: 'fsp-qbox' });
+    let qv = null, qSeen = null;
     const title = h('span', { class: 'fsp-title' });
     const icon = () => {
       const s = document.createElementNS(SVG_NS, 'svg');
@@ -1154,9 +1213,12 @@ export function createPlayer(api) {
     nowB.append(icon());
     nowB.addEventListener('click', () => ctl.toggle());
     const nowT = h('span', { class: 'fsp-nowt' }), nowM = h('output', { class: 'fsp-nowm' });
-    const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM);
+    // The Autoplay chip (ph-1qs5.9): the settings switch's twin on the now-playing row.
+    const autoB = h('button', { type: 'button', class: 'og-btn sm fsp-autob', title: QCOPY.autoplayTip });
+    autoB.addEventListener('click', () => setAutoplay(!autoplay));
+    const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM, autoB);
     const src = h('div', { class: 'fsp-src' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
-      openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, h('span', { role: 'tablist' }, tabP, tabL), fileV, fileS);
+      openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, h('span', { role: 'tablist' }, tabP, tabQ, tabL), fileV, fileS);
 
     const empty = h('div', { class: 'fsp-empty' }, openV('fsp-eopenv'), openS('fsp-eopens'));
     const tickI = h('i', { class: 'fsp-tick int' });
@@ -1499,8 +1561,11 @@ export function createPlayer(api) {
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
           library = mountLibrary(lib, { getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
-            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media });
-          lib.append(now);
+            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media, onQueue: (s) => Q.add(s) });
+          lib.append(qbox, now);
+          lib.insertBefore(libseg, lib.querySelector('.fsp-lib'));
+          qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
+            onReopen: () => fileV.click() });
           if (opts.page) lib.prepend(h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '02' }), COPY.library));
         }
       }
@@ -1560,14 +1625,23 @@ export function createPlayer(api) {
       if (inMenu) attr(mediaB, 'data-search-key', 'openVideo'); else mediaB.removeAttribute('data-search-key');
       tabP.setAttribute('aria-selected', String(st.view === 'player'));
       tabL.setAttribute('aria-selected', String(st.view === 'library'));
+      tabQ.setAttribute('aria-selected', String(st.view === 'queue'));
+      const lv = comp === 'handheld' ? (st.view === 'queue' ? 'queue' : 'library') : libView;
+      attr(lib, 'data-lv', lv);
+      segL.setAttribute('aria-selected', String(lv === 'library'));
+      segQ.setAttribute('aria-selected', String(lv === 'queue'));
+      if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
+      setText(autoB, QCOPY.autoplay);
+      attr(autoB, 'aria-pressed', String(autoplay));
+      autoB.classList.toggle('on', autoplay);
       setText(title, st.scene ? st.scene.title : '');
       setText(nowT, st.scene ? st.scene.title : '');
       setIcon(nowB, act ? ICON.pause : ICON.play, act ? COPY.pause : COPY.play);
       nowB.disabled = play.disabled;
       if (head) {
-        const libTab = comp === 'handheld' && st.view === 'library';
+        const libTab = comp === 'handheld' && st.view !== 'player';
         setText(head.firstChild, libTab ? '02' : '01');
-        setText(head.lastChild, libTab ? COPY.library : COPY.player);
+        setText(head.lastChild, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
       }
       empty.hidden = !!st.scene;
       mo.hidden = !noVid;
@@ -1667,6 +1741,9 @@ export function createPlayer(api) {
     },
     setInterp(v) { ctl.setInterp(v); },
     setPlay(v) { ctl.setPlay(v); },
+    queue: Q,
+    /** Autoplay (prefs autoplay): the settings card's switch and the now-playing chip. */
+    autoplay: { get: () => autoplay, set: setAutoplay },
     /** The video's volume, the settings card's phone row (PR12): a set unmutes and is stored as prefs audio. */
     volume: {
       get: () => (video.muted ? 0 : video.volume),
@@ -1698,9 +1775,10 @@ const PLAY_ROWS = [
 
 /**
  * The settings card's playback rows (PR18: label, control, value chip; switches for the toggles); -> unmount().
- * onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row.
+ * onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row; autoplay:
+ * {get(), set(on)}, the Autoplay switch.
  */
-export function mountPlay(el, { value, onChange, volume = null }) {
+export function mountPlay(el, { value, onChange, volume = null, autoplay = null }) {
   let v = { ...value };
   const box = rowsBox(COPY.playHeading);
   box.classList.add('fsp-pset');
@@ -1717,6 +1795,12 @@ export function mountPlay(el, { value, onChange, volume = null }) {
     i.addEventListener('change', () => { v = { ...v, [key]: +i.value }; draw(); onChange({ [key]: v[key] }); });
     return () => { if (document.activeElement !== i) i.value = String(v[key]); setText(out, fmt(v[key])); };
   });
+  if (autoplay) {
+    // ph-1qs5.9: Autoplay, its own pref (prefs autoplay), the queue's.
+    const s = switchRow(box, QCOPY.autoplay, { tip: QCOPY.autoplayTip });
+    s.addEventListener('change', () => autoplay.set(s.checked));
+    draws.push(() => { s.checked = !!autoplay.get(); });
+  }
   if (volume) {
     const n = box.children.length;
     const { input: i, out } = sliderRow(box, COPY.volume, { min: 0, max: 1, step: 0.05 });

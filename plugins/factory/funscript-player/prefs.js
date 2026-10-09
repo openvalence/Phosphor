@@ -19,10 +19,12 @@ export const PREFS = deepFreeze({
   audio: { vol: 1, muted: false },
   stash: { base: '', key: '' },
   lib: { q: '', sort: 'date', direction: 'DESC' },
-  view: 'player',
+  view: 'player', // the handheld card's tab: player, queue or library
   zoomMs: 10000,
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
+  queue: [], // queue.js toStored entries (ph-1qs5.9); never the Stash key
+  autoplay: false, // the next queued scene plays when one ends (ph-1qs5.9)
   tlOpen: true, // the timeline band below its head (ui.js caret, PR7)
   split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
   interp: SCALE, // scale.js; fit() drops any other stored field
@@ -53,6 +55,7 @@ function mirrorSet(k, v) {
 
 /** A value of the default's own type, field by field; anything else becomes the default. */
 function fit(def, v) {
+  if (Array.isArray(def)) return Array.isArray(v) ? v : def.slice();
   if (def && typeof def === 'object') {
     const src = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
     return Object.fromEntries(Object.keys(def).map((k) => [k, fit(def[k], src[k])]));
@@ -72,7 +75,8 @@ const REPAIR = {
   },
   audio: (a) => ({ ...a, vol: clamp(a.vol, 0, 1) }),
   lib: (l) => ({ ...l, sort: l.sort || PREFS.lib.sort, direction: l.direction === 'ASC' ? 'ASC' : 'DESC' }),
-  view: (v) => (v === 'library' ? v : 'player'),
+  view: (v) => (v === 'library' || v === 'queue' ? v : 'player'),
+  queue: (q) => q.filter((e) => e && typeof e === 'object' && (e.kind === 'file' || e.kind === 'stash')).slice(0, 500),
   split: (v) => (v >= 64 ? Math.min(Math.round(v), 480) : 0),
   zoomMs: (z) => (z > 0 ? z : PREFS.zoomMs),
   interp: cleanScale,
