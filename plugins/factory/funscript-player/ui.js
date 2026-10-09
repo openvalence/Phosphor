@@ -1409,6 +1409,8 @@ export function createPlayer(api) {
       libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
       autoB.pressed = autoplay;
+      // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
+      railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');
       setText(nowT, st.scene ? st.scene.title : '');
       nowB.icon = on ? 'pause' : 'play';
