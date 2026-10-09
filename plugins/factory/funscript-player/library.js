@@ -14,13 +14,16 @@
 // - fitGrid(W, H) is exported for the node test.
 
 import { COPY as STASH_COPY, SORTS, normalizeBase, createStash } from './stash.js';
+import { rowsBox, sub } from './rows.js';
 
 export const COPY = Object.freeze({
   search: 'Search',
+  stash: 'Stash',
+  addQueue: 'Add to queue',
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
-  open: 'Open files',
+
   prev: 'Previous page',
   next: 'Next page',
   page: 'page ',
@@ -42,15 +45,17 @@ export const COPY = Object.freeze({
 });
 
 const LIB = { q: '', sort: 'date', direction: 'DESC' };
-const GAP = 8;
+const GAP_PX = 8;   // var(--sp-3) at the default scale: the grid math reads the drawn gap (fit), this when none
 const TILE_TEXT = 44;   // px under the 16:9 shot: title 20 + meta 18 + two 3 px gaps (CSS .fsp-tile)
 const TILE_MIN = 150, TILE_MAX = 300;
+// Rows (phone portrait, PR13): a 16:9 thumbnail ROW_H high beside the title and the meta.
+export const ROW_H = 56;
 
 export const CSS = `
-.fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: ${GAP}px; height: 100%; min-height: 0; overflow: hidden; }
+.fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: var(--sp-3); height: 100%; min-height: 0; overflow: hidden; }
 .fsp-lib [hidden], .fsp-connect [hidden] { display: none !important; }
 .fsp-lib-head { gap: var(--sp-2) !important; }
-.fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
+.fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: var(--sp-3); align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
 .fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--bg); color: var(--tx); font: .8rem var(--mono); font-variation-settings: 'wdth' 90; }
@@ -58,11 +63,11 @@ export const CSS = `
 .fsp-lib-head .fsp-in { flex: 1 1 120px; min-width: 9ch; }
 .fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
 .fsp-lib[data-off] .fsp-lib-foot { display: none; }
-.fsp-lib-head .fsp-lib-open { min-width: 0; padding: 0 var(--sp-2); font: .72rem var(--mono); letter-spacing: 0; white-space: nowrap; }
+
 .fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
-.fsp-grid { display: grid; gap: ${GAP}px; align-content: start; height: 100%; }
+.fsp-grid { display: grid; gap: var(--sp-3); align-content: start; height: 100%; }
 .fsp-grid.busy { opacity: .5; }
 .fsp-tile { display: grid; grid-template-rows: auto 20px 18px; gap: var(--sp-1); min-width: 0; padding: 0; text-align: left; color: var(--tx); }
 .fsp-shot { aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius); box-sizing: border-box; }
@@ -70,22 +75,35 @@ export const CSS = `
 .fsp-tile:hover .fsp-shot { border-color: var(--line-4); }
 .fsp-tile[aria-current=true] .fsp-shot { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
 .fsp-tile:focus-visible { outline: 2px solid var(--highlight); outline-offset: 2px; }
+.fsp-cell { position: relative; min-width: 0; display: grid; }
+.fsp-qadd { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 30px; padding: 0; background: var(--bg-card); }
+@media (pointer: coarse) { .fsp-qadd { width: var(--tap); } }
+.fsp-lib[data-rows] .fsp-qadd { top: 50%; translate: 0 -50%; right: 0; }
 .fsp-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .82rem; line-height: 20px; }
 .fsp-m { overflow: hidden; white-space: nowrap; font: .7rem/18px var(--mono); color: var(--tx-mut); }
 .fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4); text-align: center;
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
-.fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn); }
+.fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
-.fsp-lib-foot .fsp-n { flex: 0 0 auto; min-width: 9ch; }
+.fsp-lib-foot .fsp-n { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fsp-lib-foot output:not(.fsp-n) { flex: 1 0 auto; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
-.fsp-connect { display: grid; gap: ${GAP}px; align-content: start; max-width: var(--measure); }
-.fsp-connect label { display: grid; gap: var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
+.fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
+.fsp-connect .fsp-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
+.fsp-connect .fsp-rows > .fsp-in { grid-column: 2 / -1; }
+.fsp-connect .fsp-row { grid-column: 2 / -1; }
+.fsp-lib { --fsp-row-h: 56px; }   /* ROW_H; the two must agree */
+.fsp-lib[data-rows] .fsp-tile { grid-template-columns: calc(var(--fsp-row-h) * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 20px 18px 1fr; column-gap: var(--sp-3);
+  height: var(--fsp-row-h); }
+.fsp-lib[data-rows] .fsp-shot { grid-area: 1 / 1 / 5 / 2; height: var(--fsp-row-h); }
+.fsp-lib[data-rows] .fsp-t { grid-area: 2 / 2; }
+.fsp-lib[data-rows] .fsp-m { grid-area: 3 / 2; }
 .fsp-status { margin: 0; height: 20px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .78rem; color: var(--tx-val); }
 .fsp-status[data-tone=ok] { color: var(--reality); }
 `;
 
-/** Columns and rows of tiles that fit a W x H box without scrolling; at least one tile. */
-export function fitGrid(W, H) {
+/** Columns and rows of tiles that fit a W x H box without scrolling, GAP px apart; at least one tile. */
+export function fitGrid(W, H, GAP = GAP_PX) {
   let best = { cols: 1, rows: 1, perPage: 1 };
   for (let cols = 1; cols <= 64; cols++) {
     const tw = (W - GAP * (cols - 1)) / cols;
@@ -133,10 +151,10 @@ function clockText(ms) {
 
 /**
  * @param {HTMLElement} el
- * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), onLocal(files), fetch?: Function}} o
+ * @param {{getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function}} o
  * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, unmount(): void}}
  */
-export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netFetch = null }) {
+export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = null, rows = () => false, onQueue = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let page = 1, perPage = 0, seq = 0, picked = null, list = [], want = 0, typing = 0, sizing = 0, connectOff = null;
 
@@ -145,8 +163,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   const sort = h('select', { 'aria-label': COPY.sort }, ...SORTS.map(([v, t]) => h('option', { value: v, text: t })));
   sort.value = lib.sort;
   const dir = h('button', { class: 'og-btn fsp-dir', type: 'button' });
-  const file = h('input', { type: 'file', multiple: '', accept: 'video/*,audio/*,.funscript', hidden: '' });
-  const open = h('button', { class: 'og-btn fsp-lib-open', type: 'button', text: COPY.open });
+
   const grid = h('div', { class: 'fsp-grid' });
   const note = h('p', { class: 'fsp-note', role: 'status', 'aria-live': 'polite' });
   const connectBox = h('div', { hidden: '' });
@@ -156,7 +173,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   const pageOut = h('output');
   const countOut = h('output', { class: 'fsp-n' });
   const root = h('div', { class: 'fsp-lib' }, h('style', { text: CSS }),
-    h('div', { class: 'fsp-lib-head' }, search, sort, dir, open, file),
+    h('div', { class: 'fsp-lib-head' }, search, sort, dir),
     body,
     h('div', { class: 'fsp-lib-foot' }, prev, pageOut, next, countOut));
   el.append(root);
@@ -187,11 +204,15 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
     const b = h('button', { class: 'fsp-tile', type: 'button', title: s.title, 'aria-current': String(s.key === picked) },
       shot, h('div', { class: 'fsp-t', text: s.title }), h('div', { class: 'fsp-m', text: meta }));
     b.addEventListener('click', () => pickScene(s));
-    return b;
+    if (!onQueue) return b;
+    // ph-1qs5.9: Add to queue, over the tile's shot (a sibling: a button never holds a button).
+    const add = h('button', { class: 'og-btn sm fsp-qadd', type: 'button', text: '+', title: COPY.addQueue, 'aria-label': COPY.addQueue });
+    add.addEventListener('click', () => onQueue(s));
+    return h('div', { class: 'fsp-cell' }, b, add);
   }
   function pickScene(s) {
     picked = s.key;
-    [...grid.children].forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
+    grid.querySelectorAll('.fsp-tile').forEach((t, i) => t.setAttribute('aria-current', String(list[i] === s)));
     onPick(s);
   }
   /** The scene dir (+1 next, -1 previous) from the picked one on the loaded page, else across the page buttons. */
@@ -264,7 +285,11 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   }
 
   function fit() {
-    const f = fitGrid(body.clientWidth, body.clientHeight);
+    const asRows = rows();
+    root.toggleAttribute('data-rows', asRows);
+    const gap = parseFloat(getComputedStyle(grid).rowGap) || GAP_PX;
+    const n = Math.max(1, Math.floor((body.clientHeight + gap) / (ROW_H + gap)));
+    const f = asRows ? { cols: 1, rows: n, perPage: n } : fitGrid(body.clientWidth, body.clientHeight, gap);
     grid.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
     if (f.perPage === perPage) return;
     const first = (page - 1) * perPage;
@@ -288,8 +313,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   });
   sort.addEventListener('change', () => { lib.sort = sort.value; requery(); });
   dir.addEventListener('click', () => { lib.direction = lib.direction === 'ASC' ? 'DESC' : 'ASC'; showDir(); requery(); });
-  open.addEventListener('click', () => file.click());
-  file.addEventListener('change', () => { if (file.files && file.files.length) onLocal(file.files); file.value = ''; });
+
   prev.addEventListener('click', () => { if (page > 1) { page--; load(); } });
   next.addEventListener('click', () => { page++; load(); });
   grid.addEventListener('keydown', (e) => {
@@ -302,7 +326,7 @@ export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch: netF
   refresh();
 
   return {
-    refresh, step, canStep,
+    refresh, step, canStep, fit,
     unmount() {
       seq++;
       clearTimeout(typing);
@@ -330,8 +354,13 @@ export function mountConnect(el, { api, onSaved, client }) {
   const saveBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.save });
   const testBtn = h('button', { class: 'og-btn', type: 'button', text: COPY.test });
   const status = h('p', { class: 'fsp-status', role: 'status', 'aria-live': 'polite' });
-  const root = h('div', { class: 'fsp-connect' }, h('style', { text: CSS }),
-    h('label', {}, COPY.url, url), h('label', {}, COPY.key, key), h('div', { class: 'fsp-row' }, saveBtn, testBtn), status);
+  // The settings rows' form (PR13, rows.js): label | the field across the control and value cells.
+  const rowsEl = rowsBox(COPY.stash);
+  rowsEl.append(sub(COPY.stash), h('span', { class: 'fsp-rl', text: COPY.url }), url, h('span', { class: 'fsp-rl', text: COPY.key }), key,
+    h('span'), h('div', { class: 'fsp-row' }, saveBtn, testBtn));
+  url.setAttribute('aria-label', COPY.url);
+  key.setAttribute('aria-label', COPY.key);
+  const root = h('div', { class: 'fsp-connect' }, h('style', { text: CSS }), rowsEl, status);
   el.append(root);
 
   let seq = 0;

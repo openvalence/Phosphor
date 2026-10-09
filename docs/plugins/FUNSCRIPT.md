@@ -181,12 +181,17 @@ window on the last: Kinetic² renders a reversal flat at every
   see. Nucleus 0.1.32 (val-g62) arms Kinetic `Engine::expect` on every stream
   segment for the larger of `stream_quiet_release_ms` (500) and the grant's
   horizon: the newest free knot renders through toward a provisional
-  successor at chord speed instead of at rest. So every knot is free
-  (`endVel` null), reversals included, except where the player knows motion
-  stops (scheduler.js `knotVel`, `endVel` 0, has_v): the script's last
-  action, an action whose successor is over `EXPECT_MS` (500) of wall time
-  away (media ms / rate), the A-B loop's last action before the wrap (the
-  successor is not the script's next action) and a seek's landing.
+  successor at chord speed instead of at rest. So every same-direction knot
+  is free (`endVel` null), and the sender declares the rests it can see:
+  ends, gaps, loop wraps, seek landings, reversals and hold edges
+  (scheduler.js `knotVel`, `endVel` 0, has_v): the script's last action, an
+  action whose successor is over `EXPECT_MS` (500) of wall time away (media
+  ms / rate), the A-B loop's last action before the wrap (the successor is
+  not the script's next action), a seek's landing, a reversal (the chord's
+  sign flips) and a hold edge (a flat chord on either side). Amended
+  2026-10-08 (`ph-hcof`): on the machine a free reversal whose span outlasts
+  the 125 ms lead was rendered moving on along the last chord before its
+  successor arrived (the plan dipped past a trough and came back).
   `EXPECT_MS` restates the registry's `stream_quiet_release_ms`: the plugin
   API publishes no grant horizon, and the hub's window is never shorter.
   The expectation is fixed at solve time, so a stream that stops passes
@@ -203,13 +208,14 @@ window on the last: Kinetic² renders a reversal flat at every
   the speed overshoots the chord after a reversal and settles under it
   mid-run. A fast run to the end (20, 50, 80 at 200 ms): rested, 0.13 mm
   past the last action; left free, 2.28 mm. A knot before a 1.5 s
-  successor is reached at 0.02 mm/s. A reversal is newest before its
-  successor too: on the real-shaped browser script the 260 ms flicks' top
-  reversal reads 1.0e-4 of the window high in the Auto measure (one 0.01
-  grid step: Auto may read `0.00–0.99`), and a rest landing on the window
-  edge reads f32 noise (1e-7) as `clamped` for a few ms. Sent at 0, the
-  reversal reads 1.0000000. Veto: the I7 mean on same-direction
-  knots (0.97, least 0.95), which keeps `smoothness` off them.
+  successor is reached at 0.02 mm/s. Left free, the real-shaped browser
+  script's 260 ms flicks' top reversal read 1.0e-4 of the window high in
+  the Auto measure; sent at rest it reads 1.0000000 and Auto reads
+  `0.00–1.00` (a rest landing on the window edge still reads f32 noise,
+  1e-7, as `clamped` for a few ms). The vendored twin renders a free reversal flat on a 300 ms
+  sine (`test/kinetic-trace.test.mjs` (3)), so the machine's dip is not
+  reproduced there; the test guards the rest. Veto: the I7 mean on
+  same-direction knots (0.97, least 0.95), which keeps `smoothness` off them.
 
 ## Sync
 
@@ -428,9 +434,31 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   the stage strip shows the stroke meter (an intent tick for the script, a
   reality tick for the measured position, glance's look). Fullscreen is
   grayed with the reason `No video`. Peeve 7.
-- **PR5 One player bar,** at the bottom of the Player card, directly above
-  the footer: loading a video or collapsing the timeline never moves it, the
-  stage and the gap above absorb the change. Phones: a full-width scrub row
+- **As built, PR1 to PR4 (`ph-1qs5.2`, where it differs from the text):**
+  Close is always drawn in the desktop head and grayed while nothing is
+  loaded (fixed geometry: a state change never moves a control); on phones
+  it is the Media menu's third row, grayed the same way. The Media menu is
+  a popover (a tap outside or Escape closes it). Open video's picker takes
+  `video/*`, the audio a webview plays (`audio/mpeg`, `audio/mp4`,
+  `audio/aac`, `audio/ogg`, `audio/wav`, `audio/flac`, `audio/webm` and the
+  extensions `.mp3 .m4a .aac .ogg .oga .opus .wav .flac .weba`) and
+  `.funscript`; never `audio/*`, which lets the OS picker offer MIDI
+  (operator ruling 2026-10-08). The library head has no Open files. Phone
+  landscape without a video is the full composition (stage left, library
+  right) until the compact hero lands. Phone portrait: the split bar is
+  not drawn and the wave keeps 96 px, so the stage row has the room PR2
+  needs; the page fills to the window's bottom from its own top (the host
+  fills pages on the desktop only; `ph-1qs5.8` hands that to the host's
+  phone footer). Motion only: a script picked alone is a scene with no
+  stream; the controller runs a silent clock over the script's duration
+  (play, pause, seek, rate and end as a video's). The motion-only meter is
+  horizontal at every class. The 120 px strip and the stroke meter's track
+  are `--screen`; the empty stage wears a dashed `--line-3` edge.
+- **PR5 One player bar.** Desktop: directly under the stage, above the
+  timeline head (as the mockup draws it; review 2026-10-08). Phones: at the
+  bottom of the Player card, directly above the footer: loading a video or
+  collapsing the timeline never moves it, the stage and the gap above absorb
+  the change. Phones: a full-width scrub row
   (elapsed, heat, remaining) over a button row: previous, Play, next,
   Motion, rate, Fullscreen, quick rail, Settings. Desktop: one row:
   previous, Play, next, elapsed, heat, remaining, volume, Motion, rate,
@@ -446,6 +474,27 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   ms), Invert, Graph. The wave screen sits under it with nothing over it.
   On phones the band collapses to its head by the user's own tap (kept as
   pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
+- **As built, PR5 to PR7 (`ph-1qs5.3`, where it differs from the text):**
+  the bar takes its two rows (scrub over buttons) on phones and on the
+  handheld dash card. A desktop page whose player column would drop under
+  600 px (`BAR_ROW_MIN`) beside the 320 px library shuts the library for
+  the session so the bar keeps its one row (1024 x 768: the column is about
+  450 px; the row needs about 520); the pref `libOpen` is not written, and
+  the caret reopens it (the bar then wraps). The media name shows in the
+  phone head too, ellipsized. Phones hide the bar's volume
+  (hardware keys; its Settings row comes with `ph-1qs5.5`). A narrow bar
+  (under 22 em) drops volume; a narrow head drops the `ms` unit (under 20
+  em), then the word TIMELINE (under 18.5 em; the caret stays). The zoom
+  group shows on the full card only; the handheld card and phones pinch.
+  The stroke speed reading stays at the wave's foot, right of the range
+  pills, as the mockup draws it: it is the screen's own readout
+  (`pointer-events: none`), not a control over the wave. The caret
+  collapses the band on the desktop too (one rule, pref `tlOpen`). Opening
+  a file switches a handheld card to its Player tab. The quick rail button
+  is in the bar's markup and shows only where the host publishes
+  `api.icons.quickRail` and `<html data-quick-rail>` (phones; `ph-1qs5.8`
+  wires the host). The dash card has no Fullscreen or Settings in its bar
+  (page fullscreen and the settings section are the page's).
 - **PR8 Fullscreen or not.** Fullscreen is one mode, a player-bar button: the
   shell's page fullscreen, bare (DESIGN §10.3). The window goes fullscreen
   on the desktop; Android is immersive. No In window / Borderless mode and
@@ -461,6 +510,26 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
 - **PR10 Stop pair** top right in fullscreen at full hit size and half
   opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
   Restated, unchanged. No floating collapse chevrons.
+- **As built, PR8 to PR10 and PR17 (`ph-1qs5.4`):** the hover bar's row is
+  the player bar's own buttons, moved into it on entry and back on exit
+  (one set of controls and listeners); it has no mute or volume (`m` mutes,
+  volume is the bar's or the hardware keys'). On a narrow fullscreen (a
+  phone upright, under 34 em) the time takes its own line above the
+  buttons. Only a rotation enters or leaves fullscreen on the phone class,
+  so an Exit in landscape holds until the next turn with no extra state; a
+  window resized from the desktop into a phone class is not a rotation.
+  A click that a control's own button made never toggles Play (an Exit
+  fullscreen moves its button out of the stage before the click reaches it).
+  The center Play (operator ruling 2026-10-08): a large Play glyph on a
+  translucent disc (`--shade-rgb`) over the paused stage, the video or the
+  motion-only meter, never the empty stage; a tap anywhere on the stage
+  toggles Play (inline and in fullscreen, after the 250 ms double-tap
+  wait, so a double-tap still enters fullscreen) and flashes the glyph
+  briefly. The glyph is decorative (`aria-hidden`); the bar's Play is the
+  control. A tap outside an open Settings sheet or library drawer only
+  closes it: its click is swallowed however long the tap is held (the
+  guard ends at the next pointerdown, never on a timer), so it never
+  reaches the stage.
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in
@@ -471,16 +540,55 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   like the library. Desktop: a card in the library column's slot
   (`ph-mdqo.7`'s slot rule stands), no shadow. It never covers the wave.
   Peeves 5 and 8.
+- **As built, PR12 and PR18 (`ph-1qs5.5`):** the sheet is at most 65 % of
+  the height and stops under the stage, so on a phone upright it covers the
+  timeline band and the bar while open (the mockup's P5 does the same; the
+  "never covers the wave" holds on the desktop slot and the drawer, whose
+  wave is off unless the timeline toggle is on). Any fullscreen (desktop
+  too) puts Settings in the drawer, which starts under the stop pair. With
+  the library collapsed, the section sits below the card (`ph-mdqo.7`); the
+  1024 x 768 desktop's session-collapsed library counts as collapsed. A
+  tap outside the sheet or drawer closes it (the bar's Settings toggles
+  itself). The rows are `rows.js` (label, control, value chip; Fit to
+  window and the toggles are the shell's switch); the typed Scale field
+  goes, the chip shows the value or Auto's readout. The volume row is drawn
+  on phones only. The Stash fields come after Scale and Playback. Ruled
+  2026-10-08 (operator): the phone sheet covering the timeline and bar while
+  open is accepted (mockup P5 is the ruling; "never covers the wave" meant
+  no floating overlay); at 1024 x 768 with the library shut, Settings below
+  the card (`ph-mdqo.7`) is accepted; the fullscreen drawers on the desktop
+  too are accepted.
 - **PR13 Library.** Phone portrait: a tab (Player | Library in the head,
   D19 stands) with rows (title, duration · actions), paged and never
   scrolled, and a now-playing row at the bottom (title, position, Pause).
   Landscape fullscreen: a drawer from the right under the stop pair (which
   never moves), closed by a pick or a tap outside. Desktop: the side column
   with its caret (`ph-n4t7`'s caret stands there).
+- **As built, PR13 (`ph-1qs5.6`):** a row is the 16:9 thumbnail 56 px
+  high beside the title and `duration · speed` (the mockup's P6; no other
+  actions), one per line, as many as fit (`ROW_H`). The now-playing row
+  holds Play or Pause, the title and the position; on the tab the head
+  reads 02 LIBRARY. The fullscreen drawer opens from a Library button at
+  the start of the hover bar's row, on any fullscreen (desktop too), and
+  closes on a pick, a tap outside or the end of fullscreen. The Stash
+  connect card is rows.js's form (label, the field across the control and
+  value cells).
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
   Findings 7 and 9.
+- **As built, PR11, PR14 and the compact hero (`ph-1qs5.8`):** the page
+  registers `compactHero` and `status`. On the phone class the card sends
+  `phosphor-page-status` on every change (`tone` `warn` or null; the notes
+  as `title`) and draws no status row; the dash card keeps its own row.
+  The Rail button shows wherever the host publishes `data-quick-rail` (the
+  phone inline, any bare fullscreen in the hover row). The compact hero is
+  the shell's to draw: at 420 x 860 with five strip operations its one row
+  does not fit and the shell keeps the full hero (its own fallback). The
+  shell still fills a page on the desktop only (docs/PLUGINS.md, `fill`),
+  so the phone page keeps filling itself to the window's bottom (now
+  measured past the shell's phone footer) until the host fills buckets 1
+  and 2.
 - **PR15 Shell controls by construction.** Every button is `.og-btn` (`.sm`
   in the 28 px rows, its min-height reconciled with the bar) and the private
   button blocks go (finding 2); persistent on-states (Motion, Invert, the
@@ -497,6 +605,16 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   pills (advpen vocabulary), the fullscreen seek dot (`ph-mcfe`), the open
   tab in `--highlight`. Text inputs (search, Stash URL, API key) stay mono
   until the operator rules the text-input face for shell and player alike.
+- **As built, PR15 (`ph-1qs5.7`):** the tabs, the analyzer's modes and
+  controls and every bar and head button are `.og-btn` (`.sm`); the
+  analyzer's pressed buttons wear `.on` (the open tab keeps `--highlight`);
+  its ranges take the global thumb, its selects the global rule; its group
+  header is a sub-group title without the band; its Lag/Plan/Kinetic lines
+  are in the body face. Ticks, the speed bar, the split bar and the
+  analyzer's state markers are square. The library's grid gaps are
+  `var(--sp-3)`, and the grid math reads the drawn gap (`fitGrid`'s third
+  argument); the row height is the CSS var `--fsp-row-h` (`ROW_H` agrees).
+  `test/spacing-lint.mjs` flags `${...}px` on spacing properties.
 - **PR17 Landscape with a video is fullscreen.** On the phone class, turning
   to landscape with a video loaded enters fullscreen and turning back leaves
   it; an Exit fullscreen in landscape holds until the next rotation. With no
@@ -724,7 +842,40 @@ FULL
   `.funscript`); `pairFiles` matches by base name; the video gets an object
   URL, revoked on replace and dispose. No drag and drop: Tauri intercepts
   drops, and turning that off risks the builder palette.
-  *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name) and Open script; no drag and drop stands.)*
+  *(Superseded 2026-10-08 by PR3: two pickers, Open video (multiple, pairs by base name; video, the webview's audio types, never `audio/*`) and Open script (`.funscript`); no drag and drop stands.)*
+
+### Queue and Autoplay (operator 2026-10-08, `ph-1qs5.9`)
+
+Operator: "add a queue and an autoplay option which plays the next video in
+the queue, a tab to manage the queue". Design (Fable, veto-able), as built:
+
+- **Where.** The queue lives where the library lives: on the phone a third
+  tab, Player | Queue | Library, in the head (the head reads 02 QUEUE); on
+  the desktop and in the fullscreen drawer a Library | Queue switch at the
+  head of the column (a session view switch, never stored).
+- **Rows.** The library's row form (a 56 px thumbnail, the title, the
+  duration), paged and never scrolled (D19), each with Play next (↑, to the
+  top) and Remove (×). A drag reorders (a mouse at once, a touch after a
+  400 ms hold, so the page still scrolls). A tap on a row plays it now and
+  takes it off the queue. Library tiles and rows carry Add to queue (+).
+  Several videos picked in one Open video: the first plays, the others are
+  queued, each with its same-named script.
+- **Autoplay.** A switch in Settings, Playback (pref `autoplay`) and a chip
+  on the now-playing row. When a scene ends with Autoplay on, the queue's
+  first loadable scene (a file not yet reopened stays queued) loads, leaves
+  the queue and plays once it can (its script loaded, the gate open); Motion
+  follows the Motion switch as for any Play, and the preroll and pause-home
+  rules apply between scenes. The pending Play belongs to that scene and is
+  dropped, never deferred, when anything else happens first: another scene
+  or Close, any Play, Pause or stop, a gate (a Halt or latch), a refusal or a
+  warning in the status, or 10 s without the script; so a Halt released
+  between scenes starts nothing. The queue's end stops. Loop (per scene)
+  and an A-B section win while on: a looping scene never ends.
+- **Stored.** Pref `queue` (`phosphor.funscript.queue`): a Stash scene with
+  its URLs stored without the API key (the key in force is added when read
+  back, so the key never reaches the prefs backup); a local file by name
+  only. A File cannot be stored, so after a launch a file's row reads
+  Reopen, and Open video given a file of that name resolves it.
 
 ## Stash
 

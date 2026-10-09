@@ -36,7 +36,7 @@ Rules for every module:
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funscript, scheduler, kinetic`;
+scheduler, stash, library, timeline, prefs, scale, analyzer, rows`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
 `prefs -> scale`.
@@ -97,7 +97,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funsc
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -200,9 +200,10 @@ export function strokeSpeed(script, mediaMs, T, spanMm);   // spanMm: number | n
                                                            // at rate 1; the caller scales it by the rate
 export const EXPECT_MS = 500;   // registry limits.stream_quiet_release_ms, restated: the least window the hub expects
   // successors for (it takes the larger of this and the grant's horizon, which the plugin API does not publish)
-export function knotVel(t, i, j, n, rate = 1);   // knot j's endVel over accessors t(j) (media ms), i(j) (script index):
-  // 0 at the last knot, before a successor over EXPECT_MS of wall time away ((t(j+1) - t(j)) / rate) and at a loop
-  // wrap (i(j+1) !== i(j) + 1); else null (free)
+export function knotVel(t, i, j, n, rate = 1, p = null);   // knot j's endVel over accessors t(j) (media ms), i(j)
+  // (script index), p(j) (position): 0 at the last knot, before a successor over EXPECT_MS of wall time away
+  // ((t(j+1) - t(j)) / rate), at a loop wrap (i(j+1) !== i(j) + 1), at a reversal (the chord's sign flips) and
+  // at a hold edge (a flat chord either side; both need p); else null (free)
 export function createScheduler({ submit, now = () => performance.now(), log = () => {} });   // -> Scheduler
 // log(msg, level), api.log's shape; a repeated reason is logged once.
 // submit: (Seg[]) -> SegResult, i.e. api.submitSegments.
@@ -493,18 +494,20 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 
 // library.js
 export const CSS, COPY;
-export function fitGrid(W, H);   // -> {cols, rows, perPage}: tiles 150..300 px wide that fit, at least one
-export function mountLibrary(el, { getStash, prefs, onPick, onLocal, fetch });   // -> { refresh(), unmount() }
+export function fitGrid(W, H, gap = 8);   // -> {cols, rows, perPage}: tiles 150..300 px wide, gap px apart, that fit, at least one
+export function mountLibrary(el, { getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+  // onQueue(scene): each tile and row carries Add to queue (+), a sibling of the tile's button
+  // rows: () -> boolean, the phone's row form (PR13: a 56 px thumbnail beside the title and the meta, ROW_H); fit()
+  // re-measures the page size after a form change
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
-  // prefs: {get(k), set(k, v)}; onPick(scene); onLocal(FileList); fetch: api.net.fetch, for the Test of
+  // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())
 export function mountConnect(el, { api, onSaved, client });   // -> unmount(); client(v) -> StashClient
   // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
 `mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; Open files, `.fsp-lib-open`, which the player's
-full layout hides because its source row carries one), a tile grid that
+debounce; sort; direction; the pickers are the player's, PR3), a tile grid that
 never scrolls (per page = cols x rows fitted by a ResizeObserver), and a
 foot row (`←` Previous page, `page n / m`, `→` Next page, `N scenes`). Tiles are buttons: a fixed 16:9
 box with a lazy screenshot, a one-line title, `duration · speed`. With no
@@ -532,25 +535,42 @@ export function createPlayer(api);   // -> Player
 export function createControl(deps);   // the controller without DOM: every boundary injected, for the node test
 export function compositionOf(width), clampOffset(v), windowShare(v, lo, hi), ceilingOf(api, fields),
   localScene(files, createURL), extraNote(script, extra);   // pure helpers, node-tested
+export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'desktop': the page's class (PR1-PR4),
+  // buckets 1 and 2 the phone (landscape when w > h), 3 and up the desktop
 // Player = {
 //   mount(el, fields, opts = {}) -> { update(), unmount() },
 //       fields: {target, dur, pos?, lo?, hi?, vmax?, patRun?, advRun?, planEl?, planDur?} from the hero spec;
-//       opts.fullscreen: the hover bar offers media fullscreen and the shell's mode (the page mount, page.js)
-//       opts.settings: {open, toggle(on)}: the timeline's Settings button (the page mount)
+//       opts.fullscreen: the bar offers media fullscreen, one mode, always bare (PR8; the page mount, page.js); the hover
+//         bar exists only there, its row the player bar's own buttons (PR9); phone rotation enters and leaves it (PR17)
+//       opts.settings: {open (read on every render), toggle(on)}: the bar's Settings button (the page mount); the page's
+//         section is a card in the library slot (desktop), a bottom sheet (phone portrait) or a drawer (fullscreen), PR12
+//       opts.page: the page mount: composition by pageClass (portrait handheld, landscape and desktop full),
+//         the Player and Library shell cards (PR1); the dash card composes by its own box (compositionOf)
+// Host seam, the quick rail (docs/PLUGINS.md, Pages, The quick rail; PR11): the bar's Rail button (.fsp-rail,
+//   data-quick-rail-toggle) draws api.icons.quickRail and shows only while <html data-quick-rail> is present (phones);
+//   it dispatches phosphor-quick-rail {open: 'toggle'} (bubbles, cancelable) from itself; its aria-expanded follows
+//   phosphor-quick-rail-change {available, open, form} on window. Absent seam: the button stays hidden.
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
+//   queue: {list(), add(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue (queue.js toStored)
+//   autoplay: {get(), set(on)},   prefs autoplay: the end of a scene plays the queue's first unless it loops
+//   volume: {get(), set(v)},      the video's volume (the phone's Settings row)
 //   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
 //   state }      PlayerState, read-only to everyone else
+// The controller's media is the video while a scene has a stream, else a silent clock over the script's duration
+//   (motion only, PR4: a LocalScene {key 'script:...', title, stream: null}); attach(script) gives the loaded scene
+//   a script without touching its media (Open script on a video, PR3).
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
 //   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
 //   fitMap(extent)). A new script starts at [0, 1] until the measure lands.
 export const PLAY_CSS;
-export function mountPlay(el, { value, onChange });   // -> unmount(); the settings card's playback rows:
-  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency;
-  // one var(--tap) row each, toggles On/Off, sliders over prefs.js's repair ranges; onChange(partial) on commit
+export function mountPlay(el, { value, onChange, volume });   // -> unmount(); the settings card's playback rows:
+  // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency, and Volume on phones
+  // (volume: Player.volume {get, set}); rows.js's form (PR18): switches, sliders over prefs.js's repair ranges with
+  // a value chip; onChange(partial) on commit
 // PlayerState = { phase: 'empty'|'ready'|'preroll'|'playing'|'held'|'error', scene: Scene|LocalScene|null,
 //   script: Script|null, T, motion: boolean, status: {text, tone: ''|'warn'|'intent', notes: string[]}, view: 'player'|'library',
 //   composition: 'full'|'handheld'|'glance', ab: {a, b} (media ms | null, runtime only), play: Prefs.play }
@@ -569,9 +589,13 @@ export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, col
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
 export function traceLines(trace, fromMs, toMs, W, H), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop, onSettings, settingsOpen });
-  // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
-  // onSettings(on): the Settings button at the cluster's right end (hidden without it), pressed from settingsOpen.
+export const PINCH_STEP = 1.25;
+export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
+  // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onLoop, ovHost, ovBefore, overlay });
+  // Nothing rides the detail but the playhead, the range pills and overlay (PR7); the returned zoomEl (zoom out,
+  // the span in s, zoom in) and abEl (A-B) are the caller's to place in its timeline head. Two touches on the
+  // detail pinch the zoom (pinchZoom); touch-action pan-x pan-y keeps the page's scroll.
   // onLoop(): the A-B button (hidden without it); setLoop({a, b}) draws the points: a --highlight band on
   // the heat, dashed lines in the detail; the button's tooltip reads the next press (start, end, clear).
   // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
@@ -579,7 +603,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setExpanded(on), setLoop({a, b}), unmount() }
+  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), unmount() }
   // kin: the analyzer's Kinetic render (analyzer.kinetic) or null: the intent curve (--intent, data-kin), moved back by
   // T.offsetMs; without it or during a Range drag, straight lines between the actions
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
@@ -727,8 +751,20 @@ export function fitMap([min, max]);   // -> [min(0, min) floored, max(1, max) ce
 export function wire(script, I);      // -> the Script the scheduler sends: every action p' = (p - lower) / (upper - lower);
                                       // `script` itself at [0, 1], so the scheduler runs byte-identical
 export const COPY, CSS;
-export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale row, onChange(scale)
-  // on commit: Auto toggle, slider and typed value 0.25..1 (manual), or the readout '0.01–0.97' (where 0 and 1 land)
+export function mountScale(el, { value, onChange, gain });   // -> unmount(); the settings card's Scale rows, onChange(scale)
+  // on commit (rows.js's form): Fit to window (the Auto switch), the slider 0.25..1 with its chip, or the chip's
+  // readout '0.01–0.97' (where 0 and 1 land)
+// queue.js (ph-1qs5.9): the play queue
+export const COPY, CSS, LONG_PRESS_MS = 400;
+export function toStored(entry), fromStored(stored, key);   // pure: a Stash scene without its key / with the key in force;
+  // a file by name (files null until reopened); null for anything else
+export function move(list, from, to);   // pure: the list with one item moved, indexes clamped
+export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) });   // -> { render(), unmount() }
+  // Entry = {kind: 'stash', key, title, durationMs, scene} | {kind: 'file', key, title, name, durationMs, files: File[] | null}
+// rows.js (PR18): the settings rows' one form, label | control | value chip, Field's voice restated
+export const CSS;
+export function rowsBox(label), sub(text), sliderRow(box, label, {min, max, step, tip}) /* -> {input, out} */,
+  switchRow(box, label, {tip}) /* -> the checkbox of a shell .og-switch */;
   // from gain() ([lower, upper], polled at 4 Hz) with the slider disabled at the overall gain (Auto)
 ```
 

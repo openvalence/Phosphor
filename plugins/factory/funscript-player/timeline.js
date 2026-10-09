@@ -13,7 +13,7 @@
 //   of the file's actions by |dpos| / dt (units/s, pos 0..100), from the chassis dark
 //   through --reality to --highlight (heatColor), mixed in oklab. Never red: RENDERING
 //   law 13 keeps red for hazards.
-// - The wheel is never captured: zoom is two buttons.
+// - The wheel is never captured: zoom is two buttons, and pinch on touch (pinchZoom).
 // - Range pills preview through onRange(partial, false) and commit once,
 //   onRange(partial, true), on release, key-up or blur.
 // - A pill's hit box stays inside the detail (it clips) and only its drawn
@@ -27,15 +27,14 @@
 //   through the detail at the same x, so the detail window holds m at the share m / duration.
 // - A trace point's p (plan.current as a window share) draws --intent at reduced weight:
 //   the hub's own command, under the script's.
-// - onSettings(on), a page mount's, puts Settings at the cluster's right end; the button holds
-//   its own pressed state from settingsOpen, the page being its only other writer.
+
 // - The intent curve is frame's kin (the twin's render of the wire, display only), moved back by the
 //   offset so it runs through the actions; without it, or during a Range drag, straight lines between
 //   the actions. setScript's script is the wire (scale.js wire()), its actions drawn as dots; raw is the
 //   file's actions, which the heat reads.
-// - The detail's top right is one control bundle on a plate flush with the corner: the caller's `bundle`
-//   elements (Motion, Offset, Invert), then zoom, A-B, Settings. The detail and the heat sit on
-//   --screen with the advanced generator's inset shadow.
+// - Nothing sits over the detail but the playhead, the range pills and the caller's overlay (PR7): the zoom group
+//   (zoom out, the span, zoom in) and A-B are returned for the caller's timeline head. The detail and the heat
+//   sit on --screen with the advanced generator's inset shadow.
 // - The heat is placed by the caller (`ovHost`, before `ovBefore`): it is the transport row's timeline.
 //   The playhead bar lives in the detail, at the same share of the script as the heat's grip.
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
@@ -61,9 +60,9 @@ export const COPY = Object.freeze({
   hi: 'Range high',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
+  span: 'Detail span',
   zoomInGlyph: '+',
   zoomOutGlyph: '−',
-  settings: 'Settings',
   abGlyph: 'A-B',
   abStart: 'Set loop start',
   abEnd: 'Set loop end',
@@ -172,6 +171,12 @@ export function zoomStep(ms, dir) {
   return ZOOMS[clamp((i < 0 ? 1 : i) + dir, 0, ZOOMS.length - 1)];
 }
 
+export const PINCH_STEP = 1.25;
+/** The zoom after a pinch whose finger distance moved by `scale` since the last step: apart narrows, together widens. */
+export function pinchZoom(ms, scale) {
+  return scale >= PINCH_STEP ? zoomStep(ms, -1) : scale <= 1 / PINCH_STEP ? zoomStep(ms, 1) : ms;
+}
+
 export const CSS = `
 .fsp-tl { position: relative; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .fsp-ph { position: absolute; top: 0; bottom: 0; width: 2px; translate: -1px 0; background: var(--highlight); pointer-events: none; z-index: 1; }
@@ -188,7 +193,7 @@ export const CSS = `
 .fsp-scrub::after, .fsp-rh::after { content: ''; position: absolute; left: 50%; top: 50%; box-sizing: border-box; background: var(--bg-card); }
 .fsp-scrub::after { width: 9px; height: 20px; translate: -4.5px -10px; border-radius: 4.5px; border: 2px solid var(--highlight); }
 .fsp-dt { position: relative; height: var(--fsp-detail, 96px); flex: none; border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden;
-  container-type: size; }
+  container-type: size; touch-action: pan-x pan-y; }
 .fsp-dt polyline, .fsp-dt line { fill: none; vector-effect: non-scaling-stroke; }
 .fsp-dt .dots { fill: none; stroke: var(--intent); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .fsp-dt .int { stroke: var(--intent); stroke-width: 2; }
@@ -204,16 +209,10 @@ export const CSS = `
   translate: -10px calc(-4.5px + clamp(5px, calc(var(--y, 0) * 1cqh), calc(100cqh - 5px)) - clamp(calc(var(--tap) / 2), calc(var(--y, 0) * 1cqh), calc(100cqh - var(--tap) / 2))); }
 .fsp-rh[data-draft]::after { border-style: dashed; }
 .fsp-scrub:focus-visible::after, .fsp-rh:focus-visible::after { box-shadow: 0 0 0 3px rgba(var(--highlight-rgb), .45); }
-.fsp-zoom { position: absolute; right: 0; top: 0; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0 var(--sp-2);
-  max-width: calc(100% - var(--tap) * 2); max-height: calc(100% - 48px); overflow-y: auto; padding: 0 0 0 var(--sp-2); background: var(--bg-raised); border: 0 solid var(--line); border-width: 0 0 1px 1px;
-  border-radius: 0 0 0 var(--r-s); box-shadow: -2px 3px 8px rgba(var(--shade-rgb), .5); }
-.fsp-zoom .fsp-btn { min-height: var(--fsp-bar); }
-.fsp-zoom button:not(.fsp-btn) { width: var(--fsp-bar); height: var(--fsp-bar); padding: 0; background: none; border: 0; color: var(--tx-mut); font: 600 .85rem/1 var(--mono); cursor: pointer; }
-.fsp-zoom button.fsp-ab { width: auto; min-width: var(--fsp-bar); padding: 0 var(--sp-2); font-size: .72rem; }
-.fsp-zoom button:not(.fsp-btn):hover, .fsp-zoom button:not(.fsp-btn):focus-visible { color: var(--highlight); outline: none; }
-.fsp-zoom button:not(.fsp-btn):disabled { opacity: .35; cursor: default; }
-.fsp-zoom button:not(.fsp-btn)[aria-pressed=true] { color: var(--highlight); }
-.fsp-zoom svg { position: static; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; vertical-align: middle; }
+.fsp-zoom { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.fsp-zoom output { min-width: 4ch; font: .76rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
+.fsp-zoom .og-btn, .fsp-ab { min-width: 30px; padding-inline: var(--sp-2); }
+@media (pointer: coarse) { .fsp-zoom .og-btn, .fsp-ab { min-width: var(--tap); } }
 `;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -232,8 +231,7 @@ const s = (tag, attrs = {}) => {
   return e;
 };
 
-export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null,
-  onSettings = null, settingsOpen = false }) {
+export function mountTimeline(el, { onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
@@ -291,23 +289,13 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
   const real = s('g');
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
   dtSvg.append(rgLo, rgHi, abA, abB, curve, dots, real);
-  const zOut = h('button', { type: 'button', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
-  const zIn = h('button', { type: 'button', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
+  const zOut = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
+  const zIn = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
+  const zSpan = h('output', { title: COPY.span });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
-  const zSet = h('button', { type: 'button', class: 'fsp-set', title: COPY.settings, 'aria-label': COPY.settings, 'aria-pressed': String(!!settingsOpen) });
-  const gear = s('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
-  gear.append(s('path', { d: 'M2 4h6.5M11.5 4H14M11.5 4a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M2 8h1.5M6.5 8H14M6.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'
-    + 'M2 12h5.5M10.5 12H14M10.5 12a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0' }));
-  zSet.append(gear);
-  zSet.hidden = !onSettings;
-  zSet.addEventListener('click', () => {
-    const on = zSet.getAttribute('aria-pressed') !== 'true';
-    zSet.setAttribute('aria-pressed', String(on));
-    onSettings(on);
-  });
-  const zAB = h('button', { type: 'button', class: 'fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
+  const zAB = h('button', { type: 'button', class: 'og-btn sm fsp-ab', text: COPY.abGlyph, 'aria-pressed': 'false' });
   zAB.hidden = !onLoop;
   zAB.addEventListener('click', () => onLoop && onLoop());
   const pills = ['lo', 'hi'].map((key) => {
@@ -346,8 +334,25 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
     p.addEventListener('blur', commit);
     return p;
   });
-  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills,
-    h('div', { class: 'fsp-zoom' }, ...bundle, zOut, zIn, zAB, zSet), ...overlay);
+  const dt = h('div', { class: 'fsp-dt', role: 'group', 'aria-label': COPY.detail }, dtSvg, ...pills, ...overlay);
+  // Pinch on touch: two fingers on the detail step the zoom once per PINCH_STEP of distance.
+  const touch = new Map();
+  let pinch0 = 0;
+  const spread = () => { const [a, b] = [...touch.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  dt.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    touch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touch.size === 2) pinch0 = spread();
+  });
+  dt.addEventListener('pointermove', (e) => {
+    if (!touch.has(e.pointerId)) return;
+    touch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touch.size !== 2 || !pinch0) return;
+    const d = spread(), z = pinchZoom(zoom, d / pinch0);
+    if (z !== zoom) { setZoom(z); pinch0 = d; }
+  });
+  const unTouch = (e) => { touch.delete(e.pointerId); if (touch.size < 2) pinch0 = 0; };
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) dt.addEventListener(t, unTouch);
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   dt.append(ph);
   const root = h('div', { class: 'fsp-tl' }, dt, ...(ovHost ? [] : [ov]));
@@ -386,6 +391,8 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
     }
     zOut.disabled = zoom === ZOOMS[ZOOMS.length - 1];
     zIn.disabled = zoom === ZOOMS[0];
+    const zt = zoom / 1000 + ' s';
+    if (zSpan.textContent !== zt) zSpan.textContent = zt;
     win.setAttribute('x', String(d ? from / d * HEAT_BINS : 0));
     win.setAttribute('width', String(d ? zoom / d * HEAT_BINS : 0));
     scrub.style.left = (d ? clamp(m / d, 0, 1) * 100 : 0) + '%';
@@ -405,9 +412,13 @@ export function mountTimeline(el, { bundle = [], onSeek, onScrub, onRange, onZoo
     const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
     if (zAB.title !== tip) { zAB.title = tip; zAB.setAttribute('aria-label', tip); }
     zAB.setAttribute('aria-pressed', String(ab.b != null));
+    zAB.classList.toggle('on', ab.b != null);
   }
 
   return {
+    /** The timeline head's controls, for the caller to place (PR7): the zoom group and A-B. */
+    zoomEl: h('span', { class: 'fsp-zoom' }, zOut, zSpan, zIn),
+    abEl: zAB,
     setScript(sc, t, ceil, rawSc) {
       script = sc || null;
       raw = rawSc || null;

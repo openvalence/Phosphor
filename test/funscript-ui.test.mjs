@@ -18,9 +18,10 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS }
+import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
-import { createControl, compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
+import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
+import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
 
 let fails = 0;
@@ -69,12 +70,26 @@ console.log('(a) timeline');
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000
     && zoomStep(ZOOMS[0], -1) === ZOOMS[0] && zoomStep(60000, 1) === 60000);
+  ok('pinch: fingers apart by 1.25x narrow one step, together by 1/1.25 widen one, less holds',
+    pinchZoom(10000, 1.3) === 5000 && pinchZoom(10000, 0.75) === 20000 && pinchZoom(10000, 1.1) === 10000 && pinchZoom(10000, 0.9) === 10000);
 }
 
 console.log('(b) helpers');
 {
   ok('composition thresholds', compositionOf(1200) === 'full' && compositionOf(960) === 'full' && compositionOf(959) === 'handheld'
     && compositionOf(264) === 'handheld' && compositionOf(263) === 'glance');
+  {
+    const sc = { key: 'stash:7', id: '7', title: 'Seven', durationMs: 1000, stream: 'http://s/scene/7/stream?apikey=K', screenshot: 'http://s/7.jpg?x=1&apikey=K' };
+    const st = toStored({ kind: 'stash', scene: sc });
+    const back = fromStored(JSON.parse(JSON.stringify(st)), 'K2');
+    ok('queue: the stored form drops the Stash key, the read form takes the key in force; a file reads back unopened',
+      !JSON.stringify(st).includes('apikey') && back.scene.stream === 'http://s/scene/7/stream?apikey=K2' && /x=1&apikey=K2$/.test(back.scene.screenshot)
+      && fromStored(toStored({ kind: 'file', key: 'file:a', title: 'a', name: 'a.mp4', files: [] })).files === null && fromStored({ kind: 'x' }) === null, back);
+    ok('queue: move clamps and keeps every item', move([1, 2, 3], 2, 0).join() === '3,1,2' && move([1, 2, 3], 0, 9).join() === '2,3,1' && move([1, 2], 5, 0).join() === '1,2');
+  }
+  ok('page class: buckets 1 and 2 the phone (landscape when wider than tall), 3 and up the desktop',
+    pageClass(1, 420, 860) === 'portrait' && pageClass(2, 860, 420) === 'landscape' && pageClass(2, 600, 900) === 'portrait'
+    && pageClass(3, 1024, 768) === 'desktop' && pageClass(5, 800, 1200) === 'desktop');
   ok('offset: 5 ms grid, -500..500', clampOffset(7) === 5 && clampOffset(8) === 10 && clampOffset(503) === 500
     && clampOffset(-1000) === -500 && clampOffset('x') === 0);
   ok('windowShare: reported window only (law 9)', windowShare(50, 0, 100) === 0.5 && windowShare(150, 0, 100) === 1

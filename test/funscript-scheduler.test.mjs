@@ -15,7 +15,7 @@ import {
 } from '../plugins/factory/funscript-player/clock.js';
 import {
   createScheduler, applyT, strokeSpeed, TRANSIENT, STOP_MS, PREROLL_MIN_MS, PREROLL_STROKE_MS, OFFER_MAX,
-  HOME_MIN_MS, LAG_MIN, COMP_STEP_MS, EXPECT_MS,
+  HOME_MIN_MS, LAG_MIN, COMP_STEP_MS, EXPECT_MS, knotVel,
 } from '../plugins/factory/funscript-player/scheduler.js';
 import { PREFS, readPrefs } from '../plugins/factory/funscript-player/prefs.js';
 import { parseFunscript, posAt } from '../plugins/factory/funscript-player/funscript.js';
@@ -26,6 +26,7 @@ const ok = (name, cond, extra) => {
   if (!cond) fails++;
 };
 const near = (a, b, eps) => Math.abs(a - b) <= eps;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const rng = (seed) => () => {
   seed = (seed + 0x6d2b79f5) | 0;
   let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
@@ -408,17 +409,21 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
 
 {
   // One segment per action, a 1 point step included (Kinetic² zeroes no repeated target). Every knot is free (the hub
-  // expects successors and carries the tangent) except the rests the sender sees: a successor over EXPECT_MS away, the end.
+  // expects successors and carries the tangent) except the rests the sender sees: a successor over EXPECT_MS away, the end,
+  // a reversal and a hold edge (ph-hcof: a free reversal was rendered moving on before its successor arrived).
   const s = parseFunscript({ actions: [{ at: 0, pos: 0 }, { at: 500, pos: 40 }, { at: 1000, pos: 85 }, { at: 1500, pos: 100 },
     { at: 2000, pos: 20 }, { at: 2400, pos: 20 }, { at: 2700, pos: 21 }, { at: 3000, pos: 80 }, { at: 3800, pos: 90 }, { at: 4000, pos: 50 }] });
   const ev = (o) => play(s, o).host.sent.map((g) => g.endVel);
   const sent = play(s).host.sent, lin = ev();
   ok('one segment per action at its position, the 1 point step kept', sent.length === 9 && sent.every((g, i) => near(g.norm, s.pos[i + 1], 1e-6)),
     sent.map((g) => g.norm.toFixed(2)).join());
-  ok('every knot free (same direction, reversal, hold edge) but the rests: before an ' + EXPECT_MS + '+ ms successor and the last',
-    lin.slice(0, 6).every((v) => v === null) && lin[6] === 0 && lin[7] === null && lin[8] === 0, lin.join());
+  ok('same-direction knots free; rests at a reversal, both hold edges, before an ' + EXPECT_MS + '+ ms successor and the last',
+    same(lin, [null, null, 0, 0, 0, null, 0, 0, 0]), lin.join());
   const tr = ev({ rate: 2 });
   ok('the window is wall time: at rate 2 the 800 ms successor is 400 ms away, free', tr[6] === null && tr[8] === 0, tr.join());
+  const kv = (ps, j) => knotVel((k) => k * 300, (k) => k, j, ps.length, 1, (k) => ps[k]);
+  ok('knotVel: a reversal is a rest (0), a same-direction knot free (null), without positions free',
+    kv([0, 100, 0], 1) === 0 && kv([0, 50, 100], 1) === null && knotVel((k) => k * 300, (k) => k, 1, 3) === null);
 }
 {
   // A restart that changes only timing keeps what the hub holds: re-sending the in-progress span repeats its target.
@@ -452,8 +457,10 @@ function play(script, { rate = 1, offsetMs = 0, fromMs = 0, toMs = script.durati
 console.log('(d) playback');
 const tiles = (sent) => Math.max(0, ...sent.slice(1).map((g, i) => Math.abs(sent[i].atMs + sent[i].durationMs - g.atMs)));
 {
-  // A-B loop over 1000..3000 played 3 times: the clock runs in unrolled media time.
-  const s = parseFunscript({ actions: [0, 500, 1200, 1700, 2400, 2900, 3500, 4000].map((at, i) => ({ at, pos: i % 2 ? 90 : 10 })) });
+  // A-B loop over 1000..3000 played 3 times: the clock runs in unrolled media time. The seam (60 -> 50 -> 40) keeps its
+  // direction, so its knot stays free; a reversal there would be a rest (knotVel).
+  const POS = [10, 90, 50, 40, 70, 60, 20, 80];
+  const s = parseFunscript({ actions: [0, 500, 1200, 1700, 2400, 2900, 3500, 4000].map((at, i) => ({ at, pos: POS[i] })) });
   const L = loopSpec(1000, 3000, 3, s.durationMs);
   let t = 0;
   const now = () => t;

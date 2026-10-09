@@ -51,11 +51,13 @@ const CONTRACT = {
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
   [P + 'library.js']: ['CSS', 'COPY', 'fitGrid', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
-    'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay'],
+    'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
-    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
+    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
+  [P + 'rows.js']: ['CSS', 'rowsBox', 'sub', 'sliderRow', 'switchRow'],
+  [P + 'queue.js']: ['COPY', 'LONG_PRESS_MS', 'CSS', 'toStored', 'fromStored', 'move', 'mountQueue'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
     'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
@@ -109,7 +111,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -270,8 +272,8 @@ if (an) {
     // The preview submits the wire as the host does: every knot free, the rests the sender sees at 0, the hub's expectation on.
     const mono = parseFunscript({ actions: [0, 20, 40, 60, 80, 20].map((pos, i) => ({ at: i * 500, pos })) });
     const ms = kn.segmentsOf(mono, T0k);
-    ok('Kinetic: every knot free (segment_end_vel_unspecified), the last a rest, the preroll at rest',
-      same(ms.segs.map((x) => x[3]), [0, kn.FREE, kn.FREE, kn.FREE, kn.FREE, 0]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
+    ok('Kinetic: same-direction knots free (segment_end_vel_unspecified), the reversal and the last a rest, the preroll at rest',
+      same(ms.segs.map((x) => x[3]), [0, kn.FREE, kn.FREE, kn.FREE, 0, 0]) && kn.FREE === -32768, ms.segs.map((x) => x[3]));
     const LIM = { vmax: 1200, amax: 100000, jmax: 2e7, rail: 500 };
     const run = (sg2, expectMs, segs = sg2.segs) => {
       const it2 = kn.renderCore(k, { limits: LIM, window: [100, 400], tuning: [], ...sg2, segs, every: 1, expectMs });
@@ -379,7 +381,7 @@ if (UNIT || fails) {
 const { chromium, webkit } = await import('playwright');
 const { createServer } = await import('node:http');
 const { execFileSync } = await import('node:child_process');
-const { mkdtempSync, rmSync } = await import('node:fs');
+const { mkdtempSync, rmSync, mkdirSync } = await import('node:fs');
 const { tmpdir } = await import('node:os');
 const { join } = await import('node:path');
 const { cbMap, cbUint, cbF32, cbBstr, cbTstr, cbArray, cbDecodeFull } = await import('../../Valence/clients/js/cbor.js');
@@ -388,6 +390,7 @@ const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS
 const { CORE_CHANNEL } = await import('../../Valence/clients/js/generated/registry_vocab.js');
 const { toHex } = await import('../../Valence/clients/js/sha256.js');
 const { buildShellPage, TAURI_STUB } = await import('./shell-build.mjs');
+const { goTab } = await import('./nav.mjs');
 const { advgenCatalog } = await import('./fixtures/advgen-roles-catalog.mjs');
 const { startFakeStash } = await import('./fixtures/fake-stash.mjs');
 
@@ -415,12 +418,15 @@ const KIN_VALUES = { [CH.config + ':max_rail']: 500, '12288:input_speed': 1000, 
 // ---- generated media: a 30 fps VP8 clip with a tone, never committed ---------
 const TMP = mkdtempSync(join(tmpdir(), 'fsp-'));
 const CLIP_S = PB ? 60 : 30;
-let VIDEO = null;
+let VIDEO = null, VIDEO_TALL = null;
 try {
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30:duration=' + CLIP_S,
     '-f', 'lavfi', '-i', 'sine=frequency=440:duration=' + CLIP_S, '-c:v', 'libvpx', '-b:v', '200k', '-g', '15',
     '-c:a', 'libopus', '-shortest', join(TMP, 'clip.webm')], { windowsHide: true, stdio: 'pipe' });
   VIDEO = readFileSync(join(TMP, 'clip.webm'));
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=180x320:rate=30:duration=3', '-c:v', 'libvpx', '-b:v', '100k',
+    join(TMP, 'tall.webm')], { windowsHide: true, stdio: 'pipe' });
+  VIDEO_TALL = readFileSync(join(TMP, 'tall.webm'));
 } catch (e) {
   ok('ffmpeg on PATH generates the test clip', false, String(e.message).split('\n')[0]);
   process.exit(1);
@@ -604,7 +610,10 @@ function SHELL_STUB(probe) {
     return base(cmd, a);
   };
 }
+// A delay for the URLs it matches (the Autoplay test holds the next scene's script back to Halt between scenes).
+const FETCH_DELAY = { re: null, ms: 0 };
 async function nodeFetch(url, method, headers, data) {
+  if (FETCH_DELAY.re && FETCH_DELAY.re.test(url)) await sleep(FETCH_DELAY.ms);
   const r = await fetch(url, { method, headers: headers || [], body: data ? Buffer.from(data) : undefined });
   return { status: r.status, statusText: r.statusText, headers: [...r.headers], body: [...new Uint8Array(await r.arrayBuffer())] };
 }
@@ -627,8 +636,8 @@ const BUSY_PROBE = {
   }`,
 };
 
-async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse });
+async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null, scale = 1 } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse, deviceScaleFactor: scale });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(SHELL_STUB, probe);
   await ctx.exposeFunction('__nodeFetch', nodeFetch);
@@ -653,6 +662,19 @@ async function open({ cat = advgenCatalog(), hub = null, coarse = false, width =
   return { ctx, page, up, errors };
 }
 
+/**
+ * Opens the Funscript page: the tab exists before the plugin's page registers its mount, so a click that lands
+ * early opens nothing; it clicks again until the page's card is there.
+ */
+async function toPluginPage(page) {
+  const TAB = '[data-tab-id="plugin:funscript-player:player"]';
+  await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
+  for (let i = 0; i < 3; i++) {
+    await goTab(page, 'plugin:funscript-player:player').catch(() => {});
+    if (await page.waitForSelector('main.pane .fsp-page .fsp', { timeout: 4000 }).then(() => true, () => false)) return true;
+  }
+  return false;
+}
 /** Finds the card: home first, then each category page. */
 // The cell's height follows its content now, so the card rect comparisons below hold the width only.
 // The Funscript page's card is the full one; a dash hero cell is half the pane and re-composes as its box moves.
@@ -679,12 +701,12 @@ const C = 'main.pane .fsp';
 const statusText = (page) => page.locator(C + ' > .fsp-slot').textContent().then((t) => t.trim());
 // Play is the hover bar's (the strip shows its own only at glance and beside the handheld analyzer).
 const playBtn = (page) => {
-  const l = page.locator(C + ' .fsp-hb-play');
+  const l = page.locator(C + ' .fsp-play');
   return { click: () => l.evaluate((e) => e.click()), isDisabled: () => l.isDisabled(),
     textContent: () => l.getAttribute('aria-label').then((t) => t.replace(/ \(k\)$/, '')) };
 };
 async function loadClip(page, script = SCRIPT) {
-  await page.setInputFiles(C + ' .fsp-src input[type=file]', [
+  await page.setInputFiles(C + ' .fsp-filev', [
     { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
     { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(script)) },
   ]);
@@ -723,6 +745,22 @@ function schedule(bundles) {
  */
 let clockErrUs = 0;
 const clipped = (s) => s.exec - s.arrival - clockErrUs <= LAT_US + 25000;   // CLOCK re-syncs move the error by a few ms
+
+// PR5: the bar's order. Desktop one row; phones the scrub row over the buttons. A class the bar does not show is skipped.
+const BAR_DESK = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-set'];
+const BAR_PHONE = [['fsp-el', 'fsp-ov', 'fsp-rem'], ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-rail', 'fsp-set']];
+/** The bar's shown items by row (top to bottom, left to right), their names the BAR_ classes. */
+const barOrder = (page) => page.locator(C).evaluate((root, names) => {
+  const kids = [...root.querySelector('.fsp-tr').children].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height > 0)
+    .map((e) => ({ n: names.find((c) => e.classList.contains(c)) || e.className, r: e.getBoundingClientRect() }));
+  const rows = [];
+  for (const k of kids.sort((a, b) => a.r.top - b.r.top || a.r.left - b.r.left)) {
+    const row = rows.find((x) => Math.abs(x.y - (k.r.top + k.r.bottom) / 2) < 6);
+    if (row) row.k.push(k); else rows.push({ y: (k.r.top + k.r.bottom) / 2, k: [k] });
+  }
+  const small = kids.filter((k) => /fsp-(prev|play|next|motion|rate|full|rail|set)/.test(k.n) && (k.r.width < 39.5 || k.r.height < 39.5)).map((k) => k.n);
+  return { comp: root.dataset.comp, cls: root.dataset.cls || '', rows: rows.map((x) => x.k.sort((a, b) => a.r.left - b.r.left).map((k) => k.n)), small };
+}, [...new Set([...BAR_DESK, ...BAR_PHONE.flat()])]);
 
 /** Rects of the card's fixed chrome: every row and every child of a row. */
 const chrome = (page) => page.evaluate((c) => {
@@ -790,6 +828,795 @@ function intended(asked, obs, rate) {
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
 
+// ---- (r) the page redesign (ph-1qs5.2, .3): classes, shell cards, the stage, Open video and Open script, motion only ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(r) page redesign');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const SIZES = [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']];
+  const EVID = SHOTS || null;
+  const clip = { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO };
+  const fun = (name = 'clip.funscript') => ({ name, mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) });
+  for (const [w, hh, cls] of SIZES) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    hub.values[CH.motion + ':pos_10um'] = 50;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    const there = await toPluginPage(page);
+    ok('redesign ' + at + ': the page mounts the card', there);
+    if (!there) { await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    const look = () => page.evaluate((c) => {
+      const root = document.querySelector(c), o = root.getBoundingClientRect();
+      const rel = (e) => { if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return [r.x - o.x, r.y - o.y, r.width, r.height].map((v) => Math.round(v)); };
+      return { cls: root.dataset.cls, comp: root.dataset.comp, bar: rel(root.querySelector('.fsp-tr')), vbox: rel(root.querySelector('.fsp-vbox')),
+        stage: rel(root.querySelector('.fsp-stage')), status: root.querySelector('.fsp-slot').textContent };
+    }, C);
+    // Landscape: the card runs past the window, so a second shot scrolled to the bar.
+    const shot = async (name) => {
+      if (!EVID) return;
+      await page.locator(C).evaluate((r) => r.scrollIntoView({ block: 'start' }));
+      await page.screenshot({ path: join(EVID, name + '-' + at + '.png') });
+      if (cls === 'landscape') {
+        await page.locator(C + ' .fsp-tr').evaluate((e) => e.scrollIntoView({ block: 'end' }));
+        await page.screenshot({ path: join(EVID, name + '-' + at + '-bar.png') });
+        await page.locator(C).evaluate((r) => r.scrollIntoView({ block: 'start' }));
+      }
+    };
+    const empty = await look();
+    ok('redesign ' + at + ': the page class is ' + cls, empty.cls === cls && empty.comp === (cls === 'portrait' ? 'handheld' : 'full'), empty);
+    // PR1: the shell's numbered heads on shell cards; no private box inside the Player card but the --screen plates.
+    const chromeOk = await page.evaluate(([c, cls]) => {
+      const root = document.querySelector(c), pg = root.closest('.fsp-page');
+      const heads = [...pg.querySelectorAll('.fsp-h')].filter((e) => e.getClientRects().length)
+        .map((e) => e.textContent + '|' + getComputedStyle(e).textTransform);
+      const probe = document.createElement('i');
+      document.body.append(probe);
+      const tok = (t) => { probe.style.background = 'var(' + t + ')'; return getComputedStyle(probe).backgroundColor; };
+      const screen = tok('--screen'), card = tok('--bg-card');
+      probe.remove();
+      const frame = root.querySelector('.fsp-pframe');
+      const lib = root.querySelector('.fsp-libbox');
+      const boxes = [...root.querySelectorAll('*')].filter((e) => e.getClientRects().length && !e.closest('.fsp-libbox, .fsp-pframe, .fsp-zoom, .fsp-hov, .fsp-menu, .fsp-anbox, svg'))
+        .filter((e) => { const s = getComputedStyle(e); return s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== screen && parseFloat(s.borderTopWidth) > 0; })
+        .map((e) => e.className || e.tagName);
+      return { heads, frame: !!frame && frame.classList.contains('surface-card') && getComputedStyle(frame).backgroundColor === card,
+        lib: cls !== 'portrait' && lib.getClientRects().length ? getComputedStyle(lib).backgroundColor === card : true, boxes };
+    }, [C, cls]);
+    // 1024x768: the library shuts for the session so the bar keeps one row (BAR_ROW_MIN); the caret reopens it.
+    const libShut = w === 1024;
+    ok('redesign ' + at + ': the library column ' + (libShut ? 'shut for the session, the pref untouched' : 'as the pref says'),
+      (await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'))) === libShut
+      && (await page.evaluate(() => localStorage.getItem('phosphor.funscript.libOpen'))) !== 'false');
+    const wantHeads = cls === 'portrait' || libShut ? ['01Player|uppercase'] : ['01Player|uppercase', '02Library|uppercase'];
+    ok('redesign ' + at + ': heads 01 PLAYER' + (wantHeads.length === 1 ? '' : ', 02 LIBRARY') + ' on shell cards; no private box in the Player card',
+      same(chromeOk.heads, wantHeads) && chromeOk.frame && chromeOk.lib && chromeOk.boxes.length === 0, chromeOk);
+    if (cls === 'portrait') ok('redesign ' + at + ': the empty stage is a 120 px strip', Math.abs(empty.vbox[3] - 120) <= 1, empty.vbox);
+    // PR5: the bar's order; every target 40 px under a coarse pointer (law 12).
+    const bo = await barOrder(page);
+    const want = cls === 'desktop' ? [BAR_DESK] : BAR_PHONE;
+    ok('bar ' + at + ': ' + (cls === 'desktop' ? 'one row under the stage: prev, Play, next, elapsed, heat, remaining, volume, Motion, rate, Fullscreen, Settings'
+      : 'the scrub row over prev, Play, next, Motion, rate, Fullscreen, Rail, Settings; 40 px targets'),
+    same(bo.rows, want) && (cls === 'desktop' || bo.small.length === 0), bo);
+    const below = await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-tr').getBoundingClientRect(), s = r.querySelector('.fsp-stage').getBoundingClientRect(),
+      t = r.querySelector('.fsp-tlh').getBoundingClientRect(); return { underStage: Math.abs(b.top - s.bottom) < 12 && b.bottom <= t.top, atBottom: b.top > t.bottom }; });
+    ok('bar ' + at + ': ' + (cls === 'desktop' ? 'directly under the stage, above the timeline head' : 'at the card\'s bottom, under the timeline'),
+      cls === 'desktop' ? below.underStage : below.atBottom, below);
+    const sp0 = await spill(page);
+    ok('bar ' + at + ': every control inside the card, no label cut', sp0.out.length === 0 && sp0.cut.length === 0, sp0);
+    // PR6: Motion is the shell's on look.
+    const look6 = await page.evaluate((c) => {
+      const b = document.createElement('button');
+      b.className = 'og-btn sm on';
+      b.textContent = 'x';
+      document.querySelector(c).append(b);
+      const s = getComputedStyle(b), m = getComputedStyle(document.querySelector(c + ' .fsp-motion'));
+      const out = { color: [m.color, s.color], border: [m.borderTopColor, s.borderTopColor], glow: [m.boxShadow, s.boxShadow] };
+      b.remove();
+      return out;
+    }, C);
+    ok('bar ' + at + ': Motion wears the shell\'s .og-btn.on (color, border, glow)', Object.values(look6).every(([a, b]) => a === b) && look6.glow[0] !== 'none', look6);
+    if (w === 1428) {
+      // PR15 (findings 1, 2, 6, 8, 9): shell controls by construction.
+      await page.locator(C + ' .fsp-inv').evaluate((e) => e.click());
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(200);
+      const sweep = await page.evaluate((c) => {
+        const root = document.querySelector(c), probe = document.createElement('button');
+        probe.className = 'og-btn sm on';
+        probe.textContent = 'x';
+        root.append(probe);
+        const cs = getComputedStyle(probe), on = { color: cs.color, borderTopColor: cs.borderTopColor, boxShadow: cs.boxShadow, fontFamily: cs.fontFamily };
+        const inv = getComputedStyle(root.querySelector('.fsp-inv'));
+        const font = on.fontFamily;
+        probe.remove();
+        const ink = document.createElement('i');
+        ink.style.color = 'var(--warn-ink)';
+        document.body.append(ink);
+        const warnInk = getComputedStyle(ink).color;
+        ink.remove();
+        const note = root.querySelector('.fsp-note');
+        const tone = note ? note.dataset.tone : null;
+        if (note) note.dataset.tone = 'warn';
+        const noteColor = note ? getComputedStyle(note).color : warnInk;
+        if (note) note.dataset.tone = tone || '';
+        const rad = (s, pseudo) => { const e = root.querySelector(s); return e ? parseFloat(getComputedStyle(e, pseudo).borderTopLeftRadius) || 0 : 0; };
+        const rs = parseFloat(getComputedStyle(root).getPropertyValue('--r-s')) || 2;
+        return { inv: [inv.color === on.color, inv.borderTopColor === on.borderTopColor, inv.boxShadow === on.boxShadow],
+          fonts: [...root.querySelectorAll('button')].filter((b) => b.getClientRects().length && getComputedStyle(b).fontFamily !== font
+            && !b.matches('.fsp-tile, .fsp-rate, .fsp-libcaret, .fsp-tlcaret')).map((b) => b.className),
+          privateBtn: root.querySelectorAll('.fsp-btn').length, warn: noteColor === warnInk,
+          radii: [rad('.fsp-tick'), rad('.fsp-speed i'), rad('.fsp-split', '::after')].every((r) => r <= rs) };
+      }, C);
+      ok('style: Invert pressed is .og-btn.on; every button in the body face; no private button; warn text in --warn-ink; bars and markers within --r-s (PR15)',
+        sweep.inv.every(Boolean) && sweep.fonts.length === 0 && sweep.privateBtn === 0 && sweep.warn && sweep.radii, sweep);
+      await page.locator(C + ' .fsp-inv').evaluate((e) => e.click());
+    }
+    // PR7: nothing over the wave screen but the playhead, the range pills and the speed reading at its foot.
+    const over = await page.evaluate((c) => {
+      const root = document.querySelector(c), dt = root.querySelector('.fsp-dt'), d = dt.getBoundingClientRect();
+      return [...root.querySelectorAll('*')].filter((e) => !dt.contains(e) && !e.contains(dt) && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden'
+        && !e.closest('.fsp-pframe, svg, .fsp-menu'))
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left < d.right - 0.5 && r.right > d.left + 0.5 && r.top < d.bottom - 0.5 && r.bottom > d.top + 0.5; })
+        .map((e) => e.className || e.tagName);
+    }, C);
+    ok('head ' + at + ': no element sits over the wave screen', over.length === 0, over);
+    const opens = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-empty button')].map((b) => b.textContent), C);
+    ok('redesign ' + at + ': the empty stage offers Open video and Open script, no center Play', same(opens, ['Open video', 'Open script'])
+      && await page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display === 'none'), opens);
+    await shot('empty');
+    // Script only: motion only (PR4).
+    await page.setInputFiles(C + ' .fsp-files', [fun()]);
+    await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const mo = await look();
+    const moUi = await page.evaluate((c) => {
+      const r = document.querySelector(c), f = r.querySelector('.fsp-full');
+      return { mo: r.hasAttribute('data-mo'), meter: !!r.querySelector('.fsp-mo .fsp-meter').getClientRects().length,
+        full: f.disabled && f.getAttribute('aria-label') === 'No video', open: !!r.querySelector('.fsp-mo .og-btn').getClientRects().length };
+    }, C);
+    ok('redesign ' + at + ': script only is motion only: the stroke meter, Open video, Fullscreen grayed (No video)',
+      moUi.mo && moUi.meter && moUi.full && moUi.open && mo.status === 'Motion only', { moUi, status: mo.status });
+    if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 120 px strip', Math.abs(mo.vbox[3] - 120) <= 1, mo.vbox);
+    if (cls === 'desktop' && w === 1428) {
+      const n0 = hub.bundles.length;
+      const t0 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.left);
+      await playBtn(page).click();
+      await page.waitForTimeout(2500);
+      const t1 = await page.locator(C + ' .fsp-mo .fsp-tick.int').evaluate((e) => e.style.left);
+      const norms = hub.segs(n0).map((s) => s.norm);
+      ok('redesign: motion only, Play moves the machine on the clock (segments with changing positions), the meter moves',
+        norms.length > 3 && new Set(norms).size >= 2 && t0 !== t1, { n: norms.length, t0, t1 });
+      await shot('script-only-playing');
+      await playBtn(page).click();
+      await page.waitForTimeout(300);
+    }
+    await shot('script-only');
+    // Then a video attaches to the loaded script (script, then video).
+    await page.setInputFiles(C + ' .fsp-filev', [clip]);
+    await page.waitForFunction((c) => { const v = document.querySelector(c + ' .fsp-stage video'); return v.readyState >= 1 && !document.querySelector(c + '[data-mo]'); }, C, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const loaded = await look();
+    const paired = () => page.evaluate((c) => ({ src: !!document.querySelector(c + ' .fsp-stage video').getAttribute('src'),
+      play: !document.querySelector(c + ' .fsp-play').disabled, mo: !!document.querySelector(c + '[data-mo]') }), C);
+    const p1 = await paired();
+    ok('redesign ' + at + ': script then video ends loaded and paired', p1.src && p1.play && !p1.mo, p1);
+    if (cls === 'portrait') ok('redesign ' + at + ': a 16:9 video gives a stage of width x 9/16', Math.abs(loaded.vbox[3] - loaded.vbox[2] * 9 / 16) <= 1.5, loaded);
+    await shot('loaded');
+    // PR12/PR18: Settings per class: the library slot (desktop), a bottom sheet (phone portrait), a drawer (fullscreen).
+    if (cls !== 'landscape') {
+      const card0 = await page.locator(C).evaluate((r) => { const b = r.getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      const sx = await page.evaluate((c) => {
+        const sec = document.querySelector('main.pane .fsp-psec'), s = sec.getBoundingClientRect(), root = document.querySelector(c);
+        const dt = root.querySelector('.fsp-dt').getBoundingClientRect(), vb = root.querySelector('.fsp-vbox').getBoundingClientRect();
+        const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const rows = [...sec.querySelectorAll('.fsp-rows')].flatMap((g) => [...g.children].filter((e) => e.matches('.fsp-rl')).map((l) => {
+          const c1 = l.nextElementSibling, c2 = c1 && c1.nextElementSibling;
+          return { label: l.textContent, tt: getComputedStyle(l).textTransform, ctl: c1 && (c1.matches('input[type=range]') ? 'range' : c1.matches('.og-switch') ? 'switch' : c1.tagName),
+            chip: c1 && c1.matches('input[type=range]') ? !!(c2 && c2.matches('output.fsp-rv')) : true };
+        }));
+        return { form: sec.parentElement.dataset.sform || 'slot', h: s.height, vh: innerHeight, scrolls: sec.scrollHeight > sec.clientHeight + 1,
+          shadow: getComputedStyle(sec).boxShadow, overWave: hit(s, dt), stageClear: vb.bottom <= s.top + 1, rows,
+          card: [Math.round(root.getBoundingClientRect().width), Math.round(root.getBoundingClientRect().height)],
+          noSetting: /No setting/.test(sec.textContent),
+          rangeW: Math.min(...[...sec.querySelectorAll('.fsp-rows > input[type=range]')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect().width)) };
+      }, C);
+      const rowsOk = sx.rows.length >= 9 && sx.rows.every((r) => r.tt === 'lowercase' && r.chip) && sx.rows.some((r) => /fit to window/i.test(r.label) && r.ctl === 'switch')
+        && !sx.noSetting && sx.rangeW >= 80;
+      ok('settings ' + at + ': native rows (label, control, value chip), Auto a switch row, lowercase labels, no empty row, sliders at least 80 px (PR18)',
+        rowsOk, { rangeW: sx.rangeW, rows: sx.rows.length });
+      if (cls === 'desktop') {
+        ok('settings ' + at + ': a card in the library slot without a shadow, the Player card the same size, never over the wave (PR12)'
+          + (libShut ? '; the session-collapsed library puts it below the card (the slot rule)' : ''),
+          sx.form === 'slot' && sx.shadow === 'none' && same(sx.card, card0) && !sx.overWave, { sx, card0 });
+      } else {
+        ok('settings ' + at + ': a bottom sheet at most 65 % high, scrolling inside, the stage clear above it (PR12)',
+          sx.form === 'sheet' && sx.h <= 0.65 * sx.vh + 1 && sx.scrolls && sx.stageClear, sx);
+      }
+      await shot('settings');
+      if (cls === 'portrait') {
+        // A tap on the stage that closes the sheet is not a Play (a stage tap moves the machine).
+        const vb = await page.locator(C + ' .fsp-vbox').boundingBox();
+        // A held tap (400 ms, past the double-tap wait) that closes the sheet is no Play either.
+        const paused0 = await video(page, (v) => v.paused), sent0 = hub.bundles.length;
+        await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2);
+        await page.mouse.down();
+        await page.waitForTimeout(400);
+        await page.mouse.up();
+        await page.waitForTimeout(600);
+        const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        const kept = (await video(page, (v) => v.paused)) === paused0 && hub.bundles.length === sent0;
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(300);
+        await page.mouse.click(...await page.locator('main.pane .fsp-sclose').boundingBox().then((b) => [b.x + b.width / 2, b.y + b.height / 2]));
+        await page.waitForTimeout(300);
+        const xShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        ok('settings ' + at + ': a stage tap closes the sheet and never toggles Play; the sheet\'s close button closes it', tapShut && kept && xShut, { tapShut, kept, xShut });
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(300);
+        const hb = await page.locator('main.pane .fsp-shead').boundingBox();
+        await page.mouse.move(hb.x + 40, hb.y + hb.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(hb.x + 40, hb.y + hb.height / 2 + 90, { steps: 6 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        const dragShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        ok('settings ' + at + ': a tap outside and a drag down close the sheet', tapShut && dragShut, { tapShut, dragShut });
+      } else {
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(200);
+      }
+    } else {
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(600);
+      await page.mouse.move(400, 200);
+      await page.locator(C + ' .fsp-hb .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      const dr = await page.evaluate(() => {
+        const s = document.querySelector('main.pane .fsp-psec').getBoundingClientRect(), hit = (a, b) => !!b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const pair = ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((q) => document.querySelector(q)).filter((e) => e && e.getClientRects().length).map((e) => e.getBoundingClientRect());
+        return { form: document.querySelector('main.pane .fsp-page').dataset.sform, right: Math.round(innerWidth - s.right), w: Math.round(s.width), pairs: pair.length, covers: pair.some((p) => hit(s, p)) };
+      });
+      ok('settings ' + at + ': in fullscreen a drawer from the right that never covers the stop pair (PR12)', dr.form === 'drawer' && dr.right === 0 && dr.pairs > 0 && !dr.covers, dr);
+      if (EVID) await page.screenshot({ path: join(EVID, 'settings-fullscreen-' + at + '.png') });
+      const paused1 = await video(page, (v) => v.paused), sent1 = hub.bundles.length;
+      await page.mouse.move(60, 300);
+      await page.mouse.down();
+      await page.waitForTimeout(400);
+      await page.mouse.up();
+      await page.waitForTimeout(600);
+      ok('settings ' + at + ': a stage tap closes the drawer and never toggles Play', (await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))
+        && (await video(page, (v) => v.paused)) === paused1 && hub.bundles.length === sent1);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(400);
+    }
+    // Video only, then the script (video, then script).
+    await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-src .fsp-close'); if (b.getClientRects().length) b.click(); else r.querySelector('.fsp-mclose').click(); });
+    await page.waitForTimeout(200);
+    await page.setInputFiles(C + ' .fsp-filev', [clip]);
+    await page.waitForTimeout(600);
+    const vonly = await look();
+    await page.setInputFiles(C + ' .fsp-files', [fun()]);
+    await page.waitForTimeout(400);
+    const p2 = await paired();
+    ok('redesign ' + at + ': video then script ends loaded and paired', p2.src && p2.play && !p2.mo, p2);
+    ok('redesign ' + at + ': the player bar keeps its rect empty, script only, video only and loaded',
+      same(empty.bar, mo.bar) && same(empty.bar, vonly.bar) && same(empty.bar, loaded.bar), { empty: empty.bar, mo: mo.bar, vonly: vonly.bar, loaded: loaded.bar });
+    if (cls === 'desktop' && w === 1428) {
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun()]);
+      await page.waitForTimeout(500);
+      const p3 = await paired();
+      ok('redesign: a two-file pick in Open video ends loaded and paired', p3.src && p3.play && !p3.mo, p3);
+      await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(500);
+      await page.mouse.move(700, 400);
+      await page.waitForTimeout(300);
+      if (EVID) await page.screenshot({ path: join(EVID, 'fullscreen-1428x900.png') });
+      const ask = await page.evaluate(() => window.__fsAsk);
+      ok('fullscreen: one mode, the ask bare; no mode glyph (PR8)', !!ask && ask.bare === true && await page.locator(C + ' .fsp-hb-mode').count() === 0, ask);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+      // The center Play (operator 2026-10-08): shown while paused, a stage tap toggles with a flash, hidden while playing.
+      const cp = () => page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display !== 'none');
+      const shownPaused = await cp();
+      const vb2 = await page.locator(C + ' .fsp-vbox').boundingBox();
+      await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
+      await page.waitForTimeout(350);
+      const flashed = await page.locator(C + ' .fsp-cplay').evaluate((e) => e.hasAttribute('data-flash'));
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      const hiddenPlaying = !(await cp()) && await video(page, (v) => !v.paused);
+      if (EVID) await page.screenshot({ path: join(EVID, 'center-play-playing-' + at + '.png') });
+      await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
+      await page.waitForTimeout(900);
+      const backPaused = await video(page, (v) => v.paused) && await cp();
+      if (EVID) await page.screenshot({ path: join(EVID, 'center-play-paused-' + at + '.png') });
+      ok('center play: shown while paused, a stage tap plays with a flash and hides it, a second tap pauses and shows it',
+        shownPaused && flashed && hiddenPlaying && backPaused, { shownPaused, flashed, hiddenPlaying, backPaused });
+    }
+    if (cls === 'desktop' && w === 1428) {
+      const span = () => page.locator(C + ' .fsp-zoom output').textContent();
+      const s0 = await span();
+      await page.locator(C + ' .fsp-zoom button[aria-label="Zoom in"]').click();
+      const s1 = await span();
+      await page.locator(C + ' .fsp-zoom button[aria-label="Zoom out"]').click();
+      ok('head: zoom - and + step the span on the desktop', s0 === '10 s' && s1 === '5 s' && (await span()) === '10 s', [s0, s1]);
+    }
+    if (cls === 'portrait') {
+      // PR7: the band collapses to its head on the user's tap; the bar keeps its rect; the state survives a reload.
+      const bar0 = (await look()).bar;
+      await page.locator(C + ' .fsp-tlcaret').click();
+      await page.waitForTimeout(200);
+      const shut = await look();
+      const shutUi = await page.locator(C).evaluate((r) => ({ shut: r.hasAttribute('data-tlshut'), dt: !!r.querySelector('.fsp-dt').getClientRects().length }));
+      await shot('timeline-collapsed');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(400);
+      const kept = await page.locator(C).evaluate((r) => r.hasAttribute('data-tlshut'));
+      ok('head ' + at + ': the caret collapses the band to its head, the bar keeps its rect, the state survives a reload',
+        shutUi.shut && !shutUi.dt && same(shut.bar, bar0) && kept, { bar0, bar: shut.bar, shutUi, kept });
+      await page.locator(C + ' .fsp-tab', { hasText: 'Player' }).click();
+      await page.locator(C + ' .fsp-tlcaret').click();
+      await page.waitForTimeout(200);
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun()]);
+      await page.waitForTimeout(500);
+      await page.setInputFiles(C + ' .fsp-filev', [{ name: 'tall.webm', mimeType: 'video/webm', buffer: VIDEO_TALL }]);
+      await page.waitForFunction((c) => document.querySelector(c + '[data-ar]') && document.querySelector(c + ' .fsp-stage video').videoHeight === 320, C, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const tall = await look();
+      ok('redesign ' + at + ': a 9:16 video stands tall up to the room its row has', tall.vbox[3] > loaded.vbox[3]
+        && Math.abs(tall.vbox[3] - Math.min(tall.vbox[2] * 16 / 9, tall.stage[3])) <= 1.5, { vbox: tall.vbox, stage: tall.stage });
+      await shot('loaded-tall');
+      // PR17: a turn to landscape with a video is fullscreen, the turn back leaves it; an Exit in landscape holds.
+      const fsNow = () => page.locator(C).evaluate((r) => r.hasAttribute('data-media'));
+      await page.setViewportSize({ width: 860, height: 420 });
+      await page.waitForTimeout(700);
+      const turned = await fsNow();
+      if (EVID) await page.screenshot({ path: join(EVID, 'fullscreen-860x420.png') });
+      await page.setViewportSize({ width: 420, height: 860 });
+      await page.waitForTimeout(700);
+      const back = await fsNow();
+      await page.setViewportSize({ width: 860, height: 420 });
+      await page.waitForTimeout(700);
+      await page.locator(C).focus();
+      await page.keyboard.press('f');
+      await page.waitForTimeout(700);
+      const held = await fsNow();
+      ok('rotation: landscape with a video enters fullscreen, portrait leaves it, an Exit in landscape holds (PR17)', turned && !back && !held, { turned, back, held });
+      await page.setViewportSize({ width: 420, height: 860 });
+      await page.waitForTimeout(500);
+    }
+    ok('redesign ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+}
+// ---- (l) the library per class (ph-1qs5.6, PR13): rows and now-playing on the phone, the fullscreen drawer, the column ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(l) library');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('library ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    if (cls === 'portrait') await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+    if (await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'))) await page.locator(C + ' .fsp-libcaret').click();
+    await page.waitForTimeout(300);
+    const connect = await page.locator(C + ' .fsp-connect').evaluate((c) => ({ rows: !!c.querySelector('.fsp-rows'),
+      labels: [...c.querySelectorAll('.fsp-rl')].map((l) => getComputedStyle(l).textTransform) })).catch(() => null);
+    ok('library ' + at + ': the Stash connect card takes the settings rows\' form', !!connect && connect.rows && connect.labels.length === 2
+      && connect.labels.every((t) => t === 'lowercase'), connect);
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-tile', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const lk = () => page.locator(C).evaluate((r) => { const box = r.querySelector('.fsp-libbox'), g = r.querySelector('.fsp-grid');
+      return { rows: r.querySelector('.fsp-lib').hasAttribute('data-rows'), n: g.children.length, page: r.querySelector('.fsp-lib-foot output').textContent,
+        scroll: box.scrollHeight - box.clientHeight, gscroll: g.scrollHeight - g.clientHeight }; });
+    const l0 = await lk();
+    if (cls === 'portrait') {
+      ok('library ' + at + ': the Library tab shows rows, paged, with no scroller (D19)', l0.rows && l0.n > 0 && l0.scroll <= 0 && l0.gscroll <= 0, l0);
+      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      await page.waitForTimeout(500);
+      const l1 = await lk();
+      ok('library ' + at + ': paging moves to the next page', /^page 2 \//.test(l1.page), [l0.page, l1.page]);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-tab', { hasText: 'Library' }).click();
+      await page.waitForTimeout(300);
+      const nowShown = await page.locator(C + ' .fsp-now').isVisible();
+      await page.locator(C + ' .fsp-nowb').click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+      const playing = await video(page, (v) => !v.paused);
+      await page.locator(C + ' .fsp-nowb').click();
+      await page.waitForTimeout(300);
+      const paused = await video(page, (v) => v.paused);
+      ok('library ' + at + ': the now-playing row (title, position, Play/Pause) plays and pauses the scene under the tab',
+        nowShown && playing && paused && (await page.locator(C + ' .fsp-nowt').textContent()).length > 0, { nowShown, playing, paused });
+      ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').textContent()) === '02Library');
+      const foot = await page.locator(C).evaluate((r) => { const nw = r.querySelector('.fsp-now').getBoundingClientRect(), box = r.querySelector('.fsp-libbox').getBoundingClientRect(),
+        st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-n');
+        return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
+      });
+      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
+    } else if (cls === 'desktop') {
+      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
+        head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
+      ok('library ' + at + ': the side column with its caret, tiles, under 02 LIBRARY', col.caret && col.tiles && col.head === '02Library' && l0.n > 0, col);
+    } else {
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-full').click();
+      await page.waitForTimeout(600);
+      await page.mouse.move(300, 200);
+      await page.locator(C + ' .fsp-hb .fsp-libb').evaluate((e) => e.click());
+      await page.waitForTimeout(600);
+      const dr = await page.evaluate((c) => {
+        const b = document.querySelector(c + ' .fsp-libbox').getBoundingClientRect(), hit = (a, x) => a.left < x.right && a.right > x.left && a.top < x.bottom && a.bottom > x.top;
+        const pair = ['.topstrip .btn-estop', '.topstrip .btn-pause'].map((q) => document.querySelector(q)).filter((e) => e && e.getClientRects().length).map((e) => e.getBoundingClientRect());
+        return { right: Math.round(innerWidth - b.right), w: Math.round(b.width), pairs: pair.length, covers: pair.some((p) => hit(b, p)) };
+      }, C);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-drawer-' + at + '.png') });
+      const before = await page.locator(C + ' .fsp-title').textContent();
+      await page.locator(C + ' .fsp-tile').nth(1).click();
+      await page.waitForTimeout(600);
+      const closed = !(await page.locator(C).evaluate((r) => r.hasAttribute('data-libdrawer')));
+      const after = await page.locator(C + ' .fsp-title').textContent();
+      ok('library ' + at + ': in fullscreen the drawer opens at the right edge clear of the stop pair; a pick loads and closes it',
+        dr.right === 0 && dr.pairs > 0 && !dr.covers && closed && after !== before, { dr, closed, before, after });
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+    }
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-' + at + '.png') });
+    ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  await stash.close();
+}
+
+// ---- (Q) the queue and Autoplay (ph-1qs5.9) ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(Q) queue');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('queue ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    const tab = (t) => page.locator(C + (cls === 'portrait' ? ' .fsp-tab' : ' .fsp-seg'), { hasText: new RegExp('^' + t + '$') }).click();
+    await tab('Library');
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+    // The column may hold one scene a page: add the first of each of three pages.
+    const titles = [];
+    for (let i = 0; i < 3; i++) {
+      await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(400);
+      titles.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+      await page.locator(C + ' .fsp-qadd').first().click();
+      await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+    }
+    await tab('Queue');
+    await page.waitForTimeout(300);
+    const rows = () => page.$$eval(C + ' .fsp-q-row .fsp-t', (e) => e.map((x) => x.textContent));
+    const q0 = await rows();
+    ok('queue ' + at + ': Add to queue from the library fills the Queue tab in order', same(q0, titles), { q0, titles });
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'queue-' + at + '.png') });
+    await page.locator(C + ' .fsp-q-row').nth(1).locator('.fsp-q-rm').click();
+    const q1 = await rows();
+    await page.locator(C + ' .fsp-q-row').nth(1).locator('.fsp-q-next').click();
+    const q2 = await rows();
+    ok('queue ' + at + ': Remove takes a row out, Play next moves one to the top', same(q1, [titles[0], titles[2]]) && same(q2, [titles[2], titles[0]]), { q1, q2 });
+    if (cls === 'desktop') {
+      const a = await page.locator(C + ' .fsp-q-row').nth(1).boundingBox(), b = await page.locator(C + ' .fsp-q-row').nth(0).boundingBox();
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width / 2, b.y + 4, { steps: 6 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      const q3 = await rows();
+      ok('queue ' + at + ': a drag reorders the queue', same(q3, [titles[0], titles[2]]), q3);
+      const stored = await page.evaluate(() => localStorage.getItem('phosphor.funscript.queue') || '');
+      ok('queue: stored in prefs, never the Stash key', stored.includes(titles[0]) && !stored.includes(KEY) && !/apikey/i.test(stored), stored.slice(0, 160));
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      ok('queue: the queue comes back after a launch', same(await rows(), [titles[0], titles[2]]), await rows());
+      // Autoplay: the end of a scene loads the queue's first and plays it; the queue's end stops.
+      await page.locator(C + ' .fsp-autob').evaluate((e) => e.click()).catch(() => {});
+      await page.locator(C + ' .fsp-q-row').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      const auto = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.autoplay') || 'false'));
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      const advanced = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t && !document.querySelector(c + ' .fsp-stage video').paused,
+        [C, titles[2]], { timeout: 12000 }).then(() => true, () => false);
+      ok('autoplay: on, the end of a scene loads the next queued scene and plays it', auto === true && advanced, { auto, title: await page.locator(C + ' .fsp-title').textContent() });
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(4000);
+      const stopped = await video(page, (v) => v.paused) && (await rows()).length === 0;
+      ok('autoplay: at the queue\'s end playback stops', stopped, { paused: await video(page, (v) => v.paused), rows: await rows() });
+      // Two more scenes for Loop and the Halt between scenes.
+      await tab('Library');
+      const more = [];
+      for (let i = 0; i < 2; i++) {
+        await page.waitForTimeout(400);
+        more.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+        await page.locator(C + ' .fsp-qadd').first().click();
+        await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      }
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      await page.locator(C + ' .fsp-q-row').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => { if (!e.checked) e.click(); });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      await page.waitForTimeout(4500);
+      const looped = { title: await page.locator(C + ' .fsp-title').textContent(), playing: await video(page, (v) => !v.paused), rows: await rows() };
+      ok('autoplay: with Loop on the scene loops and never advances', looped.title === more[0] && looped.playing && same(looped.rows, [more[1]]), looped);
+      await playBtn(page).click();
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => { if (e.checked) e.click(); });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      // A Halt between scenes drops the pending Play: released, nothing starts and nothing is sent.
+      FETCH_DELAY.re = /funscript/; FETCH_DELAY.ms = 2500;
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      const loadedNext = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t, [C, more[1]], { timeout: 8000 }).then(() => true, () => false);
+      hub.setLatch(PAUSE_BIT);
+      await page.waitForTimeout(800);
+      hub.setLatch(0);
+      await page.waitForTimeout(300);
+      const b0 = hub.bundles.length;
+      await page.waitForTimeout(4000);
+      FETCH_DELAY.re = null;
+      const halted = { loadedNext, paused: await video(page, (v) => v.paused), sent: hub.bundles.length - b0 };
+      ok('autoplay: a Halt between scenes drops the pending Play; released, nothing plays and nothing is sent', loadedNext && halted.paused && halted.sent === 0, halted);
+      // A file queued by a pick of several videos reads Reopen after a launch; Open video with that name resolves it.
+      await page.setInputFiles(C + ' .fsp-filev', [{ name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO }, { name: 'second.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+      await page.waitForTimeout(600);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      const metaOf = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-q-row')].map((r) => r.querySelector('.fsp-t').textContent + '|' + r.querySelector('.fsp-m').textContent), C);
+      const before = await metaOf();
+      await page.setInputFiles(C + ' .fsp-filev', [{ name: 'second.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      const after = await metaOf();
+      ok('queue: after a launch a queued file reads Reopen; Open video with its name resolves it', before.includes('second|Reopen') && !after.includes('second|Reopen') && after.some((x) => x.startsWith('second|')), { before, after });
+    }
+    ok('queue ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  await stash.close();
+}
+
+// ---- (q) host wiring (ph-1qs5.8, PR11, PR14, compact hero): the footer status, the quick rail, the one-row hero ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(q) host wiring');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const clip = { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO };
+  const fun = { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) };
+  const railState = (page) => page.evaluate(() => {
+    const pop = document.querySelector('.hero-inner.popup, .hero-inner.quick'), pair = document.querySelector('.topstrip .pair');
+    const r = pop && pop.getBoundingClientRect(), p = pair && pair.getBoundingClientRect();
+    return { attr: document.documentElement.dataset.quickRail || null, open: document.documentElement.hasAttribute('data-quick-rail-open'),
+      form: pop ? (pop.classList.contains('popup') ? 'vertical' : 'horizontal') : null,
+      overPair: !!(r && p) && !(r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) };
+  });
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
+    const at = w + 'x' + hh;
+    if (!await toPluginPage(page)) { ok('host ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
+    await page.waitForTimeout(400);
+    const rail = C + ' .fsp-rail';
+    if (cls !== 'desktop') {
+      // compactHero is the shell's to draw: short of width for its one row (the fixture's five strip operations at
+      // 420 px upright) it keeps the full hero by its own rule (TopStrip compactFits), so upright only reports it.
+      const hero = await page.evaluate(() => !!document.querySelector('.topstrip .strip.compact'));
+      if (cls === 'portrait' && !hero) console.log('  [NOTE] hero ' + at + ': the shell kept the full hero (its one row does not fit this hub\'s operations)');
+      // PR14: the footer's slot carries the player's status; the card draws no status row; a change moves no rect.
+      const foot = () => page.evaluate(() => { const e = document.querySelector('main.pane .page-foot .foot-status'); if (!e) return null;
+        const b = e.getBoundingClientRect(); return { text: e.textContent.trim(), rect: [b.x, b.y, b.width, b.height].map(Math.round) }; });
+      const empty = await foot();
+      await page.setInputFiles(C + ' .fsp-files', [fun]);
+      await page.waitForTimeout(500);
+      const mo = await foot();
+      const ownRow = await page.locator(C + ' .fsp-slot').evaluate((e) => !!e.getClientRects().length);
+      ok('host ' + at + ': ' + (cls === 'landscape' ? 'the hero is one row; ' : '') + 'the footer slot carries the player\'s status (No scene loaded, Motion only) and moves nothing',
+        (hero || cls === 'portrait') && !!empty && /No scene loaded/.test(empty.text) && !!mo && /Motion only/.test(mo.text) && same(empty.rect, mo.rect) && !ownRow, { hero, empty, mo, ownRow });
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+      await page.waitForTimeout(600);
+      const inline = await page.locator(rail).isVisible();
+      if (inline) {
+        await page.locator(rail).click();
+        await page.waitForTimeout(400);
+        const r1 = await railState(page);
+        const exp = await page.locator(rail).getAttribute('aria-expanded');
+        if (SHOTS) await page.screenshot({ path: join(SHOTS, 'rail-open-' + at + '.png') });
+        await page.evaluate(() => document.querySelector('main.pane').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+        await page.waitForTimeout(300);
+        const r2 = await railState(page);
+        ok('host ' + at + ': the bar\'s rail opens the vertical pop-up clear of the stop pair, aria-expanded follows, an outside tap closes it',
+          r1.open && r1.form === 'vertical' && !r1.overPair && exp === 'true' && !r2.open, { r1, exp, r2 });
+      } else ok('host ' + at + ': the bar draws the rail on the phone class', false, await railState(page));
+    } else {
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+      await page.waitForTimeout(600);
+      ok('host ' + at + ': no rail inline on the desktop; the status is the card\'s last row, --tx text', !(await page.locator(rail).isVisible())
+        && await page.locator(C).evaluate((r) => { const s = r.querySelector('.fsp-slot'), kids = [...r.children].filter((e) => e.getClientRects().length && e !== s && !e.matches('.fsp-pframe, .fsp-libbox'));
+          const probe = document.createElement('i'); probe.style.color = 'var(--tx)'; document.body.append(probe); const tx = getComputedStyle(probe).color; probe.remove();
+          return !!s.getClientRects().length && kids.every((k) => k.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1) && getComputedStyle(s).color === tx; }));
+    }
+    // In fullscreen the rail sits in the hover row: the vertical pop-up on phones, the horizontal one on the desktop.
+    await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+    await page.mouse.move(Math.round(w / 2), Math.round(hh / 2));
+    await page.waitForTimeout(200);
+    const fsRail = await page.locator(C + ' .fsp-hb ' + '.fsp-rail').isVisible();
+    let f1 = null;
+    if (fsRail) {
+      await page.locator(C + ' .fsp-hb .fsp-rail').evaluate((e) => e.click());
+      await page.waitForTimeout(400);
+      f1 = await railState(page);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'rail-fullscreen-' + at + '.png') });
+    }
+    ok('host ' + at + ': in fullscreen the hover row\'s rail opens the ' + (cls === 'desktop' ? 'horizontal' : 'vertical') + ' pop-up, never over the stop pair',
+      fsRail && !!f1 && f1.open && f1.form === (cls === 'desktop' ? 'horizontal' : 'vertical') && !f1.overPair, { fsRail, f1 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    ok('host ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+}
+
+// ---- (t) the theme (operator 2026-10-08): every player color follows the shell's preset ----
+// The player in two presets whose chassis and accents both differ: a color that stays put is a literal, unless it is a
+// locked safety token (law 13). With --shots, the page at 420x860 and 1428x900 under every preset, in <shots>/themes/.
+if (!LIVE && !STASH_LIVE) {
+  console.log('(t) theme tokens');
+  const { THEMES } = await import('../src/model/theme.js');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const clip = { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO };
+  const fun = { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) };
+  async function themed(theme, w, hh, fn) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    hub.values[CH.motion + ':pos_10um'] = 50;
+    const { ctx, page } = await open({ cat, hub, width: w, height: hh, coarse: w < 860, prefs: { 'phosphor.theme': theme } });
+    let out = null;
+    if (await toPluginPage(page)) {
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      out = await fn(page);
+    }
+    clearInterval(hub.timer);
+    await ctx.close();
+    return out;
+  }
+  const { TOKENS } = await import('../src/model/theme.js');
+  const colors = (page) => page.evaluate(([c, TOKENS]) => {
+    const root = document.querySelector(c), out = {}, tok = {};
+    const probe = document.createElement('i');
+    document.body.append(probe);
+    for (const t of TOKENS) { probe.style.color = ''; probe.style.color = 'var(' + t + ')'; tok[t] = getComputedStyle(probe).color; }
+    const locked = ['--warn', '--bad', '--estop'].map((t) => tok[t]);
+    probe.remove();
+    const key = (e) => { const p = []; for (; e && e !== root; e = e.parentElement) p.unshift(e.tagName + [...e.parentElement.children].indexOf(e)); return p.join('/'); };
+    for (const e of root.querySelectorAll('*')) {
+      if (!e.getClientRects().length || e.closest('video, style') || getComputedStyle(e).visibility === 'hidden') continue;
+      const s = getComputedStyle(e);
+      const text = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+      const v = { ...(text ? { color: s.color } : {}), background: s.backgroundColor, border: parseFloat(s.borderTopWidth) > 0 ? s.borderTopColor : '',
+        ...(e instanceof SVGGeometryElement ? { fill: s.fill, stroke: s.stroke } : {}) };
+      for (const [k, x] of Object.entries(v)) {
+        if (!x || x === 'none' || x === 'rgba(0, 0, 0, 0)' || /^url/.test(x) || locked.includes(x)) continue;
+        out[key(e) + ' ' + (e.className.baseVal ?? e.className) + ' ' + k] = x;
+      }
+    }
+    return { out, tok };
+  }, [C, TOKENS]);
+  const byId = (id) => THEMES.find((t) => t.id === id);
+  // PR6 under both presets: Motion's color, border and glow are the shell's .og-btn.on.
+  const onLook = (page) => page.evaluate((c) => {
+    const b = document.createElement('button');
+    b.className = 'og-btn sm on';
+    b.textContent = 'x';
+    document.querySelector(c).append(b);
+    const s = getComputedStyle(b), m = getComputedStyle(document.querySelector(c + ' .fsp-motion'));
+    const out = [m.color === s.color, m.borderTopColor === s.borderTopColor, m.boxShadow === s.boxShadow && m.boxShadow !== 'none'];
+    b.remove();
+    return out;
+  }, C);
+  const both = async (page) => ({ ...(await colors(page)), on: await onLook(page) });
+  const a = await themed(byId('phosphor'), 1428, 900, both), b = await themed(byId('paper'), 1428, 900, both);
+  ok('theme: Motion wears the shell\'s .og-btn.on under Phosphor and Paper (PR6)', !!a && !!b && [...a.on, ...b.on].every(Boolean), [a && a.on, b && b.on]);
+  // A token both presets resolve to the same color (a held contrast gray) may stay put; nothing else may.
+  const same2 = a && b ? new Set(Object.keys(a.tok).filter((t) => a.tok[t] === b.tok[t]).map((t) => a.tok[t])) : new Set();
+  const stuck = a && b ? Object.keys(a.out).filter((k) => k in b.out && a.out[k] === b.out[k] && !same2.has(a.out[k])).map((k) => k + ' ' + a.out[k]) : ['no card'];
+  ok('theme: every player color moves between Phosphor and Paper (no literal colors; tokens equal in both aside)',
+    a && Object.keys(a.out).length > 30 && stuck.length === 0, stuck.slice(0, 8));
+  if (SHOTS) {
+    // PR15 evidence: 2x close-ups of the parts the style survey shot (test/evidence/player-style), dark and Paper.
+    for (const t of [byId('phosphor'), byId('paper')]) {
+      const hub = makeHub(cat);
+      const { ctx, page } = await open({ cat, hub, width: 1428, height: 900, scale: 2, prefs: { 'phosphor.theme': t, 'phosphor.funscript.settingsOpen': true } });
+      if (await toPluginPage(page)) {
+        await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+        await page.waitForTimeout(800);
+        const name = t.id === 'paper' ? 'light' : 'dark';
+        for (const [part, sel] of [['player-head', C + ' .fsp-src'], ['player-timeline-head', C + ' .fsp-tlh'], ['player-bar', C + ' .fsp-tr'],
+          ['player-settings', 'main.pane .fsp-psec'], ['player-library-head', C + ' .fsp-lib-head']]) {
+          await page.locator(sel).first().screenshot({ path: join(SHOTS, 'zoom2x-' + part + '-' + name + '.png') }).catch(() => {});
+        }
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.locator(C + ' .fsp-expand').click();
+        await page.waitForTimeout(600);
+        await page.locator(C + ' .fsp-anbox').screenshot({ path: join(SHOTS, 'zoom2x-player-analyzer-' + name + '.png') }).catch(() => {});
+      }
+      clearInterval(hub.timer);
+      await ctx.close();
+    }
+    const dir = join(SHOTS, 'themes');
+    mkdirSync(dir, { recursive: true });
+    for (const t of THEMES) {
+      for (const [w, hh] of [[420, 860], [1428, 900]]) {
+        await themed(t, w, hh, (page) => page.screenshot({ path: join(dir, t.id + '-' + w + 'x' + hh + '.png') }));
+      }
+    }
+  }
+}
+
 if (!LIVE) {
   const cat = advgenCatalog();
   cat.entries = decodeCatalog(cat.bytes);
@@ -815,27 +1642,27 @@ if (!LIVE) {
   const rects = { empty: await chrome(page) };
   ok('empty: the status reads No scene loaded', (await statusText(page)) === 'No scene loaded', await statusText(page));
   ok('empty: Play is grayed', await playBtn(page).isDisabled());
-  const chooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator(C + ' .fsp-stage').click()])
-    .then(() => true).catch(() => false);
-  ok('open: an empty stage is a click target for the file picker', chooser);
-  const openWhere = await page.evaluate((c) => [...document.querySelectorAll(c + ' button')].filter((b) => /Open files/.test(b.textContent))
-    .map((b) => b.closest('.fsp-lib-head') ? 'library head' : b.parentElement.className), C);
-  ok('open: Open files is in the library head, not the main bar', openWhere.length === 1 && openWhere[0] === 'library head', openWhere);
+  const chooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator(C + ' .fsp-empty .og-btn').first().click()])
+    .then(([fc]) => fc.isMultiple()).catch(() => false);
+  ok('open: the empty stage\'s Open video opens the picker, multiple (PR3)', chooser);
+  const openWhere = await page.evaluate((c) => [...document.querySelectorAll(c + ' button')].filter((b) => /Open (video|script)|Open files/.test(b.textContent) && b.getClientRects().length)
+    .map((b) => b.parentElement.className + ' ' + b.textContent), C);
+  ok('open: Open video and Open script on the empty stage and in the head or its Media menu, none in the library (PR3)',
+    !openWhere.some((x) => /fsp-lib|Open files/.test(x)) && openWhere.filter((x) => /fsp-empty/.test(x)).length === 2, openWhere);
+  const accept = await page.evaluate((c) => [...document.querySelectorAll(c + ' input[type=file]')].map((f) => f.accept + (f.multiple ? ' *' : '')), C);
+  ok('open: Open video takes video, the webview\'s audio types (never audio/*: MIDI) and .funscript; Open script only .funscript',
+    accept.length === 2 && /^video\/\*,/.test(accept[0]) && !/audio\/\*/.test(accept[0]) && /\.funscript \*$/.test(accept[0]) && accept[1] === '.funscript', accept);
 
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);
   rects.ready = await chrome(page);
-  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand', 'fsp-close'];
-  const trow = await page.locator(C + ' .fsp-tr').evaluate((t, order) => {
-    const r = t.getBoundingClientRect(), card = t.parentElement.getBoundingClientRect();
-    const kids = [...t.children];
-    return { names: kids.map((e) => order.find((c) => e.classList.contains(c)) || e.className), tops: (() => { const c = kids.filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return (b.top + b.bottom) / 2; }); return Math.max(...c) - Math.min(...c) < 3 ? 1 : 2; })(),
-      outside: order.filter((c) => [...t.parentElement.querySelectorAll('.' + c)].some((e) => !t.contains(e))),
-      ovBetween: kids.indexOf(t.querySelector('.fsp-ov')), inCard: r.left >= card.left && r.right <= card.right + 0.5,
-      keyHint: t.querySelector('.fsp-expand').title };
-  }, ORDER);
-  ok('transport: .fsp-tr holds the ten items in order, in one row', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
-  ok('transport: nothing of it sits outside the row; the graph button names its key', trow.outside.length === 0 && trow.inCard && /\(g\)/.test(trow.keyHint), trow);
+  ok('dash card: the player bar and the timeline head (one code path with the page, PR5/PR7)', await page.locator(C).evaluate((e) => !e.closest('.fsp-page')
+    && !!e.querySelector('.fsp-tr .fsp-motion').getClientRects().length && !!e.querySelector('.fsp-tlh .fsp-tlcaret').getClientRects().length));
+  const bar = await barOrder(page);
+  const ORDER = bar.comp === 'full' ? BAR_DESK.filter((c) => !/fsp-(full|set)/.test(c)) : BAR_PHONE[0].concat(BAR_PHONE[1]).filter((c) => !/fsp-(full|set)/.test(c));
+  ok('bar: the dash card\'s bar in the PR5 order (no Fullscreen or Settings: page only), ' + (bar.comp === 'full' ? 'one row' : 'two rows'),
+    same(bar.rows.flat(), ORDER) && bar.rows.length === (bar.comp === 'full' ? 1 : 2), bar);
+  ok('bar: Graph names its key and sits in the timeline head', await page.locator(C + ' .fsp-tlh .fsp-expand').evaluate((e) => /\(g\)/.test(e.title)));
   const rt = [];
   for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
   ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
@@ -1030,24 +1857,21 @@ if (!LIVE) {
     const r = sameChrome(rects.empty, rects[s]);
     ok('layout: chrome rects in ' + s + ' match empty', r.ok, r.diff.slice(0, 4));
   }
-  const bundle = await page.evaluate((c) => {
-    const dt = document.querySelector(c + ' .fsp-dt'), z = dt.querySelector('.fsp-zoom'), d = dt.getBoundingClientRect(), p = z.getBoundingClientRect();
+  const head = await page.evaluate((c) => {
+    const dt = document.querySelector(c + ' .fsp-dt');
     const probe = document.createElement('i');
     probe.style.background = 'var(--screen)';
     document.body.append(probe);
     const screen = getComputedStyle(probe).backgroundColor;
     probe.remove();
-    return { inTr: document.querySelectorAll(c + ' .fsp-tr :is(.fsp-motion, .fsp-off, .fsp-inv)').length,
-      inBundle: [...z.children].slice(0, 3).map((e) => e.className.replace('fsp-btn ', '')), unit: z.querySelector('.fsp-off').textContent,
-      corner: [Math.round(d.right - p.right), Math.round(p.top - d.top)], dtBg: getComputedStyle(dt).backgroundColor === screen,
-      ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
-      shadow: getComputedStyle(dt).boxShadow.includes('inset'), plate: getComputedStyle(z).boxShadow !== 'none' };
+    return { head: [...document.querySelectorAll(c + ' .fsp-tlh > *')].filter((e) => e.getClientRects().length).map((e) => e.className.split(' ').find((k) => /^fsp-/.test(k) && k !== 'fsp-ic')),
+      unit: document.querySelector(c + ' .fsp-off').textContent, num: document.querySelector(c + ' .fsp-off input').classList.contains('og-num'),
+      dtBg: getComputedStyle(dt).backgroundColor === screen, ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
+      shadow: getComputedStyle(dt).boxShadow.includes('inset'), motionInBar: !!document.querySelector(c + ' .fsp-tr .fsp-motion') };
   }, C);
-  ok('bundle: Motion, Offset and Invert sit in the detail bundle, none in the strip', bundle.inTr === 0
-    && bundle.inBundle.join() === 'fsp-motion,fsp-off,fsp-inv', bundle);
-  ok('bundle: Offset is labeled with its unit, ms', /Offset.*ms/.test(bundle.unit), bundle.unit);
-  ok('bundle: the plate is flush with the detail top right corner and shadowed', bundle.corner[0] <= 1 && bundle.corner[1] <= 1 && bundle.plate, bundle);
-  ok('bundle: the detail and the heat sit on --screen with the inset shadow', bundle.dtBg && bundle.ovBg && bundle.shadow, bundle);
+  ok('head: the timeline head holds caret, (zoom,) A-B, Offset (og-num, ms), Invert, Graph; Motion is the bar\'s (PR6/PR7)',
+    same(head.head.filter((k) => k !== 'fsp-zoom'), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
+  ok('head: the wave and the heat sit on --screen with the inset shadow', head.dtBg && head.ovBg && head.shadow, head);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
     for (const t of ['--bad', '--estop']) probe.style.color = 'var(' + t + ')';
@@ -1125,38 +1949,26 @@ if (!LIVE) {
   // reading's floor is cut. At Look 1.4 the source row (two tabs and Open files) needs 304 px: the
   // floor scales with the Look, the tier thresholds stay the shell's px (rclass.js).
   const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
-  const sweep = [], firstNarrow = {};
+  const sweep = [];
   for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
     await setLook(look);
     for (let w = floor; w <= 959; w += 2) {
       await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
       await page.waitForTimeout(30);
-      const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
+      const comp = await page.locator(C).evaluate((e) => e.dataset.comp);
       const s = await spill(page);
       sweep.push({ look, w, comp, out: s.out, cut: s.cut });
-      if (comp.endsWith('narrow')) firstNarrow[look] = w;
     }
   }
-  const bad = sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld'));
-  ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut',
+  const bad = sweep.filter((x) => x.out.length || x.cut.length || x.comp !== 'handheld');
+  ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut (the two-row bar)',
     bad.length === 0, bad.slice(0, 6));
-  console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
-  // A Look change alone (no width change) re-measures the switch.
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '560px'; });
-  await setLook(1.12);
-  await page.waitForTimeout(100);
-  const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
-  await setLook(1.6);
-  await page.waitForTimeout(150);
-  const big = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
-  const bigSpill = await spill(page);
   await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
-  ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
-    { wide, big, bigSpill });
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = '420px'; });
   await page.waitForTimeout(200);
-  const vis = await page.locator(C).evaluate((e) => { const d = e.querySelector('.fsp-dt').getBoundingClientRect(), p = e.querySelector('.fsp-zoom').getBoundingClientRect(); return { dt: d.height, plate: p.height, free: d.bottom - p.bottom }; });
-  ok('handheld 420: at least 48 px of the wave shows under the control plate', vis.free >= 48, vis);
+  const hh = await barOrder(page);
+  ok('handheld 420: the dash card\'s bar is the scrub row over the buttons, the head row above the wave',
+    hh.rows.length === 2 && same(hh.rows[0], BAR_PHONE[0]) && await page.locator(C + ' .fsp-tlh').isVisible(), hh);
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);
@@ -1169,7 +1981,7 @@ if (!LIVE) {
   await loadClip(page);
   await playBtn(page).click();
   await page.waitForTimeout(600);
-  await page.locator(C + ' .fsp-close').click();
+  await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-src .fsp-close'); if (b.getClientRects().length) b.click(); else r.querySelector('.fsp-mclose').click(); });
   await page.waitForTimeout(200);
   ok('transport: close unloads the media, the card is empty again, also while playing', (await statusText(page)) === 'No scene loaded' && await playBtn(page).isDisabled()
     && await video(page, (v) => !v.getAttribute('src') && v.paused));
@@ -1191,11 +2003,11 @@ if (!LIVE) {
       .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
     ok('targets: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
     await p2.locator(C + ' .fsp-tr').evaluate((e) => e.scrollIntoView({ block: 'center' }));
-    const stolen = await p2.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-tr > button')].filter((b) => b.getClientRects().length).map((b) => {
+    const stolen = await p2.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-tr > button')].filter((b) => b.getClientRects().length && !b.disabled).map((b) => {
       const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + 2);
-      return t && b.contains(t) ? null : b.className;
+      return t && b.contains(t) ? null : b.className + ' under ' + (t ? t.className || t.tagName : 'nothing');
     }).filter(Boolean), C);
-    ok('targets: the split bar steals no touch from the transport buttons', stolen.length === 0, stolen);
+    ok('targets: nothing steals a touch from the bar\'s buttons (the split bar, the heat\'s hit band)', stolen.length === 0, stolen);
     // The box is not the target where a parent clips it: probe what a touch actually hits.
     // The hover bar's seek is a slider only while the bar shows: a pointer move shows it.
     const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].filter((e) => e.getClientRects().length).map((e) => {
@@ -1385,7 +2197,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(400);
     return hub.intents.filter((x) => x.ch !== CH_TRIAL).at(-1);
   };
-  const modeBtn = (t) => page.locator(C + ' .fsa-head .fsp-btn', { hasText: new RegExp('^' + t + '$') });
+  const modeBtn = (t) => page.locator(C + ' .fsa-head .og-btn', { hasText: new RegExp('^' + t + '$') });
   const aRects = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa > *, ' + c + ' .fsa-head > *, ' + c + ' > :not(style)')]
     .filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(), o = document.querySelector(c).getBoundingClientRect();
       return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join(','); }), C);
@@ -1458,21 +2270,23 @@ if (!LIVE && !args.includes('--stash-live')) {
   await modeBtn('Discard').click();
   await page.waitForTimeout(400);
   // ---- handheld: the same card rect open or shut, the thumbnail in the source row ----
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '600px'; });
-  await page.waitForTimeout(300);
-  const hOpen = await look();
+  // The page composes by the window's class (PR1): a portrait phone window gives it the handheld card.
+  // The class change remounts the page (viewport.svelte.js), so the analyzer starts shut there.
+  await page.setViewportSize({ width: 600, height: 900 });
+  await page.waitForTimeout(600);
+  const hShut = await look();
   await expandBtn.click();
   await page.waitForTimeout(300);
-  const hShut = await look();
+  const hOpen = await look();
   await expandBtn.click();
   await page.waitForTimeout(300);
   ok('handheld: the outer card rect is identical open or shut, the thumbnail one tap high, the analyzer in',
     hOpen.card === hShut.card && hOpen.stage.height <= 50 && !!hOpen.an && hOpen.an.height > 100 && hOpen.dt.height > 40, { hOpen, hShut });
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer-handheld.png') });
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = ''; });
-  await page.waitForTimeout(300);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(600);
   // ---- collapse ----
-  await expandBtn.click();
+  if (await page.locator(C + '[data-an]').count()) await expandBtn.click();
   await page.waitForTimeout(300);
   const shut = await look();
   ok('collapse: the card, the stage and the library come back as they were',
@@ -1600,20 +2414,19 @@ if (!LIVE && !args.includes('--stash-live')) {
   const topHue = hue(topRgb);
   ok('B: the fastest span reads --highlight and its hue is never the hazard red (law 13)',
     !(topHue >= 345 || (topHue >= 0 && topHue <= 15)) && topRgb.every((v, i) => Math.abs(v - band.highlight[i]) <= 2), { top: topRgb, hue: topHue, highlight: band.highlight, ups: want[top] && want[top].ups });
-  // ---- C: Auto measures the planner's own render of the free knots; the saved curve pref loaded as Scale only ----
-  // The hub's expectation passes a 260 ms flick's top reversal 1.0e-4 of the window high before its successor lands
-  // (FUNSCRIPT.md I8), one grid step on the fit; a rest landing on the window edge reads f32 noise as clamped.
+  // ---- C: Auto measures the planner's own render of the knots; the saved curve pref loaded as Scale only ----
+  // Reversals and hold edges go at rest (FUNSCRIPT.md I8, ph-hcof), so 0 and 1 land exactly.
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
-  const autoBtn = page.locator('main.pane .fsp-psec .fsp-scale button[aria-label="Auto"]');
-  await autoBtn.click({ timeout: 3000 }).catch(() => {});
+  await page.locator('main.pane .fsp-psec .fsp-scale input[aria-label="Fit to window"]').evaluate((e) => e.click(), null, { timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
-    return o && /^0\.00–(1\.00|0\.99)$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
+    return o && /^0\.00–1\.00$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);
   }, C, { timeout: 15000 }).then(() => true, () => false);
   const readout = await page.locator('main.pane .fsp-psec .fsp-scale .fsp-gain').textContent({ timeout: 1000 }).catch(() => '');
   console.log('  [NOTE] Auto on the real-shaped script: ' + readout + ' (' + await kinText() + ')');
-  ok('C: Auto reads where 0 and 1 land from the planner render within one grid step, clamped under 10 ms (free knots at the twin smoothness)', fit, readout);
+  // A rest landing on the window edge reads f32 noise (1e-7) as clamped for a few ms.
+  ok('C: Auto reads where 0 and 1 land from the planner render exactly, clamped under 10 ms (reversals at rest, the twin smoothness)', fit, readout);
   const fits = await page.evaluate(() => { const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), r = o.getBoundingClientRect(),
     g = o.closest('.fsp-scale').getBoundingClientRect(); return { sw: o.scrollWidth, cw: o.clientWidth, right: r.right, gr: g.right }; });
   ok('C: the Auto readout fits its cell', fits.sw <= fits.cw + 1 && fits.right <= fits.gr + 0.5, fits);
@@ -1719,18 +2532,19 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(300);
   };
   ok('page settings: the page mounts the card', up && await toPage());
-  await page.waitForSelector(C + ' [data-search-key="open"]', { state: 'attached', timeout: 5000 }).catch(() => {});
+  await page.waitForSelector(C + ' [data-search-key="openVideo"]', { state: 'attached', timeout: 5000 }).catch(() => {});
   const skeys = await page.$$eval(C + ' [data-search-key]', (els) => els.map((e) => e.dataset.searchKey).sort());
-  ok('search: the page lists motion, offset, invert, open, graph and split, each on a control', skeys.join() === 'graph,invert,motion,offset,open,split', skeys);
+  ok('search: the page lists motion, offset, invert, Open video, Open script, graph and split, each on a control',
+    skeys.join() === 'graph,invert,motion,offset,openScript,openVideo,split', skeys);
   await page.keyboard.press('F3');
   await page.keyboard.type('Offset');
   await page.waitForTimeout(150);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
   ok('search: F3 Offset lands on the Offset field, focused', await page.evaluate((c) => document.activeElement === document.querySelector(c + ' .fsp-off input'), C));
-  for (const k of ['invert', 'split', 'graph']) {
+  for (const [label, k] of [['Invert', 'invert'], ['Split', 'split'], ['Graph', 'graph'], ['Funscript Motion', 'motion'], ['Open video', 'openVideo'], ['Open script', 'openScript']]) {
     await page.keyboard.press('F3');
-    await page.keyboard.type(k);
+    await page.keyboard.type(label);
     await page.waitForTimeout(150);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(600);
@@ -1770,25 +2584,25 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page settings: open persists as phosphor.funscript.settingsOpen', await page.evaluate(() => localStorage.getItem('phosphor.funscript.settingsOpen')) === 'true');
   await page.locator(SUM).evaluate((e) => e.scrollIntoView());
   await pageShot('page-settings-open-1280x800');
-  await page.click('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]');
+  await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => e.click());
   await page.waitForTimeout(100);
   ok('page settings: a change there reaches the store', await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.play') || '{}').loop) === true);
   await page.click('[data-tab-id="plugins"]');
   await page.waitForSelector('.fsp-pset', { timeout: 5000 });
-  ok('page settings: the Plugins pane card reads it back', (await page.locator('.fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'true');
-  await page.locator('.fsp-pset button[aria-label="Loop"]').click();
+  ok('page settings: the Plugins pane card reads it back', await page.locator('.fsp-pset input[aria-label="Loop"]').evaluate((e) => e.checked));
+  await page.locator('.fsp-pset input[aria-label="Loop"]').evaluate((e) => e.click());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
   await page.waitForTimeout(600);
   await toPage();
   ok('page settings: open is remembered across a launch, and the pane change reads back here', same(await rows(), [1, 1, 1])
-    && (await page.locator('main.pane .fsp-psec .fsp-pset button[aria-label="Loop"]').getAttribute('aria-pressed')) === 'false');
+    && !(await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => e.checked)));
   if (SHOTS) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(600);
     await page.locator(SUM).evaluate((e) => e.scrollIntoView());
     await pageShot('page-settings-open-390x844');
-    await page.locator(SUM).click();
+    await page.locator(SUM).evaluate((e) => e.click());
     await page.waitForTimeout(300);
     await page.evaluate(() => scrollTo(0, 0));
     await pageShot('page-settings-closed-390x844');
@@ -1812,11 +2626,9 @@ if (!LIVE && !args.includes('--stash-live')) {
     hub.values[CH.config + ':window_min'] = 0;
     hub.values[CH.config + ':window_max'] = 100;
     const { ctx, page } = await open({ cat, hub, coarse: true, width: w, height: hh });
-    const TAB = '[data-tab-id="plugin:funscript-player:player"]';
-    await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
-    await page.evaluate((s) => document.querySelectorAll(s).forEach((e) => e.click()), TAB);
-    const there = await page.waitForSelector('main.pane .fsp-page ' + C.replace('main.pane ', ''), { timeout: 5000 }).then(() => true, () => false);
+    const there = await toPluginPage(page);
     ok('handheld ' + w + 'x' + hh + ': the page mounts the card', there);
+    if (!there && SHOTS) await page.screenshot({ path: join(SHOTS, 'fail-' + w + 'x' + hh + '.png') });
     if (there) {
       await loadClip(page);
       await page.waitForTimeout(500);
@@ -1913,24 +2725,33 @@ if (!LIVE && !args.includes('--stash-live')) {
     v.pause = () => { log('pause'); return pause(); };
     Object.defineProperty(v, 'currentTime', { configurable: true, get() { return d.get.call(v); }, set(x) { log('seek'); d.set.call(v, x); } });
   }, C);
+  // PR9: inline there is no overlay at all; the hover bar is fullscreen's.
+  await overVideo();
+  await page.waitForTimeout(350);
+  ok('hover: no hover bar inline, even under the pointer (PR9)', await page.locator(HOV).evaluate((e) => !e.getClientRects().length));
+  await page.locator(C + ' .fsp-full').click();
+  await page.waitForTimeout(500);
+  ok('hover: the bar\'s Fullscreen enters media fullscreen', await page.locator(C + '[data-media]').count() === 1);
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden at rest', !(await shown()) && (await opacity()) === 0);
   await overVideo();
   await page.waitForTimeout(350);
   ok('hover: a pointer move over the video shows the bar', await shown() && (await opacity()) === 1);
   await shot('hover-1280x800');
-  if (SHOTS) {
-    const vp = page.viewportSize();
-    for (const [w, hh] of [[1428, 900], [1024, 768], [420, 860]]) {
-      await page.setViewportSize({ width: w, height: hh });
-      await page.waitForTimeout(500);
-      await overVideo();
-      await shot('page-' + w + 'x' + hh);
-    }
-    await page.setViewportSize(vp);
-    await page.waitForTimeout(400);
-  }
-  const hbKept = await page.locator(C + ' .fsp-hb-row > *, ' + C + ' .fsp-hb-seek').evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.className));
-  ok('hover: outside media fullscreen the bar keeps only Fullscreen and its mode', hbKept.every((c) => /fsp-hb-(full|mode|gap)/.test(c)) && hbKept.some((c) => /fsp-hb-full/.test(c)), hbKept);
+  const hbRow = await page.locator(C + ' .fsp-hb-row').evaluate((r) => [...r.children].filter((e) => e.getClientRects().length)
+    .map((e) => e.className.split(' ').find((k) => /^fsp-(prev|play|next|hb-time|motion|rate|tltog|rail|set|full)$/.test(k))).filter(Boolean));
+  ok('hover: its row is the player bar: prev, Play, next, time, Motion, rate, timeline, (rail,) Settings, Exit fullscreen',
+    same(hbRow.filter((k) => k !== 'fsp-rail'), ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-hb-time', 'fsp-motion', 'fsp-rate', 'fsp-tltog', 'fsp-set', 'fsp-full']), hbRow);
+  await page.locator(C + ' .fsp-tltog').click();
+  await page.waitForTimeout(200);
+  const wave = await page.locator(C).evaluate((r) => { const d = r.querySelector('.fsp-hb .fsp-dt'), s = r.querySelector('.fsp-hb-seek');
+    return { h: d ? Math.round(d.getBoundingClientRect().height) : 0, above: !!d && d.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1 }; });
+  ok('hover: the timeline toggle draws a 72 px wave over the video, above the scrub (PR9)', Math.abs(wave.h - 72) <= 1 && wave.above, wave);
+  await shot('fullscreen-wave-1280x800');
+  await page.locator(C + ' .fsp-tltog').click();
+  await overVideo();
+  ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
   await overVideo(10);
@@ -1938,12 +2759,10 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(100);
   ok('hover: hidden on pointer leave', !(await shown()));
 
-  // Play and pause through the bar (its whole form is media fullscreen's): the controller's preroll first, one hold after.
-  const mediaOn = (on) => page.locator(C).evaluate((e, v) => e.toggleAttribute('data-media', v), on);
-  await mediaOn(true);
+  // Play and pause through the fullscreen bar: the controller's preroll first, one hold after.
   const n0 = hub.bundles.length;
   await overVideo();
-  await page.click(C + ' .fsp-hb-play');
+  await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(150);
   const pre = hub.bundles[n0];
   ok('hover play: the controller prerolls first (one positioning segment), the video still paused', !!pre && pre.segs.length === 1
@@ -1952,7 +2771,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(1500);
   ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
   await overVideo(-10);
-  await page.click(C + ' .fsp-hb-play');
+  await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);
   ok('hover pause: paused by the controller', await video(page, (v) => v.paused) && await vids('pause') >= 1
     && await playBtn(page).textContent() === 'Play');
@@ -1969,12 +2788,17 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover seek: the tooltip reads the time under the pointer', !tip.hidden && /^0:1[45]\.\d$/.test(tip.text), tip);
   ok('hover seek: a press at half the bar lands at half the clip', Math.abs(at - CLIP_S / 2) < 0.5 && await vids('seek') >= 1, at);
   ok('hover: the video is never driven around the controller', (await direct()).length === 0, await direct());
-  await mediaOn(false);
+  await overVideo();
+  await page.click(C + ' .fsp-hb .fsp-full');
+  await page.waitForTimeout(400);
+  ok('hover: Exit fullscreen puts the bar back as it was', await page.locator(C + '[data-media]').count() === 0 && same((await barOrder(page)).rows, [BAR_DESK]));
   // Keys while the player has focus: k plays (through the preroll), m mutes, j seeks back 10 s, k pauses.
   await page.locator(C).focus();
+  const kAt = await page.evaluate(() => document.activeElement.className + ' | ' + (window.__funscriptProbe || []).filter((x) => x.k === 'mark').slice(-3).map((x) => x.name).join());
   await page.keyboard.press('k');
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
   const kPlay = await video(page, (v) => !v.paused);
+  if (!kPlay) console.log('  [NOTE] k did not play: ' + kAt + ' | ' + await statusText(page) + ' | ' + await page.evaluate(() => (window.__funscriptProbe || []).filter((x) => x.k === 'mark').slice(-3).map((x) => x.name).join()));
   await page.keyboard.press('j');
   await page.waitForTimeout(300);
   const tJ = await video(page, (v) => v.currentTime);
@@ -2002,17 +2826,13 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('split: ArrowDown shrinks the wave card 8 px, Shift 1 px', d1.dt - d2.dt === 8 && d2.dt - d3.dt === 1, [d1, d2, d3]);
   const splitSaved = d3.dt;
   ok('split: the height is stored as the pref split', Math.abs(await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.split'))) - d3.dt) <= 1);
-  // Volume and mute: the video's own, kept in prefs audio across a launch; the hover bar holds the only set.
-  ok('volume: the transport has the slider, the hover bar the only mute', await page.locator(C + ' .fsp-tr').evaluate((t) =>
-    !!t.querySelector('input.fsp-vol') && ![...t.querySelectorAll('button')].some((b) => /mute/i.test(b.textContent + (b.title || '')))));
-  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.6'; e.dispatchEvent(new Event('input', { bubbles: true })); });
-  ok('volume: the transport slider sets the video volume', await video(page, (v) => Math.abs(v.volume - 0.6) < 0.01));
-  await overVideo();
-  await page.locator(C + ' .fsp-hb-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  // Volume and mute: the video's own, kept in prefs audio across a launch; the bar's slider and m.
+  await page.locator(C + ' .fsp-vol').evaluate((e) => { e.value = '0.4'; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); });
+  await page.locator(C).focus();
   await page.keyboard.press('m');
   await page.waitForTimeout(100);
   const audio = await page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.funscript.audio') || '{}'));
-  ok('volume: the bar sets the video volume, m mutes, both stored', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
+  ok('volume: the bar\'s slider sets the video volume, m mutes, both stored', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
     && Math.abs(audio.vol - 0.4) < 0.01 && audio.muted === true, audio);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
@@ -2039,12 +2859,11 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.locator(C + ' .fsp-split').dblclick();
   await page.setViewportSize(vp0);
   await page.waitForTimeout(300);
-  ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted)
-    && (await page.locator(C + ' .fsp-hb-mute').getAttribute('aria-label')) === 'Unmute (m)');
-  await page.locator(C + ' .fsp-hb-mute').evaluate((e) => e.click());
-  ok('volume: the bar mute button unmutes, its icon follows', await video(page, (v) => !v.muted)
-    && await page.locator(C + ' .fsp-hb-mute path.s').getAttribute('d') === 'M11.5 5.5a3.5 3.5 0 010 5');
-  ok('hover: Fullscreen is offered on the page', await page.locator(C + ' .fsp-hb-full').evaluate((e) => !e.hidden));
+  ok('volume: volume and mute come back after a launch', await video(page, (v) => Math.abs(v.volume - 0.4) < 0.01 && v.muted));
+  await page.locator(C).focus();
+  await page.keyboard.press('m');
+  ok('volume: m unmutes', await video(page, (v) => !v.muted));
+  ok('hover: Fullscreen is offered on the page, in the bar', await page.locator(C + ' .fsp-tr .fsp-full').evaluate((e) => !e.hidden));
   await loadClip(page);
   // Media fullscreen: the shell's page fullscreen, bare, the video alone, the stop pair over it.
   const fsLook = () => page.evaluate((c) => {
@@ -2054,24 +2873,23 @@ if (!LIVE && !args.includes('--stash-live')) {
       media: !!document.querySelector(c + '[data-media]'), stage: r(c + ' .fsp-stage'), tl: r(c + ' .fsp-tlbox'), tr: r(c + ' .fsp-tr'),
       settings: r(c + ' .fsp-set'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
   }, C);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
   await overVideo();
-  await page.click(C + ' .fsp-hb-full');
+  await page.click(C + ' .fsp-full');
   await page.waitForTimeout(400);
   const fs = await fsLook();
   ok('media fullscreen: Borderless is page fullscreen, bare, with the media flag', fs.full && fs.bare && fs.media, fs);
-  ok('media fullscreen: the video alone fills the window; timeline, transport and Settings hidden',
-    !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr && !fs.settings, fs);
+  ok('media fullscreen: the video alone fills the window; the timeline and the inline bar hidden, Settings in the hover bar (PR9)',
+    !!fs.stage && fs.stage[2] >= fs.vw - 40 && fs.stage[3] >= fs.vh - 40 && !fs.tl && !fs.tr
+    && await page.locator(C + ' .fsp-hb .fsp-set').count() === 1, fs);
   ok('media fullscreen: the stop pair stays on screen (RENDERING §8.4 row 11)', !!fs.estop && !!fs.pause
     && fs.estop[0] >= 0 && fs.estop[0] + fs.estop[2] <= fs.vw && fs.estop[1] >= 0, fs);
   await overVideo();
   await page.waitForTimeout(300);
   await shot('media-1280x800');
-  ok('media fullscreen: the bar offers the way out', (await page.locator(C + ' .fsp-hb-full').getAttribute('aria-label')) === 'Exit fullscreen (f)');
+  ok('media fullscreen: the bar offers the way out', (await page.locator(C + ' .fsp-hb .fsp-full').getAttribute('aria-label')) === 'Exit fullscreen (f)');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const off = await fsLook();
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('media fullscreen: Escape returns the page as it was', !off.full && !off.media && !!off.tl && !!off.tr && !!off.settings, off);
   await page.locator(C).focus();
   await page.keyboard.press('f');
@@ -2079,20 +2897,18 @@ if (!LIVE && !args.includes('--stash-live')) {
   const fKey = await fsLook();
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
-  ok('media fullscreen: f enters and leaves (In window keeps the rail, so not bare)', fKey.media && fKey.full && !fKey.bare && !(await fsLook()).full, fKey);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
+  ok('media fullscreen: f enters and leaves, bare (one mode, PR8)', fKey.media && fKey.full && fKey.bare && !(await fsLook()).full, fKey);
   await page.waitForTimeout(200);
   await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
   const paused0 = await video(page, (v) => v.paused);
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   const dbl = await fsLook();
-  ok('media fullscreen: a double-click on the stage enters it (Borderless: the ask carries bare) and never toggles Play',
-    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === (document.documentElement.dataset.fullscreenMode !== 'window'))) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
+  ok('media fullscreen: a double-click on the stage enters it (the ask carries bare: one mode) and never toggles Play',
+    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === true)) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   ok('media fullscreen: a second double-click leaves it', !(await fsLook()).media);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
@@ -2100,21 +2916,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page fullscreen by F11 stays the whole page, no media flag', footFull.full && !footFull.media && !!footFull.tl, footFull);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
-  // The mode beside the bar's Fullscreen: the shell's pref, set through the shell's event.
-  const mode = () => page.evaluate((c) => ({ pref: JSON.parse(localStorage.getItem('phosphor.prefs') || '{}').fullscreen,
-    html: document.documentElement.dataset.fullscreenMode, b: document.querySelector(c + ' .fsp-hb-mode').getAttribute('aria-pressed'),
-    next: document.querySelector(c + ' .fsp-hb-mode').nextElementSibling.classList.contains('fsp-hb-full') }), C);
-  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
-  await page.waitForTimeout(200);
-  const m1 = await mode();
-  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
-  await page.waitForTimeout(200);
-  const m2 = await mode();
-  ok('hover: the mode toggle beside Fullscreen switches the shell mode both ways', m1.next && m1.pref === 'borderless' && m1.html === 'borderless'
-    && m1.b === 'true' && m2.pref === 'window' && m2.b === 'false', { m1, m2 });
   // The library caret: the column closes, the stage takes the width, remembered.
   const libW = () => page.locator(C).evaluate((e) => ({ lib: e.querySelector('.fsp-libbox').getClientRects().length > 0,
-    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.getBoundingClientRect().width),
+    stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.querySelector('.fsp-src').getBoundingClientRect().width),
     stageH: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().height) }));
   const open0 = await libW();
   await page.click(C + ' .fsp-libcaret');
@@ -2149,8 +2953,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   if (SHOTS) {
     await overVideo();
     await page.waitForTimeout(300);
-    await shot('hover-1920x1080');
-    await page.click(C + ' .fsp-hb-full');
+    await page.click(C + ' .fsp-full');
     await page.waitForTimeout(400);
     await overVideo();
     await page.waitForTimeout(300);
@@ -2161,8 +2964,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.evaluate(() => scrollTo(0, 0));
     await overVideo();
     await page.waitForTimeout(300);
-    await shot('hover-390x844');
-    await page.click(C + ' .fsp-hb-full').catch(() => {});
+    await page.click(C + ' .fsp-full').catch(() => {});
     await page.waitForTimeout(400);
     await overVideo();
     await page.waitForTimeout(300);
@@ -2178,7 +2980,8 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForTimeout(600);
   await page.evaluate(() => scrollTo(0, 0));
   if (await page.locator(C + '[data-an]').count()) await page.click(C + ' .fsp-expand');
-  await mediaOn(true);
+  await page.locator(C + ' .fsp-full').click();
+  await page.waitForTimeout(400);
   await overVideo();
   await page.waitForTimeout(300);
   const phone = await page.locator(C).evaluate((e) => {
@@ -2188,7 +2991,8 @@ if (!LIVE && !args.includes('--stash-live')) {
     return { cut: t.scrollWidth > t.clientWidth + 1, text: t.textContent, out: out.map((x) => x.className) };
   });
   ok('hover 390: the bar lies inside the stage, the time readout uncut', !phone.cut && phone.out.length === 0, phone);
-  await mediaOn(false);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
   ok('hover: no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
   await ctx.close();
@@ -2442,7 +3246,7 @@ if (PB) {
   await page.locator(C + ' .fsp-expand').click();
   await page.waitForTimeout(600);
   await cardShot('analyzer-1280x800');
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
   const stored = last[slEntry.id][slider.name];
   const sl = page.locator(C + ' .fsa-row input[type=range]').first();
   await sl.scrollIntoViewIfNeeded();
@@ -2451,7 +3255,7 @@ if (PB) {
   await page.waitForTimeout(800);
   const trialV = last[slEntry.id][slider.name], trialMark = (last[slEntry.id][markF.name] >> bit) & 1;
   const notice = (await statusText(page)) === 'Preview: not saved';
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Discard$/ }).click();
   await page.waitForTimeout(800);
   const backV = last[slEntry.id][slider.name], backMark = (last[slEntry.id][markF.name] >> bit) & 1;
   R.preview = { channel: '0x' + slEntry.id.toString(16), field: slider.name, label: slider.label, stored, trial: trialV, trialMark, notice, reverted: backV, markAfter: backMark };
@@ -2578,7 +3382,7 @@ if (LIVE && !PB) {
   await page.waitForTimeout(400);
   const liveRows = await page.locator(C + ' .fsa-row').count();
   ok('live: the analyzer lists the sim\'s tuning controls', liveRows > 10, liveRows);
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
   const sl = page.locator(C + ' .fsa-row input[type=range]').first();
   const v0 = await sl.inputValue();
   await sl.scrollIntoViewIfNeeded();
@@ -2587,7 +3391,7 @@ if (LIVE && !PB) {
   const marked = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 3000 })
     .then(() => true).catch(() => false);
   ok('live: a Preview write is a trial the sim marks: the notice stands', marked, await statusText(page));
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Discard$/ }).click();
   const cleared = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent !== 'Preview: not saved', C, { timeout: 3000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(600);

@@ -123,15 +123,15 @@ export function fmtValue(f, v) {
 export const CSS = `
 .fsa { height: 100%; min-height: 0; display: grid; gap: var(--sp-2); grid-template-rows: var(--tap) 20px 20px minmax(0, 1fr); }
 .fsa-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.fsa-head .fsp-btn { padding: 0 var(--sp-3); }
+.fsa-head .og-btn { padding-inline: var(--sp-3); }
 .fsa-head .fsa-gap { flex: 1 1 0; }
-.fsa-lag { height: 20px; line-height: 20px; font: .75rem var(--mono); color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsa-lag { height: 20px; line-height: 20px; font-size: .75rem; color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-kin::before { content: ''; display: inline-block; width: 12px; height: 2px; margin-right: var(--sp-2); vertical-align: middle; background: var(--intent); }
 .fsa-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--r-s); }
-.fsa-g { height: 20px; line-height: 20px; padding: 0 var(--sp-2); font-size: .72rem; color: var(--tx-mut); background: var(--bg-sunken); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsa-g { height: 20px; line-height: 20px; padding: 0 var(--sp-2); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--tx-val); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsa-row { position: relative; height: var(--tap); display: grid; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2) 0 var(--sp-3);
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 9ch; }
-.fsa-row::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 1.5px; background: transparent; }
+.fsa-row::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; background: transparent; }
 .fsa-row[data-st=pending]::before { background: var(--intent); }
 .fsa-row[data-st=overdue]::before, .fsa-row[data-st=fault]::before { background: var(--warn); }
 .fsa-k { font-size: .78rem; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -139,14 +139,9 @@ export const CSS = `
 .fsa-row[data-draft] .fsa-v { color: var(--intent); }
 .fsa-c { min-width: 0; display: flex; gap: var(--sp-1); align-items: center; height: var(--tap); }
 .fsa-c > * { min-width: 0; }
-.fsa-c .fsp-btn { flex: 1 1 0; padding: 0 var(--sp-2); overflow: hidden; text-overflow: ellipsis; font-size: .75rem; }
-.fsa-c select, .fsa-c input[type=number] { width: 100%; min-height: var(--tap); font: .75rem var(--mono); }
-.fsa-c input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); margin: 0; background: none; cursor: ew-resize; }
-.fsa-c input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
-.fsa-c input[type=range]::-moz-range-track { height: 2px; background: var(--line-2); }
-.fsa-c input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 20px; margin-top: -9px; border-radius: 4.5px;
-  border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
-.fsa-c input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+.fsa-c .og-btn { flex: 1 1 0; padding-inline: var(--sp-2); overflow: hidden; text-overflow: ellipsis; }
+.fsa-c select, .fsa-c input[type=number] { width: 100%; min-height: var(--tap); }
+.fsa-c input[type=range] { width: 100%; margin: 0; }
 .fsa-c input[type=range]:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
 .fsa-c :disabled { opacity: .4; cursor: default; }
 .fsa-empty { padding: var(--sp-3) var(--sp-2); font-size: .78rem; color: var(--tx-mut); }
@@ -162,6 +157,8 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 const setAttr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
+// A persistent on-state wears the shell's .on (finding 1); aria-pressed says it to assistive tech.
+const press = (b, on) => { setAttr(b, 'aria-pressed', String(on)); b.classList.toggle('on', on); };
 
 /**
  * A wall-free render's [min, max], script units: raw (window shares of the wide window, one every dtMs from
@@ -198,7 +195,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   const capable = () => !!api.field(TRIAL_ROLE);
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [];
-  const btn = (text, tip) => h('button', { type: 'button', class: 'fsp-btn', text, title: tip });
+  const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
   const bApply = btn(COPY.apply, COPY.applyTip);
@@ -289,19 +286,19 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       it.inputs = [i];
       it.paint = (val) => { if (document.activeElement !== i) i.value = val == null ? '' : String(val); };
     } else if (f.widget === 'toggle') {
-      const b = h('button', { type: 'button', class: 'fsp-btn', text: f.options && f.options[1] ? String(f.options[1]) : COPY.live, 'aria-label': f.label || f.name });
+      const b = h('button', { type: 'button', class: 'og-btn sm', text: f.options && f.options[1] ? String(f.options[1]) : COPY.live, 'aria-label': f.label || f.name });
       b.addEventListener('click', () => send(f, toggled(f, api.value(f))));
       c.append(b);
       it.inputs = [b];
-      it.paint = (val) => setAttr(b, 'aria-pressed', String(!!Number(val)));
+      it.paint = (val) => press(b, !!Number(val));
     } else if (f.widget === 'segmented' && f.options.length <= 2) {
       it.inputs = f.options.map((o, k) => {
-        const b = h('button', { type: 'button', class: 'fsp-btn', text: String(o) });
+        const b = h('button', { type: 'button', class: 'og-btn sm', text: String(o) });
         b.addEventListener('click', () => send(f, k));
         c.append(b);
         return b;
       });
-      it.paint = (val) => it.inputs.forEach((b, k) => setAttr(b, 'aria-pressed', String(Number(val) === k)));
+      it.paint = (val) => it.inputs.forEach((b, k) => press(b, Number(val) === k));
     } else {
       const s = h('select', { 'aria-label': f.label || f.name }, ...f.options.map((o, k) => h('option', { value: String(k), text: String(o) })));
       s.addEventListener('change', () => send(f, Number(s.value)));
@@ -339,8 +336,8 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     if (api.catalog() !== model) build();
     const cap = capable();
     if (!cap && mode === 'preview') mode = 'live';
-    setAttr(bLive, 'aria-pressed', String(mode === 'live'));
-    setAttr(bPrev, 'aria-pressed', String(mode === 'preview'));
+    press(bLive, mode === 'live');
+    press(bPrev, mode === 'preview');
     bPrev.disabled = !cap;
     bPrev.title = cap ? COPY.previewTip : COPY.noTrial;
     const pending = !!api.trialPending;

@@ -22,33 +22,33 @@
 //   hosting view and dispose stop playback until the operator's Play.
 // - Motion switched on mid-play pauses (Play then prerolls); switched off
 //   mid-play holds and the video plays on.
-// - Composition follows the card's own box: full >= 960, handheld 264..959,
-//   glance < 264. Every row has a fixed height; a state change swaps text only.
-// - Motion, Offset (ms) and Invert live in the detail's control bundle (timeline.js
-//   .fsp-zoom), on a plate at its corner; the stroke speed reading rides the detail's bottom, right of the range pills.
-// - Handheld takes data-narrow (the strip's second row) when its single row overflows at the card's width,
-//   measured on a width change, on a Look change (the elapsed readout's box) and on an analyzer toggle,
-//   never on a state change.
-// - The strip (.fsp-tr) is the one transport row, twelve items in order: prev, play, next, elapsed, the
-//   heat (timeline.js, placed here), remaining, volume, rate, graph (g), close.
-//   Handheld wraps to two rows when narrow; glance keeps play and the time.
+// - The dash card composes by its own box: full >= 960, handheld 264..959, glance < 264; the page by its
+//   class (pageClass). Every row has a fixed height; a state change swaps text only.
+// - The player bar (.fsp-tr, PR5) is the card's bottom row: prev, Play, next, elapsed, the heat (timeline.js,
+//   placed here), remaining, volume, Motion (PR6), rate, Fullscreen and Settings (the page's), the quick
+//   rail (phones, where the host offers it). Phones and the handheld card draw the scrub row (elapsed, heat,
+//   remaining) over the buttons; phones leave volume to the hardware keys. Glance keeps Play and the time.
+// - The timeline head (.fsp-tlh, PR7): the caret and TIMELINE (collapses the band, pref tlOpen), zoom and
+//   its span (the full card; pinch elsewhere), A-B, Offset (ms), Invert, Graph (g). Nothing sits over the
+//   wave but the playhead, the range pills and the stroke speed reading at its bottom, right of the pills.
 // - Prev and next step the script's chapters (metadata), else its bookmarks, the library's loaded list
-//   (library.js step) only when it has neither; close unloads the media and returns to the library. Rate
-//   scales the stroke speed shown and checked against the input limit.
-// - A double-click on the stage is the shell's page fullscreen (ask event): detail.bare is true in
-//   Borderless (no chrome) and false in In window (the shell keeps the hero rail). A single click waits
-//   DOUBLE_MS so a double never toggles Play.
-// - The split bar (.fsp-split, between the stage and the transport; its row is var(--tap) under a coarse
+//   (library.js step) only when it has neither; Close (the head's) unloads the media and returns to the
+//   library. Rate scales the stroke speed shown and checked against the input limit.
+// - Fullscreen is one mode (PR8): the shell's page fullscreen, the ask always bare; the bar's button, f and a
+//   double-click on the stage ask it. A single click waits DOUBLE_MS so a double never toggles Play. On the phone
+//   class a turn to landscape with a video enters it and the turn back leaves it (PR17).
+// - The split bar (.fsp-split, between the stage and the timeline head, desktop only; its row is var(--tap) under a coarse
 //   pointer, its hit box never past the 4 px gaps otherwise) sizes the wave card: drag, arrows
 //   (8 px, Shift 1), double-click for the default; the stage keeps at least MIN_STAGE px (a grid track
 //   minimum, so the card's min-height and the page scroll follow). The pref
 //   split holds the px, 0 the composition's default. Hiding the library or the page's Settings never
 //   shrinks the stage (page.js).
-// - The hover bar outside media fullscreen holds only Fullscreen and its mode (the transport has the rest;
-//   m mutes); in media fullscreen it is the whole bar.
+// - The hover bar exists in media fullscreen only (PR9); its row is the player bar's own buttons, moved in on entry
+//   and back on exit. m mutes.
 // - The top row keeps clear of the Borderless stop pair: the library column (full) starts below it, else
 //   the source row pads by the shell's --stop-reserve.
-// - Open files lives in the library head; an empty stage is a click target for it.
+// - Open video and Open script (PR3) sit on the empty stage and in the head (the Media menu on the handheld
+//   card); either order attaches to what is loaded.
 // - The library caret (full only) is a view switch kept in prefs libOpen, never a write.
 // - The speed reading's floor is 10ch of its own font ('20000 mm/s'), never
 //   its current text, so the switch does not move with the reading.
@@ -61,12 +61,8 @@
 //   never picture-in-picture or element fullscreen (law 1: nothing may cover the strip).
 // - The hover bar acts through the controller (toggle, seek): it never
 //   calls the video's play() or pause() or sets currentTime. Volume and mute are the video's
-//   own, stored as prefs audio; the bar holds the card's only mute and volume. Its fullscreen
-//   is the shell's page fullscreen, bare (the stop
-//   pair stays): a page mount only (opts.fullscreen), asked by the cancelable
-//   'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
-//   Its mode button shows only where the shell sets <html data-fullscreen-mode> (the
-//   desktop shell) and asks by 'phosphor-page-fullscreen-mode' {mode}; it never stores the pref.
+//   own, stored as prefs audio (the bar's volume, m). Fullscreen is a page mount's only (opts.fullscreen),
+//   asked by the cancelable 'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
@@ -87,6 +83,8 @@ import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
+import { rowsBox, sub, sliderRow, switchRow } from './rows.js';
+import { mountQueue, toStored, fromStored, move, COPY as QCOPY } from './queue.js';
 
 export const FULL_UP = 960;
 export const HOVER_IDLE_MS = 2500;
@@ -97,15 +95,26 @@ const TRACE_MS = 8000;
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const DOUBLE_MS = 250;
 export const SPLIT_MIN = 64, MIN_STAGE = 120;
+const AUTO_WAIT_MS = 10000;   // Autoplay waits this long for the next scene's script, then gives up
+// The player column the one-row bar needs (eleven items at their floors). A desktop page narrower than that with the
+// library open shuts the library for the session (the pref untouched); the caret reopens it, and then the bar wraps.
+const BAR_ROW_MIN = 600, LIB_W = 320;
 // Registry unit_ids: 0 mm, 1 mm_s.
 const UNIT_MM = 0, UNIT_MM_S = 1;
 
 export const COPY = Object.freeze({
   play: 'Play',
   pause: 'Pause',
-  openFiles: 'Open files',
+  openVideo: 'Open video',
+  openScript: 'Open script',
+  media: 'Media',
+  motionOnly: 'Motion only',
+  noVideo: 'No video',
   library: 'Library',
   player: 'Player',
+  settings: 'Settings',
+  timeline: 'Timeline',
+  rail: 'Rail',
   motion: 'Motion',
   offset: 'Offset',
   offsetTip: 'Machine later (+) or earlier (-)',
@@ -121,7 +130,6 @@ export const COPY = Object.freeze({
   speed: 'Stroke speed',
   speedOver: 'Past the input speed limit',
   empty: 'No scene loaded',
-  openVideo: 'Open a video',
   noScriptVideo: 'No script for this video',
   noScriptScene: 'No script for this scene',
   positioning: 'Positioning',
@@ -150,12 +158,10 @@ export const COPY = Object.freeze({
   unmuteKey: 'Unmute (m)',
   seek: 'Seek',
   full: 'Fullscreen (f)',
-  mode: 'In window / Borderless',
   fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
-  on: 'On',
-  off: 'Off',
+
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -167,19 +173,31 @@ const ICON = {
   muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
   full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
   unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
-  win: ['', 'M2 3.5h12v9H2zM2 6h12'],
-  bdl: ['', 'M1.5 2.5h13v9h-13zM6 14h4M8 11.5V14'],
   caret: ['', 'M6.5 5l3 3-3 3'],
+  lib: ['', 'M2 2.5h5v5H2zM9 2.5h5v5H9zM2 9.5h5v4H2zM9 9.5h5v4H9z'],
   prev: ['M13 3v10L6 8z', 'M3 3v10'],
   next: ['M3 3v10l7-5z', 'M13 3v10'],
   graph: ['', 'M2.5 2.5h11v11h-11zM4 8Q5 5 6 5T8 8T10 11T12 8'],
   close: ['', 'M4 4l8 8M12 4l-8 8'],
+  gear: ['', 'M2 4h6.5M11.5 4H14M11.5 4a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M2 8h1.5M6.5 8H14M6.5 8a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'
+    + 'M2 12h5.5M10.5 12H14M10.5 12a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0'],
+  vid: ['', 'M1.5 4.5h9v7h-9zM10.5 7l4-2v6l-4-2'],
+  scr: ['', 'M1 11l2.5-6 2.5 6 2.5-6 2.5 6 2.5-6'],
+  more: ['M2.5 7h2v2h-2zM7 7h2v2H7zM11.5 7h2v2h-2z', ''],
 };
+// Open video (PR3): video, the audio a webview plays (no audio/* wildcard: it offers MIDI), and .funscript to pair by base name.
+const VIDEO_ACCEPT = 'video/*,audio/mpeg,audio/mp4,audio/aac,audio/ogg,audio/wav,audio/flac,audio/webm,'
+  + '.mp3,.m4a,.aac,.ogg,.oga,.opus,.wav,.flac,.weba,.funscript';
 
 // ---- pure helpers -----------------------------------------------------------
 
 export function compositionOf(width) {
   return width >= FULL_UP ? 'full' : width >= GLANCE_UP ? 'handheld' : 'glance';
+}
+
+/** The page's class (PR1-PR4): buckets 1 and 2 are the phone, landscape when wider than tall; 3 and up the desktop. */
+export function pageClass(bucket, w, h) {
+  return bucket >= 3 ? 'desktop' : w > h ? 'landscape' : 'portrait';
 }
 
 // The modifier rule (DESIGN 10.5), inlined as plugins do: a key takes the declared step (Shift included),
@@ -472,22 +490,26 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     info = !script && none ? [none] : [];
     video.src = scene.stream;
     if (scene.screenshot) video.poster = scene.screenshot; else video.removeAttribute && video.removeAttribute('poster');
-    if (script) {
-      Promise.resolve(script).then((s) => {
-        if (my !== seq) return;
-        state.script = s;
-        reshape();
-        setLoopSpec();
-        info = [...s.notes, extraNote(s, extra)].filter(Boolean);
-        warm();
-        changed();
-      }, (e) => {
-        if (my !== seq) return;
-        why = (e && e.message) || String(e);
-        changed();
-      });
-    }
+    if (script) attach(script, extra, my);
     changed();
+  }
+
+  /** A script for the loaded scene (Open script on a video, PR3): the media stays. */
+  function attach(script, extra = [], my = ++seq) {
+    if (active()) stop('ready');
+    Promise.resolve(script).then((s) => {
+      if (my !== seq) return;
+      state.script = s;
+      reshape();
+      setLoopSpec();
+      info = [...s.notes, extraNote(s, extra)].filter(Boolean);
+      warm();
+      changed();
+    }, (e) => {
+      if (my !== seq) return;
+      why = (e && e.message) || String(e);
+      changed();
+    });
   }
 
   /** Close: the media and its script unloaded, the card back to its empty state. */
@@ -566,7 +588,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     const ceil = fields ? ceilingOf(api, fields) : {};
     if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm * (video.playbackRate || 1) > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
     if (info.length) return { text: info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
-    return { text: state.scene ? '' : COPY.empty, tone: '' };
+    return { text: !state.scene ? COPY.empty : state.scene.stream ? '' : COPY.motionOnly, tone: '' };
   }
   function refresh() { state.status = { ...status(), notes: info }; }
   function changed() { refresh(); onChange(); }
@@ -594,7 +616,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   applyPlay();
 
   return {
-    state, trace, play, tick, onFrame, load, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
+    state, trace, play, tick, onFrame, load, attach, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
     get wire() { return wired; },
     /** The map in force, [lower, upper] (scale.js mapOf): Auto's fit or the operator's gain. */
     get scale() { return interp.scaleAuto ? autoMap : mapOf(interp); },
@@ -610,6 +632,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     toggle: () => (active() ? stop('ready') : play()),
     halt: () => { if (active()) stop('held'); },
     canPlay,
+    /** A gate stands (a latch, another source's rail): Autoplay reads it. */
+    gated: () => !!gate(),
     setFields(f) { fields = f; reshape(); warm(); changed(); },
     setInterp(v) { interp = v; reshape(); changed(); },
     update() { if (gate() && active()) stop('held', '', true); else changed(); },
@@ -626,36 +650,65 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // The stage row is the only flexible row and may shrink to 0, so the fixed rows always fit the card.
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
-.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 24px; --fsp-bar: 28px; --fsp-sp: var(--sp-2); --fsp-stage-min: 120px; --fsp-detail-min: 64px;
-  min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min));
-  grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
-  grid-template-areas: "src lib" "stage lib" "sp lib" "tr lib" "tl lib" "st st"; }
+.fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 30px; --fsp-bar: 30px; --fsp-sp: var(--sp-2);
+  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 20px;
+  min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
+  grid-template-areas: "src lib" "stage lib" "tr lib" "sp lib" "tlh lib" "tl lib" "st lib"; }
+/* The desktop (the full card) draws the bar under the stage (review 2026-10-08); phones keep it at the bottom. */
+.fsp[data-comp=full][data-cls=landscape]:not([data-an]) {
+  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
+  grid-template-areas: "src lib" "stage lib" "sp lib" "tlh lib" "tl lib" "tr lib" "st lib"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
-.fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
+/* PR5: one player bar; on phones and the handheld card its scrub row over its button row (data-rows2). */
+.fsp[data-rows2] { --fsp-trh: calc(var(--fsp-bar) * 2 + var(--sp-2)); }
+/* PR7: the timeline band collapses to its head (pref tlOpen); the stage row takes the room. */
+.fsp[data-tlshut] { --fsp-detail: 0px; --fsp-detail-min: 0px; }
+.fsp[data-tlshut] :is(.fsp-tlbox, .fsp-split) { display: none; }
+.fsp[data-comp=full][data-libshut]:not([data-an]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "src" "stage" "tr" "sp" "tlh" "tl" "st"; }
+.fsp[data-comp=full][data-cls=landscape][data-libshut]:not([data-an]) { grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
 .fsp[data-comp=full][data-libshut] .fsp-libbox { display: none; }
-.fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 2 + 56px); grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
-  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min));
-  grid-template-areas: "src" "stage" "sp" "tr" "tl" "st"; }
-.fsp[data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) calc(var(--fsp-bar) * 2 + var(--sp-2)) minmax(var(--fsp-detail-min), var(--fsp-detail)) 20px;
-  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) * 2 + var(--sp-2) + var(--fsp-detail-min) + 20px + 5 * var(--sp-2) + var(--fsp-stage-min)); }
-@media (pointer: coarse) { .fsp[data-comp=handheld] { --fsp-detail: calc(var(--fsp-bar) * 3 + 56px); } }
+.fsp[data-comp=handheld] { grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
+  min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
+  grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
 .fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
   grid-template-areas: "src" "meter" "tr" "st"; }
 .fsp [hidden] { display: none !important; }
 :where(.fsp button, .fsp input) { font: inherit; }
 .fsp[data-comp=full]:not([data-libshut]) .fsp-libbox { box-sizing: border-box; padding-top: max(0px, calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))); }
 .fsp:is([data-comp=handheld], [data-comp=glance], [data-libshut]) .fsp-src { padding-right: var(--stop-reserve, 0px); }
-.fsp-btn { font-size: .82rem; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
-  border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
-.fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
-.fsp-btn:hover { border-color: var(--line-4); }
-.fsp-btn:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp-btn:disabled { opacity: .4; cursor: default; }
+/* The page's shell cards (PR1): the Player card is a frame behind its column, its rows inset by the card padding;
+   the library column is the Library card. Inside a dash card there is no frame: the dash card is the card. */
+.fsp[data-page] { --fsp-pad: calc(2 * var(--sp-3)); column-gap: var(--gap); }
+.fsp-pframe { grid-area: 1 / 1 / -1 / 2; }
+.fsp[data-an] .fsp-pframe { grid-column: 1 / -1; }
+.fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-slot, .fsp-anbox) { margin-inline: var(--sp-4); }
+.fsp[data-page] > .fsp-src { margin-top: var(--sp-3); }
+.fsp[data-page] > .fsp-slot { margin-bottom: var(--sp-3); }
+.fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
+  background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius);
+  padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
+.fsp[data-page][data-comp=full] .fsp-lib { flex: 1 1 auto; min-height: 0; }
+.fsp-libbox > .fsp-h { display: none; }
+.fsp[data-page][data-comp=full] .fsp-libbox > .fsp-h { display: flex; }
+.fsp-h { flex: none; display: flex; align-items: baseline; gap: var(--sp-3); margin: 0; font: 500 .8rem/30px var(--font); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--tx-val); white-space: nowrap; }
+.fsp-ix { font: 400 .62rem var(--mono); letter-spacing: normal; color: var(--tx-faint); }
+.fsp-ic svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
+.fsp-ic svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp-ic:not(:has(span)) { width: 30px; padding: 0; }
+@media (pointer: coarse) { .fsp-ic:not(:has(span)) { width: var(--tap); } }
+.fsp-src > .og-btn { flex: none; }
+.fsp-src > :is(.fsp-openv, .fsp-opens, .fsp-close), .fsp-media { display: none; }
+.fsp[data-comp=full] .fsp-src > :is(.fsp-openv, .fsp-opens, .fsp-close), .fsp[data-comp=handheld] .fsp-media { display: inline-flex; }
+.fsp-menu:popover-open { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
+  background: var(--bg-raised); border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--tx); }
+.fsp-menu .og-btn { justify-content: flex-start; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.fsp-libcaret { display: none; flex: none; place-items: center; width: 18px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
-  background: var(--bg-raised); border: 1px solid var(--line); border-right: 0; border-radius: var(--r-s) 0 0 var(--r-s); cursor: pointer; }
+.fsp-libcaret { display: none; flex: none; place-items: center; width: 30px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
+  background: none; border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; }
 @media (pointer: coarse) { .fsp-libcaret { width: var(--tap); } }
 .fsp[data-comp=full]:not([data-an]) .fsp-libcaret { display: grid; }
 .fsp-libcaret:hover { color: var(--tx-hi); }
@@ -665,68 +718,113 @@ export const CSS = `
 .fsp-libcaret svg { transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
 .fsp[data-libshut] .fsp-libcaret svg { transform: rotate(180deg); }
 .fsp-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: .85rem; }
+.fsp[data-page] .fsp-title { margin-left: auto; text-align: right; }
 .fsp-src > [role=tablist] { display: flex; flex: none; gap: var(--sp-2); }
 .fsp-tab { display: none; }
-.fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
-.fsp[data-comp=handheld] .fsp-title { display: none; }
-.fsp-stage:has(.fsp-empty:not([hidden])) { cursor: pointer; }
+/* The open tab wears --highlight (the advpen precedent, finding 1). */
+.fsp-tab[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp[data-comp=handheld] .fsp-tab { display: inline-flex; }
 .fsp[data-comp=glance] .fsp-title { font-size: .75rem; line-height: 20px; }
-.fsp-stage { grid-area: stage; position: relative; min-height: 0; background: var(--bg-sunken); border-radius: var(--r-s); overflow: hidden; }
+.fsp-stage { grid-area: stage; position: relative; min-height: 0; overflow: hidden; }
 .fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
-.fsp-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.fsp-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tx-mut); font-size: .85rem; pointer-events: none; }
+.fsp-vbox { position: absolute; inset: 0; background: var(--screen); border-radius: var(--r-s); overflow: hidden; }
+.fsp-vbox:has(> .fsp-empty:not([hidden])) { border: 1px dashed var(--line-3); }
+.fsp-vbox video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+/* Phone portrait (PR2): the stage at the video's aspect, capped by its row; empty or motion only, a 120 px strip. */
+/* The split bar is the desktop's (PR7). */
+.fsp:is([data-cls=portrait], [data-cls=landscape]) { --fsp-sp: 0px; }
+.fsp:is([data-cls=portrait], [data-cls=landscape]) .fsp-split { display: none; }
+.fsp[data-cls=portrait]:not([data-an]) .fsp-stage::before { display: none; }
+.fsp[data-cls=portrait]:not([data-an]) .fsp-vbox { bottom: auto; height: var(--fsp-stage-min); }
+.fsp[data-cls=portrait][data-ar]:not([data-an], [data-mo]) .fsp-vbox { right: auto; width: 100%; height: auto; aspect-ratio: var(--fsp-ar); max-height: 100%; }
+.fsp-empty { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: var(--sp-3); }
+.fsp[data-an] .fsp-empty > * { display: none; }
+.fsp-mo { position: absolute; inset: 0; display: grid; grid-template: "k b" auto "m m" 24px / minmax(0, 1fr) auto; align-content: center; align-items: center;
+  gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.fsp-mo-k { grid-area: k; font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--tx-val); }
+.fsp-mo .fsp-meter { grid-area: m; display: block; height: 24px; box-shadow: inset 0 0 0 1px var(--line-2); }
+.fsp[data-an] .fsp-mo > :not(.fsp-meter) { display: none; }
 .fsp-tlbox { grid-area: tl; min-width: 0; }
 .fsp-split { grid-area: sp; position: relative; cursor: ns-resize; touch-action: none; outline: none; }
 .fsp-split::before { content: ''; position: absolute; inset: -4px 0; }
-.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); border-radius: 2px; }
+.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); }
 @media (pointer: coarse) { .fsp-split::before { inset: 0; } }
 .fsp-split::after { transition: background var(--t-quick, 120ms); }
 .fsp-split:hover::after, .fsp-split[data-drag]::after, .fsp-split:focus-visible::after { background: var(--highlight); }
 .fsp[data-an] .fsp-split, .fsp[data-comp=glance] .fsp-split { display: none; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .fsp[data-comp=full] .fsp-lib { min-height: 400px; }
-.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 6 / 2; }
-.fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-split, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
+.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 7 / 2; }
+.fsp[data-comp=handheld]:is([data-view=library], [data-view=queue]) :is(.fsp-stage, .fsp-split, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
+.fsp-libbox[data-lv=queue] > .fsp-lib, .fsp-libbox:not([data-lv=queue]) > .fsp-qbox { display: none; }
+.fsp-qbox { flex: 1 1 auto; min-height: 0; }
+.fsp-libbox { display: flex; flex-direction: column; }
+.fsp-libbox > .fsp-lib { flex: 1 1 auto; min-height: 0; }
+.fsp-seg[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp-libseg { display: flex; gap: var(--sp-2); flex: none; }
+.fsp[data-comp=handheld]:not([data-media]) .fsp-libseg { display: none; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.fsp-meter { grid-area: meter; position: relative; display: none; border: 1px solid var(--line); border-radius: var(--r-s); }
+.fsp-meter { grid-area: meter; position: relative; display: none; background: var(--screen); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
-.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; border-radius: 1.5px; }
+.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; }
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-.fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  border-left: 3px solid transparent; padding-left: var(--sp-2); background: var(--bg-sunken); border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
-.fsp-slot[data-tone=warn] { color: var(--tx); border-left-color: var(--warn); }
-.fsp-tr { grid-area: tr; display: grid; gap: var(--sp-2); align-items: center; min-width: 0;
-  grid-template-columns: repeat(4, max-content) minmax(120px, 1fr) max-content minmax(48px, 96px) repeat(3, max-content); }
-.fsp-tr > * { min-width: 0; }
-.fsp-tr .fsp-btn { min-height: var(--fsp-bar); }
-.fsp-tr .fsp-tb { display: grid; place-items: center; min-width: var(--fsp-bar); padding: 0; }
-.fsp-tb svg { width: 18px; height: 18px; fill: currentColor; }
-.fsp-tb svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-tr .fsp-rate { width: 6ch; min-width: 6ch; padding: 0 var(--sp-2); font: .75rem var(--mono); }
+.fsp-slot { grid-area: st; height: 20px; line-height: 20px; font-size: .78rem; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left: 3px solid var(--line-3); padding-left: var(--sp-3); }
+.fsp-slot[data-tone=warn] { border-left-color: var(--warn); }
+/* PR14: on the phone class the page's status is the shell footer's slot (phosphor-page-status); no row of its own. */
+.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) { --fsp-st: 0px; }
+.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) .fsp-slot { display: none; }
+.fsp-tr { grid-area: tr; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
+@container (max-width: 22em) { .fsp-tr .fsp-vol { display: none; } }
+.fsp-tr > * { flex: none; min-width: 0; }
+.fsp-tr > .og-btn { min-height: var(--fsp-bar); }
+.fsp-tr > .fsp-ov { flex: 1 1 60px; }
+.fsp-tr .fsp-rate { min-width: 5ch; padding-inline: var(--sp-2); font: .75rem var(--mono); }
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
-.fsp-vol { width: 100%; height: var(--fsp-bar); margin: 0; accent-color: var(--highlight); cursor: pointer; }
-.fsp[data-comp=handheld] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(120px, 1fr) max-content minmax(32px, 64px) max-content repeat(2, var(--fsp-bar)); }
-.fsp[data-comp=handheld][data-narrow] .fsp-tr { grid-template-columns: repeat(3, var(--fsp-bar)) max-content minmax(0, 1fr) max-content; grid-template-rows: repeat(2, var(--fsp-bar)); }
-.fsp[data-comp=handheld][data-narrow] .fsp-vol { grid-area: 2 / 1 / 3 / 4; }
-.fsp[data-comp=handheld][data-narrow] .fsp-rate { grid-area: 2 / 4; }
-.fsp[data-comp=handheld][data-narrow] .fsp-expand { grid-area: 2 / 5; justify-self: end; }
-.fsp[data-comp=handheld][data-narrow] .fsp-close { grid-area: 2 / 6; }
-.fsp[data-comp=glance] .fsp-tr { grid-template-columns: auto 1fr; }
+.fsp-vol { flex: 0 1 96px; min-width: 48px; height: var(--fsp-bar); margin: 0; cursor: pointer; }
+.fsp-brk { display: none; }
+.fsp[data-rows2] .fsp-tr { flex-wrap: wrap; align-content: space-between; row-gap: var(--sp-2); }
+.fsp[data-rows2] .fsp-tr > :is(.fsp-el, .fsp-ov, .fsp-rem, .fsp-brk) { order: -1; }
+.fsp[data-rows2] .fsp-brk { display: block; flex: 0 0 100%; height: 0; }
+.fsp[data-rows2] .fsp-tr > .og-btn { flex: 1 1 auto; width: auto; min-width: 30px; }
+@media (pointer: coarse) { .fsp[data-rows2] .fsp-tr > .og-btn { min-width: 40px; } }
+.fsp-tr > .fsp-motion { min-width: max-content; }
+/* Phones: volume is the hardware keys' (and Settings', ph-1qs5.5). */
+.fsp:is([data-cls=portrait], [data-cls=landscape]) .fsp-vol { display: none; }
 .fsp[data-comp=glance] .fsp-tr > :not(.fsp-play, .fsp-time) { display: none; }
+.fsp[data-comp=glance] .fsp-time { flex: 1 1 auto; }
+/* PR7: the timeline band's head: caret and TIMELINE, zoom and its span (the full card), A-B, Offset, Invert, Graph. */
+.fsp-tlh { grid-area: tlh; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
+/* A narrow head drops words before controls: the unit, then TIMELINE (the caret stays). */
+@container (max-width: 20em) { .fsp-tlh .fsp-offu { display: none; } }
+@container (max-width: 18.5em) { .fsp-tlcaret > span { display: none; } }
+.fsp-tlh > * { flex: none; }
+.fsp-tlh > .og-btn { min-height: var(--fsp-bar); }
+.fsp-tlgap { flex: 1 1 0; }
+.fsp-tlcaret { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; background: none; border: 0;
+  color: var(--tx-val); font: 500 .8rem/1 var(--font); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.fsp-tlcaret svg { width: 14px; height: 14px; fill: none; transition: transform var(--t-move, 200ms) var(--ease-out, ease); }
+.fsp-tlcaret svg .s { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.fsp-tlcaret[aria-expanded=true] svg { transform: rotate(90deg); }
+.fsp-tlcaret:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
+.fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh .fsp-zoom { display: none; }
+.fsp[data-comp=glance] :is(.fsp-tlh, .fsp-tlbox) { display: none; }
 .fsp[data-comp=glance] .fsp-speed { display: none; }
 .fsp[data-comp=glance] .fsp-time { font-size: .7rem; }
 .fsp-off { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--fsp-bar); }
-.fsp-offu { color: var(--tx-mut); font-size: .8rem; }
-.fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .8rem; min-height: var(--fsp-bar); display: grid; align-items: center; }
-.fsp[data-comp=handheld] .fsp-off input { width: 5ch; }
-.fsp-off input { width: 7ch; height: var(--fsp-bar); min-height: var(--fsp-bar); font-family: var(--mono); }
+.fsp-offu { color: var(--tx-mut); font-size: .76rem; }
+.fsp-offk { cursor: ew-resize; touch-action: none; user-select: none; color: var(--tx-mut); font-size: .76rem; font-weight: 500; letter-spacing: .04em;
+  text-transform: lowercase; min-height: var(--fsp-bar); display: grid; align-items: center; }
+.fsp[data-rows2] :is(.fsp-offk, .fsp-zoom output) { display: none; }
+.fsp-off input.og-num { width: 7ch; min-height: var(--fsp-bar); padding-block: 0; }
+.fsp[data-comp=handheld] .fsp-off input.og-num { width: 6ch; }
 .fsp-speed { position: absolute; left: calc(var(--tap) * 2 + 4px); bottom: 3px; z-index: 1; height: 18px; min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center;
   pointer-events: none; }
-.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
+.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
@@ -738,28 +836,33 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tlbox::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; margin-bottom: calc(var(--fsp-detail) + var(--sp-4)); }
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
-.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px); grid-template-rows: var(--fsp-src) calc(180px - var(--fsp-src) - var(--sp-2)) minmax(0, 1fr) 20px var(--fsp-bar);
-  grid-template-areas: "src stage" "tl stage" "tl an" "st st" "tr tr"; }
+.fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px);
+  grid-template-rows: var(--fsp-src) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
+  grid-template-areas: "src stage" "tlh stage" "tl stage" "tl an" "tr tr" "st st"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
-.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) minmax(0, 1fr) 20px var(--fsp-bar);
-  grid-template-areas: "src" "tl" "st" "tr"; }
-.fsp[data-an][data-comp=handheld][data-narrow] { grid-template-rows: var(--tap) minmax(0, 1fr) 20px calc(var(--fsp-bar) * 2 + var(--sp-2)); }
+.fsp[data-page][data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) calc(clamp(320px, 40%, 560px) + 2 * var(--sp-4)); }
+.fsp[data-media] > .fsp-stage { margin: 0; }
+.fsp[data-media] { min-height: 0 !important; }
+.fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--sp-3); }
+.fsp[data-media] .fsp-vbox { border: 0; border-radius: 0; }
+.fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
+  grid-template-areas: "src" "tlh" "tl" "tr" "st"; }
 .fsp[data-an][data-comp=handheld] .fsp-tlbox::before { margin-bottom: calc(var(--fsp-detail) + var(--sp-4)); }
 .fsp[data-an][data-comp=handheld] .fsp-tl { bottom: calc(var(--fsp-an) + 4px); }
 .fsp[data-an][data-comp=handheld] .fsp-anbox { grid-area: tl; align-self: end; height: var(--fsp-an); }
 .fsp[data-an][data-comp=handheld] .fsp-stage { grid-area: src; justify-self: end; width: calc(var(--tap) * 16 / 9); height: var(--tap); }
 .fsp[data-an][data-comp=handheld] .fsp-stage::before { display: none; }
 .fsp[data-an][data-comp=handheld] .fsp-tab { display: none; }
-.fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlbox, .fsp-tr) { visibility: visible; }
+.fsp[data-an][data-comp=handheld] :is(.fsp-stage, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: visible; }
 .fsp[data-an] .fsp-empty { font-size: .7rem; }
 .fsp-hov { position: absolute; inset: 0; z-index: 1; pointer-events: none; container-type: size; }
-.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px var(--tap); padding: var(--sp-5) var(--sp-2) 0;
+.fsp-hb { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-rows: 16px auto; padding: var(--sp-5) var(--sp-2) 0;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg-raised) 92%, transparent), color-mix(in srgb, var(--bg-raised) 55%, transparent) 60%, transparent);
   opacity: 0; transition: opacity var(--t-move, 200ms) var(--ease-out, ease); pointer-events: none; }
 .fsp-hov[data-show] > .fsp-hb, .fsp-hb:has(:focus-visible) { opacity: 1; pointer-events: auto; }
-@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) var(--tap); padding-top: var(--sp-3); } }
-@container (max-height: 129px) { .fsp-hb { display: none; } }
-@container (max-width: 439px) { .fsp-hb-vol, .fsp-hov .fsp-hb-mode { display: none; } }
+@media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; padding-top: var(--sp-3); } }
+/* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
+@container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
 .fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 var(--sp-2); cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
 .fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
@@ -772,21 +875,37 @@ export const CSS = `
 .fsp-hb-seek:is(:hover, [data-drag], :focus-visible) .fsp-hb-played::after { transform: none; }
 .fsp-hb-tip { position: absolute; bottom: calc(50% + 10px); transform: translateX(-50%); padding: var(--sp-1) var(--sp-2); font: .75rem var(--mono); color: var(--tx);
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-s); white-space: nowrap; pointer-events: none; }
-.fsp:not([data-media]) :is(.fsp-hb-seek, .fsp-hb-play, .fsp-hb-mute, .fsp-hb-vol, .fsp-hb-time) { display: none; }
-.fsp:not([data-media]) .fsp-hb { grid-template-rows: var(--tap); padding-top: var(--sp-3); }
+.fsp:not([data-media]) .fsp-hov { display: none; }
+.fsp[data-fswave] .fsp-hb { grid-template-rows: 72px 16px auto; --fsp-detail: 72px; }
+@media (pointer: coarse) { .fsp[data-fswave] .fsp-hb { grid-template-rows: 72px var(--tap) auto; } }
+.fsp-hb > .fsp-tl { margin: 0 var(--sp-2) var(--sp-2); }
+.fsp-hb-row > .og-btn { flex: none; min-height: var(--tap); }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-.fsp-hb-b { flex: none; display: grid; place-items: center; width: var(--tap); height: var(--tap); padding: 0; color: var(--tx); background: none;
-  border: 0; border-radius: var(--r-s); cursor: pointer; }
-.fsp-hb-b:hover { color: var(--tx-hi); }
-.fsp-hb-b:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
-.fsp-hb-b:disabled { opacity: .4; cursor: default; }
-.fsp-hb-b svg { width: 20px; height: 20px; fill: currentColor; }
-.fsp-hb-b svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.fsp-hb-vol { flex: 0 1 80px; min-width: 48px; height: var(--tap); margin: 0; accent-color: var(--highlight); cursor: pointer; }
 .fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
+.fsp-cplay { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; translate: -50% -50%; display: none; place-items: center;
+  border-radius: 50%; background: rgba(var(--shade-rgb), .55); color: var(--tx-hi); pointer-events: none; z-index: 1; }
+.fsp-cplay svg { width: 32px; height: 32px; fill: currentColor; }
+.fsp-cplay svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.fsp[data-paused]:not([data-an], [data-comp=glance]) .fsp-cplay, .fsp:not([data-comp=glance]) .fsp-cplay[data-flash] { display: grid; }
+@keyframes fsp-flash { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.3; } }
+.fsp-cplay[data-flash] { animation: fsp-flash 500ms var(--ease-out, ease) forwards; }
+html.still .fsp-cplay[data-flash] { animation-duration: 1ms; }
+/* PR13: the fullscreen library drawer, under the stop pair; the phone tab's now-playing row. */
+.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
+  right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) var(--sp-4); visibility: visible; box-sizing: border-box;
+  background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
+.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: flex; }
+.fsp-libb { display: none; }
+.fsp[data-media] .fsp-libb { display: inline-flex; }
+.fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
+.fsp[data-comp=handheld]:is([data-view=library], [data-view=queue]):not([data-media]) .fsp-now { display: flex; }
+.fsp-nowt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
+.fsp-nowm { flex: none; font: .76rem var(--mono); color: var(--tx-val); }
+.fsp[data-comp=handheld] .fsp-libbox { display: flex; flex-direction: column; }
+.fsp[data-comp=handheld] .fsp-lib { flex: 1 1 auto; min-height: 0; }
 .fsp[data-media][data-comp] .fsp-stage { grid-area: stage; position: relative; width: auto; height: auto; clip-path: none; justify-self: stretch;
   visibility: visible; border-radius: 0; }
 .fsp[data-media] .fsp-stage::before { display: none; }
@@ -804,7 +923,87 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+/** The click that follows a pointerdown which closed a sheet or drawer: swallowed, so the tap outside never reaches
+ *  the stage (a stage click toggles Play, which moves the machine). */
+export function swallowClick() {
+  const eat = (e) => { e.stopPropagation(); e.preventDefault(); done(); };
+  // However long the tap is held, its click is eaten; the guard ends at the next pointerdown (a later tap), never on a
+  // timer, so a long press cannot slip through.
+  const done = () => { document.removeEventListener('click', eat, true); document.removeEventListener('pointerdown', done, true); };
+  document.addEventListener('click', eat, true);
+  setTimeout(() => document.addEventListener('pointerdown', done, true), 0);
+}
+// A meter tick's left at share u, its 3 px inside the meter at either end.
+const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * The controller's media: the video element while a scene has a stream, else a silent clock over
+ * durationMs() (motion only, PR4) with the element's events, play/pause/seek and rate semantics.
+ * Silent mode has no frames: the caller feeds frames and calls poll() once per animation frame.
+ */
+function createMedia(el, durationMs, now = () => performance.now()) {
+  const et = new EventTarget();
+  const fire = (t) => et.dispatchEvent(new Event(t));
+  let silent = false, base = 0, t0 = 0, run = false, ended = false, rate = 1;
+  for (const t of ['play', 'pause', 'ended', 'waiting', 'playing', 'seeking', 'durationchange', 'ratechange', 'error', 'loadedmetadata', 'resize']) {
+    el.addEventListener(t, () => { if (!silent) fire(t); });
+  }
+  const at = () => (run ? Math.min(durationMs(), base + (now() - t0) * rate) : base);
+  const m = {
+    el,
+    get silent() { return silent; },
+    addEventListener: (t, fn) => et.addEventListener(t, fn),
+    set src(v) {
+      if (v) { silent = false; el.src = v; return; }
+      if (run) { base = at(); run = false; }
+      silent = true; base = 0; ended = false;
+      el.removeAttribute('src'); el.removeAttribute('poster'); el.load();
+      fire('durationchange');
+    },
+    get src() { return silent ? '' : el.src; },
+    set poster(v) { el.poster = v; },
+    removeAttribute(k) { if (k === 'src') silent = false; el.removeAttribute(k); },
+    load() { el.load(); },
+    play() {
+      if (!silent) return el.play();
+      if (ended || at() >= durationMs()) base = 0;
+      ended = false; run = true; t0 = now();
+      fire('play'); fire('playing');
+      return Promise.resolve();
+    },
+    pause() {
+      if (!silent) return el.pause();
+      if (run) { base = at(); run = false; fire('pause'); }
+    },
+    /** Silent mode: the end of the script ends playback as a video's end does. */
+    poll() {
+      if (silent && run && at() >= durationMs()) { base = durationMs(); run = false; ended = true; fire('pause'); fire('ended'); }
+    },
+    get paused() { return silent ? !run : el.paused; },
+    get ended() { return silent ? ended : el.ended; },
+    get seeking() { return silent ? false : el.seeking; },
+    get currentTime() { return silent ? at() / 1000 : el.currentTime; },
+    set currentTime(s) {
+      if (!silent) { el.currentTime = s; return; }
+      base = Math.max(0, Math.min(durationMs(), s * 1000)); t0 = now(); ended = false;
+      fire('seeking');
+    },
+    get duration() { return silent ? durationMs() / 1000 : el.duration; },
+    get playbackRate() { return silent ? rate : el.playbackRate; },
+    set playbackRate(v) {
+      el.playbackRate = v;
+      if (silent) { base = at(); t0 = now(); rate = v; fire('ratechange'); }
+    },
+    set defaultPlaybackRate(v) { el.defaultPlaybackRate = v; },
+    get buffered() { return silent ? null : el.buffered; },
+    get volume() { return el.volume; },
+    set volume(v) { el.volume = v; },
+    get muted() { return el.muted; },
+    set muted(v) { el.muted = v; },
+  };
+  return m;
+}
 
 export function createPlayer(api) {
   let probeRing = null;
@@ -815,13 +1014,14 @@ export function createPlayer(api) {
     if (probeRing.length > PROBE_RING) probeRing.splice(0, probeRing.length - PROBE_RING);
   };
 
-  const video = document.createElement('video');
-  video.controls = false;
-  video.playsInline = true;
-  video.disablePictureInPicture = true;
-  video.disableRemotePlayback = true;
-  video.preload = 'auto';
-  for (const a of ['playsinline', 'disablepictureinpicture', 'disableremoteplayback']) video.setAttribute(a, '');
+  const vel = document.createElement('video');
+  vel.controls = false;
+  vel.playsInline = true;
+  vel.disablePictureInPicture = true;
+  vel.disableRemotePlayback = true;
+  vel.preload = 'auto';
+  for (const a of ['playsinline', 'disablepictureinpicture', 'disableremoteplayback']) vel.setAttribute(a, '');
+  const video = createMedia(vel, () => (ctl.state.script ? ctl.state.script.durationMs : NaN));
   const audio = readPrefs(api).audio;
   video.volume = clamp(Number(audio.vol) || 0, 0, 1);
   video.muted = !!audio.muted;
@@ -835,7 +1035,7 @@ export function createPlayer(api) {
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
   const views = [];
   const ctl = createControl({ api, video, clock, scheduler, submit, probe, onChange: () => views.forEach((v) => v.render()) });
-  const stopFrames = frameSource(video, ctl.onFrame);
+  const stopFrames = frameSource(vel, ctl.onFrame);
 
   let stash = null, stashId = '';
   const getStash = () => {
@@ -851,15 +1051,84 @@ export function createPlayer(api) {
     const client = getStash();
     ctl.load(scene, scene.funscript && client ? client.script(scene) : null, COPY.noScriptScene);
   }
+  const parse = (f) => f.text().then((t) => parseFunscript(t, f.name));
   function openLocal(files) {
     const scene = localScene([...files]);
     if (!scene) return;
     const sc = scene.script;
-    ctl.load(scene, sc ? sc.text().then((t) => parseFunscript(t, sc.name)) : null, COPY.noScriptVideo, scene.extra);
+    ctl.load(scene, sc ? parse(sc) : null, COPY.noScriptVideo, scene.extra);
+  }
+  /** Open video (PR3): a video alone attaches to a loaded script without one; a .funscript picked with it pairs by base name. */
+  function openVideo(files) {
+    files = [...files];
+    // A file the queue knows by name (a row reading Reopen) takes this pick's file and its same-named script.
+    for (const e of queue) if (e.kind === 'file' && !e.files) {
+      const vf = files.find((f) => f.name === e.name);
+      if (vf) e.files = [vf, ...files.filter((f) => { const ax = axisOf(f.name); return ax && ax.base.toLowerCase() === stemOf(vf.name); })];
+    }
+    // Several videos in one pick: the first plays, the others join the queue, each with its same-named script.
+    const vids = files.filter((f) => !axisOf(f.name));
+    if (vids.length > 1) {
+      for (const vf of vids.slice(1)) {
+        const fs = [vf, ...files.filter((f) => { const ax = axisOf(f.name); return ax && ax.base.toLowerCase() === stemOf(vf.name); })];
+        queue = [...queue, { kind: 'file', key: 'file:' + vf.name + ':' + vf.size, title: vf.name.replace(/\.[^.]+$/, ''), name: vf.name, durationMs: null, files: fs }];
+      }
+      saveQueue();
+      files = files.filter((f) => !vids.slice(1).includes(f) && !(axisOf(f.name) && vids.slice(1).some((vf) => axisOf(f.name).base.toLowerCase() === stemOf(vf.name))));
+    } else if (queue.some((e) => e.kind === 'file')) { queue = [...queue]; saveQueue(); }
+    const { video: v, script } = pairFiles(files);
+    const st = ctl.state;
+    if (st.view !== 'player') ctl.setView('player');
+    if (!v) { if (script) openScript(script); return; }
+    if (!script && st.script && st.scene && !st.scene.stream) ctl.load(localScene([v]), st.script, COPY.noScriptVideo);
+    else openLocal(files);
+  }
+  /** Open script (PR3): attaches to a loaded video, else plays motion only (PR4). */
+  function openScript(f) {
+    const st = ctl.state;
+    if (st.view !== 'player') ctl.setView('player');
+    if (st.scene && st.scene.stream) ctl.attach(parse(f));
+    else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, parse(f), '');
   }
 
   let raf = 0;
+  // ---- the queue and Autoplay (ph-1qs5.9) ----
+  const stashKey = () => (readPrefs(api).stash || {}).key || '';
+  const stemOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
+  let queue = readPrefs(api).queue.map((s) => fromStored(s, stashKey())).filter(Boolean);
+  let autoplay = readPrefs(api).autoplay, autoPending = null;
+  const setAutoplay = (on) => { autoplay = !!on; writePref(api, 'autoplay', autoplay); views.forEach((w) => w.render()); };
+  const saveQueue = () => { writePref(api, 'queue', queue.map(toStored)); views.forEach((w) => w.render()); };
+  const loadEntry = (e) => { if (e.kind === 'stash') pick(e.scene); else if (e.files) openLocal(e.files); };
+  const Q = {
+    list: () => queue,
+    add(scene) { queue = [...queue, { kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }]; saveQueue(); },
+    remove(i) { queue = queue.filter((_, k) => k !== i); saveQueue(); },
+    next(i) { queue = move(queue, i, 0); saveQueue(); },
+    move(from, to) { queue = move(queue, from, to); saveQueue(); },
+    play(i) { const e = queue[i]; if (!e) return; queue = queue.filter((_, k) => k !== i); saveQueue(); loadEntry(e); },
+  };
+  // Autoplay: a scene that ends (not a loop's wrap; a looping scene never ends) loads the queue's first loadable
+  // entry (a file not yet reopened stays queued) and plays it once it can. The pending Play belongs to that scene
+  // and is dropped, never deferred, when anything else happens first: another scene or Close, any Play, Pause or
+  // stop (the phase leaves ready), a gate (a Halt or latch), a refusal or a warning in the status, or AUTO_WAIT_MS
+  // without the script. Nothing may start motion later that the operator did not ask for.
+  video.addEventListener('ended', () => {
+    const p = ctl.state.play;
+    if (!autoplay || p.loop || ctl.state.ab.b != null || ctl.gated()) return;
+    const i = queue.findIndex((e) => e.kind === 'stash' || e.files);
+    if (i < 0) return;
+    Q.play(i);
+    autoPending = ctl.state.scene ? { key: ctl.state.scene.key, until: performance.now() + AUTO_WAIT_MS } : null;
+  });
+  const autoStep = () => {
+    const s = ctl.state, a = autoPending;
+    if (!s.scene || s.scene.key !== a.key || s.phase !== 'ready' || s.status.tone === 'warn' || ctl.gated() || performance.now() > a.until) autoPending = null;
+    else if (ctl.canPlay()) { autoPending = null; ctl.play(); }
+  };
   const loop = () => {
+    if (video.silent) { video.poll(); if (!video.paused) ctl.onFrame(video.currentTime * 1000, performance.now()); }
+    if (autoPending) autoStep();
     ctl.tick();
     for (const v of views) v.frame();
     raf = views.length ? requestAnimationFrame(loop) : 0;
@@ -893,26 +1162,31 @@ export function createPlayer(api) {
 
   function makeView(el, fields, opts) {
     const st = ctl.state;
-    const file = h('input', { type: 'file', multiple: '', accept: 'video/*,audio/*,.funscript', hidden: '' });
-    file.addEventListener('change', () => { if (file.files && file.files.length) openLocal(file.files); file.value = ''; });
-    const btn = (cls, text, attrs = {}) => h('button', { type: 'button', class: 'fsp-btn ' + cls, text, ...attrs });
+    let comp = '', prevCls = '';
+    const picker = (accept, multiple, fn) => {
+      const f = h('input', { type: 'file', accept, hidden: '', ...(multiple ? { multiple: '' } : {}) });
+      f.addEventListener('change', () => { if (f.files && f.files.length) fn(f.files); f.value = ''; });
+      return f;
+    };
+    const fileV = picker(VIDEO_ACCEPT, true, openVideo), fileS = picker('.funscript', false, (fl) => openScript(fl[0]));
+    fileV.className = 'fsp-filev';
+    fileS.className = 'fsp-files';
+    const btn = (cls, text, attrs = {}) => h('button', { type: 'button', class: 'og-btn sm ' + cls, text, ...attrs });
     const tabP = btn('fsp-tab', COPY.player, { role: 'tab' });
     const tabL = btn('fsp-tab', COPY.library, { role: 'tab' });
     tabP.addEventListener('click', () => ctl.setView('player'));
     tabL.addEventListener('click', () => ctl.setView('library'));
+    const tabQ = btn('fsp-tab', QCOPY.queue, { role: 'tab' });
+    tabQ.addEventListener('click', () => ctl.setView('queue'));
+    // Desktop and the drawer: Library | Queue at the head of the column (a view switch for the session).
+    let libView = 'library';
+    const segL = btn('fsp-seg', COPY.library, { role: 'tab' }), segQ = btn('fsp-seg', QCOPY.queue, { role: 'tab' });
+    segL.addEventListener('click', () => { libView = 'library'; render(); });
+    segQ.addEventListener('click', () => { libView = 'queue'; render(); });
+    const libseg = h('div', { class: 'fsp-libseg', role: 'tablist' }, segL, segQ);
+    const qbox = h('div', { class: 'fsp-qbox' });
+    let qv = null, qSeen = null;
     const title = h('span', { class: 'fsp-title' });
-    const src = h('div', { class: 'fsp-src' }, h('span', { role: 'tablist' }, tabP, tabL), title, file);
-
-    const empty = h('div', { class: 'fsp-empty', text: COPY.openVideo });
-    const stage = h('div', { class: 'fsp-stage' }, empty);
-    const tlbox = h('div', { class: 'fsp-tlbox' });
-    const lib = h('div', { class: 'fsp-libbox' });
-    const anbox = h('div', { class: 'fsp-anbox' });
-    const tickI = h('i', { class: 'fsp-tick int' });
-    const tickR = h('i', { class: 'fsp-tick real' });
-    const meter = h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, tickI, tickR);
-    const status = h('div', { class: 'fsp-slot', 'aria-live': 'polite' });
-
     const icon = () => {
       const s = document.createElementNS(SVG_NS, 'svg');
       s.setAttribute('viewBox', '0 0 16 16');
@@ -922,14 +1196,82 @@ export function createPlayer(api) {
       s.append(document.createElementNS(SVG_NS, 'path'), k);
       return s;
     };
-    const hbBtn = (cls) => { const b = h('button', { type: 'button', class: 'fsp-hb-b ' + cls }); b.append(icon()); return b; };
+    // Open video, Open script and Close (PR3): shell buttons, an icon and a word; the Media menu holds them on phones.
+    const ogBtn = (cls, ic, text, tip = text, attrs = {}) => {
+      const b = h('button', { type: 'button', class: 'og-btn sm fsp-ic ' + cls, title: tip, 'aria-label': tip, ...attrs });
+      b.append(icon());
+      b.firstChild.children[0].setAttribute('d', ic[0]);
+      b.firstChild.children[1].setAttribute('d', ic[1]);
+      if (text) b.append(h('span', { text }));
+      return b;
+    };
+    const openV = (cls, attrs) => { const b = ogBtn(cls, ICON.vid, COPY.openVideo, COPY.openVideo, attrs); b.addEventListener('click', () => fileV.click()); return b; };
+    const openS = (cls, attrs) => { const b = ogBtn(cls, ICON.scr, COPY.openScript, COPY.openScript, attrs); b.addEventListener('click', () => fileS.click()); return b; };
+    const closeH = ogBtn('fsp-close', ICON.close, '', COPY.close);
+    const doClose = () => { ctl.unload(); ctl.setView('library'); };
+    closeH.addEventListener('click', doClose);
+    // The phones' Media menu: a popover (light dismiss: a tap outside or Escape closes it), closed by a pick.
+    const menu = h('div', { class: 'fsp-menu', popover: 'auto', role: 'menu', 'aria-label': COPY.media });
+    const mClose = ogBtn('fsp-mclose', ICON.close, COPY.close);
+    mClose.addEventListener('click', doClose);
+    menu.append(openV('fsp-mopenv', { role: 'menuitem' }), openS('fsp-mopens', { role: 'menuitem' }), mClose);
+    menu.addEventListener('click', (e) => { if (e.target.closest('button') && menu.hidePopover) menu.hidePopover(); });
+    const mediaB = ogBtn('fsp-media', ICON.more, '', COPY.media, { 'aria-haspopup': 'menu' });
+    mediaB.addEventListener('click', () => {
+      if (!menu.showPopover) return;
+      if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
+      menu.showPopover();
+      const r = mediaB.getBoundingClientRect();
+      menu.style.top = r.bottom + 4 + 'px';
+      menu.style.left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
+    });
+    const head = opts.page ? h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '01' }), h('span', { text: COPY.player })) : '';
+    // PR13: the phone's Library tab ends in a now-playing row: Play or Pause, the title, the position.
+    const nowB = h('button', { type: 'button', class: 'og-btn sm fsp-ic fsp-nowb' });
+    nowB.append(icon());
+    nowB.addEventListener('click', () => ctl.toggle());
+    const nowT = h('span', { class: 'fsp-nowt' }), nowM = h('output', { class: 'fsp-nowm' });
+    // The Autoplay chip (ph-1qs5.9): the settings switch's twin on the now-playing row.
+    const autoB = h('button', { type: 'button', class: 'og-btn sm fsp-autob', title: QCOPY.autoplayTip });
+    autoB.addEventListener('click', () => setAutoplay(!autoplay));
+    const now = h('div', { class: 'fsp-now' }, nowB, nowT, nowM, autoB);
+    const src = h('div', { class: 'fsp-src' }, head, title, openV('fsp-openv', { 'data-search-key': 'openVideo' }),
+      openS('fsp-opens', { 'data-search-key': 'openScript' }), closeH, mediaB, menu, h('span', { role: 'tablist' }, tabP, tabQ, tabL), fileV, fileS);
+
+    const empty = h('div', { class: 'fsp-empty' }, openV('fsp-eopenv'), openS('fsp-eopens'));
+    const tickI = h('i', { class: 'fsp-tick int' });
+    const tickR = h('i', { class: 'fsp-tick real' });
+    const meter = h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, tickI, tickR);
+    // Motion only (PR4): the stroke meter in glance's look, and the way to attach a video.
+    const moI = h('i', { class: 'fsp-tick int' }), moR = h('i', { class: 'fsp-tick real' });
+    const mo = h('div', { class: 'fsp-mo' }, h('span', { class: 'fsp-mo-k', text: COPY.motionOnly }), openV('fsp-moopenv'),
+      h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, moI, moR));
+    // The center Play (operator 2026-10-08, PR9): a large glyph over the paused stage (video or motion only, never the
+    // empty stage) and a brief glyph flash when a tap on the stage toggles. Decorative: the stage's own click acts.
+    const cplay = h('div', { class: 'fsp-cplay', 'aria-hidden': 'true' });
+    cplay.append(icon());
+    const flash = () => {
+      setIcon(cplay, ctl.state.phase === 'playing' || ctl.state.phase === 'preroll' ? ICON.play : ICON.pause, '');
+      cplay.removeAttribute('data-flash');
+      void cplay.offsetWidth;
+      cplay.setAttribute('data-flash', '');
+    };
+    cplay.addEventListener('animationend', () => cplay.removeAttribute('data-flash'));
+    const vbox = h('div', { class: 'fsp-vbox' }, empty, mo, cplay);
+    const stage = h('div', { class: 'fsp-stage' }, vbox);
+    const tlbox = h('div', { class: 'fsp-tlbox' });
+    const lib = h('div', { class: 'fsp-libbox' });
+    const anbox = h('div', { class: 'fsp-anbox' });
+    const status = h('div', { class: 'fsp-slot', 'aria-live': 'polite' });
+    const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
+
     const setIcon = (b, [f, k], tip) => {
       const [pf, pk] = b.firstChild.children;
       if (pf.getAttribute('d') !== f || pk.getAttribute('d') !== k) { pf.setAttribute('d', f); pk.setAttribute('d', k); }
       if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
     };
     const attr = (e, k, v) => { if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
-    const trBtn = (cls, ic, tip) => { const b = h('button', { type: 'button', class: 'fsp-btn fsp-tb ' + cls }); b.append(icon()); setIcon(b, ic, tip); return b; };
+    const trBtn = (cls, ic, tip) => { const b = h('button', { type: 'button', class: 'og-btn sm fsp-ic ' + cls }); b.append(icon()); setIcon(b, ic, tip); return b; };
     const prevB = trBtn('fsp-prev', ICON.prev, COPY.prev), nextB = trBtn('fsp-next', ICON.next, COPY.next);
     const play = trBtn('fsp-play', ICON.play, COPY.playKey);
     play.addEventListener('click', () => ctl.toggle());
@@ -950,7 +1292,7 @@ export function createPlayer(api) {
     const vol = h('input', { class: 'fsp-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     vol.addEventListener('input', () => { video.volume = clamp(+vol.value, 0, 1); if (video.volume > 0) video.muted = false; });
     vol.addEventListener('change', () => saveAudio());
-    const rate = h('button', { type: 'button', class: 'fsp-btn fsp-rate', title: COPY.rate, 'aria-label': COPY.rate });
+    const rate = h('button', { type: 'button', class: 'og-btn sm fsp-rate', title: COPY.rate, 'aria-label': COPY.rate });
     rate.addEventListener('click', () => { video.defaultPlaybackRate = video.playbackRate = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]; render(); });
     const graph = trBtn('fsp-expand', ICON.graph, COPY.graph);
     graph.setAttribute('data-search-key', 'graph');
@@ -998,11 +1340,11 @@ export function createPlayer(api) {
     });
     sp.addEventListener('dblclick', () => { split = 0; applySplit(); sp.removeAttribute('aria-valuenow'); writePref(api, 'split', 0); });
     sp.addEventListener('focus', () => sp.setAttribute('aria-valuenow', String(split || detailH())));
-    const closeB = trBtn('fsp-close', ICON.close, COPY.close);
-    closeB.addEventListener('click', () => { ctl.unload(); ctl.setView('library'); });
-    const motion = btn('fsp-motion', COPY.motion, { 'data-search-key': 'motion' });
+
+    // PR6: Motion beside Play, the switch that lets Play move the machine, in the shell's on look.
+    const motion = h('button', { type: 'button', class: 'og-btn sm fsp-motion', text: COPY.motion, 'data-search-key': 'motion' });
     motion.addEventListener('click', () => ctl.setMotion(!st.motion));
-    const offIn = h('input', { type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
+    const offIn = h('input', { class: 'og-num', type: 'number', min: '-500', max: '500', step: '5', 'aria-label': COPY.offset, title: COPY.offsetTip });
     const offK = h('span', { class: 'fsp-offk', text: COPY.offset, title: COPY.offsetTip });
     const off = h('label', { class: 'fsp-off', 'data-search-key': 'offset' }, offK, offIn, h('span', { class: 'fsp-offu', text: COPY.offsetUnit }));
     const commitOff = (v) => { if (clampOffset(v) !== st.T.offsetMs) ctl.setT({ offsetMs: clampOffset(v) }); offIn.value = String(st.T.offsetMs); };
@@ -1025,60 +1367,115 @@ export function createPlayer(api) {
     const offUp = (e) => { if (offDrag && e.pointerId === offDrag.id) { offDrag = null; commitOff(offIn.value); } };
     offK.addEventListener('pointerup', offUp);
     offK.addEventListener('pointercancel', offUp);
-    const inv = btn('fsp-inv', COPY.invert, { 'data-search-key': 'invert' });
+    const inv = h('button', { type: 'button', class: 'og-btn sm fsp-inv', text: COPY.invert, 'data-search-key': 'invert' });
     inv.addEventListener('click', () => ctl.setT({ invert: !st.T.invert }));
     const speedBar = h('i');
     const speedTxt = h('span');
     const speed = h('div', { class: 'fsp-speed', title: COPY.speed }, speedBar, speedTxt);
     const saveAudio = () => writePref(api, 'audio', { vol: video.volume, muted: video.muted });
     const setMuted = (m) => { video.muted = m; saveAudio(); render(); };
-    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, vol, rate, graph, closeB);
+    // The bar's Fullscreen and Settings are the page's (the dash card's hero has neither).
+    const fullB = trBtn('fsp-full', ICON.full, COPY.full);
+    fullB.hidden = !opts.fullscreen;
+    fullB.addEventListener('click', () => fullscreen());
+    const setB = trBtn('fsp-set', ICON.gear, COPY.settings);
+    setB.hidden = !opts.settings;
+    // Pressed from the page's own state (opts.settings.open), which the sheet's close and outside tap also change.
+    setB.addEventListener('click', () => { opts.settings.toggle(!opts.settings.open); render(); });
+    // Host seam (PR11, wired by ph-1qs5.8): the quick rail icon shows only where the host offers one.
+    const railB = trBtn('fsp-rail', ['', ''], COPY.rail);
+    railB.setAttribute('data-quick-rail-toggle', '');
+    railB.setAttribute('aria-expanded', 'false');
+    const onRail = (e) => { railB.setAttribute('aria-expanded', String(!!(e.detail && e.detail.open))); render(); };
+    window.addEventListener('phosphor-quick-rail-change', onRail);
+    railB.addEventListener('click', () => railB.dispatchEvent(new CustomEvent('phosphor-quick-rail', { bubbles: true, cancelable: true, detail: { open: 'toggle' } })));
+    const railPath = () => (api.icons && api.icons.quickRail && document.documentElement.dataset.quickRail ? api.icons.quickRail : '');
+    const brk = h('span', { class: 'fsp-brk' });
+    const tr = h('div', { class: 'fsp-tr' }, prevB, play, nextB, time, rem, brk, vol, motion, rate, fullB, railB, setB);
+    const tlCaret = h('button', { type: 'button', class: 'fsp-tlcaret', 'aria-expanded': 'true' });
+    tlCaret.append(icon(), h('span', { text: COPY.timeline }));
+    tlCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
+    const setTl = (on) => { root.toggleAttribute('data-tlshut', !on); tlCaret.setAttribute('aria-expanded', String(on)); };
+    tlCaret.addEventListener('click', () => { const on = root.hasAttribute('data-tlshut'); setTl(on); writePref(api, 'tlOpen', on); });
+    const tlh = h('div', { class: 'fsp-tlh' }, tlCaret, h('span', { class: 'fsp-tlgap' }), off, inv, graph);
 
     const root = h('div', { class: 'fsp', tabindex: '-1' }, h('style', { text: CSS + TL_CSS + AN_CSS }),
-      src, stage, sp, tlbox, lib, anbox, meter, status, tr);
+      pframe, src, stage, sp, tlh, tlbox, lib, anbox, meter, status, tr);
+    setTl(readPrefs(api).tlOpen);
+    root.toggleAttribute('data-page', !!opts.page);
+    // The video's aspect for the phone stage (PR2); unknown (no picture yet, audio) keeps the strip.
+    const onMeta = () => {
+      const ok = !!(st.scene && st.scene.stream && vel.videoWidth && vel.videoHeight);
+      root.toggleAttribute('data-ar', ok);
+      if (ok) root.style.setProperty('--fsp-ar', vel.videoWidth + ' / ' + vel.videoHeight);
+    };
+    const META = ['loadedmetadata', 'resize', 'emptied'];
+    for (const t of META) vel.addEventListener(t, onMeta);
     applySplit();
     // ---- the hover bar over the video ----
-    const hbPlay = hbBtn('fsp-hb-play'), hbMute = hbBtn('fsp-hb-mute'), hbFull = hbBtn('fsp-hb-full'), hbMode = hbBtn('fsp-hb-mode');
-    hbFull.hidden = !opts.fullscreen;
-    const fsMode = () => document.documentElement.dataset.fullscreenMode || '';
-    hbMode.addEventListener('click', () => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode',
-      { detail: { mode: fsMode() === 'borderless' ? 'window' : 'borderless' } })));
+    // PR9: the timeline toggle shows a 72 px wave over the video, above the scrub (fullscreen only).
+    const tlTog = trBtn('fsp-tltog', ICON.scr, COPY.timeline);
+    tlTog.setAttribute('aria-pressed', 'false');
     const libCaret = h('button', { type: 'button', class: 'fsp-libcaret', title: COPY.library, 'aria-label': COPY.library });
     libCaret.append(icon());
     libCaret.firstChild.children[1].setAttribute('d', ICON.caret[1]);
-    libCaret.addEventListener('click', () => { const on = root.hasAttribute('data-libshut'); setLib(on); writePref(api, 'libOpen', on); });
-    const setLib = (on) => { root.toggleAttribute('data-libshut', !on); libCaret.setAttribute('aria-expanded', String(on)); };
+    let libTouched = false, libAuto = false;
+    libCaret.addEventListener('click', () => { const on = root.hasAttribute('data-libshut'); libTouched = true; libAuto = false; setLib(on); writePref(api, 'libOpen', on); });
+    const setLib = (on) => { root.toggleAttribute('data-libshut', !on); libCaret.setAttribute('aria-expanded', String(on)); if (comp) recompose(); };
     setLib(readPrefs(api).libOpen);
     src.append(libCaret);
-    const hbVol = h('input', { class: 'fsp-hb-vol', type: 'range', min: '0', max: '1', step: '0.05', 'aria-label': COPY.volume, title: COPY.volume });
     const hbTime = h('span', { class: 'fsp-hb-time' });
     const hbBuf = h('i', { class: 'fsp-hb-buf' }), hbPlayed = h('i', { class: 'fsp-hb-played' });
     const hbTip = h('span', { class: 'fsp-hb-tip', hidden: '' });
     const seek = h('div', { class: 'fsp-hb-seek', role: 'slider', tabindex: '0', 'aria-label': COPY.seek, 'aria-valuemin': '0' },
       h('div', { class: 'fsp-hb-track' }, hbBuf, hbPlayed), hbTip);
-    const hb = h('div', { class: 'fsp-hb' }, seek,
-      h('div', { class: 'fsp-hb-row' }, hbPlay, hbMute, hbVol, hbTime, h('span', { class: 'fsp-hb-gap' }), hbMode, hbFull));
+    // PR9: the hover bar exists in fullscreen only; its row is the player bar's own buttons, moved in on entry and
+    // back on exit (one set of controls, one set of listeners): prev, Play, next, time, Motion, rate, the timeline
+    // toggle, the quick rail, Settings, Exit fullscreen.
+    // PR13: in fullscreen the library is a drawer from the right under the stop pair, closed by a pick or a tap outside.
+    const libB = trBtn('fsp-libb', ICON.lib, COPY.library);
+    libB.setAttribute('aria-pressed', 'false');
+    const setDrawer = (on) => { root.toggleAttribute('data-libdrawer', on); libB.setAttribute('aria-pressed', String(on)); libB.classList.toggle('on', on); };
+    libB.addEventListener('click', () => setDrawer(!root.hasAttribute('data-libdrawer')));
+    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) { setDrawer(false); swallowClick(); } };
+    document.addEventListener('pointerdown', drawerOut, true);
+    const hbRow = h('div', { class: 'fsp-hb-row' }, libB, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
+    const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);
     const hov = h('div', { class: 'fsp-hov' }, hb);
-    stage.append(hov);
-    hbPlay.addEventListener('click', () => ctl.toggle());
-    hbMute.addEventListener('click', () => setMuted(!video.muted));
-    hbVol.addEventListener('input', () => { video.volume = clamp(+hbVol.value, 0, 1); if (video.volume > 0) video.muted = false; });
-    hbVol.addEventListener('change', saveAudio);
-    // Shown on pointer movement, hidden after HOVER_IDLE_MS idle and on leave, kept while the pointer
-    // rests on the bar or drags the seek. A touch on the hidden bar's video shows it without toggling.
+    vbox.append(hov);
+    const trKids = () => [prevB, play, nextB, time, tr.querySelector('.fsp-ov'), rem, brk, vol, motion, rate, fullB, railB, setB].filter(Boolean);
+    const toBar = (on) => {
+      if (on) {
+        hbTime.before(prevB, play, nextB);
+        tlTog.before(motion, rate);
+        tlTog.after(railB, setB, fullB);
+      } else tr.append(...trKids());
+    };
+    const fsWave = (on) => {
+      const w = tlbox.querySelector('.fsp-tl') || hb.querySelector('.fsp-tl');
+      if (on) hb.prepend(w); else tlbox.append(w);
+      root.toggleAttribute('data-fswave', on);
+      tlTog.setAttribute('aria-pressed', String(on));
+      tlTog.classList.toggle('on', on);
+    };
+    tlTog.addEventListener('click', () => fsWave(!root.hasAttribute('data-fswave')));
+    // Inline there is no overlay: a click or tap toggles Play (DOUBLE_MS apart from a double, which is fullscreen).
+    // In fullscreen the bar shows on pointer movement and hides after HOVER_IDLE_MS idle and on leave, kept while the
+    // pointer rests on it or drags the seek; a touch on the hidden bar's video shows it without toggling.
     let idle = 0, drag = null, tapShow = false, clickT = 0;
     const hide = () => { if (drag == null && !hb.matches(':hover')) hov.removeAttribute('data-show'); };
     const poke = () => { hov.setAttribute('data-show', ''); clearTimeout(idle); idle = setTimeout(hide, HOVER_IDLE_MS); };
     stage.addEventListener('pointermove', poke);
     stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
-    stage.addEventListener('pointerdown', (e) => { tapShow = e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
+    stage.addEventListener('pointerdown', (e) => { tapShow = media && e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
     stage.addEventListener('click', (e) => {
-      if (!st.scene) { tapShow = false; file.click(); return; }
+      if (!st.scene) { tapShow = false; return; }
       clearTimeout(clickT);
-      if (!tapShow && !e.target.closest('.fsp-hb') && e.detail < 2) clickT = setTimeout(() => ctl.toggle(), DOUBLE_MS);
+      // A control's click is not the video's (an Exit fullscreen has already moved its button out of the stage).
+      if (!tapShow && vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && e.detail < 2) clickT = setTimeout(() => { ctl.toggle(); flash(); }, DOUBLE_MS);
       tapShow = false;
     });
-    stage.addEventListener('dblclick', (e) => { if (!e.target.closest('.fsp-hb') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
+    stage.addEventListener('dblclick', (e) => { if (vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
     const dur = () => (Number.isFinite(video.duration) ? video.duration * 1000 : st.script ? st.script.durationMs : 0);
     const msAt = (x) => { const r = seek.getBoundingClientRect(); return r.width ? clamp((x - r.left) / r.width, 0, 1) * dur() : 0; };
     seek.addEventListener('pointerdown', (e) => {
@@ -1102,15 +1499,24 @@ export function createPlayer(api) {
     seek.addEventListener('pointercancel', endDrag);
     seek.addEventListener('pointerleave', () => { if (drag == null) hbTip.hidden = true; });
     // Media fullscreen: the shell's page fullscreen, bare, with the video alone until it ends.
+    // PR8: one mode, the shell's page fullscreen, always bare.
     let media = false;
-    const setMedia = (on) => { media = on; root.toggleAttribute('data-media', on); render(); };
+    const setMedia = (on) => {
+      if (on === media) return;
+      media = on;
+      if (!on && root.hasAttribute('data-fswave')) fsWave(false);
+      if (!on) setDrawer(false);
+      toBar(on);
+      root.toggleAttribute('data-media', on);
+      render();
+    };
     const fullscreen = () => {
-      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: fsMode() !== 'window' } });
+      if (!media && st.scene && !st.scene.stream) return;
+      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: true } });
       if (!root.dispatchEvent(ask)) setMedia(!media);
     };
     const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
     if (opts.fullscreen) window.addEventListener('phosphor-page-fullscreen-change', onFull);
-    hbFull.addEventListener('click', fullscreen);
 
     const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
     root.addEventListener('keydown', (e) => {
@@ -1129,7 +1535,6 @@ export function createPlayer(api) {
 
     let zoomMs = readPrefs(api).zoomMs;
     const tl = mountTimeline(tlbox, {
-      bundle: [motion, off, inv],
       ovHost: tr,
       ovBefore: rem,
       overlay: [speed],
@@ -1139,14 +1544,15 @@ export function createPlayer(api) {
       onSeek: (ms) => ctl.seek(ms),
       onScrub: (phase, ms) => ctl.seek(ms),
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
-      onSettings: opts.settings ? (on) => opts.settings.toggle(on) : null,
-      settingsOpen: !!(opts.settings && opts.settings.open),
     });
+    tlCaret.after(tl.zoomEl);
+    off.before(tl.abEl);
     let library = null, analyzer = null;
     function expand(on) {
       root.toggleAttribute('data-an', on);
       graph.setAttribute('aria-pressed', String(on));
-      measure();
+      graph.classList.toggle('on', on);
+      recompose();
       if (on) anMount();
     }
     function anMount() {
@@ -1155,27 +1561,48 @@ export function createPlayer(api) {
     let fitSeen = null;
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
 
-    let comp = '';
-    const measure = () => {
-      root.removeAttribute('data-narrow');
-      if (comp === 'handheld' && tr.scrollWidth > tr.clientWidth) root.setAttribute('data-narrow', '');
-    };
-    const ro = new ResizeObserver(() => {
-      const c = compositionOf(root.clientWidth);
+    const recompose = () => {
+      const cls = opts.page ? pageClass(+document.documentElement.dataset.bucket || 3, innerWidth, innerHeight) : '';
+      if (cls) attr(root, 'data-cls', cls);
+      // PR17: on the phone class a turn to landscape with a video enters fullscreen and the turn back leaves it; only a
+      // rotation does, so an Exit in landscape holds until the next one.
+      if (opts.fullscreen && prevCls && cls !== prevCls && (prevCls === 'portrait' || prevCls === 'landscape')) {
+        if (cls === 'landscape' && !media && st.scene && st.scene.stream) fullscreen();
+        else if (cls === 'portrait' && media) fullscreen();
+      }
+      if (library && cls !== prevCls) library.fit();
+      prevCls = cls;
+      const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
       if (c !== comp) {
         comp = c;
         root.dataset.comp = c;
         if (hosting()) st.composition = c;
-        if (c !== 'glance' && !library) library = mountLibrary(lib, { getStash, prefs: libPrefs, onPick: pick, onLocal: openLocal,
-          fetch: (u, i) => api.net.fetch(u, i) });
+        if (c !== 'glance' && !library) {
+          library = mountLibrary(lib, { getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
+            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media, onQueue: (s) => Q.add(s) });
+          lib.append(qbox, now);
+          lib.insertBefore(libseg, lib.querySelector('.fsp-lib'));
+          qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
+            onReopen: () => fileV.click() });
+          if (opts.page) lib.prepend(h('h3', { class: 'fsp-h' }, h('span', { class: 'fsp-ix', text: '02' }), COPY.library));
+        }
       }
-      measure();
+      const gapPx = parseFloat(getComputedStyle(root).columnGap) || 0;
+      if (cls === 'desktop' && !libTouched) {
+        const narrow = root.clientWidth - LIB_W - gapPx < BAR_ROW_MIN;
+        if (narrow && !root.hasAttribute('data-libshut')) { libAuto = true; root.setAttribute('data-libshut', ''); libCaret.setAttribute('aria-expanded', 'false'); }
+        else if (!narrow && libAuto) { libAuto = false; setLib(true); }
+      }
+      const lib1 = c === 'full' && !root.hasAttribute('data-libshut') && !root.hasAttribute('data-an');
+      const col = root.clientWidth - (lib1 ? LIB_W + gapPx : 0);
+      root.toggleAttribute('data-rows2', c !== 'glance' && (c === 'handheld' || cls === 'portrait' || cls === 'landscape' || col < BAR_ROW_MIN));
       applySplit();
-    });
+    };
+    const ro = new ResizeObserver(recompose);
+    if (opts.page) window.addEventListener('resize', recompose);
     ro.observe(root);
-    ro.observe(time);
 
-    let tlKey = null, durSeen = -1;
+    let tlKey = null, durSeen = -1, lastStatus = '';
     function render() {
       const ceil = ceilingOf(api, fields);
       const rt = video.playbackRate || 1, key = [st.script, st.shaped, st.T, ceil.vmax, ceil.spanMm, rt];
@@ -1184,33 +1611,69 @@ export function createPlayer(api) {
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setIcon(play, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       play.disabled = !act && !ctl.canPlay();
-      setIcon(hbPlay, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
-      hbPlay.disabled = play.disabled;
       const mk = marks(), mt = ctl.mediaNow();
       prevB.disabled = mk.length ? !st.scene : !(library && library.canStep(-1));
       nextB.disabled = mk.length ? !mk.some((x) => x > mt + 250) : !(library && library.canStep(1));
-      closeB.disabled = !st.scene;
+      closeH.disabled = mClose.disabled = !st.scene;
+      const noVid = !!st.scene && !st.scene.stream;
+      root.toggleAttribute('data-mo', noVid);
+      root.toggleAttribute('data-paused', !!st.scene && !act);
+      if (!cplay.hasAttribute('data-flash')) setIcon(cplay, ICON.play, '');
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
-      setIcon(hbMute, video.muted ? ICON.muted : ICON.vol, video.muted ? COPY.unmuteKey : COPY.muteKey);
-      setIcon(hbFull, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : COPY.full);
-      const fm = fsMode();
-      hbMode.hidden = !opts.fullscreen || !fm;
-      setIcon(hbMode, fm === 'borderless' ? ICON.bdl : ICON.win, COPY.mode);
-      attr(hbMode, 'aria-pressed', String(fm === 'borderless'));
-      if (document.activeElement !== hbVol) hbVol.value = String(video.muted ? 0 : video.volume);
-      motion.setAttribute('aria-pressed', String(st.motion));
-      inv.setAttribute('aria-pressed', String(st.T.invert));
+      const so = !!(opts.settings && opts.settings.open);
+      attr(setB, 'aria-pressed', String(so));
+      setB.classList.toggle('on', so);
+      attr(motion, 'aria-pressed', String(st.motion));
+      motion.classList.toggle('on', st.motion);
+      attr(inv, 'aria-pressed', String(st.T.invert));
+      inv.classList.toggle('on', st.T.invert);
+      fullB.disabled = noVid;
+      setIcon(fullB, media ? ICON.unfull : ICON.full, media ? COPY.fullExit : noVid ? COPY.noVideo : COPY.full);
+      const rp = railPath();
+      railB.hidden = !rp;
+      if (rp && railB.firstChild.children[1].getAttribute('d') !== rp) railB.firstChild.children[1].setAttribute('d', rp);
       if (document.activeElement !== offIn && !offDrag) offIn.value = String(st.T.offsetMs);
       root.dataset.view = st.view;
-      const ob = lib.querySelector('.fsp-lib-open');
-      if (ob) { if (ob.getClientRects().length) ob.setAttribute('data-search-key', 'open'); else ob.removeAttribute('data-search-key'); }
+      // F3's Open video and Open script land on the head's buttons, or the Media menu's button where it holds them.
+      const inMenu = comp === 'handheld';
+      for (const [b, k] of [[src.querySelector('.fsp-openv'), 'openVideo'], [src.querySelector('.fsp-opens'), 'openScript']]) {
+        if (inMenu) b.removeAttribute('data-search-key'); else attr(b, 'data-search-key', k);
+      }
+      if (inMenu) attr(mediaB, 'data-search-key', 'openVideo'); else mediaB.removeAttribute('data-search-key');
       tabP.setAttribute('aria-selected', String(st.view === 'player'));
       tabL.setAttribute('aria-selected', String(st.view === 'library'));
+      tabQ.setAttribute('aria-selected', String(st.view === 'queue'));
+      const lv = comp === 'handheld' ? (st.view === 'queue' ? 'queue' : 'library') : libView;
+      attr(lib, 'data-lv', lv);
+      segL.setAttribute('aria-selected', String(lv === 'library'));
+      segQ.setAttribute('aria-selected', String(lv === 'queue'));
+      if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
+      setText(autoB, QCOPY.autoplay);
+      attr(autoB, 'aria-pressed', String(autoplay));
+      autoB.classList.toggle('on', autoplay);
       setText(title, st.scene ? st.scene.title : '');
+      setText(nowT, st.scene ? st.scene.title : '');
+      setIcon(nowB, act ? ICON.pause : ICON.play, act ? COPY.pause : COPY.play);
+      nowB.disabled = play.disabled;
+      if (head) {
+        const libTab = comp === 'handheld' && st.view !== 'player';
+        setText(head.firstChild, libTab ? '02' : '01');
+        setText(head.lastChild, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
+      }
       empty.hidden = !!st.scene;
+      mo.hidden = !noVid;
       setText(status, st.status.text);
       status.dataset.tone = st.status.tone;
+      // PR14: the phone footer's slot carries the page's status (docs/PLUGINS.md, Pages, status); sent on change only.
+      if (opts.page && /^(portrait|landscape)$/.test(root.dataset.cls || '')) {
+        const sent = st.status.text + '\n' + st.status.tone + '\n' + st.status.notes.join('\n');
+        if (sent !== lastStatus) {
+          lastStatus = sent;
+          root.dispatchEvent(new CustomEvent('phosphor-page-status', { bubbles: true,
+            detail: { text: st.status.text, tone: st.status.tone === 'warn' ? 'warn' : null, title: st.status.notes.join('\n') || st.status.text } }));
+        }
+      } else lastStatus = '';
       const tip = st.status.notes.join('\n');
       if (status.title !== tip) status.title = tip;
     }
@@ -1222,6 +1685,7 @@ export function createPlayer(api) {
       setText(rem, '-' + fmtTime(Math.max(0, d - m)));
       if (d !== durSeen) { durSeen = d; time.style.minWidth = fmtTime(d).length + 'ch'; rem.style.minWidth = fmtTime(d).length + 1 + 'ch'; }
       setText(hbTime, tt);
+      setText(nowM, fmtTime(m));
       let buf = 0;
       for (let i = 0, b = video.buffered; b && i < b.length; i++) if (b.start(i) * 1000 <= m + 500) buf = Math.max(buf, b.end(i) * 1000);
       hbPlayed.style.width = (d > 0 ? clamp(m / d, 0, 1) * 100 : 0) + '%';
@@ -1245,28 +1709,34 @@ export function createPlayer(api) {
         speedBar.style.width = cap ? clamp(sp.v / cap, 0, 1) * 100 + '%' : '0';
         speed.toggleAttribute('data-over', !!cap && sp.v > cap);
         speed.title = cap && sp.v > cap ? COPY.speedOver : COPY.speed;
-        tickI.hidden = false;
-        tickI.style.left = applyT(posAt(st.shaped || st.script, m), st.T) * 100 + '%';
+        const at = tickAt(applyT(posAt(st.shaped || st.script, m), st.T));
+        for (const t of [tickI, moI]) { t.hidden = false; t.style.left = at; }
       } else {
         setText(speedTxt, '');
         speedBar.style.width = '0';
-        tickI.hidden = true;
+        tickI.hidden = moI.hidden = true;
       }
       const pu = fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null;
-      tickR.hidden = pu == null;
-      if (pu != null) tickR.style.left = pu * 100 + '%';
-      tickR.classList.toggle('stale', !!(fields.pos && api.stale(fields.pos)));
+      for (const t of [tickR, moR]) {
+        t.hidden = pu == null;
+        if (pu != null) t.style.left = tickAt(pu);
+        t.classList.toggle('stale', !!(fields.pos && api.stale(fields.pos)));
+      }
       render();
     }
-    const hosting = () => video.parentNode === stage;
+    const hosting = () => vel.parentNode === vbox;
     render();
     return {
       fields, render, frame, hosting,
-      host() { stage.append(video); st.composition = comp || st.composition; },
+      host() { vbox.prepend(vel); st.composition = comp || st.composition; },
       destroy() {
         clearTimeout(idle);
         clearTimeout(clickT);
         window.removeEventListener('phosphor-page-fullscreen-change', onFull);
+        window.removeEventListener('resize', recompose);
+        document.removeEventListener('pointerdown', drawerOut, true);
+        window.removeEventListener('phosphor-quick-rail-change', onRail);
+        for (const t of META) vel.removeEventListener(t, onMeta);
         ro.disconnect();
         tl.unmount();
         if (library) library.unmount();
@@ -1289,6 +1759,14 @@ export function createPlayer(api) {
     },
     setInterp(v) { ctl.setInterp(v); },
     setPlay(v) { ctl.setPlay(v); },
+    queue: Q,
+    /** Autoplay (prefs autoplay): the settings card's switch and the now-playing chip. */
+    autoplay: { get: () => autoplay, set: setAutoplay },
+    /** The video's volume, the settings card's phone row (PR12): a set unmutes and is stored as prefs audio. */
+    volume: {
+      get: () => (video.muted ? 0 : video.volume),
+      set(x) { video.volume = clamp(+x || 0, 0, 1); video.muted = false; writePref(api, 'audio', { vol: video.volume, muted: false }); views.forEach((w) => w.render()); },
+    },
     get scale() { return ctl.scale; },
     get state() { return ctl.state; },
   };
@@ -1296,25 +1774,12 @@ export function createPlayer(api) {
 
 // ---- the settings card's playback rows -------------------------------------
 
+// The rows' grid is rows.js's (PR18); this is the playback card's own: the volume row shows on phones only (PR5, PR12).
 export const PLAY_CSS = `
-.fsp-pset { display: grid; grid-template-columns: 12ch minmax(0, 1fr) 9ch; grid-auto-rows: var(--tap); gap: var(--sp-2) var(--sp-3); align-items: center; margin-top: var(--sp-3); }
-.fsp-pset h4 { grid-column: 1 / -1; margin: 0; font-size: .85rem; color: var(--tx-mut); font-weight: 600; }
-.fsp-pset label { color: var(--tx-mut); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fsp-pset input { min-height: var(--tap); margin: 0; min-width: 0; font: inherit; }
-.fsp-pset input:focus-visible, .fsp-pset button:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-pset button { justify-self: start; min-height: var(--tap); min-width: calc(var(--tap) * 2); padding: 0 var(--sp-3); background: none; color: var(--tx);
-  border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; font: inherit; }
-.fsp-pset button[aria-pressed=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp-pset output { font: .8rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
-.fsp-pset input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: var(--tap); background: none; cursor: ew-resize; }
-.fsp-pset input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--line-2); }
-.fsp-pset input[type=range]::-moz-range-track { height: 2px; background: var(--line-2); }
-.fsp-pset input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 20px; margin-top: -9px; border-radius: 4.5px;
-  border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
-.fsp-pset input[type=range]::-moz-range-thumb { width: 9px; height: 20px; border-radius: 4.5px; border: 2px solid var(--intent); background: var(--bg-card); box-sizing: border-box; }
+:root:not([data-bucket='1'], [data-bucket='2']) .fsp-pset > .fsp-volrow { display: none; }
 `;
 
-// [key, label, tip, min, max, step, format]: ranges are prefs.js's repairs.
+// [key, label, tip, min, max, step, format]: ranges are prefs.js's repairs; a row without a range is a switch.
 const PLAY_ROWS = [
   ['loop', COPY.loop, COPY.loopTip],
   ['loopCount', COPY.loopCount, '', 0, 99, 1, (v) => (v ? v + 'x' : COPY.forever)],
@@ -1326,28 +1791,44 @@ const PLAY_ROWS = [
   ['autoLatency', COPY.auto, COPY.autoTip],
 ];
 
-/** Settings card rows for the play prefs, one var(--tap) row each; -> unmount(). onChange(partial) on commit. */
-export function mountPlay(el, { value, onChange }) {
+/**
+ * The settings card's playback rows (PR18: label, control, value chip; switches for the toggles); -> unmount().
+ * onChange(partial) on commit. volume: {get(), set(v)}, the player's, drawn as the phones' volume row; autoplay:
+ * {get(), set(on)}, the Autoplay switch.
+ */
+export function mountPlay(el, { value, onChange, volume = null, autoplay = null }) {
   let v = { ...value };
-  const root = h('div', { class: 'fsp-pset', role: 'group', 'aria-label': COPY.playHeading }, h('style', { text: PLAY_CSS }),
-    h('h4', { text: COPY.playHeading }));
+  const box = rowsBox(COPY.playHeading);
+  box.classList.add('fsp-pset');
+  box.prepend(h('style', { text: PLAY_CSS }));
+  box.append(sub(COPY.playHeading));
   const draws = PLAY_ROWS.map(([key, label, tip, min, max, step, fmt]) => {
-    const lab = h('label', { text: label, ...(tip ? { title: tip } : {}) });
-    const out = h('output');
     if (min == null) {
-      const b = h('button', { type: 'button', 'aria-label': label, ...(tip ? { title: tip } : {}) });
-      b.addEventListener('click', () => { v = { ...v, [key]: !v[key] }; draw(); onChange({ [key]: v[key] }); });
-      root.append(lab, b, out);
-      return () => { b.setAttribute('aria-pressed', String(!!v[key])); setText(b, v[key] ? COPY.on : COPY.off); };
+      const s = switchRow(box, label, { tip });
+      s.addEventListener('change', () => { v = { ...v, [key]: s.checked }; onChange({ [key]: v[key] }); });
+      return () => { s.checked = !!v[key]; };
     }
-    const i = h('input', { type: 'range', min: String(min), max: String(max), step: String(step), 'aria-label': label });
+    const { input: i, out } = sliderRow(box, label, { min, max, step, tip });
     i.addEventListener('input', () => setText(out, fmt(+i.value)));
     i.addEventListener('change', () => { v = { ...v, [key]: +i.value }; draw(); onChange({ [key]: v[key] }); });
-    root.append(lab, i, out);
     return () => { if (document.activeElement !== i) i.value = String(v[key]); setText(out, fmt(v[key])); };
   });
+  if (autoplay) {
+    // ph-1qs5.9: Autoplay, its own pref (prefs autoplay), the queue's.
+    const s = switchRow(box, QCOPY.autoplay, { tip: QCOPY.autoplayTip });
+    s.addEventListener('change', () => autoplay.set(s.checked));
+    draws.push(() => { s.checked = !!autoplay.get(); });
+  }
+  if (volume) {
+    const n = box.children.length;
+    const { input: i, out } = sliderRow(box, COPY.volume, { min: 0, max: 1, step: 0.05 });
+    [...box.children].slice(n).forEach((e) => e.classList.add('fsp-volrow'));
+    const fmt = (x) => Math.round(x * 100) + ' %';
+    i.addEventListener('input', () => { volume.set(+i.value); setText(out, fmt(+i.value)); });
+    draws.push(() => { const x = volume.get(); if (document.activeElement !== i) i.value = String(x); setText(out, fmt(x)); });
+  }
   const draw = () => draws.forEach((d) => d());
-  el.append(root);
+  el.append(box);
   draw();
-  return () => root.remove();
+  return () => box.remove();
 }
