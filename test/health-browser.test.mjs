@@ -228,7 +228,6 @@ ok('Log: a health line per cause, plain words first', lines.some((l) => /Motion 
   && lines.some((l) => /Motion paused .* · WiFi delay \(likely\)/.test(l)), lines);
 
 ok('no page error', errors.length === 0, errors);
-
 // ---- 2. the report ------------------------------------------------------------
 console.log('\n--- report ---');
 await toHealth(page);
@@ -265,6 +264,51 @@ await page.click('.review .acts .og-btn:not(.send)');
 await page.waitForTimeout(300);
 ok('Save report: the same JSON to a file', await page.evaluate(() => window.__saved.length === 1 && /^diag-report-[A-Z2-7]{8}\.json$/.test(window.__saved[0].name)));
 await ctx.close();
+
+// ---- 2b. the status slot (DESIGN 10.14): latch notice > act health > safety edge > warn health ----
+console.log('\n--- the status slot ---');
+{
+  const o = await open();
+  const slot = () => o.page.evaluate(() => {
+    const s = document.querySelector('.topstrip .status');
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '' };
+  });
+  const pause = o.page.locator('.topstrip .btn-pause');
+  const waitKind = async (kind, ms = 4000) => {
+    const t = Date.now();
+    for (;;) { const s = await slot(); if (s.kind === kind || Date.now() - t > ms) return s; await o.page.waitForTimeout(150); }
+  };
+  const stall = () => o.page.evaluate(() => { const t = performance.now(); while (performance.now() - t < 700) { /* busy */ } });
+  await play(o.page);
+  await o.page.waitForTimeout(2000);
+  // A safety edge first: pause, then resume (the player stops on the latch and plays again after).
+  await pause.click();
+  const paused = await waitKind('notice');
+  await pause.click();
+  const edge = await waitKind('edge');
+  ok('slot: the latch notice, then the safety edge it leaves', paused.kind === 'notice' && /Paused/.test(paused.text) && edge.kind === 'edge', [paused, edge]);
+  await play(o.page);
+  await o.page.waitForTimeout(2500);
+  await stall();
+  await o.page.waitForTimeout(1500);
+  const warn = await slot();
+  ok('slot: a warn health condition yields to the safety edge', warn.kind === 'edge', warn);
+  await o.page.waitForTimeout(9500);
+  await stall();
+  await o.page.waitForTimeout(11000);
+  await stall();
+  const act = await waitKind('health');
+  ok('slot: the third cutout in 60 s is act and takes the slot over the edge', act.kind === 'health' && /this device fell behind/.test(act.text), act);
+  await pause.click();
+  const over = await waitKind('notice');
+  ok('slot: a latch notice still outranks an act health condition', over.kind === 'notice' && /Paused/.test(over.text), over);
+  await pause.click();
+  await waitKind('health');
+  await o.page.click('.topstrip .status[data-kind="health"] .st-dismiss');
+  ok('slot: the health line opens the Log page on its Health view', await o.page.waitForSelector('.health', { timeout: 5000 }).then(() => true, () => false)
+    && await o.page.getAttribute('[data-feed="health"]', 'aria-selected') === 'true');
+  await o.ctx.close();
+}
 
 // ---- 3. screenshots ---------------------------------------------------------------
 if (SHOT) console.log('\n--- screenshots ---');

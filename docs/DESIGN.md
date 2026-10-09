@@ -1159,7 +1159,7 @@ its own: no continuous telemetry, ever.
   list; the top strip's status slot takes act and warn, below link fault,
   unattended, refusal, the jog note, the history message and the latch
   notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`; wiring the slot is TopStrip's).
+  (`health.slot`, drawn by TopStrip); the slot's line opens the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.

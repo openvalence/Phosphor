@@ -229,7 +229,8 @@ export function createTracker(cb = {}) {
       last.count++;
       last.episodes.push(now);
       last.lastAt = now;
-      raise(last, sev);
+      // A close let the severity fall: the reopened incident starts from the signal, the rate raises it again.
+      last.sev = sev;
       if (info) Object.assign(last, info);
       return last;
     }
