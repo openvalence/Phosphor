@@ -849,28 +849,23 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
 :root { --app-pad: 0px; }
 .app:not(:has(> .frame)) { --app-pad: var(--gap); }
 
-/* Mobile: a normally-scrolling page; the page footer and the status row are
-   pinned to the bottom edge and own the bottom inset (DESIGN §10.3).
-   Breakpoint matches App.svelte's `isDesktop` (960px). */
-@media (max-width: 959px) {
-  .app { min-height: 100vh; }
-}
+/* The two scroll modes follow App.svelte's `isDesktop` (class `full`,
+   html[data-rc], model/viewport.svelte.js), never a width query: the phone
+   class keeps a 990 px phone on its side out of `full`.
+   Mobile: a normally-scrolling page; the page footer and the status row are
+   pinned to the bottom edge and own the bottom inset (DESIGN §10.3). */
+html:not([data-rc=full]) .app { min-height: 100vh; }
 
 /* Desktop: the page NEVER scrolls as a page. .app is a viewport-height flex
    column (dvh with a vh fallback for browsers that lack it); App.svelte's
    .frame (the nav+pane row) is the one region with its own scroll/overflow,
-   so the column's total height always fits without spilling the viewport.
-   Breakpoint matches App.svelte's `isDesktop` (class `full`, 960px up);
-   glance can sit past 960 (no pointer, rclass.js) and mounts the scrolling
-   tab-strip page, so it keeps the page scroll. */
-@media (min-width: 960px) {
-  html:not([data-rc=glance]) .app {
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+   so the column's total height always fits without spilling the viewport. */
+html[data-rc=full] .app {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Short desktop windows (a laptop browser is ~650px tall): the pinned hero

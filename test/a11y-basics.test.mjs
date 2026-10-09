@@ -19,6 +19,7 @@ import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMIT
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { STORE_KEY } from '../src/model/grid.js';
+import { goTab, tabIds } from './nav.mjs';
 
 const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -146,25 +147,29 @@ const browser = await chromium.launch();
   await ctx.close();
 }
 
-// ---- 2. phone tab strip: roving tabindex, ArrowLeft/Right ------------------
+// ---- 2. phone menu (DESIGN §10.12): the hamburger, the drawer's roving tabindex, focus out and back ----
 {
   const { ctx, page, pageErrors } = await bootPage(browser, { width: 390, height: 844 });
-  await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+  await page.waitForSelector('.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(300);
-
-  const tabindexes = await page.$$eval('nav.tabs [role=tab]', (els) => els.map((e) => e.getAttribute('tabindex')));
-  ok('phone tabs: exactly one tab sits in the Tab order', tabindexes.filter((t) => t === '0').length === 1, JSON.stringify(tabindexes));
-
-  await page.focus('nav.tabs [role=tab][tabindex="0"]');
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.title, x: b.getAttribute('aria-expanded'), n: b.getAttribute('aria-label') }; });
+  ok('phone menu: the hamburger is a named 40 px target with aria-expanded', btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.n === 'Menu' && btn.x === 'false', JSON.stringify(btn));
+  await page.focus('.menu-btn');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.phone-menu [role=tab]', { timeout: 5000 });
+  await page.waitForTimeout(100);
+  const tabindexes = await page.$$eval('.phone-menu [role=tab]', (els) => els.map((e) => e.getAttribute('tabindex')));
+  ok('phone menu: exactly one tab sits in the Tab order', tabindexes.filter((t) => t === '0').length === 1, JSON.stringify(tabindexes));
   const before = await page.evaluate(() => document.activeElement.dataset.tabId);
-  await page.keyboard.press('ArrowRight');
+  ok('phone menu: opening moves focus to the selected tab', before === 'machine', before);
+  await page.keyboard.press('ArrowDown');
   const after = await page.evaluate(() => document.activeElement.dataset.tabId);
-  ok('phone tabs: ArrowRight moves focus to the next tab', !!after && after !== before, before + ' -> ' + after);
-  await page.keyboard.press('ArrowLeft');
-  const back = await page.evaluate(() => document.activeElement.dataset.tabId);
-  ok('phone tabs: ArrowLeft moves back', back === before, back);
-
-  if (pageErrors.length) ok('phone tabs: no page errors', false, pageErrors.join(' | '));
+  ok('phone menu: ArrowDown moves focus to the next tab', !!after && after !== before, before + ' -> ' + after);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok('phone menu: Escape closes it and focus returns to the hamburger', await page.locator('.phone-menu').count() === 0
+    && await page.evaluate(() => document.activeElement.classList.contains('menu-btn')));
+  if (pageErrors.length) ok('phone menu: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
 }
 
@@ -313,8 +318,7 @@ async function checkRootFontAt(w, h) {
     cdpOk = false;
   }
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
-  await page.waitForSelector(tabSel, { timeout: 15000 });
+  await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : '.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(400);
 
   if (!cdpOk) {
@@ -367,15 +371,15 @@ await checkRootFontAt(1280, 720);
 for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
   const tag = w + 'w' + (touch ? ' touch' : '') + ' footer: ';
   const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h }, null, { hasTouch: touch });
-  const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
-  await page.waitForSelector(tabSel, { timeout: 15000 });
+  await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : '.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
   // The expanded rail carries the page operations in its pill; the mini rail keeps them in the footer.
   if (w >= 960) await page.click('nav.rail .rail-collapse');
-  const tabs = page.locator(tabSel);
+  const cats = await tabIds(page, 'cat');
   // The page with an advanced toggle; it moves the most cards.
   let found = false;
-  for (let i = 0; i < await tabs.count() && !found; i++) {
-    await tabs.nth(i).click();
+  for (let i = 0; i < cats.length && !found; i++) {
+    await goTab(page, cats[i]);
     await page.waitForTimeout(200);
     found = await page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).count() > 0;
   }
@@ -445,13 +449,13 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
 for (const [w, h] of [[1440, 900], [360, 800]]) {
   const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h },
     (c) => c.addInitScript(() => { try { localStorage.setItem('ui_hivis', '1'); } catch (e) { /* none */ } }));
-  const tabSel = w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : 'nav.tabs [role=tab][data-tab-id^="cat"]';
-  await page.waitForSelector(tabSel, { timeout: 15000 });
+  await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : '.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
   ok(w + 'w hi-vis: the preference is on before first paint', await page.evaluate(() => document.documentElement.classList.contains('hivis')));
-  const tabs = page.locator(tabSel);
+  const cats = await tabIds(page, 'cat');
   const bad = [];
-  for (let i = 0; i < await tabs.count(); i++) {
-    await tabs.nth(i).click();
+  for (let i = 0; i < cats.length; i++) {
+    await goTab(page, cats[i]);
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
     const shut = page.locator('main.pane .page-foot .adv-toggle[aria-expanded="false"]');

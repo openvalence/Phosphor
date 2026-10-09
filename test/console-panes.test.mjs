@@ -13,6 +13,7 @@
  * Build first (`npm run build:only`).
  * Run: node test/console-panes.test.mjs   (no device needed)
  */
+import { goTab } from './nav.mjs';
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -135,9 +136,10 @@ async function boot(viewport, path = '/', shell = false, init = null) {
   await page.goto('http://127.0.0.1:' + PORT + path, { waitUntil: 'domcontentloaded' });
   return { ctx, page, errors };
 }
+// The rail, the tab strip, or the phone menu's drawer (nav.mjs).
 const openTab = async (page, id) => {
-  await page.waitForSelector('[data-tab-id="' + id + '"]', { timeout: 15000 });
-  await page.click('[data-tab-id="' + id + '"]');
+  await page.waitForSelector('[data-tab-id="' + id + '"], .menu-btn', { timeout: 15000 });
+  await goTab(page, id);
   await page.waitForTimeout(250);
 };
 const facts = (page) => page.$$eval('.pane-facts dt', (dts) => Object.fromEntries(dts.map((dt) =>

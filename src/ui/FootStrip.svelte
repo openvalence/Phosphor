@@ -128,6 +128,11 @@
     padding-bottom: calc(.727em + env(safe-area-inset-bottom, 0px));
   }
   :global(.app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: .727em; }
+  /* The phone class (DESIGN §10.12): one line at the tap height, its 40 px
+     targets inside it; the inset under it only with no page footer below. */
+  :global(:root[data-phone]) .footstrip { box-sizing: content-box; height: max(var(--tap), 40px); padding-block: 0; }
+  :global(:root[data-phone]) .footstrip.pinned { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  :global(:root[data-phone] .app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: 0; }
 
   .fs-label {
     flex: 0 0 auto;

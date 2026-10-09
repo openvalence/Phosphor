@@ -73,6 +73,21 @@ export function nextClass(prev, width, pointer) {
   return c;
 }
 
+/** The phone class's shortest-side line, CSS px (DESIGN §10.12, ph-5u0g). */
+export const PHONE_SIDE = 500;
+
+/**
+ * The phone class (DESIGN §10.12): a coarse pointer and a shortest viewport
+ * side under PHONE_SIDE. It clamps the bucket to 2 or under and the class
+ * off `full`, so a phone on its side (a Pixel 10 Pro XL is about 990 px
+ * wide) keeps the phone layout. The one definition; every consumer reads
+ * view.bucket, view.cls or view.phone.
+ */
+export function phoneClamp(cls, bucket, pointer, width, height) {
+  const phone = pointer === 'coarse' && Math.min(width, height) < PHONE_SIDE;
+  return { phone, cls: phone && cls === 'full' ? 'handheld' : cls, bucket: phone ? Math.min(bucket, 2) : bucket };
+}
+
 /** Does this class promote a subgroup of `n` controls to its own page? */
 export function promotes(cls, n) {
   return cls === 'glance' || (cls === 'handheld' && n > DRILL_AFTER);

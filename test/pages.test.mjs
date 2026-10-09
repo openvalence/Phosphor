@@ -31,6 +31,7 @@ import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Vale
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 import { PAGE_ICON } from '../plugins/factory/funscript-player/page.js';
 import { THEMES } from '../src/model/theme.js';
+import { goTab, tabIds } from './nav.mjs';
 
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
@@ -119,7 +120,8 @@ async function boot(viewport, { probe = false, store = {}, touch = false } = {})
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(PAGE, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 });
+  // The rail lists Plugins once the hub is up; the phone menu's drawer is closed, so the hero stands for it there.
+  await page.waitForFunction(() => document.querySelector('[data-tab-id="plugins"]') || (document.querySelector('.menu-btn') && document.querySelector('.hero-strip')), null, { timeout: 15000 });
   await page.waitForTimeout(300);
   return { ctx, page, errors };
 }
@@ -308,19 +310,109 @@ console.log('\n--- desktop 1280x800 ---');
   await ctx.close();
 }
 
-// ---- phone -----------------------------------------------------------------
-console.log('\n--- phone 390x844 ---');
+// ---- phone menu (ph-5u0g.4, DESIGN §10.12) ------------------------------------
+let deskIds = [], deskTabs = [];
+{
+  const { ctx, page } = await boot({ width: 1428, height: 900 }, { probe: true });
+  await page.waitForSelector('[data-tab-id="' + PROBE_ID + '"]', { timeout: 15000 });
+  deskTabs = await page.$$eval('nav.rail [role=tab]', (ts) => ts.map((t) => ({ id: t.dataset.tabId, label: t.title,
+    path: t.classList.contains('sub') ? 'Phosphor › Plugins' : t.closest('.rail-sec').querySelector('.rail-lbl').textContent.trim() })));
+  deskIds = deskTabs.map((t) => t.id);
+  await ctx.close();
+}
+const outside = (page) => page.evaluate(() => ['main.pane', '.topstrip', '.hero-strip', '.footstrip', 'main.pane .page-foot']
+  .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '));
+for (const [w, h] of [[420, 860], [860, 420], [200, 390]]) {
+  const tag = 'menu ' + w + 'x' + h;
+  console.log('\n--- ' + tag + ' ---');
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
+  await page.waitForSelector('.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(400);
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.title, x: b.getAttribute('aria-expanded') }; });
+  ok(tag + ': no tab strip; the hamburger is a 40 px target, aria-expanded, title Menu', await page.locator('nav.tabs').count() === 0
+    && btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.x === 'false', JSON.stringify(btn));
+  const r0 = await outside(page);
+  await page.click('.menu-btn');
+  await page.waitForSelector('.phone-menu [role=tab]', { timeout: 5000 });
+  await page.waitForTimeout(150);
+  const ids = await page.$$eval('.phone-menu [role=tab]', (ts) => ts.map((t) => t.dataset.tabId));
+  ok(tag + ': the drawer lists every sidebar tab, in order', ids.join() === deskIds.join(), ids.join() + ' vs ' + deskIds.join());
+  ok(tag + ': aria-expanded follows', await page.$eval('.menu-btn', (b) => b.getAttribute('aria-expanded')) === 'true');
+  ok(tag + ': the Dash layouts and Add layout are in it', await page.locator('.phone-menu .rail-tab', { hasText: 'Dash' }).count() === 1
+    && await page.locator('.phone-menu :is(button, [role=button])', { hasText: /add layout/i }).count() >= 1);
+  const pair = await page.evaluate(() => [...document.querySelectorAll('.topstrip .pair .safety-op button')].every((b) => {
+    const q = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2)); }));
+  ok(tag + ': open, the stop pair stays uncovered', pair);
+  const r1 = await outside(page);
+  ok(tag + ': opening moves no rect outside the drawer', r1 === r0, r0 + ' -> ' + r1);
+  await shot(page, 'menu-open-' + w + 'x' + h + '.png');
+  await page.click('.phone-menu [data-tab-id="' + PROBE_ID + '"]');
+  await page.waitForTimeout(250);
+  ok(tag + ': a pick navigates and closes, focus back on the hamburger', await page.locator('.phone-menu').count() === 0 && await page.locator('main.pane .probe').count() === 1
+    && await page.evaluate(() => document.activeElement.classList.contains('menu-btn')));
+  await page.evaluate(() => scrollTo(0, 0));
+  const r2 = await outside(page);
+  await page.click('.menu-btn');
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  ok(tag + ': Escape closes; closing moves nothing', await page.locator('.phone-menu').count() === 0 && (await outside(page)) === r2, r2 + ' -> ' + (await outside(page)));
+  await page.click('.menu-btn');
+  await page.waitForTimeout(150);
+  await page.mouse.click(w - 10, h - 10);
+  await page.waitForTimeout(150);
+  ok(tag + ': an outside tap closes it', await page.locator('.phone-menu').count() === 0);
+  await shot(page, 'menu-closed-' + w + 'x' + h + '.png');
+  const wide = await page.evaluate(() => ({ sw: document.scrollingElement.scrollWidth, iw: innerWidth,
+    out: [...document.querySelectorAll('body *')].filter((e) => !e.closest('.measure') && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 10).map((e) => e.className + ' ' + Math.round(e.getBoundingClientRect().right)) }));
+  ok(tag + ': no horizontal page scroll on the page', wide.sw <= wide.iw + 1, JSON.stringify(wide));
+  // F3 still opens every page (the drawer's aria-selected tells which).
+  const missing = [];
+  for (const t of deskTabs) {
+    await page.keyboard.press('F3');
+    await page.fill('.lf-q', t.label);
+    const want = t.label + ' · ' + t.path;
+    const at = await page.$$eval('.lf-list li', (ls, want) => ls.findIndex((l) => l.textContent.replace(/\s+/g, ' ').trim() === want), want);
+    if (at < 0) { missing.push(t.id + ' (no entry)'); await page.keyboard.press('Escape'); continue; }
+    await page.locator('.lf-list li').nth(at).click();
+    await page.waitForTimeout(150);
+    await page.click('.menu-btn');
+    const sel = await page.$eval('.phone-menu [data-tab-id="' + t.id + '"]', (e) => e.getAttribute('aria-selected')).catch(() => null);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    if (sel !== 'true') missing.push(t.id);
+  }
+  ok(tag + ': F3 still opens every page', missing.length === 0, missing.join(' '));
+  ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+// The scroll area a landscape phone keeps (844x390, touch): top strip, pinned status row and page footer.
+{
+  const { ctx, page } = await boot({ width: 844, height: 390 }, { probe: true, touch: true });
+  const area = () => page.evaluate(() => {
+    const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+    const t = r('.topstrip'), f = r('.footstrip'), pf = r('main.pane .page-foot');
+    return { strip: Math.round(t.height), status: Math.round(f.height), foot: pf ? Math.round(pf.height) : 0,
+      scroll: Math.round(Math.min(f.top, pf && pf.height ? pf.top : Infinity) - t.bottom) };
+  });
+  const home = await area();
+  let cat = null;
+  for (const id of await tabIds(page, 'cat')) { await goTab(page, id); await page.waitForTimeout(200); const a = await area(); if (a.foot) { cat = a; break; } }
+  await goTab(page, PROBE_ID);
+  await page.waitForTimeout(300);
+  const compact = await area();
+  ok('844x390: the scroll area (home, a category page with a footer, a compactHero page)', home.scroll > 0 && !!cat && cat.scroll > 0 && compact.scroll > cat.scroll,
+    JSON.stringify({ home, cat, compact }));
+  await ctx.close();
+}
+// The player page through the menu on a phone: the card mounts.
 {
   const { ctx, page, errors } = await boot({ width: 390, height: 844 });
-  const ids = await page.$$eval('nav.tabs [role=tab]', (ts) => ts.map((t) => t.dataset.tabId));
-  ok('phone: the strip carries the page right after Plugins', ids[ids.indexOf('plugins') + 1] === ID, ids.join(','));
-  await page.$eval(TAB, (t) => t.scrollIntoView({ inline: 'center' }));
-  await page.click(TAB);
+  await page.waitForSelector('.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await goTab(page, ID);
   await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
-  ok('phone: the page mounts the card', await page.locator('main.pane .fsp').isVisible());
-  await page.evaluate(() => scrollTo(0, 0));
-  await shot(page, 'glance-menu-390x844.png');
-  ok('phone: no horizontal page scroll', await page.evaluate(() => document.scrollingElement.scrollWidth <= innerWidth + 1));
+  ok('phone: the menu opens the player page and it mounts the card', await page.locator('main.pane .fsp').isVisible());
   ok('no page errors (phone)', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -329,8 +421,9 @@ console.log('\n--- phone 390x844 ---');
 const PTAB = '[data-tab-id="' + PROBE_ID + '"]';
 const send = (page, ev, detail) => page.evaluate(([ev, d]) => window.__probeEl.dispatchEvent(new CustomEvent(ev, { bubbles: true, cancelable: true, detail: d })), [ev, detail]);
 async function openProbe(page) {
-  await page.waitForSelector(PTAB, { timeout: 15000 });
-  await page.$eval(PTAB, (t) => t.click());
+  await page.waitForSelector(PTAB + ', .menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await goTab(page, PROBE_ID);
   await page.waitForSelector('main.pane .probe', { timeout: 5000 });
   await page.waitForTimeout(150);
 }
@@ -448,10 +541,10 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(80);
   // A native page: the icon in its footer opens the same pop-up.
-  const cat = await page.$$eval('nav.tabs [role=tab][data-tab-id^="cat"]', (ts) => ts.map((t) => t.dataset.tabId));
+  const cat = await tabIds(page, 'cat');
   let icon = false;
   for (const id of cat) {
-    await page.$eval('[data-tab-id="' + id + '"]', (t) => t.click());
+    await goTab(page, id);
     await page.waitForTimeout(150);
     if (await page.locator('main.pane .page-foot .quick-rail').count()) { icon = true; break; }
   }
@@ -475,8 +568,9 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
 for (const [w, h] of [[420, 860], [860, 420]]) {
   const tag = 'quick media ' + w + 'x' + h;
   const { ctx, page, errors } = await boot({ width: w, height: h }, { touch: true });
-  await page.waitForSelector(TAB, { state: 'attached', timeout: 15000 });
-  await page.$eval(TAB, (t) => t.click());
+  await page.waitForSelector('.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await goTab(page, ID);
   await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
@@ -558,8 +652,9 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   const tag = 'compact ' + w + 'x' + h;
   console.log('\n--- ' + tag + ' ---');
   const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
-  await page.waitForSelector('[data-tab-id="pairing"]', { timeout: 15000 });
-  await page.$eval('[data-tab-id="pairing"]', (t) => t.click());
+  await page.waitForSelector('.menu-btn', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  await goTab(page, 'pairing');
   await page.waitForTimeout(300);
   const plain = await heroOf(page);
   await openProbe(page);
@@ -578,7 +673,7 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   const p = await heroOf(page);
   ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(c.btns.map((b) => [b.w, b.h, b.mid]))
     && p.mini && p.mini.l === c.mini.l && p.strip === c.strip, JSON.stringify([c.mini, p.mini, c.strip, p.strip]));
-  await page.$eval('[data-tab-id="pairing"]', (t) => t.click());
+  await goTab(page, 'pairing');
   await page.waitForTimeout(300);
   ok(tag + ': other pages keep the full hero', !(await heroOf(page)).compact && (await heroOf(page)).h === plain.h);
   ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));

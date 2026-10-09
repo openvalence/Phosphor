@@ -184,7 +184,8 @@ window's width bucket, 1 (watch) to 5 (wide), as `<html data-bucket>`, with
 `document.documentElement.dataset.bucket` (or styles `:root[data-bucket="1"]`
 in its CSS) and never `innerWidth`. It declares a layout per bucket, or takes
 the host's stacked default: buckets 1 and 2 (under 24 columns, about 860 px
-at 100 % scale; the edges are 12, 24, 48 and 96 columns) are one column, 3 the
+at 100 % scale; the edges are 12, 24, 48 and 96 columns, and the phone class,
+a coarse pointer with a shortest side under 500 px, is never past 2) are one column, 3 the
 page's handheld layout else stacked, 4 and 5 its full layout. In buckets 1 and
 2 the host makes the page's root a full-width column and caps its children at
 the pane width; a page that lays itself out marks its root `data-layout` and

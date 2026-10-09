@@ -225,7 +225,8 @@ async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-prefere
   const page = await ctx.newPage();
   page.on('pageerror', (e) => ok('no page error', false, String(e)));
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]', { timeout: 15000 })
+  // Under 960 the tabs sit in the phone menu's closed drawer (DESIGN §10.12): the Dash's home says the catalog is in.
+  const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab], main.pane .home', { timeout: 15000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(500);
   // Over the hero budget the rail is the mini; a tap is the user's ask for the rail.

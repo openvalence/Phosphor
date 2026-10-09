@@ -60,6 +60,9 @@
  * Run: node test/responsive-matrix.mjs [--only 360x800|picker|bucket|class|glance|home|scale|nest|builder|phosphor] [--no-shots]
  *        [--html <other build's index.html> --out <dir>]   (A/B a build)
  */
+import { goTab, tabIds } from './nav.mjs';
+// Any nav is up: the rail, the tab strip, or (the phone menu's drawer closed) the Dash's home.
+const READY = 'nav.rail [role=tab], nav.tabs [role=tab], main.pane .home';
 import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -430,14 +433,13 @@ async function visitViewport(w, h, dpr, tag, phone, coarse, takeShots) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(tag + ': ' + e));
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
-  const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+  const up = await page.waitForSelector(READY, { timeout: 15000 }).then(() => true).catch(() => false);
   if (!up) { table.push([tag, '-', 'boot', 'no nav tabs rendered (catalog not adopted?)']); total++; await ctx.close(); return; }
   await page.waitForTimeout(600);
-  const labels = await page.$$eval(tabSel, (els) => els.map((e) => e.getAttribute('title') || e.textContent.trim()));
-  for (let i = 0; i < labels.length; i++) {
-    const view = slug(labels[i]);
-    await page.locator(tabSel).nth(i).click();
+  const list = await navList(page);
+  for (let i = 0; i < list.length; i++) {
+    const view = slug(list[i].label);
+    await goTab(page, list[i].id);
     await page.waitForTimeout(350);
     const fails = [...await page.evaluate(measure, { phone, coarse }), ...await page.evaluate(stripCheck),
       ...(phone || w < 960 ? await page.evaluate(stickyCheck) : [])];
@@ -474,8 +476,30 @@ for (const [w, h, dpr2] of VIEWPORTS) {
 // The dash page head's Edit layout, or the sidebar wrench once the page head is gone.
 const editClick = async (page) => {
   const bar = page.locator('.dash-toolbar button:has-text("Edit layout")');
-  await (await bar.count() ? bar : page.locator('button[title="Edit layout"]:visible')).first().click();
+  if (await bar.count()) { await bar.first().click(); return; }
+  // The phone menu (DESIGN §10.12): the wrench rides the drawer's Dash row; the hamburger closes it again.
+  const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
+  if (menu) await page.click('.menu-btn');
+  await page.locator('button[title="Edit layout"]:visible').first().click();
+  if (menu) await page.click('.menu-btn');
 };
+/** [{id, label}] of every tab in sidebar order, whichever nav draws them (nav.mjs opens the drawer). */
+async function navList(page) {
+  const ids = await tabIds(page);
+  const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
+  if (menu) await page.click('.menu-btn');
+  const labels = await page.$$eval('[role=tab][data-tab-id]', (els) => Object.fromEntries(els.map((e) => [e.dataset.tabId, e.getAttribute('title') || e.textContent.trim()])));
+  if (menu) await page.click('.menu-btn');
+  return ids.map((id) => ({ id, label: labels[id] || id }));
+}
+/** The selected tab's label, whichever nav draws it. */
+async function selectedLabel(page) {
+  const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
+  if (menu) await page.click('.menu-btn');
+  const t = await page.$eval('[role=tab][aria-selected=true]', (e) => e.getAttribute('title') || e.textContent.trim()).catch(() => '');
+  if (menu) await page.click('.menu-btn');
+  return t;
+}
 const scen = (name, cond, extra) => {
   if (!cond) { table.push(['scenario', name, 'fail', extra || '']); total++; }
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
@@ -603,7 +627,7 @@ if (!ONLY || ONLY === 'railops') {
   const rb = '.rail-ops .reset';
   const modal = () => page.locator('[role=alertdialog]').count();
   const catIds = await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (e) => e.map((b) => b.dataset.tabId));
-  const go = async (id) => { await page.click('[data-tab-id="' + id + '"]'); await page.waitForTimeout(250); };
+  const go = async (id) => { await goTab(page, id); await page.waitForTimeout(250); };
   // A page whose reset writes directly, and one that asks (a Flip lives on it).
   let plain = null, gated = null;
   for (const id of catIds) {
@@ -676,7 +700,7 @@ if (!ONLY || ONLY === 'class') {
   const pre = await inFlight();
   await page.setViewportSize({ width: 400, height: 800 });
   await page.waitForTimeout(300);
-  const tabNow = await page.$eval('nav.tabs [aria-selected=true]', (e) => e.textContent.trim()).catch(() => '');
+  const tabNow = await selectedLabel(page);
   scen('full -> handheld keeps the active category', tabNow === label, tabNow + ' vs ' + label);
   const post = await inFlight();
   scen('a write in flight is still shown after the switch', pre > base && post > base, base + ' -> ' + pre + ' -> ' + post);
@@ -691,9 +715,9 @@ if (!ONLY || ONLY === 'class') {
   const held = !!(await page.$('nav.rail'));
   await page.mouse.up();
   await page.waitForTimeout(300);
-  const released = !!(await page.$('nav.tabs'));
+  const released = !(await page.$('nav.rail'));
   scen('a class switch waits for the pointer to lift', held && released);
-  const railTab = await page.$eval('nav.tabs [aria-selected=true]', (e) => e.textContent.trim()).catch(() => '');
+  const railTab = await selectedLabel(page);
   scen('the round trip still lands on the same category', railTab === label, railTab);
   await ctx.close();
 
@@ -701,11 +725,12 @@ if (!ONLY || ONLY === 'class') {
   // the same layout floor as every other view.
   const phone = await seeded({ width: 390, height: 844 }, (ws) => fakeHub(ws));
   await phone.page.goto('http://127.0.0.1:' + PORT + '/');
-  await phone.page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
-  const tabs = phone.page.locator('nav.tabs [role=tab]');
+  await phone.page.waitForSelector(READY, { timeout: 15000 });
+  await phone.page.waitForTimeout(300);
+  const tabs = await tabIds(phone.page);
   let opened = false;
-  for (let i = 1; i < await tabs.count() && !opened; i++) {
-    await tabs.nth(i).click();
+  for (let i = 1; i < tabs.length && !opened; i++) {
+    await goTab(phone.page, tabs[i]);
     await phone.page.waitForTimeout(250);
     // The fixture's one group past eight controls is diagnostic-rank.
     await phone.page.click('.adv-toggle[aria-expanded=false]:has-text("diagnostic")', { timeout: 500 }).catch(() => {});
@@ -795,7 +820,8 @@ if (!ONLY || ONLY === 'home') {
   for (const [w, h] of [[320, 568], [360, 800]]) {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
+    await page.waitForSelector(READY, { timeout: 15000 });
+    await page.waitForTimeout(300);
     await editClick(page);
     const f = (await page.evaluate(measure, { phone: true })).filter(([k]) => k === 'overflow' || k === 'target');
     await page.locator('.home .dash-toolbar button', { hasText: 'Layout…' }).click();
@@ -837,14 +863,13 @@ if (!ONLY || ONLY === 'scale') {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => pageErrors.push('scale: ' + e));
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
-    await page.waitForSelector(tabSel, { timeout: 15000 });
+    await page.waitForSelector(READY, { timeout: 15000 });
     await page.waitForTimeout(300);
     // The applied step reads from the status row's scale control (ph-5q67).
     const applied = await page.$eval('.footstrip .foot-scale output', (e) => e.textContent.trim()).catch(() => '?');
     const out = [];
-    for (let i = 0; i < await page.locator(tabSel).count(); i++) {
-      await page.locator(tabSel).nth(i).click();
+    for (const id of await tabIds(page)) {
+      await goTab(page, id);
       await page.waitForTimeout(200);
       for (const f of await check(page)) out.push(f);
     }
@@ -879,11 +904,12 @@ if (!ONLY || ONLY === 'nest') {
   for (const [w, h] of [[320, 568], [360, 800], [390, 844]]) {
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
-    const tabs = page.locator('nav.tabs [role=tab]');
+    await page.waitForSelector(READY, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const tabs = await tabIds(page);
     let tab = -1, key = '', ids = [];
-    for (let i = 0; i < await tabs.count() && tab < 0; i++) {
-      await tabs.nth(i).click();
+    for (let i = 0; i < tabs.length && tab < 0; i++) {
+      await goTab(page, tabs[i]);
       await page.waitForTimeout(200);
       const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
         ids: [...el.children].map((c) => c.getAttribute('data-id')) })).catch(() => null);
@@ -894,8 +920,9 @@ if (!ONLY || ONLY === 'nest') {
     } } } };
     await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
     await page.reload();
-    await page.waitForSelector('nav.tabs [role=tab]', { timeout: 15000 });
-    if (tab > 0) await tabs.nth(tab).click();
+    await page.waitForSelector(READY, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    if (tab > 0) await goTab(page, tabs[tab]);
     await page.waitForTimeout(300);
     const body = page.locator('.dash-cell[data-id="nest:1"] .nest-body');
     const r = await body.evaluate((el) => {
@@ -929,14 +956,14 @@ if (!ONLY || ONLY === 'builder') {
   console.log('\nbuilder scenarios');
   for (const [w, h] of [[1280, 720], [360, 800]]) {
     const phone = w < 600, tag = w + 'x' + h;
-    const tabSel = phone ? 'nav.tabs [role=tab]' : 'nav.rail [role=tab]';
     const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
     await page.goto('http://127.0.0.1:' + PORT + '/');
-    await page.waitForSelector(tabSel, { timeout: 15000 });
-    const tabs = page.locator(tabSel);
+    await page.waitForSelector(READY, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const tabs = await tabIds(page);
     let tab = -1, key = '', ids = [];
     for (let i = 0; i < 1 && tab < 0; i++) { // the Dash is the only page with an edit mode
-      await tabs.nth(i).click();
+      await goTab(page, tabs[i]);
       await page.waitForTimeout(200);
       const g = await page.$eval('.dash-grid[data-view]', (el) => ({ key: el.getAttribute('data-view'),
         ids: [...el.children].map((c) => c.getAttribute('data-id')).filter(Boolean) })).catch(() => null);
@@ -948,8 +975,9 @@ if (!ONLY || ONLY === 'builder') {
     } } } };
     await page.evaluate(([k, v]) => localStorage.setItem(k, v), [STORE_KEY, JSON.stringify(store)]);
     await page.reload();
-    await page.waitForSelector(tabSel, { timeout: 15000 });
-    if (tab > 0) await tabs.nth(tab).click();
+    await page.waitForSelector(READY, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    if (tab > 0) await goTab(page, tabs[tab]);
     await page.waitForTimeout(300);
     await editClick(page);
     await page.locator('.dash-grid[data-view] > .dash-cell[data-id="' + ids[2] + '"] .handle.grab').click();
@@ -972,12 +1000,13 @@ if (!ONLY || ONLY === 'phosphor') {
   await new Promise((r) => sh.listen(0, '127.0.0.1', r));
   for (const [w, h] of [[1440, 900], [844, 390], [360, 800]]) {
     const phone = Math.min(w, h) < 600, tag = w + 'x' + h;
-    const tabSel = w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]';
     // The served page with a hub: no Phosphor group.
     {
       const { ctx, page } = await seeded({ width: w, height: h }, (ws) => fakeHub(ws));
       await page.goto('http://127.0.0.1:' + PORT + '/');
-      const up = await page.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+      const up = await page.waitForSelector(READY, { timeout: 15000 }).then(() => true).catch(() => false);
+      await page.waitForTimeout(300);
+      if (await page.locator('.menu-btn').isVisible()) await page.click('.menu-btn');
       scen(tag + ': the served page has no shell panes', up && !(await page.$('[data-tab-id^="shell:"], .rail-sec.shell')));
       await ctx.close();
     }
@@ -995,11 +1024,11 @@ if (!ONLY || ONLY === 'phosphor') {
     page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('phosphor: ' + e); });
     await page.goto('http://127.0.0.1:' + sh.address().port + '/');
     // The legacy saved host redials the fixture hub at launch.
-    const ids = await page.waitForSelector('[data-tab-id="shell:about"]', { timeout: 15000 })
-      .then(() => page.$$eval('[data-tab-id^="shell:"]', (els) => els.map((e) => e.dataset.tabId))).catch(() => []);
+    const ids = await page.waitForSelector('[data-tab-id="shell:about"], .menu-btn', { timeout: 15000 })
+      .then(() => page.waitForTimeout(300)).then(() => tabIds(page, 'shell:')).catch(() => []);
     scen(tag + ': the shell bundle carries the Phosphor tabs', ['hubs', 'server', 'settings', 'about'].every((p) => ids.includes('shell:' + p)), JSON.stringify(ids));
     for (const id of ids) {
-      await page.click('[data-tab-id="' + id + '"]');
+      await goTab(page, id);
       await page.waitForTimeout(250);
       const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)];
       scen(tag + ': Phosphor > ' + id.slice(6) + ' passes the layout and strip checks', f.length === 0, f.map((x) => x.join(' ')).join('; '));
@@ -1030,11 +1059,12 @@ if (!ONLY || ONLY === 'pluginpages') {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) pageErrors.push('pluginpages: ' + e); });
     await page.goto('http://127.0.0.1:' + sh.address().port + '/');
-    const up = await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 }).then(() => true).catch(() => false);
-    const ids = up ? await page.$$eval('[data-tab-id^="plugin:"]', (els) => els.map((e) => e.dataset.tabId)) : [];
+    const up = await page.waitForSelector('[data-tab-id="plugins"], .menu-btn', { timeout: 15000 }).then(() => true).catch(() => false);
+    await page.waitForTimeout(1500);
+    const ids = up ? await tabIds(page, 'plugin:') : [];
     scen(tag + ': the shell bundle lists plugin pages', ids.length > 0, JSON.stringify(ids));
     for (const id of ids) {
-      await page.click('[data-tab-id="' + id + '"]');
+      await goTab(page, id);
       await page.waitForTimeout(500);
       // A plugin's thin heat strip is a strip, not a chart: the chart-height rule does not apply to pages.
       const f = [...await page.evaluate(measure, { phone, coarse: phone }), ...await page.evaluate(stripCheck)].filter((x) => !(x[0] === 'measure' && /^chart svg/.test(x[1])));
@@ -1068,7 +1098,7 @@ if (!ONLY || ONLY === 'pluginpages') {
     // The host's stacked default: a page root laying two 330 px children in a row stacks in buckets 1-2 and keeps
     // its row with data-layout (it owns its layout then).
     if (ids.length) {
-      await page.click('[data-tab-id="' + ids[0] + '"]');
+      await goTab(page, ids[0]);
       await page.waitForTimeout(300);
       const rows = await page.evaluate(() => {
         const st = document.createElement('style'); st.textContent = '.syn{display:flex}.syn>div{flex:none;width:330px;height:20px}'; document.head.append(st);

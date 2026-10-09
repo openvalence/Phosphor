@@ -27,6 +27,7 @@
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
+  import { phoneMenu } from './PhoneMenu.svelte';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   let { shell: Shell = null } = $props();
@@ -261,6 +262,13 @@
      other clickables opt out on their own (Tauri drag.js). -->
 <header class="linkbar" class:shell={!!Shell} data-tauri-drag-region="deep">
   <div class="header-left">
+    <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
+    {#if phoneMenu.shown}
+      <button type="button" class="menu-btn" aria-label="Menu" title="Menu" aria-expanded={phoneMenu.open}
+              onclick={() => (phoneMenu.open = !phoneMenu.open)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
+      </button>
+    {/if}
     <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
     <span class="wordmark" {@attach fullTitle}>{title}</span>
   </div>
@@ -324,6 +332,21 @@
     color: var(--shell-fg);
     box-shadow: inset 0 -1px 0 var(--shell-border);
   }
+
+  /* A 40 px target in a 32 or 40 px bar: it overhangs the bar's box, never grows it. */
+  .menu-btn {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-block: calc(var(--sp-2) * -1);
+    margin-inline: calc(var(--gap) * -1 + var(--sp-1)) calc(var(--sp-2) * -1);
+    color: var(--ink);
+    border-radius: var(--r-s);
+  }
+  .menu-btn[aria-expanded='true'] { color: var(--highlight); }
+  .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
   /* Shrinks after the optional chips have shed; the name ellipsizes. */
   .header-left {

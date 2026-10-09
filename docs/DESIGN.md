@@ -1022,7 +1022,23 @@ derives from one unit, and no size is tuned by hand.
   operations) as a drawer from the left edge over the page, closed by a pick,
   a tap outside or Escape. The tab strip, whose row overflowed at phone width,
   is retired there; the Dash's + moves into the menu. The drawer overlays,
-  so nothing shifts. Seams: `src/App.svelte`, `src/ui/TopStrip.svelte`.
+  so nothing shifts. It starts under the top strip, so the hamburger and the
+  stop pair stay uncovered; focus moves to the selected entry on open and
+  back to the hamburger on close. The page operations ride the drawer's pill
+  and stay in the page footer too, one tap from the thumb (`ph-5u0g.4`, the
+  agent's reading, veto-able). Seams: `src/App.svelte` (`sideTabs`, shared
+  with the desktop rail), `src/ui/PhoneMenu.svelte`, the hamburger in
+  `src/ui/LinkBar.svelte`.
+- The phone class (Fable's pick 2026-10-08, `ph-5u0g`, veto-able): a coarse
+  pointer and a shortest viewport side under 500 px clamp the bucket to 2 or
+  under and the renderer class off `full`, so a phone on its side (a Pixel 10
+  Pro XL is about 990 px wide) keeps the phone layout: the menu, the pinned
+  footer and status row, the quick rail and the compact hero. It is defined
+  once (`phoneClamp`, `src/model/rclass.js`; `view.phone` and
+  `<html data-phone>`, `src/model/viewport.svelte.js`) and every consumer
+  reads the bucket and class; the two scroll modes in `src/style.css` follow
+  `<html data-rc>`, not a width query. There the status row is one line at
+  the tap height, its facts ellipsized, never wrapping.
 - Sidebar: the renderer class (§10.4, RFC-062 draft) still picks the nav
   model, rail or tab strip; the bucket decides everything inside it. On the
   tab strip the page operations stay in the page footer (§10.3).

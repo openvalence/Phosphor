@@ -48,6 +48,7 @@
  *
  * Run: node test/shell-chrome-geometry.test.mjs   (no device needed)
  */
+import { goTab, tabIds } from './nav.mjs';
 import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -263,13 +264,15 @@ await sp.emulateMedia({ contrast: 'more' });
 await sp.emulateMedia({ contrast: 'no-preference' });
 await sp.evaluate(() => document.documentElement.classList.remove('hivis'));
 
-// Phone: the Phosphor tabs ride the same tab strip; the e-stop stays put.
+// Phone: the Phosphor tabs ride the phone menu's drawer (ph-5u0g.4); the e-stop stays put.
 await sp.setViewportSize({ width: 360, height: 640 });
-await sp.waitForSelector('nav.tabs [data-tab-id="shell:settings"]');
+await sp.waitForSelector('.menu-btn');
 const esBefore = await rect('.topstrip .btn-estop');
-const phoneTabs = await sp.$$eval('nav.tabs [data-tab-id^="shell:"]', (els) => els.map((e) => e.textContent.trim()));
-ok('phone: the Phosphor tabs ride the tab strip', PANES.every((p) => phoneTabs.includes(p)), JSON.stringify(phoneTabs));
-await sp.click('nav.tabs [data-tab-id="shell:settings"]');
+await sp.click('.menu-btn');
+await sp.waitForSelector('.phone-menu [data-tab-id="shell:settings"]');
+const phoneTabs = await sp.$$eval('.phone-menu [data-tab-id^="shell:"]', (els) => els.map((e) => e.textContent.trim()));
+ok('phone: the Phosphor tabs ride the phone menu', PANES.every((p) => phoneTabs.includes(p)), JSON.stringify(phoneTabs));
+await sp.click('.phone-menu [data-tab-id="shell:settings"]');
 await sp.waitForTimeout(150);
 ok('phone: Phosphor > Settings renders in the page', await sp.evaluate(() => !!document.querySelector('main.pane .set')));
 await sp.evaluate(() => window.scrollTo(0, 0));
@@ -513,8 +516,10 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   await fctx.routeWebSocket(/:82\//, hub({}));
   const fp = await fctx.newPage();
   await fp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const tabSel = (w >= 960 ? 'nav.rail' : 'nav.tabs') + ' [role=tab][data-tab-id^="cat"]';
-  const up = await fp.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+  const tabSel = 'nav.rail [role=tab][data-tab-id^="cat"]';
+  // Under 960 the phone menu's drawer holds the tabs (nav.mjs); the hero says the hub is up.
+  const up = await fp.waitForSelector(w >= 960 ? tabSel : '.hero-strip', { state: 'attached', timeout: 15000 }).then(() => true).catch(() => false);
+  await fp.waitForTimeout(300);
   ok(tag + ': the category pages render', up);
   if (!up) { await fctx.close(); continue; }
   const footBox = () => fp.evaluate(() => { const r = document.querySelector('main.pane .page-foot')?.getBoundingClientRect();
@@ -673,8 +678,8 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.
     let hit = null;
-    for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
-      await fp.click('[data-tab-id="' + id + '"]');
+    for (const id of await tabIds(fp, 'cat')) {
+      await goTab(fp, id);
       await fp.waitForTimeout(150);
       if (await fp.locator('.rail-tab.on + .rail-ops .reset').count()) { hit = id; break; }
     }
@@ -692,8 +697,8 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   const unpinned = [];
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
-  for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
-    await fp.click('[data-tab-id="' + id + '"]');
+  for (const id of await tabIds(fp, 'cat')) {
+    await goTab(fp, id);
     await fp.waitForTimeout(250);
     const box = await fp.evaluate(() => {
       const f = document.querySelector('main.pane .page-foot');

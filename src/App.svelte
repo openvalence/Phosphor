@@ -10,11 +10,12 @@
    * The sharpest test of this refactor lives here: there is no per-channel code
    * below. Add a settings channel to the firmware and it appears.
    *
-   * ONE NAV MODEL, TWO RENDERINGS. The same tabs array (and the same `active`
-   * id) drives a sidebar rail in the `full` renderer class and a horizontal
-   * tab strip in `handheld` and `glance` (model/viewport.svelte.js, RFC-062
-   * draft). A class switch mid-session must never lose the operator's place
-   * or a pending write, and never forks the nav logic.
+   * ONE NAV MODEL, THREE RENDERINGS. The same tabs array (and the same
+   * `active` id) drives a sidebar rail in the `full` renderer class, the phone
+   * menu's drawer (the rail's own content) in buckets 1 and 2, and a
+   * horizontal tab strip otherwise (model/viewport.svelte.js, RFC-062 draft;
+   * DESIGN §10.12). A class switch mid-session must never lose the
+   * operator's place or a pending write, and never forks the nav logic.
    */
   import Field from './ui/Field.svelte';
   import { cardbody } from './ui/cardbody.js';
@@ -35,6 +36,7 @@
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
   import QuickRail from './ui/QuickRail.svelte';
+  import PhoneMenu, { phoneMenu } from './ui/PhoneMenu.svelte';
   import { railReadout } from './ui/hero/RailWidget.svelte';
   import { heroBar, openQuick } from './ui/hero/heroBar.svelte.js';
   import { untrack, tick } from 'svelte';
@@ -300,7 +302,10 @@
 
   // Mobile: a tab switch scrolls the page to its top, since the page (not a
   // bounded region) is what scrolls here.
-  let tabsNav = $state(null);
+  // The phone menu (DESIGN §10.12): buckets 1 and 2 replace the tab strip
+  // with a hamburger and a drawer of the sidebar's content.
+  const menuMode = $derived(!isDesktop && view.bucket <= 2);
+  $effect(() => { phoneMenu.shown = menuMode; if (!menuMode) phoneMenu.open = false; });
   // The promoted group page open in the active category (RENDERING §11).
   let drill = $state(null);
   // Set by a user page switch; the page fade (style.css) runs only then.
@@ -309,12 +314,12 @@
     if (id !== active) switching = true;
     active = id;
     drill = null;
-    // The sticky tab strip stays under the top strip; scrolling IT to the
-    // viewport top hides the page's first heading behind both.
-    if (tabsNav) window.scrollTo({ top: 0, behavior: 'auto' });
+    phoneMenu.open = false;
+    if (!isDesktop) window.scrollTo({ top: 0, behavior: 'auto' });
   }
   // A saved dash layout is a view of the Dash tab: the store holds which one.
   function pickLayout(n) {
+    phoneMenu.open = false;
     if (layouts.active !== n) dashEdit.on = false;
     switchLayout(n);
     selectTab('machine');
@@ -539,7 +544,7 @@
   </button>
 {/snippet}
 
-{#snippet railTab(t)}
+{#snippet railTab(t, mini)}
   <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
           aria-selected={current && current.id === t.id}
           tabindex={current && current.id === t.id ? 0 : -1}
@@ -547,8 +552,43 @@
           title={t.label}
           onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
     <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
-    {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
+    {#if !mini}<span class="rail-name">{t.label}</span>{/if}
   </button>
+{/snippet}
+
+<!-- The sidebar's content: the desktop rail and the phone menu's drawer. -->
+{#snippet sideTabs(mini, ops)}
+    <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
+      {#each navSections as sec (sec.label)}
+        <div class="rail-sec" class:shell={sec.shell}>
+          {#if !mini}<span class="rail-lbl">{sec.label}</span>{/if}
+          {#each sec.tabs as t (t.id)}
+            {@const here = ops && current.id === t.id}
+            {@render railTab(t, mini)}
+            {#if here}
+              <div class="rail-ops" role="group" aria-label="Page operations"
+                   style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                {#if visibleGroups.diagAll}
+                  <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                          title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                {/if}
+                {#if visibleGroups.adv}
+                  <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                          title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                {/if}
+                {#if hasDefaults}
+                  <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                          use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
+                          title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                          >{resetDone ? 'reset ✓' : 'reset'}</button>
+                {/if}
+              </div>
+            {/if}
+            {#if t.id === 'machine' && !mini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
+          {/each}
+        </div>
+      {/each}
+    </div>
 {/snippet}
 
 {#snippet pane()}
@@ -672,37 +712,7 @@
                 title={railMini ? 'Expand navigation' : 'Collapse navigation'}>
           <span aria-hidden="true">{railMini ? '»' : '«'}</span>
         </button>
-        <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
-          {#each navSections as sec (sec.label)}
-            <div class="rail-sec" class:shell={sec.shell}>
-              {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
-              {#each sec.tabs as t (t.id)}
-                {@const ops = railOps && current.id === t.id}
-                {@render railTab(t)}
-                {#if ops}
-                  <div class="rail-ops" role="group" aria-label="Page operations"
-                       style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
-                    {#if visibleGroups.diagAll}
-                      <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                              title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
-                    {/if}
-                    {#if visibleGroups.adv}
-                      <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                              title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
-                    {/if}
-                    {#if hasDefaults}
-                      <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
-                              use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                              title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
-                              >{resetDone ? 'reset ✓' : 'reset'}</button>
-                    {/if}
-                  </div>
-                {/if}
-                {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
-              {/each}
-            </div>
-          {/each}
-        </div>
+        {@render sideTabs(railMini, railOps)}
       </nav>
       <div class="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
@@ -710,7 +720,10 @@
     </div>
   {:else}
     {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
-    <nav class="tabs" aria-label="Sections" bind:this={tabsNav}>
+    {#if menuMode}
+      <PhoneMenu><nav class="rail drawer-nav" aria-label="Sections">{@render sideTabs(false, catPage)}</nav></PhoneMenu>
+    {:else}
+    <nav class="tabs" aria-label="Sections">
       <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
         {#each tabs as t (t.id)}
           <button role="tab" data-tab-id={t.id}
@@ -738,6 +751,7 @@
         {/each}
       </div>
     </nav>
+    {/if}
     {@render pane()}
   {/if}
 
@@ -810,6 +824,8 @@
     overflow-y: auto;
   }
   .rail.mini { width: 56px; }
+  /* The phone menu's drawer holds the rail's content at the drawer's width. */
+  .rail.drawer-nav { width: auto; flex: 1 0 auto; border: 0; border-radius: 0; background: none; overflow: visible; padding-top: var(--sp-3); }
   /* No padding on the rail itself: the recess shades (style.css [data-shade])
      span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {
@@ -962,7 +978,7 @@
     :global(.rail-tab) { min-height: 40px; }
   }
 
-  /* ---- phone: horizontal tab strip ---------------------------------------
+  /* ---- bucket 3 below `full`: horizontal tab strip --------------------------
      Sticky just below the top strip, because on a phone the settings list is
      long and losing the tab bar means scrolling all the way back up to change
      section. Horizontally scrollable rather than wrapping: a machine may
