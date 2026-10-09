@@ -685,6 +685,7 @@ export const CSS = `
 .fsp-pframe { grid-area: 1 / 1 / -1 / 2; }
 .fsp[data-an] .fsp-pframe { grid-column: 1 / -1; }
 .fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-slot, .fsp-anbox) { margin-inline: var(--sp-4); }
+.fsp[data-page][data-comp=handheld]:not([data-media]) > .fsp-libbox { margin-inline: var(--sp-4); }
 .fsp[data-page] > .fsp-src { margin-top: var(--sp-3); }
 .fsp[data-page] > .fsp-slot { margin-bottom: var(--sp-3); }
 .fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
@@ -735,8 +736,8 @@ export const CSS = `
 .fsp:is([data-cls=portrait], [data-cls=landscape]) { --fsp-sp: 0px; }
 .fsp:is([data-cls=portrait], [data-cls=landscape]) .fsp-split { display: none; }
 .fsp[data-cls=portrait]:not([data-an]) .fsp-stage::before { display: none; }
-.fsp[data-cls=portrait]:not([data-an]) .fsp-vbox { bottom: auto; height: var(--fsp-stage-min); }
-.fsp[data-cls=portrait][data-ar]:not([data-an], [data-mo]) .fsp-vbox { right: auto; width: 100%; height: auto; aspect-ratio: var(--fsp-ar); max-height: 100%; }
+.fsp[data-cls=portrait]:not([data-an], [data-media]) .fsp-vbox { bottom: auto; height: var(--fsp-stage-min); }
+.fsp[data-cls=portrait][data-ar]:not([data-an], [data-mo], [data-media]) .fsp-vbox { right: auto; width: 100%; height: auto; aspect-ratio: var(--fsp-ar); max-height: 100%; }
 .fsp-empty { position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: center; align-items: center; justify-content: center; gap: var(--sp-3); }
 .fsp[data-an] .fsp-empty > * { display: none; }
 .fsp-mo { position: absolute; inset: 0; display: grid; grid-template: "k b" auto "m m" 24px / minmax(0, 1fr) auto; align-content: center; align-items: center;

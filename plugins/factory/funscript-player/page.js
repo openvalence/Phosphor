@@ -87,7 +87,11 @@ export function registerPlayerPage(api, player, spec, settings) {
     head.append(hd, shut);
     sec.append(Object.assign(document.createElement('div'), { className: 'fsp-grab' }), head);
     setOpen(readPrefs(api).settingsOpen);
-    const toggle = (on) => { writePref(api, 'settingsOpen', on); setOpen(on); };
+    // In flow (the library collapsed) the section opens below the card: bring it into view.
+    const toggle = (on) => {
+      writePref(api, 'settingsOpen', on); setOpen(on);
+      if (on && getComputedStyle(sec).position === 'static') sec.scrollIntoView({ block: 'nearest' });
+    };
     const inst = player.mount(card, fields, { fullscreen: true, page: true,
       settings: { get open() { return !sec.hidden; }, toggle } });
     const close = () => { toggle(false); inst.update(); };

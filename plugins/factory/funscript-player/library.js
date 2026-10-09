@@ -64,7 +64,7 @@ export const CSS = `
 .fsp-lib[data-off] { grid-template-rows: var(--tap) minmax(0, 1fr); }
 .fsp-lib[data-off] .fsp-lib-foot { display: none; }
 
-.fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
+.fsp-lib-head select { flex: none; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
 .fsp-grid { display: grid; gap: var(--sp-3); align-content: start; height: 100%; }
@@ -85,7 +85,7 @@ export const CSS = `
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
 .fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
-.fsp-lib-foot .fsp-n { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fsp-lib-foot .fsp-n { display: block; align-self: center; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fsp-lib-foot output:not(.fsp-n) { flex: 1 0 auto; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
