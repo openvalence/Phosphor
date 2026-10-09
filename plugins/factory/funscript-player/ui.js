@@ -95,6 +95,7 @@ const TRACE_MS = 8000;
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const DOUBLE_MS = 250;
 export const SPLIT_MIN = 64, MIN_STAGE = 120;
+const AUTO_WAIT_MS = 10000;   // Autoplay waits this long for the next scene's script, then gives up
 // The player column the one-row bar needs (eleven items at their floors). A desktop page narrower than that with the
 // library open shuts the library for the session (the pref untouched); the caret reopens it, and then the bar wraps.
 const BAR_ROW_MIN = 600, LIB_W = 320;
@@ -629,6 +630,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     toggle: () => (active() ? stop('ready') : play()),
     halt: () => { if (active()) stop('held'); },
     canPlay,
+    /** A gate stands (a latch, another source's rail): Autoplay reads it. */
+    gated: () => !!gate(),
     setFields(f) { fields = f; reshape(); warm(); changed(); },
     setInterp(v) { interp = v; reshape(); changed(); },
     update() { if (gate() && active()) stop('held', '', true); else changed(); },
@@ -919,11 +922,14 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 /** The click that follows a pointerdown which closed a sheet or drawer: swallowed, so the tap outside never reaches
- *  the stage (a stage click toggles Play, which moves the machine). The guard lapses after DOUBLE_MS without one. */
+ *  the stage (a stage click toggles Play, which moves the machine). */
 export function swallowClick() {
-  const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
-  document.addEventListener('click', eat, { capture: true, once: true });
-  setTimeout(() => document.removeEventListener('click', eat, { capture: true }), DOUBLE_MS);
+  const eat = (e) => { e.stopPropagation(); e.preventDefault(); done(); };
+  // However long the tap is held, its click is eaten; the guard ends at the next pointerdown (a later tap), never on a
+  // timer, so a long press cannot slip through.
+  const done = () => { document.removeEventListener('click', eat, true); document.removeEventListener('pointerdown', done, true); };
+  document.addEventListener('click', eat, true);
+  setTimeout(() => document.addEventListener('pointerdown', done, true), 0);
 }
 // A meter tick's left at share u, its 3 px inside the meter at either end.
 const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
@@ -1067,7 +1073,7 @@ export function createPlayer(api) {
       }
       saveQueue();
       files = files.filter((f) => !vids.slice(1).includes(f) && !(axisOf(f.name) && vids.slice(1).some((vf) => axisOf(f.name).base.toLowerCase() === stemOf(vf.name))));
-    } else if (queue.some((e) => e.kind === 'file')) saveQueue();
+    } else if (queue.some((e) => e.kind === 'file')) { queue = [...queue]; saveQueue(); }
     const { video: v, script } = pairFiles(files);
     const st = ctl.state;
     if (st.view !== 'player') ctl.setView('player');
@@ -1088,7 +1094,7 @@ export function createPlayer(api) {
   const stashKey = () => (readPrefs(api).stash || {}).key || '';
   const stemOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
   let queue = readPrefs(api).queue.map((s) => fromStored(s, stashKey())).filter(Boolean);
-  let autoplay = readPrefs(api).autoplay, autoPending = false;
+  let autoplay = readPrefs(api).autoplay, autoPending = null;
   const setAutoplay = (on) => { autoplay = !!on; writePref(api, 'autoplay', autoplay); views.forEach((w) => w.render()); };
   const saveQueue = () => { writePref(api, 'queue', queue.map(toStored)); views.forEach((w) => w.render()); };
   const loadEntry = (e) => { if (e.kind === 'stash') pick(e.scene); else if (e.files) openLocal(e.files); };
@@ -1100,17 +1106,27 @@ export function createPlayer(api) {
     move(from, to) { queue = move(queue, from, to); saveQueue(); },
     play(i) { const e = queue[i]; if (!e) return; queue = queue.filter((_, k) => k !== i); saveQueue(); loadEntry(e); },
   };
-  // Autoplay: a scene that ends (not a loop's wrap; a looping scene never ends) loads the queue's first and plays it
-  // once it can (its script loaded, the gate open). Loop and A-B are per scene and win while on.
+  // Autoplay: a scene that ends (not a loop's wrap; a looping scene never ends) loads the queue's first loadable
+  // entry (a file not yet reopened stays queued) and plays it once it can. The pending Play belongs to that scene
+  // and is dropped, never deferred, when anything else happens first: another scene or Close, any Play, Pause or
+  // stop (the phase leaves ready), a gate (a Halt or latch), a refusal or a warning in the status, or AUTO_WAIT_MS
+  // without the script. Nothing may start motion later that the operator did not ask for.
   video.addEventListener('ended', () => {
     const p = ctl.state.play;
-    if (!autoplay || !queue.length || p.loop || ctl.state.ab.b != null) return;
-    Q.play(0);
-    autoPending = true;
+    if (!autoplay || p.loop || ctl.state.ab.b != null || ctl.gated()) return;
+    const i = queue.findIndex((e) => e.kind === 'stash' || e.files);
+    if (i < 0) return;
+    Q.play(i);
+    autoPending = ctl.state.scene ? { key: ctl.state.scene.key, until: performance.now() + AUTO_WAIT_MS } : null;
   });
+  const autoStep = () => {
+    const s = ctl.state, a = autoPending;
+    if (!s.scene || s.scene.key !== a.key || s.phase !== 'ready' || s.status.tone === 'warn' || ctl.gated() || performance.now() > a.until) autoPending = null;
+    else if (ctl.canPlay()) { autoPending = null; ctl.play(); }
+  };
   const loop = () => {
     if (video.silent) { video.poll(); if (!video.paused) ctl.onFrame(video.currentTime * 1000, performance.now()); }
-    if (autoPending && ctl.canPlay()) { autoPending = false; ctl.play(); }
+    if (autoPending) autoStep();
     ctl.tick();
     for (const v of views) v.frame();
     raf = views.length ? requestAnimationFrame(loop) : 0;

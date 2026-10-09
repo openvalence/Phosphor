@@ -527,7 +527,9 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   wait, so a double-tap still enters fullscreen) and flashes the glyph
   briefly. The glyph is decorative (`aria-hidden`); the bar's Play is the
   control. A tap outside an open Settings sheet or library drawer only
-  closes it: its click is swallowed, so it never reaches the stage.
+  closes it: its click is swallowed however long the tap is held (the
+  guard ends at the next pointerdown, never on a timer), so it never
+  reaches the stage.
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in
@@ -860,11 +862,15 @@ the queue, a tab to manage the queue". Design (Fable, veto-able), as built:
   queued, each with its same-named script.
 - **Autoplay.** A switch in Settings, Playback (pref `autoplay`) and a chip
   on the now-playing row. When a scene ends with Autoplay on, the queue's
-  first scene loads, leaves the queue and plays once it can (its script
-  loaded, the gate open); Motion follows the Motion switch as for any Play,
-  and the preroll and pause-home rules apply between scenes. The queue's
-  end stops. Loop (per scene) and an A-B section win while on: a looping
-  scene never ends.
+  first loadable scene (a file not yet reopened stays queued) loads, leaves
+  the queue and plays once it can (its script loaded, the gate open); Motion
+  follows the Motion switch as for any Play, and the preroll and pause-home
+  rules apply between scenes. The pending Play belongs to that scene and is
+  dropped, never deferred, when anything else happens first: another scene
+  or Close, any Play, Pause or stop, a gate (a Halt or latch), a refusal or a
+  warning in the status, or 10 s without the script; so a Halt released
+  between scenes starts nothing. The queue's end stops. Loop (per scene)
+  and an A-B section win while on: a looping scene never ends.
 - **Stored.** Pref `queue` (`phosphor.funscript.queue`): a Stash scene with
   its URLs stored without the API key (the key in force is added when read
   back, so the key never reaches the prefs backup); a local file by name

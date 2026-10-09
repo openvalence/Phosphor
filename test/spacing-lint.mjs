@@ -34,7 +34,6 @@ const ALLOW = [
   ['src/ui/pane.css', 'var(--pane-head-h) + 21px', 'lifted pane head: 12 px padding, 1 px frame and the 11 px top inset'],
   ['src/ui/TopStrip.svelte', '+ 64px +', 'the strip clears the 64 px mini rail'],
   ['funscript-player/', 'grid-template-columns', 'the player is its own composition (compositionOf), rows of ch-sized label, slider and value tracks'],
-
   ['funscript-player/timeline.js', 'inset: -8px 0', 'a pointer hit extension of the 24 px strip'],
   ['funscript-player/ui.js', 'inset: -4px 0', 'a pointer hit extension of the scrub bar'],
 ];

@@ -610,7 +610,10 @@ function SHELL_STUB(probe) {
     return base(cmd, a);
   };
 }
+// A delay for the URLs it matches (the Autoplay test holds the next scene's script back to Halt between scenes).
+const FETCH_DELAY = { re: null, ms: 0 };
 async function nodeFetch(url, method, headers, data) {
+  if (FETCH_DELAY.re && FETCH_DELAY.re.test(url)) await sleep(FETCH_DELAY.ms);
   const r = await fetch(url, { method, headers: headers || [], body: data ? Buffer.from(data) : undefined });
   return { status: r.status, statusText: r.statusText, headers: [...r.headers], body: [...new Uint8Array(await r.arrayBuffer())] };
 }
@@ -1038,8 +1041,12 @@ if (!LIVE && !STASH_LIVE) {
       if (cls === 'portrait') {
         // A tap on the stage that closes the sheet is not a Play (a stage tap moves the machine).
         const vb = await page.locator(C + ' .fsp-vbox').boundingBox();
+        // A held tap (400 ms, past the double-tap wait) that closes the sheet is no Play either.
         const paused0 = await video(page, (v) => v.paused), sent0 = hub.bundles.length;
-        await page.mouse.click(vb.x + vb.width / 2, vb.y + vb.height / 2);
+        await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2);
+        await page.mouse.down();
+        await page.waitForTimeout(400);
+        await page.mouse.up();
         await page.waitForTimeout(600);
         const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
         const kept = (await video(page, (v) => v.paused)) === paused0 && hub.bundles.length === sent0;
@@ -1077,7 +1084,10 @@ if (!LIVE && !STASH_LIVE) {
       ok('settings ' + at + ': in fullscreen a drawer from the right that never covers the stop pair (PR12)', dr.form === 'drawer' && dr.right === 0 && dr.pairs > 0 && !dr.covers, dr);
       if (EVID) await page.screenshot({ path: join(EVID, 'settings-fullscreen-' + at + '.png') });
       const paused1 = await video(page, (v) => v.paused), sent1 = hub.bundles.length;
-      await page.mouse.click(60, 300);
+      await page.mouse.move(60, 300);
+      await page.mouse.down();
+      await page.waitForTimeout(400);
+      await page.mouse.up();
       await page.waitForTimeout(600);
       ok('settings ' + at + ': a stage tap closes the drawer and never toggles Play', (await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))
         && (await video(page, (v) => v.paused)) === paused1 && hub.bundles.length === sent1);
@@ -1242,7 +1252,7 @@ if (!LIVE && !STASH_LIVE) {
         st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-n');
         return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
       });
-      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom', foot.gap <= 1 && foot.aboveStatus <= 12, foot);
+      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
       const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
         head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
@@ -1352,6 +1362,67 @@ if (!LIVE && !STASH_LIVE) {
       await page.waitForTimeout(4000);
       const stopped = await video(page, (v) => v.paused) && (await rows()).length === 0;
       ok('autoplay: at the queue\'s end playback stops', stopped, { paused: await video(page, (v) => v.paused), rows: await rows() });
+      // Two more scenes for Loop and the Halt between scenes.
+      await tab('Library');
+      const more = [];
+      for (let i = 0; i < 2; i++) {
+        await page.waitForTimeout(400);
+        more.push(await page.locator(C + ' .fsp-tile .fsp-t').first().textContent());
+        await page.locator(C + ' .fsp-qadd').first().click();
+        await page.locator(C + ' .fsp-lib-foot .fsp-pg[aria-label="Next page"]').click();
+      }
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      await page.locator(C + ' .fsp-q-row').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => { if (!e.checked) e.click(); });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      await page.waitForTimeout(4500);
+      const looped = { title: await page.locator(C + ' .fsp-title').textContent(), playing: await video(page, (v) => !v.paused), rows: await rows() };
+      ok('autoplay: with Loop on the scene loops and never advances', looped.title === more[0] && looped.playing && same(looped.rows, [more[1]]), looped);
+      await playBtn(page).click();
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      await page.locator('main.pane .fsp-psec .fsp-pset input[aria-label="Loop"]').evaluate((e) => { if (e.checked) e.click(); });
+      await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+      await page.waitForTimeout(300);
+      // A Halt between scenes drops the pending Play: released, nothing starts and nothing is sent.
+      FETCH_DELAY.re = /funscript/; FETCH_DELAY.ms = 2500;
+      await video(page, (v) => { v.currentTime = 28.5; });
+      await page.waitForTimeout(300);
+      await playBtn(page).click();
+      const loadedNext = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t, [C, more[1]], { timeout: 8000 }).then(() => true, () => false);
+      hub.setLatch(PAUSE_BIT);
+      await page.waitForTimeout(800);
+      hub.setLatch(0);
+      await page.waitForTimeout(300);
+      const b0 = hub.bundles.length;
+      await page.waitForTimeout(4000);
+      FETCH_DELAY.re = null;
+      const halted = { loadedNext, paused: await video(page, (v) => v.paused), sent: hub.bundles.length - b0 };
+      ok('autoplay: a Halt between scenes drops the pending Play; released, nothing plays and nothing is sent', loadedNext && halted.paused && halted.sent === 0, halted);
+      // A file queued by a pick of several videos reads Reopen after a launch; Open video with that name resolves it.
+      await page.setInputFiles(C + ' .fsp-filev', [{ name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO }, { name: 'second.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+      await page.waitForTimeout(600);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      const metaOf = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-q-row')].map((r) => r.querySelector('.fsp-t').textContent + '|' + r.querySelector('.fsp-m').textContent), C);
+      const before = await metaOf();
+      await page.setInputFiles(C + ' .fsp-filev', [{ name: 'second.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+      await page.waitForTimeout(500);
+      await tab('Queue');
+      await page.waitForTimeout(300);
+      const after = await metaOf();
+      ok('queue: after a launch a queued file reads Reopen; Open video with its name resolves it', before.includes('second|Reopen') && !after.includes('second|Reopen') && after.some((x) => x.startsWith('second|')), { before, after });
     }
     ok('queue ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
     clearInterval(hub.timer);
@@ -1528,6 +1599,7 @@ if (!LIVE && !STASH_LIVE) {
           ['player-settings', 'main.pane .fsp-psec'], ['player-library-head', C + ' .fsp-lib-head']]) {
           await page.locator(sel).first().screenshot({ path: join(SHOTS, 'zoom2x-' + part + '-' + name + '.png') }).catch(() => {});
         }
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.locator(C + ' .fsp-expand').click();
         await page.waitForTimeout(600);
         await page.locator(C + ' .fsp-anbox').screenshot({ path: join(SHOTS, 'zoom2x-player-analyzer-' + name + '.png') }).catch(() => {});
