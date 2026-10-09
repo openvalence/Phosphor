@@ -4,13 +4,16 @@
 // Every suite is independent: browser suites bind ephemeral ports (listen(0)) and own their
 // chromium; no check file binds a fixed port or writes a shared path (fake-stash and the
 // tmpdir users get unique ones). A suite that does must be named in SERIAL_LANE: it runs
-// one at a time, alongside the parallel pool. copy-lint runs last, after everything else.
+// one at a time, alongside the parallel pool. A suite in ALONE runs after the pool, by itself;
+// copy-lint runs last, after everything else.
 // PHOSPHOR_DIST=<dir> runs the browser suites against that build (test/dist.mjs).
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 
 const SERIAL_LANE = []; // substrings of a suite command, e.g. 'responsive-matrix' if it ever contends
+// Suites that time this host run alone after the pool: a loaded host reads to them as a busy device.
+const ALONE = ['health-browser'];
 const LAST = 'copy-lint';
 
 const set = process.argv[2];
@@ -51,10 +54,12 @@ const pool = async (list, width) => {
 const t0 = Date.now();
 const last = suites.filter((s) => s.cmd.join(' ').includes(LAST));
 const rest = suites.filter((s) => !last.includes(s));
-const lane = rest.filter((s) => SERIAL_LANE.some((x) => s.cmd.join(' ').includes(x)));
-const par = rest.filter((s) => !lane.includes(s));
+const alone = rest.filter((s) => ALONE.some((x) => s.cmd.join(' ').includes(x)));
+const lane = rest.filter((s) => !alone.includes(s) && SERIAL_LANE.some((x) => s.cmd.join(' ').includes(x)));
+const par = rest.filter((s) => !lane.includes(s) && !alone.includes(s));
 console.log(`${set}: ${suites.length} suites, ${N} at a time`);
 await Promise.all([pool(par, N), pool(lane, 1)]);
+await pool(alone, 1);
 await pool(last, 1);
 
 console.log('\nsuite'.padEnd(34) + 'result  seconds');

@@ -1,0 +1,33 @@
+# The health report form (docs/DESIGN.md §10.14). Phosphor opens
+# issues/new?template=diag-report.yml with `bundle` filled in; the user adds
+# what happened and submits under their own account. The diag-report label
+# must exist in the repo for the form to apply it, and the removal workflow
+# (workflows/diag-report-remove.yml) keys on it.
+name: Diagnostic report
+description: A health report Phosphor filled in from one problem on your device
+title: Diagnostic report
+labels: [diag-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Phosphor filled in the report below from one problem it saw. It holds numbers only: no script or video names, no positions and no times of day.
+        This issue is public and posted under your GitHub account. To take it down later, comment `/remove` on it.
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Report
+      description: Filled in by Phosphor. Leave it as it is.
+      render: json
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: If Phosphor saved a file (diag-report-....json), drag it into the box below to attach it.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What were you doing?
+      description: Optional. What you were playing, what you saw, how often it happens.
+    validations:
+      required: false

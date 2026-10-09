@@ -230,6 +230,7 @@ export function createMotionDoor(deps) {
   let path = '';
   let lastCode = '';
   const nackSeen = new Map(); // channel -> the newest NACK record already accounted for
+  let tail = null; // the last bundle's coverage {end, now, sid, at}, for deps.sent
   const note = (p, msg) => { if (p !== path) { path = p; deps.log('info', msg); } };
   const noteSegments = (ch, grant) => note('segments:' + ch, 'motion input: segments STREAM 0x' + ch.toString(16)
     + ', horizon ' + grant.scheduleHorizonMs + ' ms, lead ' + (grant.scheduleLatencyUs || 0) + ' us');
@@ -326,9 +327,22 @@ export function createMotionDoor(deps) {
    *   SOURCE_CONFLICT while a generator owns the rail) arrives later through
    *   `deps.lastNack(ch)`, and the next call refuses once with its name. The
    *   first call per channel only takes the baseline.
+   * - `deps.sent` (optional, the health system) hears each bundle: `leadMs`
+   *   its first start minus now when it continues the last bundle's tiling,
+   *   `gapMs` how long the hub had nothing to run when a scheduled start
+   *   (one already due, never a start-now item) followed coverage that ran
+   *   out. A start-now item (stop, preroll, home, a seek's lead) ends its
+   *   own run, and a refusal forgets the tiling: neither reads as lateness.
+   *   `fromMs`..`toMs` is the span the bundle covers, in now() time; `fresh`
+   *   marks a bundle that starts a run instead of continuing one.
    * @returns {{ok: boolean, sent: number, rateHz?: number, reason?: string}}
    */
-  submit.segments = function segments(list) {
+  submit.segments = function (list) {
+    const r = segments(list);
+    if (!r.ok) tail = null;
+    return r;
+  };
+  function segments(list) {
     const held = deps.halted ? deps.halted() : '';
     if (held) return { ok: false, sent: 0, reason: held };
     const st = motionStream(deps.entries(), STREAM_KIND.segments);
@@ -383,8 +397,18 @@ export function createMotionDoor(deps) {
       return { ok: false, sent: 0, reason: refused(e), rateHz };
     }
     lastCode = '';
+    const f = list[head[0].i], l = list[head[head.length - 1].i], sid = s.state.sessionId;
+    const last = tail && tail.sid === sid && !tail.now && p - tail.at < 5000 ? tail : null;
+    // A listener's throw never reaches motion: the bundle is sent and the tiling still advances.
+    if (deps.sent) try {
+      const gap = last && f.atMs < p - 1 && p + lat / 1000 > last.end ? p + lat / 1000 - last.end : null;
+      deps.sent({ leadMs: last && (gap || Math.abs(f.atMs - last.end) < 2) ? f.atMs - p : null,
+        gapMs: gap, latMs: lat / 1000, horizonMs: grant.scheduleHorizonMs, fromMs: Math.max(f.atMs, p + lat / 1000), toMs: l.atMs + l.durationMs,
+        fresh: !last });
+    } catch (e) { /* the health system's fault, never the stream's */ }
+    tail = { end: l.atMs + l.durationMs, now: Math.abs(l.atMs - p) < 2, sid, at: p };
     return { ok: true, sent: head[head.length - 1].i + 1, rateHz };
-  };
+  }
 
   return submit;
 }

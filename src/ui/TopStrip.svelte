@@ -32,8 +32,8 @@
    *   numerals cell clips at the strip box, not at its own.
    * - The status slot shows ONE thing, by priority: link fault, unattended
    *   (RENDERING §10.1 rule 3), refusal, the typed jog's clamp note, latch
-   *   notice, latest safety edge,
-   *   virtual hub.
+   *   notice, an act health condition, latest safety edge, a warn health
+   *   condition (DESIGN §10.14), virtual hub.
    *   The refusal is shadow.svelte.js's `lastRefusal`, written by all three
    *   write paths, so a refusal is visible after its control has scrolled
    *   off or unmounted.
@@ -55,6 +55,7 @@
   import { askConfirm } from './confirm.svelte.js';
   import { SAFETY_EVENT_KIND_NAME } from '../../../Valence/clients/js/generated/registry_vocab.js';
   import { logView } from './logview.svelte.js';
+  import { health } from '../model/health/health.svelte.js';
   import LinkBar from './LinkBar.svelte';
   import SafetyOp from './widgets/SafetyOp.svelte';
   import HeroNumerals from './hero/HeroNumerals.svelte';
@@ -163,6 +164,10 @@
     logView.tab = 'safety';
     if (onopenlog) onopenlog();
   }
+  function openHealth() {
+    logView.tab = 'health';
+    if (onopenlog) onopenlog();
+  }
 
   // The hero budget (DESIGN §10.12): link bar + strip + rail fit a share of
   // the window height. Order of giving way: the numeral shrinks to its floor
@@ -224,7 +229,9 @@
     if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
+    if (health.slot && health.slot.sev === 'act') return { kind: 'health', text: health.slot.text };
     if (latestSafety) return { kind: 'edge' };
+    if (health.slot) return { kind: 'health', text: health.slot.text };
     if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
   });
@@ -501,6 +508,11 @@
           {#if safetyStale}<span class="evtag">stale</span>{/if}
           {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword">{' new'}</span></span>{/if}
         </button>
+      {:else if slot.kind === 'health'}
+        <!-- A health condition opens the Log page's Health view. -->
+        <button type="button" class="st-dismiss" title={slot.text} onclick={openHealth}>
+          <span class="st-text">{slot.text}</span>
+        </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
               role={slot.kind === 'notice' ? 'status' : 'alert'} title={slot.text}>{slot.text}</span>
@@ -706,7 +718,7 @@
     color: var(--ink-dim);
   }
   [data-kind='fault'] .st-text, .recovery .st-text,
-  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text { color: var(--warn-ink, var(--warn)); }
+  [data-kind='unattended'] .st-text, [data-kind='notice'] .st-text, [data-kind='virtual'] .st-text, [data-kind='health'] .st-text { color: var(--warn-ink, var(--warn)); }
 
   .recovery {
     display: flex;

@@ -81,6 +81,7 @@ import { machine, getSession } from './machine.svelte.js';
 import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor, latchWords } from './motion.js';
+import { noteSend } from './health/health.svelte.js';
 import { noteEstopPress } from './actions.js';
 import { NACK, NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
 
@@ -462,6 +463,7 @@ const motionDoor = createMotionDoor({
   entries: () => machine.catalog.entries,
   halted: () => latchWords(machine.safety),
   lastNack: (ch) => machine.events.nacks.findLast((n) => n.channel === ch) || null,
+  sent: noteSend,
   setpoint: (norm) => {
     const t = motionTarget(machine.catalog.model, machine.samples, norm);
     if (!t.field) return { ok: false, reason: t.reason };

@@ -28,6 +28,9 @@
   import { logView } from './logview.svelte.js';
   import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
   import { askConfirm } from './confirm.svelte.js';
+  import { health } from '../model/health/health.svelte.js';
+  import HealthPane from './health/HealthPane.svelte';
+  import HealthLine from './health/HealthLine.svelte';
   import './pane.css';
 
   const TABS = [
@@ -36,6 +39,7 @@
     { id: 'safety', label: 'Safety' },
     { id: 'session', label: 'Session' },
     { id: 'changes', label: 'Changes' },
+    { id: 'health', label: 'Health' },
   ];
   // Shared so the top strip can open a feed.
   const tab = $derived(logView.tab);
@@ -53,6 +57,7 @@
     safety: machine.events.safety,
     session: machine.events.session,
     changes: [...history.entries].reverse(),
+    health: health.incidents,
   });
 
   const EMPTY_TEXT = {
@@ -61,6 +66,7 @@
     safety: 'No safety events this session',
     session: 'No session events yet',
     changes: 'No setting changed this session',
+    health: '',
   };
 
   // ---- generic body decoding -----------------------------------------------
@@ -278,17 +284,18 @@
         {#each tags as t (t)}<option value={t}>{t}</option>{/each}
       </select>
     </label>
-    <button type="button" class="og-btn sm" disabled={tab === 'changes'} class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
+    <button type="button" class="og-btn sm" disabled={tab === 'changes' || tab === 'health'} class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
       {feeds[tab].follow ? 'Following' : 'Follow'}
     </button>
-    <button type="button" class="og-btn sm" disabled={tab === 'changes' || !shown[tab].length} onclick={copyFeed}>Copy</button>
+    <button type="button" class="og-btn sm" disabled={tab === 'changes' || tab === 'health' || !shown[tab].length} onclick={copyFeed}>Copy</button>
     <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
             onclick={revert}>Revert changes</button>
   </div>
   <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} title={status}>{status}</p>
 
-  <div class="stack">
-    {#each TABS as t (t.id)}
+  {#if tab === 'health'}<div id="lp-feed-health" role="tabpanel" aria-labelledby="lp-tab-health"><HealthPane /></div>{/if}
+  <div class="stack" class:gone={tab === 'health'}>
+    {#each TABS.filter((x) => x.id !== 'health') as t (t.id)}
       <div class="feed og-screen" id={'lp-feed-' + t.id} role="tabpanel" aria-labelledby={'lp-tab-' + t.id}
            class:active={tab === t.id} inert={tab !== t.id} tabindex={tab === t.id ? 0 : -1}
            onscroll={(e) => onScroll(t.id, e.currentTarget)} {@attach stick(t.id)}>
@@ -313,6 +320,7 @@
               <span class="text">{p.text}</span>
               {#each p.kv as f}<span class="kv">{f.key}={f.display}</span>{/each}
               {#if p.superseded}<span class="chip">superseded</span>{/if}
+              {#if evt.health}<HealthLine id={evt.health} />{/if}
             </div>
             {/if}
           {/each}
@@ -336,6 +344,7 @@
 
   /* All feeds share one cell; only the active one is visible. */
   .stack { display: grid; }
+  .stack.gone { display: none; }
   .feed {
     grid-area: 1 / 1;
     visibility: hidden;
