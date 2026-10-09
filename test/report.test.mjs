@@ -59,8 +59,8 @@ for (const f of FIELDS) {
 }
 ok('fuzz: no secret leaves through any of the ' + FIELDS.length + ' paths (' + FIELDS.length * FUZZ.length + ' cases)', !leaks.length, leaks);
 const free = FIELDS.filter((f) => f.type === 'str'
-  && JSON.stringify(buildBundle({ ...src, [f.path]: 'deadbeef' })).includes('deadbeef')).map((f) => f.path);
-ok('the only free string is the app build id (a short sha); ids, file names and conditions are shapes and sets',
+  && JSON.stringify(buildBundle({ ...src, [f.path]: 'g0324780' })).includes('g0324780')).map((f) => f.path);
+ok('the only free string is the app build id (g<sha>, so a digit-only sha passes and a digit run does not); ids, file names and conditions are shapes and sets',
   free.join() === 'app.version' && buildBundle({ ...src, id: 'abcdefgh' }).id === null
   && buildBundle({ ...src, attachment: 'notes.json' }).attachment === null
   && buildBundle({ ...src, 'incident.condition': 'my-script' }).incident.condition === null, free);

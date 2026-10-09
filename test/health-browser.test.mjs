@@ -39,9 +39,10 @@ const HTTP = PORT + 1;
 const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
+const failed = [];
 const ok = (name, cond, extra) => {
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra !== undefined ? '  -- ' + JSON.stringify(extra) : ''));
-  if (!cond) fails++;
+  if (!cond) { fails++; failed.push(name + (extra !== undefined ? ' ' + JSON.stringify(extra).slice(0, 600) : '')); }
 };
 if (!existsSync(SIM)) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
 // An unknown flag prints the usage line: it names --plan-delay-ms once the sim has it.
@@ -351,5 +352,7 @@ for (const theme of SHOT ? [null, 'paper'] : []) {
 
 await browser.close();
 srv.close();
+// The failures again at the end: the parallel runner shows only the last lines.
+for (const f of failed) console.log('  [FAIL] ' + f);
 console.log('\n' + (fails ? 'FAIL -- ' + fails : 'PASS -- health end to end') + '  (shots: ' + SHOTS + ')');
 process.exit(fails ? 1 : 0);

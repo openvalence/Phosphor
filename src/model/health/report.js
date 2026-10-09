@@ -25,10 +25,10 @@ export const SCHEMA = 'phosphor.health-report/1';
 /** GitHub refuses much longer new-issue URLs; the encoded query stays under this. */
 export const URL_BUDGET = 7500;
 const ID_RE = /^[A-Z2-7]{8}$/;
-/** x.y.z with an optional suffix; this app's build may also be a short git sha (one letter at least, so no digit run passes) or b<yyyymmddhhmm> (vite.config.js). */
+/** x.y.z with an optional suffix; this app's build may also be g<short git sha> (health.svelte.js context()) or b<yyyymmddhhmm> (vite.config.js). */
 const SEMVER = '\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}([+-][0-9A-Za-z.+_-]{1,24})?';
 const FIRMWARE_RE = new RegExp('^' + SEMVER + '$');
-const VERSION_RE = new RegExp('^(' + SEMVER + '|(?=[0-9]*[a-f])[0-9a-f]{7,12}|b\\d{12})$');
+const VERSION_RE = new RegExp('^(' + SEMVER + '|g[0-9a-f]{7,12}|b\\d{12})$');
 const ENGINE_RE = /^(chromium|webkit|gecko)-\d{1,4}(\.\d{1,4}){0,3}$/;
 const FILE_RE = /^diag-report-[A-Z2-7]{8}\.json$/;
 const CONDITION_VALUES = ['cutout', ...Object.keys(CONDITIONS).filter((k) => !k.startsWith('cutout-'))];

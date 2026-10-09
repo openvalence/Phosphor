@@ -566,7 +566,8 @@ export function context() {
   const eng = /Chrome\/(\d+)/.exec(ua) ? 'chromium-' + /Chrome\/(\d+)/.exec(ua)[1]
     : /AppleWebKit\/([\d.]+)/.exec(ua) ? 'webkit-' + /AppleWebKit\/([\d.]+)/.exec(ua)[1] : /Firefox\/(\d+)/.test(ua) ? 'gecko-' + /Firefox\/(\d+)/.exec(ua)[1] : null;
   return {
-    app: { version: typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : null,
+    // A bare git sha goes out as g<sha>, so the version shape never has to admit a run of digits.
+    app: { version: typeof __UI_BUILD__ === 'undefined' ? null : /^[0-9a-f]{7,12}$/.test(__UI_BUILD__) ? 'g' + __UI_BUILD__ : __UI_BUILD__,
       platform: plat === 'windows' || plat === 'macos' || plat === 'linux' || plat === 'android' || plat === 'ios' ? plat : 'web',
       engine: eng, shell: !!plat },
     machine: { firmware: id && id.fw_version,
