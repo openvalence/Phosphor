@@ -742,14 +742,16 @@ for (const [w, h] of [[1428, 900], [1024, 768]]) {
 // ---- the screen's shape (ph-5u0g.8) and the phone menu (ph-5u0g.9) -------------
 // MainActivity.kt publishes the rounded corners and a top cutout on <html>
 // (style.css); the suite assumes the phone's: 48 px corners (operator ruling
-// 2026-10-09) and a 28 x 36 punch hole centered on the top edge. The phone
-// shell has no window buttons (ShellStrip), so they go. A point is hidden
+// 2026-10-09), a 28 x 36 punch hole centered on the top edge and the 48 px
+// safe-area band the WebView reports under it. The phone shell has no
+// window buttons (ShellStrip), so they go. A point is hidden
 // past a corner's arc or inside the hole; only drawn content counts (text,
 // glyphs, bordered boxes), clipped by its overflow ancestors in the surface.
 const R = 48, HOLE = { w: 28, h: 36 };
 const shapeOn = (page) => page.evaluate(([R, hole]) => {
   const r = document.documentElement, l = Math.round((innerWidth - hole.w) / 2);
-  for (const c of ['tl', 'tr', 'bl', 'br']) r.style.setProperty('--corner-' + c, R + 'px');
+  for (const c of ['tl', 'tr', 'bl', 'br', 'r']) r.style.setProperty('--corner-' + c, R + 'px');
+  r.style.setProperty('--chrome-inset-top', R + 'px');
   for (const [k, v] of [['l', l], ['r', innerWidth - l - hole.w], ['w', hole.w], ['h', hole.h]]) r.style.setProperty('--cutout-' + k, v + 'px');
   r.toggleAttribute('data-cutout-top', true);
   document.querySelector('.sb-win')?.remove();
@@ -761,11 +763,12 @@ const hiddenIn = (page, surfaces) => page.evaluate(([R, hole, surfaces]) => {
   const ink = /rgba\(\d+, \d+, \d+, 0\)|transparent/;
   const out = [];
   for (const s of surfaces.flatMap((q) => [...document.querySelectorAll(q)])) {
-    const clipped = (q, e) => {
+    // A text run is clipped by its own element too; a box only by its ancestors.
+    const clipped = (q, e, text) => {
       let [l, t, r, b] = [q.left, q.top, q.right, q.bottom];
       for (let a = e; a; a = a === s ? null : a.parentElement) {
         const cs = getComputedStyle(a);
-        if (a !== e && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
+        if ((text || a !== e) && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
           const ar = a.getBoundingClientRect();
           [l, t, r, b] = [Math.max(l, ar.left), Math.max(t, ar.top), Math.min(r, ar.right), Math.min(b, ar.bottom)];
         }
@@ -778,7 +781,7 @@ const hiddenIn = (page, surfaces) => page.evaluate(([R, hole, surfaces]) => {
       if (!n.textContent.trim()) continue;
       const g = document.createRange();
       g.selectNodeContents(n);
-      for (const q of g.getClientRects()) out.push(clipped(q, n.parentElement));
+      for (const q of g.getClientRects()) out.push(clipped(q, n.parentElement, true));
     }
     for (const e of [s, ...s.querySelectorAll('*')]) {
       const cs = getComputedStyle(e);
@@ -807,7 +810,7 @@ const shapeShot = async (page, name) => {
   await page.evaluate(() => { document.getElementById('shape-m').remove(); document.getElementById('shape-c').remove(); });
 };
 const BARS = ['.linkbar', '.footstrip', 'main.pane .page-foot'];
-for (const [w, h] of [[420, 860], [860, 420]]) {
+for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
   for (const theme of [null, PAPER]) {
     const tag = 'shape ' + w + 'x' + h + (theme ? ' paper' : '');
     console.log('\n--- ' + tag + ' ---');
@@ -820,9 +823,24 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
       ok(tag + ': ' + what + ': nothing drawn past a corner arc or in the cutout', r.sane && r.n > 0 && r.bad.length === 0, r.n + ' boxes; ' + r.bad.join(' | '));
       await shapeShot(page, file + '-' + w + 'x' + h + (theme ? '-paper' : '') + '.png');
     };
-    // The top bar takes the cutout's band: no inset row under it, its items either side of the hole.
-    const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar').getBoundingClientRect(); return [Math.round(b.top), Math.round(b.height)]; });
-    ok(tag + ': the top bar rises into the cutout band', bar[0] === 0 && bar[1] <= Math.max(41, HOLE.h + 1), JSON.stringify(bar));
+    // The top bar takes the cutout's band, its items either side of the hole, where the phase and
+    // tier chips fit right of it; at 360 px they do not, and it pads under the inset instead.
+    const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar'), r = b.getBoundingClientRect(), p = b.querySelector('.chips.pinned').getBoundingClientRect();
+      return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top) }; });
+    ok(tag + (w > 400 ? ': the top bar rises into the cutout band' : ': the chips miss beside the cutout, so the bar pads under the inset'),
+      w > 400 ? bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1) : !bar.cut && bar.rowTop >= HOLE.h, JSON.stringify(bar));
+    // The hamburger: a whole 40 px target, no ancestor clipping it or its focus ring.
+    const mb = await page.evaluate(() => {
+      const b = document.querySelector('.menu-btn'), r = b.getBoundingClientRect();
+      const pts = [[r.left + 1, r.top + 1], [r.right - 1, r.top + 1], [r.left + 1, r.bottom - 1], [r.right - 1, r.bottom - 1]];
+      let clip = null;
+      for (let a = b.parentElement; a && !a.matches('.topstrip'); a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') clip = a.className;
+      }
+      return { w: Math.round(r.width), h: Math.round(r.height), hit: pts.every(([x, y]) => b.contains(document.elementFromPoint(x, y))), clip };
+    });
+    ok(tag + ': the hamburger is a whole 40 px target, nothing clips it or its ring', mb.w >= 40 && mb.h >= 40 && mb.hit && !mb.clip, JSON.stringify(mb));
     // The check itself: rows at the edge with a bare gutter are caught.
     const bare = await page.addStyleTag({ content: '.linkbar, .footstrip.pinned { padding-inline: 4px !important; }' });
     const neg = await hiddenIn(page, BARS);
@@ -863,6 +881,12 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
     await page.keyboard.press('F11');
     await page.waitForTimeout(400);
     await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
+    // The caret sits above the strip (z 31 over 30): over the pair it would take a Pause tap.
+    const over = await page.evaluate(() => {
+      const c = document.querySelector('.full-caret').getBoundingClientRect(), p = document.querySelector('.topstrip .pair').getBoundingClientRect();
+      return { overlap: !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom), c: [c.left, c.right].map(Math.round), p: [p.left, p.right].map(Math.round) };
+    });
+    ok(tag + ': bare: the caret never overlaps the stop pair', !over.overlap, JSON.stringify(over));
     ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
     await ctx.close();
   }

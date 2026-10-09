@@ -56,10 +56,12 @@ class MainActivity : TauriActivity() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       val corners = mapOf("tl" to RoundedCorner.POSITION_TOP_LEFT, "tr" to RoundedCorner.POSITION_TOP_RIGHT,
         "bl" to RoundedCorner.POSITION_BOTTOM_LEFT, "br" to RoundedCorner.POSITION_BOTTOM_RIGHT)
-      for ((k, pos) in corners) vars["--corner-$k"] = css(insets.getRoundedCorner(pos)?.radius ?: 0)
+      val radii = corners.mapValues { (_, pos) -> insets.getRoundedCorner(pos)?.radius ?: 0 }
+      for ((k, r) in radii) vars["--corner-$k"] = css(r)
+      vars["--corner-r"] = css(radii.values.max())
     }
     val at = IntArray(2).also { wv.getLocationInWindow(it) }
-    // A rect nearer the top edge than its own height is a top cutout; side ones stay env(safe-area-inset-*)'s.
+    // A rect nearer the top edge than its own height is a top cutout. Side cutouts are not published (ph-5u0g.12, open).
     val top = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
       insets.displayCutout?.boundingRects?.firstOrNull { it.top - at[1] < it.height() } else null)
       ?.let { Rect(it).apply { offset(-at[0], -at[1]) } }
