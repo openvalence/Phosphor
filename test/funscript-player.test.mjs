@@ -388,6 +388,7 @@ const { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS
 const { CORE_CHANNEL } = await import('../../Valence/clients/js/generated/registry_vocab.js');
 const { toHex } = await import('../../Valence/clients/js/sha256.js');
 const { buildShellPage, TAURI_STUB } = await import('./shell-build.mjs');
+const { goTab } = await import('./nav.mjs');
 const { advgenCatalog } = await import('./fixtures/advgen-roles-catalog.mjs');
 const { startFakeStash } = await import('./fixtures/fake-stash.mjs');
 
@@ -664,7 +665,7 @@ async function toPluginPage(page) {
   const TAB = '[data-tab-id="plugin:funscript-player:player"]';
   await page.waitForSelector(TAB, { state: 'attached', timeout: 8000 }).catch(() => {});
   for (let i = 0; i < 3; i++) {
-    await page.evaluate((s) => document.querySelectorAll(s).forEach((t) => t.click()), TAB);
+    await goTab(page, 'plugin:funscript-player:player').catch(() => {});
     if (await page.waitForSelector('main.pane .fsp-page .fsp', { timeout: 4000 }).then(() => true, () => false)) return true;
   }
   return false;
@@ -890,9 +891,9 @@ if (!LIVE && !STASH_LIVE) {
     if (cls === 'portrait') ok('redesign ' + at + ': the empty stage is a 120 px strip', Math.abs(empty.vbox[3] - 120) <= 1, empty.vbox);
     // PR5: the bar's order; every target 40 px under a coarse pointer (law 12).
     const bo = await barOrder(page);
-    const want = cls === 'desktop' ? [BAR_DESK] : BAR_PHONE.map((r) => r.filter((c) => c !== 'fsp-rail'));
+    const want = cls === 'desktop' ? [BAR_DESK] : BAR_PHONE;
     ok('bar ' + at + ': ' + (cls === 'desktop' ? 'one row under the stage: prev, Play, next, elapsed, heat, remaining, volume, Motion, rate, Fullscreen, Settings'
-      : 'the scrub row over prev, Play, next, Motion, rate, Fullscreen, Settings (the rail where the host has one); 40 px targets'),
+      : 'the scrub row over prev, Play, next, Motion, rate, Fullscreen, Rail, Settings; 40 px targets'),
     same(bo.rows, want) && (cls === 'desktop' || bo.small.length === 0), bo);
     const below = await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-tr').getBoundingClientRect(), s = r.querySelector('.fsp-stage').getBoundingClientRect(),
       t = r.querySelector('.fsp-tlh').getBoundingClientRect(); return { underStage: Math.abs(b.top - s.bottom) < 12 && b.bottom <= t.top, atBottom: b.top > t.bottom }; });
@@ -2351,7 +2352,6 @@ if (!LIVE && !args.includes('--stash-live')) {
       media: !!document.querySelector(c + '[data-media]'), stage: r(c + ' .fsp-stage'), tl: r(c + ' .fsp-tlbox'), tr: r(c + ' .fsp-tr'),
       settings: r(c + ' .fsp-set'), estop: r('.topstrip .btn-estop'), pause: r('.topstrip .btn-pause'), vw: innerWidth, vh: innerHeight };
   }, C);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
   await overVideo();
   await page.click(C + ' .fsp-hb-full');
   await page.waitForTimeout(400);
@@ -2368,7 +2368,6 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const off = await fsLook();
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('media fullscreen: Escape returns the page as it was', !off.full && !off.media && !!off.tl && !!off.tr && !!off.settings, off);
   await page.locator(C).focus();
   await page.keyboard.press('f');
@@ -2376,20 +2375,18 @@ if (!LIVE && !args.includes('--stash-live')) {
   const fKey = await fsLook();
   await page.keyboard.press('f');
   await page.waitForTimeout(300);
-  ok('media fullscreen: f enters and leaves (In window keeps the rail, so not bare)', fKey.media && fKey.full && !fKey.bare && !(await fsLook()).full, fKey);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'borderless' } })));
+  ok('media fullscreen: f enters and leaves, bare (one mode, PR8)', fKey.media && fKey.full && fKey.bare && !(await fsLook()).full, fKey);
   await page.waitForTimeout(200);
   await page.evaluate(() => window.addEventListener('phosphor-page-fullscreen', (e) => { window.__fsAsk = e.detail; }, true));
   const paused0 = await video(page, (v) => v.paused);
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   const dbl = await fsLook();
-  ok('media fullscreen: a double-click on the stage enters it (Borderless: the ask carries bare) and never toggles Play',
-    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === (document.documentElement.dataset.fullscreenMode !== 'window'))) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
+  ok('media fullscreen: a double-click on the stage enters it (the ask carries bare: one mode) and never toggles Play',
+    dbl.media && dbl.bare && (await page.evaluate(() => window.__fsAsk.bare === true)) && (await video(page, (v) => v.paused)) === paused0, { dbl, ask: await page.evaluate(() => window.__fsAsk), paused0, now: await video(page, (v) => v.paused) });
   await page.locator(C + ' .fsp-stage').dblclick();
   await page.waitForTimeout(500);
   ok('media fullscreen: a second double-click leaves it', !(await fsLook()).media);
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-mode', { detail: { mode: 'window' } })));
   ok('foot: the page owns its fullscreen, the foot offers none', await page.locator('main.pane .page-foot button').count() === 0);
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
@@ -2397,18 +2394,6 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('page fullscreen by F11 stays the whole page, no media flag', footFull.full && !footFull.media && !!footFull.tl, footFull);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
-  // The mode beside the bar's Fullscreen: the shell's pref, set through the shell's event.
-  const mode = () => page.evaluate((c) => ({ pref: JSON.parse(localStorage.getItem('phosphor.prefs') || '{}').fullscreen,
-    html: document.documentElement.dataset.fullscreenMode, b: document.querySelector(c + ' .fsp-hb-mode').getAttribute('aria-pressed'),
-    next: document.querySelector(c + ' .fsp-hb-mode').nextElementSibling.classList.contains('fsp-hb-full') }), C);
-  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
-  await page.waitForTimeout(200);
-  const m1 = await mode();
-  await page.locator(C + ' .fsp-hb-mode').evaluate((e) => e.click());
-  await page.waitForTimeout(200);
-  const m2 = await mode();
-  ok('hover: the mode toggle beside Fullscreen switches the shell mode both ways', m1.next && m1.pref === 'borderless' && m1.html === 'borderless'
-    && m1.b === 'true' && m2.pref === 'window' && m2.b === 'false', { m1, m2 });
   // The library caret: the column closes, the stage takes the width, remembered.
   const libW = () => page.locator(C).evaluate((e) => ({ lib: e.querySelector('.fsp-libbox').getClientRects().length > 0,
     stage: Math.round(e.querySelector('.fsp-stage').getBoundingClientRect().width), card: Math.round(e.querySelector('.fsp-src').getBoundingClientRect().width),

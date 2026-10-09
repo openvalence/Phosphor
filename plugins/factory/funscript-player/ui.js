@@ -1377,7 +1377,7 @@ export function createPlayer(api) {
     const setMedia = (on) => { media = on; root.toggleAttribute('data-media', on); render(); };
     const fullscreen = () => {
       if (!media && st.scene && !st.scene.stream) return;
-      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: fsMode() !== 'window' } });
+      const ask = new CustomEvent('phosphor-page-fullscreen', { bubbles: true, cancelable: true, detail: { on: !media, bare: true } });
       if (!root.dispatchEvent(ask)) setMedia(!media);
     };
     const onFull = (e) => { if (media && !(e.detail && e.detail.on)) setMedia(false); };
