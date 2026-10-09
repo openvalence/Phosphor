@@ -138,5 +138,8 @@ assert.equal(osFullscreen(on, 'borderless', true), true);
 assert.equal(osFullscreen(on, 'window', true), false, 'in window never touches the window');
 assert.equal(osFullscreen(on, 'borderless', false), false, 'served page: no window to fullscreen');
 assert.equal(osFullscreen(OFF, 'borderless', true), false, 'leaving restores the window');
+// ph-5u0g.6: a media page enters bare, one mode, and leaves the same way.
+assert.deepEqual(toggle(OFF, true), { on: true, bare: true }, 'a media page enters bare');
+assert.deepEqual(toggle({ on: true, bare: true }, true), OFF, 'and leaves');
 
 console.log('PASS — prefs: load/version/sanitize, telemetry clamp, autorange gate, saved hubs, launch redial, backup, page fullscreen');

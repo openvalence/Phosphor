@@ -60,6 +60,7 @@
  *      node test/advanced-penetration.test.mjs --live [--port 8882] [--http 8880] [--shot out.png]
  *        (valencesim --homed --headless --port 8882 --http 8880)
  */
+import { goTab, tabIds } from './nav.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
@@ -303,8 +304,8 @@ async function open({ disabled = false, roles = 2, coarse = false, inputs = true
   }));
   page.on('pageerror', (e) => { if (!/stub: /.test(String(e))) ok('no page error', false, String(e)); });
   await page.goto('http://127.0.0.1:' + srv.address().port + '/');
-  // A phone width has no rail: its category tabs carry the same ids.
-  const up = await page.waitForSelector(size ? '[role=tab][data-tab-id^="cat"]' : 'nav.rail [role=tab]', { timeout: 15000 })
+  // A phone width has no rail: its tab strip or phone menu (nav.mjs) carries the same ids; the hero says the hub is up.
+  const up = await page.waitForSelector(size ? '[role=tab][data-tab-id^="cat"], .hero-strip' : 'nav.rail [role=tab]', { state: 'attached', timeout: 15000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(600);
   return { ctx, page, up };
@@ -314,8 +315,8 @@ async function open({ disabled = false, roles = 2, coarse = false, inputs = true
 async function toPatternPage(page, wantPlugin = true) {
   const sel = wantPlugin ? 'main.pane .ap' : 'main.pane label.field-label[data-uid="' + uidOf(ADV, 'master') + '"]';
   for (let pass = 0; pass < 10; pass++) {
-    for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
-      await page.click('[data-tab-id="' + id + '"]');
+    for (const id of await tabIds(page, 'cat')) {
+      await goTab(page, id);
       await page.waitForTimeout(150);
       if (await page.$(sel)) return true;
     }

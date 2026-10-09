@@ -21,10 +21,14 @@
   // The rail's natural height, whatever the collapse is doing: the slots' own
   // boxes plus the bar's padding. The budget reads it, never the animated box.
   let inner = $state(null);
+  // The quick rail lifts the rail out of the bar: the bar keeps its height, so nothing beneath moves.
+  let barH = $state(0);
+  let heldH = $state(null);
+  $effect(() => { if (heroBar.quick) heldH ??= barH; else heldH = null; });
   $effect(() => {
     if (!inner) return;
     const measure = () => {
-      if (heroBar.popup) return;   // the pop-up sets the slot's own box
+      if (heroBar.popup || heroBar.quick) return;   // a pop-up sets the slot's own box
       const kids = [...inner.children], g = parseFloat(getComputedStyle(inner).rowGap) || 0;
       heroBar.slotH = kids.reduce((a, e) => a + e.offsetHeight, 0);
       heroBar.railH = kids.reduce((a, e) => a + e.offsetHeight, 0) + Math.max(0, kids.length - 1) * g + 2 * g + 1;
@@ -37,8 +41,9 @@
 </script>
 
 {#if heroes && heroes.length}
-  <div class="hero-strip" class:collapsed>
-    <div class="hero-inner" class:popup={heroBar.popup} inert={collapsed && !heroBar.popup} style:--rh={heroBar.slotH + 'px'} bind:this={inner}>
+  <div class="hero-strip" class:collapsed bind:offsetHeight={barH} style:height={heldH != null ? heldH + 'px' : null}>
+    <div class="hero-inner" class:popup={heroBar.popup} class:quick={heroBar.quick} inert={collapsed && !heroBar.popup && !heroBar.quick}
+         style:--rh={heroBar.slotH + 'px'} style:--qb={heroBar.quickBottom + 'px'} bind:this={inner}>
       {#each heroes as hero, i (hero.id)}
         <div class="hero-slot" data-hero={hero.id}>
           <hero.component fields={hero.fields} accessory={i === 0 ? accessory : null} />
@@ -78,6 +83,21 @@
     width: var(--rh);
     height: var(--pl);
     padding: var(--gap);
+    background: var(--bg-raised);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-s);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  }
+  /* Desktop page fullscreen (the quick rail): the rail in its horizontal form
+     along the bottom edge, above the page's bar; the stop pair is top right. */
+  .hero-inner.quick, .collapsed .hero-inner.quick {
+    position: fixed;
+    left: var(--gap);
+    right: var(--gap);
+    bottom: calc(var(--qb, 0px) + var(--gap));
+    z-index: 40;
+    visibility: visible;
+    overflow: visible;
     background: var(--bg-raised);
     border: 1px solid var(--line-2);
     border-radius: var(--r-s);

@@ -10,11 +10,12 @@
    * The sharpest test of this refactor lives here: there is no per-channel code
    * below. Add a settings channel to the firmware and it appears.
    *
-   * ONE NAV MODEL, TWO RENDERINGS. The same tabs array (and the same `active`
-   * id) drives a sidebar rail in the `full` renderer class and a horizontal
-   * tab strip in `handheld` and `glance` (model/viewport.svelte.js, RFC-062
-   * draft). A class switch mid-session must never lose the operator's place
-   * or a pending write, and never forks the nav logic.
+   * ONE NAV MODEL, THREE RENDERINGS. The same tabs array (and the same
+   * `active` id) drives a sidebar rail in the `full` renderer class, the phone
+   * menu's drawer (the rail's own content) in buckets 1 and 2, and a
+   * horizontal tab strip otherwise (model/viewport.svelte.js, RFC-062 draft;
+   * DESIGN §10.12). A class switch mid-session must never lose the
+   * operator's place or a pending write, and never forks the nav logic.
    */
   import Field from './ui/Field.svelte';
   import { cardbody } from './ui/cardbody.js';
@@ -34,6 +35,10 @@
   import Home from './ui/Home.svelte';
   import DashGrid from './ui/dash/DashGrid.svelte';
   import HubPicker from './ui/HubPicker.svelte';
+  import QuickRail from './ui/QuickRail.svelte';
+  import PhoneMenu, { phoneMenu } from './ui/PhoneMenu.svelte';
+  import { railReadout } from './ui/hero/RailWidget.svelte';
+  import { heroBar, openQuick } from './ui/hero/heroBar.svelte.js';
   import { untrack, tick } from 'svelte';
   import { view } from './model/viewport.svelte.js';
   import { projectGroups } from './model/rclass.js';
@@ -166,7 +171,8 @@
     return () => window.removeEventListener('phosphor-close-ask', show);
   });
   $effect(() => {
-    const want = osFullscreen({ on: isFull }, $prefs.fullscreen, OS_SHELL);
+    // A media page's fullscreen is always bare and Borderless (DESIGN §10.3, "fullscreen or not").
+    const want = osFullscreen({ on: isFull }, current?.page?.mediaFullscreen ? 'borderless' : $prefs.fullscreen, OS_SHELL);
     if (!OS_SHELL || want === osFull) return;
     osFull = want;
     import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setFullscreen(want)).catch(() => {});
@@ -187,25 +193,66 @@
   });
   // A page's own request (docs/PLUGINS.md, Pages): cancelable, so the page
   // knows it was taken. Borderless (detail.bare) is the page alone under the
-  // stop pair; In window keeps the hero rail. The change event tells it the end.
+  // stop pair; In window keeps the hero rail; a media page is always bare.
+  // The change event tells it the end.
   $effect(() => {
     const ask = (e) => {
       if (!current?.page?.fields) return;
       e.preventDefault();
-      full = e.detail?.on ? { on: true, bare: e.detail.bare !== false } : OFF;
+      full = e.detail?.on ? { on: true, bare: current.page.mediaFullscreen || e.detail.bare !== false } : OFF;
     };
-    // The mode, for a page that offers it itself (mediaFullscreen): desktop shell only.
-    const mode = (e) => { if (['window', 'borderless'].includes(e.detail?.mode)) setPref('fullscreen', e.detail.mode); };
     window.addEventListener('phosphor-page-fullscreen', ask);
-    window.addEventListener('phosphor-page-fullscreen-mode', mode);
-    return () => { window.removeEventListener('phosphor-page-fullscreen', ask); window.removeEventListener('phosphor-page-fullscreen-mode', mode); };
+    return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
+  // The footer status slot (docs/PLUGINS.md, Pages, `status`): the latest
+  // phosphor-page-status per page, drawn only on the phone class.
+  const TONES = ['ok', 'warn', 'bad'];
+  let pageStatus = $state({});
+  $effect(() => {
+    const put = (e) => {
+      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const d = e.detail || {};
+      pageStatus[current.id] = { text: String(d.text ?? ''), tone: TONES.includes(d.tone) ? d.tone : null,
+        title: d.title == null ? '' : String(d.title) };
+    };
+    window.addEventListener('phosphor-page-status', put);
+    return () => window.removeEventListener('phosphor-page-status', put);
+  });
+  // The quick rail (DESIGN §10.3; docs/PLUGINS.md, Pages): where a rail is
+  // mounted, the vertical pop-up on the phone class, the horizontal one in a
+  // bare page fullscreen on the desktop (In window keeps the hero rail on
+  // screen); absent otherwise.
+  const rail = $derived(railReadout());
+  const quickForm = $derived(!rail ? null : view.bucket <= 2 ? 'vertical' : isFull && full.bare ? 'horizontal' : null);
+  const quickOpen = $derived(quickForm === 'vertical' ? heroBar.popup : quickForm === 'horizontal' ? heroBar.quick : false);
+  function askQuick(open, from) {
+    if (!quickForm) return false;
+    openQuick(quickForm, open === 'toggle' ? !quickOpen : !!open, from);
+    return true;
+  }
+  $effect(() => { if (quickForm !== 'horizontal' && !untrack(() => rail?.busy)) heroBar.quick = false; });
+  $effect(() => {
+    const root = document.documentElement;
+    if (quickForm) root.dataset.quickRail = quickForm; else delete root.dataset.quickRail;
+    root.toggleAttribute('data-quick-rail-open', quickOpen);
+    window.dispatchEvent(new CustomEvent('phosphor-quick-rail-change', { detail: { available: !!quickForm, open: quickOpen, form: quickForm } }));
+  });
+  $effect(() => {
+    const ask = (e) => {
+      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const o = e.detail?.open;
+      if ((o === true || o === false || o === 'toggle') && askQuick(o, e.target)) e.preventDefault();
+    };
+    window.addEventListener('phosphor-quick-rail', ask);
+    return () => window.removeEventListener('phosphor-quick-rail', ask);
+  });
+  const statusSlot = $derived(current?.page?.status && view.bucket <= 2 ? pageStatus[current.id] || { text: '', tone: null, title: '' } : null);
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
   function onFullKey(e) {
-    if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full); }
+    if (e.key === 'F11' && current?.page?.fields) { e.preventDefault(); full = toggle(full, current.page.mediaFullscreen); }
     // After every listener: an overlay's own Escape (F1, F3) prevents it.
     else if (e.key === 'Escape' && full.on) setTimeout(() => { if (!e.defaultPrevented) full = OFF; });
   }
@@ -255,7 +302,10 @@
 
   // Mobile: a tab switch scrolls the page to its top, since the page (not a
   // bounded region) is what scrolls here.
-  let tabsNav = $state(null);
+  // The phone menu (DESIGN §10.12): buckets 1 and 2 replace the tab strip
+  // with a hamburger and a drawer of the sidebar's content.
+  const menuMode = $derived(!isDesktop && view.bucket <= 2);
+  $effect(() => { phoneMenu.shown = menuMode; if (!menuMode) phoneMenu.open = false; });
   // The promoted group page open in the active category (RENDERING §11).
   let drill = $state(null);
   // Set by a user page switch; the page fade (style.css) runs only then.
@@ -264,12 +314,12 @@
     if (id !== active) switching = true;
     active = id;
     drill = null;
-    // The sticky tab strip stays under the top strip; scrolling IT to the
-    // viewport top hides the page's first heading behind both.
-    if (tabsNav) window.scrollTo({ top: 0, behavior: 'auto' });
+    phoneMenu.open = false;
+    if (!isDesktop) window.scrollTo({ top: 0, behavior: 'auto' });
   }
   // A saved dash layout is a view of the Dash tab: the store holds which one.
   function pickLayout(n) {
+    phoneMenu.open = false;
     if (layouts.active !== n) dashEdit.on = false;
     switchLayout(n);
     selectTab('machine');
@@ -494,7 +544,7 @@
   </button>
 {/snippet}
 
-{#snippet railTab(t)}
+{#snippet railTab(t, mini)}
   <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
           aria-selected={current && current.id === t.id}
           tabindex={current && current.id === t.id ? 0 : -1}
@@ -502,8 +552,43 @@
           title={t.label}
           onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
     <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
-    {#if !railMini}<span class="rail-name">{t.label}</span>{/if}
+    {#if !mini}<span class="rail-name">{t.label}</span>{/if}
   </button>
+{/snippet}
+
+<!-- The sidebar's content: the desktop rail and the phone menu's drawer. -->
+{#snippet sideTabs(mini, ops)}
+    <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
+      {#each navSections as sec (sec.label)}
+        <div class="rail-sec" class:shell={sec.shell}>
+          {#if !mini}<span class="rail-lbl">{sec.label}</span>{/if}
+          {#each sec.tabs as t (t.id)}
+            {@const here = ops && current.id === t.id}
+            {@render railTab(t, mini)}
+            {#if here}
+              <div class="rail-ops" role="group" aria-label="Page operations"
+                   style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
+                {#if visibleGroups.diagAll}
+                  <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
+                          title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                {/if}
+                {#if visibleGroups.adv}
+                  <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
+                          title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                {/if}
+                {#if hasDefaults}
+                  <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
+                          use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
+                          title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                          >{resetDone ? 'reset ✓' : 'reset'}</button>
+                {/if}
+              </div>
+            {/if}
+            {#if t.id === 'machine' && !mini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
+          {/each}
+        </div>
+      {/each}
+    </div>
 {/snippet}
 
 {#snippet pane()}
@@ -561,6 +646,15 @@
       {/key}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
+      {#if statusSlot}
+        <span class="foot-status" data-tone={statusSlot.tone} role="status" title={statusSlot.title || statusSlot.text || undefined}>
+          <span>{statusSlot.text}</span>
+        </span>
+      {/if}
+      <!-- Only in a footer the page has anyway: the hero's mini opens the same pop-up. -->
+      {#if quickForm && (statusSlot || (current.page?.fields && !current.page.mediaFullscreen) || (catPage && !railOps))}
+        <QuickRail open={quickOpen} onclick={(e) => askQuick('toggle', e.currentTarget)} />
+      {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
         <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
                 onclick={() => (full = toggle(full))}>Fullscreen</button>
@@ -593,7 +687,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} onopenlog={() => selectTab('log')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -618,37 +712,7 @@
                 title={railMini ? 'Expand navigation' : 'Collapse navigation'}>
           <span aria-hidden="true">{railMini ? '»' : '«'}</span>
         </button>
-        <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
-          {#each navSections as sec (sec.label)}
-            <div class="rail-sec" class:shell={sec.shell}>
-              {#if !railMini}<span class="rail-lbl">{sec.label}</span>{/if}
-              {#each sec.tabs as t (t.id)}
-                {@const ops = railOps && current.id === t.id}
-                {@render railTab(t)}
-                {#if ops}
-                  <div class="rail-ops" role="group" aria-label="Page operations"
-                       style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
-                    {#if visibleGroups.diagAll}
-                      <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                              title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
-                    {/if}
-                    {#if visibleGroups.adv}
-                      <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                              title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
-                    {/if}
-                    {#if hasDefaults}
-                      <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
-                              use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                              title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
-                              >{resetDone ? 'reset ✓' : 'reset'}</button>
-                    {/if}
-                  </div>
-                {/if}
-                {#if t.id === 'machine' && !railMini}<RailLayouts dashActive={active === 'machine'} onpick={pickLayout} />{/if}
-              {/each}
-            </div>
-          {/each}
-        </div>
+        {@render sideTabs(railMini, railOps)}
       </nav>
       <div class="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
@@ -656,7 +720,10 @@
     </div>
   {:else}
     {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
-    <nav class="tabs" aria-label="Sections" bind:this={tabsNav}>
+    {#if menuMode}
+      <PhoneMenu><nav class="rail drawer-nav" aria-label="Sections">{@render sideTabs(false, catPage)}</nav></PhoneMenu>
+    {:else}
+    <nav class="tabs" aria-label="Sections">
       <div role="tablist" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, false)}>
         {#each tabs as t (t.id)}
           <button role="tab" data-tab-id={t.id}
@@ -684,6 +751,7 @@
         {/each}
       </div>
     </nav>
+    {/if}
     {@render pane()}
   {/if}
 
@@ -694,7 +762,7 @@
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
     </button>
   {/if}
-  <FootStrip />
+  <FootStrip pinned={!isDesktop} />
   <ConfirmLayer onreview={() => selectTab('pairing')} knocksShown={current?.id === 'pairing'} />
   <KeyHelp />
   <LookFor {tabs} go={selectTab} />
@@ -756,6 +824,8 @@
     overflow-y: auto;
   }
   .rail.mini { width: 56px; }
+  /* The phone menu's drawer holds the rail's content at the drawer's width. */
+  .rail.drawer-nav { width: auto; flex: 1 0 auto; border: 0; border-radius: 0; background: none; overflow: visible; padding-top: var(--sp-3); }
   /* No padding on the rail itself: the recess shades (style.css [data-shade])
      span its whole scrollport, so the inset lives on its children. */
   .rail-collapse {
@@ -908,7 +978,7 @@
     :global(.rail-tab) { min-height: 40px; }
   }
 
-  /* ---- phone: horizontal tab strip ---------------------------------------
+  /* ---- bucket 3 below `full`: horizontal tab strip --------------------------
      Sticky just below the top strip, because on a phone the settings list is
      long and losing the tab bar means scrolling all the way back up to change
      section. Horizontally scrollable rather than wrapping: a machine may
@@ -1011,6 +1081,24 @@
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
+
+  /* The page's status slot (DESIGN §10.3): one line, its width reserved, a
+     3 px tone bar; the text is --tx in every tone, never --warn (law 13). */
+  .foot-status {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: calc(var(--sp-5) * 1.5);
+    padding-left: var(--sp-2);
+    border-left: 3px solid var(--line-2);
+    color: var(--tx);
+    font-size: .8rem;
+  }
+  .foot-status > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .foot-status[data-tone='ok'] { border-left-color: var(--good); }
+  .foot-status[data-tone='warn'] { border-left-color: var(--warn); }
+  .foot-status[data-tone='bad'] { border-left-color: var(--bad); }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the

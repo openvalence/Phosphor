@@ -12,9 +12,9 @@
    * - Desktop: sticky at bottom 0 as the last child of a page at least as
    *   tall as `.content` (App.svelte `.pane`), so it sits at the bottom edge
    *   and the scroll area ends above it.
-   * - `page` (the page itself scrolls): fixed to the viewport's bottom, and
-   *   `.app` reserves its measured height so the last card and FootStrip end
-   *   above it.
+   * - `page` (the page itself scrolls): fixed to the viewport's bottom at one
+   *   height whatever the scroll, under the pinned status row (FootStrip);
+   *   it publishes --page-foot-reserve and `.app` reserves it (style.css).
    * - Owns env(safe-area-inset-bottom) as padding under the row; never the
    *   top inset (webui.md T22).
    * - Every label is one width in both states, so a flip moves nothing.
@@ -63,9 +63,6 @@
     margin: 0;
     padding-left: var(--gap);
     padding-right: var(--gap);
-  }
-  :global(.app:has(.page-foot.page .foot-page > *)) {
-    padding-bottom: var(--page-foot-reserve, calc(var(--page-foot-h) + env(safe-area-inset-bottom, 0px)));
   }
   .foot-page {
     flex: 1 1 auto;

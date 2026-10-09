@@ -40,6 +40,8 @@ export const NAV_ICONS = {
   settings: 'M3 2.5v11M8 2.5v11M13 2.5v11M1.5 5h3M6.5 10h3M11.5 7h3',
   merge: 'M4 2.5V6c0 2 4 2 4 4v3.5M12 2.5V6c0 2-4 2-4 4',
   about: CIRCLE(8, 8, 5.75) + 'M8 7.25V11M8 5h.01',
+  // The quick rail (DESIGN §10.3): the mini's plate, its band and the position tick.
+  quickRail: 'M1.5 5.5h13v5h-13zM5 7.5v1M11 7.5v1M8 3.5v9',
 };
 
 /** The icon for an App.svelte tab: a plugin page's own or Plugins', its category's, else its pane's, else `other`. */

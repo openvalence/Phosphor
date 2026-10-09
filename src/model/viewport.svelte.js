@@ -18,7 +18,7 @@
  *   columns, so they re-derive when the root font size moves (theme scale).
  */
 
-import { nextClass, layoutCols, bucketOf } from './rclass.js';
+import { nextClass, layoutCols, bucketOf, phoneClamp } from './rclass.js';
 import { onTheme } from './theme.js';
 
 const hasWindow = typeof window !== 'undefined';
@@ -33,12 +33,12 @@ function primaryPointer() {
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 const colsNow = () => (hasWindow ? layoutCols(window.innerWidth, remPx()) : 40);
 
-export const view = $state({
-  cols: colsNow(),
-  bucket: bucketOf(colsNow()),
-  cls: hasWindow ? nextClass(null, window.innerWidth, primaryPointer()) : 'full',
-  pointer: primaryPointer(),
-});
+const derive = (prev, pointer) => {
+  if (!hasWindow) return { phone: false, cls: 'full', bucket: bucketOf(colsNow()) };
+  return phoneClamp(nextClass(prev, window.innerWidth, pointer), bucketOf(colsNow()), pointer, window.innerWidth, window.innerHeight);
+};
+// phone: the phone class (rclass.js phoneClamp), mirrored to html[data-phone].
+export const view = $state({ cols: colsNow(), pointer: primaryPointer(), ...derive(null, primaryPointer()) });
 
 if (hasWindow) {
   const down = new Set();
@@ -46,15 +46,15 @@ if (hasWindow) {
     const d = document.documentElement;
     d.dataset.rc = view.cls;
     d.dataset.bucket = String(view.bucket);
+    d.toggleAttribute('data-phone', view.phone);
     // Guarded: the style observer below would otherwise re-enter on its own write.
     if (d.style.getPropertyValue('--cols') !== String(view.cols)) d.style.setProperty('--cols', String(view.cols));
   };
   const apply = () => {
     if (down.size) return;
     view.pointer = primaryPointer();
-    view.cls = nextClass(view.cls, window.innerWidth, view.pointer);
     view.cols = colsNow();
-    view.bucket = bucketOf(view.cols);
+    Object.assign(view, derive(view.cls, view.pointer));
     publish();
   };
   const release = (e) => { down.delete(e.pointerId); apply(); };

@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import {
   nextClass, promotes, projectGroups, CLASSES,
   FULL_UP, FULL_DOWN, GLANCE_UP, GLANCE_DOWN, DRILL_AFTER, FLOOR_W, FLOOR_H,
-  layoutCols, bucketOf, FIELD_FLOOR_COLS, BUCKET_FLOOR_COLS,
+  layoutCols, bucketOf, FIELD_FLOOR_COLS, BUCKET_FLOOR_COLS, phoneClamp,
 } from '../src/model/rclass.js';
 import { buildSettingsModel, surfacedFields } from '../src/model/settings.js';
 import { decodeCatalog, UI_RANK, PACKED, CHANNEL_CLASS, UI_CATEGORY, FIELD_ROLE } from '../../Valence/clients/js/index.js';
@@ -153,6 +153,19 @@ ok('the fixture exercises handheld promotion', promoted > 0, promoted + ' promot
   ok('reset gate: a flip asks', resetNeedsModal([plain, flip], { 1: { f: 0 } }));
   ok('reset gate: a destructive field asks', resetNeedsModal([plain, boom], {}));
   ok('reset gate: background run asks only when it would turn on', resetNeedsModal([bg], { 1: { b: 0 } }) && !resetNeedsModal([bg], { 1: { b: 1 } }));
+}
+
+// ---- the phone class (ph-5u0g, DESIGN 10.12): coarse and a short side under 500 ---
+{
+  const land = phoneClamp('full', 3, 'coarse', 990, 448);
+  ok('a coarse 990x448 phone on its side is the phone class: bucket 2, not full', land.phone && land.bucket === 2 && land.cls === 'handheld', JSON.stringify(land));
+  const port = phoneClamp('handheld', 1, 'coarse', 448, 990);
+  ok('upright it is the phone class, bucket kept', port.phone && port.bucket === 1 && port.cls === 'handheld', JSON.stringify(port));
+  const tab = phoneClamp('full', 3, 'coarse', 1024, 768);
+  ok('a coarse tablet (short side 768) is not', !tab.phone && tab.bucket === 3 && tab.cls === 'full', JSON.stringify(tab));
+  const mouse = phoneClamp('full', 3, 'fine', 990, 448);
+  ok('a fine pointer never is', !mouse.phone && mouse.cls === 'full' && mouse.bucket === 3, JSON.stringify(mouse));
+  ok('glance stays glance', phoneClamp('glance', 1, 'coarse', 200, 390).cls === 'glance');
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — class selection holds its bands and loses nothing.'));

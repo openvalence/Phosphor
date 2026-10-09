@@ -225,7 +225,8 @@ async function open(browser, { w, h, touch, catalog, reducedMotion = 'no-prefere
   const page = await ctx.newPage();
   page.on('pageerror', (e) => ok('no page error', false, String(e)));
   await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]', { timeout: 15000 })
+  // Under 960 the tabs sit in the phone menu's closed drawer (DESIGN §10.12): the Dash's home says the catalog is in.
+  const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab], main.pane .home', { timeout: 15000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(500);
   // Over the hero budget the rail is the mini; a tap is the user's ask for the rail.
@@ -1133,6 +1134,25 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await page.mouse.click(10, 760);
   await page.waitForTimeout(300);
   ok('handheld: an outside tap closes the pop-up', await pop() === 0);
+  await ctx.close();
+}
+
+// ph-5u0g.5: the rail pop-up (the quick rail on the phone class) never covers
+// the stop pair: open, each stop control's center still hits that control.
+for (const [w, h] of [[420, 860], [860, 420]]) {
+  const { ctx, page } = await open(browser, { w, h, touch: true, catalog: 'hero' });
+  await page.locator('.topstrip .mini').click();
+  await page.waitForTimeout(300);
+  const r = await page.evaluate(() => {
+    const pop = document.querySelector('.hero-inner.popup');
+    const p = pop && pop.getBoundingClientRect();
+    return { pop: !!pop, ops: [...document.querySelectorAll('.topstrip .pair .safety-op button')].map((b) => {
+      const q = b.getBoundingClientRect();
+      return b.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2))
+        && (!p || q.right <= p.left || q.left >= p.right || q.bottom <= p.top || q.top >= p.bottom);
+    }) };
+  });
+  ok(w + 'x' + h + ': the rail pop-up open, the stop pair is uncovered and hit', r.pop && r.ops.length === 2 && r.ops.every(Boolean), JSON.stringify(r));
   await ctx.close();
 }
 

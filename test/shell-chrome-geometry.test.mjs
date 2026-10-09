@@ -48,6 +48,7 @@
  *
  * Run: node test/shell-chrome-geometry.test.mjs   (no device needed)
  */
+import { goTab, tabIds } from './nav.mjs';
 import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -181,7 +182,8 @@ ok('phone scrolled: strip stays at the top', Math.abs(g.stripTop) < 1, 'top=' + 
 const stripBottom = await page.evaluate(() => document.querySelector('.topstrip').getBoundingClientRect().bottom);
 ok('phone scrolled: tab strip never slides under the strip', tabs == null || tabs >= stripBottom - 0.5,
    'tabsTop=' + tabs + ' stripBottom=' + stripBottom);
-ok('phone: nothing fixed to the bottom edge', !g.bottomFixed, g.bottomFixed || 'none');
+// ph-5u0g.3: the scrolling layout pins the status row (and a page footer) to the bottom edge, nothing else.
+ok('phone: only the status row is fixed to the bottom edge', /^footer\.footstrip[^ ]* pinned$/.test(g.bottomFixed.replace(/ svelte-\w+/g, '')), g.bottomFixed || 'none');
 const fsPhone = await footRow();
 ok('phone: the status row is still one line (ph-wt7r)', fsPhone.tops === 1 && fsPhone.h === fsH && !fsPhone.wide, JSON.stringify(fsPhone));
 
@@ -262,13 +264,15 @@ await sp.emulateMedia({ contrast: 'more' });
 await sp.emulateMedia({ contrast: 'no-preference' });
 await sp.evaluate(() => document.documentElement.classList.remove('hivis'));
 
-// Phone: the Phosphor tabs ride the same tab strip; the e-stop stays put.
+// Phone: the Phosphor tabs ride the phone menu's drawer (ph-5u0g.4); the e-stop stays put.
 await sp.setViewportSize({ width: 360, height: 640 });
-await sp.waitForSelector('nav.tabs [data-tab-id="shell:settings"]');
+await sp.waitForSelector('.menu-btn');
 const esBefore = await rect('.topstrip .btn-estop');
-const phoneTabs = await sp.$$eval('nav.tabs [data-tab-id^="shell:"]', (els) => els.map((e) => e.textContent.trim()));
-ok('phone: the Phosphor tabs ride the tab strip', PANES.every((p) => phoneTabs.includes(p)), JSON.stringify(phoneTabs));
-await sp.click('nav.tabs [data-tab-id="shell:settings"]');
+await sp.click('.menu-btn');
+await sp.waitForSelector('.phone-menu [data-tab-id="shell:settings"]');
+const phoneTabs = await sp.$$eval('.phone-menu [data-tab-id^="shell:"]', (els) => els.map((e) => e.textContent.trim()));
+ok('phone: the Phosphor tabs ride the phone menu', PANES.every((p) => phoneTabs.includes(p)), JSON.stringify(phoneTabs));
+await sp.click('.phone-menu [data-tab-id="shell:settings"]');
 await sp.waitForTimeout(150);
 ok('phone: Phosphor > Settings renders in the page', await sp.evaluate(() => !!document.querySelector('main.pane .set')));
 await sp.evaluate(() => window.scrollTo(0, 0));
@@ -348,7 +352,24 @@ const heights = (p) => p.evaluate(() => {
     nameClipped: !!word && word.scrollWidth > word.clientWidth,
     slot: document.querySelector('.strip .status')?.dataset.kind };
 });
-for (const [w, h] of [[1440, 900], [390, 844]]) {
+// ph-5u0g peeve 10: nothing in the hero clips its own text vertically; the
+// numeral column stays inside the numerals cell's clip.
+const heroClip = (p) => p.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('.topstrip .strip *, .hero-strip *')) {
+    if (!el.getClientRects().length || !el.textContent.trim()) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || !/(hidden|clip|auto|scroll)/.test(cs.overflowY) || cs.webkitLineClamp !== 'none' && el.closest('[title]')) continue;
+    if (el.scrollHeight > el.clientHeight + 1) out.push(el.className + ' ' + el.scrollHeight + '>' + el.clientHeight);
+  }
+  const nums = document.querySelector('.topstrip .nums')?.getBoundingClientRect();
+  for (const el of document.querySelectorAll('.topstrip .nums .hn-col .hn-val')) {
+    const r = el.getBoundingClientRect();
+    if (el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && nums && r.bottom > nums.bottom + 6.5) out.push('hn-col below the numerals cell ' + Math.round(r.bottom) + '>' + Math.round(nums.bottom));
+  }
+  return out;
+});
+for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
   const tag = w + 'x' + h;
   const wire = {};
   const hctx = await browser.newContext({ viewport: { width: w, height: h } });
@@ -365,6 +386,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     ok(tag + ': the mini rail shows and the popup is closed', await hp.locator('.topstrip .mini').isVisible() && await hp.locator('.hero-inner.popup').count() === 0);
     await hp.locator('.topstrip .mini').click();
     ok(tag + ': tapping the mini opens the rail', await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').isVisible());
+    // ph-5u0g.5: a scrub on the pop-up's tape holds it open against an outside tap (the quick rail is this pop-up).
+    const tb = await hp.locator('.hero-inner.popup .rail-tape-track[aria-disabled=false]').boundingBox();
+    await hp.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+    await hp.mouse.down();
+    await hp.evaluate(() => document.querySelector('main.pane').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    await hp.waitForTimeout(80);
+    ok(tag + ': held open while a scrub is live', await hp.locator('.hero-inner.popup').count() === 1);
+    await hp.mouse.up();
+    await hp.waitForTimeout(80);
     await hp.keyboard.press('Escape');
   }
   if (!up) { await hctx.close(); continue; }
@@ -420,6 +450,15 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await still('resume', () => hp.locator('.topstrip .btn-pause').click());
   ok(tag + ': the hub released pause (reads Pause)', (await pauseLbl()).trim() === 'Pause');
   await still('pattern start', () => wire.send(FRAME.STATE, RUN.id, patternState(true)));
+  await hp.locator('.strip .st-dismiss').click().catch(() => {});
+  await hp.waitForTimeout(200);
+  // A long style name, as the hub may send: the meta wraps to a second line.
+  await hp.evaluate(() => { const m = document.querySelector('.topstrip .readback .plan-mode'); if (m) m.append(' · style waveform with a long name'); });
+  await hp.waitForTimeout(100);
+  const clip = await heroClip(hp);
+  const rb = await hp.evaluate(() => !!document.querySelector('.topstrip .readback .plan-rb')?.getClientRects().length);
+  ok(tag + ': a pattern running, the readback shows and no element in the hero clips its own text (peeve 10)', rb && clip.length === 0, rb + ' ' + clip.slice(0, 3).join(' / '));
+  if (process.env.HERO_SHOTS && (w === 420 || w === 860)) await hp.screenshot({ path: process.env.HERO_SHOTS + '/hero-running-' + tag + '.png', clip: { x: 0, y: 0, width: w, height: Math.min(h, 220) } });
   // The phone's mini rail hides both faces; the swap is the pop-up's business there.
   const mini = await hp.locator('.topstrip .mini').count() > 0;
   ok(tag + ': pattern start flips visibility, both faces stay mounted', mini ? (await faces()).split(' ').length === 2 : await faces() === 'visible:plan hidden:tape', await faces());
@@ -468,7 +507,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
 // theme's, +/- step it, Reset shows only off 100% and moves nothing, and
 // Ctrl+=, Ctrl+0 and Ctrl+wheel scale --s without zooming the page, except
 // over a surface that takes the wheel itself.
-for (const [w, h] of [[1280, 800], [390, 844]]) {
+for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   const tag = w + 'x' + h + ' footer';
   const fctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: w < 960 });
   await fctx.addInitScript(([etag, bytes]) => {
@@ -477,8 +516,10 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   await fctx.routeWebSocket(/:82\//, hub({}));
   const fp = await fctx.newPage();
   await fp.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
-  const tabSel = (w >= 960 ? 'nav.rail' : 'nav.tabs') + ' [role=tab][data-tab-id^="cat"]';
-  const up = await fp.waitForSelector(tabSel, { timeout: 15000 }).then(() => true).catch(() => false);
+  const tabSel = 'nav.rail [role=tab][data-tab-id^="cat"]';
+  // Under 960 the phone menu's drawer holds the tabs (nav.mjs); the hero says the hub is up.
+  const up = await fp.waitForSelector(w >= 960 ? tabSel : '.hero-strip', { state: 'attached', timeout: 15000 }).then(() => true).catch(() => false);
+  await fp.waitForTimeout(300);
   ok(tag + ': the category pages render', up);
   if (!up) { await fctx.close(); continue; }
   const footBox = () => fp.evaluate(() => { const r = document.querySelector('main.pane .page-foot')?.getBoundingClientRect();
@@ -637,8 +678,8 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   if (w >= 960) {
     // ph-lxea: the selected page's pill holds [n diag] [n adv] [reset]; no page footer on the expanded rail; reset is a 1 s hold.
     let hit = null;
-    for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
-      await fp.click('[data-tab-id="' + id + '"]');
+    for (const id of await tabIds(fp, 'cat')) {
+      await goTab(fp, id);
       await fp.waitForTimeout(150);
       if (await fp.locator('.rail-tab.on + .rail-ops .reset').count()) { hit = id; break; }
     }
@@ -653,10 +694,11 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
     await fp.click('nav.rail .rail-collapse');
     await fp.waitForTimeout(150);
   }
+  const unpinned = [];
   const rowMoved = [], boxes = new Set(homeBox && !homeBox.endsWith(',0') ? [homeBox] : []), shifts = [], under = [], clipped = [], onState = [];
   let pages = 0, flips = 0;
-  for (const id of await fp.$$eval(tabSel, (els) => els.map((e) => e.dataset.tabId))) {
-    await fp.click('[data-tab-id="' + id + '"]');
+  for (const id of await tabIds(fp, 'cat')) {
+    await goTab(fp, id);
     await fp.waitForTimeout(250);
     const box = await fp.evaluate(() => {
       const f = document.querySelector('main.pane .page-foot');
@@ -705,17 +747,22 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
         if ((st[0] === 'true') !== st[1]) onState.push(id + ' toggle ' + i + ' ' + JSON.stringify(st));
       }
     }
+    // ph-5u0g.3: in the scrolling layout the footer and the status row are pinned: the same rects at scroll top and end.
     const end = await fp.evaluate(async () => {
       const se = document.querySelector('.content') || document.scrollingElement;
+      const fr = () => ['main.pane .page-foot', '.footstrip'].map((q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); }).join(' | ');
+      const at0 = fr();
       se.scrollTop = se.scrollHeight;
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const cards = [...document.querySelectorAll('main.pane :is(.dash-cell, .drill-page, .cat-empty)')];
       const last = Math.max(...cards.map((c) => c.getBoundingClientRect().bottom));
-      const top = document.querySelector('main.pane .page-foot').getBoundingClientRect().top;
+      const top = Math.min(...['main.pane .page-foot', '.footstrip'].map((q) => document.querySelector(q).getBoundingClientRect().top));
+      const atEnd = fr();
       se.scrollTop = 0;
-      return { last, top };
+      return { last, top, at0, atEnd, scrolled: se.scrollHeight > se.clientHeight + 2 };
     });
     if (!(end.last <= end.top + 0.5)) under.push(id + ' ' + JSON.stringify(end));
+    if (w < 960 && end.at0 !== end.atEnd) unpinned.push(id + ' ' + end.at0 + ' -> ' + end.atEnd);
   }
   const [, , , fh] = [...boxes][0]?.split(',').map(Number) || [];
   ok(tag + ': the status row is one box on every page', rowMoved.length === 0, rowMoved.join(' '));
@@ -730,6 +777,7 @@ for (const [w, h] of [[1280, 800], [390, 844]]) {
   ok(tag + ': footer and its controls hold still for 30 frames across every toggle', flips > 0 && shifts.length === 0,
     flips + ' flips; ' + shifts.slice(0, 2).join(' / '));
   ok(tag + ': scrolled to its end, the last card ends above the footer', under.length === 0, under.join(' / '));
+  if (w < 960) ok(tag + ': the footer and the status row hold one rect at scroll top and end (pinned)', unpinned.length === 0, unpinned.slice(0, 2).join(' / '));
   if (w >= 960) {
     const look = () => fp.evaluate(() => ({ s: getComputedStyle(document.documentElement).getPropertyValue('--s').trim(),
       out: document.querySelector('.footstrip .foot-scale output').textContent.trim(),

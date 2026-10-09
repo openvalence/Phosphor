@@ -598,7 +598,8 @@ question in §10.8).
   `ph-5u0g` peeve 1) the page footer and the bottom status row are pinned to
   the viewport's bottom edge: fixed, one height that never grows as the page
   scrolls, the scroll ending above them, the footer owning the bottom
-  safe-area inset as everywhere. A page registered `status` (docs/PLUGINS.md,
+  safe-area inset as everywhere (the status row sits directly above it, and
+  owns the inset itself on a page with no footer). A page registered `status` (docs/PLUGINS.md,
   Pages) gets one status slot in its footer there, so that page has a footer
   even with no page controls: one line, the 3 px tone bar at its left edge,
   the text in `--tx` and never `--warn` (law 13), ellipsized with the full
@@ -654,7 +655,8 @@ question in §10.8).
   and on every window focus gain; an edge swipe shows them for a moment. The
   web side keeps `env(safe-area-inset-*)` for the gesture pill and the
   cutout. The state never changes, so there is no JS bridge. Seam:
-  `src-tauri/gen/android/app/src/main/java/com/phosphor/app/MainActivity.kt`.
+  `src-tauri/android/MainActivity.kt`, copied into the generated project's
+  `MainActivity.kt` by `tools/android-icons.mjs` (docs/BUILD.md, Android).
 - The quick rail (operator rulings 2026-10-08, `ph-5u0g` peeve 6, amended the
   same day): one rail design, the hero's own rail opened elsewhere, never a
   second copy and never a dock. A mini-rail icon (one glyph,
@@ -665,7 +667,11 @@ question in §10.8).
   page fullscreen. On the desktop it exists only in page fullscreen: the icon
   opens the rail in its horizontal form as a pop-up along the bottom edge,
   above the page's bar, so the user pauses and jogs without leaving the video;
-  inline the hero rail is on screen and the icon is absent. Either form
+  inline the hero rail is on screen and the icon is absent, and so in the In
+  window fullscreen, which keeps the hero bar: the quick rail exists in the
+  bare (Borderless) one. A native page shows the icon only in a footer it has
+  anyway; no footer is added for it, the hero's mini opens the same pop-up
+  there. Either form
   overlays (nothing shrinks), is dismissed by a tap outside or Escape, is held
   open while a scrub or window drag is in progress, and never covers the stop
   pair. Seams: `src/ui/QuickRail.svelte` (new), `src/ui/hero/RailWidget.svelte`,
@@ -675,9 +681,17 @@ question in §10.8).
   buckets 1 and 2 as one row: the position numeral without its label line
   and without the planned target, lag and speed stack, the mini rail, and the
   five strip buttons; nothing leaves the hero and the stop pair never moves.
-  About 50 px of an 860 px phone return to the page. Other pages and other
-  buckets keep the hero as above. Seams: `src/ui/HeroStrip.svelte`,
+  At least 40 px return to the page at 420x860 and 860x420. Other pages and other
+  buckets keep the hero as above. The row's buttons sit at the 40 px floor,
+  each as wide as its word, and a status condition takes the numeral's
+  place (the watch-size rule), so the mini and the buttons never move; the
+  safety-edge history stays in the Log there (`ph-5u0g.6`, the agent's
+  readings, veto-able). Seams: `src/ui/HeroStrip.svelte`,
   `src/ui/TopStrip.svelte`.
+- Nothing in the hero clips its own text vertically (operator 2026-10-08,
+  `ph-5u0g` peeve 10): the plan readback beside the numeral is one line, or
+  two where the width runs short, each ellipsized, ending short of the mini.
+  Seam: `src/ui/widgets/PlanStrip.svelte`.
 
 ### 10.4 Full width
 
@@ -1008,7 +1022,23 @@ derives from one unit, and no size is tuned by hand.
   operations) as a drawer from the left edge over the page, closed by a pick,
   a tap outside or Escape. The tab strip, whose row overflowed at phone width,
   is retired there; the Dash's + moves into the menu. The drawer overlays,
-  so nothing shifts. Seams: `src/App.svelte`, `src/ui/TopStrip.svelte`.
+  so nothing shifts. It starts under the top strip, so the hamburger and the
+  stop pair stay uncovered; focus moves to the selected entry on open and
+  back to the hamburger on close. The page operations ride the drawer's pill
+  and stay in the page footer too, one tap from the thumb (`ph-5u0g.4`, the
+  agent's reading, veto-able). Seams: `src/App.svelte` (`sideTabs`, shared
+  with the desktop rail), `src/ui/PhoneMenu.svelte`, the hamburger in
+  `src/ui/LinkBar.svelte`.
+- The phone class (Fable's pick 2026-10-08, `ph-5u0g`, veto-able): a coarse
+  pointer and a shortest viewport side under 500 px clamp the bucket to 2 or
+  under and the renderer class off `full`, so a phone on its side (a Pixel 10
+  Pro XL is about 990 px wide) keeps the phone layout: the menu, the pinned
+  footer and status row, the quick rail and the compact hero. It is defined
+  once (`phoneClamp`, `src/model/rclass.js`; `view.phone` and
+  `<html data-phone>`, `src/model/viewport.svelte.js`) and every consumer
+  reads the bucket and class; the two scroll modes in `src/style.css` follow
+  `<html data-rc>`, not a width query. There the status row is one line at
+  the tap height, its facts ellipsized, never wrapping.
 - Sidebar: the renderer class (§10.4, RFC-062 draft) still picks the nav
   model, rail or tab strip; the bucket decides everything inside it. On the
   tab strip the page operations stay in the page footer (§10.3).
