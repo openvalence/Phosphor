@@ -160,7 +160,9 @@ Plugins`, its page region the plugin's to fill full width.
     asked (the page's bar), never past the stop pair.
   - Mark the icon `data-quick-rail-toggle`: the pop-up's outside-tap close
     skips it, so a tap toggles instead of closing and reopening, and the
-    footer's own icon hides while the page shows one (one per screen).
+    footer's own icon hides while the page shows one (one per screen). A
+    page hides its icon with the `hidden` attribute; any other hiding counts
+    as shown.
   - State: `phosphor-quick-rail-change` on `window`, `detail: {available,
     open, form}` (`form` `'vertical'`, `'horizontal'` or null), fired on every
     change of availability (bucket, fullscreen, page switch) or open state;
