@@ -542,7 +542,12 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   itself). The rows are `rows.js` (label, control, value chip; Fit to
   window and the toggles are the shell's switch); the typed Scale field
   goes, the chip shows the value or Auto's readout. The volume row is drawn
-  on phones only. The Stash fields come after Scale and Playback.
+  on phones only. The Stash fields come after Scale and Playback. Ruled
+  2026-10-08 (operator): the phone sheet covering the timeline and bar while
+  open is accepted (mockup P5 is the ruling; "never covers the wave" meant
+  no floating overlay); at 1024 x 768 with the library shut, Settings below
+  the card (`ph-mdqo.7`) is accepted; the fullscreen drawers on the desktop
+  too are accepted.
 - **PR13 Library.** Phone portrait: a tab (Player | Library in the head,
   D19 stands) with rows (title, duration · actions), paged and never
   scrolled, and a now-playing row at the bottom (title, position, Pause).
@@ -578,6 +583,16 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   pills (advpen vocabulary), the fullscreen seek dot (`ph-mcfe`), the open
   tab in `--highlight`. Text inputs (search, Stash URL, API key) stay mono
   until the operator rules the text-input face for shell and player alike.
+- **As built, PR15 (`ph-1qs5.7`):** the tabs, the analyzer's modes and
+  controls and every bar and head button are `.og-btn` (`.sm`); the
+  analyzer's pressed buttons wear `.on` (the open tab keeps `--highlight`);
+  its ranges take the global thumb, its selects the global rule; its group
+  header is a sub-group title without the band; its Lag/Plan/Kinetic lines
+  are in the body face. Ticks, the speed bar, the split bar and the
+  analyzer's state markers are square. The library's grid gaps are
+  `var(--sp-3)`, and the grid math reads the drawn gap (`fitGrid`'s third
+  argument); the row height is the CSS var `--fsp-row-h` (`ROW_H` agrees).
+  `test/spacing-lint.mjs` flags `${...}px` on spacing properties.
 - **PR17 Landscape with a video is fullscreen.** On the phone class, turning
   to landscape with a video loaded enters fullscreen and turning back leaves
   it; an Exit fullscreen in landscape holds until the next rotation. With no

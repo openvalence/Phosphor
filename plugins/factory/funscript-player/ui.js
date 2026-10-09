@@ -156,7 +156,6 @@ export const COPY = Object.freeze({
   unmuteKey: 'Unmute (m)',
   seek: 'Seek',
   full: 'Fullscreen (f)',
-
   fullExit: 'Exit fullscreen (f)',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
@@ -172,7 +171,6 @@ const ICON = {
   muted: ['M2 6h3l4-3.5v11L5 10H2z', 'M11 6l4 4M15 6l-4 4'],
   full: ['', 'M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4'],
   unfull: ['', 'M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4'],
-
   caret: ['', 'M6.5 5l3 3-3 3'],
   lib: ['', 'M2 2.5h5v5H2zM9 2.5h5v5H9zM2 9.5h5v4H2zM9 9.5h5v4H9z'],
   prev: ['M13 3v10L6 8z', 'M3 3v10'],
@@ -702,13 +700,6 @@ export const CSS = `
 .fsp-menu:popover-open { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2);
   background: var(--bg-raised); border: 1px solid var(--line-2); border-radius: var(--r-s); color: var(--tx); }
 .fsp-menu .og-btn { justify-content: flex-start; }
-.fsp-btn { font-size: .82rem; min-height: var(--tap); min-width: var(--tap); padding: 0 var(--sp-3); background: none; color: var(--tx); border: 1px solid var(--line-2);
-  border-radius: var(--r-s); cursor: pointer; white-space: nowrap; }
-.fsp-btn { transition: color var(--t-quick, 120ms), border-color var(--t-quick, 120ms); }
-.fsp-btn:hover { border-color: var(--line-4); }
-.fsp-btn:focus-visible { outline: 2px solid var(--highlight); outline-offset: 1px; }
-.fsp-btn[aria-pressed=true], .fsp-btn[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
-.fsp-btn:disabled { opacity: .4; cursor: default; }
 .fsp-src { grid-area: src; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .fsp-libcaret { display: none; flex: none; place-items: center; width: 30px; height: var(--fsp-src); padding: 0; color: var(--tx-mut);
   background: none; border: 1px solid var(--line-2); border-radius: var(--r-s); cursor: pointer; }
@@ -724,9 +715,9 @@ export const CSS = `
 .fsp[data-page] .fsp-title { margin-left: auto; text-align: right; }
 .fsp-src > [role=tablist] { display: flex; flex: none; gap: var(--sp-2); }
 .fsp-tab { display: none; }
-.fsp[data-comp=handheld] .fsp-tab { display: inline-block; }
-
-
+/* The open tab wears --highlight (the advpen precedent, finding 1). */
+.fsp-tab[aria-selected=true] { color: var(--highlight); border-color: var(--highlight); }
+.fsp[data-comp=handheld] .fsp-tab { display: inline-flex; }
 .fsp[data-comp=glance] .fsp-title { font-size: .75rem; line-height: 20px; }
 .fsp-stage { grid-area: stage; position: relative; min-height: 0; overflow: hidden; }
 .fsp-stage::before { content: ''; display: block; aspect-ratio: 16 / 9; max-height: 240px; }
@@ -750,7 +741,7 @@ export const CSS = `
 .fsp-tlbox { grid-area: tl; min-width: 0; }
 .fsp-split { grid-area: sp; position: relative; cursor: ns-resize; touch-action: none; outline: none; }
 .fsp-split::before { content: ''; position: absolute; inset: -4px 0; }
-.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); border-radius: 2px; }
+.fsp-split::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 4px; translate: 0 -2px; background: var(--line-2); }
 @media (pointer: coarse) { .fsp-split::before { inset: 0; } }
 .fsp-split::after { transition: background var(--t-quick, 120ms); }
 .fsp-split:hover::after, .fsp-split[data-drag]::after, .fsp-split:focus-visible::after { background: var(--highlight); }
@@ -764,7 +755,7 @@ export const CSS = `
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .fsp-meter { grid-area: meter; position: relative; display: none; background: var(--screen); border-radius: var(--r-s); }
 .fsp[data-comp=glance] .fsp-meter { display: block; }
-.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; border-radius: 1.5px; }
+.fsp-tick { position: absolute; top: 2px; bottom: 2px; width: 3px; translate: -1.5px 0; }
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
@@ -817,7 +808,7 @@ export const CSS = `
 .fsp[data-comp=handheld] .fsp-off input.og-num { width: 6ch; }
 .fsp-speed { position: absolute; left: calc(var(--tap) * 2 + 4px); bottom: 3px; z-index: 1; height: 18px; min-width: 10ch; font: .75rem var(--mono); display: grid; align-items: center;
   pointer-events: none; }
-.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; border-radius: 1.5px; background: var(--intent); max-width: 100%; }
+.fsp-speed i { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--intent); max-width: 100%; }
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
@@ -856,7 +847,6 @@ export const CSS = `
 @media (pointer: coarse) { .fsp-hb { grid-template-rows: var(--tap) auto; padding-top: var(--sp-3); } }
 /* A narrow fullscreen (a phone upright) puts the time on its own line above the buttons. */
 @container (max-width: 34em) { .fsp-hb-row { flex-wrap: wrap; } .fsp-hb-time { order: -1; flex: 0 0 100%; } .fsp-hb-row > .fsp-hb-gap { display: none; } }
-
 .fsp-hb-seek { position: relative; display: grid; align-items: center; margin: 0 var(--sp-2); cursor: pointer; touch-action: none; outline: none; }
 .fsp-hb-seek:focus-visible .fsp-hb-track { outline: 2px solid var(--highlight); outline-offset: 3px; }
 .fsp-hb-track { position: relative; height: 3px; border-radius: 1.5px; background: color-mix(in srgb, var(--tx) 22%, transparent); transition: height var(--t-quick, 120ms) var(--ease-out, ease); }
@@ -875,7 +865,6 @@ export const CSS = `
 .fsp-hb > .fsp-tl { margin: 0 var(--sp-2) var(--sp-2); }
 .fsp-hb-row > .og-btn { flex: none; min-height: var(--tap); }
 .fsp-hb-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-
 .fsp-hb-time { flex: 0 1 auto; min-width: 0; padding: 0 var(--sp-2) 0 var(--sp-3); font: .78rem var(--mono); color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
@@ -1097,7 +1086,7 @@ export function createPlayer(api) {
     const fileV = picker(VIDEO_ACCEPT, true, openVideo), fileS = picker('.funscript', false, (fl) => openScript(fl[0]));
     fileV.className = 'fsp-filev';
     fileS.className = 'fsp-files';
-    const btn = (cls, text, attrs = {}) => h('button', { type: 'button', class: 'fsp-btn ' + cls, text, ...attrs });
+    const btn = (cls, text, attrs = {}) => h('button', { type: 'button', class: 'og-btn sm ' + cls, text, ...attrs });
     const tabP = btn('fsp-tab', COPY.player, { role: 'tab' });
     const tabL = btn('fsp-tab', COPY.library, { role: 'tab' });
     tabP.addEventListener('click', () => ctl.setView('player'));
@@ -1510,17 +1499,14 @@ export function createPlayer(api) {
       const act = st.phase === 'playing' || st.phase === 'preroll';
       setIcon(play, act ? ICON.pause : ICON.play, act ? COPY.pauseKey : COPY.playKey);
       play.disabled = !act && !ctl.canPlay();
-
       const mk = marks(), mt = ctl.mediaNow();
       prevB.disabled = mk.length ? !st.scene : !(library && library.canStep(-1));
       nextB.disabled = mk.length ? !mk.some((x) => x > mt + 250) : !(library && library.canStep(1));
       closeH.disabled = mClose.disabled = !st.scene;
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
-
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
-
       const so = !!(opts.settings && opts.settings.open);
       attr(setB, 'aria-pressed', String(so));
       setB.classList.toggle('on', so);

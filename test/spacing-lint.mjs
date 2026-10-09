@@ -34,7 +34,7 @@ const ALLOW = [
   ['src/ui/pane.css', 'var(--pane-head-h) + 21px', 'lifted pane head: 12 px padding, 1 px frame and the 11 px top inset'],
   ['src/ui/TopStrip.svelte', '+ 64px +', 'the strip clears the 64 px mini rail'],
   ['funscript-player/', 'grid-template-columns', 'the player is its own composition (compositionOf), rows of ch-sized label, slider and value tracks'],
-  ['funscript-player/', 'margin-top: -9px', 'slider hit area: the thumb centers on a 40 px row'],
+
   ['funscript-player/timeline.js', 'inset: -8px 0', 'a pointer hit extension of the 24 px strip'],
   ['funscript-player/ui.js', 'inset: -4px 0', 'a pointer hit extension of the scrub bar'],
 ];
@@ -60,6 +60,9 @@ const rawPx = (v) => {
   return out;
 };
 
+// A template interpolation before px ('gap: ${GAP}px') is raw px too: the value regex above stops at its brace.
+const TPL = /(?<![\w-])((?:padding|margin)(?:-[a-z]+)?|gap|column-gap|row-gap|inset(?:-[a-z]+)?)\s*:[^;]*?\$\{[^}]*\}px/g;
+
 const findings = [];
 const used = new Set();
 const allowed = (file, text) => {
@@ -76,6 +79,7 @@ for (const f of files) {
       const bad = rawPx(m[2]);
       if (bad.length && !allowed(f, line)) findings.push(f + ':' + (i + 1) + '  ' + m[1] + ': ' + m[2].trim() + '   [' + bad.join(' ') + ']');
     }
+    for (const m of line.matchAll(TPL)) if (!allowed(f, line)) findings.push(f + ':' + (i + 1) + '  ' + m[0].trim() + '   [template px]');
     if (GRID_DIRS.some((d) => f.startsWith(d)) && /grid-template-columns\s*:/.test(line) && !allowed(f, line)) {
       findings.push(f + ':' + (i + 1) + '  ' + line.trim());
     }
@@ -86,6 +90,7 @@ ALLOW.forEach(([f, d], k) => { if (!used.has(k)) findings.push('stale allowance:
 // Self-check: a planted 'padding: 6px' is caught.
 const planted = [...'a { padding: 6px; }'.matchAll(PROP)].some((m) => rawPx(m[2]).length);
 if (!planted) findings.push('self-check: the lint missed a planted padding: 6px');
+if (![...'.a { gap: ${GAP}px; }'.matchAll(TPL)].length) findings.push('self-check: the lint missed a planted gap: ${GAP}px');
 
 for (const f of findings) console.log('  [FAIL] ' + f);
 console.log(findings.length ? '\nFAILURES: ' + findings.length : 'ALL PASS -- no raw px spacing outside the allowance list (' + files.length + ' files)');

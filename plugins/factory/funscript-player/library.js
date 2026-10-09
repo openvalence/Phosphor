@@ -44,17 +44,17 @@ export const COPY = Object.freeze({
 });
 
 const LIB = { q: '', sort: 'date', direction: 'DESC' };
-const GAP = 8;
+const GAP_PX = 8;   // var(--sp-3) at the default scale: the grid math reads the drawn gap (fit), this when none
 const TILE_TEXT = 44;   // px under the 16:9 shot: title 20 + meta 18 + two 3 px gaps (CSS .fsp-tile)
 const TILE_MIN = 150, TILE_MAX = 300;
 // Rows (phone portrait, PR13): a 16:9 thumbnail ROW_H high beside the title and the meta.
 export const ROW_H = 56;
 
 export const CSS = `
-.fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: ${GAP}px; height: 100%; min-height: 0; overflow: hidden; }
+.fsp-lib { display: grid; grid-template-rows: var(--tap) minmax(0, 1fr) var(--tap); gap: var(--sp-3); height: 100%; min-height: 0; overflow: hidden; }
 .fsp-lib [hidden], .fsp-connect [hidden] { display: none !important; }
 .fsp-lib-head { gap: var(--sp-2) !important; }
-.fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: ${GAP}px; align-items: stretch; min-width: 0; }
+.fsp-lib-head, .fsp-lib-foot, .fsp-row { display: flex; gap: var(--sp-3); align-items: stretch; min-width: 0; }
 .fsp-lib .og-btn, .fsp-connect .og-btn { flex: none; }
 .fsp-in { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--bg); color: var(--tx); font: .8rem var(--mono); font-variation-settings: 'wdth' 90; }
@@ -66,7 +66,7 @@ export const CSS = `
 .fsp-lib-head select { flex: 0 1 56px; min-width: 0; width: auto; min-height: var(--tap); }
 .fsp-dir, .fsp-pg { width: var(--tap); min-width: 0; padding: 0; }
 .fsp-lib-body { position: relative; min-height: 0; overflow: hidden; }
-.fsp-grid { display: grid; gap: ${GAP}px; align-content: start; height: 100%; }
+.fsp-grid { display: grid; gap: var(--sp-3); align-content: start; height: 100%; }
 .fsp-grid.busy { opacity: .5; }
 .fsp-tile { display: grid; grid-template-rows: auto 20px 18px; gap: var(--sp-1); min-width: 0; padding: 0; text-align: left; color: var(--tx); }
 .fsp-shot { aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius); box-sizing: border-box; }
@@ -78,24 +78,25 @@ export const CSS = `
 .fsp-m { overflow: hidden; white-space: nowrap; font: .7rem/18px var(--mono); color: var(--tx-mut); }
 .fsp-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 0 var(--sp-4); text-align: center;
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
-.fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn); }
+.fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
 .fsp-lib-foot .fsp-n { flex: 0 0 auto; min-width: 9ch; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
-.fsp-connect { display: grid; gap: ${GAP}px; align-content: start; max-width: var(--measure); }
+.fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
 .fsp-connect .fsp-rows > .fsp-in { grid-column: 2 / -1; }
 .fsp-connect .fsp-row { grid-column: 2 / -1; }
-.fsp-lib[data-rows] .fsp-tile { grid-template-columns: calc(${ROW_H}px * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 20px 18px 1fr; column-gap: var(--sp-3);
-  height: ${ROW_H}px; }
-.fsp-lib[data-rows] .fsp-shot { grid-area: 1 / 1 / 5 / 2; height: ${ROW_H}px; }
+.fsp-lib { --fsp-row-h: 56px; }   /* ROW_H; the two must agree */
+.fsp-lib[data-rows] .fsp-tile { grid-template-columns: calc(var(--fsp-row-h) * 16 / 9) minmax(0, 1fr); grid-template-rows: 1fr 20px 18px 1fr; column-gap: var(--sp-3);
+  height: var(--fsp-row-h); }
+.fsp-lib[data-rows] .fsp-shot { grid-area: 1 / 1 / 5 / 2; height: var(--fsp-row-h); }
 .fsp-lib[data-rows] .fsp-t { grid-area: 2 / 2; }
 .fsp-lib[data-rows] .fsp-m { grid-area: 3 / 2; }
 .fsp-status { margin: 0; height: 20px; line-height: 20px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .78rem; color: var(--tx-val); }
 .fsp-status[data-tone=ok] { color: var(--reality); }
 `;
 
-/** Columns and rows of tiles that fit a W x H box without scrolling; at least one tile. */
-export function fitGrid(W, H) {
+/** Columns and rows of tiles that fit a W x H box without scrolling, GAP px apart; at least one tile. */
+export function fitGrid(W, H, GAP = GAP_PX) {
   let best = { cols: 1, rows: 1, perPage: 1 };
   for (let cols = 1; cols <= 64; cols++) {
     const tw = (W - GAP * (cols - 1)) / cols;
@@ -275,8 +276,9 @@ export function mountLibrary(el, { getStash, prefs, onPick, fetch: netFetch = nu
   function fit() {
     const asRows = rows();
     root.toggleAttribute('data-rows', asRows);
-    const n = Math.max(1, Math.floor((body.clientHeight + GAP) / (ROW_H + GAP)));
-    const f = asRows ? { cols: 1, rows: n, perPage: n } : fitGrid(body.clientWidth, body.clientHeight);
+    const gap = parseFloat(getComputedStyle(grid).rowGap) || GAP_PX;
+    const n = Math.max(1, Math.floor((body.clientHeight + gap) / (ROW_H + gap)));
+    const f = asRows ? { cols: 1, rows: n, perPage: n } : fitGrid(body.clientWidth, body.clientHeight, gap);
     grid.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
     if (f.perPage === perPage) return;
     const first = (page - 1) * perPage;

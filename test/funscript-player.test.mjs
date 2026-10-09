@@ -632,8 +632,8 @@ const BUSY_PROBE = {
   }`,
 };
 
-async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse });
+async function open({ cat = advgenCatalog(), hub = null, coarse = false, width = 1440, height = 1000, probe = null, prefs = {}, onPage = null, scale = 1 } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse, deviceScaleFactor: scale });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(SHELL_STUB, probe);
   await ctx.exposeFunction('__nodeFetch', nodeFetch);
@@ -914,6 +914,42 @@ if (!LIVE && !STASH_LIVE) {
       return out;
     }, C);
     ok('bar ' + at + ': Motion wears the shell\'s .og-btn.on (color, border, glow)', Object.values(look6).every(([a, b]) => a === b) && look6.glow[0] !== 'none', look6);
+    if (w === 1428) {
+      // PR15 (findings 1, 2, 6, 8, 9): shell controls by construction.
+      await page.locator(C + ' .fsp-inv').evaluate((e) => e.click());
+      await page.mouse.move(5, 5);
+      await page.waitForTimeout(200);
+      const sweep = await page.evaluate((c) => {
+        const root = document.querySelector(c), probe = document.createElement('button');
+        probe.className = 'og-btn sm on';
+        probe.textContent = 'x';
+        root.append(probe);
+        const cs = getComputedStyle(probe), on = { color: cs.color, borderTopColor: cs.borderTopColor, boxShadow: cs.boxShadow, fontFamily: cs.fontFamily };
+        const inv = getComputedStyle(root.querySelector('.fsp-inv'));
+        const font = on.fontFamily;
+        probe.remove();
+        const ink = document.createElement('i');
+        ink.style.color = 'var(--warn-ink)';
+        document.body.append(ink);
+        const warnInk = getComputedStyle(ink).color;
+        ink.remove();
+        const note = root.querySelector('.fsp-note');
+        const tone = note ? note.dataset.tone : null;
+        if (note) note.dataset.tone = 'warn';
+        const noteColor = note ? getComputedStyle(note).color : warnInk;
+        if (note) note.dataset.tone = tone || '';
+        const rad = (s, pseudo) => { const e = root.querySelector(s); return e ? parseFloat(getComputedStyle(e, pseudo).borderTopLeftRadius) || 0 : 0; };
+        const rs = parseFloat(getComputedStyle(root).getPropertyValue('--r-s')) || 2;
+        return { inv: [inv.color === on.color, inv.borderTopColor === on.borderTopColor, inv.boxShadow === on.boxShadow],
+          fonts: [...root.querySelectorAll('button')].filter((b) => b.getClientRects().length && getComputedStyle(b).fontFamily !== font
+            && !b.matches('.fsp-tile, .fsp-rate, .fsp-libcaret, .fsp-tlcaret')).map((b) => b.className),
+          privateBtn: root.querySelectorAll('.fsp-btn').length, warn: noteColor === warnInk,
+          radii: [rad('.fsp-tick'), rad('.fsp-speed i'), rad('.fsp-split', '::after')].every((r) => r <= rs) };
+      }, C);
+      ok('style: Invert pressed is .og-btn.on; every button in the body face; no private button; warn text in --warn-ink; bars and markers within --r-s (PR15)',
+        sweep.inv.every(Boolean) && sweep.fonts.length === 0 && sweep.privateBtn === 0 && sweep.warn && sweep.radii, sweep);
+      await page.locator(C + ' .fsp-inv').evaluate((e) => e.click());
+    }
     // PR7: nothing over the wave screen but the playhead, the range pills and the speed reading at its foot.
     const over = await page.evaluate((c) => {
       const root = document.querySelector(c), dt = root.querySelector('.fsp-dt'), d = dt.getBoundingClientRect();
@@ -1273,6 +1309,25 @@ if (!LIVE && !STASH_LIVE) {
   ok('theme: every player color moves between Phosphor and Paper (no literal colors; tokens equal in both aside)',
     a && Object.keys(a.out).length > 30 && stuck.length === 0, stuck.slice(0, 8));
   if (SHOTS) {
+    // PR15 evidence: 2x close-ups of the parts the style survey shot (test/evidence/player-style), dark and Paper.
+    for (const t of [byId('phosphor'), byId('paper')]) {
+      const hub = makeHub(cat);
+      const { ctx, page } = await open({ cat, hub, width: 1428, height: 900, scale: 2, prefs: { 'phosphor.theme': t, 'phosphor.funscript.settingsOpen': true } });
+      if (await toPluginPage(page)) {
+        await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
+        await page.waitForTimeout(800);
+        const name = t.id === 'paper' ? 'light' : 'dark';
+        for (const [part, sel] of [['player-head', C + ' .fsp-src'], ['player-timeline-head', C + ' .fsp-tlh'], ['player-bar', C + ' .fsp-tr'],
+          ['player-settings', 'main.pane .fsp-psec'], ['player-library-head', C + ' .fsp-lib-head']]) {
+          await page.locator(sel).first().screenshot({ path: join(SHOTS, 'zoom2x-' + part + '-' + name + '.png') }).catch(() => {});
+        }
+        await page.locator(C + ' .fsp-expand').click();
+        await page.waitForTimeout(600);
+        await page.locator(C + ' .fsp-anbox').screenshot({ path: join(SHOTS, 'zoom2x-player-analyzer-' + name + '.png') }).catch(() => {});
+      }
+      clearInterval(hub.timer);
+      await ctx.close();
+    }
     const dir = join(SHOTS, 'themes');
     mkdirSync(dir, { recursive: true });
     for (const t of THEMES) {
@@ -1863,7 +1918,7 @@ if (!LIVE && !args.includes('--stash-live')) {
     await page.waitForTimeout(400);
     return hub.intents.filter((x) => x.ch !== CH_TRIAL).at(-1);
   };
-  const modeBtn = (t) => page.locator(C + ' .fsa-head .fsp-btn', { hasText: new RegExp('^' + t + '$') });
+  const modeBtn = (t) => page.locator(C + ' .fsa-head .og-btn', { hasText: new RegExp('^' + t + '$') });
   const aRects = () => page.evaluate((c) => [...document.querySelectorAll(c + ' .fsa > *, ' + c + ' .fsa-head > *, ' + c + ' > :not(style)')]
     .filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(), o = document.querySelector(c).getBoundingClientRect();
       return [r.x - o.x, r.y - o.y, r.width, r.height].map(Math.round).join(','); }), C);
@@ -2912,7 +2967,7 @@ if (PB) {
   await page.locator(C + ' .fsp-expand').click();
   await page.waitForTimeout(600);
   await cardShot('analyzer-1280x800');
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
   const stored = last[slEntry.id][slider.name];
   const sl = page.locator(C + ' .fsa-row input[type=range]').first();
   await sl.scrollIntoViewIfNeeded();
@@ -2921,7 +2976,7 @@ if (PB) {
   await page.waitForTimeout(800);
   const trialV = last[slEntry.id][slider.name], trialMark = (last[slEntry.id][markF.name] >> bit) & 1;
   const notice = (await statusText(page)) === 'Preview: not saved';
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Discard$/ }).click();
   await page.waitForTimeout(800);
   const backV = last[slEntry.id][slider.name], backMark = (last[slEntry.id][markF.name] >> bit) & 1;
   R.preview = { channel: '0x' + slEntry.id.toString(16), field: slider.name, label: slider.label, stored, trial: trialV, trialMark, notice, reverted: backV, markAfter: backMark };
@@ -3048,7 +3103,7 @@ if (LIVE && !PB) {
   await page.waitForTimeout(400);
   const liveRows = await page.locator(C + ' .fsa-row').count();
   ok('live: the analyzer lists the sim\'s tuning controls', liveRows > 10, liveRows);
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Preview$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
   const sl = page.locator(C + ' .fsa-row input[type=range]').first();
   const v0 = await sl.inputValue();
   await sl.scrollIntoViewIfNeeded();
@@ -3057,7 +3112,7 @@ if (LIVE && !PB) {
   const marked = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent === 'Preview: not saved', C, { timeout: 3000 })
     .then(() => true).catch(() => false);
   ok('live: a Preview write is a trial the sim marks: the notice stands', marked, await statusText(page));
-  await page.locator(C + ' .fsa-head .fsp-btn', { hasText: /^Discard$/ }).click();
+  await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Discard$/ }).click();
   const cleared = await page.waitForFunction((c) => document.querySelector(c + ' > .fsp-slot').textContent !== 'Preview: not saved', C, { timeout: 3000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(600);
