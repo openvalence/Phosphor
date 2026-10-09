@@ -211,8 +211,9 @@ the compact form, or measures its own width (the reference plugin turns its
 narrow form at 480 px of its root). Compact never goes under the 40 px
 target and never hides the four-state reason (law 5).
 
-**Modifier keys** (DESIGN §10.5). A plugin that edits a number inlines the
-host's rule; plugins do not import app modules. Shift = fine: a drag at a
+**Modifier keys** (DESIGN §10.5). Every number the UI kit draws carries the
+host's rule (The UI kit, below); a plugin that draws its own handle inlines
+it, since plugins do not import app modules. Shift = fine: a drag at a
 tenth of its gain, a key at the declared step and never under it (an
 off-grid value is refused). Ctrl snaps to the decade below the range's
 magnitude (1000 snaps at 100, 50 at 10): a key goes to the adjacent
@@ -256,6 +257,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
+| `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | experimental |
 
 **Freeze.** Operator ruling (DESIGN §4): the widget API freezes the moment the
 first external plugin exists, the way Valence's public headers are frozen:
@@ -316,6 +318,98 @@ gated on live state, so its revert could be refused too. A trial NACKed
 `{ ok: false }` without sending: a preview never writes durably in a trial's
 place; the operator writes the key from the settings page. A new session
 starts the marks over.
+
+## The UI kit (`api.ui`)
+
+Operator ruling 2026-10-09 (`ph-5wsk`): "make it EASY for plugin developers,
+otherwise nobody makes a plugin". A plugin builds its UI from the shell's own
+controls and layout primitives, so the shell's layout rules hold by
+construction. Plain DOM, no framework (DESIGN §9). `api.ui.version` is 1; the
+kit only grows, and it freezes with the rest of the API (`ph-vdk.30`).
+Seam: `src/plugins/kit.js`, handed to every plugin by the host.
+
+**Shape.** A factory takes one options object and returns the live element,
+ready to append. Its handle is properties on that element (`value`,
+`disabled`, `label`, ...): a setter redraws in place and never calls back. A
+callback option (`onChange(value, event)`, `onClick(event)`) fires on the
+user's act only. `class` adds the plugin's own class names, for its CSS and
+its tests. An unknown option throws, so a typo fails at mount.
+
+**Rules carried by every element** (nothing for the plugin to remember):
+
+- One look: the elements wear the shell's global classes from
+  `src/style.css` (`og-btn`, `og-seg`, `og-switch`, `og-num`, the select and
+  range rules, `surface-card`, `card-sub`, `field-label`, `field-value`,
+  `stepper`, `dash-title`, `foot-status`). The shell's own components wear
+  the same classes, so a theme reaches both. A plugin never restates them.
+- No page shifting (DESIGN §10.3): every slot a state can fill is reserved;
+  a state change swaps text, never a box.
+- Targets: 40 px on a coarse pointer (law 12); a `bar` row is the tap height
+  there.
+- Touch never adjusts by accident (`ph-5u0g` peeve 14): a slider, a scrub
+  and a number's drag take a touch drag only after horizontal intent (8 px,
+  more across than down) or a 400 ms hold; a tap never changes them and a
+  vertical swipe scrolls the page. A stepper's hold-repeat stops at the
+  first movement.
+- Modifier keys (DESIGN §10.5) on every number the kit draws: Shift fine,
+  Ctrl the decade snap (`src/model/nudge.js`, the shell's rule).
+- Overlays (`sheet` in every form) live in the top layer, so no ancestor's
+  containment or overflow clips them; they start below the top strip and
+  never cover the stop pair. Escape closes one. A tap outside closes it and
+  is swallowed, so it never reaches the page beneath (a stage tap starts
+  motion), except a tap on the top strip or the stop pair: a safety control
+  always takes its tap.
+- Screen corners: `<html>` carries `--corner-r`, the display's corner radius
+  (0 until the Android activity publishes it, `ph-5u0g` peeve 16; the tests
+  assume 48 px). A kit surface on a screen edge (a sheet, a drawer, a
+  fullscreen stage's bars) keeps its content `--corner-inset` (0.3 r) clear
+  of each corner.
+
+**Icons.** `ui.icons` is the shell's glyph set by name (the sidebar's and
+the media glyphs: `play`, `pause`, `prev`, `next`, `full`, `unfull`,
+`close`, `gear`, `more`, `caret`, `library`, `volume`, `muted`, `graph`,
+`video`, `script`, `quickRail`, ...), each a `[fill, stroke]` pair of path
+`d`s on a 16-unit viewBox, the stroke drawn open at 1.5. `ui.icon(nameOrD)`
+returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
+
+**Controls.** Each returns the element; its handle is the listed properties.
+
+| factory | options | handle |
+|---|---|---|
+| `button` | `label`, `icon`, `title`, `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look), `files: {accept, multiple}` (a file picker: `onFiles(files)`), `onClick` | `label`, `icon`, `title`, `pressed`, `disabled` |
+| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled` |
+| `switch` | `label` (beside the track), `value`, `onChange` | `value`, `disabled` |
+| `slider` | `min`, `max`, `step`, `value`, `label` (accessible name), `format(v)` (its value chip, `el.chip`), `onInput` (live), `onChange` (on release) | `value`, `disabled` |
+| `stepper` | `min`, `max`, `step`, `value`, `unit`, `label`, `buttons` (default true: minus, number, plus with hold-repeat; false: the number box alone), `drag` (the box drags sideways), `onChange` | `value`, `disabled` |
+| `select` | `options: [{value, label}]`, `value`, `label`, `onChange` | `value`, `disabled` |
+| `text` | `type` (`text`, `search`, `url`, `password`), `value`, `placeholder`, `label`, `onInput`, `onChange` | `value`, `disabled` |
+
+**Layout.**
+
+| factory | options | handle |
+|---|---|---|
+| `page` | `main` and `aside` (element lists), `fill` (the page fills to the window's bottom on every class, the phone class included) | `main`, `aside` (their boxes), `asideOpen`. Bucket 3 and up: `aside` is a 320 px column at the right; buckets 1 and 2: one column. |
+| `card` | `index` (`'01'`), `title`, `actions` (elements at the head's right), `caret` (the title collapses the body), `open`, `onToggle` | `body` (append here), `head`, `title`, `index`, `open` |
+| `rows` | `title` (its `card-sub` head) | the grid `row`s go in |
+| `row` | `label`, `control`, `chip` (default: the control's own `chip`), `tip` | label, control and chip on one line (the settings row) |
+| `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
+| `stage` | `aspect` (width / height; null keeps the empty strip), `onTap`, `onDouble` (default: fullscreen), `rotate` (on the phone class a turn to landscape enters fullscreen and the turn back leaves), `onFullscreen(on)` | `media` (the video goes here), `empty` (shown while nothing plays), `overlay` (auto-hides after 2.5 s idle, kept while hovered, focused or dragged), `dock` (shown while the overlay hides), `aspect`, `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon)` |
+| `scrub` | `max`, `value`, `buffered`, `label`, `format(v)` (the hover readout), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value`, `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
+| `split` | `min`, `max`, `value`, `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click back to `null` |
+| `sheet` | `title`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`), `anchor` (a popover's button), `onClose` | `body`, `open` (get/set), `form`. Auto is the bottom sheet on a phone upright, else the right drawer. The sheet drags down to close. |
+| `status` | none | `set({text, tone, title})`, `tone` null, `'ok'`, `'warn'` or `'intent'`. On the phone class it is the page footer's slot (the page registers `status`) and draws nothing in place; elsewhere it is a one-line row where the plugin placed it. |
+| `quickRail` | none | the Rail button: shown only while the host offers the quick rail, it opens and closes it; the footer's own icon hides while a page shows one |
+| `list` | `form` (`'grid'`, `'rows'`), `paged` (default true: as many whole items as fit, and a page foot; false: it scrolls with the shell's recess shades), `tile: {min, max}` (grid tile widths in px), `onPage(page, perPage)`, `onMove(from, to)` (drag to reorder: a mouse at once, a touch after a hold) | `show(items, total)`, `note(text, tone)` (loading, empty or an error, in the body), `page`, `perPage`, `form` |
+| `tile` | `image`, `title`, `meta`, `current`, `action: {icon, title, onClick}`, `onClick` | `current`; the parent `list`'s form draws it as a tile or a row |
+
+**Helpers.** `ui.outside(el, onOutside)` returns `off()`: the overlays'
+outside-tap rule for a plugin's own overlay. `ui.gestures(el, {tap, double,
+hold, pinch})` returns `off()`: a tap once the double window passes, a
+double, a 400 ms hold, and a two-finger pinch reporting its scale since the
+last call.
+
+**Example** (`plugins/examples/kit-demo/`): a settings card, and a page with
+a card, a bar and a sheet, in about 40 lines.
 
 ## Manifest (`manifest.json`, beside the module)
 
@@ -413,6 +507,9 @@ Production builds compile that path out.
   `telemetry.position` (window roles optional) and draws an SVG gauge, dimmed
   when stale. It shows the hero seam working from outside the bundle without a
   framework.
+- `plugins/examples/kit-demo/`: the UI kit (`api.ui`) in about 40 lines: a
+  settings card of rows (a switch, a slider, a select) and a page with a
+  card, a bar, a sheet and the status. It draws nothing of its own.
 - `plugins/examples/tcode-adapter/`: RFC-044 rung 1 as an adapter. The shell
   listens on 127.0.0.1:8000 (MultiFunPlayer's default endpoint port; the
   spec pins none, drafted as Valence RFC-061), each line is parsed for `L0`
