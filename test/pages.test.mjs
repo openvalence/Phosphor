@@ -226,7 +226,18 @@ console.log('\n--- desktop 1280x800 ---');
   ok('full: a footer page has the foot button and the mode', await page.locator('main.pane .page-foot button', { hasText: 'Fullscreen' }).count() === 1
     && await page.locator('main.pane .page-foot select[aria-label="Fullscreen mode"]').count() === 1);
   await page.keyboard.press('F11');
-  await page.waitForTimeout(200);
+  // The pane slides on a --t-move transition whose first frame still reads the
+  // old top: settled is no CSS transition running and two frames agreeing.
+  await page.evaluate(() => new Promise((done) => {
+    const read = () => JSON.stringify(['main.pane', '.hero-strip', '.topstrip'].map((s) => document.querySelector(s)?.getBoundingClientRect()));
+    let last, n = 0;
+    const next = () => requestAnimationFrame(() => {
+      const now = read();
+      const moving = document.getAnimations().some((a) => a instanceof CSSTransition && a.playState === 'running');
+      if ((now === last && !moving) || ++n > 120) done(); else { last = now; next(); }
+    });
+    next();
+  }));
   const geo = await page.evaluate(() => {
     const p = document.querySelector('main.pane').getBoundingClientRect();
     return [p.top, (document.querySelector('.hero-strip') || document.querySelector('.topstrip')).getBoundingClientRect().bottom, p.left, p.right, p.bottom, innerWidth, innerHeight].map(Math.round);
