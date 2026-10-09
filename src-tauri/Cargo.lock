@@ -3241,6 +3241,7 @@ name = "phosphor"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "btleplug",
  "buttplug_core",
  "buttplug_server",
  "buttplug_server_device_config",
@@ -3250,6 +3251,7 @@ dependencies = [
  "buttplug_transport_websocket_tungstenite",
  "futures",
  "if-addrs",
+ "jni 0.19.0",
  "log",
  "serde",
  "serde_json",
