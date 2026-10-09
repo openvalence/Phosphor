@@ -520,6 +520,14 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   window resized from the desktop into a phone class is not a rotation.
   A click that a control's own button made never toggles Play (an Exit
   fullscreen moves its button out of the stage before the click reaches it).
+  The center Play (operator ruling 2026-10-08): a large Play glyph on a
+  translucent disc (`--shade-rgb`) over the paused stage, the video or the
+  motion-only meter, never the empty stage; a tap anywhere on the stage
+  toggles Play (inline and in fullscreen, after the 250 ms double-tap
+  wait, so a double-tap still enters fullscreen) and flashes the glyph
+  briefly. The glyph is decorative (`aria-hidden`); the bar's Play is the
+  control. A tap outside an open Settings sheet or library drawer only
+  closes it: its click is swallowed, so it never reaches the stage.
 - **PR11 Quick rail icon** on the player bar, from the host (DESIGN §10.3,
   PLUGINS.md Pages `phosphor-quick-rail`): on phones in the page and in
   fullscreen (the vertical pop-up on the right); on the desktop only in

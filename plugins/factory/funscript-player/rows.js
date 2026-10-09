@@ -8,7 +8,7 @@
 // - A row with no setting is not drawn: callers pass a control for every row.
 
 export const CSS = `
-.fsp-rows { display: grid; grid-template-columns: minmax(0, 13ch) minmax(0, 1fr) max-content; gap: var(--sp-2) var(--sp-3);
+.fsp-rows { display: grid; grid-template-columns: minmax(0, 96px) minmax(0, 1fr) max-content; gap: var(--sp-2) var(--sp-3);
   align-items: center; min-width: 0; }
 .fsp-rows > .card-sub { grid-column: 1 / -1; margin-top: var(--sp-2); }
 .fsp-rl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 .76rem var(--font); letter-spacing: .04em;

@@ -960,7 +960,8 @@ if (!LIVE && !STASH_LIVE) {
     }, C);
     ok('head ' + at + ': no element sits over the wave screen', over.length === 0, over);
     const opens = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-empty button')].map((b) => b.textContent), C);
-    ok('redesign ' + at + ': the empty stage offers Open video and Open script', same(opens, ['Open video', 'Open script']), opens);
+    ok('redesign ' + at + ': the empty stage offers Open video and Open script, no center Play', same(opens, ['Open video', 'Open script'])
+      && await page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display === 'none'), opens);
     await shot('empty');
     // Script only: motion only (PR4).
     await page.setInputFiles(C + ' .fsp-files', [fun()]);
@@ -1017,10 +1018,13 @@ if (!LIVE && !STASH_LIVE) {
         return { form: sec.parentElement.dataset.sform || 'slot', h: s.height, vh: innerHeight, scrolls: sec.scrollHeight > sec.clientHeight + 1,
           shadow: getComputedStyle(sec).boxShadow, overWave: hit(s, dt), stageClear: vb.bottom <= s.top + 1, rows,
           card: [Math.round(root.getBoundingClientRect().width), Math.round(root.getBoundingClientRect().height)],
-          noSetting: /No setting/.test(sec.textContent) };
+          noSetting: /No setting/.test(sec.textContent),
+          rangeW: Math.min(...[...sec.querySelectorAll('.fsp-rows > input[type=range]')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect().width)) };
       }, C);
-      const rowsOk = sx.rows.length >= 9 && sx.rows.every((r) => r.tt === 'lowercase' && r.chip) && sx.rows.some((r) => /fit to window/i.test(r.label) && r.ctl === 'switch') && !sx.noSetting;
-      ok('settings ' + at + ': native rows (label, control, value chip), Auto a switch row, lowercase labels, no empty row (PR18)', rowsOk, sx.rows);
+      const rowsOk = sx.rows.length >= 9 && sx.rows.every((r) => r.tt === 'lowercase' && r.chip) && sx.rows.some((r) => /fit to window/i.test(r.label) && r.ctl === 'switch')
+        && !sx.noSetting && sx.rangeW >= 80;
+      ok('settings ' + at + ': native rows (label, control, value chip), Auto a switch row, lowercase labels, no empty row, sliders at least 80 px (PR18)',
+        rowsOk, { rangeW: sx.rangeW, rows: sx.rows.length });
       if (cls === 'desktop') {
         ok('settings ' + at + ': a card in the library slot without a shadow, the Player card the same size, never over the wave (PR12)'
           + (libShut ? '; the session-collapsed library puts it below the card (the slot rule)' : ''),
@@ -1031,9 +1035,19 @@ if (!LIVE && !STASH_LIVE) {
       }
       await shot('settings');
       if (cls === 'portrait') {
-        await page.mouse.click(200, 120);
-        await page.waitForTimeout(300);
+        // A tap on the stage that closes the sheet is not a Play (a stage tap moves the machine).
+        const vb = await page.locator(C + ' .fsp-vbox').boundingBox();
+        const paused0 = await video(page, (v) => v.paused), sent0 = hub.bundles.length;
+        await page.mouse.click(vb.x + vb.width / 2, vb.y + vb.height / 2);
+        await page.waitForTimeout(600);
         const tapShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        const kept = (await video(page, (v) => v.paused)) === paused0 && hub.bundles.length === sent0;
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(300);
+        await page.mouse.click(...await page.locator('main.pane .fsp-sclose').boundingBox().then((b) => [b.x + b.width / 2, b.y + b.height / 2]));
+        await page.waitForTimeout(300);
+        const xShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
+        ok('settings ' + at + ': a stage tap closes the sheet and never toggles Play; the sheet\'s close button closes it', tapShut && kept && xShut, { tapShut, kept, xShut });
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.waitForTimeout(300);
         const hb = await page.locator('main.pane .fsp-shead').boundingBox();
@@ -1061,8 +1075,11 @@ if (!LIVE && !STASH_LIVE) {
       });
       ok('settings ' + at + ': in fullscreen a drawer from the right that never covers the stop pair (PR12)', dr.form === 'drawer' && dr.right === 0 && dr.pairs > 0 && !dr.covers, dr);
       if (EVID) await page.screenshot({ path: join(EVID, 'settings-fullscreen-' + at + '.png') });
+      const paused1 = await video(page, (v) => v.paused), sent1 = hub.bundles.length;
       await page.mouse.click(60, 300);
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(600);
+      ok('settings ' + at + ': a stage tap closes the drawer and never toggles Play', (await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))
+        && (await video(page, (v) => v.paused)) === paused1 && hub.bundles.length === sent1);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(400);
     }
@@ -1093,6 +1110,23 @@ if (!LIVE && !STASH_LIVE) {
       ok('fullscreen: one mode, the ask bare; no mode glyph (PR8)', !!ask && ask.bare === true && await page.locator(C + ' .fsp-hb-mode').count() === 0, ask);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(300);
+      // The center Play (operator 2026-10-08): shown while paused, a stage tap toggles with a flash, hidden while playing.
+      const cp = () => page.locator(C + ' .fsp-cplay').evaluate((e) => getComputedStyle(e).display !== 'none');
+      const shownPaused = await cp();
+      const vb2 = await page.locator(C + ' .fsp-vbox').boundingBox();
+      await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
+      await page.waitForTimeout(350);
+      const flashed = await page.locator(C + ' .fsp-cplay').evaluate((e) => e.hasAttribute('data-flash'));
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      const hiddenPlaying = !(await cp()) && await video(page, (v) => !v.paused);
+      if (EVID) await page.screenshot({ path: join(EVID, 'center-play-playing-' + at + '.png') });
+      await page.mouse.click(vb2.x + vb2.width / 3, vb2.y + vb2.height / 3);
+      await page.waitForTimeout(900);
+      const backPaused = await video(page, (v) => v.paused) && await cp();
+      if (EVID) await page.screenshot({ path: join(EVID, 'center-play-paused-' + at + '.png') });
+      ok('center play: shown while paused, a stage tap plays with a flash and hides it, a second tap pauses and shows it',
+        shownPaused && flashed && hiddenPlaying && backPaused, { shownPaused, flashed, hiddenPlaying, backPaused });
     }
     if (cls === 'desktop' && w === 1428) {
       const span = () => page.locator(C + ' .fsp-zoom output').textContent();
@@ -1203,6 +1237,11 @@ if (!LIVE && !STASH_LIVE) {
       ok('library ' + at + ': the now-playing row (title, position, Play/Pause) plays and pauses the scene under the tab',
         nowShown && playing && paused && (await page.locator(C + ' .fsp-nowt').textContent()).length > 0, { nowShown, playing, paused });
       ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').textContent()) === '02Library');
+      const foot = await page.locator(C).evaluate((r) => { const nw = r.querySelector('.fsp-now').getBoundingClientRect(), box = r.querySelector('.fsp-libbox').getBoundingClientRect(),
+        st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-n');
+        return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
+      });
+      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
       const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: !r.querySelector('.fsp-lib').hasAttribute('data-rows'),
         head: r.querySelector('.fsp-libbox > .fsp-h').textContent }));
@@ -2139,7 +2178,7 @@ if (!LIVE && !args.includes('--stash-live')) {
   // Reversals and hold edges go at rest (FUNSCRIPT.md I8, ph-hcof), so 0 and 1 land exactly.
   await page.click(C + ' .fsp-set');
   await page.waitForTimeout(200);
-  await page.locator('main.pane .fsp-psec .fsp-scale input[aria-label="Auto"]').evaluate((e) => e.click(), null, { timeout: 3000 }).catch(() => {});
+  await page.locator('main.pane .fsp-psec .fsp-scale input[aria-label="Fit to window"]').evaluate((e) => e.click(), null, { timeout: 3000 }).catch(() => {});
   const fit = await page.waitForFunction((c) => {
     const o = document.querySelector('main.pane .fsp-psec .fsp-scale .fsp-gain'), t = document.querySelector(c + ' .fsa-kin').textContent;
     return o && /^0\.00–1\.00$/.test(o.textContent) && /^Kinetic: wasm {2}\d+ anomalies/.test(t) && !/ clamped [1-9]\d+ ms/.test(t);

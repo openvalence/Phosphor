@@ -80,9 +80,11 @@ export const CSS = `
   font-size: .82rem; color: var(--tx-mut); pointer-events: none; }
 .fsp-note[data-tone=warn], .fsp-status[data-tone=warn] { color: var(--warn-ink); }
 .fsp-lib-foot output { flex: 1 1 auto; display: grid; place-items: center; font: .74rem var(--mono); color: var(--tx-val); white-space: nowrap; }
-.fsp-lib-foot .fsp-n { flex: 0 0 auto; min-width: 9ch; }
+.fsp-lib-foot .fsp-n { flex: none; min-width: max-content; }
+.fsp-lib-foot output:not(.fsp-n) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fsp-lib-body .fsp-connect { position: absolute; inset: 0; overflow: hidden; }
 .fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
+.fsp-connect .fsp-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
 .fsp-connect .fsp-rows > .fsp-in { grid-column: 2 / -1; }
 .fsp-connect .fsp-row { grid-column: 2 / -1; }
 .fsp-lib { --fsp-row-h: 56px; }   /* ROW_H; the two must agree */

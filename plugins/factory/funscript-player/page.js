@@ -23,7 +23,7 @@
  *   shell's footer offers neither.
  */
 import { readPrefs, writePref } from './prefs.js';
-import { COPY } from './ui.js';
+import { COPY, swallowClick } from './ui.js';
 
 // F3 entries: each key is a [data-search-key] on the card (ui.js, library.js); the shell scrolls to it and focuses its first control.
 export const SEARCH = [
@@ -97,10 +97,11 @@ export function registerPlayerPage(api, player, spec, settings) {
     const outside = (e) => {
       if (sec.hidden || !root.dataset.sform || sec.contains(e.target) || e.target.closest('.fsp-set')) return;
       close();
+      swallowClick();
     };
     document.addEventListener('pointerdown', outside, true);
     let drag = null;
-    head.addEventListener('pointerdown', (e) => { if (root.dataset.sform === 'sheet') { drag = { id: e.pointerId, y: e.clientY }; head.setPointerCapture(e.pointerId); } });
+    head.addEventListener('pointerdown', (e) => { if (root.dataset.sform === 'sheet' && !e.target.closest('button')) { drag = { id: e.pointerId, y: e.clientY }; head.setPointerCapture(e.pointerId); } });
     head.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       const dy = Math.max(0, e.clientY - drag.y);

@@ -73,7 +73,7 @@ export function mountScale(el, { value, onChange, gain = () => null }) {
   box.prepend(Object.assign(document.createElement('style'), { textContent: CSS }));
   box.append(sub(COPY.scale));
   const auto = switchRow(box, COPY.fit, { tip: COPY.autoTip });
-  auto.setAttribute('aria-label', COPY.auto);
+
   const { input: sc, out: gainOut } = sliderRow(box, COPY.scale, { min: r.min, max: r.max, step: r.step });
   gainOut.classList.add('fsp-gain');
   el.append(box);

@@ -748,7 +748,7 @@ export const CSS = `
 .fsp[data-an] .fsp-split, .fsp[data-comp=glance] .fsp-split { display: none; }
 .fsp-libbox { grid-area: lib; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .fsp[data-comp=full] .fsp-lib { min-height: 400px; }
-.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 6 / 2; }
+.fsp[data-comp=handheld] .fsp-libbox { grid-area: 2 / 1 / 7 / 2; }
 .fsp[data-comp=handheld][data-view=library] :is(.fsp-stage, .fsp-split, .fsp-tlh, .fsp-tlbox, .fsp-tr) { visibility: hidden; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
@@ -869,6 +869,14 @@ export const CSS = `
 .fsp-hb-gap { flex: 1 1 0; }
 .fsp[data-media][data-comp] { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "stage" !important; }
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
+.fsp-cplay { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; translate: -50% -50%; display: none; place-items: center;
+  border-radius: 50%; background: rgba(var(--shade-rgb), .55); color: var(--tx-hi); pointer-events: none; z-index: 1; }
+.fsp-cplay svg { width: 32px; height: 32px; fill: currentColor; }
+.fsp-cplay svg .s { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.fsp[data-paused]:not([data-an], [data-comp=glance]) .fsp-cplay, .fsp:not([data-comp=glance]) .fsp-cplay[data-flash] { display: grid; }
+@keyframes fsp-flash { from { opacity: 1; scale: 1; } to { opacity: 0; scale: 1.3; } }
+.fsp-cplay[data-flash] { animation: fsp-flash 500ms var(--ease-out, ease) forwards; }
+html.still .fsp-cplay[data-flash] { animation-duration: 1ms; }
 /* PR13: the fullscreen library drawer, under the stop pair; the phone tab's now-playing row. */
 .fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
   right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) var(--sp-4); visibility: visible; box-sizing: border-box;
@@ -899,6 +907,13 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
+/** The click that follows a pointerdown which closed a sheet or drawer: swallowed, so the tap outside never reaches
+ *  the stage (a stage click toggles Play, which moves the machine). The guard lapses after DOUBLE_MS without one. */
+export function swallowClick() {
+  const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
+  document.addEventListener('click', eat, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', eat, { capture: true }), DOUBLE_MS);
+}
 // A meter tick's left at share u, its 3 px inside the meter at either end.
 const tickAt = (u) => 'calc(1.5px + (100% - 3px) * ' + u + ')';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1148,7 +1163,18 @@ export function createPlayer(api) {
     const moI = h('i', { class: 'fsp-tick int' }), moR = h('i', { class: 'fsp-tick real' });
     const mo = h('div', { class: 'fsp-mo' }, h('span', { class: 'fsp-mo-k', text: COPY.motionOnly }), openV('fsp-moopenv'),
       h('div', { class: 'fsp-meter', role: 'img', 'aria-label': COPY.meter }, moI, moR));
-    const vbox = h('div', { class: 'fsp-vbox' }, empty, mo);
+    // The center Play (operator 2026-10-08, PR9): a large glyph over the paused stage (video or motion only, never the
+    // empty stage) and a brief glyph flash when a tap on the stage toggles. Decorative: the stage's own click acts.
+    const cplay = h('div', { class: 'fsp-cplay', 'aria-hidden': 'true' });
+    cplay.append(icon());
+    const flash = () => {
+      setIcon(cplay, ctl.state.phase === 'playing' || ctl.state.phase === 'preroll' ? ICON.play : ICON.pause, '');
+      cplay.removeAttribute('data-flash');
+      void cplay.offsetWidth;
+      cplay.setAttribute('data-flash', '');
+    };
+    cplay.addEventListener('animationend', () => cplay.removeAttribute('data-flash'));
+    const vbox = h('div', { class: 'fsp-vbox' }, empty, mo, cplay);
     const stage = h('div', { class: 'fsp-stage' }, vbox);
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
@@ -1328,7 +1354,7 @@ export function createPlayer(api) {
     libB.setAttribute('aria-pressed', 'false');
     const setDrawer = (on) => { root.toggleAttribute('data-libdrawer', on); libB.setAttribute('aria-pressed', String(on)); libB.classList.toggle('on', on); };
     libB.addEventListener('click', () => setDrawer(!root.hasAttribute('data-libdrawer')));
-    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) setDrawer(false); };
+    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) { setDrawer(false); swallowClick(); } };
     document.addEventListener('pointerdown', drawerOut, true);
     const hbRow = h('div', { class: 'fsp-hb-row' }, libB, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
     const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);
@@ -1360,10 +1386,10 @@ export function createPlayer(api) {
     stage.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && drag == null) { clearTimeout(idle); hov.removeAttribute('data-show'); } });
     stage.addEventListener('pointerdown', (e) => { tapShow = media && e.pointerType !== 'mouse' && !hov.hasAttribute('data-show'); poke(); });
     stage.addEventListener('click', (e) => {
-      if (!st.scene || !st.scene.stream) { tapShow = false; return; }
+      if (!st.scene) { tapShow = false; return; }
       clearTimeout(clickT);
       // A control's click is not the video's (an Exit fullscreen has already moved its button out of the stage).
-      if (!tapShow && vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && e.detail < 2) clickT = setTimeout(() => ctl.toggle(), DOUBLE_MS);
+      if (!tapShow && vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && e.detail < 2) clickT = setTimeout(() => { ctl.toggle(); flash(); }, DOUBLE_MS);
       tapShow = false;
     });
     stage.addEventListener('dblclick', (e) => { if (vbox.contains(e.target) && !e.target.closest('.fsp-hb, button') && opts.fullscreen) { clearTimeout(clickT); fullscreen(); } });
@@ -1505,6 +1531,8 @@ export function createPlayer(api) {
       closeH.disabled = mClose.disabled = !st.scene;
       const noVid = !!st.scene && !st.scene.stream;
       root.toggleAttribute('data-mo', noVid);
+      root.toggleAttribute('data-paused', !!st.scene && !act);
+      if (!cplay.hasAttribute('data-flash')) setIcon(cplay, ICON.play, '');
       setText(rate, (video.playbackRate || 1) + 'x');
       if (document.activeElement !== vol) vol.value = String(video.muted ? 0 : video.volume);
       const so = !!(opts.settings && opts.settings.open);
