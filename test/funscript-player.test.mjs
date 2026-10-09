@@ -1066,6 +1066,16 @@ if (!LIVE && !STASH_LIVE) {
         await page.waitForTimeout(300);
         const dragShut = await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden);
         ok('settings ' + at + ': a tap outside and a drag down close the sheet', tapShut && dragShut, { tapShut, dragShut });
+        // ph-5wsk.3: a tap on the strip's Pause while the sheet is open reaches Pause (counted on the button; it sends nothing).
+        await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
+        await page.waitForTimeout(300);
+        await page.evaluate(() => { const b = document.querySelector('.topstrip .btn-pause'); window.__pz = 0; b.addEventListener('click', (e) => { window.__pz++; e.stopPropagation(); }); });
+        const pb = await page.locator('.topstrip .btn-pause').boundingBox();
+        await page.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2);
+        await page.waitForTimeout(300);
+        const pz = await page.evaluate(() => window.__pz);
+        ok('settings ' + at + ': with the sheet open, a tap on the strip\'s Pause reaches Pause (never swallowed)', pz === 1, { pz });
+        if (!(await page.locator('main.pane .fsp-psec').evaluate((e) => e.hidden))) await page.locator('main.pane .fsp-sclose').click();
       } else {
         await page.locator(C + ' .fsp-set').evaluate((e) => e.click());
         await page.waitForTimeout(200);

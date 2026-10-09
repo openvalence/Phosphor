@@ -925,8 +925,10 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const setText = (e, t) => { if (e.textContent !== t) e.textContent = t; };
 /** The click that follows a pointerdown which closed a sheet or drawer: swallowed, so the tap outside never reaches
- *  the stage (a stage click toggles Play, which moves the machine). */
-export function swallowClick() {
+ *  the stage (a stage click toggles Play, which moves the machine). Never a tap on the top strip or the stop pair:
+ *  a safety control always takes its tap (ph-5wsk.3). */
+export function swallowClick(down) {
+  if (down && down.target && down.target.closest && down.target.closest('.topstrip')) return;
   const eat = (e) => { e.stopPropagation(); e.preventDefault(); done(); };
   // However long the tap is held, its click is eaten; the guard ends at the next pointerdown (a later tap), never on a
   // timer, so a long press cannot slip through.
@@ -1438,7 +1440,7 @@ export function createPlayer(api) {
     libB.setAttribute('aria-pressed', 'false');
     const setDrawer = (on) => { root.toggleAttribute('data-libdrawer', on); libB.setAttribute('aria-pressed', String(on)); libB.classList.toggle('on', on); };
     libB.addEventListener('click', () => setDrawer(!root.hasAttribute('data-libdrawer')));
-    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) { setDrawer(false); swallowClick(); } };
+    const drawerOut = (e) => { if (root.hasAttribute('data-libdrawer') && !lib.contains(e.target) && !libB.contains(e.target)) { setDrawer(false); swallowClick(e); } };
     document.addEventListener('pointerdown', drawerOut, true);
     const hbRow = h('div', { class: 'fsp-hb-row' }, libB, hbTime, h('span', { class: 'fsp-hb-gap' }), tlTog);
     const hb = h('div', { class: 'fsp-hb' }, seek, hbRow);

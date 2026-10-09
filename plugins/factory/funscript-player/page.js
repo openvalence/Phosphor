@@ -101,7 +101,7 @@ export function registerPlayerPage(api, player, spec, settings) {
     const outside = (e) => {
       if (sec.hidden || !root.dataset.sform || sec.contains(e.target) || e.target.closest('.fsp-set')) return;
       close();
-      swallowClick();
+      swallowClick(e);
     };
     document.addEventListener('pointerdown', outside, true);
     let drag = null;
