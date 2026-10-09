@@ -53,7 +53,7 @@ const CONTRACT = {
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
-    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline'],
+    'seekAt', 'heatColor', 'heatStops', 'traceLines', 'clampRange', 'zoomStep', 'mountTimeline', 'PINCH_STEP', 'pinchZoom'],
   [P + 'scale.js']: ['RANGES', 'SCALE', 'cleanScale', 'mapOf', 'fitMap', 'wire', 'COPY', 'CSS', 'mountScale'],
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
@@ -109,7 +109,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, tlOpen: true, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -740,6 +740,22 @@ function schedule(bundles) {
 let clockErrUs = 0;
 const clipped = (s) => s.exec - s.arrival - clockErrUs <= LAT_US + 25000;   // CLOCK re-syncs move the error by a few ms
 
+// PR5: the bar's order. Desktop one row; phones the scrub row over the buttons. A class the bar does not show is skipped.
+const BAR_DESK = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-set'];
+const BAR_PHONE = [['fsp-el', 'fsp-ov', 'fsp-rem'], ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-motion', 'fsp-rate', 'fsp-full', 'fsp-rail', 'fsp-set']];
+/** The bar's shown items by row (top to bottom, left to right), their names the BAR_ classes. */
+const barOrder = (page) => page.locator(C).evaluate((root, names) => {
+  const kids = [...root.querySelector('.fsp-tr').children].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height > 0)
+    .map((e) => ({ n: names.find((c) => e.classList.contains(c)) || e.className, r: e.getBoundingClientRect() }));
+  const rows = [];
+  for (const k of kids.sort((a, b) => a.r.top - b.r.top || a.r.left - b.r.left)) {
+    const row = rows.find((x) => Math.abs(x.y - (k.r.top + k.r.bottom) / 2) < 6);
+    if (row) row.k.push(k); else rows.push({ y: (k.r.top + k.r.bottom) / 2, k: [k] });
+  }
+  const small = kids.filter((k) => /fsp-(prev|play|next|motion|rate|full|rail|set)/.test(k.n) && (k.r.width < 39.5 || k.r.height < 39.5)).map((k) => k.n);
+  return { comp: root.dataset.comp, cls: root.dataset.cls || '', rows: rows.map((x) => x.k.sort((a, b) => a.r.left - b.r.left).map((k) => k.n)), small };
+}, [...new Set([...BAR_DESK, ...BAR_PHONE.flat()])]);
+
 /** Rects of the card's fixed chrome: every row and every child of a row. */
 const chrome = (page) => page.evaluate((c) => {
   const root = document.querySelector(c);
@@ -830,8 +846,7 @@ if (!LIVE && !STASH_LIVE) {
       const root = document.querySelector(c), o = root.getBoundingClientRect();
       const rel = (e) => { if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return [r.x - o.x, r.y - o.y, r.width, r.height].map((v) => Math.round(v)); };
       return { cls: root.dataset.cls, comp: root.dataset.comp, bar: rel(root.querySelector('.fsp-tr')), vbox: rel(root.querySelector('.fsp-vbox')),
-        stage: rel(root.querySelector('.fsp-stage')), status: root.querySelector('.fsp-slot').textContent,
-        ar: getComputedStyle(root).gridTemplateRows + " | " + [...root.children].filter((e) => e.getClientRects().length).map((e) => e.className.slice(0,12) + ":" + getComputedStyle(e).gridRowStart + "/" + getComputedStyle(e).gridRowEnd).join(" "), ar0: (() => { const o = []; for (let e = root; e && e !== document.body; e = e.parentElement) o.push((e.className || e.tagName).toString().slice(0, 30) + ':' + Math.round(e.getBoundingClientRect().height) + ':' + getComputedStyle(e).display); return o.join(' < '); })() };
+        stage: rel(root.querySelector('.fsp-stage')), status: root.querySelector('.fsp-slot').textContent };
     }, C);
     const shot = async (name) => { if (EVID) await page.screenshot({ path: join(EVID, name + '-' + at + '.png') }); };
     const empty = await look();
@@ -858,6 +873,37 @@ if (!LIVE && !STASH_LIVE) {
     ok('redesign ' + at + ': heads 01 PLAYER' + (cls === 'portrait' ? '' : ', 02 LIBRARY') + ' on shell cards; no private box in the Player card',
       same(chromeOk.heads, wantHeads) && chromeOk.frame && chromeOk.lib && chromeOk.boxes.length === 0, chromeOk);
     if (cls === 'portrait') ok('redesign ' + at + ': the empty stage is a 120 px strip', Math.abs(empty.vbox[3] - 120) <= 1, empty.vbox);
+    // PR5: the bar's order; every target 40 px under a coarse pointer (law 12).
+    const bo = await barOrder(page);
+    // The 1024 desktop's player column (beside the 320 px library) is under BAR_ROW_MIN: the two rows, volume kept.
+    const want = w === 1428 ? [BAR_DESK] : cls === 'desktop' ? [BAR_PHONE[0], [...BAR_PHONE[1].slice(0, 3), 'fsp-vol', ...BAR_PHONE[1].slice(3).filter((c) => c !== 'fsp-rail')]]
+      : BAR_PHONE.map((r) => r.filter((c) => c !== 'fsp-rail'));
+    ok('bar ' + at + ': ' + (w === 1428 ? 'one row: prev, Play, next, elapsed, heat, remaining, volume, Motion, rate, Fullscreen, Settings'
+      : 'the scrub row over prev, Play, next, ' + (cls === 'desktop' ? 'volume, ' : '') + 'Motion, rate, Fullscreen, Settings (the rail where the host has one)') + (cls === 'desktop' ? '' : '; 40 px targets'),
+    same(bo.rows, want) && (cls === 'desktop' || bo.small.length === 0), bo);
+    const sp0 = await spill(page);
+    ok('bar ' + at + ': every control inside the card, no label cut', sp0.out.length === 0 && sp0.cut.length === 0, sp0);
+    // PR6: Motion is the shell's on look.
+    const look6 = await page.evaluate((c) => {
+      const b = document.createElement('button');
+      b.className = 'og-btn sm on';
+      b.textContent = 'x';
+      document.querySelector(c).append(b);
+      const s = getComputedStyle(b), m = getComputedStyle(document.querySelector(c + ' .fsp-motion'));
+      const out = { color: [m.color, s.color], border: [m.borderTopColor, s.borderTopColor], glow: [m.boxShadow, s.boxShadow] };
+      b.remove();
+      return out;
+    }, C);
+    ok('bar ' + at + ': Motion wears the shell\'s .og-btn.on (color, border, glow)', Object.values(look6).every(([a, b]) => a === b) && look6.glow[0] !== 'none', look6);
+    // PR7: nothing over the wave screen but the playhead, the range pills and the speed reading at its foot.
+    const over = await page.evaluate((c) => {
+      const root = document.querySelector(c), dt = root.querySelector('.fsp-dt'), d = dt.getBoundingClientRect();
+      return [...root.querySelectorAll('*')].filter((e) => !dt.contains(e) && !e.contains(dt) && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden'
+        && !e.closest('.fsp-pframe, svg, .fsp-menu'))
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left < d.right - 0.5 && r.right > d.left + 0.5 && r.top < d.bottom - 0.5 && r.bottom > d.top + 0.5; })
+        .map((e) => e.className || e.tagName);
+    }, C);
+    ok('head ' + at + ': no element sits over the wave screen', over.length === 0, over);
     const opens = await page.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-empty button')].map((b) => b.textContent), C);
     ok('redesign ' + at + ': the empty stage offers Open video and Open script', same(opens, ['Open video', 'Open script']), opens);
     await shot('empty');
@@ -917,7 +963,34 @@ if (!LIVE && !STASH_LIVE) {
       const p3 = await paired();
       ok('redesign: a two-file pick in Open video ends loaded and paired', p3.src && p3.play && !p3.mo, p3);
     }
+    if (cls === 'desktop' && w === 1428) {
+      const span = () => page.locator(C + ' .fsp-zoom output').textContent();
+      const s0 = await span();
+      await page.locator(C + ' .fsp-zoom button[aria-label="Zoom in"]').click();
+      const s1 = await span();
+      await page.locator(C + ' .fsp-zoom button[aria-label="Zoom out"]').click();
+      ok('head: zoom - and + step the span on the desktop', s0 === '10 s' && s1 === '5 s' && (await span()) === '10 s', [s0, s1]);
+    }
     if (cls === 'portrait') {
+      // PR7: the band collapses to its head on the user's tap; the bar keeps its rect; the state survives a reload.
+      const bar0 = (await look()).bar;
+      await page.locator(C + ' .fsp-tlcaret').click();
+      await page.waitForTimeout(200);
+      const shut = await look();
+      const shutUi = await page.locator(C).evaluate((r) => ({ shut: r.hasAttribute('data-tlshut'), dt: !!r.querySelector('.fsp-dt').getClientRects().length }));
+      await shot('timeline-collapsed');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 }).catch(() => {});
+      await toPluginPage(page);
+      await page.waitForTimeout(400);
+      const kept = await page.locator(C).evaluate((r) => r.hasAttribute('data-tlshut'));
+      ok('head ' + at + ': the caret collapses the band to its head, the bar keeps its rect, the state survives a reload',
+        shutUi.shut && !shutUi.dt && same(shut.bar, bar0) && kept, { bar0, bar: shut.bar, shutUi, kept });
+      await page.locator(C + ' .fsp-tab', { hasText: 'Player' }).click();
+      await page.locator(C + ' .fsp-tlcaret').click();
+      await page.waitForTimeout(200);
+      await page.setInputFiles(C + ' .fsp-filev', [clip, fun()]);
+      await page.waitForTimeout(500);
       await page.setInputFiles(C + ' .fsp-filev', [{ name: 'tall.webm', mimeType: 'video/webm', buffer: VIDEO_TALL }]);
       await page.waitForFunction((c) => document.querySelector(c + '[data-ar]') && document.querySelector(c + ' .fsp-stage video').videoHeight === 320, C, { timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(300);
@@ -981,7 +1054,20 @@ if (!LIVE && !STASH_LIVE) {
     return { out, tok };
   }, [C, TOKENS]);
   const byId = (id) => THEMES.find((t) => t.id === id);
-  const a = await themed(byId('phosphor'), 1428, 900, colors), b = await themed(byId('paper'), 1428, 900, colors);
+  // PR6 under both presets: Motion's color, border and glow are the shell's .og-btn.on.
+  const onLook = (page) => page.evaluate((c) => {
+    const b = document.createElement('button');
+    b.className = 'og-btn sm on';
+    b.textContent = 'x';
+    document.querySelector(c).append(b);
+    const s = getComputedStyle(b), m = getComputedStyle(document.querySelector(c + ' .fsp-motion'));
+    const out = [m.color === s.color, m.borderTopColor === s.borderTopColor, m.boxShadow === s.boxShadow && m.boxShadow !== 'none'];
+    b.remove();
+    return out;
+  }, C);
+  const both = async (page) => ({ ...(await colors(page)), on: await onLook(page) });
+  const a = await themed(byId('phosphor'), 1428, 900, both), b = await themed(byId('paper'), 1428, 900, both);
+  ok('theme: Motion wears the shell\'s .og-btn.on under Phosphor and Paper (PR6)', !!a && !!b && [...a.on, ...b.on].every(Boolean), [a && a.on, b && b.on]);
   // A token both presets resolve to the same color (a held contrast gray) may stay put; nothing else may.
   const same2 = a && b ? new Set(Object.keys(a.tok).filter((t) => a.tok[t] === b.tok[t]).map((t) => a.tok[t])) : new Set();
   const stuck = a && b ? Object.keys(a.out).filter((k) => k in b.out && a.out[k] === b.out[k] && !same2.has(a.out[k])).map((k) => k + ' ' + a.out[k]) : ['no card'];
@@ -1037,17 +1123,13 @@ if (!LIVE) {
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);
   rects.ready = await chrome(page);
-  const ORDER = ['fsp-prev', 'fsp-play', 'fsp-next', 'fsp-el', 'fsp-ov', 'fsp-rem', 'fsp-vol', 'fsp-rate', 'fsp-expand'];
-  const trow = await page.locator(C + ' .fsp-tr').evaluate((t, order) => {
-    const r = t.getBoundingClientRect(), card = t.parentElement.getBoundingClientRect();
-    const kids = [...t.children];
-    return { names: kids.map((e) => order.find((c) => e.classList.contains(c)) || e.className), tops: (() => { const c = kids.filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return (b.top + b.bottom) / 2; }); return Math.max(...c) - Math.min(...c) < 3 ? 1 : 2; })(),
-      outside: order.filter((c) => [...t.parentElement.querySelectorAll('.' + c)].some((e) => !t.contains(e))),
-      ovBetween: kids.indexOf(t.querySelector('.fsp-ov')), inCard: r.left >= card.left && r.right <= card.right + 0.5,
-      keyHint: t.querySelector('.fsp-expand').title };
-  }, ORDER);
-  ok('transport: .fsp-tr holds its nine items in order, in one row (Close is the head\'s, PR3)', trow.names.join() === ORDER.join() && trow.tops === 1, trow);
-  ok('transport: nothing of it sits outside the row; the graph button names its key', trow.outside.length === 0 && trow.inCard && /\(g\)/.test(trow.keyHint), trow);
+  ok('dash card: the player bar and the timeline head (one code path with the page, PR5/PR7)', await page.locator(C).evaluate((e) => !e.closest('.fsp-page')
+    && !!e.querySelector('.fsp-tr .fsp-motion').getClientRects().length && !!e.querySelector('.fsp-tlh .fsp-tlcaret').getClientRects().length));
+  const bar = await barOrder(page);
+  const ORDER = bar.comp === 'full' ? BAR_DESK.filter((c) => !/fsp-(full|set)/.test(c)) : BAR_PHONE[0].concat(BAR_PHONE[1]).filter((c) => !/fsp-(full|set)/.test(c));
+  ok('bar: the dash card\'s bar in the PR5 order (no Fullscreen or Settings: page only), ' + (bar.comp === 'full' ? 'one row' : 'two rows'),
+    same(bar.rows.flat(), ORDER) && bar.rows.length === (bar.comp === 'full' ? 1 : 2), bar);
+  ok('bar: Graph names its key and sits in the timeline head', await page.locator(C + ' .fsp-tlh .fsp-expand').evaluate((e) => /\(g\)/.test(e.title)));
   const rt = [];
   for (let i = 0; i < 6; i++) { await page.locator(C + ' .fsp-rate').click(); rt.push(await page.locator(C + ' .fsp-rate').textContent()); }
   ok('transport: rate cycles 1.25x, 1.5x, 2x, 0.5x, 0.75x, 1x', rt.join() === '1.25x,1.5x,2x,0.5x,0.75x,1x', rt);
@@ -1242,24 +1324,21 @@ if (!LIVE) {
     const r = sameChrome(rects.empty, rects[s]);
     ok('layout: chrome rects in ' + s + ' match empty', r.ok, r.diff.slice(0, 4));
   }
-  const bundle = await page.evaluate((c) => {
-    const dt = document.querySelector(c + ' .fsp-dt'), z = dt.querySelector('.fsp-zoom'), d = dt.getBoundingClientRect(), p = z.getBoundingClientRect();
+  const head = await page.evaluate((c) => {
+    const dt = document.querySelector(c + ' .fsp-dt');
     const probe = document.createElement('i');
     probe.style.background = 'var(--screen)';
     document.body.append(probe);
     const screen = getComputedStyle(probe).backgroundColor;
     probe.remove();
-    return { inTr: document.querySelectorAll(c + ' .fsp-tr :is(.fsp-motion, .fsp-off, .fsp-inv)').length,
-      inBundle: [...z.children].slice(0, 3).map((e) => e.className.replace('fsp-btn ', '')), unit: z.querySelector('.fsp-off').textContent,
-      corner: [Math.round(d.right - p.right), Math.round(p.top - d.top)], dtBg: getComputedStyle(dt).backgroundColor === screen,
-      ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
-      shadow: getComputedStyle(dt).boxShadow.includes('inset'), plate: getComputedStyle(z).boxShadow !== 'none' };
+    return { head: [...document.querySelectorAll(c + ' .fsp-tlh > *')].filter((e) => e.getClientRects().length).map((e) => e.className.split(' ').find((k) => /^fsp-/.test(k) && k !== 'fsp-ic')),
+      unit: document.querySelector(c + ' .fsp-off').textContent, num: document.querySelector(c + ' .fsp-off input').classList.contains('og-num'),
+      dtBg: getComputedStyle(dt).backgroundColor === screen, ovBg: getComputedStyle(document.querySelector(c + ' .fsp-ov')).backgroundColor === screen,
+      shadow: getComputedStyle(dt).boxShadow.includes('inset'), motionInBar: !!document.querySelector(c + ' .fsp-tr .fsp-motion') };
   }, C);
-  ok('bundle: Motion, Offset and Invert sit in the detail bundle, none in the strip', bundle.inTr === 0
-    && bundle.inBundle.join() === 'fsp-motion,fsp-off,fsp-inv', bundle);
-  ok('bundle: Offset is labeled with its unit, ms', /Offset.*ms/.test(bundle.unit), bundle.unit);
-  ok('bundle: the plate is flush with the detail top right corner and shadowed', bundle.corner[0] <= 1 && bundle.corner[1] <= 1 && bundle.plate, bundle);
-  ok('bundle: the detail and the heat sit on --screen with the inset shadow', bundle.dtBg && bundle.ovBg && bundle.shadow, bundle);
+  ok('head: the timeline head holds caret, (zoom,) A-B, Offset (og-num, ms), Invert, Graph; Motion is the bar\'s (PR6/PR7)',
+    same(head.head.filter((k) => k !== 'fsp-zoom'), ['fsp-tlcaret', 'fsp-tlgap', 'fsp-ab', 'fsp-off', 'fsp-inv', 'fsp-expand']) && /ms/.test(head.unit) && head.num && head.motionInBar, head);
+  ok('head: the wave and the heat sit on --screen with the inset shadow', head.dtBg && head.ovBg && head.shadow, head);
   const red = await page.evaluate((c) => {
     const probe = document.createElement('i');
     for (const t of ['--bad', '--estop']) probe.style.color = 'var(' + t + ')';
@@ -1337,38 +1416,26 @@ if (!LIVE) {
   // reading's floor is cut. At Look 1.4 the source row (two tabs and Open files) needs 304 px: the
   // floor scales with the Look, the tier thresholds stay the shell's px (rclass.js).
   const setLook = (v) => page.evaluate((x) => document.documentElement.style.setProperty('--s', x), String(v));
-  const sweep = [], firstNarrow = {};
+  const sweep = [];
   for (const [look, floor] of [[1.12, 264], [1.4, 304]]) {
     await setLook(look);
     for (let w = floor; w <= 959; w += 2) {
       await page.locator(C).evaluate((e, px) => { e.parentElement.style.width = px + 'px'; }, w);
       await page.waitForTimeout(30);
-      const comp = await page.locator(C).evaluate((e) => e.dataset.comp + (e.hasAttribute('data-narrow') ? ' narrow' : ''));
+      const comp = await page.locator(C).evaluate((e) => e.dataset.comp);
       const s = await spill(page);
       sweep.push({ look, w, comp, out: s.out, cut: s.cut });
-      if (comp.endsWith('narrow')) firstNarrow[look] = w;
     }
   }
-  const bad = sweep.filter((x) => x.out.length || x.cut.length || !x.comp.startsWith('handheld'));
-  ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut',
+  const bad = sweep.filter((x) => x.out.length || x.cut.length || x.comp !== 'handheld');
+  ok('handheld: to 959 px from 264 at Look 1.12 and 304 at 1.4, every control lies inside the card, no label cut (the two-row bar)',
     bad.length === 0, bad.slice(0, 6));
-  console.log('  [NOTE] narrow transport at or below: ' + Object.entries(firstNarrow).map(([l, w]) => 'Look ' + l + ' ' + w + ' px').join(', '));
-  // A Look change alone (no width change) re-measures the switch.
-  await page.locator(C).evaluate((e) => { e.parentElement.style.width = '560px'; });
-  await setLook(1.12);
-  await page.waitForTimeout(100);
-  const wide = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
-  await setLook(1.6);
-  await page.waitForTimeout(150);
-  const big = await page.locator(C).evaluate((e) => e.hasAttribute('data-narrow'));
-  const bigSpill = await spill(page);
   await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
-  ok('handheld: a Look change at a fixed width moves the switch with the text', !wide && big && !bigSpill.cut.length && !bigSpill.out.length,
-    { wide, big, bigSpill });
   await page.locator(C).evaluate((e) => { e.parentElement.style.width = '420px'; });
   await page.waitForTimeout(200);
-  const vis = await page.locator(C).evaluate((e) => { const d = e.querySelector('.fsp-dt').getBoundingClientRect(), p = e.querySelector('.fsp-zoom').getBoundingClientRect(); return { dt: d.height, plate: p.height, free: d.bottom - p.bottom }; });
-  ok('handheld 420: at least 48 px of the wave shows under the control plate', vis.free >= 48, vis);
+  const hh = await barOrder(page);
+  ok('handheld 420: the dash card\'s bar is the scrub row over the buttons, the head row above the wave',
+    hh.rows.length === 2 && same(hh.rows[0], BAR_PHONE[0]) && await page.locator(C + ' .fsp-tlh').isVisible(), hh);
   if (SHOT) {
     await page.locator(C).evaluate((e) => { e.parentElement.style.width = '326px'; });
     await page.waitForTimeout(150);
@@ -1403,11 +1470,11 @@ if (!LIVE) {
       .filter(([, r]) => r.width > 0 && (r.width < 39.5 || r.height < 39.5)).map(([n, r]) => n + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)), C);
     ok('targets: every control is at least 40 px under a coarse pointer (law 12)', small.length === 0, small);
     await p2.locator(C + ' .fsp-tr').evaluate((e) => e.scrollIntoView({ block: 'center' }));
-    const stolen = await p2.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-tr > button')].filter((b) => b.getClientRects().length).map((b) => {
+    const stolen = await p2.evaluate((c) => [...document.querySelectorAll(c + ' .fsp-tr > button')].filter((b) => b.getClientRects().length && !b.disabled).map((b) => {
       const r = b.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + 2);
-      return t && b.contains(t) ? null : b.className;
+      return t && b.contains(t) ? null : b.className + ' under ' + (t ? t.className || t.tagName : 'nothing');
     }).filter(Boolean), C);
-    ok('targets: the split bar steals no touch from the transport buttons', stolen.length === 0, stolen);
+    ok('targets: nothing steals a touch from the bar\'s buttons (the split bar, the heat\'s hit band)', stolen.length === 0, stolen);
     // The box is not the target where a parent clips it: probe what a touch actually hits.
     // The hover bar's seek is a slider only while the bar shows: a pointer move shows it.
     const hits = await p2.evaluate((c) => [...document.querySelectorAll(c + ' [role=slider]')].filter((e) => e.getClientRects().length).map((e) => {
@@ -1943,9 +2010,9 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
   ok('search: F3 Offset lands on the Offset field, focused', await page.evaluate((c) => document.activeElement === document.querySelector(c + ' .fsp-off input'), C));
-  for (const k of ['invert', 'split', 'graph']) {
+  for (const [label, k] of [['Invert', 'invert'], ['Split', 'split'], ['Graph', 'graph'], ['Funscript Motion', 'motion'], ['Open video', 'openVideo'], ['Open script', 'openScript']]) {
     await page.keyboard.press('F3');
-    await page.keyboard.type(k);
+    await page.keyboard.type(label);
     await page.waitForTimeout(150);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(600);

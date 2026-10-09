@@ -472,6 +472,25 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   ms), Invert, Graph. The wave screen sits under it with nothing over it.
   On phones the band collapses to its head by the user's own tap (kept as
   pref `tlOpen`) and zoom is pinch. The split bar stays on the desktop only.
+- **As built, PR5 to PR7 (`ph-1qs5.3`, where it differs from the text):**
+  the bar takes its two rows (scrub over buttons) on phones, on the
+  handheld dash card and wherever the player column is under 600 px
+  (`BAR_ROW_MIN`); the 1024 x 768 desktop is such a place (the column
+  beside the 320 px library is about 450 px, and the one row needs about
+  520), so it keeps volume in the button row. Phones hide the bar's volume
+  (hardware keys; its Settings row comes with `ph-1qs5.5`). A narrow bar
+  (under 22 em) drops volume; a narrow head drops the `ms` unit (under 20
+  em), then the word TIMELINE (under 18.5 em; the caret stays). The zoom
+  group shows on the full card only; the handheld card and phones pinch.
+  The stroke speed reading stays at the wave's foot, right of the range
+  pills, as the mockup draws it: it is the screen's own readout
+  (`pointer-events: none`), not a control over the wave. The caret
+  collapses the band on the desktop too (one rule, pref `tlOpen`). Opening
+  a file switches a handheld card to its Player tab. The quick rail button
+  is in the bar's markup and shows only where the host publishes
+  `api.icons.quickRail` and `<html data-quick-rail>` (phones; `ph-1qs5.8`
+  wires the host). The dash card has no Fullscreen or Settings in its bar
+  (page fullscreen and the settings section are the page's).
 - **PR8 Fullscreen or not.** Fullscreen is one mode, a player-bar button: the
   shell's page fullscreen, bare (DESIGN §10.3). The window goes fullscreen
   on the desktop; Android is immersive. No In window / Borderless mode and

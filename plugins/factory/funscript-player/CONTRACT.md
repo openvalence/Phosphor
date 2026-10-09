@@ -97,7 +97,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer`; `analyzer -> funsc
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -576,9 +576,13 @@ export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, col
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
 export function traceLines(trace, fromMs, toMs, W, H), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested
-export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onExpand, onLoop, onSettings, settingsOpen });
-  // onExpand(on): the analyzer button (hidden without it); setExpanded(on) shows the answer.
-  // onSettings(on): the Settings button at the cluster's right end (hidden without it), pressed from settingsOpen.
+export const PINCH_STEP = 1.25;
+export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
+  // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
+export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, onZoom, onLoop, ovHost, ovBefore, overlay });
+  // Nothing rides the detail but the playhead, the range pills and overlay (PR7); the returned zoomEl (zoom out,
+  // the span in s, zoom in) and abEl (A-B) are the caller's to place in its timeline head. Two touches on the
+  // detail pinch the zoom (pinchZoom); touch-action pan-x pan-y keeps the page's scroll.
   // onLoop(): the A-B button (hidden without it); setLoop({a, b}) draws the points: a --highlight band on
   // the heat, dashed lines in the detail; the button's tooltip reads the next press (start, end, clear).
   // The playhead is one bar: its grip on the heat (the bottom band) and its line up through the
@@ -586,7 +590,7 @@ export function mountTimeline(el, { onSeek, onScrub, onRange, zoomMs = 10000, on
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setExpanded(on), setLoop({a, b}), unmount() }
+  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), unmount() }
   // kin: the analyzer's Kinetic render (analyzer.kinetic) or null: the intent curve (--intent, data-kin), moved back by
   // T.offsetMs; without it or during a Range drag, straight lines between the actions
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat

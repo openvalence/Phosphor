@@ -23,6 +23,7 @@ export const PREFS = deepFreeze({
   zoomMs: 10000,
   settingsOpen: false, // the page's Settings section (page.js)
   libOpen: true, // the full card's library column (ui.js caret)
+  tlOpen: true, // the timeline band below its head (ui.js caret, PR7)
   split: 0, // the wave card's height in px; 0 = the composition's default (ui.js layout button)
   interp: SCALE, // scale.js; fit() drops any other stored field
   // Playback (ph-smvd.12): loopCount 0 = forever; home point 0..1 of the script, speed norm/s;

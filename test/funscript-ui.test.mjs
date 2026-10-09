@@ -18,7 +18,7 @@
 import { parseFunscript } from '../plugins/factory/funscript-player/funscript.js';
 import { createMediaClock } from '../plugins/factory/funscript-player/clock.js';
 import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/scheduler.js';
-import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS }
+import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
@@ -69,6 +69,8 @@ console.log('(a) timeline');
   ok('range: hi kept in 0..1 and over lo', clampRange({ lo: 0.2, hi: 1 }, 'hi', 2).hi === 1 && near(clampRange({ lo: 0.2, hi: 1 }, 'hi', 0).hi, 0.25));
   ok('zoom: steps and stops at the ends', zoomStep(10000, 1) === 20000 && zoomStep(10000, -1) === 5000
     && zoomStep(ZOOMS[0], -1) === ZOOMS[0] && zoomStep(60000, 1) === 60000);
+  ok('pinch: fingers apart by 1.25x narrow one step, together by 1/1.25 widen one, less holds',
+    pinchZoom(10000, 1.3) === 5000 && pinchZoom(10000, 0.75) === 20000 && pinchZoom(10000, 1.1) === 10000 && pinchZoom(10000, 0.9) === 10000);
 }
 
 console.log('(b) helpers');

@@ -36,7 +36,7 @@ const FIT_MIN = 360;
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; --pg-bot: calc(28px + 20px + 2 * var(--sp-2)); }
+.fsp-page { position: relative; height: 100%; overflow-y: auto; container-type: inline-size; --pg-bot: calc(30px + 20px + 2 * var(--sp-2) + var(--sp-3)); }
 @media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + 20px + 2 * var(--sp-2)); } }
 .fsp-page > .fsp-pcard { height: 100%; min-height: min-content; }
 .fsp-page > .fsp-psec { margin-top: var(--gap); padding: var(--sp-3) var(--sp-4); }
