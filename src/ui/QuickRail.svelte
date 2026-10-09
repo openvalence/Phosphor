@@ -7,6 +7,8 @@
    * Constraints:
    * - data-quick-rail-toggle: the pop-ups' outside-tap close skips it, so a
    *   tap toggles instead of closing and reopening.
+   * - One per screen: hidden while the page draws its own (a shown
+   *   [data-quick-rail-toggle] in a plugin page, docs/PLUGINS.md).
    */
   import { NAV_ICONS } from './navIcons.js';
 
@@ -19,6 +21,7 @@
 
 <style>
   .quick-rail { display: grid; place-items: center; min-width: var(--tap); padding: 0; }
+  :global(main.pane:has(> .pane-main.plugin [data-quick-rail-toggle]:not([hidden]))) .quick-rail { display: none; }
   .quick-rail[aria-expanded='true'] { color: var(--reality); border-color: var(--reality); }
   svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 </style>

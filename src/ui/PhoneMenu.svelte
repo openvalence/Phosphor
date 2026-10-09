@@ -15,6 +15,10 @@
    * - Closed by a pick (App), a tap outside or Escape; focus moves to the
    *   selected entry on open and back to the hamburger on close.
    * - Mounted only while open: a closed drawer holds no tab stops.
+   * - Compact (ph-5u0g peeve 13): one narrow width, as tall as its rows and
+   *   ending clear of the bottom corner's arc, every row the compact tap
+   *   height, the Phosphor section in flow like the others (the desktop
+   *   rail's shaded foot block is the rail's alone).
    */
   import { tick } from 'svelte';
 
@@ -48,19 +52,32 @@
     background: rgba(var(--shade-rgb), .5);
   }
   .phone-menu {
+    --tap: max(40px, calc(var(--s) * 40px));
     position: fixed;
     top: var(--strip-h, 0px);
-    bottom: 0;
     left: 0;
     z-index: 35;
-    width: min(20rem, 85vw);
+    width: min(12rem, 80vw);
+    max-height: calc(100dvh - var(--strip-h, 0px) - max(var(--corner-bl, 0px), env(safe-area-inset-bottom, 0px)));
     display: flex;
     flex-direction: column;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
     background: var(--bg-raised);
-    border-right: 1px solid var(--line-2);
+    border: 1px solid var(--line-2);
+    border-left: 0;
+    border-radius: 0 0 var(--r-s) 0;
     box-shadow: 8px 0 24px rgba(var(--shade-rgb), .6);
   }
+  .phone-menu :global(.rail-tab) { min-height: var(--tap); }
+  .phone-menu :global(.rail-sec.shell) {
+    margin-top: 0;
+    padding: var(--sp-3) 0;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--line-0);
+    border-radius: 0;
+  }
+  .phone-menu :global(.drawer-nav .rail-sec.shell .rail-tab:not(.on)) { color: var(--ink-dim); }
+  .phone-menu :global(.drawer-nav .rail-sec.shell :is(.rail-lbl, .rail-glyph)) { color: var(--ink-faint); }
 </style>

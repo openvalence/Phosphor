@@ -439,6 +439,15 @@ async function openProbe(page) {
   await page.waitForTimeout(150);
 }
 const PAPER = THEMES.find((t) => t.id === 'paper');
+// The compact hero's floor of what it returns to the page, with the full hero's padding (DESIGN §10.3).
+const RETURNS = { 420: 40, 448: 40, 860: 20 };
+// A live position, as the hub would stream it: the fixture sends none.
+const withNumeral = async (page) => {
+  await page.evaluate(() => { const v = document.querySelector('.topstrip .hn-primary .hn-val'); if (v) v.textContent = '000.0'; });
+  await page.waitForTimeout(400);
+  return { ...(await heroOf(page)), ...(await page.evaluate(() => ({ rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    numF: parseFloat(getComputedStyle(document.querySelector('.topstrip .hn-primary .hn-val')).fontSize) }))) };
+};
 for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]]]) {
   console.log('\n--- status slot ' + name + ' ---');
   const { ctx, page, errors } = await boot({ width: vp[0], height: vp[1] }, { probe: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
@@ -515,6 +524,7 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await listenQrc(page);
   let s = await quickState(page);
   ok(tag + ': the phone class has the vertical quick rail', s.attr === 'vertical' && !s.open && !s.pop, JSON.stringify(s));
+  ok(tag + ': a page without its own icon keeps the footer\'s', await page.locator('main.pane .page-foot .quick-rail').isVisible());
   ok(tag + ': an ask from outside the page is not taken', !(await ask(page, true, 'body')) && !(await quickState(page)).pop);
   const before = await beneath(page);
   ok(tag + ': the page ask is accepted', await ask(page, true));
@@ -583,6 +593,10 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await page.waitForTimeout(300);
   await goTab(page, ID);
   await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+  await page.waitForTimeout(200);
+  // ph-5u0g.7: one icon per screen; the player draws its own, so the footer's hides.
+  const icons = await page.$$eval('[data-quick-rail-toggle]', (bs) => bs.filter((b) => b.getClientRects().length).map((b) => !!b.closest('.pane-main.plugin')));
+  ok(tag + ': one quick-rail icon on screen, the page\'s own', icons.length === 1 && icons[0], JSON.stringify(icons));
   await page.keyboard.press('F11');
   await page.waitForTimeout(300);
   ok(tag + ': F11 enters bare', await page.locator('main.pane.full.bare').count() === 1);
@@ -653,13 +667,23 @@ const heroOf = (page) => page.evaluate(() => {
     return b.contains(document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2)) && q.right <= innerWidth + 0.5; });
   const num = strip.querySelector('.hn-primary .hn-val'), nb = num && num.getBoundingClientRect();
   const mini = strip.querySelector('.mini'), mb = mini && mini.getBoundingClientRect();
+  // Gaps between neighbors, left to right (ph-5u0g.10), and what a hit at the Pause/Halt gap's middle lands on.
+  const row = [...strip.querySelectorAll('.dock button')].filter((b) => b.getClientRects().length && !b.closest('.menu-pop'))
+    .map((b) => b.getBoundingClientRect()).sort((a, b) => a.left - b.left);
+  const gaps = row.slice(1).map((q, i) => Math.round((q.left - row[i].right) * 10) / 10);
+  const [pz, hz] = [...document.querySelectorAll('.topstrip .pair .safety-op button')].map((b) => b.getBoundingClientRect());
+  const gapHit = pz && hz ? document.elementFromPoint((pz.right + hz.left) / 2, (pz.top + pz.bottom) / 2)?.closest('button') : null;
+  const sc = getComputedStyle(strip);
   return { h: Math.round(document.querySelector('.topstrip').getBoundingClientRect().height + (hs ? hs.getBoundingClientRect().height : 0)),
+    gaps, pairGap: pz && hz ? Math.round((hz.left - pz.right) * 10) / 10 : null, gapHit: gapHit ? gapHit.className : null,
+    padTop: row.length ? Math.round(row[0].top - r.top) : null, contentL: Math.round(r.left + parseFloat(sc.paddingLeft)),
+    numL: nb ? Math.round(nb.left) : null,
     strip: Math.round(r.height), compact: strip.classList.contains('compact'), btns, pair,
     label: !!strip.querySelector('.hn-primary .hn-label')?.getClientRects().length, col: !!strip.querySelector('.hn-col')?.getClientRects().length,
     num: nb ? { mid: Math.round(nb.top + nb.height / 2), r: Math.round(nb.right) } : null, mini: mb ? { l: Math.round(mb.left), mid: Math.round(mb.top + mb.height / 2) } : null,
     over: strip.scrollWidth > strip.clientWidth + 1 };
 });
-for (const [w, h] of [[420, 860], [860, 420]]) {
+for (const [w, h] of [[420, 860], [860, 420], [448, 900], [360, 780]]) {
   const tag = 'compact ' + w + 'x' + h;
   console.log('\n--- ' + tag + ' ---');
   const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
@@ -671,22 +695,48 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await openProbe(page);
   await page.waitForTimeout(300);
   const c = await heroOf(page);
+  if (w < 400) {
+    // No room for the row with a numeral at its floor: the full hero from the start, so nothing flips at connect.
+    const live = await withNumeral(page);
+    ok(tag + ': the full hero stands from the start and holds as a value streams', !c.compact && !live.compact && !live.over, JSON.stringify([c.compact, live.compact, live.over]));
+    ok(tag + ': the stop pair is reachable', live.pair.length === 2 && live.pair.every(Boolean), JSON.stringify(live.pair));
+    await shot(page, 'compact-' + w + 'x' + h + '.png');
+    ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+    continue;
+  }
   ok(tag + ': a compactHero page draws the hero as one row', c.compact && !c.label && !c.col && !c.over
     && c.btns.every((b) => Math.abs(b.mid - c.btns[0].mid) <= 1) && !!c.mini && Math.abs(c.mini.mid - c.btns[0].mid) <= 2, JSON.stringify(c));
   ok(tag + ': all five strip buttons, the mini and the numeral stay', c.btns.length >= 5 && !!c.num, JSON.stringify(c.btns.map((b) => b.l)));
-  ok(tag + ': at least 40 px shorter than on a plain page', plain.h - c.h >= 40, plain.h + ' -> ' + c.h);
+  ok(tag + ': at least ' + RETURNS[w] + ' px shorter than on a plain page', plain.h - c.h >= RETURNS[w], plain.h + ' -> ' + c.h);
   ok(tag + ': every strip button keeps the 40 px target', c.btns.every((b) => b.w >= 40 && b.h >= 40), JSON.stringify(c.btns));
+  // ph-5u0g.10: the full hero's padding and its gaps at this width (Home | Flip Override | Pause Halt);
+  // the full hero may hold Flip in its popover, so the groups' gaps are compared, not the list.
+  ok(tag + ': the row keeps the full hero\'s gaps (Home | Flip Override | Pause Halt)', c.gaps.length === 4
+    && c.gaps[1] <= c.gaps[0] && c.gaps[0] === plain.gaps[0] && c.gaps[2] === plain.gaps.at(-2) && c.gaps[3] === plain.gaps.at(-1), JSON.stringify([c.gaps, plain.gaps]));
+  ok(tag + ': the buttons keep the full hero\'s padding off the bar', c.padTop >= 5, JSON.stringify(c.padTop));
+  for (const [f, x] of [['compact', c], ['plain', plain]]) {
+    ok(tag + ' ' + f + ': Pause and Halt stand at least 8 px apart, and a hit in the gap is neither', x.pairGap >= 8 && !x.gapHit, JSON.stringify([x.pairGap, x.gapHit]));
+  }
+  // ph-5u0g.11: the readout sits mid-row at the strip's content inset.
+  ok(tag + ': the numeral sits mid-row at the strip\'s inset', !!c.num && Math.abs(c.num.mid - c.btns[0].mid) <= 2 && Math.abs(c.numL - c.contentL) <= 1, JSON.stringify([c.num, c.btns[0].mid, c.numL, c.contentL]));
   ok(tag + ': the stop pair is reachable', c.pair.length === 2 && c.pair.every(Boolean), JSON.stringify(c.pair));
+  // A live value keeps the row: the numeral shrinks to fit, never below .85 rem, and no button moves.
+  const live = await withNumeral(page);
+  ok(tag + ': a live five-character numeral keeps the one row, shrunk no further than .85 rem', live.compact && !live.over
+    && live.numF >= live.rem * .85 - .5 && JSON.stringify(live.btns) === JSON.stringify(c.btns), JSON.stringify({ numF: live.numF, rem: live.rem, over: live.over, compact: live.compact }));
   await shot(page, 'compact-' + w + 'x' + h + '.png');
   // A condition takes the numeral's place; the mini and the buttons hold still.
   await page.evaluate(() => document.querySelector('.topstrip .btn-pause').click());
   await page.waitForTimeout(400);
   const p = await heroOf(page);
-  ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(c.btns.map((b) => [b.w, b.h, b.mid]))
-    && p.mini && p.mini.l === c.mini.l && p.strip === c.strip, JSON.stringify([c.mini, p.mini, c.strip, p.strip]));
+  ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(live.btns.map((b) => [b.w, b.h, b.mid]))
+    && p.mini && p.mini.l === live.mini.l && p.strip === live.strip, JSON.stringify([live.mini, p.mini, live.strip, p.strip]));
   await goTab(page, 'pairing');
   await page.waitForTimeout(300);
-  ok(tag + ': other pages keep the full hero', !(await heroOf(page)).compact && (await heroOf(page)).h === plain.h);
+  // The injected numeral stays in the strip, so the full hero's own row choice may differ from plain's.
+  const back = await heroOf(page);
+  ok(tag + ': other pages keep the full hero', !back.compact && back.label, JSON.stringify({ compact: back.compact, label: back.label }));
   ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
@@ -695,8 +745,162 @@ for (const [w, h] of [[1428, 900], [1024, 768]]) {
   await openProbe(page);
   const c = await heroOf(page);
   ok('compact ' + w + 'x' + h + ': buckets 3 and up keep the full hero', !c.compact && c.label, JSON.stringify({ compact: c.compact, label: c.label }));
+  ok('compact ' + w + 'x' + h + ': Pause and Halt stand at least 8 px apart, and a hit in the gap is neither', c.pairGap >= 8 && !c.gapHit, JSON.stringify([c.pairGap, c.gapHit]));
   await shot(page, 'compact-' + w + 'x' + h + '.png');
   await ctx.close();
+}
+
+// ---- the screen's shape (ph-5u0g.8) and the phone menu (ph-5u0g.9) -------------
+// MainActivity.kt publishes the rounded corners and a top cutout on <html>
+// (style.css); the suite assumes the phone's: 48 px corners (operator ruling
+// 2026-10-09), a 28 x 36 punch hole centered on the top edge and the 48 px
+// safe-area band the WebView reports under it. The phone shell has no
+// window buttons (ShellStrip), so they go. A point is hidden
+// past a corner's arc or inside the hole; only drawn content counts (text,
+// glyphs, bordered boxes), clipped by its overflow ancestors in the surface.
+const R = 48, HOLE = { w: 28, h: 36 };
+const shapeOn = (page) => page.evaluate(([R, hole]) => {
+  const r = document.documentElement, l = Math.round((innerWidth - hole.w) / 2);
+  for (const c of ['tl', 'tr', 'bl', 'br', 'r']) r.style.setProperty('--corner-' + c, R + 'px');
+  r.style.setProperty('--chrome-inset-top', R + 'px');
+  for (const [k, v] of [['l', l], ['r', innerWidth - l - hole.w], ['w', hole.w], ['h', hole.h]]) r.style.setProperty('--cutout-' + k, v + 'px');
+  r.toggleAttribute('data-cutout-top', true);
+  document.querySelector('.sb-win')?.remove();
+}, [R, HOLE]);
+const hiddenIn = (page, surfaces) => page.evaluate(([R, hole, surfaces]) => {
+  const W = innerWidth, H = innerHeight, hl = Math.round((W - hole.w) / 2);
+  const arc = (x, y) => { const cx = x < R ? R : x > W - R ? W - R : null, cy = y < R ? R : y > H - R ? H - R : null;
+    return cx != null && cy != null && Math.hypot(x - cx, y - cy) > R + 0.5; };
+  const ink = /rgba\(\d+, \d+, \d+, 0\)|transparent/;
+  const out = [];
+  for (const s of surfaces.flatMap((q) => [...document.querySelectorAll(q)])) {
+    // A text run is clipped by its own element too; a box only by its ancestors.
+    const clipped = (q, e, text) => {
+      let [l, t, r, b] = [q.left, q.top, q.right, q.bottom];
+      for (let a = e; a; a = a === s ? null : a.parentElement) {
+        const cs = getComputedStyle(a);
+        if ((text || a !== e) && (cs.overflowX !== 'visible' || cs.overflowY !== 'visible')) {
+          const ar = a.getBoundingClientRect();
+          [l, t, r, b] = [Math.max(l, ar.left), Math.max(t, ar.top), Math.min(r, ar.right), Math.min(b, ar.bottom)];
+        }
+        if (cs.visibility === 'hidden' || cs.opacity === '0') return null;
+      }
+      return r - l > 0.5 && b - t > 0.5 ? { l, t, r, b, e } : null;
+    };
+    const walk = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walk.nextNode());) {
+      if (!n.textContent.trim()) continue;
+      const g = document.createRange();
+      g.selectNodeContents(n);
+      for (const q of g.getClientRects()) out.push(clipped(q, n.parentElement, true));
+    }
+    for (const e of [s, ...s.querySelectorAll('*')]) {
+      const cs = getComputedStyle(e);
+      const drawn = e.matches('svg, canvas, img') || (e !== s && parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' && !ink.test(cs.borderTopColor));
+      if (drawn) for (const q of e.getClientRects()) out.push(clipped(q, e));
+    }
+  }
+  const seen = out.filter(Boolean);
+  const bad = seen.filter((q) => [[q.l, q.t], [q.r, q.t], [q.l, q.b], [q.r, q.b]].some(([x, y]) => arc(x, y))
+    || (q.r > hl + 0.5 && q.l < hl + hole.w - 0.5 && q.t < hole.h - 0.5))
+    .map((q) => (q.e.getAttribute('class') || q.e.tagName) + ' "' + q.e.textContent.trim().slice(0, 14) + '" ' + [q.l, q.t, q.r, q.b].map(Math.round).join(','));
+  return { n: seen.length, bad: bad.slice(0, 6), sane: arc(2, 2) && arc(W - 2, H - 2) && !arc(W / 2, 2) };
+}, [R, HOLE, surfaces]);
+// The screen drawn over the shot: what the phone hides.
+const shapeShot = async (page, name) => {
+  if (!SHOTS) return;
+  await page.evaluate(([R, hole]) => {
+    const m = document.createElement('div'), c = document.createElement('div'), l = Math.round((innerWidth - hole.w) / 2);
+    m.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;border-radius:' + R + 'px;box-shadow:0 0 0 200px #000';
+    c.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:#000;border-radius:50%;left:' + l + 'px;top:' + (hole.h - hole.w) + 'px;width:' + hole.w + 'px;height:' + hole.w + 'px';
+    m.id = 'shape-m';
+    c.id = 'shape-c';
+    document.body.append(m, c);
+  }, [R, HOLE]);
+  await shot(page, name);
+  await page.evaluate(() => { document.getElementById('shape-m').remove(); document.getElementById('shape-c').remove(); });
+};
+const BARS = ['.linkbar', '.footstrip', 'main.pane .page-foot'];
+for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
+  for (const theme of [null, PAPER]) {
+    const tag = 'shape ' + w + 'x' + h + (theme ? ' paper' : '');
+    console.log('\n--- ' + tag + ' ---');
+    const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
+    await page.waitForSelector('.menu-btn', { timeout: 15000 });
+    await shapeOn(page);
+    await page.waitForTimeout(300);
+    const check = async (what, surfaces, file) => {
+      const r = await hiddenIn(page, surfaces);
+      ok(tag + ': ' + what + ': nothing drawn past a corner arc or in the cutout', r.sane && r.n > 0 && r.bad.length === 0, r.n + ' boxes; ' + r.bad.join(' | '));
+      await shapeShot(page, file + '-' + w + 'x' + h + (theme ? '-paper' : '') + '.png');
+    };
+    // The top bar takes the cutout's band, its items either side of the hole, where the phase and
+    // tier chips fit right of it; at 360 px they do not, and it pads under the inset instead.
+    const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar'), r = b.getBoundingClientRect(), p = b.querySelector('.chips.pinned').getBoundingClientRect();
+      return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top) }; });
+    ok(tag + (w > 400 ? ': the top bar rises into the cutout band' : ': the chips miss beside the cutout, so the bar pads under the inset'),
+      w > 400 ? bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1) : !bar.cut && bar.rowTop >= HOLE.h, JSON.stringify(bar));
+    // The hamburger: a whole 40 px target, no ancestor clipping it or its focus ring.
+    const mb = await page.evaluate(() => {
+      const b = document.querySelector('.menu-btn'), r = b.getBoundingClientRect();
+      const pts = [[r.left + 1, r.top + 1], [r.right - 1, r.top + 1], [r.left + 1, r.bottom - 1], [r.right - 1, r.bottom - 1]];
+      let clip = null;
+      for (let a = b.parentElement; a && !a.matches('.topstrip'); a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') clip = a.className;
+      }
+      return { w: Math.round(r.width), h: Math.round(r.height), hit: pts.every(([x, y]) => b.contains(document.elementFromPoint(x, y))), clip };
+    });
+    ok(tag + ': the hamburger is a whole 40 px target, nothing clips it or its ring', mb.w >= 40 && mb.h >= 40 && mb.hit && !mb.clip, JSON.stringify(mb));
+    // The check itself: rows at the edge with a bare gutter are caught.
+    const bare = await page.addStyleTag({ content: '.linkbar, .footstrip.pinned { padding-inline: 4px !important; }' });
+    const neg = await hiddenIn(page, BARS);
+    ok(tag + ': the arc check catches edge rows with a bare gutter', neg.bad.length > 0, neg.bad.join(' | '));
+    await bare.evaluate((e) => e.remove());
+    await page.waitForTimeout(100);
+    await check('home (the status row is the bottom row)', BARS, 'shape-home');
+    await openProbe(page);
+    await page.waitForTimeout(150);
+    await check('a page with a footer', BARS, 'shape-footer');
+    // The phone menu (ph-5u0g.9): narrow, rows at the tap height, the Phosphor section in flow, clear of the corner.
+    await page.click('.menu-btn');
+    await page.waitForSelector('.phone-menu', { timeout: 5000 });
+    await page.waitForTimeout(150);
+    const m = await page.evaluate(() => {
+      const d = document.querySelector('.phone-menu'), b = d.getBoundingClientRect(), sh = d.querySelector('.rail-sec.shell');
+      const rows = [...d.querySelectorAll('.rail-tab')].filter((t) => t.getClientRects().length).map((t) => Math.round(t.getBoundingClientRect().height));
+      return { w: Math.round(b.width), bottom: Math.round(b.bottom), rows, shBg: sh && getComputedStyle(sh).backgroundColor, shMt: sh && getComputedStyle(sh).marginTop,
+        fits: d.scrollHeight > d.clientHeight + 1 || Math.abs(d.clientHeight - d.scrollHeight) <= 1 };
+    });
+    ok(tag + ': menu: one narrow width', m.w <= 240, JSON.stringify(m.w));
+    ok(tag + ': menu: every row at the tap height', m.rows.length > 5 && m.rows.every((r) => r >= 40 && r <= 48), JSON.stringify(m.rows));
+    ok(tag + ': menu: the Phosphor section in flow, no slab', /rgba\(0, 0, 0, 0\)|transparent/.test(m.shBg) && m.shMt === '0px', JSON.stringify([m.shBg, m.shMt]));
+    ok(tag + ': menu: as tall as its rows, ending clear of the bottom corner', m.fits && m.bottom <= h - R, JSON.stringify(m));
+    await check('menu, top', ['.linkbar', '.phone-menu'], 'shape-menu');
+    await page.$eval('.phone-menu', (d) => { d.scrollTop = d.scrollHeight; });
+    await page.waitForTimeout(100);
+    await check('menu, scrolled to its end', ['.phone-menu'], 'shape-menu-end');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    await ask(page, true);
+    await page.waitForTimeout(200);
+    await check('the quick rail', ['.hero-inner.popup'], 'shape-quick');
+    await page.keyboard.press('Escape');
+    // The player in its bare fullscreen: the stop pair and the caret.
+    await goTab(page, ID);
+    await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
+    await page.keyboard.press('F11');
+    await page.waitForTimeout(400);
+    await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
+    // The caret sits above the strip (z 31 over 30): over the pair it would take a Pause tap.
+    const over = await page.evaluate(() => {
+      const c = document.querySelector('.full-caret').getBoundingClientRect(), p = document.querySelector('.topstrip .pair').getBoundingClientRect();
+      return { overlap: !(c.right <= p.left || c.left >= p.right || c.bottom <= p.top || c.top >= p.bottom), c: [c.left, c.right].map(Math.round), p: [p.left, p.right].map(Math.round) };
+    });
+    ok(tag + ': bare: the caret never overlaps the stop pair', !over.overlap, JSON.stringify(over));
+    ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+  }
 }
 
 await browser.close();

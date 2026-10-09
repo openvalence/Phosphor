@@ -164,6 +164,15 @@
      Do not read env(safe-area-inset-top) anywhere else: two bars padding for
      the same notch is the double-gap bug. */
   --chrome-inset-top: env(safe-area-inset-top, 0px);
+  /* Screen shape, set on <html> by the Android activity (MainActivity.kt),
+     CSS px, unset (read as 0) elsewhere: --corner-tl/-tr/-bl/-br the rounded
+     corners' radii, --corner-r the largest of them; a top cutout as
+     --cutout-l (its left edge), --cutout-r
+     (its right edge's distance from the right), --cutout-w, --cutout-h (its
+     bottom edge) with html[data-cutout-top], where the top bar lays out
+     around it instead of padding under the inset while its chips fit right
+     of it (LinkBar). Edge rows clear the
+     corners (LinkBar, FootStrip, PageFoot, PhoneMenu, the bare pair). */
 
   /* .og-panel's corner brackets: TL --line-4, TR and BL --line-2, BR
      --line-3. Derived by model/theme.js from the lines; never set by hand. */

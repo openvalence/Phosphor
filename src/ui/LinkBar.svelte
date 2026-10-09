@@ -13,6 +13,9 @@
    * - Phase and tier are the last chips to shed at any width.
    * - Shell shading (--shell-*) applies only when `shell` is set; the served
    *   page has no shell chrome.
+   * - The ends clear the screen's rounded corners, and beside a top cutout
+   *   the row takes the band and lays out left and right of it (style.css,
+   *   the inset vars); nothing in the row may overlap the cutout.
    * - Reads machine.* and the catalog's own role-tagged fields, never a
    *   device fact the machine did not send.
    * - Every chip value is mono; only a chip that reports measured liveness
@@ -102,6 +105,31 @@
   const renderTone = $derived(
     render.fps != null && (render.heldPct > 10 || render.fps < 30 || Math.abs(render.skewMs || 0) > 2) ? 'warn' : 'dim'
   );
+
+  // Beside a top cutout the row rises into its band only while the phase and
+  // tier chips fit right of it, clear of the top right corner's arc; short of
+  // that the bar pads under the inset as without one, until the next resize
+  // or cutout change (style.css).
+  let barEl = $state(null), pinnedEl = $state(null), besideCut = $state(true);
+  $effect(() => {
+    if (!barEl || !pinnedEl) return;
+    const root = document.documentElement;
+    const check = () => {
+      if (!besideCut || !root.hasAttribute('data-cutout-top')) return;
+      const p = pinnedEl.getBoundingClientRect(), R = parseFloat(getComputedStyle(root).getPropertyValue('--corner-tr')) || 0;
+      const dx = p.right - (innerWidth - R), dy = R - p.top;
+      if (p.right > innerWidth || (dx > 0 && dy > 0 && Math.hypot(dx, dy) > R)) besideCut = false;
+    };
+    const retry = () => { besideCut = true; requestAnimationFrame(check); };
+    const ro = new ResizeObserver(check);
+    ro.observe(barEl);
+    ro.observe(pinnedEl);
+    const mo = new MutationObserver(retry);
+    mo.observe(document.documentElement, { attributeFilter: ['data-cutout-top'] });
+    addEventListener('resize', retry);
+    requestAnimationFrame(check);
+    return () => { ro.disconnect(); mo.disconnect(); removeEventListener('resize', retry); };
+  });
 
   /** The full name as a tooltip only while the bar ellipsizes it. */
   function fullTitle(el) {
@@ -260,7 +288,7 @@
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
      other clickables opt out on their own (Tauri drag.js). -->
-<header class="linkbar" class:shell={!!Shell} data-tauri-drag-region="deep">
+<header class="linkbar" class:shell={!!Shell} class:cut={besideCut} data-tauri-drag-region="deep" bind:this={barEl}>
   <div class="header-left">
     <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
     {#if phoneMenu.shown}
@@ -276,7 +304,7 @@
   <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
        shed: they are the two safety-relevant reads. The rest shed from the
        tail, before the hub name ellipsizes. -->
-  <div class="chips pinned">
+  <div class="chips pinned" bind:this={pinnedEl}>
     <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
       <span class="chip-dot"></span><span class="mono">{phaseInfo.label}</span>
     </span>
@@ -313,25 +341,39 @@
   /* The rule under the bar is an inset shadow, not a border, so the window
      buttons get the bar's full height. */
   .linkbar {
+    /* --it: the row's distance from the screen's top edge. The ends clear the
+       screen's rounded corners: R - it bounds the arc for a row that far down. */
+    --it: var(--chrome-inset-top, 0px);
+    --row: 32px;
+    --pl: max(var(--gap), var(--corner-tl, 0px) - var(--it));
+    --pr: max(var(--gap), var(--corner-tr, 0px) - var(--it));
     display: flex;
     align-items: center;
     gap: var(--sp-3);
-    height: calc(32px + var(--chrome-inset-top, 0px));
-    padding: var(--chrome-inset-top, 0px) var(--gap) 0;
+    height: calc(var(--row) + var(--it));
+    padding: var(--it) var(--pr) 0 var(--pl);
     background: var(--bg-raised);
     box-shadow: inset 0 -1px 0 var(--line);
   }
   @media (pointer: coarse) {
-    .linkbar { height: calc(40px + var(--chrome-inset-top, 0px)); }
+    .linkbar { --row: 40px; }
+  }
+  /* A top cutout (style.css): the row rises into the band beside it, the
+     left group ending short of it and the chips starting past it. */
+  :global(:root[data-cutout-top]) .linkbar.cut { --it: 0px; height: max(var(--row), var(--cutout-h, 0px)); }
+  :global(:root[data-cutout-top]) .cut .header-left {
+    flex: none;
+    width: calc(var(--cutout-l, 0px) - var(--pl) - var(--sp-3));
+    margin-right: calc(var(--cutout-w, 0px) + var(--sp-3));
   }
   /* Shell chrome: the operator's window, not the machine's UI. The window
-     buttons sit flush at the right edge. */
+     buttons sit flush at the right edge; a phone shell has none. */
   .linkbar.shell {
-    padding-right: 0;
     background: var(--shell-bg);
     color: var(--shell-fg);
     box-shadow: inset 0 -1px 0 var(--shell-border);
   }
+  .linkbar.shell:has(:global(.sb-win)) { padding-right: 0; }
 
   /* A 40 px target in a 32 or 40 px bar: it overhangs the bar's box, never grows it. */
   .menu-btn {
@@ -346,16 +388,19 @@
     border-radius: var(--r-s);
   }
   .menu-btn[aria-expanded='true'] { color: var(--highlight); }
+  /* At the screen's top edge beside a cutout: the ring stays inside the target. */
+  .menu-btn:focus-visible { outline-offset: -2px; }
   .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
-  /* Shrinks after the optional chips have shed; the name ellipsizes. */
+  /* Shrinks after the optional chips have shed; the name ellipsizes on its
+     own. Never a clipping box: the hamburger overhangs it to keep its full
+     40 px target. */
   .header-left {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
     flex: 0 1 auto;
     min-width: 6ch;
-    overflow: hidden;
   }
 
   .act-grid {

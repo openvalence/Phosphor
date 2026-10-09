@@ -327,7 +327,7 @@ adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-u
   layer), the whole mark on the 52 dp circle keyline of the 108 dp canvas
   (Android asks 48 to 66 dp).
   The activity's source is `src-tauri/android/MainActivity.kt` (immersive
-  mode, DESIGN §10.3); edit it there, never in `gen/android`, which the copy
+  mode and the screen's shape, DESIGN §10.3); edit it there, never in `gen/android`, which the copy
   overwrites.
   `npm run icons` regenerates the mipmap PNGs (unused at minSdk 26, kept
   for the template) and reapplies the copy.

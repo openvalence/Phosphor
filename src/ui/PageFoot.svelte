@@ -16,7 +16,8 @@
    *   height whatever the scroll, under the pinned status row (FootStrip);
    *   it publishes --page-foot-reserve and `.app` reserves it (style.css).
    * - Owns env(safe-area-inset-bottom) as padding under the row; never the
-   *   top inset (webui.md T22).
+   *   top inset (webui.md T22). `page`: the ends clear the screen's rounded
+   *   corners (style.css, the inset vars).
    * - Every label is one width in both states, so a flip moves nothing.
    */
   let { page = false, children } = $props();
@@ -56,13 +57,14 @@
   }
   /* No page controls, no footer. */
   .page-foot:not(:has(.foot-page > *)) { display: none; }
+  /* R less the row's height above the screen edge bounds the corner's arc. */
   .page-foot.page {
     position: fixed;
     left: 0;
     right: 0;
     margin: 0;
-    padding-left: var(--gap);
-    padding-right: var(--gap);
+    padding-left: max(var(--gap), var(--corner-bl, 0px) - env(safe-area-inset-bottom, 0px));
+    padding-right: max(var(--gap), var(--corner-br, 0px) - env(safe-area-inset-bottom, 0px));
   }
   .foot-page {
     flex: 1 1 auto;

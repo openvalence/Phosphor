@@ -1131,6 +1131,7 @@
   }
   .full-caret:hover { color: var(--ink-hi); }
   .full-caret.bare { top: 0; }
+  :global(:root[data-cutout-top]) .full-caret.bare { left: auto; right: calc(var(--cutout-r) + var(--cutout-w) + var(--sp-3)); transform: none; }
   .full-caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
   .full-caret.bare svg { transform: rotate(180deg); }
 </style>
