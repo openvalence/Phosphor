@@ -429,7 +429,14 @@ async function openProbe(page) {
 }
 const PAPER = THEMES.find((t) => t.id === 'paper');
 // The compact hero's floor of what it returns to the page, with the full hero's padding (DESIGN §10.3).
-const RETURNS = { 420: 40, 860: 20 };
+const RETURNS = { 420: 40, 448: 40, 860: 20 };
+// A live position, as the hub would stream it: the fixture sends none.
+const withNumeral = async (page) => {
+  await page.evaluate(() => { const v = document.querySelector('.topstrip .hn-primary .hn-val'); if (v) v.textContent = '000.0'; });
+  await page.waitForTimeout(400);
+  return { ...(await heroOf(page)), ...(await page.evaluate(() => ({ rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+    numF: parseFloat(getComputedStyle(document.querySelector('.topstrip .hn-primary .hn-val')).fontSize) }))) };
+};
 for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]]]) {
   console.log('\n--- status slot ' + name + ' ---');
   const { ctx, page, errors } = await boot({ width: vp[0], height: vp[1] }, { probe: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
@@ -665,7 +672,7 @@ const heroOf = (page) => page.evaluate(() => {
     num: nb ? { mid: Math.round(nb.top + nb.height / 2), r: Math.round(nb.right) } : null, mini: mb ? { l: Math.round(mb.left), mid: Math.round(mb.top + mb.height / 2) } : null,
     over: strip.scrollWidth > strip.clientWidth + 1 };
 });
-for (const [w, h] of [[420, 860], [860, 420]]) {
+for (const [w, h] of [[420, 860], [860, 420], [448, 900], [360, 780]]) {
   const tag = 'compact ' + w + 'x' + h;
   console.log('\n--- ' + tag + ' ---');
   const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
@@ -677,6 +684,16 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   await openProbe(page);
   await page.waitForTimeout(300);
   const c = await heroOf(page);
+  if (w < 400) {
+    // No room for the row with a numeral at its floor: the full hero from the start, so nothing flips at connect.
+    const live = await withNumeral(page);
+    ok(tag + ': the full hero stands from the start and holds as a value streams', !c.compact && !live.compact && !live.over, JSON.stringify([c.compact, live.compact, live.over]));
+    ok(tag + ': the stop pair is reachable', live.pair.length === 2 && live.pair.every(Boolean), JSON.stringify(live.pair));
+    await shot(page, 'compact-' + w + 'x' + h + '.png');
+    ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+    await ctx.close();
+    continue;
+  }
   ok(tag + ': a compactHero page draws the hero as one row', c.compact && !c.label && !c.col && !c.over
     && c.btns.every((b) => Math.abs(b.mid - c.btns[0].mid) <= 1) && !!c.mini && Math.abs(c.mini.mid - c.btns[0].mid) <= 2, JSON.stringify(c));
   ok(tag + ': all five strip buttons, the mini and the numeral stay', c.btns.length >= 5 && !!c.num, JSON.stringify(c.btns.map((b) => b.l)));
@@ -693,16 +710,22 @@ for (const [w, h] of [[420, 860], [860, 420]]) {
   // ph-5u0g.11: the readout sits mid-row at the strip's content inset.
   ok(tag + ': the numeral sits mid-row at the strip\'s inset', !!c.num && Math.abs(c.num.mid - c.btns[0].mid) <= 2 && Math.abs(c.numL - c.contentL) <= 1, JSON.stringify([c.num, c.btns[0].mid, c.numL, c.contentL]));
   ok(tag + ': the stop pair is reachable', c.pair.length === 2 && c.pair.every(Boolean), JSON.stringify(c.pair));
+  // A live value keeps the row: the numeral shrinks to fit, never below .85 rem, and no button moves.
+  const live = await withNumeral(page);
+  ok(tag + ': a live five-character numeral keeps the one row, shrunk no further than .85 rem', live.compact && !live.over
+    && live.numF >= live.rem * .85 - .5 && JSON.stringify(live.btns) === JSON.stringify(c.btns), JSON.stringify({ numF: live.numF, rem: live.rem, over: live.over, compact: live.compact }));
   await shot(page, 'compact-' + w + 'x' + h + '.png');
   // A condition takes the numeral's place; the mini and the buttons hold still.
   await page.evaluate(() => document.querySelector('.topstrip .btn-pause').click());
   await page.waitForTimeout(400);
   const p = await heroOf(page);
-  ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(c.btns.map((b) => [b.w, b.h, b.mid]))
-    && p.mini && p.mini.l === c.mini.l && p.strip === c.strip, JSON.stringify([c.mini, p.mini, c.strip, p.strip]));
+  ok(tag + ': a status condition moves no strip control', JSON.stringify(p.btns.map((b) => [b.w, b.h, b.mid])) === JSON.stringify(live.btns.map((b) => [b.w, b.h, b.mid]))
+    && p.mini && p.mini.l === live.mini.l && p.strip === live.strip, JSON.stringify([live.mini, p.mini, live.strip, p.strip]));
   await goTab(page, 'pairing');
   await page.waitForTimeout(300);
-  ok(tag + ': other pages keep the full hero', !(await heroOf(page)).compact && (await heroOf(page)).h === plain.h);
+  // The injected numeral stays in the strip, so the full hero's own row choice may differ from plain's.
+  const back = await heroOf(page);
+  ok(tag + ': other pages keep the full hero', !back.compact && back.label, JSON.stringify({ compact: back.compact, label: back.label }));
   ok('no page errors (' + tag + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
