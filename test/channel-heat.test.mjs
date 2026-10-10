@@ -9,6 +9,7 @@
  *     its tip says refused
  *   - hover and keyboard focus show the tip (name, class, rx and tx, last seen); arrows move, Escape hides,
  *     one tab stop; a click hands the channel id to onopen
+ *   - under a coarse pointer: one button of at least 40x40 whose tap opens the Link page
  * Builds its own page from test/heat-harness into a temp dir; dist/ is untouched.
  * Screenshots with --shots [dir] (default test/evidence/channel-heat): each size, dark and Paper.
  *
@@ -147,6 +148,19 @@ try {
     ok(tag + ': no page errors', errors.length === 0, errors);
     await page.close();
   }
+
+  // A coarse pointer: one 40 px target to the Link page, the blocks drawn only.
+  const ctx = await browser.newContext({ viewport: { width: 420, height: 860 }, hasTouch: true, isMobile: true });
+  const page = await ctx.newPage();
+  await page.goto(URL_);
+  await page.waitForFunction(() => window.__ready && document.querySelector('.heat'));
+  const one = await page.$eval('.heat', (h) => ({ tag: h.tagName, h: h.getBoundingClientRect().height, w: h.getBoundingClientRect().width,
+    inner: h.querySelectorAll('button').length, blocks: h.querySelectorAll('.blk').length, label: h.getAttribute('aria-label') }));
+  ok('coarse: one button of at least 40x40, its blocks drawn only', one.tag === 'BUTTON' && one.h >= 39.5 && one.w >= 39.5
+    && one.inner === 0 && one.blocks === 6 && one.label === 'Channel activity', one);
+  await page.tap('.heat');
+  ok('coarse: a tap opens the Link page', JSON.stringify(await page.evaluate(() => window.__opened)) === '[null]');
+  await ctx.close();
 } finally {
   await browser.close();
   srv.close();

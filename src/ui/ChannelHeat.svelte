@@ -13,11 +13,15 @@
    * - A refused channel (its newest word a NACK) or a link block whose health condition is open wears the
    *   warn tint and the slash, and its tip says why; never color alone.
    * - One tab stop: a toolbar whose arrows move among the blocks (roving tabindex); Escape hides the tip.
+   *   Under a coarse pointer the whole map is one 40 px button to the Link page, its blocks drawn only.
    */
+  import { untrack } from 'svelte';
   import { machine } from '../model/machine.svelte.js';
   import { health } from '../model/health/health.svelte.js';
   import { view } from '../model/viewport.svelte.js';
-  import { bytes, since } from '../model/format.js';
+  import { bytes, since, labelFor, formatWithUnit } from '../model/format.js';
+  import { reportedValue } from '../model/settings.js';
+  import { ROLE } from '../model/roles.js';
   import { watch, read, level, LINK, TICK_MS } from '../model/activity.js';
   import { CHANNEL_CLASS, CHANNEL_CLASS_NAME } from '../../../Valence/clients/js/index.js';
 
@@ -62,7 +66,7 @@
       const r = read(e.id, now), n = refused.get(e.id);
       const warn = !!n && n.at > r.last;
       out.set(e.id, {
-        key: e.id, name: e.name || hex(e.id), cls: e.clsName, open: e.id, warn,
+        key: e.id, name: e.name || hex(e.id), cls: e.clsName, open: e.id, warn, hz: r.rx.hz + r.tx.hz,
         lv: level(e.id, now, (machine.grants[e.id] && machine.grants[e.id].rate) || e.maxRateHz || 0),
         lines: [e.clsName + ' · ' + hex(e.id), 'rx ' + hz(r.rx), 'tx ' + hz(r.tx), r.last ? 'seen ' + since(r.last) + ' ago' : 'never seen'],
         why: warn ? ['refused: ' + (n.name || n.code)] : [],
@@ -93,28 +97,46 @@
   const shown = $derived.by(() => {
     if (!compact) return [...groups.map((g) => ({ key: g.key, blocks: g.ids.map((id) => leaves.get(id)) })),
       { key: 'link', blocks: LINKS.map((L) => leaves.get(L.key)) }];
-    // A compact block reads its busiest member; its tip names the members at fault.
+    // A compact block reads its highest member; its tip names the most traffic and the members at fault.
     const agg = (key, name, cls, members, lines) => {
-      const top = members.reduce((a, m) => (m.lv > a.lv ? m : a), members[0]);
+      const top = members.reduce((a, m) => ((m.hz || 0) > (a.hz || 0) ? m : a), members[0]);
       const bad = members.filter((m) => m.warn);
-      return { key, name, cls, open: null, lv: top.lv, warn: bad.length > 0, top,
+      return { key, name, cls, open: null, lv: Math.max(...members.map((m) => m.lv)), warn: bad.length > 0,
         lines: lines(top), why: bad.slice(0, 3).map((m) => m.name + ': ' + (m.why[0] || m.lines[0])) };
     };
     return [
-      { key: 'classes', blocks: groups.map((g) => agg(g.key, g.name, g.name, g.ids.map((id) => leaves.get(id)),
-        (top) => [g.ids.length + (g.ids.length === 1 ? ' channel' : ' channels'), top.lv > 0 ? 'busiest: ' + top.name : 'quiet'])) },
+      ...(groups.length ? [{ key: 'classes', blocks: groups.map((g) => agg(g.key, g.name, g.name, g.ids.map((id) => leaves.get(id)),
+        (top) => [g.ids.length + (g.ids.length === 1 ? ' channel' : ' channels'), top.hz > 0 ? 'busiest: ' + top.name : 'quiet'])) }] : []),
       { key: 'link', blocks: [agg('link', 'Link', 'link', LINKS.map((L) => leaves.get(L.key)),
         () => LINKS.map((L) => L.name + ': ' + leaves.get(L.key).lines[0]))] },
     ];
   });
   const flat = $derived(shown.flatMap((g) => g.blocks));
+  const coarse = $derived(view.pointer === 'coarse');
+  const warnings = $derived(flat.filter((b) => b.warn).length);
+  const pct = (lv) => Math.round(lv * 20) * 5;
 
   // ---- the tip: hover or keyboard focus -------------------------------------------------------------
   let hoverKey = $state(null), focusKey = $state(null), focused = $state(false), dismissed = $state(false), tipX = $state(0);
   let box = $state(null);
   const rover = $derived(flat.some((b) => b.key === focusKey) ? focusKey : flat[0] && flat[0].key);
   const tipKey = $derived(dismissed ? null : hoverKey ?? (focused ? rover : null));
-  const tip = $derived(tipKey == null ? null : flat.find((b) => b.key === tipKey) || null);
+  const tip = $derived.by(() => {
+    const b = tipKey == null ? null : flat.find((x) => x.key === tipKey);
+    return b && typeof b.key === 'number' ? { ...b, lines: [...b.lines, ...readings(b.key)] } : b || null;
+  });
+  // The magnitudes the bar's old activity rows drew, now in their channel's tip (DESIGN §10.3).
+  const READS = [ROLE.telemetryVelocity, ROLE.telemetryCurrent, ROLE.telemetryPowerBus];
+  /** A channel's role-bound readings, on the tip's clock: the sample is read untracked, never per arrival. */
+  function readings(id) {
+    const byRole = machine.catalog.model && machine.catalog.model.byRole;
+    if (!byRole) return [];
+    const sample = untrack(() => machine.samples[id]);
+    return READS.flatMap((r) => (byRole.get(r) || []).filter((f) => f.channelId === id)).map((f) => {
+      const v = reportedValue(f, sample);
+      return labelFor(f) + ' ' + (Number.isFinite(v) ? formatWithUnit(f, v) : '--');
+    });
+  }
   // Ages in an open tip keep moving while the tick is quiet.
   $effect(() => {
     if (!tip) return;
@@ -137,22 +159,30 @@
   }
 </script>
 
-{#if flat.length}
+{#if flat.length && coarse}
+  <!-- A finger cannot pick a 5 px block: one 40 px target that opens the Link page. -->
+  <button type="button" class="heat one" class:compact style="--tick: {TICK_MS}ms" onclick={() => onopen && onopen(null)}
+          aria-label={'Channel activity' + (warnings ? ', ' + warnings + (warnings === 1 ? ' warning' : ' warnings') : '')}>
+    {#each shown as g (g.key)}
+      <span class="grp">{#each g.blocks as b (b.key)}<span class="blk" class:warn={b.warn} style="--lv: {pct(b.lv)}%"></span>{/each}</span>
+    {/each}
+  </button>
+{:else if flat.length}
   <div class="heat" class:compact role="toolbar" tabindex="-1" aria-label="Channel activity" bind:this={box} style="--tick: {TICK_MS}ms"
        onkeydown={onkey} onpointerleave={() => (hoverKey = null)}
        onfocusout={(e) => { if (!box.contains(e.relatedTarget)) focused = false; }}>
     {#each shown as g (g.key)}
-      <div class="grp">
+      <span class="grp">
         {#each g.blocks as b (b.key)}
           <button type="button" class="blk" class:warn={b.warn} class:on={tipKey === b.key}
-                  style="--lv: {Math.round(b.lv * 20) * 5}%" tabindex={b.key === rover ? 0 : -1}
+                  style="--lv: {pct(b.lv)}%" tabindex={b.key === rover ? 0 : -1}
                   aria-label={b.name + ', ' + b.cls + (b.warn ? ', warning' : '')}
                   aria-describedby={tipKey === b.key ? uid : undefined}
                   onpointerenter={(e) => show(b, e.currentTarget, false)}
                   onfocus={(e) => show(b, e.currentTarget, true)}
                   onclick={() => onopen && onopen(b.open)}></button>
         {/each}
-      </div>
+      </span>
     {/each}
     {#if tip}
       <div class="tip" id={uid} role="tooltip" style="left: {tipX}px">
@@ -182,7 +212,11 @@
     gap: 1px;
   }
   .grp + .grp { border-left: 1px solid var(--line-3); padding-left: var(--sp-1); }
-  .compact .grp { grid-template-rows: 9px; grid-auto-columns: 9px; gap: var(--sp-1); }
+  /* Compact: the class blocks in two rows, the link block centered beside them. */
+  .compact .grp { grid-template-rows: repeat(2, 9px); grid-auto-columns: 9px; gap: var(--sp-1); }
+  .compact .grp:last-child { grid-template-rows: 9px; }
+  /* The bar's coarse row is 40 px (LinkBar): the one target fills it. */
+  .heat.one { min-width: 40px; min-height: 40px; padding: 0; }
 
   .blk {
     display: block;

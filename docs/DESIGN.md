@@ -816,15 +816,19 @@ question in §10.8).
   idle, nothing runs. A refused channel (its newest word a NACK) and a link
   block whose health condition is open wear the warn tint and a slash, and
   the tip says why. Hover or keyboard focus shows the tip: name, class and
-  id, rx and tx in frames and bytes a second, last seen. One tab stop (a
-  toolbar), the arrows move, Escape hides the tip, a click opens the Link
-  page. The size reads the catalog and the bucket only: four 5 px rows, or
-  in buckets 1 and 2 (and past 32 columns) a block per class and one for
-  the link, each tip naming the busiest member and the refused ones. Seams:
-  `src/model/activity.js` (counted at the socket, `machine.svelte.js`),
-  `src/ui/ChannelHeat.svelte`. Planned: it replaces the position-rate decor
-  in `LinkBar` once the top-bar condense (`ph-6ydd`) lands, and the Link page
-  opens on the clicked channel once it takes a selection (`ph-bszw`).
+  id, rx and tx in frames and bytes a second, last seen, and the channel's
+  role-bound speed, current and bus power readings, read on the tip's own
+  clock. One tab stop (a toolbar), the arrows move, Escape hides the tip. A
+  click on a channel opens the Link page with that channel selected and its
+  row brought into view (§10.15); Health opens the Health view; the other
+  blocks and a compact block open the Link page. The size reads the catalog
+  and the bucket only: four 5 px rows, or in buckets 1 and 2 (and past 32
+  columns) a block per class in two rows and one for the link, each tip naming the
+  busiest member and the refused ones. Under a coarse pointer, whatever the
+  width, the map is one 40 px button that opens the Link page, its blocks
+  drawn only: no finger picks a 5 px block. Seams: `src/model/activity.js`
+  (counted at the socket, `machine.svelte.js`), `src/ui/ChannelHeat.svelte`
+  in `LinkBar`, the click in `TopStrip` (`openHeat`, `ph-8yga.1`).
 
 ### 10.4 Full width
 
@@ -1397,7 +1401,11 @@ issue the user submits under their own account; Phosphor sends nothing.
 - Interaction: the pointer snaps to the nearest channel within 8 px (22 px
   under a coarse pointer); a one-line readout gives id, name, class, offered
   rate and subscribed state, or the range and `free` off a channel. A click
-  or Enter selects the channel's list row and scrolls it into view. The map
+  or Enter selects the channel's list row and scrolls it into view. The
+  selection is shared with the top bar's channel heatmap
+  (`src/ui/linkview.svelte.js`): a heatmap click selects the same way from
+  any page, its row centered when the click opens the page, and the page
+  opened from the nav starts with none. The map
   is one tab stop, a listbox: the arrows step through the channels in id
   order, Home and End jump. The map box, the readout and the legend keep
   their size across hover and view, so nothing moves.
@@ -1504,4 +1512,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
 | 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
-| 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash (`ph-8yga`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able) |
+| 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash; a channel block opens the Link page on that channel through a selection shared with the map, Health opens the Health view (`ph-8yga`, `ph-8yga.1`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able; the selection shared with the Link page and Health opening the Health view are the coordinator's) |

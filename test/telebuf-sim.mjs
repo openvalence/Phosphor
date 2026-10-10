@@ -347,8 +347,8 @@ console.log('\ntelebuf.js — Hermite continuity and clamp assertions\n');
 // So a shell that jitters more is either receiving a different arrival
 // cadence or reading a different clock. Neither is measurable from here:
 // LinkBar's `render` chip reports fps, buffer delay, held percentage and
-// epoch skew off a live shell, and its position-rate heatmap row reports the
-// arrival cadence. Read those, do not guess.
+// epoch skew off a live shell, and the channel heatmap's blocks report each
+// channel's arrival rate (hover). Read those, do not guess.
 // ---------------------------------------------------------------------------
 {
   const heldPct = (frames) => {

@@ -11,7 +11,10 @@
  *             are the fixture's, the device grid holds the device-range cells
  *   select    hovering a channel reads id, name, class, rate and subscribed;
  *             hovering a free id reads its range; a click selects the list row
- *             and scrolls it into view; arrows and Enter do the same
+ *             and scrolls it into view; arrows and Enter do the same; a top bar
+ *             heatmap block opens the page on its channel the same way, the
+ *             page opened from the nav starts with none, and the heatmap's
+ *             Health block opens the Health view
  *   fit       at 1428x900, 1024x768 and 420x860: no horizontal overflow, no
  *             scroller inside the page, nothing moves on hover or a view
  *             switch, every button 44 px under a coarse pointer
@@ -253,6 +256,25 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   await page.click('.refusals > li >> nth=0 >> button:has-text("Log")');
   await page.waitForTimeout(300);
   ok('refusals: Log opens the Log page', await page.$('.logpane') !== null && await page.$('.link-page') === null);
+
+  // ---- the top bar's channel heatmap opens this page on a channel (ph-8yga.1) ----
+  const far = ENTRIES.filter((e) => e.clsName === 'INTENT').at(-1);
+  await page.click('.linkbar .heat .blk[aria-label^="' + far.name + ', INTENT"]');
+  await page.waitForSelector('.link-page tr.sel', { timeout: 5000 });
+  await page.waitForTimeout(300);
+  const hrow = await page.$eval('tr[data-chan="' + far.id + '"]', (tr) => {
+    const r = tr.getBoundingClientRect(), c = tr.closest('.content')?.getBoundingClientRect() || { top: 0, bottom: innerHeight };
+    return { sel: tr.classList.contains('sel'), seen: r.top >= c.top && r.bottom <= c.bottom, n: document.querySelectorAll('tr.sel').length };
+  });
+  ok('heatmap: a block opens this page with its channel selected and in view', hrow.sel && hrow.seen && hrow.n === 1, hrow);
+  ok('heatmap: the map rings it', await page.$$eval('.cmap rect.ring.sel', (r) => r.length) === 1);
+  await goTab(page, 'machine');
+  await goTab(page, 'valence');
+  await page.waitForSelector('.link-page .chan-list', { timeout: 5000 });
+  ok('heatmap: opened from the nav, the page starts with no selection', await page.$$eval('tr.sel', (r) => r.length) === 0);
+  await page.click('.linkbar .heat .blk[aria-label^="Health, link"]');
+  await page.waitForSelector('#lp-feed-health', { timeout: 5000 }).catch(() => {});
+  ok('heatmap: the Health block opens the Health view', await page.$('#lp-feed-health') !== null && await page.$('.link-page') === null);
   ok('no page errors', errors.length === 0, errors.slice(0, 3));
   await ctx.close();
 }
