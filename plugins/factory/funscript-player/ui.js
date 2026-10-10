@@ -1449,7 +1449,10 @@ export function createPlayer(api) {
       if (head) {
         const libTab = comp === 'handheld' && st.view !== 'player';
         head.dataset.pidx = libTab ? '02' : '01';
-        setText(head, !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library);
+        const ht = !libTab ? COPY.player : st.view === 'queue' ? QCOPY.queue : COPY.library;
+        setText(head, ht);
+        // A narrow phone head ellipsizes it (ph-5u0g.15): the whole word stays one hover away.
+        attr(head, 'title', ht);
       }
       stage.empty.hidden = !!st.scene;
       mo.hidden = !noVid;
