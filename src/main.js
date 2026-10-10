@@ -97,6 +97,10 @@ async function boot() {
     await Promise.all([import('@tauri-apps/api/core'), import('./model/material.svelte.js')])
       .then(([{ invoke }, m]) => m.installMaterial(invoke))
       .catch((e) => bootFault('window material', e));
+    // The Liquid Glass Theme's backdrop is the desktop wallpaper (src-tauri/src/wallpaper.rs).
+    await Promise.all([import('@tauri-apps/api/core'), import('./themes/glass/wallpaper.js')])
+      .then(([{ invoke }, m]) => m.installWallpaper(invoke))
+      .catch((e) => bootFault('wallpaper', e));
     // The top bar's client loss: the OS's TCP counters for the hub socket
     // (src-tauri/src/linkstats.rs; null on Android).
     await Promise.all([import('@tauri-apps/api/core'), import('./model/machine.svelte.js')])
