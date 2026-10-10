@@ -935,6 +935,18 @@ export function reportedValue(field, sample) {
   return sample[field.name];
 }
 
+// RFC-109: a power field at its unsigned type's maximum (65535 on a u16) is no reading, never a value.
+const NO_READING_ROLES = new Set([ROLE.telemetryPowerBus, ROLE.telemetryPowerDraw]);
+const UNSIGNED_MAX = { [PACKED.u8]: 255, [PACKED.u16]: 65535, [PACKED.u32]: 4294967295 };
+
+/** reportedValue as a reading: null when absent, not a number, or the field's no-reading value. */
+export function reportedReading(field, sample) {
+  const v = reportedValue(field, sample);
+  if (!Number.isFinite(v)) return null;
+  const top = NO_READING_ROLES.has(field.role) ? UNSIGNED_MAX[field.type] : undefined;
+  return top != null && Math.round(v * (field.scale || 1)) === top ? null : v;
+}
+
 /**
  * RFC-066: the uid of the field a modulator entry rides, from its entry-level
  * mod_target (SPEC §8.1: a layout index on STATE/STREAM, a schema key on

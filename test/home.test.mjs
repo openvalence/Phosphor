@@ -377,8 +377,8 @@ if (!LIVE) {
   })));
   await page.click('nav.rail [role=tab][data-tip="System"]');
   await page.waitForTimeout(150);
-  ok('sections: System shows a Library section over its Pattern presets card, then its diagnostic card under Diagnostics (ph-vrg)',
-     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }, { head: 'Diagnostics', cards: ['Session'] }]),
+  ok('sections: System shows a Library section over its Pattern presets card, then its diagnostic cards under Diagnostics (ph-vrg)',
+     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }, { head: 'Diagnostics', cards: ['Power', 'Session'] }]),
      await sectionRuns());
   await page.click('nav.rail [role=tab][data-tip="Motion"]');
   await page.waitForTimeout(150);

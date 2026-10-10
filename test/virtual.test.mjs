@@ -237,6 +237,15 @@ await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('Stop ends the session', await until(async () => vrow().getByRole('button', { name: 'Connect' }).isVisible()));
 await vrow().getByRole('button', { name: 'Connect' }).click();
 ok('a second boot from the saved state reaches LIVE', await until(async () => (await chip()) === 'live', 15000), await chip());
+// RFC-109: the twin's 0x1010, its modeled supply, on the Health view's Machine card.
+await openTab('log');
+await page.click('[data-feed="health"]');
+const power = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.health dl.pane-facts dt')]
+  .filter((d) => /^(Bus voltage|Power draw)$/.test(d.textContent)).map((d) => [d.textContent, d.nextElementSibling.textContent.trim()])));
+ok("the Machine card reads the twin's supply in V and its draw in W",
+  await until(async () => { const p = await power(); return /^36(\.0*)?\s?V$/.test(p['Bus voltage'] || '') && /^\d+(\.\d+)?\s?W$/.test(p['Power draw'] || ''); }),
+  JSON.stringify(await power()));
+await openTab('shell:hubs');
 await vrow().getByRole('button', { name: 'Stop' }).click();
 ok('no page errors', errors.length === 0, errors.join(' | '));
 
