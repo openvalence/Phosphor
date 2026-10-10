@@ -4,7 +4,7 @@
  * (client.mjs), metered per hub per minute; a ramp over hub counts finds the knee.
  *
  *   node test/fleet/fleet.mjs --ramp 32,64,128,256,512,1024 [--minutes 5] [--long 30] [--per-worker 32]
- *                                [--max-workers cores-2] [--seed 1]
+ *                                [--max-workers physical cores] [--seed 1]
  *   node test/fleet/fleet.mjs --hubs 64 [--minutes 2]
  *   node test/fleet/fleet.mjs --replay SEED [--minutes 3] [--hw-safe] [--realtime] [--out FILE]   one hub alone,
  *                                traced, in lockstep on a virtual clock unless --realtime
@@ -161,9 +161,10 @@ const argv = process.argv.slice(2);
 const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 
 async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
-  // Never more polling workers than cores less two (main, the OS): a preempted poller waits out a 15.6 ms
-  // Windows quantum, which would measure oversubscription instead of hub load.
-  const W = Math.min(Math.ceil(n / perWorker), Number(argOf('--max-workers', Math.max(1, availableParallelism() - 2))));
+  // Never more polling workers than physical cores (half the logical ones, SMT assumed): a poller on a
+  // shared core, or preempted, waits out a 15.6 ms Windows quantum. Measured 2026-10-10 on 16C/32T: 1024 hubs
+  // on 30 workers p99 23 ms, on 16 workers p99 1.4 ms; past that cap a worker hosts more hubs instead.
+  const W = Math.min(Math.ceil(n / perWorker), Number(argOf('--max-workers', Math.max(1, availableParallelism() >> 1))));
   const workers = [];
   const minutesAgg = [];
   const done = [];
