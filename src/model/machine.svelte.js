@@ -146,7 +146,11 @@ export const machine = $state({
   /** Catalog + everything derived from it. Replaced wholesale on adoption. */
   catalog: blankCatalog(),
 
-  /** channelId -> last decoded STATE sample. The ONLY source of device values. */
+  /**
+   * channelId -> last decoded STATE sample. The ONLY source of device values.
+   * Each sample is stored raw (see rawSample) and replaced whole on arrival:
+   * never write into one.
+   */
   samples: {},
   /**
    * The 0x0003 latch by registry bits (session.js decodeSafetySnapshot):
@@ -166,6 +170,15 @@ export const machine = $state({
   /** Link quality counters for the Valence pane. */
   stats: blankStats(),
 });
+
+/**
+ * A Sample is not a plain object, so $state stores it as is and
+ * machine.samples[id] (one source per channel) is its whole signal. Never store
+ * a plain-object sample: its proxy costs a Proxy and a source per field read on
+ * every arrival (ph-54gs).
+ */
+class Sample {}
+const rawSample = (s) => Object.setPrototypeOf(s, Sample.prototype);
 
 let session = null;
 let _ws = null; // the newest socket: the health system reads its bufferedAmount
@@ -577,7 +590,7 @@ export function connect(opts = {}) {
   });
 
   session.on('state', (channelId, sample, tsMs) => {
-    machine.samples[channelId] = sample;
+    machine.samples[channelId] = rawSample(sample);
     machine.sampleTs[channelId] = tsMs || Date.now();
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
