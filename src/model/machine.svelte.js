@@ -111,6 +111,9 @@ function blankStats() {
     clockOffsetUs: null,
     clockRttUs: null,
     reconnects: 0,
+    // NACK code -> {n, at, detail, channels: {id: n}}: the Link page's refusals.
+    // events.nacks is a 60-deep ring; this keeps every count.
+    nacks: {},
   };
 }
 
@@ -675,6 +678,13 @@ export function connect(opts = {}) {
       delete machine.grants[n.channel];
     }
     push(machine.events.nacks, { ...n, at: Date.now() }, NACK_MAX);
+    // Re-read, never keep the assigned object: only the proxy is reactive.
+    machine.stats.nacks[n.code] ??= { n: 0, at: 0, detail: null, channels: {} };
+    const t = machine.stats.nacks[n.code];
+    t.n++;
+    t.at = Date.now();
+    t.detail = n.detail || t.detail;
+    t.channels[n.channel] = (t.channels[n.channel] || 0) + 1;
     // SUBSCRIBE_REJECTED (0x0204) means a client bug — this client sent a
     // SUBSCRIBE the hub could not process (RFC-033: usually more wishes than
     // max_subscriptions_per_frame). Every other NACK the link surfaces via
