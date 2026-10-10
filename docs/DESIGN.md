@@ -1220,7 +1220,7 @@ When something degrades, Phosphor says what and why, in plain words, with
 one thing to do. Nothing degrades silently, and nothing leaves the device on
 its own: no continuous telemetry, ever.
 
-- Three areas: Link, This device, Machine. The 26 conditions, their
+- Three areas: Link, This device, Machine. The 27 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
   condition's line is a measured fact with the number that raised it
@@ -1244,6 +1244,18 @@ its own: no continuous telemetry, ever.
   other verdict is marked likely. The hub's own word on a starvation is read
   from roles alone (`plan.duration`, `plan.elapsed`); the first second after
   a stream starts is the hub ramping in and is never a cutout.
+- Video drops (`ph-9t5l.7`): a playing video's counters
+  (`getVideoPlaybackQuality`) are read once a second while it plays and the
+  page shows, never per frame. Drops count only past what the screen can
+  show: a screen at hz shows at most hz frames a second, so a 120 fps file on
+  a 60 Hz screen skips half by design, and the judge is min(video fps x
+  speed, hz). The screen's refresh is the frame bursts' rate over 30 s (the
+  mean of those within 10% of the fastest); the video's frame rate is its
+  decoded frames over media time, never the presented cadence a slower
+  screen caps. Raised over 1% of the frames the screen could show in 30 s,
+  in 3 separate seconds or more, after 20 s of play, held 5 s; clears under
+  0.5%. A one-frame blip every few seconds stays under it ("Video dropped 42
+  frames in 30 s").
 - Hysteresis: a condition enters after its hold and clears after its clear
   hold; same-condition episodes within 10 s are one; a re-entry within 60 s
   of a clear reopens the incident (count + 1); severity rises inside an
@@ -1275,7 +1287,11 @@ issue the user submits under their own account; Phosphor sends nothing.
   leaves without a row. The builder is an allowlist: numbers, fixed enums
   and version-shaped strings only; times count from the incident; no script
   or video name, position, clock time or date, machine name, address,
-  session or instance id, token or log text.
+  session or instance id, token or log text. A report made while a video
+  played adds the optional media block (size, both rates, speed, the
+  window's frame counts, HDR screen, fullscreen, analyzer open) and the
+  dropped-frame history; without one neither appears, so the bundle stays
+  `/1`.
 - Hold to send (1.5 s, `hold.js`) opens
   `issues/new?template=diag-report.yml` with the title and the `bundle`
   field filled in; over 7,500 encoded characters the full bundle is saved as
@@ -1435,3 +1451,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
 | 2026-10-10 | §10.15 | The Link page: five sections in one scroller; refusals grouped by NACK code, newest first, with the registry family and meaning, count, last time, cause and a Log link; a map of the 16-bit channel id space (registry ranges on the neutral ramp, channels by class in the accents, occupancy per range) with a Device grid view on the RFC-047 0xCDSS grid; registry tables generated from registry.yaml (`ph-bszw`). | operator (2026-10-10: "the link tab is cool, but I don't know what the NACKS are ... I always loved a visual representation of the valence channel space ... the rest of the link page could be way better laid out and organized", and the coordinator's brief; the agent's calls, veto-able: refusals last with a jump from Link health; meanings are the note's first sentence trimmed by rule, not reworded; ranges neutral and classes in two accent families; NACK counts since the hub was chosen; publish grants as list rows) |
+| 2026-10-10 | §10.14, plugins | Video drops: a playing video's dropped frames past what the screen can show, over 1% in 30 s in 3 separate seconds, a This device warn ("Video dropped 42 frames in 30 s"); the report's optional media block and dropped-frame history; the stage overlay hides as `display: none` and the bare strip drops the plan readback, so at rest only the stop pair sits over a fullscreen video (`ph-9t5l.7`). | coordinator (a friend's 4K HDR 120 fps fullscreen playback with the analyzer open, "we have no measurement of whether playback is actually smooth"; judging against min(video fps, screen refresh) is the brief's. The 1% / 30 s / 3 seconds / 5 s hold thresholds, warn, Close other apps as the action, the analyzer flag read from the player's `data-an`, and Tab showing the hidden overlay are the agent's, veto-able) |

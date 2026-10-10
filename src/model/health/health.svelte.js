@@ -18,6 +18,11 @@
  * - The frame rate is a burst of FPS_FRAMES consecutive frames once a second,
  *   never a callback every display frame: an idle page draws nothing, and the
  *   burst still times what this display delivers to this page (ph-3w4u).
+ * - A video is read once a second only while it plays and the page shows
+ *   (core.js videoRead), never per frame. Its drops are judged against what
+ *   this screen can show; the screen's refresh is the bursts' unrounded rate
+ *   over the last 30 s (core.js displayHz), and the video's frame rate its
+ *   decoded frames over media time (core.js videoWindow).
  * - Phase 1 has no hub-side arrival stamps (the Health roles RFC): NETWORK
  *   and HUB are "likely", CLIENT is decisive.
  */
@@ -27,7 +32,8 @@ import { ROLE } from '../roles.js';
 import { labelFor, formatWithUnit } from '../format.js';
 import { reportedValue } from '../settings.js';
 import {
-  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, classify, createTracker, growth, lineOf, tipLines, quantile, max, min,
+  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, LAG_HEALTHY_MS, TICK_MS, VIDEO, classify, createTracker, growth, lineOf, tipLines, quantile, max, min,
+  videoRead, videoStep, videoWindow, videoSignal, displayHz, pastScreen,
 } from './core.js';
 import { reportId, loadSent, saveSent } from './report.js';
 import { CORE_CHANNEL, LOG_LEVEL_NAME, CHANNEL_ROLE } from '../../../../Valence/clients/js/generated/registry_vocab.js';
@@ -76,12 +82,25 @@ const FPS_FRAMES = 6;
 let burst = null, fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
 const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 const heapMb = () => (globalThis.performance?.memory ? performance.memory.usedJSHeapSize / 1048576 : null);
+// The video: the last element that fired 'playing' (media events do not bubble; a capture listener sees them).
+let vid = null, vPrev = null, vLast = null, pageFull = false, HDR = [];
+const vsteps = []; // core.js videoStep
+const hzs = [];    // {t, v}: complete bursts' rates
 
-/** The last burst's frame rate; one still running a second on counts the frames it got in that time. */
-function burstFps(t) {
+/** The last burst's frame rate, unrounded; one still running a second on counts the frames it got in that time. */
+function burstRate(t) {
   if (!burst) return null;
   const a = burst.at, n = a.length;
-  return Math.round(n === FPS_FRAMES ? (n - 1) * 1000 / (a[n - 1] - a[0]) : n * 1000 / (t - burst.t0));
+  return n === FPS_FRAMES ? (n - 1) * 1000 / (a[n - 1] - a[0]) : n * 1000 / (t - burst.t0);
+}
+
+/** The playing video's window and its flags, or null when none played in the last 2 s. */
+function mediaNow(t) {
+  if (!vLast || t - vLast.t > 2000) return null;
+  const hz = displayHz(vals(inWin(hzs, t - VIDEO.winMs, t)));
+  // ponytail: the analyzer flag is the funscript player's own attribute (ui.js data-an); a plugin seam once a second player exists.
+  return { hz, ...videoWindow(vsteps, hz, t), w: vLast.w, h: vLast.h, hdr: HDR.some((q) => q.matches), full: pageFull,
+    an: !!(vLast.v.closest && vLast.v.closest('[data-an]')) };
 }
 function startBurst(t) {
   const b = { t0: t, at: [] };
@@ -103,6 +122,9 @@ function installDeviceProbes() {
       po.observe('cpu', { sampleInterval: 1000 }).catch(() => {});
     } catch (e) { /* not on this engine: the card says not measured */ }
   }
+  document.addEventListener('playing', (e) => { if (e.target && e.target.tagName === 'VIDEO') vid = e.target; }, true);
+  window.addEventListener('phosphor-page-fullscreen-change', (e) => { pageFull = !!(e.detail && e.detail.on); });
+  if (globalThis.matchMedia) HDR = ['(dynamic-range: high)', '(video-dynamic-range: high)'].map((q) => matchMedia(q));
   document.addEventListener('visibilitychange', () => {
     // A burst that spanned the hidden time timed the throttling, not the display.
     if (visible()) { hiddenSince = null; wokeAt = now(); burst = null; } else hiddenSince = now();
@@ -271,6 +293,7 @@ function evidenceAt(t) {
     heapMb: heapMb(),
     fps,
     reconnects: machine.stats.reconnects,
+    media: mediaNow(t),
   };
 }
 
@@ -395,7 +418,7 @@ function evaluateBackground() {
   updateSlot(t);
 }
 
-function evaluate(t, row) {
+function evaluate(t, row, md) {
   const live = machine.link.phase === 'live';
   // send-margin: least lead under a quarter of the horizon for 5 s, clear at a third.
   const H = lastHorizon || 250;
@@ -422,6 +445,8 @@ function evaluate(t, row) {
     tracker.level('busy', band('busy', p95 > 25, p95 != null && p95 < 15, p95 > 100 ? 'act' : 'warn'), t, { m: { p95Ms: p95 } });
     tracker.level('slow-display', band('slow-display', fps != null && fps < 30, fps >= 45, 'info'), t, { m: { fps } });
   } else tracker.level('slow-display', null, t);
+  const vs = videoSignal(md);
+  tracker.level('video-drops', band('video-drops', vs === true, vs === false, 'warn'), t, md && md.frames ? { m: md } : undefined);
   if (pressure === 'critical') criticalSince ??= t; else criticalSince = null;
   if (pressure === 'serious' || pressure === 'critical') seriousSince ??= t; else seriousSince = null;
   const ov = criticalSince != null && t - criticalSince >= 10000 ? 'act' : seriousSince != null && t - seriousSince >= 30000 ? 'warn' : null;
@@ -514,24 +539,32 @@ function tick() {
   if (++tickN % 10) return;
 
   // Once a second.
-  fps = vis ? burstFps(t) : null;
+  const br = vis ? burstRate(t) : null;
+  fps = br == null ? null : Math.round(br);
+  if (vis && burst && burst.at.length === FPS_FRAMES) hzs.push({ t, v: br });
   if (vis && (!burst || burst.at.length === FPS_FRAMES)) startBurst(t);
+  const vr = vis ? videoRead(vid, t) : null;
+  const vs = videoStep(vPrev, vr);
+  vPrev = vr;
+  if (vr) vLast = vr;
+  if (vs) vsteps.push(vs);
+  const md = mediaNow(t);
   if (machine.stats.reconnects > lastReconnects) reconnectsAt.push(t);
   lastReconnects = machine.stats.reconnects;
   const sec = (a) => inWin(a, t - 1000, t);
   const row = {
     t, rtt: max(vals(sec(rtts))), lead: min(sec(sends).map((x) => x.lead)), arr: null,
     gap: max(vals(sec(posGaps))), lag: fineAcc.lag, fps, heap: heapMb(), rssi: null, late: null,
-    owd: max(vals(sec(owds))), backlog: fineAcc.bl,
+    owd: max(vals(sec(owds))), backlog: fineAcc.bl, vdrop: vs ? pastScreen(vs, md && md.hz) : null,
   };
   fineAcc = null;
   ring.push(row);
   if (ring.length > RING_S) ring.shift();
-  for (const a of [lags, owds, sends, posGaps, backlogs, anomalies]) trim(a, 120000, t);
+  for (const a of [lags, owds, sends, posGaps, backlogs, anomalies, vsteps, hzs]) trim(a, 120000, t);
   trim(rtts, 600000, t);
   trim(hubLogs, 600000, t);
   while (reconnectsAt.length && t - reconnectsAt[0] > 600000) reconnectsAt.shift();
-  evaluate(t, row);
+  evaluate(t, row, md);
   perMinute(t);
   updateSlot(t);
   cards(t);

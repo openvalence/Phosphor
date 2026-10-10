@@ -2,12 +2,15 @@
  * health.test.mjs -- the health system's pure half (src/model/health/core.js,
  * ph-9t5l): the cause classifier as a table, the hysteresis tracker on a fake
  * clock, the growth detector on the operator's measured GC sawtooth and on
- * synthetic leaks, and the condition table's copy rules (a measured line with
- * its number, a tooltip that never repeats it).
+ * synthetic leaks, the video drop judge against the screen's refresh on
+ * synthetic playback counters, and the condition table's copy rules (a
+ * measured line with its number, a tooltip that never repeats it).
  * Run: node test/health.test.mjs
  */
 import { readFileSync } from 'node:fs';
-import { CONDITIONS, CUTOUT, GROWTH, classify, createTracker, growth, lineOf, quantile, tipLines } from '../src/model/health/core.js';
+import {
+  CONDITIONS, CUTOUT, GROWTH, classify, createTracker, displayHz, growth, lineOf, quantile, tipLines, videoRead, videoSignal, videoStep, videoWindow,
+} from '../src/model/health/core.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -16,15 +19,15 @@ const ok = (name, cond, extra) => {
 };
 
 console.log('\n--- the condition table ---');
-ok('26 conditions: 13 link, 7 device, 6 machine', Object.keys(CONDITIONS).length === 26
-  && ['link', 'device', 'machine'].map((a) => Object.values(CONDITIONS).filter((c) => c.area === a).length).join() === '13,7,6');
+ok('27 conditions: 13 link, 8 device, 6 machine', Object.keys(CONDITIONS).length === 27
+  && ['link', 'device', 'machine'].map((a) => Object.values(CONDITIONS).filter((c) => c.area === a).length).join() === '13,8,6');
 // One incident per condition as the tracker leaves it: its numbers (m) and what the line reads besides.
 const M = {
   'send-margin': { leadMs: 40, onMs: 62.5 }, 'slow-link': { p50Ms: 80, p95Ms: 140 }, backlog: { bytes: 1300 }, throttled: { channels: 2 },
   drops: { n: 3 }, 'weak-signal': { dbm: -80 }, 'hub-wifi-drop': { n: 2 }, busy: { p95Ms: 60 }, 'slow-display': { fps: 22 },
   growth: { baseMb: 28, nowMb: 168, minutes: 35, slopeMbPerMin: 4 }, workers: { base: 1, now: 5 }, overloaded: { state: 'serious', forMs: 45000 },
   'late-plans': { perMin: 8 }, fault: { label: 'Motor power: inrush' }, 'hub-memory': { dropPct: 25 }, hot: { label: 'Driver', text: '78 °C', max: 85 },
-  'log-drops': { n: 12 },
+  'log-drops': { n: 12 }, 'video-drops': { excess: 42, wallS: 30, shown: 3600, fps: 120, hz: 120, frames: 3600, dropped: 42 },
 };
 const EXTRA = { 'delay-spike': { peakMs: 240 }, 'updates-stalled': { peakMs: 800 }, freeze: { peakMs: 300 } };
 /** Yes-or-no conditions: no number to give. */
@@ -47,6 +50,7 @@ const half = lines.filter(([id, , tip]) => !CONDITIONS[id].logOnly && !CONDITION
 ok('a surfaced tooltip says what was measured, since when, the threshold and the action', !half.length, half);
 ok('a line survives an incident with no numbers (a restored one)', Object.keys(CONDITIONS).every((id) => typeof lineOf({ cond: id, count: 1 }) === 'string'));
 ok('the growth line: "Memory up 140 MB in 35 min"', lineOf(incOf('growth')) === 'Memory up 140 MB in 35 min', lineOf(incOf('growth')));
+ok('the video line: "Video dropped 42 frames in 30 s"', lineOf(incOf('video-drops')) === 'Video dropped 42 frames in 30 s', lineOf(incOf('video-drops')));
 ok('a cutout line: the pause and its measured cause', lineOf(incOf('cutout-client')) === 'Motion paused 420 ms · this device stalled 690 ms'
   && lineOf({ ...incOf('cutout-network'), count: 2 }) === 'Motion paused 420 ms · WiFi delay 300 ms (likely) ×2', [lineOf(incOf('cutout-client')), lineOf(incOf('cutout-network'))]);
 const silent = Object.entries(CONDITIONS).filter(([id, c]) => !c.logOnly && !['log-drops', 'restarted'].includes(id) && (!c.detail || !c.action));
@@ -132,6 +136,68 @@ console.log('\n--- the tracker (fake clock) ---');
   tr.event('cutout-client', 90300, { sizeMs: 30, overlap: true, confidence: 'likely', why: 'ran out after a stall' });
   ok('a measured cause is not overwritten by an inferred one', tr.incidents['cutout-client'].confidence === 'decisive'
     && tr.incidents['cutout-client'].why === 'sent late', tr.incidents['cutout-client']);
+}
+
+console.log('\n--- video (ph-9t5l.7) ---');
+/** A fake <video>: the members videoRead touches, its counters advanced by play(); reads counted. */
+const fakeVideo = (rate = 1) => ({ paused: false, ended: false, readyState: 4, currentTime: 0, playbackRate: rate, videoWidth: 3840, videoHeight: 2160,
+  reads: 0, total: 0, dropped: 0, getVideoPlaybackQuality() { this.reads++; return { totalVideoFrames: this.total, droppedVideoFrames: this.dropped }; } });
+/**
+ * Seconds of play at fps x rate on a screen at hz through the live chain on a fake clock: videoRead once a second,
+ * videoStep, the 30 s window, videoSignal, the tracker with health.svelte.js's band. drop(s, n): the engine's drops
+ * in second s of n frames. Returns the second it opened (or null) and the window it ended on.
+ */
+function play({ fps, hz, rate = 1, secs = 300, drop }) {
+  const v = fakeVideo(rate), tr = createTracker(), steps = [];
+  let prev = null, opened = null, w = null;
+  for (let s = 0; s <= secs; s++) {
+    const t = s * 1000;
+    if (s) { v.total += fps * rate; v.currentTime += rate; v.dropped += drop(s, fps * rate); }
+    const r = videoRead(v, t), st = videoStep(prev, r);
+    prev = r;
+    if (st) steps.push(st);
+    w = videoWindow(steps, hz, t);
+    const sig = videoSignal(w), inc = tr.incidents['video-drops'];
+    tr.level('video-drops', sig === true ? 'warn' : sig === false ? null : inc && inc.closedAt == null ? 'warn' : null, t);
+    if (opened == null && tr.incidents['video-drops']) opened = s;
+  }
+  return { opened, w };
+}
+/** Drops of share p, carried so each second drops whole frames. */
+const share = (p) => { let acc = 0; return (s, n) => { acc += p * n; const k = Math.floor(acc); acc -= k; return k; }; };
+const HZ60 = displayHz([59.94, 60.02, 49.98, 59.97, 60.05, 39.9]), HZ120 = displayHz([119.9, 120.1, 99.9, 120.02]);
+ok('the screen: the mean of the bursts within 10% of the fastest (a burst that missed a frame is out)', Math.abs(HZ60 - 60) < 0.05
+  && Math.abs(HZ120 - 120) < 0.1 && displayHz([]) === null, [HZ60, HZ120]);
+for (const [fps, every] of [[60, 2], [30, 4], [24, 5]]) {
+  const p = play({ fps, hz: HZ60, drop: (s) => (s % every ? 0 : 1) });
+  ok('one-frame blips, one every ' + every + ' s at ' + fps + ' fps (' + p.w.pct.toFixed(2) + '%), never fire in 5 min', p.opened === null, p.w);
+}
+const s3 = play({ fps: 60, hz: HZ60, drop: share(0.03) });
+ok('a sustained 3% at 60 fps fires once the window holds 20 s and the 5 s hold passes', s3.opened >= 25 && s3.opened <= 27
+  && Math.abs(s3.w.pct - 3) < 0.1, s3);
+const hfr = (hz, drop) => play({ fps: 120, hz, drop });
+const h60 = hfr(HZ60, (s) => 60 + (s % 2 ? -1 : 1));
+ok('120 fps on a 60 Hz screen, 50% "dropped": the screen skips them by design, never fires', h60.opened === null && h60.w.excess <= 2
+  && Math.round(h60.w.fps) === 120 && h60.w.dropped >= 1790, h60.w);
+ok('...on a 60 Hz screen read 0.5% fast, still never', hfr(60.3, (s) => 60 + (s % 2 ? -1 : 1)).opened === null);
+ok('...but 3 a second past the skips fires (5%)', hfr(HZ60, () => 63).opened != null);
+const h120 = hfr(HZ120, () => 60);
+ok('the same file on a 120 Hz screen at 50% fires', h120.opened != null && Math.round(h120.w.pct) === 50, h120.w);
+ok('a screen faster than the video judges every frame (60 fps on 120 Hz, 3%)', play({ fps: 60, hz: HZ120, drop: share(0.03) }).opened != null);
+ok('2x speed doubles the frames to show: 30 fps at 2x on 60 Hz, 50% dropped, fires', play({ fps: 30, rate: 2, hz: HZ60, drop: () => 30 }).opened != null);
+{
+  const v = fakeVideo();
+  const none = [{ paused: true }, { ended: true }, { readyState: 1 }, { isConnected: false }].map((x) => videoRead({ ...v, ...x, reads: 0 }, 0));
+  ok('paused, ended, no frame yet or detached: nothing is read', none.every((r) => r === null));
+  const p = Object.assign(fakeVideo(), { paused: true });
+  for (let s = 0; s < 10; s++) videoRead(p, s * 1000);
+  ok('...the counters are never touched while paused (no sampling)', p.reads === 0, p.reads);
+  const a = videoRead(Object.assign(fakeVideo(), { total: 600, dropped: 2, currentTime: 10 }), 0);
+  const at = (o, t) => ({ ...a, ...o, t: t ?? 1000 });
+  ok('a step one second on is kept', !!videoStep(a, at({ total: 660, media: 11 })));
+  ok('a seek, a stall, a new source and a gap are not', [at({ total: 660, media: 40 }), at({ total: 600, media: 10 }),
+    at({ total: 30, dropped: 0, media: 1 }), at({ total: 840, media: 13 }, 3000)].every((b) => videoStep(a, b) === null)
+    && videoStep(a, { ...at({ total: 660, currentTime: 11 }), v: {} }) === null);
 }
 
 console.log('\n--- growth ---');

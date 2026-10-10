@@ -4,7 +4,8 @@
  * outside the allowlist leaves even when seeded into the ring, the URL budget
  * and its attachment fallback, the issue lookups, the two GitHub files, and
  * against the operator's report KMCBXOPP: every least, typical and worst value
- * over its stated window, a growth incident's own numbers, event kinds.
+ * over its stated window, a growth incident's own numbers, event kinds; the
+ * optional media block (ph-9t5l.7).
  * Run: node test/report.test.mjs
  */
 import { readFileSync, existsSync } from 'node:fs';
@@ -43,8 +44,8 @@ console.log('\n--- the field table ---');
 const paths = new Set(FIELDS.map((f) => f.path));
 const extra = leafPaths(b).filter((p) => !paths.has(p));
 ok('every field the builder emits has a row in FIELDS', !extra.length, extra);
-const missing = [...paths].filter((p) => get(b, p) === undefined);
-ok('every row in FIELDS is in the bundle', !missing.length, missing);
+const missing = FIELDS.filter((f) => !f.opt && get(b, f.path) === undefined).map((f) => f.path);
+ok('every row in FIELDS is in the bundle, the optional ones once they have a value (below)', !missing.length, missing);
 ok('every row has a plain name, what and why', FIELDS.every((f) => f.name && f.what && f.why));
 ok('a field the table lacks never leaves: an unknown source key is not read', !('surprise' in buildBundle({ ...src, surprise: 1 })));
 function get(o, p) { return p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o); }
@@ -108,6 +109,32 @@ console.log('\n--- the operator\'s report KMCBXOPP: windows, growth, kinds ---')
   });
   const off = kinds.filter(([cond, k]) => k !== (cond.startsWith('cutout-') ? 'cutout' : cond));
   ok('every condition\'s event kind is the condition (the cutouts are "cutout"), never "other"', !off.length && kindOf('cutout-hub') === 'cutout', off);
+}
+
+console.log('\n--- the media block (ph-9t5l.7) ---');
+{
+  const OPT = FIELDS.filter((f) => f.opt).map((f) => f.path), same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  ok('no video: no media block and no dropped-frame history, the /1 shape kept', !('media' in b) && !('video_dropped' in b.window.series)
+    && OPT.length === 12 && OPT.every((p) => p.startsWith('media.') || p === 'window.series.video_dropped'), Object.keys(b));
+  // A video-drops incident as the tracker leaves it: its window and flags in m (health.svelte.js mediaNow).
+  const m = { wallS: 30, fps: 119.88, hz: 59.94, rate: 1, frames: 3596, dropped: 1850, shown: 1798, excess: 52, pct: 2.9, secs: 24,
+    w: 3840, h: 2160, hdr: true, full: true, an: true };
+  const vrows = rows.map((r, k) => ({ ...r, vdrop: k % 3 ? 2 : 1 }));
+  const vb = buildBundle(reportSource({ inc: { ...inc, cond: 'video-drops', cause: null, m, evidence: { ...inc.evidence, media: null } },
+    snap: { rows: vrows, fine }, ctx, protocol: 1 }));
+  const want = { width: 3840, height: 2160, video_fps: 119.9, display_hz: 59.9, rate: 1, window_ms: 30000, frames_total: 3596,
+    frames_dropped: 1850, hdr: true, fullscreen: true, analyzer: true };
+  ok('a video-drops incident carries the block: size, both rates, speed, the window, its counts and the three flags', same(vb.media, want), vb.media);
+  ok('...its condition is this device, measured', vb.incident.condition === 'video-drops' && vb.incident.cause === 'client' && vb.incident.confidence === 'decisive');
+  ok('...and the dropped-frame history sums each 2 s step (1 + 2 a second, so 3 or 4)', vb.window.series.video_dropped.length === 46
+    && vb.window.series.video_dropped.slice(1, -1).every((v) => v === 3 || v === 4), vb.window.series.video_dropped);
+  const cb = buildBundle(reportSource({ inc: { ...inc, evidence: { ...inc.evidence, media: { ...m, an: false } } }, snap: { rows, fine }, ctx, protocol: 1 }));
+  ok('any other incident while a video played carries it from its evidence', cb.media && cb.media.frames_dropped === 1850 && cb.media.analyzer === false, cb.media);
+  ok('every media row has a plain name, what, why', FIELDS.filter((f) => f.opt).every((f) => f.name && f.what && f.why));
+  ok('the summary link keeps the block, not the history', (() => { const s = buildBundle(reportSource({ inc: { ...inc, cond: 'video-drops', m },
+    snap: { rows: vrows, fine }, ctx }), { summary: true }); return s.media && s.media.width === 3840 && !s.window; })());
+  const part = buildBundle({ ...src, 'media.width': 1920, 'media.hdr': 'yes' });
+  ok('a block field without a value is left out, never a string where a type is due', same(part.media, { width: 1920 }), part.media);
 }
 
 console.log('\n--- the URL ---');
