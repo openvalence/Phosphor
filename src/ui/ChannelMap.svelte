@@ -83,14 +83,14 @@
 
   const shownId = $derived(hover?.id ?? active ?? selected);
   const shownEntry = $derived(shownId == null ? null : entries.find((e) => e.id === shownId) || null);
-  const readout = $derived.by(() => {
-    if (shownId == null) return null;
-    const e = shownEntry;
-    if (!e) return [hex(shownId), rangeOf(shownId)?.name || '--', 'free'];
+  // One description for the readout and a cell's accessible name.
+  function describe(e) {
     const g = grants[e.id];
     return [hex(e.id), e.name, e.clsName, e.maxRateHz ? e.maxRateHz + ' Hz' : 'on-change',
       g ? 'subscribed' + (g.rate != null ? ', ' + g.rate + ' Hz' : '') : 'not subscribed'];
-  });
+  }
+  const readout = $derived(shownId == null ? null
+    : shownEntry ? describe(shownEntry) : [hex(shownId), rangeOf(shownId)?.name || '--', 'free']);
   const markOf = (id) => [id & 255, id >> 8];
   const PROMPT = 'Hover or arrow to a channel';
 </script>
@@ -115,7 +115,7 @@
            aria-activedescendant={active != null && active < rows * 256 ? 'cm-' + active : undefined}
            onkeydown={onkey} onpointermove={(ev) => (hover = pick(ev))} onpointerleave={() => (hover = null)}
            onclick={(ev) => { const h = pick(ev); if (h?.e) choose(h.id); }}>
-        <svg viewBox="0 0 256 {rows}" preserveAspectRatio="none">
+        <svg viewBox="0 0 256 {rows}" preserveAspectRatio="none" role="none">
           {#each bands as b (b.name)}
             {#each b.rects as [x, y, w, h], i (i)}<rect class="band" data-range={b.name} {x} {y} width={w} height={h} />{/each}
           {/each}
@@ -126,7 +126,7 @@
           {#each shown as e (e.id)}
             {@const [x, y] = markOf(e.id)}
             <rect class="ch" id={'cm-' + e.id} role="option" aria-selected={selected === e.id}
-                  aria-label={hex(e.id) + ' ' + e.name + ', ' + e.clsName} data-cls={e.clsName} data-id={e.id} {x} {y} width="1" height="1" />
+                  aria-label={describe(e).join(', ')} data-cls={e.clsName} data-id={e.id} {x} {y} width="1" height="1" />
           {/each}
           {#if shownId != null && shownId < rows * 256 && shownId !== selected}
             {@const [x, y] = markOf(shownId)}<rect class="ring" x={x - 1} y={y - 1} width="3" height="3" />

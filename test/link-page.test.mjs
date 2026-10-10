@@ -117,13 +117,15 @@ const colorOf = (page, token) => page.evaluate((t) => {
   const d = document.createElement('div'); d.style.color = 'var(' + t + ')'; document.body.append(d);
   const c = getComputedStyle(d).color; d.remove(); return c;
 }, token);
-const norm = (page, css) => page.evaluate((c) => { const d = document.createElement('div'); d.style.color = c; document.body.append(d); const v = getComputedStyle(d).color; d.remove(); return v; }, css);
+// Top in document space, whichever element scrolls.
+const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingClientRect().top + (el.closest('.content')?.scrollTop || 0) + scrollY));
 
 // ---- refusals, the map, selection: 1428x900 dark -----------------------------------
 {
   console.log('\n--- refusals, map, selection (1428x900) ---');
   const { ctx, page, errors } = await boot({ width: 1428, height: 900 });
-  ok('refusals: empty state before any NACK', /None this session/.test(await page.textContent('section[aria-labelledby="vp-refusals"]')));
+  ok('refusals: empty state before any NACK', /None from this hub/.test(await page.textContent('section[aria-labelledby="vp-refusals"]')));
+  const chTop0 = await docTop(page, '#vp-channels');
   const INTENT_CH = ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id;
   const HOME_CH = ENTRIES.filter((e) => e.clsName === 'INTENT' && e.id >= 0x100)[1].id;
   for (let i = 0; i < 70; i++) nack(0, NACK.CHUNK_UNAVAILABLE);
@@ -154,6 +156,7 @@ const norm = (page, css) => page.evaluate((c) => { const d = document.createElem
     && groups[1].border === await colorOf(page, '--warn') && groups[1].ink === await colorOf(page, '--warn-ink') && groups[1].border !== await colorOf(page, '--bad'), groups[1]);
   const facts = await page.$$eval('.pane-facts dt', (dts) => Object.fromEntries(dts.map((dt) => [dt.textContent.trim().toLowerCase(), dt.nextElementSibling.textContent.trim()])));
   ok('link health: refusals counted', facts.refusals === '3 codes, 74 total', facts.refusals);
+  ok('link health: the first refusal moves nothing below it', await docTop(page, '#vp-channels') === chTop0, [chTop0, await docTop(page, '#vp-channels')]);
   await page.click('.health .jump');
   await page.waitForTimeout(300);
   ok('link health: the count jumps to Refusals', await page.$eval('#vp-refusals', (h) => {
@@ -253,8 +256,9 @@ const norm = (page, css) => page.evaluate((c) => { const d = document.createElem
 }
 
 // ---- fit, coarse targets, screenshots --------------------------------------------------
-for (const [w, h] of [[1428, 900], [1024, 768], [420, 860]]) {
-  for (const theme of [null, PAPER]) {
+// The three named sizes, dark and Paper, plus two just past the map-beside-list breakpoint.
+for (const [w, h] of [[1428, 900], [1024, 768], [420, 860], [1300, 900], [1360, 900]]) {
+  for (const theme of (w === 1300 || w === 1360 ? [null] : [null, PAPER])) {
     const label = w + 'x' + h + '-' + (theme ? 'paper' : 'dark');
     console.log('\n--- fit ' + label + ' ---');
     const { ctx, page, errors } = await boot({ width: w, height: h }, { theme });
@@ -284,8 +288,10 @@ for (const [w, h] of [[1428, 900], [1024, 768], [420, 860]]) {
 {
   console.log('\n--- coarse pointer 420x860 ---');
   const { ctx, page } = await boot({ width: 420, height: 860 }, { touch: true });
+  const top0 = await docTop(page, '#vp-channels');
   nack(0, NACK.CHUNK_UNAVAILABLE);
   await page.waitForTimeout(300);
+  ok('coarse: the first refusal moves nothing below it', await docTop(page, '#vp-channels') === top0, [top0, await docTop(page, '#vp-channels')]);
   const small = await page.$$eval('.link-page button', (bs) => bs.filter((b) => b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44)
     .map((b) => b.textContent.trim() + ' ' + b.getBoundingClientRect().height));
   ok('coarse: every button is at least 44 px', small.length === 0, small);

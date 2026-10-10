@@ -136,7 +136,7 @@
         <dt>Deadman window</dt><dd class="mono">{link.deadmanMs ? link.deadmanMs + ' ms' : '--'}</dd>
         <dt>Channels shed</dt><dd class="mono">{link.subsDropped || 0}</dd>
         <dt>Refusals</dt>
-        <dd>{#if refusals.length}<button type="button" class="jump" onclick={toRefusals}>{refusals.length} code{refusals.length === 1 ? '' : 's'}, {refusalTotal} total</button>{:else}none{/if}</dd>
+        <dd class="ref">{#if refusals.length}<button type="button" class="jump" onclick={toRefusals}>{refusals.length} code{refusals.length === 1 ? '' : 's'}, {refusalTotal} total</button>{:else}none{/if}</dd>
       </dl>
     </section>
 
@@ -203,30 +203,32 @@
       {#if !machine.catalog.entries.length}
         <p class="pane-empty">No catalog yet</p>
       {:else}
-        <table class="chan-list">
-          <thead>
-            <tr>
-              <th>id</th><th>name</th><th class="opt2">class</th><th class="opt">dir</th><th class="opt">category</th>
-              <th class="opt">offered</th><th>granted</th><th class="opt2">last</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each machine.catalog.entries as e (e.id)}
-              <tr data-chan={e.id} class:sel={selected === e.id}>
-                <td class="mono">{hexId(e.id)}</td>
-                <td class="name">{e.name}</td>
-                <td class="opt2">{e.clsName}</td>
-                <td class="opt">{e.dirName}</td>
-                <td class="opt">{categoryOf(e)}</td>
-                <td class="opt mono">{offeredRate(e)}</td>
-                <td class="mono" class:mismatch={machine.grants[e.id] && e.maxRateHz && machine.grants[e.id].rate !== e.maxRateHz}>
-                  {grantedRate(e.id)}
-                </td>
-                <td class="opt2 mono">{lastSample(e.id, nowTick)}</td>
+        <div class="chan-list-box">
+          <table class="chan-list">
+            <thead>
+              <tr>
+                <th>id</th><th>name</th><th class="opt2">class</th><th class="opt">dir</th><th class="opt">category</th>
+                <th class="opt">offered</th><th>granted</th><th class="opt2">last</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {#each machine.catalog.entries as e (e.id)}
+                <tr data-chan={e.id} class:sel={selected === e.id}>
+                  <td class="mono">{hexId(e.id)}</td>
+                  <td class="name">{e.name}</td>
+                  <td class="opt2">{e.clsName}</td>
+                  <td class="opt">{e.dirName}</td>
+                  <td class="opt">{categoryOf(e)}</td>
+                  <td class="opt mono">{offeredRate(e)}</td>
+                  <td class="mono" class:mismatch={machine.grants[e.id] && e.maxRateHz && machine.grants[e.id].rate !== e.maxRateHz}>
+                    {grantedRate(e.id)}
+                  </td>
+                  <td class="opt2 mono">{lastSample(e.id, nowTick)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       {/if}
     </div>
   </section>
@@ -234,7 +236,7 @@
   <section class="pane-sec og-screen" aria-labelledby="vp-refusals">
     <div class="pane-head"><h2 id="vp-refusals">Refusals</h2></div>
     {#if !refusals.length}
-      <p class="pane-empty">None this session</p>
+      <p class="pane-empty">None from this hub</p>
     {:else}
       <ul class="pane-list refusals">
         {#each refusals as r (r.code)}
@@ -270,7 +272,8 @@
   /* Fixed width: "copied" appearing never moves the Copy button. */
   .copy-row { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-3); margin-top: auto; }
   .flash { min-width: 11ch; text-align: right; font-size: .75rem; color: var(--reality); }
-  .jump { padding: 0; color: var(--reality); text-decoration: underline; text-underline-offset: 2px; }
+  /* The row holds one height whether it reads "none" or carries the button. */
+  .jump { padding: 0; line-height: inherit; color: var(--reality); text-decoration: underline; text-underline-offset: 2px; }
 
   .pubs > li { gap: var(--sp-1) var(--sp-4); font-size: .74rem; }
 
@@ -284,9 +287,12 @@
   th, td { text-align: left; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
   td.name { white-space: normal; overflow-wrap: anywhere; }
   th { color: var(--tx-mut); text-transform: uppercase; font-size: .68rem; letter-spacing: .06em; font-weight: 500; }
-  td.mismatch { color: var(--warn-ink, var(--warn)); font-weight: 600; }
+  /* A grant under the offer is QoS, not a hazard: emphasis, never amber. */
+  td.mismatch { color: var(--ink-hi); font-weight: 600; }
   tr.sel td { background: rgba(var(--highlight-rgb), .12); }
   tr.sel td:first-child { box-shadow: inset 2px 0 var(--highlight); }
+  /* The list measures itself: beside the map it is narrower than the page. */
+  .chan-list-box { container-type: inline-size; min-width: 0; }
   @container (max-width: 40rem) {
     .opt { display: none; }
     th, td { padding: var(--sp-2); }
@@ -300,7 +306,7 @@
   .r-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); }
   .r-head b { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: .82rem; font-weight: 500; color: var(--ink-hi); }
   .r-fam { margin-right: var(--sp-2); font-size: .72rem; color: var(--tx-mut); }
-    .r-n, .r-at { font-size: .74rem; }
+  .r-n, .r-at { font-size: .74rem; }
   .r-at { color: var(--tx-mut); min-width: 9ch; text-align: right; }
   .r-mean { font-size: .8rem; color: var(--ink); }
   .r-cause { font-size: .74rem; color: var(--tx-mut); overflow-wrap: anywhere; }
@@ -311,5 +317,6 @@
 
   @media (pointer: coarse) {
     .link-page .og-btn, .jump { min-height: var(--tap); }
+    .health dd.ref { display: flex; align-items: center; min-height: var(--tap); }
   }
 </style>

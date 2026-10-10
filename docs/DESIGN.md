@@ -1293,8 +1293,9 @@ issue the user submits under their own account; Phosphor sends nothing.
   and map, Refusals. The first three share a row from 60 rem of page; from
   36 rem Link health and Traffic stack beside Session and identity; below
   that, one column. The page is the one scroller: no table or list scrolls
-  on its own. Under 40 rem the channel list drops dir, category and offered;
-  under 24 rem, class and last. Copy identity sits in its card, not the
+  on its own. The channel list measures its own width: under 40 rem it drops
+  dir, category and offered, under 24 rem class and last; a grant under the
+  offer reads in emphasis, never amber. Copy identity sits in its card, not the
   lifted head, so it holds 44 px under a coarse pointer.
 - Refusals: one row per NACK code, newest first: the registry name, its
   family (the `nack_codes` range comment), its meaning (the code's registry
