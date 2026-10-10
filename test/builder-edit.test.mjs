@@ -185,6 +185,14 @@ console.log('resize');
   ok('the fixture loads valid', Object.values((await redState(page, [SLIDER, F1])).faults).every((f) => f === null), await redState(page, [SLIDER, F1]));
 
   ok('edit mode offers every edge and corner beside the corner handle', await c.locator('.edge').count() === 7);
+  const stolen = await page.$$eval('.home .dash-item .tools > *', (els) => els.flatMap((t) => {
+    const r = t.getBoundingClientRect();
+    return [[1, 1], [r.width - 1, 1], [1, r.height - 1], [r.width - 1, r.height - 1], [r.width / 2, r.height / 2]]
+      .map(([x, y]) => document.elementFromPoint(r.left + x, r.top + y))
+      .filter((e) => e && !t.contains(e) && e.closest('.edge'))
+      .map((e) => (t.getAttribute('aria-label') || t.className) + ' under ' + e.className);
+  }));
+  ok('no resize edge covers a grip or a head tool, corners included (ph-gbuc)', stolen.length === 0, stolen);
   const g1 = await drag(page, c.locator('.edge-w'), -2 * cell, 0, () => ghost(page));
   ok('west edge: the ghost shows the live size', g1 && g1.text === '14 × ' + h0 && !g1.refused, g1);
   let s = (await stored())[SLIDER];
