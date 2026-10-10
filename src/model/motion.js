@@ -158,6 +158,15 @@ export function motionStream(entries, kind = STREAM_KIND.samples) {
   return null;
 }
 
+/**
+ * The c2h samples STREAM that carries channel role `role` (registry channel_roles, e.g. SPEC 9.7's
+ * osc.drive), or null. Found by role, class, direction and stream_kind, never by name or id.
+ */
+export function roleStream(entries, role) {
+  return (entries || []).find((e) => e.cls === CHANNEL_CLASS.STREAM && e.dirName === 'c2h'
+    && e.streamKind === STREAM_KIND.samples && e.role === role) || null;
+}
+
 /** Field f's largest magnitude in physical units; Infinity for a type without one. */
 const topOf = (f) => (f.type in TYPE_MAX ? TYPE_MAX[f.type] / (f.scale || 1) : Infinity);
 
@@ -409,6 +418,52 @@ export function createMotionDoor(deps) {
     tail = { end: l.atMs + l.durationMs, now: Math.abs(l.atMs - p) < 2, sid, at: p };
     return { ok: true, sent: head[head.length - 1].i + 1, rateHz };
   }
+
+  /**
+   * The role door: `list` is [{atMs, values}] for the c2h samples STREAM carrying channel role `role`,
+   * atMs the now() instant each sample describes (SPEC 5.4), ascending; values in layout order, a missing
+   * tail at `unspecified`. Sends one bundle (bundle_max_span_ms, bundle_max_samples, one
+   * min_transport_payload); `sent` counts the leading items packed, so the caller advances by it.
+   * `latencyMs` is the grant's schedule_latency_us: the least notice a point needs (RFC-110 item 4).
+   *
+   * Constraints:
+   * - Never motion input: the role's entry carries no input.target and owns no rail; nothing falls back.
+   * - The hub has no such entry: reason NO_STREAM, the caller's to word.
+   * - Stamp = the described instant, never less the latency (RFC-110 item 4, least notice): the caller
+   *   sends each point at least latencyMs ahead, and that send-ahead is the whole lead.
+   * - Nothing past the lead cap (max_future_schedule_ms) is packed: it waits for a later call.
+   * @returns {{ok: boolean, sent: number, rateHz?: number, latencyMs?: number, reason?: string}}
+   */
+  submit.samples = function (role, list) {
+    const held = deps.halted ? deps.halted() : '';
+    if (held) return { ok: false, sent: 0, reason: held };
+    const entry = roleStream(deps.entries(), role);
+    if (!entry) return { ok: false, sent: 0, reason: 'NO_STREAM' };
+    const s = deps.session();
+    if (!s) return { ok: false, sent: 0, reason: 'not connected' };
+    const grant = grantFor(s, { entry });
+    if (grant === 'refused') return { ok: false, sent: 0, reason: 'publish refused' };
+    if (grant === 'pending') return { ok: false, sent: 0, reason: 'waiting for the stream grant' };
+    const rateHz = grant.rate, latencyMs = (grant.scheduleLatencyUs || 0) / 1000, layout = entry.layout || [];
+    if (!list || !list.length) return { ok: true, sent: 0, rateHz, latencyMs };
+    const hubNow = filteredHubNowUs(s), p = now();
+    const stamps = list.map((x) => (x && Number.isFinite(x.atMs) ? Math.round(hubNow + (x.atMs - p) * 1000) : NaN));
+    if (list.some((x, i) => !x || !Array.isArray(x.values) || x.values.length > layout.length || !x.values.every(Number.isFinite)
+      || !Number.isFinite(stamps[i]) || (i && stamps[i] <= stamps[i - 1]))) return { ok: false, sent: 0, reason: 'bad sample', rateHz, latencyMs };
+    const maxN = Math.min(LIMITS.bundle_max_samples,
+      Math.floor((LIMITS.min_transport_payload - BUNDLE_HEAD) / (2 + recordBytes(layout))));
+    let n = 0;
+    while (n < list.length && n < maxN && stamps[n] - stamps[0] <= LIMITS.bundle_max_span_ms * 1000
+      && stamps[n] - hubNow <= LIMITS.max_future_schedule_ms * 1000) n++;
+    if (!n) return { ok: true, sent: 0, rateHz, latencyMs };
+    const recs = list.slice(0, n).map((x) => Object.fromEntries(layout.map((f, i) => [f.name, i < x.values.length ? x.values[i] : unspecified(f)])));
+    try {
+      s.publishSamples(entry.id, recs, { anchor: stamps[0] >>> 0, offsetsUs: stamps.slice(0, n).map((t) => t - stamps[0]) });
+    } catch (e) {
+      return { ok: false, sent: 0, reason: e.code || e.message, rateHz, latencyMs };
+    }
+    return { ok: true, sent: n, rateHz, latencyMs };
+  };
 
   return submit;
 }

@@ -501,6 +501,11 @@ export function submitSegments(list) {
   return motionDoor.segments(list);
 }
 
+/** The role door (motion.js submit.samples): role, [{atMs, values}] -> {ok, sent, rateHz, reason}. */
+export function submitSamples(role, list) {
+  return motionDoor.samples(role, list);
+}
+
 // ---------------------------------------------------------------------------
 // Public read API — shared by all three entry points
 // ---------------------------------------------------------------------------

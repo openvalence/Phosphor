@@ -12,14 +12,20 @@
 //   extremum; a leg shorter than minGapMs absorbs the next reversal instead of committing, so the
 //   stroke survives at a slower period. The last action replaces a kept point closer than minGapMs
 //   unless that is the first. Notes gain 'N actions thinned'.
+// - Multi-axis (funlib schema 1.1 axes[], 2.0 channels{}): the main axis is `actions`, else channels.stroke
+//   (a stroker is a single-axis device). An embedded OSC_AXES axis (SPEC 9.7) is parsed as a script of its
+//   own into Script.axes; one that fails is noted and dropped, never fatal. Every other axis is listed in
+//   `ignored`, unparsed.
 
 export const MAX_SPAN_MS = 60000, MAX_SCRIPT_MS = 24 * 3600000, MAX_ACTIONS = 1000000;
 
 const NAMED = { '': 'L0', stroke: 'L0', surge: 'L1', sway: 'L2', twist: 'R0', roll: 'R1', pitch: 'R2',
   vib: 'V0', valve: 'A0', suck: 'A1', lube: 'A2' };
-const TCODE = ['L0', 'L1', 'L2', 'R0', 'R1', 'R2', 'V0', 'A0', 'A1', 'A2'];
+const TCODE = ['L0', 'L1', 'L2', 'R0', 'R1', 'R2', 'V0', 'V8', 'V9', 'A0', 'A1', 'A2'];
 // Keys are lowercase; look up with the lowercased suffix.
 export const AXES = Object.freeze({ ...NAMED, ...Object.fromEntries(TCODE.map((id) => [id.toLowerCase(), id])) });
+/** The Valence script reservation (SPEC 9.7): V8 oscillation amplitude, V9 oscillation frequency. */
+export const OSC_AXES = Object.freeze(['V8', 'V9']);
 
 const MEDIA_EXT = /\.(mp4|m4v|webm|mkv|mov|avi|ogv|mp3|m4a|wav|ogg|oga|flac|aac|opus)$/i;
 const count = (n, word, verb) => n + ' ' + word + (n === 1 ? '' : 's') + ' ' + verb;
@@ -45,13 +51,16 @@ export function marksOf(script) {
 export function parseFunscript(input, name = '') {
   let doc = input;
   if (typeof input === 'string') { try { doc = JSON.parse(input); } catch { fail('not a funscript'); } }
-  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.actions)) fail('not a funscript');
-  if (doc.actions.length > MAX_ACTIONS) fail('more than a million actions');
+  const channels = doc && typeof doc === 'object' && doc.channels && typeof doc.channels === 'object' ? doc.channels : {};
+  const main = doc && typeof doc === 'object' && Array.isArray(doc.actions) ? doc.actions
+    : channels.stroke && Array.isArray(channels.stroke.actions) ? channels.stroke.actions : null;
+  if (!main) fail('not a funscript');
+  if (main.length > MAX_ACTIONS) fail('more than a million actions');
 
   const notes = [];
   const raw = [];
   let invalid = 0;
-  for (const a of doc.actions) {
+  for (const a of main) {
     if (a && Number.isFinite(a.at) && a.at >= 0 && Number.isFinite(a.pos)) raw.push(a);
     else invalid++;
   }
@@ -93,14 +102,24 @@ export function parseFunscript(input, name = '') {
   if (unsorted) notes.push('actions sorted');
   if (typeof doc.range === 'number' && doc.range !== 100) notes.push('range ignored');
 
-  const ignored = Array.isArray(doc.axes)
-    ? doc.axes.map((x) => x && (x.id ?? x.name)).filter((s) => typeof s === 'string' && s) : [];
+  const axes = {}, ignored = [];
+  const embedded = [...(Array.isArray(doc.axes) ? doc.axes.map((x) => [x && (x.id ?? x.name), x]) : []), ...Object.entries(channels)];
+  for (const [label, x] of embedded) {
+    if (typeof label !== 'string' || !label) continue;
+    const id = AXES[label.toLowerCase()] || label;
+    if (id === 'L0') continue;
+    if (!OSC_AXES.includes(id)) { ignored.push(label); continue; }
+    try {
+      const s = parseFunscript({ actions: x && x.actions });
+      axes[id] = { at: s.at, pos: s.pos };
+    } catch (e) { notes.push(label + ' axis dropped: ' + e.message); }
+  }
   const metadata = doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata) ? doc.metadata : null;
   const title = metadata && typeof metadata.title === 'string' && metadata.title.trim() ? metadata.title.trim() : null;
 
   const A = Float64Array.from(at);
   return { name, title, at: A, pos: Float32Array.from(pos), durationMs: A[A.length - 1], axis: 'L0',
-    ignored, notes, metadata };
+    axes, ignored, notes, metadata };
 }
 
 export function axisOf(fileName) {

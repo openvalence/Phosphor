@@ -40,8 +40,11 @@
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
+// - The oscillator axes (raw Script.axes V8, V9) are thin lanes under the detail, its window and playhead,
+//   0..1 bottom to top, untransformed: the hub maps them (SPEC 9.7). The detail gives up their height, so the
+//   timeline's box never changes; without them there are no lanes.
 
-import { posAt, indexAfter, fmtTime } from './funscript.js';
+import { posAt, indexAfter, fmtTime, OSC_AXES } from './funscript.js';
 
 export const ZOOMS = [5000, 10000, 20000, 60000];
 export const HEAT_BINS = 200;
@@ -67,6 +70,8 @@ export const COPY = Object.freeze({
   abStart: 'Set loop start',
   abEnd: 'Set loop end',
   abClear: 'Clear loop',
+  V8: 'Oscillation amplitude',
+  V9: 'Oscillation frequency',
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -213,6 +218,14 @@ export const CSS = `
 .fsp-zoom output { min-width: 4ch; font: .76rem var(--mono); color: var(--tx-val); text-align: right; white-space: nowrap; }
 .fsp-zoom .og-btn, .fsp-ab { min-width: 30px; padding-inline: var(--sp-2); }
 @media (pointer: coarse) { .fsp-zoom .og-btn, .fsp-ab { min-width: var(--tap); } }
+.fsp-tl[data-lanes='1'] { --fsp-lanes: 10px; }
+.fsp-tl[data-lanes='2'] { --fsp-lanes: calc(20px + var(--sp-1)); }
+.fsp-tl[data-lanes] > .fsp-dt { height: calc(var(--fsp-detail, 96px) - var(--fsp-lanes) - var(--sp-2)); }
+.fsp-lanes { position: relative; display: grid; grid-auto-rows: 1fr; gap: var(--sp-1); height: var(--fsp-lanes); flex: none; }
+.fsp-tl:not([data-lanes]) > .fsp-lanes { display: none; }
+.fsp-lane { position: relative; background: var(--screen); border: 1px solid var(--line); border-radius: var(--r-s); overflow: hidden; }
+.fsp-lane svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fsp-lane polyline { fill: none; stroke: var(--intent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 `;
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -345,7 +358,16 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   for (const t of ['pointerup', 'pointercancel', 'pointerleave']) dt.addEventListener(t, unTouch);
   const ph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   dt.append(ph);
-  const root = h('div', { class: 'fsp-tl' }, dt, ...(ovHost ? [] : [ov]));
+  const lanes = OSC_AXES.map((id) => {
+    const line = s('polyline');
+    const svg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    svg.append(line);
+    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], title: COPY[id], 'data-axis': id }, svg) };
+  });
+  const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
+  const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
+  let axes = {};
+  const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
   el.append(root);
   if (ovHost) ovHost.insertBefore(ov, ovBefore);
 
@@ -392,6 +414,8 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     scrub.hidden = !script;
     ph.style.left = scrub.style.left;
     ph.hidden = !script;
+    lph.style.left = scrub.style.left;
+    for (const l of lanes) if (axes[l.id]) l.line.setAttribute('points', curvePoints(axes[l.id], from, to, 1000, 100));
     const ax = (t) => String(((t - from) / zoom) * 1000);
     abBand.setAttribute('x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
     abBand.setAttribute('width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
@@ -412,6 +436,10 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     setScript(sc, t, ceil, rawSc) {
       script = sc || null;
       raw = rawSc || null;
+      axes = ((raw || script) && (raw || script).axes) || {};
+      for (const l of lanes) l.el.hidden = !axes[l.id];
+      const n = lanes.filter((l) => axes[l.id]).length;
+      if (n) root.dataset.lanes = String(n); else delete root.dataset.lanes;
       T = t || T0;
       ceiling = ceil || null;
       drawHeat();
