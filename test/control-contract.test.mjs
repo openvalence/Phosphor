@@ -178,7 +178,8 @@ await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const PORT = srv.address().port;
 
 // ---- the fake hub -----------------------------------------------------------
-const hub = { mode: 'echo', held: [], values: { [XS + ':label_text']: 'alpha' }, mute: false, push: null, log: [] };
+// stateLagMs: the STATE push that carries an answered write trails its ECHO by that much (ph-f459).
+const hub = { mode: 'echo', held: [], values: { [XS + ':label_text']: 'alpha' }, mute: false, push: null, log: [], stateLagMs: 0 };
 const SIZE = { [PACKED.u8]: 1, [PACKED.i8]: 1, [PACKED.u16]: 2, [PACKED.i16]: 2, [PACKED.u32]: 4,
   [PACKED.i32]: 4, [PACKED.f32]: 4, [PACKED.bitfield8]: 1, [PACKED.str16]: 16, [PACKED.str32]: 32, [PACKED.str64]: 64 };
 function fieldValue(e, f) {
@@ -260,7 +261,8 @@ function fakeHub(ws) {
           }
           send(FRAME.ECHO, ch, cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(id)],
             [K.applied, cbMap(val.map(([k, v]) => [k, cbAny(v)]))]]));
-          for (const st of sts) pushState(st.id);
+          const push = () => { for (const st of sts) pushState(st.id); };
+          if (hub.stateLagMs) setTimeout(push, hub.stateLagMs); else push();
         };
         if (hub.mode === 'echo') answer();
         else if (hub.mode === 'hold') hub.held.push(answer);
@@ -412,6 +414,15 @@ if (!LIVE) {
     ok(p + ': confirmed on the echo', await waitShadow(p, 'confirmed'));
     ok(p + ': the confirm is said in words', (await ladderOf(p)) === 'confirmed', await ladderOf(p));
     ok(p + ': the control shows the applied value', near(await current(), want), [await current(), want]);
+    // The ECHO carries the applied value; a STATE push that trails it must not show the old one meanwhile (ph-f459).
+    hub.mode = 'echo';
+    hub.stateLagMs = 800;
+    const lagWant = await drive(p);
+    const echoed = await waitShadow(p, 'confirmed', 700) && await shadowOf(p) === 'confirmed';
+    ok(p + ': confirmed ahead of the STATE push, it shows the applied value', echoed && near(await current(), lagWant),
+      [echoed, await current(), lagWant]);
+    hub.stateLagMs = 0;
+    await sleep(900);
 
     hub.mode = 'silent';
     await drive(p);
