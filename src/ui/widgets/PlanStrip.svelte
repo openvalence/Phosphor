@@ -89,9 +89,9 @@
 
   /**
    * A plan position as a share of the stroke window: the field's own [min,max]
-   * if annotated, else the value is the share. Never clamped: a plan below the
-   * window or past it is a share below 0 or above 1 (Nucleus carries it as an
-   * i32), and the lane clips what lies off the row (ph-t2jn).
+   * if annotated, else the value is the share. Never clamped: a hub may report
+   * a share below 0 or past 1 for a plan below the window or past it, and the
+   * lane clips what lies off the row (ph-t2jn).
    */
   function pct(f) {
     if (!f) return null;

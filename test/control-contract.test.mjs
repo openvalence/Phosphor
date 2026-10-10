@@ -720,9 +720,11 @@ if (!LIVE) {
     await lc.evaluate((c) => { c.style.width = '150px'; });
     await sleep(50);
     const head = await lc.evaluate((c) => {
-      const f = c.querySelector('.field').getBoundingClientRect(), h = c.querySelector('.field-head').getBoundingClientRect();
+      const h = c.querySelector('.field-head').getBoundingClientRect();
       const t = c.querySelector('.tag.adv').getBoundingClientRect(), x = c.querySelector('.field-label-text');
-      return { h: h.height, tagIn: t.right <= f.right + 0.5 && t.top >= h.top - 0.5 && t.bottom <= h.bottom + 0.5,
+      // The label box clips its one line: a tag wrapped under it sits inside the head yet is hidden.
+      const l = c.querySelector('.field-label').getBoundingClientRect();
+      return { h: h.height, tagIn: t.left >= l.left - 0.5 && t.right <= l.right + 0.5 && t.top >= l.top - 0.5 && t.bottom <= l.bottom + 0.5,
         cut: x.scrollHeight > x.clientHeight + 1 || x.scrollWidth > x.clientWidth, title: x.title };
     });
     await lc.evaluate((c) => { c.style.width = ''; });
@@ -1297,8 +1299,9 @@ if (!LIVE) {
   hub.mode = 'echo';
 
   // ---- density rungs and targets (ph-z50z, ph-46yw, ph-1ggd, ph-3z96) ----------
-  // Compact below 20rem, normal above; a refusal's words show whole at both (ph-4j5f), and the
-  // ladder slot keeps the width of 'still waiting' at a 10-cell field; under a coarse pointer
+  // Compact below 24rem (430 px at the default scale), normal above; a refusal's words show whole at
+  // both (ph-4j5f), terse with a tagged field at the first normal width too, and the ladder slot
+  // keeps the width of 'still waiting' at a 12-cell field; under a coarse pointer
   // every hit target in both rungs is 40 px, the reset button and bit rows too.
   const setW = (pg, px) => pg.evaluate((w) => document.querySelectorAll('.cell').forEach((c) => { c.style.width = w + 'px'; }), px);
   const slotW = (p) => cell(p).locator('.ladder').evaluate((e) => e.getBoundingClientRect().width);
@@ -1318,7 +1321,7 @@ if (!LIVE) {
   await drive('slider');
   ok('a refusal for the rungs', await waitShadow('slider', 'fault', 1500));
   hub.mode = 'echo';
-  for (const [cells, px] of [[4, 4 * 36 + 16], [10, 10 * 36 + 16]]) {
+  for (const [cells, px] of [[4, 4 * 36 + 16], [12, 12 * 36 + 16]]) {
     await setW(page, px);
     await wordsWhole('at ' + cells + ' cells');
     if (SHOTS) await page.locator('.row').first().screenshot({ path: join(SHOTS, 'rung-' + cells + '-cells.png') });
@@ -1333,6 +1336,28 @@ if (!LIVE) {
     ok(cells + ' cells: ' + (cells < 8 ? 'compact' : 'normal') + ' rung head gap',
       Math.abs(parseFloat(await gapOf('slider')) - (cells < 8 ? 4.48 : 8.96)) < 0.05, await gapOf('slider'));
   }
+  // The first normal-row width, terse (the info button shows), a refusal on the slider and on the
+  // tagged toggle: label, info, reset, tag, chip and words on one row, the words whole.
+  {
+    // The cell's width that gives its field the first width past the 24rem line.
+    const line = await page.evaluate(() => {
+      const c = document.querySelector('.cell[data-pres=slider]');
+      return 24 * parseFloat(getComputedStyle(document.documentElement).fontSize) + c.getBoundingClientRect().width - c.querySelector('.field').getBoundingClientRect().width;
+    });
+    await setW(page, Math.ceil(line) + 1);
+    await page.evaluate(() => document.documentElement.classList.add('terse'));
+    hub.mode = 'nack';
+    await drive('slider');
+    if (LONG) await page.locator('.cell[data-pres="toggle@' + LONG.uid + '"] .og-switch').click();
+    const lf = () => page.evaluate((u) => document.querySelector('.cell[data-pres="toggle@' + u + '"] .field').dataset.shadow, LONG && LONG.uid);
+    ok('terse at ' + (Math.ceil(line) + 1) + ' px: the slider and the tagged toggle refused',
+      await waitShadow('slider', 'fault', 1500) && (!LONG || await lf() === 'fault'), [await shadowOf('slider'), LONG && await lf()]);
+    hub.mode = 'echo';
+    ok('terse at ' + (Math.ceil(line) + 1) + ' px: one head row', await cell('slider').locator('.ladder').evaluate((e) => getComputedStyle(e).gridRowStart) === 'auto');
+    await wordsWhole('terse, tagged, at the first normal-row width');
+    ok('terse: no head children overlap', (await page.evaluate(OVERLAPS)).length === 0, await page.evaluate(OVERLAPS));
+    await page.evaluate(() => document.documentElement.classList.remove('terse'));
+  }
   await setW(page, 280);
   const ctxT = await browser.newContext({ viewport: { width: 1400, height: 900 }, hasTouch: true });
   await ctxT.addInitScript(([etag, bytes]) => {
@@ -1342,7 +1367,7 @@ if (!LIVE) {
   const pt = await ctxT.newPage();
   await pt.goto(page.url());
   await pt.waitForSelector('.cell[data-pres=slider] input[type=range]:not([disabled])', { timeout: 15000 });
-  for (const px of [4 * 36 + 16, 10 * 36 + 16]) {
+  for (const px of [4 * 36 + 16, 12 * 36 + 16]) {
     await setW(pt, px);
     const small = await pt.$$eval('.field :is(button.info, .bitfield .bit, input[type=range], select, .og-switch, .stepper button)', (els) =>
       els.filter((e) => e.getClientRects().length).map((e) => {

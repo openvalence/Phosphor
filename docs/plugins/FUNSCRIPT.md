@@ -1279,7 +1279,8 @@ Decisions (veto-able):
   already shows).
 - **A6** A trace point's plan share treats `plan.current` as a window share
   (the plan roles are window-relative, PlanStrip and ph-t2jn), scaled by
-  the field's own min and max when it declares them.
+  the field's own min and max when it declares them, and never clamped: a
+  plan outside the window reads below 0 or past 1 (`planShareOf`).
 
 Tests: `--unit` (c2) checks the groups on the recording itself (valencesim
 0.1.7-p4hub, etag d8c8e522322810a2: `Tuning / ` groups, `trial_mask` and

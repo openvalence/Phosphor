@@ -145,7 +145,7 @@
   }
   .payload input:focus { outline: none; border-color: var(--highlight); }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
-  /* Field's .ladder slot: basis 0, one clipped 14 px line. */
+  /* The status slot: one clipped 14 px line, as Field's .ladder; basis 0, so its words never widen the row. */
   .state {
     flex: 1 1 0;
     min-width: 0;

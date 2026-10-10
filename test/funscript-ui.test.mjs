@@ -4,7 +4,7 @@
  * a fake video element, a fake host API, the real media clock and the real
  * scheduler. No DOM, no network.
  *   (a) timeline   curvePoints, seekAt, traceLines, heatStops, heatColor, clampRange, zoomStep
- *   (b) helpers    compositionOf, clampOffset, windowShare, ceilingOf, localScene, extraNote
+ *   (b) helpers    compositionOf, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote
  *   (c) control    nothing before Play but the grant warm-up; preroll then video
  *                  start; tiled segments; a gate pauses in the same tick with one
  *                  hold and never auto-resumes; Pause is one hold then silence;
@@ -21,7 +21,7 @@ import { createScheduler, STOP_MS } from '../plugins/factory/funscript-player/sc
 import { curvePoints, seekAt, traceLines, heatStops, heatColor, HEAT_MID_UPS, HEAT_TOP_UPS, clampRange, zoomStep, ZOOMS, pinchZoom }
   from '../plugins/factory/funscript-player/timeline.js';
 import { toStored, fromStored, move } from '../plugins/factory/funscript-player/queue.js';
-import { createControl, compositionOf, pageClass, clampOffset, windowShare, ceilingOf, localScene, extraNote, COPY }
+import { createControl, compositionOf, pageClass, clampOffset, windowShare, planShareOf, ceilingOf, localScene, extraNote, COPY }
   from '../plugins/factory/funscript-player/ui.js';
 
 let fails = 0;
@@ -94,6 +94,9 @@ console.log('(b) helpers');
     && clampOffset(-1000) === -500 && clampOffset('x') === 0);
   ok('windowShare: reported window only (law 9)', windowShare(50, 0, 100) === 0.5 && windowShare(150, 0, 100) === 1
     && windowShare(50, undefined, 100) === null && windowShare(50, 100, 100) === null);
+  ok('planShareOf: a plan outside the window reads outside 0..1, never pinned to the edge (ph-t2jn)',
+    planShareOf({ min: 0, max: 1000 }, -250) === -0.25 && planShareOf({ min: 0, max: 1000 }, 1500) === 1.5
+    && planShareOf({}, 1.25) === 1.25 && planShareOf({}, null) === null && planShareOf(null, 0.5) === null);
   const api = { value: (f) => f.v };
   const c = ceilingOf(api, { lo: { v: 10, unitId: 0 }, hi: { v: 110, unitId: 0 }, vmax: { v: 400, unitId: 1 } });
   ok('ceiling: mm window and mm/s limit', c.spanMm === 100 && c.vmax === 400, c);

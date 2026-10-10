@@ -66,9 +66,10 @@
  *            80 %), its gradient runs from the planned position to the
  *            target, a target past it ends at the edge, and the marker is
  *            reality while the plan streams, amber once it stalls
- *   plan     ph-t2jn: a foreign owner's plan outside the window (i32 shares,
- *            Nucleus val-vik) draws where it is on the travel, never pinned
- *            to the window's edge; a plan past the rail draws nothing
+ *   plan     ph-t2jn: a foreign owner's plan outside the window (a share
+ *            below 0 or past 1) draws where it is on the travel, never
+ *            pinned to the window's edge, normal and flipped; a plan past
+ *            the rail draws nothing
  *   target   ph-9kjh: the target numeral opens an entry in place, prefilled,
  *            one box at rest and typing; Enter writes the rail tap's channel
  *            and the hub's refusal reads as the tap's; past the window it
@@ -828,30 +829,35 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   }
   // ph-t2jn: plan.* is a share of the window, below 0 or past 1 when the plan
   // leaves it; the full-width strip draws it on the travel, clipped by the row.
-  {
-    const run = stateOf(byRole('pattern.running'), { 'pattern.running': 1 });
+  // Flipped, the window 100..400 sits at 80 % to 20 % of the row.
+  // The lit span of the strip's middle row as row fractions; with `want`, false until it matches.
+  const planSpan = (want) => {
+    const c = document.querySelector('.rail-swap .plan-strip:not(.segment) .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
+    if (!c || !c.width) return want ? false : null;
+    const r = c.getBoundingClientRect(), k = r.width / c.width;
+    const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+    const edge = Math.ceil(2 * devicePixelRatio);
+    let a = -1, b = -1;
+    for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
+    const f = (x) => Math.round(((r.left + x * k - row.left) / row.width) * 1000) / 1000;
+    const s = a < 0 ? [] : [f(a), f(b)];
+    if (!want) return s;
+    return (want.length ? s.length === 2 && Math.abs(s[0] - want[0]) < 0.01 && Math.abs(s[1] - want[1]) < 0.01 : !s.length) && s;
+  };
+  for (const flipped of [0, 1]) {
+    const run = stateOf(byRole('pattern.running'), { 'pattern.running': 1 }), flipE = byRole('axis.flipped');
     const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled', reducedMotion: 'reduce',
       states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER, [byRole('pattern.running').id]: run,
+        [flipE.id]: stateOf(flipE, { 'axis.flipped': flipped }),
         [planE.id]: stateOf(planE, { 'plan.start': -0.25, 'plan.end': 0.5, 'plan.current': -0.1 }) } });
-    const span = () => page.evaluate(() => {
-      const c = document.querySelector('.rail-swap .plan-strip:not(.segment) .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
-      if (!c) return null;
-      const r = c.getBoundingClientRect(), k = r.width / c.width;
-      const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
-      const edge = Math.ceil(2 * devicePixelRatio);
-      let a = -1, b = -1;
-      for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
-      const f = (x) => Math.round(((r.left + x * k - row.left) / row.width) * 1000) / 1000;
-      return a < 0 ? [] : [f(a), f(b)];
-    });
-    await page.waitForTimeout(1200);
-    const below = await span();
-    ok('plan: a plan below the window draws on the travel, 25 to 250 of a 500 rail (5 % to 50 %), not from the window edge',
-      !!below && below.length === 2 && Math.abs(below[0] - 0.05) < 0.01 && Math.abs(below[1] - 0.5) < 0.01, JSON.stringify(below));
+    const spanIs = (want) => page.waitForFunction(planSpan, want, { timeout: 4000 }).then(() => true).catch(() => false);
+    const tag = flipped ? 'flipped' : 'normal';
+    const want = flipped ? [0.5, 0.95] : [0.05, 0.5];
+    ok('plan (' + tag + '): a plan below the window draws on the travel, 25 to 250 of a 500 rail (' + want.map((x) => x * 100 + ' %').join(' to ')
+      + ' of the row), not from the window edge', await spanIs(want), JSON.stringify(await page.evaluate(planSpan, null)));
     wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, stateOf(planE, { 'plan.start': 1.5, 'plan.end': 2, 'plan.current': 1.6 }))));
-    await page.waitForTimeout(1200);
-    const past = await span();
-    ok('plan: a plan past the rail draws nothing in the row, never pinned at the window edge', !!past && past.length === 0, JSON.stringify(past));
+    ok('plan (' + tag + '): a plan past the rail draws nothing in the row, never pinned at the window edge', await spanIs([]),
+      JSON.stringify(await page.evaluate(planSpan, null)));
     await ctx.close();
   }
   // RFC-098 (ph-6gj1): a foreign stream holding its slot owns the rail like a

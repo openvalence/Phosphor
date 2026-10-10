@@ -921,8 +921,9 @@
   }
 
   /* Label, status words, value chip. The chip takes its width and the words
-     theirs from what is left; the label yields to them down to its 3em, then
-     the words clip (law 5, ph-4j5f). One line each, so no state wraps the head. */
+     theirs from what is left; the label yields to them down to its 3em. Where
+     that no longer fits, the compact rung below takes over (law 5, ph-4j5f).
+     One line each, so no state wraps the head. */
   .field-head {
     display: grid;
     grid-template-columns: minmax(min-content, 1fr) minmax(auto, max-content) auto;
@@ -940,11 +941,12 @@
     gap: var(--sp-2);
     min-width: min-content;
   }
-  /* One line that keeps 3em of its text whatever the status slot holds: a tag
-     that does not fit wraps onto a second line this one-line box hides, so
-     tags drop whole (ph-4j5f). 1.5em stands in where lh is unknown. */
-  .field-label { overflow: hidden; flex-wrap: wrap; align-content: flex-start; height: 1.5em; height: 1lh; }
-  .field-label-text { min-width: 3em; }
+  /* One line that keeps 3em of its text whatever the status slot holds: the
+     text shortens first, then a tag that does not fit wraps onto a second line
+     this one-line box hides, so tags drop whole (ph-4j5f). The line height is
+     pinned so the box is one line without the lh unit. */
+  .field-label { overflow: hidden; flex-wrap: wrap; align-content: flex-start; line-height: 1.45; height: 1.45em; }
+  .field-label-text { flex: 1 1 0; min-width: 3em; }
 
   /* Slider row tightened to the OG's compact cadence (.fld2 input[type=range]
      margin, verified against og-ref/style.css) instead of the global 12px 0 —
@@ -1332,13 +1334,15 @@
     accent-color: var(--reality);
   }
 
-  /* Density rungs (DESIGN §10.12): compact under 20rem (about 9 cells), normal
-     above. Compact is a fixed two-row head in every state: the label with its
-     tags and info/reset and the value chip, then the status words on a line of
-     their own, whole at every width (law 5, ph-4j5f). Under 13rem, and for a
-     pair's two values, the chip takes a line of its own between them. Heights
-     follow the width alone, never a state or a value. */
-  @container (max-width: 20rem) {
+  /* Density rungs (DESIGN §10.12): compact under 24rem (about 11 cells), normal
+     above, where label, ⓘ, reset, a tag, a chip with its unit and the longest
+     words fit one row at every UI scale. Compact is a fixed two-row head in
+     every state: the label with its tags and info/reset and the value chip,
+     then the status words on a line of their own, whole at every width (law 5,
+     ph-4j5f). Under 13rem the chip takes a line of its own between them and
+     the label may shorten under 3em. Heights follow the width alone, never a
+     state or a value. */
+  @container (max-width: 24rem) {
     .field-head {
       display: grid;
       grid-template-columns: minmax(min-content, 1fr) auto;
@@ -1352,25 +1356,40 @@
     .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 1; justify-self: end; min-width: 0; max-width: 100%; }
     .field-head .chip-num { flex: none; }
     .field-head .field-value .unit:not(:empty) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .field[data-widget='range'] .field-head { grid-template-rows: 18px minmax(20px, auto) 18px; }
-    .field[data-widget='range'] .field-label-group { grid-column: 1 / -1; }
-    .field[data-widget='range'] .field-head > .field-value { grid-column: 1 / -1; grid-row: 2; }
-    .field[data-widget='range'] .field-head .ladder { grid-row: 3; }
     .field > input[type='range'] { margin: var(--sp-2) 0 0; }
     .field > input[type='range']:has(+ .field-desc) { margin-bottom: var(--sp-3); }
     .range-dual { margin: var(--sp-2) 0 0; }
     .bitfield { gap: var(--sp-2) var(--sp-3); }
     .lamps { gap: var(--sp-2) var(--sp-3); }
   }
+  /* A pair's two values need the room of two chips beside the words: under
+     28rem the pair takes a line of its own between the label and the words. */
+  @container (max-width: 28rem) {
+    .field[data-widget='range'] .field-head {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 18px minmax(20px, auto) 18px;
+      column-gap: var(--sp-2);
+      row-gap: var(--sp-1);
+      align-items: center;
+    }
+    .field[data-widget='range'] .field-label-group { grid-column: 1; grid-row: 1; }
+    .field[data-widget='range'] .field-head > .field-value { grid-column: 1; grid-row: 2; justify-self: end; min-width: 0; max-width: 100%; }
+    .field[data-widget='range'] .field-head .ladder { grid-column: 1; grid-row: 3; min-width: 0; contain: inline-size; text-align: left; }
+  }
+  /* Every chip rule here sits behind :has(), so an engine without it keeps the
+     chip on the label's line rather than stacking it over the words. */
   @container (max-width: 13rem) {
+    .field-head { grid-template-columns: minmax(0, 1fr) auto; }
+    .field-label-group { min-width: 0; }
     .field-head:has(> .field-value) { grid-template-rows: 18px minmax(20px, auto) 18px; }
     .field-head:has(> .field-value) .field-label-group { grid-column: 1 / -1; }
-    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 1 / -1; grid-row: 2; }
+    .field-head:has(> .field-value) > :is(.field-value, .field-value.typeable) { grid-column: 1 / -1; grid-row: 2; }
     .field-head:has(> .field-value) .ladder { grid-row: 3; }
   }
   /* Hit-box geometry (40 px box, 11 px reach): px on purpose, not spacing. */
   @media (pointer: coarse) {
-    @container (max-width: 20rem) { .field-head { row-gap: 11px; } }
+    @container (max-width: 24rem) { .field-head { row-gap: 11px; } }
+    @container (max-width: 28rem) { .field[data-widget='range'] .field-head { row-gap: 11px; } }
   }
 
   /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------ */
