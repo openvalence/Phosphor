@@ -438,6 +438,8 @@ for (const theme of [null, PAPER]) {
   console.log('\n--- ' + t + ' ---');
   const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true, theme });
   await goTab(page, 'cat2');
+  // On a phone the Oscillator card (18 settings with the drives) is a drill-in.
+  await page.click('main.pane .dash-cell[data-id$=":Oscillator"] .drill-open');
   await page.waitForSelector(F(FREQ));
   await rclick(page, F(FREQ));
   const items = await page.$$eval(MENU + ' .ui-menu-i', (b) => b.map((x) => x.textContent));

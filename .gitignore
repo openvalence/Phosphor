@@ -27,3 +27,4 @@ test/evidence/fleet/
 .beads.gate.lock
 test/evidence/ph-*/
 test/evidence/quick-access-*.png
+test/evidence/add-to-dash-*.png
