@@ -1245,8 +1245,8 @@ its own: no continuous telemetry, ever.
 - Where it shows: one Log line per incident (source and tag `health`), its
   text updated in place and its tooltip the detail; the row opens to an
   Incident button that shows it on the Health view; the Health view (Log
-  page, Health tab) with the three cards, the Link card's 2-minute strip (round trip, sent ahead, pauses) and the incident
-  list; the top strip's status slot takes act and warn, below link fault,
+  page, Health tab) with the three cards, the Link card's 2-minute strip
+  (round trip, sent ahead, pauses) and the incident list; the top strip's status slot takes act and warn, below link fault,
   unattended, refusal, the jog note, the history message and the latch
   notices, act above the safety edge, warn below it, a 5 s minimum dwell
   (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
