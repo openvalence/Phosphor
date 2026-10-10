@@ -1305,8 +1305,9 @@ behaves the same on the machine, without rendering anything on the hub.
   test/kinetic-pin.mjs --write` (Nucleus clean at the new commit, emsdk at
   `../.tools/emsdk` or `$EMSDK`; `NUCLEUS_DIR=<dir>` builds from a clean
   worktree at that commit, beside `../Kinetic` and `../Valence`, when the
-  checkout's beads export dirties it); a plain run checks bytes.js against the
-  pin and, when Nucleus HEAD is the pin, rebuilds and byte-compares;
+  checkout's beads export dirties it); a plain run (in `npm run check`) checks
+  bytes.js against the pin, and `--rebuild`, when Nucleus HEAD is the pin,
+  rebuilds and byte-compares;
   `node test/kinetic-pin.mjs <wasm>` checks that file instead of bytes.js.
   `KINETIC_WASM=<wasm>` runs `kinetic-trace.test.mjs` and
   `funscript-player.test.mjs --unit` against that build.

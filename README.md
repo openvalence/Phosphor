@@ -95,7 +95,6 @@ every time.
 | `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
 | `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser -- not a Valence hub |
 | `node test/valence-sim.mjs [--host] [--port]` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` -- fails today (val-091.11/.12) |
-| `node test/pairing-roundtrip.mjs` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` |
 
 `test/fixtures/valencesim-catalog.{bin,etag}` is captured from the simulator
 (valencesim), not hand-copied from Valence: build `../Nucleus/sim/valencesim` (its own
