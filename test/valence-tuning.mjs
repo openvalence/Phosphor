@@ -1,19 +1,12 @@
 /**
  * valence-tuning.mjs — LIVE proof of the kinetic tuning surface
- * (0x1120/0x1121/0x1122 STATE + 0x3120 kinetic-set INTENT).
+ * (0x1120 kinetic-limits and 0x1122 kinetic-planner STATE, 0x3120 kinetic-set
+ * INTENT): every knob reads and round-trips over the protocol, so a
+ * third-party client is as capable as Phosphor.
  *
- * This is the gate on retiring `POST /api/kinetic`: 20 live-tune knobs that
- * were reachable ONLY over device-specific HTTP are now protocol channels, so a
- * third-party client is as capable as the hosted UI. If every knob reads and
- * round-trips here, the HTTP writer has nothing left that is exclusively its own.
- *
- * ALSO CHECKS THE THING THAT MAKES THEM ONE UI: the chase and waveform STATE
- * channels must declare the SAME `category` (motion, subgroup Tuning, RFC-094;
- * the limits card is commissioning, category setup, RFC-079). SPEC §8.8 — "a
- * category spans channels; two channels in the same category merge into one
- * tab" — is what lets the knobs exist across channels (each capped at 8 by its
- * bitfield8 enabled_mask) while rendering as one Tuning section. Get the
- * category wrong and a generic client draws unrelated tabs.
+ * Also checks what makes the two cards one writer: both name 0x3120 as their
+ * settingChannel and no setting_key repeats across them, or a write to one
+ * card would land on the other's field.
  *
  * SAFETY: sends only 0x3120, restores every value it touches (including after a
  * failed assertion), and never touches motion, home, pattern or safety.
@@ -29,7 +22,7 @@ const HOST = process.argv[2];
 if (!HOST) { console.error('usage: node test/valence-tuning.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
 const PORT = parseInt(process.argv[3] || '82', 10);
 
-const CH_LIMITS = 0x1120, CH_CHASE = 0x1121, CH_WAVE = 0x1122;
+const CH_LIMITS = 0x1120, CH_PLANNER = 0x1122;
 
 let failures = 0;
 const ok = (name, cond, extra) => {
@@ -47,8 +40,7 @@ function open() {
       token: (h) => acquireToken(h),
       subscriptions: [
         [CH_LIMITS, 0, PRIORITY.background],
-        [CH_CHASE, 0, PRIORITY.background],
-        [CH_WAVE, 0, PRIORITY.background],
+        [CH_PLANNER, 0, PRIORITY.background],
       ],
     });
     const seen = new Map();
@@ -58,7 +50,7 @@ function open() {
     s.on('state', (ch, sample) => {
       if (!welcomed) return;
       seen.set(ch, sample);
-      if (seen.size === 3) { clearTimeout(to); resolve({ s, seen }); }
+      if (seen.size === 2) { clearTimeout(to); resolve({ s, seen }); }
     });
     s.on('close', () => { clearTimeout(to); if (!welcomed) reject(new Error('closed before welcome')); });
     s.connect();
@@ -90,47 +82,39 @@ async function roundTrip(s, ch, key, name, current, alt, eq) {
 async function main() {
   console.log('kinetic tuning live test → ws://' + HOST + ':' + PORT + '/');
   const { s, seen } = await open();
-  const lim = seen.get(CH_LIMITS), chase = seen.get(CH_CHASE), wav = seen.get(CH_WAVE);
-  ok('all three tuning channels granted + retained', !!lim && !!chase && !!wav, 'roles=' + s._roles);
+  const lim = seen.get(CH_LIMITS), plan = seen.get(CH_PLANNER);
+  ok('both tuning channels granted + retained', !!lim && !!plan, 'roles=' + s._roles);
 
-  // ---- the one-tab invariant --------------------------------------------
   const cm = s.channelMap;
-  const cats = [CH_CHASE, CH_WAVE].map((c) => cm.get(c) && cm.get(c).category);
-  ok('chase and waveform share ONE category (renders as one tab, SPEC §8.8)',
-     cats[0] != null && cats.every((c) => c === cats[0]), 'category=' + JSON.stringify(cats));
-  const writers = [CH_LIMITS, CH_CHASE, CH_WAVE].map((c) => cm.get(c) && cm.get(c).settingChannel);
-  ok('all three name ONE settingChannel (0x3120)',
+  const writers = [CH_LIMITS, CH_PLANNER].map((c) => cm.get(c) && cm.get(c).settingChannel);
+  ok('both name ONE settingChannel (0x3120)',
      writers.every((w) => w === 0x3120), 'settingChannel=' + JSON.stringify(writers));
 
-  // every setting_key across the three cards must be unique, or a write to one
-  // card would silently land on another's field.
   const keys = [];
-  for (const c of [CH_LIMITS, CH_CHASE, CH_WAVE]) {
+  for (const c of [CH_LIMITS, CH_PLANNER]) {
     for (const f of (cm.get(c).layout || [])) if (f.settingKey != null) keys.push(f.settingKey);
   }
   ok('setting_keys unique across the shared writer', new Set(keys).size === keys.length,
      keys.length + ' keys: ' + keys.join(','));
 
   info('limits:   ' + JSON.stringify({ jmax: lim.jmax_ovr, vmax: lim.vmax_ovr, amax: lim.amax_ovr }));
-  info('chase:    ' + JSON.stringify({ ff: chase.chase_ff, gain: chase.chase_gain, dense_ms: chase.chase_dense_ms }));
-  info('waveform: ' + JSON.stringify({ curve: wav.curve_policy, policy: wav.infeasible_policy, settle_ms: wav.settle_grace_ms }));
+  info('planner:  ' + JSON.stringify({ smoothness: plan.smoothness, handle_floor: plan.handle_floor, trim_max: plan.trim_max,
+    chase_dense_ms: plan.chase_dense_ms, react_ms: plan.react_ms }));
 
-  // ---- round-trips, one per card, covering f32 / select / ms-scaled ------
+  // ---- round-trips, one per card, covering f32 and ms-scaled ------------
   console.log('\n--- limits (f32) ---');
   await roundTrip(s, CH_LIMITS, 2, 'vmax_ovr', lim.vmax_ovr, lim.vmax_ovr > 1 ? 0 : 2.5);
-  console.log('\n--- chase (ms-scaled u32) ---');
-  await roundTrip(s, CH_CHASE, 10, 'chase_dense_ms', chase.chase_dense_ms, chase.chase_dense_ms > 100 ? 40 : 120);
-  console.log('\n--- waveform (select) ---');
-  await roundTrip(s, CH_WAVE, 13, 'curve_policy', wav.curve_policy, wav.curve_policy === 0 ? 1 : 0);
-  console.log('\n--- waveform (f32 budget) ---');
-  await roundTrip(s, CH_WAVE, 16, 'smooth_budget', wav.smooth_budget, wav.smooth_budget > 0.5 ? 0.3 : 0.7);
+  console.log('\n--- planner (f32) ---');
+  await roundTrip(s, CH_PLANNER, 4, 'smoothness', plan.smoothness, plan.smoothness > 0.5 ? 0.3 : 0.7);
+  console.log('\n--- planner (ms-scaled u32) ---');
+  await roundTrip(s, CH_PLANNER, 7, 'chase_dense_ms', plan.chase_dense_ms, plan.chase_dense_ms > 100 ? 40 : 120);
 
   // ---- clamping is the hub's job, and the ECHO must show it --------------
   console.log('\n--- clamp: ask for out-of-range, expect the bound back ---');
-  const hi = await s.sendIntent(0x3120, { 16: 99.0 });   // smooth_budget max 1.0
-  ok('over-range smooth_budget clamped to 1.0', Math.abs(hi.applied[16] - 1.0) < 1e-3,
-     'applied=' + hi.applied[16]);
-  await s.sendIntent(0x3120, { 16: wav.smooth_budget });
+  const hi = await s.sendIntent(0x3120, { 4: 99.0 });   // smoothness max 1.0
+  ok('over-range smoothness clamped to 1.0', Math.abs(hi.applied[4] - 1.0) < 1e-3,
+     'applied=' + hi.applied[4]);
+  await s.sendIntent(0x3120, { 4: plan.smoothness });
 
   s.close();
   await delay(400);

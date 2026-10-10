@@ -24,7 +24,7 @@ reduced motion gets a still version; no state changes any box (asserted).
 
 See them live: serve the repo root and open `test/effect-lab.html` (Replay
 write, fast echo, refusal, a 5 Hz drag; reduced motion, hi-vis and theme
-toggles). `node test/effect-lab.mjs --out <dir> [--theme "FF8A4D FFD24D"]`
+toggles). `node test/effect-lab.mjs --out <dir> [--theme "FF8A4D 4CCEFE"]`
 writes each candidate frozen at 0.1 s, 2 s and 5 s after the echo, plus the
 reduced-motion sheet. Each sheet holds every state for slider, knob,
 stepper, segmented and toggle.
@@ -132,9 +132,6 @@ stepper, segmented and toggle.
 
 ## Known limits
 
-- Theme Ember's intent (#FFD24D) sits next to amber (#F5B94D), so pending and
-  overdue differ there by breath rate and the slot's words more than by hue.
-  A theme question, not an effect one (`src/model/theme.js`).
 - Safety ops, the top strip's flip chip and the drill-in badge keep the older
   inset ring (`[data-shadow]:not(.field)` in style.css); moving them to this
   language is their owners' change.

@@ -891,7 +891,7 @@
   .gline { margin: 0 0 var(--sp-1); font-size: 11px; color: var(--ink-dim); overflow-wrap: anywhere; }
   .gline[data-stale] { opacity: .5; }
   /* After .gline: a ladder line wears its phase (law 5); refusals, faults, disarmed reasons amber (law 13). */
-  [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn); }
+  [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn-ink); }
   [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
   .gnum { font-family: var(--mono); font-size: 11px; color: var(--tx-val); }
   .gcurve { display: block; width: 100%; height: 44px; margin: var(--sp-1) 0 var(--sp-2); background: var(--bg-sunken); border-radius: var(--radius); }
@@ -938,7 +938,7 @@
   .gbox { position: absolute; border: 1px dashed var(--highlight); background: rgba(var(--highlight-rgb), .08); pointer-events: none; }
   .gcursor { position: absolute; z-index: 4; max-width: 240px; margin: 0; padding: var(--sp-1) var(--sp-2); font-size: 11px; pointer-events: none;
     background: var(--bg-raised); border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink); }
-  .gcursor[data-phase='fault'] { color: var(--warn); border-color: var(--warn); }
+  .gcursor[data-phase='fault'] { color: var(--warn-ink); border-color: var(--warn); }
 
   @media (pointer: coarse) {
     .graph { --grow: 40px; }

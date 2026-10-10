@@ -659,6 +659,14 @@ if (!LIVE) {
     await page.waitForTimeout(150);
     if (await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"]').count()) break;
   }
+  // ph-ju9: collapsed advanced reaches the hero; its advanced modulators leave and the page toggle counts them.
+  const advOps = page.locator('.rail-ops button', { hasText: 'adv' });
+  // The sections case above left advanced shown: collapse it first.
+  if (await advOps.count() && await advOps.getAttribute('aria-pressed') === 'true') { await advOps.click(); await page.waitForTimeout(150); }
+  const hidden = { mods: await page.locator('main.pane .advgen > .mods').count(), toggle: await advOps.count(),
+    n: await advOps.count() ? Number(await advOps.locator('b').textContent()) : 0 };
+  if (hidden.toggle) await advOps.click();
+  await page.waitForTimeout(150);
   const advShape = await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .advgen').evaluate((el) => ({
     gridHasMods: !!el.querySelector(':scope > .card-body .card-sub'),
     mods: el.querySelectorAll(':scope > .mods .field').length,
@@ -667,6 +675,8 @@ if (!LIVE) {
   }));
   ok('advanced generator: modulators in their own block, one adv tag for it (ph-55r)',
     !advShape.gridHasMods && advShape.mods > 0 && advShape.fieldTags === 0 && advShape.blockTag, advShape);
+  ok('advanced generator: collapsed advanced hides the modulators, the toggle counts them (ph-ju9)',
+    hidden.mods === 0 && hidden.toggle === 1 && hidden.n >= advShape.mods, { hidden, shown: advShape.mods });
   ok('advanced generator: its card reads its title (ph-c46)', await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .dash-title')
     .first().textContent().then((t) => t.trim()) === 'Advanced generator');
   await ctx.close();

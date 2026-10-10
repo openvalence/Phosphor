@@ -78,6 +78,6 @@
     border-top: 1px solid var(--line-0);
     border-radius: 0;
   }
-  .phone-menu :global(.drawer-nav .rail-sec.shell .rail-tab:not(.on)) { color: var(--ink-dim); }
-  .phone-menu :global(.drawer-nav .rail-sec.shell :is(.rail-lbl, .rail-glyph)) { color: var(--ink-faint); }
+  .phone-menu :global(.drawer-nav .rail-sec.shell :is(.rail-tab:not(.on), .rail-lbl)) { color: var(--tx-val); }
+  .phone-menu :global(.drawer-nav .rail-sec.shell .rail-glyph) { color: var(--ink-dim); }
 </style>

@@ -295,7 +295,7 @@ let saved = null;
   const ladderInk = await page.evaluate(() => {
     const p = document.querySelector('.gnode[data-kind=rel] .gline[data-phase=disarmed]');
     const d = document.createElement('i');
-    d.style.color = 'var(--warn)';
+    d.style.color = 'var(--warn-ink)';
     document.body.append(d);
     const warn = getComputedStyle(d).color;
     d.remove();

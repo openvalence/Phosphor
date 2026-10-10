@@ -160,8 +160,8 @@
   }
   .why { color: var(--tx-ghost); }
   .action[data-shadow='pending'] .state { color: var(--intent); }
-  .action[data-shadow='fault'] .state { color: var(--warn); }
-  .action[data-shadow='overdue'] .state { color: var(--warn); }
+  .action[data-shadow='fault'] .state { color: var(--warn-ink); }
+  .action[data-shadow='overdue'] .state { color: var(--warn-ink); }
   /* Virtual (DESIGN §10.10): the afterglow in the intent family. */
   .action[data-virtual] { --reality: var(--intent); --reality-rgb: var(--intent-rgb); }
 </style>

@@ -274,7 +274,9 @@ function makeField(entry, f, settingIndex, masks) {
     scale: f.scale || 1,
     min: f.min,
     max: f.max,
-    step: f.step,
+    // An f32 step carries float noise (0.05 arrives as 0.0500000007, and a range's last stop falls short of
+    // max): seven significant digits are all an f32 holds.
+    step: f.step && +f.step.toPrecision(7),
     dflt: f.default,
     options: f.options || null,
     desc: f.desc || '',
