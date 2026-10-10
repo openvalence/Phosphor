@@ -641,7 +641,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
-//   fitMap(extent)). A new script starts at [0, 1] until the measure lands.
+//   fitMap(extent)). A new script starts at [0, 1] until the measure lands. wakeIn() -> ms until tick() has work:
+//   0 while prerolling or playing, the pause home's wait while it is on, else Infinity (ph-m1gy).
 export const PLAY_CSS;
 export function mountPlay(el, { ui, value, onChange, volume, autoplay });   // -> unmount(); the settings card's playback rows:
   // Loop, Loop count, Pause home, After pause, Home point, Home speed, Seek glide, Auto latency, Autoplay, and Volume on
@@ -657,14 +658,15 @@ export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;          // heat speeds, un
 export const CSS, COPY;
 export function curvePoints(script, fromMs, toMs, W, H, T);   // -> 'x,y ...'
 export function dotPath(script, fromMs, toMs, W, H, T);      // -> 'Mx,yh0...': the actions as round-capped dots
-export function kinPoints(render, fromMs, toMs, W, H);        // -> 'x,y ...', at most 2000; '' without pos
+export function kinPoints(render, fromMs, toMs, W, H, max = 2000);   // -> 'x,y ...', at most max; '' without pos
 export function seekAt(x, W, durationMs);                     // -> ms
 export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mix in oklab to --reality at HEAT_MID_UPS,
   // on to --highlight at HEAT_TOP_UPS and above; never red (law 13)
 export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, color, over}]: one run per action span by
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
-export function traceLines(trace, fromMs, toMs, W, H), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u'), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
+  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
@@ -692,7 +694,15 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000
 
 One `Player` per activation owns the single `<video>` (no `controls`,
 `playsinline`, `disablePictureInPicture`, never element fullscreen), the
-`MediaClock`, the `Scheduler` and the rAF loop. The last mounted view hosts
+`MediaClock`, the `Scheduler` and the rAF loop. The loop runs only while
+`wakeIn()` is 0 or an Autoplay waits; the pause home's wait is a timer. Any
+other change a view draws kicks one frame: a state change (`onChange`), a
+seek, a duration or rate change, buffering progress, a resize, an input in
+the card, a Kinetic render landing (`onRender`), an `update()` that moved
+the real position, its staleness or the speed ceiling, or any `update()`
+while the analyzer is open (its rows read the hub). An `update()` that moved
+nothing frames a collapsed analyzer alone (`frame(false)`: is its render
+current). An idle view costs nothing per display frame (ph-m1gy). The last mounted view hosts
 the video; when it unmounts, the player holds and pauses. The gate is read
 through `api.gate(fields.dur)` on every `update()` and every tick; a gate
 or a fatal refusal pauses and sends no hold (the rail is not the player's
@@ -751,9 +761,9 @@ export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> [min, max] in script units of a wall-free render's
   // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_*, T's Range and invert
 export function kinText(state: 'wasm'|'fallback', render | {error} | null);   // -> 'Kinetic: wasm  n anomalies  clamped 250 ms'
-export function mountAnalyzer(el, { api, trace, script, T, fit });   // trace(), script() (the wire Script, ctl.wire),
-  // T(): the player's; fit(): ctl.fit
-  // -> { frame(), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
+export function mountAnalyzer(el, { api, trace, script, T, fit, onRender });   // trace(), script() (the wire Script, ctl.wire),
+  // T(): the player's; fit(): ctl.fit; onRender(): a render, the version, a failure or an Apply/Discard answer landed
+  // -> { frame(shown = true) (false: the render check alone, no row reads, no lag), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
   // kinetic: the latest render of the current script() (null while a newer script renders) through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
   // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle

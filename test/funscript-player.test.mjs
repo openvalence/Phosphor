@@ -2803,7 +2803,10 @@ if (!LIVE && !args.includes('--stash-live')) {
           && getComputedStyle(e).visibility !== 'hidden' && !e.closest('[hidden]'));
         const small = hits.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.width < 39.5 || r.height < 39.5); })
           .map((e) => (e.className || e.getAttribute('aria-label') || e.tagName) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height));
+        // Shapes inside an <svg> report their unclipped geometry (the detail's curve runs past its window and slides,
+        // timeline.js); the <svg> box, which clips them, is measured.
         const wide = [...root.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > o.right + 0.5 || r.left < o.left - 0.5)
+          && !(e instanceof SVGElement && e.ownerSVGElement)
           && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.ui-stage-overlay, .fsp-libbox, .fsp-anbox'); }).map((e) => e.className || e.tagName);
         const pg = root.closest('.fsp-page'), de = document.documentElement;
         return { comp: root.dataset.comp, small, wide: wide.slice(0, 5), pageOverflow: pg.scrollWidth - pg.clientWidth, shellOverflow: de.scrollWidth - de.clientWidth, card: [Math.round(o.width), Math.round(o.height)],
