@@ -29,6 +29,7 @@ import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import { KIT } from './kit.js';
 import { hubKey } from '../model/prefs.js';
+import { view } from '../model/viewport.svelte.js';
 import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
 } from '../../../Valence/clients/js/index.js';
@@ -244,6 +245,8 @@ export const host = createPluginHost({
   hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
   ui: KIT,
+  // No right dock on the phone class (DESIGN §10.13); read inside Dock's derived, so it tracks.
+  dockable: () => !view.phone,
   log: logLine,
 });
 
@@ -259,6 +262,14 @@ host.onChange(() => {
   pluginsUi.gen++;
 });
 host.onDocks(() => { pluginsUi.docks++; });
+// api.onHub: the connected hub's key moving reaches the plugins.
+$effect.root(() => {
+  let last;
+  $effect(() => {
+    const h = currentHub();
+    if (h !== last) { last = h; host.hubChanged(); }
+  });
+});
 
 /** The connected hub's key (prefs.js hubKey), null before a catalog: per-hub plugin state keys on it. */
 export function currentHub() {

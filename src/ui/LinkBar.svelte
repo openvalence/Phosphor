@@ -2,8 +2,11 @@
   /**
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
    * 2026-10-02). Left: the activity heatmap and the hub name. Right: the
-   * chips (phase, tier, hub, catalog, render, rx), then the shell's window
-   * buttons at the far end, shell only. The bar is the Tauri drag region.
+   * chips (phase, tier, rx, the render warning's held slot, fps), then the
+   * shell's window buttons at the far end, shell only. The bar is the Tauri
+   * drag region. A reading nobody checks when something goes wrong lives in
+   * the Health view instead (the address, the firmware, the control list;
+   * DESIGN §10.3, operator 2026-10-10).
    *
    * Constraints:
    * - Never claims a healthier link than machine.link.phase reports (Ground
@@ -26,12 +29,11 @@
   import { isStill } from './still.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
-  import { bytes, since, hubTitle } from '../model/format.js';
+  import { sinceShort, hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
   import { phoneMenu } from './PhoneMenu.svelte';
-  import { dock, toggleDock, dockOpen } from './Dock.svelte';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   let { shell: Shell = null } = $props();
@@ -59,24 +61,16 @@
   const nameField = $derived(machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0]);
   const title = $derived(hubTitle(identity,
     nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : '', machine.link.virtual));
-  const hubLabel = $derived(machine.link.dialed || '--');
-  const fwLabel = $derived(identity && identity.fw_version ? identity.fw_version : '');
-
-  const catalogLabel = $derived(
-    machine.catalog.ready
-      ? ('ready · ' + bytes(machine.catalog.bytes) + (machine.catalog.cached ? ' · cached' : ' · fetched'))
-      : 'not loaded'
-  );
 
   // A liveness readout needs a clock of its own — nothing else in this bar
-  // re-renders on a schedule, so without a tick "since(...)" would freeze the
+  // re-renders on a schedule, so without a tick "sinceShort(...)" would freeze the
   // instant a frame stops arriving, which is exactly the moment it matters most.
   let nowTick = $state(Date.now());
   $effect(() => {
     const id = setInterval(() => { nowTick = Date.now(); }, 1000);
     return () => clearInterval(id);
   });
-  function ageLabel(ms, _tick) { return since(ms); }
+  function ageLabel(ms, _tick) { return sinceShort(ms); }
   const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
   const rxTone = $derived.by(() => {
     if (!isLive || !machine.stats.lastRxMs) return 'dim';
@@ -94,18 +88,21 @@
   // other": fps is the WEBVIEW's frame cadence, held% is how often the render
   // instant outran the newest sample. Low fps blames the shell, a high held%
   // at a healthy fps blames arrivals, which the position-rate heatmap row
-  // then shows directly. `--` until a rail is on screen and drawing.
+  // then shows directly. `--` until a rail is on screen and drawing. The bar
+  // says fps; the held share and the clock skew show only when bad (held
+  // over 10 %, skew over 2 ms), in a slot held for them; the rest is the tooltip.
   const render = $derived(machine.stats.render);
-  const renderLabel = $derived(
-    render.fps == null ? '--'
-      : render.fps + ' fps · ' + render.delayMs + ' ms · ' + render.heldPct + '% held'
-        + (Math.abs(render.skewMs || 0) > 2 ? ' · skew ' + render.skewMs + ' ms' : '')
-  );
-  // The client's own frame health: warn when degraded, never the reality
-  // tone, which is the machine's liveness (ph-51k).
-  const renderTone = $derived(
-    render.fps != null && (render.heldPct > 10 || render.fps < 30 || Math.abs(render.skewMs || 0) > 2) ? 'warn' : 'dim'
-  );
+  const heldBad = $derived(render.fps != null && render.heldPct > 10);
+  const skewBad = $derived(render.fps != null && Math.abs(render.skewMs || 0) > 2);
+  const renderWarn = $derived([heldBad ? render.heldPct + '% held' : '', skewBad ? 'skew ' + render.skewMs + ' ms' : ''].filter(Boolean).join(' · '));
+  const renderTip = $derived(render.fps == null ? undefined : [
+    'Smoothing delay ' + render.delayMs + ' ms',
+    'No newer sample to draw: ' + render.heldPct + '% of frames',
+    'Frame clock off wall clock by ' + Math.abs(render.skewMs || 0) + ' ms',
+  ].join('\n'));
+  // The client's own frame health: warn when any reading is degraded, never
+  // the reality tone, which is the machine's liveness (ph-51k).
+  const fpsTone = $derived(render.fps != null && (render.fps < 30 || heldBad || skewBad) ? 'warn' : 'dim');
 
   // Beside a top cutout the row rises into its band only while the phase and
   // tier chips fit right of it, clear of the top right corner's arc; short of
@@ -321,30 +318,19 @@
     </span>
   </div>
   <div class="chips opt">
-    <span class="chip chip-opt" class:tone-warn={!!machine.link.virtual}
-          title={machine.link.virtual ? 'Virtual: nothing moves' : undefined}>
-      <span class="chip-lbl">hub</span>
-      <span class="mono" {@attach fullTitle(hubLabel + fwLabel)}>{hubLabel}{fwLabel ? ' · ' + fwLabel : ''}</span>
-    </span>
-    <span class="chip chip-opt">
-      <span class="chip-lbl">catalog</span><span class="mono">{catalogLabel}</span>
-    </span>
-    <span class="chip chip-opt tone-{renderTone}"
-          title="FPS · jitter buffer · held frames · clock skew">
-      <span class="chip-lbl">render</span>
-      <span class="mono">{renderLabel}</span>
-    </span>
+    <!-- Zero wide and first on the line, so every chip after it wraps away whole. -->
+    <span class="opt-lead"></span>
     <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
       <span class="chip-lbl">rx</span>
-      <span class="mono">{rxAge}</span>
+      <span class="mono rx-age">{rxAge}</span>
+    </span>
+    <span class="render-warn chip-opt">
+      {#if renderWarn}<span class="chip tone-warn" title={renderTip}><span class="mono">{renderWarn}</span></span>{/if}
+    </span>
+    <span class="chip chip-opt tone-{fpsTone}" title={renderTip}>
+      <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
     </span>
   </div>
-  <!-- The right dock (Dock.svelte): here once a plugin docks something, opened only by the user. -->
-  {#if dock.shown}
-    <button type="button" class="dock-btn" aria-label={dock.label} title={dock.label} aria-expanded={dockOpen()} onclick={toggleDock}>
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
-    </button>
-  {/if}
   {#if Shell}<Shell />{/if}
 </header>
 
@@ -401,23 +387,7 @@
     color: var(--ink);
     border-radius: var(--r-s);
   }
-  .menu-btn[aria-expanded='true'], .dock-btn[aria-expanded='true'] { color: var(--highlight); }
-  /* The dock's toggle mirrors the hamburger: a 40 px target overhanging the bar and its gaps, never growing the row. */
-  .dock-btn {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    margin-block: calc(var(--sp-2) * -1);
-    margin-inline: calc(var(--sp-3) * -1);
-    color: var(--ink);
-    border-radius: var(--r-s);
-  }
-  /* Where only the optional row's last chip is left, it sheds for the toggle (optional chips go first). */
-  @media (max-width: 560px) { .linkbar:has(> .dock-btn) .chips.opt { display: none; } }
-  .dock-btn:focus-visible { outline-offset: -2px; }
-  .dock-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+  .menu-btn[aria-expanded='true'] { color: var(--highlight); }
   /* At the screen's top edge beside a cutout: the ring stays inside the target. */
   .menu-btn:focus-visible { outline-offset: -2px; }
   .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
@@ -474,9 +444,6 @@
     overflow: hidden;
   }
   .chips.opt:empty { display: none; }
-  /* The line's first chip (hub) cannot wrap away: past the edge it ellipsizes, never cuts mid-text. */
-  .chips.opt > .chip:first-child { max-width: 100%; }
-  .chips.opt > .chip:first-child .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
   /* OG .chip (.62rem/400/3px 6px/--chip/--chip-line/--tx-val). Every chip
      wears these exact metrics; a chip that matters more says so with its tone
@@ -503,6 +470,16 @@
   }
   /* Shell chrome keeps 4.5:1 text (style.css --shell-*). */
   .linkbar.shell .chip-lbl { color: var(--tx-val); }
+  /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). rx
+     is at most 3 characters (sinceShort); the render warning's slot is held
+     while empty; two warnings ellipsize, the tooltip has both. */
+  .rx-age { width: 3ch; }
+  .fps { width: 7ch; text-align: right; }
+  /* The gap after it cancelled: the lead takes no room at all. */
+  .opt-lead { flex: none; width: 0; margin-right: calc(var(--sp-2) * -1); }
+  .render-warn { flex: none; display: flex; justify-content: flex-end; width: calc(11ch + 2 * var(--sp-2) + 2px); font: .62rem var(--mono); }
+  .render-warn .chip { min-width: 0; max-width: 100%; }
+  .render-warn .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .chip-dot {
     width: 6px;
     height: 6px;

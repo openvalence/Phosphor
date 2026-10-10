@@ -122,6 +122,7 @@ class PermissionError extends Error {
  *   hub()                         -> the connected hub's key (prefs.js hubKey), null without one
  *   prefs                         -> Storage-like {getItem, setItem} or null
  *   ui                            -> the plugin UI kit (kit.js KIT), one frozen object; null where none
+ *   dockable()                    -> false where the shell has no right dock (the phone class); absent, true
  *   log(pluginName, level, msg)   -> the log pane
  */
 export function createPluginHost(deps) {
@@ -201,7 +202,9 @@ export function createPluginHost(deps) {
       note();
     };
   }
+  const dockable = () => !deps.dockable || deps.dockable();
   const dockListeners = new Set();
+  const hubListeners = new Set();
   const docksChanged = () => { for (const fn of dockListeners) { try { fn(); } catch (e) { /* a kernel listener */ } } };
 
   function makeApi(rec) {
@@ -245,6 +248,14 @@ export function createPluginHost(deps) {
       onChanged: (channelsOrRoles, fn) => {
         if (!deps.onChanged || typeof fn !== 'function') return () => {};
         const off = deps.onChanged([].concat(channelsOrRoles), () => guard(rec, 'onChanged', fn));
+        rec.closers.push(off);
+        return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
+      },
+      // Experimental (ph-6ydd): fn() whenever api.hub() reads differently (a hub adopted, switched or
+      // forgotten). Returns the unsubscribe; deactivation drops what is left.
+      onHub: (fn) => {
+        if (typeof fn !== 'function') return () => {};
+        const off = ((w) => { hubListeners.add(w); return () => hubListeners.delete(w); })(() => guard(rec, 'onHub', fn));
         rec.closers.push(off);
         return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
       },
@@ -356,6 +367,7 @@ export function createPluginHost(deps) {
         if (!(typeof def.label === 'function' || (typeof def.label === 'string' && def.label.trim() && def.label.length <= 40))) {
           throw new Error('registerMenu: label must be 1 to 40 characters or a function of the target');
         }
+        if (def.needsDock != null && typeof def.needsDock !== 'boolean') throw new Error('registerMenu: needsDock must be a boolean');
         if (rec.menus.some((m) => m.def.id === def.id)) throw new Error('registerMenu: id "' + def.id + '" is taken');
         return slotted(rec, rec.menus, def, () => {});
       },
@@ -621,14 +633,16 @@ export function createPluginHost(deps) {
   /**
    * Active plugins' context-menu items for `target` ({kind, key, hub, title,
    * path}), in load order: [{plugin, label, run}]. A label function that
-   * throws or returns nothing leaves its item out; run() is guarded.
+   * throws or returns nothing leaves its item out; run() is guarded. A
+   * needsDock item is left out where the shell has no dock.
    */
   function menus(target) {
     const out = [];
+    const noDock = !dockable();
     for (const rec of plugins.values()) {
       if (rec.status !== 'active') continue;
       for (const m of rec.menus) {
-        if (!m.def.targets.includes(target.kind)) continue;
+        if (!m.def.targets.includes(target.kind) || (m.def.needsDock && noDock)) continue;
         const label = typeof m.def.label === 'function' ? guard(rec, 'menu label', () => m.def.label(target)) : m.def.label;
         if (typeof label !== 'string' || !label.trim()) continue;
         out.push({ plugin: rec.manifest.name, label: label.trim().slice(0, 40),
@@ -638,9 +652,10 @@ export function createPluginHost(deps) {
     return out;
   }
 
-  /** Active plugins' docks, shaped as pages so PluginSlot mounts them. Id `plugin:<name>:<dock id>`. */
+  /** Active plugins' docks, shaped as pages so PluginSlot mounts them. Id `plugin:<name>:<dock id>`; none where the shell has no dock. */
   function docks() {
     const out = [];
+    if (!dockable()) return out;
     for (const rec of plugins.values()) {
       if (rec.status !== 'active') continue;
       for (const d of rec.docks) {
@@ -717,5 +732,7 @@ export function createPluginHost(deps) {
     add, remove, setEnabled, heroes, pages, menus, docks, pageShown, setPageShown, mountHero, updateHero, unmountHero, mountSettings, list,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     onDocks(fn) { dockListeners.add(fn); return () => dockListeners.delete(fn); },
+    /** The kernel: the connected hub's key moved; every plugin's onHub runs. */
+    hubChanged() { for (const fn of [...hubListeners]) fn(); },
   };
 }

@@ -603,6 +603,25 @@ question in §10.8).
   and a long text ellipsizes with its full form in `title`. A user's own act
   (the rail's hide tab, the sidebar collapse, a disclosure, a window resize)
   may change heights, because it cannot cause a misinput elsewhere.
+- The top bar (operator ruling 2026-10-10, `ph-6ydd`; `src/ui/LinkBar.svelte`)
+  carries what someone looks at when something goes wrong: the activity
+  heatmap, the hub name, phase, tier, rx and the frame rate, then the window
+  buttons. A reading that fails that test moves to the Health view (§10.14),
+  never deleted: the address, the firmware and the control list (its size,
+  and whether this device's saved copy or the machine served it). The render
+  readout is `N fps` (`-- fps` until a rail draws); its tooltip says the
+  smoothing delay, how often the rail had no newer sample to draw (held) and
+  how far the frame clock is off the wall clock (skew, which the rail's
+  timing assumes is zero) in words. Held over 10 % and skew over 2 ms show
+  inline, warn toned, in a slot left of the fps held whether empty or not;
+  two at once ellipsize, the tooltip has both. Under 30 fps, or with either
+  warning, the fps chip wears the warn tone. The fps and rx values hold
+  fixed widths (rx in whole units, at most three characters: 59s, 12m, 3h).
+  The order is rx, the warning slot, fps, so where room runs out the fps and
+  its slot shed before rx; under 561 px they are gone and rx sheds whole
+  where it does not fit, never a sliver. Phones keep no fps: at 420 px the
+  room the dock toggle gave back holds rx and leaves about 64 px, short of
+  the fps chip's 69 beside even a five-letter hub name.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -611,6 +630,10 @@ question in §10.8).
   bottom safe-area inset. The UI scale is not in it (operator ruling
   2026-10-03, `ph-5q67`): it is the right end of the shell's bottom status
   row (`src/ui/ScaleControl.svelte` in `FootStrip`), compact, on every page.
+  Beside it, at the row's very end, sits the right dock's toggle (operator
+  ruling 2026-10-10, `ph-6ydd`; §10.13): its slot is held whether or not a
+  dock exists, so the toggle arriving with the first pin moves nothing; the
+  phone class has neither slot nor toggle.
   That row is one line at every width (operator ruling 2026-10-03,
   `ph-wt7r`): each value holds a fixed slot and a compact form (3.25k, 55.1k;
   clock offset and RTT as s.mmm; deadman in s) with the exact value on hover,
@@ -1000,8 +1023,8 @@ connected, then merge the setting changes onto the machine, ticked per item.
   Each saved hub with a vault record offers Sim (the replay above). Never
   auto-connected, never saved, never the reconnect target.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
-  `virtual` (warn) where a machine reads `live`, and the hub chip reads
-  `virtual`. The strip stays rendered and acts on the virtual hub.
+  `virtual` (warn) where a machine reads `live`. The strip stays
+  rendered and acts on the virtual hub.
   **(planned)** the strip's status slot carries a standing
   `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
 - **Merge** (`src/model/merge.js`, the Merge pane): a replay's ECHO on a
@@ -1207,12 +1230,23 @@ derives from one unit, and no size is tuned by hand.
   Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens
   it inline under the opener. Seam: `src/plugins/kit.js` `menu` (`items`,
   `checked`, `ask`).
-- The right dock (operator 2026-10-09, `ph-kyjd`): a region plugins register,
-  hidden until a dock exists and closed until the user opens it from the top
-  bar; open on the desktop it is a column beside the content and narrows it,
-  on the phone class a drawer under the strip, never over the stop pair. The
-  quick access tray is a factory plugin on it (docs/PLUGINS.md, The dock).
-  Seam: `src/ui/Dock.svelte`.
+- The right dock (operator 2026-10-09, `ph-kyjd`; amended 2026-10-10,
+  `ph-6ydd`): a region plugins register, hidden until a dock exists and
+  closed until the user opens it from its toggle at the right end of the
+  bottom status row, beside the UI scale (§10.3). Open on the desktop it is a
+  column beside the content and narrows it; on the other non-phone classes a
+  drawer from the right edge between the top strip and the bottom bars, never
+  over the stop pair or its own toggle. One open state serves the dock, the
+  toggle and the stored pref; withdrawing the last dock closes it, so the
+  next one arrives closed. Quick access docks per connected hub: its toggle
+  exists while that hub has pins, and the last unpin there withdraws the dock
+  and closes it, whatever other hubs hold. The phone class
+  has no dock (operator: "unlikely to be used with mobile, have to cut some
+  things for space"): no toggle, no drawer, and a plugin's dock-bound menu
+  items (`needsDock`) are left out; what a plugin stored stays for the desktop
+  and the plugin stays installed. The quick access tray is a factory plugin
+  on it (docs/PLUGINS.md, The dock). Seams: `src/ui/Dock.svelte`, the toggle in
+  `src/ui/FootStrip.svelte`, `host.js` (`dockable`).
 
 ### 10.14 Health (operator rulings 2026-10-09, `ph-9t5l`, `ph-9t5l.1`)
 
@@ -1220,6 +1254,8 @@ When something degrades, Phosphor says what and why, in plain words, with
 one thing to do. Nothing degrades silently, and nothing leaves the device on
 its own: no continuous telemetry, ever.
 
+- The Link card also lists the address and the control list, the Machine
+  card the firmware: the readings the top bar dropped (§10.3).
 - Three areas: Link, This device, Machine. The 26 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
@@ -1436,4 +1472,7 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.12, §10.13, §10.14 | The Log page fits the window at every size, as the funscript page does: the tabs and tools stay put and the open feed is the one scroller, filling what the chrome leaves down to a 6 rem floor, under which the window scrolls. Repeated events (same source, level, tag, channel and message once numbers and ids read `#`; a digit inside a name, `axis1` or `E12`, stays) fold into one row with ×N; the newest repeat moves its row to the tail, and the row opens to its fields, first and last time, up to 20 instances and Copy row. Level toggles with counts (error, warn, info, debug), a source select (hub, client, plugin, health) and a search; the tail is followed until a scroll up or Pause, an `N new` pill jumps back, Clear empties the feed. A level is an icon and a color; time is absolute, relative on hover. F3 focuses the search; Up, Down, Home and End walk the rows; Enter opens one. A health row's tooltip is its incident's detail and its Incident button opens it on Health (the Details fold under health lines is gone, `ph-qf1s`). 5000 rows stay smooth: off-screen rows skip layout, the feed renders at most once a frame and never while idle (`ph-s5mu`, `ph-e1q`). | operator ("the contents of that page need to fit in the window, similar to the funscript ... combine duplicate log events", 2026-10-10, with the coordinator's seven-point brief the same day. Reading "bumps" as moving the row to the tail; two channels and a digit inside a name never folding; Safety and Session never folding, each edge being evidence; the 5000-row and 20-instance caps; the folded history outliving the 400-line ring until Clear or a new session; the tag select replaced by the search; Revert changes moved into the Changes feed; the status slot at the end of the tools row; a line with no level filing under info; F3's second press going on to Look for; a scroll back to the tail resuming while Pause holds; and `content-visibility` rows instead of a windowed list (measured headless: median 18 ms, p95 25 ms a frame scrolling 5000 rows) are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
 | 2026-10-10 | §10.15 | The Link page: five sections in one scroller; refusals grouped by NACK code, newest first, with the registry family and meaning, count, last time, cause and a Log link; a map of the 16-bit channel id space (registry ranges on the neutral ramp, channels by class in the accents, occupancy per range) with a Device grid view on the RFC-047 0xCDSS grid; registry tables generated from registry.yaml (`ph-bszw`). | operator (2026-10-10: "the link tab is cool, but I don't know what the NACKS are ... I always loved a visual representation of the valence channel space ... the rest of the link page could be way better laid out and organized", and the coordinator's brief; the agent's calls, veto-able: refusals last with a jump from Link health; meanings are the note's first sentence trimmed by rule, not reworded; ranges neutral and classes in two accent families; NACK counts since the hub was chosen; publish grants as list rows) |
+| 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
+| 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
+| 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
 | 2026-10-10 | §10.15 | The Log feed lists the hub's refusals: one warn row per NACK from the hub, tagged `refusal`, reading the code's name with its code, channel and detail as fields, folded like any repeat (code and channel are its identity, never shaped). The Link page's Log link opens the Log feed searched for that name with the level and source filters cleared; the next visit starts with no search (`ph-s5mu.1`). | coordinator (the Link page's seam, ph-s5mu.1; the Log feed rather than a feed of its own, the warn level, the `refusal` tag and the filters clearing are the agent's, veto-able) |
