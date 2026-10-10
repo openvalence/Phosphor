@@ -675,8 +675,9 @@ export function heatColor(ups);   // -> CSS color: --bg-sunken at rest, color-mi
 export function heatStops(script, T, ceiling);   // -> [{from, to (ms), ups, color, over}]: one run per action span by
   // |dpos| / dt in units/s (pos 0..100), equal neighbors merged, the lead-in before the first action at rest; over:
   // the chord speed through T's Range past ceiling.vmax
-export function traceLines(trace, fromMs, toMs, W, H, key = 'u'), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
-  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs), clampRange(T, key, v), zoomStep(ms, dir);   // pure, node-tested;
+  // traceLines draws trace[i][key]: 'u' reality, 'p' the plan, the points inside [clipFrom, clipTo] over [fromMs, toMs];
+  // a point's text is kept per frame of reference, so a span that holds formats each point once
 export const PINCH_STEP = 1.25;
 export function pinchZoom(ms, scale);   // -> the zoom after a pinch whose finger distance moved by scale since the last
   // step: >= PINCH_STEP one step narrower, <= 1 / PINCH_STEP one wider, else ms (pure, node-tested)
@@ -767,6 +768,8 @@ export function tuningGroups(model);   // -> [{name, fields}]: writable slider, 
   // writable fields sharing a write channel with those (the kinetic ceilings); then limit.input.* by role
 export function lagOf(trace, script, T, key = 'u');   // -> ms in LAG_MIN_MS..LAG_MAX_MS minimizing the mean
   // |trace[key] - applyT(posAt(script, m - d))|, or null under LAG_MIN_POINTS fresh points or 0.1 of motion
+export function createLag(key = 'u');   // -> (trace, script, T) => lagOf(trace, script, T, key), to the bit, for a trace
+  // that grows and trims: each point's errors are kept from its first call (a new script or T starts over)
 export function toggled(f, v), fmtValue(f, v);   // pure, node-tested
 export function wideExtent(raw, t0, dtMs, fromMs, toMs, T);   // -> [min, max] in script units of a wall-free render's
   // raw (wide-window shares from media t0, one per dtMs) over [fromMs, toMs], back through WIDE_*, T's Range and invert
