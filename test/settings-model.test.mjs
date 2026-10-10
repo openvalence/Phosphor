@@ -897,12 +897,12 @@ ok('an unknown role is carried, not rejected', weird.fields[0].role === 'some.fu
     ch(0x0a02, UI_RANK.diagnostic, ['Upkeep / Hours', 'Probe']),
     ch(0x0a03, UI_RANK.detail, ['', 'Upkeep / Oil', 'Feed / Rate']),
   ]).categories[0].groups;
-  ok('cards with no section first, then each section together, diagnostic last within it',
+  ok('cards with no section first, then each section together, diagnostic last within it, then diagnostic cards with no section (ph-vrg)',
      eq(page.map((g) => g.name + (g.diagnostic ? '*' : '')),
-        ['Loose', '', 'Probe*', 'Upkeep / Belts', 'Upkeep / Oil', 'Upkeep / Hours*', 'Feed / Rate']),
+        ['Loose', '', 'Upkeep / Belts', 'Upkeep / Oil', 'Upkeep / Hours*', 'Feed / Rate', 'Probe*']),
      page.map((g) => g.name).join(', '));
   ok('a card carries its section and title; its name stays the wire string',
-     eq(page.map((g) => [g.section, g.title]).slice(3, 5), [['Upkeep', 'Belts'], ['Upkeep', 'Oil']]));
+     eq(page.map((g) => [g.section, g.title]).slice(2, 4), [['Upkeep', 'Belts'], ['Upkeep', 'Oil']]));
 }
 
 console.log('\n' + (fails ? 'FAILURES: ' + fails : 'ALL PASS — the renderer is machine-agnostic.'));

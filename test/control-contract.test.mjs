@@ -1378,6 +1378,11 @@ if (!LIVE) {
     ok('coarse at ' + px + ' px: no head hit box overlaps another', (await pt.evaluate(OVERLAPS)).length === 0, await pt.evaluate(OVERLAPS));
   }
   ok('coarse: a reset button is on the page to measure', await pt.locator('.field button.info.reset').count() > 0);
+  const bits = await pt.$$eval('.field .bitfield label.bit', (els) => els.filter((e) => e.getClientRects().length).map((e) => {
+    const c = e.querySelector('input').getBoundingClientRect();
+    return [e.getBoundingClientRect().height, c.width, c.height].map(Math.round);
+  }));
+  ok('coarse: a bit row is 44 px tall and its checkbox 24 px (ph-0ww6)', bits.length > 0 && bits.every(([h, w, ch]) => h >= 44 && w >= 24 && ch >= 24), bits);
   await ctxT.close();
 } else {
   // ---- live: each presentation confirmed on a second, raw session (C-8) ------

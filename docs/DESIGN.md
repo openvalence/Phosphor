@@ -891,7 +891,11 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   and casts its own shade. Chrome never selects text (`src/ui/select.css`).
 - Surfaces (same ruling): a card is one `--bg-card` surface with one frame, a
   nest one `--bg-sunken` surface holding cards, no third tint; titles are
-  text on the page. `src/style.css` `.surface-card`, `.surface-nest`.
+  text on the page. `src/style.css` `.surface-card`, `.surface-nest`. A
+  widget never paints a box of its own inside a card, and a roster shows a
+  fixed number of rows in slot order with an `N more` button that opens
+  every slot in the kit's sheet (the Advanced generator's presets: 4 rows;
+  `ph-e82.22.1`).
 - LAYOUTS are named and saved per user per client, stored locally, with the
   try/catch degrade `dashboard.svelte.js` already uses. Sync is a later
   maybe, not planned.
@@ -1037,8 +1041,11 @@ LANDED 0c33da4). Tier and category ids come from the generated vocabulary
   The wire string is RENDERING §3's free-text subgroup, unchanged, and stays
   the card's key. A page draws its cards with no section first, then each
   section's cards together, sections in order of first appearance; catalog
-  order holds within each, diagnostic cards last (collapsed by default,
-  RENDERING §9). One header row heads a section's run: text and a hairline
+  order holds within each, diagnostic cards last in their section, and the
+  diagnostic cards with no section after every section under one
+  Diagnostics header row (collapsed by default, RENDERING §9). Shown, a
+  diagnostic group named like a live one is that card's tail, not a card of
+  its own (`ph-vrg`). One header row heads a section's run: text and a hairline
   on the page in the card titles' type step, never a band or a third tint
   (§10.6), a top-level grid row with no grip and no number. Each card is
   still promoted on its own (glance, handheld); the header stays. Seams:
@@ -1369,3 +1376,5 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.5 | A field's write-state and gate words show whole at every rung (law 5): the compact head (under 24 rem) carries the label and the value chip on its first line and the words on a line of their own; under 13 rem the chip takes a line of its own between them, and a pair's two values take theirs under 28 rem. In the normal row the chip keeps its width and the label yields to the words down to its 3 em. The label text shortens before a tag drops, and a tag that does not fit drops whole; the unit yields last; heights follow the width alone (`ph-4j5f`). | operator (the bead, accepted on the board, and the 2026-10-05 §10.5 row's "never hiding the four-state reason"; the chip on the label's line, the 24, 28 and 13 rem breakpoints (24 and 28 the narrowest that keep a terse field's longest words whole beside its info and reset buttons, a restart tag and a unit at every UI scale from 0.8 to 1.6, measured in Chromium and WebKit), the label shortening while the words show, tags dropping whole and the unit yielding behind an ellipsis are the agent's, veto-able) |
 | 2026-10-10 | §10.3 | Close immediately when idle: a Settings switch, on by default, lets the X and an OS close request close with no hold while every connected machine is idle (at rest, no stream or player, no pattern, oscillator, homing or trial); anything busy or stale keeps the hold, and a machine not connected counts as idle. | operator ("the hold to close can be ignored when the machine is idle, make that a setting"; the idle list, stale reading busy and not connected reading idle are the ruling's; on by default is the coordinator's, veto-able. Not connected read as no frame since the hub was chosen, so a dropped link holds; any held control-owner slot, a jog or remote included, reading busy; a declared role never reported, or a position with no speed, holding; homing covered only by the speed until a registry role exists; the switch under a new Window heading, desktop only, are the agent's, veto-able) |
 | 2026-10-10 | §10.12, plugins | The funscript library pages as many scenes as its box holds at every size class, six or more: compact rows (a small 16:9 shot, title, meta, badges) side by side in columns where the box is wide (the kit list gains `row.min`), a 16:9 tile grid only where three tiles fit across and a page holds six; 44 px rows and targets under a coarse pointer (docs/plugins/FUNSCRIPT.md, Library browser; `ph-0hvq`). | operator ("the funscript player library being kinda useless? ... most sizes only 1 vid shows"; the density bar of six, the size classes, search, sort, a has-script filter, paging that never jumps and the now-playing and queued state per row are the ruling's. Rows winning wherever the grid pages fewer than six, the badges in the kit tile's slots, V8 V9 from parsed scripts only, Duration and Plays as the added sorts and the 560 px landscape drawer are the agent's, veto-able: FUNSCRIPT.md L1 to L5) |
+| 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
+| 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |

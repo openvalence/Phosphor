@@ -360,6 +360,17 @@ for (const id of ['slate', 'ink', 'paper']) {
   })));
   const inkRgb = async (k) => 'rgb(' + (await hexOf(page, k)).slice(1).match(/../g).map((x) => parseInt(x, 16)).join(', ') + ')';
   ok(id + ': running and danger buttons write in the inks', btn.running === await inkRgb('--warn-ink') && btn.danger === await inkRgb('--bad-ink'), JSON.stringify(btn));
+  // The fixture hub streams no STATE, so the Pattern card's own button is put in its running state by hand.
+  await openTab(page, 'cat1');
+  const ran = await page.evaluate(() => {
+    const b = document.querySelector('main.pane .run-btn');
+    if (!b || !b.classList.replace('primary', 'running')) return false;
+    b.disabled = false;
+    return [...document.querySelectorAll('main.pane .run-btn.running .run-text')].filter((t) => t.getClientRects().length).length === 1;
+  });
+  const stopLow = ran ? await page.evaluate(lowContrast, 'main.pane .run-btn.running .run-text') : ['no visible running run button'];
+  ok(id + ': the running Stop pattern label reads 4.5:1 on its card (ph-8pa1)', stopLow.length === 0, stopLow.join(' | '));
+  await openTab(page, 'machine');
   if (SHOTS) await page.screenshot({ path: join(SHOTS, 'home-' + id + '.png') });
   await openTab(page, 'display');
   if (SHOTS) await paneShot(page, 'display-' + id + '.png');

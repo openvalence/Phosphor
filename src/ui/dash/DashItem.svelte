@@ -495,9 +495,11 @@
      and the resize handle are at least 40 CSS px (law 12) at every scale
      step, however small the glyph or a scaled-down --tap; an icon tool is
      40 px under a coarse pointer. Out of flow at the head's right end,
-     wrapping downward on a card narrower than they are. */
+     wrapping downward on a card narrower than they are. Above the resize
+     edges (z 1): a press on a tool is never a resize. */
   .tools {
     position: absolute;
+    z-index: 2;
     top: calc(var(--head-h) / 2);
     right: calc(var(--sp-2) * -1);
     transform: translateY(-50%);

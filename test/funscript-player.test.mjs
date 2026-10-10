@@ -60,7 +60,7 @@ const CONTRACT = {
   [P + 'prefs.js']: ['PREFS', 'readPrefs', 'writePref'],
   [P + 'queue.js']: ['COPY', 'toStored', 'fromStored', 'move', 'mountQueue'],
   [P + 'analyzer.js']: ['TUNING', 'LIMIT_ROLES', 'LAG_MIN_MS', 'LAG_MAX_MS', 'LAG_STEP_MS', 'LAG_MIN_POINTS', 'LAG_EVERY_MS',
-    'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
+    'KIN_MAX_SAMPLES', 'WIDE_AT', 'WIDE_SPAN', 'COPY', 'CSS', 'tuningGroups', 'lagOf', 'createLag', 'toggled', 'fmtValue', 'wideExtent', 'kinText', 'mountAnalyzer'],
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
@@ -246,6 +246,28 @@ if (an) {
   ok('lagOf declines a flat trace, a short one and stale points',
     an.lagOf(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.lagOf(tr.slice(0, 10), sc, T) === null
       && an.lagOf(tr.map((x) => ({ ...x, stale: true })), sc, T) === null);
+  if (an.createLag) {
+    // The trace as the player keeps it: points pushed at the end, trimmed at the front, some stale or null, a reset,
+    // a new T; createLag must answer lagOf's every time (ph-jem5).
+    const lu = an.createLag('u'), lp = an.createLag('p');
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const live = [];
+    let same2 = true, calls = 0, T2 = T, where = null;
+    for (let m = 2000; m <= 9000 && same2; m += 16) {
+      live.push({ m, u: rnd() < 0.02 ? null : applyT(posAt(sc, m - 42), T) + (rnd() - 0.5) * 0.02, p: applyT(posAt(sc, m - 14), T), stale: rnd() < 0.03 });
+      while (live.length && live[0].m < m - 3000) live.shift();
+      if (m === 5008) live.length = 0;
+      if (m === 7008) T2 = { ...T, lo: 0.2 };
+      if (m % 160 !== 0) continue;
+      calls++;
+      const a = [lu(live, sc, T2), lp(live, sc, T2)], b = [an.lagOf(live, sc, T2, 'u'), an.lagOf(live, sc, T2, 'p')];
+      if (a[0] !== b[0] || a[1] !== b[1]) { same2 = false; where = { m, a, b }; }
+    }
+    ok('createLag answers lagOf\'s over a growing, trimmed, reset trace and a new T', same2 && calls > 40, where || calls);
+    ok('createLag declines what lagOf declines', an.createLag('u')(tr.slice(0, 10), sc, T) === null
+      && an.createLag('u')(tr.map((x) => ({ ...x, u: 0.5 })), sc, T) === null && an.createLag('u')(tr, null, T) === null);
+  }
   const kn = mods[P + 'kinetic/kinetic.js'];
   if (kn) {
     const tuned = kn.tuningOf(fs.map((f) => [f, f.name.endsWith('_ms') ? 20 : 1]));
@@ -2707,6 +2729,17 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('shadow: a write the hub never answers turns its row overdue (a shadow change, no STATE)', st === 'overdue', st);
   hub.unanswered = false;
   await modeBtn('Preview').click();
+  // Parked (ph-vo56): no telemetry moving, no player loop, so nothing else frames the card; another client's write
+  // still reaches the open row, the frame asked for by api.onChanged (the one-frame bar is analyzer-reads.test.mjs's).
+  clearInterval(hub.timer);
+  await sleep(500);
+  const parked = await video(page, (v) => v.paused);
+  const tPush = Date.now();
+  hub.set(sm.channelId, sm.name, 0.65);
+  const seenParked = await within(1000, (s) => s.v === '0.65');
+  ok('parked: another client\'s write reaches the open row with no loop and no telemetry', parked && !!seenParked,
+    { paused: parked, ms: Date.now() - tPush, row: await smRow() });
+  hub.timer = setInterval(() => hub.state(CH.motion), 50);
   // ---- Kinetic: the machine's own planner renders the preview in a worker ----
   const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
     return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);

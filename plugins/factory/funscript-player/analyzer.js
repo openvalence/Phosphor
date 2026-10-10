@@ -34,6 +34,9 @@
 //   another client's write included), at once after a change made here (a draft, a write, Apply or Discard),
 //   a new catalog or an open, and never otherwise: a frame where nothing changed reads nothing from the host
 //   (ph-uve3). Without api.changed (NaN) every frame reads.
+// - api.onChanged over the same channels asks the caller for a frame (onRender), so a change made elsewhere
+//   shows within a frame with nothing else moving (the machine parked, no player loop; ph-vo56). The watch is
+//   renewed with each catalog and dropped on unmount.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -111,6 +114,47 @@ export function lagOf(trace, script, T, key = 'u') {
     if (e < err) { err = e; best = d; }
   }
   return best;
+}
+
+/**
+ * lagOf for one key over a trace that grows and trims (ph-jem5): a point's error at every shift is computed once,
+ * when it first appears, and the sums are rebuilt in trace order on each call, so the answer is lagOf's to the bit.
+ * A new script or T starts over. -> (trace, script, T) => ms | null
+ */
+export function createLag(key = 'u') {
+  const N = Math.floor((LAG_MAX_MS - LAG_MIN_MS) / LAG_STEP_MS) + 1;
+  const rows = new Map(), pool = [], sums = new Float64Array(N);
+  let sc = null, tt = null, gen = 0;
+  const drop = (e) => { if (e.v) pool.push(e.v); };
+  return (trace, script, T) => {
+    if (!script) return null;
+    if (script !== sc || T !== tt) { rows.forEach(drop); rows.clear(); sc = script; tt = T; }
+    gen++;
+    sums.fill(0);
+    let n = 0, lo = Infinity, hi = -Infinity;
+    for (const x of trace || []) {
+      let e = rows.get(x);
+      if (!e) {
+        const u = x[key];
+        e = { v: null, gen };
+        if (u != null && !x.stale && Number.isFinite(u)) {
+          e.v = pool.pop() || new Float64Array(N);
+          for (let k = 0; k < N; k++) e.v[k] = Math.abs(u - applyT(posAt(script, x.m - (LAG_MIN_MS + k * LAG_STEP_MS)), T));
+        }
+        rows.set(x, e);
+      }
+      e.gen = gen;
+      if (!e.v) continue;
+      n++;
+      lo = Math.min(lo, x[key]); hi = Math.max(hi, x[key]);
+      for (let k = 0; k < N; k++) sums[k] += e.v[k];
+    }
+    rows.forEach((e, x) => { if (e.gen !== gen) { drop(e); rows.delete(x); } });
+    if (n < LAG_MIN_POINTS || hi - lo < 0.1) return null;
+    let best = -1, err = Infinity;
+    for (let k = 0; k < N; k++) if (sums[k] < err) { err = sums[k]; best = k; }
+    return best < 0 ? null : LAG_MIN_MS + best * LAG_STEP_MS;
+  };
 }
 
 /** The value one press of a toggle sends: the other end. */
@@ -205,7 +249,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [], cap = false;
   let roleIt = new Map(), roleF = {}, roleV = {}, inputs = null;
-  let chans = [], seen = NaN, pend = false, wasShown = false;
+  let chans = [], seen = NaN, pend = false, wasShown = false, unwatch = () => {};
   const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
@@ -365,6 +409,8 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     for (const it of rows) if (it.f.role && !roleIt.has(it.f.role)) roleIt.set(it.f.role, it);
     roleF = Object.fromEntries(KIN_ROLES.map((r) => [r, roleIt.has(r) ? null : api.field(r)]));
     chans = [...new Set([...rows.map((it) => it.f.channelId), ...Object.values(roleF).filter(Boolean).map((f) => f.channelId)])];
+    unwatch();
+    unwatch = api.onChanged ? api.onChanged([MARK_ROLE, ...chans], onRender) : () => {};
     roleV = {};
     inputs = null;
     reread();
@@ -381,6 +427,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   }
 
   let lagIn = null;   // [trace length, its last point, script, T]: what lagText was measured over
+  const lagU = createLag('u'), lagP = createLag('p');
   /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row paint. */
   function frame(shown = true) {
     // A new catalog bumps every sequence, so an unmoved stamp needs no catalog read.
@@ -404,7 +451,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       const sc = script(), t = T();
       lagIn = [tr.length, tr[tr.length - 1], sc, t];
       const fmt = (d) => (d == null ? COPY.none : d + ' ms');
-      lagText = COPY.lag + ' ' + fmt(lagOf(tr, sc, t, 'u')) + '  ' + COPY.plan + ' ' + fmt(lagOf(tr, sc, t, 'p'));
+      lagText = COPY.lag + ' ' + fmt(lagU(tr, sc, t)) + '  ' + COPY.plan + ' ' + fmt(lagP(tr, sc, t));
     }
     setText(lag, note || lagText);
     setText(kinEl, kinText(kinState, kinR));
@@ -419,6 +466,6 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     get mode() { return mode; },
     get kinetic() { return kinR && kinR.pos && kinR.sc === script() ? kinR : null; },
     get fit() { return fitR; },
-    unmount() { if (kin) kin.close(); root.remove(); },
+    unmount() { unwatch(); unwatch = () => {}; if (kin) kin.close(); root.remove(); },
   };
 }

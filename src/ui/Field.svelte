@@ -1208,7 +1208,7 @@
     .info:hover::before { border-color: var(--line-4); }
     .info[aria-expanded='true']::before { border-color: var(--reality); }
     .reset:disabled::before { border-color: var(--line-1); }
-    .bitfield .bit { min-height: 40px; }
+    .bitfield .bit { min-height: max(44px, var(--tap)); }
     .field-value .chip-num { padding: 10px 0; min-width: 40px; }
   }
   .field-value .chip-num::-webkit-inner-spin-button,
@@ -1333,6 +1333,7 @@
     height: 16px;
     accent-color: var(--reality);
   }
+  @media (pointer: coarse) { .bitfield input[type='checkbox'] { width: 24px; height: 24px; } }
 
   /* Density rungs (DESIGN §10.12): compact under 24rem (about 11 cells), normal
      above, where label, ⓘ, reset, a tag, a chip with its unit and the longest

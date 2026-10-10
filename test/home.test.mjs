@@ -377,10 +377,18 @@ if (!LIVE) {
   })));
   await page.click('nav.rail [role=tab][title="System"]');
   await page.waitForTimeout(150);
-  ok('sections: System shows a Library section over its Pattern presets card',
-     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }]), await sectionRuns());
+  ok('sections: System shows a Library section over its Pattern presets card, then its diagnostic card under Diagnostics (ph-vrg)',
+     JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }, { head: 'Diagnostics', cards: ['Session'] }]),
+     await sectionRuns());
   await page.click('nav.rail [role=tab][title="Motion"]');
   await page.waitForTimeout(150);
+  // ph-vrg: a diagnostic group named like a live one rides that card (the order itself: settings-model.test).
+  const motion = MODEL.categories.find((c) => c.label === 'Motion');
+  const looseDiag = motion.groups.find((g) => g.diagnostic && !g.name);
+  const motionIds = await page.$$eval('main.pane .dash-grid[data-view] > .dash-cell', (els) => els.map((e) => e.dataset.id));
+  const rides = await page.locator('main.pane .dash-cell[data-id="group:' + motion.id + ':ungrouped"] .field[data-uid="' + looseDiag.fields[0].uid + '"]').count();
+  ok('diagnostics: Motion\'s ungrouped diagnostic field rides its Settings card, no one-field card of its own (ph-vrg)',
+     rides === 1 && !motionIds.includes('diag:' + motion.id + ':ungrouped'), motionIds);
   const TUNING = ['Motion behavior', 'Streaming', 'Safety', 'Curve', 'Ceilings', 'Sample streams', 'Planner',
     'Re-planning', 'Active plan', 'Anomalies', 'Plan time', 'Stream ingress'];
   ok('sections: Motion shows one Tuning section header with its twelve cards under it',
@@ -679,6 +687,28 @@ if (!LIVE) {
     hidden.mods === 0 && hidden.toggle === 1 && hidden.n >= advShape.mods, { hidden, shown: advShape.mods });
   ok('advanced generator: its card reads its title (ph-c46)', await page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"] .dash-title')
     .first().textContent().then((t) => t.trim()) === 'Advanced generator');
+  const advCell = page.locator('main.pane .dash-cell[data-id="hero:advanced-generator"]');
+  const pay = await advCell.locator('.field.action .payload').evaluateAll((ls) => ls.map((l) => {
+    const s = l.querySelector('.field-label').getBoundingClientRect(), i = l.querySelector('input').getBoundingClientRect();
+    return { recess: l.querySelector('input').classList.contains('value-input'), dx: Math.round(i.left - s.left), gap: Math.round(i.top - s.bottom) };
+  }));
+  ok('presets: each payload input is the shell recess right under its label (ph-144)',
+     pay.length > 0 && pay.every((p) => p.recess && p.dx === 0 && p.gap >= 0 && p.gap < 12), pay);
+  const rosterRows = await advCell.locator('.roster > ul > li').count();
+  const moreBtn = advCell.locator('.roster .more');
+  await moreBtn.click();
+  await page.waitForTimeout(200);
+  const sheetRows = await page.locator('.ui-sheet:popover-open .roster li').count();
+  ok('presets: four rows in the card; N more opens every slot in the sheet (ph-e82.22.1)',
+     rosterRows === 4 && sheetRows > 4 && (await moreBtn.textContent()).trim() === (sheetRows - 4) + ' more', [rosterRows, sheetRows, await moreBtn.textContent()]);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  ok('presets: Escape closes the sheet', await page.locator('.ui-sheet:popover-open').count() === 0);
+  await moreBtn.click();
+  await page.waitForTimeout(200);
+  ok('presets: reopened, the sheet holds one list', await page.locator('.ui-sheet:popover-open .roster li').count() === sheetRows
+     && await page.locator('.ui-sheet .roster').count() === 1);
+  await page.keyboard.press('Escape');
   await ctx.close();
 
   // ---- a home saved before ph-e82.9 keyed a role field by uid ------------------
@@ -769,6 +799,16 @@ if (!LIVE) {
   await doneBtn(hh.page).click();
   await hh.page.keyboard.press('Escape');
   checkReach('handheld', BEFORE.handheld, await harvestDerived(hh.page));
+  for (const id of await tabIds(hh.page, 'cat')) {
+    await goTab(hh.page, id);
+    await hh.page.waitForTimeout(150);
+    if (await hh.page.locator('main.pane .drill-open').count()) break;
+  }
+  await hh.page.locator('main.pane .drill-open').first().click();
+  await hh.page.waitForTimeout(150);
+  const drillFaults = await surfaceFaults(hh.page);
+  ok('surfaces: a handheld drill-in page is one card under its title (ph-e82.22.1)',
+     await hh.page.locator('main.pane .drill-page.surface-card').count() === 1 && drillFaults.length === 0, drillFaults);
   await hh.ctx.close();
 } else {
   // ---- live: build a home from the palette, reload, it restores ---------------
