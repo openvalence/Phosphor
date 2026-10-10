@@ -346,7 +346,7 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
     'evidence.lead_send_ms_min': minOf(col('lead')), 'evidence.arrival_lead_ms_min': minOf(col('arr')),
     'evidence.rtt_ms_p50': quantile(col('rtt'), 0.5), 'evidence.rtt_ms_max': maxOf(col('rtt')), 'evidence.owd_up_ms_max': maxOf(col('owd')),
     'evidence.downlink_gap_ms_max': maxOf(col('gap')), 'evidence.loop_lag_ms_max': maxOf(col('lag')),
-    'evidence.backlog_bytes_max': maxOf(col('backlog')), 'evidence.rssi_dbm': null, 'evidence.wifi_drops': null,
+    'evidence.backlog_bytes_max': maxOf(col('backlog')), 'evidence.rssi_dbm': minOf(col('rssi')),'evidence.wifi_drops': null,
     'evidence.late_plans_per_min': null, 'evidence.reconnects': e.reconnects, 'evidence.heap_mb': e.heapMb, 'evidence.fps': e.fps,
     'media.width': md.w, 'media.height': md.h, 'media.video_fps': md.fps, 'media.display_hz': md.hz, 'media.rate': md.rate,
     'media.window_ms': md.wallS != null ? md.wallS * 1000 : null, 'media.frames_total': md.frames, 'media.frames_dropped': md.dropped,

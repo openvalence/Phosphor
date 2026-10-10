@@ -6,9 +6,12 @@
  * With --rebuild, emsdk (../.tools/emsdk or $EMSDK) and the sibling Nucleus clean at the pinned sha: rebuilds
  * sim/valencesim/wasm into a temp dir and byte-compares. Otherwise prints why it skipped and passes.
  *
+ * Every build compiles Kinetic at the sha in that Nucleus's kinetic.pin, from a temporary detached worktree of
+ * the sibling Kinetic ($KINETIC_DIR or ../Kinetic), never its HEAD; a missing pin or sha fails the build.
+ *
  * Run: node test/integral-pin.mjs             check
  *      node test/integral-pin.mjs --rebuild   check, then rebuild and compare
- *      node test/integral-pin.mjs --write     build from Nucleus HEAD (clean) and rewrite the vendored files and the pin
+ *      node test/integral-pin.mjs --write     build from Nucleus HEAD (clean), Kinetic at its kinetic.pin, and rewrite the vendored files and the pin
  */
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -21,6 +24,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const IDIR = join(ROOT, 'src', 'model', 'integral');
 const NUCLEUS = process.env.NUCLEUS_DIR || join(ROOT, '..', 'Nucleus');
 const EMSDK = process.env.EMSDK || join(ROOT, '..', '.tools', 'emsdk');
+const KINETIC = process.env.KINETIC_DIR || join(NUCLEUS, '..', 'Kinetic');
 const WRITE = process.argv.includes('--write');
 const REBUILD = process.argv.includes('--rebuild');
 const fail = (m) => { console.log('integral-pin: FAIL ' + m); process.exit(1); };
@@ -29,17 +33,33 @@ const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 // The board's beads export is never source: a modified .beads/ does not make a build dirty.
 const dirty = () => git('status', '--porcelain', '--untracked-files=no', '--', '.', ':(exclude).beads');
 
+/** The Kinetic sha Nucleus pins; fails when the pin is missing or malformed. */
+function kineticPin() {
+  let text = '';
+  try { text = readFileSync(join(NUCLEUS, 'kinetic.pin'), 'utf8'); } catch { fail('no kinetic.pin in ' + NUCLEUS); }
+  const sha = (text.match(/^[0-9a-f]{40}$/m) || [])[0];
+  if (!sha) fail('kinetic.pin in ' + NUCLEUS + ' holds no 40-hex sha');
+  return sha;
+}
+
 function build() {
   const em = join(EMSDK, 'upstream', 'emscripten');
   const exe = process.platform === 'win32' ? '.exe' : '';
   const env = { ...process.env, EMSDK, EM_CONFIG: join(EMSDK, '.emscripten'), PATH: EMSDK + delimiter + em + delimiter + process.env.PATH };
+  const kin = kineticPin();
   const out = mkdtempSync(join(tmpdir(), 'integral-pin-'));
+  const kdir = join(out, 'kinetic');
+  const kgit = (...a) => execFileSync('git', ['-C', KINETIC, ...a], { encoding: 'utf8', stdio: 'pipe', windowsHide: true });
   try {
+    try { kgit('worktree', 'add', '--detach', kdir, kin); } catch (e) {
+      fail('cannot check out Kinetic ' + kin.slice(0, 12) + ' (kinetic.pin) from ' + KINETIC + ': ' + String(e.stderr || e.message).trim());
+    }
     const run = (cmd, args) => execFileSync(cmd, args, { cwd: NUCLEUS, env, stdio: 'pipe', windowsHide: true });
-    run(join(em, 'emcmake' + exe), ['cmake', '-S', 'sim/valencesim/wasm', '-B', out, '-G', 'Ninja']);
-    run('cmake', ['--build', out]);
-    return { glue: readFileSync(join(out, 'integral.js')), wasm: readFileSync(join(out, 'integral.wasm')) };
+    run(join(em, 'emcmake' + exe), ['cmake', '-S', 'sim/valencesim/wasm', '-B', join(out, 'build'), '-G', 'Ninja', '-DKINETIC_ROOT=' + kdir]);
+    run('cmake', ['--build', join(out, 'build')]);
+    return { kin, glue: readFileSync(join(out, 'build', 'integral.js')), wasm: readFileSync(join(out, 'build', 'integral.wasm')) };
   } finally {
+    try { kgit('worktree', 'remove', '--force', kdir); } catch { /* never added */ }
     rmSync(out, { recursive: true, force: true });
   }
 }
@@ -63,14 +83,14 @@ if (WRITE) {
   if (!hasEmsdk) fail('--write needs emsdk at ' + EMSDK);
   if (dirty()) fail('Nucleus has uncommitted changes: a dirty build is never vendored');
   const sha = git('rev-parse', 'HEAD');
-  const { glue, wasm } = build();
+  const { kin, glue, wasm } = build();
   writeFileSync(join(IDIR, 'integral.js'), glue);
   writeFileSync(join(IDIR, 'bytes.js'), '// integral.wasm from Nucleus ' + sha + ' (integral.pin). Written by test/integral-pin.mjs --write; never edit.\n'
     + 'export const WASM = \'' + wasm.toString('base64') + '\';\n');
   const etag = await bootEtag(wasm);
   writeFileSync(join(IDIR, 'integral.pin'), '# The Nucleus commit integral.js and integral.wasm (bytes.js) were built from; bump with node test/integral-pin.mjs --write.\n'
-    + 'nucleus ' + sha + '\netag ' + etag + '\nwasm ' + wasm.length + ' ' + sha256(wasm) + '\nglue ' + glue.length + ' ' + sha256(glue) + '\n');
-  console.log('integral-pin: wrote ' + wasm.length + ' B wasm, ' + glue.length + ' B glue, etag ' + etag + ', Nucleus ' + sha.slice(0, 12));
+    + 'nucleus ' + sha + '\nkinetic ' + kin + '\netag ' + etag + '\nwasm ' + wasm.length + ' ' + sha256(wasm) + '\nglue ' + glue.length + ' ' + sha256(glue) + '\n');
+  console.log('integral-pin: wrote ' + wasm.length + ' B wasm, ' + glue.length + ' B glue, etag ' + etag + ', Nucleus ' + sha.slice(0, 12) + ', Kinetic ' + kin.slice(0, 12) + ' (kinetic.pin)');
   process.exit(0);
 }
 

@@ -20,7 +20,7 @@
   import { health } from '../model/health/health.svelte.js';
   import { view } from '../model/viewport.svelte.js';
   import { bytes, since, labelFor, formatWithUnit } from '../model/format.js';
-  import { reportedValue } from '../model/settings.js';
+  import { reportedReading } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { watch, read, level, LINK, TICK_MS } from '../model/activity.js';
   import { CHANNEL_CLASS, CHANNEL_CLASS_NAME } from '../../../Valence/clients/js/index.js';
@@ -133,8 +133,8 @@
     if (!byRole) return [];
     const sample = untrack(() => machine.samples[id]);
     return READS.flatMap((r) => (byRole.get(r) || []).filter((f) => f.channelId === id)).map((f) => {
-      const v = reportedValue(f, sample);
-      return labelFor(f) + ' ' + (Number.isFinite(v) ? formatWithUnit(f, v) : '--');
+      const v = reportedReading(f, sample);
+      return labelFor(f) + ' ' + (v != null ? formatWithUnit(f, v) : '--');
     });
   }
   // Ages in an open tip keep moving while the tick is quiet.
