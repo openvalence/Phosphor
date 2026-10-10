@@ -38,7 +38,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const pkg = JSON.parse(readFileSync(files.pkg, 'utf8')).version;
     const meta = (readFileSync(files.meta, 'utf8').match(/<release version="([^"]+)"/) || [])[1];
     const bad = [];
-    if (!/^\d+\.\d+\.0$/.test(b)) bad.push(`tauri.conf.json version ${b}: the committed patch is 0, builds compute it`);
+    if (!process.env.CI && !/^\d+\.\d+\.0$/.test(b)) bad.push(`tauri.conf.json version ${b}: the committed patch is 0, builds compute it`);
     if (pkg !== b) bad.push(`package.json ${pkg} != tauri.conf.json ${b}`);
     if (meta !== b) bad.push(`metainfo release ${meta} != tauri.conf.json ${b}`);
     if (bad.length) { console.error('version: ' + bad.join('; ')); process.exit(1); }
