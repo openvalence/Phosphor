@@ -12,11 +12,16 @@
  *   browser tests' dev fetch; a real Stash may not answer a preflight.
  * - Scenes with id % 10 == 0 are not interactive: scene_filter {interactive: true} must drop them.
  * - Scripts of scenes with id % 6 == 1 embed the oscillator axes V8 and V9 (funlib 1.1 axes[]).
+ * - Each scene has updated_at and a script revision `rev` (the heat cache's change marker, A10): bump the scene's
+ *   rev (and updated_at) and its script, its Last-Modified and its ETag change. `validators` says what the funscript
+ *   route answers: 'lm' (Last-Modified and a 304 to If-Modified-Since, as Stash's http.ServeFile), 'etag' (ETag and
+ *   a 304 to If-None-Match) or 'none' (neither; every GET is a 200).
  *
  * Use: const s = await startFakeStash({ key: 'k' }); ... s.seen; await s.close();
  */
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const SELF = 'http://stash.internal:9999';
 const SORTS = { date: (s) => s.date, created_at: (s) => s.created_at, title: (s) => s.title, rating: (s) => s.rating100,
@@ -30,6 +35,8 @@ function makeScenes(n) {
       title: i % 7 === 3 ? '' : 'Scene title ' + id,
       date: '2026-' + String(1 + (i % 12)).padStart(2, '0') + '-' + String(1 + (i % 28)).padStart(2, '0'),
       created_at: new Date(Date.UTC(2026, 0, 1) + i * 3600e3).toISOString(),
+      updated_at: new Date(Date.UTC(2026, 0, 1) + i * 3600e3).toISOString(),
+      rev: 0,
       rating100: i % 5 === 0 ? null : (i * 13) % 101,
       interactive: (i + 1) % 10 !== 0,
       interactive_speed: (i + 1) % 10 !== 0 ? 100 + ((i * 37) % 300) : null,
@@ -48,16 +55,16 @@ function makeScenes(n) {
 }
 
 /** A main-axis script: strokes every 400 ms for the scene's length. */
-export function fakeScript(id, durationMs) {
+export function fakeScript(id, durationMs, rev = 0) {
   const actions = [];
-  for (let at = 0, k = 0; at <= durationMs; at += 400, k++) actions.push({ at, pos: k % 2 ? 90 : 10 });
+  for (let at = 0, k = 0; at <= durationMs; at += 400, k++) actions.push({ at, pos: k % 2 ? Math.max(40, 90 - rev * 25) : 10 });
   const osc = +id % 6 === 1 ? { version: '1.1', axes: ['V8', 'V9'].map((a) => ({ id: a, actions: [{ at: 0, pos: 50 }, { at: durationMs, pos: 60 }] })) } : {};
   return { version: '1.0', inverted: false, range: 100, actions, metadata: { title: 'Script ' + id }, ...osc };
 }
 
 /**
  * @param {{key?: string, scenes?: number, video?: Buffer|string|null}} o
- * @returns {Promise<{url: string, seen: Array, close(): Promise<void>, scenes: Array, fail: Object}>}
+ * @returns {Promise<{url: string, seen: Array, close(): Promise<void>, scenes: Array, fail: Object, state: {validators: string}}>}
  *   fail: set fail.status = 500 (or any) to answer that status once to the next /graphql,
  *   fail.text = '...' to answer a non-JSON 200 once.
  */
@@ -67,6 +74,7 @@ export async function startFakeStash({ key = '', scenes = 30, video = null } = {
   const vtype = typeof video === 'string' && /\.webm$/i.test(video) ? 'video/webm' : 'video/mp4';
   const seen = [];
   const fail = {};
+  const state = { validators: 'lm' };
 
   const server = createServer((req, res) => {
     let body = '';
@@ -74,8 +82,8 @@ export async function startFakeStash({ key = '', scenes = 30, video = null } = {
     req.on('end', () => {
       const u = new URL(req.url, 'http://x');
       seen.push({ method: req.method, path: req.url, headers: req.headers, body });
-      const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'ApiKey, Content-Type, Range',
-        'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length' };
+      const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'ApiKey, Content-Type, Range, If-None-Match, If-Modified-Since',
+        'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length, ETag, Last-Modified' };
       const send = (status, type, data, extra = {}) => {
         res.writeHead(status, { ...cors, 'Content-Type': type, ...extra });
         res.end(data);
@@ -116,7 +124,18 @@ export async function startFakeStash({ key = '', scenes = 30, video = null } = {
       if (!s) return send(404, 'text/plain', 'not found');
       if (m[2] === 'funscript') {
         if (!s.interactive) return send(404, 'text/plain', 'not found');
-        return send(200, 'application/json', JSON.stringify(fakeScript(s.id, s.files[0].duration * 1000)));
+        const text = JSON.stringify(fakeScript(s.id, s.files[0].duration * 1000, s.rev));
+        const lm = new Date(Date.UTC(2026, 0, 1) + s.rev * 3600e3).toUTCString();
+        const etag = '"' + createHash('md5').update(text).digest('hex') + '"';
+        if (state.validators === 'lm') {
+          if (req.headers['if-modified-since'] === lm) return send(304, 'application/json', '', { 'Last-Modified': lm });
+          return send(200, 'application/json', text, { 'Last-Modified': lm });
+        }
+        if (state.validators === 'etag') {
+          if (req.headers['if-none-match'] === etag) return send(304, 'application/json', '', { ETag: etag });
+          return send(200, 'application/json', text, { ETag: etag });
+        }
+        return send(200, 'application/json', text);
       }
       if (m[2] === 'screenshot') {
         return send(200, 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><rect width="160" height="90" fill="#333"/>'
@@ -135,7 +154,7 @@ export async function startFakeStash({ key = '', scenes = 30, video = null } = {
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   const url = 'http://127.0.0.1:' + server.address().port;
   return {
-    url, seen, fail, scenes: all,
+    url, seen, fail, state, scenes: all,
     close: () => new Promise((ok) => { server.closeAllConnections?.(); server.close(() => ok()); }),
   };
 }
