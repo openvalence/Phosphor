@@ -379,6 +379,23 @@ for (const id of ['slate', 'ink', 'paper']) {
   await ctx.close();
 }
 
+// ---- 3b. every preset: safety text reads 4.5:1 on every surface (ph-632) -----
+for (const t of THEMES) {
+  const { ctx, page, errors } = await boot({ width: 1440, height: 900 }, { 'phosphor.theme': JSON.stringify(t) });
+  await page.waitForSelector('nav.rail .rail-name', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const inkLow = [];
+  for (const ink of ['--warn-ink', '--bad-ink']) {
+    for (const s of ['--bg', '--bg-raised', '--bg-card', '--bg-sunken']) {
+      const r = contrast(await hexOf(page, ink), await hexOf(page, s));
+      if (r < 4.5) inkLow.push(ink + ' on ' + s + ' ' + r.toFixed(2));
+    }
+  }
+  ok(t.id + ': safety text reads 4.5:1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
+  ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
 // ---- 4. motion: html.still from theme motion 0, the Motion pref and the OS ---
 {
   console.log('\n--- motion ---');

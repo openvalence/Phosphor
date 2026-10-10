@@ -52,6 +52,6 @@
   }
   .lg-t, .lg-lvl { color: var(--ink-faint); }
   .lg-lvl { text-transform: uppercase; }
-  .lg li[data-level='warn'] .lg-lvl, .lg li[data-level='error'] .lg-lvl { color: var(--warn); }
+  .lg li[data-level='warn'] .lg-lvl, .lg li[data-level='error'] .lg-lvl { color: var(--warn-ink); }
   .lg li[data-level='error'] { color: var(--ink); }
 </style>

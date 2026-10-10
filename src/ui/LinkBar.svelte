@@ -492,10 +492,10 @@
      second, non-color-dependent channel. */
   .chip.tone-good { border-color: color-mix(in srgb, var(--good) 45%, var(--chip-line)); color: var(--good); }
   .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn-ink, var(--warn)); }
-  .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad); }
+  .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad-ink); }
   .chip.tone-good .mono { color: var(--good); }
   .chip.tone-warn .mono { color: var(--warn-ink, var(--warn)); }
-  .chip.tone-bad  .mono { color: var(--bad); }
+  .chip.tone-bad  .mono { color: var(--bad-ink); }
 
   /* Narrow viewports shed chips from the tail. Marked by class, not
      :nth-child: a positional selector retargets when a chip turns conditional. */

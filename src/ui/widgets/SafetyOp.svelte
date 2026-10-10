@@ -239,7 +239,7 @@
     background-image: repeating-linear-gradient(135deg, rgba(var(--bad-rgb), .09) 0 5px, rgba(var(--bad-rgb), .012) 5px 10px);
   }
   .btn-estop:not(:disabled):hover, .btn-estop:not(:disabled):active, .btn-estop.latched { border-color: var(--bad); }
-  .btn-estop.latched .lbl { color: var(--bad); }
+  .btn-estop.latched .lbl { color: var(--bad-ink); }
   .btn-pause.latched, .btn-override.latched { border-color: var(--warn); }
 
   .hold {
