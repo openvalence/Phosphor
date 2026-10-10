@@ -1179,16 +1179,23 @@ derives from one unit, and no size is tuned by hand.
   follows `prefers-reduced-motion`; Reduced and Full override it. Every
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets; no component reads the media query itself.
-- The context menu (operator 2026-10-09, `ph-kyjd`): the shell's own menu
-  replaces the webview's everywhere but text entry (Inspect stays behind
-  Shift in a dev build). A right-click, a long press, the menu key or
-  Shift+F10 lists the targets under it, innermost first: the field (Copy
-  path, Copy value, Paste value, Reset to default, Send to node editor, Show
-  in history), the module or card (Copy path, Send fields to node editor),
-  the page (Edit layout, Show advanced, Show diagnostic, Reset page to
-  defaults); plugins add items (docs/PLUGINS.md, Context menus). Copy path is
-  the Valence path, `valence://<hub>/<identity>` (Blender's Copy Data Path).
-  It opens in the top layer under the strip and moves nothing. Seams:
+- The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
+  the shell's own menu replaces the webview's everywhere, text entry
+  included; a release build turns WebView2's off at the source and a dev
+  build keeps it behind Shift. A right-click, a long press, the menu key or
+  Shift+F10 lists the targets under it, innermost first: a plugin's own
+  element (`api.ui.menu`), the field (Copy path, Copy value, Paste value,
+  Reset to default, Send to node editor, Show in history), the module or
+  card (Copy path, Send fields to node editor), the page (Edit layout, Show
+  advanced, Show diagnostic, Reset page to defaults; on a plugin page
+  Fullscreen and Manage plugins); plugins add items (docs/PLUGINS.md,
+  Context menus). Text entry lists Undo, Cut, Copy, Paste and Select all
+  first, then the field's items when it is a field's input. No menu reads
+  the clipboard to open: Paste and Paste value read it on the pick, through
+  the native clipboard in the shell, and a value that does not fit is
+  refused in the status slot. Copy path is the Valence path,
+  `valence://<hub>/<identity>` (Blender's Copy Data Path). It opens in the
+  top layer under the strip and moves nothing. Seams:
   `src/ui/contextmenu.js`, `src/model/identity.js`.
 - Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): a field or module
   item on the full class (§10.1) that opens a submenu: every Dash in sidebar
@@ -1378,3 +1385,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.12, plugins | The funscript library pages as many scenes as its box holds at every size class, six or more: compact rows (a small 16:9 shot, title, meta, badges) side by side in columns where the box is wide (the kit list gains `row.min`), a 16:9 tile grid only where three tiles fit across and a page holds six; 44 px rows and targets under a coarse pointer (docs/plugins/FUNSCRIPT.md, Library browser; `ph-0hvq`). | operator ("the funscript player library being kinda useless? ... most sizes only 1 vid shows"; the density bar of six, the size classes, search, sort, a has-script filter, paging that never jumps and the now-playing and queued state per row are the ruling's. Rows winning wherever the grid pages fewer than six, the badges in the kit tile's slots, V8 V9 from parsed scripts only, Duration and Plays as the added sorts and the 560 px landscape drawer are the agent's, veto-able: FUNSCRIPT.md L1 to L5) |
 | 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
+| 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |

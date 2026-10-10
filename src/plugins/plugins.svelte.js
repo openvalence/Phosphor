@@ -234,6 +234,8 @@ export const host = createPluginHost({
   registerTheme,
   listenTcp: SHELL ? listenTcp : null,
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
+  openUrl: SHELL ? (url) => import('@tauri-apps/api/core').then(({ invoke }) => invoke('plugin_open_url', { url })).then(() => true, () => false)
+    : (url) => { window.open(url, '_blank', 'noopener'); return Promise.resolve(true); },
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
   hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,

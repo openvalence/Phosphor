@@ -52,6 +52,8 @@ pub fn run() {
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,
+      #[cfg(desktop)]
+      plugins::plugin_open_url,
       report::save_report,
       #[cfg(desktop)]
       report::open_report_url,
@@ -111,6 +113,20 @@ pub fn run() {
       {
         use tauri::Manager;
         app.manage(buttplug::init(app.handle()));
+      }
+      // Release: WebView2 never draws its own context menu (Print, Reload,
+      // Inspect, its text menu); the shell's covers every surface
+      // (src/ui/contextmenu.js). A debug build keeps it for Shift+right-click.
+      #[cfg(all(windows, not(debug_assertions)))]
+      {
+        use tauri::Manager;
+        if let Some(w) = app.get_webview_window("main") {
+          let _ = w.with_webview(|wv| unsafe {
+            if let Ok(s) = wv.controller().CoreWebView2().and_then(|c| c.Settings()) {
+              let _ = s.SetAreDefaultContextMenusEnabled(false);
+            }
+          });
+        }
       }
       Ok(())
     })

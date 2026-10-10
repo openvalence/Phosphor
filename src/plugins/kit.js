@@ -1342,6 +1342,43 @@ export function menu(o = {}) {
   return def(el, { items: { value: btns }, close: { value: close } });
 }
 
+// ---- a plugin's own items in the shell context menu (ui.menu) ----------------------------
+
+const OWN = new WeakMap();
+/**
+ * Puts the plugin's own items on its own element in the shell context menu (docs/PLUGINS.md,
+ * Context menus): a right-click, a long press, the menu key or Shift+F10 inside `el` lists them
+ * first, innermost element first, before the field, module and page items. `items` is an array
+ * or a function of the open, `at` {x, y, keyboard, target}, returning one; each item {label,
+ * run, disabled, title, checked}, flat. `o.title` heads them. Attaching again replaces. -> off()
+ */
+export function attachMenu(el, items, o = {}) {
+  if (!el || el.nodeType !== 1) throw new Error('ui.menu takes an element');
+  if (typeof items !== 'function' && !Array.isArray(items)) throw new Error('ui.menu takes items: an array or a function returning one');
+  o = check('menu', o, ['title']);
+  const spec = { items, title: typeof o.title === 'string' ? o.title.trim().slice(0, 80) : '' };
+  OWN.set(el, spec);
+  return () => { if (OWN.get(el) === spec) OWN.delete(el); };
+}
+const ownItem = (it) => it && typeof it.label === 'string' && !!it.label.trim() && typeof it.run === 'function';
+/**
+ * The ui.menu targets from `node` up, innermost first: [{el, title, items}], each item checked
+ * and trimmed to 40 characters; an item without a label or a run is left out.
+ */
+export function ownMenus(node, at) {
+  const out = [];
+  for (let n = node; n; n = n.parentElement) {
+    const s = OWN.get(n);
+    if (!s) continue;
+    const list = typeof s.items === 'function' ? s.items(at) : s.items;
+    const items = (Array.isArray(list) ? list : []).filter(ownItem).map((it) => ({ label: it.label.trim().slice(0, 40), run: it.run,
+      disabled: typeof it.disabled === 'string' ? it.disabled : it.disabled ? 'unavailable' : '',
+      title: typeof it.title === 'string' ? it.title : null, checked: !!it.checked }));
+    out.push({ el: n, title: s.title, items });
+  }
+  return out;
+}
+
 /** The shell's recess shades on a scroller of the plugin's own (DESIGN 10.3). -> off() */
 export function shade(el) {
   return scrollshade(el).destroy;
@@ -1352,5 +1389,5 @@ export const KIT = Object.freeze({
   version: VERSION, icons: ICONS, icon,
   button, files, segmented, switch: switchCtl, slider, stepper, select, text,
   page, card, rows, row, bar, stage, scrub, split, sheet, status, quickRail, list, tile,
-  outside, gestures, drag, shade, field, module,
+  outside, gestures, drag, shade, field, module, menu: attachMenu,
 });

@@ -3,8 +3,11 @@
  * kit controls and the quick-access factory plugin (ph-kyjd, ph-5wsk.6), on
  * the shell bundle with the stub Tauri runtime and a fake hub that echoes,
  * holds or refuses writes on the recorded valencesim catalog. Asserts:
- *   native     a right-click outside text entry is prevented and opens the shell
- *              menu; in a text input it is left to the webview (cut, copy, paste)
+ *   native     a right-click is prevented everywhere (every element of a page
+ *              and of Hubs: the webview's menu never shows) and opens the shell menu
+ *   text       in text entry: Undo, Cut, Copy, Paste, Select all by the input's
+ *              state, then the field's items when it is a field's input; Cut,
+ *              Copy and Paste through the native clipboard, Paste read on the pick
  *   field      the description heads it; Copy path, Copy value, Paste value,
  *              Reset to default, Send to node editor (phosphor-node-add, else
  *              the queue), Show in history
@@ -224,11 +227,21 @@ if (run('desk')) {
     && m1.rect[1] >= (await rect(page, '.topstrip')).b && m1.rect[2] <= 1428 && m1.rect[3] <= 900, m1);
   await shot(page, '1428x900-dark-menu');
   await page.keyboard.press('Escape');
-  const TXT = '.field input.chip-num, .field input[type=number], .field input[type=text]';
+  const TXT = F(FREQ) + ' input.chip-num';
   if (await page.locator(TXT).count()) {
     const inText = await rclick(page, TXT);
-    ok('native: in a text input the webview keeps its own menu (cut, copy, paste)', !inText.prevented && !inText.menu, inText);
-  } else ok('native: a text input exists to check', false);
+    const mt = await menuState(page);
+    ok('text: a right-click in a field\'s input is prevented and opens the shell menu', inText.prevented && inText.menu, inText);
+    ok('text: Undo, Cut, Copy, Paste, Select all first, then the field\'s items under its label, no head',
+      !!mt && mt.title === '' && mt.items.slice(0, 5).map((l) => l.replace(/^-/, '')).join() === 'Undo,Cut,Copy,Paste,Select all'
+      && mt.sections[0] === label && mt.items.includes('Copy path') && mt.items.includes('Paste value'), mt);
+    await pick(page, 'Select all');
+    await rclick(page, TXT);
+    ok('text: Copy and Cut enabled once Select all selected the text', (await menuState(page)).items.slice(1, 3).join() === 'Cut,Copy', await menuState(page));
+    await pick(page, 'Copy');
+    ok('text: Copy puts the selection on the clipboard, natively', await clip(page) === await page.locator(TXT).inputValue(), await clip(page));
+    await page.keyboard.press('Escape');
+  } else ok('text: a field input exists to check', false);
 
   // Copy path (uid and role identities), Copy value, Paste value only when it fits, Reset to default
   await rclick(page, F(FREQ) + ' .field-label');
@@ -359,6 +372,11 @@ if (run('desk')) {
   const tray = await page.evaluate(() => [...document.querySelectorAll('.side-dock .qa-pin')].map((c) => c.dataset.pin + '|' + (c.querySelector('.field') ? 'live' : 'none')));
   ok('tray: one column of the pinned modules, live, in pin order', JSON.stringify(tray) === JSON.stringify([OSC + '|live', FREQ_KEY + '|live']), tray);
   await shot(page, '1428x900-dark-dock');
+  await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
+  const dm = await menuState(page);
+  ok('bound: a field drawn by api.ui.field on a plugin surface gets the field menu (Copy path, Copy value, Paste value)',
+    !!dm && ['Copy path', 'Copy value', 'Paste value'].every((l) => dm.items.includes(l)), dm);
+  await page.keyboard.press('Escape');
 
   // laws on a pinned field
   const tf = '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field';
@@ -416,6 +434,53 @@ if (run('desk')) {
   await page.locator('.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .qa-unpin').click();
   await page.waitForTimeout(150);
   ok('unpin: the menu and the x each remove one', JSON.stringify((await pins(page)).map((p) => p.key)) === JSON.stringify([OSC]), await pins(page));
+
+  // text entry outside a field: its edits only; Cut, Paste on the pick (one native read), Undo
+  await goTab(page, 'shell:hubs');
+  const HE = '.he-host';
+  await page.waitForSelector(HE);
+  await page.locator(HE).fill('');
+  await page.locator(HE).click();
+  await page.keyboard.type('abc');
+  // The caret's own scroll into view lands a frame later and would close the menu (a scroll closes it).
+  await page.waitForTimeout(200);
+  await rclick(page, HE);
+  const mh = await menuState(page);
+  ok('text: an input outside a field lists its edits only, by its state (typed: Undo; no selection: no Cut or Copy)',
+    !!mh && mh.items.join() === 'Undo,-Cut,-Copy,Paste,Select all' && !mh.sections.length, mh);
+  await pick(page, 'Select all');
+  await rclick(page, HE);
+  await pick(page, 'Cut');
+  ok('text: Cut takes the selection onto the clipboard', await page.locator(HE).inputValue() === '' && await clip(page) === 'abc', [await page.locator(HE).inputValue(), await clip(page)]);
+  const r0 = await reads(page);
+  await rclick(page, HE);
+  ok('text: opening the menu reads no clipboard', (await reads(page)).join() === r0.join(), [r0, await reads(page)]);
+  await pick(page, 'Paste');
+  await page.waitForTimeout(150);
+  ok('text: Paste reads the clipboard once, natively, on the pick, and inserts it', await page.locator(HE).inputValue() === 'abc'
+    && (await reads(page))[0] === r0[0] + 1 && (await reads(page))[1] === 0, [await page.locator(HE).inputValue(), await reads(page)]);
+  await rclick(page, HE);
+  await pick(page, 'Undo');
+  ok('text: Undo takes the paste back', await page.locator(HE).inputValue() === '', await page.locator(HE).inputValue());
+
+  // release: no element on a category page or on Hubs leaves its right-click to the webview
+  const loose = () => page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (!el.getClientRects().length || el.closest('.ui-menu')) continue;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      el.dispatchEvent(ev);
+      if (!ev.defaultPrevented) out.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 40));
+    }
+    return out;
+  });
+  const onHubs = await loose();
+  await page.keyboard.press('Escape');
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
+  const onCat = await loose();
+  await page.keyboard.press('Escape');
+  ok('release: every element on Hubs and a category page takes the right-click (the webview\'s menu never shows)', !onHubs.length && !onCat.length, { onHubs: onHubs.slice(0, 5), onCat: onCat.slice(0, 5) });
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }
