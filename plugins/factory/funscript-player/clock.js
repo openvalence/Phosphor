@@ -20,8 +20,9 @@
 //   +-MEDIA_MS or [0, duration] is replaced by currentTime. mediaAt() never leads the last
 //   observed frame by more than FRAME_MS: no drift accumulates past it whatever its source.
 //   displayAt() is not capped: a clamped span would break the tiling above.
-// - frameSource's rAF fallback reports only while the video is not paused: a paused
-//   currentTime against a running now() would read as a step on every frame.
+// - frameSource's rAF fallback runs only while the video is not paused: a paused
+//   currentTime against a running now() would read as a step on every frame, and a paused
+//   video costs no display frames. 'play' starts it again.
 // - A loop runs the clock in unrolled media time (createLoop): lap L adds L x (b - a), so the
 //   map stays one affine line across the wrap and the landing frame's seek delay is a residual.
 //   A wrap counts only after wrap() and only on a frame in the section's first half: wrap() is
@@ -109,15 +110,19 @@ export function frameSource(video, onFrame, now = () => performance.now()) {
     vfcId = video.requestVideoFrameCallback(onVfc);
   };
   const onRaf = () => {
-    if (stopped) return;
+    rafId = 0;
+    if (stopped || video.paused) return;
     const t = now();
-    if (t - lastFrame >= FALLBACK_AFTER_MS && !video.paused) onFrame(video.currentTime * 1000, t);
+    if (t - lastFrame >= FALLBACK_AFTER_MS) onFrame(video.currentTime * 1000, t);
     rafId = requestAnimationFrame(onRaf);
   };
+  const start = () => { if (!stopped && !rafId) rafId = requestAnimationFrame(onRaf); };
+  video.addEventListener('play', start);
   if (vfc) vfcId = video.requestVideoFrameCallback(onVfc);
-  rafId = requestAnimationFrame(onRaf);
+  start();
   return () => {
     stopped = true;
+    video.removeEventListener('play', start);
     if (vfc && typeof video.cancelVideoFrameCallback === 'function') video.cancelVideoFrameCallback(vfcId);
     cancelAnimationFrame(rafId);
   };
