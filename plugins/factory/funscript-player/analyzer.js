@@ -34,6 +34,9 @@
 //   another client's write included), at once after a change made here (a draft, a write, Apply or Discard),
 //   a new catalog or an open, and never otherwise: a frame where nothing changed reads nothing from the host
 //   (ph-uve3). Without api.changed (NaN) every frame reads.
+// - api.onChanged over the same channels asks the caller for a frame (onRender), so a change made elsewhere
+//   shows within a frame with nothing else moving (the machine parked, no player loop; ph-vo56). The watch is
+//   renewed with each catalog and dropped on unmount.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -205,7 +208,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [], cap = false;
   let roleIt = new Map(), roleF = {}, roleV = {}, inputs = null;
-  let chans = [], seen = NaN, pend = false, wasShown = false;
+  let chans = [], seen = NaN, pend = false, wasShown = false, unwatch = () => {};
   const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
@@ -365,6 +368,8 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     for (const it of rows) if (it.f.role && !roleIt.has(it.f.role)) roleIt.set(it.f.role, it);
     roleF = Object.fromEntries(KIN_ROLES.map((r) => [r, roleIt.has(r) ? null : api.field(r)]));
     chans = [...new Set([...rows.map((it) => it.f.channelId), ...Object.values(roleF).filter(Boolean).map((f) => f.channelId)])];
+    unwatch();
+    unwatch = api.onChanged ? api.onChanged([MARK_ROLE, ...chans], onRender) : () => {};
     roleV = {};
     inputs = null;
     reread();
@@ -419,6 +424,6 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     get mode() { return mode; },
     get kinetic() { return kinR && kinR.pos && kinR.sc === script() ? kinR : null; },
     get fit() { return fitR; },
-    unmount() { if (kin) kin.close(); root.remove(); },
+    unmount() { unwatch(); unwatch = () => {}; if (kin) kin.close(); root.remove(); },
   };
 }

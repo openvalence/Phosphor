@@ -92,6 +92,8 @@ class PermissionError extends Error {
  *   changed(channelId | role)     -> a plain sequence (model/changes.js) that moves on that
  *                                    channel's STATE and on any gate, shadow, freshness or
  *                                    catalog change; optional (api.changed is NaN without it)
+ *   onChanged(list, fn)           -> unwatch; fn() after any listed channel's (or role's) sequence
+ *                                    moves, batched to once a frame; optional
  *   display(field, sample)        -> shadow-aware display value
  *   status(field)                 -> confirmed|pending|overdue|fault
  *   write(field, value, payload)  -> routes to the right shadow entry point,
@@ -229,6 +231,15 @@ export function createPluginHost(deps) {
       // trialPending could read differently for that channel (or any channel carrying that role); NaN
       // without the kernel's signal, so a caller that compares reads every frame.
       changed: (channelOrRole) => (deps.changed ? deps.changed(channelOrRole) + lockState() : NaN),
+      // Experimental (ph-vo56): fn() after api.changed moves for any listed channel or role, on a microtask,
+      // then at most once a frame; not for the motion lock, which lapses on its own clock. Returns the
+      // unsubscribe; deactivation drops what is left. A no-op without the kernel's signal.
+      onChanged: (channelsOrRoles, fn) => {
+        if (!deps.onChanged || typeof fn !== 'function') return () => {};
+        const off = deps.onChanged([].concat(channelsOrRoles), () => guard(rec, 'onChanged', fn));
+        rec.closers.push(off);
+        return () => { off(); const i = rec.closers.indexOf(off); if (i >= 0) rec.closers.splice(i, 1); };
+      },
       gate: (field) => (field && deps.gate ? deps.gate(field, busyFor(name)) : ''),
       stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
       reason: (field) => (field && deps.reason ? deps.reason(field) : ''),

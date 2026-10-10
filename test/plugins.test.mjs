@@ -815,6 +815,23 @@ console.log('(i) one motion producer at a time');
   let bare = null;
   makeHost().host.add({ ...gaugeManifest, name: 'bare' }, { activate(a) { bare = a; } });
   ok('api.changed is NaN without the kernel\'s signal', Number.isNaN(bare.changed(1)));
+  const off0 = bare.onChanged([1], () => {});
+  ok('api.onChanged is a no-op without the kernel\'s signal', typeof off0 === 'function' && off0() === undefined);
+  // api.onChanged (ph-vo56): the kernel's watch behind it; unsubscribe and deactivation drop it, a throw is the plugin's.
+  const live = new Map();
+  const w = makeHost({ onChanged: (list, fn) => { const k = {}; live.set(k, { list, fn }); return () => live.delete(k); } });
+  let wa = null;
+  w.host.add({ ...gaugeManifest, name: 'watcher' }, { activate(a) { wa = a; } });
+  let told = 0;
+  const offA = wa.onChanged(7, () => { told++; });
+  wa.onChanged(['telemetry.position', 8], () => { throw new Error('boom'); });
+  ok('api.onChanged hands the kernel its list', live.size === 2 && [...live.values()].map((x) => x.list.join()).join('|') === '7|telemetry.position,8');
+  for (const x of live.values()) x.fn();
+  ok('...the kernel\'s call reaches fn; a throw lands on the plugin, not the kernel', told === 1 && w.logs.some((l) => /boom/.test(l.msg)));
+  offA();
+  ok('the unsubscribe drops its watch', live.size === 1);
+  w.host.remove('watcher');
+  ok('removing the plugin drops what is left: no leak', live.size === 0);
   now = 2099;
   ok('submitMotion holds for its duration + 500 ms', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).reason === 'motion input in use by beta'
     && A.gate(durField) === 'motion input in use by beta');

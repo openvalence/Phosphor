@@ -2668,6 +2668,17 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('shadow: a write the hub never answers turns its row overdue (a shadow change, no STATE)', st === 'overdue', st);
   hub.unanswered = false;
   await modeBtn('Preview').click();
+  // Parked (ph-vo56): no telemetry moving, no player loop, so nothing else frames the card; another client's write
+  // still reaches the open row, the frame asked for by api.onChanged (the one-frame bar is analyzer-reads.test.mjs's).
+  clearInterval(hub.timer);
+  await sleep(500);
+  const parked = await video(page, (v) => v.paused);
+  const tPush = Date.now();
+  hub.set(sm.channelId, sm.name, 0.65);
+  const seenParked = await within(1000, (s) => s.v === '0.65');
+  ok('parked: another client\'s write reaches the open row with no loop and no telemetry', parked && !!seenParked,
+    { paused: parked, ms: Date.now() - tPush, row: await smRow() });
+  hub.timer = setInterval(() => hub.state(CH.motion), 50);
   // ---- Kinetic: the machine's own planner renders the preview in a worker ----
   const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
     return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);

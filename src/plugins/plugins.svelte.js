@@ -19,7 +19,7 @@ import { machine, getSession, freshness, staleReason } from '../model/machine.sv
 import {
   writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf, shadows,
 } from '../model/shadow.svelte.js';
-import { bumpAll, seq } from '../model/changes.js';
+import { bumpAll, seq, watch } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
@@ -204,6 +204,11 @@ export const host = createPluginHost({
   sample: (ch) => machine.samples[ch],
   sampleAge: (ch) => (machine.sampleTs[ch] ? Date.now() - machine.sampleTs[ch] : Infinity),
   changed: (x) => seq(typeof x === 'string' ? roleChannels.get(x) || NO_CHANNELS : x),
+  // Roles resolve at each move, so a new catalog's channels count without a new watch.
+  onChanged: (list, fn) => watch((ch) => {
+    for (const x of list) if (typeof x === 'string' ? (roleChannels.get(x) || NO_CHANNELS).includes(ch) : x === ch) return true;
+    return false;
+  }, fn),
   display: displayValue,
   status: statusOf,
   write,
