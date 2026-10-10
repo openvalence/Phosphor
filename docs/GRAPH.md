@@ -93,18 +93,31 @@ Blender's flow (`src/ui/graph/GraphPalette.svelte`):
 
 - Right click on the canvas, or Shift+A with the pointer over it, opens the
   menu at the pointer. `+ Add` and Shift+F10 open it in the canvas.
-- Categories are listed collapsed, one header each: Input, Math, Logic,
-  Converter, Maps, then Sources and Targets by group (catalog categories,
-  Toy inputs, App commands, Toy outputs, Accessory fields, Machine fields).
-  Headers sit at the row size in sentence case. Phosphor's own names (op
-  nodes, maps) are in sentence case: "Map range", "Linear clamp"; hub labels
-  render as sent. A map node keeps its stored name.
-- Opening a category scrolls its items into view; a long one keeps its
-  header on screen.
-- Typing in the search box searches every category and flattens the results.
+- Groups nest as the pages draw them (DESIGN 10.11; Valence decides
+  membership and order): the hub, by name, open, holding its categories in
+  tier then registry order, each holding its cards with no section, then its
+  sections and their cards, in catalog order; a field no page draws sits in
+  the hub's Other. Then Plugin modules (each module and the fields it
+  claims), ButtplugIO (each device and its controls), and the node families:
+  Input, Math, Logic, Converter, Maps. A field reads as the page labels it
+  (`labelFor`). Headers sit at the row size in sentence case. Phosphor's own
+  names (op nodes, maps) are in sentence case: "Map range", "Linear clamp";
+  hub labels render as sent. A map node keeps its stored name.
+- Opening a group scrolls its items into view; a long one keeps its header
+  on screen.
+- Typing in the search box ranks every item with the shell's F3 matcher
+  (`src/model/fuzzy.js`) on its label, then its path, and flattens the
+  results; a flat list names each source once, under its card.
 - Focus stays in the search box: Up and Down walk headers and items, Right
   and Left open and close a header, Enter places an item or toggles a header,
   Escape closes.
+- F3 with focus in the editor opens the same menu flat at the pointer as
+  the node search; the shell's look-for keeps F3 everywhere else, and Ctrl+F
+  in the editor. F3 again closes it.
+- Shift+Enter, or a row's show button (the touch path), shows the item's
+  node already on the canvas: centered, selected and focused, the next one
+  after the selection for an op family. Enter on a field or toy already
+  placed shows it too, since each appears once.
 - Link-drag-search: drag a wire from a socket and release it over empty
   canvas. The menu opens there, flat, holding only what has a socket on the
   other side the dragged one can join. Placing one wires it to the dragged
@@ -112,6 +125,23 @@ Blender's flow (`src/ui/graph/GraphPalette.svelte`):
   Place and wire are one undo step.
 - The menu is clamped inside the editor by its measured size, and re-clamped
   whenever its content resizes.
+
+## What a node says
+
+A field or toy node says what it is and where it comes from:
+
+- The head: its card above its name, the card's full path on hover. Once
+  the graph draws from two devices (the hub and a toy) the device follows
+  the card: "Oscillator · Bench". A toy's card is its device.
+- The catalog's desc on one line (hub text, as sent); a toy's feature type.
+- Range, unit and what each socket does: "0 to 20 Hz · in sets, out reads";
+  a toy "in drives, out from apps". Each socket's tooltip says it too.
+- Its live value (dimmed with its age when stale, law 8), then its write
+  ladder when not settled ("pending: waiting for the hub", law 5) and its
+  gate reason when it cannot be set ("gated: no hub link", law 3).
+- Nodes of one card share a stripe on their top edge, in an accent picked
+  by each card's first node: reality, intent, their mix, `--tx-hi`,
+  `--line-4`; never a safety color.
 
 ## The view
 

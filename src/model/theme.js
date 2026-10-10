@@ -196,6 +196,8 @@ export const THEMES = [
   preset('paper', 'Paper', '#1A66C8', '#6A3FC8', { hue: 263, tint: 1, brightness: 0.97, contrast: 1 }),
 ];
 export const DEFAULT_THEME = THEMES[0];
+/** The presets this build ships; plugin themes join THEMES later. */
+const SHIPPED = new Set(THEMES.map((t) => t.id));
 
 // ---- derivation -----------------------------------------------------------------
 /** `dark`: the comet core lightens on a dark chassis and darkens on a light one. */
@@ -390,7 +392,12 @@ let legacyPending = null;
  */
 export function loadTheme(st = store()) {
   const raw = read(THEME_KEY, st);
-  if (raw && typeof raw === 'object') return normalizeTheme(raw);
+  if (raw && typeof raw === 'object') {
+    // A stored shipped id is an unedited preset (an edit makes it Custom), so it
+    // follows this build's preset, keeping its look (the footer scale keeps the id).
+    const p = SHIPPED.has(raw.id) && THEMES.find((x) => x.id === raw.id);
+    return normalizeTheme(p ? { ...p, look: raw.look } : raw);
+  }
   let id = null;
   try { id = st.getItem(LEGACY_ID); } catch (e) { /* none */ }
   if (id === 'custom') {

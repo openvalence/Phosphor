@@ -1,0 +1,11 @@
+{
+  "name": "quick-access",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "widget",
+  "entry": "index.js",
+  "description": "Pin modules to a tray on the right",
+  "roles": [],
+  "channels": [],
+  "permissions": ["intent", "menu"]
+}

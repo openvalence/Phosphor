@@ -236,7 +236,7 @@ console.log('(c) the plugin API cannot reach the socket');
   ok('plugin received an api', !!api);
   ok('api is frozen', Object.isFrozen(api) && Object.isFrozen(api.net) && Object.isFrozen(api.prefs));
   const UI = ['button', 'files', 'segmented', 'switch', 'slider', 'stepper', 'select', 'text', 'page', 'card', 'rows', 'row', 'bar', 'stage',
-    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon'];
+    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon', 'field', 'module'];
   ok('api.ui is the frozen kit, version 1, every documented factory a function (docs/PLUGINS.md, The UI kit)',
     Object.isFrozen(api.ui) && api.ui.version === 1 && UI.every((k) => typeof api.ui[k] === 'function') && Object.isFrozen(api.ui.icons)
     && ['play', 'pause', 'close', 'quickRail'].every((k) => Array.isArray(api.ui.icons[k])), UI.filter((k) => typeof api.ui[k] !== 'function'));
@@ -1036,6 +1036,122 @@ console.log('(k) plugin pages');
   // The mount wraps the player's in DOM: the page browser suite (test/pages.test.mjs) mounts it.
   ok('the funscript page: Funscript, its own icon, the hero spec', !!def && def.id === 'player'
     && def.label === 'Funscript' && def.icon === PAGE_ICON && def.spec === HERO.spec && typeof def.mount === 'function');
+}
+
+// ---- (l) context menus, the dock, field-bound controls, identities and paths ----
+console.log('(l) context menus, the dock, field-bound controls, identities, quick access');
+{
+  const { pathOf, parsePath, resolveIdentity, fieldByUid, fieldKey, fieldKeysOf, pasteValue } = await import('../src/model/identity.js');
+  const { AXIS_HERO_SPEC } = await import('../src/model/roles.js');
+  const heroes = claimAll(model.byRole, [{ id: 'rail', zone: 'instrument', spec: AXIS_HERO_SPEC }]);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const m = (name, permissions) => ({ ...gaugeManifest, name, permissions });
+  ok('the "menu" permission is valid in a manifest', validateManifest(m('x', ['menu', 'intent'])).length === 0);
+
+  // identities and paths
+  const keys = placeableControls(model, { heroes: heroes.widgets }).map((c) => c.key);
+  const { withoutClaimed } = await import('../src/model/roles.js');
+  const groups = withoutClaimed(model.categories, heroes.claimed).flatMap((c) => c.groups.map((g) => (g.diagnostic ? 'diag:' : 'group:') + c.id + ':' + (g.name || 'ungrouped')));
+  const back = [...keys, ...groups, 'widget:telemetry', 'widget:hero-rank'].filter((k) => {
+    const p = parsePath(pathOf('a1b2c3d4e5f60718', k));
+    const r = p && p.hub === 'a1b2c3d4e5f60718' && p.key === k && resolveIdentity(model, heroes, p.key);
+    return !r;
+  });
+  ok('Copy path round-trips: every placeable control, card and summary resolves back from its path (' + (keys.length + groups.length + 2) + ')', back.length === 0, back.slice(0, 5).join(', '));
+  const uids = [...model.fields, ...model.actions].map((f) => f.uid);
+  const lost = uids.filter((u) => { const f = fieldByUid(model, u); const r = f && resolveIdentity(model, null, fieldKey(model, f)); return !(r && (r.kind !== 'field' || partsHave(r, u))); });
+  function partsHave(r, u) { const f = r.control.field; return f.uid === u || (f.lo && (f.lo.uid === u || f.hi.uid === u)) || (f.r && [f.r, f.g, f.b].some((p) => p.uid === u)) || f.companionOf; }
+  ok('every field resolves back from its identity (role, else uid; a merged pair as one control)', lost.filter((u) => !fieldByUid(model, u)?.companionOf).length === 0, lost.slice(0, 5).join(', '));
+  ok('a key the catalog lacks, or a card whose fields a hero claimed, resolves to null; a Dash duplicate to its control; a uid alias to the role control',
+    resolveIdentity(model, heroes, 'role:nope.gone') === null && resolveIdentity(model, heroes, 'group:15:Rail geometry') === null && resolveIdentity(model, heroes, 'role:pattern.speed#2')?.control.key === 'role:pattern.speed'
+    && resolveIdentity(model, heroes, 'uid:' + model.byRole.get(ROLE.patternSpeed)[0].uid)?.control.key === 'role:pattern.speed');
+  ok('parsePath refuses what is not a Valence path', parsePath('http://x/y') === null && parsePath('valence://hub') === null && parsePath('valence:///k') === null
+    && same(parsePath(' valence://10.0.0.2:82/group:15:A / B '), { hub: '10.0.0.2:82', key: 'group:15:A / B' }));
+  ok('the rail resolves as an instrument hero; a card of fields lists its fields for the node editor',
+    resolveIdentity(model, heroes, 'hero:rail')?.control.hero.zone === 'instrument'
+    && fieldKeysOf(model, resolveIdentity(model, heroes, 'group:2:Oscillator')).includes('uid:4416:frequency'));
+  const sp = model.byRole.get(ROLE.patternSpeed)[0], sel = model.byRole.get(ROLE.patternSelect)[0];
+  ok('pasteValue: a number inside the bounds, an option index, nothing else', pasteValue(sp, '42') === 42 && pasteValue(sp, '420') === undefined
+    && pasteValue(sp, 'x') === undefined && pasteValue(sel, '2') === 2 && pasteValue(sel, '2.5') === undefined && pasteValue(sp, '') === undefined);
+
+  // registerMenu
+  const add = (perms, activate, over) => { const h = makeHost(over); h.host.add(m('menuer', perms), { activate }); return h; };
+  const t = { kind: 'field', key: 'role:pattern.speed', hub: 'h', title: 'Speed', path: 'valence://h/role:pattern.speed' };
+  let h = add([], (api) => api.registerMenu({ id: 'a', targets: ['field'], label: 'A', run() {} }));
+  ok('registerMenu without "menu" refuses and rolls the plugin back', h.host.list()[0].status === 'error' && /menu/.test(h.host.list()[0].error) && h.host.menus(t).length === 0);
+  const bad = (d) => add(['menu'], (api) => api.registerMenu({ id: 'a', targets: ['field'], label: 'A', run() {}, ...d })).host.list()[0].status === 'error';
+  ok('registerMenu refuses a bad id, an unknown target, an empty or long label, a missing run',
+    bad({ id: 'Bad Id' }) && bad({ targets: ['toolbar'] }) && bad({ targets: [] }) && bad({ label: ' ' }) && bad({ label: 'x'.repeat(41) }) && bad({ run: null }));
+  const ran = [];
+  h = add(['menu'], (api) => {
+    api.registerMenu({ id: 'pin', targets: ['field', 'module'], label: (x) => (x.key.startsWith('role:') ? 'Pin ' + x.title : null), run: (x) => ran.push(x.key) });
+    api.registerMenu({ id: 'boom', targets: ['field'], label: 'Boom', run() { throw new Error('boom'); } });
+    api.registerMenu({ id: 'page', targets: ['page'], label: 'Page thing', run() {} });
+  });
+  let gen = 0;
+  h.host.onChange(() => gen++);
+  const items = h.host.menus(t);
+  ok('menus(target): items of the target\'s kind, a label function per target, null leaves it out', same(items.map((i) => i.label), ['Pin Speed', 'Boom'])
+    && h.host.menus({ ...t, key: 'uid:1:x' }).length === 1 && same(h.host.menus({ ...t, kind: 'page' }).map((i) => i.label), ['Page thing']));
+  items[0].run();
+  items[1].run();
+  ok('run gets the target; a throw is recorded on the plugin, never propagated, and no claim pass reruns', same(ran, ['role:pattern.speed'])
+    && /boom/.test(h.host.list()[0].error) && gen === 1);
+
+  // registerDock
+  let dockNotes = 0;
+  const hd = makeHost();
+  hd.host.onDocks(() => dockNotes++);
+  let gen2 = 0;
+  hd.host.onChange(() => gen2++);
+  let withdraw = null;
+  hd.host.add(m('docker', []), { activate(api) { withdraw = api.registerDock({ id: 'tray', label: 'Tray', mount() { return {}; } }); } });
+  const g0 = gen2;
+  ok('registerDock: a dock shaped as a page, id plugin:<name>:<id>', same(hd.host.docks().map((d) => [d.id, d.label, d.plugin]), [['plugin:docker:tray', 'Tray', 'docker']]));
+  withdraw();
+  ok('withdraw() removes it, telling the dock listeners only (no claim pass)', hd.host.docks().length === 0 && dockNotes === 1 && gen2 === g0);
+  const badDock = (d) => { const x = makeHost(); x.host.add(m('d', []), { activate(api) { api.registerDock({ id: 'tray', label: 'Tray', mount() {}, ...d }); } }); return x.host.list()[0].status === 'error'; };
+  ok('registerDock refuses a bad id, label or icon, and a missing mount', badDock({ id: 'X Y' }) && badDock({ label: 'x'.repeat(25) }) && badDock({ icon: '<b>' }) && badDock({ mount: null }));
+
+  // field-bound controls and api.hub()
+  const made = [];
+  const ui = { ...KIT, field: (id) => { made.push(['field', id]); return {}; }, module: (id) => { made.push(['module', id]); return {}; } };
+  let api0 = null, api1 = null;
+  const hb = makeHost({ ui, hub: () => 'hubkey' });
+  hb.host.add(m('reader', []), { activate(a) { api0 = a; } });
+  hb.host.add(m('writer', ['intent']), { activate(a) { api1 = a; } });
+  let pe = null;
+  try { api0.ui.field('role:pattern.speed'); } catch (e) { pe = e; }
+  api1.ui.field('role:pattern.speed');
+  api1.ui.module({ key: 'group:2:Oscillator', title: 'Oscillator' });
+  ok('ui.field and ui.module need "intent"; with it they mount the shell\'s control by identity', pe && pe.name === 'PermissionError'
+    && same(made, [['field', 'role:pattern.speed'], ['module', { key: 'group:2:Oscillator', title: 'Oscillator' }]]) && Object.isFrozen(api1.ui));
+  ok('api.hub() is the connected hub\'s key', api1.hub() === 'hubkey' && makeHost().host && api0.hub() === 'hubkey');
+
+  // the quick-access factory plugin on the public API alone
+  const qa = FACTORY.find((f) => f.manifest.name === 'quick-access');
+  const { movePin } = await import('../plugins/factory/quick-access/index.js');
+  const store = new Map();
+  const prefs = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
+  const hq = makeHost({ prefs, hub: () => 'hubA' });
+  hq.host.add(qa.manifest, qa.module, { source: 'factory' });
+  const tq = (key, kind = 'module', hub = 'hubA') => ({ kind, key, hub, title: key, path: '' });
+  ok('quick-access: a factory plugin, enabled, with no dock until something is pinned (hidden by default)', hq.host.list()[0].status === 'active' && hq.host.docks().length === 0);
+  const pinItem = (x) => hq.host.menus(x).find((i) => /quick access/.test(i.label));
+  ok('quick-access: Pin to quick access in module and field menus, not on a page or without a hub', pinItem(tq('hero:rail')).label === 'Pin to quick access'
+    && !!pinItem(tq('role:pattern.speed', 'field')) && !pinItem(tq('cat2', 'page')) && !pinItem(tq('hero:rail', 'module', null)));
+  pinItem(tq('hero:rail')).run();
+  pinItem(tq('role:pattern.speed', 'field')).run();
+  pinItem(tq('hero:rail', 'module', 'hubB')).run();
+  const saved = JSON.parse(store.get('plugin.quick-access.pins'));
+  ok('quick-access: pins by identity, per hub, in plugin prefs; the dock registers on the first pin',
+    same(saved.hubA.map((p) => p.key), ['hero:rail', 'role:pattern.speed']) && same(saved.hubB.map((p) => p.key), ['hero:rail'])
+    && saved.hubA[1].kind === 'field' && same(hq.host.docks().map((d) => d.id), ['plugin:quick-access:tray']));
+  ok('quick-access: a pinned target reads Unpin; unpinning everything withdraws the dock', pinItem(tq('hero:rail')).label === 'Unpin from quick access'
+    && (pinItem(tq('hero:rail')).run(), pinItem(tq('role:pattern.speed', 'field')).run(), pinItem(tq('hero:rail', 'module', 'hubB')).run(), hq.host.docks().length === 0));
+  const L3 = [{ key: 'a' }, { key: 'b' }, { key: 'c' }];
+  ok('quick-access: movePin moves by places and clamps at the ends', same(movePin(L3, 'a', 1).map((p) => p.key), ['b', 'a', 'c'])
+    && same(movePin(L3, 'c', -5).map((p) => p.key), ['c', 'a', 'b']) && movePin(L3, 'a', -1) === L3 && movePin(L3, 'z', 1) === L3);
 }
 
 // ---- (h) the editor geometry: field values to handles and back ------------

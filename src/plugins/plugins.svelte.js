@@ -27,6 +27,7 @@ import { pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount
 import { registerTheme } from '../model/theme.js';
 import { FACTORY } from './factory.js';
 import { KIT } from './kit.js';
+import { hubKey } from '../model/prefs.js';
 import {
   LOG_LEVEL_NAME, CHANNEL_CLASS, CH_CONTROL_OWNER, CH_SETTINGS_TRIAL, FIELD_ROLE, TRIAL_OP,
 } from '../../../Valence/clients/js/index.js';
@@ -37,8 +38,8 @@ const DISABLED_KEY = 'phosphor.plugins.disabled';
 const LOG_MAX = 400;
 const LEVEL = Object.fromEntries(Object.entries(LOG_LEVEL_NAME).map(([n, name]) => [name, Number(n)]));
 
-/** Reactive mirror of the host for the pane and the claim pass. */
-export const pluginsUi = $state({ gen: 0, list: [], active: false, dir: '' });
+/** Reactive mirror of the host for the pane and the claim pass; `docks` counts dock registrations (Dock.svelte). */
+export const pluginsUi = $state({ gen: 0, docks: 0, list: [], active: false, dir: '' });
 
 function disabledSet() {
   try { return new Set(JSON.parse(localStorage.getItem(DISABLED_KEY) || '[]')); } catch (e) { return new Set(); }
@@ -58,7 +59,8 @@ function logLine(name, level, msg) {
 
 // RENDERING §10.2 items 2 and 4: a plugin requests, the host confirms.
 const CANCELED = { ok: false, error: 'canceled' };
-async function write(field, value, payload) {
+/** The write door every plugin write and the context menu take: confirm first where the host would. */
+export async function write(field, value, payload) {
   if (!field) return { ok: false, error: 'no field' };
   if (field.widget === WIDGET.action) {
     if (needsConfirm(field, value) && !(await askConfirm(confirmCopy(field, value)))) return CANCELED;
@@ -76,7 +78,7 @@ async function write(field, value, payload) {
 
 // Law 3: the reasons Field.svelte and ActionField.svelte name, in their order.
 // A c2h STREAM field is motion input: streamGate's reasons, `busy` last.
-function gate(field, busy = '') {
+export function gate(field, busy = '') {
   const se = entryOf(field.channelId);
   if (se && se.cls === CHANNEL_CLASS.STREAM && se.dirName === 'c2h') {
     return streamGate({
@@ -199,6 +201,7 @@ export const host = createPluginHost({
   listenTcp: SHELL ? listenTcp : null,
   fetch: SHELL ? shellFetch : (import.meta.env.DEV && typeof window !== 'undefined' ? window.fetch.bind(window) : null),
   isHub: (u) => isHubUrl(u, machine.link.host, machine.link.port),
+  hub: currentHub,
   prefs: typeof localStorage !== 'undefined' ? localStorage : null,
   ui: KIT,
   log: logLine,
@@ -215,10 +218,21 @@ host.onChange(() => {
   pluginsUi.list = host.list();
   pluginsUi.gen++;
 });
+host.onDocks(() => { pluginsUi.docks++; });
+
+/** The connected hub's key (prefs.js hubKey), null before a catalog: per-hub plugin state keys on it. */
+export function currentHub() {
+  return machine.link.host && machine.catalog.ready ? hubKey(machine.link.hubIdentity, machine.link.host, machine.link.port) : null;
+}
 
 /** Active plugin heroes, ready for heroes.js's claim pass. */
 export function pluginHeroes() {
   return host.heroes().map((h) => ({ ...h, component: PluginSlot, host }));
+}
+
+/** Active plugin docks, mounted through PluginSlot like a page (Dock.svelte). */
+export function pluginDocks() {
+  return host.docks().map((d) => ({ ...d, component: PluginSlot, host }));
 }
 
 /** Shown plugin pages, mounted through PluginSlot like a hero. */

@@ -733,7 +733,7 @@ if (!ONLY || ONLY === 'class') {
     await goTab(phone.page, tabs[i]);
     await phone.page.waitForTimeout(250);
     // The fixture's one group past eight controls is diagnostic-rank.
-    await phone.page.click('.adv-toggle[aria-expanded=false]:has-text("diagnostic")', { timeout: 500 }).catch(() => {});
+    await phone.page.click('.adv-toggle[aria-expanded=false][aria-label$=" diagnostic"]', { timeout: 500 }).catch(() => {});
     await phone.page.waitForTimeout(150);
     const btn = await phone.page.$('.drill-open');
     if (btn) { await btn.click(); await phone.page.waitForTimeout(250); opened = !!(await phone.page.$('.drill-page .field')); }

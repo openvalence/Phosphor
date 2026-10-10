@@ -31,6 +31,7 @@
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
   import { phoneMenu } from './PhoneMenu.svelte';
+  import { dock, toggleDock, dockOpen } from './Dock.svelte';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   let { shell: Shell = null } = $props();
@@ -177,6 +178,12 @@
 
   const AG_COLS = 14, AG_CELL = 4, AG_GAP = 1;
   let heatCanvas = $state(null);
+  // The tooltip names the row under the pointer.
+  let heatRow = $state(0);
+  const heatTip = $derived.by(() => {
+    const l = (heatRows[heatRow] || heatRows[0]).label;
+    return l[0].toUpperCase() + l.slice(1) + ', last 3 s: brighter is busier';
+  });
 
   $effect(() => {
     const rows = heatRows;             // establishes the reactive dependency
@@ -297,7 +304,8 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
       </button>
     {/if}
-    <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
+    <canvas bind:this={heatCanvas} class="act-grid" role="img" aria-label={heatmapAriaLabel} title={heatTip}
+            onpointermove={(e) => (heatRow = Math.min(heatRows.length - 1, Math.floor(e.offsetY / (AG_CELL + AG_GAP + 1))))}></canvas>
     <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
   </div>
 
@@ -331,6 +339,12 @@
       <span class="mono">{rxAge}</span>
     </span>
   </div>
+  <!-- The right dock (Dock.svelte): here once a plugin docks something, opened only by the user. -->
+  {#if dock.shown}
+    <button type="button" class="dock-btn" aria-label={dock.label} title={dock.label} aria-expanded={dockOpen()} onclick={toggleDock}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
+    </button>
+  {/if}
   {#if Shell}<Shell />{/if}
 </header>
 
@@ -387,7 +401,23 @@
     color: var(--ink);
     border-radius: var(--r-s);
   }
-  .menu-btn[aria-expanded='true'] { color: var(--highlight); }
+  .menu-btn[aria-expanded='true'], .dock-btn[aria-expanded='true'] { color: var(--highlight); }
+  /* The dock's toggle mirrors the hamburger: a 40 px target overhanging the bar and its gaps, never growing the row. */
+  .dock-btn {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-block: calc(var(--sp-2) * -1);
+    margin-inline: calc(var(--sp-3) * -1);
+    color: var(--ink);
+    border-radius: var(--r-s);
+  }
+  /* Where only the optional row's last chip is left, it sheds for the toggle (optional chips go first). */
+  @media (max-width: 560px) { .linkbar:has(> .dock-btn) .chips.opt { display: none; } }
+  .dock-btn:focus-visible { outline-offset: -2px; }
+  .dock-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
   /* At the screen's top edge beside a cutout: the ring stays inside the target. */
   .menu-btn:focus-visible { outline-offset: -2px; }
   .menu-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
@@ -485,10 +515,10 @@
      second, non-color-dependent channel. */
   .chip.tone-good { border-color: color-mix(in srgb, var(--good) 45%, var(--chip-line)); color: var(--good); }
   .chip.tone-warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--chip-line)); color: var(--warn-ink, var(--warn)); }
-  .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad); }
+  .chip.tone-bad  { border-color: color-mix(in srgb, var(--bad) 45%, var(--chip-line)); color: var(--bad-ink); }
   .chip.tone-good .mono { color: var(--good); }
   .chip.tone-warn .mono { color: var(--warn-ink, var(--warn)); }
-  .chip.tone-bad  .mono { color: var(--bad); }
+  .chip.tone-bad  .mono { color: var(--bad-ink); }
 
   /* Narrow viewports shed chips from the tail. Marked by class, not
      :nth-child: a positional selector retargets when a chip turns conditional. */

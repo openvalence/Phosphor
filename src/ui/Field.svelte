@@ -986,7 +986,7 @@
     box-shadow: inset 0 0 0 1px var(--line-2);
   }
   .tag.warn {
-    color: var(--warn);
+    color: var(--warn-ink);
     background: rgba(var(--warn-rgb), .12);
     box-shadow: inset 0 0 0 1px rgba(var(--warn-rgb), .4);
   }
@@ -1358,8 +1358,8 @@
     color: var(--tx-mut);
   }
   .ladder[data-slot='pending'] { color: var(--intent); }
-  .ladder[data-slot='overdue'] { color: var(--warn); }
-  .ladder[data-slot='fault'] { color: var(--warn); }
+  .ladder[data-slot='overdue'] { color: var(--warn-ink); }
+  .ladder[data-slot='fault'] { color: var(--warn-ink); }
   .ladder[data-slot='gate'] { color: var(--tx-ghost); }
   /* The word fades with the afterglow (style.css --ga). */
   .ladder:is([data-slot='confirmed'], [data-slot='virtual']) { color: color-mix(in srgb, var(--reality) calc(var(--ga) * 100%), var(--tx-mut)); }

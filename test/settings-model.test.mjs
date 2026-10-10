@@ -370,6 +370,9 @@ ok('a hero whose required roles are ABSENT declines entirely', patternClaim === 
   ok('fixture hub: the pattern generator card IS drawn, background_run bound beside run/stop',
      !!claim && claim.running.name === 'running' && claim.select.name === 'pattern'
        && !!claim.bgRun && claim.bgRun.name === 'background_run');
+  const smooth = real.fields.find((f) => f.name === 'smoothness');
+  ok('an f32 step reads as authored, so a range reaches its max (ph-ycwg)', smooth.step === 0.05
+     && smooth.min + Math.floor((smooth.max - smooth.min) / smooth.step) * smooth.step === smooth.max, smooth.step);
 }
 
 // ---- claim: hero rank reaches Overview unless a Tier-1 widget took it -----
@@ -433,6 +436,8 @@ ok('fields absorbed by a hero vanish from the generic tree', !stillThere);
   ok('no unit_id falls back to the catalog string verbatim',
      unitOf({ unit: 'furlong', unitId: null }) === 'furlong');
   ok('a count unit renders whole', precisionFor(f('run_count')) === 0);
+  ok('a CBOR integer with no step renders whole (ph-8l8)',
+     precisionFor({ typeName: 'uint_t' }) === 0 && precisionFor({ typeName: 'int_t' }) === 0 && precisionFor({ typeName: 'f32_t' }) === 2);
   const pick = claimRoles(new Map([[ROLE.telemetryVelocity, [
     { uid: 'p', aspect: VALUE_ASPECT.peak }, { uid: 'l', aspect: VALUE_ASPECT.live }]]]),
   { require: { v: ROLE.telemetryVelocity } });

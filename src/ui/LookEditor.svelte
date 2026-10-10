@@ -114,7 +114,7 @@
     min-width: 100%;
     height: 1.4em;
     margin: 0;
-    color: var(--warn);
+    color: var(--warn-ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

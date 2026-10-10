@@ -612,7 +612,11 @@ question in §10.8).
   page's warn status reads in the warn ink like the strip's other
   conditions and in the compact hero takes the numeral's place; its other
   status reads quiet and sits beside the numeral. A page sends conditions
-  only, never what it already shows (empty, playing, paused).
+  only, never what it already shows (empty, playing, paused). A plugin's
+  card on the Dash or a category page draws no status row either (ruling
+  2026-10-09, peeve 19 extended): its status is that page's status, ranked
+  the same. The slot shows one source per page: the newest warn or bad
+  status, else the newest other.
 - The page frame (operator ruling 2026-10-05, `ph-p43h`): the window has no
   side margin. The top bar, the hero bar and the bottom status row are full
   bleed; the sidebar sits flush on the window's left edge, and the frame
@@ -1117,6 +1121,11 @@ derives from one unit, and no size is tuned by hand.
   a plugin page, and rebuilds when any of them changes. Matching is fuzzy,
   Blender F3 style: words in any order and subsequences ("spd in" finds "In
   speed"), ranked by how tight the match is, a label hit before a path hit.
+- In the node editor F3 is the node search (operator 2026-10-09,
+  `ph-5wo6`): every node source on the same matcher, Enter adds at the
+  pointer, Shift+Enter shows the one placed; its add menu groups sources as
+  the pages do (docs/GRAPH.md, The add menu), and a node names its card,
+  desc, range, socket roles and live state (docs/GRAPH.md, What a node says).
 - History: the last 256 setting writes this session made, each with its
   before and after, in a visible list (the Log pane's Changes feed), each
   undoable; Ctrl+Z undoes the latest outside an editor that owns its own
@@ -1131,6 +1140,23 @@ derives from one unit, and no size is tuned by hand.
   follows `prefers-reduced-motion`; Reduced and Full override it. Every
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets; no component reads the media query itself.
+- The context menu (operator 2026-10-09, `ph-kyjd`): the shell's own menu
+  replaces the webview's everywhere but text entry (Inspect stays behind
+  Shift in a dev build). A right-click, a long press, the menu key or
+  Shift+F10 lists the targets under it, innermost first: the field (Copy
+  path, Copy value, Paste value, Reset to default, Send to node editor, Show
+  in history), the module or card (Copy path, Send fields to node editor),
+  the page (Edit layout, Show advanced, Show diagnostic, Reset page to
+  defaults); plugins add items (docs/PLUGINS.md, Context menus). Copy path is
+  the Valence path, `valence://<hub>/<identity>` (Blender's Copy Data Path).
+  It opens in the top layer under the strip and moves nothing. Seams:
+  `src/ui/contextmenu.js`, `src/model/identity.js`.
+- The right dock (operator 2026-10-09, `ph-kyjd`): a region plugins register,
+  hidden until a dock exists and closed until the user opens it from the top
+  bar; open on the desktop it is a column beside the content and narrows it,
+  on the phone class a drawer under the strip, never over the stop pair. The
+  quick access tray is a factory plugin on it (docs/PLUGINS.md, The dock).
+  Seam: `src/ui/Dock.svelte`.
 
 ### 10.14 Health (operator rulings 2026-10-09, `ph-9t5l`, `ph-9t5l.1`)
 
@@ -1282,3 +1308,7 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.12 | The phone menu's drawer is compact: one narrow width, as tall as its rows, rows at the compact tap height, the Phosphor section in flow (`ph-5u0g` peeve 13). | operator (12 rem, the 40 px floor scaled as the tap, no shading on the drawer's Phosphor section, are the agent's, veto-able) |
 | 2026-10-09 | §10.14 | Health: three areas (Link, This device, Machine), 26 conditions in plain words with one action each, the stream cutout classified CLIENT / NETWORK / HUB / UNKNOWN, hysteresis, Log lines, the Health view and the status slot; a local ring and incident snapshots, no telemetry; reports as public GitHub issues the user submits, reviewed field by field, Hold to send, Save report, Sent reports with removal by `/remove` (`ph-9t5l`, `ph-9t5l.1`). | operator (no continuous telemetry; plain language with one action; nothing degrades silently; the GitHub issue flow, ruled 2026-10-09. The Health view as a Log page tab until it gets its own row, the 1 s ramp-in exemption, CLIENT likely on a starvation after a page stall, the 5 s uplink look-back and saving to Downloads without a dialog are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | A page's status moves from the phone footer's slot and the desktop card's last row into the strip's status slot on every class: no row, no reserved height; a warn status ranks under an act health condition and over the safety edge, any other under a warn health condition; informational states the page already shows are not sent (the funscript player drops `No scene loaded`, `Motion only`, `Positioning`, `Buffering`). The compact row's fit counts an overflow into the strip's end padding (a live numeral at 420x860 had pushed the stop pair 9 px into the gutter) and keeps its decisions while a condition hides the numeral, so a condition moves no control. Supersedes the 2026-10-08 §10.3 footer status slot and FUNSCRIPT.md PR14 (`ph-5u0g` peeve 19, `ph-5u0g.16`). | operator ("the status line takes its own row: remove it or move it somewhere that costs no space"; restated 2026-10-09 on the desktop card's last row: "I thought we were removing this?". The warn status above the safety edge (the edge stands for the whole session and the compact hero hides it, so below it a warning would never show), the quiet tier for notes, and `No script for this video` kept as a note because it explains a grayed Play, are the agent's, veto-able) |
+| 2026-10-09 | §10.3, plugins | A plugin card's status (a hero on the Dash or a category page) goes to the strip's status slot too: the card draws no status row (the funscript player's Dash card drops its row), its status is that page's, ranked like a page's status; one source shows per page, the newest warn or bad, else the newest other. The kit-demo example sends a warning, never an informational status. Extends the row above (`ph-5u0g` peeve 19, `ph-5u0g.17`). | operator's peeve 19 as extended by Fable's ruling ("warnings and refusals go to the shell's status slot; one source at a time per page, the newest warning wins"). The newest note showing when no source warns, category-page cards counting as Dash cards, and a card unmounted on screen keeping its status until that page's next status or a page switch, are the agent's, veto-able) |
+| 2026-10-09 | §10.13 | The node editor's F3 searches every node source on the shell's matcher (Enter adds at the pointer, Shift+Enter or a show button finds the placed node); the add menu groups as the pages do (hub, category, section, card, then plugin modules, ButtplugIO, the node families); a field or toy node names its card, desc, range, socket roles and live state, one accent per card (`ph-5wo6`). | operator ("this is 0 info"; F3 and categorization by card and module). The device after the card in a node's label, the accent order, a flat list naming each source once under its card (modules browse in the tree only), Enter on a placed field showing it, the hub's Other for fields no page draws and Ctrl+F staying the shell's are the agent's, veto-able |
+| 2026-10-09 | §10.13, plugins | The shell context menu replaces the webview's (Print, Reload, Inspect) outside text entry: field, module and page items innermost first, Copy path as the Valence path `valence://<hub>/<identity>`, Copy and Paste value, Reset to default, Send to node editor (`phosphor-node-add`, else a queue the node editor drains), Show in history; plugins add items behind a new `menu` permission (`ph-kyjd`). | operator ("replace the right click system print and bullshit menu with something actually useful"; the path format, the item set, Paste enabled only for a fitting value, the queue seam and Inspect behind Shift in a dev build are the agent's, veto-able) |
+| 2026-10-09 | §10.3, plugins | The right dock: a plugin-registered region, its toggle in the top bar only while a dock exists, closed until the user opens it; a column that narrows the content on the desktop, a drawer under the strip on the phone class. Field-bound kit controls, `ui.field` and `ui.module`, draw the shell's own control by identity behind `intent`. The quick access tray is the factory plugin built on these and the menu (`ph-kyjd`, `ph-5wsk.6`). | operator ("hidden by default, useful in more than 1 way", "factory plugin"; the toggle appearing only once something is pinned, the phone drawer closing on an outside tap and not persisting, the 21 rem column and the rail pinned as its mini are the agent's, veto-able) |

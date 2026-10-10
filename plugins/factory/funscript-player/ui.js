@@ -66,7 +66,8 @@
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
 // - The status carries conditions only (ph-5u0g peeve 19): never what the card already shows (empty, motion
-//   only, playing, positioning, buffering). On the page it is the top strip's slot on every class, never a row.
+//   only, playing, positioning, buffering). On the page and on a Dash card it is the top strip's slot on every
+//   class, never a row (peeve 19 extended).
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
@@ -621,7 +622,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
 // Its 16:9 spacer, capped at 240 px, gives it height where the card has none of its own (a category page).
 export const CSS = `
 .fsp { position: relative; height: 100%; min-height: 0; display: grid; gap: var(--sp-2); --fsp-detail: 96px; --fsp-src: 30px; --fsp-bar: 30px; --fsp-sp: var(--sp-2);
-  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 20px;
+  --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 0px;
   min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-columns: minmax(0, 1fr) 320px;
   grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
@@ -643,8 +644,8 @@ export const CSS = `
   grid-template-rows: var(--tap) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
   min-height: calc(var(--tap) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-areas: "src" "stage" "sp" "tlh" "tl" "tr" "st"; }
-.fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap) 20px;
-  grid-template-areas: "src" "meter" "tr" "st"; }
+.fsp[data-comp=glance] { min-height: 0; --fsp-bar: var(--tap); grid-template-columns: minmax(0, 1fr); grid-template-rows: 20px 24px var(--tap);
+  grid-template-areas: "src" "meter" "tr"; }
 .fsp [hidden] { display: none !important; }
 :where(.fsp button, .fsp input) { font: inherit; }
 .fsp[data-comp=full]:not([data-libshut]) .fsp-libbox { box-sizing: border-box; padding-top: max(0px, calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))); }
@@ -721,16 +722,15 @@ export const CSS = `
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-/* The status is the kit's (style.css .foot-status); this places it in the Dash card's last row. */
-.fsp-slot { grid-area: st; height: var(--fsp-st); }
-/* The page's status is the top strip's slot (ph-5u0g peeve 19): no row; the st track is only the card's bottom
-   inset, the trailing gap plus it making --sp-3 like the top. */
+/* The status is the top strip's slot on the page and on a Dash card (ph-5u0g peeve 19): no row. The st track is
+   only the page card's bottom inset, the trailing gap plus it making --sp-3 like the top; 0 on a Dash card. */
+.fsp-slot { display: none; }
 .fsp[data-page] { --fsp-st: calc(var(--sp-3) - var(--sp-2)); }
-.fsp[data-page] .fsp-slot { display: none; }
 .fsp-tr { grid-area: tr; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
 @container (max-width: 22em) { .fsp-tr .fsp-vol { display: none; } }
 .fsp-tr > * { flex: none; min-width: 0; }
-.fsp-tr > .og-btn { min-height: var(--fsp-bar); }
+/* No block padding: a text button keeps the bar's height at every Look (1.4 included). */
+.fsp-tr > .og-btn { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp-tr > .fsp-ov { flex: 1 1 60px; }
 .fsp-tr .fsp-rate { min-width: 5ch; padding-inline: var(--sp-2); font: .75rem var(--mono); }
 .fsp-el, .fsp-rem { font: .75rem var(--mono); color: var(--tx-val); white-space: nowrap; overflow: hidden; }
@@ -752,7 +752,7 @@ export const CSS = `
 @container (max-width: 20em) { .fsp-tlh .fsp-off .unit { display: none; } }
 @container (max-width: 18.5em) { .fsp-tlcaret > span { display: none; } }
 .fsp-tlh > * { flex: none; }
-.fsp-tlh > .og-btn { min-height: var(--fsp-bar); }
+.fsp-tlh > .og-btn { min-height: var(--fsp-bar); padding-block: 0; }
 .fsp-tlgap { flex: 1 1 0; }
 .fsp-tlh > .fsp-tlcaret { flex: none; min-height: var(--fsp-bar); padding: 0 var(--sp-2) 0 0; }
 .fsp:is([data-comp=handheld], [data-cls=portrait], [data-cls=landscape]) .fsp-tlh .fsp-zoom { display: none; }
@@ -770,7 +770,6 @@ export const CSS = `
 .fsp-speed[data-over] i { background: var(--warn); }
 .fsp-speed span { color: var(--tx-mut); white-space: nowrap; overflow: hidden; }
 .fsp-speed[data-over] span { color: var(--tx); }
-.fsp-slot[data-tone=intent] { border-left-color: var(--intent); }
 .fsp-anbox { grid-area: an; min-width: 0; min-height: 0; display: none; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-anbox { display: block; contain: size; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-libbox { display: none; }
@@ -1146,7 +1145,7 @@ export function createPlayer(api) {
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
     const anbox = h('div', { class: 'fsp-anbox' });
-    // On the page the top strip's slot, on every class; on a Dash card its own row.
+    // The top strip's slot on the page and on a Dash card, on every class; never a row.
     const status = ui.status({ class: 'fsp-slot' });
     const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
 

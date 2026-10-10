@@ -128,7 +128,7 @@
   /* Fixed width: active, disabled and error swap in place. */
   .chip.status { min-width: 10ch; text-align: center; }
   .chip.status[data-status='active'] { color: var(--reality); border-color: var(--reality); }
-  .chip.failed, .chip.status[data-status='error'], .chip.status[data-status='invalid'] { color: var(--warn); border-color: var(--warn); }
+  .chip.failed, .chip.status[data-status='error'], .chip.status[data-status='invalid'] { color: var(--warn-ink); border-color: var(--warn); }
   .og-switch { font-size: .78rem; min-height: 30px; }
   .page-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
   .perms { margin: 0; padding-left: var(--sp-5); }

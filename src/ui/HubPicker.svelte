@@ -98,7 +98,7 @@
   }
   .pk-status { color: var(--ink); }
   .pk-status[data-phase='retrying'],
-  .pk-status[data-phase='failed'] { color: var(--warn); }
+  .pk-status[data-phase='failed'] { color: var(--warn-ink); }
   .picker > .og-btn { align-self: flex-start; }
   .pk-note { color: var(--ink-dim); font-size: .85rem; }
   .pk-line {

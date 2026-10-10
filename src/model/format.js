@@ -115,7 +115,7 @@ export function precisionFor(field) {
   if (step == null || !isFinite(step) || step <= 0) {
     // No step published. Integers read better without a false ".00"; floats
     // need some precision or every value looks quantized.
-    return field && field.typeName && /^(u|i)\d/.test(field.typeName) ? 0 : 2;
+    return field && field.typeName && /^([ui]\d|u?int_t$)/.test(field.typeName) ? 0 : 2;
   }
   if (step >= 1) return 0;
   const d = Math.ceil(-Math.log10(step));

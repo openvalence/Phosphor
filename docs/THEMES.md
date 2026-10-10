@@ -145,7 +145,7 @@ instead of lightening.
 
 | key | holds |
 |---|---|
-| `phosphor.theme` | the active theme object |
+| `phosphor.theme` | the active theme object; a shipped preset's id loads that preset as this build ships it, with its stored look |
 | `phosphor.theme.presets` | saved presets |
 | `sd32.theme`, `sd32.theme.customColors` | legacy: read once to migrate when `phosphor.theme` is absent, never written or deleted |
 

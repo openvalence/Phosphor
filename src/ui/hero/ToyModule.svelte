@@ -73,5 +73,5 @@
   .toy-ms input { width: 6em; min-height: var(--tap); }
   .stale { opacity: .45; }
   .toy-ladder { margin: 0; min-height: 1.2em; font-size: 11px; color: var(--ink-dim); }
-  .toy-ladder[data-phase='overdue'], .toy-ladder[data-phase='fault'] { color: var(--warn); }
+  .toy-ladder[data-phase='overdue'], .toy-ladder[data-phase='fault'] { color: var(--warn-ink); }
 </style>

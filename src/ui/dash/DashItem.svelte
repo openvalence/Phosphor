@@ -469,7 +469,7 @@
     white-space: nowrap;
     color: var(--intent);
   }
-  .dash-busy.overdue { color: var(--warn); }
+  .dash-busy.overdue { color: var(--warn-ink); }
 
 
   /* Fills the rest of the frame, so a resize in cells shows on the surface. */

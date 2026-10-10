@@ -95,4 +95,17 @@
     font-size: .76rem;
     color: var(--intent);
   }
+  .foot-page :global(.cat-busy.overdue) { color: var(--warn-ink); }
+  /* Handheld: an icon and up to three digits, one fixed width beside the controls. */
+  .foot-page :global(.cat-busy.chip) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--sp-1);
+    width: calc(14px + var(--sp-1) + 3ch);
+    font: 500 .76rem var(--mono);
+  }
+  .foot-page :global(.cat-busy.chip svg) { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+  .foot-page :global(.cat-busy.idle svg) { visibility: hidden; }
+  .foot-page :global(.cat-busy .sr) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
