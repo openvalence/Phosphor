@@ -23,9 +23,9 @@ export const shape = (s) => String(s).replace(ID, '$1#');
 // JSON, not a joined string: no tag or text runs into the next part.
 export const keyOf = (p) => JSON.stringify([p.src, p.lvl, p.tag, p.id ?? null, shape(p.text), shape(p.kvText)]);
 
-/** `ring` is the event ring the fold reads; a new ring (a new session) starts the fold over. */
+/** `rings` are the event rings the fold reads; new rings (a new session) start the fold over. */
 export function createFold() {
-  return { rows: [], byKey: new Map(), ring: null, last: null, total: 0, counts: {}, seq: 0 };
+  return { rows: [], byKey: new Map(), rings: [], lasts: [], total: 0, counts: {}, seq: 0 };
 }
 
 export function clearFold(f) {
@@ -51,18 +51,25 @@ export function addTo(f, evt, p) {
 }
 
 /**
- * Fold what `ring` gained since the last call. The ring is a sliding window:
- * the last event folded is found again by identity, and when it has been
- * pushed out, everything in the ring is newer. True when the rows changed.
+ * Fold what `rings` gained since the last call, oldest first across them
+ * (`decode(evt, k)` gets the event's ring index). A ring is a sliding window:
+ * the last event folded from it is found again by identity, and when it has
+ * been pushed out, everything in the ring is newer. True when the rows changed.
  */
-export function ingest(f, ring, decode) {
-  const fresh = f.ring !== ring;
-  if (fresh) { clearFold(f); f.ring = ring; f.last = null; }
-  const n = ring.length;
-  if (!n || ring[n - 1] === f.last) return fresh;
-  for (let i = f.last ? ring.lastIndexOf(f.last) + 1 : 0; i < n; i++) addTo(f, ring[i], decode(ring[i]));
-  f.last = ring[n - 1];
-  return true;
+export function ingest(f, rings, decode) {
+  const fresh = rings.length !== f.rings.length || rings.some((r, k) => r !== f.rings[k]);
+  if (fresh) { clearFold(f); f.rings = rings; f.lasts = rings.map(() => null); }
+  const add = [];
+  rings.forEach((ring, k) => {
+    const n = ring.length, last = f.lasts[k];
+    if (!n || ring[n - 1] === last) return;
+    for (let i = last ? ring.lastIndexOf(last) + 1 : 0; i < n; i++) add.push([ring[i], k]);
+    f.lasts[k] = ring[n - 1];
+  });
+  // A stable sort: events of one millisecond keep their ring order.
+  add.sort((a, b) => a[0].at - b[0].at);
+  for (const [e, k] of add) addTo(f, e, decode(e, k));
+  return fresh || add.length > 0;
 }
 
 export const folds = { log: createFold(), anomaly: createFold() };

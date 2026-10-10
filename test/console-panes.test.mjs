@@ -8,7 +8,8 @@
  * slots hold their height whether or not they carry text, lists keep their
  * rows when content arrives, and the pane-specific facts render what the
  * wire sent. The knock prompt stays off the Pairing pane and rises anywhere
- * else. The Log page folds repeats, filters by level, source and search,
+ * else. The Log page folds repeats, lists the hub's refusals (a SPEC 8.6
+ * abort reads as a Session restart), filters by level, source and search,
  * follows the tail with a pill for what arrived while paused, and fits the
  * window at 1428x900, 1024x768, 844x390 and 420x860 with the list as the one
  * scroller (screenshots, dark and Paper, in test/evidence/logpage); 5000
@@ -29,7 +30,7 @@ import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import {
-  encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS,
+  encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS, NACK,
 } from '../../Valence/clients/js/frames.js';
 import { CORE_CHANNEL, LOG_EVENT_KIND, PAIRING_EVENT_KIND, SAFETY_EVENT_KIND } from '../../Valence/clients/js/generated/registry_vocab.js';
 
@@ -439,6 +440,32 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const anom = await page.$$eval('#lp-feed-anomaly > .line', (ls) => ls.map((l) => l.querySelector('.text').textContent + ' ' + l.querySelector('.n').textContent));
   ok('log: two device channels keep their own rows, a repeat on one folds', anom.length === 2 && /×2/.test(anom[1]), anom.join(' | '));
   await page.click('[data-feed="log"]');
+
+  // The hub's refusals are Log rows (ph-s5mu.1): code, channel and detail, folded like any repeat.
+  const nack = (ch, code, detail) => wire.send(FRAME.NACK, ch, cbMap([[K.code, cbUint(code)], ...(detail ? [[K.detail, cbTstr(detail)]] : [])]));
+  const IN = ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100);
+  const hx = (n) => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+  nack(IN.id, NACK.INVALID_VALUE, 'key 3 out of range');
+  nack(IN.id, NACK.NOT_HOMED);
+  nack(IN.id, NACK.INVALID_VALUE, 'key 12 out of range');
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log > .line:has(.chip.tag)').length >= 2, null, { timeout: 5000 }).catch(() => {});
+  await settle();
+  const refs = await page.$$eval('#lp-feed-log > .line', (ls) => ls.filter((l) => l.querySelector('.chip.tag')?.textContent === 'refusal')
+    .map((l) => ({ b: l.dataset.b, src: l.querySelector('.src').textContent, text: l.querySelector('.text').textContent, kv: l.querySelector('.kv')?.textContent, n: l.querySelector('.n').textContent })));
+  ok('log: a refusal is a warn row from the hub with its code, channel and detail', refs.length === 2 && refs.every((r) => r.b === 'warn' && r.src === 'hub')
+    && refs[1].text === 'INVALID_VALUE' && refs[1].kv === 'code=' + hx(NACK.INVALID_VALUE) + ' channel=' + hx(IN.id) + ' ' + IN.name + ' detail=key 12 out of range', JSON.stringify(refs));
+  ok('log: a repeated refusal folds, the newest at the tail', refs[0].text === 'NOT_HOMED' && refs[1].n === '×2', JSON.stringify(refs));
+
+  // A SPEC 8.6 abort (CHUNK_UNAVAILABLE at seq 0) is a restart in the Session feed, never a refusal (ph-2tjo); Session never folds.
+  nack(0, NACK.CHUNK_UNAVAILABLE);
+  nack(0, NACK.CHUNK_UNAVAILABLE);
+  await page.click('[data-feed="session"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('#lp-feed-session > .line')].filter((l) => /catalog changed mid-transfer/.test(l.textContent)).length === 2, null, { timeout: 5000 }).catch(() => {});
+  const restarts = await page.$$eval('#lp-feed-session > .line', (ls) => ls.filter((l) => /catalog changed mid-transfer/.test(l.textContent)).map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
+  ok('log: a SPEC 8.6 abort reads as a restart in the Session feed, one row each', restarts.length === 2 && restarts.every((t) => /transfer restarted/.test(t) && !/×/.test(t)), restarts.join(' | '));
+  await page.click('[data-feed="log"]');
+  await settle();
+  ok('log: ...and never as a refusal row', !(await page.textContent('#lp-feed-log')).includes('CHUNK_UNAVAILABLE'));
 
   // ---- Display ---------------------------------------------------------------
   await openTab(page, 'display');

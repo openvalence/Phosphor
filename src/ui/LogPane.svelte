@@ -1,7 +1,8 @@
 <script>
   /**
-   * LogPane.svelte -- the Log page: device log, device-defined events
-   * (Anomalies), safety edges, session events, setting changes and Health.
+   * LogPane.svelte -- the Log page: device log and the hub's refusals,
+   * device-defined events (Anomalies), safety edges, session events, setting
+   * changes and Health.
    *
    * The event feeds are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
    * unknown things render generically rather than being dropped: an event's
@@ -35,10 +36,10 @@
   import { SvelteSet } from 'svelte/reactivity';
   import { machine } from '../model/machine.svelte.js';
   import {
-    CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME,
+    CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME, NACK_NAME,
   } from '../../../Valence/clients/js/index.js';
   import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
-  import { optionLabel, formatValue, formatWithUnit, unitOf, compact } from '../model/format.js';
+  import { optionLabel, formatValue, formatWithUnit, unitOf, compact, hexId } from '../model/format.js';
   import { logView } from './logview.svelte.js';
   import { folds, ingest, clearFold } from './logfold.js';
   import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
@@ -180,6 +181,17 @@
       // matching edge; it states the gap, never a value the device did not send.
       p.text = 'latch changed, no event received';
       p.diag = true;
+    } else if (t === 'nack') {
+      // A hub refusal (ph-s5mu.1): the code's name as the Link page prints it, so its Log link
+      // finds the row; code and channel are the row's identity, never shaped.
+      const entry = machine.catalog.entries.find((e) => e.id === evt.channel);
+      p.lvl = 'warn';
+      p.bucket = 'warn';
+      p.tag = 'refusal';
+      p.id = evt.code + '/' + evt.channel;
+      p.text = NACK_NAME[evt.code] || hexId(evt.code);
+      p.kv = [['code', hexId(evt.code)], ['channel', hexId(evt.channel) + (entry ? ' ' + entry.name : '')], ['detail', evt.detail],
+        ['intent', evt.intentId], ['retry_after_ms', evt.retryAfterMs]].filter(([, v]) => v != null).map(([key, v]) => ({ key, display: String(v) }));
     } else {
       p.text = chan(evt, 'session');
       p.kv = topFields(evt);
@@ -197,16 +209,18 @@
   let raf = 0;
   const bump = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; tick++; }); };
   $effect(() => () => cancelAnimationFrame(raf));
+  // The Log feed reads the hub's refusals beside its lines; the second ring decodes as 'nack'.
+  const RINGS = { log: () => [machine.events.log, machine.events.nacks], anomaly: () => [machine.events.anomaly] };
   for (const id of ['log', 'anomaly']) {
     $effect(() => {
-      const ring = machine.events[id];
-      void ring.length;
-      void ring[ring.length - 1];
+      const rings = RINGS[id]();
+      for (const r of rings) { void r.length; void r[r.length - 1]; }
       untrack(() => {
-        // A new ring is a new session (machine.svelte.js forgetDevice): nothing from the old one
+        const f = folds[id];
+        // New rings are a new session (machine.svelte.js forgetDevice): nothing from the old one
         // stays, a paused Safety or Session snapshot included.
-        if (folds[id].ring && folds[id].ring !== ring) { EVENT_FEEDS.forEach(resume); open.clear(); }
-        if (ingest(folds[id], ring, (e) => parts(id, e))) bump();
+        if (f.rings.length && f.rings[0] !== rings[0]) { EVENT_FEEDS.forEach(resume); open.clear(); }
+        if (ingest(f, rings, (e, k) => parts(k ? 'nack' : id, e))) bump();
       });
     });
   }
@@ -231,6 +245,13 @@
   let src = $state('');
   let q = $state('');
   const words = $derived(q.toLowerCase().split(/\s+/).filter(Boolean));
+  // logView.find opens the page on a search (the Link page's Log link): every other filter
+  // clears so the rows it names show, and the seam empties for the next visit.
+  $effect(() => {
+    const find = logView.find;
+    if (!find) return;
+    untrack(() => { q = find; src = ''; for (const b of BUCKETS) lv[b.id] = true; logView.find = ''; });
+  });
   function passes(id, r) {
     if (id === 'log' && (!lv[r.p.bucket] || (src && r.p.src !== src))) return false;
     return words.every((w) => r.p.hay.includes(w));
