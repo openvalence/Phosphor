@@ -403,7 +403,7 @@ export function createClient(o) {
   const trialFor = (r, settings) => settings && (o.hwSafe || r() < T.trialBias * 0.6);
 
   function actGeneric(e, r, settings) {
-    // At most 8 keys: one INTENT frame must fit the hub's max_frame (a 30-key write is refused MALFORMED).
+    // At most 8 keys: the hub library's per-INTENT cap (Valence rfc-zvh9); more is refused MALFORMED.
     const fs = (e.schema || []).filter(() => r() < 0.5).slice(0, 8);
     const pick = fs.length ? fs : (e.schema || []).slice(0, 1);
     const vals = {};
@@ -488,7 +488,8 @@ export function createClient(o) {
     const en = e.schema.find((x) => x.role === 'osc.enabled');
     for (const f of e.schema) {
       if (f === en) vals[f.key] = r() < 0.65;
-      else if (r() < 0.7) { const v = value(f, r); if (v !== undefined) vals[f.key] = f.role === 'osc.frequency' ? Math.min(v, 0.5 + r() * 12) : v; }
+      // At most 8 keys, as actGeneric.
+      else if (r() < 0.7 && Object.keys(vals).length < 8) { const v = value(f, r); if (v !== undefined) vals[f.key] = f.role === 'osc.frequency' ? Math.min(v, 0.5 + r() * 12) : v; }
     }
     return send(vals[en.key] ? 'osc:on' : 'osc:off', e.id, vals);
   }
