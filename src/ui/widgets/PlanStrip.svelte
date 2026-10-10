@@ -57,7 +57,6 @@
   import { isStill } from '../still.svelte.js';
   import { formatParts, optionLabel, labelFor } from '../../model/format.js';
   import { ROLE, claimRoles } from '../../model/roles.js';
-  import { norm } from '../../model/bounds.js';
   import { railOwnerName, foreignOwner } from '../../model/actions.js';
   import { CH_CONTROL_OWNER, LIMITS, UNIT_ID, planFlagNames } from '../../../../Valence/clients/js/index.js';
   import { onTheme } from '../../model/theme.js';
@@ -65,8 +64,8 @@
   // shown: RailWidget keeps this mounted under the jog tape and flips
   // visibility (ph-e82.21); hidden, the draw loop stops.
   // edge0, edge1: the lane fractions where plan 0 and plan 1 sit, the rail's
-  // window band in its own frame (edge1 < edge0 when flipped). A plan never
-  // draws past them.
+  // window band in its own frame (edge1 < edge0 when flipped). A plan outside
+  // the window draws past them, clipped by the lane.
   // lane: the lane's [left, right] in the row, as fractions.
   // segment: the planned segment (ph-ryi7): a reality-to-intent gradient
   // from the planned position to the planned target, and the marker.
@@ -88,12 +87,17 @@
     return (f && s) ? s[f.name] : undefined;
   }
 
-  /** Normalized 0..1 position: the field's own [min,max] if annotated, else assume the value is already normalized (matches every "_norm" style field seen on this and similarly-shaped channels). */
+  /**
+   * A plan position as a share of the stroke window: the field's own [min,max]
+   * if annotated, else the value is the share. Never clamped: a plan below the
+   * window or past it is a share below 0 or above 1 (Nucleus carries it as an
+   * i32), and the lane clips what lies off the row (ph-t2jn).
+   */
   function pct(f) {
     if (!f) return null;
     const v = fieldValue(f);
-    if (f.min != null && f.max != null && f.max > f.min) return norm(v, f.min, f.max);
-    return norm(v, 0, 1);
+    if (v == null || !isFinite(v)) return null;
+    return f.min != null && f.max != null && f.max > f.min ? (v - f.min) / (f.max - f.min) : v;
   }
 
   // ---- discovery: ROLE, and ONLY role — see this file's header --------------

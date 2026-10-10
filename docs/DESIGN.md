@@ -539,7 +539,9 @@ question in §10.8).
   the planned position to the planned target, at the rail's own render
   instant, the marker amber while `plan.flags` names a bent plan (RFC-100; the readback's tooltip says which: shaped, stretched, fallback, clamped), else while the plan is stalled or past its
   duration. A control-owner slot held by another session keeps the
-  full-width plan strip. The plan readback (owner, style, velocity, timing)
+  full-width plan strip. Plan positions are shares of the window, drawn on
+  the travel and never clamped: a plan outside the window draws outside the
+  band, and the row clips what lies past the rail (`ph-t2jn`). The plan readback (owner, style, velocity, timing)
   rides the strip on the primary label's line, right of the numerals, while
   a source plays or a plan streams; stacked, a status condition outranks it.
   Seams: `src/ui/hero/RailWidget.svelte`, `src/ui/widgets/PlanStrip.svelte`,

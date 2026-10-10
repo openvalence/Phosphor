@@ -66,6 +66,9 @@
  *            80 %), its gradient runs from the planned position to the
  *            target, a target past it ends at the edge, and the marker is
  *            reality while the plan streams, amber once it stalls
+ *   plan     ph-t2jn: a foreign owner's plan outside the window (i32 shares,
+ *            Nucleus val-vik) draws where it is on the travel, never pinned
+ *            to the window's edge; a plan past the rail draws nothing
  *   target   ph-9kjh: the target numeral opens an entry in place, prefilled,
  *            one box at rest and typing; Enter writes the rail tap's channel
  *            and the hub's refusal reads as the tap's; past the window it
@@ -821,6 +824,34 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
     await page.waitForTimeout(2600);
     const stalled = await markerAt(0.65);
     ok('segment: a stalled plan turns the marker amber', near(stalled, warn), JSON.stringify([stalled, warn]));
+    await ctx.close();
+  }
+  // ph-t2jn: plan.* is a share of the window, below 0 or past 1 when the plan
+  // leaves it; the full-width strip draws it on the travel, clipped by the row.
+  {
+    const run = stateOf(byRole('pattern.running'), { 'pattern.running': 1 });
+    const { ctx, page, wire } = await open(browser, { w: 1280, h: 720, touch: false, catalog: 'labeled', reducedMotion: 'reduce',
+      states: { [cfgE.id]: cfg, [CORE_CHANNEL.control_owner]: OWNER, [byRole('pattern.running').id]: run,
+        [planE.id]: stateOf(planE, { 'plan.start': -0.25, 'plan.end': 0.5, 'plan.current': -0.1 }) } });
+    const span = () => page.evaluate(() => {
+      const c = document.querySelector('.rail-swap .plan-strip:not(.segment) .plan-lane canvas'), row = document.querySelector('.rail-swap').getBoundingClientRect();
+      if (!c) return null;
+      const r = c.getBoundingClientRect(), k = r.width / c.width;
+      const d = c.getContext('2d').getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+      const edge = Math.ceil(2 * devicePixelRatio);
+      let a = -1, b = -1;
+      for (let x = edge; x < c.width - edge; x++) if (d[x * 4 + 3] > 8) { if (a < 0) a = x; b = x; }
+      const f = (x) => Math.round(((r.left + x * k - row.left) / row.width) * 1000) / 1000;
+      return a < 0 ? [] : [f(a), f(b)];
+    });
+    await page.waitForTimeout(1200);
+    const below = await span();
+    ok('plan: a plan below the window draws on the travel, 25 to 250 of a 500 rail (5 % to 50 %), not from the window edge',
+      !!below && below.length === 2 && Math.abs(below[0] - 0.05) < 0.01 && Math.abs(below[1] - 0.5) < 0.01, JSON.stringify(below));
+    wire.socket.send(Buffer.from(encodeFrame(FRAME.STATE, planE.id, stateOf(planE, { 'plan.start': 1.5, 'plan.end': 2, 'plan.current': 1.6 }))));
+    await page.waitForTimeout(1200);
+    const past = await span();
+    ok('plan: a plan past the rail draws nothing in the row, never pinned at the window edge', !!past && past.length === 0, JSON.stringify(past));
     await ctx.close();
   }
   // RFC-098 (ph-6gj1): a foreign stream holding its slot owns the rail like a
