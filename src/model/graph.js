@@ -740,8 +740,9 @@ export function readStoreItem(bytes) {
  * The hub's relationships surfaces, joined by RFC-070 store_id: {store,
  * roster, writer, op, slot, name, item} or a reason in words. `coreId` is the
  * registry's relationships channel. The writer's slot, name and item fields
- * carry no registered role, so they are found by type: the one unroled uint,
- * tstr and bstr beside the action.store op select.
+ * are found by their RFC-089 roles (store.slot, store.name, store.item), or on
+ * a writer without them by type: the one unroled uint, tstr and bstr beside the
+ * action.store op select.
  */
 export function findHub(entries, coreId, CBOR) {
   const store = entries.find((e) => e.id === coreId && e.store);
@@ -751,11 +752,16 @@ export function findHub(entries, coreId, CBOR) {
   const writer = entries.find((e) => e.storeId === sid && e.schema && e.schema.some((f) => f.role === 'action.store'));
   if (!writer) return { reason: 'no writer for the relationships store' };
   const plain = writer.schema.filter((f) => !f.role);
-  const one = (t) => { const hit = plain.filter((f) => f.type === t); return hit.length === 1 ? hit[0] : null; };
+  const one = (role, t) => {
+    const hit = writer.schema.find((f) => f.role === role);
+    if (hit) return hit;
+    const typed = plain.filter((f) => f.type === t);
+    return typed.length === 1 ? typed[0] : null;
+  };
   const op = writer.schema.find((f) => f.role === 'action.store');
-  const item = one(CBOR.bstr_t);
+  const item = one('store.item', CBOR.bstr_t);
   if (!item) return { reason: 'relationships writer has no fillable item field' };
-  return { store, roster, writer, op, slot: one(CBOR.uint_t), name: one(CBOR.tstr_t), item };
+  return { store, roster, writer, op, slot: one('store.slot', CBOR.uint_t), name: one('store.name', CBOR.tstr_t), item };
 }
 
 /** The `fields` of one store verb on the writer: an object keyed by schema key. */
