@@ -652,18 +652,6 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
 }
 .surface-card { background: var(--bg-card); }
 .surface-nest { background: var(--bg-sunken); }
-/* A widget that paints its own card box inside a card is the double frame
-   the rule forbids; the card already is that box. */
-.dash-body.surface-card > :is(.hero, .tchart) {
-  background: none;
-  border: 0;
-  padding: 0;
-}
-/* Nothing in a card scrolls on its own: a toy module grows with its controls. */
-.dash-body.surface-card .toy {
-  height: auto;
-  overflow: visible;
-}
 
 /* Recessed display surface: scopes, readouts, the log. */
 .og-screen {

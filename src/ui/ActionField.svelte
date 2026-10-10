@@ -34,6 +34,7 @@
   const virtual = $derived(!!machine.link.virtual);
 
   let draft = $state({});
+  const payloads = $derived((action.payload || []).filter((p) => p.type !== CBOR_FIELD.bstr_t));
 
   // The afterglow, as Field.svelte lights it: alternating per echo, out on the
   // next press, ended (with the word) by its own animationend.
@@ -93,24 +94,28 @@
   </div>
   {#if action.desc}<p class="hint">{action.desc}</p>{/if}
 
-  {#each (action.payload || []).filter((p) => p.type !== CBOR_FIELD.bstr_t) as p (p.key)}
-    <label class="payload">
-      <span>{p.label}{p.unit ? ' (' + p.unit + ')' : ''}</span>
-      {#if p.type === CBOR_FIELD.bool_t}
-        <input type="checkbox" checked={!!draft[p.key]}
-               onchange={(e) => (draft[p.key] = e.currentTarget.checked)} />
-      {:else if p.type === CBOR_FIELD.tstr_t}
-        <!-- RFC-009.4: a secret payload masks like Field's secret widget. -->
-        <input type={p.secret ? 'password' : 'text'} autocomplete={p.secret ? 'new-password' : undefined}
-               value={draft[p.key] ?? ''}
-               oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
-      {:else}
-        <input type="number" min={p.min} max={p.max}
-               step={p.type === CBOR_FIELD.f32_t ? 'any' : 1} value={draft[p.key] ?? ''}
-               oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
-      {/if}
-    </label>
-  {/each}
+  {#if payloads.length}
+    <div class="card-body">
+      {#each payloads as p (p.key)}
+        <label class="payload">
+          <span class="field-label">{p.label}{p.unit ? ' (' + p.unit + ')' : ''}</span>
+          {#if p.type === CBOR_FIELD.bool_t}
+            <input type="checkbox" checked={!!draft[p.key]}
+                   onchange={(e) => (draft[p.key] = e.currentTarget.checked)} />
+          {:else if p.type === CBOR_FIELD.tstr_t}
+            <!-- RFC-009.4: a secret payload masks like Field's secret widget. -->
+            <input type={p.secret ? 'password' : 'text'} class="value-input" autocomplete={p.secret ? 'new-password' : undefined}
+                   value={draft[p.key] ?? ''}
+                   oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
+          {:else}
+            <input type="number" class="value-input" min={p.min} max={p.max}
+                   step={p.type === CBOR_FIELD.f32_t ? 'any' : 1} value={draft[p.key] ?? ''}
+                   oninput={(e) => (draft[p.key] = e.currentTarget.value)} />
+          {/if}
+        </label>
+      {/each}
+    </div>
+  {/if}
 
   <div class="ops">
     {#each ops as op (op.value)}
@@ -135,15 +140,16 @@
   .ops { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
   /* Hub labels render as sent (COPY rule 8). */
   .ops button { min-height: var(--tap); padding: 0 var(--sp-4); }
-  .payload { display: flex; flex-direction: column; gap: var(--sp-2); font-size: .8rem; color: var(--ink-dim); }
-  /* The recess without .og-num: a draft is not the action's state, so no state frame. */
-  .payload input[type='number'], .payload input[type='text'], .payload input[type='password'] {
-    min-height: var(--tap); width: 100%; padding: 0 var(--sp-3);
-    border: 1px solid var(--line-1); border-radius: var(--radius); background: var(--screen);
-    box-shadow: inset 0 2px 5px rgba(var(--shade-rgb), .6); color: var(--tx-val);
-    font-family: var(--mono); font-size: .9rem;
+  /* .value-input, never .og-num: a draft is not the action's state, so it wears no state frame. */
+  .payload { display: flex; flex-direction: column; gap: var(--sp-2); }
+  .payload .value-input { width: 100%; appearance: textfield; }
+  .payload .value-input::-webkit-inner-spin-button, .payload .value-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .payload .value-input:focus { outline: none; border-color: var(--highlight); }
+  @media (pointer: coarse) {
+    .payload input:not([type='checkbox']) { min-height: max(44px, var(--tap)); }
+    .payload:has(input[type='checkbox']) { min-height: max(44px, var(--tap)); }
+    .payload input[type='checkbox'] { width: 24px; height: 24px; }
   }
-  .payload input:focus { outline: none; border-color: var(--highlight); }
   .hint { margin: 0; color: var(--ink-dim); font-size: .78rem; }
   /* Field's .ladder slot: basis 0, one clipped 14 px line. */
   .state {

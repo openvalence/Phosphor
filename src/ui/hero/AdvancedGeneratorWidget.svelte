@@ -93,17 +93,14 @@
     <section class="block">
       <h4 class="card-sub">Presets</h4>
       <ActionField action={fields.presetOp} titled />
-      {#if presets}<Roster store={presets.store} roster={presets.roster} />{/if}
+      {#if presets}<Roster store={presets.store} roster={presets.roster} rows={4} title="Presets" />{/if}
     </section>
   {/if}
 </div>
 
 <style>
+  /* No box of its own: the card it sits in is the box (DESIGN §10.6). */
   .hero {
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    border-radius: var(--r);
-    padding: var(--gap);
     display: flex;
     flex-direction: column;
     gap: var(--gap);
