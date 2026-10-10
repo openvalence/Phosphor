@@ -177,6 +177,12 @@
 
   const AG_COLS = 14, AG_CELL = 4, AG_GAP = 1;
   let heatCanvas = $state(null);
+  // The tooltip names the row under the pointer.
+  let heatRow = $state(0);
+  const heatTip = $derived.by(() => {
+    const l = (heatRows[heatRow] || heatRows[0]).label;
+    return l[0].toUpperCase() + l.slice(1) + ', last 3 s: brighter is busier';
+  });
 
   $effect(() => {
     const rows = heatRows;             // establishes the reactive dependency
@@ -297,7 +303,8 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
       </button>
     {/if}
-    <canvas bind:this={heatCanvas} class="act-grid" aria-label={heatmapAriaLabel}></canvas>
+    <canvas bind:this={heatCanvas} class="act-grid" role="img" aria-label={heatmapAriaLabel} title={heatTip}
+            onpointermove={(e) => (heatRow = Math.min(heatRows.length - 1, Math.floor(e.offsetY / (AG_CELL + AG_GAP + 1))))}></canvas>
     <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
   </div>
 

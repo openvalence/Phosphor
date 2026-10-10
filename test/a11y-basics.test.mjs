@@ -143,6 +143,14 @@ const browser = await chromium.launch();
   const stillInRail = await page.evaluate(() => !!document.activeElement.closest('nav.rail'));
   ok('rail: a plain Tab leaves the tablist in one step', !stillInRail);
 
+  // ph-40q: the heatmap is an image whose tooltip names the row under the pointer.
+  const grid = page.locator('canvas.act-grid');
+  const gb = await grid.boundingBox();
+  const tips = [];
+  for (const y of [1, gb.height - 1]) { await page.mouse.move(gb.x + gb.width / 2, gb.y + y); tips.push(await grid.getAttribute('title')); }
+  ok('heatmap: an image, its tooltip the row under the pointer (ph-40q)', await grid.getAttribute('role') === 'img'
+    && tips.every((t) => /^[A-Z][^.]*, last 3 s: brighter is busier$/.test(t)) && tips[0] !== tips[1], tips.join(' | '));
+
   if (pageErrors.length) ok('rail: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
 }
