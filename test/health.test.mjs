@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import {
-  CONDITIONS, CUTOUT, GROWTH, classify, createTracker, displayHz, growth, lineOf, quantile, tipLines, videoRead, videoSignal, videoStep, videoWindow,
+  CONDITIONS, CUTOUT, GROWTH, SEV_RANK, classify, createTracker, displayHz, growth, lineOf, quantile, tipLines, videoRead, videoSignal, videoStep, videoWindow,
 } from '../src/model/health/core.js';
 
 let fails = 0;
@@ -19,12 +19,12 @@ const ok = (name, cond, extra) => {
 };
 
 console.log('\n--- the condition table ---');
-ok('27 conditions: 13 link, 8 device, 6 machine', Object.keys(CONDITIONS).length === 27
-  && ['link', 'device', 'machine'].map((a) => Object.values(CONDITIONS).filter((c) => c.area === a).length).join() === '13,8,6');
+ok('29 conditions: 14 link, 9 device, 6 machine', Object.keys(CONDITIONS).length === 29
+  && ['link', 'device', 'machine'].map((a) => Object.values(CONDITIONS).filter((c) => c.area === a).length).join() === '14,9,6');
 // One incident per condition as the tracker leaves it: its numbers (m) and what the line reads besides.
 const M = {
   'send-margin': { leadMs: 40, onMs: 62.5 }, 'slow-link': { p50Ms: 80, p95Ms: 140 }, backlog: { bytes: 1300 }, throttled: { channels: 2 },
-  drops: { n: 3 }, 'weak-signal': { dbm: -80 }, 'hub-wifi-drop': { n: 2 }, busy: { p95Ms: 60 }, 'slow-display': { fps: 22 },
+  drops: { n: 3 }, 'weak-signal': { dbm: -80 }, 'hub-wifi-drop': { n: 2 }, busy: { p95Ms: 60 }, 'slow-display': { fps: 22 }, 'rail-stalled': { pct: 14 }, 'clock-drift': { ms: 12 },
   growth: { baseMb: 28, nowMb: 168, minutes: 35, slopeMbPerMin: 4 }, workers: { base: 1, now: 5 }, overloaded: { state: 'serious', forMs: 45000 },
   'late-plans': { perMin: 8 }, fault: { label: 'Motor power: inrush' }, 'hub-memory': { dropPct: 25 }, hot: { label: 'Driver', text: '78 °C', max: 85 },
   'log-drops': { n: 12 }, 'video-drops': { excess: 42, wallS: 30, shown: 3600, fps: 120, hz: 120, frames: 3600, dropped: 42 },
@@ -51,6 +51,13 @@ ok('a surfaced tooltip says what was measured, since when, the threshold and the
 ok('a line survives an incident with no numbers (a restored one)', Object.keys(CONDITIONS).every((id) => typeof lineOf({ cond: id, count: 1 }) === 'string'));
 ok('the growth line: "Memory up 140 MB in 35 min"', lineOf(incOf('growth')) === 'Memory up 140 MB in 35 min', lineOf(incOf('growth')));
 ok('the video line: "Video dropped 42 frames in 30 s"', lineOf(incOf('video-drops')) === 'Video dropped 42 frames in 30 s', lineOf(incOf('video-drops')));
+ok('the render lines carry their numbers: "Rail stalled on 14% of frames", "Clock drift 12 ms"',
+  lineOf(incOf('rail-stalled')) === 'Rail stalled on 14% of frames' && lineOf(incOf('clock-drift')) === 'Clock drift 12 ms',
+  [lineOf(incOf('rail-stalled')), lineOf(incOf('clock-drift'))]);
+ok('the render tooltips say why in plain words, the threshold and one action', ['rail-stalled', 'clock-drift'].every((id) => tipLines(incOf(id)).length === 4)
+  && /late or bunched/.test(tipLines(incOf('rail-stalled'))[0]) && /clocks disagree, so the rail's timing is off/.test(tipLines(incOf('clock-drift'))[0])
+  && tipLines(incOf('clock-drift'))[3] === 'Restart Phosphor if it persists', tipLines(incOf('clock-drift')));
+ok('no user-facing text says "held" or "skew"', lines.every(([id, l, tip]) => !/\bheld\b|\bskew/i.test(l + tip.join(' ') + CONDITIONS[id].detail)));
 ok('a cutout line: the pause and its measured cause', lineOf(incOf('cutout-client')) === 'Motion paused 420 ms · this device stalled 690 ms'
   && lineOf({ ...incOf('cutout-network'), count: 2 }) === 'Motion paused 420 ms · WiFi delay 300 ms (likely) ×2', [lineOf(incOf('cutout-client')), lineOf(incOf('cutout-network'))]);
 const silent = Object.entries(CONDITIONS).filter(([id, c]) => !c.logOnly && !['log-drops', 'restarted'].includes(id) && (!c.detail || !c.action));
@@ -60,6 +67,23 @@ ok('every action is one act', !two.length, two.map((t) => t[0] + ': ' + t[1].act
 ok('no device setting and no jargon in the words', lines.every(([id, l, tip]) => !/stream buffer|smoothness|planner|congest|jitter/i.test(l + tip.join(' ') + CONDITIONS[id].detail)));
 ok('every detail is one sentence', Object.values(CONDITIONS).every((c) => !c.detail || (c.detail.match(/\. |\.$/g) || []).length === 1));
 ok('a cutout per cause', Object.values(CUTOUT).every((id) => CONDITIONS[id] && CONDITIONS[id].cause));
+
+console.log('\n--- the render conditions on the tracker ---');
+{
+  // health.svelte.js feeds these once a second from the rail's census: stalled over 10 % (clear at 5 %), drift over 2 ms (clear at 1 ms).
+  for (const id of ['rail-stalled', 'clock-drift']) {
+    const log = [];
+    const tr = createTracker({ open: () => log.push('open'), update: () => log.push('update'), close: () => log.push('close') });
+    for (let t = 0; t < 10000; t += 1000) tr.level(id, 'warn', t, { m: {} });
+    ok(id + ': nothing before its 10 s hold', !log.length, log);
+    tr.level(id, 'warn', 10000, { m: {} });
+    ok(id + ': fires at the hold as a warn, so the status slot shows it', log.join() === 'open' && SEV_RANK[tr.incidents[id].sev] >= 1, log);
+    for (let t = 11000; t < 40000; t += 1000) tr.level(id, null, t);
+    ok(id + ': stays open inside its 30 s clear hold', !log.includes('close'), log);
+    tr.level(id, null, 41000);
+    ok(id + ': clears after it', log.includes('close'), log);
+  }
+}
 
 console.log('\n--- classify ---');
 const base = { latMs: 1, rttP50Ms: 10, loopLagMaxMs: 5, leadSendMinMs: 115, owdUpMaxMs: 5, posGapMaxMs: 20, periodMs: 20, hubWarn: 0 };
