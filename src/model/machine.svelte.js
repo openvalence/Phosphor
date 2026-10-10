@@ -205,6 +205,8 @@ let _lastOpts = {};
 let safetyMaxSeq = -1;
 let safetyLastLatch;
 let safetyEdgeSeen = false;
+// The device channels this session subscribed after its catalog (reset on WELCOME).
+let held = new Set();
 
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
@@ -214,6 +216,11 @@ export function getSession() {
 /** The newest socket, or null (health.svelte.js's backlog reading). */
 export function currentSocket() {
   return _ws;
+}
+
+/** Did this session subscribe to the channel? A subscribed STATE sample is on its way (SPEC 6.8 retained). */
+export function subscribed(id) {
+  return held.has(id) || !!machine.grants[id];
 }
 
 /** Is the hub plane usable for writes right now? */
@@ -436,10 +443,10 @@ export function connect(opts = {}) {
   machine.link.phase = 'connecting';
   machine.link.since = Date.now();
 
-  // Per session (reset on WELCOME): the ids subscribed, whether a catalog was
-  // already adopted (a second one is RFC-077 growth), the last 0x0001
-  // snapshot, and the channels already reported withdrawn.
-  let held = new Set();
+  // Per session (reset on WELCOME): whether a catalog was already adopted (a
+  // second one is RFC-077 growth), the last 0x0001 snapshot, and the channels
+  // already reported withdrawn.
+  held = new Set();
   let adopted = false;
   let catalogSnap;
   let withdrawn = new Set();
