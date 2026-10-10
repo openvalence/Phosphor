@@ -413,11 +413,32 @@
   // collapsed until asked for, with the count stated. Browser-local.
   let showDiagnostic = $state(false);
 
+  // A built-in card hero's advanced bindings follow the same disclosure: its
+  // optional ones and its wholly advanced instances. A required binding stays,
+  // the hero cannot draw without it; a plugin hero presents its own.
+  function heroAdv(h) {
+    if (h.plugin) return [];
+    const f = h.fields, s = h.spec || {};
+    return [
+      ...Object.keys(s.optional || {}).map((k) => f[k]),
+      ...Object.keys(s.instances || {}).flatMap((k) => (f[k] || []).map((m) => Object.values(m).filter((x) => x?.uid))
+        .filter((ms) => ms.every((x) => x.advanced)).flat()),
+    ].filter((x) => x?.advanced);
+  }
+  const heroAdvUids = $derived(new Set((current?.cat?.heroes || []).flatMap(heroAdv).map((f) => f.uid)));
+  function heroShown(h) {
+    if (showAdvanced) return h;
+    const f = { ...h.fields };
+    for (const k of Object.keys(h.spec?.optional || {})) if (heroAdvUids.has(f[k]?.uid)) f[k] = null;
+    for (const k of Object.keys(h.spec?.instances || {})) f[k] = (f[k] || []).filter((m) => !Object.values(m).some((x) => heroAdvUids.has(x?.uid)));
+    return { ...h, fields: f };
+  }
+
   // `adv` and `diagAll` count whether shown or not, so the footer's toggles
   // keep one label width in both states.
   const visibleGroups = $derived.by(() => {
     if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
-    let hidden = 0, diag = 0, adv = 0, diagAll = 0;
+    let hidden = showAdvanced ? 0 : heroAdvUids.size, diag = 0, adv = heroAdvUids.size, diagAll = 0;
     const groups = [];
     for (const g of current.cat.groups) {
       if (g.diagnostic) diagAll += g.fields.length;
@@ -451,7 +472,7 @@
     return model ? [...model.fields, ...model.actions].filter((f) => uids.has(f.uid)) : [];
   });
   const onScreen = $derived(drillItem ? drillItem.group.fields
-    : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields]);
+    : [...visibleGroups.groups.flatMap((g) => g.fields), ...heroFields.filter((f) => showAdvanced || !heroAdvUids.has(f.uid))]);
   const hasDefaults = $derived([...(current?.cat?.groups || []).flatMap((g) => g.fields), ...heroFields]
     .some(resetsToDefault));
   const resettable = $derived(onScreen.filter((f) => resetsToDefault(f)
@@ -497,8 +518,8 @@
   // follow one header row (settings.js orders them together, DESIGN §10.11).
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
-      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: h,
-         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid)) })),
+      ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: heroShown(h),
+         fields: heroFields.filter((f) => h.fields.claimed.has(f.uid) && (showAdvanced || !heroAdvUids.has(f.uid))) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
       ...(g.section && g.section !== all[i - 1]?.group.section
         ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),

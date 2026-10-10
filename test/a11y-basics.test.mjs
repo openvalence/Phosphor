@@ -139,9 +139,11 @@ const browser = await chromium.launch();
     document.querySelector('nav.rail [role=tab][aria-selected="true"]')?.dataset.tabId);
   ok('rail: the arrow-focused tab is also the selected one (automatic activation)', selected === after);
 
+  // One Tab leaves the tabs: to the selected page's operations pill (inside the rail) or past the rail.
   await page.keyboard.press('Tab');
-  const stillInRail = await page.evaluate(() => !!document.activeElement.closest('nav.rail'));
-  ok('rail: a plain Tab leaves the tablist in one step', !stillInRail);
+  const onTab = await page.evaluate(() => document.activeElement.matches('[role=tab]')
+    || !!(document.activeElement.closest('nav.rail') && !document.activeElement.closest('.rail-ops')));
+  ok('rail: a plain Tab leaves the tabs in one step', !onTab);
 
   // ph-40q: the heatmap is an image whose tooltip names the row under the pointer.
   const grid = page.locator('canvas.act-grid');
