@@ -205,8 +205,8 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
-  // The footer status slot (docs/PLUGINS.md, Pages, `status`): the latest
-  // phosphor-page-status per page, drawn only on the phone class.
+  // The page status (docs/PLUGINS.md, Pages, `status`): the latest
+  // phosphor-page-status per page, drawn in TopStrip's status slot on every class.
   const TONES = ['ok', 'warn', 'bad'];
   let pageStatus = $state({});
   $effect(() => {
@@ -247,7 +247,7 @@
     window.addEventListener('phosphor-quick-rail', ask);
     return () => window.removeEventListener('phosphor-quick-rail', ask);
   });
-  const statusSlot = $derived(current?.page?.status && view.bucket <= 2 ? pageStatus[current.id] || { text: '', tone: null, title: '' } : null);
+  const statusSlot = $derived(current?.page?.status ? pageStatus[current.id] || null : null);
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });
@@ -667,13 +667,8 @@
       {/key}
     </div>
     <PageFoot page={!isDesktop && !isFull}>
-      {#if statusSlot}
-        <span class="foot-status" data-tone={statusSlot.tone} role="status" title={statusSlot.title || statusSlot.text || undefined}>
-          <span>{statusSlot.text}</span>
-        </span>
-      {/if}
       <!-- Only in a footer the page has anyway: the hero's mini opens the same pop-up. -->
-      {#if quickForm && (statusSlot || (current.page?.fields && !current.page.mediaFullscreen) || (catPage && !railOps))}
+      {#if quickForm && ((current.page?.fields && !current.page.mediaFullscreen) || (catPage && !railOps))}
         <QuickRail open={quickOpen} onclick={(e) => askQuick('toggle', e.currentTarget)} />
       {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
@@ -714,7 +709,7 @@
 {/snippet}
 
 <div class="app">
-  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} onopenlog={() => selectTab('log')} />
+  <TopStrip {shell} bare={isFull && full.bare} compact={!!current?.page?.compactHero && view.bucket <= 2} page={statusSlot} onopenlog={() => selectTab('log')} />
 
   <!-- Only INSTRUMENT-zone heroes (heroes.js) render here, pinned above every
        view's PANE and never inside one: losing sight of the carriage because
@@ -1110,11 +1105,6 @@
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
-
-  /* The page's status slot (DESIGN §10.3): one line, its width reserved, a
-     3 px tone bar; the text is --tx in every tone, never --warn (law 13). */
-  /* .foot-status's look is style.css's: the plugin kit's status row wears it too. */
-  .foot-status { flex: 1 1 0; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the

@@ -412,6 +412,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
 | page footer: status slot     |
 +------------------------------+
 ```
+*(2026-10-09: the status row and the footer slot are superseded; PR14 below.)*
 
 - **PR1 Shell card chrome.** Player (01), Library (02) and Settings (03) are
   shell cards (`.surface-card`) under numbered uppercase heads; the Player
@@ -579,10 +580,26 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
   Findings 7 and 9.
+  *(Superseded 2026-10-09, `ph-5u0g` peeve 19, operator: "the status line
+  ('No scene loaded', 'Script past the input speed limit') takes its own
+  row: remove it or move it somewhere that costs no space", and on the
+  desktop card's last row: "I thought we were removing this?". Now: the
+  page draws no status row on any class (no row, no reserved height; the
+  card's bottom inset is `--sp-3` like its top) and no footer; its status
+  is the top strip's slot on every class (DESIGN §10.3, docs/PLUGINS.md,
+  Pages, `status`). What the card already shows is never a status: `No
+  scene loaded` (the empty stage), `Motion only` (the stage's meter),
+  playing, `Positioning` and `Buffering` (Play's state) are dropped.
+  Routed: a fatal refusal or media error, the gate and `Script past the
+  input speed limit` (warn); `Preview: not saved`, a transient refusal, `No
+  script for this video` or `scene` (it says why Play is grayed) and the
+  parse and extra-axes notes (no tone). A Dash card keeps its own one-line
+  row (the shell has no slot for a card).)*
 - **As built, PR11, PR14 and the compact hero (`ph-1qs5.8`):** the page
   registers `compactHero` and `status`. On the phone class the card sends
   `phosphor-page-status` on every change (`tone` `warn` or null; the notes
-  as `title`) and draws no status row; the dash card keeps its own row.
+  as `title`) and draws no status row; the dash card keeps its own row
+  (2026-10-09: on every class, into the top strip's slot; PR14).
   The Rail button shows wherever the host publishes `data-quick-rail` (the
   phone inline, any bare fullscreen in the hover row). The compact hero is
   the shell's to draw: at 420 x 860 with five strip operations its one row
@@ -625,7 +642,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   queue lists and tiles with the pager and the queue's drag reorder, the
   stage (center glyph, the hover bar as its overlay, the tap and double,
   fullscreen and the turn into it), the hover bar's seek, the split bar,
-  the status (the footer slot or the card's row), the Rail button and the
+  the status (the top strip's slot on the page, the Dash card's row), the Rail button and the
   page's fill are api.ui's (docs/PLUGINS.md, The UI kit); the heat bar's
   scrub rides `ui.drag`. A touch on a slider, the heat, the seek or the
   number box acts only after horizontal intent or a hold, so a vertical
@@ -642,8 +659,8 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   no setting is not drawn. Row labels are lowercase (`.field-label`).
   Resolves finding 10.
 - **Compact hero.** The page registers `compactHero` and `status`
-  (docs/PLUGINS.md, Pages), so on phones the hero is one row and the page
-  has a footer with the status slot.
+  (docs/PLUGINS.md, Pages), so on phones the hero is one row and the
+  page's status is the strip's slot (PR14 as superseded).
 
 Out of scope: the analyzer's contents (only its toggle moves), the
 scheduler, Scale math, Kinetic, Stash protocol and the keyboard map.
@@ -718,8 +735,8 @@ FULL
   within) while the card is full, so the card keeps its size and composition;
   under 960 px of page width it sits below the card, reached by scrolling.
   The section never covers a control: it takes the library column's slot
-  while that column is open, the analyzer column's (above the transport and
-  status rows) while the analyzer is open, and goes below the card when the
+  while that column is open, the analyzer column's (above the transport
+  row) while the analyzer is open, and goes below the card when the
   library is collapsed. The card never loses height to it (`ph-mdqo.7`); its
   min-height is its fixed rows plus the 120 px stage, so a shorter page
   scrolls. The phone layout is not filled.
@@ -855,6 +872,7 @@ FULL
   refusals (`script longer than 24 hours`); the host's gate and door
   words as sent.
   *(2026-10-08: Open files, `In window / Borderless` and the transport's Close are superseded; added: Open video, Open script, Close, Media, Motion only, Timeline, Settings, Exit fullscreen, Rail (the quick rail icon's title) and the gate reason `No video`.)*
+  *(2026-10-09: `No scene loaded`, `Positioning` and `Buffering` are no longer status words; `Motion only` stays the stage meter's label; PR14.)*
 - **Local files.** One `input type=file multiple` (video, audio,
   `.funscript`); `pairFiles` matches by base name; the video gets an object
   URL, revoked on replace and dispose. No drag and drop: Tauri intercepts

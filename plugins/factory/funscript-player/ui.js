@@ -1,4 +1,4 @@
-// ui.js -- the player controller and card: video, transport, status slot, layout tiers
+// ui.js -- the player controller and card: video, transport, status, layout tiers
 // Contract: CONTRACT.md, module player-ui (ph-smvd.5); design: docs/plugins/FUNSCRIPT.md.
 //
 // Constraints:
@@ -65,6 +65,8 @@
 //   asked by the cancelable 'phosphor-page-fullscreen' event and ended on 'phosphor-page-fullscreen-change' off.
 // - 'Preview: not saved' stands in the slot while any client holds a trial (RFC-099),
 //   outranked only by a refusal and the gate.
+// - The status carries conditions only (ph-5u0g peeve 19): never what the card already shows (empty, motion
+//   only, playing, positioning, buffering). On the page it is the top strip's slot on every class, never a row.
 // - A loop wrap's seek is not a stop: no hold, no clock reset, no trace reset. Every other
 //   seek resets the loop's lap; one while playing restarts with the seek transition.
 // - With a loop the clock runs in unrolled media time; everything shown is folded back.
@@ -129,11 +131,8 @@ export const COPY = Object.freeze({
   volume: 'Volume',
   speed: 'Stroke speed',
   speedOver: 'Past the input speed limit',
-  empty: 'No scene loaded',
   noScriptVideo: 'No script for this video',
   noScriptScene: 'No script for this scene',
-  positioning: 'Positioning',
-  buffering: 'Buffering',
   badFormat: 'Format not playable here',
   extra: 'Extra axes ignored: ',
   overLimit: 'Script past the input speed limit',
@@ -236,7 +235,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop() }) {
   const prefs = readPrefs(api);
   const state = { phase: 'empty', scene: null, script: null, shaped: null, T: { ...prefs.T }, motion: prefs.motion !== false,
-    status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full',
+    status: { text: '', tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full',
     ab: { a: null, b: null }, play: prefs.play };
   let fields = null;
   let why = '';          // a fatal refusal or media error; cleared by Play and by a load
@@ -549,13 +548,10 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (why) return { text: why, tone: 'warn' };
     if (g && state.scene) return { text: g, tone: 'warn' };
     if (api.trialPending) return { text: AN_COPY.trial, tone: 'intent' };
-    if (state.phase === 'preroll') return { text: COPY.positioning, tone: '' };
-    if (buffering) return { text: COPY.buffering, tone: '' };
     if (transient) return { text: transient, tone: '' };
     const ceil = fields ? ceilingOf(api, fields) : {};
     if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm * (video.playbackRate || 1) > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
-    if (info.length) return { text: info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
-    return { text: !state.scene ? COPY.empty : state.scene.stream ? '' : COPY.motionOnly, tone: '' };
+    return { text: info.length ? info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : '') : '', tone: '' };
   }
   function refresh() { state.status = { ...status(), notes: info }; }
   function changed() { refresh(); onChange(); }
@@ -651,10 +647,9 @@ export const CSS = `
 .fsp[data-page] { --fsp-pad: calc(2 * var(--sp-3)); column-gap: var(--gap); }
 .fsp-pframe { grid-area: 1 / 1 / -1 / 2; }
 .fsp[data-an] .fsp-pframe { grid-column: 1 / -1; }
-.fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-slot, .fsp-anbox) { margin-inline: var(--sp-4); }
+.fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-anbox) { margin-inline: var(--sp-4); }
 .fsp[data-page][data-comp=handheld]:not([data-media]) > .fsp-libbox { margin-inline: var(--sp-4); }
 .fsp[data-page] > .fsp-src { margin-top: var(--sp-3); }
-.fsp[data-page] > .fsp-slot { margin-bottom: var(--sp-3); }
 .fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
   background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius);
   padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
@@ -719,11 +714,12 @@ export const CSS = `
 .fsp-tick.int { background: var(--intent); }
 .fsp-tick.real { background: var(--reality); }
 .fsp-tick.stale { opacity: .4; }
-/* The status is the kit's (style.css .foot-status); this places it in the card's last row. */
+/* The status is the kit's (style.css .foot-status); this places it in the Dash card's last row. */
 .fsp-slot { grid-area: st; height: var(--fsp-st); }
-/* PR14: on the phone class the page's status is the shell footer's slot (phosphor-page-status); no row of its own. */
-.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) { --fsp-st: 0px; }
-.fsp[data-page]:is([data-cls=portrait], [data-cls=landscape]) .fsp-slot { display: none; }
+/* The page's status is the top strip's slot (ph-5u0g peeve 19): no row; the st track is only the card's bottom
+   inset, the trailing gap plus it making --sp-3 like the top. */
+.fsp[data-page] { --fsp-st: calc(var(--sp-3) - var(--sp-2)); }
+.fsp[data-page] .fsp-slot { display: none; }
 .fsp-tr { grid-area: tr; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; container-type: inline-size; }
 @container (max-width: 22em) { .fsp-tr .fsp-vol { display: none; } }
 .fsp-tr > * { flex: none; min-width: 0; }
@@ -1140,7 +1136,7 @@ export function createPlayer(api) {
     const tlbox = h('div', { class: 'fsp-tlbox' });
     const lib = h('div', { class: 'fsp-libbox' });
     const anbox = h('div', { class: 'fsp-anbox' });
-    // Its own row on the desktop and the dash card; the page footer's slot on the phone class (PR14).
+    // On the page the top strip's slot, on every class; on a Dash card its own row.
     const status = ui.status({ class: 'fsp-slot' });
     const pframe = opts.page ? h('div', { class: 'fsp-pframe surface-card', 'aria-hidden': 'true' }) : '';
 

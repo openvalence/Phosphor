@@ -63,14 +63,16 @@ function fakeHub(ws) {
     if (typeof msg === 'string') return;
     for (const { header, payload } of parseFrames(new Uint8Array(msg))) {
       if (header.type === FRAME.HELLO) {
-        const subs = cbDecodeFull(payload).get(K.subscriptions) || [];
+        // §6.2/§6.3: a wish the catalog does not hold (0x0001 on this sim) is not
+        // granted, and retained_pending counts only the STATE pushes that follow.
+        const subs = (cbDecodeFull(payload).get(K.subscriptions) || []).filter((w) => ENTRIES.some((e) => e.id === w.get(K.channel_id)));
         const grants = subs.map((w) => cbMap([[K.priority, cbUint(w.get(K.priority) || 0)], [K.granted_rate_hz, cbF32(w.get(K.rate_hz) || 0)],
           [K.channel_id, cbUint(w.get(K.channel_id))]]));
         send(FRAME.WELCOME, 0, cbMap([
           [K.proto_ver, cbUint(1)], [K.session_id, cbUint(7)], [K.boot_id, cbUint(0x5eed)],
           [K.catalog_etag, cbBstr(Uint8Array.from(Buffer.from(ETAG, 'hex')))], [K.cfg_gen, cbUint(1)],
           [K.limits, cbMap([[WELCOME_LIMITS_K.max_frame, cbUint(4096)], [WELCOME_LIMITS_K.max_subscriptions, cbUint(64)],
-            [WELCOME_LIMITS_K.retained_pending, cbUint(subs.length)], [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
+            [WELCOME_LIMITS_K.retained_pending, cbUint(subs.filter((w) => wire.snaps.has(w.get(K.channel_id))).length)], [WELCOME_LIMITS_K.max_subscriptions_per_frame, cbUint(16)]])],
           [K.roles, cbUint(2)], [K.deadman_ms, cbUint(2000)], [K.grants, cbArray(grants)],
           [K.identity, cbMap([[IDENTITY_K.product, cbTstr('valencesim')], [IDENTITY_K.hub_name, cbTstr('Bench')],
             [IDENTITY_K.hub_instance_id, cbUint(BigInt('0x' + ID))], [IDENTITY_K.estop_cuts_power, cbBool(false)]])],

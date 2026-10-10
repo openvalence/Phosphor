@@ -428,7 +428,7 @@ for (const [w, h] of [[420, 860], [860, 420], [200, 390]]) {
   await ctx.close();
 }
 
-// ---- the footer status slot (ph-5u0g.3) -------------------------------------
+// ---- the page status in the strip's slot (ph-5u0g.3, ph-5u0g.16) -------------
 const PTAB = '[data-tab-id="' + PROBE_ID + '"]';
 const send = (page, ev, detail) => page.evaluate(([ev, d]) => window.__probeEl.dispatchEvent(new CustomEvent(ev, { bubbles: true, cancelable: true, detail: d })), [ev, detail]);
 async function openProbe(page) {
@@ -448,14 +448,16 @@ const withNumeral = async (page) => {
   return { ...(await heroOf(page)), ...(await page.evaluate(() => ({ rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
     numF: parseFloat(getComputedStyle(document.querySelector('.topstrip .hn-primary .hn-val')).fontSize) }))) };
 };
-for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]]]) {
-  console.log('\n--- status slot ' + name + ' ---');
+// ph-5u0g peeve 19: a page's status is the top strip's slot on every class; no footer slot, no row.
+const SLOT = '.topstrip .status';
+for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 paper', PAPER, [420, 860]], ['860x420 dark', null, [860, 420]],
+  ['1428x900 dark', null, [1428, 900]], ['1024x768 dark', null, [1024, 768]]]) {
+  console.log('\n--- page status ' + name + ' ---');
   const { ctx, page, errors } = await boot({ width: vp[0], height: vp[1] }, { probe: true, store: theme ? { 'phosphor.theme': JSON.stringify(theme) } : {} });
   await openProbe(page);
-  const SLOT = 'main.pane .page-foot .foot-status';
-  ok(name + ': a page registered status has a footer with the slot', await page.locator(SLOT).isVisible());
-  const rects = () => page.evaluate(() => ['main.pane .page-foot', 'main.pane .page-foot .foot-status', '.footstrip']
-    .map((q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '));
+  ok(name + ': no footer slot and no status row for a page registered status', await page.locator('main.pane .foot-status').count() === 0);
+  const rects = () => page.evaluate(() => ['main.pane', 'main.pane .page-foot', '.topstrip', '.topstrip .ops, .topstrip .home-menu', '.topstrip .ovr', '.topstrip .pair', '.footstrip']
+    .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '));
   const r0 = await rects();
   const moved = [], seen = [];
   for (const d of [{ text: 'Loaded scene.mp4', tone: 'ok' }, { text: 'A long status line '.repeat(8), tone: 'warn', title: 'the full text' },
@@ -464,36 +466,26 @@ for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 p
     await page.waitForTimeout(60);
     const r = await rects();
     if (r !== r0) moved.push(r);
-    seen.push(await page.evaluate(() => {
-      const e = document.querySelector('main.pane .page-foot .foot-status'), t = e.firstElementChild;
+    seen.push(await page.evaluate((q) => {
+      const s = document.querySelector(q), t = s.querySelector('.st-text');
       const probe = document.createElement('i');
-      probe.style.color = 'var(--tx)';
+      probe.style.color = 'var(--warn-ink, var(--warn))';
       document.body.append(probe);
-      const tx = getComputedStyle(probe).color;
+      const ink = getComputedStyle(probe).color;
       probe.remove();
-      return { text: e.textContent.trim().slice(0, 20), tone: e.dataset.tone || null, tx: getComputedStyle(e).color === tx, bar: getComputedStyle(e).borderLeftWidth,
-        title: e.title, ellipsis: t.scrollWidth <= e.clientWidth || getComputedStyle(t).textOverflow === 'ellipsis' };
-    }));
+      return { kind: s.dataset.kind, text: t ? t.textContent.slice(0, 20) : '', title: t ? t.title : '', warnInk: !!t && getComputedStyle(t).color === ink,
+        clamped: !!t && (t.scrollHeight <= t.clientHeight + 1 || getComputedStyle(t).webkitLineClamp === '2') };
+    }, SLOT));
   }
-  ok(name + ': the slot shows each status and tone', seen[0].text === 'Loaded scene.mp4' && seen[0].tone === 'ok' && seen[1].tone === 'warn'
-    && seen[2].tone === 'bad' && seen[3].tone === null && seen[3].text === '', JSON.stringify(seen));
-  ok(name + ': the text is --tx in every tone, with the 3 px tone bar', seen.every((x) => x.tx && x.bar === '3px'), JSON.stringify(seen));
-  ok(name + ': a long text ellipsizes with its full form in title', seen[1].title === 'the full text' && seen[1].ellipsis, JSON.stringify(seen[1]));
+  ok(name + ': the strip slot shows each status: ok as a note, warn and bad as a condition in the warn ink, empty clears it',
+    seen[0].kind === 'note' && seen[0].text === 'Loaded scene.mp4' && !seen[0].warnInk && seen[1].kind === 'page' && seen[1].warnInk
+    && seen[2].kind === 'page' && seen[2].text === 'refused' && !['page', 'note'].includes(seen[3].kind), JSON.stringify(seen));
+  ok(name + ': a long text stays in the slot\'s box with its full form in title', seen[1].title === 'the full text' && seen[1].clamped, JSON.stringify(seen[1]));
   ok(name + ': a status or tone change moves no rect', moved.length === 0, r0 + ' -> ' + moved[0]);
-  await send(page, 'phosphor-page-status', { text: 'Loaded scene.mp4', tone: 'ok' });
+  await send(page, 'phosphor-page-status', { text: 'Script past the input speed limit', tone: 'warn' });
+  await page.waitForTimeout(60);
   await shot(page, 'status-slot-' + name.replace(' ', '-') + '.png');
   ok('no page errors (status ' + name + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await ctx.close();
-}
-for (const vp of [{ width: 1428, height: 900 }, { width: 1024, height: 768 }]) {
-  const { ctx, page, errors } = await boot(vp, { probe: true });
-  await openProbe(page);
-  await send(page, 'phosphor-page-status', { text: 'Loaded', tone: 'ok' });
-  await page.waitForTimeout(60);
-  ok(vp.width + 'x' + vp.height + ': outside buckets 1 and 2 the shell draws no slot', await page.locator('main.pane .foot-status').count() === 0
-    && await page.evaluate(() => +document.documentElement.dataset.bucket >= 3));
-  await shot(page, 'status-page-' + vp.width + 'x' + vp.height + '.png');
-  ok('no page errors (' + vp.width + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
 

@@ -15,7 +15,7 @@
  * - The sheet's forms are the kit's (PR12): the bottom sheet on a phone upright, stopping under the stage so
  *   the stage stays in view; the drawer in fullscreen; else the slot, a card that never changes the Player
  *   card's size and never covers a card control: over the library column (or the analyzer column, above the
- *   transport and status rows) of a full card, else below the card, reached by scrolling.
+ *   transport row) of a full card, else below the card, reached by scrolling.
  * - mediaFullscreen: the hover bar offers fullscreen, so the shell's footer does not.
  */
 import { readPrefs, writePref } from './prefs.js';
@@ -32,8 +32,8 @@ const FIT_MIN = 360;
 export const PAGE_ICON = 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z';
 
 const CSS = `
-.fsp-page { display: block; position: relative; overflow-y: auto; --pg-bot: calc(30px + 20px + 2 * var(--sp-2) + var(--sp-3)); }
-@media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + 20px + 2 * var(--sp-2)); } }
+.fsp-page { display: block; position: relative; overflow-y: auto; --pg-bot: calc(30px + var(--sp-2) + var(--sp-3)); }
+@media (pointer: coarse) { .fsp-page { --pg-bot: calc(var(--tap) + var(--sp-2) + var(--sp-3)); } }
 .fsp-page > .ui-page-main { display: block; height: 100%; }
 .fsp-page .fsp-pcard { height: 100%; min-height: min-content; }
 .fsp-page > .fsp-psec[data-form=slot] { margin-top: var(--gap); }
