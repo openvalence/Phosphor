@@ -1244,13 +1244,13 @@ its own: no continuous telemetry, ever.
   closes. A measured cause is never overwritten by an inferred one.
 - Where it shows: one Log line per incident (source and tag `health`), its
   text updated in place and its tooltip the detail; the row opens to an
-  Incident button that shows it on the Health view; the Health view (Log
-  page, Health tab) with the three cards, the Link card's 2-minute strip
-  (round trip, sent ahead, pauses) and the incident list; the top strip's status slot takes act and warn, below link fault,
-  unattended, refusal, the jog note, the history message and the latch
-  notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
-  the Health view.
+  Incident button that shows it on the Health view; the Health view (Log page,
+  Health tab) with the three cards, the Link card's 2-minute strip (round
+  trip, sent ahead, pauses) and the incident list; the top strip's status slot
+  takes act and warn, below link fault, unattended, refusal, the jog note, the
+  history message and the latch notices, act above the safety edge, warn below
+  it, a 5 s minimum dwell (`health.slot`, drawn by TopStrip); the slot's line
+  opens its incident on the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.
