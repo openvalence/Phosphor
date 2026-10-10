@@ -433,6 +433,8 @@ ok('fields absorbed by a hero vanish from the generic tree', !stillThere);
   ok('no unit_id falls back to the catalog string verbatim',
      unitOf({ unit: 'furlong', unitId: null }) === 'furlong');
   ok('a count unit renders whole', precisionFor(f('run_count')) === 0);
+  ok('a CBOR integer with no step renders whole (ph-8l8)',
+     precisionFor({ typeName: 'uint_t' }) === 0 && precisionFor({ typeName: 'int_t' }) === 0 && precisionFor({ typeName: 'f32_t' }) === 2);
   const pick = claimRoles(new Map([[ROLE.telemetryVelocity, [
     { uid: 'p', aspect: VALUE_ASPECT.peak }, { uid: 'l', aspect: VALUE_ASPECT.live }]]]),
   { require: { v: ROLE.telemetryVelocity } });
