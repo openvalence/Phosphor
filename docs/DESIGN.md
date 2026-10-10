@@ -610,15 +610,16 @@ question in §10.8).
   never deleted: the address, the firmware and the control list (its size,
   and whether this device's saved copy or the machine served it). The render
   readout is `N fps` (`-- fps` until a rail draws); its tooltip says the
-  smoothing delay, how often the rail had no newer sample to draw (held) and
-  how far the frame clock is off the wall clock (skew, which the rail's
-  timing assumes is zero) in words. Held over 10 % and skew over 2 ms show
-  inline, warn toned, in a slot left of the fps held whether empty or not;
-  two at once ellipsize, the tooltip has both. Under 30 fps, or with either
-  warning, the fps chip wears the warn tone. The fps and rx values hold
-  fixed widths (rx in whole units, at most three characters: 59s, 12m, 3h).
-  The order is rx, the warning slot, fps, so where room runs out the fps and
-  its slot shed before rx; under 561 px they are gone and rx sheds whole
+  frame rate and how far behind the rail draws, to smooth arrivals, in
+  words. The rail's stall share and the frame clock's drift from the wall
+  clock (which the rail's
+  timing assumes is zero) are not on the chip: they are Health conditions
+  (§10.14), `rail-stalled` over 10 % of frames and `clock-drift` over 2 ms,
+  read in the status slot, which holds its height. Under 30 fps the fps chip wears the warn tone. The fps and rx
+  values hold fixed widths (rx in whole units, at most three characters: 59s,
+  12m, 3h), and no slot is reserved for a warning, so the bar has no gap.
+  The order is rx, fps, so where room runs out the fps sheds before rx;
+  under 561 px it is gone and rx sheds whole
   where it does not fit, never a sliver. Phones keep no fps: at 420 px the
   room the dock toggle gave back holds rx and leaves about 64 px, short of
   the fps chip's 69 beside even a five-letter hub name.
@@ -1044,13 +1045,34 @@ connected, then merge the setting changes onto the machine, ticked per item.
   `connect()` and a token provider that mints at its `/uitoken`. It is a full
   hub: patterns, Kinetic, telemetry, and it moves. It boots homed and with the
   pairing window open (the twin's stand-in for the PAIR button tap), so the
-  shell's knock lands as push-to-pair. It opens no socket, so it never
-  broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
+  shell's knock lands as push-to-pair; with Open to LAN on it boots with the
+  window closed. It opens no socket, so it never broadcasts. Its state (settings, presets, pairings, `hub_instance_id`)
   persists as one blob in `phosphor.builtin.state`. The session is not marked
   virtual and is recorded in the vault like any hub; only its host
   (`builtin`) sets it apart: never saved, never the reconnect target, no
   RFC-053 datagram. Any disconnect stops it (the worker is terminated). Its
   log lines land in the Log tab under its name. The exe is standalone.
+- **Open to LAN** (operator rulings 2026-10-10, `ph-li30`): a desktop shell
+  setting, off by default (Settings, `openToLan`, port `lanPort` 82). While it
+  is on and Virtual runs, `src-tauri/src/lan.rs` listens for WebSocket on every
+  IPv4 interface and answers the SPEC 13.8 UDP port; `src/shell/lan.svelte.js`
+  carries each remote's frames and each datagram to the worker over one ordered
+  Channel and back by batched invoke. Every remote is one more session of the
+  same hub (`integral_connect`), so tiers, the trust ledger, pairing and
+  ownership are the hub's own; the hub also builds the discovery reply and
+  latches an RFC-053 ESTOP datagram (`integral_datagram`, the board's
+  responder). Nothing serves `/uitoken` on the LAN: a remote starts at
+  `watch` and pairs. Opened to the LAN, Virtual boots with its pairing window
+  closed; the section's Pairing window button is the twin's PAIR press
+  (`integral_pair_press`). A port it cannot bind (taken, or under 1024 without
+  privileges on Linux and macOS) falls back to one the OS assigns, and
+  discovery advertises the bound one. Off, a port change, Virtual stopping or
+  Phosphor exiting sends every remote GOODBYE `NORMAL_CLOSURE` and closes it;
+  while the hub lives on, each remote's session also gets that GOODBYE so the
+  hub releases what it owned. The status line reads `Open to LAN · <address>:<port>
+  · <n> connected`; this PC's own Virtual never appears among its LAN scan
+  results. Windows asks about the firewall the first time; the shell never
+  edits firewall rules.
 - **Picker**: the Hubs pane lists Virtual last, always, badged `ν virtual`;
   the subline reads `The hub as software`, then `Nucleus <version>` with a
   Stop while it runs; Connect boots it.
@@ -1290,7 +1312,7 @@ its own: no continuous telemetry, ever.
 
 - The Link card also lists the address and the control list, the Machine
   card the firmware: the readings the top bar dropped (§10.3).
-- Three areas: Link, This device, Machine. The 26 conditions, their
+- Three areas: Link, This device, Machine. The 28 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
   condition's line is a measured fact with the number that raised it
@@ -1512,6 +1534,8 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.15 | The Link page: five sections in one scroller; refusals grouped by NACK code, newest first, with the registry family and meaning, count, last time, cause and a Log link; a map of the 16-bit channel id space (registry ranges on the neutral ramp, channels by class in the accents, occupancy per range) with a Device grid view on the RFC-047 0xCDSS grid; registry tables generated from registry.yaml (`ph-bszw`). | operator (2026-10-10: "the link tab is cool, but I don't know what the NACKS are ... I always loved a visual representation of the valence channel space ... the rest of the link page could be way better laid out and organized", and the coordinator's brief; the agent's calls, veto-able: refusals last with a jump from Link health; meanings are the note's first sentence trimmed by rule, not reworded; ranges neutral and classes in two accent families; NACK counts since the hub was chosen; publish grants as list rows) |
 | 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |
+| 2026-10-10 | §10.3, §10.14 | The top bar's reserved render-warning slot goes (it read as a big empty gap beside the fps): the fps chip reads only `N fps`, its tooltip the frame rate and how far behind the rail draws to smooth arrivals. The two render warnings are Health conditions, not bar chips: `rail-stalled` ("Rail stalled on 14% of frames", over 10 % for 10 s) and `clock-drift` ("Clock drift 12 ms", over 2 ms for 10 s), both warn, raised in the status slot, the Log and the Health list, and in diag reports like the rest. "Held" and "skew" leave every user-facing string (`ph-6ydd`). | operator ("big gap" screenshot; "don't know what held and skew mean"; the warnings in the health slot, not the fps chip. The condition names, the area (rail-stalled in Link, clock-drift in This device), warn severity, the 10 s hold, 30 s clear and the 5 % / 1 ms clear bands are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
 | 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash; a channel block opens the Link page on that channel through a selection shared with the map, Health opens the Health view (`ph-8yga`, `ph-8yga.1`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able; the selection shared with the Link page and Health opening the Health view are the coordinator's) |
+| 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
 | 2026-10-10 | §10.15 | The Log feed lists the hub's refusals: one warn row per NACK from the hub, tagged `refusal`, reading the code's name with its code, channel and detail as fields, folded like any repeat (code and channel are its identity, never shaped). The Link page's Log link opens the Log feed searched for that name with the level and source filters cleared; the next visit starts with no search (`ph-s5mu.1`). | coordinator (the Link page's seam, ph-s5mu.1; the Log feed rather than a feed of its own, the warn level, the `refusal` tag and the filters clearing are the agent's, veto-able) |

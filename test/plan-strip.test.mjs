@@ -23,7 +23,7 @@ ok('plan.start, plan.end and plan.current are i32 at scale 10000', fields.every(
   fields.map((f) => f && [f.name, f.typeName, f.scale]));
 
 // The hub's own bytes (Nucleus ValenceDevice.cpp publishPlanStrip): flags, style, the three positions, the velocity,
-// duration, elapsed, plan.flags, little-endian; the carriage of the soak's replay 388, parked at 7.5 window shares.
+// duration, elapsed, plan.flags, little-endian; the carriage of the Neutrino cluster's replay 388, parked at 7.5 window shares.
 const b = new DataView(new ArrayBuffer(25));
 b.setUint8(0, 1);
 b.setUint8(1, 1);
