@@ -435,11 +435,23 @@
     e.preventDefault();
     openPalette(e.clientX, e.clientY);
   }
-  /** Open the add menu at a client point (the canvas' upper third when none); `from` filters it to that socket's partners. */
+  /**
+   * Open the add menu at a client point (the canvas' upper third when none); `from` filters it to that socket's partners.
+   * With no point, the drop steps down a node head until its head row clears every box, so repeated adds never stack.
+   */
   function openPalette(cx, cy, from = null, find = false) {
     const r = vp.getBoundingClientRect();
-    if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 3; }
-    const [wx, wy] = toWorld(cx, cy);
+    const free = cx == null;
+    if (free) { cx = r.left + r.width / 2; cy = r.top + r.height / 3; }
+    let [wx, wy] = toWorld(cx, cy);
+    const rects = free && layer ? [...layer.querySelectorAll('[data-gid]')].map((el) => {
+      const b = byId.get(el.dataset.gid);
+      return b && [b.o.x, b.o.y, b.o.x + el.offsetWidth, b.o.y + el.offsetHeight];
+    }).filter(Boolean) : [];
+    const hit = () => rects.some(([x0, y0, x1, y1]) => wx < x1 && wx + Math.max(NODE_W, MAP_W, OP_W) > x0 && wy < y1 && wy + HEAD > y0);
+    for (let i = 0; i < 500 && hit(); i++) wy += HEAD;
+    // Stepped past the view's bottom: pan so the drop sits under the menu, never out of sight.
+    if (free && wy * view.k + view.y + HEAD * view.k > r.height) { view = { ...view, y: cy - r.top - wy * view.k }; saveView(); }
     pal = { x: cx - r.left, y: cy - r.top, wx, wy, from, find };
   }
   /** Open it at the pointer when the pointer is over the canvas, else in the canvas (Shift+A, F3). */

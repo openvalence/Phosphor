@@ -938,6 +938,22 @@ let saved = null;
   }
 }
 
+// ---- + Add with no pointer steps past what is placed (ph-qwh3) ------------------
+{
+  const { ctx, page, errors } = await open();
+  for (let i = 0; i < 3; i++) {
+    await page.click('.gtool button:has-text("+ Add")');
+    await page.locator('.gpal .gpal-head[data-group="Math"]').click();
+    await page.locator('.gpal .gpal-item[data-nested][data-group="Math"]').first().click();
+    await page.waitForTimeout(100);
+  }
+  const boxes = await page.$$eval('.gnode', (els) => els.map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom].map(Math.round); }));
+  const overlap = boxes.some((a, i) => boxes.some((b, j) => j > i && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]));
+  ok('+ Add three times places three nodes, none on another (ph-qwh3)', boxes.length === 3 && !overlap, JSON.stringify(boxes));
+  ok('no page errors (+ Add)', errors.length === 0, errors);
+  await ctx.close();
+}
+
 // ---- touch ---------------------------------------------------------------------
 {
   const { ctx, page, errors } = await open({ coarse: true, seed: [STORAGE_KEY, saved] });

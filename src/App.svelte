@@ -452,7 +452,11 @@
     if (!current || !current.cat) return { groups: [], hidden: 0, diag: 0, adv: 0, diagAll: 0 };
     let hidden = showAdvanced ? 0 : heroAdvUids.size, diag = 0, adv = heroAdvUids.size, diagAll = 0;
     const groups = [];
+    // A card's total is every field of its name, live and diagnostic, shown or not.
+    const totalOf = (name) => current.cat.groups.reduce((n, x) => n + (x.name === name ? x.fields.length : 0), 0);
     for (const g of current.cat.groups) {
+      // A diagnostic group named like a shown live group is that card's tail, never a card of its own.
+      const host = g.diagnostic ? groups.find((x) => !x.diagnostic && x.name === g.name) : null;
       if (g.diagnostic) diagAll += g.fields.length;
       if (g.diagnostic && !showDiagnostic) { diag += g.fields.length; continue; }
       const fields = g.fields.filter((f) => {
@@ -461,7 +465,8 @@
         hidden++;
         return false;
       });
-      if (fields.length) groups.push({ ...g, fields, total: g.fields.length });
+      if (host) host.fields = [...host.fields, ...fields];
+      else if (fields.length) groups.push({ ...g, fields, total: totalOf(g.name) });
     }
     return { groups, hidden, diag, adv, diagAll };
   });
@@ -549,14 +554,17 @@
    */
   // RENDERING §11 per class: a group past the class's density budget is a
   // card that opens its own page, never a hidden one. A section's cards
-  // follow one header row (settings.js orders them together, DESIGN §10.11).
+  // follow one header row (settings.js orders them together, DESIGN §10.11);
+  // the diagnostic cards with no section, last, follow a Diagnostics row.
+  const DIAG_HEAD = {};
+  const headOf = (g) => (g ? g.section || (g.diagnostic ? DIAG_HEAD : '') : '');
   const settingItems = $derived([
     ...(current && current.cat ? current.cat.heroes : []).map((h) =>
       ({ id: 'hero:' + h.id, title: h.title || capitalize(h.id), snippet: heroCard, hero: heroShown(h),
          fields: heroFields.filter((f) => h.fields.claimed.has(f.uid) && (showAdvanced || !heroAdvUids.has(f.uid))) })),
     ...projectGroups(visibleGroups.groups, view.cls).flatMap(({ group: g, drill: promoted }, i, all) => [
-      ...(g.section && g.section !== all[i - 1]?.group.section
-        ? [{ id: 'section:' + current.cat.id + ':' + g.section, kind: 'section', title: g.section }] : []),
+      ...(headOf(g) && headOf(g) !== headOf(all[i - 1]?.group)
+        ? [{ id: 'section:' + current.cat.id + ':' + (g.section || '~diagnostic'), kind: 'section', title: g.section || 'Diagnostics' }] : []),
       {
         id: (g.diagnostic ? 'diag:' : 'group:') + current.cat.id + ':' + (g.name || 'ungrouped'),
         title: g.title || (g.diagnostic ? 'Diagnostics' : 'Settings'),
@@ -660,8 +668,8 @@
       {:else if current.cat}
         {#if drillItem}
           <button type="button" class="og-btn drill-back" onclick={() => (drill = null)}>‹ {current.label}</button>
-          <section class="og-panel drill-page" aria-label={drillItem.title}>
-            <h3 class="drill-title">{drillItem.title}</h3>
+          <h3 class="drill-title">{drillItem.title}</h3>
+          <section class="surface-card drill-page" aria-label={drillItem.title}>
             {@render groupCard(drillItem)}
           </section>
         {:else if settingItems.length}

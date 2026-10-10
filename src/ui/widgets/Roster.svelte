@@ -10,12 +10,15 @@
    * - With a roster, a change of its STATE re-reads (SPEC §8.7 generation).
    *   Without one nothing signals a change, so a manual re-read is offered.
    * - `item` (snippet, optional) draws per-row actions; the list owns none.
+   * - `rows` caps the rows in place, in slot order, so nothing moves while
+   *   slots read; the rest open in the kit's sheet titled `title` (DESIGN §10.6).
    */
   import { untrack } from 'svelte';
   import { machine, getSession } from '../../model/machine.svelte.js';
   import { SLOT, pendingSlots, enumerateStore, storeLocked, rosterCount } from './roster.js';
+  import { sheet } from '../../plugins/kit.js';
 
-  let { store, roster = null, item = null } = $props();
+  let { store, roster = null, item = null, rows = null, title = '' } = $props();
 
   const TEXT = { pending: 'reading', empty: 'empty', locked: 'locked', error: 'read failed' };
 
@@ -48,21 +51,45 @@
     untrack(refresh);
     return () => { if (ctl) ctl.abort(); };
   });
+
+  const shown = $derived(rows != null && slots.length > rows ? slots.slice(0, rows) : slots);
+  let all = $state(false);
+  let pane = null;
+  function showAll(e) {
+    pane ??= sheet({ title, onClose: () => (all = false) });
+    pane.anchor = e.currentTarget;
+    all = true;
+  }
+  // The whole list lives in the sheet while it is open. Its block's teardown
+  // cannot reach a node moved out of its range, so the destroy removes it.
+  function intoPane(node) {
+    pane.body.append(node);
+    pane.open = true;
+    return { destroy: () => { node.remove(); all = false; pane.open = false; } };
+  }
 </script>
+
+{#snippet list(rs)}
+  <ul aria-busy={rs.some((r) => r.state === SLOT.pending)}>
+    {#each rs as r (r.slot)}
+      <li data-state={r.state}>
+        <span class="slot">{r.slot}</span>
+        <span class="name">{r.state === SLOT.item ? (r.name || 'unnamed') : TEXT[r.state]}</span>
+        {#if item}{@render item(r)}{/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
 
 <div class="roster">
   {#if reason}
     <p class="hint">{reason}</p>
   {:else}
-    <ul aria-busy={slots.some((r) => r.state === SLOT.pending)}>
-      {#each slots as r (r.slot)}
-        <li data-state={r.state}>
-          <span class="slot">{r.slot}</span>
-          <span class="name">{r.state === SLOT.item ? (r.name || 'unnamed') : TEXT[r.state]}</span>
-          {#if item}{@render item(r)}{/if}
-        </li>
-      {/each}
-    </ul>
+    {@render list(shown)}
+    {#if shown.length < slots.length}
+      <button type="button" class="og-btn more" aria-haspopup="dialog" title="Every slot" onclick={showAll}>{slots.length - shown.length} more</button>
+    {/if}
+    {#if all}<div class="roster all" use:intoPane>{@render list(slots)}</div>{/if}
   {/if}
   {#if !roster && !reason}
     <button type="button" class="og-btn" onclick={refresh}>Re-read</button>
@@ -88,4 +115,5 @@
   li[data-state='locked'] .name { color: var(--ink-dim); }
   li[data-state='error'] .name { color: var(--warn-ink); }
   .hint { margin: 0; color: var(--ink-dim); font-size: 0.78rem; }
+  .more { margin-top: var(--sp-1); }
 </style>

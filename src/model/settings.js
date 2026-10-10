@@ -616,7 +616,8 @@ export function buildSettingsModel(entries) {
   // where `other` does (§3), keeping its own tab and label; never dropped.
   // Within a tab, catalog declaration order, diagnostic groups last (§9);
   // cards with no section first, then each section's cards together, sections
-  // in order of first appearance (DESIGN §10.11).
+  // in order of first appearance, then the diagnostic cards with no section
+  // (DESIGN §10.11).
   const rankOf = (c) => (c.known ? c.id : UI_CATEGORY.other);
   const categories = [...catMap.values()]
     .sort((a, b) => (rankOf(a) - rankOf(b)) || (a.id - b.id))
@@ -626,7 +627,8 @@ export function buildSettingsModel(entries) {
         .map((g) => ({ ...g, fields: mergeComposites(g.fields.filter((f) => !f.companionOf)) }))
         .filter((g) => g.fields.length);
       const order = [...new Set(['', ...groups.map((g) => g.section)])];
-      return { ...c, groups: groups.sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section)) };
+      const at = (g) => (g.diagnostic && !g.section ? order.length : order.indexOf(g.section));
+      return { ...c, groups: groups.sort((a, b) => at(a) - at(b)) };
     });
 
   return { categories, actions, looseActions, byRole, fields };
