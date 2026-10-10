@@ -89,6 +89,9 @@ class PermissionError extends Error {
  *   model()                       -> settings model or null
  *   sample(channelId)             -> last decoded STATE sample or undefined
  *   sampleAge(channelId)          -> ms since that sample, or Infinity
+ *   changed(channelId | role)     -> a plain sequence (model/changes.js) that moves on that
+ *                                    channel's STATE and on any gate, shadow, freshness or
+ *                                    catalog change; optional (api.changed is NaN without it)
  *   display(field, sample)        -> shadow-aware display value
  *   status(field)                 -> confirmed|pending|overdue|fault
  *   write(field, value, payload)  -> routes to the right shadow entry point,
@@ -131,6 +134,15 @@ export function createPluginHost(deps) {
   let noTrialSid = null;
   const busyFor =(name) => (lock.name && lock.name !== name && now() < lock.until
     ? 'motion input in use by ' + lock.name : '');
+  // api.changed's share of the lock: it moves when the holder changes and when the lock is taken or
+  // lapses, the lapse seen on the read itself (no timer).
+  let lockSeq = 0, lockHeld = false;
+  const takeLock = (name, until) => { if (lock.name !== name) lockSeq++; lock = { name, until }; };
+  const lockState = () => {
+    const held = !!lock.name && now() < lock.until;
+    if (held !== lockHeld) { lockHeld = held; lockSeq++; }
+    return lockSeq;
+  };
 
   function changed() {
     for (const fn of listeners) {
@@ -213,6 +225,10 @@ export function createPluginHost(deps) {
       value: (field) => (field ? deps.display(field, deps.sample(field.channelId)) : undefined),
       status: (field) => (field ? deps.status(field) : 'confirmed'),
       age: (field) => (field ? deps.sampleAge(field.channelId) : Infinity),
+      // Experimental (ph-uve3): a number that moves whenever value, status, gate, stale, reason or
+      // trialPending could read differently for that channel (or any channel carrying that role); NaN
+      // without the kernel's signal, so a caller that compares reads every frame.
+      changed: (channelOrRole) => (deps.changed ? deps.changed(channelOrRole) + lockState() : NaN),
       gate: (field) => (field && deps.gate ? deps.gate(field, busyFor(name)) : ''),
       stale: (field) => (field && deps.stale ? deps.stale(field) : ''),
       reason: (field) => (field && deps.reason ? deps.reason(field) : ''),
@@ -253,7 +269,7 @@ export function createPluginHost(deps) {
         const busy = busyFor(name);
         if (busy) return { ok: false, sent: 0, reason: busy };
         const r = deps.submitMotion(norm, durationMs);
-        if (r && r.ok) lock = { name, until: now() + (durationMs || 0) + MOTION_HOLD_MS };
+        if (r && r.ok) takeLock(name, now() + (durationMs || 0) + MOTION_HOLD_MS);
         return r;
       },
       submitSegments: (list) => {
@@ -263,7 +279,7 @@ export function createPluginHost(deps) {
         const r = deps.submitSegments(list);
         if (r && r.ok && r.sent > 0) {
           const end = Math.max(...list.slice(0, r.sent).map((x) => x.atMs + x.durationMs));
-          lock = { name, until: end + MOTION_HOLD_MS };
+          takeLock(name, end + MOTION_HOLD_MS);
         }
         return r;
       },

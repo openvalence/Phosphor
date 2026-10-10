@@ -17,8 +17,9 @@ import { createPluginHost, isHubUrl } from './host.js';
 import PluginSlot from './PluginSlot.svelte';
 import { machine, getSession, freshness, staleReason } from '../model/machine.svelte.js';
 import {
-  writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf,
+  writeSetting, runAction, sendCommand, submitMotion, submitSegments, submitSamples, displayValue, statusOf, shadowOf, shadows,
 } from '../model/shadow.svelte.js';
+import { bumpAll, seq } from '../model/changes.js';
 import { WIDGET, isFieldEnabled, modTargetUid } from '../model/settings.js';
 import { needsConfirm, settingNeedsConfirm, confirmCopy, railOwners, railOwned } from '../model/actions.js';
 import { streamGate, conflictWords, latchWords } from '../model/motion.js';
@@ -177,10 +178,32 @@ async function shellFetch(url, init) {
   return fetch(url, init);
 }
 
+// api.changed: what gate(), statusOf(), displayValue()'s shadow, freshness() and a write refusal read beyond a
+// channel's own samples (which bump in machine.svelte.js). A change bumps every channel. An effect: it runs on a
+// change, never per frame. roleChannels is the catalog's role -> channel ids, plain, for api.changed(role).
+let roleChannels = new Map(), roleSrc = null;
+const NO_CHANNELS = Object.freeze([]);
+$effect.root(() => {
+  const owned = $derived(railOwned(machine.catalog.model?.byRole, machine.samples));
+  $effect(() => {
+    const l = machine.link;
+    void l.phase; void l.roles; void l.stale; void l.staleTick; void l.openedAt; void l.sessionId;
+    void machine.safety; void owned;
+    for (const k in shadows) { const s = shadows[k]; void s.status; void s.requested; void s.error; }
+    const byRole = machine.catalog.model?.byRole;
+    if (byRole !== roleSrc) {
+      roleSrc = byRole;
+      roleChannels = new Map([...(byRole || [])].map(([r, fs]) => [r, [...new Set(fs.map((f) => f.channelId))]]));
+    }
+    bumpAll();
+  });
+});
+
 export const host = createPluginHost({
   model: () => machine.catalog.model,
   sample: (ch) => machine.samples[ch],
   sampleAge: (ch) => (machine.sampleTs[ch] ? Date.now() - machine.sampleTs[ch] : Infinity),
+  changed: (x) => seq(typeof x === 'string' ? roleChannels.get(x) || NO_CHANNELS : x),
   display: displayValue,
   status: statusOf,
   write,

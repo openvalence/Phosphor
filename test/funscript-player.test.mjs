@@ -570,6 +570,7 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           const q = cbDecodeFull(payload);
           const ch = q.get(K.channel_id), val = q.get(K.value) || new Map(), trial = q.get(K.trial) === true;
           hub.intents.push({ ch, value: Object.fromEntries(val), trial });
+          if (hub.unanswered) continue;   // a write the hub never answers: no ECHO, no STATE
           const st = cat.entries.find((e) => e.settingChannel === ch && e.layout);
           if (st) for (const [k, v] of val) { const f = st.layout.find((x) => x.settingKey === k); if (f) hub.values[st.id + ':' + f.name] = v; }
           if (ch === CH_TRIAL) hub.values[CH_PLANNER + ':trial_mask'] = 0;
@@ -2636,6 +2637,37 @@ if (!LIVE && !args.includes('--stash-live')) {
   const revert = hub.intents.at(-1);
   ok('Discard reverts: settings-trial op 2, the notice clears', !!revert && revert.ch === CH_TRIAL && revert.value[1] === 2
     && (await statusText(page)) !== 'Preview: not saved', { revert, slot: await statusText(page) });
+  // ---- the hub's own changes reach the open rows through api.changed, never a poll (ph-uve3; the exact
+  // next-frame and no-read bars are test/analyzer-reads.test.mjs's) ----
+  const sm = groups.flatMap((g) => g.fields).find((f) => f.name === 'smoothness');
+  const smRow = () => page.evaluate(([c, l]) => {
+    const r = [...document.querySelectorAll(c + ' .fsa-row')].find((x) => x.querySelector('.fsa-k').textContent === l);
+    return { v: r.querySelector('.fsa-v').textContent, off: r.querySelector('.fsa-c input').disabled, tip: r.title };
+  }, [C, sm.label || sm.name]);
+  const within = async (ms, pred) => {
+    for (const t = Date.now(); Date.now() - t < ms; await sleep(20)) { const s = await smRow(); if (pred(s)) return s; }
+    return null;
+  };
+  hub.set(sm.channelId, sm.name, 0.4);
+  ok('hub: another client\'s write shows in the open row', !!(await within(500, (s) => s.v === '0.4')), await smRow());
+  hub.set(sm.channelId, sm.maskFieldName, 0xff & ~(1 << sm.maskBit));
+  ok('hub: the machine\'s mask greys the row, in words', !!(await within(500, (s) => s.off && s.tip === 'disabled by the machine')), await smRow());
+  hub.set(sm.channelId, sm.maskFieldName, 0xff);
+  ok('...and gives it back', !!(await within(500, (s) => !s.off)), await smRow());
+  hub.setLatch(PAUSE_BIT);
+  await sleep(300);
+  ok('hub: a Halt leaves the tuning rows writable (law 3: a setting\'s gate names no latch)', !(await smRow()).off, await smRow());
+  hub.setLatch(0);
+  // A write the hub never answers turns overdue on the shadow's own clock: no STATE, only the kernel's sequence moves.
+  await modeBtn('Live').click();
+  hub.unanswered = true;
+  await nudge();
+  const nudgedSt = () => page.evaluate((c) => document.querySelector(c + ' .fsa-row input[type=range]').closest('.fsa-row').getAttribute('data-st'), C);
+  let st = '';
+  for (const t = Date.now(); Date.now() - t < 1500 && st !== 'overdue'; await sleep(20)) st = await nudgedSt();
+  ok('shadow: a write the hub never answers turns its row overdue (a shadow change, no STATE)', st === 'overdue', st);
+  hub.unanswered = false;
+  await modeBtn('Preview').click();
   // ---- Kinetic: the machine's own planner renders the preview in a worker ----
   const kinRead = () => page.evaluate((c) => { const o = document.querySelector(c + ' .fsa-kin');
     return { text: o.textContent, tip: o.title, pts: document.querySelector(c + ' .fsp-dt .int[data-kin]')?.getAttribute('points') || '' }; }, C);

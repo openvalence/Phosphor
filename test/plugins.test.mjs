@@ -771,11 +771,12 @@ console.log('(e3) role door: a samples STREAM by channel role');
 // ---- (i) the producer lock (ph-smvd.2) -------------------------------------
 console.log('(i) one motion producer at a time');
 {
-  let now = 0;
+  let now = 0, base = 0;
   const durField = model.byRole.get('input.duration')[0];
   const segs = [];
   const { host, calls } = makeHost({
     now: () => now,
+    changed: () => base,
     submitSegments: (list) => { segs.push(list); return { ok: true, sent: list.length, rateHz: 50 }; },
     gate: (f, busy) => streamGate({ live: true, roles: 1, access: 1, busy }),
   });
@@ -792,8 +793,13 @@ console.log('(i) one motion producer at a time');
   const { alpha: A, beta: B } = apis;
   ok('an empty list never takes the lock', A.submitSegments([]).ok && B.submitSegments([{ atMs: 0, norm: 0, durationMs: 50 }]).ok);
   now = 600;
+  const c0 = B.changed(durField.channelId);
   const ra = A.submitSegments([{ atMs: 700, norm: 0.2, durationMs: 200 }, { atMs: 900, norm: 0.8, durationMs: 100 }]);
   ok('the holder sends', ra.ok && ra.sent === 2);
+  const c1 = B.changed(durField.channelId);
+  ok('api.changed moves when another plugin takes the lock, then holds still', c1 > c0 && B.changed(durField.channelId) === c1, [c0, c1]);
+  base++;
+  ok('api.changed moves with the kernel\'s sequence', B.changed(durField.channelId) > c1);
   now = 1499;
   const n0 = segs.length;
   const rb = B.submitSegments([{ atMs: 1500, norm: 0.5, durationMs: 50 }]);
@@ -803,7 +809,12 @@ console.log('(i) one motion producer at a time');
     && segs.length === n0 && !calls.motion.length);
   ok('gate shows the busy words to the other plugin only', B.gate(durField) === 'motion input in use by alpha' && A.gate(durField) === '');
   now = 1500;
+  const c2 = B.changed(durField.channelId);
+  ok('api.changed moves when the lock lapses, seen on the read', c2 > c1 + 1, [c1, c2]);
   ok('released at the end + 500 ms', B.submitMotion(0.5, 100).ok && calls.motion.length === 1);
+  let bare = null;
+  makeHost().host.add({ ...gaugeManifest, name: 'bare' }, { activate(a) { bare = a; } });
+  ok('api.changed is NaN without the kernel\'s signal', Number.isNaN(bare.changed(1)));
   now = 2099;
   ok('submitMotion holds for its duration + 500 ms', A.submitSegments([{ atMs: 2100, norm: 0, durationMs: 50 }]).reason === 'motion input in use by beta'
     && A.gate(durField) === 'motion input in use by beta');
