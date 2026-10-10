@@ -165,6 +165,8 @@
   const OS_SHELL = SHELL && !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
   let full = $state(OFF);
   const isFull = $derived(full.on && !!current?.page);
+  // A fullscreen page is opaque: the OS material under a skin is taken away while it shows (model/material.svelte.js).
+  $effect(() => { document.documentElement.toggleAttribute('data-page-full', isFull); });
   const currentId = $derived(current?.id);
   $effect(() => { currentId; untrack(() => { full = OFF; }); });
   let osFull = false;

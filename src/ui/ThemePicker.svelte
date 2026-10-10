@@ -39,6 +39,7 @@
   import { view } from '../model/viewport.svelte.js';
   import { FULL_UP, GLANCE_UP } from '../model/rclass.js';
   import { ACCENTS, KNOB_NAMES } from '../shell/themeCopy.js';
+  import { material } from '../model/material.svelte.js';
   import './pane.css';
 
   let theme = $state(currentTheme());
@@ -48,7 +49,7 @@
   // A skin's swatch is its manifest's (themes/manifest.js); any other preset shows its chassis.
   const chips = $derived(presets.map((p) => {
     const m = skinMeta(p.skin);
-    return { p, bg: m ? m.swatch : deriveTokens(p).base['--bg'], tip: m ? m.pitch : undefined };
+    return { p, bg: m ? m.swatch : deriveTokens(p).base['--bg'], tip: m ? m.pitch + (m.note ? '. ' + m.note : '') : undefined };
   }));
 
   // The host's value-and-unit rule (format.js), never a local one.
@@ -64,6 +65,11 @@
   const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
     '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
 
+  // A skin that wants an OS material says where it has one, and what this window got (model/material.svelte.js).
+  const skinNote = $derived.by(() => {
+    const m = skinMeta(theme.skin);
+    return m && m.note ? m.note + ' (now: ' + (material.applied === 'none' ? 'opaque look' : material.applied) + ')' : '';
+  });
   const near = $derived(ACCENTS.filter(([k]) => d.near[k]).map(([k, label]) => label + ' near safety ' + d.near[k]).join(' · '));
 
   const setAccent = (k, v) => editTheme((t) => { t.accents[k] = v.toUpperCase(); });
@@ -156,6 +162,7 @@
         </span>
       {/each}
     </div>
+    <p class="pane-note tp-skin-note" data-testid="skin-note" data-tip={skinNote || undefined}>{skinNote}</p>
     <div class="row">
       <input class="og-num name-in" placeholder="Preset name" aria-label="Preset name" maxlength="40" bind:value={saveName} />
       <button type="button" class="og-btn" onclick={save}>Save as preset</button>
@@ -315,6 +322,8 @@
   .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
 
   .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  /* One fixed line, held whether or not a skin has a note, so a pick moves nothing. */
+  .tp-skin-note { min-height: 1.45em; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .preset { display: inline-flex; align-items: center; gap: var(--sp-1); }
   .swatch {
     display: inline-flex;

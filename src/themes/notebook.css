@@ -1,0 +1,41 @@
+/* Notebook: ruled paper, stitched index cards and a felt-pen hand for the titles.
+   Light chassis; the rules are a pale blue hairline under the text, the body face is
+   a book serif, and the cards are paper on a one-pixel stack. */
+html:root[data-skin="notebook"] {
+  --font: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Noto Serif', serif;
+  --font-head: 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', 'Comic Neue', cursive;
+  --frame-w: 1px;
+  --tex-page: repeating-linear-gradient(180deg, transparent 0 27px, rgba(70, 110, 170, .16) 27px 28px);
+  --tex-page-size: auto;
+  --tex-card: repeating-linear-gradient(180deg, transparent 0 21px, rgba(70, 110, 170, .12) 21px 22px);
+  --tex-card-size: auto;
+  --marker: linear-gradient(180deg, transparent 58%, rgba(150, 190, 235, .55) 58%);
+}
+html:root[data-skin="notebook"] [data-part="bar"] { background-image: repeating-linear-gradient(90deg, transparent 0 7px, rgba(90, 70, 40, .06) 7px 8px); box-shadow: inset 0 -2px 0 var(--line-1), inset 0 -3px 0 var(--bg); }
+html:root[data-skin="notebook"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-size: 1.05rem; font-weight: 700; letter-spacing: 0; }
+html:root[data-skin="notebook"] [data-part="bar"] .chip { border-radius: 2px; border-style: dashed; }
+html:root[data-skin="notebook"] [data-part="strip"],
+html:root[data-skin="notebook"] [data-part="hero"] { background-image: var(--tex-card); }
+html:root[data-skin="notebook"] [data-part="stop-frame"] { outline: 1px dashed var(--line-3); outline-offset: 4px; }
+html:root[data-skin="notebook"] [data-part="rail"] { background-image: var(--tex-card); border-color: var(--line-2); border-radius: 0 3px 3px 0; box-shadow: 2px 2px 0 var(--line-1); }
+html:root[data-skin="notebook"] [data-part="rail-label"] { font-family: var(--font-head); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 700; background-image: var(--marker); margin: 0 6px; padding-inline: 4px; width: max-content; }
+html:root[data-skin="notebook"] [data-part="rail-tab"] { border-radius: 2px; font-size: .88rem; }
+html:root[data-skin="notebook"] [data-part="rail-tab"].on { border-style: dashed; border-color: var(--line-3); background-color: var(--bg-card); }
+html:root[data-skin="notebook"] [data-part="card"],
+html:root[data-skin="notebook"] [data-part="panel"] { border-radius: 2px; box-shadow: 0 1px 0 var(--line-1), 0 2px 0 var(--bg), 0 3px 0 var(--line-1), 3px 5px 8px rgba(70, 50, 20, .15); }
+html:root[data-skin="notebook"] [data-part="nest"] { border-style: dashed; border-color: var(--line-3); border-radius: 2px; }
+html:root[data-skin="notebook"] .dash-title { font-family: var(--font-head); text-transform: none; letter-spacing: 0; font-weight: 700; font-size: .95rem; background-image: var(--marker); background-repeat: no-repeat; background-size: 100% 100%; padding-inline: 2px; width: max-content; max-width: 100%; }
+html:root[data-skin="notebook"] .og-panel { outline: none; border-radius: 2px; background-image: var(--tex-card); box-shadow: 2px 3px 0 var(--line-1); }
+html:root[data-skin="notebook"] .pane-head h2 { font-family: var(--font-head); font-size: 1.05rem; text-transform: none; letter-spacing: 0; }
+html:root[data-skin="notebook"] .og-btn,
+html:root[data-skin="notebook"] .og-seg button,
+html:root[data-skin="notebook"] .stepper button { border-radius: 2px; background-color: var(--bg-card); border-style: solid; font-family: var(--font); }
+html:root[data-skin="notebook"] .og-btn:hover { background-color: var(--bg-raised); }
+html:root[data-skin="notebook"] .og-num,
+html:root[data-skin="notebook"] .value-input,
+html:root[data-skin="notebook"] select { border-radius: 0; box-shadow: none; border-width: 0 0 2px; background-color: transparent; }
+html:root[data-skin="notebook"] .og-switch .track { border-radius: 2px; }
+html:root[data-skin="notebook"] .og-switch .track::after { border-radius: 1px; }
+html:root[data-skin="notebook"] [data-part="status-row"],
+html:root[data-skin="notebook"] [data-part="page-foot"] { border-top: 1px dashed var(--line-3); }
+html:root[data-skin="notebook"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) var(--bg); }

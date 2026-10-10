@@ -12,7 +12,7 @@
  * - `icons` is keyed by ICON_NAMES (ui/navIcons.js); see icons.js for the two forms.
  * - `swatch` is a CSS background for the picker's preview chip.
  */
-import { LUNA_ICONS, PIXEL_ICONS } from './icons.js';
+import { LUNA_ICONS, PIXEL_ICONS, JELLY_ICONS, SKETCH_ICONS, FLUENT_ICONS, GLASS_ICONS, ROUND_ICONS } from './icons.js';
 
 export const SKINS = [];
 const skin = (e) => SKINS.push(Object.freeze(e));
@@ -128,4 +128,153 @@ skin({
     look: { glow: 1.3, radius: 2, scale: 1.12, numWeight: 500, motion: 4 },
   },
   icons: {},
+});
+
+skin({
+  id: 'amp', name: 'Amp',
+  pitch: 'A skinned music player: bevels, LED digits, a grip-striped title bar',
+  swatch: 'repeating-linear-gradient(90deg, #7A86B8 0 1px, transparent 1px 3px) 0 0 / 100% 35% no-repeat, linear-gradient(180deg, #3A4156, #1B1F2B)',
+  theme: {
+    accents: { reality: '#00E85A', intent: '#7FB0FF', highlight: '#E8E8E8' },
+    chassis: { hue: 240, tint: 0.6, brightness: 0.17, contrast: 1.1 },
+    look: { glow: 0.9, radius: 0, scale: 1.12, numWeight: 500, motion: 3 },
+    overrides: { '--line-1': '#3A3F4C', '--line-2': '#5A6070', '--line-3': '#7A8296', '--line-4': '#A8B0C4' },
+  },
+  icons: PIXEL_ICONS,
+});
+
+skin({
+  id: 'jelly', name: 'Jelly',
+  pitch: 'Pinstripes, glossy capsules and blue jelly buttons',
+  swatch: 'linear-gradient(180deg, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 55%), linear-gradient(180deg, #5FA2F5, #1B64D4)',
+  theme: {
+    accents: { reality: '#1759C2', intent: '#8E3CC8', highlight: '#126B2F' },
+    chassis: { hue: 250, tint: 0.5, brightness: 0.95, contrast: 1 },
+    look: { glow: 0.25, radius: 8, scale: 1.12, numWeight: 400, motion: 3 },
+    overrides: { '--line-1': '#CBD2DD', '--line-2': '#9AA6B8', '--line-3': '#7C8BA2', '--line-4': '#1B64D4' },
+  },
+  icons: JELLY_ICONS,
+});
+
+skin({
+  id: 'setup', name: 'Setup',
+  pitch: 'A BIOS blue screen: double-line boxes and a reverse-video cursor',
+  swatch: 'linear-gradient(#0000AA, #0000AA) padding-box, #AAAAAA',
+  theme: {
+    accents: { reality: '#55FFFF', intent: '#FF9BFF', highlight: '#FFFFFF' },
+    chassis: { hue: 265, tint: 4, brightness: 0.2, contrast: 1.1 },
+    look: { glow: 0, radius: 0, scale: 1.12, numWeight: 500, motion: 0 },
+    overrides: {
+      '--bg': '#000080', '--bg-raised': '#0000AA', '--bg-card': '#0000AA', '--bg-sunken': '#000066', '--shell-bg': '#00004C',
+      '--line-0': '#000080', '--line-1': '#5A5AD0', '--line-2': '#8A8AEA', '--line-3': '#AAAAAA', '--line-4': '#FFFFFF',
+      '--tx-hi': '#FFFFFF', '--tx': '#EDEDED', '--tx-val': '#C8C8C8', '--tx-mut': '#A6A6F2', '--tx-ghost': '#9898E8', '--tx-faint': '#4A4AB8',
+    },
+  },
+  icons: PIXEL_ICONS,
+});
+
+skin({
+  id: 'boing', name: 'Boing',
+  pitch: 'Gray gadgets and blue copper bars from a 1990 workstation',
+  swatch: 'linear-gradient(180deg, #2A4F9C 0 40%, #AAAAAA 40% 100%)',
+  theme: {
+    accents: { reality: '#12306E', intent: '#44106A', highlight: '#123A58' },
+    chassis: { hue: 230, tint: 1.2, brightness: 0.8, contrast: 1 },
+    look: { glow: 0, radius: 0, scale: 1.12, numWeight: 500, motion: 2 },
+    overrides: { '--line-1': '#8A8A92', '--line-2': '#5A5A64', '--line-3': '#2E2E36', '--line-4': '#000000', '--tx-val': '#2F3338', '--tx-mut': '#43484D', '--tx-ghost': '#464B50' },
+  },
+  icons: PIXEL_ICONS,
+});
+
+skin({
+  id: 'cipher', name: 'Cipher',
+  pitch: 'Falling green code behind glass-black panels',
+  swatch: 'repeating-linear-gradient(90deg, rgba(0, 255, 65, .55) 0 1px, transparent 1px 5px), #010A03',
+  theme: {
+    accents: { reality: '#00FF41', intent: '#5CE1FF', highlight: '#E8FFE8' },
+    chassis: { hue: 145, tint: 4, brightness: 0.09, contrast: 1.1 },
+    look: { glow: 1.8, radius: 0, scale: 1.12, numWeight: 400, motion: 8 },
+  },
+  icons: PIXEL_ICONS,
+});
+
+skin({
+  id: 'notebook', name: 'Notebook',
+  pitch: 'Ruled paper, stitched cards and felt-pen icons',
+  swatch: 'repeating-linear-gradient(180deg, transparent 0 4px, rgba(80, 120, 170, .45) 4px 5px), #F6F1E3',
+  theme: {
+    accents: { reality: '#1F5FA8', intent: '#8A3D7B', highlight: '#256B43' },
+    chassis: { hue: 85, tint: 1.8, brightness: 0.94, contrast: 1 },
+    look: { glow: 0, radius: 2, scale: 1.12, numWeight: 400, motion: 3 },
+    overrides: { '--line-1': '#D9CDB4', '--line-2': '#B8A988', '--line-3': '#9A8A68', '--line-4': '#6E6046' },
+  },
+  icons: SKETCH_ICONS,
+});
+
+skin({
+  id: 'contrast', name: 'Contrast',
+  pitch: 'Black, white and cyan: thick frames, no texture, 7:1 text',
+  swatch: 'linear-gradient(90deg, #000 0 50%, #fff 50% 55%, #000 55%)',
+  theme: {
+    accents: { reality: '#00FFFF', intent: '#E0A0FF', highlight: '#FFFFFF' },
+    chassis: { hue: 0, tint: 0, brightness: 0, contrast: 2 },
+    look: { glow: 0, radius: 0, scale: 1.12, numWeight: 600, motion: 1 },
+    overrides: { '--line-1': '#767676', '--line-2': '#A0A0A0', '--line-3': '#C8C8C8', '--line-4': '#FFFFFF' },
+  },
+  icons: {},
+});
+
+skin({
+  id: 'mica', name: 'Mica',
+  pitch: 'Fluent: Windows 11 Mica behind 8 px cards and hairline strokes',
+  note: 'Mica: Windows 11; elsewhere an opaque look',
+  material: 'mica',
+  wallpaper: false,
+  swatch: 'linear-gradient(135deg, #3A3F4B, #1E2026)',
+  theme: {
+    accents: { reality: '#60CDFF', intent: '#CBA6FF', highlight: '#8AB4FF' },
+    chassis: { hue: 255, tint: 0.5, brightness: 0.17, contrast: 1.05 },
+    look: { glow: 0.5, radius: 4, scale: 1.12, numWeight: 400, motion: 4 },
+    // White strokes at 4 to 40%: the same lines on Mica and on the opaque fallback. Labels
+    // are pinned bright so they hold 3:1 under the 82% tint at the lightest dark Mica.
+    overrides: {
+      '--line-0': '#FFFFFF0D', '--line-1': '#FFFFFF17', '--line-2': '#FFFFFF26', '--line-3': '#FFFFFF40', '--line-4': '#FFFFFF66',
+      '--tx-val': '#C9CDD6', '--tx-mut': '#AEB3BF', '--tx-ghost': '#A0A6B3',
+    },
+  },
+  icons: FLUENT_ICONS,
+});
+
+skin({
+  id: 'glass', name: 'Liquid Glass',
+  pitch: 'Capsules, specular rims and layered glass over your wallpaper',
+  note: 'Liquid Glass: macOS 26 system glass, Windows Acrylic; elsewhere a blurred in-page backdrop',
+  material: 'glass',
+  wallpaper: true,
+  swatch: 'radial-gradient(circle at 25% 20%, rgba(255, 255, 255, .55), transparent 45%), linear-gradient(135deg, #5E5CE6, #0A84FF 55%, #30D1BE)',
+  theme: {
+    accents: { reality: '#5AC8FA', intent: '#D9A0FF', highlight: '#FFFFFF' },
+    chassis: { hue: 250, tint: 0.8, brightness: 0.14, contrast: 1.05 },
+    look: { glow: 0.7, radius: 14, scale: 1.12, numWeight: 400, motion: 4 },
+    // Labels pinned bright: they hold 3:1 under the 96% tint over a white backdrop.
+    overrides: { '--tx-val': '#CBD0DA', '--tx-mut': '#B4BAC6', '--tx-ghost': '#A8AEBB' },
+  },
+  icons: GLASS_ICONS,
+});
+
+skin({
+  id: 'material', name: 'Material',
+  pitch: 'Material 3: tonal surfaces, state layers, pill buttons; Material You colors on Android',
+  note: 'Material: on Android 12 and later the colors come from your wallpaper; elsewhere the baseline palette',
+  swatch: 'linear-gradient(135deg, #D0BCFF 0 34%, #2B2733 34% 100%)',
+  theme: {
+    // The M3 baseline in its dark scheme. The tertiary pink of the baseline is a red hue, so the
+    // intent accent is a cool cyan instead (the safety hue check, THEMES.md).
+    accents: { reality: '#D0BCFF', intent: '#9BD6E8', highlight: '#EADDFF' },
+    chassis: { hue: 300, tint: 1.8, brightness: 0.2, contrast: 1 },
+    look: { glow: 0, radius: 12, scale: 1.12, numWeight: 400, motion: 4 },
+    // M3 outline and outline-variant, on the neutral surface.
+    overrides: { '--line-1': '#49454F', '--line-2': '#79747E', '--line-3': '#938F99', '--line-4': '#CAC4D0' },
+  },
+  icons: ROUND_ICONS,
 });

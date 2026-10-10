@@ -5,6 +5,7 @@ mod estop_udp;
 #[cfg(desktop)]
 mod lan;
 mod linkstats;
+mod material;
 mod plugins;
 mod report;
 
@@ -52,6 +53,7 @@ pub fn run() {
   builder
     .invoke_handler(tauri::generate_handler![
       js_log,
+      material::window_material,
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
       linkstats::link_tcp_counters,

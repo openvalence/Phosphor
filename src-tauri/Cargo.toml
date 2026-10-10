@@ -73,6 +73,14 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock"] }
 
+# Liquid Glass (src/material.rs): NSGlassEffectView is looked up by name at run time,
+# so only the runtime and a rect type are needed. A transparent window on macOS needs
+# the private-api feature (tauri.macos.conf.json app.macOSPrivateApi).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSGeometry"] }
+tauri = { version = "2.11.3", features = ["devtools", "macos-private-api"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
 btleplug = "0.12"
 jni = "0.19"

@@ -1,0 +1,42 @@
+/* Setup: a BIOS blue screen. One monospace face, double-line boxes, no radius, the
+   selected row in reverse video. The blues and the ramp are pinned in the manifest
+   (white and light gray on blue, 5.9:1 or better). */
+html:root[data-skin="setup"] {
+  --font: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --font-head: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --mono: 'Perfect DOS VGA 437', 'Lucida Console', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --frame-w: 3px;
+}
+html:root[data-skin="setup"] [data-part="bar"] { background-color: var(--bg-card); box-shadow: inset 0 -1px 0 var(--line-3); }
+html:root[data-skin="setup"] [data-part="bar"] .wordmark { text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; font-weight: 700; }
+html:root[data-skin="setup"] [data-part="bar"] .chip { border-radius: 0; }
+html:root[data-skin="setup"] [data-part="strip"],
+html:root[data-skin="setup"] [data-part="top"] { background-color: var(--bg-card); }
+html:root[data-skin="setup"] [data-part="top"] { border-bottom: 3px double var(--line-3); }
+html:root[data-skin="setup"] [data-part="hero"] { background-color: var(--bg-card); border-bottom: 3px double var(--line-3); }
+html:root[data-skin="setup"] [data-part="stop-frame"] { outline: 3px double var(--line-3); outline-offset: 4px; }
+html:root[data-skin="setup"] [data-part="rail"] { border-style: double; border-width: 3px; border-left-width: 0; border-color: var(--line-3); border-radius: 0; }
+html:root[data-skin="setup"] [data-part="rail-label"] { text-transform: uppercase; letter-spacing: .1em; color: var(--tx-hi); font-size: 11px; }
+html:root[data-skin="setup"] [data-part="rail-tab"] { border-radius: 0; text-transform: uppercase; letter-spacing: .04em; font-size: .78rem; }
+html:root[data-skin="setup"] [data-part="rail-tab"].on { background-color: var(--tx); color: var(--bg); border-color: var(--tx); }
+html:root[data-skin="setup"] [data-part="rail-tab"].on .rail-glyph { color: var(--bg); }
+html:root[data-skin="setup"] [data-part="rail-tab"]:hover:not(.on) { background-color: var(--line-1); color: var(--tx-hi); }
+html:root[data-skin="setup"] [data-part="card"],
+html:root[data-skin="setup"] [data-part="nest"],
+html:root[data-skin="setup"] [data-part="panel"] { border-style: double; border-color: var(--line-3); border-radius: 0; }
+html:root[data-skin="setup"] [data-part="card-head"]:not(.over) { justify-content: center; }
+html:root[data-skin="setup"] .dash-title { text-transform: uppercase; letter-spacing: .12em; color: var(--tx-hi); font-size: .78rem; }
+html:root[data-skin="setup"] .og-panel { outline: none; border-style: double; border-width: 3px; border-color: var(--line-3); border-radius: 0; background-image: none; }
+html:root[data-skin="setup"] .og-btn,
+html:root[data-skin="setup"] .og-seg button,
+html:root[data-skin="setup"] .stepper button { border-radius: 0; text-transform: uppercase; letter-spacing: .04em; background-color: var(--bg-card); }
+html:root[data-skin="setup"] .og-btn:hover,
+html:root[data-skin="setup"] .og-seg button:hover { background-color: var(--line-1); }
+html:root[data-skin="setup"] .og-num,
+html:root[data-skin="setup"] .value-input,
+html:root[data-skin="setup"] select { border-radius: 0; box-shadow: none; background-color: var(--bg); }
+html:root[data-skin="setup"] .og-switch .track,
+html:root[data-skin="setup"] .og-switch .track::after { border-radius: 0; }
+html:root[data-skin="setup"] [data-part="status-row"],
+html:root[data-skin="setup"] [data-part="page-foot"] { border-top: 3px double var(--line-3); background-color: var(--bg-card); }
+html:root[data-skin="setup"] * { scrollbar-width: auto; scrollbar-color: var(--line-3) var(--bg); }

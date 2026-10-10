@@ -3427,6 +3427,8 @@ dependencies = [
  "jni 0.19.0",
  "libc",
  "log",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
  "serde",
  "serde_json",
  "tauri",

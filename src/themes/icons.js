@@ -69,3 +69,28 @@ export const PIXEL_ICONS = Object.fromEntries(Object.entries({
   merge: ['#.....#.', '#.....#.', '.#...#..', '..#.#...', '...#....', '...#....', '...#....', '........'],
   about: ['..####..', '.#....#.', '#..##..#', '#......#', '#..##..#', '#..##..#', '.#....#.', '..####..'],
 }).map(([k, rows]) => [k, bitmap(rows)]));
+
+// ---- icon sets drawn from the stock glyph paths -------------------------------------------
+import { NAV_PATHS } from '../ui/navIcons.js';
+const NAMES = Object.keys(NAV_PATHS).filter((n) => n !== 'quickRail');
+
+/** Jelly: each glyph in white on a glossy blue blob with a specular arc. */
+export const JELLY_ICONS = Object.fromEntries(NAMES.map((n) => [n, color(
+  '<defs><linearGradient id="j" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DB8FF"/><stop offset=".5" stop-color="#2F7BE8"/><stop offset="1" stop-color="#1448B8"/></linearGradient></defs>'
+  + '<circle cx="8" cy="8" r="7.4" fill="url(#j)" stroke="#0F3C94" stroke-width=".6"/>'
+  + '<ellipse cx="8" cy="4.4" rx="5" ry="2.6" fill="#fff" opacity=".42"/>'
+  + '<g transform="translate(2.8 2.8) scale(.65)"><path d="' + NAV_PATHS[n] + '"' + st('#fff', 2) + '/></g>')]));
+
+/** Notebook: the stock glyph doubled and offset, as drawn twice with a felt pen. */
+export const SKETCH_ICONS = Object.fromEntries(NAMES.map((n) => [n,
+  '<path d="' + NAV_PATHS[n] + '" stroke-width="1.9"/><path d="' + NAV_PATHS[n] + '" transform="translate(.35 .25) rotate(1.2 8 8)" stroke-width="1" opacity=".55"/>']));
+
+/** Mica: the stock glyphs at a hairline weight, as Fluent draws them. */
+export const FLUENT_ICONS = Object.fromEntries(NAMES.map((n) => [n, '<path d="' + NAV_PATHS[n] + '" stroke-width="1.2"/>']));
+
+/** Liquid Glass: the stock glyphs heavier, with a faint offset copy for depth. */
+export const GLASS_ICONS = Object.fromEntries(NAMES.map((n) => [n,
+  '<path d="' + NAV_PATHS[n] + '" stroke-width="1.9"/><path d="' + NAV_PATHS[n] + '" transform="translate(0 .7)" stroke-width="1.9" opacity=".28"/>']));
+
+/** Material: the stock glyphs at the weight and roundness of Material Symbols. */
+export const ROUND_ICONS = Object.fromEntries(NAMES.map((n) => [n, '<path d="' + NAV_PATHS[n] + '" stroke-width="1.7"/>']));

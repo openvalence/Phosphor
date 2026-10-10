@@ -16,6 +16,7 @@ import './style.css';
 import './themes/skins.css';
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme } from './model/theme.js';
+import { installDynamicColor } from './model/dynamicColor.js';
 import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
@@ -30,6 +31,8 @@ installTips();
 // default palette. These are BROWSER state, not machine state — the
 // ground-truth doctrine does not apply and nothing here is sent to the device.
 applyStoredTheme();
+// Android 12+: the Material skin takes the system's palette (MainActivity.kt publishes it).
+installDynamicColor();
 try {
   if (localStorage.getItem('ui_hivis') === '1') document.documentElement.classList.add('hivis');
   if (localStorage.getItem('ui_terse') === '1') document.documentElement.classList.add('terse');
@@ -88,6 +91,10 @@ async function boot() {
         invoke, isVirtual: () => !!machine.link.virtual || v.onSim(), origin: () => machine.link.roles,
       }))
       .catch((e) => bootFault('datagram e-stop', e));
+    // The Mica and Liquid Glass skins ask the window for its OS material (src-tauri/src/material.rs).
+    await Promise.all([import('@tauri-apps/api/core'), import('./model/material.svelte.js')])
+      .then(([{ invoke }, m]) => m.installMaterial(invoke))
+      .catch((e) => bootFault('window material', e));
     // The top bar's client loss: the OS's TCP counters for the hub socket
     // (src-tauri/src/linkstats.rs; null on Android).
     await Promise.all([import('@tauri-apps/api/core'), import('./model/machine.svelte.js')])

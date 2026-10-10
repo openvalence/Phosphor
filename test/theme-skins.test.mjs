@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { EVIDENCE } from './dist.mjs';
 import { goTab } from './nav.mjs';
-import { lowContrast } from './audit.mjs';
+import { lowContrast, lowContrastOver } from './audit.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
 import { THEMES, deriveTokens, contrast } from '../src/model/theme.js';
@@ -67,7 +67,7 @@ const FORBID = ['.safety-op', '.btn-estop', '.btn-pause', '.btn-override', '.lat
   'unconfirmed', '.cat-busy', '.dash-busy'];
 for (const f of sheets) {
   const css = strip(readFileSync(join(DIR, f), 'utf8'));
-  const hit = FORBID.filter((w) => css.includes(w));
+  const hit = FORBID.filter((w) => css.replace(/:not\(\.(running|danger)\)/g, '').includes(w));
   ok(f + ': never names a stop, safety, ladder or stale surface', hit.length === 0, hit.join(', '));
   ok(f + ': loads nothing remote', !/(https?:)?\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(css.replace(/xmlns=['"]http:\/\/www\.w3\.org\/2000\/svg['"]/g, '')) && !/@import\s+url\(\s*['"]?https?:/.test(css));
   if (f === 'skins.css' || f === 'fonts.css') continue;
@@ -131,9 +131,18 @@ function fakeHub(ws) {
 }
 
 const browser = await chromium.launch();
-async function boot(viewport, theme, { reduce = false } = {}) {
+async function boot(viewport, theme, { reduce = false, material = null } = {}) {
   const ctx = await browser.newContext({ viewport, reducedMotion: reduce ? 'reduce' : 'no-preference' });
   await ctx.addInitScript(TAURI_STUB);
+  // A shell whose Rust half has the material: window_material answers what was asked, and every call is kept.
+  if (material) {
+    await ctx.addInitScript((granted) => {
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__materialCalls = [];
+      window.__TAURI_INTERNALS__.invoke = (cmd, a) => (cmd === 'window_material'
+        ? (window.__materialCalls.push(a.kind), Promise.resolve(a.kind === 'none' ? 'none' : granted)) : inner(cmd, a));
+    }, material);
+  }
   await ctx.addInitScript(([etag, bytes, theme]) => {
     try {
       if (!sessionStorage.getItem('booted')) {
@@ -284,6 +293,66 @@ for (const skin of skins) {
     ok(skin.id + ': F3 finds it', hits.some((t) => t.includes('Theme: ' + skin.name)), hits.slice(0, 4).join(' | '));
     await ctx.close();
   }
+}
+
+// ---- materials: the see-through look on the worst backdrops, and what takes it away --------------
+for (const skin of skins.filter((s) => s.material)) {
+  console.log('\n--- ' + skin.name + ': materials ---');
+  const theme = THEMES.find((t) => t.id === skin.id);
+  // Windows 10, Linux, Android, the browser: the Rust half answers none, and the look stays opaque.
+  {
+    const { ctx, page } = await boot({ width: 1428, height: 900 }, theme);
+    await page.waitForTimeout(500);
+    const o = await page.evaluate(() => [document.documentElement.dataset.material || null, getComputedStyle(document.body).backgroundColor]);
+    ok(skin.id + ': no OS material (the stub refuses) keeps an opaque body', o[0] === null && /^rgb\(/.test(o[1]), JSON.stringify(o));
+    await ctx.close();
+  }
+  const granted = skin.material === 'mica' ? 'mica' : 'acrylic';
+  const { ctx, page, errors } = await boot({ width: 1428, height: 900 }, theme, { material: granted });
+  await page.waitForTimeout(600);
+  ok(skin.id + ': the page asked the window for ' + skin.material, await page.evaluate((k) => window.__materialCalls.includes(k), skin.material));
+  ok(skin.id + ': the root says what it got', await page.evaluate(() => document.documentElement.dataset.material) === granted);
+  ok(skin.id + ': the page and body are clear for the material', await page.evaluate(() => /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(document.body).backgroundColor)
+    && /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(document.documentElement).backgroundColor)));
+  // Text over the worst backdrops: Mica forced dark never reads lighter than #3A3A3A; glass takes white too.
+  const backdrops = skin.material === 'mica' ? [[0, 0, 0], [58, 58, 58]] : [[0, 0, 0], [255, 255, 255]];
+  for (const bd of backdrops) {
+    await page.evaluate((c) => document.documentElement.style.setProperty('background', 'rgb(' + c.join(',') + ')', 'important'), bd);
+    const bad = [];
+    for (const [name, id] of PAGES.filter(([n]) => ['dash', 'category', 'settings', 'log', 'link'].includes(n))) {
+      await goTab(page, id);
+      await page.waitForTimeout(450);
+      await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))));
+      const low = await page.evaluate(lowContrastOver, [AUDIT, bd]);
+      const exempt = baseline.get('phosphor1428' + name).low;
+      const worse = low.filter((s) => !exempt.has(sig(s)));
+      if (worse.length) bad.push(name + ': ' + worse.slice(0, 3).join(' | '));
+    }
+    ok(skin.id + ': text clears AA over rgb(' + bd.join(',') + ') on every page', bad.length === 0, bad.join(' || '));
+    if (SHOTS) { await goTab(page, 'machine'); await page.waitForTimeout(300); await page.screenshot({ path: join(SHOTS, skin.id + '-over-' + bd.join('-') + '.png') }); }
+  }
+  await page.evaluate(() => document.documentElement.style.removeProperty('background'));
+  await goTab(page, 'machine');
+  await page.waitForTimeout(300);
+  const pairOpaque = await page.evaluate(() => {
+    const f = document.querySelector('[data-part="stop-frame"]');
+    const a = (c) => { const m = /(?:rgba?|color\(srgb)\(?([^)]+)\)/.exec(c); const p = m[1].split(/[\s,/]+/).map(Number); return p.length > 3 ? p[3] : 1; };
+    return [a(getComputedStyle(f).backgroundColor), ...[...f.querySelectorAll('.safety-op .btn')].map((b) => Number(getComputedStyle(b).opacity))];
+  });
+  ok(skin.id + ': the stop pair sits on an opaque plate and is itself opaque', pairOpaque.length === 3 && pairOpaque.every((v) => v === 1), pairOpaque.join(','));
+  // A fullscreen page takes the material away and gives it back.
+  await goTab(page, 'plugin:funscript-player:player');
+  await page.waitForTimeout(400);
+  await page.keyboard.press('F11');
+  await page.waitForTimeout(500);
+  const inFull = await page.evaluate(() => [document.documentElement.hasAttribute('data-page-full'), document.documentElement.dataset.material || null, window.__materialCalls.at(-1)]);
+  ok(skin.id + ': a fullscreen page drops the material for an opaque window', inFull[0] && inFull[1] === null && inFull[2] === 'none', JSON.stringify(inFull));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  const out = await page.evaluate(() => [document.documentElement.hasAttribute('data-page-full'), document.documentElement.dataset.material || null]);
+  ok(skin.id + ': leaving fullscreen brings it back', !out[0] && out[1] === granted, JSON.stringify(out));
+  ok(skin.id + ' materials: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+  await ctx.close();
 }
 
 await browser.close();

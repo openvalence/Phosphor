@@ -1,0 +1,35 @@
+/* Contrast: black, white and cyan. No texture, no gradient, no glow; frames are
+   2 px white-gray, the focus ring is 3 px, text is 16:1 or better, and every state
+   word is underlined or bold, never color alone. */
+html:root[data-skin="contrast"] {
+  --font: 'Atkinson Hyperlegible', 'Segoe UI', Verdana, Arial, sans-serif;
+  --font-head: 'Atkinson Hyperlegible', 'Segoe UI', Verdana, Arial, sans-serif;
+  --frame-w: 2px;
+}
+html:root[data-skin="contrast"] :focus-visible { outline-width: 3px; outline-offset: 2px; }
+html:root[data-skin="contrast"] [data-part="bar"] { box-shadow: inset 0 -2px 0 var(--line-4); }
+html:root[data-skin="contrast"] [data-part="bar"] .wordmark { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+html:root[data-skin="contrast"] [data-part="top"] { border-bottom: 2px solid var(--line-4); }
+html:root[data-skin="contrast"] [data-part="hero"] { border-bottom: 2px solid var(--line-4); }
+html:root[data-skin="contrast"] [data-part="stop-frame"] { outline: 2px solid var(--line-4); outline-offset: 4px; }
+html:root[data-skin="contrast"] [data-part="rail"] { border-color: var(--line-4); border-width: 2px; border-left-width: 0; }
+html:root[data-skin="contrast"] [data-part="rail-label"] { font-weight: 700; color: var(--tx-hi); }
+html:root[data-skin="contrast"] [data-part="rail-tab"] { font-weight: 600; }
+html:root[data-skin="contrast"] [data-part="rail-tab"].on { background-color: var(--line-4); color: #000; border-color: var(--line-4); }
+html:root[data-skin="contrast"] [data-part="rail-tab"].on .rail-glyph { color: #000; }
+html:root[data-skin="contrast"] [data-part="card"],
+html:root[data-skin="contrast"] [data-part="nest"],
+html:root[data-skin="contrast"] [data-part="panel"] { border-color: var(--line-3); }
+html:root[data-skin="contrast"] .dash-title { font-weight: 700; color: var(--tx-hi); letter-spacing: .08em; }
+html:root[data-skin="contrast"] .og-panel { outline: none; border-width: 2px; border-color: var(--line-3); background-image: none; }
+html:root[data-skin="contrast"] .og-btn,
+html:root[data-skin="contrast"] .og-seg button,
+html:root[data-skin="contrast"] .stepper button { border-width: 2px; font-weight: 600; background-color: #000; }
+html:root[data-skin="contrast"] .og-btn:hover,
+html:root[data-skin="contrast"] .og-seg button:hover { background-color: #1A1A1A; }
+html:root[data-skin="contrast"] .og-num,
+html:root[data-skin="contrast"] .value-input,
+html:root[data-skin="contrast"] select { border-width: 2px; border-color: var(--line-3); box-shadow: none; }
+html:root[data-skin="contrast"] [data-part="status-row"],
+html:root[data-skin="contrast"] [data-part="page-foot"] { border-top: 2px solid var(--line-4); }
+html:root[data-skin="contrast"] * { scrollbar-width: auto; scrollbar-color: var(--line-4) #000; }

@@ -1,0 +1,59 @@
+/* Jelly: pinstripes, glossy capsules and a blue jelly for the primary. Every gloss is
+   a white-to-clear gradient over a chassis surface, so dark ink only meets more
+   light behind it. */
+html:root[data-skin="jelly"] {
+  --font: 'Lucida Grande', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
+  --font-head: 'Lucida Grande', 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, sans-serif;
+  --frame-w: 1px;
+  --tex-page: repeating-linear-gradient(180deg, rgba(120, 130, 150, .09) 0 2px, transparent 2px 4px);
+  --tex-page-size: auto;
+  --gloss: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .25) 50%, rgba(255, 255, 255, 0) 51%, rgba(255, 255, 255, .25));
+}
+html:root[data-skin="jelly"] [data-part="bar"] {
+  background-color: var(--bg-raised);
+  background-image: var(--gloss);
+  box-shadow: inset 0 -1px 0 var(--line-2);
+}
+html:root[data-skin="jelly"] [data-part="bar"] .wordmark { font-weight: 700; letter-spacing: 0; text-shadow: 0 1px 0 rgba(255, 255, 255, .9); }
+html:root[data-skin="jelly"] [data-part="bar"] .chip { border-radius: 999px; padding-inline: 8px; background-image: var(--gloss); }
+html:root[data-skin="jelly"] [data-part="strip"] { background-image: var(--gloss); }
+html:root[data-skin="jelly"] [data-part="hero"] { background-image: var(--tex-page); }
+html:root[data-skin="jelly"] [data-part="stop-frame"] { outline: 1px solid var(--line-2); outline-offset: 4px; }
+html:root[data-skin="jelly"] [data-part="rail"] { background-image: var(--tex-page); border-radius: 0 12px 12px 0; border-color: var(--line-2); }
+html:root[data-skin="jelly"] [data-part="rail-label"] { font-weight: 700; text-transform: none; letter-spacing: 0; font-size: 11px; }
+html:root[data-skin="jelly"] [data-part="rail-tab"] { border-radius: 999px; }
+html:root[data-skin="jelly"] [data-part="rail-tab"].on {
+  background-color: color-mix(in srgb, var(--reality) 22%, var(--bg-card));
+  background-image: var(--gloss);
+  border-color: var(--reality);
+  box-shadow: inset 0 1px 3px rgba(var(--shade-rgb), .25);
+}
+html:root[data-skin="jelly"] [data-part="card"],
+html:root[data-skin="jelly"] [data-part="nest"],
+html:root[data-skin="jelly"] [data-part="panel"] { border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 3px 10px rgba(40, 60, 100, .18); }
+html:root[data-skin="jelly"] [data-part="card-head"]:not(.over) { padding-left: 6px; }
+html:root[data-skin="jelly"] .dash-title { text-transform: none; letter-spacing: 0; font-weight: 700; font-size: .85rem; }
+html:root[data-skin="jelly"] .og-panel { outline: none; border-radius: 12px; background-image: none; box-shadow: 0 3px 10px rgba(40, 60, 100, .15); }
+html:root[data-skin="jelly"] .og-btn,
+html:root[data-skin="jelly"] .og-seg button,
+html:root[data-skin="jelly"] .stepper button {
+  border-radius: 999px;
+  background-color: var(--bg-card);
+  background-image: var(--gloss);
+}
+html:root[data-skin="jelly"] .og-btn:active,
+html:root[data-skin="jelly"] .og-seg button:active { background-image: linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(255, 255, 255, .3)); }
+html:root[data-skin="jelly"] .og-num,
+html:root[data-skin="jelly"] .value-input,
+html:root[data-skin="jelly"] select { border-radius: 999px; box-shadow: inset 0 2px 3px rgba(var(--shade-rgb), .22); }
+html:root[data-skin="jelly"] .og-switch .track { border-radius: 999px; background-color: var(--bg-sunken); background-image: linear-gradient(180deg, rgba(0, 0, 0, .12), transparent); }
+html:root[data-skin="jelly"] .og-switch .track::after { border-radius: 50%; background-image: var(--gloss); }
+html:root[data-skin="jelly"] input[type="range"]::-webkit-slider-thumb { border-radius: 999px; background-color: var(--bg-card); background-image: var(--gloss); }
+html:root[data-skin="jelly"] input[type="range"]::-moz-range-thumb { border-radius: 999px; background-color: var(--bg-card); background-image: var(--gloss); }
+html:root[data-skin="jelly"] .og-screen { border-radius: 8px; }
+html:root[data-skin="jelly"] [data-part="status-row"],
+html:root[data-skin="jelly"] [data-part="page-foot"] { background-image: var(--gloss); border-top: 1px solid var(--line-2); }
+html:root[data-skin="jelly"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-skin="jelly"] ::-webkit-scrollbar { width: 14px; height: 14px; }
+html:root[data-skin="jelly"] ::-webkit-scrollbar-track { background: var(--bg-sunken); border-radius: 999px; }
+html:root[data-skin="jelly"] ::-webkit-scrollbar-thumb { border-radius: 999px; border: 1px solid #0F3C94; background-color: #3E86EE; background-image: var(--gloss); }

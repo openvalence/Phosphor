@@ -1,0 +1,17 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "Phosphor",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 200,
+        "minHeight": 390,
+        "resizable": true,
+        "decorations": false,
+        "fullscreen": false,
+        "transparent": true
+      }
+    ]
+  }
+}

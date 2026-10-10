@@ -65,3 +65,6 @@ export function navIcon(tab) {
   if (tab.page) return tab.page.icon || NAV_ICONS.plugins;
   return NAV_ICONS[tabKey(tab)];
 }
+
+/** The default path of every icon by its skin-registry name, for icon sets drawn from the stock glyphs (themes/icons.js). */
+export const NAV_PATHS = Object.freeze(Object.fromEntries(Object.entries(NAV_ICONS).map(([k, d]) => [ICON_KEY(k), d])));
