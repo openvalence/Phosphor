@@ -572,7 +572,7 @@ function cards(t) {
     growth: isOpen('growth') ? lineOf(tracker.incidents.growth) : null, visible: visible(),
   };
   const model = machine.catalog.model;
-  const bus = ((model && model.byRole.get(ROLE.telemetryPowerBus)) || []).map((f) => {
+  const bus = [ROLE.telemetryPowerBus, ROLE.telemetryPowerDraw].flatMap((r) => (model && model.byRole.get(r)) || []).map((f) => {
     const v = reportedValue(f, machine.samples[f.channelId]);
     return { label: labelFor(f), text: Number.isFinite(v) ? formatWithUnit(f, v) : null };
   });

@@ -4,6 +4,7 @@ mod discovery;
 mod estop_udp;
 #[cfg(desktop)]
 mod lan;
+mod linkstats;
 mod plugins;
 mod report;
 
@@ -53,6 +54,7 @@ pub fn run() {
       js_log,
       discovery::discover_hubs,
       estop_udp::estop_broadcast,
+      linkstats::link_tcp_counters,
       plugins::plugins_list,
       plugins::plugin_tcp_listen,
       plugins::plugin_tcp_close,

@@ -126,7 +126,7 @@
     return b && typeof b.key === 'number' ? { ...b, lines: [...b.lines, ...readings(b.key)] } : b || null;
   });
   // The magnitudes the bar's old activity rows drew, now in their channel's tip (DESIGN §10.3).
-  const READS = [ROLE.telemetryVelocity, ROLE.telemetryCurrent, ROLE.telemetryPowerBus];
+  const READS = [ROLE.telemetryVelocity, ROLE.telemetryCurrent, ROLE.telemetryPowerBus, ROLE.telemetryPowerDraw];
   /** A channel's role-bound readings, on the tip's clock: the sample is read untracked, never per arrival. */
   function readings(id) {
     const byRole = machine.catalog.model && machine.catalog.model.byRole;
