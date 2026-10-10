@@ -36,9 +36,10 @@ export function advgenCatalog({ drop = [], noStoreId = false, oscDrive = false }
   let bytes = new Uint8Array(readFileSync(new URL('./valencesim-catalog.bin', import.meta.url)));
   if (drop.length || noStoreId || oscDrive) {
     const entries = cbDecodeFull(bytes);
-    const f32 = (name) => new Map([[1, name], [2, 6], [4, 1], [18, 4]]);
+    // Nucleus 0.1.37's entry (flagship_p4 ValenceCatalog.h addOscDrive): f32 norm 0..1 fields, 50 Hz, generator, control.
+    const f32 = (name) => new Map([[1, name], [2, 6], [3, 'norm'], [4, 1], [5, 0], [6, 1], [18, 4], [23, 4]]);
     if (oscDrive) entries.push(new Map([[1, 0x2140], [2, 'osc-drive'], [3, 1], [4, 1], [5, 1], [6, 50], [7, 2],
-      [8, [f32('amplitude'), f32('frequency')]], [15, 0], [18, 'osc.drive']]));
+      [8, [f32('amplitude'), f32('frequency')]], [10, 1], [15, 0], [16, 1], [18, 'osc.drive']]));
     for (const e of entries) {
       for (const f of [...(e.get(E.layout) || []), ...(e.get(E.schema) || new Map()).values()]) {
         if (drop.includes(f.get(F_ROLE))) f.delete(F_ROLE);

@@ -5,18 +5,21 @@
 // - Bound by the channel role only, never a name or id. OSC_ROLE restates registry channel_roles (a plugin
 //   imports nothing outside its folder); the role fixes the layout: amplitude then frequency, f32 0..1.
 // - Wired by default (operator 2026-10-09): a script with V8 or V9 publishes whenever the hub offers the
-//   role. An axis the script lacks rides 0, what a quiet stream reads (SPEC 9.7).
-// - Nothing else of the oscillator is driven from a script: no enable, shape, bounds or drive (SPEC 9.7).
-// - The rate is the grant's (SegResult-shaped rateHz); the actions are interpolated linearly to it.
-// - A sample describes the instant the main axis plays the same media time: mediaAt(wall ms) is the caller's
-//   map, offset and compensation included; the host subtracts the grant's schedule_latency_us.
-// - Sent OSC_LEAD_MS ahead, half the samples lead cap (SPEC 5.4), refilled once under half of it.
-// - Without mediaAt (pause, seek, stop, Motion off) nothing is sent and the hub's quiet release ends the
-//   oscillation (stream_quiet_release_ms). Samples already sent run out; a restart continues after them.
+//   role. An axis the script lacks rides 0.
+// - Writes nothing else of the oscillator, osc.enabled included: a live stream renders by itself and the
+//   hub hands back to the card's values when it goes quiet (RFC-110 items 1, 2).
+// - The rate is the grant's; the actions are interpolated linearly to it.
+// - One lead (RFC-110 item 4): each point is stamped at the instant it describes (the caller's mediaAt is
+//   the plain display map, the user's offset its only trim, never the latency or the main axis's
+//   compensation) and sent between the grant's latency plus OSC_FLOOR_MS (transport and clock error) and
+//   plus OSC_MARGIN_MS ahead, never past OSC_CAP_MS (the 250 ms lead cap less clock error). A point nearer
+//   than that is never sent.
+// - Without mediaAt (pause, seek, stop, Motion off) nothing is sent and the stream goes quiet. Points
+//   already sent run out; a restart continues after them.
 
 import { posAt, OSC_AXES } from './funscript.js';
 
-export const OSC_ROLE = 'osc.drive', OSC_LEAD_MS = 100, NO_STREAM = 'NO_STREAM';
+export const OSC_ROLE = 'osc.drive', OSC_FLOOR_MS = 20, OSC_MARGIN_MS = 70, OSC_CAP_MS = 230, NO_STREAM = 'NO_STREAM';
 
 export const hasOsc = (script) => !!(script && script.axes && OSC_AXES.some((id) => script.axes[id]));
 
@@ -40,13 +43,12 @@ export function createOsc({ submit, now = () => performance.now() }) {
     /** Once per frame: mediaAt while the main axis plays, else null. */
     tick(script, mediaAt) {
       if (!hasOsc(script)) { absent = false; return; }
-      const p = now();
-      if (mediaAt && next != null && next > p + OSC_LEAD_MS / 2) return;
       let r = submit([]);
       absent = r.reason === NO_STREAM;
       if (!mediaAt || !r.ok || !(r.rateHz > 0)) return;
-      const step = 1000 / r.rateHz;
-      let list = oscSamples(script.axes, Math.max(p, next ?? p), step, p + OSC_LEAD_MS, mediaAt);
+      const p = now(), step = 1000 / r.rateHz, lat = r.latencyMs || 0;
+      let list = oscSamples(script.axes, Math.max(p + lat + OSC_FLOOR_MS, next ?? -Infinity), step,
+        p + Math.max(lat + OSC_FLOOR_MS, Math.min(lat + OSC_MARGIN_MS, OSC_CAP_MS)), mediaAt);
       while (list.length) {
         r = submit(list);
         if (!r.ok || !r.sent) break;

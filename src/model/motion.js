@@ -424,12 +424,15 @@ export function createMotionDoor(deps) {
    * atMs the now() instant each sample describes (SPEC 5.4), ascending; values in layout order, a missing
    * tail at `unspecified`. Sends one bundle (bundle_max_span_ms, bundle_max_samples, one
    * min_transport_payload); `sent` counts the leading items packed, so the caller advances by it.
+   * `latencyMs` is the grant's schedule_latency_us: the least notice a point needs (RFC-110 item 4).
    *
    * Constraints:
    * - Never motion input: the role's entry carries no input.target and owns no rail; nothing falls back.
    * - The hub has no such entry: reason NO_STREAM, the caller's to word.
-   * - Stamp = described instant minus the grant's schedule_latency_us (RFC-059), as the segments door.
-   * @returns {{ok: boolean, sent: number, rateHz?: number, reason?: string}}
+   * - Stamp = the described instant, never less the latency (RFC-110 item 4, least notice): the caller
+   *   sends each point at least latencyMs ahead, and that send-ahead is the whole lead.
+   * - Nothing past the lead cap (max_future_schedule_ms) is packed: it waits for a later call.
+   * @returns {{ok: boolean, sent: number, rateHz?: number, latencyMs?: number, reason?: string}}
    */
   submit.samples = function (role, list) {
     const held = deps.halted ? deps.halted() : '';
@@ -441,23 +444,25 @@ export function createMotionDoor(deps) {
     const grant = grantFor(s, { entry });
     if (grant === 'refused') return { ok: false, sent: 0, reason: 'publish refused' };
     if (grant === 'pending') return { ok: false, sent: 0, reason: 'waiting for the stream grant' };
-    const rateHz = grant.rate, layout = entry.layout || [];
-    if (!list || !list.length) return { ok: true, sent: 0, rateHz };
-    const hubNow = filteredHubNowUs(s), p = now(), lat = grant.scheduleLatencyUs || 0;
-    const stamps = list.map((x) => (x && Number.isFinite(x.atMs) ? Math.round(hubNow + (x.atMs - p) * 1000 - lat) : NaN));
+    const rateHz = grant.rate, latencyMs = (grant.scheduleLatencyUs || 0) / 1000, layout = entry.layout || [];
+    if (!list || !list.length) return { ok: true, sent: 0, rateHz, latencyMs };
+    const hubNow = filteredHubNowUs(s), p = now();
+    const stamps = list.map((x) => (x && Number.isFinite(x.atMs) ? Math.round(hubNow + (x.atMs - p) * 1000) : NaN));
     if (list.some((x, i) => !x || !Array.isArray(x.values) || x.values.length > layout.length || !x.values.every(Number.isFinite)
-      || !Number.isFinite(stamps[i]) || (i && stamps[i] <= stamps[i - 1]))) return { ok: false, sent: 0, reason: 'bad sample', rateHz };
+      || !Number.isFinite(stamps[i]) || (i && stamps[i] <= stamps[i - 1]))) return { ok: false, sent: 0, reason: 'bad sample', rateHz, latencyMs };
     const maxN = Math.min(LIMITS.bundle_max_samples,
       Math.floor((LIMITS.min_transport_payload - BUNDLE_HEAD) / (2 + recordBytes(layout))));
     let n = 0;
-    while (n < list.length && n < maxN && stamps[n] - stamps[0] <= LIMITS.bundle_max_span_ms * 1000) n++;
+    while (n < list.length && n < maxN && stamps[n] - stamps[0] <= LIMITS.bundle_max_span_ms * 1000
+      && stamps[n] - hubNow <= LIMITS.max_future_schedule_ms * 1000) n++;
+    if (!n) return { ok: true, sent: 0, rateHz, latencyMs };
     const recs = list.slice(0, n).map((x) => Object.fromEntries(layout.map((f, i) => [f.name, i < x.values.length ? x.values[i] : unspecified(f)])));
     try {
       s.publishSamples(entry.id, recs, { anchor: stamps[0] >>> 0, offsetsUs: stamps.slice(0, n).map((t) => t - stamps[0]) });
     } catch (e) {
-      return { ok: false, sent: 0, reason: e.code || e.message, rateHz };
+      return { ok: false, sent: 0, reason: e.code || e.message, rateHz, latencyMs };
     }
-    return { ok: true, sent: n, rateHz };
+    return { ok: true, sent: n, rateHz, latencyMs };
   };
 
   return submit;

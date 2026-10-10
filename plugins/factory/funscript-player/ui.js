@@ -377,7 +377,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       observePlan();
     } else if (state.phase === 'ready' && now() >= homeAt) goHome();
     if (osc) osc.tick(state.script, state.phase === 'playing' && state.motion && clock.ready && !buffering && !video.seeking
-      ? (w) => fold(clock.mediaAt(w - state.T.offsetMs + scheduler.compMs)) : null);
+      ? (w) => fold(clock.mediaAt(w - state.T.offsetMs)) : null);
     if (state.phase === 'playing' && !video.seeking && loop.due(video.currentTime * 1000)) {
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;

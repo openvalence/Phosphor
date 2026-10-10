@@ -746,7 +746,8 @@ console.log('(e3) role door: a samples STREAM by channel role');
     && s.asked.length === 1 && s.asked[0][0][0] === 0x7140 && s.asked[0][0][1] === 100);
   await tick();
   const w = d.samples(ROLE_OSC, []);
-  ok('an empty list warms: ok, sent 0, the granted rate', w.ok && w.sent === 0 && w.rateHz === 50 && !s.sent.length);
+  ok('an empty list warms: ok, sent 0, the granted rate and its latency (the least notice, RFC-110 item 4)',
+    w.ok && w.sent === 0 && w.rateHz === 50 && w.latencyMs === 2 && !s.sent.length);
   ok('a bad sample is refused whole', d.samples(ROLE_OSC, [smp(0, NaN, 0)]).reason === 'bad sample'
     && d.samples(ROLE_OSC, [smp(20, 0, 0), smp(0, 0, 0)]).reason === 'bad sample'
     && d.samples(ROLE_OSC, [{ atMs: T, values: [0, 0, 0] }]).reason === 'bad sample' && d.samples(ROLE_OSC, [null]).reason === 'bad sample' && !s.sent.length);
@@ -755,10 +756,14 @@ console.log('(e3) role door: a samples STREAM by channel role');
   const b = s.sent[0];
   ok('one bundle within bundle_max_span_ms (20 ms): three samples at 10 ms', r.ok && r.sent === 3 && b.recs.length === 3
     && b.offs.join() === '0,10000,20000' && LIMITS.bundle_max_span_ms === 20, b && b.offs);
-  ok('stamp = the described instant minus schedule_latency_us', b.anchor === H + 100_000 - 2000, b.anchor);
+  ok('stamp = the described instant, never less the latency (no double lead, RFC-110 item 4)', b.anchor === H + 100_000, b.anchor);
   ok('values in layout order, by the catalog names', b.recs[1].p === 0.1 && b.recs[1].q === 0.9 && b.ch === 0x7140);
   d.samples(ROLE_OSC, [smp(5, 0.5)]);
   ok('a missing tail field rides unspecified (an f32 rides 0)', s.sent[1].recs[0].p === 0.5 && s.sent[1].recs[0].q === 0);
+  const capMs = LIMITS.max_future_schedule_ms;
+  const far = d.samples(ROLE_OSC, [smp(capMs - 10, 1, 1), smp(capMs, 1, 1), smp(capMs + 10, 1, 1)]);
+  ok('nothing past the lead cap is packed: it waits', far.ok && far.sent === 2 && s.sent[2].recs.length === 2
+    && d.samples(ROLE_OSC, [smp(capMs + 10, 1, 1)]).sent === 0 && s.sent.length === 3);
 }
 
 // ---- (i) the producer lock (ph-smvd.2) -------------------------------------

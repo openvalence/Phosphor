@@ -64,7 +64,7 @@ const CONTRACT = {
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
   [P + 'axes.js']: ['oscFiles', 'withAxes'],
-  [P + 'osc.js']: ['OSC_ROLE', 'OSC_LEAD_MS', 'NO_STREAM', 'hasOsc', 'oscSamples', 'createOsc'],
+  [P + 'osc.js']: ['OSC_ROLE', 'OSC_FLOOR_MS', 'OSC_MARGIN_MS', 'OSC_CAP_MS', 'NO_STREAM', 'hasOsc', 'oscSamples', 'createOsc'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
     'createMotionDoor', 'bundleHead', 'motionStream', 'roleStream'],
   '../src/model/actions.js': ['railOwners', 'railOwnerName', 'railOwned'],
@@ -357,8 +357,10 @@ if (UNIT || fails) {
 //              moving the card; a change there reads back in the Plugins
 //              pane and the reverse; open/closed persists ([--shots <dir>])
 //   osc        (o) V8/V9 sibling files publish the osc.drive STREAM found by role at the granted
-//              rate, values following the axes at the main axis's time, nothing after a pause;
-//              two lanes under the detail; a hub without the role: one status line, no stream
+//              rate, each stamp the instant its script time shows and sent at least the grant's
+//              156 ms latency ahead (one lead, RFC-110 item 4), no INTENT written (osc.enabled
+//              never set), nothing after a pause; two lanes under the detail; a hub without the
+//              role: one status line, no stream
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
@@ -409,6 +411,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 const PAUSE_BIT = 0x08;   // registry: safety word bit3
 const LAT_US = 1000;      // the fake grant's schedule_latency_us (valencesim, measured)
+const OSC_LAT_US = 156000;   // the osc-drive grant's: Nucleus kOscDriveLeadUs, the least notice (RFC-110 item 4)
 const HORIZON_MS = 250;
 const KEY = 'test-key-1';
 // Fixture channel ids, test-side only (registry.yaml / valencesim catalog).
@@ -528,7 +531,7 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
             const ch = w.get(K.channel_id);
             hub.publishes.push({ ch, rate: w.get(K.rate_hz) });
             const pairs = [[K.granted_rate_hz, cbF32(Math.min(w.get(K.rate_hz), 50))], [K.channel_id, cbUint(ch)],
-              [K.schedule_latency_us, cbUint(LAT_US)]];
+              [K.schedule_latency_us, cbUint(ch === 0x2140 ? OSC_LAT_US : LAT_US)]];
             if (ch === CH.segments) pairs.push([K.schedule_horizon_ms, cbUint(horizonMs)]);
             pubs.push(cbMap(pairs));
           }
@@ -540,10 +543,10 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           const n = dv.getUint8(4);
           const base = unwrap(dv.getUint32(0, true), arrival);
           const size = (payload.length - 6 - 2 * n) / n;
-          if (e.role === 'osc.drive') {   // samples kind: t_off in us, the stamp the instant described
+          if (e.role === 'osc.drive') {   // samples kind: t_off in us; the stamp is the instant it lands (RFC-110 item 4)
             for (let i = 0; i < n; i++) {
               const r = decodePacked(payload.subarray(6 + 2 * n + size * i, 6 + 2 * n + size * (i + 1)), e.layout);
-              hub.osc.push({ exec: base + dv.getUint16(6 + 2 * i, true) + LAT_US, amp: r[e.layout[0].name], freq: r[e.layout[1].name], arrival, n });
+              hub.osc.push({ at: base + dv.getUint16(6 + 2 * i, true), amp: r[e.layout[0].name], freq: r[e.layout[1].name], arrival, n });
             }
             continue;
           }
@@ -877,26 +880,31 @@ if (!LIVE && !STASH_LIVE) {
     const pubs = hub.publishes.filter((p) => p.ch === 0x2140);
     ok('osc: the osc.drive grant asked once at the entry rate', pubs.length === 1 && pubs[0].rate === 50, pubs);
     const S = hub.osc.filter((x) => x.arrival <= t0);
-    const gaps = S.slice(1).map((x, i) => x.exec - S[i].exec);
+    const gaps = S.slice(1).map((x, i) => x.at - S[i].at);
     ok('osc: samples at the granted 50 Hz (every 20 ms, ascending)', S.length >= 100 && Math.abs(median(gaps) - 20000) <= 1000 && gaps.every((g) => g > 0),
       { n: S.length, gap: median(gaps), min: Math.min(...gaps) });
     ok('osc: at most a 20 ms span per bundle', S.every((x) => x.n <= 2));
     ok('osc: each sample is V8 and V9 at one script time (they sum to 1)', S.every((x) => Math.abs(x.amp + x.freq - 1) < 1e-3));
-    // The script time a sample describes: the clock's observed display of media m, at the instant the sample executes.
+    // The script time a sample describes: the clock's observed display of media m at the sample's stamp.
     const mediaAt = (e) => { let b = null; for (const o of obs) if (!b || Math.abs(o.d - e) < Math.abs(b.d - e)) b = o; return b && Math.abs(b.d - e) < 200 ? b.m + (e - b.d) : NaN; };
     // Signed, script ms: the page's hub clock estimate (within 25 ms, timing above) and the frame grid ride in it.
     // The first 500 ms are left out: samples already sent cannot be superseded when the fresh clock map steps.
-    const err = S.filter((x) => x.exec >= S[0].exec + 500000).map((x) => [x.amp, mediaAt(x.exec / 1000)])
+    const err = S.filter((x) => x.at >= S[0].at + 500000).map((x) => [x.amp, mediaAt(x.at / 1000)])
       .filter(([, m]) => Number.isFinite(m)).map(([a, m]) => a * CLIP_S * 1000 - m);
-    // A clock step (a 30 fps frame, 33 ms) leaves up to the 100 ms lead already sent on the old map.
-    const q = [...err].sort((a, b) => a - b), pct = (p) => q[Math.floor(p * (q.length - 1))];
-    ok('osc: V8 follows the main axis time (median within 30 ms, 80 % within a 10 ms band, all within 70 ms)', err.length >= 80
-      && Math.abs(median(err)) <= 30 && pct(0.9) - pct(0.1) <= 10 && Math.max(...err.map(Math.abs)) <= 70,
-      { n: err.length, median: Math.round(median(err)), p10: Math.round(pct(0.1)), p90: Math.round(pct(0.9)), min: Math.round(q[0]), max: Math.round(q[q.length - 1]) });
-    ok('osc: led by at most 100 ms plus transport', S.every((x) => x.exec - x.arrival <= 130000), Math.round(Math.max(...S.map((x) => x.exec - x.arrival)) / 1000));
+    // A clock step (a 30 fps frame, 33 ms) leaves the send-ahead already out (up to 226 ms) on the old map.
+    const near0 = err.filter((e) => Math.abs(e - median(err)) <= 5).length / err.length;
+    ok('osc: one lead: each stamp is the instant its script time shows, neither less the latency nor the media delayed (median within 10 ms of 0, not 156; 70 % within 5 ms of it, all within 70 ms)',
+      err.length >= 80 && Math.abs(median(err)) <= 10 && near0 >= 0.7 && Math.max(...err.map(Math.abs)) <= 70,
+      { n: err.length, median: Math.round(median(err)), near: Math.round(near0 * 100) + ' %', min: Math.round(Math.min(...err)), max: Math.round(Math.max(...err)) });
+    // Arrival notice is the send-ahead (latency + 20 ms at least) less the routed socket's transport, which spikes on a busy host.
+    const qa = S.map((x) => (x.at - x.arrival) / 1000).sort((x, y) => x - y), p10 = qa[Math.floor(0.1 * (qa.length - 1))];
+    ok('osc: sent at least the grant\'s 156 ms latency ahead of each stamp (90 % arriving so, none 60 ms short) and within the 250 ms lead cap',
+      p10 >= OSC_LAT_US / 1000 && qa[0] >= OSC_LAT_US / 1000 - 60 && qa.at(-1) <= 250,
+      { min: Math.round(qa[0]), p10: Math.round(p10), max: Math.round(qa.at(-1)), short: qa.filter((x) => x < OSC_LAT_US / 1000).length + ' of ' + qa.length });
+    ok('osc: the player writes nothing to the oscillator (no INTENT at all, osc.enabled never set)', hub.intents.length === 0, hub.intents);
     const late = hub.osc.filter((x) => x.arrival > tPause + 40000);
-    ok('osc: a pause stops it (nothing arrives after; the quiet release fades it)', late.length === 0
-      && hub.osc.every((x) => x.exec <= tPause + 130000), late.length);
+    ok('osc: a pause stops it (nothing arrives after; the stream goes quiet)', late.length === 0
+      && hub.osc.every((x) => x.at <= tPause + 250000), late.length);
     ok('osc: the main axis still rides its segments STREAM', hub.bundles.filter((b) => b.ch === CH.segments).length > 3, hub.bundles.length);
     ok('osc: no status line', !/oscillator/i.test(await statusText(page)), await statusText(page));
     ok('osc: no page error', errors.length === 0, errors.slice(0, 3));
@@ -1784,8 +1792,8 @@ if (!LIVE) {
   ok('open: Open video and Open script on the empty stage and in the head or its Media menu, none in the library (PR3)',
     !openWhere.some((x) => /fsp-lib|Open files/.test(x)) && openWhere.filter((x) => /fsp-empty/.test(x)).length === 2, openWhere);
   const accept = await page.evaluate((c) => [...document.querySelectorAll(c + ' input[type=file]')].map((f) => f.accept + (f.multiple ? ' *' : '')), C);
-  ok('open: Open video takes video, the webview\'s audio types (never audio/*: MIDI) and .funscript; Open script only .funscript',
-    accept.length === 2 && /^video\/\*,/.test(accept[0]) && !/audio\/\*/.test(accept[0]) && /\.funscript \*$/.test(accept[0]) && accept[1] === '.funscript', accept);
+  ok('open: Open video takes video, the webview\'s audio types (never audio/*: MIDI) and .funscript; Open script only .funscript, several (the V8/V9 siblings, ph-6dr6)',
+    accept.length === 2 && /^video\/\*,/.test(accept[0]) && !/audio\/\*/.test(accept[0]) && /\.funscript \*$/.test(accept[0]) && accept[1] === '.funscript *', accept);
 
   ok('load: a local clip and its script enable Play', await loadClip(page));
   await page.waitForTimeout(500);

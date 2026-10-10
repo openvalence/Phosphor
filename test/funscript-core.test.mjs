@@ -20,7 +20,7 @@ import {
   MAX_SPAN_MS, MAX_ACTIONS, AXES, OSC_AXES, parseFunscript, axisOf, pairFiles, posAt, indexAfter, speedAt, peakSpeed, thin, heat, fmtTime,
 } from '../plugins/factory/funscript-player/funscript.js';
 import { oscFiles, withAxes } from '../plugins/factory/funscript-player/axes.js';
-import { oscSamples, createOsc, hasOsc, OSC_LEAD_MS, NO_STREAM } from '../plugins/factory/funscript-player/osc.js';
+import { oscSamples, createOsc, hasOsc, OSC_FLOOR_MS, OSC_MARGIN_MS, OSC_CAP_MS, NO_STREAM } from '../plugins/factory/funscript-player/osc.js';
 import { SCALE, cleanScale, wire, fitMap, mapOf } from '../plugins/factory/funscript-player/scale.js';
 
 let fails = 0;
@@ -261,33 +261,41 @@ console.log('multi-axis');
   ok('resample: held flat outside the actions; stops where the map has no time',
     oscSamples(axes, 0, 10, 10, () => 5000)[0].values[0] === 1 && oscSamples(axes, 0, 10, 50, (w) => (w < 25 ? w : NaN)).length === 3);
 
+  // RFC-110 item 4: the grant's latency is the least notice; the send-ahead is the one lead.
   let now = 1000, calls = [];
-  const hub = { rate: 50, missing: false, n: 4 };
+  const hub = { rate: 50, lat: 156, missing: false, n: 3 };
   const submit = (list) => {
     if (hub.missing) { calls.push(list); return { ok: false, sent: 0, reason: NO_STREAM }; }
     const n = Math.min(list.length, hub.n);
     calls.push(list.slice(0, n));
-    return { ok: true, sent: n, rateHz: hub.rate };
+    return { ok: true, sent: n, rateHz: hub.rate, latencyMs: hub.lat };
   };
   const o = createOsc({ submit, now: () => now });
   const sc = { axes };
+  const sentNow = () => calls.filter((l) => l.length).flat();
   o.tick(sc, (w) => w);
-  const sent = calls.filter((l) => l.length).flat();
-  ok('playing: the lead (' + OSC_LEAD_MS + ' ms) at the granted rate, in bundles of what the host takes',
-    sent.length === OSC_LEAD_MS / 20 + 1 && sent[0].atMs === 1000 && sent[sent.length - 1].atMs === 1100 && calls.filter((l) => l.length).length === 2);
+  let sent = sentNow();
+  ok('playing: points from now + the latency + ' + OSC_FLOOR_MS + ' ms to the latency + ' + OSC_MARGIN_MS + ' ms at the granted rate, in bundles the host takes; none nearer',
+    OSC_FLOOR_MS === 20 && sent.length === 3 && sent[0].atMs === 1176 && sent[2].atMs === 1216 && calls.filter((l) => l.length).length === 1, sent.map((x) => x.atMs));
+  ok('each point stamped at the instant it describes (its values at mediaAt(atMs), no shift)', sent.every((x) => near(x.values[0], posAt(axes.V8, x.atMs), 1e-6)));
   calls = []; now += 20;
   o.tick(sc, (w) => w);
-  ok('refilled only under half the lead: nothing at 20 ms', calls.length === 0);
-  now += 60;
-  o.tick(sc, (w) => w);
-  const more = calls.filter((l) => l.length).flat();
-  ok('then it continues the cursor, never resending', more[0].atMs === 1120 && more[more.length - 1].atMs <= now + OSC_LEAD_MS);
+  sent = sentNow();
+  ok('every frame continues the cursor, never resending, never nearer than the latency',
+    sent.length === 1 && sent[0].atMs === 1236 && sent.every((x) => x.atMs - now >= hub.lat + OSC_FLOOR_MS && x.atMs - now <= hub.lat + OSC_MARGIN_MS), sent.map((x) => x.atMs));
   calls = []; now += 1000;
   o.tick(sc, null);
   ok('paused: only the empty probe, nothing sent', calls.length === 1 && calls[0].length === 0);
   calls = [];
   o.tick(sc, (w) => w);
-  ok('a restart after the tail ran out begins at now', calls.filter((l) => l.length).flat()[0].atMs === now);
+  ok('a restart after the tail ran out begins at now + the latency + the floor', sentNow()[0].atMs === now + hub.lat + OSC_FLOOR_MS);
+  hub.lat = 240; calls = []; now += 1000;
+  o.tick(sc, (w) => w);
+  ok('a latency near the cap: the cap bounds the margin, never the latency', sentNow().length >= 1
+    && sentNow().every((x) => x.atMs - now >= 240 + OSC_FLOOR_MS && x.atMs - now <= Math.max(240 + OSC_FLOOR_MS, OSC_CAP_MS)) && OSC_CAP_MS < 250);
+  hub.lat = 0; calls = []; now += 1000;
+  o.tick(sc, (w) => w);
+  ok('no declared latency: from now + the floor to the margin', sentNow()[0].atMs === now + OSC_FLOOR_MS && sentNow().at(-1).atMs <= now + OSC_MARGIN_MS);
   hub.missing = true;
   o.tick(sc, null);
   ok('the hub offers no osc.drive: absent', o.absent);

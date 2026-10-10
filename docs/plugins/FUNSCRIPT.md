@@ -132,7 +132,7 @@ controller tick (once per animation frame)
  -> oscSamples: V8, V9 by posAt at mediaAt(w), every 1000/rate ms of wall time
  -> api.submitSamples('osc.drive', [{atMs, values: [amplitude, frequency]}])
  -> motion.js door.samples          latch, STREAM by channel role, lazy grant,
-                                    described instant -> hub stamp, one bundle
+                                    the described instant is the stamp, one bundle
  -> session.publishSamples          <= 20 ms span, <= 32 samples
 ```
 
@@ -140,20 +140,27 @@ controller tick (once per animation frame)
   as authored (`pos / 100`). The hub maps each through its own parameter's
   bounds where that parameter's drive is `axis`. An axis the script lacks
   rides 0.
-- Nothing else of the oscillator is written from a script: shape stays the
-  hub's (sine for scripts, SPEC 9.7), no enable, bounds or drive.
+- Nothing else of the oscillator is written, `osc.enabled` included: the
+  hub renders by itself while the stream is live and a drive is `axis`,
+  and hands back to the card's values when it goes quiet or the session
+  ends (RFC-110 items 1, 2, draft; Nucleus 0.1.37). Shape stays the hub's
+  (a driven oscillator is a sine), no bounds or drive.
 - Rate: the grant's (`granted_rate_hz`, asked at the entry's `max_rate`).
   The actions are interpolated linearly to it.
-- Timing: a sample describes the instant the main axis plays the same
-  script time: `mediaAt(w)` is the clock map with the offset and the
-  latency compensation, as the trace reads it. The host stamps it minus
-  the grant's `schedule_latency_us`. Lead 100 ms (half the samples lead
-  cap), refilled under 50 ms. Samples already sent cannot be superseded: in
-  the first ~500 ms after Play a clock step leaves them up to ~60 ms off;
-  after it they sit within 1 ms (test (o)).
-- Pause, seek, a stop, a gate and Motion off send nothing; the hub's quiet
-  release (`stream_quiet_release_ms`) reads the driven parameters as 0. The
-  100 ms already sent runs out first.
+- Timing, one lead (RFC-110 item 4): each point is stamped at the instant
+  it describes, `mediaAt(w)` being the plain display map with the user's
+  offset as its only trim (never the main axis's latency compensation),
+  and sent between the grant's `schedule_latency_us` plus 20 ms and plus
+  70 ms ahead (`OSC_FLOOR_MS`, `OSC_MARGIN_MS`), never past 230 ms (the
+  250 ms lead cap less clock error). The latency is the least notice a
+  point needs to land on its stamp (Nucleus `kOscDriveLeadUs`, 156 ms);
+  that send-ahead is the whole lead, and the media is never delayed by it.
+  Samples already sent cannot be superseded: a clock step (one dropped
+  frame) leaves up to the send-ahead on the old map, ~33 ms off; otherwise
+  they sit within 1 ms (test (o)).
+- Pause, seek, a stop, a gate and Motion off send nothing; the stream goes
+  quiet (`stream_quiet_release_ms` past the newest stamp) and the hub hands
+  back to the card's values. What was already sent runs out first.
 - No `osc.drive` on the hub: the axes are ignored and the status reads
   `This machine has no oscillator input`.
 
@@ -161,8 +168,9 @@ controller tick (once per animation frame)
 window with its playhead, 0..1 bottom to top, untransformed. The detail
 gives up their height: the timeline box never changes. No axis, no lane.
 
-Owed: the end-to-end check on Nucleus (val-o9r builds the hub side) on
-Neutrino. A per-scene "ignore the oscillator axes" setting (operator
+Owed: the end-to-end check on Nucleus 0.1.37 (val-o9r, the hub side) on
+Neutrino; the browser test runs on a fixture entry mirroring it. A per-scene
+"ignore the oscillator axes" setting (operator
 2026-10-09: allowed, default off) is not built.
 
 ## Interpolation
@@ -1346,9 +1354,11 @@ Decisions (veto-able):
   decoded) and the fake Stash; media generated at run time (no media file
   committed). Asserts: the claim on the fixture and the decline without a
   segments STREAM; (o) V8/V9 siblings publish the fixture's added
-  `osc.drive` STREAM at the grant rate, each sample at the main axis's
-  script time, nothing after a pause, two lanes, and without the role one
-  status line and no stream (`--osc` runs (o) alone); nothing sent before Play; preroll then video start;
+  `osc.drive` STREAM (Nucleus 0.1.37's entry, its grant at 156 ms latency)
+  at the grant rate, each stamp the instant its script time shows and sent
+  at least the latency ahead, no INTENT written, nothing after a pause, two
+  lanes, and without the role one status line and no stream (`--osc` runs
+  (o) alone); nothing sent before Play; preroll then video start;
   every start within half the horizon of its send; starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
