@@ -79,7 +79,7 @@
   import { formatValue, unitOf, labelFor } from '../../model/format.js';
   import { heroBar } from './heroBar.svelte.js';
   import { still, isStill } from '../still.svelte.js';
-  import { ACCENT, ac } from '../../model/theme.js';
+  import { ACCENT, ac, onTheme } from '../../model/theme.js';
   import { norm, travelBounds } from '../../model/bounds.js';
   import { createTelebuf, createTrail, createRenderClock } from './telebuf.js';
   import { deferring } from '../defer.js';
@@ -366,6 +366,10 @@
   const velTele = createTelebuf();
   let posTeleChannel = null;
   let velTeleChannel = null;
+  // The render loop runs on demand (ph-3w4u): a NEW value wakes it, never an
+  // arrival alone (a hub may republish a parked position); see the loop below.
+  let wake = () => {};
+  let posLast, velLast, targetLast;
 
   // ONE render-delay clock shared by pos/vel/target (see telebuf.js's header
   // for why raw "now" jitters against irregular arrival). Fed from `pos`'s
@@ -377,24 +381,30 @@
   $effect(() => {
     const f = pos;
     if (!f) return;
-    if (posTeleChannel !== f.channelId) { posTele.reset(); posTeleChannel = f.channelId; renderClock.reset(); }
+    if (posTeleChannel !== f.channelId) { posTele.reset(); posTeleChannel = f.channelId; renderClock.reset(); posLast = undefined; }
     const ts = machine.sampleTs[f.channelId];
     const s = machine.samples[f.channelId];
     if (ts && s) {
       const v = displayValue(f, s);
-      if (typeof v === 'number' && isFinite(v)) { posTele.push(v, ts); renderClock.noteArrival(ts); }
+      if (typeof v === 'number' && isFinite(v)) {
+        posTele.push(v, ts); renderClock.noteArrival(ts);
+        if (v !== posLast) { posLast = v; wake(); }
+      }
     }
   });
 
   $effect(() => {
     const f = vel;
     if (!f) return;
-    if (velTeleChannel !== f.channelId) { velTele.reset(); velTeleChannel = f.channelId; }
+    if (velTeleChannel !== f.channelId) { velTele.reset(); velTeleChannel = f.channelId; velLast = undefined; }
     const ts = machine.sampleTs[f.channelId];
     const s = machine.samples[f.channelId];
     if (ts && s) {
       const v = displayValue(f, s);
-      if (typeof v === 'number' && isFinite(v)) velTele.push(v, ts);
+      if (typeof v === 'number' && isFinite(v)) {
+        velTele.push(v, ts);
+        if (v !== velLast) { velLast = v; wake(); }
+      }
     }
   });
 
@@ -407,12 +417,15 @@
   $effect(() => {
     const f = target;
     if (!f) return;
-    if (targetTeleChannel !== f.channelId) { targetTele.reset(); targetTeleChannel = f.channelId; }
+    if (targetTeleChannel !== f.channelId) { targetTele.reset(); targetTeleChannel = f.channelId; targetLast = undefined; }
     const ts = machine.sampleTs[f.channelId];
     const s = machine.samples[f.channelId];
     if (ts && s) {
       const v = displayValue(f, s);
-      if (typeof v === 'number' && isFinite(v)) targetTele.push(v, ts);
+      if (typeof v === 'number' && isFinite(v)) {
+        targetTele.push(v, ts);
+        if (v !== targetLast) { targetLast = v; wake(); }
+      }
     }
   });
 
@@ -453,6 +466,21 @@
   // below, which reads this on every frame.
   const reducedMotion = $derived(still.on);
 
+  // The rest of what a frame reads: the value-to-screen map, the motion
+  // preference and the model's freshness (derived, so only a flip wakes).
+  const posLive = $derived(!!pos && freshness(pos.channelId)?.stale === false);
+  const targetLive = $derived(!!target && freshness(target.channelId)?.stale === false);
+  $effect(() => {
+    void lo; void hi; void flipped; void span; void reducedMotion; void posLive; void targetLive;
+    wake();
+  });
+
+  // ON DEMAND (ph-3w4u): a frame runs on wake() and asks for the next only
+  // while something it shows still changes; SETTLE_MS of stillness (past the
+  // comet's 850 ms fade) puts the loop to sleep. Never draw every display
+  // refresh while nothing moves.
+  const SETTLE_MS = 1000;
+
   $effect(() => {
     if (!hostEl || !canvasEl) return;
 
@@ -460,6 +488,10 @@
     let dpr = 1, rectW = 0, rectH = 0;
     let rafId = 0;
     let lastFrameTs = 0;
+    let frameDt = 16.667;
+    let resumed = true;
+    let settleUntil = 0;
+    let pPos = null, pTarget = null, pSpeed = null, pFresh = false, pTargetFresh = false;
     let lastMoveAt = 0;
     let speedEma = 0;
     let velSmoothPxPerMs = 0;
@@ -473,6 +505,8 @@
     let censusFrames = 0;
     let censusHeld = 0;
     const trail = createTrail();
+    const cometX = new Float64Array(320);
+    const cometW = new Float64Array(320);
 
     function sizeCanvas() {
       const w = hostEl.clientWidth, h = hostEl.clientHeight;
@@ -500,8 +534,8 @@
 
     function drawComet(nowMs, midY, headHalf, glowActive) {
       const capacity = 320;
-      const px = new Float64Array(capacity);
-      const pw = new Float64Array(capacity);
+      const px = cometX;
+      const pw = cometW;
       let m = 0, runStart = 0, runDir = 0;
       ctx.globalCompositeOperation = 'source-over';
       ctx.setLineDash([]);
@@ -552,9 +586,13 @@
     const isFresh = (f) => { const fr = freshness(f.channelId); return !!fr && !fr.stale; };
 
     function draw(nowMs) {
+      rafId = 0;
+      // The first frame after a sleep takes the last real frame time: the
+      // sleep is not a frame, and must not reach the render clock or the census.
       let dtMs = nowMs - lastFrameTs;
-      if (dtMs <= 0 || dtMs > 500) dtMs = 16.667;
+      if (resumed || dtMs <= 0 || dtMs > 500) dtMs = frameDt; else frameDt = dtMs;
       lastFrameTs = nowMs;
+      if (resumed) { censusStart = 0; censusFrames = 0; censusHeld = 0; resumed = false; }
 
       // rAF hands us a DOMHighResTimeStamp — ms since performance.timeOrigin,
       // NOT since the Unix epoch. machine.sampleTs (and therefore every
@@ -608,7 +646,9 @@
         } else if (r.value != null) {
           speedPerSec = Math.abs(r.velPerMs) * 1000;
         }
-        speedEma += 0.2 * ((speedPerSec ?? 0) - speedEma);
+        // Lands exactly on its target, so a stopped rail settles and sleeps.
+        const sTo = speedPerSec ?? 0;
+        speedEma = Math.abs(sTo - speedEma) < span * 1e-6 ? sTo : speedEma + 0.2 * (sTo - speedEma);
         speedDisplay = fresh ? speedEma : null;
         const movingThreshold = span * 0.002; // 0.2%-of-span/s reads as "moving"
         if (fresh && speedEma > movingThreshold) lastMoveAt = nowMs;
@@ -681,17 +721,26 @@
         velSmoothPxPerMs = 0;
       }
 
-      rafId = requestAnimationFrame(draw);
+      if (posDisplay !== pPos || targetDisplay !== pTarget || speedDisplay !== pSpeed || fresh !== pFresh
+        || targetFresh !== pTargetFresh || moving) settleUntil = nowMs + SETTLE_MS;
+      pPos = posDisplay; pTarget = targetDisplay; pSpeed = speedDisplay; pFresh = fresh; pTargetFresh = targetFresh;
+      if (nowMs < settleUntil) rafId = requestAnimationFrame(draw);
+      else resumed = true;
     }
 
+    wake = () => { if (!rafId) rafId = requestAnimationFrame(draw); };
     sizeCanvas();
-    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(sizeCanvas) : null;
+    // A resize clears the canvas; a theme change recolors it.
+    const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(() => { sizeCanvas(); wake(); }) : null;
     if (ro) ro.observe(hostEl);
-    rafId = requestAnimationFrame(draw);
+    const offTheme = onTheme(() => wake());
+    wake();
 
     return () => {
+      wake = () => {};
       cancelAnimationFrame(rafId);
       if (ro) ro.disconnect();
+      offTheme();
     };
   });
 

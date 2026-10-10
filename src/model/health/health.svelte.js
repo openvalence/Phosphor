@@ -15,6 +15,9 @@
  *   (motion.js's hunt would end early).
  * - Lag, frame rate and freezes are not measured while the page is hidden: a
  *   hidden page's timers and frames are throttled by design.
+ * - The frame rate is a burst of FPS_FRAMES consecutive frames once a second,
+ *   never a callback every display frame: an idle page draws nothing, and the
+ *   burst still times what this display delivers to this page (ph-3w4u).
  * - Phase 1 has no hub-side arrival stamps (the Health roles RFC): NETWORK
  *   and HUB are "likely", CLIENT is decisive.
  */
@@ -69,13 +72,25 @@ const inWin = (a, from, to) => a.filter((x) => x.t >= from && x.t <= to);
 const vals = (a) => a.map((x) => x.v);
 
 // ---- device sampling ---------------------------------------------------------
-let frames = 0, fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
+const FPS_FRAMES = 6;
+let burst = null, fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
 const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 const heapMb = () => (globalThis.performance?.memory ? performance.memory.usedJSHeapSize / 1048576 : null);
 
+/** The last burst's frame rate; one still running a second on counts the frames it got in that time. */
+function burstFps(t) {
+  if (!burst) return null;
+  const a = burst.at, n = a.length;
+  return Math.round(n === FPS_FRAMES ? (n - 1) * 1000 / (a[n - 1] - a[0]) : n * 1000 / (t - burst.t0));
+}
+function startBurst(t) {
+  const b = { t0: t, at: [] };
+  const step = (ts) => { b.at.push(ts); if (b.at.length < FPS_FRAMES) requestAnimationFrame(step); };
+  burst = b;
+  requestAnimationFrame(step);
+}
+
 function installDeviceProbes() {
-  const raf = () => { frames++; requestAnimationFrame(raf); };
-  requestAnimationFrame(raf);
   // ponytail: a worker that closes itself is never counted down; terminate() is how this app ends one.
   const W = globalThis.Worker;
   if (W) globalThis.Worker = class extends W {
@@ -89,7 +104,8 @@ function installDeviceProbes() {
     } catch (e) { /* not on this engine: the card says not measured */ }
   }
   document.addEventListener('visibilitychange', () => {
-    if (visible()) { hiddenSince = null; wokeAt = now(); } else hiddenSince = now();
+    // A burst that spanned the hidden time timed the throttling, not the display.
+    if (visible()) { hiddenSince = null; wokeAt = now(); burst = null; } else hiddenSince = now();
     evaluateBackground();
   });
 }
@@ -498,8 +514,8 @@ function tick() {
   if (++tickN % 10) return;
 
   // Once a second.
-  fps = vis ? frames : null;
-  frames = 0;
+  fps = vis ? burstFps(t) : null;
+  if (vis && (!burst || burst.at.length === FPS_FRAMES)) startBurst(t);
   if (machine.stats.reconnects > lastReconnects) reconnectsAt.push(t);
   lastReconnects = machine.stats.reconnects;
   const sec = (a) => inWin(a, t - 1000, t);
