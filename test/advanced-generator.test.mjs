@@ -14,7 +14,8 @@
 
 import { buildSettingsModel, modTargetUid } from '../src/model/settings.js';
 import { claimRoles, ROLE, ADVGEN_SPEC } from '../src/model/roles.js';
-import { SLOT, pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount } from '../src/ui/widgets/roster.js';
+import { SLOT, pendingSlots, enumerateStore, storeOfRoster, rosterOfStore, rosterCount, slotHint, noteStoreOp } from '../src/ui/widgets/roster.js';
+import { STORE_OP } from '../../Valence/clients/js/generated/registry_vocab.js';
 import {
   PACKED, CHANNEL_CLASS, UI_RANK, VALUE_ASPECT, VALUE_SCOPE, ACCESS, NACK,
   BLOB_K, BlobError, BLOB_ERROR, cbMap, cbTstr, cbUint, decodeCatalog,
@@ -183,6 +184,45 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   const roster = { layout: [{ name: 'generation' }, { name: 'count' }, { name: 'capacity' }] };
   ok('rosterCount reads field 1 by position, null with no sample',
      rosterCount(roster, { generation: 5, count: 2, capacity: 24 }) === 2 && rosterCount(roster, undefined) === null);
+}
+{
+  // ph-2tjo: a hole below the last item is asked once, never again while the hint holds.
+  const big = { ...STORE, store: { ...STORE.store, capacity: 24 } };
+  let held = new Set([0, 2, 5]);
+  const asked = [];
+  const fetchHeld = ({ slot }) => { asked.push(slot);
+    return held.has(slot) ? Promise.resolve({ slot, generation: 1, bytes: itemBytes(slot, 'P' + slot) })
+      : Promise.reject(new BlobError(BLOB_ERROR.UNAVAILABLE, { ns: 1, storeId: 9, slot }, 'NACK')); };
+  const holes = () => asked.filter((x) => !held.has(x));
+  const known = slotHint('hub-a', 9);
+  const read = async (count) => { asked.length = 0; const out = []; await enumerateStore(fetchHeld, big,
+    { role: ACCESS.control, count, known, onSlot: (r) => { out[r.slot] = r.state; } }); return out; };
+  await read(3);
+  ok('cold: the holes below the last item are asked once', JSON.stringify(holes()) === '[1,3,4]', JSON.stringify(asked));
+  const again = await read(3);
+  ok('warm: a re-read asks only the slots last seen holding an item', JSON.stringify(asked) === '[0,2,5]', JSON.stringify(asked));
+  ok('warm: every other slot reads EMPTY unasked', again.length === 24 && again.filter((x) => x === SLOT.empty).length === 21);
+  held = new Set([0, 5, 7]);
+  const moved = await read(3);
+  ok('a stale hint still finds every item (another client moved one)', moved[7] === SLOT.item && moved[2] === SLOT.empty, JSON.stringify(asked));
+  await read(3);
+  ok('... and the next read asks only where the items are now', JSON.stringify(asked) === '[0,5,7]', JSON.stringify(asked));
+  ok('the hint is per hub and store', slotHint('hub-a', 9) === known && slotHint('hub-b', 9) !== known && slotHint('hub-a', 8) !== known);
+
+  // An own op moves the hint: delete empties its slot, save fills the slot the ECHO names.
+  const entries = [{ id: 0x7802, storeId: 9 }];
+  const op = { channelId: 0x7802, role: 'action.store', payload: [{ key: 2, role: 'store.slot' }, { key: 3, role: 'store.name' }] };
+  noteStoreOp(entries, op, STORE_OP.delete_item, { 2: 5 }, 'hub-a');
+  held.delete(5);
+  await read(2);
+  ok('after an own delete the re-read asks no hole', JSON.stringify(asked) === '[0,7]', JSON.stringify(asked));
+  noteStoreOp(entries, op, STORE_OP.save, { 2: 1, 3: 'new' }, 'hub-a');
+  held.add(1);
+  await read(3);
+  ok('after an own save the re-read asks no hole', holes().length === 0 && asked.includes(1), JSON.stringify(asked));
+  noteStoreOp(entries, op, STORE_OP.load, { 2: 4 }, 'hub-a');
+  noteStoreOp(entries, { ...op, channelId: 0x7803 }, STORE_OP.save, { 2: 4 }, 'hub-a');
+  ok('load, and a writer naming no store, leave the hint alone', !known.has(4));
 }
 {
   const roster = { id: 0x7801, cls: CHANNEL_CLASS.STATE, storeId: 9 };
