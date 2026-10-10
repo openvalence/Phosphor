@@ -1,7 +1,7 @@
 <script>
   /**
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
-   * 2026-10-02). Left: the activity heatmap and the hub name. Right: the
+   * 2026-10-02). Left: the channel heatmap and the hub name. Right: the
    * chips (phase, tier, rx, the render warning's held slot, fps), then the
    * shell's window buttons at the far end, shell only. The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
@@ -25,18 +25,17 @@
    *   (phase, rx) may wear the reality tone. No tooltip repeats its text
    *   (docs/COPY.md rule 4): the name carries one only while ellipsized.
    */
-  import { untrack } from 'svelte';
-  import { isStill } from './still.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
   import { sinceShort, hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
-  import { ac } from '../model/theme.js';
   import { phoneMenu } from './PhoneMenu.svelte';
+  import ChannelHeat from './ChannelHeat.svelte';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
-  let { shell: Shell = null } = $props();
+  // onheat(key): a heatmap block was clicked (ChannelHeat's onopen).
+  let { shell: Shell = null, onheat = null } = $props();
 
   /** Presentation only — every phase machine.link.phase can actually be. */
   const PHASE = {
@@ -87,8 +86,8 @@
   // the instrument for "position telemetry jitters in one shell but not the
   // other": fps is the WEBVIEW's frame cadence, held% is how often the render
   // instant outran the newest sample. Low fps blames the shell, a high held%
-  // at a healthy fps blames arrivals, which the position-rate heatmap row
-  // then shows directly. `--` until a rail is on screen and drawing. The bar
+  // at a healthy fps blames arrivals, which the heatmap's channel blocks
+  // then show directly. `--` until a rail is on screen and drawing. The bar
   // says fps; the held share and the clock skew show only when bad (held
   // over 10 %, skew over 2 ms), in a slot held for them; the rest is the tooltip.
   const render = $derived(machine.stats.render);
@@ -138,156 +137,6 @@
     set();
     return () => ro.disconnect();
   };
-
-  // ===========================================================================
-  // Activity heatmap — rows = live telemetry series discovered by ROLE, plus a
-  // link-activity row derived from protocol stats (never device knowledge:
-  // the roles are registry vocabulary and machine.stats is protocol-level).
-  // A machine that publishes none of the telemetry roles simply gets the one
-  // link-activity row — never a fabricated series.
-  // ===========================================================================
-  const heatRows = $derived.by(() => {
-    const rows = [];
-    const byRole = machine.catalog.model && machine.catalog.model.byRole;
-    if (byRole) {
-      // Two RATE rows before the magnitude rows: telemetry cadence is per
-      // channel, and "position stutters" is answered by seeing the position
-      // channel's own arrival rate next to another live channel's. Both
-      // decline when the machine does not publish the role.
-      const pos = byRole.get(ROLE.telemetryPosition);
-      if (pos && pos.length) rows.push({ key: 'pos-rate', kind: 'rate', label: 'position rate', field: pos[0] });
-      const plan = byRole.get(ROLE.planCurrent) || byRole.get(ROLE.planStart);
-      if (plan && plan.length) rows.push({ key: 'plan-rate', kind: 'rate', label: 'plan rate', field: plan[0] });
-      const vel = byRole.get(ROLE.telemetryVelocity);
-      if (vel && vel.length) rows.push({ key: 'vel', label: 'velocity', field: vel[0] });
-      const cur = byRole.get(ROLE.telemetryCurrent);
-      if (cur && cur.length) rows.push({ key: 'cur', label: 'current', field: cur[0] });
-      const pwr = byRole.get(ROLE.telemetryPowerBus);
-      if (pwr && pwr.length) rows.push({ key: 'pwr', label: 'bus power', field: pwr[0] });
-    }
-    rows.push({ key: 'link', kind: 'rate', label: 'link activity', field: null });
-    return rows;
-  });
-
-  const heatmapAriaLabel = $derived(
-    'Activity heatmap, last ~3 seconds. Rows: ' + heatRows.map((r) => r.label).join(', ') + '.'
-  );
-
-  const AG_COLS = 14, AG_CELL = 4, AG_GAP = 1;
-  let heatCanvas = $state(null);
-  // The tooltip names the row under the pointer.
-  let heatRow = $state(0);
-  const heatTip = $derived.by(() => {
-    const l = (heatRows[heatRow] || heatRows[0]).label;
-    return l[0].toUpperCase() + l.slice(1) + ', last 3 s: brighter is busier';
-  });
-
-  $effect(() => {
-    const rows = heatRows;             // establishes the reactive dependency
-    const canvas = heatCanvas;
-    if (!canvas || typeof window === 'undefined') return;
-
-    // A `let`, not a one-time const: this effect only re-runs when heatRows
-    // changes (rare, catalog-driven), so a mid-session preference flip must
-    // reach `tick()` (below, on its own setInterval) some other way — the
-    // media-query listener updates this closure variable live (T25).
-
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = AG_COLS * (AG_CELL + AG_GAP);
-    const cssH = rows.length * (AG_CELL + AG_GAP + 1);
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    canvas.style.width = cssW + 'px';
-    canvas.style.height = cssH + 'px';
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Bounded history buffer, newest column last.
-    let data = [];
-    for (let c = 0; c < AG_COLS; c++) data.push(rows.map(() => 0));
-
-    // Adaptive per-row ceilings: a field with a catalog-declared max scales
-    // against that (ground truth); a field with none — or the link-activity
-    // row, which has no "max" at all — scales against a slowly-decaying
-    // observed peak, so "fully lit" always means "near this row's own recent
-    // peak" rather than a guessed, device-specific number.
-    const peaks = {};
-    // untrack: see the note on the first paint below. This seed read is in the
-    // effect body itself, so tracking it re-runs the whole effect on every
-    // telemetry frame and the history buffer above never survives a tick.
-    const lastCount = untrack(() => {
-      const seed = {};
-      for (const r of rows) {
-        seed[r.key] = r.field
-          ? (machine.stats.pushesByChannel[r.field.channelId] || 0)
-          : machine.stats.statePushes;
-      }
-      return seed;
-    });
-
-    function sampleFrac(row) {
-      if (row.kind === 'rate') {
-        const cur = row.field
-          ? (machine.stats.pushesByChannel[row.field.channelId] || 0)
-          : machine.stats.statePushes;
-        const delta = Math.max(0, cur - (lastCount[row.key] || 0));
-        lastCount[row.key] = cur;
-        const ceiling = Math.max((peaks[row.key] || 1) * 0.995, delta, 1);
-        peaks[row.key] = ceiling;
-        return Math.min(1, delta / ceiling);
-      }
-      const sample = machine.samples[row.field.channelId];
-      const raw = sample ? sample[row.field.name] : null;
-      if (typeof raw !== 'number' || !isFinite(raw)) return 0;
-      const abs = Math.abs(raw);
-      let ceiling;
-      if (isFinite(row.field.max) && row.field.max > 0) {
-        ceiling = Math.abs(row.field.max);
-      } else {
-        ceiling = Math.max((peaks[row.key] || 0) * 0.995, abs, 1e-6);
-        peaks[row.key] = ceiling;
-      }
-      return Math.min(1, abs / ceiling);
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, cssW, cssH);
-      for (let c = 0; c < AG_COLS; c++) {
-        for (let r = 0; r < rows.length; r++) {
-          const v = data[c][r];
-          const a = Number((0.06 + v * 0.85).toFixed(2));
-          ctx.fillStyle = ac('r', a);
-          ctx.fillRect(c * (AG_CELL + AG_GAP), r * (AG_CELL + AG_GAP + 1), AG_CELL, AG_CELL);
-        }
-      }
-    }
-
-    function tick() {
-      const frame = rows.map(sampleFrac);
-      if (isStill()) {
-        // Freeze the scroll animation but keep painting current values: every
-        // column shows the same live reading instead of a moving history, so
-        // the grid holds still while still being honest about "now".
-        data = data.map(() => frame.slice());
-      } else {
-        data.shift();
-        data.push(frame);
-      }
-      draw();
-    }
-
-    // The first paint MUST be untracked. sampleFrac() reads machine.stats and
-    // machine.samples, and a read made synchronously inside an effect becomes
-    // that effect's dependency — so a tracked first tick re-runs this whole
-    // body on every telemetry frame, re-declaring `data` and refilling it with
-    // zeros ~25x a second. The grid still scrolls; it just has no history left
-    // to scroll, so every column but the newest reads empty. The interval's
-    // own ticks are untracked by construction (async, outside the scope).
-    untrack(tick);
-    const id = setInterval(tick, 220);
-    return () => { clearInterval(id); };
-  });
 </script>
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
@@ -301,8 +150,7 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
       </button>
     {/if}
-    <canvas bind:this={heatCanvas} class="act-grid" role="img" aria-label={heatmapAriaLabel} title={heatTip}
-            onpointermove={(e) => (heatRow = Math.min(heatRows.length - 1, Math.floor(e.offsetY / (AG_CELL + AG_GAP + 1))))}></canvas>
+    <ChannelHeat onopen={onheat} />
     <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
   </div>
 
@@ -403,12 +251,6 @@
     min-width: 6ch;
   }
 
-  .act-grid {
-    image-rendering: pixelated;
-    flex: 0 0 auto;
-    border-radius: 1px;
-  }
-
   /* OG .wordmark: Chakra Petch 500 at 1rem, NOT mono/700. The
      letter-spacing is --s-scaled so the mark tracks the global control scale
      rather than the font size. */
@@ -502,8 +344,6 @@
   @media (max-width: 560px) {
     .chip-opt { display: none; }
   }
-  /* Handheld: the heatmap (decor) goes before the name ellipsizes. */
-  @media (max-width: 479px) { .act-grid { display: none; } }
   @media (max-width: 400px) {
     .chip-opt-last { display: none; }
     .chips.opt { display: none; }

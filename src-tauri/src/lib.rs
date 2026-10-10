@@ -2,6 +2,8 @@
 mod buttplug;
 mod discovery;
 mod estop_udp;
+#[cfg(desktop)]
+mod lan;
 mod plugins;
 mod report;
 
@@ -44,6 +46,8 @@ pub fn run() {
     .plugin(tauri_plugin_clipboard_manager::init())
     .plugin(tauri_plugin_blec::init())
     .manage(plugins::TcpListeners::default());
+  #[cfg(desktop)]
+  let builder = builder.manage(lan::Lan::default());
   builder
     .invoke_handler(tauri::generate_handler![
       js_log,
@@ -54,6 +58,12 @@ pub fn run() {
       plugins::plugin_tcp_close,
       #[cfg(desktop)]
       plugins::plugin_open_url,
+      #[cfg(desktop)]
+      lan::lan_start,
+      #[cfg(desktop)]
+      lan::lan_send,
+      #[cfg(desktop)]
+      lan::lan_stop,
       report::save_report,
       #[cfg(desktop)]
       report::open_report_url,
@@ -132,5 +142,11 @@ pub fn run() {
     })
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
-    .run(|_, _| {});
+    .run(|_app, _event| {
+      #[cfg(desktop)]
+      if let tauri::RunEvent::Exit = _event {
+        use tauri::Manager;
+        lan::exit(&_app.state::<lan::Lan>());
+      }
+    });
 }

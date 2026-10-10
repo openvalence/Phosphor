@@ -1,6 +1,6 @@
 /**
  * client.mjs -- one seeded headless Valence client (valence-js) with a random personality, for the Neutrino
- * fleet (fleet.mjs) and for a replay against one hub, Neutrino or a real one over WebSocket (ph-ode2).
+ * cluster (cluster.mjs) and for a replay against one hub, Neutrino or a real one over WebSocket (ph-ode2).
  *
  * Constraints:
  * - The action list is built FROM THE CATALOG: every control-tier INTENT entry, every c2h motion STREAM, by
@@ -9,8 +9,8 @@
  * - Determinism: every action draws exactly DRAWS numbers from the seed's stream whatever the hub answered;
  *   an action's own detail comes from a sub-stream seeded by one of them, and every choice that reads the hub's
  *   state reads it at an action, never against a timer (patience is counted in actions). Two lockstep runs of
- *   a seed (fleet.mjs, virtualClock) are bit-identical; a real-time run takes the same branches while the hub
- *   answers alike.
+ *   a seed (cluster.mjs, virtualClock) are identical but for the session ids the hub mints; a real-time run takes
+ *   the same branches while the hub answers alike.
  * - Positions and window edges are fractions of the max_rail the hub reports, so a run against a hub with
  *   another rail is comparable in normalized terms (compare.mjs).
  * - hwSafe (implied for a real hub): no force_home, no preset save/delete/rename, every settings write a
@@ -152,7 +152,7 @@ const CORE = [
 ];
 
 /**
- * @param {Object} o {seed, WebSocketImpl, token, host, port, record, hwSafe, planHz, hub: shared per-hub
+ * @param {Object} o {seed, WebSocketImpl, token, host, port, record, hwSafe, planHz, motionHz, hub: shared per-hub
  *   record {diag, flags[]} for counters and faults}
  */
 export function createClient(o) {
@@ -183,9 +183,9 @@ export function createClient(o) {
   function open() {
     if (cold) { cache.clear(); cold = false; }
     live = false; connectAt = performance.now(); lastStateAt = connectAt;
-    const ses = createSession({ host: o.host || 'neutrino', port: o.port || 1, clientKind: 'webui', clientName: 'fleet ' + o.seed,
+    const ses = createSession({ host: o.host || 'neutrino', port: o.port || 1, clientKind: 'webui', clientName: 'cluster ' + o.seed,
       autoReconnect: false, WebSocketImpl: W, token: o.token, catalogStore: store, subscriptions: CORE.map((w) =>
-        w[0] === CH.MOTION ? [w[0], o.record ? 60 : 20, w[2]] : w) });
+        w[0] === CH.MOTION ? [w[0], o.motionHz || 20, w[2]] : w) });
     s = ses;
     door = createMotionDoor({ session: () => (live && s === ses ? ses : null), entries: () => ses.catalog || [],
       setpoint: () => ({ ok: false, reason: 'no STREAM' }), log: () => {}, halted: () => latchWords(ses.state.safety),
@@ -385,7 +385,7 @@ export function createClient(o) {
       return ok.length ? ok[Math.floor(r() * ok.length)][1] : undefined;
     }
     if (f.typeName === 'bool_t') return r() < 0.5;
-    if (f.typeName === 'tstr_t') return 'fleet' + Math.floor(r() * 1000);
+    if (f.typeName === 'tstr_t') return 'cluster' + Math.floor(r() * 1000);
     if (!Number.isFinite(f.min) || !Number.isFinite(f.max)) return undefined;
     let lo = f.min, hi = f.max;
     if (f.unit === 'mm' && railMm() > 0) hi = Math.min(hi, railMm() * 1.05);

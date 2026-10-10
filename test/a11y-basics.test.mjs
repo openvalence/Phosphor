@@ -145,13 +145,19 @@ const browser = await chromium.launch();
     || !!(document.activeElement.closest('nav.rail') && !document.activeElement.closest('.rail-ops')));
   ok('rail: a plain Tab leaves the tabs in one step', !onTab);
 
-  // ph-40q: the heatmap is an image whose tooltip names the row under the pointer.
-  const grid = page.locator('canvas.act-grid');
-  const gb = await grid.boundingBox();
-  const tips = [];
-  for (const y of [1, gb.height - 1]) { await page.mouse.move(gb.x + gb.width / 2, gb.y + y); tips.push(await grid.getAttribute('title')); }
-  ok('heatmap: an image, its tooltip the row under the pointer (ph-40q)', await grid.getAttribute('role') === 'img'
-    && tips.every((t) => /^[A-Z][^.]*, last 3 s: brighter is busier$/.test(t)) && tips[0] !== tips[1], tips.join(' | '));
+  // ph-8yga: the channel heatmap is a labeled toolbar, one tab stop, every block named; hover shows its tip.
+  const heat = await page.$eval('.linkbar .heat', (h) => ({ role: h.getAttribute('role'), label: h.getAttribute('aria-label'),
+    blocks: h.querySelectorAll('.blk').length, named: [...h.querySelectorAll('.blk')].every((b) => /\S, \S/.test(b.getAttribute('aria-label') || '')),
+    stops: h.querySelectorAll('.blk[tabindex="0"]').length }));
+  ok('heatmap: a labeled toolbar, every block named, one tab stop (ph-8yga)', heat.role === 'toolbar' && heat.label === 'Channel activity'
+    && heat.blocks > 5 && heat.named && heat.stops === 1, JSON.stringify(heat));
+  await page.hover('.linkbar .heat .blk');
+  const tipRef = await page.$eval('.linkbar .heat .blk', (b) => {
+    const t = document.getElementById(b.getAttribute('aria-describedby') || '');
+    return t && t.getAttribute('role') === 'tooltip' && t.textContent.startsWith(b.getAttribute('aria-label').split(',')[0]);
+  });
+  ok('heatmap: hover shows a block tooltip that describes it', tipRef);
+  await page.mouse.move(0, 400);
 
   if (pageErrors.length) ok('rail: no page errors', false, pageErrors.join(' | '));
   await ctx.close();

@@ -29,6 +29,7 @@ const FIXED = [
   { label: 'Broadcast e-stop to every hub on the LAN', key: 'estop-broadcast', shell: true },
   { label: 'Telemetry rate', key: 'telemetry-rate', shell: true },
   ...(PHONE ? [] : [{ label: 'Close immediately when idle', key: 'close-idle', shell: true }]),
+  ...(PHONE ? [] : [{ label: 'Open to LAN', key: 'open-to-lan', shell: true }]),
   { label: 'Backup and restore', key: 'backup', shell: true },
 ];
 
