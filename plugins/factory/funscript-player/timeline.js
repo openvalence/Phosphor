@@ -40,9 +40,10 @@
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
-// - The curve, the dots and the lanes are drawn over a span SLIDE times the detail's window, centered on it, and
-//   moved with a transform: playback rebuilds them only when the window leaves that span or what they draw
-//   changes (ph-m1gy). frame() draws nothing while the playhead, the trace and the render stand still.
+// - The curve, the dots, the lanes and the trace are drawn over a span SLIDE times the detail's window,
+//   centered on it, and moved with a transform: playback rebuilds the first three only when the window leaves
+//   that span or what they draw changes (ph-m1gy), and formats each trace point once per span (ph-jem5).
+//   frame() draws nothing while the playhead, the trace and the render stand still.
 // - The oscillator axes (raw Script.axes V8, V9) are thin lanes under the detail, its window and playhead,
 //   0..1 bottom to top, untransformed: the hub maps them (SPEC 9.7). The detail gives up their height, so the
 //   timeline's box never changes; without them there are no lanes.
@@ -127,24 +128,46 @@ export function seekAt(x, W, durationMs) {
 }
 
 /**
- * The reality trace inside [fromMs, toMs] as polylines: a null u breaks the
- * line (law 9: a gap, never a zero), a stale change starts a new one. key: the share drawn ('u', or 'p' the plan).
+ * The reality trace inside [clipFrom, clipTo] (default [fromMs, toMs]) as polylines over [fromMs, toMs] in a W x H
+ * box: a null u breaks the line (law 9: a gap, never a zero), a stale change starts a new one. key: the share drawn
+ * ('u', or 'p' the plan).
  */
-export function traceLines(trace, fromMs, toMs, W, H, key = 'u') {
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u', clipFrom = fromMs, clipTo = toMs) {
   const out = [];
-  let cur = null;
+  const isP = key === 'p', bufs = isP ? planBufs : realBufs;
+  let stale = false, n = 0, buf = bufs[0] || (bufs[0] = []);   // n: the open line's points, 0 with none open
+  const close = () => {
+    if (n < 2) return;
+    buf.length = n;
+    out.push({ points: buf.join(' '), stale });
+    buf = bufs[out.length] || (bufs[out.length] = []);
+  };
   for (const p of trace || []) {
-    const u = p[key];
-    if (u == null || p.m < fromMs || p.m > toMs) { cur = null; continue; }
-    if (!cur || cur.stale !== !!p.stale) {
-      const prev = cur && cur.pts[cur.pts.length - 1];
-      cur = { stale: !!p.stale, pts: prev ? [prev] : [] };
-      out.push(cur);
+    const u = isP ? p.p : p.u;
+    if (u == null || p.m < clipFrom || p.m > clipTo) { close(); n = 0; continue; }
+    if (!n || stale !== !!p.stale) {
+      const prev = n ? buf[n - 1] : null;
+      close();
+      n = 0;
+      if (prev) buf[n++] = prev;
+      stale = !!p.stale;
     }
-    cur.pts.push(((p.m - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - clamp(u, 0, 1) * H).toFixed(1));
+    let c = ptText.get(p);
+    if (!c || c.f !== fromMs || c.t !== toMs || c.W !== W || c.H !== H) ptText.set(p, (c = { f: fromMs, t: toMs, W, H, u: null, p: null }));
+    let t = isP ? c.p : c.u;
+    if (t == null) {
+      t = ((p.m - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - clamp(u, 0, 1) * H).toFixed(1);
+      if (isP) c.p = t; else c.u = t;
+    }
+    buf[n++] = t;
   }
-  return out.filter((l) => l.pts.length > 1).map((l) => ({ points: l.pts.join(' '), stale: l.stale }));
+  close();
+  return out;
 }
+// A point's text per frame of reference (the timeline's span holds for many frames), and a join buffer per key and
+// line index, filled by index, so a line keeps about its size frame to frame and its buffer is not regrown: a frame
+// formats only the points new to the span (ph-jem5).
+const ptText = new WeakMap(), realBufs = [], planBufs = [];
 
 /** A speed in units/s as a CSS color: --bg-sunken at rest, through --reality to --highlight, mixed in oklab. */
 export function heatColor(ups) {
@@ -372,7 +395,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   });
   const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
-  const slid = [curve, dots, ...lanes.map((l) => l.line)];
+  const slid = [curve, dots, ...lanes.map((l) => l.line), real];
   let axes = {};
   const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
   el.append(root);
@@ -411,8 +434,8 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       if (p.getAttribute('class') !== cls) p.setAttribute('class', cls);
       p.setAttribute('points', pts);
     };
-    for (const l of traceLines(trace, from, to, 1000, 100, 'p')) put('plan', l.points);
-    for (const l of traceLines(trace, from, to, 1000, 100)) put(l.stale ? 'real stale' : 'real', l.points);
+    for (const l of traceLines(trace, span.a, span.b, 1000 * SLIDE, 100, 'p', from, to)) put('plan', l.points);
+    for (const l of traceLines(trace, span.a, span.b, 1000 * SLIDE, 100, 'u', from, to)) put(l.stale ? 'real stale' : 'real', l.points);
     while (real.children.length > n) real.lastChild.remove();
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       line.setAttribute('y1', String(100 - v * 100));
