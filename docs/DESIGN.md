@@ -1167,9 +1167,16 @@ its own: no continuous telemetry, ever.
 - Three areas: Link, This device, Machine. The 26 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
-  condition shows a short line (COPY.md), then one plain sentence for an
-  average DIYer and one action. Jargon (milliseconds, RTT) lives only in the
-  evidence line under it.
+  condition's line is a measured fact with the number that raised it
+  ("Memory up 140 MB in 35 min", "Motion paused 420 ms · WiFi delay 300 ms
+  (likely)"), never a verdict about Phosphor; its tooltip and its incident
+  say what was measured, since when, the threshold and one action, never the
+  line again (COPY.md rule 11), with one plain sentence for an average DIYer
+  in the incident. Jargon (RTT, loop lag) lives only in the evidence line.
+- Growth (D4) is a leak, never a GC sawtooth: each 5-minute block's lowest
+  memory reading higher than the block before for 30 minutes or more, and
+  100 MB up over the run; it holds while the floor stays 50 MB up. Workers
+  piling up (D6) are their own condition with their own count.
 - The flagship case is a stream cutout, classified by cause, first match
   wins: CLIENT (a move left after the hub's last one ended, or with less lead
   than the hub needs; or the hub ran dry right after this page stalled or
@@ -1193,7 +1200,8 @@ its own: no continuous telemetry, ever.
   list; the top strip's status slot takes act and warn, below link fault,
   unattended, refusal, the jog note, the history message and the latch
   notices, act above the safety edge, warn below it, a 5 s minimum dwell
-  (`health.slot`, drawn by TopStrip); the slot's line opens the Health view.
+  (`health.slot`, drawn by TopStrip); the slot's line opens its incident on
+  the Health view.
 - Local only: a 10-minute ring at 1 Hz, 10 Hz for the last 2 minutes of the
   stream signals; an incident keeps a snapshot of -60 to +30 s, the last 20
   in memory and the last 5 in `localStorage` so a reload keeps them.
@@ -1312,3 +1320,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.13 | The node editor's F3 searches every node source on the shell's matcher (Enter adds at the pointer, Shift+Enter or a show button finds the placed node); the add menu groups as the pages do (hub, category, section, card, then plugin modules, ButtplugIO, the node families); a field or toy node names its card, desc, range, socket roles and live state, one accent per card (`ph-5wo6`). | operator ("this is 0 info"; F3 and categorization by card and module). The device after the card in a node's label, the accent order, a flat list naming each source once under its card (modules browse in the tree only), Enter on a placed field showing it, the hub's Other for fields no page draws and Ctrl+F staying the shell's are the agent's, veto-able |
 | 2026-10-09 | §10.13, plugins | The shell context menu replaces the webview's (Print, Reload, Inspect) outside text entry: field, module and page items innermost first, Copy path as the Valence path `valence://<hub>/<identity>`, Copy and Paste value, Reset to default, Send to node editor (`phosphor-node-add`, else a queue the node editor drains), Show in history; plugins add items behind a new `menu` permission (`ph-kyjd`). | operator ("replace the right click system print and bullshit menu with something actually useful"; the path format, the item set, Paste enabled only for a fitting value, the queue seam and Inspect behind Shift in a dev build are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | The right dock: a plugin-registered region, its toggle in the top bar only while a dock exists, closed until the user opens it; a column that narrows the content on the desktop, a drawer under the strip on the phone class. Field-bound kit controls, `ui.field` and `ui.module`, draw the shell's own control by identity behind `intent`. The quick access tray is the factory plugin built on these and the menu (`ph-kyjd`, `ph-5wsk.6`). | operator ("hidden by default, useful in more than 1 way", "factory plugin"; the toggle appearing only once something is pinned, the phone drawer closing on an outside tap and not persisting, the 21 rem column and the rail pinned as its mini are the agent's, veto-able) |
+| 2026-10-09 | §10.14 | Health lines are measured facts with their number and the tooltip is the detail (measured, since, threshold, one action, the click), never a repeat (COPY.md rule 11); the slot opens its incident. D4 growth judged on the 5-minute floors of the memory sawtooth, rising every block for 30 min and 100 MB up, the loop-lag arm gone; D6 workers its own condition. A report's least, typical and worst values are over its stated window (`evidence.from_ms`, `to_ms`), a growth report carries what grew, from, to, over and how fast, an event's kind is its condition, and a condition with no classifier reports where it was measured as its cause (`ph-9t5l`). | operator ("the worst error/anomaly message of ALL time": vague, no number, no cause, no action, a tooltip repeating it); the coordinator's read of report KMCBXOPP (a GC sawtooth, 28 to 49 MB, raised growth; maxima that were point samples). The 5-minute blocks, the 100 MB and 50 MB figures, the run a plateau breaks, the area-to-cause map, the stall measured from the overdue tick and the uplink delay counted up to a starvation's classification are the agent's, veto-able |

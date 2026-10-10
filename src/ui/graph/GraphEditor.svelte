@@ -33,11 +33,13 @@
   import { machine } from '../../model/machine.svelte.js';
   import { refKey, preview, snap, GRID, MAPS, OPS, SAFE, valueOf, TYPES } from '../../model/graph.js';
   import GraphPalette from './GraphPalette.svelte';
+  import { nodeQueue } from '../contextmenu.js';
 
   let { rt } = $props();
   const R = untrack(() => rt);
 
   const NODE_W = 200;
+  const SEND_PITCH = 180;   // world px between nodes the context menu sends at once
   const MAP_W = 220;
   const OP_W = 180;
   const SOCK_Y = 20;   // socket centers sit on the header's midline
@@ -629,6 +631,29 @@
     sel = new Set([id]);
     focusBox(id);
   }
+
+  // ---- Send to node editor (src/ui/contextmenu.js, docs/PLUGINS.md Context menus) ------------
+  /** Place refs the shell's context menu sent around the view's center, one column, one undo step; only add-menu sources. */
+  function receive(list) {
+    const refs = (Array.isArray(list) ? list : []).filter((r) => r && typeof r === 'object');
+    const known = new Set(R.palette().map((s) => refKey(s.ref)));
+    const on = new Set(R.graph.nodes.map((n) => refKey(n.ref)));
+    const fresh = [...new Map(refs.filter((r) => known.has(refKey(r)) && !on.has(refKey(r))).map((r) => [refKey(r), r])).values()];
+    const had = refs.filter((r) => on.has(refKey(r))).length, bad = refs.filter((r) => !known.has(refKey(r))).length;
+    const b = vp.getBoundingClientRect();
+    const [cx, cy] = toWorld(b.left + b.width / 2, b.top + b.height / 2);
+    const ids = [];
+    if (fresh.length) R.batch(() => fresh.forEach((ref, i) => ids.push(R.place(ref, cx - NODE_W / 2, cy + (i - (fresh.length - 1) / 2) * SEND_PITCH).id)));
+    if (ids.length) sel = new Set(ids);
+    said = [ids.length && ids.length + ' placed', had && had + ' already on the canvas', bad && bad + ' not a node source'].filter(Boolean).join(', ');
+  }
+  // A mounted editor takes the menu's event; what was sent while none was mounted waits in nodeQueue.
+  onMount(() => {
+    if (nodeQueue.length) receive(nodeQueue.splice(0));
+    const take = (e) => { if (e.defaultPrevented) return; e.preventDefault(); receive(e.detail && e.detail.refs); };
+    window.addEventListener('phosphor-node-add', take);
+    return () => window.removeEventListener('phosphor-node-add', take);
+  });
 
   // ---- map nodes ------------------------------------------------------------------------
   const BOUNDS = [['in_min', 'In min'], ['in_max', 'In max'], ['out_min', 'Out min'], ['out_max', 'Out max']];

@@ -1,11 +1,13 @@
 /**
  * health.test.mjs -- the health system's pure half (src/model/health/core.js,
  * ph-9t5l): the cause classifier as a table, the hysteresis tracker on a fake
- * clock, the growth detector on synthetic series, and the condition table's
- * copy rules.
+ * clock, the growth detector on the operator's measured GC sawtooth and on
+ * synthetic leaks, and the condition table's copy rules (a measured line with
+ * its number, a tooltip that never repeats it).
  * Run: node test/health.test.mjs
  */
-import { CONDITIONS, CUTOUT, classify, createTracker, growth, quantile } from '../src/model/health/core.js';
+import { readFileSync } from 'node:fs';
+import { CONDITIONS, CUTOUT, GROWTH, classify, createTracker, growth, lineOf, quantile, tipLines } from '../src/model/health/core.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -16,13 +18,42 @@ const ok = (name, cond, extra) => {
 console.log('\n--- the condition table ---');
 ok('26 conditions: 13 link, 7 device, 6 machine', Object.keys(CONDITIONS).length === 26
   && ['link', 'device', 'machine'].map((a) => Object.values(CONDITIONS).filter((c) => c.area === a).length).join() === '13,7,6');
-const bad = Object.entries(CONDITIONS).filter(([, c]) => !c.short || c.short.length > 60 || /\. /.test(c.short) || /\.$/.test(c.short));
-ok('every short line is one fragment under 60 characters (COPY.md)', !bad.length, bad.map((b) => b[0]));
+// One incident per condition as the tracker leaves it: its numbers (m) and what the line reads besides.
+const M = {
+  'send-margin': { leadMs: 40, onMs: 62.5 }, 'slow-link': { p50Ms: 80, p95Ms: 140 }, backlog: { bytes: 1300 }, throttled: { channels: 2 },
+  drops: { n: 3 }, 'weak-signal': { dbm: -80 }, 'hub-wifi-drop': { n: 2 }, busy: { p95Ms: 60 }, 'slow-display': { fps: 22 },
+  growth: { baseMb: 28, nowMb: 168, minutes: 35, slopeMbPerMin: 4 }, workers: { base: 1, now: 5 }, overloaded: { state: 'serious', forMs: 45000 },
+  'late-plans': { perMin: 8 }, fault: { label: 'Motor power: inrush' }, 'hub-memory': { dropPct: 25 }, hot: { label: 'Driver', text: '78 °C', max: 85 },
+  'log-drops': { n: 12 },
+};
+const EXTRA = { 'delay-spike': { peakMs: 240 }, 'updates-stalled': { peakMs: 800 }, freeze: { peakMs: 300 } };
+/** Yes-or-no conditions: no number to give. */
+const QUALITATIVE = ['background', 'fault', 'restarted'];
+const incOf = (cond) => {
+  const d = CONDITIONS[cond];
+  const c = d.cause && classify({ ...{ client: { clip: true, loopLagMaxMs: 690 }, network: { leadSendMinMs: 115, owdUpMaxMs: 300 },
+    hub: { starved: true, hubWarn: 3 }, unknown: {} }[d.cause], latMs: 1, rttP50Ms: 10, loopLagMaxMs: d.cause === 'client' ? 690 : 5 });
+  return { cond, m: M[cond], count: 1, durationMs: 420, wallAt: Date.UTC(2026, 9, 9, 12), closedAt: null, ...EXTRA[cond], ...(c || {}) };
+};
+const lines = Object.keys(CONDITIONS).map((id) => [id, lineOf(incOf(id)), tipLines(incOf(id))]);
+const bad = lines.filter(([, l]) => !l || l.length > 60 || /\. /.test(l) || /\.$/.test(l));
+ok('every line is one fragment under 60 characters (COPY.md)', !bad.length, bad);
+const noNum = lines.filter(([id, l]) => !QUALITATIVE.includes(id) && !/\d/.test(l));
+ok('every quantitative line carries the number that raised it', !noNum.length, noNum);
+ok('no line is a sentence about Phosphor', lines.every(([, l]) => !/phosphor/i.test(l)), lines.map((x) => x[1]));
+const echo = lines.filter(([, l, tip]) => !tip.length || tip.join('\n') === l || tip.includes(l));
+ok('every tooltip has lines and none repeats the line', !echo.length, echo);
+const half = lines.filter(([id, , tip]) => !CONDITIONS[id].logOnly && !CONDITIONS[id].needs && tip.length < 4);
+ok('a surfaced tooltip says what was measured, since when, the threshold and the action', !half.length, half);
+ok('a line survives an incident with no numbers (a restored one)', Object.keys(CONDITIONS).every((id) => typeof lineOf({ cond: id, count: 1 }) === 'string'));
+ok('the growth line: "Memory up 140 MB in 35 min"', lineOf(incOf('growth')) === 'Memory up 140 MB in 35 min', lineOf(incOf('growth')));
+ok('a cutout line: the pause and its measured cause', lineOf(incOf('cutout-client')) === 'Motion paused 420 ms · this device stalled 690 ms'
+  && lineOf({ ...incOf('cutout-network'), count: 2 }) === 'Motion paused 420 ms · WiFi delay 300 ms (likely) ×2', [lineOf(incOf('cutout-client')), lineOf(incOf('cutout-network'))]);
 const silent = Object.entries(CONDITIONS).filter(([id, c]) => !c.logOnly && !['log-drops', 'restarted'].includes(id) && (!c.detail || !c.action));
 ok('every surfaced condition has its plain sentence and one action', !silent.length, silent.map((s) => s[0]));
 const two = Object.entries(CONDITIONS).filter(([, c]) => /;|, or |, then | then /.test(c.action || ''));
 ok('every action is one act', !two.length, two.map((t) => t[0] + ': ' + t[1].action));
-ok('no device setting and no jargon in the words', Object.values(CONDITIONS).every((c) => !/stream buffer|smoothness|planner|congest|jitter/i.test(c.short + c.detail + c.action)));
+ok('no device setting and no jargon in the words', lines.every(([id, l, tip]) => !/stream buffer|smoothness|planner|congest|jitter/i.test(l + tip.join(' ') + CONDITIONS[id].detail)));
 ok('every detail is one sentence', Object.values(CONDITIONS).every((c) => !c.detail || (c.detail.match(/\. |\.$/g) || []).length === 1));
 ok('a cutout per cause', Object.values(CUTOUT).every((id) => CONDITIONS[id] && CONDITIONS[id].cause));
 
@@ -49,7 +80,7 @@ const T = [
 ];
 for (const [name, e, cause, conf] of T) {
   const c = classify({ ...base, ...e });
-  ok(name + ' -> ' + cause, c.cause === cause && c.confidence === conf && typeof c.why === 'string', c);
+  ok(name + ' -> ' + cause, c.cause === cause && c.confidence === conf && typeof c.why === 'string' && typeof c.fact === 'string', c);
 }
 
 console.log('\n--- the tracker (fake clock) ---');
@@ -104,17 +135,33 @@ console.log('\n--- the tracker (fake clock) ---');
 }
 
 console.log('\n--- growth ---');
-const flat = Array.from({ length: 30 }, (_, i) => 80 + (i % 3));
-const lagFlat = Array.from({ length: 30 }, () => 6);
-ok('a flat floor is no growth', !growth(flat, lagFlat));
-const leak = Array.from({ length: 21 }, (_, i) => 80 + i * 1.8);
-ok('+9 MB per 5 min for 3 windows is growth', growth(leak, lagFlat.slice(0, 21)));
-const slowLeak = Array.from({ length: 21 }, (_, i) => 80 + i * 1.2);
-ok('+6 MB per 5 min is not', !growth(slowLeak, lagFlat.slice(0, 21)));
-const rising = Array.from({ length: 12 }, (_, i) => 80 + i * 0.5);
-const lagUp = [6, 6, 6, 6, 6, 6, 6, 14, 15, 16, 17, 18];
-ok('lag at twice the baseline for 5 min while the floor rises is growth', growth(rising, lagUp));
-ok('lag up with a flat floor is not', !growth(Array(12).fill(80), lagUp));
+// The operator's report KMCBXOPP (2026-10-09, the shell on Windows): a healthy GC sawtooth, 28 to 49 MB every 10 to 20 s,
+// that the old detector called growth. Its 2 s points replay as 1 Hz samples, looped; health.svelte.js folds 60 into a floor.
+const fx = JSON.parse(readFileSync(new URL('./fixtures/diag-report-growth-sawtooth.json', import.meta.url), 'utf8'));
+const saw = fx.window.series.heap_mb.flatMap((v) => [v, v]);
+const sawAt = (s) => saw[s % saw.length];
+/** Minutes of 1 Hz heap samples through the minute floors and the detector, as perMinute runs it; every minute it fired. */
+function replay(heapAt, minutes) {
+  const floors = [], fired = [];
+  for (let m = 0; m < minutes; m++) {
+    floors.push(Math.min(...Array.from({ length: 60 }, (_, s) => heapAt(m * 60 + s))));
+    if (floors.length > 120) floors.shift();
+    const g = growth(floors);
+    if (g) fired.push({ m: m + 1, ...g });
+  }
+  return fired;
+}
+ok('the fixture is the sawtooth: 28 to 49 MB, ending lower than it started', Math.min(...saw) === 28.1 && Math.max(...saw) === 48.8 && saw[saw.length - 1] < saw[0]);
+ok("the operator's sawtooth looped for 4 h never fires", !replay(sawAt, 240).length, replay(sawAt, 240)[0]);
+ok('...nor with a 0.5 MB a minute creep for 2 h (60 MB: tens of MB never trip it)', !replay((s) => sawAt(s) + Math.min(s, 7200) / 120, 240).length);
+ok('...nor with one 150 MB step (a big script loaded)', !replay((s) => sawAt(s) + (s > 3600 ? 150 : 0), 240).length);
+ok('...nor with 1 MB a minute for 50 min, then flat', !replay((s) => sawAt(s) + Math.min(s, 3000) / 60, 240).length);
+const leak5 = replay((s) => sawAt(s) + s / 12, 60);
+ok('a 5 MB a minute leak on the same sawtooth fires at 30 min, with its numbers', leak5.length && leak5[0].m === 30
+  && Math.abs(leak5[0].slopeMbPerMin - 5) < 0.6 && leak5[0].minutes === 25 && leak5[0].nowMb - leak5[0].baseMb >= GROWTH.riseMb, leak5[0]);
+const leak2 = replay((s) => sawAt(s) + s / 30, 120);
+ok('a 2 MB a minute leak fires once it is 100 MB up, about 55 min in', leak2.length && leak2[0].m >= 50 && leak2[0].m <= 60, leak2[0]);
+ok('a leak that stops rising breaks the run: no new fire after it levels off', !replay((s) => sawAt(s) + Math.min(s, 2400) / 12, 240).filter((f) => f.m > 50).length);
 ok('quantile', quantile([5, 1, 3, null, 4, 2], 0.5) === 3 && quantile([], 0.5) === null);
 
 console.log('\n' + (fails ? 'FAIL -- ' + fails : 'PASS -- health core'));

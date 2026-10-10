@@ -651,6 +651,8 @@ async function open({ cat = advgenCatalog(), hub = null, coarse = false, width =
   const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: coarse, deviceScaleFactor: scale });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(SHELL_STUB, probe);
+  // The host's real CPU pressure (other suites, other work) would raise Overloaded over the page's status in the slot.
+  await ctx.addInitScript(() => { delete globalThis.PressureObserver; });
   await ctx.exposeFunction('__nodeFetch', nodeFetch);
   await ctx.addInitScript(([etag, bytes, live, port, prefs]) => {
     try {

@@ -260,12 +260,38 @@ if (run('desk')) {
   await pick(page, 'Send to node editor');
   ok('Send to node editor: phosphor-node-add carries the field identity; untaken, it is queued', JSON.stringify(await page.evaluate(() => window.__nodes))
     === JSON.stringify([[{ kind: 'field', key: DWELL_KEY }]]) && /Queued for the node editor/.test(await page.locator('.topstrip').innerText()));
-  await page.evaluate(() => window.addEventListener('phosphor-node-add', (e) => e.preventDefault()));
+  await page.evaluate(() => { window.__take = (e) => e.preventDefault(); window.addEventListener('phosphor-node-add', window.__take); });
   await rclick(page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
   await pick(page, 'Send fields to node editor');
   const sent = (await page.evaluate(() => window.__nodes)).at(-1).map((r) => r.key);
   ok('Send fields to node editor: the card\'s fields; a mounted editor takes them', /Sent to the node editor/.test(await page.locator('.topstrip').innerText())
     && sent.includes(FREQ_KEY) && sent.includes(DWELL_KEY) && sent.includes(ACTIVE_KEY), sent);
+
+  // the node editor's side (ph-gu64): mounting it drains the queue; a mounted one takes the event and places near the view's center
+  await page.evaluate(() => window.removeEventListener('phosphor-node-add', window.__take));
+  let gTab = null;
+  for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => [...new Set(els.map((e) => e.dataset.tabId))])) {
+    await goTab(page, id);
+    if (await page.waitForSelector('main.pane .graph .gview', { timeout: 800 }).then(() => true, () => false)) { gTab = id; break; }
+  }
+  await page.waitForTimeout(200);
+  const nodeBoxes = () => page.$$eval('.graph .gnode[data-kind=node]', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.dataset.gid, l: r.left, t: r.top, w: r.width }; }));
+  const gSaid = () => page.locator('.graph .gsr').textContent().then((t) => t.trim());
+  const n0 = await nodeBoxes(), s0 = gTab ? await gSaid() : '';
+  ok('node editor: mounting it drains the queue: the field queued while it was closed is a node', !!gTab && n0.length === 1 && s0 === '1 placed', { gTab, n0, s0 });
+  const sendNow = (k) => page.evaluate((key) => !window.dispatchEvent(new CustomEvent('phosphor-node-add', { cancelable: true, detail: { refs: [{ kind: 'field', key }] } })), k);
+  const took = await sendNow(FREQ_KEY);
+  await page.waitForTimeout(200);
+  const n1 = await nodeBoxes(), s1 = await gSaid();
+  const fresh = n1.find((b) => !n0.some((a) => a.id === b.id));
+  const vc = await page.locator('.graph .gview').evaluate((v) => { const r = v.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  ok('node editor: open, it takes the event (preventDefault) and places the field at the view center', took && n1.length === 2 && s1 === '1 placed' && !!fresh
+    && Math.abs(fresh.l + fresh.w / 2 - vc[0]) < 24 && Math.abs(fresh.t - vc[1]) < 24, { took, n1, s1, fresh, vc });
+  const again = await sendNow(FREQ_KEY);
+  await page.waitForTimeout(200);
+  ok('node editor: a field already on the canvas is not doubled', again && (await nodeBoxes()).length === 2 && await gSaid() === '1 already on the canvas', await gSaid());
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
 
   // keys
   await page.locator(F(FREQ) + ' input[type=range]').focus();

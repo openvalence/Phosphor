@@ -168,6 +168,8 @@
     if (onopenlog) onopenlog();
   }
   function openHealth() {
+    health.focus = health.slot && health.slot.id;
+    health.review = null;
     logView.tab = 'health';
     if (onopenlog) onopenlog();
   }
@@ -232,12 +234,12 @@
     if (latch && latch.estopLatched) return { kind: 'notice', text: 'Halted: hold ' + estopLabel() + ' 3 s' };
     if (latch && latch.override) return { kind: 'notice', text: 'Override: full-travel jog' };
     if (latch && latch.paused) return { kind: 'notice', text: latch.homeRequired ? 'Paused: home required' : 'Paused' };
-    if (health.slot && health.slot.sev === 'act') return { kind: 'health', text: health.slot.text };
+    if (health.slot && health.slot.sev === 'act') return { kind: 'health', text: health.slot.text, title: health.slot.title };
     // A page's warn or bad status is a condition; any other (a note) only fills an otherwise quiet slot.
     const cond = page && page.text && (page.tone === 'warn' || page.tone === 'bad');
     if (cond) return { kind: 'page', text: page.text, title: page.title };
     if (latestSafety) return { kind: 'edge' };
-    if (health.slot) return { kind: 'health', text: health.slot.text };
+    if (health.slot) return { kind: 'health', text: health.slot.text, title: health.slot.title };
     if (page && page.text) return { kind: 'note', text: page.text, title: page.title };
     if (link.virtual) return { kind: 'virtual', text: 'Virtual: nothing moves' };
     return { kind: 'idle' };
@@ -523,8 +525,8 @@
           {#if unreadSafety}<span class="evtag">{unreadSafety}<span class="evword">{' new'}</span></span>{/if}
         </button>
       {:else if slot.kind === 'health'}
-        <!-- A health condition opens the Log page's Health view. -->
-        <button type="button" class="st-dismiss" title={slot.text} onclick={openHealth}>
+        <!-- A health condition opens its incident on the Log page's Health view. -->
+        <button type="button" class="st-dismiss" title={slot.title} onclick={openHealth}>
           <span class="st-text">{slot.text}</span>
         </button>
       {:else if slot.text}
