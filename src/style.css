@@ -607,7 +607,8 @@ select:focus { outline: none; border-color: var(--highlight); }
 }
 /* Ink from the theme surface; zero layout size, so toggling one moves no box.
    A scroller carries no padding of its own (the shade spans its scrollport):
-   its children do. */
+   its children do. No gap either: in a flex or grid scroller each shade is an
+   item, and the gap after it moves the content. */
 [data-shade] {
   --shade-h: 36px;
   --shade-surface: var(--bg-sunken);

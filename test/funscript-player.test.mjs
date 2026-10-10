@@ -848,6 +848,45 @@ function intended(asked, obs, rate) {
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
 
+// ---- (H) the card heads (ph-1qs5.12): 01 PLAYER, 02 LIBRARY and 03 SETTINGS on one baseline; nothing moves ----
+if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
+  console.log('(H) card heads');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const hub = makeHub(cat);
+  const { ctx, page, errors } = await open({ cat, hub, width: 1428, height: 900 });
+  // Each shown head's text baseline, window px: a zero-size inline-block sits on it.
+  const lines = () => page.evaluate(() => Object.fromEntries([['player', '.fsp-src > .fsp-h'], ['library', '.fsp-libh > .fsp-h'], ['settings', '.fsp-psec[data-open] .ui-sheet-t']]
+    .map(([k, q]) => [k, document.querySelector('main.pane ' + q)]).filter(([, e]) => e && e.getClientRects().length)
+    .map(([k, e]) => {
+      const m = document.createElement('i');
+      m.style.cssText = 'display:inline-block;width:0;height:0';
+      e.append(m);
+      const y = m.getBoundingClientRect().bottom;
+      m.remove();
+      return [k, Math.round(y * 10) / 10];
+    })));
+  const one = (o, keys) => keys.every((k) => k in o && Math.abs(o[k] - o.player) <= 0.5);
+  if (await toPluginPage(page)) {
+    await page.waitForTimeout(400);
+    const shut = await lines();
+    await page.locator(C + ' .fsp-set').click();
+    await page.waitForTimeout(300);
+    const open1 = await lines();
+    console.log('  baselines  closed ' + JSON.stringify(shut) + '  Settings open ' + JSON.stringify(open1));
+    ok('heads 1428x900: closed, 01 PLAYER and 02 LIBRARY share one baseline', one(shut, ['player', 'library']), shut);
+    ok('heads 1428x900: Settings open, 03 SETTINGS on that baseline, 01 PLAYER unmoved', one(open1, ['player', 'settings']) && open1.player === shut.player, { shut, open: open1 });
+    await page.locator(C + ' .fsp-set').click();
+    await page.locator(C + ' .fsp-expand').click();
+    await page.waitForTimeout(400);
+    const an = await lines();
+    ok('heads 1428x900: the analyzer open, 01 PLAYER unmoved', an.player === shut.player, { shut, analyzer: an });
+  } else ok('heads 1428x900: the page mounts the card', false);
+  ok('heads: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+}
+
 // ---- (L) the library as a browser (ph-0hvq): scenes in view per size, search, sort, the script filter, paging, no shift ----
 // Every size shows at least LIB_MIN whole scenes in its library view and its fullscreen drawer. Named exception: the
 // 1024 x 768 desktop opens with the column shut for the session (the bar keeps its one row, PR5 as built); the caret
