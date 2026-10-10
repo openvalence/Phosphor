@@ -1127,6 +1127,20 @@ console.log('(l) context menus, the dock, field-bound controls, identities, quic
   items[1].run();
   ok('run gets the target; a throw is recorded on the plugin, never propagated, and no claim pass reruns', same(ran, ['role:pattern.speed'])
     && /boom/.test(h.host.list()[0].error) && gen === 1);
+  // No dock (the phone class): needsDock items and every dock are left out; the plugin stays active.
+  let docked = true;
+  const hn = makeHost({ dockable: () => docked });
+  hn.host.add(m('docky', ['menu']), { activate(api) {
+    api.registerMenu({ id: 'pin', targets: ['field'], needsDock: true, label: 'Pin', run() {} });
+    api.registerMenu({ id: 'copy', targets: ['field'], label: 'Copy', run() {} });
+    api.registerDock({ id: 'tray', label: 'Tray', mount() { return {}; } });
+  } });
+  const withDock = hn.host.menus(t).map((i) => i.label), docksWith = hn.host.docks().length;
+  docked = false;
+  ok('dockable() false: a needsDock item and every dock are left out, other items stay; true again, both return',
+    same(withDock, ['Pin', 'Copy']) && docksWith === 1 && same(hn.host.menus(t).map((i) => i.label), ['Copy']) && hn.host.docks().length === 0
+    && hn.host.list()[0].status === 'active' && (docked = true, hn.host.docks().length === 1));
+  ok('registerMenu refuses a needsDock that is not a boolean', bad({ needsDock: 'yes' }));
 
   // registerDock
   let dockNotes = 0;
@@ -1177,6 +1191,10 @@ console.log('(l) context menus, the dock, field-bound controls, identities, quic
   ok('quick-access: pins by identity, per hub, in plugin prefs; the dock registers on the first pin',
     same(saved.hubA.map((p) => p.key), ['hero:rail', 'role:pattern.speed']) && same(saved.hubB.map((p) => p.key), ['hero:rail'])
     && saved.hubA[1].kind === 'field' && same(hq.host.docks().map((d) => d.id), ['plugin:quick-access:tray']));
+  const hp = makeHost({ prefs, hub: () => 'hubA', dockable: () => false });
+  hp.host.add(qa.manifest, qa.module, { source: 'factory' });
+  ok('quick-access: no Pin or Unpin item where the shell has no dock (the phone class); the pins stay stored',
+    !hp.host.menus(tq('hero:rail')).length && !hp.host.menus(tq('role:pattern.speed', 'field')).length && JSON.parse(store.get('plugin.quick-access.pins')).hubA.length === 2);
   ok('quick-access: a pinned target reads Unpin; unpinning everything withdraws the dock', pinItem(tq('hero:rail')).label === 'Unpin from quick access'
     && (pinItem(tq('hero:rail')).run(), pinItem(tq('role:pattern.speed', 'field')).run(), pinItem(tq('hero:rail', 'module', 'hubB')).run(), hq.host.docks().length === 0));
   const L3 = [{ key: 'a' }, { key: 'b' }, { key: 'c' }];

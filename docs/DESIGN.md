@@ -611,6 +611,10 @@ question in §10.8).
   bottom safe-area inset. The UI scale is not in it (operator ruling
   2026-10-03, `ph-5q67`): it is the right end of the shell's bottom status
   row (`src/ui/ScaleControl.svelte` in `FootStrip`), compact, on every page.
+  Beside it, at the row's very end, sits the right dock's toggle (operator
+  ruling 2026-10-10, `ph-6ydd`; §10.13): its slot is held whether or not a
+  dock exists, so the toggle arriving with the first pin moves nothing; the
+  phone class has neither slot nor toggle.
   That row is one line at every width (operator ruling 2026-10-03,
   `ph-wt7r`): each value holds a fixed slot and a compact form (3.25k, 55.1k;
   clock offset and RTT as s.mmm; deadman in s) with the exact value on hover,
@@ -1200,12 +1204,21 @@ derives from one unit, and no size is tuned by hand.
   Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens
   it inline under the opener. Seam: `src/plugins/kit.js` `menu` (`items`,
   `checked`, `ask`).
-- The right dock (operator 2026-10-09, `ph-kyjd`): a region plugins register,
-  hidden until a dock exists and closed until the user opens it from the top
-  bar; open on the desktop it is a column beside the content and narrows it,
-  on the phone class a drawer under the strip, never over the stop pair. The
-  quick access tray is a factory plugin on it (docs/PLUGINS.md, The dock).
-  Seam: `src/ui/Dock.svelte`.
+- The right dock (operator 2026-10-09, `ph-kyjd`; amended 2026-10-10,
+  `ph-6ydd`): a region plugins register, hidden until a dock exists and
+  closed until the user opens it from its toggle at the right end of the
+  bottom status row, beside the UI scale (§10.3). Open on the desktop it is a
+  column beside the content and narrows it; on the other non-phone classes a
+  drawer from the right edge between the top strip and the bottom bars, never
+  over the stop pair or its own toggle. One open state serves the dock, the
+  toggle and the stored pref; withdrawing the last dock (the last pin gone,
+  its plugin off) closes it, so the next one arrives closed. The phone class
+  has no dock (operator: "unlikely to be used with mobile, have to cut some
+  things for space"): no toggle, no drawer, and a plugin's dock-bound menu
+  items (`needsDock`) are left out; what a plugin stored stays for the desktop
+  and the plugin stays installed. The quick access tray is a factory plugin
+  on it (docs/PLUGINS.md, The dock). Seams: `src/ui/Dock.svelte`, the toggle in
+  `src/ui/FootStrip.svelte`, `host.js` (`dockable`).
 
 ### 10.14 Health (operator rulings 2026-10-09, `ph-9t5l`, `ph-9t5l.1`)
 
@@ -1378,3 +1391,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.12, plugins | The funscript library pages as many scenes as its box holds at every size class, six or more: compact rows (a small 16:9 shot, title, meta, badges) side by side in columns where the box is wide (the kit list gains `row.min`), a 16:9 tile grid only where three tiles fit across and a page holds six; 44 px rows and targets under a coarse pointer (docs/plugins/FUNSCRIPT.md, Library browser; `ph-0hvq`). | operator ("the funscript player library being kinda useless? ... most sizes only 1 vid shows"; the density bar of six, the size classes, search, sort, a has-script filter, paging that never jumps and the now-playing and queued state per row are the ruling's. Rows winning wherever the grid pages fewer than six, the badges in the kit tile's slots, V8 V9 from parsed scripts only, Duration and Plays as the added sorts and the 560 px landscape drawer are the agent's, veto-able: FUNSCRIPT.md L1 to L5) |
 | 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
+| 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |

@@ -17,10 +17,12 @@
    * (the @media rules below, breakpoints measured): clock offset, clock rtt,
    * deadman, state pushes, session, reconnects, last rx; under 442 px the
    * "LINK" label goes too. The scale control and "UI build:etag" (screenshot
-   * debugging) never drop; the build cell may ellipsize.
+   * debugging) never drop; the build cell may ellipsize, and it alone gives
+   * the dock toggle's slot its room.
    *
-   * Read-only and quiet on purpose: the one control is the UI scale at the
-   * right end (ScaleControl) and the session clock toggle; the rest only
+   * Read-only and quiet on purpose: the controls are the UI scale
+   * (ScaleControl), the right dock's toggle at the right end beside it, and
+   * the session clock toggle; the rest only
    * tells the operator what the Valence link is doing. Ground truth applies
    * here too — every value is `--` until the machine (or the session itself)
    * has actually produced it.
@@ -35,10 +37,14 @@
    *   corners whenever it is the bottom row (style.css, the inset vars).
    * - A live value never moves its neighbors: each holds a fixed slot (--w,
    *   in ch of the mono face) and clips with an ellipsis (ph-rt1).
+   * - The dock toggle's slot is held whether or not a dock exists, so its
+   *   arrival with the first pin moves nothing; the phone class has no dock
+   *   and no slot (DESIGN §10.13).
    */
   import { machine } from '../model/machine.svelte.js';
   import { since, clock, compact, seconds } from '../model/format.js';
   import ScaleControl from './ScaleControl.svelte';
+  import { dock, toggleDock } from './Dock.svelte';
 
   let { pinned = false } = $props();
   let fsH = $state(0);
@@ -101,7 +107,16 @@
       <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
     </button>
   </div>
-  <ScaleControl />
+  <div class="foot-end">
+    <ScaleControl />
+    <span class="dock-slot">
+      {#if dock.shown}
+        <button type="button" class="og-btn sm dock-btn" aria-label={dock.label} title={dock.label} aria-expanded={dock.open} onclick={toggleDock}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
+        </button>
+      {/if}
+    </span>
+  </div>
 </footer>
 
 <style>
@@ -140,6 +155,20 @@
   :global(:root[data-phone]) .footstrip { box-sizing: content-box; height: max(var(--tap), 40px); padding-block: 0; }
   :global(:root[data-phone]) .footstrip.pinned { padding-bottom: env(safe-area-inset-bottom, 0px); }
   :global(:root[data-phone] .app:has(.page-foot.page .foot-page > *)) .footstrip.pinned { padding-bottom: 0; }
+
+  /* The right end: the scale control, then the dock toggle's slot. em of the
+     fixed type, so the scale group's edge holds while the UI scale steps. */
+  .foot-end { flex: none; display: flex; align-items: center; gap: .727em; margin-left: auto; }
+  /* The scale buttons' metrics (ScaleControl), netted to the row's text height. */
+  .dock-slot { flex: none; display: flex; width: 24px; margin-block: calc(var(--sp-1) * -1); }
+  .dock-slot .dock-btn { min-height: 0; height: 20px; width: 100%; padding: 0; color: var(--ink-dim); }
+  .dock-slot .dock-btn[aria-expanded='true'] { color: var(--highlight); }
+  .dock-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+  @media (pointer: coarse) {
+    .dock-slot { width: 40px; }
+    .dock-slot .dock-btn { height: 40px; }
+  }
+  :global(:root[data-phone]) .dock-slot { display: none; }
 
   .fs-label {
     flex: 0 0 auto;

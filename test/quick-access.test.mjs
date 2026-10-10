@@ -11,15 +11,21 @@
  *   keys       Shift+F10 opens it on the focused control, arrows and End move,
  *              Escape closes and returns focus
  *   page       Edit layout on the Dash, Show advanced on a category page
- *   plugin     Pin to quick access in module and field menus; the dock appears
- *              closed (nothing moves), opens on the user's act beside the
- *              content, never over the stop pair; pins persist per hub
- *              across a reload, reorder by keys and drag, unpin by menu and x,
- *              a vanished control is a quiet row; the rail pins as the mini
+ *   plugin     Pin to quick access in module and field menus; the toggle arrives
+ *              in its held slot at the status row's right end beside the scale
+ *              control and the dock stays closed (nothing moves); the toggle
+ *              opens and closes it beside the content, never over the stop
+ *              pair; pins persist per hub across a reload, reorder by keys and
+ *              drag, unpin by menu and x, a vanished control is a quiet row;
+ *              the rail pins as the mini
+ *   unpin      one of several keeps the dock open and the toggle active; the
+ *              last closes it, the toggle goes and the stored open state is
+ *              closed, across a reload; the next pin arrives closed
  *   laws       a pinned field: pending while held, the refusal, the gate words
  *              at watch tier, stale dims on a silent link
- *   phone      420x860: a drawer under the strip, the stop pair clear, nothing
- *              shifted, the quick rail pop-up over it, an outside tap closes it
+ *   phone      420x860: no quick access (DESIGN §10.13): no toggle or slot, no
+ *              dock, no Pin or Unpin item; the pins stay stored; the top bar
+ *              keeps its rx chip
  * Screenshots: 1428x900, 1024x768, 420x860, dark and Paper (test/evidence or --shots <dir>).
  *
  * Run: node test/quick-access.test.mjs [--shots <dir>]   (no device needed)
@@ -187,6 +193,19 @@ const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
 const rect = (page, sel) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width) }; });
 const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 const pins = (page) => page.evaluate((k) => (JSON.parse(localStorage.getItem(k) || 'null') || {})['127.0.0.1:82'] || [], PIN_PREF);
+// The dock toggle: count, place (the status row's right end, beside the scale control) and state.
+const toggle = (page) => page.evaluate(() => {
+  const b = document.querySelector('.dock-btn'), slot = document.querySelector('.footstrip .dock-slot');
+  const out = { n: document.querySelectorAll('.dock-btn').length, slot: !!(slot && slot.offsetParent) };
+  if (!b) return out;
+  const r = b.getBoundingClientRect(), s = document.querySelector('.footstrip .foot-scale').getBoundingClientRect(), f = document.querySelector('.footstrip').getBoundingClientRect();
+  return { ...out, foot: !!b.closest('.footstrip'), exp: b.getAttribute('aria-expanded'),
+    beside: r.left >= s.right && r.left - s.right < 24 && f.right - r.right < 24 && Math.abs((r.top + r.bottom) / 2 - (s.top + s.bottom) / 2) <= 2 };
+});
+const prefOpen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('phosphor.dock') || '{}').open === true);
+// What must not move when the toggle arrives: the content, the scale control and every status row cell.
+const still = (page) => page.evaluate(() => ['.content', '.footstrip .foot-scale', ...[...document.querySelectorAll('.footstrip .fact')].map((_, i) => '.footstrip .fact:nth-child(' + (i + 1) + ')')]
+  .map((q) => { const e = document.querySelector(q), b = e && e.getBoundingClientRect(); return b ? [b.left, b.top, b.width, b.height].map(Math.round).join(',') : '-'; }).join(' | '));
 const shot = async (page, name) => { await page.waitForTimeout(300); return page.screenshot({ path: join(SHOTS, 'quick-access-' + name + '.png') }); };
 
 // ---- desktop 1428x900 ---------------------------------------------------------------
@@ -197,6 +216,7 @@ if (run('desk')) {
   await page.waitForSelector(F(FREQ));
   ok('no dock toggle and no dock before anything is pinned (hidden by default)', await page.locator('.dock-btn').count() === 0 && await page.locator('.side-dock').count() === 0,
     await page.evaluate(() => [document.querySelectorAll('.dock-btn').length, document.querySelectorAll('.side-dock').length, document.querySelector('.side-dock')?.outerHTML.slice(0, 200)]));
+  ok('the toggle slot is held at the status row right end before any pin', (await toggle(page)).slot, await toggle(page));
 
   // native
   const onLabel = await rclick(page, F(FREQ) + ' .field-label');
@@ -322,25 +342,34 @@ if (run('desk')) {
   // pin a card (module) and a field; the dock appears closed, nothing moves
   await goTab(page, 'cat2');
   await page.waitForSelector(F(FREQ));
-  const content0 = await rect(page, '.content');
+  const content0 = await rect(page, '.content'), still0 = await still(page);
   await rclick(page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
   ok('plugin: Pin to quick access in a card\'s menu', (await menuState(page))?.items.includes('Pin to quick access'), await menuState(page));
   await pick(page, 'Pin to quick access');
   await page.waitForTimeout(200);
   ok('plugin: the pin lands in prefs by identity, per hub', JSON.stringify(await pins(page)) === JSON.stringify([{ key: OSC, kind: 'module', title: 'Oscillator' }]), await pins(page));
-  ok('dock: the toggle appears, the dock stays closed and the content does not move', await page.locator('.dock-btn').count() === 1
-    && await page.locator('.side-dock').count() === 0 && JSON.stringify(await rect(page, '.content')) === JSON.stringify(content0));
+  const t1 = await toggle(page);
+  ok('dock: the toggle arrives in the status row beside the scale control, inactive; the dock stays closed', t1.n === 1 && t1.foot && t1.beside && t1.exp === 'false'
+    && await page.locator('.side-dock').count() === 0, t1);
+  ok('dock: nothing moves when the first pin arrives (content, scale control, status row cells)', await still(page) === still0, [still0, await still(page)]);
   await rclick(page, F(FREQ) + ' .field-label');
   await pick(page, 'Pin to quick access');
   const pair0 = await rect(page, '.topstrip .pair');
-  await page.click('.dock-btn');
+  await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
+  ok('dock: the toggle opens it and reads active', (await toggle(page)).exp === 'true' && await prefOpen(page));
   const dk = await rect(page, '.side-dock');
   ok('dock: opening narrows the content (the user\'s act), sits beside it, never over the stop pair', (await rect(page, '.content')).w < content0.w
     && dk.l >= (await rect(page, '.content')).r && !overlap(dk, await rect(page, '.topstrip .pair')) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair')), { dk, pair0 });
   const tray = await page.evaluate(() => [...document.querySelectorAll('.side-dock .qa-pin')].map((c) => c.dataset.pin + '|' + (c.querySelector('.field') ? 'live' : 'none')));
   ok('tray: one column of the pinned modules, live, in pin order', JSON.stringify(tray) === JSON.stringify([OSC + '|live', FREQ_KEY + '|live']), tray);
   await shot(page, '1428x900-dark-dock');
+  await page.click('.footstrip .dock-btn');
+  await page.waitForTimeout(150);
+  ok('dock: the toggle closes it, inactive, the content back to its width', await page.locator('.side-dock').count() === 0 && (await toggle(page)).exp === 'false'
+    && (await rect(page, '.content')).w === content0.w && !(await prefOpen(page)));
+  await page.click('.footstrip .dock-btn');
+  await page.waitForSelector('.side-dock .qa-pin');
 
   // laws on a pinned field
   const tf = '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field';
@@ -391,13 +420,37 @@ if (run('desk')) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.side-dock .qa-pin', { timeout: 15000 });
   await page.waitForTimeout(300);
-  ok('persist: pins and the open dock survive a reload', (await page.locator('.side-dock .qa-pin').count()) === 3);
+  ok('persist: pins and the open dock survive a reload, the toggle active', (await page.locator('.side-dock .qa-pin').count()) === 3 && (await toggle(page)).exp === 'true');
   await rclick(page, '.side-dock .qa-pin[data-pin="hero:rail"] .mini');
   ok('unpin: a pinned module\'s menu offers Unpin from quick access', (await menuState(page))?.items.includes('Unpin from quick access'), await menuState(page));
   await pick(page, 'Unpin from quick access');
   await page.locator('.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .qa-unpin').click();
   await page.waitForTimeout(150);
   ok('unpin: the menu and the x each remove one', JSON.stringify((await pins(page)).map((p) => p.key)) === JSON.stringify([OSC]), await pins(page));
+  ok('unpin one of several: the dock stays open, the toggle active', await page.locator('.side-dock .qa-pin').count() === 1 && (await toggle(page)).exp === 'true' && await prefOpen(page));
+
+  // the last unpin closes the dock: one open state for the dock, the toggle and the stored pref (ph-6ydd)
+  const scale0 = await rect(page, '.footstrip .foot-scale');
+  await page.locator('.side-dock .qa-pin[data-pin="' + OSC + '"] .qa-unpin').click();
+  await page.waitForTimeout(250);
+  const t2 = await toggle(page);
+  ok('unpin the last: the dock closes, the toggle goes (nothing pinned), its slot stays, the stored state is closed',
+    await page.locator('.side-dock').count() === 0 && t2.n === 0 && t2.slot && !(await prefOpen(page))
+    && JSON.stringify(await rect(page, '.footstrip .foot-scale')) === JSON.stringify(scale0), { t2, pref: await prefOpen(page) });
+  ok('unpin the last: no page error on the way out', errors.length === 0, errors);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.footstrip .dock-slot', { state: 'attached', timeout: 15000 });
+  await page.waitForTimeout(800);
+  ok('reload after the last unpin: no toggle, no dock, closed', (await toggle(page)).n === 0 && await page.locator('.side-dock').count() === 0 && !(await prefOpen(page)));
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
+  const content1 = await rect(page, '.content');
+  await rclick(page, '.dash-cell[data-id="' + OSC + '"] .dash-title');
+  await pick(page, 'Pin to quick access');
+  await page.waitForTimeout(250);
+  const t3 = await toggle(page);
+  ok('pin again: the toggle arrives inactive and the dock stays closed, the content unmoved', t3.n === 1 && t3.exp === 'false'
+    && await page.locator('.side-dock').count() === 0 && JSON.stringify(await rect(page, '.content')) === JSON.stringify(content1), t3);
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }
@@ -425,55 +478,53 @@ if (run('gate')) {
   await ctx.close();
 }
 
-// ---- 1024x768 and Paper ---------------------------------------------------------------
-console.log('\n--- 1024x768 ---');
-for (const theme of run('mid') ? [null, PAPER] : []) {
-  const { ctx, page, errors } = await boot({ width: 1024, height: 768 }, { theme, pins: { [HUB]: [
+// ---- 1428x900 and 1024x768, dark and Paper ---------------------------------------------------------------
+console.log('\n--- 1428x900 and 1024x768 ---');
+for (const [w, h, theme] of run('mid') ? [[1428, 900, null], [1428, 900, PAPER], [1024, 768, null], [1024, 768, PAPER]] : []) {
+  const { ctx, page, errors } = await boot({ width: w, height: h }, { theme, pins: { [HUB]: [
     { key: 'group:2:Oscillator', kind: 'module', title: 'Oscillator' }, { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
   const pair0 = await rect(page, '.topstrip .pair');
-  await page.click('.dock-btn');
+  const tm = await toggle(page);
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the toggle sits in the status row beside the scale control', tm.n === 1 && tm.foot && tm.beside && tm.exp === 'false', tm);
+  await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
   const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-  ok('1024x768' + (theme ? ' Paper' : '') + ': the dock opens beside the content, no horizontal overflow, the stop pair unmoved and clear',
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the dock opens beside the content, no horizontal overflow, the stop pair unmoved and clear',
     over <= 0 && !overlap(await rect(page, '.side-dock'), pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair')), { over });
   await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
-  await shot(page, '1024x768-' + (theme ? 'paper' : 'dark'));
+  await shot(page, w + 'x' + h + '-' + (theme ? 'paper' : 'dark'));
   await page.keyboard.press('Escape');
+  await page.click('.footstrip .dock-btn');
+  await page.waitForTimeout(150);
+  ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the toggle closes it', await page.locator('.side-dock').count() === 0 && (await toggle(page)).exp === 'false');
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }
 
-// ---- phone 420x860 ----------------------------------------------------------------------
+// ---- phone 420x860: no quick access (DESIGN §10.13) ------------------------------------
 console.log('\n--- phone 420x860 ---');
 for (const theme of run('phone') ? [null, PAPER] : []) {
-  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true, theme, pins: { [HUB]: [
-    { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
+  const stored = [{ key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }];
+  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true, theme, pins: { [HUB]: stored } });
   const t = (theme ? 'Paper' : 'dark');
-  const pair0 = await rect(page, '.topstrip .pair'), main0 = await rect(page, 'main.pane');
-  ok(t + ': the toggle sits in the top bar, the drawer closed', await page.locator('.linkbar .dock-btn').count() === 1 && await page.locator('.side-dock').count() === 0);
-  await page.locator('.dock-btn').tap();
-  await page.waitForSelector('.side-dock.drawer .qa-pin');
-  const dk = await rect(page, '.side-dock.drawer'), strip = await rect(page, '.topstrip');
-  ok(t + ': a drawer from the right edge under the strip; the stop pair clear and unmoved; the page not shifted', dk.r === 420 && dk.t >= strip.b - 1
-    && !overlap(dk, pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair'))
-    && JSON.stringify(main0) === JSON.stringify(await rect(page, 'main.pane')), { dk, strip, pair0 });
-  ok(t + ': 40 px targets in the drawer', await page.evaluate(() => [...document.querySelectorAll('.side-dock .og-btn, .side-dock .qa-grip, .side-dock .qa-unpin')]
-    .every((b) => { const r = b.getBoundingClientRect(); return r.height >= 39.5 && r.width >= 39.5; })));
-  await page.locator('.side-dock .qa-pin[data-pin="hero:rail"] .mini').tap();
-  await page.waitForTimeout(300);
-  ok(t + ': the pinned mini opens the hero rail pop-up over the drawer, which stays open', await page.locator('.hero-inner.popup').count() === 1
-    && await page.locator('.side-dock.drawer').count() === 1);
-  await shot(page, '420x860-' + t.toLowerCase());
-  await page.locator('.side-dock .qa-pin[data-pin="hero:rail"] .mini').tap();
-  await page.waitForTimeout(200);
-  await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
-  const pm = await menuState(page);
-  ok(t + ': the field menu opens over the drawer inside the window', !!pm && pm.rect[0] >= 0 && pm.rect[2] <= 420 && pm.items.includes('Unpin from quick access'), pm);
+  const tg = await toggle(page);
+  ok(t + ': no toggle and no held slot in the status row, no dock, with pins stored', tg.n === 0 && !tg.slot && await page.locator('.side-dock').count() === 0, tg);
+  const rx = await page.evaluate(() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
+    return x.top >= o.bottom - 0.5 || (x.left >= o.left - 0.5 && x.right <= o.right + 0.5); });
+  ok(t + ': the top bar rx chip is whole or shed whole beside the window buttons, never cut', rx);
+  await rclick(page, '.hero-slot[data-hero="rail"]');
+  const rm = await menuState(page);
+  ok(t + ': the rail menu offers no Pin or Unpin', !!rm && !rm.items.some((l) => /quick access/.test(l)), rm);
+  await page.keyboard.press('Escape');
+  await goTab(page, 'cat2');
+  await page.waitForSelector('main.pane .field .field-label');
+  await rclick(page, 'main.pane .field .field-label');
+  const fm = await menuState(page);
+  ok(t + ': a field menu offers no Pin or Unpin', !!fm && fm.items.length > 0 && !fm.items.some((l) => /quick access/.test(l)), fm);
   await shot(page, '420x860-' + t.toLowerCase() + '-menu');
   await page.keyboard.press('Escape');
-  await page.mouse.click(40, 700);
-  await page.waitForTimeout(200);
-  ok(t + ': a tap outside closes the drawer', await page.locator('.side-dock').count() === 0);
+  ok(t + ': the pins stay stored for the desktop', JSON.stringify(await pins(page)) === JSON.stringify(stored), await pins(page));
+  await shot(page, '420x860-' + t.toLowerCase());
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }

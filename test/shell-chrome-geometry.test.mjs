@@ -140,10 +140,10 @@ ok('footstrip: a value growing or shrinking moves no neighbor', fsMove.every((s)
 const footRow = () => page.evaluate(() => {
   const f = document.querySelector('.footstrip'), fb = f.getBoundingClientRect();
   const shown = [...f.querySelectorAll('.fact')].filter((c) => c.offsetParent);
-  const sc = f.querySelector('.foot-scale').getBoundingClientRect();
+  const sc = f.querySelector('.foot-scale').getBoundingClientRect(), end = f.querySelector('.foot-end').getBoundingClientRect();
   return { h: Math.round(fb.height), shown: shown.length, tops: new Set(shown.map((c) => Math.round(c.getBoundingClientRect().top))).size,
     out: shown.filter((c) => c.getBoundingClientRect().right > innerWidth + 0.5).length,
-    scaleRight: Math.round(fb.right - sc.right), scaleMid: Math.round(sc.top + sc.height / 2 - (fb.top + fb.height / 2)),
+    scaleRight: Math.round(fb.right - end.right), scaleInEnd: sc.right <= end.right + 0.5 && sc.left >= end.left - 0.5, scaleMid: Math.round(sc.top + sc.height / 2 - (fb.top + fb.height / 2)),
     scrollers: [...f.querySelectorAll(':scope, :scope *')].filter((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowX)).length,
     wide: f.scrollWidth > f.clientWidth };
 });
@@ -153,8 +153,8 @@ for (const [fw, fh] of [[390, 844], [1280, 800], [1440, 900], [1920, 1080]]) {
   await page.waitForTimeout(250);
   const r = await footRow();
   fsH ??= r.h;
-  ok('footstrip: at ' + fw + ' one row, the scale control on it at the right end, no scroller',
-    r.tops === 1 && r.h === fsH && r.out === 0 && r.scrollers === 0 && !r.wide && Math.abs(r.scaleMid) <= 2 && r.scaleRight <= 14 && r.shown >= 1, JSON.stringify(r));
+  ok('footstrip: at ' + fw + ' one row, the scale control on it in the right end group (with the dock toggle slot), no scroller',
+    r.tops === 1 && r.h === fsH && r.out === 0 && r.scrollers === 0 && !r.wide && Math.abs(r.scaleMid) <= 2 && r.scaleRight <= 14 && r.scaleInEnd && r.shown >= 1, JSON.stringify(r));
   if (fw >= 1280) ok('footstrip: at ' + fw + ' every cell shows', r.shown === 8, JSON.stringify(r));
 }
 // Compact forms, exact value in the title; UI build and catalog etag are one cell.
@@ -529,9 +529,10 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   ok(tag + ': the home has no page footer; the UI scale is in the status row', (!homeBox || homeBox.endsWith(',0'))
     && await fp.locator('.footstrip .foot-scale output').count() === 1 && await fp.locator('.page-foot .foot-scale').count() === 0, homeBox);
   const sbox = () => fp.evaluate(() => { const f = document.querySelector('.footstrip').getBoundingClientRect(), s = document.querySelector('.footstrip .foot-scale').getBoundingClientRect();
-    return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - s.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 }; });
+    const e = document.querySelector('.footstrip .foot-end').getBoundingClientRect();
+    return { strip: [f.left, f.width, f.height].map(Math.round).join(','), right: Math.round(f.right - e.right), within: s.top >= f.top - 0.5 && s.bottom <= f.bottom + 0.5 && s.right <= e.right + 0.5 }; });
   const sb0 = await sbox();
-  ok(tag + ': the scale sits at the status row end, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
+  ok(tag + ': the scale sits in the status row end group, inside it', sb0.right === 12 && sb0.within, JSON.stringify(sb0));
   // ph-p43h: the top bar and the status row are full bleed; the status text keeps a --gap inset at both ends.
   const bleed = await fp.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), t = r('.topstrip'), f = r('.footstrip');
     return { t: [t.left, t.width], f: [f.left, f.width], iw: innerWidth, ow: document.documentElement.scrollWidth }; });

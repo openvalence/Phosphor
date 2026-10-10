@@ -11,6 +11,8 @@
  *   and one whose control is gone draws ui.module's "not on this machine".
  * - Hidden by default: the dock is registered once anything is pinned on any
  *   hub, and opens only when the user opens it.
+ * - None on the phone class: the shell has no dock there, so the host drops
+ *   the needsDock item; pins stay stored for the desktop.
  * - A row is built once per pin and moved, never rebuilt, on a reorder, so a
  *   control keeps its in-flight write.
  */
@@ -49,6 +51,7 @@ export function activate(api) {
   api.registerMenu({
     id: 'pin',
     targets: ['module', 'field'],
+    needsDock: true,
     label: (t) => (t.hub ? (pinned(t.hub, t.key) ? 'Unpin from quick access' : 'Pin to quick access') : null),
     run: (t) => setPins(t.hub, pinned(t.hub, t.key) ? pinsOf(t.hub).filter((p) => p.key !== t.key)
       : [...pinsOf(t.hub), { key: t.key, kind: t.kind, title: t.title }]),
