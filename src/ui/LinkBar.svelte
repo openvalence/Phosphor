@@ -155,7 +155,7 @@
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
      other clickables opt out on their own (Tauri drag.js). -->
-<header class="linkbar" class:shell={!!Shell} class:cut={besideCut} data-tauri-drag-region="deep" bind:this={barEl}>
+<header class="linkbar" data-part="bar" class:shell={!!Shell} class:cut={besideCut} data-tauri-drag-region="deep" bind:this={barEl}>
   <div class="header-left">
     <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
     {#if phoneMenu.shown}

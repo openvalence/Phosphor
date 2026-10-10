@@ -153,6 +153,17 @@
 
   --font: 'Chakra Petch', system-ui, sans-serif;
   --mono: 'Martian Mono', ui-monospace, monospace;
+  /* Skin hooks (docs/THEMES.md, Skins): set by a skin's stylesheet, never by a
+     theme's overrides (LOCKED). --font-head is the voice of titles and labels. */
+  --font-head: var(--font);
+  /* Texture layers, as background-image lists with their sizes: the page, and the
+     card and nest surfaces. Painted under every control, never over one. */
+  --tex-page: none;
+  --tex-page-size: auto;
+  --tex-card: none;
+  --tex-card-size: auto;
+  /* The frame width of a card and a nest. */
+  --frame-w: 1px;
   /* Nominal numeral weight. html.hivis lifts every readout in one flip without
      touching alarm-swell weights. Martian Mono's weight axis does not change
      glyph advance, so numerals never reflow. */
@@ -229,6 +240,9 @@ html { font-size: calc(var(--s) * 100%); }
 html { scroll-padding: var(--strip-h, 0px) 0 calc(var(--foot-strip-h, 0px) + var(--page-foot-reserve, 0px)); }
 body {
   background: var(--bg);
+  background-image: var(--tex-page);
+  background-size: var(--tex-page-size);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font);
   /* No font-size here: inherits the scaled html size above, same as the OG
@@ -569,7 +583,7 @@ select {
   background: var(--bg);
   color: var(--tx);
   font-size: .82rem;
-  font-family: 'Chakra Petch', sans-serif;
+  font-family: var(--font);
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23575C66' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -647,11 +661,13 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
    band. test/home.test.mjs walks both pages and fails on any other tint or
    on a box nested in a box of its own token. */
 .surface-card, .surface-nest {
-  border: 1px solid var(--line-1);
+  border: var(--frame-w) solid var(--line-1);
   border-radius: var(--radius);
+  background-image: var(--tex-card);
+  background-size: var(--tex-card-size);
 }
-.surface-card { background: var(--bg-card); }
-.surface-nest { background: var(--bg-sunken); }
+.surface-card { background-color: var(--bg-card); }
+.surface-nest { background-color: var(--bg-sunken); }
 
 /* Recessed display surface: scopes, readouts, the log. */
 .og-screen {
@@ -671,7 +687,7 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
   box-shadow: inset 0 2px 5px rgba(var(--shade-rgb),.6);
   color: var(--tx-val);
   font-size: .9rem;
-  font-family: 'Martian Mono', monospace;
+  font-family: var(--mono);
   font-variation-settings: "wght" var(--num-wght), "wdth" 90;
 }
 .og-num:focus { outline: none; border-color: var(--highlight); }
@@ -740,7 +756,7 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
   border-radius: var(--radius);
   font-size: .82rem;
   font-weight: 500;
-  font-family: 'Chakra Petch', sans-serif;
+  font-family: var(--font);
   cursor: pointer;
   background: transparent;
   color: var(--tx);
@@ -792,6 +808,7 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
 .card-sub {
   grid-column: 1 / -1;
   margin: 0;
+  font-family: var(--font-head);
   font-size: .8rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -811,7 +828,7 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
   color: var(--tx-mut);
   font-size: .76rem;
   font-weight: 500;
-  font-family: 'Chakra Petch', sans-serif;
+  font-family: var(--font);
   cursor: pointer;
   transition: border-color var(--t-quick) var(--ease-out), color var(--t-quick) var(--ease-out);
 }
@@ -925,7 +942,7 @@ nav.rail[data-shade] { --shade-surface: var(--bg-raised); }
 }
 /* The card title: uppercase head voice, one line. */
 .dash-title {
-  font-family: var(--font);
+  font-family: var(--font-head);
   font-size: var(--dash-title-size, .8rem);
   font-weight: 500;
   text-transform: uppercase;
@@ -1325,3 +1342,7 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
   overflow-wrap: anywhere;
   pointer-events: none;
 }
+
+/* High legibility strips a skin's textures (docs/THEMES.md, Skins); the skin's
+   shapes, fonts and frames stay. */
+html.hivis:root[data-skin] { --tex-page: none; --tex-card: none; }

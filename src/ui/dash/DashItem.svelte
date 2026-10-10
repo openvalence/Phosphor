@@ -224,7 +224,7 @@
      onlostpointercapture={() => { if (press) { press = null; ongrabend && ongrabend(); } }}
      style={'anchor-name:' + anchor + ';--card:' + anchor + ';--tools:' + tools}>
   {#if editing || !bare}
-  <div class="dash-head card-head" class:over={bare}>
+  <div class="dash-head card-head" data-part="card-head" class:over={bare}>
     {#if !bare}
       {#if (editing || renaming) && item.retitle}
         <input class="dash-title dash-title-edit" type="text" value={item.title} aria-label={'Name of ' + item.title}
@@ -301,7 +301,7 @@
   </div>
   {/if}
 
-  <div class={'dash-body ' + (item.kind === 'nest' ? 'surface-nest' : 'surface-card')} bind:this={bodyEl}
+  <div class={'dash-body ' + (item.kind === 'nest' ? 'surface-nest' : 'surface-card')} data-part={item.kind === 'nest' ? 'nest' : 'card'} bind:this={bodyEl}
        data-tip={app && !open && !engaged ? 'Click to edit here; click outside to leave' : null}>
     <!-- The item is passed back to its own snippet so a CALLER can share one
          snippet across many items and switch on the item's payload. Snippets

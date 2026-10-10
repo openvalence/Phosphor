@@ -1,0 +1,72 @@
+/* Rack: brushed-metal faceplates, engraved labels, LED readouts. Metal is a fine
+   vertical grain under the card surfaces; bevels are inset hairlines; the only color
+   is the LED glow on the numerals and the active tab. */
+html:root[data-skin="rack"] {
+  --font-head: 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Roboto Condensed', 'Segoe UI', 'Chakra Petch', sans-serif;
+  --frame-w: 2px;
+  --tex-page: repeating-linear-gradient(90deg, rgba(255, 255, 255, .02) 0 1px, rgba(0, 0, 0, .04) 1px 3px);
+  --tex-page-size: auto;
+  --tex-card: repeating-linear-gradient(90deg, rgba(255, 255, 255, .03) 0 1px, rgba(0, 0, 0, .035) 1px 2px);
+  --tex-card-size: auto;
+}
+
+html:root[data-skin="rack"] [data-part="bar"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .09), transparent 45%, rgba(0, 0, 0, .3)), var(--tex-card);
+  box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+html:root[data-skin="rack"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; text-transform: uppercase; letter-spacing: .16em; font-size: .85rem; text-shadow: 0 -1px 0 rgba(0, 0, 0, .7), 0 1px 0 rgba(255, 255, 255, .1); }
+html:root[data-skin="rack"] [data-part="strip"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent 30%, rgba(0, 0, 0, .25)), var(--tex-card);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+html:root[data-skin="rack"] [data-part="hero"] { background-image: var(--tex-card); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+html:root[data-skin="rack"] [data-part="numerals"] .hn-val { text-shadow: var(--glow-reality); }
+html:root[data-skin="rack"] [data-part="stop-frame"] { outline: 2px groove var(--line-2); outline-offset: 4px; }
+
+html:root[data-skin="rack"] [data-part="rail"] { background-image: var(--tex-card); border-style: outset; border-width: 2px 2px 2px 0; border-color: var(--line-1); }
+html:root[data-skin="rack"] [data-part="rail-label"] { font-family: var(--font-head); letter-spacing: .2em; font-size: 10px; text-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
+html:root[data-skin="rack"] [data-part="rail-tab"].on {
+  background-color: var(--bg-sunken);
+  box-shadow: inset 3px 0 0 var(--reality), inset 0 1px 3px rgba(0, 0, 0, .6);
+}
+
+/* Faceplates: a grooved edge, a screw at the head's left end. */
+html:root[data-skin="rack"] [data-part="card"],
+html:root[data-skin="rack"] [data-part="nest"],
+html:root[data-skin="rack"] [data-part="panel"] {
+  border-style: outset;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 3px 4px 8px rgba(0, 0, 0, .45);
+}
+html:root[data-skin="rack"] [data-part="card-head"]:not(.over) { padding-left: 18px; }
+html:root[data-skin="rack"] [data-part="card-head"]:not(.over)::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #AEB7BC, #596267 55%, #2C3235);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .65);
+  pointer-events: none;
+}
+html:root[data-skin="rack"] .dash-title { font-family: var(--font-head); font-size: .76rem; letter-spacing: .16em; text-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
+html:root[data-skin="rack"] .og-panel { border-style: outset; border-width: 2px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07); }
+
+html:root[data-skin="rack"] .og-btn,
+html:root[data-skin="rack"] .og-seg button,
+html:root[data-skin="rack"] .stepper button {
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-sunken));
+}
+html:root[data-skin="rack"] .og-btn:active,
+html:root[data-skin="rack"] .og-seg button:active { background-image: linear-gradient(180deg, var(--bg-sunken), var(--bg-card)); }
+html:root[data-skin="rack"] .og-num,
+html:root[data-skin="rack"] .value-input { box-shadow: inset 0 2px 5px rgba(0, 0, 0, .75); }
+html:root[data-skin="rack"] [data-part="status-row"],
+html:root[data-skin="rack"] [data-part="page-foot"] { background-image: var(--tex-card); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+
+html:root[data-skin="rack"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-skin="rack"] ::-webkit-scrollbar { width: 11px; height: 11px; }
+html:root[data-skin="rack"] ::-webkit-scrollbar-track { background: var(--bg-sunken); }
+html:root[data-skin="rack"] ::-webkit-scrollbar-thumb { background-color: var(--line-2); background-image: linear-gradient(90deg, rgba(255, 255, 255, .18), rgba(0, 0, 0, .25)); border-radius: 2px; }

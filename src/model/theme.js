@@ -18,8 +18,12 @@
  * - Pure until applyTheme(): node tests import it with no DOM.
  * - Canvases read ACCENT/ac() or re-read computed tokens in onTheme().
  * - Browser preference only: nothing here reaches the hub.
+ * - A skin (themes/manifest.js) is a shipped stylesheet layer and icon set
+ *   named by `theme.skin`; the layer is scoped by html[data-skin], and only a
+ *   shipped id reaches it, so an import or a plugin never carries CSS.
  * Model, knobs and the light-chassis finding: docs/THEMES.md.
  */
+import { SKINS } from '../themes/manifest.js';
 
 // ---- color math: sRGB <-> OKLCH (Ottosson), WCAG contrast -----------------
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -138,6 +142,12 @@ export const LOCKED = {
   '--bar-h': 'touch floor (law 12)',
   '--ui-btn-h': 'touch floor (law 12)',
   '--ui-row-h': 'plugin kit row height',
+  '--font-head': 'skin hook (docs/THEMES.md, Skins)',
+  '--tex-page': 'skin hook (docs/THEMES.md, Skins)',
+  '--tex-page-size': 'skin hook (docs/THEMES.md, Skins)',
+  '--tex-card': 'skin hook (docs/THEMES.md, Skins)',
+  '--tex-card-size': 'skin hook (docs/THEMES.md, Skins)',
+  '--frame-w': 'skin hook (docs/THEMES.md, Skins)',
 };
 /** The safety swatches the editor shows locked. */
 export const SAFETY = ['--warn', '--bad', '--estop'];
@@ -194,8 +204,18 @@ export const THEMES = [
   preset('slate', 'Slate', '#5CC8FF', '#9D8BFA', { hue: 245, tint: 2.4, brightness: 0.2, contrast: 1 }),
   preset('ink', 'Warm ink', '#66D5BA', '#E8A0FF', { hue: 60, tint: 1.8, brightness: 0.15, contrast: 1.05 }),
   preset('paper', 'Paper', '#1A66C8', '#6A3FC8', { hue: 263, tint: 1, brightness: 0.97, contrast: 1 }),
+  // The skins: a theme plus a stylesheet layer and an icon set (themes/manifest.js).
+  ...SKINS.map((s) => ({
+    ...preset(s.id, s.name, s.theme.accents.reality, s.theme.accents.intent, s.theme.chassis, { highlight: s.theme.accents.highlight }),
+    skin: s.id,
+    look: { ...def('look'), ...s.theme.look },
+    overrides: { ...(s.theme.overrides || {}) },
+  })),
 ];
 export const DEFAULT_THEME = THEMES[0];
+const SKIN_BY_ID = new Map(SKINS.map((s) => [s.id, s]));
+/** The skin manifest entry for an id, or null: name, pitch, swatch, icons. */
+export function skinMeta(id) { return SKIN_BY_ID.get(id) || null; }
 /** The presets this build ships; plugin themes join THEMES later. */
 const SHIPPED = new Set(THEMES.map((t) => t.id));
 
@@ -367,6 +387,7 @@ export function normalizeTheme(raw) {
   const id = ID_RE.test(t.id || '') ? t.id : 'custom';
   return {
     id,
+    skin: SKIN_BY_ID.has(t.skin) ? t.skin : null,
     name: typeof t.name === 'string' && t.name.trim() ? t.name.trim().slice(0, 40) : id,
     accents: { reality: pick(a.reality, d.reality), intent: pick(a.intent, d.intent), highlight: pick(a.highlight, null) },
     chassis: group('chassis'),
@@ -441,14 +462,32 @@ const subs = new Set();
 export function onTheme(fn) { subs.add(fn); return () => subs.delete(fn); }
 
 const decl = (m) => Object.entries(m).map(([k, v]) => k + ':' + v + ';').join('');
-/** The CSS for one theme: base, prefers-contrast, hi-vis, then pinned overrides. */
+const svgUrl = (svg) => 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+/** A skin's icon set as CSS: the glyph's own <svg> hides and a mask (or a colored image) takes its place. */
+export function iconCss(skinId) {
+  const s = SKIN_BY_ID.get(skinId);
+  if (!s) return '';
+  const root = ':root[data-skin="' + s.id + '"] [data-icon="';
+  return Object.entries(s.icons || {}).map(([name, v]) => {
+    const mask = typeof v === 'string';
+    const url = svgUrl(mask
+      ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + v + '</svg>'
+      : v.svg);
+    return root + name + '"]>svg{display:none}' + root + name + '"]::before{content:"";display:block;width:16px;height:16px;'
+      + (mask ? 'background:currentColor;-webkit-mask:' + url + ' center/contain no-repeat;mask:' + url + ' center/contain no-repeat}'
+        : 'background:' + url + ' center/contain no-repeat}');
+  }).join('');
+}
+
+/** The CSS for one theme: base, prefers-contrast, hi-vis, then pinned overrides, then the skin's icon set. */
 export function themeCss(theme) {
   const t = normalizeTheme(theme);
   const d = derive(t);
   return ':root:root{' + decl(d.base) + decl(d.ink) + '--og-brackets:' + d.brackets + ';color-scheme:' + (d.dark ? 'dark' : 'light') + '}'
     + '@media (prefers-contrast: more){:root:root{' + decl(d.more) + '}}'
     + ':root:root.hivis{' + decl(d.hivis) + '}'
-    + (Object.keys(t.overrides).length ? ':root:root:root{' + decl(t.overrides) + '}' : '');
+    + (Object.keys(t.overrides).length ? ':root:root:root{' + decl(t.overrides) + '}' : '')
+    + iconCss(t.skin);
 }
 
 /** First paint: the stored (or migrated) theme. A pending plugin id is not written over. */
@@ -477,6 +516,7 @@ export function applyTheme(idOrTheme, { persist = true } = {}) {
     el.textContent = themeCss(t);
     const root = document.documentElement;
     root.dataset.theme = t.id;
+    if (t.skin) root.dataset.skin = t.skin; else delete root.dataset.skin;
   }
   for (const fn of subs) { try { fn(t); } catch (e) { console.error('theme subscriber', e); } }
   return t;

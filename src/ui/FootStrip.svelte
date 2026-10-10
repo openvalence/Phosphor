@@ -91,7 +91,7 @@
   const uiCell = $derived(buildId + ':' + (etag ? etag.slice(0, 10) : '--'));
 </script>
 
-<footer class="footstrip" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
+<footer class="footstrip" data-part="status-row" class:pinned bind:offsetHeight={fsH} aria-label="Link diagnostics">
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">

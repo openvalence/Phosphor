@@ -1,0 +1,173 @@
+/* Luna: blue title bars, beige windows, a sky and a green hill behind them.
+   Light chassis; every surface under text is a chassis token, so the contrast guard
+   holds. The blues here carry white text of their own (4.5:1 on the darkest stop). */
+html:root[data-skin="luna"] {
+  --font: Tahoma, 'Segoe UI', Verdana, 'DejaVu Sans', sans-serif;
+  --font-head: 'Trebuchet MS', Tahoma, 'Segoe UI', Verdana, 'DejaVu Sans', sans-serif;
+  --mono: 'Lucida Console', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
+  --frame-w: 1px;
+  /* The sky, two hills and a soft cloud band; fixed, so the window moves over it. */
+  --tex-page:
+    radial-gradient(ellipse 70% 38% at 18% 104%, #6DBE45 0 62%, transparent 63%),
+    radial-gradient(ellipse 85% 34% at 78% 108%, #4FA634 0 60%, transparent 61%),
+    radial-gradient(ellipse 28% 5% at 26% 50%, rgba(255, 255, 255, .55), transparent),
+    radial-gradient(ellipse 22% 4% at 72% 38%, rgba(255, 255, 255, .5), transparent),
+    linear-gradient(180deg, #2E6FD8 0%, #5B9BEA 46%, #A9CDF6 78%, #CFE3F8 100%);
+  --tex-page-size: 100% 100%;
+}
+
+/* ---- the title bar: the top bar ---- */
+html:root[data-skin="luna"] [data-part="bar"] {
+  background-color: #1A56CC;
+  background-image: linear-gradient(180deg, #4C8FF2 0, #2563DC 14%, #1A56CC 55%, #2A6AE0 88%, #1A4DB8 100%);
+  box-shadow: inset 0 -1px 0 #0F3C94, inset 0 1px 0 rgba(255, 255, 255, .35);
+  color: #fff;
+}
+html:root[data-skin="luna"] [data-part="bar"] .wordmark {
+  color: #fff;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-style: italic;
+  text-shadow: 1px 1px 0 #0B2F7A;
+}
+html:root[data-skin="luna"] [data-part="bar"] .chip {
+  border-radius: 3px;
+  border-color: #0F3C94;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-raised));
+}
+
+/* ---- the toolbar: the strip under it, and the hero scope ---- */
+html:root[data-skin="luna"] [data-part="top"] { background-color: var(--bg-raised); border-bottom-color: #1A4DB8; }
+html:root[data-skin="luna"] [data-part="strip"] {
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-raised) 70%, var(--bg));
+}
+html:root[data-skin="luna"] [data-part="hero"] {
+  background-image: linear-gradient(180deg, var(--bg-raised), var(--bg));
+  border-bottom-color: #7F9DB9;
+}
+
+/* ---- the task pane: the rail ---- */
+html:root[data-skin="luna"] [data-part="rail"] {
+  background-color: var(--bg);
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg) 40%);
+  border-color: #7F9DB9;
+  border-radius: 0 6px 6px 0;
+}
+html:root[data-skin="luna"] [data-part="rail-label"] {
+  font-family: var(--font-head);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: #123E96;
+  margin: 2px 4px 2px;
+  padding: 3px 8px;
+  border-radius: 5px 5px 0 0;
+  background-color: #D7E3FA;
+  background-image: linear-gradient(90deg, #FFFFFF, #C6D8F8);
+}
+html:root[data-skin="luna"] [data-part="rail-tab"] { border-radius: 3px; font-size: .82rem; }
+html:root[data-skin="luna"] [data-part="rail-tab"]:hover { text-decoration: underline; background: transparent; color: #0B3FAA; }
+html:root[data-skin="luna"] [data-part="rail-tab"].on {
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, #FFFFFF, var(--bg-card));
+  border-color: #7F9DB9;
+  text-decoration: none;
+}
+html:root[data-skin="luna"] .rail-sec.shell { border-radius: 4px; }
+
+/* ---- windows: each card is one, with its title as the caption ---- */
+html:root[data-skin="luna"] [data-part="card"],
+html:root[data-skin="luna"] [data-part="nest"] {
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 0 0 1px #1A4DB8, 2px 3px 6px rgba(10, 30, 90, .35);
+}
+html:root[data-skin="luna"] [data-part="card-head"]:not(.over) {
+  padding: 0 6px;
+  margin: 0 0 0 0;
+  border-radius: 6px 6px 0 0;
+  background-color: #1A56CC;
+  background-image: linear-gradient(180deg, #4C8FF2 0, #2563DC 16%, #1A56CC 60%, #2A6AE0 92%, #1A4DB8 100%);
+  box-shadow: 0 0 0 2px #2A6AE0;
+}
+html:root[data-skin="luna"] [data-part="card-head"]:not(.over) .dash-title {
+  color: #fff;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: .01em;
+  font-size: .8rem;
+  text-shadow: 1px 1px 0 #0B2F7A;
+}
+html:root[data-skin="luna"] [data-part="card-head"]:not(.over) .dash-title::before { color: #CFE0FF; text-shadow: none; }
+html:root[data-skin="luna"] [data-part="card-head"]:not(.over) .og-btn { text-shadow: none; }
+
+/* A plugin card: its title row is the caption, inside the frame. */
+html:root[data-skin="luna"] [data-part="panel"] {
+  border-radius: 6px 6px 4px 4px;
+  box-shadow: 0 0 0 1px #1A4DB8, 2px 3px 6px rgba(10, 30, 90, .35);
+}
+html:root[data-skin="luna"] [data-part="panel-bar"] {
+  margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0;
+  padding: 0 var(--sp-3);
+  border-radius: 5px 5px 0 0;
+  background-color: #1A56CC;
+  background-image: linear-gradient(180deg, #4C8FF2 0, #2563DC 16%, #1A56CC 60%, #2A6AE0 92%, #1A4DB8 100%);
+}
+html:root[data-skin="luna"] [data-part="panel-bar"] :is(.dash-title, .ui-caret) {
+  color: #fff;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: .01em;
+  text-shadow: 1px 1px 0 #0B2F7A;
+}
+html:root[data-skin="luna"] [data-part="panel-bar"] .dash-title::before { color: #CFE0FF; text-shadow: none; }
+
+html:root[data-skin="luna"] .og-panel {
+  outline: none;
+  border-color: #7F9DB9;
+  border-radius: 4px;
+  background-image: none;
+}
+html:root[data-skin="luna"] .pane-head h2 { font-family: var(--font-head); font-weight: 700; }
+
+/* ---- controls: rounded, glossy, a blue ring when pressed ---- */
+html:root[data-skin="luna"] .og-btn,
+html:root[data-skin="luna"] .og-seg button,
+html:root[data-skin="luna"] .stepper button {
+  border-radius: 4px;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, var(--bg-card) 0, var(--bg-raised) 85%, var(--bg) 100%);
+}
+html:root[data-skin="luna"] .og-num,
+html:root[data-skin="luna"] .value-input,
+html:root[data-skin="luna"] select {
+  border-radius: 2px;
+  border-color: #7F9DB9;
+  box-shadow: inset 1px 1px 2px rgba(var(--shade-rgb), .25);
+}
+html:root[data-skin="luna"] .og-switch .track { border-radius: 9px; background-color: var(--bg-sunken); }
+html:root[data-skin="luna"] .og-switch .track::after { border-radius: 50%; }
+html:root[data-skin="luna"] input[type="range"]::-webkit-slider-thumb { border-radius: 3px; border-color: #7F9DB9; background-color: var(--bg-card); }
+html:root[data-skin="luna"] input[type="range"]::-moz-range-thumb { border-radius: 3px; border-color: #7F9DB9; background-color: var(--bg-card); }
+html:root[data-skin="luna"] .og-screen { border-radius: 2px; border-color: #7F9DB9; }
+
+/* ---- the status bar ---- */
+html:root[data-skin="luna"] [data-part="status-row"],
+html:root[data-skin="luna"] [data-part="page-foot"] {
+  background-color: var(--bg-raised);
+  background-image: linear-gradient(180deg, var(--bg-raised), var(--bg));
+  border-top: 1px solid #7F9DB9;
+}
+html:root[data-skin="luna"] .footstrip.pinned { border-top: 1px solid #7F9DB9; }
+
+/* ---- scrollbars: the wide blue ones, when the preference shows them ---- */
+html:root[data-skin="luna"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-skin="luna"] ::-webkit-scrollbar { width: 14px; height: 14px; }
+html:root[data-skin="luna"] ::-webkit-scrollbar-track { background: var(--bg-sunken); }
+html:root[data-skin="luna"] ::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  border: 1px solid #1A4DB8;
+  background-color: #6C9CF0;
+  background-image: linear-gradient(90deg, #A8C6FA, #6C9CF0 50%, #4D82E6);
+}

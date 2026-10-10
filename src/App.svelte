@@ -47,7 +47,7 @@
   import { machine } from './model/machine.svelte.js';
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
-  import { navIcon } from './ui/navIcons.js';
+  import { navIcon, navIconKey } from './ui/navIcons.js';
   import { writeSetting, inFlight } from './model/shadow.svelte.js';
   import { withoutClaimed, claimRoles } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
@@ -631,13 +631,13 @@
 {/snippet}
 
 {#snippet railTab(t, mini)}
-  <button role="tab" class="rail-tab" class:sub={t.sub} data-tab-id={t.id}
+  <button role="tab" class="rail-tab" data-part="rail-tab" class:sub={t.sub} data-tab-id={t.id}
           aria-selected={current && current.id === t.id}
           tabindex={current && current.id === t.id ? 0 : -1}
           class:on={current && current.id === t.id}
           data-tip={t.label} aria-label={mini ? t.label : null}
           onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
-    <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
+    <span class="rail-glyph" data-icon={navIconKey(t)} aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
     {#if !mini}<span class="rail-name">{t.label}</span>{/if}
   </button>
 {/snippet}
@@ -646,8 +646,8 @@
 {#snippet sideTabs(mini, ops)}
     <div role="tablist" aria-orientation="vertical" tabindex="-1" onkeydown={(e) => onTablistKeydown(e, true)}>
       {#each navSections as sec (sec.label)}
-        <div class="rail-sec" class:shell={sec.shell}>
-          {#if !mini}<span class="rail-lbl">{sec.label}</span>{/if}
+        <div class="rail-sec" data-part="rail-sec" class:shell={sec.shell}>
+          {#if !mini}<span class="rail-lbl" data-part="rail-label">{sec.label}</span>{/if}
           {#each sec.tabs as t (t.id)}
             {@const here = ops && current.id === t.id}
             {@render railTab(t, mini)}
@@ -678,7 +678,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:media={mediaBare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull && !mediaBare}>
+  <main class="pane" data-part="pane" class:full={isFull} class:bare={isFull && full.bare} class:media={mediaBare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull && !mediaBare}>
     <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
       {#key current.id}
       {#if current.pane}
@@ -792,7 +792,7 @@
     <div class="frame">
       <!-- The tablist role lives on an inner div: <nav> is a landmark, and ARIA
            forbids giving a non-interactive landmark an interactive role. -->
-      <nav class="rail" class:mini={railMini} aria-label="Sections" use:scrollshade>
+      <nav class="rail" data-part="rail" class:mini={railMini} aria-label="Sections" use:scrollshade>
         <button type="button" class="rail-collapse" onclick={toggleRail}
                 aria-expanded={!railMini}
                 aria-label={railMini ? 'Expand navigation' : 'Collapse navigation'}
@@ -801,7 +801,7 @@
         </button>
         {@render sideTabs(railMini, railOps)}
       </nav>
-      <div class="content" bind:this={contentEl} use:scrollshade>
+      <div class="content" data-part="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
       </div>
       <Dock />

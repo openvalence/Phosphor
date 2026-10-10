@@ -13,6 +13,7 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './style.css';
+import './themes/skins.css';
 import { connect, machine, parseHost, recentHubs } from './model/machine.svelte.js';
 import { applyStoredTheme } from './model/theme.js';
 import './ui/still.svelte.js';

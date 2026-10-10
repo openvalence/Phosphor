@@ -1,0 +1,88 @@
+/* Outrun: neon pink and cyan over a sunset. A sky and a sun behind the page, a
+   perspective grid under it that slides toward the viewer (transform only, off
+   under html.still), cards on glowing hairlines, wide display titles. */
+html:root[data-skin="outrun"] {
+  --font-head: 'Orbitron', Eurostile, 'Bank Gothic', Bahnschrift, 'Chakra Petch', sans-serif;
+  --frame-w: 1px;
+  --tex-page:
+    radial-gradient(circle 24vmin at 50% 84%, #FF5FB0 0 62%, rgba(255, 95, 176, .25) 63% 66%, transparent 67%),
+    linear-gradient(180deg, #07030F 0%, #1A0838 46%, #4A1060 72%, #8A1F74 100%);
+  --tex-page-size: 100% 100%;
+  --tex-card: repeating-linear-gradient(135deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 7px);
+  --tex-card-size: auto;
+}
+
+/* The floor: a grid in perspective, sliding one cell per loop. */
+html:root[data-skin="outrun"]::before {
+  content: '';
+  position: fixed;
+  left: -60%;
+  right: -60%;
+  bottom: 0;
+  height: 46vh;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(0, 229, 255, .42) 1px, transparent 1px) 0 0 / 100% 56px,
+    linear-gradient(90deg, rgba(255, 79, 216, .42) 1px, transparent 1px) 0 0 / 72px 100%;
+  transform: perspective(280px) rotateX(58deg);
+  transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(transparent, #000 55%);
+  mask-image: linear-gradient(transparent, #000 55%);
+}
+html:root[data-skin="outrun"]:not(.still):not(.hivis)::before { animation: skin-outrun-floor 3.2s linear infinite; will-change: transform; }
+@keyframes skin-outrun-floor {
+  from { transform: perspective(280px) rotateX(58deg) translateY(0); }
+  to { transform: perspective(280px) rotateX(58deg) translateY(56px); }
+}
+
+html:root[data-skin="outrun"] [data-part="bar"] { background-image: linear-gradient(180deg, rgba(255, 79, 216, .12), transparent); box-shadow: inset 0 -1px 0 var(--line-3), 0 1px 14px rgba(255, 79, 216, .25); }
+html:root[data-skin="outrun"] [data-part="bar"] .wordmark {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-style: italic;
+  font-size: .85rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(var(--intent-rgb), .7);
+}
+html:root[data-skin="outrun"] [data-part="strip"] { background-image: linear-gradient(180deg, rgba(0, 229, 255, .06), transparent 60%); }
+html:root[data-skin="outrun"] [data-part="numerals"] .hn-val { font-family: var(--font-head); font-weight: 700; text-shadow: var(--glow-reality); }
+html:root[data-skin="outrun"] [data-part="stop-frame"] { outline: 1px solid var(--line-3); outline-offset: 4px; }
+html:root[data-skin="outrun"] [data-part="hero"] { box-shadow: inset 0 -1px 0 var(--line-3), 0 1px 12px rgba(0, 229, 255, .18); }
+
+html:root[data-skin="outrun"] [data-part="rail"] {
+  border-color: var(--line-2);
+  background-image: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--intent) 16%, transparent));
+  box-shadow: 0 0 16px rgba(255, 79, 216, .14);
+}
+html:root[data-skin="outrun"] [data-part="rail-label"] { font-family: var(--font-head); font-size: 10px; letter-spacing: .22em; }
+html:root[data-skin="outrun"] [data-part="rail-tab"].on {
+  box-shadow: inset 3px 0 0 var(--intent), 0 0 14px -4px rgba(var(--intent-rgb), .8);
+  border-color: var(--line-3);
+}
+
+html:root[data-skin="outrun"] [data-part="card"],
+html:root[data-skin="outrun"] [data-part="nest"],
+html:root[data-skin="outrun"] [data-part="panel"] { border-color: var(--line-3); box-shadow: 0 0 0 1px rgba(var(--intent-rgb), .3), 0 0 22px rgba(var(--intent-rgb), .14); }
+html:root[data-skin="outrun"] .dash-title {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: .68rem;
+  letter-spacing: .2em;
+  color: var(--tx-hi);
+  text-shadow: 0 0 9px rgba(var(--reality-rgb), .6);
+}
+html:root[data-skin="outrun"] .og-panel { border-color: var(--line-3); box-shadow: 0 0 18px rgba(var(--intent-rgb), .12); }
+html:root[data-skin="outrun"] .pane-head h2 { font-family: var(--font-head); font-size: .75rem; letter-spacing: .18em; }
+
+html:root[data-skin="outrun"] .og-btn,
+html:root[data-skin="outrun"] .og-seg button { background-color: var(--bg-card); text-shadow: 0 0 8px rgba(var(--reality-rgb), .35); }
+html:root[data-skin="outrun"] .og-btn:hover,
+html:root[data-skin="outrun"] .og-seg button:hover { background-color: color-mix(in srgb, var(--intent) 16%, var(--bg-card)); }
+html:root[data-skin="outrun"] [data-part="status-row"],
+html:root[data-skin="outrun"] [data-part="page-foot"] { box-shadow: 0 -1px 14px rgba(0, 229, 255, .16); }
+html:root[data-skin="outrun"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) var(--bg-sunken); }
+@media (max-width: 560px) {
+  html:root[data-skin="outrun"] [data-part="bar"] .wordmark { letter-spacing: .04em; font-size: .72rem; }
+}

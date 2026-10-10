@@ -487,9 +487,9 @@
 <svelte:window onkeydown={onWindowKey} bind:innerHeight={winH} bind:innerWidth={winW} />
 <svelte:document onclick={onDocClick} onpointerdown={onPopupAway} />
 
-<div class="topstrip" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
+<div class="topstrip" data-part="top" style:--hb={heroBar.budget ? (heroBar.budget - (railHidden ? 0 : heroBar.railH)) + 'px' : null} class:bare class:woke={woke || held} bind:offsetHeight={stripH}>
   <LinkBar {shell} onheat={openHeat} />
-  <div class="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
+  <div class="strip" data-part="strip" class:stacked class:compact={cmp} class:spread={cmp && spread} class:small-nums={smallNums} role="group" aria-label="Safety controls" bind:this={stripEl}>
     <div class="measure" aria-hidden="true" inert bind:this={measureEl}>
       {#each ops as op (op.key)}<span class="btn" data-k="op"><span class="lbl">{displayLabel(op.label)}</span></span>{/each}
       <span class="btn home-btn" data-k="menu">{@render homeFace()}</span>
@@ -497,7 +497,7 @@
       <span data-k="tap" style="height: var(--tap)"></span>
       <span class="mono num-floor" data-k="num">000.0</span>
     </div>
-    <div class="nums">
+    <div class="nums" data-part="numerals">
       {#if rail && rail.posField}
         <HeroNumerals
           posField={rail.posField} velField={rail.velField} targetField={rail.targetField}
@@ -584,7 +584,7 @@
       {/if}
       <!-- Bound by spec-core identity alone (law 2), never by a role tag.
            The e-stop is outermost. -->
-      <div class="pair" bind:this={pairEl}>
+      <div class="pair" data-part="stop-frame" bind:this={pairEl}>
         <SafetyOp action={specSafety} op={SAFETY_OP.pause} />
         <SafetyOp action={specSafety} op={SAFETY_OP.estop} />
       </div>

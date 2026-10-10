@@ -1,0 +1,94 @@
+/* DMG: four shades of pea-green LCD behind a pixel grid, in a purple-gray bezel.
+   The LCD tones are pinned in the manifest (text is the darkest, 5:1 on every
+   surface); the grid is a dark 1 px line in every third pixel and costs no more
+   than a few percent of contrast. */
+html:root[data-skin="dmg"] {
+  --font: Consolas, 'Lucida Console', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+  --font-head: 'Silkscreen', Consolas, 'Lucida Console', monospace;
+  --frame-w: 3px;
+  --tex-page:
+    linear-gradient(rgba(15, 56, 15, .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 56, 15, .07) 1px, transparent 1px);
+  --tex-page-size: 3px 3px;
+  --tex-card:
+    linear-gradient(rgba(15, 56, 15, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 56, 15, .05) 1px, transparent 1px);
+  --tex-card-size: 3px 3px;
+}
+
+/* The bezel: the bar. */
+html:root[data-skin="dmg"] [data-part="bar"] {
+  background-color: #565A74;
+  background-image: linear-gradient(180deg, #6B7090, #565A74 50%, #484B63);
+  color: #F2EFF8;
+  box-shadow: inset 0 -2px 0 #2E3045, inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+html:root[data-skin="dmg"] [data-part="bar"] .wordmark {
+  color: #F2EFF8;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+html:root[data-skin="dmg"] [data-part="bar"] .chip { border-radius: 0; border-width: 2px; }
+html:root[data-skin="dmg"] [data-part="top"] { border-bottom: 3px solid var(--line-4); }
+html:root[data-skin="dmg"] [data-part="strip"],
+html:root[data-skin="dmg"] [data-part="hero"] { background-image: var(--tex-page); background-size: var(--tex-page-size); }
+html:root[data-skin="dmg"] [data-part="hero"] { border-bottom: 3px solid var(--line-4); }
+html:root[data-skin="dmg"] [data-part="numerals"] .hn-val { font-family: var(--font-head); }
+html:root[data-skin="dmg"] [data-part="stop-frame"] { outline: 2px solid var(--line-3); outline-offset: 4px; }
+
+html:root[data-skin="dmg"] [data-part="rail"] { border-color: var(--line-4); border-width: 3px 3px 3px 0; border-radius: 0; background-image: var(--tex-page); background-size: var(--tex-page-size); }
+html:root[data-skin="dmg"] [data-part="rail-label"] {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .12em;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 -3px 0 var(--line-4);
+  margin: 0 4px 2px;
+}
+html:root[data-skin="dmg"] [data-part="rail-tab"] { border-radius: 0; }
+html:root[data-skin="dmg"] [data-part="rail-tab"].on { background-color: var(--line-4); color: var(--bg-card); border-color: var(--line-4); }
+html:root[data-skin="dmg"] [data-part="rail-tab"].on .rail-glyph { color: var(--bg-card); }
+
+html:root[data-skin="dmg"] [data-part="card"],
+html:root[data-skin="dmg"] [data-part="nest"],
+html:root[data-skin="dmg"] [data-part="panel"] { border-radius: 0; box-shadow: 4px 4px 0 var(--line-2); }
+html:root[data-skin="dmg"] [data-part="card-head"]:not(.over),
+html:root[data-skin="dmg"] [data-part="panel-bar"] { background-color: var(--line-4); padding-inline: var(--sp-3); }
+html:root[data-skin="dmg"] [data-part="panel-bar"] { margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0; }
+html:root[data-skin="dmg"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) :is(.dash-title, .ui-caret) { color: var(--bg-card); }
+html:root[data-skin="dmg"] :is([data-part="card-head"]:not(.over), [data-part="panel-bar"]) .dash-title::before { color: var(--bg); }
+html:root[data-skin="dmg"] .dash-title { font-size: .72rem; letter-spacing: .12em; }
+html:root[data-skin="dmg"] .og-panel { outline: none; border-width: 3px; border-radius: 0; background-image: none; box-shadow: 4px 4px 0 var(--line-2); }
+html:root[data-skin="dmg"] .pane-head h2 { font-family: var(--font-head); font-size: .8rem; letter-spacing: .1em; }
+
+/* Buttons: a thick bottom-right edge, like the cartridge buttons. */
+html:root[data-skin="dmg"] .og-btn,
+html:root[data-skin="dmg"] .og-seg button,
+html:root[data-skin="dmg"] .stepper button {
+  border-radius: 0;
+  border-width: 2px 3px 3px 2px;
+  background-color: var(--bg-card);
+}
+html:root[data-skin="dmg"] .og-btn:active,
+html:root[data-skin="dmg"] .og-seg button:active { border-width: 3px 2px 2px 3px; }
+html:root[data-skin="dmg"] .og-num,
+html:root[data-skin="dmg"] .value-input,
+html:root[data-skin="dmg"] select { border-radius: 0; border-width: 2px; box-shadow: inset 2px 2px 0 rgba(15, 56, 15, .3); }
+html:root[data-skin="dmg"] .og-switch .track,
+html:root[data-skin="dmg"] .og-switch .track::after { border-radius: 0; }
+html:root[data-skin="dmg"] input[type="range"]::-webkit-slider-thumb { border-width: 2px; border-radius: 0; background-color: var(--bg-card); }
+html:root[data-skin="dmg"] input[type="range"]::-moz-range-thumb { border-width: 2px; border-radius: 0; background-color: var(--bg-card); }
+html:root[data-skin="dmg"] [data-part="status-row"],
+html:root[data-skin="dmg"] [data-part="page-foot"] { border-top: 3px solid var(--line-4); background-image: var(--tex-page); background-size: var(--tex-page-size); }
+
+html:root[data-skin="dmg"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-skin="dmg"] ::-webkit-scrollbar { width: 12px; height: 12px; }
+html:root[data-skin="dmg"] ::-webkit-scrollbar-track { background: var(--bg-sunken); }
+html:root[data-skin="dmg"] ::-webkit-scrollbar-thumb { background: var(--line-4); border: 2px solid var(--bg-sunken); }
+@media (max-width: 560px) {
+  html:root[data-skin="dmg"] [data-part="bar"] .wordmark { letter-spacing: .02em; font-size: .7rem; }
+}

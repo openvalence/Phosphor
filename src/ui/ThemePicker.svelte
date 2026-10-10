@@ -31,7 +31,7 @@
   import { untrack } from 'svelte';
   import {
     KNOBS, TOKENS, LOCKED, SAFETY, DEFAULT_THEME,
-    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList,
+    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList, skinMeta,
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
   import { setPref, MOTION } from '../model/prefs.js';
@@ -45,7 +45,11 @@
   let presets = $state(presetList());
   $effect(() => onTheme((t) => { theme = t; presets = presetList(); }));
   const d = $derived(deriveTokens(theme));
-  const chips = $derived(presets.map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
+  // A skin's swatch is its manifest's (themes/manifest.js); any other preset shows its chassis.
+  const chips = $derived(presets.map((p) => {
+    const m = skinMeta(p.skin);
+    return { p, bg: m ? m.swatch : deriveTokens(p).base['--bg'], tip: m ? m.pitch : undefined };
+  }));
 
   // The host's value-and-unit rule (format.js), never a local one.
   const unit = (u) => (v) => formatWithUnit({ unit: u, step: Number.isInteger(v) ? 1 : 0.1 }, v);
@@ -136,10 +140,10 @@
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
     <div class="pane-head"><h2 id="tp-theme" data-search-key="theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
     <div class="swatches" role="group" aria-label="Theme presets">
-      {#each chips as { p, bg } (p.id)}
+      {#each chips as { p, bg, tip } (p.id)}
         <span class="preset" data-search-key={'theme-' + p.id}>
           <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
-                  data-theme-id={p.id} onclick={() => applyTheme(p)}>
+                  data-theme-id={p.id} data-tip={tip} onclick={() => applyTheme(p)}>
             <span class="chassis" style="background:{bg}" aria-hidden="true">
               <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
               <span class="dot" style="background:{p.accents.intent}"></span>

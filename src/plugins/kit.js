@@ -613,9 +613,9 @@ export function card(o = {}) {
     caret = h('button', { type: 'button', class: 'ui-caret', 'aria-expanded': 'true' }, icon('caret'), t);
     lead = caret;
   }
-  const head = h('div', { class: 'ui-card-head' }, lead, act);
+  const head = h('div', { class: 'ui-card-head', 'data-part': 'panel-bar' }, lead, act);
   const body = h('div', { class: 'ui-card-body' });
-  const el = h('section', { class: cls('surface-card ui-card', o) }, head, body);
+  const el = h('section', { class: cls('surface-card ui-card', o), 'data-part': 'panel' }, head, body);
   const setOpen = (v) => { el.toggleAttribute('data-shut', !v); if (caret) caret.setAttribute('aria-expanded', String(!!v)); };
   if (caret) caret.addEventListener('click', (e) => { const v = el.hasAttribute('data-shut'); setOpen(v); if (o.onToggle) o.onToggle(v, e); });
   // `title` is the card's heading here, never a tooltip.
