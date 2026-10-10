@@ -83,7 +83,8 @@ function fakeHub(ws) {
     }
   });
 }
-const nack = (ch, code, detail) => wire.send(FRAME.NACK, ch, cbMap([[K.code, cbUint(code)], ...(detail ? [[K.detail, cbTstr(detail)]] : [])]));
+const nack = (ch, code, detail, seq) => wire.send(FRAME.NACK, ch, cbMap([[K.code, cbUint(code)], ...(detail ? [[K.detail, cbTstr(detail)]] : []),
+  ...(seq ? [[K.intent_seq, cbUint(seq)]] : [])]));
 
 const browser = await chromium.launch();
 async function boot(viewport, { theme = null, touch = false } = {}) {
@@ -128,7 +129,8 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   const chTop0 = await docTop(page, '#vp-channels');
   const INTENT_CH = ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id;
   const HOME_CH = ENTRIES.filter((e) => e.clsName === 'INTENT' && e.id >= 0x100)[1].id;
-  for (let i = 0; i < 70; i++) nack(0, NACK.CHUNK_UNAVAILABLE);
+  // A store fetch's refusal (intent_seq 1); at seq 0 it is a catalog transfer restart, never a refusal (machine.svelte.js).
+  for (let i = 0; i < 70; i++) nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
   await page.waitForTimeout(1100);
   nack(HOME_CH, NACK.NOT_HOMED);
   await page.waitForTimeout(1100);
