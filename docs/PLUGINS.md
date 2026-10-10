@@ -257,6 +257,7 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `registerHero`'s `replaces: '<built-in hero id>'` | tier-2 "renders instead" of the named built-in when this plugin's own claim succeeds (`ph-vdk.29`) | experimental |
 | `submitMotion(norm, durationMs)` returning `{ok, reason}` | motion input, 0..1 across the stroke window. Needs `motion` | experimental |
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs, endVel?}]`, `atMs` the `performance.now()` instant the machine starts each, ascending, `endVel` its end velocity in norm/s (absent: `unspecified`, a free knot the hub shapes and, on a stream, passes moving while it expects a successor; 0 for a real stop); advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
+| `submitSamples(role, list)` returning `{ok, sent, rateHz, reason}` | a c2h `samples` STREAM found by channel role (e.g. SPEC 9.7's `osc.drive`): `[{atMs, values}]`, `atMs` the `performance.now()` instant each sample describes, ascending, `values` in the role's layout order; one bundle per call, advance by `sent`; `reason` `NO_STREAM` when the hub has no such entry. Not motion input: no producer lock. Needs `motion` (`ph-6dr6`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
@@ -304,6 +305,15 @@ one transport payload, end velocity `unspecified`. `sent` counts the leading
 items done with through the last one packed; offer each once and advance by
 it, and a later bundle supersedes from its first start. An empty list warms
 the grant and takes nothing.
+
+`submitSamples(role, list)` is the same door for a c2h `samples` STREAM that
+a channel role names (the oscillator's `osc.drive`, SPEC 9.7): found by
+class, direction, stream_kind and role, never motion input, never a
+fallback. Each stamp is the described instant in hub time minus
+`schedule_latency_us`; one bundle carries the leading samples within
+`bundle_max_span_ms` (20 ms), at most 32 and one transport payload, values
+filling the layout in order. Samples are not superseded: send ahead no
+further than the lead the caller can stand behind.
 
 **One producer.** An ok `submitSegments` with `sent > 0` holds the motion
 input for its plugin until the latest sent end plus `MOTION_HOLD_MS` (500);
@@ -695,7 +705,9 @@ Shipped:
   position, `limit.input.speed`, both generator run roles and the plan
   strip's elapsed and duration (automatic latency) are optional.
   Motion leaves only through `submitSegments`, one segment per funscript
-  span on the media clock, and every stop of its own sends one hold; a
+  span on the media clock, and every stop of its own sends one hold; the
+  script's V8 and V9 axes ride `submitSamples('osc.drive', ...)` while it
+  plays, where the hub offers the role (FUNSCRIPT.md, Multi-axis); a
   gate or a hub refusal pauses it with no hold. The card's Play is the
   only start, and a latch, a running generator or another producer grays
   it with the gate's words. Stash rides `net.fetch`, its connect card

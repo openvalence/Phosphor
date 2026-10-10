@@ -45,7 +45,7 @@ import { readFileSync } from 'node:fs';
 import { decodeCatalog, CHANNEL_CLASS, STREAM_KIND, UNIT_ID, LIMITS, PublishError, CH_CONTROL_OWNER, SOURCE_KIND, PLAN_FLAG, planFlagNames } from '../../Valence/clients/js/index.js';
 import { buildSettingsModel, reportedValue, placeableControls, minCells } from '../src/model/settings.js';
 import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
-import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
+import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
 import { KIT } from '../src/plugins/kit.js';
@@ -711,6 +711,54 @@ console.log('(e2) segments lookahead door, streamGate, railOwners');
     railOwned(model.byRole, {}, streaming) && railOwned(model.byRole, {}, named)
     && !railOwned(model.byRole, {}, { ...named, owner2: 0 }) && !railOwned(model.byRole, {}, smp));
   ok('railOwned without control-owner stays generators only (the plugin gate)', !railOwned(model.byRole, { [CH_CONTROL_OWNER]: streaming }));
+}
+
+// ---- (e3) the role door: submit.samples (SPEC 9.7 osc.drive, ph-6dr6) --------
+console.log('(e3) role door: a samples STREAM by channel role');
+{
+  const H = 50_000_000, T = 10_000, ROLE_OSC = 'osc.drive';
+  const f32 = (name) => ({ name, type: 6, typeName: 'f32', scale: 1 });
+  // Names unlike any device's: only class, direction, stream_kind and the role find it.
+  const osc = { id: 0x7140, cls: CHANNEL_CLASS.STREAM, dirName: 'c2h', streamKind: STREAM_KIND.samples, maxRateHz: 100, role: ROLE_OSC,
+    layout: [f32('p'), f32('q')] };
+  const ents = [...entries, { ...osc, id: 0x7141, streamKind: STREAM_KIND.segments }, { ...osc, id: 0x7142, role: null }, osc];
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const s = {
+    sent: [], asked: [], state: { sessionId: 9, grantedPublishes: new Map() }, hubNowUs: () => H,
+    publish(w) {
+      s.asked.push(w);
+      s.state.grantedPublishes.set(w[0][0], { channel: w[0][0], rate: 50, scheduleLatencyUs: 2000 });
+      return Promise.resolve([{ channel: w[0][0] }]);
+    },
+    publishSamples(ch, recs, o) { s.sent.push({ ch, recs, anchor: o.anchor, offs: o.offsetsUs }); return { seq: 0, n: recs.length }; },
+    publishSegment() { throw new Error('segments path used'); },
+  };
+  let halted = '';
+  const d = createMotionDoor({ session: () => s, entries: () => ents, now: () => T, halted: () => halted, setpoint: () => ({ ok: false }), log: () => {} });
+  const smp = (dt, a, b) => ({ atMs: T + dt, values: b === undefined ? [a] : [a, b] });
+
+  ok('found by role among look-alikes: the samples kind with the role', roleStream(ents, ROLE_OSC) === osc && roleStream(ents, 'x.y') === null);
+  ok('no entry with the role: NO_STREAM, nothing asked', d.samples('x.y', [smp(0, 1, 1)]).reason === 'NO_STREAM' && !s.asked.length);
+  halted = 'paused, resume to continue';
+  ok('latched: the latch words, nothing asked', d.samples(ROLE_OSC, []).reason === halted && !s.asked.length);
+  halted = '';
+  ok('the grant is asked lazily at the entry rate', d.samples(ROLE_OSC, []).reason === 'waiting for the stream grant'
+    && s.asked.length === 1 && s.asked[0][0][0] === 0x7140 && s.asked[0][0][1] === 100);
+  await tick();
+  const w = d.samples(ROLE_OSC, []);
+  ok('an empty list warms: ok, sent 0, the granted rate', w.ok && w.sent === 0 && w.rateHz === 50 && !s.sent.length);
+  ok('a bad sample is refused whole', d.samples(ROLE_OSC, [smp(0, NaN, 0)]).reason === 'bad sample'
+    && d.samples(ROLE_OSC, [smp(20, 0, 0), smp(0, 0, 0)]).reason === 'bad sample'
+    && d.samples(ROLE_OSC, [{ atMs: T, values: [0, 0, 0] }]).reason === 'bad sample' && d.samples(ROLE_OSC, [null]).reason === 'bad sample' && !s.sent.length);
+  const list = Array.from({ length: 6 }, (_, i) => smp(100 + i * 10, i / 10, 1 - i / 10));
+  const r = d.samples(ROLE_OSC, list);
+  const b = s.sent[0];
+  ok('one bundle within bundle_max_span_ms (20 ms): three samples at 10 ms', r.ok && r.sent === 3 && b.recs.length === 3
+    && b.offs.join() === '0,10000,20000' && LIMITS.bundle_max_span_ms === 20, b && b.offs);
+  ok('stamp = the described instant minus schedule_latency_us', b.anchor === H + 100_000 - 2000, b.anchor);
+  ok('values in layout order, by the catalog names', b.recs[1].p === 0.1 && b.recs[1].q === 0.9 && b.ch === 0x7140);
+  d.samples(ROLE_OSC, [smp(5, 0.5)]);
+  ok('a missing tail field rides unspecified (an f32 rides 0)', s.sent[1].recs[0].p === 0.5 && s.sent[1].recs[0].q === 0);
 }
 
 // ---- (i) the producer lock (ph-smvd.2) -------------------------------------
