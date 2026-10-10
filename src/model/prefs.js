@@ -38,6 +38,8 @@ export const DEFAULTS = Object.freeze({
   railHide: true,     // the hide tab on the rail strip is available (feature switch)
   railHidden: false,  // the rail is hidden right now (state)
   closeIdle: true,    // shell: the window closes with no hold while the machine is idle (DESIGN §10.3)
+  openToLan: false,   // desktop shell: the Virtual's hub on the LAN while it runs (shell/lan.svelte.js)
+  lanPort: 82,        // its WebSocket port; unbindable, the OS picks one
 });
 
 function read(key) {
@@ -63,6 +65,8 @@ export function loadPrefs(raw = read(PREFS_KEY)) {
     railHide: typeof p.railHide === 'boolean' ? p.railHide : DEFAULTS.railHide,
     railHidden: typeof p.railHidden === 'boolean' ? p.railHidden : DEFAULTS.railHidden,
     closeIdle: typeof p.closeIdle === 'boolean' ? p.closeIdle : DEFAULTS.closeIdle,
+    openToLan: typeof p.openToLan === 'boolean' ? p.openToLan : DEFAULTS.openToLan,
+    lanPort: Number.isInteger(p.lanPort) && p.lanPort > 0 && p.lanPort < 65536 ? p.lanPort : DEFAULTS.lanPort,
   };
 }
 

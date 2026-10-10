@@ -133,7 +133,7 @@ function consider(target, key) {
     if (t !== pop.textContent) { if (redundant(e, t)) hide(); else { pop.textContent = t; place(e); } }
     return;
   }
-  if (e && e === pend && timer) return;
+  if (e && e === pend) return;
   hide();
   if (!e || !e.getAttribute('data-tip')) return;
   byKey = key;
@@ -152,8 +152,8 @@ export function installTips() {
   document.addEventListener('pointermove', (e) => {
     if (!mouse(e)) return;
     px = e.clientX; py = e.clientY;
-    // A title set while the pointer rests would show natively; convert it before the hover delay ends.
-    if (e.target instanceof Element && e.target.closest('[title]')) consider(e.target, false);
+    // A title or a tip set while the pointer rests (a time that works out its age on hover) is met here.
+    if (e.target instanceof Element && e.target.closest('[title],[data-tip]')) consider(e.target, false);
   }, true);
   document.addEventListener('focusin', (e) => { if (e.target instanceof Element && e.target.matches(':focus-visible')) consider(e.target, true); else hide(); }, true);
   document.addEventListener('focusout', hide, true);

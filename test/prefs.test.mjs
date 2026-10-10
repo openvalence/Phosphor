@@ -26,12 +26,12 @@ const { formatWithUnit, setAutorange, autorange } = await import('../src/model/f
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
 
 // Load: valid fields kept, bad ones take their default; the stored copy is stamped.
-assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true });
+assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true, openToLan: false, lanPort: 82 });
 assert.deepEqual(loadPrefs(null), { ...DEFAULTS });
 assert.deepEqual(loadPrefs('garbage'), { ...DEFAULTS });
 setPref('reconnect', false);
 assert.deepEqual(JSON.parse(mem.get(PREFS_KEY)),
-  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true });
+  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true, openToLan: false, lanPort: 82 });
 setPref('units', 'furlongs');
 assert.equal(get(prefs).units, 'metric', 'only known unit systems');
 setPref('motion', 'full');
@@ -48,6 +48,15 @@ assert.equal(get(prefs).closeIdle, true, 'close when idle: booleans only, defaul
 setPref('closeIdle', false);
 assert.equal(get(prefs).closeIdle, false);
 setPref('closeIdle', true);
+setPref('openToLan', 'yes');
+assert.equal(get(prefs).openToLan, false, 'Open to LAN: booleans only, default off');
+for (const bad of [0, 65536, 8.5, '82']) {
+  setPref('lanPort', bad);
+  assert.equal(get(prefs).lanPort, 82, 'LAN port ' + bad + ' takes the default');
+}
+setPref('lanPort', 8282);
+assert.equal(get(prefs).lanPort, 8282);
+setPref('lanPort', 82);
 
 // Telemetry: the preference, else the client default, never above the catalog max.
 assert.equal(telemetryRate(100, 50), 50);

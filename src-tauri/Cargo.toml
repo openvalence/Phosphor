@@ -55,6 +55,9 @@ async-trait = "0.1"
 futures = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Open to LAN (src/lan.rs): the Virtual's WebSocket listener. Already in the
+# tree through the buttplug websocket transport.
+tokio-tungstenite = "0.30"
 buttplug_server_hwmgr_serial = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_serial" }
 buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hwmgr_hid" }
 
@@ -62,6 +65,14 @@ buttplug_server_hwmgr_hid = { path = "../../ButtplugIO/crates/buttplug_server_hw
 # takes jni 0.19's JNIEnv, and the runtime that attaches every thread to the JVM
 # needs rt-multi-thread (src/buttplug.rs, mod android). Its Java half is built
 # by src-tauri/android/btleplug.
+# Link loss counters (src/linkstats.rs): sock_diag on Linux, iphlpapi on
+# Windows. Both already in the tree; named here for their features.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock"] }
+
 [target.'cfg(target_os = "android")'.dependencies]
 btleplug = "0.12"
 jni = "0.19"

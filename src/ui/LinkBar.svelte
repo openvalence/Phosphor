@@ -2,7 +2,7 @@
   /**
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
    * 2026-10-02). Left: the channel heatmap and the hub name. Right: the
-   * chips (phase, tier, rx, the render warning's held slot, fps), then the
+   * chips (phase, tier, rx, fps), then the
    * shell's window buttons at the far end, shell only. The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
    * the Health view instead (the address, the firmware, the control list;
@@ -84,24 +84,18 @@
 
   // Render health, published by whichever widget owns the rAF loop. This is
   // the instrument for "position telemetry jitters in one shell but not the
-  // other": fps is the WEBVIEW's frame cadence, held% is how often the render
-  // instant outran the newest sample. Low fps blames the shell, a high held%
-  // at a healthy fps blames arrivals, which the heatmap's channel blocks
-  // then show directly. `--` until a rail is on screen and drawing. The bar
-  // says fps; the held share and the clock skew show only when bad (held
-  // over 10 %, skew over 2 ms), in a slot held for them; the rest is the tooltip.
+  // other": fps is the WEBVIEW's frame cadence. A rail that stalls for want of
+  // a newer sample and a drifting frame clock are Health conditions
+  // (rail-stalled, clock-drift) read in the status slot; this chip never
+  // carries them. `--` until a rail is on screen and drawing.
   const render = $derived(machine.stats.render);
-  const heldBad = $derived(render.fps != null && render.heldPct > 10);
-  const skewBad = $derived(render.fps != null && Math.abs(render.skewMs || 0) > 2);
-  const renderWarn = $derived([heldBad ? render.heldPct + '% held' : '', skewBad ? 'skew ' + render.skewMs + ' ms' : ''].filter(Boolean).join(' · '));
   const renderTip = $derived(render.fps == null ? undefined : [
-    'Smoothing delay ' + render.delayMs + ' ms',
-    'No newer sample to draw: ' + render.heldPct + '% of frames',
-    'Frame clock off wall clock by ' + Math.abs(render.skewMs || 0) + ' ms',
+    'Frame rate ' + render.fps + ' fps',
+    'Rail draws ' + render.delayMs + ' ms behind, to smooth arrivals',
   ].join('\n'));
-  // The client's own frame health: warn when any reading is degraded, never
-  // the reality tone, which is the machine's liveness (ph-51k).
-  const fpsTone = $derived(render.fps != null && (render.fps < 30 || heldBad || skewBad) ? 'warn' : 'dim');
+  // The client's own frame health, never the reality tone, which is the
+  // machine's liveness (ph-51k).
+  const fpsTone = $derived(render.fps != null && render.fps < 30 ? 'warn' : 'dim');
 
   // Beside a top cutout the row rises into its band only while the phase and
   // tier chips fit right of it, clear of the top right corner's arc; short of
@@ -161,9 +155,6 @@
     <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
       <span class="chip-lbl">rx</span>
       <span class="mono rx-age">{rxAge}</span>
-    </span>
-    <span class="render-warn chip-opt">
-      {#if renderWarn}<span class="chip tone-warn" data-tip={renderTip}><span class="mono">{renderWarn}</span></span>{/if}
     </span>
     <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>
       <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
@@ -303,15 +294,11 @@
   /* Shell chrome keeps 4.5:1 text (style.css --shell-*). */
   .linkbar.shell .chip-lbl { color: var(--tx-val); }
   /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). rx
-     is at most 3 characters (sinceShort); the render warning's slot is held
-     while empty; two warnings ellipsize, the tooltip has both. */
+     is at most 3 characters (sinceShort); fps is at most 7 characters. */
   .rx-age { width: 3ch; }
   .fps { width: 7ch; text-align: right; }
   /* The gap after it cancelled: the lead takes no room at all. */
   .opt-lead { flex: none; width: 0; margin-right: calc(var(--sp-2) * -1); }
-  .render-warn { flex: none; display: flex; justify-content: flex-end; width: calc(11ch + 2 * var(--sp-2) + 2px); font: .62rem var(--mono); }
-  .render-warn .chip { min-width: 0; max-width: 100%; }
-  .render-warn .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .chip-dot {
     width: 6px;
     height: 6px;

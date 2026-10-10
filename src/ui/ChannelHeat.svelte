@@ -35,8 +35,8 @@
   const LINKS = [
     { key: 'traffic', name: 'Link traffic', conds: ['backlog', 'drops'] },
     { key: 'rtt', name: 'Round trip', full: 50, conds: ['slow-link'] },
-    { key: 'late', name: 'Late samples', full: 10, conds: ['updates-stalled', 'cutout-client', 'cutout-network', 'cutout-hub', 'cutout-unknown'] },
-    { key: 'budget', name: 'Frame budget', full: 25, conds: ['busy', 'slow-display', 'overloaded'] },
+    { key: 'late', name: 'Late samples', full: 10, conds: ['rail-stalled', 'updates-stalled', 'cutout-client', 'cutout-network', 'cutout-hub', 'cutout-unknown'] },
+    { key: 'budget', name: 'Frame budget', full: 25, conds: ['busy', 'slow-display', 'clock-drift', 'overloaded'] },
     { key: 'health', name: 'Health', conds: [] },
   ];
 
@@ -77,7 +77,7 @@
     const reading = {
       traffic: [level(LINK, now), ['rx ' + hz(link.rx), 'tx ' + hz(link.tx), hl.backlog ? 'backlog ' + bytes(hl.backlog) : null]],
       rtt: [hl.rttMs / 50, [hl.rttMs != null ? 'typical ' + ms(hl.rttMs) + (hl.rttSlowMs != null ? ' · worst ' + ms(hl.rttSlowMs) : '') : 'not measured']],
-      late: [render.heldPct / 10, [render.heldPct != null ? render.heldPct + '% of frames held' : 'not measured',
+      late: [render.heldPct / 10, [render.heldPct != null ? render.heldPct + '% of frames stalled' : 'not measured',
         hl.gaps ? hl.gaps + ' gaps, longest ' + ms(hl.longestGapMs) : null]],
       budget: [dv.lagP95Ms / 25, [dv.lagP95Ms != null ? 'lag ' + ms(dv.lagP95Ms) : 'lag not measured', dv.fps != null ? dv.fps + ' fps' : null]],
       health: [health.slot ? (health.slot.sev === 'act' ? 1 : 0.5) : 0, [health.slot ? health.slot.text : 'Good']],
@@ -126,7 +126,7 @@
     return b && typeof b.key === 'number' ? { ...b, lines: [...b.lines, ...readings(b.key)] } : b || null;
   });
   // The magnitudes the bar's old activity rows drew, now in their channel's tip (DESIGN §10.3).
-  const READS = [ROLE.telemetryVelocity, ROLE.telemetryCurrent, ROLE.telemetryPowerBus];
+  const READS = [ROLE.telemetryVelocity, ROLE.telemetryCurrent, ROLE.telemetryPowerBus, ROLE.telemetryPowerDraw];
   /** A channel's role-bound readings, on the tip's clock: the sample is read untracked, never per arrival. */
   function readings(id) {
     const byRole = machine.catalog.model && machine.catalog.model.byRole;

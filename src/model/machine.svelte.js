@@ -46,6 +46,7 @@ import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
 import { bump } from './changes.js';
 import { countFrames } from './activity.js';
+import { blankLink, createLinkStats, machineLink } from './linkstats.js';
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -107,7 +108,7 @@ function blankStats() {
     // Published once a second by whatever widget owns the rAF loop, so the
     // link bar can separate a render-cadence problem (the shell's webview)
     // from an arrival-cadence one (the wire). Nulls until a loop runs.
-    render: { fps: null, delayMs: null, heldPct: null, skewMs: null },
+    render: { fps: null, delayMs: null, heldPct: null, skewMs: null, at: null },
     lastRxMs: 0,
     clockOffsetUs: null,
     clockRttUs: null,
@@ -115,6 +116,8 @@ function blankStats() {
     // NACK code -> {n, at, detail, channels: {id: n}}: the Link page's refusals.
     // events.nacks is a 60-deep ring; this keeps every count.
     nacks: {},
+    // The top bar's loss readout (linkstats.js says what each number is).
+    link: blankLink(),
   };
 }
 
@@ -276,6 +279,52 @@ function checkFreshness() {
   else if (stale && now - machine.link.staleTick >= 1000) machine.link.staleTick = now;
 }
 if (typeof setInterval === 'function') setInterval(checkFreshness, 100);
+
+// ---------------------------------------------------------------------------
+// Link loss (machine.stats.link)
+// ---------------------------------------------------------------------------
+
+const LINK_TICK_MS = 1000;
+let clientLinkSource = null;
+const linkStats = createLinkStats();
+
+/**
+ * The shell's client counters: (host, port) => Promise<{retrans, sent, scope,
+ * unit} | null> (main.js, src-tauri/src/linkstats.rs). Unset in the browser
+ * build, so clientLossPct stays null there.
+ */
+export function setClientLinkSource(fn) { clientLinkSource = fn; }
+
+let linkBusy = false;
+async function linkTick(s) {
+  if (linkBusy) return;
+  linkBusy = true;
+  try {
+    // Only a socket the webview itself opened has OS counters: never BLE,
+    // never the built-in machine (both ride a WebSocketImpl), never a replay.
+    const own = clientLinkSource && _lastOpts && !_lastOpts.WebSocketImpl && !_lastOpts.virtual;
+    const c = own ? await Promise.resolve(clientLinkSource(machine.link.host, machine.link.port)).catch(() => null) : null;
+    if (session !== s || machine.link.phase !== 'live') return;   // the link moved on while it was asked
+    machine.stats.link = linkStats.step(c, machineLink(machine.catalog.model, machine.samples));
+  } finally {
+    linkBusy = false;
+  }
+}
+
+// One tick a second while live, none otherwise; leaving live drops the
+// windows and the readout back to unknown.
+$effect.root(() => {
+  $effect(() => {
+    if (machine.link.phase !== 'live') return;
+    const s = session;
+    const timer = setInterval(() => linkTick(s), LINK_TICK_MS);
+    return () => {
+      clearInterval(timer);
+      linkStats.reset();
+      machine.stats.link = blankLink();
+    };
+  });
+});
 
 /**
  * Every inbound frame, PING and PONG included, is proof of life (SPEC Â§6.5).

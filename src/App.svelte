@@ -660,7 +660,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} use:scrollshade={isFull}>
+  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull}>
     <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
       {#key current.id}
       {#if current.pane}
@@ -1156,6 +1156,16 @@
   /* A page registered with `fill` (docs/PLUGINS.md, Pages): its mount takes
      the content pane's whole height, as in page fullscreen. Desktop only. */
   .content > .pane.fill:not(.full) { height: 100%; }
+  /* A page that fits the window at every class (the Log page, DESIGN
+     Amendments 2026-10-10): its own list is the one scroller and takes what
+     the chrome leaves. The scrolling layout becomes a window-tall column
+     while it is on screen. Flex items keep their content minimum, so a
+     window too short for the page's floor scrolls as before. */
+  :global(html:not([data-rc=full])) .app:has(> .pane.fit) { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+  .app:has(> .pane.fit) > :not(.pane) { flex-shrink: 0; }
+  .app > .pane.fit { flex: 1 1 0; display: flex; flex-direction: column; }
+  .pane.fit > .pane-main { flex: 1 1 0; display: flex; flex-direction: column; }
+  .pane.fit > .pane-main > :global(*) { flex: 1 1 auto; }
 
   /* ---- page fullscreen (DESIGN §10.3) -------------------------------------
      In window: the page fills the window below the hero bar, so only the

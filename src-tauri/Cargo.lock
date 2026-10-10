@@ -3425,6 +3425,7 @@ dependencies = [
  "futures",
  "if-addrs",
  "jni 0.19.0",
+ "libc",
  "log",
  "serde",
  "serde_json",
@@ -3436,6 +3437,7 @@ dependencies = [
  "tauri-plugin-log",
  "tokio",
  "tokio-tungstenite",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

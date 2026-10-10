@@ -638,6 +638,7 @@
           // two clocks disagree renders at an instant no sample was ever
           // stamped at, which reads as constant lag or constant snapping.
           skewMs: Math.round(nowEpochMs - Date.now()),
+          at: Date.now(),
         };
         censusStart = nowMs; censusFrames = 0; censusHeld = 0;
       }

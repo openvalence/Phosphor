@@ -14,9 +14,16 @@
    * - Every target is at least --tap (RENDERING law 12); the backup's status
    *   line is a fixed slot and Cancel always renders.
    * - Window shows only where the close gate exists: never on a phone shell.
+   * - Open to LAN is desktop only, like Window. Its status line is the relay's
+   *   live state (lan.svelte.js) and the hub's own pairing window flag, never a
+   *   local guess.
    */
   import ThemePicker from '../ui/ThemePicker.svelte';
   import { prefs, setPref, exportBackup, importBackup } from '../model/prefs.js';
+  import { machine } from '../model/machine.svelte.js';
+  import { CH_PENDING_PAIRING } from '../../../Valence/clients/js/frames.js';
+  import { lan, lanPairPress } from './lan.svelte.js';
+  import { sim } from './virtual.svelte.js';
   import '../ui/pane.css';
 
   let backup = $state('');
@@ -50,6 +57,11 @@
   }
   const status = $derived(note);
   const WINDOWED = !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
+  const pairingOpen = $derived(!!machine.samples[CH_PENDING_PAIRING]?.flags_bits?.window_open);
+  const lanText = $derived(!$prefs.openToLan ? ''
+    : lan.port ? ['Open to LAN', (lan.addrs[0] || 'no LAN address') + ':' + lan.port, lan.remotes + ' connected',
+      lan.note, !lan.discovery && 'no discovery', sim.info && pairingOpen && 'pairing open'].filter(Boolean).join(' · ')
+    : lan.note || 'Starts with the Virtual');
 </script>
 
 <div class="pane-stack set">
@@ -74,6 +86,25 @@
   </section>
 
   {#if WINDOWED}
+    <section class="pane-sec og-panel" aria-labelledby="set-lan">
+      <div class="pane-head"><h2 id="set-lan">Open to LAN</h2></div>
+      <label class="og-switch" data-search-key="open-to-lan">
+        <input type="checkbox" role="switch" checked={$prefs.openToLan} onchange={(e) => setPref('openToLan', e.currentTarget.checked)} />
+        <span class="track"></span>Open to LAN
+      </label>
+      <label class="rate">
+        <span>Port</span>
+        <input type="number" class="og-num" min="1" max="65535" step="1" value={$prefs.lanPort}
+               onchange={(e) => setPref('lanPort', Number(e.currentTarget.value))} />
+      </label>
+      <p class="pane-note">Windows asks to allow it the first time</p>
+      <div class="row">
+        <button type="button" class="og-btn" disabled={!sim.info} data-tip="The Virtual's PAIR button" onclick={lanPairPress}>Pairing window</button>
+      </div>
+      <p class="pane-status" role="status" data-phase={lan.port ? 'settled' : lan.note ? 'fault' : null}
+         data-tip={lan.addrs.join(', ')}>{lanText}</p>
+    </section>
+
     <section class="pane-sec og-panel" aria-labelledby="set-win">
       <div class="pane-head"><h2 id="set-win">Window</h2></div>
       <label class="og-switch" data-search-key="close-idle">

@@ -58,7 +58,10 @@ export const ROLE = {
   telemetryPosition: 'telemetry.position',
   telemetryVelocity: 'telemetry.velocity',
   telemetryCurrent: 'telemetry.current',
+  // RFC-109 (draft) narrows power.bus to the system (DC bus) voltage and adds
+  // the machine's total draw in watts beside it.
   telemetryPowerBus: 'telemetry.power.bus',
+  telemetryPowerDraw: 'telemetry.power.draw',
   telemetryTemp: 'telemetry.temp',
   telemetryUptime: 'telemetry.uptime',
   // RFC-032: where the machine is currently COMMANDED to, as opposed to
@@ -132,6 +135,13 @@ export const ROLE = {
 
   // RFC-067: the store CRUD op select (an action tag, options = store_ops)
   actionStore: 'action.store',
+
+  // RFC-109 (draft): the hub's radio signal, dBm, 0 = no reading; the share
+  // of its TCP segments it sent again and its radio's transmit retries, both
+  // percent over a trailing window (linkstats.js)
+  linkRssi: 'link.rssi',
+  linkResent: 'link.resent',
+  linkRetries: 'link.retries',
 };
 
 /**
@@ -179,7 +189,8 @@ export const ROLE_LABEL = {
   [ROLE.telemetryTarget]: 'Target',
   [ROLE.telemetryVelocity]: 'Speed',
   [ROLE.telemetryCurrent]: 'Current',
-  [ROLE.telemetryPowerBus]: 'Bus power',
+  [ROLE.telemetryPowerBus]: 'Bus voltage',
+  [ROLE.telemetryPowerDraw]: 'Power draw',
   [ROLE.telemetryTemp]: 'Temperature',
   [ROLE.telemetryUptime]: 'Uptime',
 
@@ -226,6 +237,10 @@ export const ROLE_LABEL = {
   [ROLE.modFall]: 'Fall',
   [ROLE.modRest]: 'Rest',
   [ROLE.modPhase]: 'Phase',
+
+  [ROLE.linkRssi]: 'Signal',
+  [ROLE.linkResent]: 'Resent',
+  [ROLE.linkRetries]: 'WiFi retries',
 };
 
 /** Open convention (RFC-019): `action.<name>` marks an INTENT field as a verb. */

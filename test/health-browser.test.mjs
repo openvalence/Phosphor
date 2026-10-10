@@ -326,6 +326,32 @@ console.log('\n--- the status slot ---');
   await o.ctx.close();
 }
 
+// ---- 2c. the rail's own census: clock drift in the slot, the bar untouched ----
+console.log('\n--- clock drift in the status slot ---');
+{
+  const o = await open();
+  const bar = () => o.page.evaluate(() => ({ rects: [...document.querySelectorAll('.linkbar .wordmark, .linkbar .chip')]
+    .map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); }).join(' | '),
+    fps: document.querySelector('.linkbar .fps')?.textContent.trim() || null }));
+  const slot = () => o.page.evaluate(() => {
+    const s = document.querySelector('.topstrip .status');
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: s ? (s.querySelector('.st-dismiss')?.dataset.tip || s.dataset.tip || '') : '' };
+  });
+  await play(o.page, GENTLE);
+  await o.page.waitForTimeout(2500);
+  const b0 = await bar();
+  await o.page.evaluate(() => { const now = Date.now.bind(Date); Date.now = () => now() - 40; });
+  let s = await slot();
+  for (let t = Date.now(); !/^Clock drift \d+ ms$/.test(s.text) && Date.now() - t < 20000; ) { await o.page.waitForTimeout(500); s = await slot(); }
+  ok('clock drift: the status slot reads "Clock drift N ms" once it holds 10 s', /^Clock drift \d+ ms$/.test(s.text) && s.kind === 'health', s);
+  const tipL = s.title.split('\n');
+  ok('clock drift: its tooltip is the detail: why, since, threshold, action, the click', tipL.length >= 4 && /clocks disagree/.test(tipL[0]) && /^Since /.test(tipL[1])
+    && /2 ms/.test(tipL[2]) && tipL[tipL.length - 1] === 'Click to open this incident' && !/held|skew/i.test(s.title + s.text), s.title);
+  const b1 = await bar();
+  ok('clock drift: the top bar moves nothing and the fps chip still reads N fps', b0.rects === b1.rects && /^\d+ fps$/.test(b1.fps || ''), [b0, b1]);
+  await o.ctx.close();
+}
+
 // ---- 3. screenshots ---------------------------------------------------------------
 if (SHOT) console.log('\n--- screenshots ---');
 // One session per theme: the incidents are made at 1428x900, then the same page is resized to 420x860.

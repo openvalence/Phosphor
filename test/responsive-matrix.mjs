@@ -52,10 +52,12 @@
  *            (ph-e82.6)
  *   bar      1428x900, 1024x768, 420x860: the top bar holds the hub name,
  *            phase, tier, rx and fps only (the address, firmware and control
- *            list are the Health view's); fps reads "N fps" with the render
- *            detail in plain words in its tooltip; a clock skew warning
- *            arrives in its held slot with the warn tone and moves nothing
- *            (operator 2026-10-10)
+ *            list are the Health view's); fps reads "N fps" with the frame
+ *            rate and the smoothing delay in plain words in its tooltip; no
+ *            gap in the bar (the reserved warning slot is gone), and a
+ *            drifting clock moves nothing and keeps the fps chip's width;
+ *            the stalled and drift warnings are Health conditions in the
+ *            status slot (operator 2026-10-10)
  *   phosphor the served page with a hub has no Phosphor group; the shell
  *            bundle (shell-build.mjs) carries it, and every Phosphor pane
  *            passes the layout and strip checks at desktop, landscape phone
@@ -637,18 +639,24 @@ if (!ONLY || ONLY === 'bar') {
     });
     scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => l === 'tier' || l === 'rx')
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
-    if (wide) scen(w + 'x' + h + ': render reads N fps; delay, held and skew are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
-      && /Smoothing delay \d+ ms/.test(bar.tip) && /No newer sample to draw: \d+% of frames/.test(bar.tip) && /Frame clock off wall clock by \d+ ms/.test(bar.tip), JSON.stringify(bar));
+    if (wide) scen(w + 'x' + h + ': render reads N fps; the frame rate and the smoothing delay are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
+      && /Frame rate \d+ fps/.test(bar.tip) && /Rail draws \d+ ms behind, to smooth arrivals/.test(bar.tip) && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
     else scen(w + 'x' + h + ': the phone bar: no fps; rx shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
-    // A skewed wall clock: the warning takes its held slot (its width held; its height is its content's), nothing in the bar moves.
-    const rects = () => page.evaluate(() => [...document.querySelectorAll('.linkbar .wordmark, .linkbar .chip, .linkbar .render-warn')]
-      .filter((e) => !e.closest('.render-warn') || e.matches('.render-warn')).map((e) => { const b = e.getBoundingClientRect(); return (e.matches('.render-warn') ? [b.left, b.width] : [b.left, b.top, b.width, b.height]).map(Math.round).join(','); }).join(' | '));
-    const r0 = await rects();
+    // No gap: every visible chip sits one chip gap from the next, the fps chip from rx too (the reserved warning slot is gone).
+    const gaps = () => page.evaluate(() => { const c = [...document.querySelectorAll('.linkbar .chips .chip')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect());
+      return c.slice(1).map((b, k) => Math.round(b.left - c[k].right)); });
+    const g = await gaps();
+    scen(w + 'x' + h + ': no gap in the bar: chips sit one chip gap apart, no empty slot', g.length > 0 && g.every((x) => x >= 0 && x <= 12) && !(await page.$('.linkbar .render-warn')), JSON.stringify(g));
+    // A drifted wall clock raises a Health condition, never a bar chip: the bar moves nothing and the fps chip keeps its width.
+    const rects = () => page.evaluate(() => [...document.querySelectorAll('.linkbar .wordmark, .linkbar .chip')]
+      .map((e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.width, b.height].map(Math.round).join(','); }).join(' | '));
+    const widthOf = () => page.evaluate(() => { const f = document.querySelector('.linkbar .fps'); return f && f.getClientRects().length ? Math.round(f.closest('.chip').getBoundingClientRect().width) : null; });
+    const r0 = await rects(), w0 = await widthOf(), seen = new Set([w0]);
     await page.evaluate(() => { const now = Date.now.bind(Date); Date.now = () => now() - 40; });
-    const warned = await page.waitForFunction(() => /skew -?\d+ ms/.test(document.querySelector('.linkbar .render-warn')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false);
-    const warn = await page.evaluate(() => { const c = document.querySelector('.linkbar .render-warn .chip'); return c ? { shown: c.getClientRects().length > 0, warn: c.classList.contains('tone-warn'), tip: c.dataset.tip } : null; });
-    if (wide) scen(w + 'x' + h + ': a clock skew over 2 ms shows inline in the warn tone', warned && !!warn && warn.shown && warn.warn && /Frame clock/.test(warn.tip), JSON.stringify(warn));
-    scen(w + 'x' + h + ': the render warning arriving moves nothing in the bar', r0 === await rects(), r0 + ' -> ' + await rects());
+    for (let k = 0; k < 6; k++) { await page.waitForTimeout(500); seen.add(await widthOf()); }
+    const text = await page.evaluate(() => document.querySelector('.linkbar .fps')?.textContent.trim() || null);
+    if (wide) scen(w + 'x' + h + ': the fps chip keeps its width and its "N fps" text while the clock drifts', seen.size === 1 && /^\d+ fps$/.test(text || ''), JSON.stringify([...seen, text]));
+    scen(w + 'x' + h + ': a drifting clock moves nothing in the bar', r0 === await rects(), r0 + ' -> ' + await rects());
     if (SHOTS) await page.screenshot({ path: join(OUT, 'bar-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: 80 } });
     await ctx.close();
   }

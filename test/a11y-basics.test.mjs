@@ -20,6 +20,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { STORE_KEY } from '../src/model/grid.js';
 import { goTab, tabIds } from './nav.mjs';
+import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 
 const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -102,7 +103,7 @@ const lowContrast = (sel) => {
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
 
-async function bootPage(browser, viewport, beforeGoto, extra = {}) {
+async function bootPage(browser, viewport, beforeGoto, extra = {}, port = PORT) {
   const ctx = await browser.newContext({ viewport, ...extra });
   await ctx.addInitScript(([etag, bytes]) => {
     try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
@@ -113,7 +114,7 @@ async function bootPage(browser, viewport, beforeGoto, extra = {}) {
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   if (beforeGoto) await beforeGoto(ctx, page);
-  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:' + port + '/', { waitUntil: 'domcontentloaded' });
   return { ctx, page, pageErrors };
 }
 
@@ -510,6 +511,35 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   await ctx.close();
 }
 
+// Interactive elements whose tooltip is all they say: each needs a name of its own.
+const unnamedOn = (pg) => pg.$$eval('[data-tip]', (els) => els.filter((e) => e.matches('button,a[href],input,select,textarea,summary,[role=tab],[role=button],[role=switch],[role=slider]')
+  && e.getClientRects().length && !(e.getAttribute('aria-label') || e.getAttribute('aria-labelledby') || e.textContent.trim() || e.labels?.length
+  || e.getAttribute('alt') || e.closest('label')?.textContent.trim())).map((e) => e.className || e.tagName));
+// Every page the rail lists: hover each tipped element, Tab through the first stops, and read what is left.
+const sweepPages = async (pg, label) => {
+  const tabs = await tabIds(pg);
+  const seen = new Set();
+  const bad = [], noName = [];
+  for (const id of tabs) {
+    await goTab(pg, id);
+    await pg.waitForTimeout(250);
+    const at = await pg.$$eval('[data-tip]', (els) => els.filter((e) => e.getClientRects().length).map((e) => {
+      const r = e.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    }));
+    for (const [x, y] of at.slice(0, 60)) await pg.mouse.move(x, y);
+    for (let i = 0; i < 12; i++) await pg.keyboard.press('Tab');
+    bad.push(...(await pg.$$eval('[title]', (els) => els.map((e) => e.tagName.toLowerCase() + '.' + e.className + '[' + e.getAttribute('title') + ']'))).map((t) => id + ': ' + t));
+    noName.push(...(await unnamedOn(pg)).map((t) => id + ': ' + t));
+    for (const [x, y] of at) seen.add(id + x + ',' + y);
+    await pg.mouse.move(0, 400);
+  }
+  ok(label + 'sweep: ' + tabs.length + ' pages (' + tabs.join(' ') + '), hovered and tabbed, leave no title attribute', bad.length === 0, bad.slice(0, 5).join(' | '));
+  ok(label + 'sweep: ' + seen.size + ' tipped elements, none of them without a name of its own', noName.length === 0, [...new Set(noName)].slice(0, 6).join(' | '));
+  ok(label + 'sweep: the pages carry tooltips at all (data-tip)', seen.size > 20, String(seen.size));
+  return tabs;
+};
+
 // ---- 10. tooltips (ui/tip.js): never a native title, redundant tips dropped, informative ones shown --
 {
   const { ctx, page, pageErrors } = await bootPage(browser, { width: 1428, height: 900 });
@@ -517,31 +547,8 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   await page.waitForTimeout(300);
   const POP = '#ph-tip:popover-open';
   const titled = () => page.$$eval('[title]', (els) => els.map((e) => e.tagName.toLowerCase() + '.' + e.className + '[' + e.getAttribute('title') + ']'));
-  // Interactive elements whose tooltip is all they say: each needs a name of its own.
-  const unnamed = () => page.$$eval('[data-tip]', (els) => els.filter((e) => e.matches('button,a[href],input,select,textarea,summary,[role=tab],[role=button],[role=switch],[role=slider]')
-    && e.getClientRects().length && !(e.getAttribute('aria-label') || e.getAttribute('aria-labelledby') || e.textContent.trim() || e.labels?.length
-    || e.getAttribute('alt') || e.closest('label')?.textContent.trim())).map((e) => e.className || e.tagName));
-  const tabs = await tabIds(page);
-  const seen = new Set();
-  const bad = [], noName = [];
-  for (const id of tabs) {
-    await goTab(page, id);
-    await page.waitForTimeout(250);
-    // Hover every tipped element on the page and Tab through its first stops: no title may appear or survive.
-    const at = await page.$$eval('[data-tip]', (els) => els.filter((e) => e.getClientRects().length).map((e) => {
-      const r = e.getBoundingClientRect();
-      return [r.left + r.width / 2, r.top + r.height / 2];
-    }));
-    for (const [x, y] of at.slice(0, 60)) await page.mouse.move(x, y);
-    for (let i = 0; i < 12; i++) await page.keyboard.press('Tab');
-    bad.push(...(await titled()).map((t) => id + ': ' + t));
-    noName.push(...(await unnamed()).map((t) => id + ': ' + t));
-    for (const [x, y] of at) seen.add(id + x + ',' + y);
-    await page.mouse.move(0, 400);
-  }
-  ok('sweep: ' + tabs.length + ' pages at 1428x900, hovered and tabbed, leave no title attribute', bad.length === 0, bad.slice(0, 5).join(' | '));
-  ok('sweep: ' + seen.size + ' tipped elements, none of them without a name of its own', noName.length === 0, [...new Set(noName)].slice(0, 6).join(' | '));
-  ok('sweep: the pages carry tooltips at all (data-tip)', seen.size > 20, String(seen.size));
+  const tabs = await sweepPages(page, '');
+  ok('sweep: the Log and Link pages are among them', tabs.includes('log') && tabs.includes('valence'), tabs.join(' '));
 
   // The collapsed rail is icon-only: the tab's tip is its name.
   await page.click('nav.rail .rail-collapse');
@@ -605,6 +612,24 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   ok('probe: Escape hides it', await page.locator(POP).count() === 0);
   if (pageErrors.length) ok('tooltips: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
+}
+
+// ---- 11. the same sweep on the Tauri shell bundle: Hubs, Server, Settings, Merge, About, Plugins and the rest ----
+{
+  const SHELL = await buildShellPage();
+  const ssrv = createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html' }); r.end(SHELL); });
+  await new Promise((r) => ssrv.listen(0, '127.0.0.1', r));
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 1428, height: 900 }, async (c) => {
+    await c.addInitScript(TAURI_STUB);
+    await c.addInitScript(() => { try { localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'a11y fixture', nickname: '', lastSeen: Date.now() }])); } catch (e) { /* none */ } });
+  }, {}, ssrv.address().port);
+  await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const tabs = await sweepPages(page, 'shell ');
+  ok('shell sweep: Hubs, Server, Settings, Log and Link are among the pages', ['shell:hubs', 'shell:server', 'shell:settings', 'log', 'valence'].every((t) => tabs.includes(t)), tabs.join(' '));
+  if (pageErrors.length) ok('shell sweep: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+  ssrv.close();
 }
 
 await browser.close();
