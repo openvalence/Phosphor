@@ -575,8 +575,10 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 // library.js (the kit draws the list, its pager and tiles, the inputs and the rows: api.ui, docs/PLUGINS.md)
 export const CSS, COPY;
 export function formFor(W, H, rem = 16);   // -> 'grid' where tiles (150 px min) fit three across and page six, else 'rows'
-export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, onQueue });   // -> { refresh(), step(dir), canStep(dir), mark(m), unmount() }
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, onQueue, onNext, onOpen });   // -> { refresh(), step(dir), canStep(dir), mark(m), unmount() }
   // ui: api.ui; onQueue(scene): each tile and row carries Add to queue (+), a kit tile action
+  // each tile and row's context menu (ui.menu, headed by its title): Play (the pick), Play next (onNext(scene), the
+  // queue's head), Add to queue (onQueue), Open in Stash where onOpen(scene) returns a run, null without a page
   // the form is formFor(the list body), set on a resize only; rows are the kit list's at --ui-row-h 2.5rem, side by
   // side in columns 14rem or wider (the kit list's row.min)
   // mark({now, playing, queued}): the loaded scene's key, whether it plays, the queue's keys (the player's render);
@@ -639,7 +641,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   dispose(),   hold, pause, revoke object URLs, stop the frame source; deactivate calls it
 //   setInterp(scale),    re-map the loaded Script (scale.js wire) and restart a playing scheduler
 //   setPlay(partial),    merge into prefs play, store it, apply it (setHome, setLatency, the loop)
-//   queue: {list(), add(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue (queue.js toStored)
+//   queue: {list(), add(scene), addNext(scene), remove(i), next(i), move(from, to), play(i)},   stored as prefs queue
+//     (queue.js toStored); addNext puts the scene at the head, an entry already queued moving there
 //   autoplay: {get(), set(on)},   prefs autoplay: the end of a scene plays the queue's first unless it loops
 //   volume: {get(), set(v)},      the video's volume (the phone's Settings row)
 //   scale,               the map in force, [lower, upper] (Auto's fit or scale.js mapOf), read by the settings card's Scale row
@@ -648,7 +651,8 @@ export function pageClass(bucket, w, h);   // -> 'portrait' | 'landscape' | 'des
 //   (motion only, PR4: a LocalScene {key 'script:...', title, stream: null}); attach(script) gives the loaded scene
 //   a script without touching its media (Open script on a video, PR3).
 // createControl deps gain loop (clock.js createLoop, injected for the node test); the controller gains
-//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear) and get wire;
+//   setPlay(partial), markAB() (one A-B press: A at the playhead, then B, then clear), setAB(a, b) (both set
+//   directly, null clears either, B before A swaps them; the timeline's menu) and get wire;
 //   Auto Scale: get scale, get fit (under scaleAuto the script itself, the wire at scale 1, for the analyzer to
 //   measure; else null), fitKinetic(sc, extent) (the analyzer's measure of fit, [min, max]; sets the map to
 //   fitMap(extent)). A new script starts at [0, 1] until the measure lands. wakeIn() -> ms until tick() has work:
@@ -693,7 +697,10 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, zoomMs = 10000
   // zoomMs: the starting window; onZoom(ms) on each zoom step (persisted as prefs zoomMs).
   // timeline.js may import only funscript.js, so its tf() restates applyT; the two must agree.
   // onSeek(ms); onScrub('start'|'move'|'end', ms); onRange(partialT, commit: boolean)
-  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), unmount() }
+  // -> { zoomEl, abEl, setScript(script, T, ceiling, raw?), frame(mediaMs, trace, kin?), setLoop({a, b}), menuEls,
+  //      timeAt(clientX, node), unmount() }
+  // menuEls: [the detail with its lanes, the overview], the context menu's elements; timeAt: the media ms under
+  // clientX on the overview or the detail holding node, null without a script
   // kin: the analyzer's Kinetic render (analyzer.kinetic) or null: the intent curve (--intent, data-kin), moved back by
   // T.offsetMs; without it or during a Range drag, straight lines between the actions
   // script: the wire (scale.js wire()), its actions drawn as --intent dots; raw: the parsed one; the heat
@@ -865,6 +872,7 @@ export function toStored(entry), fromStored(stored, key);   // pure: a Stash sce
 export function move(list, from, to);   // pure: the list with one item moved, indexes clamped
 export function mountQueue(el, { list, onPlay(i), onNext(i), onRemove(i), onMove(from, to), onReopen(i) }, ui);   // -> { render(), unmount() }
   // the kit's list in its row form: paged, a row drags to reorder (a mouse at once, a touch after the kit's hold)
+  // a row's context menu (ui.menu, headed by its title): Remove (onRemove), Move to top (onNext; off on the first)
   // Entry = {kind: 'stash', key, title, durationMs, scene} | {kind: 'file', key, title, name, durationMs, files: File[] | null}
 ```
 
