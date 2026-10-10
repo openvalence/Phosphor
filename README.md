@@ -102,6 +102,41 @@ README has the recipe), run it, then `node test/valence-sim.mjs`. Its last
 step writes both files from that session's real BLOB_CHUNK bytes and the etag
 the hub declared. Never hand-edit the `.bin`; re-run the sim to re-capture it.
 
+### The Neutrino cluster
+
+`test/cluster/cluster.mjs` runs many Neutrinos at once against scripted
+clients, by hand, never in `npm test`; its head has the usage. The two
+oscillator suites beside it (`home-osc`, `player-osc`) run in `test:browser`.
+
+How the Neutrino cluster works: `node test/cluster/cluster.mjs` starts worker
+threads, at most one per physical core (`--max-workers`, default half the
+logical cores), and spreads its hubs across them, `--per-worker` (default 32)
+each until that cap, then more per worker. Each hub is one Neutrino wasm
+instance (one compiled module per worker), and each worker ticks all its hubs
+on a real-time 1 ms tick (`--tick-us`) polled against the wall clock. Each hub
+gets one scripted client (about a third get two): a headless valence-js session
+with a seeded personality that picks random actions from the hub's catalog
+(streams, jogs, safety, home, trial writes, limits, the oscillator,
+reconnects) over an impaired link, with latency and jitter on every frame and
+loss and reorder on motion STREAM frames. It measures, per worker, the tick
+lateness (p50, p99, max) and the loop's work share; for the process, CPU, host
+CPU, RSS and wasm memory; per hub per minute, the plans, anomalies by kind,
+failures, NACKs, refusals, reaps, stalls, timeouts, traps and the hub's warn
+and error lines. A step is healthy while its median minute's p99 lateness stays
+at or under 4 ms with no trap; the first unhealthy step is the knee. Results go
+to `test/evidence/cluster/<time>/` (gitignored): `step-<hubs>.json` per step,
+`long-<hubs>.json` for `--long`, and `summary.json`, which also names the clean
+hubs with the most of each anomaly kind, the candidates for a hardware replay.
+`--replay SEED` reruns one hub alone with the same options and client seeds,
+in lockstep on a virtual 1 ms clock (bit-identical run to run) unless
+`--realtime`, and writes its trace to `test/evidence/cluster/replay-*.json`.
+To compare a seed against hardware, the operator runs
+`--replay SEED --target ws://HUB:PORT/` on the real hub (hw-safe: trial writes
+only, no force home), then `--replay SEED --hw-safe --like HW.json` on
+Neutrino from that hub's settings, and
+`node test/cluster/compare.mjs NEUTRINO.json HW.json` scores the two traces
+(exit 0 when every row passes).
+
 ## Builds
 
 Windows, macOS (aarch64) and Linux bundles, plus a Flatpak, an Android build and the SignPath-signed Windows installer: local recipes, what CI

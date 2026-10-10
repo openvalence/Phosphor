@@ -1,17 +1,18 @@
 /**
- * fleet.mjs -- the Neutrino fleet soak (ph-ode2): N worker threads x K Neutrino hubs (one wasm instance each,
+ * cluster.mjs -- the Neutrino cluster (ph-ode2): N worker threads x K Neutrino hubs (one wasm instance each,
  * from one compiled module per worker), each hammered by one or two seeded headless Valence clients
- * (client.mjs), metered per hub per minute; a ramp over hub counts finds the knee.
+ * (client.mjs), metered per hub per minute; a ramp over hub counts finds the knee. How it works: README.md,
+ * "The Neutrino cluster".
  *
- *   node test/fleet/fleet.mjs --ramp 32,64,128,256,512,1024 [--minutes 5] [--long 30] [--per-worker 32]
+ *   node test/cluster/cluster.mjs --ramp 32,64,128,256,512,1024 [--minutes 5] [--long 30] [--per-worker 32]
  *                                [--max-workers physical cores] [--seed 1]
- *   node test/fleet/fleet.mjs --hubs 64 [--minutes 2]
- *   node test/fleet/fleet.mjs --replay SEED [--minutes 3] [--hw-safe] [--realtime] [--out FILE]   one hub alone,
+ *   node test/cluster/cluster.mjs --hubs 64 [--minutes 2]
+ *   node test/cluster/cluster.mjs --replay SEED [--minutes 3] [--hw-safe] [--realtime] [--out FILE]   one hub alone,
  *                                traced, in lockstep on a virtual clock unless --realtime
- *   node test/fleet/fleet.mjs --replay SEED --target ws://HUB:PORT/ [--http 80] [--out FILE]   a real hub
- *   node test/fleet/fleet.mjs --replay SEED --hw-safe --like HW.json [--out FILE]   Neutrino from that hub's settings
+ *   node test/cluster/cluster.mjs --replay SEED --target ws://HUB:PORT/ [--http 80] [--out FILE]   a real hub
+ *   node test/cluster/cluster.mjs --replay SEED --hw-safe --like HW.json [--out FILE]   Neutrino from that hub's settings
  *
- * Results land in test/evidence/fleet/ (gitignored): per step a JSON with every minute and every flagged hub,
+ * Results land in test/evidence/cluster/ (gitignored): per step a JSON with every minute and every flagged hub,
  * summary.json across the ramp; a replay writes its trace for compare.mjs.
  *
  * Constraints:
@@ -20,7 +21,7 @@
  *   The loop polls, so a worker's thread reads 100 % CPU whatever its load: `work %` (time inside ticks,
  *   drains and client steps) is the load figure.
  * - A hub's seed reproduces it alone: --replay SEED boots the same options and the same client seeds.
- * - --target never runs from the fleet: it is one hub, the operator's, run by the operator.
+ * - --target never runs from the cluster: it is one hub, the operator's, run by the operator.
  */
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -31,7 +32,7 @@ import { bootNeutrino, wasmBytes } from './neutrino.mjs';
 import { createClient, hubPlan, mulberry32 } from './client.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const EVID = join(HERE, '..', 'evidence', 'fleet');
+const EVID = join(HERE, '..', 'evidence', 'cluster');
 const BUCKET_US = 10, BUCKETS = 5000; // lateness histogram: 10 us bins to 50 ms, then overflow
 const HEALTHY_P99_MS = 4;            // under the hub's own 5 ms tick
 
@@ -173,7 +174,7 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
   const sysTimes = () => cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
   let cpu0 = process.cpuUsage(), t0 = performance.now(), sys0 = sysTimes();
   const cores = availableParallelism();
-  console.log(`\n== ${label || n + ' hubs'}: ${W} workers x ~${Math.ceil(n / W)}, ${minutes} min`);
+  console.log(`\n== Neutrino cluster: ${label || n + ' hubs'}, ${W} workers x ~${Math.ceil(n / W)}, ${minutes} min`);
   console.log('  min  hubs  p50ms  p99ms  maxms  work%  cpu%  sys%   rssMB  wasmMB  plans/s  anoms  fails  nacks  reaps  stalls  flags');
   await new Promise((resolve) => {
     let ended = 0;
@@ -316,7 +317,7 @@ async function replay(seed) {
     for (const e of like.clients[0].trace) if (e[1] === 'cfg' && !preset.has(e[2][0])) preset.set(e[2][0], e[2][1]);
   }
   const h = await makeHub(seed, module, { hwSafe, record: true, target, planHz: 45, preset });
-  console.log(`replay hub seed ${seed} on ${t || 'Neutrino ' + (h.n.version || '')}: options ${JSON.stringify(h.rec.opts)}, clients ${h.clients.map((c) => c.seed).join(',')}${hwSafe || t ? ', hw-safe' : ''}, ${minutes} min`);
+  console.log(`Neutrino cluster replay: seed ${seed} on ${t || 'Neutrino ' + (h.n.version || '')}: options ${JSON.stringify(h.rec.opts)}, clients ${h.clients.map((c) => c.seed).join(',')}${hwSafe || t ? ', hw-safe' : ''}, ${minutes} min`);
   const mins = [];
   const onMinute = (m) => { mins.push(m); console.log(`  minute ${m.minute}: ${vc ? 'lockstep' : 'p99 ' + m.p99 + ' ms'}, plans ${m.hubs[0].diag.plans || 0}, anomalies ${m.hubs[0].diag.anomalies || 0}, nacks ${JSON.stringify(m.hubs[0].nacks)}`); };
   if (vc) await lockstep(vc, [h], minutes, onMinute);
@@ -362,7 +363,7 @@ if (isMainThread) {
   const summary = { at: new Date().toISOString(), cores: availableParallelism(), healthyP99Ms: HEALTHY_P99_MS, steps: steps.map(strip),
     knee: knee ? knee.hubs : null, largestHealthy: healthy.length ? Math.max(...healthy.map((s) => s.hubs)) : null, long: longRun && strip(longRun) };
   writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 1));
-  console.log('\n hubs  workers  p50ms  p99ms  work%  cpu%  host%   rssMB  healthy  flags');
+  console.log('\nNeutrino cluster ramp\n hubs  workers  p50ms  p99ms  work%  cpu%  host%   rssMB  healthy  flags');
   for (const s of [...steps, ...(longRun ? [longRun] : [])]) console.log(' ' + [String(s.hubs).padStart(4), String(s.workers).padStart(8), s.p50.toFixed(2).padStart(6),
     s.p99.toFixed(2).padStart(6), String(s.work).padStart(6), String(s.cpu).padStart(5), String(s.sysCpu).padStart(6), String(s.rssMB).padStart(7), (s.healthy ? 'yes' : 'NO').padStart(8),
     ' ' + (Object.entries(s.flags).map(([k, v]) => k + ' x' + v.length).join(', ') || '-')].join(' '));

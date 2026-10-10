@@ -1,8 +1,8 @@
 /**
- * compare.mjs -- two replay traces of one seed (fleet.mjs --replay), scored against each other: Neutrino
+ * compare.mjs -- two replay traces of one seed (cluster.mjs --replay), scored against each other: Neutrino
  * against a real hub, or Neutrino against Neutrino (two runs of a seed must score identical).
  *
- *   node test/fleet/compare.mjs A.json B.json [--tol 0.005] [--json OUT]
+ *   node test/cluster/compare.mjs A.json B.json [--tol 0.005] [--json OUT]
  *
  * Scorecard rows: the actions sent (kinds, in order), each action's answer (ECHO or the NACK name, in order),
  * refusals (NACK names and stream refusal reasons, as multisets), anomaly kinds and counts (kinetic-diag's
@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const argv = process.argv.slice(2);
 const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 const files = argv.filter((a, i) => !a.startsWith('--') && !['--tol', '--json', '--slack'].includes(argv[i - 1]));
-if (files.length !== 2) { console.log('usage: node test/fleet/compare.mjs A.json B.json [--tol 0.005] [--slack 25] [--json OUT]'); process.exit(2); }
+if (files.length !== 2) { console.log('usage: node test/cluster/compare.mjs A.json B.json [--tol 0.005] [--slack 25] [--json OUT]'); process.exit(2); }
 const TOL = Number(argOf('--tol', 0.005)), SLACK = Number(argOf('--slack', 25));
 const [A, B] = files.map((f) => JSON.parse(readFileSync(f, 'utf8')));
 if (A.seed !== B.seed || A.hwSafe !== B.hwSafe) { console.log(`refused: seed ${A.seed}/${B.seed}, hw-safe ${A.hwSafe}/${B.hwSafe}`); process.exit(2); }

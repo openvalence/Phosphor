@@ -3,7 +3,7 @@
  * (operator ruling 2026-10-09: the oscillator shares the jog slot and blocks nothing except a home cycle,
  * which the hub refuses while the oscillator is enabled; Nucleus val-dzf).
  *
- *   node test/fleet/home-osc.test.mjs
+ *   node test/cluster/home-osc.test.mjs
  *
  * Cases: a home with the oscillator off completes (the control); with it enabled, a jog, a window write,
  * a limits write, pause and resume, an oscillator change and a pattern start and stop are all answered ECHO;
