@@ -17,13 +17,12 @@
    *
    * NOT a hero registered in heroes.js — HeroStrip only knows {id, component,
    * fields} entries from that registry, and this widget has no roles of its
-   * own to claim. RailWidget composes it directly, feeding it the SAME
-   * interpolated numbers driving its canvas, so the numerals and the phosphor
-   * dot never disagree about where "now" is.
+   * own to claim. TopStrip composes it from RailWidget's readout.
    *
-   * Every number is either `posVal`/`speedVal`/`targetVal` (already smoothed
-   * from real telemetry samples in RailWidget's telebuf, never fabricated) —
-   * this component does no ground-truth reading of its own.
+   * Every number is `posVal`/`speedVal`/`targetVal` as the readout hands it:
+   * the newest sample itself (a speed with no velocity field is the rail's
+   * telebuf derivative), never interpolated, never fabricated. This
+   * component does no ground-truth reading of its own.
    *
    * ── Zero-padded fixed-width numerals (OG parity) ────────────────────────
    * The pre-refactor rail's pad()/setVV() (`webui-prerefactor`'s core/ui.js)
