@@ -665,9 +665,13 @@ export const CSS = `
   padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
 .fsp[data-page][data-comp=full] .fsp-libv { flex: 1 1 auto; min-height: 0; }
 /* Heads are the card title's voice (style.css .dash-title, its index); this places them. */
-.fsp-libbox > .fsp-h { display: none; }
-.fsp[data-page][data-comp=full] .fsp-libbox > .fsp-h { display: block; }
+.fsp-libh { flex: none; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; --ui-btn-h: var(--fsp-src); }
+.fsp-libh > .fsp-libseg { margin-left: auto; }
+.fsp-libh > .fsp-h { display: none; }
+.fsp[data-page][data-comp=full] .fsp-libh > .fsp-h { display: block; }
 .fsp-h { flex: none; margin: 0; line-height: 30px; }
+/* A narrow head shortens the media name, then its heading, before a control leaves the card (ph-5u0g.15). */
+.fsp-src > .fsp-h { flex: 0 0.001 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The kit's buttons take each row's height. */
 .fsp-src { --ui-btn-h: var(--fsp-src); }
 .fsp-tr, .fsp-tlh { --ui-btn-h: var(--fsp-bar); }
@@ -714,7 +718,7 @@ export const CSS = `
 .fsp-libbox { display: flex; flex-direction: column; }
 .fsp-libbox > .fsp-libv { flex: 1 1 auto; min-height: 0; }
 .fsp-libseg { flex: none; }
-.fsp[data-comp=handheld]:not([data-media]) .fsp-libseg { display: none; }
+.fsp[data-comp=handheld]:not([data-media]) .fsp-libh { display: none; }
 .fsp[data-comp=handheld][data-view=player] .fsp-libbox { visibility: hidden; }
 .fsp[data-comp=glance] .fsp-libbox, .fsp[data-comp=glance] .fsp-tlbox { display: none; }
 .fsp[data-comp=glance] .fsp-stage { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -819,7 +823,9 @@ export const CSS = `
 .fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
   right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) max(var(--sp-4), var(--corner-inset)) max(var(--sp-3), var(--corner-inset)) var(--sp-4);
   visibility: visible; box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
-.fsp[data-media][data-libdrawer] .fsp-libbox > .fsp-h { display: block; }
+.fsp[data-media][data-libdrawer] .fsp-libh > .fsp-h { display: block; }
+/* A phone on its side has the height for three rows: the drawer widens to two columns of them (ph-0hvq). */
+.fsp[data-cls=landscape][data-media][data-libdrawer] > .fsp-libbox { width: min(560px, 70vw); }
 .fsp-libb { display: none; }
 .fsp[data-media] .fsp-libb { display: inline-flex; }
 .fsp-now { display: none; flex: none; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding-top: var(--sp-2); border-top: 1px solid var(--line-1); }
@@ -1360,7 +1366,6 @@ export function createPlayer(api) {
     const recompose = () => {
       const cls = opts.page ? pageClass(+document.documentElement.dataset.bucket || 3, innerWidth, innerHeight) : '';
       if (cls) attr(root, 'data-cls', cls);
-      if (library && cls !== prevCls) library.fit();
       prevCls = cls;
       const c = cls === 'portrait' ? (root.clientWidth < GLANCE_UP ? 'glance' : 'handheld') : cls ? 'full' : compositionOf(root.clientWidth);
       if (c !== comp) {
@@ -1369,12 +1374,12 @@ export function createPlayer(api) {
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
           library = mountLibrary(lib, { ui, getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
-            onPick: (s) => { pick(s); setDrawer(false); }, rows: () => root.dataset.cls === 'portrait' && !media, onQueue: (s) => Q.add(s) });
+            onPick: (s) => { pick(s); setDrawer(false); }, onQueue: (s) => Q.add(s) });
           lib.append(qbox, now);
-          lib.insertBefore(libseg, lib.querySelector('.fsp-libv'));
+          // The column's head row: 02 LIBRARY (the page's) and the Library | Queue switch.
+          lib.prepend(h('div', { class: 'fsp-libh' }, opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }) : '', libseg));
           qv = mountQueue(qbox, { list: Q.list, onPlay: (i) => { Q.play(i); setDrawer(false); }, onNext: Q.next, onRemove: Q.remove, onMove: Q.move,
             onReopen: () => fileV.open() }, ui);
-          if (opts.page) lib.prepend(h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }));
         }
       }
       const gapPx = parseFloat(getComputedStyle(root).columnGap) || 0;
@@ -1433,6 +1438,7 @@ export function createPlayer(api) {
       libseg.value = lv;
       if (qv && qSeen !== queue) { qSeen = queue; qv.render(); }
       autoB.pressed = autoplay;
+      if (library) library.mark({ now: st.scene ? st.scene.key : null, playing: on, queued: queue.map((e) => e.key) });
       // The handheld Library and Queue views hide the bar (visibility); its Rail button leaves the count too (ph-5wsk.5).
       railB.shown = !(comp === 'handheld' && st.view !== 'player' && !media);
       setText(title, st.scene ? st.scene.title : '');

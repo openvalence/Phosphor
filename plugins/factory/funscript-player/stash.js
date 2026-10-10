@@ -11,8 +11,9 @@
 // - toScene reads interactive_speed 0 as unknown (null): Stash reports 0 for a scripted scene it never measured.
 // - rebase keeps a base path prefix (a reverse proxy at /stash) unless the URL already carries it.
 // - script() of a scene without a funscript rejects 'no script for this scene'.
+// - oscOf() never fetches: it reads the scripts this client already parsed (Stash serves no companion files, A7).
 
-import { parseFunscript } from './funscript.js';
+import { parseFunscript, OSC_AXES } from './funscript.js';
 
 export const COPY = Object.freeze({
   notSet: 'Stash not set',
@@ -25,9 +26,10 @@ export const COPY = Object.freeze({
   untitled: 'Scene ',
 });
 
-// ASSUMPTION A8: these sort keys exist on findScenes; direction is ASC or DESC.
-export const SORTS = Object.freeze([['date', 'Date'], ['created_at', 'Added'], ['title', 'Title'], ['rating', 'Rating'],
-  ['interactive_speed', 'Speed']].map((p) => Object.freeze(p)));
+// ASSUMPTION A8: these sort keys exist on findScenes; direction is ASC or DESC (duration and play_count not yet
+// checked live: `node test/funscript-stash.test.mjs --live` sorts by every key both ways).
+export const SORTS = Object.freeze([['date', 'Date'], ['created_at', 'Added'], ['title', 'Title'], ['duration', 'Duration'],
+  ['play_count', 'Plays'], ['rating', 'Rating'], ['interactive_speed', 'Speed']].map((p) => Object.freeze(p)));
 
 // ASSUMPTION A3: SceneFilterType.interactive is a plain Boolean (not {value, modifier}).
 // ASSUMPTION A4: findScenes returns count and these scene fields; files[].duration is in seconds.
@@ -119,6 +121,7 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
   key = key || '';
   const pages = new Map();
   const scripts = new Map();
+  const osc = new Map();
 
   // ASSUMPTION A1: the ApiKey header authenticates every route; no session cookie is used.
   const headers = (extra) => (key ? { ...extra, ApiKey: key } : { ...extra });
@@ -180,7 +183,7 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
       return String(d.version.version || 'dev');
     },
 
-    scenes({ q = '', page = 1, perPage = 20, sort = 'date', direction = 'DESC' } = {}) {
+    scenes({ q = '', page = 1, perPage = 20, sort = 'date', direction = 'DESC', scripted = true } = {}) {
       const filter = {
         q: String(q || ''),
         page: Math.max(1, Math.floor(page) || 1),
@@ -188,8 +191,9 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
         sort,
         direction: direction === 'ASC' ? 'ASC' : 'DESC',
       };
-      return cached(pages, JSON.stringify(filter), async () => {
-        const d = await gql(SCENES_QUERY, { filter, scene_filter: { interactive: true } });
+      const sceneFilter = scripted === false ? {} : { interactive: true };
+      return cached(pages, JSON.stringify([filter, sceneFilter]), async () => {
+        const d = await gql(SCENES_QUERY, { filter, scene_filter: sceneFilter });
         const r = d.findScenes;
         if (!r || !Array.isArray(r.scenes)) fail(COPY.notStash);
         return { count: num(r.count) ?? r.scenes.length, page: filter.page, perPage: filter.per_page,
@@ -200,9 +204,16 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
     script(scene) {
       if (!scene || !scene.funscript) return Promise.reject(new Error(COPY.noScript));
       return cached(scripts, scene.id, () => call(scene.funscript, { method: 'GET', headers: headers({ Accept: 'application/json' }) },
-        (text) => parseFunscript(text, scene.title || scene.key)));
+        (text) => {
+          const s = parseFunscript(text, scene.title || scene.key);
+          osc.set(scene.id, OSC_AXES.filter((a) => s.axes && s.axes[a]));
+          return s;
+        }));
     },
 
-    clear() { pages.clear(); scripts.clear(); },
+    /** The oscillator axes (V8, V9) of a script this client parsed; null until then. */
+    oscOf(scene) { return (scene && osc.get(scene.id)) || null; },
+
+    clear() { pages.clear(); scripts.clear(); osc.clear(); },
   };
 }

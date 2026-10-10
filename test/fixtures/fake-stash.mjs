@@ -11,6 +11,7 @@
  * - Every route needs the key (header ApiKey or ?apikey=), else 401. CORS is answered for the
  *   browser tests' dev fetch; a real Stash may not answer a preflight.
  * - Scenes with id % 10 == 0 are not interactive: scene_filter {interactive: true} must drop them.
+ * - Scripts of scenes with id % 6 == 1 embed the oscillator axes V8 and V9 (funlib 1.1 axes[]).
  *
  * Use: const s = await startFakeStash({ key: 'k' }); ... s.seen; await s.close();
  */
@@ -18,7 +19,8 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 
 const SELF = 'http://stash.internal:9999';
-const SORTS = { date: 'date', created_at: 'created_at', title: 'title', rating: 'rating100', interactive_speed: 'interactive_speed' };
+const SORTS = { date: (s) => s.date, created_at: (s) => s.created_at, title: (s) => s.title, rating: (s) => s.rating100,
+  interactive_speed: (s) => s.interactive_speed, duration: (s) => s.files[0].duration, play_count: (s) => s.play_count };
 
 function makeScenes(n) {
   return Array.from({ length: n }, (_, i) => {
@@ -31,6 +33,7 @@ function makeScenes(n) {
       rating100: i % 5 === 0 ? null : (i * 13) % 101,
       interactive: (i + 1) % 10 !== 0,
       interactive_speed: (i + 1) % 10 !== 0 ? 100 + ((i * 37) % 300) : null,
+      play_count: (i * 7) % 13,
       files: [{ basename: 'clip_' + id + '.mp4', duration: 60 + i * 1.5, width: 1920, height: 1080 }],
       paths: {
         screenshot: SELF + '/scene/' + id + '/screenshot?t=' + (1000 + i),
@@ -48,7 +51,8 @@ function makeScenes(n) {
 export function fakeScript(id, durationMs) {
   const actions = [];
   for (let at = 0, k = 0; at <= durationMs; at += 400, k++) actions.push({ at, pos: k % 2 ? 90 : 10 });
-  return { version: '1.0', inverted: false, range: 100, actions, metadata: { title: 'Script ' + id } };
+  const osc = +id % 6 === 1 ? { version: '1.1', axes: ['V8', 'V9'].map((a) => ({ id: a, actions: [{ at: 0, pos: 50 }, { at: durationMs, pos: 60 }] })) } : {};
+  return { version: '1.0', inverted: false, range: 100, actions, metadata: { title: 'Script ' + id }, ...osc };
 }
 
 /**
@@ -98,7 +102,7 @@ export async function startFakeStash({ key = '', scenes = 30, video = null } = {
             && (!f.q || (s.title || s.files[0].basename).toLowerCase().includes(String(f.q).toLowerCase())));
           if (field) {
             const dir = f.direction === 'ASC' ? 1 : -1;
-            list = [...list].sort((a, b) => ((a[field] ?? -1) > (b[field] ?? -1) ? 1 : (a[field] ?? -1) < (b[field] ?? -1) ? -1 : 0) * dir);
+            list = [...list].sort((a, b) => ((field(a) ?? -1) > (field(b) ?? -1) ? 1 : (field(a) ?? -1) < (field(b) ?? -1) ? -1 : 0) * dir);
           }
           const per = f.per_page > 0 ? f.per_page : 25, page = f.page > 0 ? f.page : 1;
           return out({ data: { findScenes: { count: list.length, scenes: list.slice((page - 1) * per, page * per) } } });

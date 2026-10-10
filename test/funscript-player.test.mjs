@@ -20,6 +20,7 @@
  * Run: node test/funscript-player.test.mjs --unit   (KINETIC_WASM=<path> renders through that build, not bytes.js)
  *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
  *      node test/funscript-player.test.mjs --osc   (only (o), the oscillator axes)
+ *      node test/funscript-player.test.mjs --library [--shots <dir>]   (only (L), the library browser)
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -50,7 +51,7 @@ const CONTRACT = {
     'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'EXPECT_MS', 'applyT', 'knotVel', 'strokeSpeed',
     'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
-  [P + 'library.js']: ['CSS', 'COPY', 'mountLibrary', 'mountConnect'],
+  [P + 'library.js']: ['CSS', 'COPY', 'formFor', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
   [P + 'timeline.js']: ['ZOOMS', 'HEAT_BINS', 'HEAT_MID_UPS', 'HEAT_TOP_UPS', 'TRACE_MS', 'MIN_SPAN', 'CSS', 'COPY', 'curvePoints', 'dotPath', 'kinPoints',
@@ -113,7 +114,7 @@ if (prefs) {
     return { m, prefs: { get: (k) => (m.has(k) ? JSON.parse(m.get(k)) : null), set: (k, v) => m.set(k, JSON.stringify(v)) } };
   };
   const want = { T: { offsetMs: 0, lo: 0, hi: 1, invert: false }, motion: true, audio: { vol: 1, muted: false },
-    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC' }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
+    stash: { base: '', key: '' }, lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, view: 'player', zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true, split: 0,
     interp: { scale: 1, scaleAuto: true },
     play: { loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: false } };
   {
@@ -353,6 +354,9 @@ if (UNIT || fails) {
 //              wears --bad; copy within docs/COPY.md; glance at 220 px
 //   stash      the connect card, tiles keyed with apikey, a pick fetching the
 //              script with the ApiKey header and playing
+//   library    (L) six sizes: at least six scenes in view and in the drawer,
+//              no scroller, no shift on load; search, sort, Scripted only,
+//              paging in place and the row badges
 //   settings   the page's Settings mounts the plugin settings card without
 //              moving the card; a change there reads back in the Plugins
 //              pane and the reverse; open/closed persists ([--shots <dir>])
@@ -843,6 +847,226 @@ function intended(asked, obs, rate) {
 
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
+
+// ---- (L) the library as a browser (ph-0hvq): scenes in view per size, search, sort, the script filter, paging, no shift ----
+// Every size shows at least LIB_MIN whole scenes in its library view and its fullscreen drawer. Named exception: the
+// 1024 x 768 desktop opens with the column shut for the session (the bar keeps its one row, PR5 as built); the caret
+// opens it. Run alone: --library [--shots <dir>] (dark and Paper at every size).
+const LIB_ONLY = args.includes('--library');
+if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
+  console.log('(L) library browser');
+  const LIB_MIN = 6;
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const { THEMES } = await import('../src/model/theme.js');
+  const stash = await startFakeStash({ key: KEY, video: VIDEO, scenes: 72 });
+  const COUNTS = [];
+  // Scenes whose whole row or tile lies inside the list's box and the window, and shows.
+  const inView = (page) => page.evaluate((c) => {
+    const lst = document.querySelector(c + ' .fsp-lib'), body = lst.querySelector('.ui-list-body').getBoundingClientRect();
+    const n = [...lst.querySelectorAll('.ui-list-items > .ui-tile')].filter((t) => {
+      const b = t.getBoundingClientRect();
+      return t.checkVisibility({ visibilityProperty: true }) && b.height > 0 && b.top >= Math.max(0, body.top) - 1
+        && b.bottom <= Math.min(innerHeight, body.bottom) + 1 && b.left >= -1 && b.right <= innerWidth + 1;
+    }).length;
+    const box = document.querySelector(c + ' .fsp-libbox'), items = lst.querySelector('.ui-list-items');
+    return { n, form: lst.dataset.form, cols: getComputedStyle(items).gridTemplateColumns.split(' ').filter(Boolean).length,
+      body: [Math.round(body.width), Math.round(body.height)], scroll: box.scrollHeight - box.clientHeight, spill: items.scrollHeight - items.clientHeight,
+      sideways: document.scrollingElement.scrollWidth - innerWidth };
+  }, C);
+  // The boxes that must never move, against the card (a page taller than the window scrolls): the list's head row,
+  // its body, its pager and its first row.
+  const frame = (page) => page.evaluate((c) => {
+    const o = document.querySelector(c).getBoundingClientRect();
+    const r = (q) => { const e = document.querySelector(c + ' ' + q); if (!e) return null; const b = e.getBoundingClientRect(); return [b.x - o.x, b.y - o.y, b.width, b.height].map(Math.round); };
+    return { head: r('.fsp-lib-head'), body: r('.fsp-lib .ui-list-body'), foot: r('.fsp-lib .ui-list-foot'), row0: r('.fsp-lib .ui-list-items > .ui-tile') };
+  }, C);
+  const countText = (page) => page.locator(C + ' .fsp-lib .ui-list-count').textContent();
+  const titles = (page) => page.$$eval(C + ' .fsp-lib .fsp-tt', (e) => e.map((x) => x.textContent));
+  const pillsOf = (page, i) => page.locator(C + ' .fsp-lib .ui-list-items > .ui-tile').nth(i).evaluate((t) => [...t.querySelectorAll('.fsp-bdg')].map((b) => b.textContent));
+  // The list idle, with rows unless an empty answer is the point.
+  const settle = (page, rows = true) => page.waitForFunction(([c, rows]) => { const l = document.querySelector(c + ' .fsp-lib .ui-list-items');
+    return l && l.getAttribute('aria-busy') !== 'true' && (!rows || l.children.length > 0); }, [C, rows], { timeout: 8000 }).catch(() => {});
+  const want = (pred) => stash.scenes.filter((s) => s.interactive && pred((s.title || s.files[0].basename.replace(/\.[^.]+$/, '')).toLowerCase())).length;
+
+  /** Opens the page at a size and theme, connects the fake Stash and shows the library; the drawer when asked. */
+  async function visit(w, hh, cls, theme, body) {
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop', prefs: theme ? { 'phosphor.theme': theme } : {} });
+    const at = w + 'x' + hh;
+    try {
+      if (!await toPluginPage(page)) { ok('library ' + at + ': the page mounts the card', false); return; }
+      await page.waitForTimeout(400);
+      if (cls === 'portrait') await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click();
+      const shut = await page.locator(C).evaluate((r) => r.hasAttribute('data-libshut'));
+      if (shut) await page.locator(C + ' .fsp-libcaret').click();
+      const head0 = (await frame(page)).head;
+      await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+      await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+      FETCH_DELAY.re = /graphql/; FETCH_DELAY.ms = 1200;
+      await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+      await page.waitForTimeout(500);
+      const loading = { f: await frame(page), note: await page.locator(C + ' .fsp-lib .ui-list-note').textContent() };
+      await settle(page);
+      FETCH_DELAY.re = null;
+      await page.waitForTimeout(400);
+      await body({ page, hub, at, shut, head0, loading, errors });
+    } finally {
+      FETCH_DELAY.re = null;
+      clearInterval(hub.timer);
+      await ctx.close();
+    }
+  }
+  /** Loads the first scene, enters fullscreen and opens the library drawer. */
+  async function toDrawer(page) {
+    await page.locator(C + ' .fsp-tile').first().click();
+    await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+    if (!await page.locator(C).evaluate((r) => r.hasAttribute('data-media'))) await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+    await page.mouse.move(300, 200);
+    await page.locator(C + ' .fsp-hb .fsp-libb').evaluate((e) => e.click());
+    await page.waitForTimeout(700);
+  }
+  const shotsOf = (tag) => async (page, name) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, 'library-' + name + '-' + tag + '.png') }); };
+
+  const SIZES = [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [844, 390, 'landscape'], [412, 915, 'portrait'], [390, 844, 'portrait'], [360, 780, 'portrait']];
+  for (const [w, hh, cls] of SIZES) {
+    await visit(w, hh, cls, null, async ({ page, at, shut, head0, loading, errors }) => {
+      const where = cls === 'portrait' ? 'Library tab' : cls === 'landscape' ? 'page, no video' : 'column';
+      const l = await inView(page), loaded = await frame(page);
+      COUNTS.push([at, where, l]);
+      ok('library ' + at + ': the ' + where + ' shows at least ' + LIB_MIN + ' scenes', l.n >= LIB_MIN, l);
+      ok('library ' + at + ': it pages, never scrolls, no row spills, and nothing goes sideways (D19, ph-5u0g.15)', l.scroll <= 0 && l.spill <= 0 && l.sideways <= 0, l);
+      ok('library ' + at + ': loading draws inside the boxes it fills; the head, list and pager hold still', loading.note === 'Loading scenes'
+        && same(head0, loaded.head) && same(loading.f.head, loaded.head) && same(loading.f.body, loaded.body) && same(loading.f.foot, loaded.foot),
+      { head0, loading, loaded });
+      if (at === '1024x768') ok('library 1024x768: the column opens shut for the session and the caret opens it (the named exception)', shut);
+      if (cls !== 'desktop') {
+        const small = await page.evaluate((c) => [...document.querySelectorAll(c + ' :is(.fsp-lib-head > *, .fsp-lib .og-btn, .fsp-lib .ui-list-items > .ui-tile)')]
+          .filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return [e.className || e.tagName, Math.round(b.width), Math.round(b.height)]; })
+          .filter(([, bw, bh]) => bh < 44 || bw < 44), C);
+        ok('library ' + at + ': every library target and row is 44 px or more under a coarse pointer', small.length === 0, small.slice(0, 4));
+        if (at === '360x780') {
+          // The smallest Look: rows and targets hold 44 px, the page still fits whole rows.
+          await page.evaluate(() => document.documentElement.style.setProperty('--s', '0.8'));
+          await page.waitForTimeout(600);
+          await settle(page);
+          const lk = await inView(page);
+          const tiny = await page.evaluate((c) => [...document.querySelectorAll(c + ' :is(.fsp-lib-head > *, .fsp-lib .og-btn, .fsp-lib .ui-list-items > .ui-tile)')]
+            .filter((e) => e.getClientRects().length).map((e) => Math.round(Math.min(e.getBoundingClientRect().width, e.getBoundingClientRect().height))).filter((v) => v < 44), C);
+          const per = await page.locator(C + ' .fsp-lib').evaluate((l) => [l.perPage, l.querySelectorAll('.ui-list-items > .ui-tile').length]);
+          ok('library 360x780: at Look 0.8 rows and targets hold 44 px, every row whole, none spilling', tiny.length === 0 && lk.spill <= 0 && lk.n === per[1] && per[0] === per[1], { tiny, lk, per });
+          await page.evaluate(() => document.documentElement.style.removeProperty('--s'));
+          await page.waitForTimeout(600);
+          await settle(page);
+        }
+      }
+      await shotsOf('dark')(page, at);
+      await toDrawer(page);
+      const d = await inView(page);
+      COUNTS.push([at, 'fullscreen drawer', d]);
+      ok('library ' + at + ': the fullscreen drawer shows at least ' + LIB_MIN + ' scenes', d.n >= LIB_MIN, d);
+      await shotsOf('dark')(page, 'drawer-' + at);
+      ok('library ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
+    });
+  }
+
+  // Paging, search, sort, the script filter and the row badges, on the desktop column and the phone's tab.
+  const lastQuery = () => JSON.parse([...stash.seen].reverse().find((r) => r.path === '/graphql' && /findScenes/.test(r.body)).body).variables;
+  for (const [w, hh, cls] of [[1428, 900, 'desktop'], [390, 844, 'portrait']]) {
+    await visit(w, hh, cls, null, async ({ page, at, errors }) => {
+      const head = (q) => page.locator(C + ' .fsp-lib-head ' + q);
+      const ask = async (fn) => { await fn(); await page.waitForTimeout(350); await settle(page, false); };
+      const search = (t) => ask(() => head('input').fill(t).then(() => head('input').press('Enter')));
+      const libTab = async () => { if (cls === 'portrait') { await page.locator(C + ' .fsp-tabs button', { hasText: 'Library' }).click(); await page.waitForTimeout(300); } };
+      const f0 = await frame(page), t0 = await titles(page);
+      FETCH_DELAY.re = /graphql/; FETCH_DELAY.ms = 1000;
+      await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      await page.waitForTimeout(400);
+      const busy = await frame(page);
+      await settle(page);
+      FETCH_DELAY.re = null;
+      const f1 = await frame(page), t1 = await titles(page), pg = await page.locator(C + ' .fsp-lib .ui-list-page').textContent();
+      ok('library ' + at + ': Next pages in place: page 2, other scenes as many, nothing moves while it loads or after',
+        /^page 2 \//.test(pg) && t1.length === t0.length && !t1.some((t) => t0.includes(t)) && same(f0, busy) && same(f0, f1), { pg, f0, busy, f1 });
+
+      await search('title 1');
+      const n1 = want((t) => t.includes('title 1')), ts = await titles(page), cnt = await countText(page);
+      ok('library ' + at + ': Search is Stash\'s own query; the count and every row match', lastQuery().filter.q === 'title 1' && cnt === n1 + ' scenes'
+        && ts.length > 0 && ts.every((t) => t.toLowerCase().includes('title 1')), { cnt, n1, ts });
+      await search('');
+
+      const secs = () => page.$$eval(C + ' .fsp-lib .fsp-mt', (e) => e.map((x) => { const [m, s] = x.textContent.split(' · ')[0].split(':').map(Number); return m * 60 + s; }));
+      await ask(() => head('select').selectOption({ label: 'Duration' }));
+      const desc = await secs();
+      await ask(() => head('.fsp-dir').click());
+      const asc = await secs();
+      await ask(() => head('select').selectOption({ label: 'Plays' }));
+      const plays = lastQuery().filter;
+      ok('library ' + at + ': Sort Duration both ways orders the rows; Plays asks play_count', desc.length > 1 && desc.every((v, i, a) => !i || a[i - 1] >= v)
+        && asc.every((v, i, a) => !i || a[i - 1] <= v) && asc[0] < desc[0] && plays.sort === 'play_count' && plays.direction === 'ASC', { desc, asc, plays });
+      await ask(() => head('select').selectOption({ label: 'Date' }));
+      await ask(() => head('.fsp-dir').click());
+
+      await ask(() => head('.fsp-only').click());
+      const all = await countText(page);
+      await search('title 10');
+      const off = { cnt: await countText(page), rows: await titles(page), pills: await pillsOf(page, 0) };
+      await ask(() => head('.fsp-only').click());
+      const on = { note: await page.locator(C + ' .fsp-lib .ui-list-note').textContent(), rows: (await titles(page)).length, filter: lastQuery().scene_filter };
+      ok('library ' + at + ': Scripted only off lists every scene, an unscripted one without the Script pill; on drops it',
+        all === stash.scenes.length + ' scenes' && off.cnt === '1 scene' && off.rows[0] === 'Scene title 10' && !off.pills.includes('Script')
+        && on.note === 'No scenes match' && on.rows === 0 && on.filter.interactive === true, { all, off, on });
+      await search('');
+
+      await page.locator(C + ' .fsp-lib .fsp-qadd').nth(1).click();
+      await page.waitForTimeout(200);
+      const q1 = await pillsOf(page, 1);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await libTab();
+      const p0 = await pillsOf(page, 0), cur = await page.locator(C + ' .fsp-tile').first().getAttribute('aria-current');
+      await playBtn(page).click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      const p1 = await pillsOf(page, 0);
+      await playBtn(page).click();
+      ok('library ' + at + ': rows read Queued once queued, Loaded on the loaded scene (the current look), Playing while it plays, Script on each',
+        q1.includes('Queued') && q1.includes('Script') && p0.includes('Loaded') && cur === 'true' && p1.includes('Playing'), { q1, p0, cur, p1 });
+      await search('title 13');
+      const before = await pillsOf(page, 0);
+      await page.locator(C + ' .fsp-tile').first().click();
+      await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
+      await libTab();
+      await page.waitForTimeout(300);
+      const after = await pillsOf(page, 0);
+      ok('library ' + at + ': V8 V9 shows once the scene\'s script parsed with those axes', !before.includes('V8 V9') && after.includes('V8 V9'), { before, after });
+      await shotsOf('dark')(page, 'badges-' + at);
+      ok('library ' + at + ': no page error in the browse checks', errors.length === 0, errors.slice(0, 3));
+    });
+  }
+
+  if (SHOTS) {
+    const paper = THEMES.find((t) => t.id === 'paper');
+    for (const [w, hh, cls] of SIZES) {
+      await visit(w, hh, cls, paper, async ({ page, at }) => {
+        await shotsOf('paper')(page, at);
+        await toDrawer(page);
+        await shotsOf('paper')(page, 'drawer-' + at);
+      });
+    }
+  }
+  for (const [at, where, l] of COUNTS) console.log('  scenes in view  ' + at.padEnd(9) + ' ' + where.padEnd(18) + ' ' + String(l.n).padStart(3) + '  ' + l.form + ' x' + l.cols);
+  await stash.close();
+  if (LIB_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
 
 // ---- (o) the oscillator axes (ph-6dr6, SPEC 9.7): V8/V9 to the osc.drive STREAM, by role ----
 if (!LIVE && !STASH_LIVE) {
@@ -1380,9 +1604,9 @@ if (!LIVE && !STASH_LIVE) {
       });
       ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.toCard <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
-      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: r.querySelector('.fsp-lib').dataset.form === 'grid',
-        head: r.querySelector('.fsp-libbox > .fsp-h').dataset.pidx + r.querySelector('.fsp-libbox > .fsp-h').textContent }));
-      ok('library ' + at + ': the side column with its caret, tiles, under 02 LIBRARY', col.caret && col.tiles && col.head === '02Library' && l0.n > 0, col);
+      const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, rows: r.querySelector('.fsp-lib').dataset.form === 'rows',
+        head: r.querySelector('.fsp-libh > .fsp-h').dataset.pidx + r.querySelector('.fsp-libh > .fsp-h').textContent }));
+      ok('library ' + at + ': the side column with its caret, compact rows (ph-0hvq), under 02 LIBRARY', col.caret && col.rows && col.head === '02Library' && l0.n > 0, col);
     } else {
       await page.locator(C + ' .fsp-tile').first().click();
       await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).catch(() => {});
@@ -1435,14 +1659,13 @@ if (!LIVE && !STASH_LIVE) {
     await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
     await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
     await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
-    // The column may hold one scene a page: add the first of each of three pages.
+    // Rows 1 to 3 of the first page (the library pages six or more at every size, ph-0hvq).
     const titles = [];
+    await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
     for (let i = 0; i < 3; i++) {
-      await page.waitForSelector(C + ' .fsp-qadd', { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(400);
-      titles.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
-      await page.locator(C + ' .fsp-qadd').first().click();
-      await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      titles.push(await page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent());
+      await page.locator(C + ' .fsp-qadd').nth(i).click();
     }
     await tab('Queue');
     await page.waitForTimeout(300);
@@ -1491,11 +1714,10 @@ if (!LIVE && !STASH_LIVE) {
       // Two more scenes for Loop and the Halt between scenes.
       await tab('Library');
       const more = [];
-      for (let i = 0; i < 2; i++) {
-        await page.waitForTimeout(400);
-        more.push(await page.locator(C + ' .fsp-tile .ui-tile-t').first().textContent());
-        await page.locator(C + ' .fsp-qadd').first().click();
-        await page.locator(C + ' .fsp-lib .ui-list-next').click();
+      await page.waitForTimeout(400);
+      for (let i = 3; i < 5; i++) {
+        more.push(await page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent());
+        await page.locator(C + ' .fsp-qadd').nth(i).click();
       }
       await tab('Queue');
       await page.waitForTimeout(300);

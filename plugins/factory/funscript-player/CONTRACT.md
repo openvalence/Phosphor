@@ -100,7 +100,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
 
 // Prefs: api.prefs keys, stored as plugin.funscript-player.<key>; prefs.js owns the defaults
 { T: {offsetMs: 0, lo: 0, hi: 1, invert: false}, motion: true, audio: {vol: 1, muted: false},
-  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC'}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
+  stash: {base: '', key: ''}, lib: {q: '', sort: 'date', direction: 'DESC', scripted: true}, view: 'player' (| 'queue' | 'library'), zoomMs: 10000, settingsOpen: false, libOpen: true, queue: [], autoplay: false, tlOpen: true,
   interp: {scale: 1, scaleAuto: true},   // Scale (scale.js); any other stored field is dropped on read
   play: {loop: false, loopCount: 0, home: false, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33,   // ph-smvd.12
          seekMs: 500, autoLatency: false} }   // a stored lowLatency is dropped on read
@@ -552,8 +552,8 @@ rules.
 // stash.js
 export const SCENES_QUERY;   // GraphQL text: findScenes(filter, scene_filter) selecting what Scene needs,
                              // plus files.basename: the title of an untitled scene, else 'Scene <id>'
-export const SORTS;          // [['date','Date'], ['created_at','Added'], ['title','Title'], ['rating','Rating'],
-                             //  ['interactive_speed','Speed']]
+export const SORTS;          // [['date','Date'], ['created_at','Added'], ['title','Title'], ['duration','Duration'],
+                             //  ['play_count','Plays'], ['rating','Rating'], ['interactive_speed','Speed']]
 export const COPY;
 export function normalizeBase(text);   // -> 'http(s)://host[:port][/path]' without a trailing slash, or ''
 export function rebase(url, base);     // -> url carried onto base's origin
@@ -562,19 +562,24 @@ export function toScene(raw, base, key);   // -> Scene
 export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> StashClient
 // StashClient = {
 //   version() -> Promise<string>,                                        { version { version } }
-//   scenes({q, page, perPage, sort, direction}) -> Promise<Page>,        scene_filter {interactive: true}; cached per query
+//   scenes({q, page, perPage, sort, direction, scripted = true}) -> Promise<Page>,
+//                                    scene_filter {interactive: true}, or {} for scripted false; cached per query and filter
 //   script(scene) -> Promise<Script>,                                    GET scene.funscript with ApiKey; cached per id
-//   clear() }                                                            drops both caches
+//   oscOf(scene) -> string[] | null,  the oscillator axes (V8, V9) of a script this client parsed; null before; no fetch
+//   clear() }                                                            drops the caches
 // Errors are Error(words): 'Stash not set', 'no answer from Stash', 'Stash refused the key' (401, 403),
 // 'refused: <status>', 'Stash: <errors[0].message cut to 50 chars>', 'not a Stash server'.
 // The key never reaches a log line.
 
 // library.js (the kit draws the list, its pager and tiles, the inputs and the rows: api.ui, docs/PLUGINS.md)
 export const CSS, COPY;
-export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, rows, onQueue });   // -> { refresh(), fit(), step(dir), canStep(dir), unmount() }
+export function formFor(W, H, rem = 16);   // -> 'grid' where tiles (150 px min) fit three across and page six, else 'rows'
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch, onQueue });   // -> { refresh(), step(dir), canStep(dir), mark(m), unmount() }
   // ui: api.ui; onQueue(scene): each tile and row carries Add to queue (+), a kit tile action
-  // rows: () -> boolean, the phone's row form (PR13: the kit list's rows, a 16:9 thumbnail beside the title and the
-  // meta, --ui-row-h high); fit() sets the form and the kit list refits its page
+  // the form is formFor(the list body), set on a resize only; rows are the kit list's at --ui-row-h 2.5rem, side by
+  // side in columns 14rem or wider (the kit list's row.min)
+  // mark({now, playing, queued}): the loaded scene's key, whether it plays, the queue's keys (the player's render);
+  // the rows' current look and their badges follow it
   // getStash: () -> StashClient | null, the same client until base or key change (it holds the caches);
   // prefs: {get(k), set(k, v)}; onPick(scene); fetch: api.net.fetch, for the Test of
   // the connect card shown in its place (without it, Test stores the fields and tests getStash())
@@ -582,17 +587,21 @@ export function mountConnect(el, { ui, api, onSaved, client });   // -> unmount(
   // builds the client its Test asks; default createStash over api.net.fetch
 ```
 
-`mountLibrary` fills its box: a head row of `var(--tap)` (search, 300 ms
-debounce; sort; direction; the pickers are the player's, PR3), and a kit list
-that never scrolls (per page = the whole tiles that fit, the kit's fit) with
-its pager (Previous page, `page n / m`, Next page, `N scenes`). Tiles are the
-kit's: a 16:9 box with a lazy screenshot, a one-line title, `duration · speed`. With no
+`mountLibrary` fills its box: a head row of `--ui-btn-h` (2.5rem under a
+coarse pointer: search, 300 ms debounce; sort; direction; Scripted only, a
+toggle in the on look; the pickers are the player's, PR3), and a kit list
+that never scrolls (per page = the whole rows or tiles that fit, the kit's
+fit) with its pager (Previous page, `page n / m`, Next page, `N scenes`).
+Rows and tiles are the kit's: a 16:9 shot (lazy), the title with the state
+badges (Playing or Loaded, Queued), then `duration · speed` with what the
+scene carries (V8 V9, Script), each badge whole or not drawn. With no
 base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
 (`Stash v<version>` or the error words), stored in `api.prefs` `stash`.
 
 `test/fixtures/fake-stash.mjs`:
-`startFakeStash({ key, scenes = 30, video = null })` resolves
+`startFakeStash({ key, scenes = 30, video = null })` (sorts as A8 lists them,
+`duration` and `play_count` included; scripts of ids 1 mod 6 embed V8 and V9) resolves
 `{ url, seen: Array<{method, path, headers, body}>, close() }`: POST /graphql
 (findScenes, version), GET /scene/:id/funscript, /scene/:id/stream with
 Range, /scene/:id/screenshot as SVG; 401 without the key; no binary

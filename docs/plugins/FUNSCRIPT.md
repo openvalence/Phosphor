@@ -31,7 +31,7 @@ sentences in PLUGINS.md; R-B is a CSP edit verified in the real shell (C-8).
 | scheduler | `clock.js`, `scheduler.js` | the media clock (rVFC display times, median, slew, step), one segment per funscript span, offset/range/invert, stop and preroll segments, the per-frame submit cadence, refusal classes |
 | host | kernel files | `api.submitSegments`, the lookahead door in `motion.js`, `api.gate` on a motion-input field, the producer lock, `api.net.fetch`, the CSP; generic, no funscript knowledge |
 | player-ui | `ui.js`, `timeline.js` | the controller and the card: video stage, overview heat and scrub, the automation detail view, the strip, status slot, layout tiers |
-| stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library grid and the connect card, the fake Stash |
+| stash | `stash.js`, `library.js` | GraphQL client over an injected fetch, caching, URL keying, the library list and the connect card, the fake Stash |
 | plugin | `index.js`, `prefs.js`, `manifest.json` | registration, the settings card (Stash connect, Scale, playback), prefs defaults, the factory entry, docs, the fake-hub browser test and the live smoke |
 | scale | `scale.js` | the map every action takes before the wire, Manual or Auto; the settings card's Scale row (Interpolation) |
 | analyzer | `analyzer.js` | the expanded detail: lag readouts and the hub's Tuning controls, Live or Preview (Analyzer) |
@@ -653,6 +653,43 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   closes on a pick, a tap outside or the end of fullscreen. The Stash
   connect card is the kit's rows (label, the field across the control and
   value cells).
+  *(Rows superseded 2026-10-10 by the library browser below: 2.5rem rows, columns, badges.)*
+- **Library browser (operator 2026-10-10, `ph-0hvq`):** "the funscript
+  player library being kinda useless? ... most sizes only 1 vid shows". As
+  built: a row is 2.5rem high (44.8 px at the default Look; under a coarse
+  pointer never under 44 px at any Look): a small 16:9 shot, the title with the
+  scene's state (Playing or Loaded on the loaded scene, Queued), then
+  `duration · speed` with what it carries (V8 V9 once its script parsed
+  with those axes, Script). A badge is drawn whole or not at all. Rows sit
+  side by side in columns 14rem or wider where the box allows (the kit
+  list's `row.min`); the 16:9 tile grid only where tiles fit three across
+  and a page holds six (`formFor`; no box does today). The column's head
+  row holds 02 LIBRARY and the Library | Queue switch. The list's head row,
+  pager and Add to queue are 30 px under a fine pointer and the row's height
+  under a coarse one. The kit list resolves `--ui-row-h` as drawn, so a
+  `max()` or `var()` holds. The head adds Scripted only (on by default, pref
+  `lib.scripted`): off, every Stash scene lists and an unscripted one loads
+  video only. Sort adds Duration and Plays. On the phone landscape class
+  the fullscreen drawer is `min(560px, 70vw)` wide, two columns of rows. A
+  narrow phone head shortens its heading before a control leaves the card
+  (`ph-5u0g.15`). The 1024 x 768 desktop still opens with the column shut
+  for the session (PR5 as built); the caret opens it. Scenes in view
+  against the fake Stash (72 scenes, 65 scripted):
+
+  | Size | View | Before | After |
+  |---|---|---|---|
+  | 1428 x 900 | column | 1 | 8 |
+  | 1428 x 900 | fullscreen drawer | 6 | 13 |
+  | 1024 x 768 | column, caret open | 1 | 6 |
+  | 1024 x 768 | fullscreen drawer | 4 | 10 |
+  | 844 x 390 | page, no video | 1 | 6 |
+  | 844 x 390 | fullscreen drawer | 0 | 6 |
+  | 412 x 915 | Library tab | 7 | 10 |
+  | 412 x 915 | fullscreen drawer | 8 | 13 |
+  | 390 x 844 | Library tab | 5 | 7 |
+  | 390 x 844 | fullscreen drawer | 7 | 12 |
+  | 360 x 780 | Library tab | 0 (4 drawn, the page shifted sideways) | 6 |
+  | 360 x 780 | fullscreen drawer | 7 | 10 |
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
@@ -999,9 +1036,10 @@ in the library's place while no base is set; stored in `api.prefs`
 shell; vite dev uses `window.fetch`, so Stash must allow the dev origin).
 Media loads by URL under the R-B CSP.
 
-Browse: `findScenes(filter {q, page, per_page = tiles that fit, sort,
-direction}, scene_filter {interactive: true})`, search debounced 300 ms,
-sorts Date, Added, Title, Rating, Speed, pages instead of scrolling.
+Browse: `findScenes(filter {q, page, per_page = the rows that fit, sort,
+direction}, scene_filter {interactive: true}, or {} with Scripted only
+off)`, search debounced 300 ms (Enter at once), sorts Date, Added, Title,
+Duration, Plays, Rating, Speed, pages instead of scrolling.
 Pages and scripts are cached for the session. Load: hold, fetch and parse
 the funscript, set `video.src` to the direct stream and the poster to the
 screenshot. A scene without a script loads video only, Play stays grayed.
@@ -1041,7 +1079,9 @@ GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
   (`screenshot preview stream webp vtt sprite funscript
   interactive_heatmap caption`).
 - **A8** verified. All five keys sort both ways; an unknown key is refused
-  (`invalid sort`), so a pass is meaningful.
+  (`invalid sort`), so a pass is meaningful. Duration (`duration`) and
+  Plays (`play_count`), added 2026-10-10, are not yet checked live; the
+  `--live` loop sorts by every key.
 - **A9** verified. `{ version { version } }` answers `v0.31.1`.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
@@ -1363,7 +1403,15 @@ Decisions (veto-able):
   at the grant rate, each stamp the instant its script time shows and sent
   at least the latency ahead, no INTENT written, nothing after a pause, two
   lanes, and without the role one status line and no stream (`--osc` runs
-  (o) alone); nothing sent before Play; preroll then video start;
+  (o) alone); (L) the library against a fake Stash of 72 scenes at 1428 x
+  900, 1024 x 768, 844 x 390, 412 x 915, 390 x 844 and 360 x 780: at least
+  six scenes in view in the library view and the fullscreen drawer, no
+  scroller, no row spilling, nothing sideways, no box moving while the
+  first page loads, 44 px targets under a coarse pointer; on the desktop
+  column and the phone's tab Next in place, Search, Sort Duration both
+  ways and Plays, Scripted only, and the Queued, Loaded, Playing, V8 V9 and
+  Script badges (`--library` runs (L) alone; `--shots <dir>` adds dark and
+  Paper at every size); nothing sent before Play; preroll then video start;
   every start within half the horizon of its send; starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset
   +50 moves stamps by 50 ms; rate 1.5 divides durations; a pushed PAUSE
@@ -1551,6 +1599,21 @@ Decisions (veto-able):
   while a wrap is pending, not on a backward jump from the last frame: a
   loop set at the playhead wraps before any frame, and the jump rule never
   fired (found by browser section (h)).
+- **L1** (`ph-0hvq`) Rows, side by side in columns, wherever the 16:9 grid
+  would page fewer than six or fit fewer than three across; a 2.5rem row
+  pages about twice the scenes of a tile per area, so no box shows the grid
+  today. Veto: the grid wherever three fit across, whatever it pages.
+- **L2** V8 V9 shows only for a scene whose script this session parsed:
+  Stash serves no companion files (A7), and knowing before a pick costs a
+  GET and a parse per row. Veto: prefetch the scripts of the page in view.
+- **L3** The badges are spans the library writes into the kit tile's title
+  and meta slots, not a kit option; a second plugin wanting pills makes it
+  one. Veto: a kit `badges` option now.
+- **L4** Sorts add Duration and Plays only: Last played reads too close to
+  Plays in a 30 px select. Veto: Last played (`last_played_at`) as well.
+- **L5** On the phone landscape class the fullscreen drawer is
+  `min(560px, 70vw)` for two columns of rows (three rows fit its height):
+  open, it covers more of the video. Veto: 400 px and three scenes.
 
 ## Protocol gaps and risks
 

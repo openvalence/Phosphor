@@ -18,7 +18,7 @@ export const PREFS = deepFreeze({
   motion: true,
   audio: { vol: 1, muted: false },
   stash: { base: '', key: '' },
-  lib: { q: '', sort: 'date', direction: 'DESC' },
+  lib: { q: '', sort: 'date', direction: 'DESC', scripted: true }, // scripted: Stash's interactive filter (library.js)
   view: 'player', // the handheld card's tab: player, queue or library
   zoomMs: 10000,
   settingsOpen: false, // the page's Settings section (page.js)

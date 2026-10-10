@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import {
   SCENES_QUERY, SORTS, COPY, normalizeBase, rebase, withKey, toScene, createStash,
 } from '../plugins/factory/funscript-player/stash.js';
-import { COPY as LIB_COPY } from '../plugins/factory/funscript-player/library.js';
+import { COPY as LIB_COPY, formFor } from '../plugins/factory/funscript-player/library.js';
 import { fitGrid } from '../src/plugins/kit.js';
 import { startFakeStash } from './fixtures/fake-stash.mjs';
 
@@ -77,7 +77,7 @@ ok('toScene with nothing optional', bare.title === 'Scene 9' && bare.date === nu
 ok('SCENES_QUERY selects what Scene needs', ['findScenes(filter: $filter, scene_filter: $scene_filter)', 'count', 'id title date rating100',
   'interactive interactive_speed', 'files { basename duration width height }', 'paths { screenshot stream funscript }',
   'studio { name }', 'performers { name }', 'tags { name }', '$scene_filter: SceneFilterType'].every((s) => SCENES_QUERY.includes(s)));
-ok('SORTS is the contract list', SORTS.map((s) => s[0]).join() === 'date,created_at,title,rating,interactive_speed');
+ok('SORTS is the contract list', SORTS.map((s) => s[0]).join() === 'date,created_at,title,duration,play_count,rating,interactive_speed');
 
 console.log('(c) library fit and copy');
 const g = fitGrid(1000, 600);
@@ -90,6 +90,9 @@ ok('fitGrid rows fit the height', [[1000, 600], [500, 900], [1600, 300]].every((
   const f = fitGrid(W, H); const tw = (W - 8 * (f.cols - 1)) / f.cols;
   return f.rows * tile(tw) + 8 * (f.rows - 1) <= H + 0.01 || f.rows === 1;
 }));
+ok('formFor: rows in the 320 px column and the drawer; a grid only where three tiles fit across and page six (ph-0hvq)',
+  formFor(294, 410, 17.92) === 'rows' && formFor(534, 146, 17.92) === 'rows' && formFor(480, 140, 17.92) === 'rows'
+  && formFor(900, 700, 16) === 'grid' && formFor(470, 200, 16) === 'rows');
 const copyBad = [...Object.values(COPY), ...Object.values(LIB_COPY), ...SORTS.map((s) => s[1])]
   .filter((t) => typeof t === 'string' && (t.length > 60 || /\. |\.$/.test(t) || t.trim().split(/\s+/).length >= 8));
 ok('every COPY string is one fragment under eight words', copyBad.length === 0, copyBad.join(' | '));
@@ -119,6 +122,13 @@ try {
   ok('a repeated query is cached', fake.seen.length === 1);
   await st.scenes({ q: 'title 1', page: 1, perPage: 5, sort: 'title', direction: 'ASC' });
   ok('another query asks again', fake.seen.length === 2);
+  const all = await st.scenes({ q: '', page: 2, perPage: 5, sort: 'title', direction: 'ASC', scripted: false });
+  const allBody = JSON.parse(fake.seen.at(-1).body);
+  ok('scripted false: no interactive filter, its own cache entry, every scene counts', fake.seen.length === 3
+    && JSON.stringify(allBody.variables.scene_filter) === '{}' && all.count === 30, JSON.stringify(allBody.variables));
+  const byLen = await st.scenes({ page: 1, perPage: 30, sort: 'duration', direction: 'DESC' });
+  ok('sort duration DESC orders by the file length', byLen.scenes.every((s, i, a) => !i || a[i - 1].durationMs >= s.durationMs));
+  fake.seen.length = 2;
 
   const pick = pg.scenes[0];
   fake.seen.length = 0;
@@ -129,6 +139,12 @@ try {
   ok('script parses to a Script', scr && scr.at instanceof Float64Array && scr.at.length > 10 && scr.axis === 'L0' && scr.pos[1] > 0.85);
   await st.script(pick);
   ok('script is cached per scene id', fake.seen.length === 1);
+  const osc = pg.scenes.find((s) => +s.id % 6 === 1), plain = pg.scenes.find((s) => +s.id % 6 !== 1);
+  const unknown = st.oscOf(osc);
+  await st.script(osc);
+  ok('oscOf: null until the script parsed, then its V8 and V9; none on a main-axis script',
+    unknown === null && st.oscOf(osc).join() === 'V8,V9' && st.oscOf(plain).length === 0, JSON.stringify([st.oscOf(osc), st.oscOf(plain)]));
+  fake.seen.length = 1;
   st.clear();
   await st.script(pick);
   await st.scenes({ q: '', page: 2, perPage: 5, sort: 'title', direction: 'ASC' });
