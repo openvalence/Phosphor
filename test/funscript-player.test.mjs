@@ -21,6 +21,7 @@
  *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
  *      node test/funscript-player.test.mjs --osc   (only (o), the oscillator axes)
  *      node test/funscript-player.test.mjs --library [--shots <dir>]   (only (L), the library browser)
+ *      node test/funscript-player.test.mjs --menus   (only (M), the context menus)
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -387,6 +388,11 @@ if (UNIT || fails) {
 //              156 ms latency ahead (one lead, RFC-110 item 4), no INTENT written (osc.enabled
 //              never set), nothing after a pause; two lanes under the detail; a hub without the
 //              role: one status line, no stream
+//   menus      (M) every element takes the right-click; the plugin page's page
+//              menu; the stage's Play/Pause, Fullscreen, Open video, Open script;
+//              the timeline's Seek here, Set A here, Set B here, Clear loop
+//              (pointer and Shift+F10); a scene row's Play, Play next, Add to
+//              queue, Open in Stash; a queue row's Remove, Move to top
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
@@ -870,6 +876,203 @@ function intended(asked, obs, rate) {
 
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
+
+// ---- (M) the context menus (ph-hi4i): the page's, the stage's, the timeline's, the scene and queue rows' ----
+// Every item does what it says; no element on the page leaves its right-click to the webview.
+const MENUS_ONLY = args.includes('--menus');
+if (!LIVE && !STASH_LIVE && !OSC_ONLY && !args.includes('--library')) {
+  console.log('(M) context menus');
+  const cat = advgenCatalog();
+  cat.entries = decodeCatalog(cat.bytes);
+  const stash = await startFakeStash({ key: KEY, video: VIDEO });
+  const hub = makeHub(cat);
+  hub.values[CH.config + ':window_min'] = 0;
+  hub.values[CH.config + ':window_max'] = 100;
+  const { ctx, page, errors } = await open({ cat, hub, width: 1428, height: 900 });
+  // A right-click as the webview sends it, at a share of the element's width: -> whether it was taken.
+  const rc = (sel, fx = 0.5) => page.locator(sel).first().evaluate((el, f) => {
+    const r = el.getBoundingClientRect();
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: r.left + r.width * f, clientY: r.top + r.height / 2 });
+    el.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  }, fx);
+  const menuOf = () => page.evaluate(() => {
+    const m = document.querySelector('.ui-menu:popover-open');
+    return m ? { title: m.querySelector('.ui-menu-t')?.textContent || '', sections: [...m.querySelectorAll('.ui-menu-sec')].map((s) => s.textContent),
+      items: [...m.querySelectorAll('.ui-menu-i')].map((b) => (b.disabled ? '-' : '') + b.textContent) } : null;
+  });
+  const pickM = (label) => page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: new RegExp('^' + label + '$') }).first().click();
+  if (await toPluginPage(page)) {
+    await page.waitForTimeout(400);
+    // The shell's: api.net.open's command, answered here.
+    await page.evaluate(() => {
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__opened = [];
+      window.__TAURI_INTERNALS__.invoke = (cmd, a, o) => (cmd === 'plugin_open_url' ? (window.__opened.push(a.url), Promise.resolve(null)) : inner(cmd, a, o));
+    });
+    const loose = await page.evaluate(() => {
+      const out = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (!el.getClientRects().length || el.closest('.ui-menu')) continue;
+        const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+        el.dispatchEvent(ev);
+        if (!ev.defaultPrevented) out.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 40));
+      }
+      return out;
+    });
+    await page.keyboard.press('Escape');
+    ok('menus: every element of the Funscript page takes the right-click (the webview\'s menu never shows)', loose.length === 0, loose.slice(0, 5));
+
+    // the page: the shell's page menu on a plugin page
+    await rc(C + ' .fsp-libh .fsp-h');
+    const pm = await menuOf();
+    ok('page: a plugin page has the shell\'s page menu (Manage plugins), its media Fullscreen left to the stage', !!pm && pm.items.join() === 'Manage plugins', pm);
+    await pickM('Manage plugins');
+    ok('page: Manage plugins opens the Plugins pane', await page.locator('[data-tab-id="plugins"][aria-selected="true"]').count() === 1);
+    await toPluginPage(page);
+    await page.waitForTimeout(300);
+
+    // the stage, empty: Play off with words, Open video and Open script take the file pickers
+    await rc(C + ' .fsp-stage');
+    const s0 = await menuOf();
+    ok('stage: Player, Play off with its reason, Fullscreen, Open video, Open script, then the page\'s', !!s0 && s0.title === 'Player'
+      && s0.items.join() === '-Play,Fullscreen,Open video,Open script,Manage plugins' && same(s0.sections, ['Funscript']), s0);
+    const [fv] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), pickM('Open video')]);
+    ok('stage: Open video opens the video picker', !!fv && fv.isMultiple());
+    if (fv) await fv.setFiles([{ name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO }]);
+    await page.waitForTimeout(400);
+    await rc(C + ' .fsp-stage');
+    const [fs] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), pickM('Open script')]);
+    ok('stage: Open script opens the script picker', !!fs);
+    if (fs) await fs.setFiles([{ name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) }]);
+    const ready = await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 }).then(() => true, () => false);
+    ok('stage: the picked video and script load', ready);
+    await rc(C + ' .fsp-stage');
+    await pickM('Play');
+    await page.waitForTimeout(600);
+    const playing = await video(page, (v) => !v.paused);
+    await rc(C + ' .fsp-stage');
+    const s1 = await menuOf();
+    await pickM('Pause');
+    await page.waitForTimeout(300);
+    ok('stage: Play plays, and the menu then reads Pause, which pauses', playing && s1?.items[0] === 'Pause' && await video(page, (v) => v.paused), s1);
+    await rc(C + ' .fsp-stage');
+    await pickM('Fullscreen');
+    await page.waitForTimeout(400);
+    const inFull = await page.locator(C).evaluate((r) => r.hasAttribute('data-media'));
+    await rc(C + ' .fsp-stage');
+    const s2 = await menuOf();
+    await pickM('Exit fullscreen');
+    await page.waitForTimeout(400);
+    ok('stage: Fullscreen enters media fullscreen; Exit fullscreen leaves it', inFull && s2?.items.includes('Exit fullscreen')
+      && !await page.locator(C).evaluate((r) => r.hasAttribute('data-media')), { inFull, s2 });
+
+    // the timeline: Seek here, Set A here, Set B here, Clear loop, on the overview and the detail
+    const OV = C + ' .fsp-ov';
+    const dur = await video(page, (v) => v.duration * 1000);
+    await rc(OV, 0.5);
+    const t0 = await menuOf();
+    ok('timeline: Seek here, Set A here, Set B here (off until A), Clear loop (off without one)', !!t0 && t0.title === 'Timeline'
+      && t0.items.slice(0, 4).join() === 'Seek here,Set A here,-Set B here,-Clear loop', t0);
+    await pickM('Seek here');
+    await page.waitForTimeout(300);
+    const at = await video(page, (v) => v.currentTime * 1000);
+    ok('timeline: Seek here on the overview seeks to the time under the pointer', Math.abs(at - dur / 2) < dur * 0.02, { at, half: dur / 2 });
+    await rc(OV, 0.2);
+    await pickM('Set A here');
+    await rc(OV, 0.6);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const band = () => page.locator(OV + ' rect.ab').evaluate((r) => [+r.getAttribute('x') / r.ownerSVGElement.viewBox.baseVal.width, +r.getAttribute('width') / r.ownerSVGElement.viewBox.baseVal.width]);
+    const b1 = await band();
+    ok('timeline: Set A here and Set B here loop 20 % to 60 % (the band, the A-B button on)', Math.abs(b1[0] - 0.2) < 0.02 && Math.abs(b1[1] - 0.4) < 0.02
+      && await page.locator(C + ' .fsp-ab').getAttribute('aria-pressed') === 'true', b1);
+    await rc(OV, 0.1);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const b2 = await band();
+    ok('timeline: a B before A swaps them (10 % to 20 %)', Math.abs(b2[0] - 0.1) < 0.02 && Math.abs(b2[1] - 0.1) < 0.02, b2);
+    await rc(C + ' .fsp-dt', 0.5);
+    const t1 = await menuOf();
+    await pickM('Clear loop');
+    await page.waitForTimeout(200);
+    ok('timeline: the detail carries the same menu; Clear loop clears it', !!t1 && t1.items.includes('Clear loop')
+      && await page.locator(C + ' .fsp-ab').getAttribute('aria-pressed') === 'false', t1);
+    await page.locator(C + ' .fsp-scrub').focus();
+    await page.keyboard.press('Shift+F10');
+    const tk = await menuOf();
+    await pickM('Set A here');
+    await rc(OV, 0.9);
+    await pickM('Set B here');
+    await page.waitForTimeout(200);
+    const b3 = await band();
+    const head = await video(page, (v) => v.currentTime * 1000 / (v.duration * 1000));
+    ok('timeline: Shift+F10 on the scrub opens it at the playhead (Set A here there)', !!tk && tk.title === 'Timeline' && Math.abs(b3[0] - head) < 0.02, { tk, b3, head });
+    await rc(OV, 0.5);
+    await pickM('Clear loop');
+
+    // the scene rows: Play, Play next, Add to queue, Open in Stash
+    const lib = (t) => page.locator(C + ' .fsp-libseg button', { hasText: new RegExp('^' + t + '$') }).click();
+    await lib('Library');
+    await page.locator(C + ' .fsp-connect input[type=url]').fill(stash.url);
+    await page.locator(C + ' .fsp-connect input[type=password]').fill(KEY);
+    await page.locator(C + ' .fsp-connect button', { hasText: 'Save' }).click();
+    await page.waitForSelector(C + ' .fsp-tile', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const tt = (i) => page.locator(C + ' .fsp-tile .fsp-tt').nth(i).textContent();
+    const T = [await tt(0), await tt(1), await tt(2)];
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=0');
+    const r0 = await menuOf();
+    ok('scene: the row\'s menu heads with its title: Play, Play next, Add to queue, Open in Stash', !!r0 && r0.title === T[0]
+      && r0.items.slice(0, 4).join() === 'Play,Play next,Add to queue,Open in Stash', r0);
+    await pickM('Add to queue');
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=1');
+    await pickM('Add to queue');
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=2');
+    await pickM('Play next');
+    await lib('Queue');
+    await page.waitForTimeout(300);
+    const rows = () => page.$$eval(C + ' .fsp-q-row .ui-tile-t', (e) => e.map((x) => x.textContent));
+    ok('scene: Add to queue appends, Play next puts the scene at the head', same(await rows(), [T[2], T[0], T[1]]), await rows());
+    await lib('Library');
+    await page.waitForTimeout(200);
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=0');
+    await pickM('Open in Stash');
+    await page.waitForTimeout(200);
+    const id0 = await page.evaluate(() => (window.__opened || [])[0] || '');
+    ok('scene: Open in Stash opens the scene\'s page on the Stash server in the system browser', /\/scenes\/[^/]+$/.test(id0) && id0.startsWith(stash.url.replace(/\/$/, '')), id0);
+    await rc(C + ' .ui-tile:has(.fsp-tile) >> nth=1');
+    await pickM('Play');
+    const loaded = await page.waitForFunction(([c, t]) => document.querySelector(c + ' .fsp-title').textContent === t, [C, T[1]], { timeout: 5000 }).then(() => true, () => false);
+    ok('scene: Play loads the scene', loaded, await page.locator(C + ' .fsp-title').textContent());
+
+    // the queue rows: Remove, Move to top
+    await lib('Queue');
+    await page.waitForTimeout(300);
+    await rc(C + ' .fsp-q-row >> nth=0');
+    const q0 = await menuOf();
+    ok('queue: the row\'s menu heads with its title: Remove, Move to top (off on the first)', !!q0 && q0.title === T[2] && q0.items.slice(0, 2).join() === 'Remove,-Move to top', q0);
+    await page.keyboard.press('Escape');
+    await rc(C + ' .fsp-q-row >> nth=2');
+    await pickM('Move to top');
+    await page.waitForTimeout(200);
+    const qa = await rows();
+    await rc(C + ' .fsp-q-row >> nth=1');
+    await pickM('Remove');
+    await page.waitForTimeout(200);
+    ok('queue: Move to top moves the row first; Remove takes it out', same(qa, [T[1], T[2], T[0]]) && same(await rows(), [T[1], T[0]]), { qa, after: await rows() });
+  } else ok('menus: the page mounts the card', false);
+  ok('menus: no page error', errors.length === 0, errors.slice(0, 3));
+  clearInterval(hub.timer);
+  await ctx.close();
+  await stash.close();
+  if (MENUS_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
 
 // ---- (H) the card heads (ph-1qs5.12): 01 PLAYER, 02 LIBRARY and 03 SETTINGS on one baseline; nothing moves ----
 if (!LIVE && !STASH_LIVE && !OSC_ONLY) {

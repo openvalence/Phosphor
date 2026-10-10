@@ -3,11 +3,17 @@
  * kit controls and the quick-access factory plugin (ph-kyjd, ph-5wsk.6), on
  * the shell bundle with the stub Tauri runtime and a fake hub that echoes,
  * holds or refuses writes on the recorded valencesim catalog. Asserts:
- *   native     a right-click outside text entry is prevented and opens the shell
- *              menu; in a text input it is left to the webview (cut, copy, paste)
- *   field      the description heads it; Copy path, Copy value, Paste value (a
- *              fitting clipboard value only), Reset to default, Send to node
- *              editor (phosphor-node-add, else the queue), Show in history
+ *   native     a right-click is prevented everywhere (every element of a page
+ *              and of Hubs: the webview's menu never shows) and opens the shell menu
+ *   text       in text entry: Undo, Cut, Copy, Paste, Select all by the input's
+ *              state, then the field's items when it is a field's input; Cut,
+ *              Copy and Paste through the native clipboard, Paste read on the pick
+ *   field      the description heads it; Copy path, Copy value, Paste value,
+ *              Reset to default, Send to node editor (phosphor-node-add, else
+ *              the queue), Show in history
+ *   clipboard  through the native plugin (a fake: __clip); opening a menu reads
+ *              no clipboard, native or webview; Paste reads once, on the pick,
+ *              and a value that does not fit is refused in the status slot
  *   keys       Shift+F10 opens it on the focused control, arrows and End move,
  *              Escape closes and returns focus
  *   page       Edit layout on the Dash, Show advanced on a category page
@@ -153,6 +159,15 @@ async function boot(viewport, { touch = false, theme = null, pins = null, keep =
   if (!keep) {
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: PAGE.slice(0, -1) });
     await ctx.addInitScript(TAURI_STUB);
+    // The native clipboard plugin, and a spy on the webview's own read (which must never run).
+    await ctx.addInitScript(() => {
+      const clip = window.__clip = { text: '', reads: 0, webReads: 0 };
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__TAURI_INTERNALS__.invoke = (cmd, args, o) => (cmd === 'plugin:clipboard-manager|read_text' ? (clip.reads++, Promise.resolve(clip.text))
+        : cmd === 'plugin:clipboard-manager|write_text' ? ((clip.text = args.text), Promise.resolve(null)) : inner(cmd, args, o));
+      const web = navigator.clipboard && navigator.clipboard.readText.bind(navigator.clipboard);
+      if (web) navigator.clipboard.readText = () => { clip.webReads++; return web(); };
+    });
     await ctx.addInitScript(([etag, bytes, th, pinsJson]) => {
       try {
         if (!sessionStorage.getItem('booted')) {
@@ -194,7 +209,8 @@ const menuState = (page) => page.evaluate(() => {
     focus: document.activeElement?.textContent || '' };
 });
 const pick = async (page, label) => { await page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: label }).first().click(); await page.waitForTimeout(150); };
-const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+const clip = (page) => page.evaluate(() => window.__clip.text);
+const reads = (page) => page.evaluate(() => [window.__clip.reads, window.__clip.webReads]);
 const rect = (page, sel) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width) }; });
 const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 const pins = (page) => page.evaluate((k) => (JSON.parse(localStorage.getItem(k) || 'null') || {})['127.0.0.1:82'] || [], PIN_PREF);
@@ -236,11 +252,21 @@ if (run('desk')) {
     && m1.rect[1] >= (await rect(page, '.topstrip')).b && m1.rect[2] <= 1428 && m1.rect[3] <= 900, m1);
   await shot(page, '1428x900-dark-menu');
   await page.keyboard.press('Escape');
-  const TXT = '.field input.chip-num, .field input[type=number], .field input[type=text]';
+  const TXT = F(FREQ) + ' input.chip-num';
   if (await page.locator(TXT).count()) {
     const inText = await rclick(page, TXT);
-    ok('native: in a text input the webview keeps its own menu (cut, copy, paste)', !inText.prevented && !inText.menu, inText);
-  } else ok('native: a text input exists to check', false);
+    const mt = await menuState(page);
+    ok('text: a right-click in a field\'s input is prevented and opens the shell menu', inText.prevented && inText.menu, inText);
+    ok('text: Undo, Cut, Copy, Paste, Select all first, then the field\'s items under its label, no head',
+      !!mt && mt.title === '' && mt.items.slice(0, 5).map((l) => l.replace(/^-/, '')).join() === 'Undo,Cut,Copy,Paste,Select all'
+      && mt.sections[0] === label && mt.items.includes('Copy path') && mt.items.includes('Paste value'), mt);
+    await pick(page, 'Select all');
+    await rclick(page, TXT);
+    ok('text: Copy and Cut enabled once Select all selected the text', (await menuState(page)).items.slice(1, 3).join() === 'Cut,Copy', await menuState(page));
+    await pick(page, 'Copy');
+    ok('text: Copy puts the selection on the clipboard, natively', await clip(page) === await page.locator(TXT).inputValue(), await clip(page));
+    await page.keyboard.press('Escape');
+  } else ok('text: a field input exists to check', false);
 
   // Copy path (uid and role identities), Copy value, Paste value only when it fits, Reset to default
   await rclick(page, F(FREQ) + ' .field-label');
@@ -253,19 +279,24 @@ if (run('desk')) {
   await rclick(page, F(FREQ) + ' .field-label');
   await pick(page, 'Copy value');
   ok('Copy value: the reported value', await clip(page) === '10', await clip(page));
+  ok('clipboard: Copy wrote through the native plugin, and the menus so far read nothing', (await reads(page)).join() === '0,0', await reads(page));
   await rclick(page, F(DWELL) + ' .field-label');
   await page.waitForTimeout(500);
-  ok('Paste value: a value past the field\'s bounds leaves it disabled with the reason', (await menuState(page)).items.includes('-Paste value')
-    && await page.locator('.ui-menu-i', { hasText: 'Paste value' }).getAttribute('title') === 'no fitting value on the clipboard', await menuState(page));
-  await page.keyboard.press('Escape');
-  await page.evaluate(() => navigator.clipboard.writeText('3'));
+  ok('clipboard: opening a menu with Paste value reads no clipboard, native or webview', (await reads(page)).join() === '0,0', await reads(page));
+  ok('Paste value: enabled whatever the clipboard holds', (await menuState(page)).items.includes('Paste value'), await menuState(page));
+  const before = hub.intents.length;
+  await pick(page, 'Paste value');
+  await page.waitForTimeout(300);
+  ok('Paste value: reads the clipboard once, natively, on the pick', (await reads(page)).join() === '1,0', await reads(page));
+  ok('Paste value: a value past the field\'s bounds (10 into 0..4) is refused in the status slot and writes nothing',
+    /Paste: no fitting value on the clipboard/.test(await page.locator('.topstrip').innerText()) && hub.intents.length === before,
+    [await page.locator('.topstrip').innerText(), hub.intents.slice(before)]);
+  await page.evaluate(() => { window.__clip.text = '3'; });
   await rclick(page, F(DWELL) + ' .field-label');
-  await page.waitForTimeout(500);
-  ok('Paste value: enabled once the clipboard holds a fitting value', (await menuState(page)).items.includes('Paste value'), await menuState(page));
   await pick(page, 'Paste value');
   await page.waitForTimeout(400);
-  ok('Paste value: writes it through the normal path (an intent of 3, echoed)', lastWrite(DWELL) === 3
-    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed', hub.intents.slice(-2));
+  ok('Paste value: a fitting value writes through the normal path (an intent of 3, echoed), one read', lastWrite(DWELL) === 3
+    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed' && (await reads(page)).join() === '2,0', [hub.intents.slice(-2), await reads(page)]);
   await page.waitForTimeout(1100);
   await rclick(page, F(DWELL) + ' .field-label');
   await pick(page, 'Show in history');
@@ -375,6 +406,11 @@ if (run('desk')) {
     && (await rect(page, '.content')).w === content0.w && !(await prefOpen(page)));
   await page.click('.footstrip .dock-btn');
   await page.waitForSelector('.side-dock .qa-pin');
+  await rclick(page, '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field-label');
+  const dm = await menuState(page);
+  ok('bound: a field drawn by api.ui.field on a plugin surface gets the field menu (Copy path, Copy value, Paste value)',
+    !!dm && ['Copy path', 'Copy value', 'Paste value'].every((l) => dm.items.includes(l)), dm);
+  await page.keyboard.press('Escape');
 
   // laws on a pinned field
   const tf = '.side-dock .qa-pin[data-pin="' + FREQ_KEY + '"] .field';
@@ -456,6 +492,53 @@ if (run('desk')) {
   const t3 = await toggle(page);
   ok('pin again: the toggle arrives inactive and the dock stays closed, the content unmoved', t3.n === 1 && t3.exp === 'false'
     && await page.locator('.side-dock').count() === 0 && JSON.stringify(await rect(page, '.content')) === JSON.stringify(content1), t3);
+
+  // text entry outside a field: its edits only; Cut, Paste on the pick (one native read), Undo
+  await goTab(page, 'shell:hubs');
+  const HE = '.he-host';
+  await page.waitForSelector(HE);
+  await page.locator(HE).fill('');
+  await page.locator(HE).click();
+  await page.keyboard.type('abc');
+  // The caret's own scroll into view lands a frame later and would close the menu (a scroll closes it).
+  await page.waitForTimeout(200);
+  await rclick(page, HE);
+  const mh = await menuState(page);
+  ok('text: an input outside a field lists its edits only, by its state (typed: Undo; no selection: no Cut or Copy)',
+    !!mh && mh.items.join() === 'Undo,-Cut,-Copy,Paste,Select all' && !mh.sections.length, mh);
+  await pick(page, 'Select all');
+  await rclick(page, HE);
+  await pick(page, 'Cut');
+  ok('text: Cut takes the selection onto the clipboard', await page.locator(HE).inputValue() === '' && await clip(page) === 'abc', [await page.locator(HE).inputValue(), await clip(page)]);
+  const r0 = await reads(page);
+  await rclick(page, HE);
+  ok('text: opening the menu reads no clipboard', (await reads(page)).join() === r0.join(), [r0, await reads(page)]);
+  await pick(page, 'Paste');
+  await page.waitForTimeout(150);
+  ok('text: Paste reads the clipboard once, natively, on the pick, and inserts it', await page.locator(HE).inputValue() === 'abc'
+    && (await reads(page))[0] === r0[0] + 1 && (await reads(page))[1] === 0, [await page.locator(HE).inputValue(), await reads(page)]);
+  await rclick(page, HE);
+  await pick(page, 'Undo');
+  ok('text: Undo takes the paste back', await page.locator(HE).inputValue() === '', await page.locator(HE).inputValue());
+
+  // release: no element on a category page or on Hubs leaves its right-click to the webview
+  const loose = () => page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (!el.getClientRects().length || el.closest('.ui-menu')) continue;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      el.dispatchEvent(ev);
+      if (!ev.defaultPrevented) out.push(el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 40));
+    }
+    return out;
+  });
+  const onHubs = await loose();
+  await page.keyboard.press('Escape');
+  await goTab(page, 'cat2');
+  await page.waitForSelector(F(FREQ));
+  const onCat = await loose();
+  await page.keyboard.press('Escape');
+  ok('release: every element on Hubs and a category page takes the right-click (the webview\'s menu never shows)', !onHubs.length && !onCat.length, { onHubs: onHubs.slice(0, 5), onCat: onCat.slice(0, 5) });
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }

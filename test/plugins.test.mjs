@@ -48,7 +48,7 @@ import { ROLE, claimAll, claimRoles, ADVGEN_SPEC } from '../src/model/roles.js';
 import { motionTarget, createMotionDoor, bundleHead, recordBytes, motionStream, roleStream, streamGate, conflictWords, filteredHubNowUs, CLOCK_KEEP, CLOCK_HUNT, CLOCK_HUNT_GAP_MS } from '../src/model/motion.js';
 import { railOwners, railOwnerName, railOwned, foreignOwner } from '../src/model/actions.js';
 import { createPluginHost, validateManifest, MOTION_HOLD_MS, isHubUrl, PAGES_KEY } from '../src/plugins/host.js';
-import { KIT } from '../src/plugins/kit.js';
+import { KIT, ownMenus } from '../src/plugins/kit.js';
 import * as gauge from '../plugins/examples/stroke-gauge/index.js';
 import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 import { FACTORY } from '../src/plugins/factory.js';
@@ -236,7 +236,7 @@ console.log('(c) the plugin API cannot reach the socket');
   ok('plugin received an api', !!api);
   ok('api is frozen', Object.isFrozen(api) && Object.isFrozen(api.net) && Object.isFrozen(api.prefs));
   const UI = ['button', 'files', 'segmented', 'switch', 'slider', 'stepper', 'select', 'text', 'page', 'card', 'rows', 'row', 'bar', 'stage',
-    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon', 'field', 'module'];
+    'scrub', 'split', 'sheet', 'status', 'quickRail', 'list', 'tile', 'outside', 'gestures', 'drag', 'shade', 'icon', 'field', 'module', 'menu'];
   ok('api.ui is the frozen kit, version 1, every documented factory a function (docs/PLUGINS.md, The UI kit)',
     Object.isFrozen(api.ui) && api.ui.version === 1 && UI.every((k) => typeof api.ui[k] === 'function') && Object.isFrozen(api.ui.icons)
     && ['play', 'pause', 'close', 'quickRail'].every((k) => Array.isArray(api.ui.icons[k])), UI.filter((k) => typeof api.ui[k] !== 'function'));
@@ -265,6 +265,37 @@ console.log('(c) the plugin API cannot reach the socket');
   let netErr = null;
   await api.net.listenTcp(8000, () => {}).catch((e) => { netErr = e; });
   ok('listenTcp without a declared port throws', netErr && netErr.name === 'PermissionError');
+  let openErr = null;
+  await api.net.open('https://example.com/').catch((e) => { openErr = e; });
+  ok('net.open without "net.fetch" permission throws', openErr && openErr.name === 'PermissionError');
+}
+
+// ---- (c1) ui.menu: a plugin's own context-menu items, under its guard --------
+console.log('(c1) ui.menu');
+{
+  const { host, logs } = makeHost();
+  let api = null;
+  host.add({ ...gaugeManifest, name: 'menus' }, { activate(a) { api = a; } });
+  const el = { nodeType: 1, parentElement: null };
+  let ran = 0;
+  api.ui.menu(el, (at) => [{ label: 'Go ' + at.x, run: () => { ran++; } }, { label: 'Boom', run: () => { throw new Error('boom'); } },
+    { label: ' ', run: () => {} }, { label: 'No run' }, { label: 'Off', disabled: 'not now', run: () => {} }], { title: 'Mine' });
+  const [t] = ownMenus(el, { x: 3 });
+  ok('ui.menu: the items of the open under the title; an item without a label or a run is left out',
+    t && t.title === 'Mine' && t.items.map((i) => i.label).join() === 'Go 3,Boom,Off' && t.items[2].disabled === 'not now', t);
+  t.items[0].run();
+  t.items[1].run();
+  ok('ui.menu: a run runs; a throwing run is caught and logged, never thrown', ran === 1 && logs.some((l) => /ui\.menu Boom: boom/.test(l.msg)), logs);
+  api.ui.menu(el, () => { throw new Error('items'); });
+  ok('ui.menu: a throwing items function lists nothing and is logged', ownMenus(el, {})[0].items.length === 0 && logs.some((l) => /ui\.menu: items/.test(l.msg)), logs);
+  let threw = '';
+  try { api.ui.menu(el, 'x'); } catch (e) { threw = e.message; }
+  ok('ui.menu: items are an array or a function', /array or a function/.test(threw), threw);
+  const off = api.ui.menu(el, [{ label: 'Kept', run: () => {} }]);
+  host.setEnabled('menus', false);
+  ok('ui.menu: a disabled plugin lists nothing', ownMenus(el, {})[0].items.length === 0);
+  off();
+  ok('ui.menu: off() takes the items back', ownMenus(el, {}).length === 0);
 }
 
 // ---- (d) TCode L0 parsing and the adapter path ------------------------------

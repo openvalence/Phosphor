@@ -260,26 +260,39 @@ slash included (`valence://a1b2c3d4e5f60718/role:pattern.speed`,
 it. Category and card are not part of it: they are presentation. Seam:
 `src/model/identity.js` (`pathOf`, `parsePath`, `resolveIdentity`).
 
-**Context menus** (experimental, `ph-kyjd`). The shell has one context menu
-(DESIGN §10.13); the webview's own (Print, Reload, Inspect) never shows outside
-text entry, where cut, copy and paste stay, and a dev build keeps it behind
-Shift+right-click. A right-click, a long press on touch, the menu key or
+**Context menus** (experimental, `ph-kyjd`, `ph-hi4i`). The shell has one
+context menu (DESIGN §10.13); the webview's own (Print, Reload, Inspect, its
+text menu) never shows: a release build turns it off in WebView2 itself
+(`src-tauri/src/lib.rs`), and a dev build keeps it behind Shift+right-click.
+A right-click, a long press on touch, the menu key or
 Shift+F10 on the focused control opens it at the pointer or the control's
 corner, in the top layer, below the top strip and the stop pair; it moves
 nothing. Arrows, Home and End move, Enter picks, Escape, Tab, a scroll and a
 tap outside close it, and focus returns where it was. A submenu (Add to
 Dash) opens beside it on hover, a click, ArrowRight or Enter, and ArrowLeft
 or Escape closes it back to its opener; a tap opens it inline. It lists the
-targets under the pointer, innermost first, each after a caption: the **field**
-(headed by its label and the hub's description), the **module** or card
-around it, and the **page**. A surface that takes its own right-click (the
-Dash's edit-mode add menu, the node editor) prevents the event first, and the
-shell stays out.
+targets under the pointer, innermost first, each after a caption: a plugin's
+**own element** (`ui.menu`, below), the **field** (headed by its label and the
+hub's description), the **module** or card around it, and the **page**. A
+surface that takes its own right-click (the Dash's edit-mode add menu, the
+node editor) prevents the event first, and the shell stays out.
+
+- Text entry: Undo, Cut, Copy, Paste, Select all, by the input's state
+  (read only: no Undo, Cut or Paste; no selection or a password: no Cut or
+  Copy; empty: no Select all), then the field's items
+  when the input is a field's own. Cut, Copy and Paste ride the clipboard
+  as Paste value does, Paste reading on the pick only. A long press on
+  touch keeps the platform's selection handles and bar. The webview's
+  spelling suggestions lived in its menu and are gone with it; the
+  underline stays.
 
 - Built-in field items: Copy path; Copy value (the reported value as text);
-  Paste value (enabled only while the clipboard holds a fitting value: a
-  number inside the field's bounds, an option's index, any text for a text
-  field; never a secret); Reset to default (where the catalog declares one,
+  Paste value (reads the clipboard once, on the pick, never to open the
+  menu; a value that does not fit is refused in the status slot. It fits as
+  a number inside the field's bounds, an option's index, any text for a text
+  field; never a secret. The shell reads and writes through the native
+  clipboard, which asks no permission; the served page reads the webview's,
+  falling back to the last in-app copy); Reset to default (where the catalog declares one,
   disabled at it); Send to node editor; Show in history (once this session
   wrote the field); Add to Dash. Module items: Copy path; Send fields to node
   editor; Add to Dash. Add to Dash is on the full class only and opens a
@@ -288,7 +301,8 @@ shell stays out.
   one in place. Page
   items: Edit layout on the Dash; Show advanced, Show diagnostic and Reset
   page to defaults on a category page (Show advanced on a card instead when
-  one was clicked). Writes take the plugin write door: the host's confirm,
+  one was clicked); on a plugin page, Fullscreen (the footer's; a media page
+  carries its own) and Manage plugins. Writes take the plugin write door: the host's confirm,
   the ladder and the refusal banner; a gated item is disabled with the gate's
   words as its title (law 3).
 - **Send to node editor** dispatches `phosphor-node-add` on `window`
@@ -308,8 +322,25 @@ shell stays out.
   row: it never opens a submenu. `needsDock: true` marks an item that only
   makes sense beside the plugin's dock: the host leaves it out where the
   shell has no dock (the phone class, DESIGN §10.13).
-- Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `src/App.svelte`
-  (`menuItems`, the page's items), `host.js` `menus`.
+- `api.ui.menu(el, items, {title})` puts the plugin's own items on its own
+  element and returns `off()`; no permission. A right-click, a long press,
+  or the menu key or Shift+F10 on a focused element inside `el` lists them
+  first, under `title`, innermost element first, before the field, module
+  and page items. `items` is an array or a function of the open `at`
+  `{x, y, keyboard, target}` (client px; `keyboard` true when a key opened
+  it at the focused element's corner, so a time or place "here" should be
+  the plugin's own cursor), called at each open. An item is `{label, run,
+  disabled, title, checked}`: `label` 1 to 40 characters, `disabled` '' or
+  the reason, shown as its title; an item without a label or a run is left
+  out. One row each, never a submenu. The items function and every `run`
+  run under the plugin's guard: a throw is recorded on the plugin and lists
+  nothing or does nothing, never reaching the shell; a disabled plugin's
+  elements list nothing. Attaching again replaces. Keyboard access is the
+  element's: a focusable element inside `el` opens it with the menu key or
+  Shift+F10.
+- Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `attachMenu`,
+  `ownMenus`, `src/App.svelte` (`menuItems`, the page's items), `host.js`
+  `menus` and the `ui.menu` guard.
 
 **The dock** (experimental, `ph-kyjd`). `api.registerDock({id, label, icon,
 mount})` returns `withdraw()`: a panel in the shell's right dock. `id` follows
@@ -374,6 +405,8 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `submitSegments(list)` returning `{ok, sent, rateHz, reason}` | lookahead motion input: `[{atMs, norm, durationMs, endVel?}]`, `atMs` the `performance.now()` instant the machine starts each, ascending, `endVel` its end velocity in norm/s (absent: `unspecified`, a free knot the hub shapes and, on a stream, passes moving while it expects a successor; 0 for a real stop); advance by `sent`. Needs `motion` (`ph-smvd.2`) | experimental |
 | `submitSamples(role, list)` returning `{ok, sent, rateHz, latencyMs, reason}` | a c2h `samples` STREAM found by channel role (e.g. SPEC 9.7's `osc.drive`): `[{atMs, values}]`, `atMs` the `performance.now()` instant each sample describes, ascending, `values` in the role's layout order; one bundle per call, advance by `sent`; `latencyMs` the grant's `schedule_latency_us`, the least notice a point needs (RFC-110 item 4): send each that far ahead or more, never past the 250 ms lead cap; `reason` `NO_STREAM` when the hub has no such entry. Not motion input: no producer lock. Needs `motion` (`ph-6dr6`) | experimental |
 | `net.listenTcp(port, onLine)` returning `close()` | loopback TCP line service, shell only. Needs `net.listen:<port>` | experimental |
+| `net.open(url)` returning a `Promise<boolean>` | an http(s) URL in the system browser (the shell's OS launcher on desktop; a new tab on the served page); false where nothing could open it. Only inside the user's own act (a click, a menu pick: transient activation). Needs `net.fetch` | experimental |
+| `ui.menu(el, items, {title})` returning `off()` | the plugin's own items on its own element in the shell context menu (Context menus) | experimental |
 | `net.fetch(url, init)` returning a `Promise<Response>` | HTTP(S) to a non-machine service (a media library), CORS-free through the shell's HTTP plugin; vite dev uses the page's `fetch`. Refuses other schemes and the connected hub's own origins (its host on 80, 443 or its WS port). Needs `net.fetch` (ruling R-A, `ph-smvd.2`) | experimental |
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `icons.quickRail` | the quick rail's glyph, one SVG path `d` (Pages, The quick rail) | experimental |
@@ -862,7 +895,11 @@ Shipped:
   Preview through `api.writeTrial` with Apply and Discard, so the manifest
   declares `intent`. Its settings card holds the Stash connect card,
   Scale and the playback rows (loop, auto-home, seek glide, automatic
-  latency); the hub shapes the curve between actions. The detail's A-B button loops a section. Operator values persist
+  latency); the hub shapes the curve between actions. The detail's A-B button loops a section.
+  Its context menus (`ui.menu`): the stage's Play or Pause, Fullscreen,
+  Open video and Open script; the timeline's Seek here, Set A here, Set B
+  here and Clear loop; a scene row's Play, Play next, Add to queue and
+  Open in Stash (`net.open`); a queue row's Remove and Move to top. Operator values persist
   through `api.prefs`; all but the Stash key are mirrored under
   `phosphor.funscript.*` for the prefs backup. Its page, `Funscript` under
   Plugins (`page.js`), mounts the same card full width. Every control,

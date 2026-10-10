@@ -526,6 +526,11 @@
     if (cat && t.kind === 'page' && hasDefaults) {
       out.push({ label: drillItem ? 'Reset group to defaults' : 'Reset page to defaults', disabled: resetWhy, run: resetCategory });
     }
+    // A plugin page: the footer's Fullscreen (a media page carries its own), then the Plugins pane.
+    if (t.kind === 'page' && current.page) {
+      if (current.page.fields && !current.page.mediaFullscreen) out.push({ label: isFull ? 'Exit fullscreen' : 'Fullscreen', run: () => { full = toggle(full); } });
+      out.push({ label: 'Manage plugins', run: () => selectTab('plugins') });
+    }
     return out;
   }
   $effect(() => installContextMenu({ tab: () => current, go: selectTab, dash: pickLayout, items: menuItems }));

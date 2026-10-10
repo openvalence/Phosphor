@@ -117,6 +117,7 @@ class PermissionError extends Error {
  *   registerTheme(theme)          -> adds a preset to the theme table
  *   listenTcp(port, onLine)       -> Promise<close()>  (absent outside the shell)
  *   fetch(url, init)              -> Promise<Response>, CORS-free in the shell; null where none
+ *   openUrl(url)                  -> Promise<bool>, the system browser on a page; absent where none
  *   isHub(URL)                    -> true for the connected hub's own origins
  *   hub()                         -> the connected hub's key (prefs.js hubKey), null without one
  *   prefs                         -> Storage-like {getItem, setItem} or null
@@ -210,12 +211,19 @@ export function createPluginHost(deps) {
     const prefix = 'plugin.' + name + '.';
     // A field-bound control writes through the shell path from the plugin surface: it needs intent.
     const bound = (kind) => (identity) => { need(rec, 'intent'); return deps.ui[kind](identity); };
+    // ui.menu: the items and every run under the plugin's guard; an inactive plugin lists nothing.
+    const ownMenu = (el, items, o) => deps.ui.menu(el, typeof items !== 'function' && !Array.isArray(items) ? items : (at) => {
+      if (rec.status !== 'active') return [];
+      const list = guard(rec, 'ui.menu', () => (typeof items === 'function' ? items(at) : items));
+      return Array.isArray(list) ? list.map((it) => (it && typeof it.run === 'function'
+        ? { ...it, run: () => guard(rec, 'ui.menu ' + it.label, it.run) } : it)) : [];
+    }, o);
     const api = {
       apiVersion: API_VERSION,
       // One glyph per shell surface a page draws itself (docs/PLUGINS.md, Pages).
       icons: Object.freeze({ quickRail: NAV_ICONS.quickRail }),
       // The shell's controls and layout primitives (docs/PLUGINS.md, The UI kit).
-      ui: deps.ui ? Object.freeze({ ...deps.ui, field: bound('field'), module: bound('module') }) : null,
+      ui: deps.ui ? Object.freeze({ ...deps.ui, field: bound('field'), module: bound('module'), menu: ownMenu }) : null,
       manifest: Object.freeze(JSON.parse(JSON.stringify(rec.manifest))),
 
       // ---- read: the model, never the wire ----
@@ -394,6 +402,14 @@ export function createPluginHost(deps) {
           if (deps.isHub && deps.isHub(u)) throw new Error('net.fetch: the hub is reached through Valence');
           if (!deps.fetch) throw new Error('net.fetch needs the shell');
           return deps.fetch(u.href, init);
+        },
+        // Experimental: inside the user's own act only (a click, a menu pick).
+        open: async (url) => {
+          need(rec, 'net.fetch');
+          const u = new URL(String(url));
+          if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('net.open: http or https only');
+          if (globalThis.navigator?.userActivation && !navigator.userActivation.isActive) throw new Error('net.open: only inside the user\'s act');
+          return deps.openUrl ? deps.openUrl(u.href) : false;
         },
         listenTcp: async (port, onLine) => {
           need(rec, 'net.listen:' + port);
