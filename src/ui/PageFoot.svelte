@@ -84,11 +84,13 @@
     box-shadow: var(--glow-reality);
   }
   /* A fixed slot ("100 in flight"), so a count appearing or growing never
-     moves the controls or adds a row. */
+     moves the controls or adds a row: it holds its line empty too, where it
+     wraps under the controls. */
   .foot-page :global(.cat-busy) {
     flex: none;
     margin-left: auto;
     width: 13ch;
+    min-height: 1lh;
     overflow: hidden;
     white-space: nowrap;
     text-align: right;

@@ -450,6 +450,24 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
       ok(tag + dir + ' keeps the scroll and the footer every frame', r.track.length === 30 && (w >= 960 || r.s0 > 0)
         && r.track.every(([s, max, still]) => still && s >= Math.min(r.s0, max) - 1), JSON.stringify(r));
     }
+    // ph-dj9: the in-flight count appearing moves nothing (this hub never answers a write), on a page
+    // with a footer and a control this hub leaves enabled.
+    const live = page.locator('main.pane .field :is(input[type=range], input[role=switch]):not(:disabled)');
+    for (let i = 0; i < cats.length && !(await live.count() && await page.locator('main.pane .page-foot .cat-busy').count()); i++) {
+      await goTab(page, cats[i]);
+      await page.waitForTimeout(200);
+    }
+    const boxes = () => page.$$eval('main.pane .page-foot, main.pane .page-foot button', (els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return [r.x, r.y, r.width, r.height].map(Math.round).join();
+    }).join(' '));
+    const k0 = await boxes();
+    const range = await live.first().getAttribute('type') === 'range';
+    await live.first().focus();
+    await page.keyboard.press(range ? 'ArrowRight' : 'Space');
+    await page.waitForTimeout(300);
+    const busy = (await page.textContent('main.pane .page-foot .cat-busy')).trim();
+    ok(tag + 'the in-flight count appears in its slot and moves nothing (ph-dj9)', /in flight/.test(busy) && await boxes() === k0, busy + ' | ' + k0);
   }
   if (pageErrors.length) ok(tag + 'no page errors', false, pageErrors.join(' | '));
   await ctx.close();
