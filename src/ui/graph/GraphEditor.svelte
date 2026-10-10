@@ -19,6 +19,12 @@
    *   never goes below 1 (DESIGN 10.5), so no target shrinks under the floor.
    * - The add menu and refusals live inside this box; full size stays below
    *   the top strip (RENDERING section 9).
+   * - F3 with focus in the editor is the node search, never the shell's
+   *   look-for: it stops the key before the window sees it.
+   * - A field or toy node says what it is and where it comes from: its card
+   *   (its device after it once the graph holds two), desc, range, what each socket
+   *   does, and its live state (RENDERING laws 3, 5, 8). Nodes of one card
+   *   share its label and accent stripe.
    * - Op nodes (typed math and logic, docs/GRAPH.md) run in Phosphor only;
    *   their input rows are ROW_H tall, which the CSS --grow must match, so
    *   wire ends land on their sockets without measuring.
@@ -52,6 +58,16 @@
   const FIT_K = 9 / 11;
   /** Phosphor's own names (ops, maps) in sentence case; hub labels render as sent. */
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  /** Card stripes, in order of each card's first node; never a safety color (law 13). */
+  const ACCENT = ['var(--reality)', 'var(--intent)', 'color-mix(in srgb, var(--reality) 50%, var(--intent))', 'var(--tx-hi)', 'var(--line-4)'];
+  /** What a socket does, by its type: an input's verb, an output's. */
+  const DOES = { in: { field: 'sets', toy: 'drives' }, out: { field: 'reads', app: 'from apps', sensor: 'reads' } };
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? String(+v.toPrecision(4)) : null);
+  /** "0 to 20 Hz", the unit alone, or '' when the source states neither. */
+  function rangeOf(a) {
+    const lo = num(a.lo), hi = num(a.hi);
+    return [lo != null && hi != null ? lo + ' to ' + hi : '', a.unit].filter(Boolean).join(' ');
+  }
 
   // ---- runtime state ---------------------------------------------------------
   let gen = $state(0);
@@ -66,7 +82,24 @@
   const g = $derived.by(() => { void gen; return JSON.parse(JSON.stringify(R.graph)); });
   const info = $derived.by(() => {
     void gen; void machine.catalog.etag;
-    return new Map(g.nodes.map((n) => [n.id, { label: R.label(n.ref), ports: R.ports(n.ref), unit: R.unit(n.ref) }]));
+    // The device follows the card once the graph draws from two (the hub and a toy, say).
+    const many = new Set(g.nodes.map((n) => (n.ref.kind === 'bp' ? n.ref.device : ''))).size > 1;
+    const cards = [];
+    return new Map(g.nodes.map((n) => {
+      const a = R.about(n.ref);
+      const ports = R.ports(n.ref);
+      const last = a.path[a.path.length - 1] || '';
+      const cardKey = a.path.join('/');
+      if (cardKey && !cards.includes(cardKey)) cards.push(cardKey);
+      const does = [ports.in && 'in ' + DOES.in[ports.in], ports.out && 'out ' + DOES.out[ports.out]].filter(Boolean).join(', ');
+      return [n.id, {
+        label: R.label(n.ref), name: a.name, ports, unit: a.unit, desc: a.desc,
+        card: many && a.path.length > 1 ? last + ' · ' + a.path[0] : last, path: a.path.join(' › '), cardKey,
+        accent: cardKey ? ACCENT[cards.indexOf(cardKey) % ACCENT.length] : null,
+        spec: [rangeOf(a), does].filter(Boolean).join(' · '),
+        verb: { in: DOES.in[ports.in], out: DOES.out[ports.out] },
+      }];
+    }));
   });
   const rosterId = $derived.by(() => { void gen; return R.hub.roster ? R.hub.roster.id : null; });
   $effect(() => { void machine.catalog.etag; void machine.link.phase; untrack(() => R.refreshHub()); });
@@ -233,7 +266,7 @@
   let kwire = $state(null);     // {id, side}: a wire started by Enter or a tap, waiting for its other end
   let box = $state(null);       // {x0, y0, x1, y1} viewport px: the marquee
   let boxMode = $state(false);
-  let pal = $state(null);       // {x, y, wx, wy, from?}: the add menu; `from` is a link-drag-search's socket
+  let pal = $state(null);       // {x, y, wx, wy, from?, find?}: the add menu; `from` is a link-drag-search's socket, `find` the F3 search
   let more = $state(false);     // the compact toolbar's overflow
   let full = $state(false);
   let vpW = $state(0);
@@ -401,11 +434,17 @@
     openPalette(e.clientX, e.clientY);
   }
   /** Open the add menu at a client point (the canvas' upper third when none); `from` filters it to that socket's partners. */
-  function openPalette(cx, cy, from = null) {
+  function openPalette(cx, cy, from = null, find = false) {
     const r = vp.getBoundingClientRect();
     if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 3; }
     const [wx, wy] = toWorld(cx, cy);
-    pal = { x: cx - r.left, y: cy - r.top, wx, wy, from };
+    pal = { x: cx - r.left, y: cy - r.top, wx, wy, from, find };
+  }
+  /** Open it at the pointer when the pointer is over the canvas, else in the canvas (Shift+A, F3). */
+  function openAtPointer(find = false) {
+    const r = vp.getBoundingClientRect();
+    const inside = lastPt && lastPt[0] >= r.left && lastPt[0] <= r.right && lastPt[1] >= r.top && lastPt[1] <= r.bottom;
+    if (inside) openPalette(lastPt[0], lastPt[1], null, find); else openPalette(null, null, null, find);
   }
 
   // ---- sockets: tap or Enter to wire ---------------------------------------------
@@ -467,6 +506,7 @@
 
   function key(e) {
     if (e.key === 'Escape') { if (cancel()) e.preventDefault(); return; }
+    if (e.key === 'F3' && !e.target.closest('.gpal')) { e.preventDefault(); e.stopPropagation(); openAtPointer(true); return; }
     if (e.target.closest('input, select, textarea, .gpal')) return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
@@ -476,13 +516,7 @@
     if (mod && k === 'a') { e.preventDefault(); sel = new Set(boxes.map((b) => b.id)); return; }
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); del(e); return; }
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); openPalette(); return; }
-    if (e.shiftKey && !mod && !e.altKey && k === 'a') {
-      e.preventDefault();
-      const r = vp.getBoundingClientRect();
-      const inside = lastPt && lastPt[0] >= r.left && lastPt[0] <= r.right && lastPt[1] >= r.top && lastPt[1] <= r.bottom;
-      if (inside) openPalette(lastPt[0], lastPt[1]); else openPalette();
-      return;
-    }
+    if (e.shiftKey && !mod && !e.altKey && k === 'a') { e.preventDefault(); openAtPointer(); return; }
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (d && sel.size && e.target.closest('[data-gid]') && !e.target.closest('[data-sock]')) {
       e.preventDefault();
@@ -492,9 +526,32 @@
   }
 
   // ---- the add menu ------------------------------------------------------------------
+  /** The ids of the nodes a menu item would place: its field or toy node, every op of its kind, every map of its curve. */
+  function nodesOf(v) {
+    if (v.ref) return g.nodes.filter((n) => refKey(n.ref) === refKey(v.ref)).map((n) => n.id);
+    if (v.op) return g.ops.filter((o) => o.kind === v.op).map((o) => o.id);
+    return [...g.rels, ...g.drafts].filter((m) => m.map === v.map).map((m) => m.id);
+  }
+
+  /** Items into nested groups by their paths, in first-seen order. */
+  function nest(list) {
+    const root = { groups: [] };
+    for (const { path, item } of list) {
+      let at = root;
+      for (const name of path) {
+        let next = at.groups.find((x) => x.name === name);
+        if (!next) at.groups.push(next = { name, items: [], groups: [] });
+        at = next;
+      }
+      at.items.push(item);
+    }
+    return root.groups;
+  }
+
   /**
-   * The menu's categories (Blender's Shift+A): node families, the hub maps,
-   * then sources and targets by group. A link-drag-search (`pal.from`) keeps
+   * The menu's groups (Blender's Shift+A) as the pages draw them: the hub's
+   * categories, sections and cards (open), plugin modules, ButtplugIO, then
+   * the node families and the hub maps. A link-drag-search (`pal.from`) keeps
    * only what has a socket on the other side that the dragged one can join.
    */
   const groups = $derived.by(() => {
@@ -504,33 +561,43 @@
     const fb = f && byId.get(f.id);
     const fromKind = fb ? fb.kind : null;
     const fromMap = fromKind === 'rel' || fromKind === 'draft';
-    const p = R.palette();
-    const by = (list, head) => {
-      const m = new Map();
-      for (const it of list) {
-        const name = head + ': ' + it.group;
-        if (!m.has(name)) m.set(name, { name, items: [] });
-        m.get(name).items.push({ key: refKey(it.ref), label: it.label, value: { ref: it.ref, w: NODE_W } });
-      }
-      return [...m.values()];
-    };
+    const side = !f ? null : f.side === 'out' ? 'dst' : 'src';
+    const item = (key, label, value) => ({ key, label, value, on: nodesOf(value).length });
+    const sources = nest(R.palette().filter((s) => !side || s[side])
+      .map((s) => ({ path: s.path, item: item(refKey(s.ref), s.label, { ref: s.ref, w: NODE_W }) })));
+    const hub = sources.find((x) => x.name === R.hubName());
+    if (hub) hub.open = true;
     const ops = CATS.map((cat) => ({
       name: cat,
       items: Object.entries(OPS).filter(([, o]) => o.cat === cat && !(f && f.side === 'out' && o.ins.every((q) => q.fixed)))
-        .map(([kind, o]) => ({ key: 'op:' + kind, label: cap(o.label), value: { op: kind, w: OP_W } })),
+        .map(([kind, o]) => item('op:' + kind, cap(o.label), { op: kind, w: OP_W })),
     }));
-    const maps = { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => ({ key: 'map' + id, label: cap(m.label), value: { map: Number(id), w: MAP_W } })) };
-    let out;
-    if (!f) out = [...ops, maps, ...by(p.sources, 'Sources'), ...by(p.targets, 'Targets')];
-    else if (fromMap) out = f.side === 'out' ? by(p.targets, 'Targets') : by(p.sources, 'Sources');
-    else if (f.side === 'out') out = [...ops, ...(fromKind === 'node' ? [maps] : []), ...by(p.targets, 'Targets')];
-    else out = [...ops, ...(fromKind === 'node' ? [maps] : []), ...by(p.sources, 'Sources')];
-    return out.filter((x) => x.items.length);
+    const maps = { name: 'Maps', items: Object.entries(MAPS).map(([id, m]) => item('map' + id, cap(m.label), { map: Number(id), w: MAP_W })) };
+    const out = fromMap ? sources : [...sources, ...ops, ...(!f || fromKind === 'node' ? [maps] : [])];
+    return out.filter((x) => x.items.length || x.groups?.length);
   });
+
+  /** Show a menu item's node already on the canvas: the next one after the selection, centered and focused. */
+  function reveal(v) {
+    pal = null;
+    const ids = nodesOf(v);
+    if (!ids.length) { said = 'not on the canvas'; vp.focus({ preventScroll: true }); return; }
+    const id = ids[(ids.indexOf([...sel][0]) + 1) % ids.length];
+    const b = byId.get(id);
+    const el = layer && layer.querySelector('[data-gid="' + CSS.escape(id) + '"]');
+    view = { ...view, x: vpW / 2 - (b.o.x + b.w / 2) * view.k, y: vpH / 2 - (b.o.y + (el ? el.offsetHeight : HEAD) / 2) * view.k };
+    saveView();
+    sel = new Set([id]);
+    selWire = null;
+    said = 'shown on the canvas';
+    el?.focus({ preventScroll: true });
+  }
 
   /** Place what the menu picked; after a link-drag-search, wire it to the dragged socket (one undo step). */
   function pick(v) {
     const { wx, wy, from } = pal;
+    // A field or toy appears once: picking one already placed shows it.
+    if (v.ref && !from && nodesOf(v).length) { reveal(v); return; }
     pal = null;
     const x = from && from.side === 'in' ? wx - v.w : wx;
     let id;
@@ -600,15 +667,20 @@
 
 {#snippet fieldNode(b)}
   {@const n = b.o}
-  {@const nf = info.get(n.id) || { label: n.id, ports: {}, unit: '' }}
+  {@const nf = info.get(n.id) || { label: n.id, name: n.id, ports: {}, unit: '', verb: {} }}
   {@const bp = n.ref.kind === 'bp'}
   {@const drivers = g.rels.filter((r) => r.to === n.id)}
   {@const chain = g.links.some((l) => l.to === n.id)}
   {@const run = (void gen, R.runs(n.id))}
-  {@const stale = !bp && nf.ports.out ? (void beat, R.stale(n.ref)) : ''}
+  {@const st = bp ? { stale: '', gate: '' } : (void beat, R.state(n.ref))}
+  {@const stale = nf.ports.out ? st.stale : ''}
+  {@const ec = (void beat, R.echo(n.ref))}
   <span class="ghead">
     <svg class="gicon" viewBox="0 0 16 16" aria-hidden="true">{@html ICON[bp ? 'toy' : 'field']}</svg>
-    <span class="gname">{nf.label}</span>
+    <span class="gtitle">
+      {#if nf.card}<span class="gcard" title={nf.path}>{nf.card}</span>{/if}
+      <span class="gname">{nf.name}</span>
+    </span>
     {#if run}
       <span class="gbadge" data-home={run.home} data-runs title={run.why}>{run.home}</span>
     {:else}
@@ -616,6 +688,8 @@
             title={bp ? 'Buttplug device: edges run in Phosphor' : 'Catalog field on the hub'}>{bp ? 'client' : 'hub'}</span>
     {/if}
   </span>
+  {#if nf.desc}<p class="gline gdesc" title={nf.desc}>{nf.desc}</p>{/if}
+  {#if nf.spec}<p class="gline gspec">{nf.spec}</p>{/if}
   {#if nf.ports.out}
     {@const v = (void beat, R.value(n.ref))}
     <p class="gline" data-stale={stale ? '' : null} title={stale || null}>
@@ -623,17 +697,17 @@
     </p>
   {/if}
   {#if nf.ports.in && (drivers.length || chain)}
-    {@const ec = (void beat, R.echo(n.ref))}
     {@const d = drivers.find((r) => r.enabled) || drivers[0]}
     {@const cw = chain ? (void beat, R.chainWhy(n.id)) : ''}
     {#if chain || d.home === 'client'}<p class="gline">mapped <span class="gnum">{fmtT((void beat, R.out(chain ? n.id : d.id)), nf.ports.vt) || 'nothing yet'}</span></p>{/if}
     {#if cw}<p class="gline" data-phase="disarmed" role="status">{cw}</p>{/if}
     <p class="gline">reads <span class="gnum">{fmt(ec.value) || 'no value yet'}</span> {fmt(ec.value) ? nf.unit : ''}</p>
-    {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">{ec.reason || 'no answer from the hub'}</p>
-    {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub</p>{/if}
   {/if}
-  {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.label, nf.ports.vt)}{/if}
-  {#if nf.ports.out}{@render socket(n.id, 'out', nf.ports.out, nf.label, nf.ports.vt)}{/if}
+  {#if ec.status === 'fault'}<p class="gline" data-phase="fault" role="status">{ec.reason || 'no answer from the hub'}</p>
+  {:else if ec.status === 'pending' || ec.status === 'overdue'}<p class="gline" data-phase="pending">{ec.status}: waiting for the hub</p>{/if}
+  {#if st.gate}<p class="gline" data-phase="gated">gated: {st.gate}</p>{/if}
+  {#if nf.ports.in}{@render socket(n.id, 'in', nf.ports.in, nf.verb.in + ' ' + nf.label, nf.ports.vt)}{/if}
+  {#if nf.ports.out}{@render socket(n.id, 'out', nf.ports.out, nf.verb.out + ' ' + nf.label, nf.ports.vt)}{/if}
 {/snippet}
 
 {#snippet opNode(b)}
@@ -730,7 +804,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="graph" class:full role="application" aria-label="Node graph editor" onkeydown={key}>
   <div class="gtool" role="toolbar" aria-label="Graph tools">
-    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+A)">+ Add</button>
+    <button type="button" class="og-btn" onclick={() => openPalette()} title="Add node (Shift+A), search (F3)">+ Add</button>
     <button type="button" class="og-btn" onclick={fit} title="Frame the nodes">Fit</button>
     <button type="button" class="og-btn gmore-btn" aria-expanded={more} onclick={() => { more = !more; }}>More</button>
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -800,13 +874,15 @@
         {@const [x, y] = at(b)}
         {@const a = b.kind === 'rel' ? armed.get(b.id) : null}
         {@const st = b.kind === 'rel' ? ladder(b.o) : null}
+        {@const nf = b.kind === 'node' ? info.get(b.id) : null}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="gnode" data-gid={b.id} data-kind={b.kind} data-home={b.kind === 'rel' ? b.o.home : null}
              data-sel={sel.has(b.id) ? '' : null} data-off={a && a.on === false ? '' : null}
              data-shadow={st && st.phase === 'pending' ? 'pending' : null}
+             data-card={nf?.cardKey || null} style:--acc={nf?.accent}
              style:left={x + 'px'} style:top={y + 'px'} style:width={b.w + 'px'}
              tabindex="0" role="group"
-             aria-label={(b.kind === 'node' ? (info.get(b.id)?.label || '') : b.kind === 'op' ? cap(R.opLabel(b.o)) + ' node' : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
+             aria-label={(nf ? nf.label + (nf.card ? ', ' + nf.card : '') : b.kind === 'op' ? cap(R.opLabel(b.o)) + ' node' : b.o.name + ' map') + (sel.has(b.id) ? ', selected' : '')}
              onfocus={(e) => { if (e.target === e.currentTarget && !sel.has(b.id)) { sel = new Set([b.id]); selWire = null; } }}>
           {#if b.kind === 'node'}{@render fieldNode(b)}{:else if b.kind === 'op'}{@render opNode(b)}{:else}{@render mapNode(b)}{/if}
         </div>
@@ -828,7 +904,8 @@
       <p class="gcursor gflash" data-phase="fault" style:left={Math.max(4, flash.x) + 'px'} style:top={flash.y + 'px'}>{flash.text}</p>
     {/if}
     {#if pal}
-      <GraphPalette {groups} x={pal.x} y={pal.y} vw={vpW} vh={vpH} flat={!!pal.from} onpick={pick} onclose={() => { pal = null; vp.focus(); }} />
+      <GraphPalette {groups} x={pal.x} y={pal.y} vw={vpW} vh={vpH} flat={!!pal.from || pal.find} label={pal.find ? 'Find a node' : 'Add a node'}
+                    onpick={pick} onfind={reveal} onclose={() => { pal = null; vp.focus(); }} />
     {/if}
   </div>
   <p class="gsr" role="status" aria-live="polite">{said}</p>
@@ -885,6 +962,14 @@
   .ghead { display: flex; align-items: center; gap: var(--sp-3); height: 40px; }
   .gicon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--ink-dim); }
   .gname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; color: var(--ink-hi); }
+  /* A source node's head: its card above its name, inside the 40 px the sockets sit on. */
+  .gtitle { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  .gtitle .gname { flex: none; }
+  .gcard { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ink-dim); }
+  /* One card, one stripe: the node's top edge in its card's accent. */
+  .gnode[data-card]::before { content: ''; position: absolute; inset: -1px -1px auto; height: 3px; background: var(--acc);
+    border-radius: var(--radius) var(--radius) 0 0; pointer-events: none; }
+  .gdesc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gbadge { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 1px var(--sp-2); border: 1px solid var(--line-3); border-radius: var(--radius); color: var(--ink-dim); cursor: help; }
   .gbadge[data-home='hub'] { color: var(--reality); border-color: var(--reality); }
   .gbadge[data-home='client'] { color: var(--intent); border-color: var(--intent); }
@@ -893,6 +978,7 @@
   /* After .gline: a ladder line wears its phase (law 5); refusals, faults, disarmed reasons amber (law 13). */
   [data-phase='disarmed'], [data-phase='fault'] { color: var(--warn-ink); }
   [data-phase='pending'], [data-phase='overdue'] { color: var(--intent); }
+  [data-phase='gated'] { font-style: italic; }
   .gnum { font-family: var(--mono); font-size: 11px; color: var(--tx-val); }
   .gcurve { display: block; width: 100%; height: 44px; margin: var(--sp-1) 0 var(--sp-2); background: var(--bg-sunken); border-radius: var(--radius); }
   .gcurve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }

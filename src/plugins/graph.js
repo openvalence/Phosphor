@@ -22,9 +22,10 @@ import {
   storeItem, readStoreItem, rosterBits, removeNode, addDraft, planWire, createHistory, snap, endRange,
   OPS, addOp, planLink, addLink, insOf, outOf, opLabel,
 } from '../model/graph.js';
-import { ROLE } from '../model/roles.js';
-import { controlKey, WIDGET } from '../model/settings.js';
-import { PACKED, CORE_CHANNEL, STORE_OP } from '../../../Valence/clients/js/generated/registry_vocab.js';
+import { ROLE, claimRoles } from '../model/roles.js';
+import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
+import { labelFor, unitOf, hubTitle } from '../model/format.js';
+import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../../Valence/clients/js/generated/registry_vocab.js';
 import { CBOR_FIELD } from '../../../Valence/clients/js/frames.js';
 
 export const manifest = {
@@ -44,6 +45,11 @@ const CMD = { scalar: 'bp_toy_scalar', rotate: 'bp_toy_rotate', linear: 'bp_toy_
 const msg = (e) => String(e?.message ?? e);
 /** Canvas units between a map node and the field nodes an edge places for it. */
 const SPREAD = 260;
+/** Add-menu groups of Phosphor's own: fields no page draws, plugin modules' claims, the embedded buttplug server's devices. */
+export const OTHER = 'Other';
+export const MODULES = 'Plugin modules';
+export const BUTTPLUG = 'ButtplugIO';
+const tierOf = (c) => (c.known && UI_CATEGORY_TIER[c.id]) || UI_NAV_TIER.machine;
 
 const numeric = (f) => (f.isIntentField
   ? typeof f.min === 'number' && typeof f.max === 'number'
@@ -58,7 +64,8 @@ export const fieldType = (f) => {
 /**
  * @param {Object} api the plugin API
  * @param {{invoke: Function, listen: Function}|null} shell the Tauri bridge; null leaves buttplug refs absent
- * @param {Object} env {live(), safety(), storage, entries(), sample(ch), fetchBlob(o)?, runAction(act, op, extra)?, shadow(f)?}
+ * @param {Object} env {live(), safety(), storage, entries(), sample(ch), fetchBlob(o)?, runAction(act, op, extra)?, shadow(f)?,
+ *   hubName()?, modules()? (plugin modules as [{title, spec}])}
  */
 export function graphRuntime(api, shell, env) {
   const local = loadLocal(env.storage);
@@ -706,26 +713,68 @@ export function graphRuntime(api, shell, env) {
     return { status: api.status(f), reason: (sh && sh.error) || '', value: api.value(f) };
   }
 
-  /** The palette: sources by category plus toy inputs and app commands; targets by where they live. */
-  function palette() {
+  // ---- what a node is and where it comes from ----------------------------------
+  const hubName = () => (env.hubName && env.hubName()) || 'Hub';
+  /** uid -> [hub, category, section, card] as the pages draw them: tiers, registry order, catalog order (DESIGN 10.11). */
+  function pages() {
     const m = api.catalog();
-    const cat = new Map();
-    for (const c of (m && m.categories) || []) {
-      for (const gr of c.groups) for (const f of gr.fields) for (const x of [f, f.lo, f.hi]) if (x) cat.set(x.uid, c.label);
+    const out = new Map();
+    const hub = hubName();
+    for (const c of [...((m && m.categories) || [])].sort((a, b) => tierOf(a) - tierOf(b))) {
+      for (const gr of c.groups) {
+        const path = [hub, c.label, gr.section, gr.title].filter(Boolean);
+        for (const f of gr.fields) for (const x of [f, f.lo, f.hi]) if (x && !out.has(x.uid)) out.set(x.uid, path);
+      }
     }
-    const srcGroup = (s) => {
-      if (s.ref.kind === 'bp') return s.ref.ctl === 'sensor' ? 'Toy inputs' : 'App commands';
-      const f = fieldFor(s.ref.key);
-      return (f && cat.get(f.uid)) || 'Other';
+    return out;
+  }
+
+  /** A node's identity: its name, its path (device first), the catalog's desc, unit and range. */
+  function about(ref) {
+    if (ref.kind === 'bp') {
+      const d = devices.get(ref.device);
+      const c = ctlOf(ref);
+      if (!c) return { name: ref.device + ' (absent)', path: [], desc: '', unit: '', lo: undefined, hi: undefined };
+      return { name: c.description || c.type, path: [d.name], desc: c.type, unit: '', lo: c.range?.[0], hi: c.range?.[1] };
+    }
+    const f = fieldFor(ref.key);
+    if (!f) return { name: ref.key + ' (absent)', path: [], desc: '', unit: '', lo: undefined, hi: undefined };
+    return { name: labelFor(f), path: pages().get(f.uid) || [hubName(), OTHER], desc: f.desc || '', unit: unitOf(f), lo: f.min, hi: f.max };
+  }
+
+  /**
+   * The add menu's sources in page order, each under its path: a field under
+   * its hub, category, section and card (OTHER when no page draws it), and
+   * again under each plugin module that claims it; a buttplug control under its
+   * device. src, dst: it has an output, an input socket.
+   */
+  function palette() {
+    const src = new Set(sources().map((s) => refKey(s.ref)));
+    const dst = new Set(targets().map((t) => refKey(t.ref)));
+    const fields = new Map(allFields().map((x) => [x.f.uid, x]));
+    const out = [];
+    const put = (ref, label, path) => {
+      const k = refKey(ref);
+      if (src.has(k) || dst.has(k)) out.push({ ref, label, path, src: src.has(k), dst: dst.has(k) });
     };
-    const dstGroup = (t) => {
-      if (t.ref.kind === 'bp') return 'Toy outputs';
-      return toAccessory(fieldFor(t.ref.key)) ? 'Accessory fields' : 'Machine fields';
-    };
-    return {
-      sources: sources().map((s) => ({ ...s, group: srcGroup(s) })),
-      targets: targets().map((t) => ({ ...t, group: dstGroup(t) })),
-    };
+    const putField = (x, path) => put({ kind: 'field', key: x.key }, labelFor(x.f), path);
+    const where = pages();
+    for (const [uid, path] of where) if (fields.has(uid)) putField(fields.get(uid), path);
+    for (const [uid, x] of fields) if (!where.has(uid)) putField(x, [hubName(), OTHER]);
+    const m = api.catalog();
+    for (const mod of (m && env.modules && env.modules()) || []) {
+      const got = claimRoles(m.byRole, mod.spec || {});
+      for (const uid of (got && got.claimed) || []) if (fields.has(uid)) putField(fields.get(uid), [MODULES, mod.title]);
+    }
+    for (const d of devices.values()) for (const c of d.controls) put(bpRef(d, c), c.description || c.type, [BUTTPLUG, d.name]);
+    return out;
+  }
+
+  /** A field's stale and gate reasons in words, '' when none (RENDERING laws 8, 3); its write ladder is echo(). */
+  function state(ref) {
+    const f = ref.kind === 'field' && fieldFor(ref.key);
+    if (!f) return { stale: '', gate: '' };
+    return { stale: api.stale(f), gate: writable(f) ? api.gate(f) : '' };
   }
 
   // ---- lifecycle ---------------------------------------------------------------
@@ -747,7 +796,7 @@ export function graphRuntime(api, shell, env) {
     get armed() { return armedNow; },
     hubState: (r) => hubState.get(r.rel_id) || { phase: 'confirmed', reason: '' },
     hubArmed, home, sources, targets, add, edit, remove, refreshHub, tick,
-    why, wire, unwire, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs,
+    why, wire, unwire, place, placeMap, placeOp, editOp, batch, removeMany, duplicate, moveMany, ports, echo, palette, runs, about, state, hubName,
     undo: () => travel((swap) => history.undo(swap)),
     redo: () => travel((swap) => history.redo(swap)),
     get canUndo() { return history.canUndo; },
@@ -755,19 +804,17 @@ export function graphRuntime(api, shell, env) {
     get view() { return view; },
     setView(v) { view = v; persist(); },
     value: (ref) => io.read(ref),
-    unit: (ref) => (ref.kind === 'field' && fieldFor(ref.key)?.unit) || '',
-    stale: (ref) => (ref.kind === 'field' && fieldFor(ref.key) ? api.stale(fieldFor(ref.key)) : ''),
+    unit: (ref) => about(ref).unit,
     out: (id) => runner.out(id),
     /** An op's output this tick, while armed. */
     val: (id) => runner.val(id),
     /** Why a chain's target node is not driven, in words. */
     chainWhy: (id) => runner.why(id),
     maps: MAPS, MAP, OPS, insOf, outOf, opLabel,
+    /** A node's name for speech and refusals: a toy control with its device. */
     label(ref) {
-      // A toy control is both; its target label names it without the app's role.
-      const all = ref.kind === 'bp' ? [...targets(), ...sources()] : [...sources(), ...targets()];
-      const s = all.find((x) => refKey(x.ref) === refKey(ref));
-      return s ? s.label : (ref.kind === 'bp' ? ref.device + ' (absent)' : ref.key + ' (absent)');
+      const a = about(ref);
+      return ref.kind === 'bp' && a.path.length ? a.path[0] + ': ' + a.name : a.name;
     },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     dispose() {
@@ -781,11 +828,12 @@ export function graphRuntime(api, shell, env) {
 
 /** Add the graph to the app's plugin host. Its editor mounts GraphEditor.svelte. */
 export async function loadGraph(host) {
-  const [{ machine, getSession }, { runAction, shadowOf }, { mount, unmount }, { default: GraphEditor }] = await Promise.all([
+  const [{ machine, getSession }, { runAction, shadowOf }, { mount, unmount }, { default: GraphEditor }, { pluginHeroes, pluginPages }] = await Promise.all([
     import('../model/machine.svelte.js'),
     import('../model/shadow.svelte.js'),
     import('svelte'),
     import('../ui/graph/GraphEditor.svelte'),
+    import('./plugins.svelte.js'),
   ]);
   let shell = null;
   if (import.meta.env && import.meta.env.TAURI_ENV_PLATFORM) {
@@ -801,6 +849,12 @@ export async function loadGraph(host) {
     fetchBlob: (o) => { const s = getSession(); return s ? s.fetchBlob(o) : Promise.reject(new Error('no session')); },
     runAction,
     shadow: shadowOf,
+    hubName: () => {
+      const f = machine.catalog.model?.byRole?.get(ROLE.identityName)?.[0];
+      const t = hubTitle(machine.link.hubIdentity, f ? reportedValue(f, machine.samples[f.channelId]) : '', machine.link.virtual);
+      return t === '--' ? '' : t;
+    },
+    modules: () => [...pluginHeroes(), ...pluginPages()].map((h) => ({ title: h.title || h.label, spec: h.spec })),
   };
   host.add(manifest, {
     activate(api) {

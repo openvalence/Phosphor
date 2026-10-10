@@ -23,19 +23,29 @@
  *             11 px text floor Fit keeps at 9 px, sentence-case menu, opened
  *             categories scrolled in, backward links clear of their nodes,
  *             the hint centered, SVG head icons, --highlight for focus
+ *   ph-5wo6   the add menu groups as the pages do (hub, category, section,
+ *             card, then ButtplugIO and the node families); F3 in the editor
+ *             is the node search, ranked by the shell's matcher, Enter adds
+ *             at the pointer, Shift+Enter or the show button finds the node
+ *             on the canvas, the shell's look-for stays outside; a node
+ *             names its card (device first once two are drawn), desc, range,
+ *             what its sockets do and its live state (pending, gated,
+ *             stale); one card, one accent. Screenshots at 1428x900 and
+ *             420x860, dark and Paper, in test/evidence/ph-5wo6/
  *
  * Deliberately NOT part of `npm run check` (it launches a browser).
  * Run: node test/graph-editor.test.mjs [--shot <png>]
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbInt, cbF32, cbBool, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED } from '../../Valence/clients/js/frames.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { STORAGE_KEY } from '../src/model/graph.js';
-import { deriveTokens, THEMES } from '../src/model/theme.js';
+import { deriveTokens, THEMES, THEME_KEY } from '../src/model/theme.js';
 
 const SHOT = process.argv.includes('--shot') ? process.argv[process.argv.indexOf('--shot') + 1] : null;
 const SHOTS = process.argv.includes('--shots') ? process.argv[process.argv.indexOf('--shots') + 1] : null;
@@ -110,7 +120,11 @@ function encodePacked(e) {
 const cbAny = (v) => (typeof v === 'string' ? cbTstr(v) : typeof v === 'boolean' ? cbBool(v)
   : !Number.isInteger(v) ? cbF32(v) : v < 0 ? cbInt(v) : cbUint(v));
 
+// hub.down refuses every socket; hub.hold keeps every ECHO (a write stays pending).
+const hub = { down: false, hold: false, sockets: new Set() };
 function fakeHub(ws) {
+  if (hub.down) { ws.close(); return; }
+  hub.sockets.add(ws);
   const send = (type, ch, payload) => { try { ws.send(Buffer.from(encodeFrame(type, ch, payload))); } catch (e) { /* closed */ } };
   ws.onMessage((msg) => {
     if (typeof msg === 'string') return;
@@ -136,6 +150,7 @@ function fakeHub(ws) {
         }
         send(FRAME.GRANT, 0, cbMap([[K.grants, cbArray(grants)]]));
       } else if (header.type === FRAME.INTENT) {
+        if (hub.hold) continue;
         const m = cbDecodeFull(payload);
         const val = [...m.get(K.value)].sort((a, b) => a[0] - b[0]);
         send(FRAME.ECHO, m.get(K.channel_id), cbMap([[K.cfg_gen, cbUint(2)], [K.intent_id, cbUint(m.get(K.intent_id))],
@@ -166,17 +181,18 @@ const srv = createServer((q, s) => { s.writeHead(200, { 'Content-Type': 'text/ht
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const browser = await chromium.launch();
 
-async function open({ coarse = false, seed = null, before = null } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, hasTouch: coarse });
+async function open({ coarse = false, seed = null, before = null, viewport = { width: 1440, height: 1000 }, store = {} } = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch: coarse });
   await ctx.addInitScript(TAURI_STUB);
   await ctx.addInitScript(BP_STUB);
-  await ctx.addInitScript(([etag, bytes, seed]) => {
+  await ctx.addInitScript(([etag, bytes, seed, store]) => {
     try {
       localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
       localStorage.setItem('shell_host', '127.0.0.1');
       if (seed) localStorage.setItem(seed[0], seed[1]);
+      for (const [k, v] of Object.entries(store)) localStorage.setItem(k, v);
     } catch (e) { /* none */ }
-  }, [ETAG, Buffer.from(CAT).toString('hex'), seed]);
+  }, [ETAG, Buffer.from(CAT).toString('hex'), seed, store]);
   await ctx.routeWebSocket(/:82\//, fakeHub);
   const page = await ctx.newPage();
   const errors = [];
@@ -222,6 +238,8 @@ async function open({ coarse = false, seed = null, before = null } = {}) {
 }
 
 const center = async (loc) => { const b = await loc.boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+/** The fixture hub's name: WELCOME hub_name, the menu's top group and a card label's device. */
+const HUB = 'Graph fixture';
 async function dragTo(page, from, to, hover) {
   const [x1, y1] = await center(from);
   const [x2, y2] = await center(to);
@@ -235,8 +253,8 @@ async function dragTo(page, from, to, hover) {
 }
 /**
  * Right-click the canvas at a viewport fraction and pick the first item of a
- * category: by opening its header when `search` is empty, else from the
- * flattened search results.
+ * group: by opening its header (a path, ' › ' between names) when `search` is
+ * empty, else from the flattened search results whose path holds `group`.
  */
 async function place(page, fx, fy, search, group) {
   const vp = await page.locator('.graph .gview').boundingBox();
@@ -246,8 +264,8 @@ async function place(page, fx, fy, search, group) {
     await page.locator('.gpal input').fill(search);
     btn = page.locator('.gpal .gpal-item', { has: page.locator('.gpal-count', { hasText: group }) }).first();
   } else {
-    await page.locator('.gpal .gpal-head', { hasText: group }).first().click();
-    btn = page.locator('.gpal .gpal-item[data-nested]').first();
+    await page.locator('.gpal .gpal-head[data-group="' + group + '"]').click();
+    btn = page.locator('.gpal .gpal-item[data-nested][data-group="' + group + '"]').first();
   }
   const label = (await btn.evaluate((el) => el.firstChild.textContent)).trim();
   await btn.click();
@@ -267,8 +285,8 @@ let saved = null;
   ok('a wide window holds all eleven tools in one row', tops.length === 11 && new Set(tops).size === 1, tops);
   await page.waitForTimeout(300);
 
-  const src = await place(page, 0.15, 0.3, '', 'Sources: Motion');
-  const toy = await place(page, 0.7, 0.3, 'Lush', 'Targets: Toy outputs');
+  const src = await place(page, 0.15, 0.3, '', HUB + ' › Motion');
+  const toy = await place(page, 0.7, 0.3, 'Lush', 'ButtplugIO');
   const S = nodeBy(page, src);
   const T = nodeBy(page, toy);
   ok('the add menu places a source and a toy output at the cursor', await S.count() === 1 && await T.count() === 1, [src, toy]);
@@ -486,11 +504,14 @@ let saved = null;
   await page.mouse.click(vp.x + vp.width * 0.55, vp.y + vp.height * 0.8, { button: 'right' });
   const heads = await page.locator('.gpal .gpal-head').allTextContents();
   ok('the add menu lists categories collapsed, one header each', heads.length >= 7 && await page.locator('.gpal .gpal-item').count() === 0
-    && ['Input', 'Math', 'Logic', 'Converter', 'Maps'].every((c) => heads.some((h) => h.includes(c))) && heads.some((h) => /Sources: /.test(h))
-    && heads.some((h) => /Targets: Toy outputs/.test(h)), heads.map((h) => h.trim()));
+    && ['Input', 'Math', 'Logic', 'Converter', 'Maps', 'ButtplugIO', 'Motion'].every((c) => heads.some((h) => h.includes(c))), heads.map((h) => h.trim()));
   await shot('menu-categories');
+  // Left closes the open hub; Down walks the headers to Input; Right opens it.
+  await page.keyboard.press('ArrowLeft');
+  for (let i = 0; i < 8 && await page.locator('.gpal [data-cur]').getAttribute('data-group') !== 'Input'; i++) await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowRight');
-  ok('Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 3);
+  ok('Left closes the open hub, Right opens the highlighted category', await page.locator('.gpal .gpal-item[data-nested]').count() === 3
+    && await page.locator('.gpal .gpal-head[aria-expanded=true]').getAttribute('data-group') === 'Input');
   const mt = await page.evaluate(() => {
     const cs = (s) => getComputedStyle(document.querySelector(s));
     return { head: parseFloat(cs('.gpal .gpal-head').fontSize), item: parseFloat(cs('.gpal .gpal-item').fontSize),
@@ -561,25 +582,25 @@ let saved = null;
     const b = e.getBoundingClientRect();
     return b.top >= l.top - 0.5 && b.bottom <= l.bottom + 0.5;
   }, [sel, last]);
-  await page.locator('.gpal .gpal-head', { hasText: 'Targets: Toy outputs' }).click();
+  await page.locator('.gpal .gpal-head[data-group="Maps"]').click();
   await page.waitForTimeout(100);
   ok('opening the last category scrolls its items into view (ph-hui)', await inList('.gpal .gpal-item[data-nested]', true));
-  await page.locator('.gpal .gpal-head', { hasText: 'Sources: Generator' }).click();
+  await page.locator('.gpal .gpal-head[data-group="' + HUB + ' › Generator"]').click();
   await page.waitForTimeout(100);
-  ok('...and a long one keeps its header on screen', await inList('.gpal .gpal-head[aria-expanded=true][data-group="Sources: Generator"]', false));
+  ok('...and a long one keeps its header on screen', await inList('.gpal .gpal-head[aria-expanded=true][data-group="' + HUB + ' › Generator"]', false));
   await page.keyboard.press('Escape');
 
   // Link-drag-search: a source's wire dropped on empty canvas near a corner.
-  const src = await place(page, 0.05, 0.3, '', 'Sources: Motion');
+  const src = await place(page, 0.05, 0.3, '', HUB + ' › Motion');
   const S = nodeBy(page, src);
   const so = await center(sock(S, 'out'));
   await sweep(page, so[0], so[1], vp.x + vp.width - 6, vp.y + vp.height - 6);
   await page.waitForTimeout(80);
   const offered = await page.locator('.gpal .gpal-item').allTextContents();
-  const groupsOf = new Set(offered.map((t) => t.trim().split(/\s{0,}(?=Input$|Math$|Logic$|Converter$|Maps$|Targets: |Sources: )/).pop()));
+  // The Planner card is read-only counters: nothing there takes an input.
   ok('a wire dropped on empty canvas opens the menu there, flat and filtered to inputs', await page.locator('.gpal .gpal-head').count() === 0
-    && offered.length > 0 && !offered.some((t) => /^(Value|Integer|Boolean)Input$/.test(t.trim())) && !offered.some((t) => /Sources: /.test(t))
-    && offered.some((t) => /^Math/.test(t.trim())) && offered.some((t) => /Targets: /.test(t)), [...groupsOf]);
+    && offered.length > 0 && !offered.some((t) => /^(Value|Integer|Boolean)Input$/.test(t.trim())) && !offered.some((t) => /Tuning › Planner$/.test(t))
+    && offered.some((t) => /^Math/.test(t.trim())) && offered.some((t) => t.includes(HUB + ' › ')), offered.length);
   ok('...clamped inside the editor at the corner', await inside());
   const names = await page.$$eval('.gpal .gpal-item', (els) => els.map((e) => [e.firstChild.textContent.trim(), (e.querySelector('.gpal-count') || {}).textContent]));
   const own = names.filter(([, g]) => ['Input', 'Math', 'Logic', 'Converter', 'Maps'].includes(g));
@@ -613,7 +634,7 @@ let saved = null;
   await dropFrom(op('Multiply'), true, 0.42, 0.05, 'compare');
   await dropFrom(S, false, 0.25, 0.55, 'threshold');
   await dropFrom(op('Threshold'), true, 0.42, 0.55, 'switch');
-  const toyLabel = await place(page, 0.62, 0.35, 'Lush', 'Targets: Toy outputs');
+  const toyLabel = await place(page, 0.62, 0.35, 'Lush', 'ButtplugIO');
   const Toy = nodeBy(page, toyLabel);
   await dragTo(page, op('Switch').locator(':scope > [data-sock][data-side=out]'), sock(Toy, 'in'));
   await dragTo(page, op('Greater than').locator(':scope > [data-sock][data-side=out]'), op('Switch').locator('[data-sock][data-port=t]'));
@@ -704,6 +725,217 @@ let saved = null;
   }
   ok('no page errors (typed nodes)', errors.length === 0, errors);
   await ctx.close();
+}
+
+// ---- F3, the menu as the pages group it, node context (ph-5wo6) -----------------
+{
+  const EVID = fileURLToPath(new URL('./evidence/ph-5wo6/', import.meta.url));
+  mkdirSync(EVID, { recursive: true });
+  const PAPER = THEMES.find((t) => t.id === 'paper');
+  const W = { width: 1428, height: 900 };
+  const { ctx, page, errors } = await open({ viewport: W });
+  const vp = await page.locator('.graph .gview').boundingBox();
+  const at = (fx, fy) => [vp.x + vp.width * fx, vp.y + vp.height * fy];
+  const node = (name) => page.locator('.gnode[data-kind=node]', { has: page.locator('.gname', { hasText: new RegExp('^' + name + '$') }) });
+  const opNode = (name) => page.locator('.gnode[data-kind=op]', { has: page.locator('.gname', { hasText: new RegExp('^' + name + '$') }) });
+  const pal = page.locator('.gpal');
+  /** F3 at a canvas fraction, a query, then Enter (or Shift+Enter); returns the first result's [label, path]. */
+  async function f3(fx, fy, query, key = 'Enter') {
+    await page.mouse.move(...at(fx, fy));
+    await page.locator('.graph .gview').focus();
+    await page.keyboard.press('F3');
+    await pal.locator('input').fill(query);
+    const first = await pal.locator('.gpal-item').first().evaluate((e) => [e.querySelector('.gpal-label').textContent, (e.querySelector('.gpal-count') || {}).textContent]);
+    if (!key) return first;
+    await page.keyboard.press(key);
+    await page.waitForTimeout(120);
+    return first;
+  }
+  const accentOf = (loc) => loc.evaluate((e) => getComputedStyle(e, '::before').backgroundColor);
+
+  // The add menu: the hub open on its categories in the rail's order, sections and cards nested.
+  const rail = await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.title));
+  await page.mouse.click(...at(0.6, 0.1), { button: 'right' });
+  const level = (n) => pal.locator('.gpal-head[aria-level="' + n + '"]').evaluateAll((els) => els.map((e) => e.querySelector('.gpal-label').textContent));
+  const cats = await level(2);
+  const tops = await level(1);
+  const common = rail.filter((c) => cats.includes(c));
+  ok('the add menu opens on the hub, its categories in the rail\'s order (ph-5wo6)', tops[0] === HUB
+    && await pal.locator('.gpal-head').first().getAttribute('aria-expanded') === 'true' && common.length >= 4
+    && JSON.stringify(cats.filter((c) => rail.includes(c))) === JSON.stringify(common), { tops, cats, rail });
+  ok('...then ButtplugIO and the node families, in that order', JSON.stringify(tops.slice(-6)) === JSON.stringify(['ButtplugIO', 'Input', 'Math', 'Logic', 'Converter', 'Maps']), tops);
+  await pal.locator('.gpal-head[data-group="' + HUB + ' › Motion"]').click();
+  const mHeads = await pal.locator('.gpal-head').evaluateAll((els) => els.map((e) => [e.dataset.group, e.getAttribute('aria-level')]));
+  const ix = (g) => mHeads.findIndex(([x]) => x === HUB + ' › Motion › ' + g);
+  ok('...a category holds its cards, then its sections (Motion: Oscillator before Tuning)', ix('Oscillator') > 0 && ix('Tuning') > ix('Oscillator')
+    && mHeads[ix('Oscillator')][1] === '3' && mHeads[ix('Tuning')][1] === '3', mHeads.slice(0, 12));
+  await pal.locator('.gpal-head[data-group="' + HUB + ' › Motion › Tuning"]').click();
+  ok('...a section holds its cards (Tuning › Planner, level 4)', await pal.locator('.gpal-head[data-group="' + HUB + ' › Motion › Tuning › Planner"][aria-level="4"]').count() === 1);
+  await pal.locator('.gpal-head[data-group="' + HUB + ' › Motion › Oscillator"]').click();
+  ok('...a card lists its fields as the page labels them', JSON.stringify(await pal.locator('.gpal-item[data-group="' + HUB + ' › Motion › Oscillator"] .gpal-label').allTextContents())
+    .includes('"Cycles a second"'));
+  await page.screenshot({ path: EVID + 'menu-1428x900-dark.png' });
+  await page.keyboard.press('Escape');
+
+  // F3: the node search, ranked by the shell's matcher; the shell's look-for stays outside the editor.
+  await page.mouse.move(...at(0.3, 0.35));
+  await page.locator('.graph .gview').focus();
+  await page.keyboard.press('F3');
+  await page.waitForTimeout(80);
+  ok('F3 in the editor opens the node search, never the shell look-for', await page.locator('.gpal[aria-label="Find a node"]').count() === 1
+    && await page.locator('.lf').count() === 0);
+  const pb = await pal.boundingBox();
+  ok('...at the pointer (raised only to stay inside the canvas)', Math.abs(pb.x - at(0.3, 0.35)[0]) < 2 && pb.y <= at(0.3, 0.35)[1] + 1, [pb.x, pb.y, at(0.3, 0.35)]);
+  const keys = await pal.locator('.gpal-item').evaluateAll((els) => els.map((e) => e.querySelector('.gpal-label').textContent + ' · ' + e.querySelector('.gpal-count').textContent));
+  ok('...listing every source, op and map flat, each with its path', await pal.locator('.gpal-head').count() === 0 && keys.length > 100);
+  ok('...each source once, under its page path even when a plugin module claims it', !keys.some((k) => k.includes('Plugin modules')) && keys.includes('Speed · ' + HUB + ' › Generator › Pattern'));
+  await page.keyboard.press('F3');
+  ok('...and F3 again closes it', await pal.count() === 0 && await page.locator('.lf').count() === 0);
+  const r1 = await f3(0.3, 0.35, 'oscillator cycles');
+  ok('words in any order hit the label and the path: "oscillator cycles" finds the Oscillator card\'s field', r1[0] === 'Cycles a second' && /Motion › Oscillator$/.test(r1[1]), r1);
+  const C = node('Cycles a second');
+  const cb = await C.boundingBox();
+  ok('...and Enter adds it at the pointer', await C.count() === 1 && Math.abs(cb.x - at(0.3, 0.35)[0]) < 24 && Math.abs(cb.y - at(0.3, 0.35)[1]) < 24, [cb.x, cb.y]);
+  await f3(0.3, 0.62, 'peak displacement');
+  const r3 = await f3(0.62, 0.35, 'pattern speed');
+  ok('"pattern speed" finds Speed on the Pattern card', r3[0] === 'Speed' && r3[1] === HUB + ' › Generator › Pattern', r3);
+  const A = node('Peak displacement');
+  const Sp = node('Speed');
+  ok('three hub fields placed', await C.count() === 1 && await A.count() === 1 && await Sp.count() === 1);
+
+  // Node context: card, desc, range and what each socket does; one card, one accent.
+  ok('a node names its card above its name', await C.locator('.gcard').textContent() === 'Oscillator' && await Sp.locator('.gcard').textContent() === 'Pattern');
+  ok('...the card path in full on hover', await C.locator('.gcard').getAttribute('title') === HUB + ' › Motion › Oscillator');
+  const desc = await C.locator('.gdesc').textContent();
+  ok('...its catalog desc on one line, in full on hover', desc.length > 0 && await C.locator('.gdesc').getAttribute('title') === desc, desc);
+  ok('...its range, unit and what the sockets do', await C.locator('.gspec').textContent() === '0 to 20 Hz · in sets, out reads', await C.locator('.gspec').textContent());
+  ok('...and each socket says it in its tooltip', await C.locator(':scope > [data-sock][data-side=in]').getAttribute('title') === 'Input: sets Cycles a second (float)'
+    && await C.locator(':scope > [data-sock][data-side=out]').getAttribute('title') === 'Output: reads Cycles a second (float)');
+  ok('nodes of one card share its key and accent; another card gets another', await C.getAttribute('data-card') === await A.getAttribute('data-card')
+    && await accentOf(C) === await accentOf(A) && await Sp.getAttribute('data-card') !== await C.getAttribute('data-card') && await accentOf(Sp) !== await accentOf(C),
+  [await accentOf(C), await accentOf(A), await accentOf(Sp)]);
+  const r4 = await f3(0.62, 0.62, 'lush motor');
+  const T = node('Motor');
+  ok('a toy control is found by its device: "lush motor"', r4[0] === 'Motor' && /^ButtplugIO › Lush$/.test(r4[1]) && await T.count() === 1, r4);
+  ok('...the toy node names its device as its card, range and sockets', await T.locator('.gcard').textContent() === 'Lush'
+    && await T.locator('.gspec').textContent() === '0 to 20 · in drives, out from apps', await T.locator('.gspec').textContent());
+  ok('...and with two devices drawn, a hub card names its hub after the card', await C.locator('.gcard').textContent() === 'Oscillator · ' + HUB);
+  await f3(0.12, 0.35, 'math');
+  ok('an op placed by F3', await opNode('Add').count() === 1);
+
+  // Shift+Enter, Enter on a placed field, and the show button find the node on the canvas.
+  const centered = async (loc) => {
+    const [b, v] = [await loc.boundingBox(), await page.locator('.graph .gview').boundingBox()];
+    return Math.hypot(b.x + b.width / 2 - (v.x + v.width / 2), b.y + b.height / 2 - (v.y + v.height / 2)) < 4;
+  };
+  const panAway = async () => {
+    await page.mouse.move(...at(0.95, 0.95));
+    await page.mouse.down();
+    await page.mouse.move(...at(0.55, 0.6), { steps: 4 });
+    await page.mouse.up();
+    await page.waitForTimeout(60);
+  };
+  await panAway();
+  await f3(0.5, 0.5, 'cycles', 'Shift+Enter');
+  ok('Shift+Enter shows the node already on the canvas: centered, selected, focused', await centered(C) && await C.getAttribute('data-sel') === ''
+    && await C.evaluate((e) => document.activeElement === e) && await node('Cycles a second').count() === 1);
+  await panAway();
+  await f3(0.5, 0.5, 'peak displacement');
+  ok('Enter on a field already placed shows it instead of adding a second', await A.count() === 1 && await centered(A) && await A.getAttribute('data-sel') === '');
+  await panAway();
+  await f3(0.5, 0.5, 'math', 'Shift+Enter');
+  ok('...an op family too: Shift+Enter shows its node', await centered(opNode('Add')) && await opNode('Add').getAttribute('data-sel') === '');
+  await panAway();
+  await page.mouse.click(...at(0.5, 0.5), { button: 'right' });
+  await pal.locator('input').fill('pattern speed');
+  const go = pal.locator('.gpal-row', { has: page.locator('.gpal-label', { hasText: /^Speed$/ }) }).first().locator('.gpal-go');
+  await go.click();
+  await page.waitForTimeout(80);
+  ok('a row whose node is placed carries a show button, for touch', await centered(Sp) && await Sp.getAttribute('data-sel') === '');
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('F3');
+  await page.waitForTimeout(80);
+  ok('outside the editor F3 is still the shell\'s look-for', await page.locator('.lf').count() === 1 && await pal.count() === 0);
+  await page.keyboard.press('Escape');
+
+  // Live state: a write in flight reads pending on its node.
+  await page.click('.gtool button:has-text("Fit")');
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: EVID + 'graph-1428x900-dark.png' });
+  await f3(0.3, 0.3, 'oscillator', null);
+  await page.screenshot({ path: EVID + 'f3-1428x900-dark.png' });
+  await page.keyboard.press('Escape');
+  hub.hold = true;
+  await page.locator('.dash-item:has(.graph) .dash-open').click();
+  await page.click('nav.rail [role=tab][title="Motion"]');
+  const slider = page.locator('.field[data-uid="4416:frequency"] input[type=range]').first();
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(150);
+  for (const id of await page.$$eval('[role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.dataset.tabId))) {
+    await page.click('[data-tab-id="' + id + '"]');
+    await page.waitForTimeout(120);
+    if (await page.$('.dash-item:has(.graph) .dash-open')) break;
+  }
+  await page.locator('.dash-item:has(.graph) .dash-open').click();
+  await page.waitForTimeout(150);
+  const pend = await C.locator('.gline[data-phase=pending]').textContent().catch(() => '');
+  ok('a write in flight reads on its node: pending (or overdue), in words', /^(pending|overdue): waiting for the hub$/.test(pend), pend);
+  await page.screenshot({ path: EVID + 'pending-1428x900-dark.png' });
+  hub.hold = false;
+
+  // Gated and stale: the link gone, a settable field says why it cannot be set and its value dims.
+  hub.down = true;
+  for (const s of hub.sockets) s.close();
+  hub.sockets.clear();
+  await page.waitForTimeout(400);
+  const gate = await C.locator('.gline[data-phase=gated]').textContent().catch(() => '');
+  const stale = await C.locator('.gline[data-stale]').getAttribute('title').catch(() => '');
+  ok('without a link a settable node says it is gated, in words (law 3)', gate === 'gated: no hub link', gate);
+  ok('...and its value dims as stale, the age on hover (law 8)', /^stale: /.test(stale || ''), stale);
+  await page.screenshot({ path: EVID + 'gated-stale-1428x900-dark.png' });
+  hub.down = false;
+  const graph = await stored(page);
+  ok('no page errors (ph-5wo6)', errors.length === 0, errors);
+  await ctx.close();
+
+  // The same graph at 1428x900 Paper and 420x860 dark and Paper.
+  for (const [name, theme, size] of [['1428x900-paper', PAPER, W], ['420x860-dark', null, { width: 420, height: 860 }], ['420x860-paper', PAPER, { width: 420, height: 860 }]]) {
+    const store = { [STORAGE_KEY]: JSON.stringify(graph), ...(theme ? { [THEME_KEY]: JSON.stringify(theme) } : {}) };
+    const o = await open({ viewport: W, store });
+    if (size !== W) {
+      await o.page.setViewportSize(size);
+      await o.page.waitForTimeout(300);
+      if (await o.page.$eval('.graph', (g) => g.inert).catch(() => false)) {
+        await o.page.locator('.dash-item:has(.graph) .dash-open').scrollIntoViewIfNeeded();
+        await o.page.locator('.dash-item:has(.graph) .dash-open').click();
+        await o.page.waitForTimeout(200);
+      }
+    }
+    await o.page.click('.gtool button:has-text("Fit")');
+    await o.page.waitForTimeout(200);
+    await o.page.screenshot({ path: EVID + 'graph-' + name + '.png' });
+    const v = await o.page.locator('.graph .gview').boundingBox();
+    await o.page.mouse.move(v.x + 12, v.y + 12);
+    await o.page.locator('.graph .gview').focus();
+    await o.page.keyboard.press('F3');
+    await o.page.locator('.gpal input').fill('oscillator');
+    await o.page.waitForTimeout(80);
+    await o.page.screenshot({ path: EVID + 'f3-' + name + '.png' });
+    const inside = await o.page.evaluate(() => {
+      const [m, c] = [document.querySelector('.gpal'), document.querySelector('.gview')].map((e) => e.getBoundingClientRect());
+      return m.left >= c.left - 0.5 && m.right <= c.right + 0.5 && m.top >= c.top - 0.5 && m.bottom <= c.bottom + 0.5;
+    });
+    ok('the node search fits inside the editor at ' + name, inside);
+    await o.page.keyboard.press('Escape');
+    await o.page.mouse.click(v.x + 12, v.y + 12, { button: 'right' });
+    await o.page.waitForTimeout(80);
+    await o.page.screenshot({ path: EVID + 'menu-' + name + '.png' });
+    const cards = await o.page.locator('.gnode[data-card] .gcard').allTextContents();
+    ok('cards read on every node after a reload at ' + name, cards.length === 4 && cards.includes('Lush'), cards);
+    ok('no page errors (' + name + ')', o.errors.length === 0, o.errors);
+    await o.ctx.close();
+  }
 }
 
 // ---- touch ---------------------------------------------------------------------

@@ -422,6 +422,34 @@ console.log('(g) typed node chains: place, wire by port, evaluate, undo; the hub
   ok('no chain value ever rides to the hub: the store holds only relationship items', [...slots.values()].every((b) => readStoreItem(b)));
 }
 
+console.log('(h) where a node comes from: the add menu as the pages group it (ph-5wo6)');
+{
+  // Session (tier 2) comes first in the catalog; the pages put it after Motion (tier 1).
+  model.categories = [
+    { id: 12, known: true, label: 'Session', groups: [{ section: '', title: 'Clients', fields: [ACC] }] },
+    { id: 2, known: true, label: 'Motion', groups: [{ section: '', title: 'Live', fields: [POS] }, { section: 'Tuning', title: 'Planner', fields: [SPEED] }] },
+  ];
+  env.hubName = () => 'Bench';
+  env.modules = () => [{ title: 'Stroker', spec: { require: { speed: 'pattern.speed' } } }];
+  const items = rt.palette();
+  const paths = items.map((it) => (it.ref.kind === 'bp' ? it.ref.device + ':' + it.label : it.ref.key) + ' @ ' + it.path.join(' › '));
+  const want = ['role:telemetry.position @ Bench › Motion › Live', 'role:pattern.speed @ Bench › Motion › Tuning › Planner',
+    'role:pattern.speed @ Plugin modules › Stroker'];
+  ok('fields in page order: tiers, then catalog order; card, then section and card', paths[0] === want[0] && paths[1] === want[1], JSON.stringify(paths.slice(0, 4)));
+  ok('...a tier-2 category after the tier-1 ones', paths.findIndex((p) => p.endsWith('Bench › Session › Clients')) > paths.indexOf(want[1]), JSON.stringify(paths));
+  ok('...a plugin module lists the fields it claims', paths.includes(want[2]));
+  ok('...a toy control under ButtplugIO and its device', paths.includes(TOY.key + ':Motor @ ButtplugIO › Lush'));
+  const sp = items.find((it) => it.ref.key === 'role:pattern.speed');
+  const pos = items.find((it) => it.ref.key === 'role:telemetry.position');
+  ok('...each says which sockets it has', sp.src && sp.dst && pos.src && !pos.dst);
+  const a = rt.about(pos.ref);
+  ok('about(): path from the device, unit and range', a.path.join(' › ') === 'Bench › Motion › Live' && a.unit === 'mm' && a.lo === 0 && a.hi === 100, JSON.stringify(a));
+  ok('a toy names itself with its device', rt.label(dst((r) => r.kind === 'bp' && r.device === TOY.key).ref) === 'Lush: Motor');
+  const st = rt.state(sp.ref);
+  ok('state(): stale and gate reasons, empty when the host has none', st.stale === '' && st.gate === '', JSON.stringify(st));
+  model.categories = [];
+}
+
 host.setEnabled('graph', false);
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
 process.exit(fails ? 1 : 0);
