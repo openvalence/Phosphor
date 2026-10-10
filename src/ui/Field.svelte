@@ -16,9 +16,10 @@
    */
   import { untrack } from 'svelte';
   import { machine, freshness, staleReason } from '../model/machine.svelte.js';
-  import { WIDGET, READ_ONLY_PRESENTATIONS, isFieldEnabled, reportedValue } from '../model/settings.js';
+  import { WIDGET, READ_ONLY_PRESENTATIONS, isFieldEnabled, reportedValue, resetsToDefault } from '../model/settings.js';
   import { writeSetting, displayValue, statusOf, shadowOf, partsOf } from '../model/shadow.svelte.js';
   import { settingNeedsConfirm, confirmCopy } from '../model/actions.js';
+  import { sameValue } from '../model/merge.js';
   import { askConfirm } from './confirm.svelte.js';
   import { deferring } from './defer.js';
   import { modStep, dragGain, snap as modSnap } from '../model/nudge.js';
@@ -357,10 +358,11 @@
   // Reset-to-default writes the catalog's OWN declared default, or the one the
   // user set on this placement (RFC-080 draft item 4, `ownDefault`), as an
   // ordinary intent and waits for the echo, so the machine still decides.
-  // Never a client-side guess at what a default should be, and never offered
-  // when neither published one.
-  const hasDefault = $derived(field.dflt != null && !field.readOnly && !displayOnly);
-  const atDefault = $derived(hasDefault && String(value) === String(field.dflt));
+  // Never a client-side guess at what a default should be, never offered
+  // when neither published one, and never on a field Page Reset skips (a
+  // motion start). A catalog default may be a bool over a u8 (ph-hyu7).
+  const hasDefault = $derived(resetsToDefault(field) && !displayOnly);
+  const atDefault = $derived(hasDefault && sameValue(value, field.dflt));
 
   // A control that prints its own value owns the whole row; a chip repeating it
   // is the duplicate-truth the density pass killed. So the chip is a WHITELIST,
@@ -452,6 +454,18 @@
     : glow ? (virtual ? { kind: 'virtual', text: 'virtual' } : { kind: 'confirmed', text: 'confirmed' })
     : { kind: '', text: '' }
   );
+
+  // ---- secret: the typed value leaves the input once its write lands ---------
+  // Confirmed or refused, the input empties and its placeholder says what the
+  // machine reports (RFC-009.4, ph-buvu). Typing after the send keeps the input.
+  let secretEl = $state(null);
+  let secretSent = false;
+  $effect(() => {
+    const landed = status === 'fault' || settled;
+    if (!landed || !secretSent || !secretEl) return;
+    secretSent = false;
+    secretEl.value = '';
+  });
 
   // ---- numeral: fixed-width columns, the hero numerals' recipe --------------
   // The integer part is zero-padded to the widest bound's digits (a grouped or
@@ -829,7 +843,9 @@
     <!-- RFC-009.4: a secret's value NEVER appears in STATE. We can say whether
          one is set, and we can replace it. We can never show it. -->
     <input id={domId} type="password" class="value-input" placeholder={value ? '•••••• (set)' : 'not set'}
-           disabled={!enabled} onchange={(e) => commit(e.currentTarget.value)} />
+           autocomplete="new-password" bind:this={secretEl} disabled={!enabled}
+           oninput={() => (secretSent = false)}
+           onchange={(e) => { secretSent = enabled; commit(e.currentTarget.value); }} />
 
   {:else if pres === WIDGET.knob}
     <!-- Drag up or down, or use the keys; every change is an ordinary
@@ -904,21 +920,33 @@
     container-type: inline-size;
   }
 
+  /* Label, status words, value chip. The chip takes its width and the words
+     theirs from what is left; the label yields to them down to its 3em. Where
+     that no longer fits, the compact rung below takes over (law 5, ph-4j5f).
+     One line each, so no state wraps the head. */
   .field-head {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(min-content, 1fr) minmax(auto, max-content) auto;
     align-items: baseline;
-    justify-content: space-between;
     gap: var(--sp-3);
   }
+  .field-head > .field-value { white-space: nowrap; }
+  /* No chip: the words end at the field's edge. */
+  .field-head > :where(.ladder:last-child) { grid-column: 2 / -1; }
 
-  /* Groups the label with its ⓘ toggle so field-head's space-between still
-     splits into exactly two things: this group, and the value chip. */
+  /* The label with its tags and its info and reset buttons: the head's first column. */
   .field-label-group {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    min-width: 0;
+    min-width: min-content;
   }
+  /* One line that keeps 3em of its text whatever the status slot holds: the
+     text shortens first, then a tag that does not fit wraps onto a second line
+     this one-line box hides, so tags drop whole (ph-4j5f). The line height is
+     pinned so the box is one line without the lh unit. */
+  .field-label { overflow: hidden; flex-wrap: wrap; align-content: flex-start; line-height: 1.45; height: 1.45em; }
+  .field-label-text { flex: 1 1 0; min-width: 3em; }
 
   /* Slider row tightened to the OG's compact cadence (.fld2 input[type=range]
      margin, verified against og-ref/style.css) instead of the global 12px 0 —
@@ -968,9 +996,12 @@
   /* The label voice (.field-label, .field-label-text) and the value chip's
      base (.field-value, its .unit) are style.css's: the plugin kit wears them too. */
 
+  /* Breaks anywhere for intrinsic sizing only: a tag lays out at its full
+     width, so one wrapped out of sight never sets the label's floor. */
   .tag {
     display: inline-block;
     flex: none;
+    overflow-wrap: anywhere;
     margin-left: var(--sp-2);
     padding: 1px var(--sp-2);
     font-size: .62rem;
@@ -1307,44 +1338,68 @@
   }
   @media (pointer: coarse) { .bitfield input[type='checkbox'] { width: 24px; height: 24px; } }
 
-  /* Density rungs (DESIGN §10.12): compact under 18rem (about 8 cells), normal
-     above. Compact is a fixed two-row head in every state: the label with its
-     tags and info/reset, then the status words and the value chip. The label
-     keeps 3em and the chip never clips its number: the unit yields first, then
-     the status slot. */
-  @container (max-width: 18rem) {
+  /* Density rungs (DESIGN §10.12): compact under 22rem (about 10 cells), normal
+     above, where label, ⓘ, reset, a tag, a chip with its unit and the longest
+     words fit one row at UI scale 0.9 and up. Compact is a fixed two-row head in
+     every state: the label with its tags and info/reset and the value chip,
+     then the status words on a line of their own, whole at every width (law 5,
+     ph-4j5f). Under 13rem the chip takes a line of its own between them and
+     the label may shorten under 3em. Heights follow the width alone, never a
+     state or a value. */
+  @container (max-width: 22rem) {
     .field-head {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-rows: 18px minmax(20px, auto);
+      grid-template-columns: minmax(min-content, 1fr) auto;
+      grid-template-rows: minmax(20px, auto) 18px;
       gap: var(--sp-1) var(--sp-2);
       align-items: center;
     }
-    .field-label-group { grid-column: 1 / -1; grid-row: 1; gap: var(--sp-2); }
-    .field-label { overflow: hidden; }
-    .field-label-text { min-width: 3em; }
-    .ladder { grid-column: 1; grid-row: 2; min-width: 0; text-align: left; }
-    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100cqi; }
-    .field-head .unit { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+    .field-label-group { grid-column: 1; grid-row: 1; gap: var(--sp-2); }
+    /* No intrinsic width: its words never size the label's or the chip's column. */
+    .field-head .ladder { grid-column: 1 / -1; grid-row: 2; min-width: 0; contain: inline-size; text-align: left; }
+    .field-head > :is(.field-value, .field-value.typeable) { grid-column: 2; grid-row: 1; justify-self: end; min-width: 0; max-width: 100%; }
+    .field-head .chip-num { flex: none; }
+    .field-head .field-value .unit:not(:empty) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .field > input[type='range'] { margin: var(--sp-2) 0 0; }
     .field > input[type='range']:has(+ .field-desc) { margin-bottom: var(--sp-3); }
     .range-dual { margin: var(--sp-2) 0 0; }
     .bitfield { gap: var(--sp-2) var(--sp-3); }
     .lamps { gap: var(--sp-2) var(--sp-3); }
   }
+  /* A pair's two values need the room of two chips beside the words: under
+     28rem the pair takes a line of its own between the label and the words. */
+  @container (max-width: 28rem) {
+    .field[data-widget='range'] .field-head {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 18px minmax(20px, auto) 18px;
+      column-gap: var(--sp-2);
+      row-gap: var(--sp-1);
+      align-items: center;
+    }
+    .field[data-widget='range'] .field-label-group { grid-column: 1; grid-row: 1; }
+    .field[data-widget='range'] .field-head > .field-value { grid-column: 1; grid-row: 2; justify-self: end; min-width: 0; max-width: 100%; }
+    .field[data-widget='range'] .field-head .ladder { grid-column: 1; grid-row: 3; min-width: 0; contain: inline-size; text-align: left; }
+  }
+  /* Every chip rule here sits behind :has(), so an engine without it keeps the
+     chip on the label's line rather than stacking it over the words. */
+  @container (max-width: 13rem) {
+    .field-head { grid-template-columns: minmax(0, 1fr) auto; }
+    .field-label-group { min-width: 0; }
+    .field-head:has(> .field-value) { grid-template-rows: 18px minmax(20px, auto) 18px; }
+    .field-head:has(> .field-value) .field-label-group { grid-column: 1 / -1; }
+    .field-head:has(> .field-value) > :is(.field-value, .field-value.typeable) { grid-column: 1 / -1; grid-row: 2; }
+    .field-head:has(> .field-value) .ladder { grid-row: 3; }
+  }
   /* Hit-box geometry (40 px box, 11 px reach): px on purpose, not spacing. */
   @media (pointer: coarse) {
-    @container (max-width: 18rem) { .field-head { row-gap: 11px; } }
+    @container (max-width: 22rem) { .field-head { row-gap: 11px; } }
+    @container (max-width: 28rem) { .field[data-widget='range'] .field-head { row-gap: 11px; } }
   }
 
-  /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------
-     Basis 0, so its text never takes width from the label or the value chip
-     and never wraps the head: the field's height is the same in every state. */
+  /* ---- the status slot (laws 3, 5): in the head row, one clipped line ------ */
   .ladder {
-    flex: 1 1 0;
-    /* 'still waiting' at 11px is 7em. The head row yields it to the words
-       once the field is wide enough to hold label, chip and words (ph-46yw);
-       below that the slot is leftover only, so the chip never overflows. */
+    /* 'still waiting' at 11px is 7em: held at rest once the field holds label,
+       chip and words (ph-46yw), so a short write's words move nothing. */
     min-width: clamp(0px, 100cqi - 11rem, 7em);
     overflow: hidden;
     text-overflow: ellipsis;

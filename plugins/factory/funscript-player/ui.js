@@ -197,6 +197,12 @@ export function windowShare(v, lo, hi) {
   return Number.isFinite(v) && Number.isFinite(lo) && Number.isFinite(hi) && hi > lo ? clamp((v - lo) / (hi - lo), 0, 1) : null;
 }
 
+/** plan.current as a window share, or null. Never clamped: a plan below the window or past it reads below 0 or past 1 (ph-t2jn). */
+export function planShareOf(f, v) {
+  if (!f || v == null || !Number.isFinite(v = Number(v))) return null;
+  return f.min != null && f.max > f.min ? (v - f.min) / (f.max - f.min) : v;
+}
+
 const isUnit = (f, id, text) => !!f && (f.unitId === id || f.unit === text);
 
 /** {vmax, spanMm} for the speed meter and heat: each null unless its unit is mm/s, mm. */
@@ -290,9 +296,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   /** plan.current as a window share (the plan roles are window-relative), or null. */
   const planShare = () => {
     const f = api.field && api.field('plan.current');
-    const v = f && !api.stale(f) ? Number(api.value(f)) : NaN;
-    if (!Number.isFinite(v)) return null;
-    return f.min != null && f.max > f.min ? clamp((v - f.min) / (f.max - f.min), 0, 1) : clamp(v, 0, 1);
+    return f && !api.stale(f) ? planShareOf(f, api.value(f)) : null;
   };
 
   function hold() {

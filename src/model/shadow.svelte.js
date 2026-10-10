@@ -548,9 +548,11 @@ export function statusOf(field) {
  * Confirmed, until the field's channel takes a STATE push after the ECHO -> the
  * ECHO's applied value, the machine's own word (ph-f459).
  * Otherwise -> the device's reported value, always. Never a remembered request,
- * never a default, never a guess.
+ * never a default, never a guess. A secret is always its reported presence:
+ * its request is never handed back to a screen or a plugin (RFC-009.4, ph-buvu).
  */
 export function displayValue(field, sample) {
+  if (field.flagBits && field.flagBits.secret) return reportedValue(field, sample);
   const sh = shadowOf(field);
   if (sh && (sh.status === STATUS.pending || sh.status === STATUS.overdue)
       && sh.requested !== undefined) {
