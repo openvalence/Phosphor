@@ -50,6 +50,12 @@
  *   nest     phone: a nest is not a scroll region of its own, a wheel over
  *            it scrolls the page, the page passes the layout checks
  *            (ph-e82.6)
+ *   bar      1428x900, 1024x768, 420x860: the top bar holds the hub name,
+ *            phase, tier, rx and fps only (the address, firmware and control
+ *            list are the Health view's); fps reads "N fps" with the render
+ *            detail in plain words in its tooltip; a clock skew warning
+ *            arrives in its held slot with the warn tone and moves nothing
+ *            (operator 2026-10-10)
  *   phosphor the served page with a hub has no Phosphor group; the shell
  *            bundle (shell-build.mjs) carries it, and every Phosphor pane
  *            passes the layout and strip checks at desktop, landscape phone
@@ -607,6 +613,43 @@ if (!ONLY || ONLY === 'strip') {
     scen(w + 'x' + h + ': the icon and word stack is vertically centered in every strip button', m.length >= 4 && m.every((b) => Math.abs(b.above - b.below) <= 1.5), JSON.stringify(m));
     scen(w + 'x' + h + ': the strip glyph is at most 18 px', m.every((b) => b.ico <= 18), m.map((b) => b.ico).join());
     if (SHOTS) await page.screenshot({ path: join(OUT, 'strip-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: Math.min(h, 340) } });
+    await ctx.close();
+  }
+}
+
+if (!ONLY || ONLY === 'bar') {
+  console.log('\ntop bar scenarios (operator 2026-10-10)');
+  for (const [w, h] of [[1428, 900], [1024, 768], [420, 860]]) {
+    // A short hub name at 420, so the bar has room for rx once no toggle takes it.
+    const { ctx, page } = await seeded({ width: w, height: h }, (ws) => (w > 560 ? fakeHub(ws) : fakeHub(ws, 'Bench')));
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('.linkbar .chip', { timeout: 15000 });
+    const wide = w > 560;
+    if (wide) await page.waitForFunction(() => /fps$/.test(document.querySelector('.linkbar .fps')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const bar = await page.evaluate(() => {
+      const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+      const fps = document.querySelector('.linkbar .fps');
+      return { labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter(shown).map((e) => e.textContent.trim().toLowerCase()),
+        text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').title || '',
+        rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
+          return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
+    });
+    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => l === 'tier' || l === 'rx')
+      && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
+    if (wide) scen(w + 'x' + h + ': render reads N fps; delay, held and skew are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
+      && /Smoothing delay \d+ ms/.test(bar.tip) && /No newer sample to draw: \d+% of frames/.test(bar.tip) && /Frame clock off wall clock by \d+ ms/.test(bar.tip), JSON.stringify(bar));
+    else scen(w + 'x' + h + ': the phone bar: no fps; rx shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
+    // A skewed wall clock: the warning takes its held slot (its width held; its height is its content's), nothing in the bar moves.
+    const rects = () => page.evaluate(() => [...document.querySelectorAll('.linkbar .wordmark, .linkbar .chip, .linkbar .render-warn')]
+      .filter((e) => !e.closest('.render-warn') || e.matches('.render-warn')).map((e) => { const b = e.getBoundingClientRect(); return (e.matches('.render-warn') ? [b.left, b.width] : [b.left, b.top, b.width, b.height]).map(Math.round).join(','); }).join(' | '));
+    const r0 = await rects();
+    await page.evaluate(() => { const now = Date.now.bind(Date); Date.now = () => now() - 40; });
+    const warned = await page.waitForFunction(() => /skew -?\d+ ms/.test(document.querySelector('.linkbar .render-warn')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false);
+    const warn = await page.evaluate(() => { const c = document.querySelector('.linkbar .render-warn .chip'); return c ? { shown: c.getClientRects().length > 0, warn: c.classList.contains('tone-warn'), tip: c.title } : null; });
+    if (wide) scen(w + 'x' + h + ': a clock skew over 2 ms shows inline in the warn tone', warned && !!warn && warn.shown && warn.warn && /Frame clock/.test(warn.tip), JSON.stringify(warn));
+    scen(w + 'x' + h + ': the render warning arriving moves nothing in the bar', r0 === await rects(), r0 + ' -> ' + await rects());
+    if (SHOTS) await page.screenshot({ path: join(OUT, 'bar-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: 80 } });
     await ctx.close();
   }
 }

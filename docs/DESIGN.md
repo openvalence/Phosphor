@@ -603,6 +603,21 @@ question in §10.8).
   and a long text ellipsizes with its full form in `title`. A user's own act
   (the rail's hide tab, the sidebar collapse, a disclosure, a window resize)
   may change heights, because it cannot cause a misinput elsewhere.
+- The top bar (operator ruling 2026-10-10, `ph-6ydd`; `src/ui/LinkBar.svelte`)
+  carries what someone looks at when something goes wrong: the activity
+  heatmap, the hub name, phase, tier, rx and the frame rate, then the window
+  buttons. A reading that fails that test moves to the Health view (§10.14),
+  never deleted: the address, the firmware and the control list (its size,
+  and whether this device's saved copy or the machine served it). The render
+  readout is `N fps` (`-- fps` until a rail draws); its tooltip says the
+  smoothing delay, how often the rail had no newer sample to draw (held) and
+  how far the frame clock is off the wall clock (skew, which the rail's
+  timing assumes is zero) in words. Held over 10 % and skew over 2 ms show
+  inline, warn toned, in a slot left of the fps held whether empty or not;
+  two at once ellipsize, the tooltip has both. Under 30 fps the fps chip
+  wears the warn tone. The fps and rx values hold fixed widths. Under 561 px
+  the fps and the warning slot shed; rx sheds whole where it does not fit,
+  never a sliver.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -1004,8 +1019,8 @@ connected, then merge the setting changes onto the machine, ticked per item.
   Each saved hub with a vault record offers Sim (the replay above). Never
   auto-connected, never saved, never the reconnect target.
 - **Marking**: the hub title reads `<name> (virtual)`, the phase chip reads
-  `virtual` (warn) where a machine reads `live`, and the hub chip reads
-  `virtual`. The strip stays rendered and acts on the virtual hub.
+  `virtual` (warn) where a machine reads `live`. The strip stays
+  rendered and acts on the virtual hub.
   **(planned)** the strip's status slot carries a standing
   `Virtual: nothing moves` at the lowest priority (`ph-2eo`).
 - **Merge** (`src/model/merge.js`, the Merge pane): a replay's ECHO on a
@@ -1226,6 +1241,8 @@ When something degrades, Phosphor says what and why, in plain words, with
 one thing to do. Nothing degrades silently, and nothing leaves the device on
 its own: no continuous telemetry, ever.
 
+- The Link card also lists the address and the control list, the Machine
+  card the firmware: the readings the top bar dropped (§10.3).
 - Three areas: Link, This device, Machine. The 26 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
@@ -1392,3 +1409,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
 | 2026-10-10 | §10.3, §10.13, plugins | The right dock's toggle leaves the top bar for the bottom status row's right end, beside the UI scale, in a slot held from the start so its arrival moves nothing; the top bar's under-560 px rx hide for it goes. The phone class drops quick access: no toggle, no drawer, no Pin item (the host leaves out `needsDock` menu items where it has no dock); pins stay stored and the plugin installed. One open state for the dock, the toggle and the stored pref; withdrawing the last dock closes it (the last unpin left the toggle reading open and the next pin reopened the dock, behind a teardown crash in the plugin slot) (`ph-6ydd`). | operator ("perhaps at the bottom, and fwiw, unlikely to be used with mobile, have to cut some things for space"; the unpin bug report. The toggle at the very end right of the scale, the build cell giving the held slot its room, the drawer kept for the non-phone handheld classes and now persisted with the column, and `needsDock` as the menu flag are the agent's, veto-able) |
+| 2026-10-10 | §10.3, §10.10, §10.14 | The top bar keeps what someone looks at when something goes wrong: heatmap, hub name, phase, tier, rx, fps. The catalog chip and the hub chip (address, firmware) move to the Health view's Link and Machine cards. Render reads `N fps`, its tooltip the smoothing delay, the held share and the clock skew in words; held over 10 % and skew over 2 ms show inline, warn toned, in a held slot; the fps and rx values hold fixed widths (`ph-6ydd`). | operator ("most of those indicators on the top can be condensed ... the fps keep"; the audit is the agent's, veto-able: the heatmap stays (activity at a glance, sheds first on handhelds), tier stays (why a control will not drive), the hub chip moves (the name says which machine; the address and firmware are for support), and the slot sits left of the fps with rx last so rx sheds whole) |

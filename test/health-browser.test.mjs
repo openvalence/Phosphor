@@ -208,6 +208,11 @@ ok('a stall here is never WiFi: no delay spike or WiFi cutout opened before the 
 ok('no cause guessed: no hub or unknown cutout', !all.some((i) => i.cond === 'cutout-hub' || i.cond === 'cutout-unknown'), all);
 ok('page hidden while streaming: "Phosphor is in the background"', all.some((i) => i.cond === 'background'), all);
 ok('the Link card shows how far ahead moves left', /\d+ ms/.test(await page.textContent('.health dl.pane-facts dd:nth-of-type(3)')));
+// Operator 2026-10-10: the address, the control list and the firmware are Health rows, not top bar chips.
+const moved = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.health dl.pane-facts dt')]
+  .filter((d) => /^(Address|Control list|Firmware)$/.test(d.textContent)).map((d) => [d.textContent, d.nextElementSibling.textContent.trim()])));
+ok('Health holds the address, the control list and the firmware', !!moved.Address && moved.Address !== '--'
+  && / B|KB|MB/.test(moved['Control list'] || '') && !!moved.Firmware, moved);
 
 if (!PLAN_DELAY) console.log('  [SKIP] hub late: valencesim has no --plan-delay-ms yet');
 else {

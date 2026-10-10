@@ -415,8 +415,11 @@ for (const [w, h] of [[1440, 900], [390, 844], [420, 860], [860, 420]]) {
       .map((v) => getComputedStyle(v).fontFamily)));
     const word = document.querySelector('.linkbar .wordmark');
     return { faces: [...faces], real: cs.filter((c) => getComputedStyle(c).color === real).map((c) => c.textContent.trim().split(/\s+/)[0]),
-      word: word.title === word.textContent, titles: cs.map((c) => c.title).filter(Boolean) };
+      word: word.title === word.textContent, titles: cs.map((c) => c.title).filter(Boolean),
+      labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim().toLowerCase()) };
   });
+  // Operator 2026-10-10: the address, firmware and control list are the Health view's, not the bar's.
+  ok(tag + ': the top bar chips are phase, tier, rx and fps only', chips.labels.every((l) => l === 'tier' || l === 'rx'), JSON.stringify(chips.labels));
   ok(tag + ': chip values share one face; reality only on liveness chips; no repeated tooltip', chips.faces.length === 1
     && chips.real.every((t) => /^(live|rx)$/i.test(t)) && chips.word && !chips.titles.some((t) => /firmware|0\.0\.0-fixture/.test(t)),
     JSON.stringify(chips));
