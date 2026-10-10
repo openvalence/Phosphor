@@ -1,33 +1,40 @@
 /**
  * latency-probe.mjs -- display latency from the hub's telemetry to the hero
- * numeral's paint (ph-6vh), measured against a live hub.
+ * numeral's paint (ph-6vh), stage by stage, measured against a live hub.
  *
  * Method:
  * - A driver session streams a sine through the real motion door
  *   (src/model/motion.js) every 20 ms: the window's center, +-AMP mm, FREQ Hz.
- * - The same session subscribes telemetry.position at the channel's ceiling
- *   and stamps each STATE frame on arrival. STATE frames carry no hub time,
- *   so this arrival is the hub's timeline as near as the wire gives it.
- * - The page samples `.hn-primary .hn-val` once per frame: its rAF posts a
- *   message, and the message handler reads the text and stamps it. That task
- *   runs after the frame's style, layout and paint, so the stamp is the paint
- *   of the value read (scan-out adds up to one display refresh, not seen here).
+ *   It also subscribes telemetry.position at the channel's ceiling (`wire`).
+ * - The page stamps its own position samples at each stage: arrival (a
+ *   WebSocket 'message' listener added before the app's own), state write
+ *   (the session's decode stamp, machine.sampleTs, whole ms), the rail's
+ *   push (window.__railArrivals), the numeral's text change (a
+ *   MutationObserver) and paint: a per-frame rAF posts a message whose
+ *   handler reads `.hn-primary .hn-val`; that task runs after the frame's
+ *   style, layout and paint (scan-out adds up to one refresh, not seen here).
+ *   The rail's frames (window.__railProbe) give the canvas's value.
  * - Node and page stamps are both moved onto Date.now() (each process's
  *   timeOrigin + now() minus Date.now(), averaged), the one system clock.
+ *   STATE frames carry no hub time, so the hub term is sent -> arrival.
  * - Sine fits at the known frequency (Nucleus tools/lag_probe.py's method)
- *   give the mean lag of sent -> wire (hub and engine), wire -> paint (the
- *   client) and sent -> paint (end to end). Per frame on the steep half of
- *   the sine, the painted value is inverted through the wire fit to the
- *   instant the hub reported it: median and p95 of paint minus that instant.
+ *   give each stage's mean lag. A numeral that holds each sample until the
+ *   next shows half the arrival period in the paint stage: that hold is
+ *   display lag. Per frame on the steep half of the sine, the painted value
+ *   is inverted through the arrival fit: median and p95 of paint minus the
+ *   instant the page received that value.
+ * - Exact: the share of the numeral's text changes that equal the newest
+ *   sample received by then, to the numeral's last digit.
  * - The first 2 s of every run are dropped (positioning move, render clock).
  *
  * Variants (one page build each): `after` is the tree as built; `before` is
- * the same tree with 5e7b206's three changes put back (TELEMETRY_HZ 25, the
- * schedule leads arrival by 30 ms at the untrimmed period, cap 150 ms). A
- * replacement that no longer matches fails the run instead of measuring the
- * wrong thing. `--cdp <url>` measures a page already open in a WebView2 or
- * Chromium started with --remote-debugging-port (the Tauri shell:
- * WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222).
+ * the same tree with ph-6vh's numeral change put back (the readout hands the
+ * numerals the rail's interpolated instant). A replacement that no longer
+ * matches fails the run instead of measuring the wrong thing. `--cdp <url>`
+ * runs both builds inside a WebView2 or Chromium started with
+ * --remote-debugging-port, navigating its first page to each (the Tauri
+ * shell: WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
+ * and a WEBVIEW2_USER_DATA_FOLDER of its own).
  *
  * COMMANDS MOTION inside the reported window. Never writes a setting, never
  * resumes a latch: a paused or halted hub fails the run.
@@ -69,29 +76,30 @@ const FREQ = Number(argOf('--freq', 0.8));
 const CDP = argOf('--cdp', null);
 const FORCE_HOME = argOf('--force-home', null);
 const WATCH = args.includes('--watch');
-const VARIANTS = CDP ? ['shell'] : argOf('--variants', 'before,after').split(',');
+const VARIANTS = argOf('--variants', 'before,after').split(',');
 const OUT = argOf('--out', null);
 const WARM_MS = 2000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- the A/B build ------------------------------------------------------------------
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const REVERT_5E7B206 = {
-  'src/model/wishes.js': [['export const TELEMETRY_HZ = 50;', 'export const TELEMETRY_HZ = 25;']],
-  'src/ui/hero/telebuf.js': [
-    ['const SCHEDULE_MAX_LEAD_MS = 60;', 'const SCHEDULE_MAX_LEAD_MS = 150;'],
-    ['ts = Math.max(tsMs, bufT[newestIdx] + Math.max(1, periodMs * SCHEDULE_PERIOD_TRIM));',
-      'ts = Math.max(tsMs + 30, bufT[newestIdx] + Math.max(1, periodMs));'],
+const REVERT_6VH = {
+  'src/ui/hero/RailWidget.svelte': [
+    ['get posVal() { return posNow; }, get speedVal() { return vel ? speedNow : speedDisplay; },',
+      'get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },'],
+    ['get targetVal() { return targetNow; },', 'get targetVal() { return targetDisplay; },'],
   ],
 };
 async function bundle(variant) {
   const done = new Set();
+  // load, not transform: a .svelte file must be rewritten before the svelte plugin compiles it.
   const revert = {
-    name: 'revert-5e7b206', enforce: 'pre',
-    transform(code, id) {
-      const key = Object.keys(REVERT_5E7B206).find((k) => id.replace(/\\/g, '/').endsWith(k));
+    name: 'revert-6vh', enforce: 'pre',
+    load(id) {
+      const key = Object.keys(REVERT_6VH).find((k) => id.replace(/\\/g, '/').endsWith(k));
       if (!key) return null;
-      for (const [a, b] of REVERT_5E7B206[key]) {
+      let code = readFileSync(id, 'utf8');
+      for (const [a, b] of REVERT_6VH[key]) {
         if (code.split(a).length !== 2) throw new Error('before variant: "' + a + '" is not in ' + key + ' exactly once');
         code = code.replace(a, b);
       }
@@ -102,7 +110,7 @@ async function bundle(variant) {
   const out = mkdtempSync(join(tmpdir(), 'latency-' + variant + '-'));
   await build({ root: ROOT, configFile: join(ROOT, 'vite.config.js'), logLevel: 'error',
     plugins: variant === 'before' ? [revert] : [], build: { outDir: out, emptyOutDir: true } });
-  if (variant === 'before' && done.size !== Object.keys(REVERT_5E7B206).length) throw new Error('before variant: reverted ' + [...done]);
+  if (variant === 'before' && done.size !== Object.keys(REVERT_6VH).length) throw new Error('before variant: reverted ' + [...done]);
   const html = readFileSync(join(out, 'index.html'));
   rmSync(out, { recursive: true, force: true });
   return html;
@@ -258,12 +266,24 @@ const SAMPLER = () => {
   let s = 0;
   for (let i = 0; i < 200; i++) s += performance.timeOrigin + performance.now() - Date.now();
   const off = s / 200;
-  const lat = window.__lat = { t: [], v: [], on: false, off };
+  const T = () => performance.timeOrigin + performance.now() - off;
+  const lat = window.__lat = { t: [], v: [], msg: [], dom: [], on: false, off };
+  // Added in the constructor, so it runs before every listener the app adds.
+  const WS = window.WebSocket;
+  window.WebSocket = class extends WS {
+    constructor(url, protocols) { super(url, protocols); this.addEventListener('message', () => { if (lat.on) lat.msg.push(T()); }); }
+  };
+  let watched = null;
+  const mo = new MutationObserver(() => {
+    const x = parseFloat(watched && watched.textContent);
+    if (lat.on && Number.isFinite(x)) lat.dom.push([T(), x]);
+  });
   const mc = new MessageChannel();
   mc.port1.onmessage = () => {
     const el = document.querySelector('.hn-primary .hn-val');
+    if (el !== watched) { mo.disconnect(); watched = el; if (el) mo.observe(el, { characterData: true, childList: true, subtree: true }); }
     const x = el ? parseFloat(el.textContent) : NaN;
-    if (lat.on && Number.isFinite(x)) { lat.t.push(performance.timeOrigin + performance.now() - off); lat.v.push(x); }
+    if (lat.on && Number.isFinite(x)) { lat.t.push(T()); lat.v.push(x); }
   };
   const tick = () => { mc.port2.postMessage(0); requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
@@ -276,24 +296,26 @@ const srv = createServer((q, r) => {
 });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const browser = CDP ? await chromium.connectOverCDP(CDP) : await chromium.launch();
+let cdpReady = false;
 
 async function measure(variant) {
   let page, ctx;
+  html = await bundle(variant);
+  const url = 'http://127.0.0.1:' + srv.address().port + '/?hub=' + HOST + ':' + PORT;
   if (CDP) {
-    page = browser.contexts().flatMap((c) => c.pages()).find((p) => !p.url().startsWith('devtools:'));
-    await page.evaluate(SAMPLER);
+    ctx = browser.contexts()[0];
+    page = ctx.pages().find((p) => !p.url().startsWith('devtools:'));
+    if (!cdpReady) { await ctx.addInitScript(SAMPLER); cdpReady = true; }
   } else {
-    html = await bundle(variant);
     ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(SAMPLER);
     page = await ctx.newPage();
-    await page.goto('http://127.0.0.1:' + srv.address().port + '/?hub=' + HOST + ':' + PORT);
   }
+  await page.goto(url);
   await page.waitForFunction(() => Number.isFinite(parseFloat(document.querySelector('.hn-primary .hn-val')?.textContent)), null, { timeout: 20000 });
   await sleep(3000);
   wire.length = 0;
   const sent = [];
-  const delays = [];
   let streaming = !WATCH;
   const t0 = now();
   const stream = (async () => {
@@ -307,51 +329,75 @@ async function measure(variant) {
       await sleep(Math.max(0, next - now()));
     }
   })();
-  await page.evaluate(() => { window.__lat.on = true; });
-  const chip = setInterval(async () => {
-    const m = /(\d+) ms/.exec(await page.locator('.chip:has(.chip-lbl:text-is("render")) .mono').textContent().catch(() => ''));
-    if (m) delays.push(Number(m[1]));
-  }, 500);
+  await page.evaluate(() => { window.__lat.on = true; window.__railArrivals = []; window.__railProbe = []; });
   await sleep(SECONDS * 1000);
-  clearInterval(chip);
-  const paint = await page.evaluate(() => { window.__lat.on = false; return { t: window.__lat.t, v: window.__lat.v, off: window.__lat.off }; });
+  const pg = await page.evaluate(() => {
+    const L = window.__lat, o = L.off;
+    L.on = false;
+    const arr = window.__railArrivals, frames = window.__railProbe;
+    window.__railArrivals = null; window.__railProbe = null;
+    return {
+      msg: L.msg, dom: L.dom, paint: L.t.map((t, i) => [t, L.v[i]]), off: o,
+      // [state write (Date.now ms), rail push (epoch, offset removed), value]
+      arrivals: arr.map(([w, e, v]) => [w, e - o, v]),
+      // [frame (epoch), render delay, canvas value], fresh frames only
+      frames: frames.filter((f) => f[4] && f[2] != null).map((f) => [performance.timeOrigin + f[0] - o, performance.timeOrigin + f[0] - f[1], f[2]]),
+    };
+  });
   streaming = false;
   await stream;
-  if (ctx) { await page.goto('about:blank').catch(() => {}); await ctx.close(); }
+  if (!CDP) { await page.goto('about:blank').catch(() => {}); await ctx.close(); }
 
   // From here on every time is ms after the stream started.
-  const rel = (xs) => xs.map(([t, v]) => [t - t0, v]).filter((x) => x[0] >= WARM_MS && Number.isFinite(x[1]));
-  const S = rel(sent), W = rel(wire), P = rel(paint.t.map((t, i) => [t, paint.v[i]]));
+  const keep = (xs) => xs.map(([t, v]) => [t - t0, v]).filter((x) => x[0] >= WARM_MS && Number.isFinite(x[1]));
+  const S = keep(sent), N = keep(wire), P = keep(pg.paint), D = keep(pg.dom);
+  // A sample's arrival is the last WebSocket message dispatched before the rail's push of it.
+  const msg = pg.msg, A = [], Wr = [], E = [];
+  let k = 0;
+  for (const [wr, e, v] of pg.arrivals) {
+    while (k < msg.length - 1 && msg[k + 1] <= e) k++;
+    if (msg[k] <= e) A.push([msg[k], v]);
+    Wr.push([wr, v]); E.push([e, v]);
+  }
+  const AA = keep(A), W = keep(Wr), EE = keep(E);
+  const F = keep(pg.frames.map((f) => [f[0], f[2]]));
+  const delays = pg.frames.map((f) => f[1]).sort((a, b) => a - b);
   if (WATCH) {
-    const L = bestShift(W, P), per = perFrameCrossing(W, P, L), vs = W.map((x) => x[1]);
-    const gaps = W.slice(1).map((x, i) => x[0] - W[i][0]).sort((a, b) => a - b);
+    const L = bestShift(N, P), per = perFrameCrossing(N, P, L), vs = N.map((x) => x[1]);
+    const gaps = N.slice(1).map((x, i) => x[0] - N[i][0]).sort((a, b) => a - b);
     return {
-      variant, wire: W.length, frames: P.length, steepFrames: per.length, wireSpanMm: Math.max(...vs) - Math.min(...vs),
-      wireGapMs: { p50: pct(gaps, 0.5), p95: pct(gaps, 0.95) }, renderDelayMs: { p50: pct(delays.sort((a, b) => a - b), 0.5) },
+      variant, wire: N.length, frames: P.length, steepFrames: per.length, wireSpanMm: Math.max(...vs) - Math.min(...vs),
+      wireGapMs: { p50: pct(gaps, 0.5), p95: pct(gaps, 0.95) }, renderDelayMs: { p50: pct(delays, 0.5) },
       clientMs: L, clientPerFrameMs: { p50: pct(per, 0.5), p95: pct(per, 0.95) },
-      ...(OUT ? { series: { wire: W, paint: P } } : {}),
+      ...(OUT ? { series: { wire: N, paint: P } } : {}),
     };
   }
   const w = 2 * Math.PI * FREQ / 1000;
-  const fS = fitSine(S.map((x) => x[0]), S.map((x) => x[1]), w);
-  const fW = fitSine(W.map((x) => x[0]), W.map((x) => x[1]), w);
-  const fP = fitSine(P.map((x) => x[0]), P.map((x) => x[1]), w);
-  const client = lagMs(fW, fP);
-  const per = perSampleLag(fW, P.map((x) => x[0]), P.map((x) => x[1]), client);
-  const perEnd = perSampleLag(fS, P.map((x) => x[0]), P.map((x) => x[1]), lagMs(fS, fP));
-  const gaps = W.slice(1).map((x, i) => x[0] - W[i][0]).sort((a, b) => a - b);
-  const frames = P.slice(1).map((x, i) => x[0] - P[i][0]).sort((a, b) => a - b);
+  const fit = (X) => fitSine(X.map((x) => x[0]), X.map((x) => x[1]), w);
+  const fS = fit(S), fN = fit(N), fA = fit(AA), fW = fit(W), fE = fit(EE), fF = fit(F), fD = fit(D), fP = fit(P);
+  const per = perSampleLag(fA, P.map((x) => x[0]), P.map((x) => x[1]), lagMs(fA, fP));
+  const gaps = AA.slice(1).map((x, i) => x[0] - AA[i][0]).sort((a, b) => a - b);
+  // Exact: a text change equals the newest sample received by then, to the numeral's last digit.
+  const digits = Math.max(0, ...D.map(([, x]) => (String(x).split('.')[1] || '').length));
+  const half = 0.5 * 10 ** -digits + 1e-9;
+  let j = 0, same = 0;
+  for (const [t, x] of D) {
+    while (j < AA.length - 1 && AA[j + 1][0] <= t) j++;
+    if (AA.length && AA[j][0] <= t && Math.abs(AA[j][1] - x) <= half) same++;
+  }
   const r = {
-    variant, sent: S.length, wire: W.length, frames: P.length, steepFrames: per.length,
-    wireGapMs: { p50: pct(gaps, 0.5), p95: pct(gaps, 0.95) }, frameMs: { p50: pct(frames, 0.5), p95: pct(frames, 0.95) },
-    renderDelayMs: { p50: pct(delays.sort((a, b) => a - b), 0.5) },
-    hubMs: lagMs(fS, fW), clientMs: client, endToEndMs: lagMs(fS, fP),
+    variant, sent: S.length, arrivals: AA.length, frames: P.length, steepFrames: per.length, textChanges: D.length,
+    arrivalGapMs: { p50: pct(gaps, 0.5), p95: pct(gaps, 0.95) }, renderDelayMs: { p50: pct(delays, 0.5) },
+    // hub: sent -> arrival; decode: arrival -> state write; push: write -> rail push;
+    // text: write -> numeral text; paint: text -> painted frame (holds included).
+    stagesMs: { hub: lagMs(fS, fA), decode: lagMs(fA, fW), push: lagMs(fW, fE), text: lagMs(fW, fD), paint: lagMs(fD, fP) },
+    clientMs: lagMs(fA, fP), endToEndMs: lagMs(fS, fP), canvasMs: lagMs(fA, fF), driverHubMs: lagMs(fS, fN),
     clientPerFrameMs: { p50: pct(per, 0.5), p95: pct(per, 0.95) },
-    endToEndPerFrameMs: { p50: pct(perEnd, 0.5), p95: pct(perEnd, 0.95) },
-    wireAmpMm: fW.amp, ampRatio: fP.amp / fW.amp, corr: corr(fW, P.map((x) => x[0]), P.map((x) => x[1]), client),
-    clockOffsetsMs: { node: NODE_OFF, page: paint.off },
+    exact: same / Math.max(1, D.length),
+    wireAmpMm: fA.amp, ampRatio: fP.amp / fA.amp, corr: corr(fA, P.map((x) => x[0]), P.map((x) => x[1]), lagMs(fA, fP)),
+    clockOffsetsMs: { node: NODE_OFF, page: pg.off },
   };
-  if (OUT) r.series = { sent: S, wire: W, paint: P };
+  if (OUT) r.series = { sent: S, wire: N, arrival: AA, write: W, push: EE, canvas: F, text: D, paint: P };
   return r;
 }
 
@@ -367,10 +413,13 @@ try {
         + ' p95 ' + f(r.wireGapMs.p95) + ' | ' + r.steepFrames + '/' + r.frames + ' frames, wire span ' + f(r.wireSpanMm) + ' mm');
       continue;
     }
-    console.log(v.padEnd(7) + ' hub ' + f(r.hubMs) + ' ms | client ' + f(r.clientMs) + ' ms (per frame p50 ' + f(r.clientPerFrameMs.p50)
-      + ', p95 ' + f(r.clientPerFrameMs.p95) + ') | end to end ' + f(r.endToEndMs) + ' ms (p50 ' + f(r.endToEndPerFrameMs.p50) + ', p95 '
-      + f(r.endToEndPerFrameMs.p95) + ') | render delay ' + f(r.renderDelayMs.p50) + ' ms | wire gap p50 ' + f(r.wireGapMs.p50) + ' p95 '
-      + f(r.wireGapMs.p95) + ' | ' + r.steepFrames + '/' + r.frames + ' frames, wire amp ' + f(r.wireAmpMm) + ' mm, ratio ' + r.ampRatio.toFixed(3) + ', corr ' + r.corr.toFixed(3));
+    const st = r.stagesMs;
+    console.log(v.padEnd(7) + ' stages: hub ' + f(st.hub) + ' | decode ' + f(st.decode) + ' | push ' + f(st.push) + ' | text ' + f(st.text)
+      + ' | paint ' + f(st.paint) + ' ms || client ' + f(r.clientMs) + ' ms (per frame p50 ' + f(r.clientPerFrameMs.p50) + ', p95 '
+      + f(r.clientPerFrameMs.p95) + ') | canvas ' + f(r.canvasMs) + ' | end to end ' + f(r.endToEndMs) + ' ms');
+    console.log(' '.repeat(7) + ' render delay ' + f(r.renderDelayMs.p50) + ' ms | arrival gap p50 ' + f(r.arrivalGapMs.p50) + ' p95 '
+      + f(r.arrivalGapMs.p95) + ' | exact ' + (100 * r.exact).toFixed(1) + '% of ' + r.textChanges + ' text changes | ' + r.steepFrames + '/'
+      + r.frames + ' frames, amp ' + f(r.wireAmpMm) + ' mm, ratio ' + r.ampRatio.toFixed(3) + ', corr ' + r.corr.toFixed(3));
   }
 } finally {
   if (OUT) writeFileSync(OUT, JSON.stringify({ host: HOST + ':' + PORT, amp: AMP, freq: FREQ, seconds: SECONDS, runs }, null, 1));
