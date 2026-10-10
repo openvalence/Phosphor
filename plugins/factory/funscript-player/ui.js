@@ -1497,7 +1497,7 @@ export function createPlayer(api) {
       render();
     }
     // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The open
-    // analyzer's rows read the hub when due (analyzer.js REREAD_MS); a collapsed one only checks whether its render is current.
+    // analyzer's rows read the hub when api.changed moves (analyzer.js); a collapsed one only checks whether its render is current.
     const realShare = () => (fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null);
     const hubKey = (pu, stale, c) => pu + ' ' + stale + ' ' + c.vmax + ' ' + c.spanMm;
     let hubSeen = '';

@@ -765,9 +765,9 @@ export function kinText(state: 'wasm'|'fallback', render | {error} | null);   //
 export function mountAnalyzer(el, { api, trace, script, T, fit, onRender });   // trace(), script() (the wire Script, ctl.wire),
   // T(): the player's; fit(): ctl.fit; onRender(): a render, the version, a failure or an Apply/Discard answer landed
   // -> { frame(shown = true) (false: the render check alone, no row paint, no lag), mode: 'live'|'preview', kinetic: KineticRender | null, fit: {sc, key, extent} | null, unmount() }
-  // frame reads the hub (row values, status, gate, tooltip; limits, window; the trial mark) at most every 250 ms, never per
-  // frame, and at once after a draft, a write, Apply or Discard, a new catalog or an open; a frame that skipped its read gets
-  // one more when it is due
+  // frame reads the hub (row values, status, gate, tooltip; limits, window; the trial mark) only when api.changed moved for a
+  // channel it reads, or after a draft, a write, Apply or Discard, a new catalog or an open; a frame where nothing changed reads
+  // nothing from the host
   // kinetic: the latest render of the current script() (null while a newer script renders) through kinetic.wasm with limit.input.*, geometry.max_travel and
   // window.min/max by role and the Tuning rows as shown (drafts included), plus {t0, dtMs, lo, hi}
   // fit: once kinetic is current and fit() is a Script, one render of it with the same mm geometry in the middle

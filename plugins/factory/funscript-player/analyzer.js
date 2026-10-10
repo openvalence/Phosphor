@@ -29,11 +29,11 @@
 //   own min and max with the walls out of reach: the same mm geometry in the middle half of a window twice as
 //   wide, so the window guards (end velocity cut, clamp) never bend it. Without the rail room for that window
 //   the measure is null and the controller keeps its curve estimate.
-// - The hub's values reach the analyzer with no notice of their own: the rows (value, status, gate, tooltip),
-//   the render's limits and window and the trial mark are read at most every REREAD_MS, never per frame, and
-//   at once after a change made here (a draft, a write, Apply or Discard), a new catalog or an open. A frame
-//   that skips its read gets one more frame when the read is due. A change made elsewhere reaches the rows
-//   and the render within REREAD_MS of a frame (ph-uve3).
+// - The rows (value, status, gate, tooltip), the render's limits and window and the trial mark are read on
+//   the frame after api.changed moves for any channel they read (a sample, a gate, safety or shadow change,
+//   another client's write included), at once after a change made here (a draft, a write, Apply or Discard),
+//   a new catalog or an open, and never otherwise: a frame where nothing changed reads nothing from the host
+//   (ph-uve3). Without api.changed (NaN) every frame reads.
 
 import { posAt } from './funscript.js';
 import { applyT } from './scheduler.js';
@@ -47,7 +47,7 @@ export const KIN_MAX_SAMPLES = 200000;
 export const WIDE_AT = 0.25, WIDE_SPAN = 0.5;
 const CONTROLS = new Set(['slider', 'stepper', 'toggle', 'segmented', 'select']);
 const TRIAL_ROLE = 'action.trial';
-const REREAD_MS = 250;
+const MARK_ROLE = 'meta.trial_pending';
 // The roles the render reads: a row's (its draft included) when a row carries one, else the hub's field.
 const KIN_ROLES = ['limit.input.speed', 'limit.input.accel', 'limit.input.jerk', 'geometry.max_travel', 'window.min', 'window.max'];
 
@@ -205,7 +205,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [], cap = false;
   let roleIt = new Map(), roleF = {}, roleV = {}, inputs = null;
-  let readAt = -Infinity, readTimer = 0, pend = false, wasShown = false, lastShown = false;
+  let chans = [], seen = NaN, pend = false, wasShown = false;
   const btn = (text, tip) => h('button', { type: 'button', class: 'og-btn sm', text, title: tip });
   const bLive = btn(COPY.live, COPY.liveTip);
   const bPrev = btn(COPY.preview, COPY.previewTip);
@@ -227,17 +227,19 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     kin.ready.then((v) => { version = v; onRender(); }, kinFail);
   } catch (e) { kinFail(e); }
   const shown = (it) => Number(it.draft != null ? it.draft : it.val);
-  const reread = () => { readAt = -Infinity; };
-  /** The hub's values when due; false when not, and the frame that skipped gets one more when the read is due. */
+  const reread = () => { seen = NaN; };
+  /** The sum of api.changed over the channels the analyzer reads; NaN without it. */
+  function stamp() {
+    if (!api.changed) return NaN;
+    let s = api.changed(MARK_ROLE);
+    for (const c of chans) s += api.changed(c);
+    return s;
+  }
+  /** The hub's values when api.changed moved for a channel they read, or after reread(); false when nothing moved. */
   function read(open) {
-    const now = performance.now(), wait = readAt + REREAD_MS - now;
-    if (wait > 0) {
-      if (!readTimer) readTimer = setTimeout(() => { readTimer = 0; frame(lastShown); }, wait);
-      return false;
-    }
-    clearTimeout(readTimer);
-    readTimer = 0;
-    readAt = now;
+    const s = stamp();
+    if (s === seen) return false;
+    seen = s;
     for (const it of rows) {
       it.val = api.value(it.f);
       if (!open) continue;
@@ -362,6 +364,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     roleIt = new Map();
     for (const it of rows) if (it.f.role && !roleIt.has(it.f.role)) roleIt.set(it.f.role, it);
     roleF = Object.fromEntries(KIN_ROLES.map((r) => [r, roleIt.has(r) ? null : api.field(r)]));
+    chans = [...new Set([...rows.map((it) => it.f.channelId), ...Object.values(roleF).filter(Boolean).map((f) => f.channelId)])];
     roleV = {};
     inputs = null;
     reread();
@@ -378,10 +381,10 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   }
 
   let lagIn = null;   // [trace length, its last point, script, T]: what lagText was measured over
-  /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row reads the hub. */
+  /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row paint. */
   function frame(shown = true) {
-    lastShown = shown;
-    if (api.catalog() !== model) build();
+    // A new catalog bumps every sequence, so an unmoved stamp needs no catalog read.
+    if (stamp() !== seen && api.catalog() !== model) build();
     if (shown && !wasShown) reread();
     wasShown = shown;
     const fresh = read(shown);
@@ -416,6 +419,6 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     get mode() { return mode; },
     get kinetic() { return kinR && kinR.pos && kinR.sc === script() ? kinR : null; },
     get fit() { return fitR; },
-    unmount() { clearTimeout(readTimer); readTimer = 0; if (kin) kin.close(); root.remove(); },
+    unmount() { if (kin) kin.close(); root.remove(); },
   };
 }

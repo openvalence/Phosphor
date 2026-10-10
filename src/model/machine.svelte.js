@@ -44,6 +44,7 @@ import { MAX_SUBSCRIBE_HZ, regrow, telemetryChannelIds } from './wishes.js';
 import { ROLE } from './roles.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
+import { bump } from './changes.js';
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -592,6 +593,7 @@ export function connect(opts = {}) {
   session.on('state', (channelId, sample, tsMs) => {
     machine.samples[channelId] = rawSample(sample);
     machine.sampleTs[channelId] = tsMs || Date.now();
+    bump(channelId);
     machine.stats.statePushes++;
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
     machine.stats.lastRxMs = Date.now();
