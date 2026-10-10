@@ -57,6 +57,7 @@
   import { prefs, setPref } from './model/prefs.js';
   import { OFF, toggle, toggleBar, osFullscreen } from './model/fullscreen.js';
   import { scrollshade } from './ui/scrollshade.js';
+  import { IDLE_MS } from './plugins/kit.js';
   import RailLayouts from './shell/RailLayouts.svelte';
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
@@ -207,6 +208,23 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
+  // A media page's bare fullscreen (ph-9t5l.7): the video edge to edge, the caret a corner hotspot over it that shows on
+  // pointer movement or Tab and hides with the stage overlay (kit IDLE_MS).
+  const mediaBare = $derived(isFull && full.bare && !!current?.page?.mediaFullscreen);
+  let caretWoke = $state(false);
+  $effect(() => {
+    if (!mediaBare) return;
+    let t;
+    const wake = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Tab') return;
+      caretWoke = true;
+      clearTimeout(t);
+      t = setTimeout(() => { caretWoke = false; }, IDLE_MS);
+    };
+    const evs = ['pointermove', 'pointerdown', 'keydown'];
+    for (const ev of evs) window.addEventListener(ev, wake);
+    return () => { clearTimeout(t); caretWoke = false; for (const ev of evs) window.removeEventListener(ev, wake); };
+  });
   // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
   // phosphor-page-status of each source in the pane (a plugin page, or a card
   // on the Dash or a category page), newest last. TopStrip's status slot shows
@@ -607,7 +625,7 @@
 
 {#snippet stripWrench()}
   <button type="button" class="strip-wrench" aria-pressed={dashEdit.on} aria-label={dashEdit.on ? 'Done editing' : 'Edit layout'}
-          disabled={dashEdit.on && !!redHint()} title={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
+          disabled={dashEdit.on && !!redHint()} data-tip={dashEdit.on ? redHint() || 'Done editing' : 'Edit layout'} onclick={() => (dashEdit.on = !dashEdit.on)}>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 1.5a4 4 0 0 0-4.6 5.2L1.5 11.1a1.5 1.5 0 0 0 2.1 2.1l4.4-4.4A4 4 0 0 0 13.3 4.2L11 6.5 9.5 5l2.3-2.3a4 4 0 0 0-1.3-1.2z"/></svg>
   </button>
 {/snippet}
@@ -617,7 +635,7 @@
           aria-selected={current && current.id === t.id}
           tabindex={current && current.id === t.id ? 0 : -1}
           class:on={current && current.id === t.id}
-          title={t.label}
+          data-tip={t.label} aria-label={mini ? t.label : null}
           onclick={() => (t.id === 'machine' ? pickLayout('Default') : selectTab(t.id))}>
     <span class="rail-glyph" aria-hidden="true"><svg viewBox="0 0 16 16"><path d={navIcon(t)} /></svg></span>
     {#if !mini}<span class="rail-name">{t.label}</span>{/if}
@@ -638,16 +656,16 @@
                    style:--n={(visibleGroups.diagAll ? 1 : 0) + (visibleGroups.adv ? 1 : 0) + (hasDefaults ? 1 : 0)}>
                 {#if visibleGroups.diagAll}
                   <button type="button" aria-pressed={showDiagnostic} onclick={() => (showDiagnostic = !showDiagnostic)}
-                          title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
+                          data-tip={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}><b>{visibleGroups.diagAll}</b> diag</button>
                 {/if}
                 {#if visibleGroups.adv}
                   <button type="button" aria-pressed={showAdvanced} onclick={toggleAdvanced}
-                          title={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
+                          data-tip={showAdvanced ? 'Hide advanced' : 'Show advanced'}><b>{visibleGroups.adv}</b> adv</button>
                 {/if}
                 {#if hasDefaults}
                   <button type="button" class="reset" class:done={resetDone} disabled={!!resetWhy}
                           use:hold={{ ms: 1000, onfire: holdReset, key: current.id + drill }}
-                          title={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
+                          data-tip={resetWhy || 'Hold 1 s to reset ' + (drillItem ? 'this group' : 'this page') + ' to defaults'}
                           >{resetDone ? 'reset ✓' : 'reset'}</button>
                 {/if}
               </div>
@@ -660,7 +678,7 @@
 {/snippet}
 
 {#snippet pane()}
-  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull}>
+  <main class="pane" class:full={isFull} class:bare={isFull && full.bare} class:media={mediaBare} class:fill={!!current?.page?.fill} class:fit={current?.id === 'log'} use:scrollshade={isFull && !mediaBare}>
     <div class="pane-main" class:switching class:plugin={!!current?.page} onanimationend={() => (switching = false)}>
       {#key current.id}
       {#if current.pane}
@@ -719,10 +737,10 @@
         <QuickRail open={quickOpen} onclick={(e) => askQuick('toggle', e.currentTarget)} />
       {/if}
       {#if current.page?.fields && !current.page.mediaFullscreen}
-        <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} title="Fullscreen, F11"
+        <button class="og-btn sm" class:on={isFull} type="button" aria-pressed={isFull} data-tip="Fullscreen, F11"
                 onclick={() => (full = toggle(full))}>Fullscreen</button>
         {#if OS_SHELL}
-          <select class="og-btn sm" aria-label="Fullscreen mode" title="In window / Borderless" value={$prefs.fullscreen}
+          <select class="og-btn sm" aria-label="Fullscreen mode" data-tip="In window / Borderless" value={$prefs.fullscreen}
                   onchange={(e) => setPref('fullscreen', e.currentTarget.value)}>
             <option value="window">In window</option>
             <option value="borderless">Borderless</option>
@@ -733,16 +751,16 @@
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
                   aria-label={visibleGroups.diagAll + ' diagnostic'}
-                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
+                  data-tip={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
         {/if}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
                   aria-label={visibleGroups.adv + ' advanced'}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
+                  data-tip={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
-                  title={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
+                  data-tip={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
                   onclick={resetCategory}>Reset</button>
         {/if}
         <!-- Handheld: an icon and the count in a fixed chip, so the one 48 px row holds (DESIGN §10.3). -->
@@ -778,7 +796,7 @@
         <button type="button" class="rail-collapse" onclick={toggleRail}
                 aria-expanded={!railMini}
                 aria-label={railMini ? 'Expand navigation' : 'Collapse navigation'}
-                title={railMini ? 'Expand navigation' : 'Collapse navigation'}>
+                data-tip={railMini ? 'Expand navigation' : 'Collapse navigation'}>
           <span aria-hidden="true">{railMini ? '»' : '«'}</span>
         </button>
         {@render sideTabs(railMini, railOps)}
@@ -815,7 +833,7 @@
                      use:focusNode onkeydown={(e) => { if (e.key === 'Enter') stripCommit(); else if (e.key === 'Escape') { e.stopPropagation(); stripAdding = false; } }}
                      onblur={() => (stripAdding = false)} />
             {:else}
-              <button type="button" aria-label="Add layout" title="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
+              <button type="button" aria-label="Add layout" data-tip="Add layout" onclick={() => { stripName = ''; stripBad = false; stripAdding = true; }}>+</button>
             {/if}
           {/if}
         {/each}
@@ -827,8 +845,8 @@
   {/if}
 
   {#if isFull}
-    <button type="button" class="full-caret" class:bare={full.bare} aria-expanded={!full.bare}
-            aria-label={full.bare ? 'Show bar' : 'Hide bar'} title={full.bare ? 'Show bar' : 'Hide bar'}
+    <button type="button" class="full-caret" class:bare={full.bare} class:hot={mediaBare} class:woke={caretWoke} aria-expanded={!full.bare}
+            aria-label={full.bare ? 'Show bar' : 'Hide bar'} data-tip={full.bare ? 'Show bar' : 'Hide bar'}
             onclick={() => (full = toggleBar(full))}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 7.5l3-3 3 3"/></svg>
     </button>
@@ -1214,4 +1232,16 @@
   :global(:root[data-cutout-top]) .full-caret.bare { left: auto; right: calc(var(--cutout-r) + var(--cutout-w) + var(--sp-3)); transform: none; }
   .full-caret svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
   .full-caret.bare svg { transform: rotate(180deg); }
+  /* A media page's bare fullscreen (ph-9t5l.7): no padding and no scroll shade, the video edge to edge; the caret floats in
+     the top left corner, inset like the stop pair, and is display: none at rest so only the pair sits over the video. */
+  .pane.full.bare.media { padding: 0; }
+  .full-caret.hot {
+    display: none;
+    top: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
+    left: max(var(--sp-2), calc(var(--corner-tl, 0px) * .3));
+    transform: none;
+    border-top: 1px solid var(--line);
+    border-radius: var(--r-s);
+  }
+  .full-caret.hot:is(.woke, :hover, :focus-visible) { display: grid; }
 </style>

@@ -290,6 +290,8 @@ console.log('\n--- desktop 1280x800 ---');
   ok('full: pointer movement brings it to full opacity', (await bareState()).opacity === '1');
   await page.waitForTimeout(1800);
   ok('full: and back to half at rest', (await bareState()).opacity === '0.5');
+  // The media page's caret is a corner hotspot shown on pointer movement (ph-9t5l.7).
+  await page.mouse.move(310, 410);
   await page.click('.full-caret');
   await page.waitForTimeout(200);
   ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
@@ -326,7 +328,7 @@ let deskIds = [], deskTabs = [];
 {
   const { ctx, page } = await boot({ width: 1428, height: 900 }, { probe: true });
   await page.waitForSelector('[data-tab-id="' + PROBE_ID + '"]', { timeout: 15000 });
-  deskTabs = await page.$$eval('nav.rail [role=tab]', (ts) => ts.map((t) => ({ id: t.dataset.tabId, label: t.title,
+  deskTabs = await page.$$eval('nav.rail [role=tab]', (ts) => ts.map((t) => ({ id: t.dataset.tabId, label: t.dataset.tip,
     path: t.classList.contains('sub') ? 'Phosphor › Plugins' : t.closest('.rail-sec').querySelector('.rail-lbl').textContent.trim() })));
   deskIds = deskTabs.map((t) => t.id);
   await ctx.close();
@@ -339,7 +341,7 @@ for (const [w, h] of [[420, 860], [860, 420], [200, 390]]) {
   const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
   await page.waitForSelector('.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(400);
-  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.getAttribute('data-tip'), x: b.getAttribute('aria-expanded') }; });
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.dataset.tip, x: b.getAttribute('aria-expanded') }; });
   ok(tag + ': no tab strip; the hamburger is a 40 px target, aria-expanded, title Menu', await page.locator('nav.tabs').count() === 0
     && btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.x === 'false', JSON.stringify(btn));
   const r0 = await outside(page);
@@ -475,7 +477,7 @@ for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 p
       document.body.append(probe);
       const ink = getComputedStyle(probe).color;
       probe.remove();
-      return { kind: s.dataset.kind, text: t ? t.textContent.slice(0, 20) : '', title: t ? t.title : '', warnInk: !!t && getComputedStyle(t).color === ink,
+      return { kind: s.dataset.kind, text: t ? t.textContent.slice(0, 20) : '', title: t ? t.dataset.tip : '', warnInk: !!t && getComputedStyle(t).color === ink,
         clamped: !!t && (t.scrollHeight <= t.clientHeight + 1 || getComputedStyle(t).webkitLineClamp === '2') };
     }, SLOT));
   }
@@ -924,6 +926,8 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
     await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
     await page.keyboard.press('F11');
     await page.waitForTimeout(400);
+    await page.mouse.move(w / 2, h / 2);
+    await page.waitForTimeout(150);
     await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
     // The caret sits above the strip (z 31 over 30): over the pair it would take a Pause tap.
     const over = await page.evaluate(() => {

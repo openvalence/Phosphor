@@ -138,7 +138,7 @@
       </div>
     </div>
 
-    <p class="cmap-read mono" data-empty={!readout} title={readout ? readout.join(' · ') : PROMPT}>
+    <p class="cmap-read mono" data-empty={!readout} data-tip={readout ? readout.join(' · ') : PROMPT}>
       {#if readout}{#each readout as part, i (i)}<span>{part}</span>{/each}{:else}{PROMPT}{/if}
     </p>
   </div>

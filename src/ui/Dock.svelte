@@ -82,7 +82,7 @@
       {:else}
         <h3 class="dash-title">{cur.label}</h3>
       {/if}
-      <button type="button" class="og-btn sm ui-btn dock-x" title="Close" aria-label="Close" onclick={() => setDockOpen(false)} {@attach closeIcon}></button>
+      <button type="button" class="og-btn sm ui-btn dock-x" data-tip="Close" aria-label="Close" onclick={() => setDockOpen(false)} {@attach closeIcon}></button>
     </div>
     <div class="dock-body" use:scrollshade>
       {#key cur.id}<cur.component fields={{}} hero={cur} />{/key}

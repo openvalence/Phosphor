@@ -100,13 +100,13 @@
 {#if hubs.mode === 'ble'}<span class="sb-ble mono">BLE</span>{/if}
 {#if win}
   <span class="sb-win" bind:this={winEl}>
-    <button class="sb-wbtn" aria-label="Minimize" title="Minimize" onclick={() => win.minimize()}>
+    <button class="sb-wbtn" aria-label="Minimize" data-tip="Minimize" onclick={() => win.minimize()}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
     </button>
-    <button class="sb-wbtn" aria-label="Maximize" title="Maximize" onclick={maximize}>
+    <button class="sb-wbtn" aria-label="Maximize" data-tip="Maximize" onclick={maximize}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
     </button>
-    <button class="sb-wbtn" bind:this={xEl} aria-label="Close" title="Close" aria-haspopup="dialog"
+    <button class="sb-wbtn" bind:this={xEl} aria-label="Close" data-tip="Close" aria-haspopup="dialog"
             aria-expanded={asking} onclick={() => (asking ? dismiss(false) : gate.request())}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
     </button>

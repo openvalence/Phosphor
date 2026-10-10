@@ -282,7 +282,7 @@ console.log('\n--- the status slot ---');
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
     const b = s && s.querySelector('.st-dismiss');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.title : '' };
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: b ? b.dataset.tip || '' : '' };
   });
   const pause = o.page.locator('.topstrip .btn-pause');
   const waitKind = async (kind, ms = 4000) => {
@@ -335,7 +335,7 @@ console.log('\n--- clock drift in the status slot ---');
     fps: document.querySelector('.linkbar .fps')?.textContent.trim() || null }));
   const slot = () => o.page.evaluate(() => {
     const s = document.querySelector('.topstrip .status');
-    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: s ? (s.querySelector('.st-dismiss')?.title || s.title || '') : '' };
+    return { kind: s && s.dataset.kind, text: s ? s.textContent.trim() : '', title: s ? (s.querySelector('.st-dismiss')?.dataset.tip || s.dataset.tip || '') : '' };
   });
   await play(o.page, GENTLE);
   await o.page.waitForTimeout(2500);

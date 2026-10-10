@@ -312,12 +312,12 @@
         {@const on = selected.includes(f.role)}
         {@const fr = on ? freshness(f.channelId) : null}
         <button type="button" class="leg" class:off={!on} aria-pressed={on}
-                title={on ? 'Hide lane' : 'Plot lane'}
+                data-tip={on ? 'Hide lane' : 'Plot lane'}
                 onclick={() => toggleLane(f.role)}>
           <i class="swatch" style="background: var({paletteVarFor(f)})" aria-hidden="true"></i>
           <span class="leg-label">{labelFor(f)}</span>
           {#if on}
-            <output class="mono leg-val" class:stale={fr && fr.stale} title={staleReason(fr)}>{@render vu(f, reportedValue(f, machine.samples[f.channelId]))}</output>
+            <output class="mono leg-val" class:stale={fr && fr.stale} data-tip={staleReason(fr)}>{@render vu(f, reportedValue(f, machine.samples[f.channelId]))}</output>
           {/if}
         </button>
       {/each}

@@ -331,7 +331,7 @@ node editor) prevents the event first, and the shell stays out.
   it at the focused element's corner, so a time or place "here" should be
   the plugin's own cursor), called at each open. An item is `{label, run,
   disabled, title, checked}`: `label` 1 to 40 characters, `disabled` '' or
-  the reason, shown as its title; an item without a label or a run is left
+  the reason, shown as its tip; an item without a label or a run is left
   out. One row each, never a submenu. The items function and every `run`
   run under the plugin's guard: a throw is recorded on the plugin and lists
   nothing or does nothing, never reaching the shell; a disabled plugin's
@@ -526,6 +526,19 @@ in the top layer); one never appended is borrowed into `<body>` while open.
   a state change swaps text, never a box.
 - Targets: 40 px on a coarse pointer (law 12); a `bar` row is the tap height
   there.
+- Tooltips: the shell draws one tooltip, from an element's `data-tip`
+  (`src/ui/tip.js`); a native `title` tooltip never shows. A kit control
+  takes the text as its `tip` option (`title` on a `button` or a `segmented`
+  option is its name and its tip). Plugin markup that sets `title` anyway is
+  converted at the first hover or focus: the text moves to `data-tip`, the
+  attribute is removed, and where it was the element's only name it becomes
+  the `aria-label`. A tip that repeats the element is dropped: equal to its
+  visible text, or to its `aria-label` while it has visible text (case,
+  spacing and a trailing shortcut such as `(Ctrl+S)` or `, F11` do not
+  count). An icon-only element keeps its tip, its only visible name, and so
+  does text the element clips (the tip is the full text). Give a tip only
+  what the element does not say: a shortcut, a value, a reason, a disabled
+  reason. While shown, the tip is the element's `aria-describedby`.
 - Touch never adjusts by accident (`ph-5u0g` peeve 14): a slider, a scrub
   and a number's drag take a touch drag only after horizontal intent (8 px,
   more across than down) or a 400 ms hold; a tap never changes them and a
@@ -557,9 +570,9 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 
 | factory | options | handle |
 |---|---|---|
-| `button` | `label`, `icon`, `title` (an icon-only button's name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `pressed`, `disabled` |
+| `button` | `label`, `icon`, `title` (an icon-only button's name, and its tip), `tip` (the tooltip when it is more than the name), `tone` (`'primary'`, `'danger'`), `pressed` (a boolean makes it a toggle: `aria-pressed` and the shell's on look; it flips before `onClick`), `onClick` | `label`, `icon`, `title`, `tip`, `pressed`, `disabled` |
 | `files` | `accept`, `multiple`, `onFiles(files)` (an array) | a hidden file input: `open()` shows the picker; append it anywhere in the mount |
-| `segmented` | `options: [{value, label, icon, title}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
+| `segmented` | `options: [{value, label, icon, title, tip}]`, `value`, `tabs` (a tab list: `role=tab`, the open tab in `--highlight`), `onChange` | `value`, `disabled`, `options` (settable: the buttons are rebuilt) |
 | `switch` | `label` (beside the track), `value`, `onChange` | `value`, `disabled` |
 | `slider` | `min`, `max`, `step`, `value`, `label` (accessible name), `format(v)` (its value chip, `el.chip`, as wide as its widest reading), `onInput` (live), `onChange` (on release) | `value`, `disabled`, `chip`, `input` |
 | `stepper` | `min`, `max`, `step`, `value`, `unit`, `label`, `buttons` (default true: minus, number, plus with hold-repeat; false: the number box alone), `drag` (the box drags sideways, one step per 4 px; a press without a drag types), `onChange` | `value`, `disabled`, `input` |
@@ -575,7 +588,7 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
 | `rows` | `title` (its `card-sub` head) | the grid `row`s go in |
 | `row` | `label`, `control`, `chip` (default: the control's own `chip`), `tip` | label, control and chip on one line (the settings row) |
 | `bar` | `left`, `center`, `right` (element lists), `drop` (elements in the order they leave) | `left`, `center`, `right` (the groups), `refit()` (after a group's content changes width; a resize refits by itself). One row while it fits; else `center` takes its own row above; else the `drop` elements leave in order. A target never shrinks. |
-| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle, kept while hovered, dragged or holding keyboard focus), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
+| `stage` | `overlay` (`'fullscreen'`, the default: the overlay exists in fullscreen only; `'always'`), `rotate` (on the phone class a turn to landscape enters fullscreen while `aspect` is set, and the turn back leaves), `onTap` (a single tap once the double window passes; a tap that only wakes a hidden overlay is none), `onDouble` (default: fullscreen), `onFullscreen(on)` | `media` (the video goes here, letterboxed), `empty` (a slot over the box; the plugin shows and hides what it puts there), `overlay` (hides after 2.5 s idle as `display: none`, nothing left over the video; kept while hovered, dragged or holding keyboard focus; Tab in fullscreen shows it), `dock` (shown while the overlay hides), `aspect` (width / height; the stage sizes to it, at most `--ui-stage-max`, 60 % of the window height by default; null keeps 16:9), `fullscreen` (get/set: the shell's bare page fullscreen), `flash(icon)`, `center(icon or null)`, `poke()` (shows the overlay) |
 | `scrub` | `max`, `value`, `buffered`, `step` (the arrows' step, default 1 % of `max`), `label`, `format(v)` (the hover readout and `aria-valuetext`), `onSeek(v, phase)` (`'start'`, `'move'`, `'end'`) | `value` (ignored mid-drag), `max`, `buffered`, `track` (paint a background here, e.g. a heat map) |
 | `split` | `min`, `max`, `value` (px of the region after the bar, or null), `size()` (that region's height while `value` is null), `label`, `onChange(px, commit)` | a horizontal resize bar: drag, arrows (8 px, Shift 1), a double-click asks for null |
 | `sheet` | `title`, `index`, `form` (`'auto'`, `'sheet'`, `'drawer'`, `'popover'`, `'slot'`), `slot` (an element of the plugin's: the slot form is a card there), `anchor` (its toggle: a popover opens under it, a tap on it is no outside tap; settable later), `onClose` (a user's close) | `body`, `open` (get/set), `form`, `anchor`; `data-open` while open. Auto: the right drawer in page fullscreen, the bottom sheet on a phone upright, else the slot when one is given, else the drawer; it follows a turn or a fullscreen while open, its content moving with it. The sheet drags down to close; the slot card closes on its close button. |

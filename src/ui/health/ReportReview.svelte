@@ -34,10 +34,12 @@
   // The bundle as the issue and its file carry it (attachment named when over the budget).
   const bundle = $derived(out ? JSON.parse(out.full) : null);
   const SECTION = { schema: 'Report', id: 'Report', app: 'This app', machine: 'Machine', incident: 'Problem', settings: 'Settings',
-    measure: 'What raised it', evidence: 'Measurements', window: 'History', events: 'Events', hub_log: 'Machine log', attachment: 'Attachment' };
+    measure: 'What raised it', evidence: 'Measurements', media: 'Video', window: 'History', events: 'Events', hub_log: 'Machine log', attachment: 'Attachment' };
   const groups = $derived.by(() => {
     const g = [];
     for (const f of FIELDS) {
+      // An optional field the bundle left out has no row: it does not leave.
+      if (f.opt && bundle && get(bundle, f.path) === undefined) continue;
       const name = SECTION[f.path.split('.')[0]];
       if (!g.length || g[g.length - 1].name !== name) g.push({ name, rows: [] });
       g[g.length - 1].rows.push({ ...f, value: bundle ? get(bundle, f.path) : null });
@@ -126,7 +128,7 @@
                 use:hold={{ ms: 1500, onfire: send, key: id }}>Hold to send</button>
         <button type="button" class="og-btn" onclick={save}>Save report</button>
       </div>
-      <p class="pane-status" role="status" data-phase={note ? 'settled' : null} title={note}>{note}</p>
+      <p class="pane-status" role="status" data-phase={note ? 'settled' : null} data-tip={note}>{note}</p>
     </section>
   {/if}
 </div>

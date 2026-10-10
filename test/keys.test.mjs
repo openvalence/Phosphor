@@ -495,7 +495,7 @@ console.log('\n[history] the Changes feed, Undo, Revert changes and Ctrl+Z');
   };
   const start = sliders.map((f) => valueOf(f) ?? f.dflt);
   await page.locator('[role=tab]', { hasText: 'Motion' }).first().click();
-  if (sliders.some((f) => f.advanced)) await page.locator('button[title="Show advanced"]').first().click();
+  if (sliders.some((f) => f.advanced)) await page.locator('button[data-tip="Show advanced"]').first().click();
   await page.waitForSelector(sel(sliders[0]), { timeout: 5000 });
   const set = [];
   for (const [i, f] of sliders.entries()) set.push(await setTo(f, [0.15, 0.6, 0.85][i]));

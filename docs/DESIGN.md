@@ -736,7 +736,12 @@ question in §10.8).
   moved, never a copy, at full size and hit target, half opacity at rest
   and full on hover, focus or any pointer movement. The mode persists
   (`prefs.js` `fullscreen`), the state never does. A page registered
-  `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`). Seams:
+  `mediaFullscreen` offers both itself and its footer neither (`ph-n4t7`).
+  Its bare fullscreen is edge to edge (no gutter, caret band or scroll
+  shade), and its caret is a corner hotspot, top left on the stop pair's
+  inset, shown on pointer movement or Tab and `display: none` at rest with
+  the stage overlay, so at rest only the stop pair sits over the video
+  (`ph-9t5l.7`). Seams:
   `src/model/fullscreen.js`, `isFull` in `src/App.svelte`, `bare` in
   `src/ui/TopStrip.svelte`.
   *(Superseded 2026-10-08 for `mediaFullscreen` pages, operator ruling
@@ -1345,7 +1350,7 @@ its own: no continuous telemetry, ever.
 
 - The Link card also lists the address and the control list, the Machine
   card the firmware: the readings the top bar dropped (§10.3).
-- Three areas: Link, This device, Machine. The 28 conditions, their
+- Three areas: Link, This device, Machine. The 29 conditions, their
   thresholds, holds and words are one table, `CONDITIONS` in
   `src/model/health/core.js`; the design survey is the `ph-9t5l` note. A
   condition's line is a measured fact with the number that raised it
@@ -1369,6 +1374,18 @@ its own: no continuous telemetry, ever.
   other verdict is marked likely. The hub's own word on a starvation is read
   from roles alone (`plan.duration`, `plan.elapsed`); the first second after
   a stream starts is the hub ramping in and is never a cutout.
+- Video drops (`ph-9t5l.7`): a playing video's counters
+  (`getVideoPlaybackQuality`) are read once a second while it plays and the
+  page shows, never per frame. Drops count only past what the screen can
+  show: a screen at hz shows at most hz frames a second, so a 120 fps file on
+  a 60 Hz screen skips half by design, and the judge is min(video fps x
+  speed, hz). The screen's refresh is the frame bursts' rate over 30 s (the
+  mean of those within 10% of the fastest); the video's frame rate is its
+  decoded frames over media time, never the presented cadence a slower
+  screen caps. Raised over 1% of the frames the screen could show in 30 s,
+  in 3 separate seconds or more, after 20 s of play, held 5 s; clears under
+  0.5%. A one-frame blip every few seconds stays under it ("Video dropped 42
+  frames in 30 s").
 - Hysteresis: a condition enters after its hold and clears after its clear
   hold; same-condition episodes within 10 s are one; a re-entry within 60 s
   of a clear reopens the incident (count + 1); severity rises inside an
@@ -1400,7 +1417,11 @@ issue the user submits under their own account; Phosphor sends nothing.
   leaves without a row. The builder is an allowlist: numbers, fixed enums
   and version-shaped strings only; times count from the incident; no script
   or video name, position, clock time or date, machine name, address,
-  session or instance id, token or log text.
+  session or instance id, token or log text. A report made while a video
+  played adds the optional media block (size, both rates, speed, the
+  window's frame counts, HDR screen, fullscreen, analyzer open) and the
+  dropped-frame history; without one neither appears, so the bundle stays
+  `/1`.
 - Hold to send (1.5 s, `hold.js`) opens
   `issues/new?template=diag-report.yml` with the title and the `bundle`
   field filled in; over 7,500 encoded characters the full bundle is saved as
@@ -1572,4 +1593,5 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash; a channel block opens the Link page on that channel through a selection shared with the map, Health opens the Health view (`ph-8yga`, `ph-8yga.1`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able; the selection shared with the Link page and Health opening the Health view are the coordinator's) |
 | 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
 | 2026-10-10 | §10.15 | The Log feed lists the hub's refusals: one warn row per NACK from the hub, tagged `refusal`, reading the code's name with its code, channel and detail as fields, folded like any repeat (code and channel are its identity, never shaped). The Link page's Log link opens the Log feed searched for that name with the level and source filters cleared; the next visit starts with no search (`ph-s5mu.1`). | coordinator (the Link page's seam, ph-s5mu.1; the Log feed rather than a feed of its own, the warn level, the `refusal` tag and the filters clearing are the agent's, veto-able) |
+| 2026-10-10 | §10.14, plugins | Video drops: a playing video's dropped frames past what the screen can show, over 1% in 30 s in 3 separate seconds, a This device warn ("Video dropped 42 frames in 30 s"); the report's optional media block and dropped-frame history; the stage overlay hides as `display: none` and the bare strip drops the plan readback, so at rest only the stop pair sits over a fullscreen video; a media page's bare fullscreen goes edge to edge with the caret as a corner hotspot shown on pointer movement, and the player's analyzer stops painting its rows behind the fullscreen video (`ph-9t5l.7`). | coordinator (a friend's 4K HDR 120 fps fullscreen playback with the analyzer open, "we have no measurement of whether playback is actually smooth"; judging against min(video fps, screen refresh) is the brief's. The 1% / 30 s / 3 seconds / 5 s hold thresholds, warn, Close other apps as the action, the analyzer flag read from the player's `data-an`, and Tab showing the hidden overlay are the agent's, veto-able; edge to edge, the hotspot and the analyzer are the coordinator's follow-up, the top left corner on the pair's inset and the overlay's 2.5 s idle the agent's) |
 | 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a resent chip (the share of TCP sent again, this client's and the machine's, labeled with the scope and unit the model reports) reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the chip labeled `resent`, not `loss`, because the figures are TCP sent again, showing the client's and the machine's share with the radio retries and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |

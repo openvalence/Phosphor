@@ -19,9 +19,11 @@ import './ui/still.svelte.js';
 import { loadPlugins } from './plugins/plugins.svelte.js';
 import { bindControls } from './plugins/kit.js';
 import { mountBound } from './ui/BoundControl.svelte';
+import { installTips } from './ui/tip.js';
 
 // api.ui.field and api.ui.module draw the shell's own controls (docs/PLUGINS.md, Field-bound controls).
 bindControls(mountBound);
+installTips();
 
 // Client preferences, applied before first paint so the page never flashes the
 // default palette. These are BROWSER state, not machine state — the

@@ -219,7 +219,7 @@
 <svelte:window onkeydown={closeOnEscape} />
 
 <div class="dash-item" class:dragging class:editing class:selected class:bare class:open class:clip class:engaged class:fault={!!fault} class:movable bind:this={itemEl}
-     title={fault} role="presentation" onpointerdown={onCardPointerDown} onpointermove={onCardPointerMove}
+     data-tip={fault} role="presentation" onpointerdown={onCardPointerDown} onpointermove={onCardPointerMove}
      onpointerup={onCardPointerUp} onpointercancel={onCardPointerUp}
      onlostpointercapture={() => { if (press) { press = null; ongrabend && ongrabend(); } }}
      style={'anchor-name:' + anchor + ';--card:' + anchor + ';--tools:' + tools}>
@@ -238,7 +238,7 @@
         <!-- The title attribute is the full form of a title cut by its ellipsis;
              the count follows the title and the title yields to it. -->
         <div class="dash-name">
-          <h3 class="dash-title" data-pidx={pidx} title={item.title} tabindex={item.retitle ? 0 : null} aria-keyshortcuts={item.retitle ? 'F2' : null}
+          <h3 class="dash-title" data-pidx={pidx} data-tip={item.title} tabindex={item.retitle ? 0 : null} aria-keyshortcuts={item.retitle ? 'F2' : null}
               ondblclick={item.retitle ? () => (renaming = true) : null}
               onkeydown={item.retitle ? (e) => { if (e.key === 'F2') { e.preventDefault(); renaming = true; } } : null}>{item.title}</h3>
           {#if busy.n}<span class="dash-busy" class:overdue={busy.overdue}>{busy.n} in flight</span>{/if}
@@ -246,7 +246,7 @@
       {/if}
     {/if}
     {#if app}
-      <button type="button" class="og-btn sm dash-open" aria-expanded={open} title={open ? 'Back to the grid (Esc)' : 'Open full size'}
+      <button type="button" class="og-btn sm dash-open" aria-expanded={open} data-tip={open ? 'Back to the grid (Esc)' : 'Open full size'}
               onclick={() => (open = !open)}>{open ? 'Close' : 'Open'}</button>
     {/if}
     <!-- Tools are edit-mode-only: the reading surface stays quiet and a
@@ -254,7 +254,7 @@
     {#if editing}
       <div class="tools">
         {#if look}
-          <button type="button" class="ico look-btn" popovertarget={look.id} aria-label={'Look of ' + item.title} title="Look">
+          <button type="button" class="ico look-btn" popovertarget={look.id} aria-label={'Look of ' + item.title} data-tip="Look">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="M2 4h12M2 8h12M2 12h12" /><circle cx="5" cy="4" r="1.7" /><circle cx="11" cy="8" r="1.7" /><circle cx="7" cy="12" r="1.7" />
             </svg>
@@ -263,25 +263,25 @@
         {#if item.selfLabeled && item.setLook}
           <button type="button" class="ico label-btn" aria-pressed={!bare}
                   aria-label={(bare ? 'Show' : 'Hide') + ' label of ' + item.title}
-                  title={bare ? 'Show label' : 'Hide label'} onclick={toggleLabel}>
+                  data-tip={bare ? 'Show label' : 'Hide label'} onclick={toggleLabel}>
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 3.5h10M8 3.5V13" /></svg>
           </button>
         {/if}
         {#if onremove}
-          <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} title="Out of the nest"
+          <button type="button" class="ico out" aria-label={'Move ' + item.title + ' out of the nest'} data-tip="Out of the nest"
                   onclick={onremove}>
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9 2.5h4.5V7M13.5 2.5 7 9M12 10v3.5H2.5V4H6" /></svg>
           </button>
         {/if}
         {#if ondelete}
-          <button type="button" class="ico home-remove" aria-label={'Remove ' + item.title + ' from Dash'} title="Remove" onclick={ondelete}>
+          <button type="button" class="ico home-remove" aria-label={'Remove ' + item.title + ' from Dash'} data-tip="Remove" onclick={ondelete}>
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         {/if}
         <button type="button" class="handle grab"
                 aria-label={'Move ' + item.title}
                 aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowRight Shift+ArrowDown Enter Delete"
-                title="Drag to move, click to select"
+                data-tip="Drag to move, click to select"
                 aria-pressed={selected}
                 onclick={(e) => onselect && onselect(e.shiftKey || e.ctrlKey || e.metaKey)}
                 onpointerdown={onGrabPointerDown}
@@ -302,7 +302,7 @@
   {/if}
 
   <div class={'dash-body ' + (item.kind === 'nest' ? 'surface-nest' : 'surface-card')} bind:this={bodyEl}
-       title={app && !open && !engaged ? 'Click to edit here; click outside to leave' : null}>
+       data-tip={app && !open && !engaged ? 'Click to edit here; click outside to leave' : null}>
     <!-- The item is passed back to its own snippet so a CALLER can share one
          snippet across many items and switch on the item's payload. Snippets
          are declared statically in a template and cannot be manufactured per
@@ -323,7 +323,7 @@
     {/each}
     <button type="button" class="handle resize"
             aria-label={'Resize ' + item.title + ', ' + w + ' by ' + h + ' cells'}
-            title="Drag or arrow keys to resize"
+            data-tip="Drag or arrow keys to resize"
             onpointerdown={onResizePointerDown}
             onpointermove={onResizePointerMove}
             onpointerup={onResizePointerUp}

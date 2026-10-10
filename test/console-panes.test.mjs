@@ -354,7 +354,7 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const rowH = await page.$eval('#lp-feed-log > .line', (el) => el.getBoundingClientRect().height);
   await page.hover('#lp-feed-log > .line time >> nth=0');
   ok('log: hovering a row does not change its height', rowH === await page.$eval('#lp-feed-log > .line', (el) => el.getBoundingClientRect().height));
-  ok('log: hovering the time shows how long ago', /s ago$/.test(await page.$eval('#lp-feed-log > .line time', (t) => t.title)));
+  ok('log: hovering the time shows how long ago', /s ago$/.test(await page.$eval('#lp-feed-log > .line time', (t) => t.dataset.tip)));
 
   await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 120; el.dispatchEvent(new Event('scroll')); });
   const keptTop = await page.$eval('#lp-feed-log', (el) => el.scrollTop);

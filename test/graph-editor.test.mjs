@@ -754,7 +754,7 @@ let saved = null;
   const accentOf = (loc) => loc.evaluate((e) => getComputedStyle(e, '::before').backgroundColor);
 
   // The add menu: the hub open on its categories in the rail's order, sections and cards nested.
-  const rail = await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.title));
+  const rail = await page.$$eval('nav.rail [role=tab][data-tab-id^="cat"]', (els) => els.map((e) => e.dataset.tip));
   await page.mouse.click(...at(0.6, 0.1), { button: 'right' });
   const level = (n) => pal.locator('.gpal-head[aria-level="' + n + '"]').evaluateAll((els) => els.map((e) => e.querySelector('.gpal-label').textContent));
   const cats = await level(2);
@@ -805,12 +805,12 @@ let saved = null;
 
   // Node context: card, desc, range and what each socket does; one card, one accent.
   ok('a node names its card above its name', await C.locator('.gcard').textContent() === 'Oscillator' && await Sp.locator('.gcard').textContent() === 'Pattern');
-  ok('...the card path in full on hover', await C.locator('.gcard').getAttribute('title') === HUB + ' › Motion › Oscillator');
+  ok('...the card path in full on hover', await C.locator('.gcard').getAttribute('data-tip') === HUB + ' › Motion › Oscillator');
   const desc = await C.locator('.gdesc').textContent();
-  ok('...its catalog desc on one line, in full on hover', desc.length > 0 && await C.locator('.gdesc').getAttribute('title') === desc, desc);
+  ok('...its catalog desc on one line, in full on hover', desc.length > 0 && await C.locator('.gdesc').getAttribute('data-tip') === desc, desc);
   ok('...its range, unit and what the sockets do', await C.locator('.gspec').textContent() === '0 to 100 Hz · in sets, out reads', await C.locator('.gspec').textContent());
-  ok('...and each socket says it in its tooltip', await C.locator(':scope > [data-sock][data-side=in]').getAttribute('title') === 'Input: sets Cycles a second (float)'
-    && await C.locator(':scope > [data-sock][data-side=out]').getAttribute('title') === 'Output: reads Cycles a second (float)');
+  ok('...and each socket says it in its tooltip', await C.locator(':scope > [data-sock][data-side=in]').getAttribute('data-tip') === 'Input: sets Cycles a second (float)'
+    && await C.locator(':scope > [data-sock][data-side=out]').getAttribute('data-tip') === 'Output: reads Cycles a second (float)');
   ok('nodes of one card share its key and accent; another card gets another', await C.getAttribute('data-card') === await A.getAttribute('data-card')
     && await accentOf(C) === await accentOf(A) && await Sp.getAttribute('data-card') !== await C.getAttribute('data-card') && await accentOf(Sp) !== await accentOf(C),
   [await accentOf(C), await accentOf(A), await accentOf(Sp)]);
@@ -867,7 +867,7 @@ let saved = null;
   await page.keyboard.press('Escape');
   hub.hold = true;
   await page.locator('.dash-item:has(.graph) .dash-open').click();
-  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.click('nav.rail [role=tab][data-tip="Motion"]');
   const slider = page.locator('.field[data-uid="4416:frequency"] input[type=range]').first();
   await slider.focus();
   await page.keyboard.press('ArrowRight');
@@ -890,7 +890,7 @@ let saved = null;
   hub.sockets.clear();
   await page.waitForTimeout(400);
   const gate = await C.locator('.gline[data-phase=gated]').textContent().catch(() => '');
-  const stale = await C.locator('.gline[data-stale]').getAttribute('title').catch(() => '');
+  const stale = await C.locator('.gline[data-stale]').getAttribute('data-tip').catch(() => '');
   ok('without a link a settable node says it is gated, in words (law 3)', gate === 'gated: no hub link', gate);
   ok('...and its value dims as stale, the age on hover (law 8)', /^stale: /.test(stale || ''), stale);
   await page.screenshot({ path: EVID + 'gated-stale-1428x900-dark.png' });

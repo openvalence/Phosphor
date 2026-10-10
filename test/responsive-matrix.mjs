@@ -279,9 +279,8 @@ function measure({ phone, coarse = phone }) {
     const cs = getComputedStyle(el);
     if (!/(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') continue;
     // Fixed-height chrome (ph-e82.17) ellipsizes on purpose; its full form
-    // must then be one hover away, in its own or an ancestor's title or data-tip.
-    const holder = el.closest('[title], [data-tip]');
-    const full = holder?.title || holder?.dataset.tip || '';
+    // must then be one hover away, in its own or an ancestor's title.
+    const full = el.closest('[data-tip]')?.dataset.tip || '';
     if (full.includes(el.textContent.trim())) continue;
     if (el.scrollWidth > el.clientWidth + 1) fails.push(['clip', name(el) + ' ' + el.scrollWidth + '>' + el.clientWidth]);
   }
@@ -496,7 +495,7 @@ const editClick = async (page) => {
   // The phone menu (DESIGN §10.12): the wrench rides the drawer's Dash row; the hamburger closes it again.
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  await page.locator('button[title="Edit layout"]:visible').first().click();
+  await page.locator('button[data-tip="Edit layout"]:visible').first().click();
   if (menu) await page.click('.menu-btn');
 };
 /** [{id, label}] of every tab in sidebar order, whichever nav draws them (nav.mjs opens the drawer). */
@@ -504,7 +503,7 @@ async function navList(page) {
   const ids = await tabIds(page);
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  const labels = await page.$$eval('[role=tab][data-tab-id]', (els) => Object.fromEntries(els.map((e) => [e.dataset.tabId, e.getAttribute('title') || e.textContent.trim()])));
+  const labels = await page.$$eval('[role=tab][data-tab-id]', (els) => Object.fromEntries(els.map((e) => [e.dataset.tabId, e.getAttribute('data-tip') || e.textContent.trim()])));
   if (menu) await page.click('.menu-btn');
   return ids.map((id) => ({ id, label: labels[id] || id }));
 }
@@ -512,7 +511,7 @@ async function navList(page) {
 async function selectedLabel(page) {
   const menu = await page.locator('.menu-btn').isVisible().catch(() => false);
   if (menu) await page.click('.menu-btn');
-  const t = await page.$eval('[role=tab][aria-selected=true]', (e) => e.getAttribute('title') || e.textContent.trim()).catch(() => '');
+  const t = await page.$eval('[role=tab][aria-selected=true]', (e) => e.getAttribute('data-tip') || e.textContent.trim()).catch(() => '');
   if (menu) await page.click('.menu-btn');
   return t;
 }
@@ -926,7 +925,7 @@ if (!ONLY || ONLY === 'class') {
   for (let i = 1; i < await railTabs.count(); i++) {
     await railTabs.nth(i).click();
     await page.waitForTimeout(250);
-    if (await page.$('.content input[type=range]:not(:disabled)')) { label = (await railTabs.nth(i).getAttribute('title')) || ''; break; }
+    if (await page.$('.content input[type=range]:not(:disabled)')) { label = (await railTabs.nth(i).getAttribute('data-tip')) || ''; break; }
   }
   scen('found a category with a range control', !!label, label);
   const inFlight = () => page.$$eval('[data-shadow]', (els) => els.filter((e) => e.getAttribute('data-shadow') !== 'confirmed').length);

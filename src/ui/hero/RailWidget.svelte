@@ -1111,7 +1111,7 @@
              where the window sits, still carries the pip, but no longer owns
              any listeners of its own (pointer events on it bubble to the
              track same as anywhere else). -->
-        <div class="rail-tape-track" bind:this={tapeTrackEl} title={moveEnabled || !moveReason ? HINT : moveReason}
+        <div class="rail-tape-track" bind:this={tapeTrackEl} data-tip={moveEnabled || !moveReason ? HINT : moveReason}
              role="slider" tabindex={moveEnabled ? 0 : -1}
              aria-label={'Jog: ' + labelFor(move)} aria-orientation={vertical ? 'vertical' : 'horizontal'}
              aria-valuemin={tapeLo} aria-valuemax={tapeHi} aria-valuenow={tapeVal ?? tapeLo}
@@ -1142,8 +1142,8 @@
     {:else}
       <!-- A catalog with no role-tagged move INTENT: the window extent keeps
            the rhythm, commands nothing, and says why. -->
-      <div class="rail-tape-assembly disabled" aria-disabled="true" title="No move intent on this catalog">
-        <div class="rail-tape-track" title={HINT}>
+      <div class="rail-tape-assembly disabled" aria-disabled="true" data-tip="No move intent on this catalog">
+        <div class="rail-tape-track" data-tip={HINT}>
           <div class="rail-tape"
                style="left:{bandL * 100}%; width:{(bandR - bandL) * 100}%"><span class="rail-tape-micro rail-reason">no move intent on this catalog</span></div>
         </div>
@@ -1186,7 +1186,7 @@
 
     {#if haveWindow}
       <!-- The window's catalog description rides the band's own tooltip. -->
-      <div class="rail-band" title={(windowDesc ? windowDesc + '\n' : '') + 'Drag the window or its edges'}
+      <div class="rail-band" data-tip={(windowDesc ? windowDesc + '\n' : '') + 'Drag the window or its edges'}
            class:disabled={!bandEnabled}
            class:pending={!!pend || statusOf(min) !== STATUS.confirmed || statusOf(max) !== STATUS.confirmed}
            role="slider" tabindex={bandEnabled ? 0 : -1}

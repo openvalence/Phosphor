@@ -305,7 +305,7 @@ for (const catalog of ['none', 'hero']) {
 // ---- ph-e82.5: an emptied home still leaves the strip's stop pair ------------
 for (const catalog of ['none', 'hero']) {
   const { ctx, page } = await open(browser, { w: 1280, h: 720, touch: false, catalog });
-  await page.locator('button[title="Edit layout"]:visible').first().click();
+  await page.locator('button[data-tip="Edit layout"]:visible').first().click();
   // The palette overlays the grid's top right (ph-wia): put it away to reach the cards under it.
   await page.locator('.home .dash-toolbar .palette-toggle').click();
   for (let i = 0; i < 20 && await page.locator('.home .home-remove').count(); i++) {
@@ -570,7 +570,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
   // labels line, no mode words and no range text.
   const inTape = await page.evaluate(() => ({ micro: document.querySelector('.rail-hero .rail-tape .rail-tape-micro').textContent.trim(),
     lines: document.querySelectorAll('.rail-hero :is(.rail-tape-labels, .rail-tape-mode, .rail-tape-extent, .info-wrap)').length,
-    title: document.querySelector('.rail-hero .rail-tape-track').title }));
+    title: document.querySelector('.rail-hero .rail-tape-track').dataset.tip }));
   ok('override: the reason sits in the tape, the row has no labels line', inTape.micro === 'Paused: Override to jog'
     && inTape.lines === 0 && inTape.title === 'Paused: Override to jog', JSON.stringify(inTape));
   const n = wire.ops.length;
@@ -615,8 +615,8 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     ok(cls + ': one Flip toggle in the strip', n === 1 && await page.locator('.rail-hero .rw-flip').count() === 0, n + ' found');
     if (n !== 1) { await ctx.close(); continue; }
     ok(cls + ': Flip is an icon over the word Flip, its state in the tooltip', await flip.locator('svg path').count() === 2
-      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('title') === 'Normal: home at left'
-      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('title')]));
+      && (await flip.locator('.lbl').textContent()).trim() === 'Flip' && await flip.getAttribute('data-tip') === 'Normal: home at left'
+      && await flip.getAttribute('aria-pressed') === 'false', JSON.stringify([await flip.textContent(), await flip.getAttribute('data-tip')]));
     await flip.click();
     await page.waitForTimeout(200);
     const asked = await page.locator('.overlay.hazard[role=alertdialog]').count() === 1;
@@ -642,7 +642,7 @@ for (const [w, h, touch] of [[1280, 720, false], [360, 800, true]]) {
     await page.waitForTimeout(200);
     await page.locator('.overlay.hazard .og-btn.confirm').click();
     await page.waitForTimeout(600);
-    const text = (await (await reach()).getAttribute('title')).trim();
+    const text = (await (await reach()).getAttribute('data-tip')).trim();
     const banner = (await page.locator('.topstrip .recovery').textContent().catch(() => '')).trim();
     ok(cls + ': confirmed, the write goes out and the hub refusal is shown in its words',
       wire.writes.length === 1 && /SOURCE_CONFLICT/.test(text) && /SOURCE_CONFLICT/.test(banner),
@@ -913,7 +913,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   await page.waitForTimeout(400);
   const tapCh = wire.writes[0], tapWords = await banner();
   await dismiss();
-  ok('target: at rest a button that says it is typeable', await btn.getAttribute('title') === 'Click to type a target'
+  ok('target: at rest a button that says it is typeable', await btn.getAttribute('data-tip') === 'Click to type a target'
     && await btn.getAttribute('aria-disabled') === 'false');
   const rest = await btn.boundingBox();
   await btn.click();
@@ -947,7 +947,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
   const reason = (await page.locator('.rail-hero .rail-reason').textContent().catch(() => '')).trim();
   await btn.click({ force: true });
   ok("target: paused, disabled with the tape's reason", await btn.getAttribute('aria-disabled') === 'true'
-    && await btn.getAttribute('title') === reason && reason === 'Paused: Override to jog' && await entry.count() === 0, reason);
+    && await btn.getAttribute('data-tip') === reason && reason === 'Paused: Override to jog' && await entry.count() === 0, reason);
   clearInterval(tick);
   await ctx.close();
 }
@@ -1050,7 +1050,7 @@ for (const [k, bytes] of [['labeled', withSources(SOURCES)], ['unlabeled', withS
         ghostClear: g.top >= hr.top + hr.height * 40 / 72 - 0.5, clip: cs.overflowX + ' ' + cs.overflowClipMargin };
     });
     const chip = page.locator('.topstrip .rw-flip');
-    const face = { title: await chip.getAttribute('title'), d: await chip.locator('svg path').first().getAttribute('d'),
+    const face = { title: await chip.getAttribute('data-tip'), d: await chip.locator('svg path').first().getAttribute('d'),
       text: (await chip.locator('.lbl').textContent()).trim(), w: (await chip.boundingBox()).width };
     const icons = await page.evaluate(() => [...document.querySelectorAll('.topstrip .strip .dock svg.ico')].map((s) => {
       const w = s.getBoundingClientRect().width;

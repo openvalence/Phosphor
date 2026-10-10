@@ -20,6 +20,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { buildSettingsModel, WIDGET } from '../src/model/settings.js';
 import { STORE_KEY } from '../src/model/grid.js';
 import { goTab, tabIds } from './nav.mjs';
+import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 
 const HTML = readFileSync(DIST_HTML);
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -102,7 +103,7 @@ const lowContrast = (sel) => {
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  — ' + extra : '')); if (!c) fails++; };
 
-async function bootPage(browser, viewport, beforeGoto, extra = {}) {
+async function bootPage(browser, viewport, beforeGoto, extra = {}, port = PORT) {
   const ctx = await browser.newContext({ viewport, ...extra });
   await ctx.addInitScript(([etag, bytes]) => {
     try { localStorage.clear(); localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); }
@@ -113,7 +114,7 @@ async function bootPage(browser, viewport, beforeGoto, extra = {}) {
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   if (beforeGoto) await beforeGoto(ctx, page);
-  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:' + port + '/', { waitUntil: 'domcontentloaded' });
   return { ctx, page, pageErrors };
 }
 
@@ -168,7 +169,7 @@ const browser = await chromium.launch();
   const { ctx, page, pageErrors } = await bootPage(browser, { width: 390, height: 844 });
   await page.waitForSelector('.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(300);
-  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.getAttribute('data-tip'), x: b.getAttribute('aria-expanded'), n: b.getAttribute('aria-label') }; });
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.dataset.tip, x: b.getAttribute('aria-expanded'), n: b.getAttribute('aria-label') }; });
   ok('phone menu: the hamburger is a named 40 px target with aria-expanded', btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.n === 'Menu' && btn.x === 'false', JSON.stringify(btn));
   await page.focus('.menu-btn');
   await page.keyboard.press('Enter');
@@ -508,6 +509,127 @@ for (const [w, h] of [[1440, 900], [360, 800]]) {
   ok(w + 'w hi-vis: every category page\'s text clears WCAG AA', bad.length === 0, [...new Set(bad)].slice(0, 6).join(' | '));
   if (pageErrors.length) ok(w + 'w hi-vis: no page errors', false, pageErrors.join(' | '));
   await ctx.close();
+}
+
+// Interactive elements whose tooltip is all they say: each needs a name of its own.
+const unnamedOn = (pg) => pg.$$eval('[data-tip]', (els) => els.filter((e) => e.matches('button,a[href],input,select,textarea,summary,[role=tab],[role=button],[role=switch],[role=slider]')
+  && e.getClientRects().length && !(e.getAttribute('aria-label') || e.getAttribute('aria-labelledby') || e.textContent.trim() || e.labels?.length
+  || e.getAttribute('alt') || e.closest('label')?.textContent.trim())).map((e) => e.className || e.tagName));
+// Every page the rail lists: hover each tipped element, Tab through the first stops, and read what is left.
+const sweepPages = async (pg, label) => {
+  const tabs = await tabIds(pg);
+  const seen = new Set();
+  const bad = [], noName = [];
+  for (const id of tabs) {
+    await goTab(pg, id);
+    await pg.waitForTimeout(250);
+    const at = await pg.$$eval('[data-tip]', (els) => els.filter((e) => e.getClientRects().length).map((e) => {
+      const r = e.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    }));
+    for (const [x, y] of at.slice(0, 60)) await pg.mouse.move(x, y);
+    for (let i = 0; i < 12; i++) await pg.keyboard.press('Tab');
+    bad.push(...(await pg.$$eval('[title]', (els) => els.map((e) => e.tagName.toLowerCase() + '.' + e.className + '[' + e.getAttribute('title') + ']'))).map((t) => id + ': ' + t));
+    noName.push(...(await unnamedOn(pg)).map((t) => id + ': ' + t));
+    for (const [x, y] of at) seen.add(id + x + ',' + y);
+    await pg.mouse.move(0, 400);
+  }
+  ok(label + 'sweep: ' + tabs.length + ' pages (' + tabs.join(' ') + '), hovered and tabbed, leave no title attribute', bad.length === 0, bad.slice(0, 5).join(' | '));
+  ok(label + 'sweep: ' + seen.size + ' tipped elements, none of them without a name of its own', noName.length === 0, [...new Set(noName)].slice(0, 6).join(' | '));
+  ok(label + 'sweep: the pages carry tooltips at all (data-tip)', seen.size > 20, String(seen.size));
+  return tabs;
+};
+
+// ---- 10. tooltips (ui/tip.js): never a native title, redundant tips dropped, informative ones shown --
+{
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 1428, height: 900 });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const POP = '#ph-tip:popover-open';
+  const titled = () => page.$$eval('[title]', (els) => els.map((e) => e.tagName.toLowerCase() + '.' + e.className + '[' + e.getAttribute('title') + ']'));
+  const tabs = await sweepPages(page, '');
+  ok('sweep: the Log and Link pages are among them', tabs.includes('log') && tabs.includes('valence'), tabs.join(' '));
+
+  // The collapsed rail is icon-only: the tab's tip is its name.
+  await page.click('nav.rail .rail-collapse');
+  await page.waitForTimeout(250);
+  const mini = await page.$$eval('nav.rail [role=tab]', (ts) => ts.map((t) => t.getAttribute('aria-label') || t.textContent.trim()));
+  ok('collapsed rail: every tab keeps its name', mini.length > 3 && mini.every(Boolean), JSON.stringify(mini));
+  await page.click('nav.rail .rail-collapse');
+
+  // A probe element, placed fixed and hovered; the tip is open or it is not.
+  const probe = async (html, how = 'hover') => {
+    await page.mouse.move(0, 400);
+    await page.evaluate((h) => {
+      document.getElementById('probe')?.remove();
+      const d = document.createElement('div');
+      d.id = 'probe';
+      d.style.cssText = 'position:fixed;left:400px;top:300px;z-index:9;background:#222;padding:6px';
+      d.innerHTML = h;
+      document.body.append(d);
+    }, html);
+    const el = page.locator('#probe > :first-child');
+    if (how === 'hover') await el.hover({ force: true }); else { await page.keyboard.press('Tab'); await el.focus(); }
+    await page.waitForTimeout(how === 'hover' ? 750 : 150);
+    const open = await page.locator(POP).count() === 1;
+    return { open, text: open ? await page.locator('#ph-tip').textContent() : null, el };
+  };
+  let r = await probe('<button title="Writes the file to disk">Save</button>');
+  ok('probe: an informative tip shows', r.open && r.text === 'Writes the file to disk', r.text);
+  ok('probe: a title injected at runtime is gone the moment it is hovered', await r.el.getAttribute('title') === null
+    && await r.el.getAttribute('data-tip') === 'Writes the file to disk' && (await titled()).length === 0);
+  ok('probe: the shown tip describes its element', (await r.el.getAttribute('aria-describedby') || '').split(' ').includes('ph-tip')
+    && await page.locator('#ph-tip').getAttribute('role') === 'tooltip');
+  await page.mouse.move(0, 400);
+  await page.waitForTimeout(100);
+  ok('probe: leaving hides it and drops the description', await page.locator(POP).count() === 0 && await r.el.getAttribute('aria-describedby') === null);
+  for (const [name, html] of [
+    ['text, case and spacing', '<button title="  save ">Save</button>'],
+    ['text and a trailing shortcut hint', '<button title="Save (Ctrl+S)">Save</button>'],
+    ['text and a comma shortcut', '<button title="Save, Ctrl+S">Save</button>'],
+    ['aria-label while it has visible text', '<button aria-label="Save changes" title="Save changes">Save</button>'],
+  ]) {
+    r = await probe(html);
+    ok('probe: a tip equal to the ' + name + ' is suppressed', !r.open && await r.el.getAttribute('title') === null, r.text);
+  }
+  r = await probe('<button title="Close"><svg width="12" height="12"></svg></button>');
+  ok('probe: an icon-only button keeps its tip, its only visible name', r.open && r.text === 'Close');
+  ok('probe: a title that was the only name becomes the aria-label', await r.el.getAttribute('aria-label') === 'Close');
+  r = await probe('<button disabled title="Paused: Override to jog">Jog</button>');
+  ok('probe: a disabled control still shows its reason', r.open && r.text === 'Paused: Override to jog', r.text);
+  r = await probe('<span style="display:block;width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="A long scene name that is cut">A long scene name that is cut</span>');
+  ok('probe: truncated text keeps its tip, the full content', r.open && r.text === 'A long scene name that is cut', r.text);
+  r = await probe('<span style="display:block;width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="A short name">A short name</span>');
+  ok('probe: the same text fully shown has no tip', !r.open, r.text);
+  r = await probe('<svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18"><title>Float to int</title></circle></svg>');
+  await page.locator('#probe circle').hover({ force: true });
+  await page.waitForTimeout(750);
+  ok('probe: an SVG title child moves to our tip too', await page.locator('#probe title').count() === 0 && await page.locator(POP).count() === 1
+    && await page.locator('#ph-tip').textContent() === 'Float to int');
+  r = await probe('<button data-tip="Opens the log">Log</button>', 'focus');
+  ok('probe: keyboard focus shows the tip', r.open && r.text === 'Opens the log', r.text);
+  await page.keyboard.press('Escape');
+  ok('probe: Escape hides it', await page.locator(POP).count() === 0);
+  if (pageErrors.length) ok('tooltips: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+}
+
+// ---- 11. the same sweep on the Tauri shell bundle: Hubs, Server, Settings, Merge, About, Plugins and the rest ----
+{
+  const SHELL = await buildShellPage();
+  const ssrv = createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html' }); r.end(SHELL); });
+  await new Promise((r) => ssrv.listen(0, '127.0.0.1', r));
+  const { ctx, page, pageErrors } = await bootPage(browser, { width: 1428, height: 900 }, async (c) => {
+    await c.addInitScript(TAURI_STUB);
+    await c.addInitScript(() => { try { localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'a11y fixture', nickname: '', lastSeen: Date.now() }])); } catch (e) { /* none */ } });
+  }, {}, ssrv.address().port);
+  await page.waitForSelector('[data-tab-id="plugins"]', { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const tabs = await sweepPages(page, 'shell ');
+  ok('shell sweep: Hubs, Server, Settings, Log and Link are among the pages', ['shell:hubs', 'shell:server', 'shell:settings', 'log', 'valence'].every((t) => tabs.includes(t)), tabs.join(' '));
+  if (pageErrors.length) ok('shell sweep: no page errors', false, pageErrors.join(' | '));
+  await ctx.close();
+  ssrv.close();
 }
 
 await browser.close();

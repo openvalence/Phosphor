@@ -158,7 +158,7 @@
             <span class="gpal-label">{r.it.label}</span>{#if !r.level}<span class="gpal-count">{r.group}</span>{/if}
           </button>
           {#if r.it.on}
-            <button type="button" class="gpal-go" title="Show on the canvas (Shift+Enter)" aria-label={'Show ' + r.it.label + ' on the canvas'}
+            <button type="button" class="gpal-go" data-tip="Show on the canvas (Shift+Enter)" aria-label={'Show ' + r.it.label + ' on the canvas'}
                     onclick={() => onfind(r.it.value)}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>
             </button>

@@ -103,7 +103,7 @@
       <dt>Staged</dt><dd>{stagedCount} on {stagedKeys.length} machine{stagedKeys.length === 1 ? '' : 's'}</dd>
     </dl>
     <p class="pane-note">Layouts, plugins, theme: saved as you go</p>
-    <p class="pane-status" role="status" data-phase={status.phase} title={status.text}>{status.text}</p>
+    <p class="pane-status" role="status" data-phase={status.phase} data-tip={status.text}>{status.text}</p>
   </section>
 
   {#if shown.length}
@@ -126,9 +126,9 @@
               <span class="name">{r.label}{#if r.destructive}<span class="mark warn">destructive</span>{/if}{#if r.restart}<span class="mark">restart</span>{/if}</span>
               <span class="meta">{r.group || '--'}</span>
             </span>
-            <span class="val mono old" title="Hub now">{show(r, r.current)}</span>
-            <span class="val mono new" title="Staged">{show(r, r.value)}</span>
-            <span class="state" title={d ? d.res.text : r.inert || (r.differs ? 'Differs' : 'Same')}>{d ? d.res.text : r.inert || (r.differs ? 'differs' : 'same')}</span>
+            <span class="val mono old" data-tip="Hub now">{show(r, r.current)}</span>
+            <span class="val mono new" data-tip="Staged">{show(r, r.value)}</span>
+            <span class="state" data-tip={d ? d.res.text : r.inert || (r.differs ? 'Differs' : 'Same')}>{d ? d.res.text : r.inert || (r.differs ? 'differs' : 'same')}</span>
           </li>
         {/each}
       </ul>

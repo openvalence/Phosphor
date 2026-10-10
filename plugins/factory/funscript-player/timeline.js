@@ -321,9 +321,9 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   const real = s('g');
   const abA = s('line', { class: 'ab', y1: '0', y2: '100' }), abB = s('line', { class: 'ab', y1: '0', y2: '100' });
   dtSvg.append(rgLo, rgHi, abA, abB, curve, dots, real);
-  const zOut = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
-  const zIn = h('button', { type: 'button', class: 'og-btn sm', title: COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
-  const zSpan = h('output', { title: COPY.span });
+  const zOut = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomOut, 'aria-label': COPY.zoomOut, text: COPY.zoomOutGlyph });
+  const zIn = h('button', { type: 'button', class: 'og-btn sm', 'data-tip': COPY.zoomIn, 'aria-label': COPY.zoomIn, text: COPY.zoomInGlyph });
+  const zSpan = h('output', { 'data-tip': COPY.span });
   const setZoom = (z) => { zoom = z; onZoom(z); draw(); };
   zOut.addEventListener('click', () => setZoom(zoomStep(zoom, 1)));
   zIn.addEventListener('click', () => setZoom(zoomStep(zoom, -1)));
@@ -391,7 +391,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     const line = s('polyline');
     const svg = s('svg', { viewBox: '0 0 1000 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
     svg.append(line);
-    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], title: COPY[id], 'data-axis': id }, svg) };
+    return { id, line, el: h('div', { class: 'fsp-lane', role: 'img', 'aria-label': COPY[id], 'data-tip': COPY[id], 'data-axis': id }, svg) };
   });
   const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
@@ -469,7 +469,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       if (t != null) { line.setAttribute('x1', ax(t)); line.setAttribute('x2', ax(t)); }
     }
     const tip = ab.a == null ? COPY.abStart : ab.b == null ? COPY.abEnd : COPY.abClear;
-    if (zAB.title !== tip) { zAB.title = tip; zAB.setAttribute('aria-label', tip); }
+    if (zAB.dataset.tip !== tip) { zAB.dataset.tip = tip; zAB.setAttribute('aria-label', tip); }
     zAB.setAttribute('aria-pressed', String(ab.b != null));
     zAB.classList.toggle('on', ab.b != null);
   }

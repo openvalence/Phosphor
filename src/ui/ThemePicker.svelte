@@ -147,7 +147,7 @@
             <span class="name">{p.name}</span>
           </button>
           {#if p.id.startsWith('user-')}
-            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} title="Delete preset" onclick={() => remove(p.id)}>×</button>
+            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} data-tip="Delete preset" onclick={() => remove(p.id)}>×</button>
           {/if}
         </span>
       {/each}
@@ -164,7 +164,7 @@
     <div class="accents">
       {#each ACCENTS as [k, label, tip] (k)}
         {@const v = k === 'highlight' ? (theme.accents.highlight || theme.accents.reality) : theme.accents[k]}
-        <label class="accent" title={tip} data-search-key={'accent-' + k}>
+        <label class="accent" data-tip={tip} data-search-key={'accent-' + k}>
           <span class="color-input"><input type="color" value={v.toLowerCase()} aria-label={label + ' color'}
                  oninput={(e) => setAccent(k, e.currentTarget.value)} /></span>
           <span class="accent-name">{label}</span><span class="mono hex">{v}</span>
@@ -173,7 +173,7 @@
     </div>
     <div class="locked" role="group" aria-label="Safety colors">
       {#each SAFETY as k (k)}
-        <span class="lock" title={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
+        <span class="lock" data-tip={'Locked: ' + LOCKED[k]}><i style="background:var({k})" aria-hidden="true"></i><span class="mono">{k}</span></span>
       {/each}
       <span class="pane-note">Locked: safety colors (law 13)</span>
     </div>
@@ -183,7 +183,7 @@
     <div class="pane-head"><h2 id="tp-chassis" data-search-key="chassis">Chassis</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.chassis) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
+        <label class="knob-row" data-tip={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.chassis[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'chassis.' + k} oninput={(e) => setKnob('chassis', k, Number(e.currentTarget.value))} />
@@ -192,14 +192,14 @@
       {/each}
     </div>
     <div class="ramp" aria-hidden="true">
-      {#each RAMP as k (k)}<i style="background:var({k})" title={k}></i>{/each}
+      {#each RAMP as k (k)}<i style="background:var({k})" data-tip={k}></i>{/each}
     </div>
     <div class="ratios" data-testid="theme-ratios">
       <div class="ratio-grid">
         <span class="ratio"><span class="rk">Text</span> <span class="mono">{ratio(d.ratios.text)}</span></span>
         <span class="ratio"><span class="rk">Labels</span> <span class="mono">{ratio(d.ratios.labels)}</span></span>
         <span class="ratio"><span class="rk">Reality</span> <span class="mono">{ratio(d.ratios.reality)}</span></span>
-        <span class="near" data-testid="theme-near" title={near}>{near}</span>
+        <span class="near" data-testid="theme-near" data-tip={near}>{near}</span>
       </div>
     </div>
   </section>
@@ -208,7 +208,7 @@
     <div class="pane-head"><h2 id="tp-look" data-search-key="look">Look</h2></div>
     <div class="knobs">
       {#each Object.entries(KNOBS.look) as [k, [min, max, step]] (k)}
-        <label class="knob-row" title={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
+        <label class="knob-row" data-tip={KNOB_COPY[k][1]} data-search-key={'knob-' + k}>
           <span class="knob-name">{KNOB_COPY[k][0]}</span>
           <input type="range" {min} {max} {step} value={theme.look[k]} aria-label={KNOB_COPY[k][1]}
                  data-knob={'look.' + k} oninput={(e) => setKnob('look', k, Number(e.currentTarget.value))} />
@@ -226,7 +226,7 @@
           {@const v = refused === k ? 'Not a single CSS value' : d.base[k]}
           <li class:pinned={k in theme.overrides}>
             <span class="mono tk">{k}</span>
-            <span class="mono derived" id={'tp-v' + k} data-phase={refused === k ? 'fault' : null} title={v}>{v}</span>
+            <span class="mono derived" id={'tp-v' + k} data-phase={refused === k ? 'fault' : null} data-tip={v}>{v}</span>
             <input class="og-num mono" placeholder="Derived" aria-label={'Pin ' + k} aria-describedby={'tp-v' + k}
                    aria-invalid={refused === k} spellcheck="false"
                    value={theme.overrides[k] ?? ''} onchange={(e) => pin(k, e.currentTarget.value)} />

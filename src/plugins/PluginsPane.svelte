@@ -103,11 +103,11 @@
           {#if !origin && p.source}<dt>Source</dt><dd class="mono src">{p.source}</dd>{/if}
         </dl>
         <div class="err-row">
-          <p class="pane-status" role="status" data-phase={p.error ? 'fault' : null} title={p.error || ''}>
+          <p class="pane-status" role="status" data-phase={p.error ? 'fault' : null} data-tip={p.error || ''}>
             {p.error ? 'Last error: ' + p.error : 'No errors'}
           </p>
           <button type="button" class="og-btn sm" disabled={p.status === 'invalid' || !enabled(p.name, pluginsUi.gen)}
-                  title={p.status === 'invalid' ? 'Invalid manifest' : !enabled(p.name, pluginsUi.gen) ? 'Plugin disabled' : ''}
+                  data-tip={p.status === 'invalid' ? 'Invalid manifest' : !enabled(p.name, pluginsUi.gen) ? 'Plugin disabled' : ''}
                   onclick={() => reload(p.name)}>Reload</button>
         </div>
         {#if p.status === 'active' && p.hasSettings}

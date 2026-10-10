@@ -609,9 +609,9 @@ if (!LIVE) {
     // Settled on the echo, so no write of this field is left in flight for the hold below.
     const rbIs = (re, off) => page.waitForFunction(([u, src, off]) => {
       const b = document.querySelector('.cell[data-pres="toggle@' + u + '"] .field[data-shadow=confirmed] button.info.reset');
-      return !!b && b.disabled === off && new RegExp(src).test(b.title);
+      return !!b && b.disabled === off && new RegExp(src).test(b.dataset.tip);
     }, [DEF.uid, re.source, off], { timeout: 3000 }).then(() => true).catch(() => false);
-    const rbNow = async () => [await rb.isDisabled(), await rb.getAttribute('title')];
+    const rbNow = async () => [await rb.isDisabled(), await rb.getAttribute('data-tip')];
     ok('reset: a toggle reading its boolean default says so, Reset disabled', await rbIs(/^At machine default/, true), await rbNow());
     await page.locator('.cell[data-pres="toggle@' + DEF.uid + '"] .og-switch').click();
     ok('reset: switched off its default, Reset is live', await rbIs(/^Reset to machine default/, false), await rbNow());
@@ -725,7 +725,7 @@ if (!LIVE) {
       // The label box clips its one line: a tag wrapped under it sits inside the head yet is hidden.
       const l = c.querySelector('.field-label').getBoundingClientRect();
       return { h: h.height, tagIn: t.left >= l.left - 0.5 && t.right <= l.right + 0.5 && t.top >= l.top - 0.5 && t.bottom <= l.bottom + 0.5,
-        cut: x.scrollHeight > x.clientHeight + 1 || x.scrollWidth > x.clientWidth, title: x.title };
+        cut: x.scrollHeight > x.clientHeight + 1 || x.scrollWidth > x.clientWidth, title: x.dataset.tip };
     });
     await lc.evaluate((c) => { c.style.width = ''; });
     ok('a narrow head stays one line', Math.abs(head.h - h0) < 0.5, [h0, head.h]);

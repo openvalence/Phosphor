@@ -460,7 +460,7 @@
 
 {#snippet opButton(op)}
   <button type="button" class="btn" class:hazard={homeNeeded && op === homeOp} disabled={!canFire(op.action, op.value)}
-          title={reasonFor(op.action, op.value) || (homeNeeded && op === homeOp ? 'Home required' : undefined)}
+          data-tip={reasonFor(op.action, op.value) || (homeNeeded && op === homeOp ? 'Home required' : undefined)}
           onclick={() => fire(op)}>
     <span class="lbl">{busy[op.key] ? '…' : displayLabel(op.label)}</span>
   </button>
@@ -472,7 +472,7 @@
   <!-- The ladder wears the fields' ring outside the box (docs/EFFECTS.md A,
        ph-vdk.65), never the inset one. -->
   <button type="button" class="rw-flip field" aria-pressed={flip.on} aria-label="Flip" disabled={!flip.enabled}
-          data-shadow={flip.status} data-glow={flip.glow || undefined} title={flip.text} onclick={toggleFlip}
+          data-shadow={flip.status} data-glow={flip.glow || undefined} data-tip={flip.text} onclick={toggleFlip}
           onanimationend={(e) => { if (e.target === e.currentTarget && e.animationName.startsWith('fx-glow')) flip.glowEnd(); }}>
     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"
          stroke-linejoin="round" aria-hidden="true">
@@ -516,7 +516,7 @@
       {#if slot.kind === 'refusal'}
         <!-- The text is its own dismiss button: one target, no extra width. -->
         <div class="recovery" role="alert">
-          <button type="button" class="st-dismiss" title={refusalTitle} aria-label={'Dismiss: ' + refusalTitle}
+          <button type="button" class="st-dismiss" data-tip={refusalTitle} aria-label={'Dismiss: ' + refusalTitle}
                   onclick={clearLastRefusal}>
             <span class="st-text">{refusalText}</span><span class="st-x" aria-hidden="true">×</span>
           </button>
@@ -525,7 +525,7 @@
         <!-- The latest safety edge, its age and unread count; opens the
              Safety feed (LogPane). Dimmed AND worded when stale (laws 5, 8). -->
         <button type="button" class="evline" class:stale={safetyStale} onclick={openSafetyLog}
-                title={edgeText + ' · ' + ageText(now - latestSafety.at) + (unreadSafety ? ' · ' + unreadSafety + ' new' : '')
+                data-tip={edgeText + ' · ' + ageText(now - latestSafety.at) + (unreadSafety ? ' · ' + unreadSafety + ' new' : '')
                   + (safetyStale ? ' · stale, later edges may be missing' : '')}>
           <span class="evkind">{edgeText}</span>
           <span class="evage">{ageText(now - latestSafety.at)}</span>
@@ -534,12 +534,12 @@
         </button>
       {:else if slot.kind === 'health'}
         <!-- A health condition opens its incident on the Log page's Health view. -->
-        <button type="button" class="st-dismiss" title={slot.title} onclick={openHealth}>
+        <button type="button" class="st-dismiss" data-tip={slot.title} onclick={openHealth}>
           <span class="st-text">{slot.text}</span>
         </button>
       {:else if slot.text}
         <span class="st-text" class:unattended={slot.kind === 'unattended'}
-              role={['notice', 'page', 'note'].includes(slot.kind) ? 'status' : 'alert'} title={slot.title || slot.text}>{slot.text}</span>
+              role={['notice', 'page', 'note'].includes(slot.kind) ? 'status' : 'alert'} data-tip={slot.title || slot.text}>{slot.text}</span>
         {#if slot.kind === 'fault' && (machine.link.phase === 'retrying' || machine.link.phase === 'failed')}
           <button type="button" class="btn" onclick={retryNow}>Retry</button>
         {/if}
@@ -548,7 +548,7 @@
       <div class="railtab">
         {#if railHidden}<MiniRail onshow={showRail} />{/if}
         {#if tab}
-          <button type="button" class="tab" aria-label={railHidden ? 'Show rail' : 'Hide rail'} title={railHidden ? 'Show rail' : 'Hide rail'}
+          <button type="button" class="tab" aria-label={railHidden ? 'Show rail' : 'Hide rail'} data-tip={railHidden ? 'Show rail' : 'Hide rail'}
                   aria-expanded={!railHidden} onclick={toggleRail}>
             <svg viewBox="0 0 12 12" aria-hidden="true"><path d={railHidden ? 'M2.5 4.5l3.5 3.5 3.5-3.5' : 'M2.5 7.5l3.5-3.5 3.5 3.5'}/></svg>
           </button>
@@ -565,7 +565,7 @@
           <button type="button" class="btn home-btn" class:icon-only={iconHome} class:hazard={homeNeeded}
                   aria-haspopup="true" aria-expanded={menuOpen}
                   aria-label={homeOp ? displayLabel(homeOp.label) : 'More'}
-                  title={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
+                  data-tip={homeNeeded ? 'Home required' : homeOp ? 'Home and machine ops' : 'Machine ops'}
                   onclick={() => (menuOpen = !menuOpen)}>{@render homeFace()}</button>
           {#if menuOpen}
             <div class="menu-pop" role="group" aria-label="Home and machine ops">
@@ -777,7 +777,7 @@
   /* Bare: out of flow at the window's top right, the pair alone, its corner
      on the screen corner's diagonal clear of the arc (.3 R > R(1 - 1/√2)). */
   .topstrip.bare { position: fixed; top: calc(var(--corner-tr, 0px) * .3); right: calc(var(--corner-tr, 0px) * .3); margin: 0; background: none; border: 0; }
-  .topstrip.bare :global(.linkbar), .bare :is(.nums, .status, .ops, .home-menu, .ovr) { display: none; }
+  .topstrip.bare :global(.linkbar), .bare :is(.nums, .readback, .status, .ops, .home-menu, .ovr) { display: none; }
   .topstrip.bare .strip { display: flex; height: auto; padding: var(--sp-2); }
   .bare .pair { opacity: .5; background: var(--bg-raised); border-radius: var(--r-s); transition: opacity var(--t-quick); }
   .bare .pair:is(:hover, :focus-within), .woke .pair { opacity: 1; }

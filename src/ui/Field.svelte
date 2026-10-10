@@ -618,9 +618,9 @@
   <div class="field-head">
     <span class="field-label-group">
       <label class="field-label" id={labelId} for={LABELABLE.has(pres) ? domId : undefined} data-uid={field.uid}>
-        <span class="field-label-text" title={labelFor(field)}>{labelFor(field)}</span>
-        {#if field.advanced}<span class="tag adv" title="Advanced setting">adv</span>{/if}
-        {#if field.flagBits.restart_required}<span class="tag warn" title="Takes effect after restart">restart</span>{/if}
+        <span class="field-label-text" data-tip={labelFor(field)}>{labelFor(field)}</span>
+        {#if field.advanced}<span class="tag adv" data-tip="Advanced setting">adv</span>{/if}
+        {#if field.flagBits.restart_required}<span class="tag warn" data-tip="Takes effect after restart">restart</span>{/if}
       </label>
       {#if field.desc}
         <!-- Hover reveals the description; the click toggle stays because
@@ -638,7 +638,7 @@
       {/if}
       {#if hasDefault}
         <button type="button" class="info reset" disabled={!enabled || atDefault}
-                title={(atDefault ? 'At ' : 'Reset to ') + (field.ownDefault ? 'control default' : 'machine default')
+                data-tip={(atDefault ? 'At ' : 'Reset to ') + (field.ownDefault ? 'control default' : 'machine default')
                        + (atDefault ? '' : ' (' + formatWithUnit(field, field.dflt) + ')')}
                 onclick={() => commit(field.dflt)}>
           <span class="glyph" aria-hidden="true">&#8635;</span>
@@ -647,7 +647,7 @@
       {/if}
     </span>
     <span class="ladder" class:out-of-range={slot.kind === 'range'} data-slot={slot.kind}
-          role="status" title={slot.text || undefined}>{slot.text}</span>
+          role="status" data-tip={slot.text || undefined}>{slot.text}</span>
     {#if typeableChip}
       <!-- A slider publishes no numerals of its own, so this chip is the only
            place an exact value can be entered. Editable values must LOOK
@@ -669,7 +669,7 @@
       </output>
     {:else if showValueChip}
       <output class="field-value" class:readout={READ_ONLY_PRESENTATIONS.has(pres)} for={domId}
-              class:stale={fresh && fresh.stale} title={staleReason(fresh)}>
+              class:stale={fresh && fresh.stale} data-tip={staleReason(fresh)}>
         {#if field.options}
           {optionLabel(field, value)}
         {:else}
@@ -877,7 +877,7 @@
     </div>
 
   {:else if pres === WIDGET.numeral}
-    <output class="numeral" id={domId} title={staleReason(fresh)}>
+    <output class="numeral" id={domId} data-tip={staleReason(fresh)}>
       {#if numeral}<span class="numeral-digits" style="min-width: {numeral.ch}ch">{numeral.text}</span><span class="unit">{numeral.unit}</span>
       {:else}{optionLabel(field, value)}<span class="unit">{unitOf(field)}</span>{/if}
       {#if field.peak}<span class="peak-tag">{statTag(field.peak)} {formatWithUnit(field.peak, peakValue)}</span>{/if}

@@ -19,7 +19,7 @@ const ok = (name, cond, extra) => {
 
 // ---- the element stub: what analyzer.js touches ----
 class El {
-  constructor(tag) { this.tag = tag; this.kids = []; this.attrs = {}; this.on = {}; this.textContent = ''; this.title = ''; this.disabled = false; this.className = ''; }
+  constructor(tag) { this.tag = tag; this.kids = []; this.attrs = {}; this.on = {}; this.textContent = ''; this.dataset = {}; this.disabled = false; this.className = ''; }
   setAttribute(k, v) { this.attrs[k] = String(v); }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   toggleAttribute(k, on) { if (on) this.attrs[k] = ''; else delete this.attrs[k]; }
@@ -85,8 +85,8 @@ ok('another client\'s write shows on the next frame', outOf('Smoothness').textCo
 gates[sm.uid] = 'no hub link';
 all++;
 an.frame(true);
-ok('a gate change greys the row on the next frame', inputOf('Smoothness').disabled === true && rowOf('Smoothness').title === 'no hub link',
-  { disabled: inputOf('Smoothness').disabled, title: rowOf('Smoothness').title });
+ok('a gate change greys the row on the next frame', inputOf('Smoothness').disabled === true && rowOf('Smoothness').dataset.tip === 'no hub link',
+  { disabled: inputOf('Smoothness').disabled, tip: rowOf('Smoothness').dataset.tip });
 delete gates[sm.uid];
 all++;
 an.frame(true);

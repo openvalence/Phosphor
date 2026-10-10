@@ -258,8 +258,8 @@ const surfaceFaults = (page) => page.evaluate(() => {
   return [...new Set(out)];
 });
 // The sidebar wrench drives edit mode (dashEdit); the dash has no pane head.
-const editBtn = (page) => page.locator('button[title="Edit layout"]:visible').first();
-const doneBtn = (page) => page.locator('button[title="Done editing"]:visible').first();
+const editBtn = (page) => page.locator('button[data-tip="Edit layout"]:visible').first();
+const doneBtn = (page) => page.locator('button[data-tip="Done editing"]:visible').first();
 
 /** Everything a derived category page shows: field uids, action labels, card titles. */
 async function harvestDerived(page) {
@@ -282,7 +282,7 @@ async function harvestDerived(page) {
     await goTab(page, id);
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
+    const shut = page.locator(OPS).locator('button[data-tip="Show advanced"], button[data-tip="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     await collect();
@@ -317,7 +317,7 @@ if (!LIVE) {
   const { ctx, page, up } = await open(1280, 900);
   ok('catalog adopted', up);
 
-  const labels = await page.$$eval('nav.rail [role=tab]', (els) => els.map((e) => e.getAttribute('title')));
+  const labels = await page.$$eval('nav.rail [role=tab]', (els) => els.map((e) => e.getAttribute('data-tip')));
   ok('no Overview tab', !labels.includes('Overview'), labels);
   ok('the first machine tab is Dash', labels[0] === 'Dash', labels[0]);
 
@@ -353,7 +353,7 @@ if (!LIVE) {
     await page.click('[data-tab-id="' + id + '"]');
     await page.waitForTimeout(150);
     // Each click shrinks the match set, so click the first until none is left.
-    const shut = page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
+    const shut = page.locator(OPS).locator('button[data-tip="Show advanced"], button[data-tip="Show diagnostic"]');
     for (let i = 0; i < 40 && await shut.count(); i++) await shut.first().click();
     await page.waitForTimeout(100);
     catFaults.push(...(await surfaceFaults(page)).map((f) => id + ': ' + f));
@@ -375,12 +375,12 @@ if (!LIVE) {
     const r = c.getBoundingClientRect();
     return [c.dataset.id, [r.x, r.y, r.width, r.height].map(Math.round)];
   })));
-  await page.click('nav.rail [role=tab][title="System"]');
+  await page.click('nav.rail [role=tab][data-tip="System"]');
   await page.waitForTimeout(150);
   ok('sections: System shows a Library section over its Pattern presets card, then its diagnostic card under Diagnostics (ph-vrg)',
      JSON.stringify(await sectionRuns()) === JSON.stringify([{ head: 'Library', cards: ['Pattern presets'] }, { head: 'Diagnostics', cards: ['Session'] }]),
      await sectionRuns());
-  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.click('nav.rail [role=tab][data-tip="Motion"]');
   await page.waitForTimeout(150);
   // ph-vrg: a diagnostic group named like a live one rides that card (the order itself: settings-model.test).
   const motion = MODEL.categories.find((c) => c.label === 'Motion');
@@ -404,7 +404,7 @@ if (!LIVE) {
   ok('sections: the header is text on the page, no tint under it (no third surface)', headTint.length === 0, headTint);
   await page.waitForTimeout(600);
   const geo0 = await cellGeo();
-  const advBtn = page.locator(OPS).locator('button[title$=" advanced"]');
+  const advBtn = page.locator(OPS).locator('button[data-tip$=" advanced"]');
   await advBtn.click();
   await page.waitForTimeout(600);
   const geoHidden = await cellGeo();
@@ -428,9 +428,9 @@ if (!LIVE) {
   await page.waitForTimeout(1200);
   const resized = await geoOf(page);
   const fr = await open(1024, 768);
-  await fr.page.click('nav.rail [role=tab][title="Motion"]');
+  await fr.page.click('nav.rail [role=tab][data-tip="Motion"]');
   await fr.page.waitForTimeout(150);
-  const shutFresh = fr.page.locator(OPS).locator('button[title="Show advanced"], button[title="Show diagnostic"]');
+  const shutFresh = fr.page.locator(OPS).locator('button[data-tip="Show advanced"], button[data-tip="Show diagnostic"]');
   for (let i = 0; i < 40 && await shutFresh.count(); i++) await shutFresh.first().click();
   await fr.page.waitForTimeout(1500);
   const fresh = await geoOf(fr.page);
@@ -444,7 +444,7 @@ if (!LIVE) {
   await page.evaluate(([k, v]) => localStorage.setItem(k, v), ['phosphor.layouts', inert]);
   await page.reload();
   await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
-  await page.click('nav.rail [role=tab][title="Motion"]');
+  await page.click('nav.rail [role=tab][data-tip="Motion"]');
   await page.waitForTimeout(1200);
   const seededAt = (await geoOf(page))['group:2:ungrouped'];
   ok('a saved category placement is ignored: the card sits where the seed puts it', !!seededAt && seededAt[1] < 600, seededAt);
@@ -574,7 +574,7 @@ if (!LIVE) {
   // other cards, then Shift+ArrowDown sizes it to fit.
   await page.keyboard.press('Escape');
   await page.waitForTimeout(150);
-  ok('look: a knob taller than its card reds it', /below its minimum/.test(await cell.locator(':scope > .dash-item').getAttribute('title') || ''));
+  ok('look: a knob taller than its card reds it', /below its minimum/.test(await cell.locator(':scope > .dash-item').getAttribute('data-tip') || ''));
   for (let i = 0; i < 20; i++) { await cell.locator('.handle.grab').focus(); await page.keyboard.press('ArrowDown'); }
   await page.waitForTimeout(150);
   const rowsAt = [];
@@ -585,7 +585,7 @@ if (!LIVE) {
     rowsAt.push(await cell.evaluate((c) => c.style.gridRow));
   }
   ok('look: the knob card sized to its content saves', await page.locator('.home .dash-item.fault').count() === 0,
-     [rowsAt, await page.$$eval('.home .dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.title]))]);
+     [rowsAt, await page.$$eval('.home .dash-item.fault', (els) => els.map((e) => [e.closest('.dash-cell').dataset.id, e.dataset.tip]))]);
   await doneBtn(page).click();
   await page.reload();
   await boot(page, 1280);

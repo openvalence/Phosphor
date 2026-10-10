@@ -327,7 +327,7 @@
   // Relative time is worked out on hover only: nothing ticks while the page sits.
   function onOver(e) {
     const t = e.target.closest && e.target.closest('time[data-at]');
-    if (t) t.title = ago(+t.dataset.at);
+    if (t) t.dataset.tip = ago(+t.dataset.at);
   }
 
   // A repeat moves its row to the tail and a DOM move drops focus to the body: the row's
@@ -471,20 +471,20 @@
     <div class="lvls" role="group" aria-label="Levels">
       {#each BUCKETS as b (b.id)}
         <button type="button" class="og-btn sm lvt" data-b={b.id} aria-pressed={lv[b.id]} aria-label={b.label}
-                title={tab !== 'log' ? b.label + ', Log only' : b.label} disabled={tab !== 'log'}
+                data-tip={tab !== 'log' ? b.label + ', Log only' : b.label} disabled={tab !== 'log'}
                 onclick={() => (lv[b.id] = !lv[b.id])}><svg aria-hidden="true"><use href={'#lp-' + b.id} /></svg><b class="mono">{compact(counts[b.id] || 0)}</b></button>
       {/each}
     </div>
-    <select class="srcsel" aria-label="Source" bind:value={src} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log only' : ''}>
+    <select class="srcsel" aria-label="Source" bind:value={src} disabled={tab !== 'log'} data-tip={tab !== 'log' ? 'Log only' : ''}>
       <option value="">all sources</option>
       {#each SOURCES as s (s)}<option value={s}>{s}</option>{/each}
     </select>
     <button type="button" class="og-btn sm" class:on={isEvents && !ff[tab].follow} aria-pressed={isEvents && !ff[tab].follow}
             disabled={!isEvents} onclick={() => (ff[tab].follow ? pause(tab, true) : resume(tab))}>Pause</button>
-    <button type="button" class="og-btn sm" disabled={!folds[tab] || !tabCount(tab)} title={folds[tab] ? '' : 'Log and Anomalies only'}
+    <button type="button" class="og-btn sm" disabled={!folds[tab] || !tabCount(tab)} data-tip={folds[tab] ? '' : 'Log and Anomalies only'}
             onclick={clearFeed}>Clear</button>
     <button type="button" class="og-btn sm" disabled={!isEvents || !shown[tab].length} onclick={copyFeed}>Copy</button>
-    <p class="pane-status" role="status" data-phase={flash ? (flashWhy ? 'fault' : 'settled') : null} title={flashWhy || status}>{status}</p>
+    <p class="pane-status" role="status" data-phase={flash ? (flashWhy ? 'fault' : 'settled') : null} data-tip={flashWhy || status}>{status}</p>
   </div>
 
   {#if tab === 'health'}
@@ -497,7 +497,7 @@
            onscroll={(e) => onScroll(t.id, e.currentTarget)} onkeydown={onFeedKey} onpointerover={onOver} {@attach stick(t.id)}>
         {#if t.id === 'changes'}
           <div class="chead">
-            <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
+            <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} data-tip="Return settings to how they were when you connected"
                     onclick={revert}>Revert changes</button>
           </div>
           {#each lists.changes as evt (evt)}
@@ -514,12 +514,12 @@
           {#each shown[t.id] as r (r.key)}
             {@const x = open.has(r.key)}
             <div class="line" data-b={r.p.lvl ? r.p.bucket : null} class:superseded={r.p.superseded} class:diag={r.p.diag} class:open={x}>
-              <button type="button" class="head" tabindex="-1" aria-expanded={x} title={tipOf(r.p.health)} onclick={(e) => toggle(r.key, e.currentTarget.parentElement)}>
+              <button type="button" class="head" tabindex="-1" aria-expanded={x} data-tip={tipOf(r.p.health)} onclick={(e) => toggle(r.key, e.currentTarget.parentElement)}>
                 <time class="mono" data-at={r.last}>{hms(r.last)}</time>
                 <span class="lvl">{#if r.p.lvl}<svg aria-hidden="true"><use href={'#lp-' + r.p.bucket} /></svg><span class="sr">{r.p.lvl}</span>{/if}</span>
                 <span class="src mono">{r.p.src}</span>
                 <span class="msg">{#if r.p.tag}<span class="chip tag">{r.p.tag}</span>{/if}<span class="text">{textOf(r)}</span>{#if r.p.kvText}<span class="kv">{r.p.kvText}</span>{/if}{#if r.p.superseded}<span class="chip">superseded</span>{/if}</span>
-                <span class="n mono" title={r.n > 1 ? 'first ' + hms(r.first) : null}>{r.n > 1 ? '×' + compact(r.n) : ''}</span>
+                <span class="n mono" data-tip={r.n > 1 ? 'first ' + hms(r.first) : null}>{r.n > 1 ? '×' + compact(r.n) : ''}</span>
               </button>
               {#if x}
                 <div class="detail">

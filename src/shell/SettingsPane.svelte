@@ -99,10 +99,10 @@
       </label>
       <p class="pane-note">Windows asks to allow it the first time</p>
       <div class="row">
-        <button type="button" class="og-btn" disabled={!sim.info} title="The Virtual's PAIR button" onclick={lanPairPress}>Pairing window</button>
+        <button type="button" class="og-btn" disabled={!sim.info} data-tip="The Virtual's PAIR button" onclick={lanPairPress}>Pairing window</button>
       </div>
       <p class="pane-status" role="status" data-phase={lan.port ? 'settled' : lan.note ? 'fault' : null}
-         title={lan.addrs.join(', ')}>{lanText}</p>
+         data-tip={lan.addrs.join(', ')}>{lanText}</p>
     </section>
 
     <section class="pane-sec og-panel" aria-labelledby="set-win">
@@ -126,7 +126,7 @@
       </button>
       <button type="button" class="og-btn" disabled={!confirming} onclick={cancel}>Cancel</button>
     </div>
-    <p class="pane-status" role="status" data-phase={phase} title={status}>{status}</p>
+    <p class="pane-status" role="status" data-phase={phase} data-tip={status}>{status}</p>
   </section>
 </div>
 

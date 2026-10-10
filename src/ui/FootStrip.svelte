@@ -95,15 +95,15 @@
   <span class="fs-label" aria-hidden="true">&#9656; LINK</span>
 
   <div class="facts">
-    <span class="fact d6" title="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
-    <span class="fact d4" title="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
-    <span class="fact d1" title={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
-    <span class="fact d2" title={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
-    <span class="fact d3" title={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
+    <span class="fact d6" data-tip="{machine.stats.reconnects} reconnects"><span class="k">reconnects</span><span class="v mono" style="--w: 3ch">{compact(machine.stats.reconnects)}</span></span>
+    <span class="fact d4" data-tip="{machine.stats.statePushes} state pushes"><span class="k">state pushes</span><span class="v mono" style="--w: 5ch">{compact(machine.stats.statePushes)}</span></span>
+    <span class="fact d1" data-tip={usTitle(offsetUs)}><span class="k">clock offset</span><span class="v mono" style="--w: 11ch">{offsetUs != null ? seconds(offsetUs) : '--'}</span></span>
+    <span class="fact d2" data-tip={usTitle(rttUs)}><span class="k">clock rtt</span><span class="v mono" style="--w: 7ch">{rttUs != null ? seconds(rttUs) : '--'}</span></span>
+    <span class="fact d3" data-tip={deadmanMs ? deadmanMs + ' ms' : undefined}><span class="k">deadman</span><span class="v mono" style="--w: 5ch">{deadman}</span></span>
     <span class="fact d7"><span class="k">last rx</span><span class="v mono" style="--w: 6ch">{rxAge}</span></span>
-    <span class="fact fact-ui" title="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
+    <span class="fact fact-ui" data-tip="UI build {uiCell}, catalog etag {etag || '--'}"><span class="k">ui</span><span class="v mono" style="--w: 18ch">{uiCell}</span></span>
     <button type="button" class="fact fact-btn d5" onclick={() => (sessionMs = !sessionMs)}
-            title={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
+            data-tip={sessionMs ? 'Hide milliseconds' : 'Show milliseconds'}>
       <span class="k">session</span><span class="v mono" style="--w: {sessionMs ? 11 : 7}ch">{sessionAge}</span>
     </button>
   </div>
@@ -111,7 +111,7 @@
     <ScaleControl />
     <span class="dock-slot">
       {#if dock.shown}
-        <button type="button" class="og-btn sm dock-btn" aria-label={dock.label} title={dock.label} aria-expanded={dock.open} onclick={toggleDock}>
+        <button type="button" class="og-btn sm dock-btn" aria-label={dock.label} data-tip={dock.label} aria-expanded={dock.open} onclick={toggleDock}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3h11v10h-11zM10 3v10" /></svg>
         </button>
       {/if}
