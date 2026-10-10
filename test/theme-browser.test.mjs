@@ -76,10 +76,11 @@ function fakeHub(ws) {
  * blended by its ancestors' opacity over the first opaque background behind
  * it. Inactive controls are exempt (WCAG 1.4.3), and so is a stale value,
  * dimmed on purpose (law 8). Returns the failures in words. `[sel, floor]`
- * holds every match to one floor instead (3 for chrome keys).
+ * holds every match to one floor instead (3 for chrome keys); `[sel, 3, true]`
+ * also takes matches with no text of their own (icons, drawn in their color).
  */
 const lowContrast = (arg) => {
-  const [sel, floor] = Array.isArray(arg) ? arg : [arg, 0];
+  const [sel, floor, glyph] = Array.isArray(arg) ? arg : [arg, 0, false];
   const parse = (c) => { const s = /color\(srgb ([^)]+)\)/.exec(c); const m = s || /rgba?\(([^)]+)\)/.exec(c); if (!m) return null;
     const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number); const k = s ? 255 : 1;
     return [p[0] * k, p[1] * k, p[2] * k, p.length > 3 ? p[3] : 1]; };
@@ -89,7 +90,7 @@ const lowContrast = (arg) => {
     if (c && c[3] > 0.5) return c; } return parse(getComputedStyle(document.documentElement).backgroundColor) || [0, 0, 0, 1]; };
   const out = [];
   for (const el of document.querySelectorAll(sel)) {
-    if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+    if (!glyph && ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
     if (el.closest('[disabled], .is-disabled, [aria-disabled="true"], .typeable.disabled, .sr-only, .stale')) continue;
     const cs = getComputedStyle(el);
     if (cs.visibility !== 'visible' || !el.getClientRects().length) continue;
@@ -379,7 +380,8 @@ for (const id of ['slate', 'ink', 'paper']) {
   await ctx.close();
 }
 
-// ---- 3b. every preset: safety text reads 4.5:1 on every surface (ph-632) -----
+// ---- 3b. every preset: safety text, and the rail's words at 4.5:1 and icons
+// at 3:1, expanded and collapsed (ph-632, ph-3m2) ------------------------------
 for (const t of THEMES) {
   const { ctx, page, errors } = await boot({ width: 1440, height: 900 }, { 'phosphor.theme': JSON.stringify(t) });
   await page.waitForSelector('nav.rail .rail-name', { timeout: 15000 });
@@ -392,6 +394,14 @@ for (const t of THEMES) {
     }
   }
   ok(t.id + ': safety text reads 4.5:1 on every surface (ph-632)', inkLow.length === 0, inkLow.join(' | '));
+  const ICONS = 'nav.rail :is(.rail-glyph, .rail-collapse)';
+  const words = await page.evaluate(lowContrast, 'nav.rail :is(.rail-lbl, .rail-name, .sub-layout, .sub-layout *)');
+  const icons = await page.evaluate(lowContrast, [ICONS, 3, true]);
+  await page.click('nav.rail .rail-collapse');
+  await page.waitForTimeout(200);
+  icons.push(...await page.evaluate(lowContrast, [ICONS, 3, true]));
+  ok(t.id + ': the rail\'s words clear 4.5:1 and its icons 3:1 (ph-3m2)', words.length === 0 && icons.length === 0
+    && await page.$$eval(ICONS, (els) => els.length) > 5, [...words, ...icons].slice(0, 4).join(' | '));
   ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }

@@ -854,7 +854,7 @@
     margin: var(--sp-2) var(--sp-2) var(--sp-1);
     min-width: 28px;
     min-height: 28px;
-    color: var(--ink-faint);
+    color: var(--ink-dim);
     border-radius: var(--radius);
     font-size: 13px;
   }
@@ -936,7 +936,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .1em;
-    color: var(--ink-faint);
+    color: var(--tx-val);
   }
 
   :global(.rail-tab) {
@@ -947,7 +947,7 @@
     padding: 0 var(--sp-3);
     border-radius: var(--radius);
     border: 1px solid transparent;
-    color: var(--ink-dim);
+    color: var(--tx-val);
     font-size: .85rem;
     font-weight: 500;
     text-align: left;
@@ -972,7 +972,7 @@
     display: grid;
     place-items: center;
     width: 24px;
-    color: var(--ink-faint);
+    color: var(--ink-dim);
   }
   .rail-glyph svg {
     width: 16px;

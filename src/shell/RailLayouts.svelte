@@ -171,7 +171,7 @@
     display: none;
     place-items: center;
     padding: 0;
-    color: var(--ink-faint);
+    color: var(--ink-dim);
   }
   .sub-grip { left: var(--sp-1); width: var(--gs); height: var(--xs); cursor: grab; touch-action: none; }
   .sub-grip svg { width: 8px; height: 12px; fill: currentColor; }
@@ -184,7 +184,7 @@
   .sub-row:hover .sub-grip, .sub-row:hover .sub-x, .sub-row:focus-within .sub-grip, .sub-row:focus-within .sub-x { display: grid; }
   .sub-row.dragging { opacity: .6; }
   @media (hover: none) { .sub-grip, .sub-x { display: grid; } }
-  .sub-layout.add { color: var(--ink-faint); }
+  .sub-layout.add { color: var(--tx-val); }
   .sub-layout.add:hover { color: var(--highlight); }
   .rail-wrench {
     position: absolute;
