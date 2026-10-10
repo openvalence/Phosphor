@@ -68,7 +68,8 @@ const cfg = twin.get(CH.MACHINE_CONFIG) || {};
 const lo = cfg.window_min ?? 0, hi = cfg.window_max ?? 100;
 ok('jog to mid-window: ECHO', (r = await send(MOVE.id, { [keyOf(MOVE, 'command.position')]: lo + (hi - lo) * 0.5 })) === 'ok', r);
 await until(() => (twin.get(CH.MOTION) || {}).speed === 0 && Math.abs((twin.get(CH.MOTION) || {}).pos_10um - (lo + hi) / 2) < 2, 20000);
-r = await send(OSC.id, { [keyOf(OSC, 'osc.enabled')]: true, [keyOf(OSC, 'osc.frequency')]: 2, [keyOf(OSC, 'osc.amplitude')]: 0.1, [keyOf(OSC, 'osc.shape')]: 0 });
+// osc.amplitude is a peak in mm (Valence RFC-112): 5 mm fits the window either side of mid.
+r = await send(OSC.id, { [keyOf(OSC, 'osc.enabled')]: true, [keyOf(OSC, 'osc.frequency')]: 2, [keyOf(OSC, 'osc.amplitude')]: 5, [keyOf(OSC, 'osc.shape')]: 0 });
 ok('oscillator enabled: ECHO', r === 'ok', r);
 ok('  ... and active on the idle rail', await until(() => !!osc().active, 3000), osc());
 

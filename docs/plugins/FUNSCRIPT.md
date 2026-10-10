@@ -138,8 +138,9 @@ controller tick (once per animation frame)
 
 - Layout by the role: amplitude then frequency, f32, 0..1, the axis value
   as authored (`pos / 100`). The hub maps each through its own parameter's
-  bounds where that parameter's drive is `axis`. An axis the script lacks
-  rides 0.
+  bounds where that parameter's drive is `axis`: V8 onto the amplitude's
+  out bounds in mm, the same size on every window (Valence RFC-112, draft;
+  Nucleus 0.1.40). An axis the script lacks rides 0.
 - Nothing else of the oscillator is written, `osc.enabled` included: the
   hub renders by itself while the stream is live and a drive is `axis`,
   and hands back to the card's values when it goes quiet or the session

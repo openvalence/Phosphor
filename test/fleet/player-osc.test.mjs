@@ -90,6 +90,11 @@ await sleep(1500);
 const live = osc();
 ok('  ... driven: reported sine with no dwells, osc.enabled still false',
   live.active && live.shape === SINE && live.dwell_crest === 0 && live.dwell_trough === 0 && !live.enabled, live);
+// V8 is a norm; the card's amplitude out bounds make it mm (Valence RFC-112), whatever the window.
+const askMm = live.amplitude_out_min + 0.1 * (live.amplitude_out_max - live.amplitude_out_min);
+ok('  ... V8 0.10 plays a tenth of the card\'s amplitude out bounds, in mm',
+  live.amplitude_out_max > 1 && Math.abs(live.amplitude_effective - askMm) < 0.02 * askMm + 0.01,
+  { effective_mm: live.amplitude_effective, ask_mm: askMm });
 ok('every point sent at least the grant\'s 156 ms ahead of its stamp', leads.length >= 50 && Math.min(...leads) >= OSC_LAT_MS * 1000,
   { n: leads.length, min_ms: Math.round(Math.min(...leads) / 1000), max_ms: Math.round(Math.max(...leads) / 1000) });
 
