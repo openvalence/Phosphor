@@ -125,6 +125,12 @@ Blender's flow (`src/ui/graph/GraphPalette.svelte`):
   Place and wire are one undo step.
 - The menu is clamped inside the editor by its measured size, and re-clamped
   whenever its content resizes.
+- Send to node editor, from the shell's context menu (DESIGN 10.13): a
+  mounted editor takes `phosphor-node-add` and places each field in one
+  column around the view's center, one undo step; fields sent while none
+  was mounted wait in `nodeQueue` and are placed when it mounts. Only add
+  menu sources are placed, and a field already on the canvas is not
+  doubled; the editor's status line counts each case.
 
 ## What a node says
 
