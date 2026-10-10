@@ -26,7 +26,8 @@
  * side by side at 40 px and the strip takes at most half the window
  * (ph-vdk.48). In the shell bundle the X
  * opens the close popover anchored under it, the bar keeps its height, and
- * Escape or a click outside cancels. The category page footer
+ * Escape or a click outside cancels; with Close immediately when idle on
+ * (the default) and no hub, the X closes at once. The category page footer
  * (ph-vdk.60.12), at 1280x800 and 390x844: absent on the home, one 48 px box
  * on every category page with page controls, it and its controls hold still
  * for 30 frames across each toggle both ways, and scrolled to its end the
@@ -987,11 +988,13 @@ for (const [w, h] of [[1920, 1080], [1440, 900], [1280, 720], [1024, 768], [800,
 
 // ---- the shell's close popover (ph-e82.17, ph-i7e) ---------------------------
 // Below the whole top strip at the X's edge: it never covers the e-stop or
-// pause (laws 1, 11), at desktop and phone width.
+// pause (laws 1, 11), at desktop and phone width. Close immediately when idle
+// is off here: with no hub the machine reads idle and the X would close.
 for (const [w, h] of [[1280, 800], [390, 844], [1440, 900]]) {
   const tag = 'close ' + w + 'x' + h;
   const cctx = await browser.newContext({ viewport: { width: w, height: h } });
   await cctx.addInitScript(TAURI_STUB);
+  await cctx.addInitScript(() => localStorage.setItem('phosphor.prefs', JSON.stringify({ v: 1, closeIdle: false })));
   const cp = await cctx.newPage();
   await cp.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloaded' });
   await cp.waitForSelector('.linkbar.shell .sb-wbtn[aria-label=Close]', { timeout: 15000 });
@@ -1022,6 +1025,31 @@ for (const [w, h] of [[1280, 800], [390, 844], [1440, 900]]) {
   await cp.mouse.click(720, 600);
   ok('close: a click outside cancels', await cp.evaluate(() => !document.querySelector('.sb-pop')));
   await cctx.close();
+}
+{
+  // The default, no hub (not connected reads idle): the X destroys the window, no popover.
+  const ictx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await ictx.addInitScript('(' + TAURI_STUB + ')();(' + (() => {
+    const inv = window.__TAURI_INTERNALS__.invoke;
+    window.__invoked = [];
+    window.__TAURI_INTERNALS__.invoke = (cmd, ...a) => { window.__invoked.push(cmd); return cmd === 'plugin:window|destroy' ? Promise.resolve() : inv(cmd, ...a); };
+  }) + ')();');
+  const ip = await ictx.newPage();
+  await ip.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloaded' });
+  await ip.waitForSelector('.linkbar.shell .sb-wbtn[aria-label=Close]', { timeout: 15000 });
+  await ip.click('.sb-wbtn[aria-label=Close]');
+  await ip.waitForTimeout(100);
+  ok('close when idle: the X closes at once with no hub, no popover', await ip.evaluate(() => !document.querySelector('.sb-pop')
+    && window.__invoked.filter((c) => c === 'plugin:window|destroy').length === 1), await ip.evaluate(() => window.__invoked.join()));
+  await ip.goto('http://127.0.0.1:' + PORT + '/shell', { waitUntil: 'domcontentloaded' });
+  await ip.waitForSelector('[data-tab-id="shell:settings"]', { timeout: 15000 });
+  await ip.click('[data-tab-id="shell:settings"]');
+  const sw = ip.locator('[data-search-key="close-idle"] input');
+  ok('close when idle: the Settings switch reads on by default', await sw.isChecked());
+  await ip.click('label[data-search-key="close-idle"]');
+  ok('close when idle: the switch persists', !(await sw.isChecked())
+    && await ip.evaluate(() => JSON.parse(localStorage.getItem('phosphor.prefs')).closeIdle === false));
+  await ictx.close();
 }
 
 await browser.close();

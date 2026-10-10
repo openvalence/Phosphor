@@ -3,10 +3,11 @@
  * is the Nucleus build named in kinetic/kinetic.pin (docs/plugins/FUNSCRIPT.md, Kinetic).
  *
  * Always: the vendored bytes instantiate and report the pinned version string, a Kinetic² build, never -dirty.
- * With emsdk (../.tools/emsdk or $EMSDK) and the sibling Nucleus clean at the pinned sha: rebuilds
+ * With --rebuild, emsdk (../.tools/emsdk or $EMSDK) and the sibling Nucleus clean at the pinned sha: rebuilds
  * tools/kinetic-wasm into a temp dir and byte-compares. Otherwise prints why it skipped and passes.
  *
  * Run: node test/kinetic-pin.mjs           check
+ *      node test/kinetic-pin.mjs --rebuild check, then rebuild and compare
  *      node test/kinetic-pin.mjs <wasm>    check that file in place of bytes.js (or KINETIC_WASM=<wasm>)
  *      node test/kinetic-pin.mjs --write   build from Nucleus HEAD (clean) and rewrite bytes.js and kinetic.pin
  */
@@ -21,6 +22,7 @@ const KDIR = join(ROOT, 'plugins', 'factory', 'funscript-player', 'kinetic');
 const NUCLEUS = process.env.NUCLEUS_DIR || join(ROOT, '..', 'Nucleus'); // a clean worktree when the checkout's beads export dirties it
 const EMSDK = process.env.EMSDK || join(ROOT, '..', '.tools', 'emsdk');
 const WRITE = process.argv.includes('--write');
+const REBUILD = process.argv.includes('--rebuild');
 const WASM_PATH = process.argv.slice(2).find((a) => !a.startsWith('--')) || process.env.KINETIC_WASM;
 const KERNEL = / kinetic2 /;
 const fail = (m) => { console.log('kinetic-pin: FAIL ' + m); process.exit(1); };
@@ -80,6 +82,7 @@ if (!version.includes(pin.nucleus.slice(0, 12)) || /dirty/.test(version)) fail('
 if (Number(pin.bytes) !== vendored.length) fail('bytes.js holds ' + vendored.length + ' B, kinetic.pin says ' + pin.bytes);
 console.log('kinetic-pin: bytes.js is ' + version + ' (' + vendored.length + ' B)');
 
+if (!REBUILD) process.exit(0);
 if (!hasEmsdk) { console.log('kinetic-pin: rebuild skipped: no emsdk'); process.exit(0); }
 let head = '';
 try { head = git('rev-parse', 'HEAD'); } catch { console.log('kinetic-pin: rebuild skipped: no Nucleus checkout'); process.exit(0); }

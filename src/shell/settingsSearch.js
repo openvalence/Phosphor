@@ -7,6 +7,8 @@
  */
 import { ACCENTS, KNOB_NAMES } from './themeCopy.js';
 
+const PHONE = ['android', 'ios'].includes(import.meta.env?.TAURI_ENV_PLATFORM);
+
 const FIXED = [
   { label: 'Theme', key: 'theme' },
   { label: 'Accents', key: 'accents' },
@@ -26,6 +28,7 @@ const FIXED = [
   { label: 'Reconnect to the last hub on launch', key: 'reconnect', shell: true },
   { label: 'Broadcast e-stop to every hub on the LAN', key: 'estop-broadcast', shell: true },
   { label: 'Telemetry rate', key: 'telemetry-rate', shell: true },
+  ...(PHONE ? [] : [{ label: 'Close immediately when idle', key: 'close-idle', shell: true }]),
   { label: 'Backup and restore', key: 'backup', shell: true },
 ];
 

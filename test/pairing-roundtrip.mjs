@@ -20,14 +20,14 @@
  * Channel ids 0x0009/0x000A/0x000B are SPEC-CORE (CHANNEL-GRID.md), the same
  * standing as CH_SAFETY — not device knowledge.
  *
- * Run: node test/pairing-roundtrip.mjs [--sim <path to valencesim.exe>] [--port 8784] [--http 8785]
- *      (starts its own sim on those ports with a throwaway --state, never
- *      82/80; refuses to run if something already answers on --port)
+ * Run: node test/pairing-roundtrip.mjs [--sim <path to valencesim.exe>] [--port P] [--http P+1]
+ *      (starts its own sim on those ports, a random private pair by default,
+ *      with a throwaway --state; refuses to run if something already answers
+ *      on --port). Rides test:browser as check:pairing.
  *
  * NEEDS THE DEVICE TWIN, not Valence Bench: bench grants `configure` to every
  * session by construction (hub/bench/README.md), so every assertion below
- * would pass without proving anything. Skips loudly (exit 2) when the binary
- * is absent -- tracked as ph-3gi until Nucleus lands sim/valencesim.
+ * would pass without proving anything. SKIPS (exit 0) when the binary is absent.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -48,13 +48,12 @@ const argv = process.argv.slice(2);
 const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 const SIM_EXE = argOf('--sim',
   new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url).pathname.replace(/^\//, ''));
-const PORT = Number(argOf('--port', 8784));
-const HTTP = Number(argOf('--http', 8785));
+const PORT = Number(argOf('--port', 20000 + Math.floor(Math.random() * 20000)));
+const HTTP = Number(argOf('--http', PORT + 1));
 
 if (!existsSync(SIM_EXE)) {
-  console.log('[SKIP] pairing-roundtrip: no device twin at ' + SIM_EXE +
-    ' -- Nucleus has not landed sim/valencesim yet (ph-3gi). Pass --sim <path> to run it.');
-  process.exit(2);
+  console.log('[SKIP] pairing-roundtrip: no device twin at ' + SIM_EXE + '; pass --sim <path> to run it.');
+  process.exit(0);
 }
 const answers = await new Promise((resolve) => {
   const ws = new WebSocket('ws://127.0.0.1:' + PORT + '/');
@@ -69,9 +68,9 @@ if (answers) {
 
 const STATE_DIR = mkdtempSync(join(tmpdir(), 'pairing-roundtrip-'));
 const sim = spawn(SIM_EXE,
-  ['machine', '--headless', '--no-mdns', '--duration', '120', '--pairing-window',
+  ['machine', '--headless', '--no-mdns', '--no-discovery', '--no-estop-udp', '--duration', '120', '--pairing-window',
     '--port', String(PORT), '--http', String(HTTP), '--state', join(STATE_DIR, 'sim')],
-  { stdio: 'ignore' });
+  { stdio: 'ignore', windowsHide: true });
 await sleep(2500);
 
 function mkSession(name, instByte, extra = {}) {

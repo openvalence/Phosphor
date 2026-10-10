@@ -28,9 +28,10 @@
  * wanting a smooth line needs to interpolate BETWEEN real samples and briefly
  * extrapolate PAST the newest one along its last velocity rather than
  * snapping/holding — the same policy the original used for the rail's comet
- * and hero numerals. `sampleAt()` never fabricates a value out of nothing: with
- * zero samples it reports `fresh:false` and a null value, which callers must
- * treat as "withhold", not "draw at zero" (Ground Truth Doctrine).
+ * (the hero numerals read the newest sample instead, ph-6vh). `sampleAt()`
+ * never fabricates a value out of nothing: with zero samples it reports
+ * `fresh:false` and a null value, which callers must treat as "withhold",
+ * not "draw at zero" (Ground Truth Doctrine).
  *
  * Deliberately NOT a Svelte store / `.svelte.js` — this is called from inside
  * a rAF loop up to 60 times a second, and routing that through reactive state
@@ -403,9 +404,8 @@ export function createTrail(opts = {}) {
 /**
  * A single render-delay clock, SHARED across every telebuf that must agree
  * about "now" (position/velocity/target — see RailWidget.svelte, which reads
- * all three at the one instant this produces so the phosphor dot, the tape
- * cursor and the hero numerals never disagree). See this file's header for
- * why the delay exists at all.
+ * all three at the one instant this produces so the phosphor dot and the tape
+ * cursor never disagree). See this file's header for why the delay exists.
  *
  * Usage: call `noteArrival(tsMs)` every time ANY real sample lands (the
  * timestamp the sample itself carries, e.g. `machine.sampleTs[channelId]`),

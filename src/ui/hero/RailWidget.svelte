@@ -1,7 +1,6 @@
 <script module>
-  // The strip's numerals (TopStrip) read this rail's rAF instant through it,
-  // so the big numeral and the comet never disagree about "now". Null while
-  // no rail is mounted; one rail publishes at a time.
+  // The strip's numerals (TopStrip) read this rail's fields and values
+  // through it. Null while no rail is mounted; one rail publishes at a time.
   let readout = $state.raw(null);
   export function railReadout() { return readout; }
 </script>
@@ -389,6 +388,8 @@
       if (typeof v === 'number' && isFinite(v)) {
         posTele.push(v, ts); renderClock.noteArrival(ts);
         if (v !== posLast) { posLast = v; wake(); }
+        // Latency probe (test/latency-probe.mjs): [state write, this push, value]. Unset costs nothing.
+        if (window.__railArrivals) window.__railArrivals.push([ts, performance.timeOrigin + performance.now(), v]);
       }
     }
   });
@@ -430,11 +431,20 @@
   });
 
   // ---------------------------------------------------------------------------
-  // rAF render loop — drives the canvas AND the hero numerals from the SAME
-  // interpolated instant, so the phosphor dot and the big numeral never
-  // disagree about "now" (the whole reason the strip's HeroNumerals reads
-  // this rail's readout rather than telemetry of its own).
+  // rAF render loop — drives the canvas, the tape cursor and the mini rail
+  // from ONE interpolated instant, a render delay behind the newest sample.
   // ---------------------------------------------------------------------------
+  // The numerals show the newest sample itself, never the interpolated
+  // instant: the render delay is the whole display lag (ph-6vh), and a
+  // numeral needs no smoothing. They lead the comet by that delay.
+  const newest = (f) => {
+    const v = f ? displayValue(f, sampleOf(f)) : null;
+    return typeof v === 'number' && isFinite(v) ? v : null;
+  };
+  const posNow = $derived(newest(pos));
+  const targetNow = $derived(newest(target));
+  // A derived speed stays on the telebuf: differencing arrivals is T18.
+  const speedNow = $derived.by(() => { const v = newest(vel); return v == null ? null : Math.abs(v); });
   let posDisplay = $state(null);
   let speedDisplay = $state(null);
   let moving = $state(false);
@@ -445,8 +455,8 @@
   $effect(() => {
     readout = {
       get posField() { return pos; }, get velField() { return vel; }, get targetField() { return target; },
-      get posVal() { return posDisplay; }, get speedVal() { return speedDisplay; },
-      get targetVal() { return targetDisplay; }, get moving() { return moving; }, get fresh() { return fresh; },
+      get posVal() { return posNow; }, get speedVal() { return vel ? speedNow : speedDisplay; },
+      get targetVal() { return targetNow; }, get moving() { return moving; }, get fresh() { return fresh; },
       get targetFresh() { return targetFresh; }, get extentHi() { return hi; },
       // A scrub or window drag in flight keeps the pop-up open.
       get busy() { return moveDragging || dragMode !== null; },
