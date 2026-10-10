@@ -92,7 +92,7 @@ export function gate(field, busy = '') {
     return s && s.canUse(field.channelId, field.key) ? '' : 'session not authorized';
   }
   if (field.readOnly) return 'read-only: the machine reports this, it is not a setting';
-  const e = machine.catalog.entries.find((x) => x.id === (field.isIntentField ? field.channelId : field.writeChannel));
+  const e = entryOf(field.isIntentField ? field.channelId : field.writeChannel);
   if (!e || (machine.link.roles | 0) < (e.access | 0)) return 'session not authorized';
   if (!field.isIntentField && !isFieldEnabled(field, machine.samples[field.channelId])) {
     return 'disabled by the machine';
@@ -100,7 +100,15 @@ export function gate(field, busy = '') {
   return '';
 }
 
-const entryOf = (id) => (machine.catalog.entries || []).find((e) => e.id === id) || null;
+// By id, per catalog (a new catalog is a new entries array): gate() runs on
+// every plugin tick, and a find() walks the catalog's state proxies (ph-3w4u).
+const entryIds = new WeakMap();
+function entryOf(id) {
+  const entries = machine.catalog.entries || [];
+  let m = entryIds.get(entries);
+  if (!m) entryIds.set(entries, (m = new Map(entries.map((e) => [e.id, e]))));
+  return m.get(id) || null;
+}
 
 // RFC-066: the modulator entry's mod_target, as a uid (settings.js).
 const modTarget = (field) => modTargetUid(machine.catalog.entries || [], field.channelId);
@@ -138,13 +146,11 @@ async function storeSlots(field) {
 const trialCapable = () => (machine.catalog.entries || []).some((e) => e.id === CH_SETTINGS_TRIAL);
 // The ops act on this session's own trials; the op key is the channel's one field.
 const TRIAL_ACTION = { channelId: CH_SETTINGS_TRIAL, key: 1, label: 'Trial' };
-// Any session's trial, as the machine reports it on its meta.trial_pending fields.
+// Any session's trial, as the machine reports it on its meta.trial_pending fields. By the role index, never a
+// catalog walk: the player's status reads this every tick (ph-3w4u).
 function trialPending() {
-  for (const e of machine.catalog.entries || []) {
-    const smp = e.layout && machine.samples[e.id];
-    if (smp && e.layout.some((f) => f.role === FIELD_ROLE.meta_trial_pending && smp[f.name])) return true;
-  }
-  return false;
+  const bits = machine.catalog.model?.byRole.get(FIELD_ROLE.meta_trial_pending) || [];
+  return bits.some((f) => { const s = machine.samples[f.channelId]; return !!(s && s[f.name]); });
 }
 
 async function listenTcp(port, onLine) {

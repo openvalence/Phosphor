@@ -171,16 +171,30 @@ export function roleStream(entries, role) {
 const topOf = (f) => (f.type in TYPE_MAX ? TYPE_MAX[f.type] / (f.scale || 1) : Infinity);
 
 /**
+ * A motionStream() result as plain values, read once per catalog: the app's
+ * catalog is reactive state, and every read through it costs (ph-3w4u).
+ */
+function plainStream(st) {
+  if (!st) return null;
+  const layout = st.entry.layout || [];
+  const d = st.duration, v = st.endVel;
+  return {
+    id: st.entry.id, maxRateHz: st.entry.maxRateHz, bytes: recordBytes(layout), duration: !!d,
+    blank: Object.fromEntries(layout.map((f) => [f.name, unspecified(f)])), target: st.target.name,
+    dName: d && d.name, dTop: d && topOf(d), dScale: d && TIME_SCALE[d.unitId], vName: v && v.name, vTop: v && topOf(v),
+  };
+}
+
+/**
  * One motion-input record: every field at its sentinel, then the ones we have.
  * `endVel` (norm/s) is clamped to the field's range, so it never packs as the
  * sentinel; absent (null or undefined) it stays `unspecified`.
  */
 function record(st, norm, durationMs, endVel) {
-  const out = {};
-  for (const f of st.entry.layout) out[f.name] = unspecified(f);
-  out[st.target.name] = Math.min(1, Math.max(0, norm));
-  if (st.duration) out[st.duration.name] = Math.min(topOf(st.duration), Math.max(0, durationMs || 0) * TIME_SCALE[st.duration.unitId]);
-  if (st.endVel && endVel != null) out[st.endVel.name] = Math.min(topOf(st.endVel), Math.max(-topOf(st.endVel), endVel));
+  const out = { ...st.blank };
+  out[st.target] = Math.min(1, Math.max(0, norm));
+  if (st.duration) out[st.dName] = Math.min(st.dTop, Math.max(0, durationMs || 0) * st.dScale);
+  if (st.vName && endVel != null) out[st.vName] = Math.min(st.vTop, Math.max(-st.vTop, endVel));
   return out;
 }
 
@@ -243,10 +257,20 @@ export function createMotionDoor(deps) {
   const note = (p, msg) => { if (p !== path) { path = p; deps.log('info', msg); } };
   const noteSegments = (ch, grant) => note('segments:' + ch, 'motion input: segments STREAM 0x' + ch.toString(16)
     + ', horizon ' + grant.scheduleHorizonMs + ' ms, lead ' + (grant.scheduleLatencyUs || 0) + ' us');
+  // Per catalog (a new catalog is a new entries array): kind -> plainStream().
+  const streams = new WeakMap();
+  function stream(kind) {
+    const entries = deps.entries();
+    if (!entries || typeof entries !== 'object') return plainStream(motionStream(entries, kind));
+    let m = streams.get(entries);
+    if (!m) streams.set(entries, (m = {}));
+    if (!(kind in m)) m[kind] = plainStream(motionStream(entries, kind));
+    return m[kind];
+  }
 
   /** The channel's grant, asked for once per session: a grant, 'pending' or 'refused'. */
   function grantFor(s, st) {
-    const ch = st.entry.id;
+    const ch = st.id;
     const grant = s.state.grantedPublishes.get(ch);
     if (grant) return grant;
     const id = s.state.sessionId + ':' + ch;
@@ -255,7 +279,7 @@ export function createMotionDoor(deps) {
     if (a !== 'pending') {
       asked.set(id, 'pending');
       // No curve family: a free knot is shaped by the hub's smoothness (RFC-108).
-      s.publish([[ch, st.entry.maxRateHz || FALLBACK_RATE_HZ]]).then(
+      s.publish([[ch, st.maxRateHz || FALLBACK_RATE_HZ]]).then(
         (g) => asked.set(id, g.find((x) => x.channel === ch) ? 'granted' : 'refused'),
         (e) => { asked.set(id, 'refused'); deps.log('warn', 'motion input: ' + e.message); },
       );
@@ -276,13 +300,13 @@ export function createMotionDoor(deps) {
   }
 
   function send(s, st, grant, norm, durationMs) {
-    const ch = st.entry.id;
+    const ch = st.id;
     if (st.duration) {
       const lead = grant.scheduleLatencyUs || 0;
       noteSegments(ch, grant);
       const now = filteredHubNowUs(s);
       const { head } = bundleHead([{ atUs: now + lead, rec: record(st, norm, durationMs) }],
-        now, grant.scheduleHorizonMs, recordBytes(st.entry.layout));
+        now, grant.scheduleHorizonMs, st.bytes);
       if (!head.length) throw new Error('schedule_latency_us ' + lead + ' lies past the ' + grant.scheduleHorizonMs + ' ms horizon');
       s.publishSegment(ch, head.map((x) => x.rec), { anchor: head[0].atUs >>> 0 });
       return;
@@ -298,8 +322,8 @@ export function createMotionDoor(deps) {
     if (!Number.isFinite(norm)) return { ok: false, reason: 'position is not a number' };
     const held = deps.halted ? deps.halted() : '';
     if (held) return { ok: false, reason: held };
-    const seg = motionStream(deps.entries(), STREAM_KIND.segments);
-    const smp = motionStream(deps.entries(), STREAM_KIND.samples);
+    const seg = stream(STREAM_KIND.segments);
+    const smp = stream(STREAM_KIND.samples);
     const st = durationMs > 0 ? seg || smp : smp || seg;
     if (!st) return setpoint(norm, 'hub has no motion STREAM');
     const s = deps.session();
@@ -354,12 +378,12 @@ export function createMotionDoor(deps) {
   function segments(list) {
     const held = deps.halted ? deps.halted() : '';
     if (held) return { ok: false, sent: 0, reason: held };
-    const st = motionStream(deps.entries(), STREAM_KIND.segments);
+    const st = stream(STREAM_KIND.segments);
     if (!st) return { ok: false, sent: 0, reason: 'hub has no segments STREAM' };
-    const nk = deps.lastNack ? deps.lastNack(st.entry.id) : null;
-    if (!nackSeen.has(st.entry.id)) nackSeen.set(st.entry.id, nk);
-    else if (nk && nk !== nackSeen.get(st.entry.id)) {
-      nackSeen.set(st.entry.id, nk);
+    const nk = deps.lastNack ? deps.lastNack(st.id) : null;
+    if (!nackSeen.has(st.id)) nackSeen.set(st.id, nk);
+    else if (nk && nk !== nackSeen.get(st.id)) {
+      nackSeen.set(st.id, nk);
       return { ok: false, sent: 0, reason: nk.name || 'refused by the hub' };
     }
     const s = deps.session();
@@ -396,12 +420,12 @@ export function createMotionDoor(deps) {
       lastOff = off;
       packed.push({ atUs: s0 + off, rec: record(st, x.norm, (end - e) / 1000, x.endVel), i });
     }
-    const { head } = bundleHead(packed, hubNow, grant.scheduleHorizonMs / 2, recordBytes(st.entry.layout));
+    const { head } = bundleHead(packed, hubNow, grant.scheduleHorizonMs / 2, st.bytes);
     if (!head.length) return { ok: true, sent: 0, rateHz };
 
-    noteSegments(st.entry.id, grant);
+    noteSegments(st.id, grant);
     try {
-      s.publishSegment(st.entry.id, head.map((x) => x.rec), { anchor: s0 >>> 0, offsetsUs: head.map((x) => x.atUs - s0) });
+      s.publishSegment(st.id, head.map((x) => x.rec), { anchor: s0 >>> 0, offsetsUs: head.map((x) => x.atUs - s0) });
     } catch (e) {
       return { ok: false, sent: 0, reason: refused(e), rateHz };
     }
@@ -441,7 +465,7 @@ export function createMotionDoor(deps) {
     if (!entry) return { ok: false, sent: 0, reason: 'NO_STREAM' };
     const s = deps.session();
     if (!s) return { ok: false, sent: 0, reason: 'not connected' };
-    const grant = grantFor(s, { entry });
+    const grant = grantFor(s, { id: entry.id, maxRateHz: entry.maxRateHz });
     if (grant === 'refused') return { ok: false, sent: 0, reason: 'publish refused' };
     if (grant === 'pending') return { ok: false, sent: 0, reason: 'waiting for the stream grant' };
     const rateHz = grant.rate, latencyMs = (grant.scheduleLatencyUs || 0) / 1000, layout = entry.layout || [];
