@@ -1032,6 +1032,26 @@ the queue, a tab to manage the queue". Design (Fable, veto-able), as built:
   only. A File cannot be stored, so after a launch a file's row reads
   Reopen, and Open video given a file of that name resolves it.
 
+### Context menus (operator 2026-10-10, `ph-hi4i`)
+
+Operator: "No right click in the funscript plugin." The player's own items
+ride `api.ui.menu` (docs/PLUGINS.md, Context menus), above the page's
+(Manage plugins):
+
+- **Stage** (Player): Play or Pause (off with the status words, or
+  `nothing to play`), Fullscreen or Exit fullscreen on the page mount (off
+  for motion only), Open video, Open script.
+- **Timeline** (the overview and the detail with its lanes): Seek here,
+  Set A here, Set B here (off until A is set), Clear loop (off without
+  one). Here is the time under the pointer; from the menu key or
+  Shift+F10 it is the playhead. A B before A swaps them; a loop the
+  controller cannot hold clears, as the A-B button does.
+- **Scene row** (the library): Play, Play next (the queue's head; a scene
+  already queued moves there), Add to queue, Open in Stash (the scene's
+  page, `<base>/scenes/<id>`, through `api.net.open`; a failure logs
+  `Open in Stash: no browser here`).
+- **Queue row**: Remove, Move to top (off on the first).
+
 ## Stash
 
 Configuration: a connect card (Stash URL, API key as a password field,

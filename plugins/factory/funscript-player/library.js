@@ -27,6 +27,9 @@ export const COPY = Object.freeze({
   search: 'Search',
   stash: 'Stash',
   addQueue: 'Add to queue',
+  play: 'Play',
+  playNext: 'Play next',
+  openStash: 'Open in Stash',
   sort: 'Sort',
   asc: 'Ascending',
   desc: 'Descending',
@@ -119,10 +122,11 @@ export function formFor(W, H, rem = 16) {
 
 /**
  * @param {HTMLElement} el
- * @param {{ui, getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function, onQueue?: Function}} o
+ * @param {{ui, getStash: () => Object|null, prefs: {get(k), set(k, v)}, onPick(scene), fetch?: Function, onQueue?: Function,
+ *   onNext?: Function, onOpen?: (scene) => Function|null}} o
  * @returns {{refresh(): void, step(dir: number): void, canStep(dir: number): boolean, mark(m): void, unmount(): void}}
  */
-export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch = null, onQueue = null }) {
+export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch = null, onQueue = null, onNext = null, onOpen = null }) {
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let seq = 0, picked = null, list = [], sigs = [], want = 0, typing = 0, connectOff = null;
   let marks = { now: null, playing: false, queued: [] };
@@ -170,6 +174,13 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
     const meta = [s.durationMs != null ? clockText(s.durationMs) : '', s.speed != null ? String(s.speed) : ''].filter(Boolean).join(' · ');
     t.querySelector('.ui-tile-t').replaceChildren(h('span', { class: 'fsp-tt', text: s.title }), h('span', { class: 'fsp-bdgs fsp-st' }));
     t.querySelector('.ui-tile-m').replaceChildren(h('span', { class: 'fsp-mt', text: meta }), h('span', { class: 'fsp-bdgs fsp-cap' }));
+    if (ui.menu) ui.menu(t, () => {
+      const open = onOpen && onOpen(s);
+      return [{ label: COPY.play, run: () => pickScene(s) },
+        ...(onNext ? [{ label: COPY.playNext, run: () => onNext(s) }] : []),
+        ...(onQueue ? [{ label: COPY.addQueue, run: () => onQueue(s) }] : []),
+        ...(open ? [{ label: COPY.openStash, run: open }] : [])];
+    }, { title: s.title });
     return t;
   }
   /** [state, carries]: the loaded scene and queued; its oscillator axes and a script. */
