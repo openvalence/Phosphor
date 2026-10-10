@@ -193,7 +193,7 @@
       <span class="chip-lbl unit">KB/s</span>
     </span>
     <span class="chip chip-opt" role="img" aria-label={lossName} data-tip={lossTip}>
-      <span class="chip-lbl">resent</span>
+      <span class="chip-lbl">loss</span>
       <span class="mono lv">{fmtNum(lossClient)}</span><span class="mono sep">/</span><span class="mono lv">{fmtNum(lossMachine)}</span><span class="chip-lbl unit">%</span>
     </span>
     <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>
@@ -360,6 +360,7 @@
   .linkdot {
     --lc: var(--reality-rgb);
     --beat: 2s;
+    --ease-ripple: cubic-bezier(.55, .05, .3, 1);
     /* The ripple reaches about the width of "nucleus-p4" in the hub name (measured: test/responsive-matrix.mjs). */
     --rip-r: calc(var(--wm) * 4.6);
     position: relative;
@@ -376,7 +377,7 @@
     height: 6px;
     border-radius: 50%;
     background: rgb(var(--lc));
-    box-shadow: 0 0 6px rgba(var(--lc), .6);
+    box-shadow: 0 0 5px rgba(var(--lc), .45);
     animation: dot-beat var(--beat) infinite;
   }
   .linkdot.stale .core { animation: dot-dim 3s ease-in-out infinite; }
@@ -403,20 +404,22 @@
     margin: calc(var(--rip-r) * -1) 0 0 calc(var(--rip-r) * -1);
     border-radius: 50%;
     opacity: 0;
-    background: radial-gradient(circle closest-side, rgba(var(--lc), 0) 58%, rgba(var(--lc), .16) 80%,
-      rgba(var(--lc), .75) 95%, rgba(var(--lc), 0) 100%);
-    animation: ripple-grow var(--beat) var(--ease-out) infinite, ripple-fade var(--beat) var(--fx-glow-ease) infinite;
+    background: radial-gradient(circle closest-side, rgba(var(--lc), 0) 88%, rgba(var(--lc), .7) 96%, rgba(var(--lc), 0) 100%);
+    /* Its own cycle, two beats long and started late, so it reads as water spreading after the drop. */
+    animation: ripple-grow calc(var(--beat) * 2) var(--ease-ripple) calc(var(--beat) * .2) infinite,
+      ripple-fade calc(var(--beat) * 2) linear calc(var(--beat) * .2) infinite;
   }
   .linkdot:is(.stale, .offline) .rclip { display: none; }
-  /* The swell: 36 % up on the beat, a quick rise and a slow settle. */
+  /* The swell: 18 % up on the beat, a soft rise and a slow settle. */
   @keyframes dot-beat {
-    0% { transform: scale(1); animation-timing-function: var(--ease-out); }
-    14% { transform: scale(1.36); animation-timing-function: ease-in-out; }
-    46%, 100% { transform: scale(1); }
+    0% { transform: scale(1); animation-timing-function: ease-in-out; }
+    18% { transform: scale(1.18); animation-timing-function: ease-in-out; }
+    55%, 100% { transform: scale(1); }
   }
   @keyframes dot-dim { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  /* Slow start, speeds up, slows to rest: the water's spread, not ease-out. A faint ring, peak .22. */
   @keyframes ripple-grow { from { transform: scale(.08); } to { transform: scale(1); } }
-  @keyframes ripple-fade { from { opacity: .7; } to { opacity: 0; } }
+  @keyframes ripple-fade { 0% { opacity: 0; } 30% { opacity: .22; } 100% { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
     .core, .ripple { animation: none; }
   }

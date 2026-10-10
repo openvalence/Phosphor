@@ -7,6 +7,7 @@ import { machine } from '../../src/model/machine.svelte.js';
 import { applyTheme } from '../../src/model/theme.js';
 import { countFrames } from '../../src/model/activity.js';
 import { decodeCatalog, encodeFrame, FRAME } from '../../../Valence/clients/js/index.js';
+import { health } from '../../src/model/health/health.svelte.js';
 import ChannelHeat from '../../src/ui/ChannelHeat.svelte';
 
 const bar = document.getElementById('bar');
@@ -29,6 +30,11 @@ window.__run = (dir, ids, hz, ms) => new Promise((done) => {
   const id = setInterval(() => { feed(dir, ids); if (Date.now() - t0 >= ms) { clearInterval(id); done(); } }, 1000 / hz);
 });
 window.__nack = (channel, name) => machine.events.nacks.push({ channel, code: 0, name, at: Date.now() });
+// The machine's last frame was `ms` ago; an updates-stalled incident is on the Health board (or not).
+window.__gap = (ms) => { machine.stats.lastRxMs = Date.now() - ms; };
+window.__stalled = (on) => {
+  health.incidents = on ? [{ id: 1, cond: 'updates-stalled', sev: 'warn', closed: false, text: 'No machine updates for 0.0 s' }] : [];
+};
 window.__theme = (id) => applyTheme(id, { persist: false });
 window.__entries = () => machine.catalog.entries.map((e) => ({ id: e.id, name: e.name, cls: e.clsName }));
 

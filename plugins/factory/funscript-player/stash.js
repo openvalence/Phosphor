@@ -12,6 +12,9 @@
 // - rebase keeps a base path prefix (a reverse proxy at /stash) unless the URL already carries it.
 // - script() of a scene without a funscript rejects 'no script for this scene'.
 // - oscOf() never fetches: it reads the scripts this client already parsed (Stash serves no companion files, A7).
+// - asset() is the funscript's text for the library heat, uncached here (the heat keeps its own computed strips): a
+//   conditional GET when given validators, {notModified: true} on a 304. It never touches the script cache.
+// - toScene's marker is Stash's change marker for the heat cache: updated_at plus interactive_speed (A10).
 
 import { parseFunscript, OSC_AXES } from './funscript.js';
 
@@ -37,13 +40,18 @@ export const SCENES_QUERY = `query FindScenes($filter: FindFilterType, $scene_fi
   findScenes(filter: $filter, scene_filter: $scene_filter) {
     count
     scenes {
-      id title date rating100 interactive interactive_speed
+      id title date rating100 interactive interactive_speed updated_at
       files { basename duration width height }
       paths { screenshot stream funscript }
       studio { name } performers { name } tags { name }
     }
   }
 }`;
+
+// ASSUMPTION A10: Scene.updated_at is a Time! that moves when the scene is edited or rescanned, and
+// interactive_speed moves when its script is rescanned: together they mark a changed script. The funscript route is
+// http.ServeFile: it answers Last-Modified (file mtime) and a 304 to If-Modified-Since, with no ETag (v0.31.1
+// source, internal/api/routes_scene.go and pkg/utils/http.go; not yet checked live).
 
 // ASSUMPTION A9: { version { version } } answers on every Stash.
 const VERSION_QUERY = '{ version { version } }';
@@ -104,6 +112,7 @@ export function toScene(raw, base, key) {
     // ASSUMPTION A7: paths.funscript serves the main (L0) script JSON with the ApiKey header; no companions.
     funscript: raw.interactive === false ? null : rebase(p.funscript, base),
     speed: num(raw.interactive_speed) || null,
+    marker: raw.updated_at ? raw.updated_at + '|' + (num(raw.interactive_speed) ?? '') : null,
     studio: (raw.studio && raw.studio.name) || null,
     performers: names(raw.performers),
     tags: names(raw.tags),
@@ -128,9 +137,10 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
   const scrub = (s) => (key ? String(s).split(key).join('***') : String(s));
 
   /** fetch plus the body read under one timeout; a throw, an abort or the timer is 'no answer'. */
-  async function call(url, init, read) {
+  async function call(url, init, read, o = {}) {
     if (!root) fail(COPY.notSet);
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
+    if (ac && o.signal) { if (o.signal.aborted) ac.abort(); else o.signal.addEventListener('abort', () => ac.abort(), { once: true }); }
     let timer;
     const late = new Promise((_, no) => { timer = setTimeout(() => { if (ac) ac.abort(); no(new Error(COPY.noAnswer)); }, timeoutMs); });
     const go = (async () => {
@@ -141,11 +151,15 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
         fail(/^net\.fetch/.test(m) ? m : COPY.noAnswer + (m ? ' (' + scrub(m).slice(0, 80) + ')' : ''));
       }
       if (res.status === 401 || res.status === 403) fail(COPY.badKey);
+      const hd = (n) => (res.headers && typeof res.headers.get === 'function' ? res.headers.get(n) : null);
+      const meta = { status: res.status, etag: hd('etag'), lm: hd('last-modified') };
+      if (res.status === 304 && o.cond) return { text: '', meta };
       if (!res.ok) fail(COPY.refused + res.status);
-      try { return await res.text(); } catch { fail(COPY.noAnswer); }
+      try { return { text: await res.text(), meta }; } catch { fail(COPY.noAnswer); }
     })();
     try {
-      return read(await Promise.race([go, late]));
+      const r = await Promise.race([go, late]);
+      return read(r.text, r.meta);
     } finally {
       clearTimeout(timer);
       go.catch(() => {});
@@ -210,6 +224,20 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 }) {
           return s;
         }));
     },
+
+    /** The scene's funscript text, conditional on cond {etag, lm}: {text, etag, lm}, or {notModified: true} on a 304. */
+    asset(scene, { cond = null, signal = null } = {}) {
+      if (!scene || !scene.funscript) return Promise.reject(new Error(COPY.noScript));
+      const hd = { Accept: 'application/json' };
+      if (cond && cond.etag) hd['If-None-Match'] = cond.etag;
+      if (cond && cond.lm) hd['If-Modified-Since'] = cond.lm;
+      const has = !!(cond && (cond.etag || cond.lm));
+      return call(scene.funscript, { method: 'GET', headers: headers(hd) },
+        (text, m) => (m.status === 304 ? { notModified: true } : { text, etag: m.etag, lm: m.lm }), { signal, cond: has });
+    },
+
+    /** The Stash server this client talks to: the heat cache is per server. */
+    get base() { return root; },
 
     /** The oscillator axes (V8, V9) of a script this client parsed; null until then. */
     oscOf(scene) { return (scene && osc.get(scene.id)) || null; },

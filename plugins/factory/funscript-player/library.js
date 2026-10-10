@@ -14,6 +14,8 @@
 //   buttons are never under 44 px at any Look (law 12's 40 px floor, and the 44 px the library was ruled).
 // - Badges: the scene's state (loaded, queued) beside the title, which yields to it; what the scene carries (V8 V9,
 //   Script) after the meta, each whole or not at all.
+// - The shot's heat strip (heat.js) overlays the shot's bottom edge and is aria-hidden: the row's meta carries the speed.
+//   Hover and focus ask the heat, a touch never does. It is painted from cached bucket speeds, so no theme switch asks Stash.
 // - mark() runs on every player render: it touches a row only when that row's badges change.
 // - getStash() is read on every refresh and must return the same client until base or key change (the client
 //   holds the caches), and a client once a Save stored a base.
@@ -22,6 +24,7 @@
 // - mountConnect takes an optional `client(v)` that builds the client its Test asks.
 
 import { COPY as STASH_COPY, SORTS, normalizeBase, createStash } from './stash.js';
+import { heatOf, heatCss } from './heat.js';
 
 export const COPY = Object.freeze({
   search: 'Search',
@@ -88,6 +91,11 @@ export const CSS = `
 .fsp-cap::before { content: ''; height: 100%; }
 .fsp-bdg { flex: none; padding: 0 var(--sp-2); border: 1px solid var(--line-3); border-radius: var(--r-s); font: 500 .6rem/.875rem var(--font);
   letter-spacing: .04em; text-transform: uppercase; color: var(--tx-val); }
+/* The heat is the shot's bottom edge: it overlays, never takes room. Hidden from assistive tech: the row's speed reads in its meta. */
+.fsp-tile .ui-tile-shot { position: relative; }
+.fsp-heat { position: absolute; inset: auto 0 0 0; height: 6px; opacity: 0; pointer-events: none; }
+@media (hover: hover) { .fsp-tile:hover .fsp-heat { opacity: 1; } }
+.fsp-tile:focus-visible .fsp-heat, .fsp-tile[aria-current=true] .fsp-heat { opacity: 1; }
 .fsp-bdg[data-k=now] { color: var(--reality); border-color: var(--reality); }
 .fsp-connect { display: grid; gap: var(--sp-3); align-content: start; max-width: var(--measure); }
 .fsp-connect .ui-rows { grid-template-columns: minmax(0, 70px) minmax(0, 1fr) max-content; }
@@ -130,6 +138,8 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
   const lib = { ...LIB, ...(prefs.get('lib') || {}) };
   let seq = 0, picked = null, list = [], sigs = [], want = 0, typing = 0, connectOff = null;
   let marks = { now: null, playing: false, queued: [] };
+  let heat = null, heatStash = null;
+  const heatEls = new Map();   // scene id -> the heat strip of its tile on this page
 
   const requery = () => { grid.page = 1; save(); load(); };
   const search = ui.text({ type: 'search', placeholder: COPY.search, label: COPY.search, value: lib.q,
@@ -166,11 +176,41 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
     for (const c of [search, sort, dir, only]) c.disabled = !on;
   }
 
+  /** The scene's heat strip, painted from its bucket speeds with the tokens as they are now. */
+  function paintHeat(id, ups) {
+    const el = heatEls.get(id);
+    if (el) el.style.backgroundImage = heatCss(ups);
+  }
+  /** The heat of the current Stash client: its cache and session checks outlive this mount. */
+  function heatNow() {
+    const stash = getStash();
+    if (stash !== heatStash) {
+      if (heat) heat.onStrip = () => {};
+      heatStash = stash;
+      heat = stash && stash.asset ? heatOf(stash) : null;
+      if (heat) { heat.onStrip = paintHeat; heat.playing = () => marks.playing; }
+    }
+    return heat;
+  }
+
   function tile(s) {
     // ph-1qs5.9: Add to queue, at the row's end or over the tile's shot.
     const add = onQueue ? [ui.button({ icon: 'plus', title: COPY.addQueue, class: 'fsp-qadd', onClick: () => onQueue(s) })] : [];
     const t = ui.tile({ image: s.screenshot, title: s.title, actions: add, class: 'fsp-cell', onClick: () => pickScene(s) });
     t.button.classList.add('fsp-tile');
+    const strip = h('span', { class: 'fsp-heat', 'aria-hidden': 'true' });
+    t.querySelector('.ui-tile-shot').append(strip);
+    heatEls.set(s.id, strip);
+    const known = heat && heat.strip(s.id);
+    if (known) strip.style.backgroundImage = heatCss(known);
+    // A touch hovers nothing: its tap plays. The pointer or focus dwelling revalidates this scene's strip.
+    let leave = null;
+    const dwell = (e) => { if (!leave && heat && !(e && e.pointerType === 'touch')) leave = heat.hover(s); };
+    const away = () => { if (leave) { leave(); leave = null; } };
+    t.button.addEventListener('pointerenter', dwell);
+    t.button.addEventListener('pointerleave', away);
+    t.button.addEventListener('focus', dwell);
+    t.button.addEventListener('blur', away);
     const meta = [s.durationMs != null ? clockText(s.durationMs) : '', s.speed != null ? String(s.speed) : ''].filter(Boolean).join(' · ');
     t.querySelector('.ui-tile-t').replaceChildren(h('span', { class: 'fsp-tt', text: s.title }), h('span', { class: 'fsp-bdgs fsp-st' }));
     t.querySelector('.ui-tile-m').replaceChildren(h('span', { class: 'fsp-mt', text: meta }), h('span', { class: 'fsp-bdgs fsp-cap' }));
@@ -216,6 +256,7 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
     marks = { now, playing: !!playing, queued };
     if (now && now.startsWith('stash:')) picked = now;
     paint();
+    if (!marks.playing && heat) heat.resume();
   }
   /** The scene dir (+1 next, -1 previous) from the picked one on the loaded page, else across the page buttons. */
   function canStep(d) {
@@ -239,8 +280,19 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
       grid.busy = false;
       list = pg.scenes;
       sigs = [];
+      heatEls.clear();
+      const hs = heatNow();
       grid.show(list.map(tile), pg.count);
       paint();
+      if (hs) {
+        hs.sweep();
+        hs.prime(list);
+        // The next page's scripts too, asked once: Next then pages from Stash's cache.
+        if (page * perPage < pg.count) {
+          stash.scenes({ q: lib.q, page: page + 1, perPage, sort: lib.sort, direction: lib.direction, scripted: lib.scripted !== false })
+            .then((nx) => { if (my === seq) hs.prime(nx.scenes, true); }, () => {});
+        }
+      }
       if (want && list.length) { const s = list[want > 0 ? 0 : list.length - 1]; want = 0; pickScene(s); }
       grid.note(pg.scenes.length ? '' : lib.q ? COPY.noMatch : lib.scripted !== false ? COPY.empty : COPY.none);
     }, (e) => {
@@ -289,6 +341,7 @@ export function mountLibrary(el, { ui, getStash, prefs, onPick, fetch: netFetch 
     unmount() {
       seq++;
       clearTimeout(typing);
+      if (heat) heat.onStrip = () => {};
       ro.disconnect();
       unshade();
       if (connectOff) connectOff();

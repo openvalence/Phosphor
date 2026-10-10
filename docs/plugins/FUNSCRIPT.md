@@ -698,6 +698,33 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   | 390 x 844 | fullscreen drawer | 7 | 12 |
   | 360 x 780 | Library tab | 0 (4 drawn, the page shifted sideways) | 6 |
   | 360 x 780 | fullscreen drawer | 7 | 10 |
+- **Script heat (operator 2026-10-10, `ph-0hvq`):** "script heatmap when hovering
+  over thumbnail". A 6 px strip on the bottom edge of a scene's shot, in the
+  timeline overview's heat and its token colors (an overlay: nothing moves),
+  shown while the row or tile is hovered, keyboard-focused or the loaded scene
+  (a touch has no hover and its tap plays, so the loaded row is its way to
+  it; a long press stays the context menu). Phosphor's own heat only: the
+  operator ruled Stash's `interactive_heatmap` PNG out the same day (too
+  colorful, and its red ramp breaks law 13); it is never requested. It is
+  hidden from assistive tech: it repeats nothing the row lacks (the speed
+  reads in the meta) and a generated sentence would invent a summary of
+  96 numbers. The strip is cached, not recomputed: a page load fetches the
+  funscripts of the visible page and the next (scripted scenes only, three
+  at a time, held while a video plays) and keeps 96 bucket speeds per scene
+  in IndexedDB (`fsp-heat`), never the script and never a color, so a
+  theme switch repaints with no request. Entry key: scene id plus Stash's
+  change marker, `updated_at` and `interactive_speed` (A10); a matching marker
+  is a hit with no request. A hover revalidates that one entry once per
+  session after 250 ms: a conditional GET on the funscript URL
+  (`If-Modified-Since` from the stored `Last-Modified`, `If-None-Match` from a
+  stored ETag; Stash sends only Last-Modified, A10), a 304 keeps the entry,
+  a 200 replaces it; a URL that sends neither is downloaded and its CRC32
+  compared with the stored one. Leaving before 250 ms asks nothing; leaving
+  mid-request cancels it. 2000 entries (least recently seen out), none kept
+  unseen for 30 days (swept at each library load, no timer); another Stash
+  server empties the store. A failed request shows no new strip and keeps the
+  old one. Veto: the heat on the whole row hover (the shot alone is 71 px
+  wide in a row), the 6 px height, 96 buckets, 3 at a time.
 - **PR14 Status.** Phones: the page footer's status slot (DESIGN §10.3, the
   page registers `status`). Desktop: the Player card's last row, unframed.
   Both carry the 3 px tone bar; the text is `--tx`, never `--warn`.
@@ -1114,11 +1141,23 @@ GET), 188 interactive scenes: `node test/funscript-stash.test.mjs --live
   `COALESCE(scenes.title, scenes.id)` and groups by scene id, so pages
   never repeat or skip a scene where the sort key ties.
 - **A9** verified. `{ version { version } }` answers `v0.31.1`.
+- **A10** read from the v0.31.1 source, not yet checked live (`--live`
+  does not ask it). `Scene.updated_at` is `Time!` (`graphql/schema/types/
+  scene.graphql`) and `interactive_speed` moves on a rescan: together the
+  heat cache's change marker. `/scene/:id/funscript` is `http.ServeFile`
+  with `Cache-Control: no-cache` (`pkg/utils/http.go`
+  `ServeStaticFile`): it answers `Last-Modified` (the file's mtime) and a 304
+  to `If-Modified-Since`, and no ETag. The client sends `If-None-Match` when
+  it holds an ETag, so a server that sends one is honored, and a server that
+  sends none is compared by CRC32. A browser fetch (vite dev) needs the
+  server to allow those request headers and expose the response ones; the
+  shell's `api.net.fetch` does not.
 
 Out of v1: transcodes, HLS and `sceneStreams` (a transcode restarts
 `currentTime` at the seek point, which the clock would need to model),
 markers, write-back (play count), Stash's heatmap PNG (its red ramp breaks
-law 13; the card draws its own token heat).
+law 13; the card draws its own token heat, and so does the library's script
+heat).
 
 ## Playback (ph-smvd.12)
 
@@ -1422,7 +1461,13 @@ Decisions (veto-able):
 
 - **Node, in `npm run check`:** `test/funscript-core.test.mjs`,
   `test/funscript-scheduler.test.mjs`, `test/funscript-stash.test.mjs`,
-  `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (e3)
+  `test/funscript-heat.test.mjs` (the script heat cache against the fake
+  Stash: a page load fills scripted scenes only, a reload on the same
+  markers makes no request, one changed marker asks one scene, playback
+  holds the prefetch, three at a time, a hover's 304, changed ETag or
+  Last-Modified and CRC32 paths, once per session, leaving cancels, the
+  30-day and 2000-entry limits, another server empties it, no heatmap PNG
+  request ever), `test/kinetic-trace.test.mjs` (Kinetic), and the host sections (e2), (e3)
   (the role door), (i), (j) of `test/plugins.test.mjs`. Items:
   CONTRACT.md, per module.
 - **Browser, `npm run check:funscript` in `test:browser`:**
@@ -1444,7 +1489,10 @@ Decisions (veto-able):
   columns following a Look change; on the desktop
   column and the phone's tab Next in place, Search, Sort Duration both
   ways and Plays, Scripted only, and the Queued, Loaded, Playing, V8 V9 and
-  Script badges (`--library` runs (L) alone; `--shots <dir>` adds dark and
+  Script badges; (L2) the script heat on the tiles: painted for the page and
+  the next only, an overlay that moves nothing, `aria-hidden`, shown on
+  hover, repainted by a token change with no request, in IndexedDB
+  (`--library` runs (L) and (L2) alone; `--shots <dir>` adds dark and
   Paper at every size); nothing sent before Play; preroll then video start;
   every start within half the horizon of its send; starts tile; seek
   re-stamps from now; Pause sends exactly one hold then silence; offset

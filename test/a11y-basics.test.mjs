@@ -152,12 +152,21 @@ const browser = await chromium.launch();
     stops: h.querySelectorAll('.blk[tabindex="0"]').length }));
   ok('heatmap: a labeled toolbar, every block named, one tab stop (ph-8yga)', heat.role === 'toolbar' && heat.label === 'Channel activity'
     && heat.blocks > 5 && heat.named && heat.stops === 1, JSON.stringify(heat));
-  await page.hover('.linkbar .heat .blk');
-  const tipRef = await page.$eval('.linkbar .heat .blk', (b) => {
+  await page.hover('.linkbar .heat .bar .blk');
+  await page.waitForSelector('.linkbar .heat .panel:popover-open');
+  const tipRef = await page.$eval('.linkbar .heat .bar .blk', (b) => {
     const t = document.getElementById(b.getAttribute('aria-describedby') || '');
-    return t && t.getAttribute('role') === 'tooltip' && t.textContent.startsWith(b.getAttribute('aria-label').split(',')[0]);
+    return t && t.classList.contains('detail') && t.textContent.trim().startsWith(b.getAttribute('aria-label').split(',')[0]);
   });
-  ok('heatmap: hover shows a block tooltip that describes it', tipRef);
+  ok('heatmap: hover opens the panel, its details line describes the block', tipRef);
+  // The panel is in the top layer under the strip: nothing in the page covers it, and it covers no safety control.
+  const pan = await page.evaluate(() => {
+    const p = document.querySelector('.linkbar .heat .panel'), r = p.getBoundingClientRect(), s = document.querySelector('[aria-label="Safety controls"]').getBoundingClientRect();
+    const pts = [[.1, .1], [.5, .1], [.9, .1], [.1, .5], [.5, .5], [.9, .5], [.1, .9], [.5, .9], [.9, .9]];
+    return { open: p.matches(':popover-open'), clear: pts.every(([x, y]) => p.contains(document.elementFromPoint(r.left + r.width * x, r.top + r.height * y))),
+      belowStrip: r.top >= s.bottom, tiles: p.querySelectorAll('.tile').length, bar: document.querySelectorAll('.linkbar .heat .bar .blk').length };
+  });
+  ok('heatmap: the panel is in the top layer, unoccluded, below the safety strip, with every block', pan.open && pan.clear && pan.belowStrip && pan.tiles === pan.bar, JSON.stringify(pan));
   await page.mouse.move(0, 400);
 
   if (pageErrors.length) ok('rail: no page errors', false, pageErrors.join(' | '));

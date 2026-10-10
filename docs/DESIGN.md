@@ -617,10 +617,11 @@ question in §10.8).
     handshaking, reconnecting): the intent color, a 1 s beat. Stale (live,
     silent past the deadman): the warn tone, a slow dim, no ripple. Offline:
     a hollow ring, still. A virtual session wears the warn tone in the live
-    state. Each beat swells the dot 36 % over its 6 px and launches one
-    ripple: a circle growing from the dot to a radius of about the width of
-    "nucleus-p4", fading on the write-ack ring's glow decay and ease-out,
-    clipped to the bar's row and drawn behind the name, the chips and every
+    state. Each beat swells the dot 18 % over its 6 px, softly, and the dot
+    sends a ripple on its own cycle (two beats long, started a fifth of a
+    beat late, so it reads as water spreading after the drop): a thin faint
+    ring (peak opacity .22) growing from the dot to a radius of about the
+    width of "nucleus-p4" on a slow-start, speed-up, slow-rest curve, clipped to the bar's row and drawn behind the name, the chips and every
     other content. Transform and opacity only, pure CSS, no motion under
     `html.still` or reduced motion, and no box moves.
   - Auth reads `AUTH: <tier>` (`--` with no session), its value held to the
@@ -635,7 +636,7 @@ question in §10.8).
     live; otherwise the rate reads `--`. How long ago the last frame arrived
     (the old rx) is the tooltip's last line. Phones drop the `KB/s` text (the
     tooltip and the accessible name keep it) so the chip fits whole.
-  - The loss chip reads `resent <client> / <machine> %` from
+  - The loss chip reads `loss <client> / <machine> %` from
     `machine.stats.link` (`src/model/linkstats.js`): the share of TCP sent
     again, never "packets lost". The client figure carries its scope and
     unit: on Windows it is all TCP on this PC, in segments (the tooltip says
@@ -854,16 +855,26 @@ question in §10.8).
   flashing"). The tick runs only while something arrived in the last 10 s;
   idle, nothing runs. A refused channel (its newest word a NACK) and a link
   block whose health condition is open wear the warn tint and a slash, and
-  the tip says why. Hover or keyboard focus shows the tip: name, class and
-  id, rx and tx in frames and bytes a second, last seen, and the channel's
-  role-bound speed, current and bus power readings, read on the tip's own
-  clock. One tab stop (a toolbar), the arrows move, Escape hides the tip. A
-  click on a channel opens the Link page with that channel selected and its
+  the panel says why. Hover or keyboard focus opens ONE panel in the top
+  layer (a popover, so no page element can cover it), hung below the top
+  strip so it never covers the safety controls: the same blocks in the same
+  groups, each 18 px and labeled with its name, live, with group captions
+  (STATE, STREAM, INTENT, EVENT, STORE, Link; in the compact form the classes
+  and the link). A block in the panel highlights, with its twin in the bar,
+  and fills the details line at the panel's foot: name, class and id, rx and
+  tx in frames and bytes a second, last seen, the channel's role-bound speed,
+  current and bus power readings (read on the panel's own clock), and why a
+  warn block warns; no second tooltip is ever drawn. The pointer has 350 ms
+  to cross from the bar into it. One tab stop (a toolbar), the arrows move
+  among the bar's blocks and the panel follows, Enter opens, Escape closes.
+  The late-samples block's stalled-updates line shows, and warns, only while
+  the machine has been silent past 1 s, in that gap's own length. A click on
+  a channel opens the Link page with that channel selected and its
   row brought into view (§10.15); Health opens the Health view; the other
   blocks and a compact block open the Link page. The size reads the catalog
   and the bucket only: four 5 px rows, or in buckets 1 and 2 (and past 32
-  columns) a block per class in two rows and one for the link, each tip naming the
-  busiest member and the refused ones. Under a coarse pointer, whatever the
+  columns) a block per class in two rows and one for the link, each block's
+  details naming the busiest member and the refused ones. Under a coarse pointer, whatever the
   width, the map is one 40 px button that opens the Link page, its blocks
   drawn only: no finger picks a 5 px block. Seams: `src/model/activity.js`
   (counted at the socket, `machine.svelte.js`), `src/ui/ChannelHeat.svelte`
@@ -1594,4 +1605,6 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
 | 2026-10-10 | §10.15 | The Log feed lists the hub's refusals: one warn row per NACK from the hub, tagged `refusal`, reading the code's name with its code, channel and detail as fields, folded like any repeat (code and channel are its identity, never shaped). The Link page's Log link opens the Log feed searched for that name with the level and source filters cleared; the next visit starts with no search (`ph-s5mu.1`). | coordinator (the Link page's seam, ph-s5mu.1; the Log feed rather than a feed of its own, the warn level, the `refusal` tag and the filters clearing are the agent's, veto-able) |
 | 2026-10-10 | §10.14, plugins | Video drops: a playing video's dropped frames past what the screen can show, over 1% in 30 s in 3 separate seconds, a This device warn ("Video dropped 42 frames in 30 s"); the report's optional media block and dropped-frame history; the stage overlay hides as `display: none` and the bare strip drops the plan readback, so at rest only the stop pair sits over a fullscreen video; a media page's bare fullscreen goes edge to edge with the caret as a corner hotspot shown on pointer movement, and the player's analyzer stops painting its rows behind the fullscreen video (`ph-9t5l.7`). | coordinator (a friend's 4K HDR 120 fps fullscreen playback with the analyzer open, "we have no measurement of whether playback is actually smooth"; judging against min(video fps, screen refresh) is the brief's. The 1% / 30 s / 3 seconds / 5 s hold thresholds, warn, Close other apps as the action, the analyzer flag read from the player's `data-an`, and Tab showing the hidden overlay are the agent's, veto-able; edge to edge, the hotspot and the analyzer are the coordinator's follow-up, the top left corner on the pair's inset and the overlay's 2.5 s idle the agent's) |
-| 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a resent chip (the share of TCP sent again, this client's and the machine's, labeled with the scope and unit the model reports) reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the chip labeled `resent`, not `loss`, because the figures are TCP sent again, showing the client's and the machine's share with the radio retries and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |
+| 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a resent chip (the share of TCP sent again, this client's and the machine's, labeled with the scope and unit the model reports) reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the chip labeled `loss` (the operator renamed it from `resent` the same day; the tooltip says the figures are TCP sent again), showing the client's and the machine's share with the radio retries and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |
+| 2026-10-10 | §10.3 | The link dot's ripple is a faint thin ring (peak opacity .22, about a third of before) on its own cycle, two beats long and started a fifth of a beat late (live 4 s after 0.4 s, connecting 2 s after 0.2 s), on a slow-start, speed-up, slow-rest curve; the swell is 18 %, not 36 %; the `resent` chip is labeled `loss`, its tooltip still saying TCP sent again (`src/ui/LinkBar.svelte`, `src/model/linkbar.js`, responsive-matrix `barstates`). | operator (feedback 2026-10-10: "resent sounds like a grudge indicator", the ripple "softer, slower at the start, more of a ripple in water than a pulse") |
+| 2026-10-10 | §10.3 | The channel heatmap's per-block tooltips become one enlarged, labeled panel in the top layer, below the top strip, with the details of the hovered block at its foot (the bar's block count, groups and live brightness, click routing and keyboard kept; 350 ms grace; coarse pointers keep the one button); the stalled-updates line shows only past a real 1 s gap (`src/ui/ChannelHeat.svelte`, `test/channel-heat.test.mjs`). | operator ("hovering brings a slightly larger labelled view of the same group of blocks instead of individually"; the tile size 18 px, the 350 ms grace, the 1 s gap and hanging below the strip rather than the bar are the agent's, veto-able) |

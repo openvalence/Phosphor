@@ -7,8 +7,11 @@
  *   - inside the row at every size, and the same box idle, busy and refusing (no page shifting)
  *   - a fed channel lights, a quiet one stays dark; a refused channel wears the warn tint and the slash and
  *     its tip says refused
- *   - hover and keyboard focus show the tip (name, class, rx and tx, last seen); arrows move, Escape hides,
- *     one tab stop; a click hands the channel id to onopen
+ *   - hover or keyboard focus opens ONE panel in the top layer: every block again, larger and labeled,
+ *     grouped as the bar is, below the bar and in front of the hero numerals; a block there fills the details
+ *     line (name, class, rx and tx, last seen) and a click hands the channel id to onopen; the pointer has a
+ *     grace period to reach it; arrows move, Escape closes, Enter opens, one tab stop
+ *   - the stalled-updates line is absent while updates are fresh, and speaks and warns only past a real gap
  *   - under a coarse pointer: one button of at least 40x40 whose tap opens the Link page
  * Builds its own page from test/heat-harness into a temp dir; dist/ is untouched.
  * Screenshots with --shots [dir] (default test/evidence/channel-heat): each size, dark and Paper.
@@ -110,41 +113,134 @@ try {
     const busy = await box();
     ok(tag + ': the same box idle, busy and refusing', ['x', 'y', 'w', 'h'].every((k) => busy[k] === idle[k]), [idle, busy]);
 
-    // Hover: the tip, out of flow.
-    await page.hover('.heat .blk');
-    const tip = await page.$eval('.heat [role=tooltip]', (t) => t.innerText);
-    ok(tag + ': hover shows the tip', compact
-      ? /^STATE\n26 channels\nbusiest: /.test(tip) && /refused: NOT_HOMED/.test(tip)
-      : new RegExp('^' + first.name + '\\nSTATE · 0x[0-9A-F]{4}\\nrx [0-9.]+/s · [0-9.]+ [KM]?B/s\\ntx --\\nseen \\d+s ago\\nrefused: NOT_HOMED$').test(tip), tip);
-    ok(tag + ': the tip moves nothing', JSON.stringify(await box()) === JSON.stringify(busy));
+    // Hover: ONE panel in the top layer, every block again with its label, in front of the hero.
+    await page.hover('.heat .bar .blk');
+    await page.waitForSelector('.heat .panel:popover-open');
+    const probe = () => page.evaluate(() => {
+      const p = document.querySelector('.heat .panel'), r = p.getBoundingClientRect(), hero = document.getElementById('hero').getBoundingClientRect();
+      const x = Math.max(r.left, hero.left) + 20, y = Math.max(r.top, hero.top) + 20;
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2), hit2 = document.elementFromPoint(x, y);
+      const tiles = [...p.querySelectorAll('.tile')], sw = tiles[0] && tiles[0].querySelector('.sw').getBoundingClientRect();
+      return { open: p.matches(':popover-open'), tiles: tiles.length, bar: document.querySelectorAll('.heat .bar .blk').length,
+        labeled: tiles.every((t) => t.querySelector('.lbl').textContent.trim().length > 0),
+        caps: [...p.querySelectorAll('.cap')].map((c) => c.textContent), swatch: sw && sw.width,
+        inFront: !!hit && p.contains(hit), overHero: r.bottom > hero.top && !!hit2 && p.contains(hit2),
+        below: r.top >= document.getElementById('bar').getBoundingClientRect().bottom, inView: r.left >= 0 && r.right <= innerWidth,
+        panels: document.querySelectorAll('.heat .panel').length, tooltips: document.querySelectorAll('.heat [role=tooltip]').length };
+    });
+    const pn = await probe();
+    ok(tag + ': hover opens one panel in the top layer with every block, labeled and bigger', pn.open && pn.panels === 1 && pn.tooltips === 0
+      && pn.tiles === pn.bar && pn.labeled && pn.swatch >= 15 && pn.swatch <= 20, pn);
+    ok(tag + ': the panel groups the blocks as the bar does',
+      JSON.stringify(pn.caps) === JSON.stringify(compact ? ['Classes', 'Link'] : [...CLASSES.filter((c) => entries.some((e) => e.cls === c)), 'Link']), pn.caps);
+    ok(tag + ': the panel hangs below the bar and in front of the hero numerals (not occluded)', pn.below && pn.inView && pn.inFront && pn.overHero, pn);
+    const detail = () => page.$eval('.heat .panel .detail', (d) => d.innerText);
+    const d0 = await detail();
+    ok(tag + ': the details line reads the hovered block', compact
+      ? /^STATE\n26 channels · busiest: /.test(d0) && /refused: NOT_HOMED/.test(d0)
+      : new RegExp('^' + first.name + '\\nSTATE · 0x[0-9A-F]{4} · rx [0-9.]+/s · [0-9.]+ [KM]?B/s · tx -- · seen \\d+s ago\\nrefused: NOT_HOMED$').test(d0), d0);
+    ok(tag + ': the panel moves nothing', JSON.stringify(await box()) === JSON.stringify(busy));
+    // A block in the panel: highlight, details, click.
+    const second = compact ? 'STREAM' : entries.filter((e) => e.cls === 'STATE')[1].name;
+    await page.hover('.heat .panel .tile >> nth=1');
+    const h1 = await page.evaluate(() => ({ on: [...document.querySelectorAll('.heat .panel .tile.on .lbl')].map((l) => l.textContent), dn: document.querySelector('.heat .panel .dn').textContent,
+      bar: document.querySelectorAll('.heat .bar .blk.on').length, tooltips: document.querySelectorAll('[role=tooltip]').length }));
+    ok(tag + ': hovering a panel block highlights it and fills the details line, no second tooltip', h1.on.length === 1 && h1.on[0] === second && h1.dn === second && h1.bar === 1 && h1.tooltips === 0, h1);
+    await page.evaluate(() => { window.__opened.length = 0; });
+    await page.click('.heat .panel .tile >> nth=1');
+    const routed = await page.evaluate(() => [window.__opened.slice(), document.querySelector('.heat .panel').matches(':popover-open')]);
+    ok(tag + ': clicking a panel block routes as the bar block does, and closes the panel',
+      JSON.stringify(routed) === JSON.stringify([[compact ? null : entries.filter((e) => e.cls === 'STATE')[1].id], false]), routed);
+    await page.evaluate(() => { window.__opened.length = 0; });
+
+    // Open intent: passing over the map opens nothing; resting on it 300 ms does.
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(500);
+    await page.hover('.heat .bar .blk');
+    await page.waitForTimeout(150);
+    const early = await page.$eval('.heat .panel', (p) => p.matches(':popover-open'));
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(500);
+    const passed = await page.$eval('.heat .panel', (p) => p.matches(':popover-open'));
+    ok(tag + ': passing over the map for 150 ms opens nothing', !early && !passed, [early, passed]);
+    await page.hover('.heat .bar .blk');
+    await page.waitForTimeout(450);
+    ok(tag + ': resting on the map opens the panel', await page.$eval('.heat .panel', (p) => p.matches(':popover-open')));
+
+    // The grace period: leaving the bar for the panel within it keeps the panel; leaving both closes it.
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(500);
+    await page.hover('.heat .bar .blk');
+    await page.waitForSelector('.heat .panel:popover-open');
+    await page.mouse.move(w / 2, 20);
+    await page.waitForTimeout(120);
+    await page.hover('.heat .panel .tile >> nth=2');
+    await page.waitForTimeout(600);
+    ok(tag + ': the pointer crosses into the panel inside the grace period', await page.$eval('.heat .panel', (p) => p.matches(':popover-open')));
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(700);
+    ok(tag + ': leaving both closes the panel', !(await page.$eval('.heat .panel', (p) => p.matches(':popover-open'))));
 
     if (SHOT) {
       for (const theme of ['default', 'paper']) {
         await page.evaluate((id) => window.__theme(id), theme);
+        await page.hover('.heat .bar .blk');
+        await page.waitForSelector('.heat .panel:popover-open');
+        await page.hover('.heat .panel .tile >> nth=1');
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: join(SHOTS, tag + '-' + (theme === 'paper' ? 'paper' : 'dark') + '.png'), clip: { x: 0, y: 0, width: Math.min(w, 800), height: Math.min(h, 640) } });
+        await page.mouse.move(w - 5, h - 5);
         await page.waitForTimeout(600);
-        await page.screenshot({ path: join(SHOTS, tag + '-' + (theme === 'paper' ? 'paper' : 'dark') + '.png'), clip: { x: 0, y: 0, width: Math.min(w, 520), height: 200 } });
       }
       await page.evaluate(() => window.__theme('default'));
     }
-    await page.mouse.move(w - 5, h - 5);
 
-    // Keyboard: one tab stop, the tip on focus, arrows move, Escape hides, Enter opens.
+    // Keyboard: one tab stop, the panel on focus, arrows move, Escape closes, Enter opens.
     await page.keyboard.press('Tab');
-    const f0 = await page.evaluate(() => document.activeElement.getAttribute('aria-label'));
-    ok(tag + ': Tab lands on the first block and shows its tip',
-      f0 === (compact ? 'STATE, STATE, warning' : first.name + ', STATE, warning') && await page.$('.heat [role=tooltip]') !== null, f0);
+    const f0 = await page.evaluate(() => [document.activeElement.getAttribute('aria-label'), document.querySelector('.heat .panel').matches(':popover-open'),
+      document.activeElement.getAttribute('aria-describedby') === document.querySelector('.heat .detail')?.id]);
+    ok(tag + ': Tab lands on the first block and opens the panel on it',
+      f0[0] === (compact ? 'STATE, STATE, warning' : first.name + ', STATE, warning') && f0[1] && f0[2], f0);
     await page.keyboard.press('ArrowRight');
     const f1 = await page.evaluate(() => [document.activeElement.getAttribute('aria-label'), document.activeElement.tabIndex,
-      document.querySelectorAll('.heat .blk[tabindex="0"]').length]);
-    ok(tag + ': ArrowRight moves to the next block, still one tab stop', f1[0] === (compact ? 'STREAM, STREAM' : entries.filter((e) => e.cls === 'STATE')[1].name + ', STATE')
-      && f1[1] === 0 && f1[2] === 1, f1);
+      document.querySelectorAll('.heat .bar .blk[tabindex="0"]').length, [...document.querySelectorAll('.heat .panel .tile.on .lbl')].map((l) => l.textContent),
+      document.querySelector('.heat .panel .dn')?.textContent]);
+    ok(tag + ': ArrowRight moves to the next block, the panel follows, still one tab stop',
+      f1[0] === (compact ? 'STREAM, STREAM' : second + ', STATE') && f1[1] === 0 && f1[2] === 1 && f1[3].join() === second && f1[4] === second, f1);
     await page.keyboard.press('Escape');
-    ok(tag + ': Escape hides the tip', await page.$('.heat [role=tooltip]') === null);
+    ok(tag + ': Escape closes the panel', !(await page.$eval('.heat .panel', (p) => p.matches(':popover-open'))));
     await page.keyboard.press('Enter');
     const opened = await page.evaluate(() => window.__opened);
     ok(tag + ': Enter hands the key to onopen', JSON.stringify(opened) === JSON.stringify([compact ? null : entries.filter((e) => e.cls === 'STATE')[1].id]), opened);
     await page.keyboard.press('Tab');
     ok(tag + ': one Tab leaves the heatmap', !(await page.evaluate(() => !!document.activeElement.closest('.heat'))));
+
+    // The stalled-updates line: absent while updates are fresh, warn only past a real gap, in the gap's own length.
+    if (w === 1428) {
+      const late = async () => {
+        await page.mouse.move(w - 5, h - 5);
+        await page.waitForTimeout(500);
+        await page.hover('.heat .bar .blk[aria-label^="Late samples"]');
+        await page.waitForSelector('.heat .panel:popover-open');
+        await page.waitForTimeout(150);
+        return page.evaluate(() => ({ label: document.querySelector('.heat .bar .blk[aria-label^="Late samples"]').getAttribute('aria-label'),
+          detail: document.querySelector('.heat .panel .detail').innerText, why: document.querySelectorAll('.heat .panel .detail .why').length }));
+      };
+      await page.evaluate(() => { window.__gap(0); window.__stalled(true); });
+      await page.waitForTimeout(100);
+      const fresh = await late();
+      ok(tag + ': fresh updates: no stalled-updates line, no warning', !/No machine updates/.test(fresh.detail) && fresh.why === 0 && !/warning/.test(fresh.label), fresh);
+      await page.evaluate(() => window.__gap(600));
+      await page.waitForTimeout(100);
+      const jit = await page.$eval('.heat .panel .detail', (d) => d.innerText);
+      ok(tag + ': a jitter-sized silence stays silent too', !/No machine updates/.test(jit), jit);
+      await page.evaluate(() => window.__gap(3000));
+      await page.waitForTimeout(100);
+      const gap = await late();
+      ok(tag + ': a real gap warns, and says how long', /No machine updates for 3\.\d s/.test(gap.detail) && gap.why === 1 && /warning/.test(gap.label), gap);
+      await page.evaluate(() => { window.__stalled(false); window.__gap(0); });
+      await page.mouse.move(w - 5, h - 5);
+    }
     ok(tag + ': no page errors', errors.length === 0, errors);
     await page.close();
   }
