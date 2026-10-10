@@ -22,3 +22,5 @@ test/evidence/live/
 test/evidence/ui-kit-*.png
 
 .beads.gate.lock
+test/evidence/ph-*/
+test/evidence/quick-access-*.png
