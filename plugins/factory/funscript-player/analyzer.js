@@ -187,11 +187,12 @@ export function kinText(state, r) {
 
 /**
  * deps: api; trace() -> the player's trace [{m, u, p, stale}]; script() -> Script | null; T() -> the transform;
- * fit() -> the Script to measure for Auto Scale (the wire at scale 1) or null.
- * -> { frame(), get mode(), get kinetic() (the latest render or null), get fit() ({sc, extent} | null), unmount() }
+ * fit() -> the Script to measure for Auto Scale (the wire at scale 1) or null; onRender() when a render, the
+ * version, a failure or an Apply or Discard answer lands: the caller frames again.
+ * -> { frame(shown = true), get mode(), get kinetic() (the latest render or null), get fit() ({sc, extent} | null), unmount() }
  */
 export function mountAnalyzer(el, { api, trace = () => [], script = () => null, T = () => ({ offsetMs: 0, lo: 0, hi: 1, invert: false }),
-  fit = () => null }) {
+  fit = () => null, onRender = () => {} }) {
   const capable = () => !!api.field(TRIAL_ROLE);
   let mode = capable() ? 'preview' : 'live';
   let note = '', lagAt = -Infinity, lagText = '', model = null, rows = [];
@@ -210,10 +211,10 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
 
   let kin = null, kinState = 'wasm', kinKey = '', kinSc = null, kinR = null, version = '', busy = 0, seq = 0, fitR = null;
   // The fallback's tooltip is the failure, where the version would be.
-  const kinFail = (e) => { kinState = 'fallback'; kinR = null; version = String((e && e.message) || e || 'Kinetic failed'); };
+  const kinFail = (e) => { kinState = 'fallback'; kinR = null; version = String((e && e.message) || e || 'Kinetic failed'); onRender(); };
   try {
     kin = createKinetic();
-    kin.ready.then((v) => { version = v; }, kinFail);
+    kin.ready.then((v) => { version = v; onRender(); }, kinFail);
   } catch (e) { kinFail(e); }
   const shown = (it) => Number(it.draft != null ? it.draft : api.value(it.f));
   /** Re-render through the worker when the script, T, a limit, the window or a shown Tuning value changed. */
@@ -231,6 +232,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
       kin.render({ limits, window: w, tuning, segs: map ? segs.map(map) : segs, steps, stepMs: 1, every }).then((r) => {
         if (busy === id) busy = 0;
         if (r) done(r, t0, every);
+        onRender();
       }, kinFail);
     };
     if (sc !== kinSc || key !== kinKey) {
@@ -251,7 +253,7 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
   const setMode = (m) => { mode = m; note = ''; frame(); };
   bLive.addEventListener('click', () => setMode('live'));
   bPrev.addEventListener('click', () => { if (capable()) setMode('preview'); });
-  const op = (fn) => () => { note = ''; Promise.resolve(fn()).then(fail, (e) => { note = (e && e.message) || String(e); }); };
+  const op = (fn) => () => { note = ''; Promise.resolve(fn()).then(fail, (e) => { note = (e && e.message) || String(e); }).then(onRender); };
   bApply.addEventListener('click', op(() => api.commitTrial()));
   bDiscard.addEventListener('click', op(() => api.revertTrial()));
 
@@ -332,10 +334,14 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     for (const i of it.inputs) if (i.disabled !== !!gate) i.disabled = !!gate;
   }
 
-  function frame() {
+  let lagIn = null;   // [trace length, its last point, script, T]: what lagText was measured over
+  /** shown false (the card's analyzer collapsed): the render for the timeline's curve and Auto only, no row reads the hub. */
+  function frame(shown = true) {
     if (api.catalog() !== model) build();
     const cap = capable();
     if (!cap && mode === 'preview') mode = 'live';
+    kinetic();
+    if (!shown) return;
     press(bLive, mode === 'live');
     press(bPrev, mode === 'preview');
     bPrev.disabled = !cap;
@@ -344,14 +350,15 @@ export function mountAnalyzer(el, { api, trace = () => [], script = () => null, 
     bApply.disabled = bDiscard.disabled = !cap || !pending;
     for (const it of rows) paint(it);
     const now = performance.now();
-    if (now - lagAt >= LAG_EVERY_MS) {
+    const tr = now - lagAt >= LAG_EVERY_MS ? trace() : null;
+    if (tr && !(lagIn && lagIn[0] === tr.length && lagIn[1] === tr[tr.length - 1] && lagIn[2] === script() && lagIn[3] === T())) {
       lagAt = now;
-      const tr = trace(), sc = script(), t = T();
+      const sc = script(), t = T();
+      lagIn = [tr.length, tr[tr.length - 1], sc, t];
       const fmt = (d) => (d == null ? COPY.none : d + ' ms');
       lagText = COPY.lag + ' ' + fmt(lagOf(tr, sc, t, 'u')) + '  ' + COPY.plan + ' ' + fmt(lagOf(tr, sc, t, 'p'));
     }
     setText(lag, note || lagText);
-    kinetic();
     setText(kinEl, kinText(kinState, kinR));
     const tip = kinR && kinR.anomalies ? [version, Math.round(kinR.ms) + ' ms', ...[...kinR.anomalies].map((n, b) => (n && ANOMALIES[b] ? ANOMALIES[b] + ' ' + n : ''))
       .filter(Boolean)].join('\n') : version;
