@@ -820,7 +820,7 @@ export function createKinetic();   // -> { ready: Promise<version>, render(q) ->
 
 `kinetic.pin` holds `nucleus <sha>`, `version <kinetic_version()>` and
 `bytes <n>`; `test/kinetic-pin.mjs` checks bytes.js against it and, with
-emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
+`--rebuild`, emsdk and Nucleus clean at that sha, rebuilds and byte-compares.
 
 ---
 

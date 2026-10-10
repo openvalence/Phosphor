@@ -13,20 +13,23 @@
  * watch session's write on a control-floor channel is refused NOT_CONTROLLER
  * (SPEC §11.4 step 4) before any source ownership is consulted (ph-mk0).
  *
- * SKIPS CLEANLY (exit 0, reason printed) when no sim answers on --port: this
- * is a live instrument, not part of `check` or `test:browser`.
+ * With no --port it starts its own two sims (homed and unhomed) on private
+ * ports and state from ../Nucleus/sim/valencesim/build/valencesim.exe, and
+ * SKIPS (exit 0) without that exe; it rides test:browser as check:live.
+ * With --port it runs against that sim instead and SKIPS when none answers;
+ * the unhomed pass then needs --unhomed-port (a sim started without --homed).
  *
- * Build first: node node_modules/vite/bin/vite.js build
- * Run:  node test/actions-live.test.mjs [--host 127.0.0.1] [--port 8882] [--http 8880]
- *       [--unhomed-port 8883] [--unhomed-http 8881]   (gating pass; omit to skip it)
- *
- * The unhomed pass needs a SECOND valencesim started with no --homed, e.g.
- *   valencesim.exe --duration 120 --port 8883 --http 8881
+ * Build first: npm run build:only
+ * Run:  node test/actions-live.test.mjs [--host 127.0.0.1 --port 8882 --http 8880
+ *       [--unhomed-port 8883 --unhomed-http 8881]]
+ * Constraints: own sims are killed on every exit path.
  */
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createSession } from '../../Valence/clients/js/index.js';
@@ -35,15 +38,28 @@ import { acquireToken } from '../../Valence/clients/js/credentials.js';
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
 const HOST = argOf('--host', '127.0.0.1');
-const PORT = parseInt(argOf('--port', '8882'), 10);
-const HTTP = parseInt(argOf('--http', '8880'), 10);
-const UNHOMED_PORT = argOf('--unhomed-port', null);
-const UNHOMED_HTTP = argOf('--unhomed-http', null);
+const OWN = argOf('--port', null) === null;
+const BASE = 20000 + Math.floor(Math.random() * 20000);
+const PORT = OWN ? BASE : parseInt(argOf('--port'), 10);
+const HTTP = OWN ? BASE + 1 : parseInt(argOf('--http', '8880'), 10);
+const UNHOMED_PORT = OWN ? String(BASE + 2) : argOf('--unhomed-port', null);
+const UNHOMED_HTTP = OWN ? String(BASE + 3) : argOf('--unhomed-http', null);
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const OUT = join(HERE, 'evidence', 'live');
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+if (OWN) {
+  const SIM = fileURLToPath(new URL('../../Nucleus/sim/valencesim/build/valencesim.exe', import.meta.url));
+  if (!existsSync(SIM)) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+  const TMP = mkdtempSync(join(tmpdir(), 'actions-live-'));
+  const sims = [[PORT, HTTP, ['--homed']], [+UNHOMED_PORT, +UNHOMED_HTTP, []]].map(([p, h, extra]) =>
+    spawn(SIM, ['machine', '--headless', '--no-mdns', '--no-discovery', '--no-estop-udp', '--duration', '600',
+      '--port', String(p), '--http', String(h), '--state', join(TMP, 'sim' + p), ...extra], { stdio: 'ignore', windowsHide: true }));
+  process.on('exit', () => { for (const s of sims) try { s.kill(); } catch (e) { /* gone */ } rmSync(TMP, { recursive: true, force: true }); });
+  await sleep(2500);
+}
 
 let fails = 0;
 const rows = [];
@@ -64,6 +80,7 @@ async function probe(host, port) {
   });
 }
 if (!(await probe(HOST, PORT))) {
+  if (OWN) { console.log('FAIL: the sim this test started never answered on ' + HOST + ':' + PORT); process.exit(1); }
   console.log('SKIP: no valencesim answering on ' + HOST + ':' + PORT
     + ' -- start it (see file header) and re-run.');
   process.exit(0);
@@ -73,11 +90,13 @@ if (!(await probe(HOST, PORT))) {
 // mintUrl() (Valence/clients/js/credentials.js) uses the relative form only
 // when location.hostname === the ?hub host, so our own static server's own
 // origin must front the sim's real mint (a different port) for the page to
-// ever reach control tier.
+// ever reach control tier. A token is good on the sim that minted it only, so
+// the unhomed pass points tokenFrom at its own sim before opening its page.
 const HTML = readFileSync(DIST_HTML);
+let tokenFrom = HTTP;
 const srv = createServer((q, s) => {
   if (q.url.startsWith('/uitoken')) {
-    fetch('http://' + HOST + ':' + HTTP + '/uitoken').then(async (r) => {
+    fetch('http://' + HOST + ':' + tokenFrom + '/uitoken').then(async (r) => {
       s.writeHead(r.status, { 'Content-Type': 'application/json' });
       s.end(await r.text());
     }).catch(() => { s.writeHead(502); s.end('{}'); });
@@ -120,7 +139,8 @@ async function openApp(browser, { w, h, touch, hub }) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => ok('no page error (' + hub + ')', false, String(e)));
   await page.goto('http://127.0.0.1:' + STATIC_PORT + '/?hub=' + hub);
-  const up = await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab]' : 'nav.tabs [role=tab]', { timeout: 15000 })
+  // The Pattern card's run switch exists only once the catalog is adopted, on every viewport.
+  const up = await page.getByRole('switch', { name: /pattern$/i }).waitFor({ timeout: 15000 })
     .then(() => true).catch(() => false);
   await page.waitForTimeout(500);
   return { ctx, page, up };
@@ -249,7 +269,7 @@ async function checkPatternPanel(tag, w, h, touch) {
   // Fresh boot defaults speed/depth/stroke to 0%: a "running" generator with
   // no amplitude legitimately produces no motion. Max the three amplitude
   // knobs first so the position-moves assertion below means something.
-  const knobRanges = card.locator('.fld2 input[type=range]');
+  const knobRanges = card.getByRole('slider');
   for (let i = 0; i < await knobRanges.count(); i++) { await knobRanges.nth(i).focus(); await page.keyboard.press('End'); }
   await page.waitForTimeout(400);
 
@@ -329,16 +349,15 @@ console.log('\n[confirm layer] reboot/reset-tagged actions: none in this catalog
 if (UNHOMED_PORT) {
   console.log('\n[unhomed] gating reasons on a sim started without --homed');
   if (await probe(HOST, parseInt(UNHOMED_PORT, 10))) {
+    if (UNHOMED_HTTP) tokenFrom = UNHOMED_HTTP;
     const { ctx, page, up } = await openApp(browser, { w: 1280, h: 800, touch: false, hub: HOST + ':' + UNHOMED_PORT });
-    // The static server's /uitoken proxy always targets --http; an unhomed
-    // pass with its own HTTP port needs its own proxy, so open a private one.
     if (up) {
       const card = dashItem(page, 'Pattern');
-      const reason = await card.locator('.hint').first().textContent().catch(() => '');
-      ok('unhomed: the pattern head shows a gray-with-reason hint', reason.trim().length > 0, null, reason.trim());
-      const runDisabled = await card.locator('.run-btn').isDisabled();
-      ok('unhomed: run/stop is disabled while ungated is expected', true, 'observed', runDisabled ? 'disabled' : 'enabled');
-      const presetBtn = dashItem(page, 'Actions').locator('.field.action .ops button').first();
+      // The run switch's gray reason rides the state line's title (PatternWidget reasonOf).
+      const reason = (await card.locator('.pattern-state').getAttribute('title').catch(() => null)) || '';
+      ok('unhomed: the pattern head says in words why it is gray', reason.length > 0, null, reason);
+      ok('unhomed: run/stop is disabled', await card.getByRole('switch', { name: /pattern$/i }).isDisabled());
+      const presetBtn = page.locator('.field.action .ops button').first();
       const presetDisabled = (await presetBtn.count()) ? await presetBtn.isDisabled() : null;
       console.log('  NOTE: action.preset (generic trigger) disabled=' + presetDisabled
         + ' -- ActionField.reasonFor() only checks link/role access, not isFieldEnabled/enabled_mask, so'
