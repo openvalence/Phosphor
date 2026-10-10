@@ -370,6 +370,9 @@ ok('a hero whose required roles are ABSENT declines entirely', patternClaim === 
   ok('fixture hub: the pattern generator card IS drawn, background_run bound beside run/stop',
      !!claim && claim.running.name === 'running' && claim.select.name === 'pattern'
        && !!claim.bgRun && claim.bgRun.name === 'background_run');
+  const smooth = real.fields.find((f) => f.name === 'smoothness');
+  ok('an f32 step reads as authored, so a range reaches its max (ph-ycwg)', smooth.step === 0.05
+     && smooth.min + Math.floor((smooth.max - smooth.min) / smooth.step) * smooth.step === smooth.max, smooth.step);
 }
 
 // ---- claim: hero rank reaches Overview unless a Tier-1 widget took it -----
