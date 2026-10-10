@@ -229,7 +229,7 @@ async function sendQueued(session, channelId, entries, trial, mine) {
       // the echo the machine did not tell us what it did, and we must not
       // pretend it agreed — fall back to reported truth.
       if (Object.prototype.hasOwnProperty.call(applied, k)) {
-        if (sh) { sh.applied = applied[k]; settle(sh); }
+        if (sh) { sh.applied = applied[k]; sh.echoPushes = rec.field ? pushesOf(rec.field.channelId) : null; settle(sh); }
         // The machine applied it even when a newer write owns the shadow: history sees every one.
         if (rec.field && settledHook) settledHook({ field: rec.field, before: rec.before, after: applied[k], trial, ...rec.hist });
       } else if (sh) {
@@ -248,6 +248,9 @@ async function sendQueued(session, channelId, entries, trial, mine) {
     }
   }
 }
+
+/** STATE pushes taken on a channel so far: displayValue's "none since the ECHO" test. */
+const pushesOf = (channelId) => machine.stats.pushesByChannel[channelId] || 0;
 
 function schedule(channelId) {
   const q = queueFor(channelId);
@@ -329,6 +332,7 @@ function begin(sh, value) {
   clearTimers(sh);
   sh.status = STATUS.pending;
   sh.requested = value;
+  sh.echoPushes = null;
   sh.error = null;
   sh.settled = false;
   sh.seq = ++writeSeq;
@@ -541,6 +545,8 @@ export function statusOf(field) {
  * The value a control must display.
  *
  * In flight -> the requested value (so the control tracks the operator's hand).
+ * Confirmed, until the field's channel takes a STATE push after the ECHO -> the
+ * ECHO's applied value, the machine's own word (ph-f459).
  * Otherwise -> the device's reported value, always. Never a remembered request,
  * never a default, never a guess.
  */
@@ -549,6 +555,10 @@ export function displayValue(field, sample) {
   if (sh && (sh.status === STATUS.pending || sh.status === STATUS.overdue)
       && sh.requested !== undefined) {
     return sh.requested;
+  }
+  if (sh && sh.status === STATUS.confirmed && sh.echoPushes != null && sh.applied !== undefined
+      && pushesOf(field.channelId) === sh.echoPushes) {
+    return sh.applied;
   }
   return reportedValue(field, sample);
 }

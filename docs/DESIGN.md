@@ -525,6 +525,11 @@ question in §10.8).
   beside it, in that order, each row "label value unit" on one line (operator
   ruling 2026-10-03, `ph-pmor`): it never grows the strip and is hidden only
   on a handheld stacked strip.
+- The numerals show the newest sample as received, exact to its last digit,
+  and change when it arrives (`ph-6vh`). The rail's comet, the tape cursor
+  and the mini rail draw one interpolated instant a render delay behind it
+  (`src/ui/hero/telebuf.js`), so at speed the numeral leads the dot by that
+  delay.
 - The rail row is the track alone (operator ruling 2026-10-03, `ph-ryi7`):
   no mode words and no range text (the window's own label says the range,
   and its tooltip carries the window's description); a jog reason replaces
@@ -575,6 +580,19 @@ question in §10.8).
   decorations), `src-tauri/capabilities/default.json` (window permissions),
   `src/shell/ShellStrip.svelte`. Windows first; Android has no frame; the
   served page draws the strip without window controls.
+- Close: the X and every OS close request open one popover under the strip,
+  and only a held Close quits (`src/shell/close-confirm.js`). Close
+  immediately when idle (operator ruling 2026-10-10; Settings > Window, on by
+  default) skips the hold while the machine is idle at the moment of the
+  request: no control-owner slot held (a stream, the player, a jog, a
+  remote), and `telemetry.velocity`, `pattern.running`, `advgen.running`,
+  `osc.active` and `meta.trial_pending` all zero, each on a fresh sample. A
+  stale link, a declared role with no fresh sample, or a carriage that
+  reports its position but not its speed keeps the hold. A hub not heard
+  from since it was chosen counts as idle; a dropped link does not. Homing
+  has no registry identity, so a home cycle reads idle in its still moments
+  (queued, at a datum) until one is ratified. The phone shell and the served
+  page have no close gate.
 - One strip, one top reserve, one safe-area owner (`.claude/rules/webui.md`
   T22). Safety colors stay unthemeable in the new chrome (law 13).
 - No shifting from non-user input (operator ruling 2026-10-02, amended
@@ -1345,4 +1363,6 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.14 | Health lines are measured facts with their number and the tooltip is the detail (measured, since, threshold, one action, the click), never a repeat (COPY.md rule 11); the slot opens its incident. D4 growth judged on the 5-minute floors of the memory sawtooth, rising every block for 30 min and 100 MB up, the loop-lag arm gone; D6 workers its own condition. A report's least, typical and worst values are over its stated window (`evidence.from_ms`, `to_ms`), a growth report carries what grew, from, to, over and how fast, an event's kind is its condition, and a condition with no classifier reports where it was measured as its cause (`ph-9t5l`). | operator ("the worst error/anomaly message of ALL time": vague, no number, no cause, no action, a tooltip repeating it); the coordinator's read of report KMCBXOPP (a GC sawtooth, 28 to 49 MB, raised growth; maxima that were point samples). The 5-minute blocks, the 100 MB and 50 MB figures, the run a plateau breaks, the area-to-cause map, the stall measured from the overdue tick and the uplink delay counted up to a starvation's classification are the agent's, veto-able |
 | 2026-10-10 | §10.1, §10.6 | Add to Dash writes any named layout, the Dashes being §10.6's layouts with nothing parallel: the first free rect, written once measured; an unbuilt layout takes its seed as placements first (`ph-hi4i.1`). | operator ("opens a SUBMENU for picking which Dash"; the seed copy on an unbuilt Default, operator-accepted pick; corrected the same day: "Phosphor already has multiple Dashes ... build nothing parallel". The seed copy on every unbuilt layout and not only Default, New Dash… holding only the item, an add leaving the user on the page, and Add to Dash absent off the full class instead of read-only reflowed Dashes are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | The context menu's Add to Dash submenu: every Dash with a check on those holding the item, New Dash… naming in place, ArrowRight or Enter to open and ArrowLeft or Escape to close, a tap opening it inline; `kit.js` `menu` items take `items`, `checked` and `ask`, plugin items stay flat (`ph-hi4i.1`). | operator (the keys and the inline tap are the ruling's; hover opening the flyout with a 300 ms grace on the way to it, a checked Dash opening with the card's first control focused, the `Dash name` placeholder, and no submenu for `registerMenu` items are the agent's, veto-able; the review's: the check a mark on a row that stays a menu item, a flyout holding focus staying open when the pointer leaves, and a height-only resize keeping the New Dash… field open, also veto-able) |
+| 2026-10-10 | §10.3 | The hero numerals show the newest sample, not the rail's interpolated instant; the comet, tape cursor and mini rail keep the render delay. Measured against valencesim, wire to painted numeral 82 to 22 ms in Chromium and 63 to 19 ms in the shell's WebView2 (`test/latency-probe.mjs`, `ph-6vh`). | agent (the brief allowed raw numerals with smoothed motion drawing; keeping the rail's delay unchanged is the agent's, veto-able) |
+| 2026-10-10 | §10.3 | Close immediately when idle: a Settings switch, on by default, lets the X and an OS close request close with no hold while every connected machine is idle (at rest, no stream or player, no pattern, oscillator, homing or trial); anything busy or stale keeps the hold, and a machine not connected counts as idle. | operator ("the hold to close can be ignored when the machine is idle, make that a setting"; the idle list, stale reading busy and not connected reading idle are the ruling's; on by default is the coordinator's, veto-able. Not connected read as no frame since the hub was chosen, so a dropped link holds; any held control-owner slot, a jog or remote included, reading busy; a declared role never reported, or a position with no speed, holding; homing covered only by the speed until a registry role exists; the switch under a new Window heading, desktop only, are the agent's, veto-able) |
 | 2026-10-10 | §10.12, plugins | The funscript library pages as many scenes as its box holds at every size class, six or more: compact rows (a small 16:9 shot, title, meta, badges) side by side in columns where the box is wide (the kit list gains `row.min`), a 16:9 tile grid only where three tiles fit across and a page holds six; 44 px rows and targets under a coarse pointer (docs/plugins/FUNSCRIPT.md, Library browser; `ph-0hvq`). | operator ("the funscript player library being kinda useless? ... most sizes only 1 vid shows"; the density bar of six, the size classes, search, sort, a has-script filter, paging that never jumps and the now-playing and queued state per row are the ruling's. Rows winning wherever the grid pages fewer than six, the badges in the kit tile's slots, V8 V9 from parsed scripts only, Duration and Plays as the added sorts and the 560 px landscape drawer are the agent's, veto-able: FUNSCRIPT.md L1 to L5) |

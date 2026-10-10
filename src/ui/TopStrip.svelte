@@ -10,8 +10,8 @@
    *   heights that depend on the viewport only: never on the hub name, a
    *   reason, a refusal or whether a rail is mounted. Nothing here adds a
    *   line; a long text ellipsizes and carries its full form in `title`.
-   * - The strip: the rail's numerals left (railReadout(), the rail's own rAF
-   *   instant), ONE status slot in the middle, the controls right, mirrored
+   * - The strip: the rail's numerals left (railReadout(), the newest
+   *   sample), ONE status slot in the middle, the controls right, mirrored
    *   so the e-stop is outermost (operator 2026-10-02): Home (every
    *   action.home / action.safety op the catalog advertises), then Flip and
    *   override/return while a rail is mounted (SPEC §9.6, §11.1), then the

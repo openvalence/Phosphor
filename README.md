@@ -83,19 +83,18 @@ every time.
 | `node test/valence-modes.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (Nucleus val-091.11, motion writes) |
 | `node test/valence-tuning.mjs <host>` | a hub at `<host>:82` -- fails against valencesim today (val-091.12, pattern engine) |
 | `node test/valence-writeplane.mjs <host> [port]` | a hub at `<host>:82` |
-| `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves |
+| `node test/tap-to-move-live.mjs <host>` | a hub at `<host>:82`, commands real moves; with no host, its own sim (`check:taptomove` in `test:browser`) |
 | `node test/model-vs-device.mjs <host>` | a hub at `<host>:82` |
 | `node test/position-jitter-probe.mjs <host> ...` | a hub at `<host>:82`, commands real moves |
 | `node test/streamed-outlier-probe.mjs <host> [durationMs]` | a hub at `<host>:82`, commands real moves |
 | `node test/rail-probe.mjs <host>` | a hub at `<host>:82`, machine already moving |
 | `node test/wire-forensics.mjs <host>` | a hub at `<host>:82`, machine already moving |
 | `node test/render-vs-samplerate-probe.mjs` | pre-captured `test/evidence/trace-{30,25}hz.json`, produced by `position-jitter-probe.mjs` against a live hub |
-| `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser |
+| `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:browsercheck` in `test:browser`) |
 | `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser |
 | `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
 | `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser -- not a Valence hub |
 | `node test/valence-sim.mjs [--host] [--port]` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` -- fails today (val-091.11/.12) |
-| `node test/pairing-roundtrip.mjs` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` |
 
 `test/fixtures/valencesim-catalog.{bin,etag}` is captured from the simulator
 (valencesim), not hand-copied from Valence: build `../Nucleus/sim/valencesim` (its own

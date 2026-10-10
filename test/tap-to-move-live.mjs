@@ -18,7 +18,9 @@
  *
  * The page must be loaded FROM THE DEVICE (same reason as browser-check.mjs:
  * /uitoken is same-origin-only; a localhost origin gets watch tier and the
- * tape correctly disables).
+ * tape correctly disables). With no host it runs against its own private
+ * homed valencesim (test/live-sim.mjs) and SKIPS (exit 0) without the exe;
+ * it rides test:browser as check:taptomove.
  *
  * Run: node test/tap-to-move-live.mjs [host]
  */
@@ -28,10 +30,14 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createSession, CH, PRIORITY } from '../../Valence/clients/js/index.js';
+import { catalogTabs } from './nav.mjs';
+import { startSim, serveBundle, SIM } from './live-sim.mjs';
 
-const HOST = process.argv[2];
-if (!HOST) { console.error('usage: node test/tap-to-move-live.mjs <host> [...] -- no baked default, name the hub'); process.exit(1); }
-const PAGE_URL = 'http://' + HOST + '/';
+const own = process.argv[2] ? null : await startSim();
+if (!process.argv[2] && !own) { console.log('SKIP: no host given and no valencesim at ' + SIM); process.exit(0); }
+const HOST = own ? '127.0.0.1' : process.argv[2];
+const WS_PORT = own ? own.port : 82;
+const PAGE_URL = own ? await serveBundle(own.port, own.http) : 'http://' + HOST + '/';
 const OUT = join(fileURLToPath(new URL('.', import.meta.url)), 'evidence');
 mkdirSync(OUT, { recursive: true });
 
@@ -50,7 +56,7 @@ const info = (m) => console.log('      ' + m);
 const wire = { samples: [], welcome: false };
 const watcher = createSession({
   host: HOST,
-  port: 82,
+  port: WS_PORT,
   clientKind: 'webui',
   clientName: 'tap-to-move wire watcher',
   autoReconnect: false,
@@ -72,7 +78,9 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 
 await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
-await page.waitForSelector('nav.tabs button', { timeout: 25000 });
+await catalogTabs(page);
+// Over the hero budget (DESIGN §10.12, TopStrip.svelte) the rail is the mini; Show rail is the user's ask for it.
+await page.getByRole('button', { name: 'Show rail' }).first().click({ timeout: 3000 }).catch(() => {});
 
 // The tape goes .live only when the catalog resolved command.position AND the
 // session minted control tier — wait for it rather than sleeping.
