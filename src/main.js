@@ -85,6 +85,11 @@ async function boot() {
         invoke, isVirtual: () => !!machine.link.virtual || v.onSim(), origin: () => machine.link.roles,
       }))
       .catch((e) => bootFault('datagram e-stop', e));
+    // The top bar's client loss: the OS's TCP counters for the hub socket
+    // (src-tauri/src/linkstats.rs; null on Android).
+    await Promise.all([import('@tauri-apps/api/core'), import('./model/machine.svelte.js')])
+      .then(([{ invoke }, m]) => m.setClientLinkSource((host, port) => invoke('link_tcp_counters', { host, port })))
+      .catch((e) => bootFault('link counters', e));
     // NO baked-in host: discovery IS the shell's front door (operator ruling,
     // 2026-07-28). Auto-connect only re-joins a saved hub, at its saved
     // host:port, when the reconnect preference is on (shell/settings-pane.js).

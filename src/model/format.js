@@ -280,6 +280,9 @@ export function optionLabel(field, value) {
   return (l == null || l === '') ? String(value) : l;
 }
 
+/** A channel id or NACK code as the Link page and the Log print it: 0x0102. */
+export const hexId = (id) => '0x' + id.toString(16).padStart(4, '0').toUpperCase();
+
 /** Humane elapsed time from a ms epoch. */
 export function since(ms) {
   if (!ms) return '--';
