@@ -46,7 +46,7 @@
   import { isFieldEnabled, resetsToDefault, WIDGET } from './model/settings.js';
   import { UI_CATEGORY, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../Valence/clients/js/index.js';
   import { navIcon } from './ui/navIcons.js';
-  import { writeSetting, statusOf, STATUS } from './model/shadow.svelte.js';
+  import { writeSetting, inFlight } from './model/shadow.svelte.js';
   import { withoutClaimed, claimRoles } from './model/roles.js';
   import { heroClaims } from './ui/heroes.js';
   import PluginsPane from './plugins/PluginsPane.svelte';
@@ -482,7 +482,7 @@
   // The category branch of pane() below: its controls ride the footer.
   const catPage = $derived(!current.pane && ready && current.id !== 'machine' && !!current.cat);
   // Writes in flight on this page, in the footer's fixed slot (law 5).
-  const pageBusy = $derived(onScreen.filter((f) => statusOf(f) !== STATUS.confirmed).length);
+  const pageBusy = $derived(inFlight(onScreen));
   const applyReset = () => { for (const f of resettable) writeSetting(f, f.dflt); };
   async function resetCategory() {
     const n = resettable.length;
@@ -690,18 +690,24 @@
       {#if catPage && !railOps}
         {#if visibleGroups.diagAll}
           <button class="og-btn sm adv-toggle" type="button" onclick={() => (showDiagnostic = !showDiagnostic)} aria-expanded={showDiagnostic}
-                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} diagnostic</button>
+                  aria-label={visibleGroups.diagAll + ' diagnostic'}
+                  title={showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic'}>{visibleGroups.diagAll} {view.bucket <= 2 ? 'diag' : 'diagnostic'}</button>
         {/if}
         {#if visibleGroups.adv}
           <button class="og-btn sm adv-toggle" type="button" onclick={toggleAdvanced} aria-expanded={showAdvanced}
-                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} advanced</button>
+                  aria-label={visibleGroups.adv + ' advanced'}
+                  title={showAdvanced ? 'Hide advanced' : 'Show advanced'}>{visibleGroups.adv} {view.bucket <= 2 ? 'adv' : 'advanced'}</button>
         {/if}
         {#if hasDefaults}
           <button class="og-btn sm reset-cat" type="button" disabled={!!resetWhy}
                   title={resetWhy || (drillItem ? 'Reset group to defaults' : 'Reset page to defaults')}
                   onclick={resetCategory}>Reset</button>
         {/if}
-        <span class="cat-busy" role="status">{pageBusy ? pageBusy + ' in flight' : ''}</span>
+        <!-- Handheld: an icon and the count in a fixed chip, so the one 48 px row holds (DESIGN §10.3). -->
+        <span class="cat-busy" class:chip={view.bucket <= 2} class:idle={!pageBusy.n} class:overdue={pageBusy.overdue} role="status">
+          {#if view.bucket <= 2}<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></svg
+          ><b>{pageBusy.n || ''}</b><span class="sr">{pageBusy.n ? ' in flight' : ''}</span>{:else}{pageBusy.n ? pageBusy.n + ' in flight' : ''}{/if}
+        </span>
       {/if}
     </PageFoot>
   </main>

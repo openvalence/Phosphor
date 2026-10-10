@@ -378,7 +378,7 @@ await checkRootFontAt(1280, 720);
 }
 
 // ---- 8. the category page footer holds still (ph-vdk.60.3, ph-vdk.60.12) --
-for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
+for (const [w, h, touch] of [[1440, 900, false], [420, 860, true], [390, 844, true], [360, 800, true]]) {
   const tag = w + 'w' + (touch ? ' touch' : '') + ' footer: ';
   const { ctx, page, pageErrors } = await bootPage(browser, { width: w, height: h }, null, { hasTouch: touch });
   await page.waitForSelector(w >= 960 ? 'nav.rail [role=tab][data-tab-id^="cat"]' : '.menu-btn', { timeout: 15000 });
@@ -391,11 +391,11 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
   for (let i = 0; i < cats.length && !found; i++) {
     await goTab(page, cats[i]);
     await page.waitForTimeout(200);
-    found = await page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).count() > 0;
+    found = await page.locator('main.pane .page-foot .adv-toggle[aria-label$=" advanced"]').count() > 0;
   }
   ok(tag + 'a page with advanced settings carries its toggle in the footer', found);
   if (found) {
-    const t = page.locator('main.pane .page-foot .adv-toggle', { hasText: 'advanced' }).first();
+    const t = page.locator('main.pane .page-foot .adv-toggle[aria-label$=" advanced"]').first();
     const foot = page.locator('main.pane .page-foot');
     const main = page.locator('main.pane .pane-main');
     // From the page top: a reveal above a scrolled view is the scroll anchor's to hold (the flip-keeps-the-scroll checks).
@@ -461,13 +461,16 @@ for (const [w, h, touch] of [[1440, 900, false], [360, 800, true]]) {
       const r = e.getBoundingClientRect();
       return [r.x, r.y, r.width, r.height].map(Math.round).join();
     }).join(' '));
-    const k0 = await boxes();
+    const footH = () => page.$eval('main.pane .page-foot', (f) => f.getBoundingClientRect().height);
+    const k0 = await boxes(), h0 = await footH();
     const range = await live.first().getAttribute('type') === 'range';
     await live.first().focus();
     await page.keyboard.press(range ? 'ArrowRight' : 'Space');
     await page.waitForTimeout(300);
     const busy = (await page.textContent('main.pane .page-foot .cat-busy')).trim();
-    ok(tag + 'the in-flight count appears in its slot and moves nothing (ph-dj9)', /in flight/.test(busy) && await boxes() === k0, busy + ' | ' + k0);
+    ok(tag + 'the in-flight count appears in its slot and moves nothing (ph-dj9)', /^\d+ in flight$/.test(busy) && await boxes() === k0, busy + ' | ' + k0);
+    // DESIGN 10.3: on the phone the footer is one 48 px row, with or without a count.
+    if (w < 960) ok(tag + 'one 48 px row at rest and with a count (ph-dj9)', h0 === 48 && await footH() === 48, h0 + ' -> ' + await footH());
   }
   if (pageErrors.length) ok(tag + 'no page errors', false, pageErrors.join(' | '));
   await ctx.close();
