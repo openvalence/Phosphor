@@ -46,7 +46,7 @@ export const NAV_ICONS = {
 
 const NAME_OF = Object.fromEntries(Object.entries(UI_CATEGORY).map(([n, id]) => [id, n]));
 const ICON_KEY = (key) => NAME_OF[key] ?? key;
-/** The names a skin's icon set may replace (docs/THEMES.md, Icons): the category names and Phosphor's own pane ids. */
+/** The names a Theme's icon set may replace (docs/THEMES.md, Icons): the category names and Phosphor's own pane ids. */
 export const ICON_NAMES = Object.freeze(Object.keys(NAV_ICONS).map(ICON_KEY));
 
 function tabKey(tab) {
@@ -54,7 +54,7 @@ function tabKey(tab) {
   return key in NAV_ICONS ? key : UI_CATEGORY.other;
 }
 
-/** The icon name of an App.svelte tab, the hook a skin's icon set replaces by; a plugin page's own icon has none. */
+/** The icon name of an App.svelte tab, the hook a Theme's icon set replaces by; a plugin page's own icon has none. */
 export function navIconKey(tab) {
   if (tab.page) return tab.page.icon ? null : 'plugins';
   return ICON_KEY(tabKey(tab));
@@ -66,5 +66,5 @@ export function navIcon(tab) {
   return NAV_ICONS[tabKey(tab)];
 }
 
-/** The default path of every icon by its skin-registry name, for icon sets drawn from the stock glyphs (themes/icons.js). */
+/** The default path of every icon by its icon-registry name, for icon sets drawn from the stock glyphs (themes/<id>/icons.js). */
 export const NAV_PATHS = Object.freeze(Object.fromEntries(Object.entries(NAV_ICONS).map(([k, d]) => [ICON_KEY(k), d])));

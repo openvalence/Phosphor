@@ -670,8 +670,9 @@ for (const [w, h] of [[1280, 800], [390, 844], [420, 860], [860, 420]]) {
   if (w >= 960) {
     // Drift: every data-search-key on the Display pane has an F3 entry, and every entry resolves to a row.
     const dom = await fp.evaluate(() => ({ keys: [...document.querySelectorAll('main.pane [data-search-key]')].map((e) => e.dataset.searchKey),
-      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })) }));
-    const want = settingsEntries(dom.presets).filter((e) => !e.shell).map((e) => e.key);
+      presets: [...document.querySelectorAll('[data-theme-id]')].map((e) => ({ id: e.dataset.themeId, name: e.querySelector('.name').textContent.trim() })),
+      styles: [...document.querySelectorAll('[data-style-id]')].map((e) => ({ id: e.dataset.styleId, name: e.querySelector('.name').textContent.trim() })) }));
+    const want = settingsEntries(dom.presets, dom.styles).filter((e) => !e.shell).map((e) => e.key);
     const lost = dom.keys.filter((k) => !want.includes(k)), dead = want.filter((k) => !dom.keys.includes(k));
     ok(tag + ': every Display row has an F3 entry and every entry has a row', dom.keys.length > 20 && !lost.length && !dead.length, 'rows without entry: ' + lost + ' entries without row: ' + dead);
     await fp.keyboard.press('F3');

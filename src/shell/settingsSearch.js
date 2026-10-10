@@ -2,8 +2,8 @@
  * settingsSearch.js -- the Display and Settings entries F3 lists
  * (ui/searchIndex.js). `key` is the row's data-search-key in ThemePicker or
  * SettingsPane; `shell` marks a row that exists only in the Settings pane.
- * `settingsEntries(presets)` adds the generated ones: every accent and knob
- * (themeCopy.js) and each theme preset by its id.
+ * `settingsEntries(presets, styles)` adds the generated ones: every accent and knob
+ * (themeCopy.js), each Theme chip by its id and each variant or saved preset the pane shows.
  */
 import { ACCENTS, KNOB_NAMES } from './themeCopy.js';
 
@@ -33,9 +33,10 @@ const FIXED = [
   { label: 'Backup and restore', key: 'backup', shell: true },
 ];
 
-export const settingsEntries = (presets = []) => [
+export const settingsEntries = (presets = [], styles = []) => [
   ...FIXED,
   ...ACCENTS.map(([k, label]) => ({ label: label + ' accent', key: 'accent-' + k })),
   ...Object.entries(KNOB_NAMES).map(([k, [label, tip]]) => ({ label: label + ': ' + tip.toLowerCase(), key: 'knob-' + k })),
+  ...styles.map((p) => ({ label: 'Theme: ' + p.name, key: 'style-' + p.id })),
   ...presets.map((p) => ({ label: 'Theme: ' + p.name, key: 'theme-' + p.id })),
 ];

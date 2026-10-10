@@ -26,7 +26,7 @@ const palette = (h1, c1, night, h2 = h1 + 30, h3 = h1 + 60, cn = 0.012) => ({
 });
 
 const base = T.THEMES.find((t) => t.id === 'material');
-ok('the Material preset is in the list and is a skin', base && base.skin === 'material');
+ok('the Material preset is in the list and is its own Theme', base && base.style === 'material');
 
 let n = 0, worstAcc = Infinity, worstText = Infinity, worstLabel = Infinity, worstOn = Infinity, near = 0, inkLow = 0, nulls = 0;
 const hues = [0, 25, 60, 80, 95, 130, 170, 210, 250, 290, 330];
@@ -66,7 +66,7 @@ ok('a filled primary button reads 4.5:1 in its on-color', worstOn >= 4.5, worstO
 
 ok('an incomplete palette is refused, the baseline stays', paletteTheme(base, { accent1: { 0: '#FFFFFF' } }) === null && paletteTheme(base, null) === null);
 const r = paletteTheme(base, palette(300, 0.12, true));
-ok('the preset\'s id, name, skin and look survive', r.theme.id === 'material' && r.theme.skin === 'material' && r.theme.look.radius === base.look.radius);
+ok('the preset\'s id, name, Theme and look survive', r.theme.id === 'material' && r.theme.style === 'material' && r.theme.look.radius === base.look.radius);
 ok('the derived chassis is dark for a night palette and light for a day one', !T.deriveTokens(r.theme).dark === false
   && T.deriveTokens(paletteTheme(base, palette(300, 0.12, false)).theme).dark === false);
 ok('nothing in the derived theme can reach a safety token', !Object.keys(r.theme.overrides).some((k) => k in T.LOCKED) && !/--(warn|bad|estop)/.test(T.themeCss(r.theme).replace(/--(warn|bad)-ink/g, '')));

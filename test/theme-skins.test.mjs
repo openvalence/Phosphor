@@ -1,29 +1,35 @@
 /**
- * theme-skins.test.mjs -- the skins (docs/THEMES.md, Skins) on the shell bundle
- * against a fake hub: every skin on the Dash, a category page, the funscript
- * player, the Log, the Link page and Settings, at 1428x900, 1024x768 and 420x860.
+ * theme-skins.test.mjs -- the per-theme kit (docs/THEMES.md, The test kit). One Theme is
+ * checked against the shell bundle and a fake hub on the Dash, a category page, the funscript
+ * player, the Log, the Link page and Settings, at 1428x900, 1024x768 and 420x860:
  *
- *   lint      the skin sheets never name the stop pair, the safety edge, the
- *             write ladder, the stale states or a safety token; load nothing
- *             remote; animate only transform and opacity, only under
- *             :not(.still); and every manifest icon name exists
+ *   registry  every folder in src/themes/ is one registry line, ids and variants are well
+ *             formed, every variant clears the engine's contrast floor
+ *   lint      the theme's sheet never names the stop pair, the safety edge, the write ladder
+ *             or the stale states, never a safety token; loads nothing remote; is scoped by
+ *             html[data-style]; animates only transform and opacity, only under :not(.still)
  *   fit       no horizontal page scroll, no page error
- *   text      no text under WCAG AA that the default theme does not also have
- *   stop pair Pause and Halt are visible, at least 40 px, in AA text, with the
- *             default theme's hazard stripe and size
- *   reach     decoration never covers a control: the point at the center of
- *             every visible button hits that button
- *   motion    under reduced motion no skin animation runs
- *   picker    the Display pane lists the skin with its swatch
+ *   shift     the safety strip, the bar and the status row keep the default theme's heights,
+ *             and hovering and focusing controls moves no box
+ *   text      no text under WCAG AA that the shipped presets do not also have
+ *   stop pair Pause and Halt are visible, at least 40 px, in AA text, with the default
+ *             theme's hazard stripe and size
+ *   reach     decoration never covers a control: the point at the center of every visible
+ *             button hits that button
+ *   motion    under reduced motion no theme animation runs
+ *   picker    the Display pane lists the Theme with its swatch and its variants; F3 finds it
+ *   material  (a Theme that asks the window for a material) the see-through look on the
+ *             worst backdrops, an opaque body where the OS has none, fullscreen opaque
+ *   dynamic   (the Material Theme) a fake system palette: contrast and the stop pair
  *
- * Build first (`npm run build:only` is not needed: this builds the shell bundle).
- * Run: node test/theme-skins.test.mjs [--only <skin>] [--shots <dir>] [--no-shots]
+ * Run: node test/theme-skins.test.mjs --theme <id> [--shots <dir>] [--no-shots]
+ *      node test/theme-skins.test.mjs             (every theme: the whole kit, minutes)
  *   Shots (the Dash and the funscript page at 1428x900, the Dash at 420x860) land in
  *   test/evidence/themes/ unless --shots names another directory.
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
@@ -32,23 +38,46 @@ import { goTab } from './nav.mjs';
 import { lowContrast, lowContrastOver } from './audit.mjs';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K } from '../../Valence/clients/js/frames.js';
-import { THEMES, deriveTokens, contrast } from '../src/model/theme.js';
-import { SKINS } from '../src/themes/manifest.js';
+import { THEMES, STYLES, deriveTokens, fromOklch } from '../src/model/theme.js';
+import { paletteTheme } from '../src/model/dynamicColor.js';
 import { ICON_NAMES } from '../src/ui/navIcons.js';
 
 const args = process.argv.slice(2);
-const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : null;
-const SHOTS = args.includes('--no-shots') ? null : (args.includes('--shots') ? args[args.indexOf('--shots') + 1] : join(EVIDENCE, 'themes'));
+const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : null);
+const only = flag('--theme') || flag('--only');
+const SHOTS = args.includes('--no-shots') ? null : (flag('--shots') || join(EVIDENCE, 'themes'));
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
-const skins = SKINS.filter((s) => !only || s.id === only);
+if (only && !STYLES.some((s) => s.id === only)) { console.error('no theme "' + only + '"; registered: ' + STYLES.map((s) => s.id).join(', ')); process.exit(2); }
+// The Themes this run drives in a browser: the default style has no layer of its own.
+const skins = STYLES.filter((s) => s.id !== 'phosphor' && (!only || s.id === only));
 
 let fails = 0;
 const ok = (n, c, extra) => { console.log('  [' + (c ? 'PASS' : 'FAIL') + '] ' + n + (extra ? '  -- ' + extra : '')); if (!c) fails++; };
 
-// ---- lint: the sheets are text, no browser ---------------------------------------
-console.log('\n--- skin sheets ---');
+// ---- the registry and the sheets: text, no browser ----------------------------------
+console.log('\n--- registry ---');
 const DIR = fileURLToPath(new URL('../src/themes/', import.meta.url));
-const sheets = readdirSync(DIR).filter((f) => f.endsWith('.css'));
+const folders = readdirSync(DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(join(DIR, e.name, 'manifest.js'))).map((e) => e.name);
+const indexSrc = readFileSync(join(DIR, 'index.js'), 'utf8');
+ok('every theme folder is one line of the registry, and no line is without a folder', folders.every((f) => new RegExp("^export \\{ default as \\w+ \\} from './" + f + "/manifest.js';$", 'm').test(indexSrc))
+  && [...indexSrc.matchAll(/from '\.\/([\w-]+)\/manifest\.js'/g)].every((m) => folders.includes(m[1])) && STYLES.length === folders.length, folders.join(','));
+ok('a folder holds a manifest, a stylesheet and an icon module', folders.every((f) => ['theme.css', 'icons.js'].every((x) => existsSync(join(DIR, f, x)))));
+ok('theme ids are their folder names, once each', STYLES.every((s) => folders.includes(s.id)) && new Set(STYLES.map((s) => s.id)).size === STYLES.length);
+ok('every Theme has a name, a pitch, a swatch and a first variant carrying its own id', STYLES.every((s) => s.name && s.pitch && s.swatch && s.variants.length >= 1
+  && s.variants[0].id === s.id), STYLES.filter((s) => !(s.name && s.pitch && s.swatch && s.variants[0]?.id === s.id)).map((s) => s.id).join(','));
+ok('variant ids are unique and a Theme\'s other variants are prefixed by its id', new Set(THEMES.map((t) => t.id)).size === THEMES.length
+  && STYLES.every((s) => s.id === 'phosphor' || s.variants.slice(1).every((v) => v.id.startsWith(s.id + '-'))));
+const names = new Set(ICON_NAMES);
+ok('every icon a theme draws is a known registry name', STYLES.every((s) => Object.keys(s.icons || {}).every((n) => names.has(n))),
+  STYLES.flatMap((s) => Object.keys(s.icons || {}).filter((n) => !names.has(n)).map((n) => s.id + '.' + n)).join(', '));
+ok('no variant\'s accents sit on a safety hue', THEMES.every((t) => { const d = deriveTokens(t); return d.near.reality === undefined && d.near.intent === undefined; }),
+  THEMES.filter((t) => { const d = deriveTokens(t); return d.near.reality || d.near.intent; }).map((t) => t.id).join(','));
+const floorBad = THEMES.filter((t) => { const d = deriveTokens(t); return !(d.ratios.text >= 4.5 && d.ratios.reality >= 4.5 && d.ratios.labels >= 3); }).map((t) => t.id);
+ok('every variant clears 4.5:1 for text and for reality on every surface, 3:1 for labels', floorBad.length === 0, floorBad.join(','));
+// The old preset ids keep meaning the Phosphor Theme with that variant (the stored preference migrates by id).
+ok('the old preset ids are Phosphor variants', ['phosphor', 'tracer', 'synth', 'ember', 'arctic', 'vapor', 'ultra', 'sakura', 'stealth', 'slate', 'ink', 'paper']
+  .every((id) => THEMES.find((t) => t.id === id)?.style === 'phosphor'));
+
 const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 /** A selector list split at its top-level commas: :is(a, b) stays whole. */
 const topLevel = (s) => {
@@ -65,36 +94,25 @@ const topLevel = (s) => {
 const FORBID = ['.safety-op', '.btn-estop', '.btn-pause', '.btn-override', '.latched', '[data-shadow', '.stale', '.field::after', '.hazard',
   '.evline', '.evtag', '.recovery', '.st-dismiss', '.run-btn', '.hold', '.fx-', '--warn', '--bad', '--estop', '--glow-warn', 'danger', '.running',
   'unconfirmed', '.cat-busy', '.dash-busy'];
-for (const f of sheets) {
+for (const s of STYLES.filter((x) => !only || x.id === only)) {
+  const f = s.id + '/theme.css', id = s.id;
   const css = strip(readFileSync(join(DIR, f), 'utf8'));
   const hit = FORBID.filter((w) => css.replace(/:not\(\.(running|danger)\)/g, '').includes(w));
   ok(f + ': never names a stop, safety, ladder or stale surface', hit.length === 0, hit.join(', '));
   ok(f + ': loads nothing remote', !/(https?:)?\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(css.replace(/xmlns=['"]http:\/\/www\.w3\.org\/2000\/svg['"]/g, '')) && !/@import\s+url\(\s*['"]?https?:/.test(css));
-  if (f === 'skins.css' || f === 'fonts.css') continue;
-  const id = f.replace(/\.css$/, '');
-  const flat = css.replace(/@keyframes\s+[\w-]+\s*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g, '');
-  ok(f + ': every rule is scoped to its own skin', [...flat.matchAll(/(^|\})\s*([^{}@]+)\{/g)].every((m) => topLevel(m[2]).every((sel) => sel.trim().startsWith(':root[data-skin="' + id + '"]')
-    || sel.trim().startsWith('html:root[data-skin="' + id + '"]'))), id);
+  if (id === 'phosphor') continue;
+  const flat = css.replace(/@keyframes\s+[\w-]+\s*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g, '').replace(/@font-face\s*\{[^}]*\}/g, '');
+  ok(f + ': every rule is scoped to its own theme', [...flat.matchAll(/(^|\})\s*([^{}@]+)\{/g)].every((m) => topLevel(m[2]).every((sel) => sel.trim().startsWith(':root[data-style="' + id + '"]')
+    || sel.trim().startsWith('html:root[data-style="' + id + '"]'))), id);
   const kf = [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g)];
-  ok(f + ': keyframes are named skin-' + id + '-* and move only transform and opacity', kf.every((m) => m[1].startsWith('skin-' + id + '-')
+  ok(f + ': keyframes are named theme-' + id + '-* and move only transform and opacity', kf.every((m) => m[1].startsWith('theme-' + id + '-')
     && [...m[2].matchAll(/\{([^}]*)\}/g)].every((b) => b[1].split(';').map((d) => d.split(':')[0].trim()).filter(Boolean)
       .every((p) => ['transform', 'opacity', 'translate', 'scale', 'rotate'].includes(p)))));
   const anim = [...css.matchAll(/([^{}]+)\{[^{}]*\banimation(-name)?\s*:/g)].map((m) => m[1].trim());
-  ok(f + ': every animation sits under :not(.still)', anim.every((s) => topLevel(s).every((x) => x.includes(':not(.still)') || x.includes(':not(.hivis)'))), anim.join(' | '));
+  ok(f + ': every animation sits under :not(.still)', anim.every((x) => topLevel(x).every((y) => y.includes(':not(.still)') || y.includes(':not(.hivis)'))), anim.join(' | '));
+  const fonts = [...css.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]);
+  ok(f + ': a font of its own is a file in its folder', fonts.every((b) => /url\(['"]?\.\/[^)'"]+\.woff2['"]?\)/.test(b) && !/url\(['"]?(https?:|\/\/)/.test(b)));
 }
-const names = new Set(ICON_NAMES);
-ok('every manifest icon is a known name', SKINS.every((s) => Object.keys(s.icons || {}).every((n) => names.has(n))),
-  SKINS.flatMap((s) => Object.keys(s.icons || {}).filter((n) => !names.has(n)).map((n) => s.id + '.' + n)).join(', '));
-ok('every skin has a stylesheet', SKINS.every((s) => sheets.includes(s.id + '.css')), SKINS.filter((s) => !sheets.includes(s.id + '.css')).map((s) => s.id).join(', '));
-ok('every skin is a preset with its own skin id', SKINS.every((s) => { const p = THEMES.find((t) => t.id === s.id); return p && p.skin === s.id && p.name === s.name; }));
-ok('no skin sets a safety hue as an accent', SKINS.every((s) => deriveTokens(THEMES.find((t) => t.id === s.id)).near.reality === undefined
-  && deriveTokens(THEMES.find((t) => t.id === s.id)).near.intent === undefined));
-const light = (s) => !deriveTokens(THEMES.find((t) => t.id === s.id)).dark;
-ok('every skin chassis clears 4.5:1 for text and reality on every surface', SKINS.every((s) => {
-  const d = deriveTokens(THEMES.find((t) => t.id === s.id));
-  return d.ratios.text >= 4.5 && d.ratios.reality >= 4.5 && d.ratios.labels >= 3;
-}), SKINS.map((s) => s.id + ' ' + JSON.stringify(deriveTokens(THEMES.find((t) => t.id === s.id)).ratios)).join('; '));
-void light; void contrast;
 
 // ---- the fake hub and the shell bundle ---------------------------------------------
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -198,7 +216,8 @@ const probe = () => {
       covered.push((el.className || el.tagName) + ' <- ' + (hit ? (hit.className || hit.tagName) : 'nothing'));
     }
   }
-  return { overflow: document.documentElement.scrollWidth - innerWidth, pair, covered };
+  return { overflow: document.documentElement.scrollWidth - innerWidth, pair, covered,
+    chrome: ['.topstrip', '.strip', '.footstrip'].map((q) => Math.round(document.querySelector(q)?.getBoundingClientRect().height || 0)) };
 };
 const AUDIT = 'body :is(h1, h2, h3, p, span, label, button, a, li, td, th, output, summary, small, b, i, em, strong, div:not(#ph-tip), input, select, textarea)';
 
@@ -226,7 +245,7 @@ for (const base of ['phosphor', 'paper']) {
     const { ctx, page, errors } = await boot({ width: w, height: h }, THEMES.find((t) => t.id === base));
     for (const [name, id] of PAGES) {
       const r = await visit(page, id);
-      baseline.set(base + w + name, { low: new Set(r.low.map(sig)), pair: r.p.pair, covered: new Set(r.p.covered), overflow: r.p.overflow });
+      baseline.set(base + w + name, { low: new Set(r.low.map(sig)), pair: r.p.pair, covered: new Set(r.p.covered), overflow: r.p.overflow, chrome: r.p.chrome });
     }
     ok('baseline ' + base + ' ' + w + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
@@ -238,8 +257,8 @@ for (const skin of skins) {
   console.log('\n--- ' + skin.name + ' (' + skin.id + ') ---');
   for (const [w, h] of VIEWPORTS) {
     const { ctx, page, errors } = await boot({ width: w, height: h }, theme);
-    const root = await page.evaluate(() => [document.documentElement.dataset.skin, document.documentElement.dataset.theme]);
-    ok(skin.id + ' ' + w + ': the root wears its skin', root[0] === skin.id && root[1] === skin.id, root.join('/'));
+    const root = await page.evaluate(() => [document.documentElement.dataset.style, document.documentElement.dataset.theme]);
+    ok(skin.id + ' ' + w + ': the root wears its theme', root[0] === skin.id && root[1] === skin.id, root.join('/'));
     const fitBad = [], textBad = [], pairBad = [], coverBad = [];
     for (const [name, id] of PAGES) {
       const shot = SHOTS && w === 1428 && ['dash', 'funscript'].includes(name) ? skin.id + '-' + name
@@ -269,13 +288,33 @@ for (const skin of skins) {
     ok(skin.id + ' ' + w + ': the stop pair is visible, 40 px, AA, with its hazard stripe', pairBad.length === 0, pairBad.join(', '));
     ok(skin.id + ' ' + w + ': decoration covers no control', coverBad.length === 0, coverBad.join(' || '));
     ok(skin.id + ' ' + w + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+    // Shift: the bar, the strip and the status row keep the shipped heights, and hovering or
+    // focusing a control moves no box.
+    await goTab(page, 'machine');
+    await page.waitForTimeout(450);
+    const chrome = await page.evaluate(() => ['.topstrip', '.strip', '.footstrip'].map((s) => Math.round(document.querySelector(s)?.getBoundingClientRect().height || 0)));
+    const bchrome = baseline.get((deriveTokens(theme).dark ? 'phosphor' : 'paper') + w + 'dash').chrome;
+    ok(skin.id + ' ' + w + ': the top strip, the safety strip and the status row keep their heights', chrome.every((v, i) => Math.abs(v - bchrome[i]) <= 2), chrome.join('/') + ' vs ' + bchrome.join('/'));
+    await page.evaluate(() => {
+      const els = [...document.querySelectorAll('.og-btn, [role=tab], .og-seg button, .stepper button, select, input')].filter((e) => e.getClientRects().length && !e.closest('.sr, [inert], .measure'));
+      window.__els = els;
+      window.__snap = () => els.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); });
+      window.__before = window.__snap();
+    });
+    const centers = await page.evaluate(() => window.__els.map((e) => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })
+      .filter(([x, y]) => x > 0 && y > 0 && x < innerWidth && y < innerHeight).filter((_, i) => i % 3 === 0).slice(0, 12));
+    for (const [x, y] of centers) { await page.mouse.move(x, y); await page.waitForTimeout(50); }
+    await page.mouse.move(2, 2);
+    for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
+    const moved = await page.evaluate(() => window.__snap().map((s, i) => (s.every((v, k) => Math.abs(v - window.__before[i][k]) <= 1) ? null : i + ':' + s.join(',') + ' was ' + window.__before[i].join(','))).filter(Boolean));
+    ok(skin.id + ' ' + w + ': hovering and focusing move no box', moved.length === 0, moved.slice(0, 3).join(' | '));
     await ctx.close();
   }
   // Motion: reduced, no skin animation runs; the page is otherwise the same.
   {
     const { ctx, page, errors } = await boot({ width: 1428, height: 900 }, theme, { reduce: true });
     await page.waitForTimeout(600);
-    const running = await page.evaluate(() => document.getAnimations().map((a) => a.animationName).filter((n) => n && n.startsWith('skin-')));
+    const running = await page.evaluate(() => document.getAnimations().map((a) => a.animationName).filter((n) => n && n.startsWith('theme-')));
     ok(skin.id + ': reduced motion runs no skin animation', running.length === 0, running.join(','));
     ok(skin.id + ' reduced: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await ctx.close();
@@ -285,12 +324,40 @@ for (const skin of skins) {
     const { ctx, page } = await boot({ width: 1428, height: 900 }, THEMES[0]);
     await goTab(page, 'shell:settings');
     await page.waitForTimeout(400);
-    const sw = await page.$eval('[data-theme-id="' + skin.id + '"]', (b) => ({ name: b.querySelector('.name').textContent.trim(), bg: getComputedStyle(b.querySelector('.chassis')).backgroundImage, tip: b.dataset.tip || '' }));
+    const sw = await page.$eval('[data-style-id="' + skin.id + '"]', (b) => ({ name: b.querySelector('.name').textContent.trim(), bg: getComputedStyle(b.querySelector('.chassis')).backgroundImage, tip: b.dataset.tip || '' }));
     ok(skin.id + ': the picker shows it with a swatch and its pitch', sw.name.toLowerCase() === skin.name.toLowerCase() && sw.bg !== 'none' && sw.tip.length > 8, JSON.stringify(sw));
     await page.keyboard.press('F3');
     await page.fill('.lf-q', skin.name);
     const hits = await page.$$eval('.lf-list li', (ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
     ok(skin.id + ': F3 finds it', hits.some((t) => t.includes('Theme: ' + skin.name)), hits.slice(0, 4).join(' | '));
+    await ctx.close();
+  }
+  // Variants: each other palette of the Theme reads as well as its own.
+  for (const v of skin.variants.slice(1)) {
+    const vt = THEMES.find((t) => t.id === v.id);
+    const { ctx, page, errors } = await boot({ width: 1428, height: 900 }, vt);
+    const bad = [];
+    for (const [name, id] of PAGES.filter(([n]) => ['dash', 'category', 'log'].includes(n))) {
+      const r = await visit(page, id, name === 'dash' && SHOTS ? v.id + '-dash' : null);
+      const base = baseline.get((deriveTokens(vt).dark ? 'phosphor' : 'paper') + 1428 + name);
+      const worse = r.low.filter((s) => !base.low.has(sig(s)));
+      if (worse.length) bad.push(name + ': ' + worse.slice(0, 3).join(' | '));
+      if (name === 'dash') {
+        const stop = await page.evaluate(lowContrast, '.safety-op .btn, .safety-op .btn *');
+        if (stop.length || r.p.pair.some((b) => b.w < 40 || b.h < 40 || b.op !== '1')) bad.push('stop pair ' + stop.join(' | '));
+      }
+    }
+    ok(v.id + ': the variant\'s text clears AA and its stop pair reads', bad.length === 0, bad.join(' || '));
+    ok(v.id + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+  // The picker shows the Theme's variants once it is active.
+  if (skin.variants.length > 1) {
+    const { ctx, page } = await boot({ width: 1428, height: 900 }, theme);
+    await goTab(page, 'shell:settings');
+    await page.waitForTimeout(400);
+    const have = await page.$$eval('[data-theme-id]', (bs) => bs.map((b) => b.dataset.themeId));
+    ok(skin.id + ': the Display pane lists its variants under it', skin.variants.every((v) => have.includes(v.id)), have.join(','));
     await ctx.close();
   }
 }
@@ -353,6 +420,60 @@ for (const skin of skins.filter((s) => s.material)) {
   ok(skin.id + ': leaving fullscreen brings it back', !out[0] && out[1] === granted, JSON.stringify(out));
   ok(skin.id + ' materials: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   await ctx.close();
+}
+
+// ---- dynamic: the Material Theme under a system palette (Android 12+, here a fake one) --------------
+/** A tone ramp the way Android makes one: lightness falls with the tone, chroma peaks in the middle. */
+const ramp = (hue, chroma) => Object.fromEntries([0, 10, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+  .map((t) => [t, fromOklch(1 - t / 1000 * 0.97, chroma * Math.sin(Math.PI * Math.min(1, Math.max(0.05, 1 - t / 1000))) ** 0.7, hue)]));
+const fakePalette = (hue, chroma, night) => ({ accent1: ramp(hue, chroma), accent2: ramp(hue + 40, chroma * 0.4), accent3: ramp(hue + 80, chroma * 0.8),
+  neutral1: ramp(hue, 0.012), neutral2: ramp(hue, 0.024), night });
+for (const skin of skins.filter((s) => s.id === 'material')) {
+  console.log('\n--- ' + skin.name + ': a system palette ---');
+  for (const [hue, chroma, night] of [[300, 0.12, true], [150, 0.14, false], [25, 0.25, true], [80, 0.2, false]]) {
+    const label = 'hue ' + hue + (night ? ' night' : ' day');
+    const base = THEMES.find((t) => t.id === skin.id);
+    const want = paletteTheme(base, fakePalette(hue, chroma, night));
+    const ctx = await browser.newContext({ viewport: { width: 1428, height: 900 } });
+    await ctx.addInitScript(TAURI_STUB);
+    await ctx.addInitScript(([etag, bytes, theme, palette]) => {
+      try {
+        if (!sessionStorage.getItem('booted')) {
+          sessionStorage.setItem('booted', '1');
+          localStorage.clear();
+          localStorage.setItem('phosphor.hubs', JSON.stringify([{ id: '127.0.0.1:82', host: '127.0.0.1', port: 82, name: 'skins fixture', nickname: '', lastSeen: Date.now() }]));
+          localStorage.setItem('phosphor.theme', JSON.stringify(theme));
+        }
+        localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes }));
+      } catch (e) { /* no storage */ }
+      window.__phosphorSystemPalette = palette;
+    }, [ETAG, Buffer.from(CAT).toString('hex'), base, fakePalette(hue, chroma, night)]);
+    await ctx.routeWebSocket(/:82\//, fakeHub);
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(PAGE, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.querySelector('[data-tab-id="machine"]'), null, { timeout: 20000 });
+    await page.waitForTimeout(600);
+    const got = await page.evaluate(() => [getComputedStyle(document.documentElement).getPropertyValue('--reality').trim().toUpperCase(), document.documentElement.dataset.mdScheme || 'dark']);
+    ok(label + ': the page takes the palette\'s primary', got[0] === want.theme.accents.reality.toUpperCase() && got[1] === (night ? 'dark' : 'light'), got.join(' ') + ' want ' + want.theme.accents.reality);
+    const bad = [], pairs = [];
+    for (const [name, id] of PAGES.filter(([n]) => ['dash', 'category', 'settings', 'log'].includes(n))) {
+      const r = await visit(page, id, null);
+      const b = baseline.get((night ? 'phosphor' : 'paper') + 1428 + name);
+      const worse = r.low.filter((s) => !b.low.has(sig(s)));
+      if (worse.length) bad.push(name + ': ' + worse.slice(0, 3).join(' | '));
+      if (name === 'dash') {
+        const stop = await page.evaluate(lowContrast, '.safety-op .btn, .safety-op .btn *');
+        if (stop.length) pairs.push(stop.join(' | '));
+        for (const [i, p] of r.p.pair.entries()) if (p.w < 40 || p.h < 40 || p.op !== '1' || p.bgi !== b.pair[i].bgi) pairs.push(p.label + ' changed');
+      }
+    }
+    ok(label + ': text clears AA', bad.length === 0, bad.join(' || '));
+    ok(label + ': the stop pair keeps its size, its stripe and its text', pairs.length === 0 && true, pairs.join(' | '));
+    ok(label + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
 }
 
 await browser.close();

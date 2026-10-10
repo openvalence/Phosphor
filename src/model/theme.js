@@ -18,12 +18,13 @@
  * - Pure until applyTheme(): node tests import it with no DOM.
  * - Canvases read ACCENT/ac() or re-read computed tokens in onTheme().
  * - Browser preference only: nothing here reaches the hub.
- * - A skin (themes/manifest.js) is a shipped stylesheet layer and icon set
- *   named by `theme.skin`; the layer is scoped by html[data-skin], and only a
- *   shipped id reaches it, so an import or a plugin never carries CSS.
+ * - A Theme (themes/<id>/) is a shipped style: a stylesheet layer, an icon set and one or
+ *   more Variants (palettes). `theme.style` names it; the layer is scoped by
+ *   html[data-style], and only a shipped Theme id reaches it, so an import or a plugin
+ *   never carries CSS.
  * Model, knobs and the light-chassis finding: docs/THEMES.md.
  */
-import { SKINS } from '../themes/manifest.js';
+import { THEME_LIST } from '../themes/registry.js';
 
 // ---- color math: sRGB <-> OKLCH (Ottosson), WCAG contrast -----------------
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -142,12 +143,12 @@ export const LOCKED = {
   '--bar-h': 'touch floor (law 12)',
   '--ui-btn-h': 'touch floor (law 12)',
   '--ui-row-h': 'plugin kit row height',
-  '--font-head': 'skin hook (docs/THEMES.md, Skins)',
-  '--tex-page': 'skin hook (docs/THEMES.md, Skins)',
-  '--tex-page-size': 'skin hook (docs/THEMES.md, Skins)',
-  '--tex-card': 'skin hook (docs/THEMES.md, Skins)',
-  '--tex-card-size': 'skin hook (docs/THEMES.md, Skins)',
-  '--frame-w': 'skin hook (docs/THEMES.md, Skins)',
+  '--font-head': 'theme hook (docs/THEMES.md, Tokens)',
+  '--tex-page': 'theme hook (docs/THEMES.md, Tokens)',
+  '--tex-page-size': 'theme hook (docs/THEMES.md, Tokens)',
+  '--tex-card': 'theme hook (docs/THEMES.md, Tokens)',
+  '--tex-card-size': 'theme hook (docs/THEMES.md, Tokens)',
+  '--frame-w': 'theme hook (docs/THEMES.md, Tokens)',
 };
 /** The safety swatches the editor shows locked. */
 export const SAFETY = ['--warn', '--bad', '--estop'];
@@ -181,41 +182,33 @@ function safetyInk(hex, surfaces, dark) {
   return fromOklch(hi, C, h);
 }
 
-// ---- presets ------------------------------------------------------------------
-const preset = (id, name, reality, intent, chassis = {}, extra = {}) => ({
-  id, name,
-  accents: { reality, intent, highlight: extra.highlight || null },
-  chassis: { ...def('chassis'), ...chassis },
-  look: def('look'),
-  overrides: {},
+// ---- themes and their variants --------------------------------------------------
+// A Theme is a whole style (themes/<id>/: chrome, controls, type, icons, textures); a Variant
+// is one palette of it. The flat list below holds every (theme, variant) pair as the engine's
+// theme object: its id is the variant's, `style` names the Theme, so the old preset ids
+// ('slate', 'ember') keep meaning the Phosphor Theme with that variant.
+const asTheme = (th, v) => ({
+  id: v.id, name: v.name, style: th.id, variant: v.id,
+  accents: { reality: v.accents.reality, intent: v.accents.intent, highlight: v.accents.highlight || null },
+  chassis: { ...def('chassis'), ...(v.chassis || {}) },
+  look: { ...def('look'), ...(v.look || {}) },
+  overrides: { ...(v.overrides || {}) },
 });
 
-export const THEMES = [
-  // A highlight of its own (2026-10-04): with the reality fallback the planner line and the heat ramp's top read as the position trace.
-  preset('phosphor', 'Phosphor', '#4DA6FF', '#A78BFA', {}, { highlight: '#FF5CB3' }),
-  preset('tracer', 'Tracer', '#52E88C', '#E85CFF'),
-  preset('synth', 'Synth', '#FF5CA8', '#5CE8FF'),
-  preset('ember', 'Ember', '#FF8A4D', '#4CCEFE'),
-  preset('arctic', 'Arctic', '#7DE8FF', '#C4B5FD'),
-  preset('vapor', 'Vapor', '#B78BFF', '#FF8BD1'),
-  preset('ultra', 'Ultra', '#8B7BFF', '#4DFFC4'),
-  preset('sakura', 'Sakura', '#FFA8C5', '#A8D8FF'),
-  preset('stealth', 'Stealth', '#D8DEE8', '#8A93A6'),
-  preset('slate', 'Slate', '#5CC8FF', '#9D8BFA', { hue: 245, tint: 2.4, brightness: 0.2, contrast: 1 }),
-  preset('ink', 'Warm ink', '#66D5BA', '#E8A0FF', { hue: 60, tint: 1.8, brightness: 0.15, contrast: 1.05 }),
-  preset('paper', 'Paper', '#1A66C8', '#6A3FC8', { hue: 263, tint: 1, brightness: 0.97, contrast: 1 }),
-  // The skins: a theme plus a stylesheet layer and an icon set (themes/manifest.js).
-  ...SKINS.map((s) => ({
-    ...preset(s.id, s.name, s.theme.accents.reality, s.theme.accents.intent, s.theme.chassis, { highlight: s.theme.accents.highlight }),
-    skin: s.id,
-    look: { ...def('look'), ...s.theme.look },
-    overrides: { ...(s.theme.overrides || {}) },
-  })),
-];
+export const THEMES = THEME_LIST.flatMap((th) => th.variants.map((v) => asTheme(th, v)));
 export const DEFAULT_THEME = THEMES[0];
-const SKIN_BY_ID = new Map(SKINS.map((s) => [s.id, s]));
-/** The skin manifest entry for an id, or null: name, pitch, swatch, icons. */
-export function skinMeta(id) { return SKIN_BY_ID.get(id) || null; }
+const STYLE_BY_ID = new Map(THEME_LIST.map((s) => [s.id, s]));
+/** The registered Themes, the default first: id, name, pitch, swatch, note, variants. */
+export const STYLES = THEME_LIST;
+/** The Theme manifest for an id, or null. */
+export function themeMeta(id) { return STYLE_BY_ID.get(id) || null; }
+/** The (theme, variant) objects of one Theme, its own palette first. */
+export function variantsOf(styleId) { return THEMES.filter((t) => t.style === styleId); }
+/** The preset chips the Display pane shows for a theme: its variants (when it has more than one) and the saved presets. */
+export function shownPresets(t = current) {
+  const v = variantsOf(t.style);
+  return [...(v.length > 1 ? v : []), ...savedPresets()];
+}
 /** The presets this build ships; plugin themes join THEMES later. */
 const SHIPPED = new Set(THEMES.map((t) => t.id));
 
@@ -387,7 +380,10 @@ export function normalizeTheme(raw) {
   const id = ID_RE.test(t.id || '') ? t.id : 'custom';
   return {
     id,
-    skin: SKIN_BY_ID.has(t.skin) ? t.skin : null,
+    // The Theme: its own field, else the old `skin`, else the one the id names, else the default style.
+    style: STYLE_BY_ID.has(t.style) ? t.style : STYLE_BY_ID.has(t.skin) ? t.skin : (THEMES.find((x) => x.id === t.id) || DEFAULT_THEME).style,
+    // A variant is a shipped palette by id; an edited theme is Custom and has none.
+    variant: (THEMES.find((x) => x.id === t.id) || {}).variant || null,
     name: typeof t.name === 'string' && t.name.trim() ? t.name.trim().slice(0, 40) : id,
     accents: { reality: pick(a.reality, d.reality), intent: pick(a.intent, d.intent), highlight: pick(a.highlight, null) },
     chassis: group('chassis'),
@@ -463,11 +459,11 @@ export function onTheme(fn) { subs.add(fn); return () => subs.delete(fn); }
 
 const decl = (m) => Object.entries(m).map(([k, v]) => k + ':' + v + ';').join('');
 const svgUrl = (svg) => 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
-/** A skin's icon set as CSS: the glyph's own <svg> hides and a mask (or a colored image) takes its place. */
-export function iconCss(skinId) {
-  const s = SKIN_BY_ID.get(skinId);
+/** A Theme's icon set as CSS: the glyph's own <svg> hides and a mask (or a colored image) takes its place. */
+export function iconCss(styleId) {
+  const s = STYLE_BY_ID.get(styleId);
   if (!s) return '';
-  const root = ':root[data-skin="' + s.id + '"] [data-icon="';
+  const root = ':root[data-style="' + s.id + '"] [data-icon="';
   return Object.entries(s.icons || {}).map(([name, v]) => {
     const mask = typeof v === 'string';
     const url = svgUrl(mask
@@ -479,7 +475,7 @@ export function iconCss(skinId) {
   }).join('');
 }
 
-/** The CSS for one theme: base, prefers-contrast, hi-vis, then pinned overrides, then the skin's icon set. */
+/** The CSS for one theme: base, prefers-contrast, hi-vis, then pinned overrides, then the Theme's icon set. */
 export function themeCss(theme) {
   const t = normalizeTheme(theme);
   const d = derive(t);
@@ -487,7 +483,7 @@ export function themeCss(theme) {
     + '@media (prefers-contrast: more){:root:root{' + decl(d.more) + '}}'
     + ':root:root.hivis{' + decl(d.hivis) + '}'
     + (Object.keys(t.overrides).length ? ':root:root:root{' + decl(t.overrides) + '}' : '')
-    + iconCss(t.skin);
+    + iconCss(t.style);
 }
 
 /** First paint: the stored (or migrated) theme. A pending plugin id is not written over. */
@@ -516,7 +512,8 @@ export function applyTheme(idOrTheme, { persist = true } = {}) {
     el.textContent = themeCss(t);
     const root = document.documentElement;
     root.dataset.theme = t.id;
-    if (t.skin) root.dataset.skin = t.skin; else delete root.dataset.skin;
+    root.dataset.style = t.style;
+    if (t.variant) root.dataset.variant = t.variant; else delete root.dataset.variant;
   }
   for (const fn of subs) { try { fn(t); } catch (e) { console.error('theme subscriber', e); } }
   return t;

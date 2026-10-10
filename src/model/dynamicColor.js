@@ -1,11 +1,11 @@
 /**
- * dynamicColor.js -- Material You for the Material skin: the system's wallpaper-derived
+ * dynamicColor.js -- Material You for the Material Theme: the system's wallpaper-derived
  * tone ramps (Android 12+, published by MainActivity.kt as window.__phosphorSystemPalette)
- * become the skin's accents and chassis.
+ * become the Theme's accents and chassis.
  *
  * Constraints:
  * - Pure until installDynamicColor(): node tests import paletteTheme with no DOM.
- * - Only the skin 'material' with its own id is derived; an edited theme (Custom) is the
+ * - Only the Theme 'material' with its own id is derived; an edited theme (Custom) is the
  *   user's and is left alone. The derived theme is applied without persisting, so the stored
  *   theme stays the baseline preset and a phone without a palette (below Android 12, the
  *   browser, any desktop) keeps the baseline.
@@ -86,7 +86,7 @@ export function installDynamicColor() {
   const sync = () => {
     const t = currentTheme();
     const root = document.documentElement;
-    if (t.skin !== 'material') { root.removeAttribute('data-md-scheme'); lastKey = ''; return; }
+    if (t.style !== 'material') { root.removeAttribute('data-md-scheme'); lastKey = ''; return; }
     if (t.id !== 'material') return;
     const r = paletteTheme(t, palette());
     if (!r) { root.removeAttribute('data-md-scheme'); return; }

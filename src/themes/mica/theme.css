@@ -1,0 +1,91 @@
+/* Mica: Fluent on Windows 11. Without the material (Windows 10, the browser build,
+   macOS, Linux, Android) the Theme draws the same look on opaque dark surfaces.
+
+   With it (html[data-material], set by model/material.js once the window has Mica):
+   the page and the frame go clear so the material shows, and every surface that
+   carries text becomes a tint over it. The tint is 82%: Mica forced dark never
+   reads lighter than about #3A3A3A under any wallpaper, and text clears AA over
+   black and over that (test/theme-skins.test.mjs, materials). Strokes are white
+   at 9 to 40%, so the same lines read on Mica and on the opaque fallback. */
+html:root[data-style="mica"] {
+  --font: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  --font-head: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  --frame-w: 1px;
+  --tint: 82%;
+  --tex-page: linear-gradient(160deg, #23262D 0%, #1B1D22 55%, #17181C 100%);
+  --tex-page-size: 100% 100%;
+  --fill: rgba(255, 255, 255, .055);
+  --fill-hover: rgba(255, 255, 255, .09);
+  --fill-press: rgba(255, 255, 255, .03);
+  --reveal: radial-gradient(160px 80px at 50% 0%, rgba(255, 255, 255, .1), transparent 70%);
+}
+
+/* ---- the material shows ---- */
+html:root[data-style="mica"][data-material],
+html:root[data-style="mica"][data-material] body { background-color: transparent; background-image: none; }
+
+html:root[data-style="mica"][data-material] [data-part="bar"] { background-color: color-mix(in srgb, var(--shell-bg) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] [data-part="top"] { background-color: transparent; }
+html:root[data-style="mica"][data-material] [data-part="strip"] { background-color: color-mix(in srgb, var(--bg-raised) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] [data-part="hero"] { background-color: color-mix(in srgb, var(--bg-raised) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] [data-part="rail"] { background-color: color-mix(in srgb, var(--bg-raised) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] [data-part="status-row"],
+html:root[data-style="mica"][data-material] [data-part="page-foot"] { background-color: color-mix(in srgb, var(--bg-raised) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] .surface-card,
+html:root[data-style="mica"][data-material] .og-panel { background-color: color-mix(in srgb, var(--bg-card) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] .surface-nest { background-color: color-mix(in srgb, var(--bg-sunken) var(--tint), transparent); }
+html:root[data-style="mica"][data-material] #ph-tip,
+html:root[data-style="mica"][data-material] .ui-menu,
+html:root[data-style="mica"][data-material] .ui-sheet { background-color: color-mix(in srgb, var(--bg-card) 94%, transparent); }
+
+/* ---- the frame: the title bar, the strip, the rail ---- */
+html:root[data-style="mica"] [data-part="bar"] { box-shadow: inset 0 -1px 0 var(--line-1); }
+html:root[data-style="mica"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 600; letter-spacing: 0; font-size: .85rem; }
+html:root[data-style="mica"] [data-part="bar"] .chip { border-radius: 4px; background-color: var(--fill); border-color: var(--line-1); }
+html:root[data-style="mica"] [data-part="top"] { border-bottom-color: var(--line-1); }
+html:root[data-style="mica"] [data-part="strip"],
+html:root[data-style="mica"] [data-part="hero"] { background-image: linear-gradient(180deg, rgba(255, 255, 255, .03), transparent 60%); }
+html:root[data-style="mica"] [data-part="stop-frame"] { outline: 1px solid var(--line-2); outline-offset: 4px; border-radius: 6px; background-color: var(--bg-sunken); }
+html:root[data-style="mica"] [data-part="rail"] { border-radius: 0 8px 8px 0; border-color: var(--line-1); }
+html:root[data-style="mica"] [data-part="rail-label"] { font-family: var(--font-head); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 12px; }
+html:root[data-style="mica"] [data-part="rail-tab"] { border-radius: 4px; position: relative; }
+html:root[data-style="mica"] [data-part="rail-tab"]:hover { background-color: var(--fill-hover); }
+html:root[data-style="mica"] [data-part="rail-tab"].on { background-color: var(--fill-hover); border-color: transparent; }
+/* The pill: the Fluent selection marker. */
+html:root[data-style="mica"] [data-part="rail-tab"].on::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--reality); }
+
+/* ---- cards: eight pixels round, a stroke, a soft lift ---- */
+html:root[data-style="mica"] [data-part="card"],
+html:root[data-style="mica"] [data-part="nest"],
+html:root[data-style="mica"] [data-part="panel"] { border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, .26), 0 0 0 .5px rgba(0, 0, 0, .4); }
+html:root[data-style="mica"] [data-part="card"],
+html:root[data-style="mica"] [data-part="panel"] { background-image: linear-gradient(180deg, rgba(255, 255, 255, .03), transparent 30%); }
+html:root[data-style="mica"] .dash-title { font-family: var(--font-head); text-transform: none; letter-spacing: 0; font-weight: 600; font-size: .86rem; color: var(--tx-hi); }
+html:root[data-style="mica"] .og-panel { outline: none; border-radius: 8px; background-image: none; }
+html:root[data-style="mica"] .pane-head h2 { font-family: var(--font-head); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: .95rem; }
+
+/* ---- controls: a 4 px fill, a top light stroke, a hover that lifts, a press that sinks ---- */
+html:root[data-style="mica"] .og-btn,
+html:root[data-style="mica"] .og-seg button,
+html:root[data-style="mica"] .stepper button { border-radius: 4px; background-color: var(--fill); background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent 40%); font-weight: 400; }
+html:root[data-style="mica"] .og-btn:hover,
+html:root[data-style="mica"] .og-seg button:hover,
+html:root[data-style="mica"] .stepper button:hover:not(:disabled) { background-color: var(--fill-hover); background-image: var(--reveal); }
+html:root[data-style="mica"] .og-btn:active,
+html:root[data-style="mica"] .og-seg button:active { background-color: var(--fill-press); background-image: none; }
+html:root[data-style="mica"] .og-num,
+html:root[data-style="mica"] .value-input,
+html:root[data-style="mica"] select { border-radius: 4px; background-color: var(--fill); box-shadow: inset 0 -1px 0 var(--line-3); border-color: var(--line-1); }
+html:root[data-style="mica"] .og-num:focus,
+html:root[data-style="mica"] .value-input:focus,
+html:root[data-style="mica"] select:focus { box-shadow: inset 0 -2px 0 var(--reality); }
+html:root[data-style="mica"] .og-switch .track { border-radius: 10px; }
+html:root[data-style="mica"] .og-switch .track::after { border-radius: 50%; }
+html:root[data-style="mica"] input[type="range"] { border-radius: 2px; }
+html:root[data-style="mica"] input[type="range"]::-webkit-slider-thumb { border-radius: 999px; background-color: var(--bg-card); }
+html:root[data-style="mica"] input[type="range"]::-moz-range-thumb { border-radius: 999px; background-color: var(--bg-card); }
+html:root[data-style="mica"] .og-screen { border-radius: 4px; }
+
+html:root[data-style="mica"] [data-part="status-row"],
+html:root[data-style="mica"] [data-part="page-foot"] { border-top-color: var(--line-1); }
+html:root[data-style="mica"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) transparent; }

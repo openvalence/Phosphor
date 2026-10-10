@@ -1,12 +1,12 @@
 /**
  * material.svelte.js -- the OS material under the window for the Mica and Liquid Glass
- * skins (docs/THEMES.md, Materials). The shell gives it the Rust command
+ * Themes (docs/THEMES.md, Materials). The shell gives it the Rust command
  * (src-tauri/src/material.rs); the served page never installs it and stays opaque.
  *
  * Constraints:
  * - The window is created transparent on Windows and macOS; this chooses what shows
- *   through. Every other skin paints an opaque body, so no other theme changes.
- * - `html[data-material]` is set only while the OS material is really there, so a skin's
+ *   through. Every other Theme paints an opaque body, so no other theme changes.
+ * - `html[data-material]` is set only while the OS material is really there, so a Theme's
  *   transparent rules never meet a bare transparent window: Windows 10 (no Mica), Linux,
  *   Android and the browser answer "none" and keep the opaque look.
  * - Page fullscreen, the OS's reduced-transparency setting and a theme without a
@@ -14,7 +14,7 @@
  *   window.
  * - Browser or desktop preference only: nothing here reaches the hub.
  */
-import { onTheme, currentTheme, skinMeta } from './theme.js';
+import { onTheme, currentTheme, themeMeta } from './theme.js';
 
 /** What is applied right now: 'mica', 'acrylic', 'glass', 'vibrancy' or 'none'. */
 export const material = $state({ applied: 'none', wanted: null });
@@ -28,7 +28,7 @@ const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-r
 
 /** The material the active theme asks for, or null: none while fullscreen or when the OS asks for less. */
 function wanted() {
-  const m = skinMeta(currentTheme().skin);
+  const m = themeMeta(currentTheme().style);
   if (!m || !m.material) return null;
   if (root().hasAttribute('data-page-full') || reduced()) return null;
   return m.material;
@@ -36,7 +36,7 @@ function wanted() {
 
 function sync() {
   const want = wanted();
-  material.wanted = skinMeta(currentTheme().skin)?.material || null;
+  material.wanted = themeMeta(currentTheme().style)?.material || null;
   if (!invoke || want === last) return;
   last = want;
   busy = busy.then(async () => {

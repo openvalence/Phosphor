@@ -153,7 +153,7 @@
 
   --font: 'Chakra Petch', system-ui, sans-serif;
   --mono: 'Martian Mono', ui-monospace, monospace;
-  /* Skin hooks (docs/THEMES.md, Skins): set by a skin's stylesheet, never by a
+  /* Theme hooks (docs/THEMES.md, Tokens): set by a Theme's stylesheet, never by a
      theme's overrides (LOCKED). --font-head is the voice of titles and labels. */
   --font-head: var(--font);
   /* Texture layers, as background-image lists with their sizes: the page, and the
@@ -1343,6 +1343,6 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
   pointer-events: none;
 }
 
-/* High legibility strips a skin's textures (docs/THEMES.md, Skins); the skin's
+/* High legibility strips a Theme's textures (docs/THEMES.md, Tokens); its
    shapes, fonts and frames stay. */
-html.hivis:root[data-skin] { --tex-page: none; --tex-card: none; }
+html.hivis:root[data-style] { --tex-page: none; --tex-card: none; }

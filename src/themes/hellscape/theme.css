@@ -1,0 +1,133 @@
+/* Hellscape: brick, beveled stone and a status-bar HUD. Every surface under text is
+   a chassis token (a dark red-brown); the bricks are dark mortar lines, never light,
+   so the text only gains contrast. The reds here are browns: nothing in the sheet
+   reaches the hazard red. */
+html:root[data-style="hellscape"] {
+  --font: 'Bahnschrift', 'Arial Narrow', 'Roboto Condensed', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-head: 'Silkscreen', 'Impact', 'Haettenschweiler', 'Arial Narrow', sans-serif;
+  --frame-w: 3px;
+  /* A smoldering floor under a brick wall. */
+  --tex-page:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='32'%3E%3Cpath d='M0 .5H64M0 16.5H64M.5 0V16M32.5 16V32' stroke='%23000' stroke-opacity='.5' fill='none'/%3E%3Cpath d='M1 1.5H31M33 17.5H63' stroke='%23fff' stroke-opacity='.06' fill='none'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 90% 45% at 50% 112%, rgba(122, 30, 18, .55), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, .55));
+  --tex-page-size: 64px 32px, 100% 100%, 100% 100%;
+  --tex-card:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24'%3E%3Cpath d='M0 .5H48M0 12.5H48M.5 0V12M24.5 12V24' stroke='%23000' stroke-opacity='.4' fill='none'/%3E%3Cpath d='M1 1.5H23M25 13.5H47' stroke='%23fff' stroke-opacity='.05' fill='none'/%3E%3C/svg%3E");
+  --tex-card-size: 48px 24px;
+}
+
+/* ---- the torch: a dim glow at the floor that gutters ---- */
+html:root[data-style="hellscape"]::before {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40vh;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 60% 70% at 50% 110%, rgba(150, 44, 20, .35), transparent 70%);
+}
+html:root[data-style="hellscape"]:not(.still):not(.hivis)::before { animation: theme-hellscape-gutter 4.3s ease-in-out infinite; }
+@keyframes theme-hellscape-gutter { 0%, 100% { opacity: 1; } 22% { opacity: .72; } 47% { opacity: .95; } 71% { opacity: .6; } }
+
+/* ---- the bar and the status strip: riveted plate ---- */
+html:root[data-style="hellscape"] [data-part="bar"] {
+  background-color: var(--shell-bg);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent 40%, rgba(0, 0, 0, .35));
+  box-shadow: inset 0 -3px 0 #000, inset 0 -4px 0 var(--line-2);
+}
+html:root[data-style="hellscape"] [data-part="bar"] .wordmark {
+  font-family: var(--font-head);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: .8rem;
+  text-shadow: 2px 2px 0 #000;
+}
+html:root[data-style="hellscape"] [data-part="strip"] {
+  background-image:
+    radial-gradient(circle at 7px 7px, rgba(222, 190, 170, .5) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at calc(100% - 7px) 7px, rgba(222, 190, 170, .5) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 7px calc(100% - 7px), rgba(222, 190, 170, .5) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), rgba(222, 190, 170, .5) 0 1.5px, transparent 2.5px),
+    linear-gradient(180deg, rgba(255, 255, 255, .07), transparent 16%, rgba(0, 0, 0, .35));
+}
+html:root[data-style="hellscape"] [data-part="top"] { border-bottom: 3px solid #000; }
+html:root[data-style="hellscape"] [data-part="numerals"] .hn-val { font-family: var(--font-head); text-shadow: var(--glow-reality); }
+html:root[data-style="hellscape"] [data-part="stop-frame"] { outline: 2px solid var(--line-3); outline-offset: 4px; background-color: var(--bg-sunken); }
+html:root[data-style="hellscape"] [data-part="hero"] { border-bottom: 3px solid #000; background-image: linear-gradient(180deg, rgba(0, 0, 0, .3), transparent 30%); }
+
+/* ---- the wall: the rail ---- */
+html:root[data-style="hellscape"] [data-part="rail"] {
+  background-image: var(--tex-card);
+  background-size: var(--tex-card-size);
+  border-style: outset;
+  border-width: 3px 3px 3px 0;
+  border-color: var(--line-1);
+}
+html:root[data-style="hellscape"] [data-part="rail-label"] {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .14em;
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 -2px 0 #000;
+  margin: 0 4px 2px;
+}
+html:root[data-style="hellscape"] [data-part="rail-tab"] { border-radius: 0; text-transform: uppercase; letter-spacing: .06em; font-size: .78rem; }
+html:root[data-style="hellscape"] [data-part="rail-tab"].on {
+  background-color: var(--bg-sunken);
+  border-color: var(--line-3);
+  box-shadow: inset 4px 0 0 var(--reality);
+}
+html:root[data-style="hellscape"] .rail-sec.shell { border-style: outset; border-width: 2px; }
+
+/* ---- stone slabs: cards and their heads ---- */
+html:root[data-style="hellscape"] [data-part="card"],
+html:root[data-style="hellscape"] [data-part="nest"],
+html:root[data-style="hellscape"] [data-part="panel"] { border-style: outset; border-radius: 0; box-shadow: 4px 4px 0 rgba(0, 0, 0, .55); }
+html:root[data-style="hellscape"] [data-part="card-head"]:not(.over),
+html:root[data-style="hellscape"] [data-part="panel-bar"] {
+  background-color: var(--bg-sunken);
+  box-shadow: inset 0 -2px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .12);
+  padding-inline: var(--sp-3);
+}
+html:root[data-style="hellscape"] [data-part="panel-bar"] { margin: calc(var(--sp-3) * -1) calc(var(--sp-4) * -1) 0; }
+html:root[data-style="hellscape"] .dash-title { font-size: .72rem; letter-spacing: .16em; color: var(--tx-hi); }
+html:root[data-style="hellscape"] .og-panel { outline-style: double; outline-width: 3px; border-style: outset; border-width: 2px; border-radius: 0; }
+
+/* ---- controls: chunky bevels ---- */
+html:root[data-style="hellscape"] .og-btn,
+html:root[data-style="hellscape"] .og-seg button,
+html:root[data-style="hellscape"] .stepper button {
+  border-style: outset;
+  border-width: 2px;
+  border-radius: 0;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(180deg, var(--bg-card), var(--bg-sunken));
+}
+html:root[data-style="hellscape"] .og-btn:active,
+html:root[data-style="hellscape"] .og-seg button:active { border-style: inset; }
+html:root[data-style="hellscape"] .og-btn { text-transform: uppercase; letter-spacing: .06em; font-size: .76rem; }
+html:root[data-style="hellscape"] .og-num,
+html:root[data-style="hellscape"] .value-input,
+html:root[data-style="hellscape"] select { border-style: inset; border-width: 2px; border-radius: 0; }
+html:root[data-style="hellscape"] .og-switch .track { border-radius: 0; }
+html:root[data-style="hellscape"] .og-switch .track::after { border-radius: 0; }
+html:root[data-style="hellscape"] input[type="range"]::-webkit-slider-thumb { border-style: outset; border-width: 2px; background-color: var(--bg-card); }
+html:root[data-style="hellscape"] input[type="range"]::-moz-range-thumb { border-style: outset; border-width: 2px; background-color: var(--bg-card); }
+html:root[data-style="hellscape"] .og-screen { border-style: inset; border-width: 2px; }
+
+/* ---- the foot: a stone lip ---- */
+html:root[data-style="hellscape"] [data-part="status-row"],
+html:root[data-style="hellscape"] [data-part="page-foot"] { border-top: 3px solid #000; background-image: linear-gradient(180deg, rgba(255, 255, 255, .05), transparent); }
+
+html:root[data-style="hellscape"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="hellscape"] ::-webkit-scrollbar { width: 12px; height: 12px; }
+html:root[data-style="hellscape"] ::-webkit-scrollbar-track { background: var(--bg-sunken); }
+html:root[data-style="hellscape"] ::-webkit-scrollbar-thumb { background-color: var(--line-2); border: 2px outset var(--line-3); border-radius: 0; }
+@media (max-width: 560px) {
+  html:root[data-style="hellscape"] [data-part="bar"] .wordmark { letter-spacing: .02em; font-size: .7rem; }
+}

@@ -31,7 +31,7 @@
   import { untrack } from 'svelte';
   import {
     KNOBS, TOKENS, LOCKED, SAFETY, DEFAULT_THEME,
-    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, presetList, skinMeta,
+    applyTheme, currentTheme, editTheme, onTheme, deriveTokens, shownPresets, themeMeta, variantsOf, STYLES,
     saveAsPreset, deletePreset, exportTheme, importTheme, validOverride,
   } from '../model/theme.js';
   import { setPref, MOTION } from '../model/prefs.js';
@@ -43,14 +43,14 @@
   import './pane.css';
 
   let theme = $state(currentTheme());
-  let presets = $state(presetList());
-  $effect(() => onTheme((t) => { theme = t; presets = presetList(); }));
+  let presets = $state(shownPresets(currentTheme()));
+  $effect(() => onTheme((t) => { theme = t; presets = shownPresets(t); }));
   const d = $derived(deriveTokens(theme));
-  // A skin's swatch is its manifest's (themes/manifest.js); any other preset shows its chassis.
-  const chips = $derived(presets.map((p) => {
-    const m = skinMeta(p.skin);
-    return { p, bg: m ? m.swatch : deriveTokens(p).base['--bg'], tip: m ? m.pitch + (m.note ? '. ' + m.note : '') : undefined };
-  }));
+  // Themes first (a whole style each, its swatch from its manifest), then the active Theme's
+  // Variants (palettes: the chassis and two accents), then the saved presets.
+  const styles = $derived(STYLES.map((s) => ({ s, first: variantsOf(s.id)[0], tip: s.pitch + (s.note ? '. ' + s.note : '') })));
+  const variants = $derived(presets.filter((p) => !p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
+  const saved = $derived(presets.filter((p) => p.id.startsWith('user-')).map((p) => ({ p, bg: deriveTokens(p).base['--bg'] })));
 
   // The host's value-and-unit rule (format.js), never a local one.
   const unit = (u) => (v) => formatWithUnit({ unit: u, step: Number.isInteger(v) ? 1 : 0.1 }, v);
@@ -65,9 +65,9 @@
   const RAMP = ['--bg-sunken', '--bg', '--bg-raised', '--bg-card', '--line-0', '--line-1', '--line-2', '--line-3', '--line-4',
     '--tx-faint', '--tx-ghost', '--tx-mut', '--tx-val', '--tx', '--tx-hi'];
 
-  // A skin that wants an OS material says where it has one, and what this window got (model/material.svelte.js).
+  // A Theme that wants an OS material says where it has one, and what this window got (model/material.svelte.js).
   const skinNote = $derived.by(() => {
-    const m = skinMeta(theme.skin);
+    const m = themeMeta(theme.style);
     return m && m.note ? m.note + ' (now: ' + (material.applied === 'none' ? 'opaque look' : material.applied) + ')' : '';
   });
   const near = $derived(ACCENTS.filter(([k]) => d.near[k]).map(([k, label]) => label + ' near safety ' + d.near[k]).join(' · '));
@@ -83,7 +83,7 @@
   }
   function remove(id) {
     deletePreset(id);
-    presets = presetList();
+    presets = shownPresets(theme);
   }
 
   // ---- advanced: pinned tokens ----
@@ -145,23 +145,53 @@
 <div class="pane-stack theme-picker">
   <section class="pane-sec og-panel" aria-labelledby="tp-theme">
     <div class="pane-head"><h2 id="tp-theme" data-search-key="theme">Theme</h2><span class="tp-active" data-testid="theme-active">{theme.name}</span></div>
-    <div class="swatches" role="group" aria-label="Theme presets">
-      {#each chips as { p, bg, tip } (p.id)}
-        <span class="preset" data-search-key={'theme-' + p.id}>
-          <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
-                  data-theme-id={p.id} data-tip={tip} onclick={() => applyTheme(p)}>
-            <span class="chassis" style="background:{bg}" aria-hidden="true">
-              <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
-              <span class="dot" style="background:{p.accents.intent}"></span>
+    <div class="swatches" role="group" aria-label="Themes">
+      {#each styles as { s, first, tip } (s.id)}
+        <span class="preset" data-search-key={'style-' + s.id}>
+          <button type="button" class="swatch" class:active={theme.style === s.id} aria-pressed={theme.style === s.id}
+                  data-style-id={s.id} data-tip={tip} onclick={() => applyTheme(first)}>
+            <span class="chassis" style="background:{s.swatch}" aria-hidden="true">
+              <span class="dot" style="background:{first.accents.reality};box-shadow:0 0 6px {first.accents.reality}"></span>
+              <span class="dot" style="background:{first.accents.intent}"></span>
             </span>
-            <span class="name">{p.name}</span>
+            <span class="name">{s.name}</span>
           </button>
-          {#if p.id.startsWith('user-')}
-            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} data-tip="Delete preset" onclick={() => remove(p.id)}>×</button>
-          {/if}
         </span>
       {/each}
     </div>
+    {#if variants.length}
+      <div class="swatches variants" role="group" aria-label="Variants of this theme">
+        {#each variants as { p, bg } (p.id)}
+          <span class="preset" data-search-key={'theme-' + p.id}>
+            <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
+                    data-theme-id={p.id} onclick={() => applyTheme(p)}>
+              <span class="chassis" style="background:{bg}" aria-hidden="true">
+                <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
+                <span class="dot" style="background:{p.accents.intent}"></span>
+              </span>
+              <span class="name">{p.name}</span>
+            </button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+    {#if saved.length}
+      <div class="swatches variants" role="group" aria-label="Saved presets">
+        {#each saved as { p, bg } (p.id)}
+          <span class="preset" data-search-key={'theme-' + p.id}>
+            <button type="button" class="swatch" class:active={theme.id === p.id} aria-pressed={theme.id === p.id}
+                    data-theme-id={p.id} onclick={() => applyTheme(p)}>
+              <span class="chassis" style="background:{bg}" aria-hidden="true">
+                <span class="dot" style="background:{p.accents.reality};box-shadow:0 0 6px {p.accents.reality}"></span>
+                <span class="dot" style="background:{p.accents.intent}"></span>
+              </span>
+              <span class="name">{p.name}</span>
+            </button>
+            <button type="button" class="og-btn sm del" aria-label={'Delete ' + p.name} data-tip="Delete preset" onclick={() => remove(p.id)}>×</button>
+          </span>
+        {/each}
+      </div>
+    {/if}
     <p class="pane-note tp-skin-note" data-testid="skin-note" data-tip={skinNote || undefined}>{skinNote}</p>
     <div class="row">
       <input class="og-num name-in" placeholder="Preset name" aria-label="Preset name" maxlength="40" bind:value={saveName} />
@@ -322,8 +352,8 @@
   .name-in { width: 22ch; max-width: 100%; min-height: var(--tap); font-size: .8rem; }
 
   .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-  /* One fixed line, held whether or not a skin has a note, so a pick moves nothing. */
-  .tp-skin-note { min-height: 1.45em; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* One fixed line, held whether or not a Theme has a note, so a pick moves nothing. */
+  .tp-skin-note { min-height: 1.45em; margin: 0; color: var(--tx-val); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .preset { display: inline-flex; align-items: center; gap: var(--sp-1); }
   .swatch {
     display: inline-flex;

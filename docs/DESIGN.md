@@ -1503,6 +1503,27 @@ issue the user submits under their own account; Phosphor sends nothing.
   check` fails when it is stale. Its upstream home is the Valence codegen.
 - Guard: `test/link-page.test.mjs` (`npm run check:link`).
 
+### 10.16 Themes and variants (operator rulings 2026-10-10)
+
+A **Theme** is a whole style: chrome, controls, typography, icons, textures, motion. A
+**Variant** is one palette of a Theme; a pure recolor is a Variant, never a Theme. The color presets
+(Phosphor, Tracer, Synth, Ember, Arctic, Vapor, Ultra, Sakura, Stealth, Slate, Warm ink, Paper) are the Variants
+of the default Theme, **Phosphor**. The Display pane lists Themes first, then the active Theme's Variants.
+
+- A Theme lives in `src/themes/<id>/` (manifest, theme.css, icons, optional fonts) and joins by one line in
+  `src/themes/index.js`; its stylesheet is scoped by `html[data-style]`, loads by being in the folder, and
+  reaches only shipped Theme ids. The engine's theme object gains `style` (the Theme; the earlier `skin` reads
+  as it) and keeps `id` (a Variant's id): an old stored preset id maps to Phosphor plus that Variant.
+- The shell's own surfaces carry stable part names (`data-part`: `top`, `bar`, `strip`, `stop-frame`, `rail`,
+  `card`, `caption-btn` and the rest, `docs/THEMES.md`, Parts), the rail's glyphs an icon registry (`data-icon`),
+  and `style.css` a few Theme tokens (`--font-head`, `--tex-page`, `--tex-card`, `--frame-w`) a Theme's sheet sets.
+- Safety is not a Theme's to restyle (law 13): the stop pair, the safety edge, the write ladder, warn and error
+  states and the stale states look the same in every Theme; a Theme dresses their surroundings. The kit
+  (`node test/theme-skins.test.mjs --theme <id>`) lints and measures it.
+- A Theme may ask the window for an OS material (Mica, Acrylic, macOS vibrancy and `NSGlassEffectView`); the window
+  is created transparent on Windows and macOS, every other Theme paints an opaque body, and a fullscreen page is
+  always opaque. Without the material the Theme draws an opaque look of the same style.
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1608,3 +1629,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a resent chip (the share of TCP sent again, this client's and the machine's, labeled with the scope and unit the model reports) reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the chip labeled `loss` (the operator renamed it from `resent` the same day; the tooltip says the figures are TCP sent again), showing the client's and the machine's share with the radio retries and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |
 | 2026-10-10 | §10.3 | The link dot's ripple is a faint thin ring (peak opacity .22, about a third of before) on its own cycle, two beats long and started a fifth of a beat late (live 4 s after 0.4 s, connecting 2 s after 0.2 s), on a slow-start, speed-up, slow-rest curve; the swell is 18 %, not 36 %; the `resent` chip is labeled `loss`, its tooltip still saying TCP sent again (`src/ui/LinkBar.svelte`, `src/model/linkbar.js`, responsive-matrix `barstates`). | operator (feedback 2026-10-10: "resent sounds like a grudge indicator", the ripple "softer, slower at the start, more of a ripple in water than a pulse") |
 | 2026-10-10 | §10.3 | The channel heatmap's per-block tooltips become one enlarged, labeled panel in the top layer, below the top strip, with the details of the hovered block at its foot (the bar's block count, groups and live brightness, click routing and keyboard kept; 350 ms grace; coarse pointers keep the one button); the stalled-updates line shows only past a real 1 s gap (`src/ui/ChannelHeat.svelte`, `test/channel-heat.test.mjs`). | operator ("hovering brings a slightly larger labelled view of the same group of blocks instead of individually"; the tile size 18 px, the 350 ms grace, the 1 s gap and hanging below the strip rather than the bar are the agent's, veto-able) |
+| 2026-10-10 | §10.16, themes | Themes and variants: a Theme is a whole style (chrome, controls, type, icons, textures, motion), a Variant one palette of it; the twelve color presets become Variants of the default Theme Phosphor; each Theme is a folder (`src/themes/<id>/`) joined by one registry line, scoped by `html[data-style]`, with part names, an icon registry and Theme tokens as its hooks; an old stored preset id maps to Phosphor plus that Variant; a Theme may ask the window for an OS material, and a fullscreen page is always opaque; one command (`test/theme-skins.test.mjs --theme <id>`) checks a Theme (docs/THEMES.md). | operator |

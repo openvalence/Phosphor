@@ -23,9 +23,8 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, LIMITS } from '../../Valence/clients/js/frames.js';
-import { deriveTokens, THEMES, contrast } from '../src/model/theme.js';
+import { deriveTokens, THEMES, STYLES, contrast } from '../src/model/theme.js';
 import { formatWithUnit } from '../src/model/format.js';
-import { SKINS } from '../src/themes/manifest.js';
 
 const SHOTS = process.argv[2] || null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -298,7 +297,7 @@ for (const [width, height] of [[200, 390], [320, 568], [390, 844]]) {
 
 // ---- 3. chassis-varied and light presets: color-scheme follows, and under
 // hi-vis every category page clears the same WCAG floor the default does ------
-for (const id of ['slate', 'ink', 'paper', ...SKINS.map((s) => s.id)]) {
+for (const id of ['slate', 'ink', 'paper', ...STYLES.filter((s) => s.id !== 'phosphor').map((s) => s.id)]) {
   const t = THEMES.find((x) => x.id === id);
   if (!t) continue;
   console.log('\n--- theme, ' + id + ' ---');

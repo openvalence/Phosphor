@@ -62,7 +62,7 @@
   import { hold } from './shell/hold.js';
   import { resetNeedsModal } from './shell/resetGate.js';
   import { settingsEntries } from './shell/settingsSearch.js';
-  import { presetList } from './model/theme.js';
+  import { shownPresets, currentTheme, STYLES } from './model/theme.js';
   import { registerSearch } from './ui/searchIndex.js';
   import { layouts, orderedLayoutNames, switchLayout, addLayout, dashEdit, redHint } from './model/dashboard.svelte.js';
   import './ui/select.css';
@@ -165,7 +165,7 @@
   const OS_SHELL = SHELL && !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
   let full = $state(OFF);
   const isFull = $derived(full.on && !!current?.page);
-  // A fullscreen page is opaque: the OS material under a skin is taken away while it shows (model/material.svelte.js).
+  // A fullscreen page is opaque: the OS material under a Theme is taken away while it shows (model/material.svelte.js).
   $effect(() => { document.documentElement.toggleAttribute('data-page-full', isFull); });
   const currentId = $derived(current?.id);
   $effect(() => { currentId; untrack(() => { full = OFF; }); });
@@ -359,7 +359,7 @@
   $effect(() => { if (active !== 'machine') dashEdit.on = false; });
   // F3 lists every Display and Settings entry and lands on its row.
   const settingsTab = $derived(tabs.find((t) => t.id === 'shell:settings') || tabs.find((t) => t.id === 'display'));
-  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(presetList())
+  $effect(() => registerSearch('settings', () => (settingsTab ? settingsEntries(shownPresets(currentTheme()), STYLES)
     .filter((e) => !e.shell || settingsTab.id === 'shell:settings')
     .map((e) => ({ label: e.label, path: settingsTab.id === 'display' ? 'Display' : 'Phosphor › Settings', go: async () => {
       selectTab(settingsTab.id);

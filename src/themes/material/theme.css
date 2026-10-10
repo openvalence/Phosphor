@@ -1,0 +1,73 @@
+/* Material 3: tonal surfaces (the accent mixed into each surface a few percent, higher
+   containers a little more), stadium buttons in the filled, tonal and outlined voices,
+   8 and 12 percent state layers on hover and press, the M3 type scale in a system face,
+   the emphasized easing. The accents and the chassis come from the system's palette on
+   Android 12+ (model/dynamicColor.js) and from the baseline in the manifest elsewhere;
+   either way the surface under text is a chassis token, so the engine's contrast guard
+   holds. The stop pair is outside everything here. */
+html:root[data-style="material"] {
+  --font: 'Roboto Flex', Roboto, 'Google Sans Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-head: 'Roboto Flex', Roboto, 'Google Sans', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --frame-w: 1px;
+  /* The M3 emphasized easing for every ladder-free transition. */
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  --on-reality: var(--bg-sunken);
+  --sl-hover: linear-gradient(rgba(var(--reality-rgb), .08), rgba(var(--reality-rgb), .08));
+  --sl-press: linear-gradient(rgba(var(--reality-rgb), .12), rgba(var(--reality-rgb), .12));
+  --tone-1: color-mix(in srgb, var(--reality) 3%, var(--bg-card));
+  --tone-2: color-mix(in srgb, var(--reality) 4%, var(--bg-raised));
+  --tone-container: color-mix(in srgb, var(--reality) 16%, var(--bg-card));
+}
+html:root[data-style="material"][data-md-scheme="light"] { --on-reality: #FFFFFF; }
+
+/* ---- the app bar and the rail ---- */
+html:root[data-style="material"] [data-part="bar"] { background-color: var(--tone-2); box-shadow: none; }
+html:root[data-style="material"] [data-part="bar"] .wordmark { font-family: var(--font-head); font-weight: 500; font-size: 1rem; letter-spacing: 0; }
+html:root[data-style="material"] [data-part="bar"] .chip { border-radius: 999px; padding-inline: 9px; background-color: var(--tone-1); border-color: var(--line-1); }
+html:root[data-style="material"] [data-part="top"] { background-color: var(--tone-2); border-bottom-color: var(--line-1); }
+html:root[data-style="material"] [data-part="strip"],
+html:root[data-style="material"] [data-part="hero"] { background-color: var(--tone-2); }
+html:root[data-style="material"] [data-part="stop-frame"] { outline: 1px solid var(--line-3); outline-offset: 4px; border-radius: 16px; background-color: var(--bg-sunken); }
+html:root[data-style="material"] [data-part="rail"] { background-color: var(--tone-2); border-radius: 0 16px 16px 0; border-color: var(--line-1); }
+html:root[data-style="material"] [data-part="rail-label"] { font-family: var(--font-head); font-weight: 500; text-transform: none; letter-spacing: .04em; font-size: 12px; }
+html:root[data-style="material"] [data-part="rail-tab"] { border-radius: 999px; font-weight: 500; }
+html:root[data-style="material"] [data-part="rail-tab"]:hover { background-color: rgba(var(--reality-rgb), .08); }
+html:root[data-style="material"] [data-part="rail-tab"].on { background-color: var(--tone-container); border-color: transparent; color: var(--tx-hi); }
+
+/* ---- cards: a filled card at 12 px, one tone up, lifted by two soft shadows ---- */
+html:root[data-style="material"] [data-part="card"],
+html:root[data-style="material"] [data-part="panel"],
+html:root[data-style="material"] .og-panel { border-radius: 12px; background-color: var(--tone-1); box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 1px 3px 1px rgba(0, 0, 0, .15); }
+html:root[data-style="material"] [data-part="nest"] { border-radius: 16px; background-color: color-mix(in srgb, var(--reality) 2%, var(--bg-sunken)); }
+html:root[data-style="material"] .og-panel { outline: none; background-image: none; }
+html:root[data-style="material"] .dash-title { font-family: var(--font-head); text-transform: none; letter-spacing: .01em; font-weight: 500; font-size: .95rem; color: var(--tx-hi); }
+html:root[data-style="material"] .pane-head h2 { font-family: var(--font-head); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 1.05rem; }
+html:root[data-style="material"] .field-label { font-weight: 500; letter-spacing: .03em; }
+
+/* ---- buttons: tonal by default, filled for the primary action, state layers on top ---- */
+html:root[data-style="material"] .og-btn,
+html:root[data-style="material"] .og-seg button,
+html:root[data-style="material"] .stepper button { border-radius: 999px; font-weight: 500; letter-spacing: .01em; background-color: color-mix(in srgb, var(--reality) 8%, var(--bg-card)); transition: border-color var(--t-quick) var(--ease-out), background-color var(--t-quick) var(--ease-out); }
+html:root[data-style="material"] .og-btn.primary { background-color: var(--reality); color: var(--on-reality); }
+html:root[data-style="material"] .og-btn.on,
+html:root[data-style="material"] .og-seg button.active { background-color: var(--tone-container); }
+html:root[data-style="material"] .og-btn:hover,
+html:root[data-style="material"] .og-seg button:hover,
+html:root[data-style="material"] .stepper button:hover:not(:disabled) { background-image: var(--sl-hover); }
+html:root[data-style="material"] .og-btn:active,
+html:root[data-style="material"] .og-seg button:active,
+html:root[data-style="material"] .stepper button:active:not(:disabled) { background-image: var(--sl-press); }
+html:root[data-style="material"] .og-num,
+html:root[data-style="material"] .value-input,
+html:root[data-style="material"] select { border-radius: 12px; background-color: color-mix(in srgb, var(--reality) 6%, var(--bg-sunken)); }
+html:root[data-style="material"] .og-switch .track { border-radius: 999px; }
+html:root[data-style="material"] .og-switch .track::after { border-radius: 50%; }
+html:root[data-style="material"] input[type="range"] { border-radius: 999px; }
+html:root[data-style="material"] input[type="range"]::-webkit-slider-thumb { border-radius: 999px; background-color: var(--reality); }
+html:root[data-style="material"] input[type="range"]::-moz-range-thumb { border-radius: 999px; background-color: var(--reality); }
+html:root[data-style="material"] .og-screen { border-radius: 12px; }
+html:root[data-style="material"] :focus-visible { outline-width: 3px; }
+
+html:root[data-style="material"] [data-part="status-row"],
+html:root[data-style="material"] [data-part="page-foot"] { background-color: var(--tone-2); }
+html:root[data-style="material"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) transparent; }

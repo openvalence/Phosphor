@@ -412,7 +412,7 @@ and moved on a reorder, so a control keeps its in-flight write.
 | `registerSettings(mount)` | a card on the plugin's row in the Plugins pane | experimental |
 | `icons.quickRail` | the quick rail's glyph, one SVG path `d` (Pages, The quick rail) | experimental |
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
-| `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
+| `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13). A plugin theme is a Variant of the default Theme: it carries no CSS, no icons and no part rules | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
 | `hub()` | the connected hub's key (`hub_instance_id`, else `host:port`), null before a catalog: per-hub plugin state keys on it (Identities and paths) | experimental |
 | `onHub(fn)` | calls `fn()` whenever `hub()` reads differently (a hub adopted, switched or forgotten). Returns the unsubscribe; deactivating the plugin drops what is left; a throw is recorded on the plugin | experimental |

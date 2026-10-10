@@ -7,7 +7,7 @@
 //!   costs nothing visible. This command only chooses what shows through it.
 //! - Never an error to the page: a platform without the material answers "none" and the
 //!   skin draws its opaque look.
-//! - Windows: Mica needs Windows 11 (window-vibrancy refuses elsewhere, answered "none");
+//! - Windows: Mica (forced dark: MicaDark is apply_mica(Some(true))) needs Windows 11 (window-vibrancy refuses elsewhere, answered "none");
 //!   Acrylic runs on 10 and 11. macOS: NSGlassEffectView from macOS 26, else an
 //!   NSVisualEffectView material. Linux and Android: none.
 
@@ -23,7 +23,7 @@ fn apply(window: &tauri::WebviewWindow, kind: &str) -> &'static str {
   let set = |e: Option<tauri::utils::config::WindowEffectsConfig>| window.set_effects(e).is_ok();
   match kind {
     "mica" => {
-      if set(Some(EffectsBuilder::new().effect(Effect::Mica).build())) { "mica" } else { let _ = set(None); "none" }
+      if set(Some(EffectsBuilder::new().effect(Effect::MicaDark).build())) { "mica" } else { let _ = set(None); "none" }
     }
     "glass" | "acrylic" => {
       if set(Some(EffectsBuilder::new().effect(Effect::Acrylic).color(Color(14, 16, 22, 90)).build())) { "acrylic" } else { let _ = set(None); "none" }
