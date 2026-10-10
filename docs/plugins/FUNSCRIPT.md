@@ -531,7 +531,12 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   stream; the controller runs a silent clock over the script's duration
   (play, pause, seek, rate and end as a video's). The motion-only meter is
   horizontal at every class. The 120 px strip and the stroke meter's track
-  are `--screen`; the empty stage wears a dashed `--line-3` edge.
+  are `--screen`; the empty stage wears a dashed `--line-3` edge. The
+  full composition's three heads share one head row: the card's border and
+  `--sp-3` above, a `--fsp-src` row (30 px, `--tap` under a coarse pointer)
+  with the heading centered, so 01 PLAYER, 02 LIBRARY and 03 SETTINGS sit on
+  one baseline and opening Settings or the analyzer moves no head
+  (`ph-1qs5.12`).
 - **PR5 One player bar.** Desktop: directly under the stage, above the
   timeline head (as the mockup draws it; review 2026-10-08). Phones: at the
   bottom of the Player card, directly above the footer: loading a video or

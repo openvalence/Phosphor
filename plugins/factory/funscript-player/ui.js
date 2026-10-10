@@ -627,11 +627,11 @@ export const CSS = `
   --fsp-stage-min: 120px; --fsp-detail-min: 64px; --fsp-trh: var(--fsp-bar); --fsp-st: 0px;
   min-height: calc(var(--fsp-src) + var(--fsp-sp) + var(--fsp-bar) + var(--fsp-trh) + var(--fsp-detail-min) + var(--fsp-st) + 6 * var(--sp-2) + var(--fsp-stage-min) + var(--fsp-pad, 0px));
   grid-template-columns: minmax(0, 1fr) 320px;
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) minmax(var(--fsp-stage-min), 1fr) var(--fsp-trh) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "tr lib" "sp lib" "tlh lib" "tl lib" "st lib"; }
 /* The desktop (the full card) draws the bar under the stage (review 2026-10-08); phones keep it at the bottom. */
 .fsp[data-comp=full][data-cls=landscape]:not([data-an]) {
-  grid-template-rows: var(--fsp-src) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) minmax(var(--fsp-stage-min), 1fr) var(--fsp-sp) var(--fsp-bar) minmax(var(--fsp-detail-min), var(--fsp-detail)) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src lib" "stage lib" "sp lib" "tlh lib" "tl lib" "tr lib" "st lib"; }
 @media (pointer: coarse) { .fsp { --fsp-src: var(--tap); --fsp-bar: var(--tap); --fsp-sp: var(--tap); } }
 /* PR5: one player bar; on phones and the handheld card its scrub row over its button row (data-rows2). */
@@ -654,22 +654,28 @@ export const CSS = `
 .fsp:is([data-comp=handheld], [data-comp=glance], [data-libshut]) .fsp-src { padding-right: var(--stop-reserve, 0px); }
 /* The page's shell cards (PR1): the Player card is a frame behind its column, its rows inset by the card padding;
    the library column is the Library card. Inside a dash card there is no frame: the dash card is the card. */
-.fsp[data-page] { --fsp-pad: calc(2 * var(--sp-3)); column-gap: var(--gap); }
+.fsp[data-page] { --fsp-pad: calc(var(--fsp-top, var(--sp-3)) + var(--sp-3)); column-gap: var(--gap); }
+/* The full card's head row starts where the Library and Settings cards' head rows do (their border and --sp-3
+   padding), all three heads on one baseline; the first track carries the inset, so the row keeps its whole --fsp-src. */
+.fsp[data-page][data-comp=full] { --fsp-top: calc(var(--sp-3) + 1px); }
 .fsp-pframe { grid-area: 1 / 1 / -1 / 2; }
 .fsp[data-an] .fsp-pframe { grid-column: 1 / -1; }
 .fsp[data-page] > :is(.fsp-src, .fsp-stage, .fsp-split, .fsp-tlh, .fsp-tr, .fsp-tlbox, .fsp-anbox) { margin-inline: var(--sp-4); }
 .fsp[data-page][data-comp=handheld]:not([data-media]) > .fsp-libbox { margin-inline: var(--sp-4); }
-.fsp[data-page] > .fsp-src { margin-top: var(--sp-3); }
-.fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column; gap: var(--sp-3);
+.fsp[data-page] > .fsp-src { margin-top: var(--fsp-top, var(--sp-3)); }
+.fsp[data-page][data-comp=full]:not([data-libshut], [data-an]) .fsp-libbox { display: flex; flex-direction: column;
   background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius);
   padding: max(var(--sp-3), calc(var(--stop-reserve-h, 0px) - var(--caret-h, 0px) + var(--sp-2))) var(--sp-4) var(--sp-3); }
 .fsp[data-page][data-comp=full] .fsp-libv { flex: 1 1 auto; min-height: 0; }
 /* Heads are the card title's voice (style.css .dash-title, its index); this places them. */
 .fsp-libh { flex: none; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; --ui-btn-h: var(--fsp-src); }
+/* The column is a shaded scroller: no gap, which would follow each shade (style.css [data-shade]); the head spaces itself. */
+.fsp:is([data-page][data-comp=full], [data-media][data-libdrawer]) .fsp-libh { margin-bottom: var(--sp-3); }
+.fsp-libseg > button { min-height: var(--ui-btn-h); }
 .fsp-libh > .fsp-libseg { margin-left: auto; }
 .fsp-libh > .fsp-h { display: none; }
 .fsp[data-page][data-comp=full] .fsp-libh > .fsp-h { display: block; }
-.fsp-h { flex: none; margin: 0; line-height: 30px; }
+.fsp-h { flex: none; margin: 0; }
 /* A narrow head shortens the media name, then its heading, before a control leaves the card (ph-5u0g.15). */
 .fsp-src > .fsp-h { flex: 0 0.001 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The kit's buttons take each row's height. */
@@ -784,13 +790,13 @@ export const CSS = `
 .fsp[data-an]:not([data-comp=glance]) .fsp-tl { position: absolute; inset: 0; }
 .fsp[data-an]:not([data-comp=glance]) .fsp-dt { height: auto; flex: 1 1 0; min-height: 0; }
 .fsp[data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 560px);
-  grid-template-rows: var(--fsp-src) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
+  grid-template-rows: calc(var(--fsp-src) + var(--fsp-top, 0px)) var(--fsp-bar) calc(180px - var(--fsp-src) - var(--fsp-top, 0px) - var(--fsp-bar) - 2 * var(--sp-2)) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src stage" "tlh stage" "tl stage" "tl an" "tr tr" "st st"; }
 .fsp[data-an][data-comp=full] .fsa-row { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9ch; }
 .fsp[data-page][data-an][data-comp=full] { grid-template-columns: minmax(0, 1fr) calc(clamp(320px, 40%, 560px) + 2 * var(--sp-4)); }
 .fsp[data-media] > .fsp-stage { margin: 0; }
 .fsp[data-media] { min-height: 0 !important; }
-.fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--sp-3); }
+.fsp[data-page][data-an][data-comp=full] > .fsp-stage { margin-top: var(--fsp-top); }
 .fsp[data-media] .fsp-vbox { border: 0; border-radius: 0; }
 .fsp[data-an][data-comp=handheld] { --fsp-an: 55%; grid-template-rows: var(--tap) var(--fsp-bar) minmax(0, 1fr) var(--fsp-trh) var(--fsp-st);
   grid-template-areas: "src" "tlh" "tl" "tr" "st"; }
@@ -820,7 +826,7 @@ export const CSS = `
 .fsp[data-media] > :not(.fsp-stage, style) { display: none !important; }
 /* PR13: the fullscreen library drawer, under the stop pair, its content clear of the screen's corners; the phone
    tab's now-playing row. */
-.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; gap: var(--sp-3); position: fixed; top: var(--stop-reserve-h, 0px);
+.fsp[data-media][data-libdrawer] > .fsp-libbox { display: flex !important; flex-direction: column; position: fixed; top: var(--stop-reserve-h, 0px);
   right: 0; bottom: 0; width: min(400px, 60vw); z-index: 20; padding: var(--sp-3) max(var(--sp-4), var(--corner-inset)) max(var(--sp-3), var(--corner-inset)) var(--sp-4);
   visibility: visible; box-sizing: border-box; background: var(--bg-card); border: 1px solid var(--line-1); border-radius: var(--radius); }
 .fsp[data-media][data-libdrawer] .fsp-libh > .fsp-h { display: block; }

@@ -91,7 +91,7 @@ every time.
 | `node test/wire-forensics.mjs <host>` | a hub at `<host>:82`, machine already moving |
 | `node test/render-vs-samplerate-probe.mjs` | pre-captured `test/evidence/trace-{30,25}hz.json`, produced by `position-jitter-probe.mjs` against a live hub |
 | `node test/browser-check.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:browsercheck` in `test:browser`) |
-| `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser |
+| `node test/flagship-render-smoke.mjs <host>` | a hub serving the deployed bundle, plus a browser; with no host, its own sim (`check:flagship` in `test:browser`) |
 | `node test/jitter-measure.mjs <host> [durationMs]` | a hub serving the page, plus a browser |
 | `node test/og-reference-shots.mjs [baseUrl] [outDir]` | a static server for the OG (main-branch) bundle, plus a browser -- not a Valence hub |
 | `node test/valence-sim.mjs [--host] [--port]` | the simulator (valencesim), `../Nucleus/sim/valencesim/build/valencesim.exe` -- fails today (val-091.11/.12) |
