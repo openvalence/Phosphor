@@ -13,6 +13,7 @@
    *   on the next catalog adoption: say so, never imply it applies live.
    * - Every target is at least --tap (RENDERING law 12); the backup's status
    *   line is a fixed slot and Cancel always renders.
+   * - Window shows only where the close gate exists: never on a phone shell.
    */
   import ThemePicker from '../ui/ThemePicker.svelte';
   import { prefs, setPref, exportBackup, importBackup } from '../model/prefs.js';
@@ -48,6 +49,7 @@
     phase = null;
   }
   const status = $derived(note);
+  const WINDOWED = !['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM);
 </script>
 
 <div class="pane-stack set">
@@ -70,6 +72,16 @@
     </label>
     <p class="pane-note">Applies on next connect, capped per channel</p>
   </section>
+
+  {#if WINDOWED}
+    <section class="pane-sec og-panel" aria-labelledby="set-win">
+      <div class="pane-head"><h2 id="set-win">Window</h2></div>
+      <label class="og-switch" data-search-key="close-idle">
+        <input type="checkbox" role="switch" checked={$prefs.closeIdle} onchange={(e) => setPref('closeIdle', e.currentTarget.checked)} />
+        <span class="track"></span>Close immediately when idle
+      </label>
+    </section>
+  {/if}
 
   <section class="pane-sec og-panel" aria-labelledby="set-adv">
     <div class="pane-head"><h2 id="set-adv" data-search-key="backup">Backup</h2></div>

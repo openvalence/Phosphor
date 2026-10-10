@@ -26,12 +26,12 @@ const { formatWithUnit, setAutorange, autorange } = await import('../src/model/f
 const { UNIT_ID } = await import('../../Valence/clients/js/index.js');
 
 // Load: valid fields kept, bad ones take their default; the stored copy is stamped.
-assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false });
+assert.deepEqual(get(prefs), { autorange: false, units: 'metric', reconnect: true, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true });
 assert.deepEqual(loadPrefs(null), { ...DEFAULTS });
 assert.deepEqual(loadPrefs('garbage'), { ...DEFAULTS });
 setPref('reconnect', false);
 assert.deepEqual(JSON.parse(mem.get(PREFS_KEY)),
-  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false });
+  { v: 1, autorange: false, units: 'metric', reconnect: false, telemetryHz: null, estopDatagram: true, fullscreen: 'window', scrollbars: false, motion: 'system', railHide: true, railHidden: false, closeIdle: true });
 setPref('units', 'furlongs');
 assert.equal(get(prefs).units, 'metric', 'only known unit systems');
 setPref('motion', 'full');
@@ -43,6 +43,11 @@ assert.equal(get(prefs).railHidden, true);
 setPref('railHide', 'yes');
 assert.equal(get(prefs).railHide, true, 'booleans only');
 setPref('railHidden', false);
+setPref('closeIdle', 'no');
+assert.equal(get(prefs).closeIdle, true, 'close when idle: booleans only, default on');
+setPref('closeIdle', false);
+assert.equal(get(prefs).closeIdle, false);
+setPref('closeIdle', true);
 
 // Telemetry: the preference, else the client default, never above the catalog max.
 assert.equal(telemetryRate(100, 50), 50);
