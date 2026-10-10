@@ -15,12 +15,12 @@
  *   (motion.js's hunt would end early).
  * - Lag, frame rate and freezes are not measured while the page is hidden: a
  *   hidden page's timers and frames are throttled by design.
- * - The frame rate is a burst of FPS_FRAMES consecutive frames once a second,
- *   never a callback every display frame: an idle page draws nothing, and the
- *   burst still times what this display delivers to this page (ph-3w4u).
+ * - The frame rate is framerate.svelte.js's burst sampler, shared with the top
+ *   bar's chip: never a callback every display frame, since an idle page draws
+ *   nothing (ph-3w4u).
  * - A video is read once a second only while it plays and the page shows
  *   (core.js videoRead), never per frame. Its drops are judged against what
- *   this screen can show; the screen's refresh is the bursts' unrounded rate
+ *   this screen can show; the screen's refresh is the sampler's unrounded rate
  *   over the last 30 s (core.js displayHz), and the video's frame rate its
  *   decoded frames over media time (core.js videoWindow).
  * - Phase 1 has no hub-side arrival stamps (the Health roles RFC): NETWORK
@@ -28,6 +28,7 @@
  */
 import { machine, getSession, currentSocket } from '../machine.svelte.js';
 import { latchWords } from '../motion.js';
+import { frameRate, rates } from '../framerate.svelte.js';
 import { ROLE } from '../roles.js';
 import { labelFor, formatWithUnit } from '../format.js';
 import { reportedValue, reportedReading } from '../settings.js';
@@ -78,37 +79,21 @@ const inWin = (a, from, to) => a.filter((x) => x.t >= from && x.t <= to);
 const vals = (a) => a.map((x) => x.v);
 
 // ---- device sampling ---------------------------------------------------------
-const FPS_FRAMES = 6;
-let burst = null, fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
+let fps = null, pressure = null, workers = 0, hiddenSince = null, wokeAt = 0;
 const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 const heapMb = () => (globalThis.performance?.memory ? performance.memory.usedJSHeapSize / 1048576 : null);
 // The video: the last element that fired 'playing' (media events do not bubble; a capture listener sees them).
 let vid = null, vPrev = null, vLast = null, pageFull = false, HDR = [];
 const vsteps = []; // core.js videoStep
-const hzs = [];    // {t, v}: complete bursts' rates
-
-/** The last burst's frame rate, unrounded; one still running a second on counts the frames it got in that time. */
-function burstRate(t) {
-  if (!burst) return null;
-  const a = burst.at, n = a.length;
-  return n === FPS_FRAMES ? (n - 1) * 1000 / (a[n - 1] - a[0]) : n * 1000 / (t - burst.t0);
-}
 
 /** The playing video's window and its flags, or null when none played in the last 2 s. */
 function mediaNow(t) {
   if (!vLast || t - vLast.t > 2000) return null;
-  const hz = displayHz(vals(inWin(hzs, t - VIDEO.winMs, t)));
+  const hz = displayHz(vals(inWin(rates, t - VIDEO.winMs, t)));
   // ponytail: the analyzer flag is the funscript player's own attribute (ui.js data-an); a plugin seam once a second player exists.
   return { hz, ...videoWindow(vsteps, hz, t), w: vLast.w, h: vLast.h, hdr: HDR.some((q) => q.matches), full: pageFull,
     an: !!(vLast.v.closest && vLast.v.closest('[data-an]')) };
 }
-function startBurst(t) {
-  const b = { t0: t, at: [] };
-  const step = (ts) => { b.at.push(ts); if (b.at.length < FPS_FRAMES) requestAnimationFrame(step); };
-  burst = b;
-  requestAnimationFrame(step);
-}
-
 function installDeviceProbes() {
   // ponytail: a worker that closes itself is never counted down; terminate() is how this app ends one.
   const W = globalThis.Worker;
@@ -126,8 +111,7 @@ function installDeviceProbes() {
   window.addEventListener('phosphor-page-fullscreen-change', (e) => { pageFull = !!(e.detail && e.detail.on); });
   if (globalThis.matchMedia) HDR = ['(dynamic-range: high)', '(video-dynamic-range: high)'].map((q) => matchMedia(q));
   document.addEventListener('visibilitychange', () => {
-    // A burst that spanned the hidden time timed the throttling, not the display.
-    if (visible()) { hiddenSince = null; wokeAt = now(); burst = null; } else hiddenSince = now();
+    if (visible()) { hiddenSince = null; wokeAt = now(); } else hiddenSince = now();
     evaluateBackground();
   });
 }
@@ -445,7 +429,7 @@ function evaluate(t, row, md) {
     tracker.level('busy', band('busy', p95 > 25, p95 != null && p95 < 15, p95 > 100 ? 'act' : 'warn'), t, { m: { p95Ms: p95 } });
     tracker.level('slow-display', band('slow-display', fps != null && fps < 30, fps >= 45, 'info'), t, { m: { fps } });
     // The rail's own census (RailWidget, once a second); stale once no rail draws.
-    const rr = machine.stats.render, live1 = rr.fps != null && rr.at != null && Date.now() - rr.at < 3000;
+    const rr = machine.stats.render, live1 = rr.at != null && Date.now() - rr.at < 3000;
     const drift = live1 ? Math.abs(rr.skewMs || 0) : null;
     tracker.level('rail-stalled', live1 ? band('rail-stalled', rr.heldPct > 10, rr.heldPct <= 5, 'warn') : null, t, live1 ? { m: { pct: rr.heldPct } } : undefined);
     tracker.level('clock-drift', live1 ? band('clock-drift', drift > 2, drift <= 1, 'warn') : null, t, live1 ? { m: { ms: drift } } : undefined);
@@ -544,10 +528,7 @@ function tick() {
   if (++tickN % 10) return;
 
   // Once a second.
-  const br = vis ? burstRate(t) : null;
-  fps = br == null ? null : Math.round(br);
-  if (vis && burst && burst.at.length === FPS_FRAMES) hzs.push({ t, v: br });
-  if (vis && (!burst || burst.at.length === FPS_FRAMES)) startBurst(t);
+  fps = vis ? frameRate.fps : null;
   const vr = vis ? videoRead(vid, t) : null;
   const vs = videoStep(vPrev, vr);
   vPrev = vr;
@@ -565,7 +546,7 @@ function tick() {
   fineAcc = null;
   ring.push(row);
   if (ring.length > RING_S) ring.shift();
-  for (const a of [lags, owds, sends, posGaps, backlogs, anomalies, vsteps, hzs]) trim(a, 120000, t);
+  for (const a of [lags, owds, sends, posGaps, backlogs, anomalies, vsteps]) trim(a, 120000, t);
   trim(rtts, 600000, t);
   trim(hubLogs, 600000, t);
   while (reconnectsAt.length && t - reconnectsAt[0] > 600000) reconnectsAt.shift();

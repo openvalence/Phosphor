@@ -507,10 +507,9 @@
     let velSmoothPxPerMs = 0;
     let prevPx = null;
     // Render-health census, published to machine.stats.render once a second.
-    // Which half is ragged is not guessable: a low or lumpy fps means the
-    // WEBVIEW's frame cadence (the Tauri shell has its own), a high held
-    // percentage at a healthy fps means ARRIVALS outran the buffer. One
-    // second is a T27 rate limit, not a display preference.
+    // A high held percentage at a healthy frame rate (framerate.svelte.js)
+    // means ARRIVALS outran the buffer. One second is a T27 rate limit, not a
+    // display preference.
     let censusStart = 0;
     let censusFrames = 0;
     let censusHeld = 0;
@@ -628,9 +627,7 @@
       censusFrames++;
       if (!censusStart) censusStart = nowMs;
       if (nowMs - censusStart >= 1000) {
-        const secs = (nowMs - censusStart) / 1000;
         machine.stats.render = {
-          fps: Math.round(censusFrames / secs),
           delayMs: Math.round(renderClock.getDelayMs()),
           heldPct: Math.round((censusHeld / Math.max(1, censusFrames)) * 100),
           // The rAF clock converted into the sample-stamp epoch, minus that

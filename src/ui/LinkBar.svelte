@@ -32,6 +32,7 @@
    *   loss value the machine has not reported reads '--', never a guess.
    */
   import { machine } from '../model/machine.svelte.js';
+  import { frameRate } from '../model/framerate.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
   import { hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
@@ -112,20 +113,15 @@
   const lossName = $derived(lossNameOf(loss));
   const lossTip = $derived(lossTipOf(loss));
 
-  // Render health, published by whichever widget owns the rAF loop. This is
-  // the instrument for "position telemetry jitters in one shell but not the
-  // other": fps is the WEBVIEW's frame cadence. A rail that stalls for want of
-  // a newer sample and a drifting frame clock are Health conditions
-  // (rail-stalled, clock-drift) read in the status slot; this chip never
-  // carries them. `--` until a rail is on screen and drawing.
-  const render = $derived(machine.stats.render);
-  const renderTip = $derived(render.fps == null ? undefined : [
-    'Frame rate ' + render.fps + ' fps',
-    'Rail draws ' + render.delayMs + ' ms behind, to smooth arrivals',
-  ].join('\n'));
+  // The page's achievable frame rate (framerate.svelte.js), measured whether or
+  // not anything animates; `--` while the window is hidden. A rail that stalls
+  // for want of a newer sample and a drifting frame clock are Health
+  // conditions read in the status slot; this chip never carries them.
+  const fps = $derived(frameRate.fps);
+  const fpsTip = 'Frames per second this window can draw';
   // The client's own frame health, never the reality tone, which is the
   // machine's liveness (ph-51k).
-  const fpsTone = $derived(render.fps != null && render.fps < 30 ? 'warn' : 'dim');
+  const fpsTone = $derived(fps != null && fps < 30 ? 'warn' : 'dim');
 
   // Beside a top cutout the row rises into its band only while the auth
   // chip fits right of it, clear of the top right corner's arc; short of
@@ -196,8 +192,8 @@
       <span class="chip-lbl">loss</span>
       <span class="mono lv">{fmtNum(lossClient)}</span><span class="mono sep">/</span><span class="mono lv">{fmtNum(lossMachine)}</span><span class="chip-lbl unit">%</span>
     </span>
-    <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>
-      <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
+    <span class="chip chip-opt tone-{fpsTone}" data-tip={fpsTip}>
+      <span class="mono fps">{fps == null ? '-- fps' : fps + ' fps'}</span>
     </span>
   </div>
   {#if Shell}<Shell />{/if}

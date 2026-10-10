@@ -647,8 +647,8 @@ if (!ONLY || ONLY === 'bar') {
     });
     scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'loss', 'kb/s', '%'].includes(l))
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
-    if (wide) scen(w + 'x' + h + ': render reads N fps; the frame rate and the smoothing delay are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
-      && /Frame rate \d+ fps/.test(bar.tip) && /Rail draws \d+ ms behind, to smooth arrivals/.test(bar.tip) && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
+    if (wide) scen(w + 'x' + h + ': render reads N fps; its tooltip is what the number means', /^\d+ fps$/.test(bar.fps || '')
+      && bar.tip === 'Frames per second this window can draw' && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
     else scen(w + 'x' + h + ': the phone bar: no fps; the rate shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
     // No gap: every visible chip sits one chip gap from the next, the fps chip from rx too (the reserved warning slot is gone).
     const gaps = () => page.evaluate(() => { const c = [...document.querySelectorAll('.linkbar .chips .chip')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect());
