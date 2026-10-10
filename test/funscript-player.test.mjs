@@ -217,7 +217,7 @@ const an = mods[P + 'analyzer.js'];
 if (an) {
   const tg = an.tuningGroups(buildSettingsModel(decodeCatalog(tuningCatalog().bytes)));
   const names = tg.map((g) => g.name);
-  const TUNED = ['Motion behavior', 'Streaming', 'Sample streams', 'Curve', 'Ceilings', 'Re-planning'];
+  const TUNED = ['Motion behavior', 'Streaming', 'Safety', 'Sample streams', 'Curve', 'Ceilings', 'Re-planning'];
   ok('every Tuning section with a control, then the kinetic channel\'s ceilings, then limit.input.*',
     same([...names].sort(), [...TUNED, 'Ceiling overrides', 'Machine-driven limits'].sort())
       && names.indexOf('Ceiling overrides') > Math.max(...TUNED.map((n) => names.indexOf(n))), names);
@@ -854,7 +854,7 @@ if (!LIVE && !STASH_LIVE) {
   const loadAxes = (page) => page.setInputFiles(C + ' .fsp-filev', FILES)
     .then(() => page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 })).then(() => true, () => false);
   {
-    const cat = advgenCatalog({ oscDrive: true });
+    const cat = advgenCatalog();
     cat.entries = decodeCatalog(cat.bytes);
     const hub = makeHub(cat);
     hub.values[CH.config + ':window_min'] = 0;
@@ -914,7 +914,7 @@ if (!LIVE && !STASH_LIVE) {
     await ctx.close();
   }
   {
-    const cat = advgenCatalog();
+    const cat = advgenCatalog({ noOscDrive: true });
     cat.entries = decodeCatalog(cat.bytes);
     const hub = makeHub(cat);
     hub.values[CH.config + ':window_min'] = 0;

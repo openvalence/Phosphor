@@ -7,9 +7,9 @@
  *
  * Constraints:
  * - `drop` removes those roles wherever they appear; `noStoreId` removes
- *   every entry's store_id; `oscDrive` adds the c2h samples STREAM 0x2140
- *   osc-drive with channel role osc.drive (SPEC 9.7, Nucleus val-o9r), until a
- *   recording carries it. With none, the recording's own bytes return.
+ *   every entry's store_id; `noOscDrive` removes the entry carrying channel
+ *   role osc.drive (SPEC 9.7), a hub without the oscillator input. With none,
+ *   the recording's own bytes return.
  */
 import { readFileSync } from 'node:fs';
 import { cbDecodeFull, cbMap, cbArray, cbUint, cbInt, cbF32, cbBool, cbTstr, cbBstr, cbNull } from '../../../Valence/clients/js/cbor.js';
@@ -17,7 +17,7 @@ import { catalogEtag, toHex } from '../../../Valence/clients/js/sha256.js';
 import { LIMITS } from '../../../Valence/clients/js/frames.js';
 
 // Entry and field keys (SPEC §8.1).
-const E = { layout: 8, schema: 9, storeId: 17 };
+const E = { layout: 8, schema: 9, storeId: 17, role: 18 };
 const F_ROLE = 13;
 
 function enc(v) {
@@ -32,14 +32,11 @@ function enc(v) {
 }
 
 /** @returns {{bytes: Uint8Array, etag: string}} */
-export function advgenCatalog({ drop = [], noStoreId = false, oscDrive = false } = {}) {
+export function advgenCatalog({ drop = [], noStoreId = false, noOscDrive = false } = {}) {
   let bytes = new Uint8Array(readFileSync(new URL('./valencesim-catalog.bin', import.meta.url)));
-  if (drop.length || noStoreId || oscDrive) {
-    const entries = cbDecodeFull(bytes);
-    // Nucleus 0.1.37's entry (flagship_p4 ValenceCatalog.h addOscDrive): f32 norm 0..1 fields, 50 Hz, generator, control.
-    const f32 = (name) => new Map([[1, name], [2, 6], [3, 'norm'], [4, 1], [5, 0], [6, 1], [18, 4], [23, 4]]);
-    if (oscDrive) entries.push(new Map([[1, 0x2140], [2, 'osc-drive'], [3, 1], [4, 1], [5, 1], [6, 50], [7, 2],
-      [8, [f32('amplitude'), f32('frequency')]], [10, 1], [15, 0], [16, 1], [18, 'osc.drive']]));
+  if (drop.length || noStoreId || noOscDrive) {
+    let entries = cbDecodeFull(bytes);
+    if (noOscDrive) entries = entries.filter((e) => e.get(E.role) !== 'osc.drive');
     for (const e of entries) {
       for (const f of [...(e.get(E.layout) || []), ...(e.get(E.schema) || new Map()).values()]) {
         if (drop.includes(f.get(F_ROLE))) f.delete(F_ROLE);
