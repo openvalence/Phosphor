@@ -26,6 +26,7 @@ Rules for every module:
 | core | ph-smvd.1 | `funscript.js`, `test/funscript-core.test.mjs` |
 | host | ph-smvd.2 | `src/model/motion.js`, `src/model/actions.js`, `src/model/shadow.svelte.js`, `src/plugins/host.js`, `src/plugins/plugins.svelte.js`, `src/plugins/PluginSlot.svelte`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`, `test/plugins.test.mjs`, `docs/PLUGINS.md` (API rows) |
 | stash | ph-smvd.3 | `stash.js`, `library.js`, `test/funscript-stash.test.mjs`, `test/fixtures/fake-stash.mjs` |
+| heat | ph-0hvq | `heat.js`, the heat strip in `library.js`, `asset()` in `stash.js`, `test/funscript-heat.test.mjs`, section (L2) of `test/funscript-player.test.mjs` |
 | scheduler | ph-smvd.4 | `clock.js`, `scheduler.js`, `test/funscript-scheduler.test.mjs`, `test/funscript-sync-live.mjs` |
 | player-ui | ph-smvd.5 | `ui.js`, `timeline.js` |
 | plugin | ph-smvd.6 | `index.js`, `prefs.js`, `manifest.json`, `src/plugins/factory.js`, `package.json`, `docs/PLUGINS.md` (Shipped, Module shape), `test/funscript-player.test.mjs` |
@@ -39,7 +40,7 @@ Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
 scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `axes -> funscript`; `osc -> funscript`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
-`timeline -> funscript`; `library -> stash`; `stash -> funscript`;
+`timeline -> funscript`; `heat -> funscript, timeline`; `library -> stash, heat`; `stash -> funscript`;
 `prefs -> scale`.
 
 ---
@@ -89,6 +90,7 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `
   stream: string,             // rebased onto base, apikey appended
   funscript: string | null,   // rebased onto base; fetched with the ApiKey header
   speed: number | null,       // interactive_speed
+  marker: string | null,      // updated_at + '|' + interactive_speed: the heat cache's change marker (A10)
   studio: string | null, performers: string[], tags: string[] }
 
 // LocalScene: ui.js from pairFiles
@@ -566,6 +568,9 @@ export function createStash({ fetch, base, key, timeoutMs = 8000 });   // -> Sta
 //   scenes({q, page, perPage, sort, direction, scripted = true}) -> Promise<Page>,
 //                                    scene_filter {interactive: true}, or {} for scripted false; cached per query and filter
 //   script(scene) -> Promise<Script>,                                    GET scene.funscript with ApiKey; cached per id
+//   asset(scene, {cond: {etag, lm}, signal}) -> Promise<{text, etag, lm} | {notModified: true}>,
+//                                    GET scene.funscript, uncached; If-None-Match / If-Modified-Since from cond; a 304 is notModified
+//   base,                                                                the normalized Stash base
 //   oscOf(scene) -> string[] | null,  the oscillator axes (V8, V9) of a script this client parsed; null before; no fetch
 //   clear() }                                                            drops the caches
 // Errors are Error(words): 'Stash not set', 'no answer from Stash', 'Stash refused the key' (401, 403),
@@ -598,7 +603,9 @@ fit) with its pager (Previous page, `page n / m`, Next page, `N scenes`).
 Rows and tiles are the kit's: a 16:9 shot (lazy), the title with the state
 badges (Playing or Loaded, Queued), then `duration · speed` with what the
 scene carries (V8 V9, Script), each badge whole or not drawn. With no
-base set it renders `mountConnect` in its place. `mountConnect`: Stash URL
+base set it renders `mountConnect` in its place. Each shot carries the script heat (`heat.js`, below): a 6 px `fsp-heat` strip on its
+bottom edge, `aria-hidden`, shown while the row or tile is hovered, focused (keyboard) or the loaded scene.
+`mountConnect`: Stash URL
 (placeholder `http://host:9999`), API key (password), Save and Test
 (`Stash v<version>` or the error words), stored in `api.prefs` `stash`.
 
@@ -611,6 +618,35 @@ Range, /scene/:id/screenshot as SVG; 401 without the key; no binary
 committed. `test/funscript-stash.test.mjs` (node): request shape, header,
 mapping, rebase and withKey, caching, every error in words;
 `--live <base> --key <key>` prints what the assumptions need.
+
+---
+
+## heat: `heat.js` (no DOM) and the strip in `library.js`
+
+```js
+export const BUCKETS = 96, CAP = 2000, DAY_MS, MAX_AGE_MS = 30 * DAY_MS, LIMIT = 3, HOVER_MS = 250;
+export function crc32(bytes);              // IEEE CRC32 of a Uint8Array
+export function heatBuckets(script, n);    // -> number[n]: the fastest action span's units/s in each share (timeline.js heatStops)
+export function heatCss(ups);              // -> a CSS linear-gradient of hard runs in timeline.js heatColor's tokens
+export function memStore(), idbStore(name = 'fsp-heat');   // -> Store {get, put, clear, evictBefore(t), trim(cap), count}; idbStore null without IndexedDB
+export function heatOf(stash, opts);       // -> the Heat of that client (memoized: its session checks outlive a mount)
+export function createHeat(stash, {store, cap, maxAgeMs, now, limit, hoverMs});
+// Heat = { playing: () => bool,            true holds the prefetch (set by the library from mark({playing}))
+//          onStrip: (id, ups) => void,     a strip is known (set by the library)
+//          strip(id) -> number[] | null,   checked: Set of ids validated this session
+//          prime(scenes, append = false),  the scripted scenes of the page (then, appended, of the next page)
+//          resume(), whenIdle(), sweep(), hover(scene) -> leave(), dispose() }
+```
+
+An entry is `{k: sceneId, t: last seen, marker, ups, etag, lm, crc}`: the bucket speeds, never a color and never the
+script, so a theme change repaints (`heatCss` writes `var(--token)` colors) without a request. A page load `prime`s the
+page and the next one (scripted scenes only, `LIMIT` at a time, held while `playing()`): an entry whose marker equals
+the scene's is a hit with no request; otherwise one funscript GET, conditional on the entry's validators (a 304 or an
+equal CRC32 keeps the strip and takes the new marker). A hover (or keyboard focus; never a touch) waits `HOVER_MS`,
+then revalidates that one entry once per session, the same way, or fetches it if absent; leaving cancels it.
+`sweep()` (at a library load, never on a timer) drops entries unseen for 30 days, then the least recently seen
+beyond 2000. The store names its Stash base: another base empties it. A failure leaves the entry as it was.
+Stash's own heatmap PNG is never requested. `test/funscript-heat.test.mjs` (node, fake Stash).
 
 ---
 
