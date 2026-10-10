@@ -391,6 +391,16 @@ question in §10.8).
   the seed. The view id stays `machine`, the id the migrated Default layout
   already holds. Telemetry is a home module only: it is not a field, and its
   lanes' fields are reachable elsewhere.
+- Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): the Dashes are the
+  named layouts of §10.6, nothing parallel. The context menu's Add to Dash
+  (§10.13) puts a field or module on any of them, active or not, at the
+  first free rect, written there once the Dash has measured it; the page
+  the user is on stays, and the status slot names the Dash. An unbuilt
+  layout first takes its seed as placements, so nothing it showed goes; a
+  layout made by New Dash… holds only the item. Every other class still
+  draws each layout's seed (`ph-e82.7`), so the item is offered on the full
+  class only. Seams: `src/ui/Home.svelte` (`seedKeys`, `dashHolds`,
+  `addToDash`), `dashboard.svelte.js` `appendTo`.
 
 ### 10.2 The control contract
 
@@ -1142,6 +1152,16 @@ derives from one unit, and no size is tuned by hand.
   the Valence path, `valence://<hub>/<identity>` (Blender's Copy Data Path).
   It opens in the top layer under the strip and moves nothing. Seams:
   `src/ui/contextmenu.js`, `src/model/identity.js`.
+- Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): a field or module
+  item on the full class (§10.1) that opens a submenu: every Dash in sidebar
+  order, then New Dash…. A Dash that holds the item wears a check, and
+  choosing it opens that Dash with the card in view; any other takes the
+  item. New Dash… turns into a name field in place with the Add layout
+  rules: Enter keeps, a taken name is marked, Escape or an empty name goes
+  back. The submenu opens beside the menu on hover, a click, ArrowRight or
+  Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens
+  it inline under the opener. Seam: `src/plugins/kit.js` `menu` (`items`,
+  `checked`, `ask`).
 - The right dock (operator 2026-10-09, `ph-kyjd`): a region plugins register,
   hidden until a dock exists and closed until the user opens it from the top
   bar; open on the desktop it is a column beside the content and narrows it,
@@ -1301,3 +1321,5 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-09 | §10.3, plugins | A page's status moves from the phone footer's slot and the desktop card's last row into the strip's status slot on every class: no row, no reserved height; a warn status ranks under an act health condition and over the safety edge, any other under a warn health condition; informational states the page already shows are not sent (the funscript player drops `No scene loaded`, `Motion only`, `Positioning`, `Buffering`). The compact row's fit counts an overflow into the strip's end padding (a live numeral at 420x860 had pushed the stop pair 9 px into the gutter) and keeps its decisions while a condition hides the numeral, so a condition moves no control. Supersedes the 2026-10-08 §10.3 footer status slot and FUNSCRIPT.md PR14 (`ph-5u0g` peeve 19, `ph-5u0g.16`). | operator ("the status line takes its own row: remove it or move it somewhere that costs no space"; restated 2026-10-09 on the desktop card's last row: "I thought we were removing this?". The warn status above the safety edge (the edge stands for the whole session and the compact hero hides it, so below it a warning would never show), the quiet tier for notes, and `No script for this video` kept as a note because it explains a grayed Play, are the agent's, veto-able) |
 | 2026-10-09 | §10.13, plugins | The shell context menu replaces the webview's (Print, Reload, Inspect) outside text entry: field, module and page items innermost first, Copy path as the Valence path `valence://<hub>/<identity>`, Copy and Paste value, Reset to default, Send to node editor (`phosphor-node-add`, else a queue the node editor drains), Show in history; plugins add items behind a new `menu` permission (`ph-kyjd`). | operator ("replace the right click system print and bullshit menu with something actually useful"; the path format, the item set, Paste enabled only for a fitting value, the queue seam and Inspect behind Shift in a dev build are the agent's, veto-able) |
 | 2026-10-09 | §10.3, plugins | The right dock: a plugin-registered region, its toggle in the top bar only while a dock exists, closed until the user opens it; a column that narrows the content on the desktop, a drawer under the strip on the phone class. Field-bound kit controls, `ui.field` and `ui.module`, draw the shell's own control by identity behind `intent`. The quick access tray is the factory plugin built on these and the menu (`ph-kyjd`, `ph-5wsk.6`). | operator ("hidden by default, useful in more than 1 way", "factory plugin"; the toggle appearing only once something is pinned, the phone drawer closing on an outside tap and not persisting, the 21 rem column and the rail pinned as its mini are the agent's, veto-able) |
+| 2026-10-10 | §10.1, §10.6 | Add to Dash writes any named layout, the Dashes being §10.6's layouts with nothing parallel: the first free rect, written once measured; an unbuilt layout takes its seed as placements first (`ph-hi4i.1`). | operator ("opens a SUBMENU for picking which Dash"; the seed copy on an unbuilt Default, operator-accepted pick; corrected the same day: "Phosphor already has multiple Dashes ... build nothing parallel". The seed copy on every unbuilt layout and not only Default, New Dash… holding only the item, an add leaving the user on the page, and Add to Dash absent off the full class instead of read-only reflowed Dashes are the agent's, veto-able) |
+| 2026-10-10 | §10.13, plugins | The context menu's Add to Dash submenu: every Dash with a check on those holding the item, New Dash… naming in place, ArrowRight or Enter to open and ArrowLeft or Escape to close, a tap opening it inline; `kit.js` `menu` items take `items`, `checked` and `ask`, plugin items stay flat (`ph-hi4i.1`). | operator (the keys and the inline tap are the ruling's; hover opening the flyout with a 300 ms grace on the way to it, a checked Dash opening with the card's first control focused, the `Dash name` placeholder, and no submenu for `registerMenu` items are the agent's, veto-able) |

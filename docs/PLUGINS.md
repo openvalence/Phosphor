@@ -263,8 +263,10 @@ Shift+right-click. A right-click, a long press on touch, the menu key or
 Shift+F10 on the focused control opens it at the pointer or the control's
 corner, in the top layer, below the top strip and the stop pair; it moves
 nothing. Arrows, Home and End move, Enter picks, Escape, Tab, a scroll and a
-tap outside close it, and focus returns where it was. It lists the targets
-under the pointer, innermost first, each after a caption: the **field**
+tap outside close it, and focus returns where it was. A submenu (Add to
+Dash) opens beside it on hover, a click, ArrowRight or Enter, and ArrowLeft
+or Escape closes it back to its opener; a tap opens it inline. It lists the
+targets under the pointer, innermost first, each after a caption: the **field**
 (headed by its label and the hub's description), the **module** or card
 around it, and the **page**. A surface that takes its own right-click (the
 Dash's edit-mode add menu, the node editor) prevents the event first, and the
@@ -275,7 +277,11 @@ shell stays out.
   number inside the field's bounds, an option's index, any text for a text
   field; never a secret); Reset to default (where the catalog declares one,
   disabled at it); Send to node editor; Show in history (once this session
-  wrote the field). Module items: Copy path; Send fields to node editor. Page
+  wrote the field); Add to Dash. Module items: Copy path; Send fields to node
+  editor; Add to Dash. Add to Dash is on the full class only and opens a
+  submenu of the Dashes (DESIGN §10.13): a check on each that holds the
+  control, which opens it there; any other takes it; New Dash… names a new
+  one in place. Page
   items: Edit layout on the Dash; Show advanced, Show diagnostic and Reset
   page to defaults on a category page (Show advanced on a card instead when
   one was clicked). Writes take the plugin write door: the host's confirm,
@@ -294,7 +300,8 @@ shell stays out.
   `{kind, key, hub, title, path}`: `key` the identity (a page's is its tab
   id), `hub` the hub's key, `path` the Valence path. A label or run that
   throws is recorded on the plugin and never reaches the shell. Items follow
-  the built-ins of their target, in plugin load order.
+  the built-ins of their target, in plugin load order. A plugin item is one
+  row: it never opens a submenu.
 - Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `src/App.svelte`
   (`menuItems`, the page's items), `host.js` `menus`.
 
