@@ -53,7 +53,7 @@ const pct = (v) => (v == null ? null : fmtNum(v) + '%');
 /** The loss chip's accessible name from machine.stats.link (linkstats.js): who each figure is about. */
 export function lossName(link) {
   const c = pct(link?.clientLossPct), m = pct(link?.machine?.lossPct);
-  return 'Resent: ' + (SCOPE[link?.clientScope] || 'this app') + ' ' + (c ?? 'no reading') + ', machine ' + (m ?? 'no reading');
+  return 'Loss: ' + (SCOPE[link?.clientScope] || 'this app') + ' ' + (c ?? 'no reading') + ', machine ' + (m ?? 'no reading');
 }
 
 /**
@@ -65,7 +65,7 @@ export function lossTip(link) {
   const scope = link?.clientScope;
   const unit = link?.clientUnit === 'bytes' ? 'bytes' : 'segments';
   const c = line(scope === 'system' ? 'This PC' : scope === 'connection' ? 'This connection' : 'This app', link?.clientLossPct,
-    'of TCP ' + unit + ' sent again' + (scope === 'system' ? ', all TCP on this PC' : ''));
+    'of TCP ' + unit + ' sent again' + (scope === 'system' ? ' (all TCP on this PC)' : ''));
   const rssi = link?.machine?.rssiDbm;
   return [
     c,

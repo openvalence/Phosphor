@@ -645,7 +645,7 @@ if (!ONLY || ONLY === 'bar') {
         rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
           return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
     });
-    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'resent', 'kb/s', '%'].includes(l))
+    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'loss', 'kb/s', '%'].includes(l))
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
     if (wide) scen(w + 'x' + h + ': render reads N fps; the frame rate and the smoothing delay are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
       && /Frame rate \d+ fps/.test(bar.tip) && /Rail draws \d+ ms behind, to smooth arrivals/.test(bar.tip) && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
@@ -727,9 +727,9 @@ if (!ONLY || ONLY === 'barstates') {
     const noRx = await page.evaluate(() => !/\b\d+s\b/.test(document.querySelector('.linkbar .chip-opt-last').textContent));
     scen(tag + ': "RX 0s" is gone from the bar', noRx);
 
-    // The resent chip: '--' where the machine reports nothing (the fixture reports none), never a number; every value explained in words.
+    // The loss chip: '--' where the machine reports nothing (the fixture reports none), never a number; every value explained in words.
     const loss = await page.$eval('.linkbar .chip-opt:not(:has(.fps))', (c) => ({ vals: [...c.querySelectorAll('.lv')].map((e) => e.textContent.trim()), tip: c.getAttribute('data-tip') }));
-    if (w > 560) scen(tag + ': resent reads -- where nothing is reported; the tooltip explains each value', loss.vals.join() === '--,--'
+    if (w > 560) scen(tag + ': loss reads -- where nothing is reported; the tooltip explains each value', loss.vals.join() === '--,--'
       && /^This \w+.*: no reading/m.test(loss.tip) && /Machine: no reading/.test(loss.tip) && /Machine radio/.test(loss.tip) && /Wi-Fi/.test(loss.tip), JSON.stringify(loss));
 
     // No shift: rates change with the traffic and move nothing.
@@ -768,21 +768,27 @@ if (!ONLY || ONLY === 'barstates') {
       geo.radius <= geo.textW && geo.radius >= geo.textW * 0.7, JSON.stringify(geo));
     scen(tag + ': the ripple is clipped to the row, behind the content, out of flow, never hit', geo.inRow && geo.zi === '-1' && geo.iso === 'isolate' && geo.pe === 'none' && geo.pos === 'absolute', JSON.stringify(geo));
 
-    // The beat: a live 2 s swell about 36 % up, a 2 s ripple; connecting is 1 s; stale and offline do not ripple.
+    // The beat: a live 2 s swell about 18 % up, a faint 4 s ripple on its own cycle started 0.4 s late; connecting is 1 s and 2 s; stale and offline do not ripple.
     const anim = await page.evaluate(() => {
       const d = document.querySelector('.linkbar .linkdot'), core = d.querySelector('.core'), rp = d.querySelector('.ripple'), rc = d.querySelector('.rclip');
       const read = (cls) => { d.className = d.className.replace(/\b(live|connecting|stale|offline)\b/, cls);
         const c = getComputedStyle(core), r = getComputedStyle(rp);
-        return { core: c.animationName === 'none' ? 'none' : c.animationName.replace(/^svelte-\w+-/, '') + ' ' + c.animationDuration, ripple: r.animationName === 'none' ? 'none' : r.animationDuration,
+        return { core: c.animationName === 'none' ? 'none' : c.animationName.replace(/^svelte-\w+-/, '') + ' ' + c.animationDuration, ripple: r.animationName === 'none' ? 'none' : r.animationDuration, rdelay: r.animationDelay, rease: r.animationTimingFunction,
           rclip: getComputedStyle(rc).display, ring: cls === 'offline' ? c.backgroundColor : null }; };
       const keys = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } }).filter((r) => r.type === CSSRule.KEYFRAMES_RULE && /dot-beat/.test(r.name));
       const peak = keys.length ? [...keys[0].cssRules].map((k) => k.style.transform).find((t) => /1\.\d+/.test(t)) : null;
-      const out = { live: read('live'), connecting: read('connecting'), stale: read('stale'), offline: read('offline'), peak };
+      const rule = (re) => [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } }).find((r) => r.type === CSSRule.KEYFRAMES_RULE && re.test(r.name));
+      const fade = rule(/ripple-fade/), thin = getComputedStyle(rp).backgroundImage;
+      const fadePeak = fade ? Math.max(...[...fade.cssRules].map((k) => parseFloat(k.style.opacity))) : null;
+      const out = { fadePeak, thin, live: read('live'), connecting: read('connecting'), stale: read('stale'), offline: read('offline'), peak };
       read('live');
       return out;
     });
-    scen(tag + ': live beats on 2 s and ripples on 2 s; connecting is 1 s', /dot-beat 2s/.test(anim.live.core) && anim.live.ripple.startsWith('2s') && /dot-beat 1s/.test(anim.connecting.core) && anim.connecting.ripple.startsWith('1s'), JSON.stringify(anim));
-    scen(tag + ': the swell is 33-40 % up', anim.peak && (() => { const k = parseFloat(/[\d.]+/.exec(anim.peak)[0]); return k >= 1.33 && k <= 1.4; })(), JSON.stringify(anim.peak));
+    scen(tag + ': live beats on 2 s and ripples on its own 4 s cycle, 0.4 s late; connecting is 1 s and 2 s', /dot-beat 2s/.test(anim.live.core) && anim.live.ripple.startsWith('4s') && anim.live.rdelay.startsWith('0.4s')
+      && /dot-beat 1s/.test(anim.connecting.core) && anim.connecting.ripple.startsWith('2s') && anim.connecting.rdelay.startsWith('0.2s'), JSON.stringify(anim));
+    scen(tag + ': the ripple eases slow-start (not ease-out), peaks at a faint .15-.3, and is a thin ring', /cubic-bezier\(0\.55, 0\.05, 0\.3, 1\)/.test(anim.live.rease) && anim.fadePeak >= 0.15 && anim.fadePeak <= 0.3
+      && /88%/.test(anim.thin) && /96%/.test(anim.thin), JSON.stringify([anim.live.rease, anim.fadePeak, anim.thin]));
+    scen(tag + ': the swell is 15-22 % up', anim.peak && (() => { const k = parseFloat(/[\d.]+/.exec(anim.peak)[0]); return k >= 1.15 && k <= 1.22; })(), JSON.stringify(anim.peak));
     scen(tag + ': stale dims slowly with no ripple; offline is still, hollow, with no ripple', /dot-dim 3s/.test(anim.stale.core) && anim.stale.rclip === 'none' && anim.offline.core === 'none'
       && anim.offline.rclip === 'none' && anim.offline.ring === 'rgba(0, 0, 0, 0)', JSON.stringify([anim.stale, anim.offline]));
 
@@ -838,7 +844,7 @@ if (!ONLY || ONLY === 'barstates') {
       await page.goto('http://127.0.0.1:' + PORT + '/');
       await page.waitForSelector('.linkbar .linkdot.' + state, { timeout: 15000 });
       await page.waitForTimeout(1500);
-      await page.evaluate(() => { for (const a of document.getAnimations()) { if (a.animationName?.includes('ripple') || a.animationName?.includes('dot-beat')) { a.pause(); a.currentTime = a.effect.getTiming().duration * 0.3; } } });
+      await page.evaluate(() => { for (const a of document.getAnimations()) { if (a.animationName?.includes('ripple') || a.animationName?.includes('dot-beat')) { const t = a.effect.getTiming(); a.pause(); a.currentTime = t.delay + t.duration * 0.5; } } });
       if (SHOTS) {
         const shot = (name, x, width) => page.screenshot({ path: join(OUT, 'topbar-' + theme + '-' + state + '-' + name + '.png'), clip: { x, y: 0, width, height: 48 } });
         await shot('left', 0, 720);
