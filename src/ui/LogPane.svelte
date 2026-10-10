@@ -1,36 +1,50 @@
 <script>
   /**
-   * LogPane.svelte -- device log, device-defined events (Anomalies), safety
-   * edges, session events.
+   * LogPane.svelte -- the Log page: device log, device-defined events
+   * (Anomalies), safety edges, session events, setting changes and Health.
    *
-   * All four rings are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
+   * The event feeds are decoded EVENT frames (machine.events.*). Per SPEC 8.8,
    * unknown things render generically rather than being dropped: an event's
    * `body` is an open bag of fields, each looked up against the CHANNEL'S OWN
-   * catalog schema at render time (an `options` field shows the device's
+   * catalog schema at decode time (an `options` field shows the device's
    * label), anything unrecognized as a plain "key=value". The one exception
    * is the spec-core log channel's `level`/`tag`/`message`, fixed by the
    * Valence library, not by one device's catalog.
    *
    * Constraints:
+   * - The page fits the window (App.svelte `.pane.fit`): the tabs and tools
+   *   never scroll and the open feed is the one scroller, filling what is
+   *   left at every size. Nothing inside a feed scrolls on its own.
    * - Each feed is its own scroller, stacked in one grid cell and hidden by
    *   visibility, so a tab switch keeps every feed's scroll position natively.
-   * - The toolbar and the status slot are always rendered: filters that do
-   *   not apply to a feed are disabled with the reason, never removed.
-   * - Scrolling away from the newest line pauses that feed on a snapshot;
-   *   Follow resumes it. Rows have no hover styling that changes geometry.
-   * - Warn and error read amber, never red: red is the hazard color.
+   * - The toolbar and the status slot are always rendered: a tool that does
+   *   not apply to a feed is disabled with the reason, never removed.
+   * - Log and Anomalies fold repeats (logfold.js); Safety and Session keep
+   *   one row per event, each edge being evidence. Folded feeds render on a
+   *   tick bumped at most once a frame, and never while nothing arrives.
+   * - Following keeps the newest row in view; scrolling up or Pause freezes
+   *   the feed on a snapshot and the pill counts what arrived since.
+   * - Time, level, source and count are fixed columns, so a count or a time
+   *   changing never reflows a message. Rows have no hover styling that
+   *   changes geometry.
+   * - A level is an icon and a color, never a color alone. Warn and error
+   *   read amber, never red: red is the hazard color.
+   * - F3 focuses the search; a second F3 goes on to LookFor.
    */
+  import { untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { machine } from '../model/machine.svelte.js';
   import {
     CH, SESSION_EVENT_KIND, SAFETY_EVENT_KIND, LOG_EVENT_KIND, LOG_LEVEL_NAME,
   } from '../../../Valence/clients/js/index.js';
-  import { optionLabel, formatValue, formatWithUnit, unitOf } from '../model/format.js';
+  import { BUILTIN_MACHINE_NAME } from '../model/builtin.js';
+  import { optionLabel, formatValue, formatWithUnit, unitOf, compact } from '../model/format.js';
   import { logView } from './logview.svelte.js';
+  import { folds, ingest, clearFold } from './logfold.js';
   import { history, undo, revertAll, revertPlan, fieldOfEntry, say } from '../model/history.svelte.js';
-  import { askConfirm } from './confirm.svelte.js';
+  import { askConfirm, confirmUi } from './confirm.svelte.js';
   import { health } from '../model/health/health.svelte.js';
   import HealthPane from './health/HealthPane.svelte';
-  import HealthLine from './health/HealthLine.svelte';
   import './pane.css';
 
   const TABS = [
@@ -41,8 +55,10 @@
     { id: 'changes', label: 'Changes' },
     { id: 'health', label: 'Health' },
   ];
+  const EVENT_FEEDS = ['log', 'anomaly', 'safety', 'session'];
   // Shared so the top strip can open a feed.
   const tab = $derived(logView.tab);
+  const isEvents = $derived(EVENT_FEEDS.includes(tab));
 
   // Everything in the Safety feed counts as read while it is on screen.
   $effect(() => {
@@ -52,12 +68,9 @@
   });
 
   const lists = $derived({
-    log: machine.events.log,
-    anomaly: machine.events.anomaly,
     safety: machine.events.safety,
     session: machine.events.session,
     changes: [...history.entries].reverse(),
-    health: health.incidents,
   });
 
   const EMPTY_TEXT = {
@@ -66,7 +79,6 @@
     safety: 'No safety events this session',
     session: 'No session events yet',
     changes: 'No setting changed this session',
-    health: '',
   };
 
   // ---- generic body decoding -----------------------------------------------
@@ -126,14 +138,29 @@
     return out;
   }
 
-  function timeOf(evt) {
-    try { return new Date(evt.at).toLocaleTimeString(); } catch (e) { return '--'; }
-  }
   const chan = (evt, none) => evt.channelName || (evt.channel != null ? 'channel ' + evt.channel : none);
 
-  /** One row's parts; the row snippet and Copy both read this. */
+  // Registry log_levels: four toggles; trace files under debug, fatal under
+  // error, a line with no level under info (it is below no threshold).
+  const BUCKETS = [
+    { id: 'error', label: 'Errors' },
+    { id: 'warn', label: 'Warnings' },
+    { id: 'info', label: 'Info' },
+    { id: 'debug', label: 'Debug' },
+  ];
+  const bucketOf = (lvl) => (lvl === 'error' || lvl === 'fatal' ? 'error' : lvl === 'warn' ? 'warn'
+    : lvl === 'debug' || lvl === 'trace' ? 'debug' : 'info');
+  const SOURCES = ['hub', 'client', 'plugin', 'health'];
+  // The built-in machine is a hub; a plugin's lines carry `plugin:<name>`; the rest is this client.
+  function sourceOf(evt, tag) {
+    if (evt.health || tag === 'health') return 'health';
+    if (evt.channel != null || evt.channelName === BUILTIN_MACHINE_NAME) return 'hub';
+    return tag && tag.startsWith('plugin:') ? 'plugin' : 'client';
+  }
+
+  /** One event's parts; a row, its detail, Copy and the fold key all read this. */
   function parts(t, evt) {
-    const p = { time: timeOf(evt), lvl: null, tag: null, text: '', kv: [], diag: false, superseded: false };
+    const p = { src: 'hub', bucket: 'info', lvl: null, tag: null, text: '', kv: [], diag: false, superseded: false, health: evt.health || null };
     if (t === 'log') {
       const fields = bodyFields(evt);
       const get = (k) => fields.find((f) => f.key === k);
@@ -141,6 +168,8 @@
       p.tag = get('tag') ? get('tag').display : null;
       p.text = get('message') ? get('message').display : chan(evt, 'log');
       p.kv = fields.filter((f) => f.key !== 'level' && f.key !== 'message' && f.key !== 'tag');
+      p.src = sourceOf(evt, p.tag);
+      p.bucket = bucketOf(p.lvl);
     } else if (t === 'anomaly') {
       p.text = chan(evt, 'device');
       p.kv = bodyFields(evt);
@@ -154,72 +183,197 @@
       p.kv = topFields(evt);
       p.superseded = !!evt.superseded;
     }
+    p.kvText = p.kv.map((f) => f.key + '=' + f.display).join(' ');
+    p.hay = [p.src, p.tag, p.text, p.kvText].filter(Boolean).join(' ').toLowerCase();
     return p;
   }
 
-  // ---- filters (Log feed only) -----------------------------------------------
+  // ---- rows ------------------------------------------------------------------
 
-  const LEVELS = Object.entries(LOG_LEVEL_NAME).map(([n, name]) => ({ n: Number(n), name }));
-  let minLevel = $state(-1);
-  let tagFilter = $state('');
-  const tagOf = (evt) => (evt.body && evt.body.tag != null ? String(evt.body.tag) : '');
-  const tags = $derived([...new Set(machine.events.log.map(tagOf).filter(Boolean))].sort());
-  // A line with no level is kept: it is not below any threshold.
-  function passes(evt) {
-    const lv = evt.body && typeof evt.body.level === 'number' ? evt.body.level : null;
-    if (minLevel >= 0 && lv != null && lv < minLevel) return false;
-    return !tagFilter || tagOf(evt) === tagFilter;
+  // Folded feeds render on this tick: at most one per frame, none while idle.
+  let tick = $state(0);
+  let raf = 0;
+  const bump = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; tick++; }); };
+  $effect(() => () => cancelAnimationFrame(raf));
+  for (const id of ['log', 'anomaly']) {
+    $effect(() => {
+      const ring = machine.events[id];
+      void ring.length;
+      void ring[ring.length - 1];
+      untrack(() => {
+        // A new ring is a new session (machine.svelte.js forgetDevice): nothing from the old one stays.
+        if (folds[id].ring && folds[id].ring !== ring) { resume(id); open.clear(); }
+        if (ingest(folds[id], ring, (e) => parts(id, e))) bump();
+      });
+    });
   }
 
-  // ---- follow / pause, per feed -----------------------------------------------
-
-  const feeds = $state(Object.fromEntries(TABS.map((t) => [t.id, { follow: true, snap: null }])));
-  const shown = $derived(Object.fromEntries(TABS.map(({ id }) => {
-    const base = feeds[id].snap || lists[id] || [];
-    return [id, id === 'log' ? base.filter(passes) : base];
-  })));
-
-  function newSince(live, snap) {
-    if (!snap.length) return live.length;
-    const i = live.lastIndexOf(snap[snap.length - 1]);
-    return i < 0 ? live.length : live.length - 1 - i;
+  // Safety and Session: one row per event, made once per event.
+  const rowCache = new WeakMap();
+  function rowOf(t, evt) {
+    let r = rowCache.get(evt);
+    if (!r) rowCache.set(evt, (r = { key: evt, n: 1, first: evt.at, last: evt.at, evt, p: parts(t, evt), items: [evt] }));
+    return r;
   }
+  function live(id) {
+    if (folds[id]) { void tick; return folds[id].rows; }
+    return (lists[id] || []).map((e) => rowOf(id, e));
+  }
+  // A health line's text follows its incident (health.svelte.js rewrites the ring record).
+  const textOf = (r) => (r.p.health ? (r.evt.body?.message ?? r.p.text) : r.p.text);
 
+  // ---- filters ---------------------------------------------------------------
+
+  const lv = $state({ error: true, warn: true, info: true, debug: true });
+  let src = $state('');
+  let q = $state('');
+  const words = $derived(q.toLowerCase().split(/\s+/).filter(Boolean));
+  function passes(id, r) {
+    if (id === 'log' && (!lv[r.p.bucket] || (src && r.p.src !== src))) return false;
+    return words.every((w) => r.p.hay.includes(w));
+  }
+  const counts = $derived.by(() => { void tick; return { ...folds.log.counts }; });
+
+  // ---- follow / pause, per feed ---------------------------------------------
+
+  const ff = $state(Object.fromEntries(EVENT_FEEDS.map((id) => [id, { follow: true, held: false, at: 0 }])));
+  let snaps = $state.raw({});
+  const shown = $derived(Object.fromEntries(EVENT_FEEDS.map((id) => [id, (snaps[id] || live(id)).filter((r) => passes(id, r))])));
+
+  function pause(id, held) {
+    Object.assign(ff[id], { follow: false, held, at: folds[id] ? folds[id].total : 0 });
+    snaps = { ...snaps, [id]: live(id).slice() };
+  }
+  function resume(id) {
+    Object.assign(ff[id], { follow: true, held: false });
+    snaps = { ...snaps, [id]: null };
+  }
+  function newSince(rows, snap) {
+    if (!snap.length) return rows.length;
+    const i = rows.lastIndexOf(snap[snap.length - 1]);
+    return i < 0 ? rows.length : rows.length - 1 - i;
+  }
+  const fresh = $derived.by(() => {
+    if (!isEvents || ff[tab].follow) return 0;
+    if (folds[tab]) { void tick; return folds[tab].total - ff[tab].at; }
+    return newSince(live(tab), snaps[tab] || []);
+  });
+
+  const lastTop = {};
   function onScroll(id, el) {
     if (id === 'changes') return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-    if (!atBottom && feeds[id].follow) { feeds[id].follow = false; feeds[id].snap = lists[id].slice(); }
-  }
-  function toggleFollow() {
-    const f = feeds[tab];
-    f.follow = !f.follow;
-    f.snap = f.follow ? null : lists[tab].slice();
+    const top = el.scrollTop, bottom = el.scrollHeight - top - el.clientHeight < 32;
+    const f = ff[id];
+    if (f.follow && !bottom && top < (lastTop[id] ?? 0) - 1) pause(id, false);
+    else if (!f.follow && !f.held && bottom) resume(id);
+    lastTop[id] = el.scrollTop;
   }
   // Re-runs when the feed's rows or its follow flag change.
   const stick = (id) => (el) => {
-    void shown[id].length;
-    if (id !== 'changes' && feeds[id].follow) el.scrollTop = el.scrollHeight;
+    if (id === 'changes') return;
+    void shown[id];
+    if (ff[id].follow) { el.scrollTop = el.scrollHeight; lastTop[id] = el.scrollTop; }
   };
+
+  function clearFeed() {
+    if (!folds[tab]) return;
+    clearFold(folds[tab]);
+    open.clear();
+    resume(tab);
+    tick++;
+  }
+
+  // ---- rows: expand, keys, time ---------------------------------------------
+
+  const open = new SvelteSet();
+  // An opened row brings its detail into view.
+  function toggle(key, el) {
+    if (open.has(key)) { open.delete(key); return; }
+    open.add(key);
+    requestAnimationFrame(() => el.isConnected && el.scrollIntoView({ block: 'nearest' }));
+  }
+
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const hms = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+  const stamp = (ms) => hms(ms) + '.' + pad(new Date(ms).getMilliseconds(), 3);
+  function ago(ms) {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 60 ? s + ' s ago' : s < 3600 ? Math.floor(s / 60) + ' min ago' : Math.floor(s / 3600) + ' h ago';
+  }
+  // Relative time is worked out on hover only: nothing ticks while the page sits.
+  function onOver(e) {
+    const t = e.target.closest && e.target.closest('time[data-at]');
+    if (t) t.title = ago(+t.dataset.at);
+  }
+
+  function onFeedKey(e) {
+    const k = e.key;
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Home' && k !== 'End') return;
+    const heads = [...e.currentTarget.querySelectorAll(':scope > .line > .head')];
+    if (!heads.length) return;
+    e.preventDefault();
+    const i = heads.indexOf(document.activeElement), last = heads.length - 1;
+    const n = k === 'Home' ? 0 : k === 'End' ? last
+      : i < 0 ? (k === 'ArrowDown' ? 0 : last) : Math.max(0, Math.min(last, i + (k === 'ArrowDown' ? 1 : -1)));
+    heads[n].focus();
+  }
+
+  let searchEl = $state();
+  $effect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'F3' || !searchEl || searchEl.disabled || confirmUi.req) return;
+      const a = document.activeElement;
+      if (a === searchEl || (a && a.closest('[role=dialog]'))) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      searchEl.focus();
+      searchEl.select();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+  function onSearchKey(e) {
+    if (e.key === 'Escape' && q) { e.preventDefault(); e.stopPropagation(); q = ''; }
+    else if (e.key === 'ArrowDown') {
+      const h = document.querySelector('#lp-feed-' + tab + ' > .line > .head');
+      if (h) { e.preventDefault(); h.focus(); }
+    }
+  }
+
+  function openIncident(id) {
+    health.focus = id;
+    health.review = null;
+    logView.tab = 'health';
+  }
+  const incOf = (id) => (id ? health.incidents.find((i) => i.id === id) : null);
+  const hasIncident = (id) => !!incOf(id);
+  // A health line's tooltip is its detail (docs/COPY.md rule 11).
+  const tipOf = (id) => incOf(id)?.tip?.join('\n') || null;
 
   // ---- copy and the status slot --------------------------------------------------
 
+  function lineOf(r) {
+    const p = r.p;
+    return [stamp(r.last), p.lvl && '[' + p.lvl + ']', p.src !== 'hub' && p.src !== p.tag && '[' + p.src + ']', p.tag && '[' + p.tag + ']',
+      textOf(r), p.kvText, p.superseded && '(superseded)', r.n > 1 && '×' + r.n + ' since ' + stamp(r.first)].filter(Boolean).join(' ');
+  }
+
   let flash = $state('');
+  let flashWhy = $state('');
   let flashTimer = null;
-  async function copyFeed() {
-    const rows = shown[tab].map((evt) => {
-      const p = parts(tab, evt);
-      return [p.time, p.lvl && '[' + p.lvl + ']', p.tag && '[' + p.tag + ']', p.text,
-        ...p.kv.map((f) => f.key + '=' + f.display), p.superseded && '(superseded)'].filter(Boolean).join(' ');
-    });
+  async function copy(text, what) {
     try {
-      await navigator.clipboard.writeText(rows.join('\n'));
-      flash = 'Copied ' + rows.length + ' line' + (rows.length === 1 ? '' : 's');
+      await navigator.clipboard.writeText(text);
+      flash = 'Copied ' + what;
+      flashWhy = '';
     } catch (e) {
-      flash = 'Copy failed: ' + ((e && e.message) || 'clipboard refused');
+      flash = 'Copy failed';
+      flashWhy = (e && e.message) || 'clipboard refused';
     }
     clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => { flash = ''; }, 2500);
+    flashTimer = setTimeout(() => { flash = ''; flashWhy = ''; }, 2500);
   }
+  const copyFeed = () => copy(shown[tab].map(lineOf).join('\n'), shown[tab].length + ' row' + (shown[tab].length === 1 ? '' : 's'));
 
   const val = (e, v) => {
     const f = fieldOfEntry(e.id);
@@ -227,7 +381,6 @@
   };
   // The count is asked before the confirm so a no-op revert says so instead of asking.
   async function revert() {
-    logView.tab = 'changes';
     const { send, skipped } = revertPlan(), n = send.length;
     if (!n && !skipped.length) { say('Nothing to revert'); return; }
     if (!n) { revertAll(); return; }
@@ -235,19 +388,13 @@
   }
 
   const status = $derived.by(() => {
-    if (tab === 'changes') return flash || history.msg;
-    if (flash || history.msg) return flash || history.msg;
-    const f = feeds[tab];
-    const live = lists[tab] || [];
-    const filtered = tab === 'log' && (minLevel >= 0 || tagFilter)
-      ? shown.log.length + ' of ' + (f.snap || live).length + ' shown' : '';
-    if (!f.follow) {
-      const n = newSince(live, f.snap || []);
-      return 'Paused: ' + n + ' new line' + (n === 1 ? '' : 's') + (filtered ? ' · ' + filtered : '');
-    }
-    // Following is the toggle's own word; the slot only adds what it lacks.
-    return filtered;
+    if (flash) return flash;
+    if (tab === 'changes' || history.msg) return history.msg;
+    if (!isEvents) return '';
+    const n = shown[tab].length, of = (snaps[tab] || live(tab)).length;
+    return n < of ? n + ' of ' + of + ' shown' : '';
   });
+  const tabCount = (id) => (folds[id] ? (void tick, folds[id].total) : id === 'health' ? health.incidents.length : lists[id].length);
 
   function onTabKey(e) {
     const i = TABS.findIndex((t) => t.id === tab);
@@ -261,138 +408,244 @@
 </script>
 
 <div class="pane-stack logpane">
+  <svg class="defs" aria-hidden="true">
+    <symbol id="lp-error" viewBox="0 0 16 16"><path d="M5.5 1.5h5l4 4v5l-4 4h-5l-4-4v-5zM6 6l4 4M10 6l-4 4" /></symbol>
+    <symbol id="lp-warn" viewBox="0 0 16 16"><path d="M8 1.8l6.6 12.4H1.4zM8 6.5v3.6M8 11.9v.6" /></symbol>
+    <symbol id="lp-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" /><path d="M8 7.2v4.4M8 4.5v.7" /></symbol>
+    <symbol id="lp-debug" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" /><path d="M5.5 6h5M5.5 8h5M5.5 10h3" /></symbol>
+  </svg>
+
   <div class="og-seg tabs" role="tablist" aria-label="Event feed" tabindex="-1" onkeydown={onTabKey}>
     {#each TABS as t (t.id)}
       <button type="button" role="tab" data-feed={t.id} id={'lp-tab-' + t.id} aria-controls={'lp-feed-' + t.id}
               aria-selected={tab === t.id} tabindex={tab === t.id ? 0 : -1} class:active={tab === t.id}
               onclick={() => (logView.tab = t.id)}>
-        {t.label} <span class="count mono">{lists[t.id].length}</span>
+        {t.label} <span class="count mono">{compact(tabCount(t.id))}</span>
       </button>
     {/each}
   </div>
 
   <div class="tools">
-    <label class="tool">
-      <span>Level</span>
-      <select bind:value={minLevel} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
-        <option value={-1}>all levels</option>
-        {#each LEVELS as l (l.n)}<option value={l.n}>{l.name} and above</option>{/each}
-      </select>
-    </label>
-    <label class="tool">
-      <span>Tag</span>
-      <select bind:value={tagFilter} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log feed only' : ''}>
-        <option value="">all tags</option>
-        {#each tags as t (t)}<option value={t}>{t}</option>{/each}
-      </select>
-    </label>
-    <button type="button" class="og-btn sm" disabled={tab === 'changes' || tab === 'health'} class:on={feeds[tab].follow} aria-pressed={feeds[tab].follow} onclick={toggleFollow}>
-      {feeds[tab].follow ? 'Following' : 'Follow'}
-    </button>
-    <button type="button" class="og-btn sm" disabled={tab === 'changes' || tab === 'health' || !shown[tab].length} onclick={copyFeed}>Copy</button>
-    <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
-            onclick={revert}>Revert changes</button>
+    <input bind:this={searchEl} bind:value={q} class="q" type="search" placeholder="Search (F3)" aria-label="Search the feed"
+           disabled={!isEvents} onkeydown={onSearchKey} />
+    <div class="lvls" role="group" aria-label="Levels">
+      {#each BUCKETS as b (b.id)}
+        <button type="button" class="og-btn sm lvt" data-b={b.id} aria-pressed={lv[b.id]} aria-label={b.label}
+                title={tab !== 'log' ? b.label + ', Log only' : b.label} disabled={tab !== 'log'}
+                onclick={() => (lv[b.id] = !lv[b.id])}><svg aria-hidden="true"><use href={'#lp-' + b.id} /></svg><b class="mono">{compact(counts[b.id] || 0)}</b></button>
+      {/each}
+    </div>
+    <select class="srcsel" aria-label="Source" bind:value={src} disabled={tab !== 'log'} title={tab !== 'log' ? 'Log only' : ''}>
+      <option value="">all sources</option>
+      {#each SOURCES as s (s)}<option value={s}>{s}</option>{/each}
+    </select>
+    <button type="button" class="og-btn sm" class:on={isEvents && !ff[tab].follow} aria-pressed={isEvents && !ff[tab].follow}
+            disabled={!isEvents} onclick={() => (ff[tab].follow ? pause(tab, true) : resume(tab))}>Pause</button>
+    <button type="button" class="og-btn sm" disabled={!folds[tab] || !tabCount(tab)} title={folds[tab] ? '' : 'Log and Anomalies only'}
+            onclick={clearFeed}>Clear</button>
+    <button type="button" class="og-btn sm" disabled={!isEvents || !shown[tab].length} onclick={copyFeed}>Copy</button>
+    <p class="pane-status" role="status" data-phase={flash ? (flashWhy ? 'fault' : 'settled') : null} title={flashWhy || status}>{status}</p>
   </div>
-  <p class="pane-status" role="status" data-phase={flash ? 'settled' : null} title={status}>{status}</p>
 
-  {#if tab === 'health'}<div id="lp-feed-health" role="tabpanel" aria-labelledby="lp-tab-health"><HealthPane /></div>{/if}
+  {#if tab === 'health'}
+    <div class="hpanel" id="lp-feed-health" role="tabpanel" aria-labelledby="lp-tab-health" tabindex="0"><HealthPane /></div>
+  {/if}
   <div class="stack" class:gone={tab === 'health'}>
     {#each TABS.filter((x) => x.id !== 'health') as t (t.id)}
-      <div class="feed og-screen" id={'lp-feed-' + t.id} role="tabpanel" aria-labelledby={'lp-tab-' + t.id}
+      <div class="feed og-screen" class:nosrc={t.id !== 'log'} id={'lp-feed-' + t.id} role="tabpanel" aria-labelledby={'lp-tab-' + t.id}
            class:active={tab === t.id} inert={tab !== t.id} tabindex={tab === t.id ? 0 : -1}
-           onscroll={(e) => onScroll(t.id, e.currentTarget)} {@attach stick(t.id)}>
-        {#if !shown[t.id].length}
-          <p class="pane-empty">{(t.id === 'log' && lists.log.length) ? 'No line matches the filters' : EMPTY_TEXT[t.id]}</p>
-        {:else}
-          {#each shown[t.id] as evt (evt)}
-            {#if t.id === 'changes'}
+           onscroll={(e) => onScroll(t.id, e.currentTarget)} onkeydown={onFeedKey} onpointerover={onOver} {@attach stick(t.id)}>
+        {#if t.id === 'changes'}
+          <div class="chead">
+            <button type="button" class="og-btn sm" disabled={!history.baselined || history.busy} title="Return settings to how they were when you connected"
+                    onclick={revert}>Revert changes</button>
+          </div>
+          {#each lists.changes as evt (evt)}
             <div class="line change">
-              <time class="mono">{new Date(evt.t).toLocaleTimeString()}</time>
+              <time class="mono" data-at={evt.t}>{hms(evt.t)}</time>
               <span class="text">{evt.label}</span>
               <span class="kv">{val(evt, evt.before)} &rarr; {val(evt, evt.after)}</span>
               <button type="button" class="og-btn sm undo" aria-label={'Undo ' + evt.label} disabled={history.busy} onclick={() => undo(evt.id)}>Undo</button>
             </div>
-            {:else}
-            {@const p = parts(t.id, evt)}
-            <div class="line" class:lvl-warn={p.lvl === 'warn' || p.lvl === 'error' || p.lvl === 'fatal'}
-                 class:superseded={p.superseded} class:diag={p.diag}>
-              <time class="mono">{p.time}</time>
-              {#if p.lvl}<span class="chip lvl-{p.lvl}">{p.lvl}</span>{/if}
-              {#if p.tag}<span class="chip tag">{p.tag}</span>{/if}
-              <span class="text">{p.text}</span>
-              {#each p.kv as f}<span class="kv">{f.key}={f.display}</span>{/each}
-              {#if p.superseded}<span class="chip">superseded</span>{/if}
-              {#if evt.health}<HealthLine id={evt.health} />{/if}
+          {:else}
+            <p class="pane-empty">{EMPTY_TEXT.changes}</p>
+          {/each}
+        {:else}
+          {#each shown[t.id] as r (r.key)}
+            {@const x = open.has(r.key)}
+            <div class="line" data-b={r.p.lvl ? r.p.bucket : null} class:superseded={r.p.superseded} class:diag={r.p.diag} class:open={x}>
+              <button type="button" class="head" tabindex="-1" aria-expanded={x} title={tipOf(r.p.health)} onclick={(e) => toggle(r.key, e.currentTarget.parentElement)}>
+                <time class="mono" data-at={r.last}>{hms(r.last)}</time>
+                <span class="lvl">{#if r.p.lvl}<svg aria-hidden="true"><use href={'#lp-' + r.p.bucket} /></svg><span class="sr">{r.p.lvl}</span>{/if}</span>
+                <span class="src mono">{r.p.src}</span>
+                <span class="msg">{#if r.p.tag}<span class="chip tag">{r.p.tag}</span>{/if}<span class="text">{textOf(r)}</span>{#if r.p.kvText}<span class="kv">{r.p.kvText}</span>{/if}{#if r.p.superseded}<span class="chip">superseded</span>{/if}</span>
+                <span class="n mono" title={r.n > 1 ? 'first ' + hms(r.first) : null}>{r.n > 1 ? '×' + compact(r.n) : ''}</span>
+              </button>
+              {#if x}
+                <div class="detail">
+                  <dl class="pane-facts">
+                    {#if r.p.lvl}<dt>Level</dt><dd>{r.p.lvl}</dd>{/if}
+                    {#if t.id === 'log'}<dt>Source</dt><dd>{r.p.src}{r.p.tag ? ' · ' + r.p.tag : ''}</dd>{/if}
+                    <dt>{r.n > 1 ? 'First' : 'Time'}</dt><dd class="mono">{stamp(r.first)} · {ago(r.first)}</dd>
+                    {#if r.n > 1}<dt>Last</dt><dd class="mono">{stamp(r.last)} · {ago(r.last)} · ×{r.n}</dd>{/if}
+                    {#each r.p.kv as f}<dt>{f.key}</dt><dd class="mono">{f.display}</dd>{/each}
+                  </dl>
+                  {#if r.n > 1}
+                    <ol class="inst" aria-label="Instances">
+                      {#each [...r.items].reverse() as e, k (k)}
+                        {@const ip = parts(t.id, e)}
+                        <li><time class="mono">{stamp(e.at)}</time><span>{ip.health ? e.body?.message ?? ip.text : ip.text}{ip.kvText && ip.kvText !== r.p.kvText ? ' ' + ip.kvText : ''}</span>
+                          {#if hasIncident(ip.health)}<button type="button" class="og-btn sm" onclick={() => openIncident(ip.health)}>Incident</button>{/if}</li>
+                      {/each}
+                      {#if r.n > r.items.length}<li class="older">{r.n - r.items.length} older not kept</li>{/if}
+                    </ol>
+                  {/if}
+                  <div class="acts">
+                    <button type="button" class="og-btn sm" onclick={() => copy(lineOf(r), 'row')}>Copy row</button>
+                    {#if r.n === 1 && hasIncident(r.p.health)}<button type="button" class="og-btn sm" onclick={() => openIncident(r.p.health)}>Incident</button>{/if}
+                  </div>
+                </div>
+              {/if}
             </div>
-            {/if}
+          {:else}
+            <p class="pane-empty">{live(t.id).length ? 'No row matches the filters' : EMPTY_TEXT[t.id]}</p>
           {/each}
         {/if}
       </div>
     {/each}
+    {#if fresh > 0}
+      <button type="button" class="og-btn sm pill" onclick={() => resume(tab)}>{compact(fresh)} new &darr;</button>
+    {/if}
   </div>
 </div>
 
 <style>
   .logpane { gap: var(--sp-3); }
+  .defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
   /* One width per tab; wrap rather than squeeze, so a tab never clips its
      label or count. */
+  .tabs { flex: none; }
   .tabs button { flex: 1 1 0; min-width: max-content; }
   .count { color: var(--ink-faint); font-size: .68rem; margin-left: var(--sp-2); }
 
-  .tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-  .tool { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; font-size: .75rem; color: var(--tx-mut); }
-  /* Fixed width: a new tag arriving never resizes the toolbar. */
-  .tool select { width: 16ch; min-width: 0; flex: 0 1 auto; }
+  .tools { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+  .q {
+    flex: 1 1 6rem;
+    min-width: 0;
+    min-height: 30px;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--tx);
+    font: inherit;
+    font-size: .78rem;
+  }
+  .q:focus { outline: none; border-color: var(--highlight); }
+  .q:disabled { opacity: .45; }
+  .lvls { display: flex; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
+  /* Fixed width: a count growing never moves the tools after it. */
+  .lvt { width: 7.5ch; padding-inline: var(--sp-2); justify-content: flex-start; gap: var(--sp-2); }
+  .lvt b { font-weight: 400; font-size: .68rem; }
+  .lvt[aria-pressed='false'] { color: var(--ink-faint); border-style: dashed; }
+  .lvt[aria-pressed='true'][data-b='error'] svg, .lvt[aria-pressed='true'][data-b='warn'] svg { color: var(--warn-ink, var(--warn)); }
+  .srcsel { width: 15ch; min-height: 30px; padding-block: var(--sp-2); font-size: .75rem; }
+  /* Last on the tools row; it takes a line of its own only under 4 rem. */
+  .tools .pane-status { flex: 1 1 0; min-width: 4rem; }
 
   /* All feeds share one cell; only the active one is visible. */
-  .stack { display: grid; }
+  /* The list's floor: under it the window scrolls instead (App.svelte .pane.fit). */
+  .stack { position: relative; flex: 1 1 0; min-height: 6rem; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
   .stack.gone { display: none; }
   .feed {
     grid-area: 1 / 1;
     visibility: hidden;
-    height: 52vh;
-    min-height: 240px;
-    padding: var(--sp-3) var(--sp-3);
+    min-height: 0;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1);
+    overscroll-behavior: contain;
+    padding: var(--sp-2) var(--sp-3);
   }
   .feed.active { visibility: visible; }
+  .hpanel { flex: 1 1 0; min-height: 6rem; overflow-y: auto; overscroll-behavior: contain; }
+  /* The panel is the one scroller: a sent report's JSON grows in it. */
+  .hpanel :global(.json) { max-height: none; overflow: visible; overflow-wrap: anywhere; }
 
   .line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--sp-2);
-    font-size: .78rem;
-    line-height: 1.5;
-    padding: var(--sp-1) 0;
     border-bottom: 1px solid var(--line-soft);
-    flex: 0 0 auto;
+    font-size: .78rem;
+    line-height: 1.45;
+    /* Off-screen rows skip layout and paint: thousands of rows stay smooth. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1.9rem;
   }
-  .line time { color: var(--ink-faint); font-size: .68rem; flex: 0 0 auto; }
-  .line .text { color: var(--ink); overflow-wrap: anywhere; }
-  .line.lvl-warn .text { color: var(--warn-ink, var(--warn)); }
+  .head {
+    display: grid;
+    grid-template-columns: 8ch 14px 6.5ch minmax(0, 1fr) 6ch;
+    align-items: baseline;
+    gap: var(--sp-3);
+    width: 100%;
+    padding: var(--sp-2) var(--sp-1);
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .nosrc .head { grid-template-columns: 8ch 14px minmax(0, 1fr) 6ch; }
+  .nosrc .src { display: none; }
+  .head:hover { background: var(--line-soft); }
+  .head:focus-visible { outline: 1px solid var(--highlight); outline-offset: -1px; }
+  .head time { color: var(--ink-faint); font-size: .68rem; }
+  .lvl { align-self: start; display: flex; padding-top: .15em; color: var(--ink-dim); }
+  .src { color: var(--ink-faint); font-size: .66rem; overflow: hidden; text-overflow: ellipsis; }
+  .msg { min-width: 0; overflow-wrap: anywhere; }
+  .msg > :not(:last-child) { margin-right: var(--sp-2); }
+  .text { color: var(--ink); }
+  .n { color: var(--ink-dim); font-size: .68rem; text-align: right; }
+  .line[data-b='error'] .lvl, .line[data-b='warn'] .lvl, .line[data-b='error'] .text, .line[data-b='warn'] .text { color: var(--warn-ink, var(--warn)); }
+  .line[data-b='error'] .text { font-weight: 600; }
+  .line[data-b='debug'] .lvl, .line[data-b='debug'] .text { color: var(--ink-faint); }
   /* Reconciliation states (ph-vdk.14), neither a hazard: an out-of-order
      edge dims; a synthesized diagnostic reads as muted italic. */
   .line.superseded { opacity: .55; }
   .line.diag .text { color: var(--ink-faint); font-style: italic; }
 
   .chip {
-    font-size: .68rem;
-    padding: 1px var(--sp-2);
+    font-size: .66rem;
+    padding: 0 var(--sp-2);
     border-radius: var(--r-s);
     background: var(--bg-card);
     border: 1px solid var(--line);
     color: var(--ink-dim);
     text-transform: uppercase;
     letter-spacing: .03em;
-    flex: 0 0 auto;
   }
-  .chip.lvl-warn, .chip.lvl-error, .chip.lvl-fatal { color: var(--warn-ink, var(--warn)); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
   .chip.tag { text-transform: none; }
+  .kv { font-family: var(--mono); font-size: .68rem; color: var(--ink-faint); overflow-wrap: anywhere; }
 
+  .detail { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3) var(--sp-4); border-left: 2px solid var(--line); margin-left: var(--sp-2); }
+  .detail .pane-facts { font-size: .72rem; gap: var(--sp-1) var(--sp-4); }
+  .inst { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: .72rem; color: var(--ink-dim); }
+  .inst li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
+  .inst span { overflow-wrap: anywhere; min-width: 0; }
+  .inst time { color: var(--ink-faint); font-size: .66rem; }
+  .inst .older { color: var(--ink-faint); }
+  .acts { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+  .change { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-1); content-visibility: visible; }
+  .change time { color: var(--ink-faint); font-size: .68rem; }
   .change .undo { margin-left: auto; }
-  .kv { font-family: var(--mono); font-size: .68rem; color: var(--ink-faint); flex: 0 0 auto; }
+  .chead { display: flex; justify-content: flex-end; padding-bottom: var(--sp-2); }
+
+  .pill { position: absolute; bottom: var(--sp-4); left: 50%; transform: translateX(-50%); z-index: 1; background: var(--bg-raised); color: var(--reality); border-color: var(--reality); }
+
+  /* 44 px fingertip targets on the page's own controls and rows. */
+  @media (pointer: coarse) {
+    .tabs button, .q, .srcsel, .lvt, .tools .og-btn, .head, .detail .og-btn, .chead .og-btn, .change .og-btn, .pill { min-height: 44px; }
+    .head { align-content: center; }
+  }
 </style>

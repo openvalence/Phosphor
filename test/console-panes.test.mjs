@@ -8,16 +8,23 @@
  * slots hold their height whether or not they carry text, lists keep their
  * rows when content arrives, and the pane-specific facts render what the
  * wire sent. The knock prompt stays off the Pairing pane and rises anywhere
- * else.
+ * else. The Log page folds repeats, filters by level, source and search,
+ * follows the tail with a pill for what arrived while paused, and fits the
+ * window at 1428x900, 1024x768, 844x390 and 420x860 with the list as the one
+ * scroller (screenshots, dark and Paper, in test/evidence/logpage); 5000
+ * distinct lines stay smooth and an idle page does no work (ph-s5mu).
  *
  * Build first (`npm run build:only`).
  * Run: node test/console-panes.test.mjs   (no device needed)
  */
 import { goTab } from './nav.mjs';
-import { DIST_HTML } from './dist.mjs';
+import { DIST_HTML, EVIDENCE } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { THEMES } from '../src/model/theme.js';
+import { shape } from '../src/ui/logfold.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
@@ -115,6 +122,16 @@ const logKey = (name) => LOG.schema.find((f) => f.name === name).key;
 function logLine(level, tag, message) {
   wire.send(FRAME.EVENT, CORE_CHANNEL.log, cbMap([[K.event_kind, cbUint(LOG_EVENT_KIND.entry)],
     [K.body, cbMap([[logKey('level'), cbUint(level)], [logKey('tag'), cbTstr(tag)], [logKey('message'), cbTstr(message)]])]]));
+}
+
+// Distinct words, no digits: lines that never fold into one another.
+const word = (i) => { let s = ''; do { s = String.fromCharCode(97 + (i % 26)) + s; i = Math.floor(i / 26); } while (i); return s; };
+
+// The fold key's shape: numbers and ids read '#', words stay.
+for (const [a, b, same] of [['gap 340 ms', 'gap 1512.5 ms', true], ['session 0x1a2b', 'session 0xff', true],
+  ['inc-3f9a2b1c open', 'inc-77aa00ee open', true], ['report 123e4567-e89b-12d3-a456-426614174000', 'report 00000000-0000-0000-0000-000000000000', true],
+  ['flood abc', 'flood abd', false], ['motor facade', 'motor decade', false]]) {
+  ok('fold: "' + a + '" and "' + b + '" ' + (same ? 'fold' : 'stay apart'), (shape(a) === shape(b)) === same, shape(a) + ' / ' + shape(b));
 }
 
 const browser = await chromium.launch();
@@ -236,51 +253,96 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   await openTab(page, 'log');
   const slotH = () => page.$eval('.logpane .pane-status', (el) => el.getBoundingClientRect().height);
   const h0 = await slotH();
+  const rowsOf = () => page.$$eval('#lp-feed-log > .line', (ls) => ls.map((l) => ({ b: l.dataset.b, text: l.querySelector('.text').textContent,
+    n: l.querySelector('.n').textContent, src: l.querySelector('.src').textContent })));
+  const settle = () => page.waitForTimeout(150);
   ok('log: the empty feed has its empty state', /No log lines yet/.test(await page.textContent('#lp-feed-log')));
   for (let i = 0; i < 40; i++) logLine(i % 4 === 0 ? 3 : 2, i % 4 === 0 ? 'motor' : 'net', 'line ' + i);
-  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log .line').length === 40, null, { timeout: 5000 });
-  await page.waitForTimeout(100);
-  const atEnd = await page.$eval('#lp-feed-log', (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 4);
-  ok('log: following keeps the newest line in view', atEnd);
-  ok('log: following is said once, on its toggle (ph-0gp)', !/Following/.test(await page.textContent('.logpane .pane-status')));
+  await page.waitForFunction(() => /40/.test(document.querySelector('[data-feed="log"] .count')?.textContent || ''), null, { timeout: 5000 });
+  await settle();
+  let rows = await rowsOf();
+  ok('log: repeats fold, one row per message shape with its count', rows.length === 2 && rows[0].n === '×10' && rows[1].n === '×30', JSON.stringify(rows));
+  ok('log: the newest repeat sits last', rows[1].text === 'line 39', rows[1].text);
+  logLine(3, 'motor', 'line 40');
+  await settle();
+  rows = await rowsOf();
+  ok('log: a repeat bumps its row to the tail instead of adding one', rows.length === 2 && rows[1].text === 'line 40' && rows[1].n === '×11', JSON.stringify(rows));
+  ok('log: a hub line names its source', rows.every((r) => r.src === 'hub'), JSON.stringify(rows.map((r) => r.src)));
+  const lvlCounts = () => page.$$eval('.logpane .lvt', (bs) => Object.fromEntries(bs.map((b) => [b.dataset.b, b.textContent.trim()])));
+  ok('log: the level toggles count each level', JSON.stringify(await lvlCounts()) === '{"error":"0","warn":"11","info":"30","debug":"0"}', JSON.stringify(await lvlCounts()));
+  const lvlIcons = await page.$$eval('#lp-feed-log > .line', (ls) => ls.map((l) => l.querySelector('.lvl use')?.getAttribute('href') + ' ' + l.querySelector('.lvl .sr')?.textContent));
+  ok('log: a level is an icon and a word, not a color alone', lvlIcons.join() === '#lp-info info,#lp-warn warn', lvlIcons.join());
   if (label !== 'phone') {
     const tw = await page.$$eval('.logpane [role=tab]', (els) => els.map((e) => Math.round(e.getBoundingClientRect().width * 10) / 10));
-    ok('log: the source tabs are one width (ph-0gp)', Math.max(...tw) - Math.min(...tw) < 1, tw.join(' '));
+    ok('log: the feed tabs are one width (ph-0gp)', Math.max(...tw) - Math.min(...tw) < 1, tw.join(' '));
   }
   // ph-632: warn text rides --warn-ink, the theme's ink for amber text.
   const ink = await page.evaluate(() => {
     document.documentElement.style.setProperty('--warn-ink', 'rgb(1, 2, 3)');
-    const c = getComputedStyle(document.querySelector('#lp-feed-log .line.lvl-warn .text')).color;
+    const c = getComputedStyle(document.querySelector('#lp-feed-log > .line[data-b=warn] .text')).color;
     document.documentElement.style.removeProperty('--warn-ink');
     return c;
   });
-  ok('log: a warn line\'s text rides --warn-ink (ph-632)', ink === 'rgb(1, 2, 3)', ink);
+  ok('log: a warn line rides --warn-ink (ph-632)', ink === 'rgb(1, 2, 3)', ink);
 
-  await page.selectOption('.logpane select >> nth=0', { label: 'warn and above' });
-  await page.waitForTimeout(100);
-  ok('log: level filter keeps warn and above', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 10);
-  await page.selectOption('.logpane select >> nth=0', { label: 'all levels' });
-  await page.selectOption('.logpane select >> nth=1', { label: 'net' });
-  await page.waitForTimeout(100);
-  ok('log: tag filter keeps one tag', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 30);
-  ok('log: the status says how much is shown', /30 of 40 shown/.test(await page.textContent('.logpane .pane-status')));
-  await page.selectOption('.logpane select >> nth=1', { label: 'all tags' });
-  await page.waitForTimeout(100);
+  // Expand: the folded row lists its instances, newest first, with first and last time.
+  await page.click('#lp-feed-log > .line[data-b=warn] .head');
+  await settle();
+  const inst = await page.$$eval('#lp-feed-log > .line.open .inst li', (ls) => ls.map((l) => l.querySelector('span').textContent));
+  ok('log: expanding a folded row shows its instances, newest first', inst.length === 11 && inst[0] === 'line 40' && inst[10] === 'line 0', inst.slice(0, 3).join(' | '));
+  ok('log: ...and its first and last time', await page.$eval('#lp-feed-log > .line.open .detail', (d) => /First/.test(d.textContent) && /Last/.test(d.textContent)));
+  await page.click('#lp-feed-log > .line.open .head');
+  await settle();
 
+  // Filters: level toggles, source, search.
+  await page.click('.logpane .lvt[data-b=info]');
+  await settle();
+  rows = await rowsOf();
+  ok('log: a level toggle hides that level', rows.length === 1 && rows[0].b === 'warn', JSON.stringify(rows));
+  ok('log: the status says how much is shown', /1 of 2 shown/.test(await page.textContent('.logpane .pane-status')));
+  await page.click('.logpane .lvt[data-b=info]');
+  await page.selectOption('.logpane .srcsel', 'client');
+  await settle();
+  ok('log: the source filter keeps one source', /No row matches the filters/.test(await page.textContent('#lp-feed-log')));
+  await page.selectOption('.logpane .srcsel', '');
+  await page.fill('.logpane .q', 'motor');
+  await settle();
+  rows = await rowsOf();
+  ok('log: search matches tag and text', rows.length === 1 && rows[0].b === 'warn', JSON.stringify(rows));
+  await page.press('.logpane .q', 'Escape');
+  await settle();
+  ok('log: Escape clears the search', await page.inputValue('.logpane .q') === '' && (await rowsOf()).length === 2);
+  await page.click('#lp-feed-log > .line[data-b=warn] .head');
+  await page.click('#lp-feed-log > .line.open button:has-text("Copy row")');
+  await settle();
+  const rowClip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  ok('log: Copy row copies the row with its count', /\[warn\] \[motor\] line 40 ×11 since /.test(rowClip), rowClip);
+  await page.click('#lp-feed-log > .line.open .head');
+
+  // Follow, the pill and Pause, on distinct lines that fill the list.
+  for (let i = 0; i < 80; i++) logLine(2, 'net', 'fill ' + word(i));
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log > .line').length === 82, null, { timeout: 5000 });
+  await settle();
+  const atEnd = () => page.$eval('#lp-feed-log', (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 4);
+  ok('log: following keeps the newest line in view', await atEnd());
+  ok('log: following is said once, on its toggle (ph-0gp)', !/Follow/.test(await page.textContent('.logpane .pane-status')));
   await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 0; el.dispatchEvent(new Event('scroll')); });
-  await page.waitForTimeout(100);
-  for (let i = 0; i < 5; i++) logLine(2, 'net', 'late ' + i);
-  await page.waitForTimeout(200);
-  const st = await page.textContent('.logpane .pane-status');
-  ok('log: scrolling up pauses the feed and counts what arrived', /Paused: 5 new lines/.test(st), st);
-  ok('log: a paused feed holds its rows', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 40);
-  const rowH = await page.$eval('#lp-feed-log .line', (el) => el.getBoundingClientRect().height);
-  await page.hover('#lp-feed-log .line >> nth=0');
-  ok('log: hovering a row does not change its height', rowH === await page.$eval('#lp-feed-log .line', (el) => el.getBoundingClientRect().height));
+  await settle();
+  for (let i = 0; i < 5; i++) logLine(2, 'net', 'late ' + word(i));
+  await settle();
+  ok('log: scrolling up pauses the feed and the pill counts what arrived', /^5 new/.test((await page.textContent('.logpane .pill').catch(() => '')).trim()));
+  ok('log: a paused feed holds its rows', await page.$$eval('#lp-feed-log > .line', (ls) => ls.length) === 82);
+  const pausedTop = await page.$eval('#lp-feed-log', (el) => el.scrollTop);
+  ok('log: a paused feed does not scroll by itself', pausedTop === 0, String(pausedTop));
+  const rowH = await page.$eval('#lp-feed-log > .line', (el) => el.getBoundingClientRect().height);
+  await page.hover('#lp-feed-log > .line time >> nth=0');
+  ok('log: hovering a row does not change its height', rowH === await page.$eval('#lp-feed-log > .line', (el) => el.getBoundingClientRect().height));
+  ok('log: hovering the time shows how long ago', /s ago$/.test(await page.$eval('#lp-feed-log > .line time', (t) => t.title)));
 
   await page.$eval('#lp-feed-log', (el) => { el.scrollTop = 120; el.dispatchEvent(new Event('scroll')); });
+  const keptTop = await page.$eval('#lp-feed-log', (el) => el.scrollTop);
   await page.click('[data-feed="safety"]');
-  await page.waitForTimeout(100);
+  await settle();
   ok('log: the Safety feed has its own empty state', /No safety events/.test(await page.textContent('#lp-feed-safety')));
   // ph-8l8: unitless integers read as sent, no decimals and no grouping.
   const sKey = (name) => entry(CORE_CHANNEL.safety_events).schema.find((f) => f.name === name).key;
@@ -290,16 +352,47 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   const safetyKv = await page.$$eval('#lp-feed-safety .line .kv', (els) => els.map((e) => e.textContent).join(' '));
   ok('log: a safety edge prints its integers as sent (ph-8l8)', /word=8 cause=0 owner_session=3576056062 estop_seq=0/.test(safetyKv), safetyKv);
   await page.click('[data-feed="log"]');
-  await page.waitForTimeout(100);
-  ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === 120);
+  await settle();
+  ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === keptTop, String(keptTop));
 
   await page.click('.logpane .tools button:has-text("Copy")');
-  await page.waitForTimeout(150);
+  await settle();
   const logClip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => '');
-  ok('log: Copy puts the shown lines on the clipboard', logClip.split('\n').length === 40 && /\[warn\] \[motor\] line 0/.test(logClip), logClip.split('\n')[0]);
-  await page.click('.logpane .tools button:has-text("Follow")');
-  await page.waitForTimeout(150);
-  ok('log: Follow resumes with the new lines', await page.$$eval('#lp-feed-log .line', (ls) => ls.length) === 45);
+  ok('log: Copy puts the visible rows on the clipboard, one line per folded row', logClip.split('\n').length === 82 && /\[warn\] \[motor\] line 40 ×11/.test(logClip), logClip.split('\n')[0]);
+  await page.click('.logpane .pill');
+  await settle();
+  ok('log: the pill jumps back to the newest and follows', await page.$$eval('#lp-feed-log > .line', (ls) => ls.length) === 87 && await atEnd()
+    && !(await page.$('.logpane .pill')));
+  await page.click('.logpane .tools button:has-text("Pause")');
+  ok('log: Pause is a pressed toggle', await page.getAttribute('.logpane .tools button:has-text("Pause")', 'aria-pressed') === 'true');
+  logLine(4, 'net', 'held ' + word(1));
+  await settle();
+  ok('log: a paused feed adds nothing and counts it', await page.$$eval('#lp-feed-log > .line', (ls) => ls.length) === 87
+    && /^1 new/.test((await page.textContent('.logpane .pill').catch(() => '')).trim()));
+  await page.click('.logpane .tools button:has-text("Pause")');
+  await settle();
+  ok('log: un-pausing shows what arrived', await page.$$eval('#lp-feed-log > .line', (ls) => ls.length) === 88 && await atEnd());
+
+  // Keys: F3 focuses the search, a second F3 is LookFor's; Down walks the rows, Enter expands.
+  await page.click('[data-feed="log"]');
+  await page.keyboard.press('F3');
+  ok('log: F3 focuses the search', await page.evaluate(() => !!document.activeElement?.classList.contains('q')));
+  await page.keyboard.press('F3');
+  ok('log: a second F3 opens Look for', await page.locator('.lf').isVisible().catch(() => false));
+  await page.keyboard.press('Escape');
+  await page.focus('.logpane .q');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  const focused = await page.evaluate(() => [...document.querySelectorAll('#lp-feed-log > .line > .head')].indexOf(document.activeElement));
+  ok('log: Down from the search walks into the rows', focused === 1, String(focused));
+  await page.keyboard.press('Enter');
+  ok('log: Enter expands the row', await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')) === 'true');
+  await page.keyboard.press('Enter');
+
+  await page.click('.logpane .tools button:has-text("Clear")');
+  await settle();
+  ok('log: Clear empties the feed and its counts', /No log lines yet/.test(await page.textContent('#lp-feed-log'))
+    && /^Log 0/.test((await page.textContent('[data-feed="log"]')).trim().replace(/\s+/g, ' ')));
   ok('log: the status slot never changes height', h0 > 0 && h0 === await slotH(), h0 + 'px');
 
   // ---- Display ---------------------------------------------------------------
@@ -317,6 +410,107 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
     document.documentElement.classList.contains('hivis') && localStorage.getItem('ui_hivis') === '1'));
 
   ok('no page errors (' + label + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
+// ---- the Log page fits the window (ph-s5mu): no page scroll, one scroller, the
+// list fills what the chrome leaves; a 5000-row flood stays smooth -------------
+const SHOTS = join(EVIDENCE, 'logpage');
+mkdirSync(SHOTS, { recursive: true });
+const PAPER = THEMES.find((t) => t.id === 'paper');
+const fitOf = (page) => page.evaluate(() => {
+  const feed = document.querySelector('.logpane .feed.active, .logpane .hpanel');
+  const visible = (el) => getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length > 0;
+  const scrollers = [...document.querySelectorAll('body *')].filter((el) => visible(el) && !el.closest('nav')
+    && /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 1).map((el) => el.id || el.className);
+  // The space the page may fill: down to the content pane's foot (desktop) or the pinned status row (phone).
+  const content = document.querySelector('.content');
+  const foot = document.querySelector('.footstrip.pinned');
+  const bottom = content ? content.getBoundingClientRect().bottom : foot ? foot.getBoundingClientRect().top : innerHeight;
+  const r = feed.getBoundingClientRect();
+  return { win: innerWidth + 'x' + innerHeight, pageScroll: document.scrollingElement.scrollHeight - innerHeight,
+    contentScroll: content ? content.scrollHeight - content.clientHeight : 0, scrollers, listH: Math.round(r.height), gap: Math.round(bottom - r.bottom) };
+});
+for (const [w, h] of [[1428, 900], [1024, 768], [844, 390], [420, 860]]) {
+  for (const theme of [null, PAPER]) {
+    const tag = 'fit ' + w + 'x' + h + (theme ? ' paper' : '');
+    const { ctx, page, errors } = await boot({ width: w, height: h }, '/', false,
+      theme ? (c) => c.addInitScript((t) => localStorage.setItem('phosphor.theme', t), JSON.stringify(theme)) : null);
+    await openTab(page, 'log');
+    for (let i = 0; i < 120; i++) logLine(i % 9 ? 2 : 3, i % 3 ? 'net' : 'motor', 'row ' + word(i) + (i % 5 ? '' : ' with a longer message that wraps on a narrow window and never clips'));
+    for (let i = 0; i < 6; i++) logLine(4, 'motor', 'stall ' + (100 + i * 37) + ' ms');
+    await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log > .line').length === 121, null, { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const f = await fitOf(page);
+    if (!theme) {
+      ok(tag + ': the page does not scroll', f.pageScroll <= 0 && f.contentScroll <= 0, JSON.stringify(f));
+      ok(tag + ': the list is the one scroller', f.scrollers.length === 1 && f.scrollers[0] === 'lp-feed-log', f.scrollers.join(' | '));
+      ok(tag + ': the list fills the space left (' + f.listH + ' of ' + h + ' px)', f.listH > 60 && f.gap >= 0 && f.gap <= 16, 'gap ' + f.gap + 'px');
+      const clipped = await page.$$eval('#lp-feed-log > .line .text', (ts) => ts.filter((t) => t.scrollWidth > t.clientWidth + 1).length);
+      ok(tag + ': messages wrap, never clip', clipped === 0, clipped + ' clipped');
+      await page.click('[data-feed="health"]');
+      await page.waitForTimeout(200);
+      const hf = await fitOf(page);
+      ok(tag + ': Health scrolls in its own panel, the page does not', hf.pageScroll <= 0 && hf.contentScroll <= 0 && hf.scrollers.length <= 1
+        && (!hf.scrollers.length || hf.scrollers[0] === 'lp-feed-health'), JSON.stringify(hf));
+      await page.click('[data-feed="log"]');
+    }
+    await page.click('#lp-feed-log > .line[data-b=error] .head');
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: join(SHOTS, 'log-' + w + 'x' + h + (theme ? '-paper' : '-dark') + '.png') });
+    ok(tag + ': no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+}
+
+// The flood: 5000 distinct lines one frame each, the way a hub would send them.
+{
+  const { ctx, page, errors } = await boot({ width: 1428, height: 900 });
+  await openTab(page, 'log');
+  await page.evaluate(() => {
+    window.__long = [];
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push(e.duration); }).observe({ type: 'longtask', buffered: false });
+  });
+  const t0 = Date.now();
+  for (let i = 0; i < 5000; i++) logLine(i % 7 ? 2 : 3, 'net', 'flood ' + word(i));
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log > .line').length === 5000, null, { timeout: 30000 }).catch(() => {});
+  const ms = Date.now() - t0;
+  const n = await page.$$eval('#lp-feed-log > .line', (ls) => ls.length);
+  const long = await page.evaluate(() => window.__long.slice());
+  ok('flood: 5000 distinct lines land as 5000 rows (' + ms + ' ms)', n === 5000, String(n));
+  ok('flood: no main-thread stall over 200 ms while they land', Math.max(0, ...long) < 200, 'longest ' + Math.round(Math.max(0, ...long)) + ' ms, ' + long.length + ' long tasks');
+  // Wheel-sized steps (100 px a frame) up through the list: frames stay near the display's.
+  const frames = await page.evaluate(async () => {
+    const el = document.querySelector('#lp-feed-log');
+    const gaps = [];
+    await new Promise((r) => requestAnimationFrame(r));
+    let last = performance.now();
+    for (let k = 0; k < 120; k++) {
+      el.scrollTop -= 100;
+      await new Promise((r) => requestAnimationFrame(r));
+      const now = performance.now();
+      gaps.push(now - last);
+      last = now;
+    }
+    return gaps.sort((x, y) => x - y);
+  });
+  const pct = (q) => Math.round(frames[Math.min(frames.length - 1, Math.floor(frames.length * q))]);
+  ok('flood: scrolling 5000 rows stays smooth (median ' + pct(.5) + ' ms, p95 ' + pct(.95) + ' ms a frame)', pct(.95) < 50, 'slowest ' + pct(1) + ' ms');
+  // Idle: nothing arrives, nothing renders.
+  const muts = await page.evaluate(() => new Promise((res) => {
+    let n = 0;
+    const mo = new MutationObserver((l) => { n += l.length; });
+    mo.observe(document.querySelector('.logpane'), { subtree: true, childList: true, attributes: true, characterData: true });
+    setTimeout(() => { mo.disconnect(); res(n); }, 1500);
+  }));
+  ok('flood: idle, the page does no work', muts === 0, muts + ' mutations in 1.5 s');
+  await page.$eval('#lp-feed-log', (el) => { el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event('scroll')); });
+  await page.waitForTimeout(100);
+  const t1 = Date.now();
+  logLine(4, 'net', 'one more after the flood');
+  await page.waitForFunction(() => /one more/.test(document.querySelector('#lp-feed-log > .line:last-child')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+  ok('flood: a line after 5000 rows still lands fast', Date.now() - t1 < 1000, (Date.now() - t1) + ' ms');
+  ok('flood: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   await ctx.close();
 }
 
