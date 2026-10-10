@@ -772,6 +772,36 @@ question in §10.8).
   `ph-5u0g` peeve 10): the plan readback beside the numeral is one line, or
   two where the width runs short, each ellipsized, ending short of the mini.
   Seam: `src/ui/widgets/PlanStrip.svelte`.
+- The channel heatmap (operator 2026-10-10, `ph-8yga`): the top bar's left
+  slot carries a block per catalog channel, in catalog order, grouped STATE,
+  STREAM, INTENT, EVENT, STORE with a hairline between groups, then five link
+  blocks: link traffic (every frame, control included), round trip, late
+  samples (the share of drawn frames with no newer sample; position gaps in
+  its tip), frame budget (event-loop lag) and Health (the status slot).
+  Brightness is a block's share of its own budget, mixed in oklab from the
+  empty token to reality: a channel's rate over its recent peak, the peak
+  capped at its grant or its declared max rate, so a channel at its own
+  steady rate reads full whatever that rate is; a link block's reading over
+  the limit that raises its health condition (50 ms round trip, 10 % held,
+  25 ms lag). A rate is the smoothed frames per arrival over the smoothed
+  interval between arrivals, held until the next arrival is late, then
+  falling as 1 / the silence, zero past 10 s. A steady channel and a bundle
+  of channels arriving together hold one level through their arrivals;
+  levels move on a 500 ms tick and glide by a CSS transition of the same
+  length, none under `html.still` (operator: "lerp pls, no need for
+  flashing"). The tick runs only while something arrived in the last 10 s;
+  idle, nothing runs. A refused channel (its newest word a NACK) and a link
+  block whose health condition is open wear the warn tint and a slash, and
+  the tip says why. Hover or keyboard focus shows the tip: name, class and
+  id, rx and tx in frames and bytes a second, last seen. One tab stop (a
+  toolbar), the arrows move, Escape hides the tip, a click opens the Link
+  page. The size reads the catalog and the bucket only: four 5 px rows, or
+  in buckets 1 and 2 (and past 32 columns) a block per class and one for
+  the link, each tip naming the busiest member and the refused ones. Seams:
+  `src/model/activity.js` (counted at the socket, `machine.svelte.js`),
+  `src/ui/ChannelHeat.svelte`. Planned: it replaces the position-rate decor
+  in `LinkBar` once the top-bar condense (`ph-6ydd`) lands, and the Link page
+  opens on the clicked channel once it takes a selection (`ph-bszw`).
 
 ### 10.4 Full width
 
@@ -1386,3 +1416,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
 | 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
+| 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash (`ph-8yga`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able) |

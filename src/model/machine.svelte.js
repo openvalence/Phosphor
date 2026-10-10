@@ -45,6 +45,7 @@ import { ROLE } from './roles.js';
 import { endpointLabel, setHubClock, unitOf } from './format.js';
 import { recorder } from './vault.js';
 import { bump } from './changes.js';
+import { countFrames } from './activity.js';
 
 /**
  * Core wishes carried in HELLO (session.js opts.subscriptions, SPEC §6.2).
@@ -284,10 +285,11 @@ function stampingSocket(Impl, onData) {
       st.lastRxMs = Date.now();
       st.framesIn++;
       st.bytesIn += (ev && ev.data && (ev.data.byteLength ?? ev.data.length)) || 0;
+      if (ev) countFrames('rx', ev.data);
       if (onData && ev) onData(ev.data);
     };
     const send = ws.send;
-    ws.send = function (d) { machine.stats.framesOut++; return send.call(this, d); };
+    ws.send = function (d) { machine.stats.framesOut++; countFrames('tx', d); return send.call(this, d); };
     if (typeof ws.addEventListener === 'function') {
       ws.addEventListener('message', stamp);
     } else {
