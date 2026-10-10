@@ -215,6 +215,8 @@ console.log('layouts');
   ok('a taken or empty name is refused', !saveLayoutAs(s, 'Default') && !saveLayoutAs(s, '  ') && !saveLayoutAs(s, '__proto__'));
   ok('rename moves the active name', renameLayout(s, 'Evening', 'Night') && s.active === 'Night' && !s.layouts.Evening);
   ok('switch selects another layout', switchLayout(s, 'Default') && viewMap(s, 'full', 'machine').a.w === 8);
+  ok('a named layout reads without switching', viewMap(s, 'full', 'machine', false, 'Night').a.w === 20 && s.active === 'Default'
+    && JSON.stringify(viewMap(s, 'full', 'nope', false, 'Night')) === '{}' && !s.layouts.Night['full.nope']);
   ok('switch to an unknown name is refused', !switchLayout(s, 'Nope') && s.active === 'Default');
   saveStore(st, s);
   const back = loadStore(st);

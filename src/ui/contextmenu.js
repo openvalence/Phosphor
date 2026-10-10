@@ -14,11 +14,14 @@
  *   ([data-drag]) opens nothing.
  * - Every write takes the plugin write door (plugins.svelte.js write): the
  *   confirm, the ladder and the refusal banner a control's own write gets.
+ * - Add to Dash is offered on the full class only: the other classes draw
+ *   every Dash as its seed (ph-e82.7), so an add there would show nowhere.
  */
+import { tick } from 'svelte';
 import { menu } from '../plugins/kit.js';
 import { machine, specSafetyAction } from '../model/machine.svelte.js';
 import { displayValue } from '../model/shadow.svelte.js';
-import { resetsToDefault, WIDGET } from '../model/settings.js';
+import { resetsToDefault, placeableControls, WIDGET } from '../model/settings.js';
 import { fieldByUid, fieldKey, partKeys, pathOf, resolveIdentity, fieldKeysOf, pasteValue } from '../model/identity.js';
 import { labelFor } from '../model/format.js';
 import { sameValue } from '../model/merge.js';
@@ -26,6 +29,10 @@ import { history, say } from '../model/history.svelte.js';
 import { heroClaims } from './heroes.js';
 import { logView } from './logview.svelte.js';
 import { host, pluginHeroes, write, gate, currentHub } from '../plugins/plugins.svelte.js';
+import { view } from '../model/viewport.svelte.js';
+import { layouts, orderedLayoutNames, addLayout, switchLayout } from '../model/dashboard.svelte.js';
+import { baseKey } from '../model/grid.js';
+import { seedKeys, dashHolds, addToDash } from './Home.svelte';
 
 /** Field refs sent while no node editor was mounted to take them, oldest first; the editor empties it on mount. */
 export const nodeQueue = [];
@@ -61,9 +68,8 @@ const readClip = () => Promise.race([
 const valueOf = (f) => displayValue(f, machine.samples[f.channelId]);
 
 /** The targets under `node`, innermost first: field, module, page. */
-function chainAt(node, tab) {
+function chainAt(node, tab, heroes) {
   const model = machine.catalog.model, hub = currentHub();
-  const heroes = model ? heroClaims(model.byRole, pluginHeroes()) : null;
   const out = [];
   const fe = node.closest('.field[data-uid]');
   const f = fe && fieldByUid(model, fe.dataset.uid);
@@ -109,19 +115,62 @@ function moduleItems(t) {
 
 const nodes = (keys) => say(sendToNodes(keys) ? 'Sent to the node editor' : 'Queued for the node editor');
 
+const FOCUSABLE = 'input, button, select, [tabindex]:not([tabindex="-1"])';
+
+/** Open Dash `n` and bring its first card placing any of `ids` into view. */
+async function showOnDash(nav, n, ids) {
+  nav.dash(n);
+  await tick();
+  await new Promise(requestAnimationFrame);
+  const cell = [...document.querySelectorAll('.dash-cell[data-id]')].find((c) => ids.includes(baseKey(c.dataset.id)));
+  if (!cell) return;
+  cell.scrollIntoView({ block: 'center' });
+  cell.querySelector(FOCUSABLE)?.focus({ preventScroll: true });
+}
+
+/**
+ * Add to Dash: every layout, then New Dash... A layout that holds the target
+ * is checked and opens on it; any other takes it at the first free rect and
+ * the page stays. A new layout holds only the target: its seed was never seen.
+ */
+function dashItems(t, heroes, nav) {
+  const model = machine.catalog.model;
+  const c = !model || view.cls !== 'full' ? null : t.key.startsWith('widget:') ? { key: t.key }
+    : placeableControls(model, { heroes: heroes.widgets, safety: specSafetyAction() }).find((x) => x.key === t.key);
+  if (!c) return [];
+  const ids = [c.key, c.alias].filter(Boolean), seed = seedKeys(heroes);
+  const add = (n, s) => { addToDash(n, c.key, s); say('Added to ' + n); };
+  return [{ label: 'Add to Dash', items: [
+    ...orderedLayoutNames().map((n) => (dashHolds(n, ids, seed)
+      ? { label: n, checked: true, title: 'Show it there', run: () => showOnDash(nav, n, ids) }
+      : { label: n, checked: false, run: () => add(n, seed) })),
+    { label: 'New Dash…', ask: { label: 'New Dash name', placeholder: 'Dash name', commit: (name) => {
+      const was = layouts.active;
+      if (!addLayout(name)) return 'Name taken';
+      switchLayout(was);
+      add(name, []);
+      return '';
+    } } },
+  ] }];
+}
+
 /**
  * Take over the context menu. `nav`: {tab() -> the page on screen {id, label},
- * go(tabId), items(target, chain) -> the page's own items for a target}. -> uninstall()
+ * go(tabId), dash(layout) opens the Dash on a layout, items(target, chain) ->
+ * the page's own items for a target}. -> uninstall()
  */
 export function installContextMenu(nav) {
   let open = null, kb = { at: 0, el: null };
   const show = (node, x, y) => {
     if (open) open.close();
-    const chain = chainAt(node, nav.tab());
+    const model = machine.catalog.model;
+    const heroes = model ? heroClaims(model.byRole, pluginHeroes()) : null;
+    const chain = chainAt(node, nav.tab(), heroes);
     const paste = [];
     const items = [];
     chain.forEach((t) => {
-      const own = t.kind === 'field' ? fieldItems(t, nav, paste) : t.kind === 'module' ? moduleItems(t) : [];
+      const own = t.kind === 'field' ? [...fieldItems(t, nav, paste), ...dashItems(t, heroes, nav)]
+        : t.kind === 'module' ? [...moduleItems(t), ...dashItems(t, heroes, nav)] : [];
       const mine = Object.freeze({ kind: t.kind, key: t.key, hub: t.hub, title: t.title, path: t.path });
       const list = [...own, ...nav.items(t, chain), ...host.menus(mine)];
       if (list.length && items.length) list[0] = { ...list[0], section: t.title };

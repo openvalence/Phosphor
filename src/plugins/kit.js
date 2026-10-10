@@ -1180,16 +1180,27 @@ export const module = (identity) => bound('module', identity);
  * moving nothing beneath. Arrows and Home/End move, Enter picks; Escape, Tab,
  * a scroll and a tap outside close, and focus returns where it was. A
  * disabled item names its reason as its title (law 3).
- * items: [{label, run, disabled, section}]: `disabled` '' or the reason;
- * `section` captions a group starting at that item.
+ * items: [{label, run, disabled, section, title, checked, items, ask}]:
+ * `disabled` '' or the reason; `section` captions a group starting at that
+ * item; `checked` (a boolean) makes it a checkbox item, drawn with a check
+ * when true; `items` makes it a submenu; `ask` ({label, placeholder,
+ * commit(text) -> '' or the reason})
+ * turns it into a text field in place, Enter commits, an empty one or Escape
+ * puts the item back.
+ * A submenu opens beside the menu on hover, a click, ArrowRight or Enter, and
+ * ArrowLeft or Escape closes it; a tap opens it inline.
  */
 export function menu(o = {}) {
   check('menu', o, ['title', 'desc', 'items', 'x', 'y', 'onClose']);
   const el = h('div', { class: cls('ui-menu surface-card', o), popover: 'manual', role: 'menu', tabindex: '-1', 'aria-label': o.title || 'Menu' });
   if (o.title) el.append(h('div', { class: 'ui-menu-h' }, h('div', { class: 'ui-menu-t', text: o.title }), o.desc ? h('div', { class: 'ui-menu-d', text: o.desc }) : null));
   const back = document.activeElement;
-  let open = true, off = null;
+  let open = true, off = null, sub = null, touch = false, leave = 0;
   const btns = [];
+  const subs = new Map();
+  // Below the strip and the pair (in page fullscreen the pair floats alone), clear of the screen corners.
+  const rs = getComputedStyle(document.documentElement), px = (v) => parseFloat(rs.getPropertyValue(v)) || 0;
+  const top0 = Math.max(px('--strip-h'), px('--stop-reserve-h')) + 4, m = 8 + px('--corner-r') * 0.3;
   const close = (e) => {
     if (!open) return;
     open = false;
@@ -1201,27 +1212,102 @@ export function menu(o = {}) {
     if (inside && back && back.isConnected && back.focus) back.focus({ preventScroll: true });
     if (o.onClose) o.onClose(e);
   };
-  for (const it of o.items || []) {
-    if (it.section) el.append(h('div', { class: 'ui-menu-sec', role: 'separator', text: it.section }));
-    const b = h('button', { type: 'button', role: 'menuitem', class: 'ui-menu-i', text: it.label, title: it.disabled || null });
+  const closeSub = (refocus = false) => {
+    clearTimeout(leave);
+    if (!sub) return;
+    const s = sub;
+    sub = null;
+    s.opener.setAttribute('aria-expanded', 'false');
+    s.box.remove();
+    if (refocus) s.opener.focus({ preventScroll: true });
+  };
+  // The flyout is a popover inside the menu, so it counts as inside for every close rule.
+  const openSub = (opener, inline) => {
+    clearTimeout(leave);
+    if (sub && sub.opener === opener) return sub;
+    closeSub();
+    const box = h('div', { class: inline ? 'ui-menu-in' : 'ui-menu ui-menu-sub surface-card', role: 'menu', 'aria-label': opener.textContent, popover: inline ? null : 'manual' });
+    sub = { opener, box, inline, btns: subs.get(opener).map((it) => item(it, box)) };
+    opener.setAttribute('aria-expanded', 'true');
+    if (inline) { opener.after(box); return sub; }
+    box.addEventListener('pointerenter', () => clearTimeout(leave));
+    el.append(box);
+    box.showPopover();
+    // Beside the menu, its first item level with the opener; the other side when the window ends first.
+    box.style.maxHeight = el.style.maxHeight;
+    const r = opener.getBoundingClientRect(), mr = el.getBoundingClientRect(), w = box.offsetWidth, ht = box.offsetHeight;
+    const x = mr.right + w > innerWidth - m ? mr.left - w : mr.right;
+    box.style.left = clamp(x, m, Math.max(m, innerWidth - w - m)) + 'px';
+    box.style.top = clamp(r.top - (sub.btns[0] ? sub.btns[0].offsetTop : 0), top0, Math.max(top0, innerHeight - ht - m)) + 'px';
+    return sub;
+  };
+  const ask = (b, spec) => {
+    const f = h('input', { type: 'text', class: 'ui-menu-ask', placeholder: spec.placeholder || null, 'aria-label': spec.label || b.textContent });
+    const row = h('div', { class: 'ui-menu-ask-row' }, f);
+    const undo = (refocus) => { if (!row.isConnected) return; row.replaceWith(b); if (refocus) b.focus({ preventScroll: true }); };
+    b.replaceWith(row);
+    f.focus({ preventScroll: true });
+    f.addEventListener('input', () => { f.removeAttribute('aria-invalid'); row.querySelector('.ui-menu-hint')?.remove(); });
+    f.addEventListener('blur', () => undo(false));
+    f.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); undo(true); }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = f.value.trim();
+      const why = v ? spec.commit(v) : '';
+      if (!v) undo(true);
+      else if (!why) close(e);
+      else {
+        f.setAttribute('aria-invalid', 'true');
+        if (!row.querySelector('.ui-menu-hint')) row.append(h('span', { class: 'ui-menu-hint', role: 'alert', text: why }));
+      }
+    });
+  };
+  function item(it, box) {
+    if (it.section) box.append(h('div', { class: 'ui-menu-sec', role: 'separator', text: it.section }));
+    const b = h('button', { type: 'button', role: it.checked == null ? 'menuitem' : 'menuitemcheckbox', class: 'ui-menu-i', text: it.label,
+      title: it.disabled || it.title || null, 'aria-checked': it.checked == null ? null : String(!!it.checked) });
     b.disabled = !!it.disabled;
-    b.addEventListener('click', (e) => { close(e); if (it.run) it.run(e); });
-    btns.push(b);
-    el.append(b);
+    if (it.items) {
+      subs.set(b, it.items);
+      b.setAttribute('aria-haspopup', 'menu');
+      b.setAttribute('aria-expanded', 'false');
+      b.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch'; });
+      b.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') openSub(b, false); });
+      b.addEventListener('click', (e) => {
+        const inline = touch && e.detail > 0;
+        if (inline && sub && sub.opener === b) { closeSub(); return; }
+        const s = openSub(b, inline);
+        if (e.detail === 0) s.btns.find((x) => !x.disabled)?.focus();
+      });
+    } else if (it.ask) b.addEventListener('click', () => ask(b, it.ask));
+    else b.addEventListener('click', (e) => { close(e); if (it.run) it.run(e); });
+    // A pointer that wanders off the opener closes its flyout unless it reaches the flyout first.
+    if (box === el) b.addEventListener('pointerenter', (e) => {
+      if (sub && !sub.inline && sub.opener !== b && e.pointerType !== 'touch') { clearTimeout(leave); leave = setTimeout(() => closeSub(), 300); }
+    });
+    box.append(b);
+    return b;
   }
+  for (const it of o.items || []) btns.push(item(it, el));
   el.addEventListener('keydown', (e) => {
-    const live = btns.filter((b) => !b.disabled), i = live.indexOf(document.activeElement), n = live.length;
-    const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? (i < 0 ? n - 1 : i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+    const field = e.target instanceof HTMLInputElement, inSub = !!sub && sub.box.contains(e.target);
+    const live = (inSub ? sub.btns : btns).filter((b) => !b.disabled && b.isConnected), i = live.indexOf(document.activeElement), n = live.length;
+    const to = field ? null : e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? (i < 0 ? n - 1 : i - 1) : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
     if (to != null) { e.preventDefault(); if (n) live[(to + n) % n].focus(); return; }
-    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(e); }
+    if (!field && subs.has(e.target) && (e.key === 'ArrowRight' || e.key === 'Enter')) {
+      e.preventDefault();
+      openSub(e.target, false).btns.find((b) => !b.disabled)?.focus();
+      return;
+    }
+    if (inSub && !field && (e.key === 'ArrowLeft' || e.key === 'Escape')) { e.preventDefault(); e.stopPropagation(); closeSub(true); return; }
+    if ((e.key === 'Escape' && !field) || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); close(e); }
   });
+  el.addEventListener('scroll', () => { if (sub && !sub.inline) closeSub(); });
   const away = (e) => { if (!(e.target instanceof Node && el.contains(e.target))) close(e); };
   const L = [['resize', close], ['blur', (e) => { if (e.target === window) close(e); }], ['wheel', away], ['scroll', away]];
   document.body.append(el);
   el.showPopover();
-  // Below the strip and the pair (in page fullscreen the pair floats alone), clear of the screen corners.
-  const rs = getComputedStyle(document.documentElement), px = (v) => parseFloat(rs.getPropertyValue(v)) || 0;
-  const top0 = Math.max(px('--strip-h'), px('--stop-reserve-h')) + 4, m = 8 + px('--corner-r') * 0.3;
   el.style.maxHeight = Math.max(120, innerHeight - top0 - m) + 'px';
   const w = el.offsetWidth, ht = el.offsetHeight;
   const x = (o.x ?? 0) + w > innerWidth - m ? (o.x ?? 0) - w : (o.x ?? 0);

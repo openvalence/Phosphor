@@ -476,9 +476,9 @@ export function saveStore(storage, store) {
   }
 }
 
-/** The placement map for one view in the active layout; `create` false reads without writing. */
-export function viewMap(store, cls, viewId, create = true) {
-  const l = store.layouts[store.active];
+/** The placement map for one view in layout `name` (the active one); `create` false reads without writing. */
+export function viewMap(store, cls, viewId, create = true, name = store.active) {
+  const l = store.layouts[name];
   const k = cls + '.' + viewId;
   if (own(l, k)) return l[k];
   return create ? (l[k] = {}) : {};

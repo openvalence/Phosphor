@@ -492,7 +492,7 @@
     }
     return out;
   }
-  $effect(() => installContextMenu({ tab: () => current, go: selectTab, items: menuItems }));
+  $effect(() => installContextMenu({ tab: () => current, go: selectTab, dash: pickLayout, items: menuItems }));
 
   // The expanded rail carries the page operations in the selected page's pill
   // (DESIGN §10.11); PageFoot keeps them on the mini rail and the tab strip.

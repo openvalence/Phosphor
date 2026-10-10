@@ -1,3 +1,37 @@
+<script module>
+  import { layouts, checkpoint, appendTo } from '../model/dashboard.svelte.js';
+  import { viewMap, isNest, nestsIn, baseKey } from '../model/grid.js';
+
+  const VIEW = 'machine';
+  const BUILT = 'home:built';
+
+  /** The seed an unbuilt Dash shows, in order: rank surfacing (RENDERING §4, ph-vdk.36), telemetry, card-zone heroes, loose actions. */
+  export const seedKeys = (heroes) => ['widget:hero-rank', 'widget:telemetry',
+    ...heroes.widgets.filter((h) => h.zone === 'card').map((h) => 'hero:' + h.id), 'widget:actions'];
+
+  /** A Dash's members in `map`: its plain keys (the seed while it has none) plus every nest's members. */
+  function dashKeys(map, seed) {
+    const plain = Object.keys(map).filter((k) => !isNest(map[k]));
+    return [...new Set([...(plain.length ? plain : seed), ...nestsIn(map).flatMap((n) => n.keys)])];
+  }
+
+  /** True when Dash `n` (a layout name) draws a placement of any of `ids` on the full class, a duplicate included. */
+  export const dashHolds = (n, ids, seed) => dashKeys(viewMap(layouts, 'full', VIEW, false, n), seed).some((k) => ids.includes(baseKey(k)));
+
+  /**
+   * Add `key` to Dash `n` on the full class at the first free rect, active or
+   * not (dashboard.svelte.js appendTo); one undo step. An unbuilt Dash takes
+   * `seed` first, so nothing it showed goes; pass [] for one the user has not seen.
+   */
+  export function addToDash(n, key, seed) {
+    checkpoint();
+    const m = viewMap(layouts, 'full', VIEW, true, n);
+    const built = Object.keys(m).some((k) => !isNest(m[k]));
+    if (!built) m[BUILT] = { x: 0, y: 0, w: 1, h: 1 };
+    return appendTo(n, 'full', VIEW, built ? [key] : [...seed, key]);
+  }
+</script>
+
 <script>
   /**
    * Home.svelte: the Dash, the built home page (DESIGN §10.1). An ADDITIONAL surface: the
@@ -17,6 +51,8 @@
    *   `<key>#<n>` key is a second placement of the same control (Duplicate),
    *   with its own place and look; the palette counts the control once.
    * - Only the `full` class builds (ph-e82.7); other classes always show the seed.
+   * - The context menu's Add to Dash writes a Dash that is not mounted:
+   *   seedKeys, dashHolds and addToDash above are its only door.
    */
   import DashGrid from './dash/DashGrid.svelte';
   import Palette from './Palette.svelte';
@@ -26,8 +62,8 @@
   import Control from './widgets/Control.svelte';
   import LookEditor from './LookEditor.svelte';
   import TelemetryChart from './widgets/TelemetryChart.svelte';
-  import { dashboardLayout, layouts, grid, checkpoint } from '../model/dashboard.svelte.js';
-  import { viewMap, cellCount, isNest, placeable, instanceKey, baseKey } from '../model/grid.js';
+  import { dashboardLayout, grid } from '../model/dashboard.svelte.js';
+  import { cellCount, placeable, instanceKey } from '../model/grid.js';
   import { view } from '../model/viewport.svelte.js';
   import { specSafetyAction, estopLabel } from '../model/machine.svelte.js';
   import { SAFETY_OP } from '../../../Valence/clients/js/index.js';
@@ -36,8 +72,6 @@
 
   let { model, heroes } = $props();
 
-  const VIEW = 'machine';
-  const BUILT = 'home:built';
   const builder = $derived(view.cls === 'full');
   const layout = $derived(dashboardLayout(VIEW, view.cls));
   let editing = $state(false);
@@ -79,21 +113,8 @@
     return out;
   });
 
-  // The seed, in order: rank surfacing (RENDERING §4, ph-vdk.36), telemetry,
-  // card-zone heroes, loose actions.
-  const seed = $derived([
-    'widget:hero-rank', 'widget:telemetry',
-    ...heroes.widgets.filter((h) => h.zone === 'card').map((h) => 'hero:' + h.id),
-    'widget:actions',
-  ]);
-
-  const keys = $derived.by(() => {
-    if (!builder) return seed;
-    const m = viewMap(layouts, view.cls, VIEW, false);
-    const plain = Object.keys(m).filter((k) => !isNest(m[k]));
-    const nested = layout.nests().flatMap((n) => n.keys);
-    return [...new Set([...(plain.length ? plain : seed), ...nested])];
-  });
+  const seed = $derived(seedKeys(heroes));
+  const keys = $derived(builder ? dashKeys(viewMap(layouts, view.cls, VIEW, false), seed) : seed);
   // Homes saved before ph-e82.9 key role fields by uid: both forms resolve to
   // one control, which keeps the saved key as its id (its placement entry).
   const aliases = $derived(new Map([...modules.values()].filter((m) => m.control && m.control.alias)

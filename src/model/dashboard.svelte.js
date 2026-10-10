@@ -152,23 +152,27 @@ export const palette = $state({ shown: false, open: true, h: 0 });
 export const moduleNames = () => Object.keys(layouts.modules || {});
 export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 
-// Per view key: the content height a mounted grid measured (grid.js pack `fit`),
-// and the ids an add left unplaced until that grid has measured them.
+// Per view key: the content height a mounted grid measured (grid.js pack `fit`).
+// Per layout and view key: the ids an add left unplaced until a grid has measured them.
 const fits = new Map();
 const held = new Map();
+const heldAt = (n, key) => n + '\n' + key;
+function hold(n, key, ids) {
+  if (ids.length) held.set(heldAt(n, key), new Set([...(held.get(heldAt(n, key)) || []), ...ids]));
+}
 
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
 function controller(key, read, write, members) {
   const fit = () => fits.get(key) || null;
-  const hold = (ids) => { if (ids.length) held.set(key, new Set([...(held.get(key) || []), ...ids])); };
+  const here = (ids) => hold(layouts.active, key, ids);
   return {
     // `f` defaults to the registered one; a $derived passes its own, since the registry is not reactive.
     arrange: (items, cols, pin = null, f = fit()) => G.place(items, read(), cols, pin, f),
-    move: edit((items, cols, pin) => (hold(G.commitPin(write(), items, cols, pin, fit())), true)),
+    move: edit((items, cols, pin) => (here(G.commitPin(write(), items, cols, pin, fit())), true)),
     // A repair the user did not make (an add written once measured): saved, never an undo step.
     fit: (items, cols) => {
-      held.delete(key);
-      hold(G.commitPin(write(), items, cols, null, fit()));
+      held.delete(heldAt(layouts.active, key));
+      here(G.commitPin(write(), items, cols, null, fit()));
       persist();
     },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
@@ -178,11 +182,25 @@ function controller(key, read, write, members) {
     /** The mounted grid's content height `fn(item, w, h) -> cells | null`; null unregisters. */
     measured: (fn) => { if (fn) fits.set(key, fn); else fits.delete(key); },
     /** Ids an add left unplaced until measured; the grid fixes them with fit(). */
-    held: () => held.get(key) || null,
+    held: () => held.get(heldAt(layouts.active, key)) || null,
     /** True when `id` has a stored rect; an unplaced card follows its content. */
     saved: (id) => G.positioned(read()[id]),
   };
 }
+
+/**
+ * Add `ids` to view `viewId` of layout `n`, active or not, unplaced: each is
+ * drawn at the first free rect (grid.js place) and written there once a grid
+ * has measured it. Ids the view already holds are left as they are.
+ */
+export const appendTo = edit((n, cls, viewId, ids) => {
+  if (!Object.prototype.hasOwnProperty.call(layouts.layouts, n)) return false;
+  const m = G.viewMap(layouts, cls, viewId, true, n);
+  const add = ids.filter((id) => m[id] === undefined);
+  for (const id of add) m[id] = {};
+  hold(n, cls + '.' + viewId, add);
+  return true;
+});
 
 /**
  * Placement controller for one view under one renderer class, always reading
