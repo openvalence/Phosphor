@@ -927,6 +927,8 @@
     border: 1px solid var(--shell-border);
     border-radius: var(--radius);
   }
+  /* Collapsed, the section's tabs keep the others' width (law 12). */
+  .rail.mini .rail-sec.shell { padding-inline: 0; }
   .rail-sec.shell :global(.rail-tab:not(.on)),
   .rail-sec.shell .rail-lbl { color: var(--shell-fg); }
   .rail-sec.shell .rail-glyph { color: var(--shell-fg); }
