@@ -605,6 +605,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     canPlay,
     /** A gate stands (a latch, another source's rail): Autoplay reads it. */
     gated: () => !!gate(),
+    /** Ms until tick() has work: 0 while prerolling or playing, the pause home's wait, else Infinity. */
+    wakeIn: () => (active() ? 0 : state.phase === 'ready' && state.play.home ? Math.max(0, homeAt - now()) : Infinity),
     setFields(f) { fields = f; reshape(); warm(); changed(); },
     setInterp(v) { interp = v; reshape(); changed(); },
     update() { if (gate() && active()) stop('held', '', true); else changed(); },
@@ -947,7 +949,7 @@ export function createPlayer(api) {
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
   const osc = createOsc({ submit: (list) => api.submitSamples(OSC_ROLE, list) });
   const views = [];
-  const ctl = createControl({ api, video, clock, scheduler, submit, probe, osc, onChange: () => views.forEach((v) => v.render()) });
+  const ctl = createControl({ api, video, clock, scheduler, submit, probe, osc, onChange: () => { views.forEach((v) => v.render()); kick(); } });
   const stopFrames = frameSource(vel, ctl.onFrame);
 
   let stash = null, stashId = '';
@@ -1006,7 +1008,13 @@ export function createPlayer(api) {
     else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, sc, '', rest);
   }
 
-  let raf = 0;
+  // The frame loop runs only while something moves (ph-m1gy): the controller's wakeIn (play, preroll, the pause
+  // home's timer) and a pending Autoplay. Anything else that changes what a view draws kicks one frame: a state change,
+  // a seek, a resize, an input, a Kinetic render landing, an update() that moved what a frame draws (view.poll).
+  let raf = 0, wake = 0, quiet = false;
+  const kick = () => { if (!raf && !quiet && views.length) raf = requestAnimationFrame(loop); };
+  for (const t of ['seeking', 'durationchange', 'ratechange']) video.addEventListener(t, kick);
+  vel.addEventListener('progress', kick);
   // ---- the queue and Autoplay (ph-1qs5.9) ----
   const stashKey = () => (readPrefs(api).stash || {}).key || '';
   const stemOf = (name) => name.replace(/\.[^.]*$/, '').toLowerCase();
@@ -1042,11 +1050,14 @@ export function createPlayer(api) {
     else if (ctl.canPlay()) { autoPending = null; ctl.play(); }
   };
   const loop = () => {
+    raf = 0;
     if (video.silent) { video.poll(); if (!video.paused) ctl.onFrame(video.currentTime * 1000, performance.now()); }
     if (autoPending) autoStep();
     ctl.tick();
     for (const v of views) v.frame();
-    raf = views.length ? requestAnimationFrame(loop) : 0;
+    clearTimeout(wake);
+    const w = autoPending ? 0 : ctl.wakeIn();
+    if (w <= 0) kick(); else if (w < Infinity) wake = setTimeout(kick, w);
   };
   const onVis = () => { if (document.hidden) ctl.halt(); };
   document.addEventListener('visibilitychange', onVis);
@@ -1057,9 +1068,14 @@ export function createPlayer(api) {
     views.push(view);
     view.host();
     ctl.setFields(fields);
-    if (!raf) raf = requestAnimationFrame(loop);
+    kick();
     return {
-      update() { ctl.update(); view.render(); },
+      // Every telemetry sample of a claimed field lands here: ctl.update renders every view, a frame only on a change.
+      update() {
+        quiet = true;
+        try { ctl.update(); } finally { quiet = false; }
+        view.poll();
+      },
       unmount() {
         const i = views.indexOf(view);
         if (i < 0) return;
@@ -1070,7 +1086,7 @@ export function createPlayer(api) {
           if (last) { last.host(); ctl.setFields(last.fields); }
         }
         view.destroy();
-        if (!views.length && raf) { cancelAnimationFrame(raf); raf = 0; }
+        if (!views.length) { cancelAnimationFrame(raf); raf = 0; clearTimeout(wake); }
       },
     };
   }
@@ -1309,6 +1325,8 @@ export function createPlayer(api) {
       e.preventDefault();
       stage.poke();
     });
+    // An analyzer slider's draft re-renders the Kinetic preview on the next frame.
+    root.addEventListener('input', kick);
     el.append(root);
 
     let zoomMs = readPrefs(api).zoomMs;
@@ -1334,7 +1352,7 @@ export function createPlayer(api) {
       if (on) anMount();
     }
     function anMount() {
-      if (!analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => ctl.wire, T: () => st.T, fit: () => ctl.fit });
+      if (!analyzer) analyzer = mountAnalyzer(anbox, { api, trace: () => ctl.trace, script: () => ctl.wire, T: () => st.T, fit: () => ctl.fit, onRender: kick });
     }
     let fitSeen = null;
     const libPrefs = { get: (k) => readPrefs(api)[k], set: (k, v) => writePref(api, k, v) };
@@ -1369,6 +1387,7 @@ export function createPlayer(api) {
       const col = root.clientWidth - (lib1 ? LIB_W + gapPx : 0);
       root.toggleAttribute('data-rows2', c !== 'glance' && (c === 'handheld' || cls === 'portrait' || cls === 'landscape' || col < BAR_ROW_MIN));
       applySplit();
+      kick();
     };
     const ro = new ResizeObserver(recompose);
     if (opts.page) window.addEventListener('resize', recompose);
@@ -1448,7 +1467,7 @@ export function createPlayer(api) {
       if (comp && comp !== 'glance') anMount();
       if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
       if (analyzer && comp !== 'glance') {
-        analyzer.frame();
+        analyzer.frame(root.hasAttribute('data-an'));
         const fr = analyzer.fit;
         if (fr && fr !== fitSeen) { fitSeen = fr; ctl.fitKinetic(fr.sc, fr.extent); }
       }
@@ -1468,18 +1487,29 @@ export function createPlayer(api) {
         speedBar.style.width = '0';
         tickI.hidden = moI.hidden = true;
       }
-      const pu = fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null;
+      const pu = realShare(), stale = !!(fields.pos && api.stale(fields.pos));
       for (const t of [tickR, moR]) {
         t.hidden = pu == null;
         if (pu != null) t.style.left = tickAt(pu);
-        t.classList.toggle('stale', !!(fields.pos && api.stale(fields.pos)));
+        t.classList.toggle('stale', stale);
       }
+      hubSeen = hubKey(pu, stale, ceil);
       render();
+    }
+    // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The open
+    // analyzer's rows read the hub on every frame; a collapsed one only checks whether its render is current.
+    const realShare = () => (fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null);
+    const hubKey = (pu, stale, c) => pu + ' ' + stale + ' ' + c.vmax + ' ' + c.spanMm;
+    let hubSeen = '';
+    function poll() {
+      if (raf) return;
+      if (root.hasAttribute('data-an') || hubKey(realShare(), !!(fields.pos && api.stale(fields.pos)), ceilingOf(api, fields)) !== hubSeen) kick();
+      else if (analyzer && comp !== 'glance') analyzer.frame(false);
     }
     const hosting = () => vel.parentNode === stage.media;
     render();
     return {
-      fields, render, frame, hosting,
+      fields, render, frame, poll, hosting,
       host() { stage.media.append(vel); st.composition = comp || st.composition; },
       destroy() {
         window.removeEventListener('resize', recompose);
@@ -1500,8 +1530,9 @@ export function createPlayer(api) {
     dispose() {
       ctl.dispose();
       stopFrames();
-      if (raf) cancelAnimationFrame(raf);
+      cancelAnimationFrame(raf);
       raf = 0;
+      clearTimeout(wake);
       document.removeEventListener('visibilitychange', onVis);
       video.removeAttribute('src');
       video.load();

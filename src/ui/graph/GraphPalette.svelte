@@ -107,17 +107,18 @@
     box?.querySelector('[data-cur]')?.scrollIntoView({ block: 'nearest' });
   }
 
+  /** Enter on a row: a header opens or closes, an item is placed. */
+  function act(r) {
+    if (!r) return;
+    if (r.head) toggle(r.id);
+    else onpick(r.it.value);
+  }
+
   function key(e) {
     const r = rows[cur];
-    if (e.key === 'Escape' || e.key === 'F3') { e.preventDefault(); e.stopPropagation(); onclose(); return; }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (!r) return;
-      if (r.head) toggle(r.id);
-      else if (e.shiftKey) onfind(r.it.value);
-      else onpick(r.it.value);
-      return;
-    }
+    if (e.key === 'F3' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onclose(); return; }
+    if (e.key === 'Enter' && e.shiftKey && r && !r.head) { e.preventDefault(); onfind(r.it.value); return; }
+    if (e.key === 'Enter') { e.preventDefault(); act(r); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       cur = Math.max(0, Math.min(rows.length - 1, cur + (e.key === 'ArrowDown' ? 1 : -1)));

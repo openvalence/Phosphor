@@ -40,6 +40,9 @@
 // - `overlay` elements ride the detail (the caller positions them), pointer-events none.
 // - The A-B points are a selection: --highlight, a band on the heat and two lines in the detail.
 //   One button cycles start, end, clear (onLoop); setLoop draws what the controller holds.
+// - The curve, the dots and the lanes are drawn over a span SLIDE times the detail's window, centered on it, and
+//   moved with a transform: playback rebuilds them only when the window leaves that span or what they draw
+//   changes (ph-m1gy). frame() draws nothing while the playhead, the trace and the render stand still.
 // - The oscillator axes (raw Script.axes V8, V9) are thin lanes under the detail, its window and playhead,
 //   0..1 bottom to top, untransformed: the hub maps them (SPEC 9.7). The detail gives up their height, so the
 //   timeline's box never changes; without them there are no lanes.
@@ -52,6 +55,7 @@ export const HEAT_BINS = 200;
 export const HEAT_MID_UPS = 200, HEAT_TOP_UPS = 400;
 export const TRACE_MS = 8000;
 export const MIN_SPAN = 0.05;
+const SLIDE = 2, NONE = [];
 const SEEK_KEYS = { ArrowLeft: -5000, ArrowRight: 5000 };
 const T0 = { offsetMs: 0, lo: 0, hi: 1, invert: false };
 
@@ -106,11 +110,11 @@ export function dotPath(script, fromMs, toMs, W, H, T = T0) {
   return d;
 }
 
-/** A Kinetic render ({t0, dtMs, pos mm, lo, hi}) as polyline points from fromMs to toMs, at most 2000. */
-export function kinPoints(r, fromMs, toMs, W, H) {
+/** A Kinetic render ({t0, dtMs, pos mm, lo, hi}) as polyline points from fromMs to toMs, at most max. */
+export function kinPoints(r, fromMs, toMs, W, H, max = 2000) {
   if (!r || !r.pos || !(toMs > fromMs) || !(r.hi > r.lo)) return '';
   const n = r.pos.length, j0 = clamp(Math.floor((fromMs - r.t0) / r.dtMs), 0, n), j1 = clamp(Math.ceil((toMs - r.t0) / r.dtMs) + 1, 0, n);
-  const stride = Math.max(1, Math.ceil((j1 - j0) / 2000)), pts = [];
+  const stride = Math.max(1, Math.ceil((j1 - j0) / max)), pts = [];
   for (let j = j0; j < j1; j += stride) {
     pts.push(((r.t0 + j * r.dtMs - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - (r.pos[j] - r.lo) / (r.hi - r.lo) * H).toFixed(1));
   }
@@ -124,19 +128,20 @@ export function seekAt(x, W, durationMs) {
 
 /**
  * The reality trace inside [fromMs, toMs] as polylines: a null u breaks the
- * line (law 9: a gap, never a zero), a stale change starts a new one.
+ * line (law 9: a gap, never a zero), a stale change starts a new one. key: the share drawn ('u', or 'p' the plan).
  */
-export function traceLines(trace, fromMs, toMs, W, H) {
+export function traceLines(trace, fromMs, toMs, W, H, key = 'u') {
   const out = [];
   let cur = null;
   for (const p of trace || []) {
-    if (p.u == null || p.m < fromMs || p.m > toMs) { cur = null; continue; }
+    const u = p[key];
+    if (u == null || p.m < fromMs || p.m > toMs) { cur = null; continue; }
     if (!cur || cur.stale !== !!p.stale) {
       const prev = cur && cur.pts[cur.pts.length - 1];
       cur = { stale: !!p.stale, pts: prev ? [prev] : [] };
       out.push(cur);
     }
-    cur.pts.push(((p.m - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - clamp(p.u, 0, 1) * H).toFixed(1));
+    cur.pts.push(((p.m - fromMs) / (toMs - fromMs) * W).toFixed(1) + ',' + (H - clamp(u, 0, 1) * H).toFixed(1));
   }
   return out.filter((l) => l.pts.length > 1).map((l) => ({ points: l.pts.join(' '), stale: l.stale }));
 }
@@ -246,6 +251,7 @@ const s = (tag, attrs = {}) => {
 
 export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () => {}, zoomMs = 10000, ovHost = null, ovBefore = null, overlay = [], onLoop = null }) {
   let script = null, raw = null, T = T0, ceiling = null, preview = null, m = 0, trace = [], ab = { a: null, b: null }, kin = null;
+  let traceN = 0, traceLast = null, span = null;
   let zoom = ZOOMS.includes(zoomMs) ? zoomMs : 10000;
   const dur = () => (script ? script.durationMs : 0);
 
@@ -366,6 +372,7 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   });
   const lph = h('i', { class: 'fsp-ph', 'aria-hidden': 'true' });
   const laneBox = h('div', { class: 'fsp-lanes' }, ...lanes.map((l) => l.el), lph);
+  const slid = [curve, dots, ...lanes.map((l) => l.line)];
   let axes = {};
   const root = h('div', { class: 'fsp-tl' }, dt, laneBox, ...(ovHost ? [] : [ov]));
   el.append(root);
@@ -383,14 +390,30 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
   function draw() {
     const d = dur(), Te = eff();
     const from = m - (d ? clamp(m / d, 0, 1) : 0.5) * zoom, to = from + zoom;
-    const k = kin && !preview ? { ...kin, t0: kin.t0 - (Te.offsetMs || 0) } : null;
-    curve.setAttribute('points', k ? kinPoints(k, from, to, 1000, 100) : curvePoints(script, from, to, 1000, 100, Te));
-    curve.toggleAttribute('data-kin', !!k);
-    curve.classList.toggle('draft', !!preview);
-    dots.setAttribute('d', dotPath(script, from, to, 1000, 100, Te));
-    real.replaceChildren(...traceLines(trace.map((x) => ({ m: x.m, u: x.p })), from, to, 1000, 100).map((l) => s('polyline', {
-      class: 'plan', points: l.points })), ...traceLines(trace, from, to, 1000, 100).map((l) => s('polyline', {
-      class: 'real' + (l.stale ? ' stale' : ''), points: l.points })));
+    const kk = kin && !preview ? kin : null;
+    if (!span || from < span.a || to > span.b || span.zoom !== zoom || span.script !== script || span.kin !== kk || span.T !== Te
+      || span.axes !== axes) {
+      const a = from - (SLIDE - 1) / 2 * zoom, b = to + (SLIDE - 1) / 2 * zoom, W = 1000 * SLIDE;
+      const k = kk ? { ...kk, t0: kk.t0 - (Te.offsetMs || 0) } : null;
+      curve.setAttribute('points', k ? kinPoints(k, a, b, W, 100, 2000 * SLIDE) : curvePoints(script, a, b, W, 100, Te));
+      curve.toggleAttribute('data-kin', !!k);
+      curve.classList.toggle('draft', !!preview);
+      dots.setAttribute('d', dotPath(script, a, b, W, 100, Te));
+      for (const l of lanes) if (axes[l.id]) l.line.setAttribute('points', curvePoints(axes[l.id], a, b, W, 100));
+      span = { a, b, zoom, script, kin: kk, T: Te, axes };
+    }
+    const tx = 'translate(' + ((span.a - from) / zoom * 1000).toFixed(2) + ' 0)';
+    for (const e of slid) e.setAttribute('transform', tx);
+    // The trace's polylines are reused frame to frame: plan under reality.
+    let n = 0;
+    const put = (cls, pts) => {
+      const p = real.children[n++] || real.appendChild(s('polyline'));
+      if (p.getAttribute('class') !== cls) p.setAttribute('class', cls);
+      p.setAttribute('points', pts);
+    };
+    for (const l of traceLines(trace, from, to, 1000, 100, 'p')) put('plan', l.points);
+    for (const l of traceLines(trace, from, to, 1000, 100)) put(l.stale ? 'real stale' : 'real', l.points);
+    while (real.children.length > n) real.lastChild.remove();
     for (const [line, v] of [[rgLo, Te.lo], [rgHi, Te.hi]]) {
       line.setAttribute('y1', String(100 - v * 100));
       line.setAttribute('y2', String(100 - v * 100));
@@ -415,7 +438,6 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     ph.style.left = scrub.style.left;
     ph.hidden = !script;
     lph.style.left = scrub.style.left;
-    for (const l of lanes) if (axes[l.id]) l.line.setAttribute('points', curvePoints(axes[l.id], from, to, 1000, 100));
     const ax = (t) => String(((t - from) / zoom) * 1000);
     abBand.setAttribute('x', String(d && ab.b != null ? ab.a / d * HEAT_BINS : 0));
     abBand.setAttribute('width', String(d && ab.b != null ? (ab.b - ab.a) / d * HEAT_BINS : 0));
@@ -446,9 +468,9 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
       draw();
     },
     frame(mediaMs, tr, kr) {
-      m = Number.isFinite(mediaMs) ? mediaMs : 0;
-      trace = tr || [];
-      kin = kr || null;
+      const m2 = Number.isFinite(mediaMs) ? mediaMs : 0, t2 = tr || NONE, n = t2.length, last = n ? t2[n - 1] : null;
+      if (m2 === m && t2 === trace && n === traceN && last === traceLast && (kr || null) === kin) return;
+      m = m2; trace = t2; traceN = n; traceLast = last; kin = kr || null;
       draw();
     },
     /** {a, b} media ms, either null: what the A-B button has set. */
