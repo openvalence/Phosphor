@@ -5,16 +5,23 @@
  * valencesim catalog. Asserts:
  *   seed       an add to the unbuilt Default keeps every seed card where it was
  *              drawn and appends the field at the first free rect; the page stays
- *   check      a Dash that holds the item is checked; choosing it opens the Dash
- *              on that layout with the card in view
+ *   check      a Dash that holds the item is checked (a mark: every row stays a
+ *              menuitem); choosing it opens the Dash, taller than the window, on
+ *              that layout scrolled to the card with its first control focused
  *   new        New Dash... asks for a name in place (a taken one is marked), makes
  *              the layout holding only the item, and leaves the active one alone
  *   module     a Dash card's own menu adds it to another Dash
  *   keys       ArrowRight or Enter opens the submenu on its first item, ArrowLeft
  *              or Escape closes it back to the opener; Enter picks
+ *   focus      a pointer wandering off keeps a flyout holding focus (the typed
+ *              New Dash name stays); a flyout closed with focus inside hands it
+ *              to the opener; Escape walks out to the control, never to body
  *   rename     the submenu follows a rename and a delete in the sidebar
- *   persist    every add survives a reload
- *   touch      1024x768 with touch: a tap opens the submenu inline, a second closes it
+ *   persist    every add survives a reload; adds to a Dash never drawn, renamed
+ *              after a reload, are still written once that Dash measures them
+ *   touch      1024x768 with touch: a tap opens the submenu inline, a second closes
+ *              it; opened low, the menu stays inside the window; a height-only
+ *              resize (the touch keyboard) keeps the New Dash field open
  *   classes    420x860 (not the full class): no Add to Dash
  * Screenshots: 1428x900, 1024x768 and 420x860, dark and Paper (test/evidence or --shots <dir>).
  *
@@ -142,7 +149,8 @@ const subState = (page) => page.evaluate(([MENU, FLY]) => {
   const r = (e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom].map(Math.round); };
   return { menu: !!m, fly: !!f, inline: !!inl, rect: f ? r(f) : null, menuRect: m ? r(m) : null,
     opener: m?.querySelector(':scope > .ui-menu-i[aria-haspopup]')?.getAttribute('aria-expanded') ?? null,
-    items: box ? [...box.querySelectorAll('.ui-menu-i')].map((b) => (b.getAttribute('aria-checked') === 'true' ? '+' : '') + b.textContent) : [],
+    items: box ? [...box.querySelectorAll('.ui-menu-i')].map((b) => (b.hasAttribute('data-checked') ? '+' : '') + b.textContent) : [],
+    roles: box ? [...new Set([...box.querySelectorAll('.ui-menu-i')].map((b) => b.getAttribute('role')))] : [],
     focus: document.activeElement?.textContent || document.activeElement?.tagName || '' };
 }, [MENU, FLY]);
 const subItem = (page, label) => page.locator(FLY + ' .ui-menu-i, ' + MENU + ' .ui-menu-in .ui-menu-i').filter({ hasText: new RegExp('^' + label + '$') }).first();
@@ -202,17 +210,37 @@ for (const theme of [null, PAPER]) {
   const placed = (await store(page)).layouts.Default['full.machine'][FREQ_KEY];
   ok(t + ': once measured the add is written at the rect it was drawn at', placed && placed.y != null && placed.w > 0, placed);
 
+  // A Dash taller than the window: the card moved far below the fold, so opening it there must scroll.
+  await page.evaluate(([k, id]) => {
+    const s = JSON.parse(localStorage.getItem(k));
+    s.layouts.Default['full.machine'][id] = { ...s.layouts.Default['full.machine'][id], x: 0, y: 60 };
+    localStorage.setItem(k, JSON.stringify(s));
+  }, [STORE, FREQ_KEY]);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('nav.rail [data-tab-id="cat2"]', { timeout: 15000 });
+  await goTab(page, 'machine');
+  await page.waitForSelector('.home .dash-cell[data-id="' + FREQ_KEY + '"]');
+  await page.waitForTimeout(400);
+  const below = await page.locator('.home .dash-cell[data-id="' + FREQ_KEY + '"]').evaluate((e) => e.getBoundingClientRect().top - innerHeight);
+  ok(t + ': setup: the card sits below the fold of a Dash taller than the window', below > 0, below);
+
   // check: the Dash that holds it is checked and opens on it
   await goTab(page, 'cat2');
   await page.waitForSelector(F(FREQ));
   await rclick(page, F(FREQ));
   await page.hover(OPENER);
   await page.waitForTimeout(100);
-  ok(t + ': a Dash that holds the item is checked', JSON.stringify((await subState(page)).items) === JSON.stringify(['+Default', 'New Dash…']), await subState(page));
+  const c1 = await subState(page);
+  ok(t + ': a Dash that holds the item is checked, a mark on a menuitem (it runs)', JSON.stringify(c1.items) === JSON.stringify(['+Default', 'New Dash…'])
+    && JSON.stringify(c1.roles) === JSON.stringify(['menuitem']), c1);
   await subItem(page, 'Default').click();
   await page.waitForTimeout(500);
-  ok(t + ': choosing it opens the Dash on that layout with the card in view', await tabOn(page, 'machine')
-    && (await rows(page)).includes('Default*') && await inView(page, '.home .dash-cell[data-id="' + FREQ_KEY + '"]'), await rows(page));
+  const scrolled = await page.evaluate(() => document.querySelector('.content')?.scrollTop || 0);
+  const focusIn = await page.locator('.home .dash-cell[data-id="' + FREQ_KEY + '"]').evaluate((e) => e.contains(document.activeElement)
+    || [document.activeElement?.tagName, document.activeElement?.className].join(' '));
+  ok(t + ': choosing it opens the Dash on that layout, scrolled to the card, its first control focused', await tabOn(page, 'machine')
+    && (await rows(page)).includes('Default*') && scrolled > 0 && focusIn === true && await inView(page, '.home .dash-cell[data-id="' + FREQ_KEY + '"]'),
+    { rows: await rows(page), scrolled, focusIn });
 
   // new: New Dash… asks for a name in place; a taken one is marked
   await goTab(page, 'cat2');
@@ -260,6 +288,36 @@ for (const theme of [null, PAPER]) {
   ok(t + ': keys: ArrowDown moves in the submenu and Enter adds', k5.focus === 'Workout' && !(await subState(page)).menu
     && FREQ_KEY in (await store(page)).layouts.Workout['full.machine'], k5);
 
+  // focus: a flyout holding focus outlives the pointer; Escape walks out to the control
+  const range = '.field[data-uid="' + DWELL + '"] input[type=range]';
+  await page.locator(range).focus();
+  await page.keyboard.press('Shift+F10');
+  for (let i = 0; i < 12 && (await subState(page)).focus !== 'Add to Dash'; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Half');
+  await page.hover(MENU + ' > .ui-menu-i >> nth=0');
+  await page.waitForTimeout(450);
+  const f1 = await page.evaluate(() => ({ value: document.activeElement?.value, fly: !!document.querySelector('.ui-menu-sub:popover-open') }));
+  ok(t + ': focus: a pointer wandering off keeps the flyout and the typed name while focus is inside', f1.fly && f1.value === 'Half', f1);
+  await page.keyboard.press('Escape');
+  const f2 = await subState(page);
+  await page.keyboard.press('Escape');
+  const f3 = await subState(page);
+  await page.keyboard.press('Escape');
+  const f4 = await page.evaluate((sel) => ({ menu: !!document.querySelector('body > .ui-menu:popover-open'), back: document.activeElement === document.querySelector(sel) }), range);
+  ok(t + ': focus: Escape puts New Dash… back, then closes the flyout to its opener, then the menu to the control', f2.fly && f2.focus === 'New Dash…'
+    && !f3.fly && f3.menu && f3.focus === 'Add to Dash' && !f4.menu && f4.back, { f2, f3, f4 });
+  await page.locator(range).focus();
+  await page.keyboard.press('Shift+F10');
+  for (let i = 0; i < 12 && (await subState(page)).focus !== 'Add to Dash'; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await page.locator(MENU).evaluate((m) => m.dispatchEvent(new Event('scroll')));
+  const f5 = await subState(page);
+  ok(t + ': focus: a flyout closed with focus inside (a menu scroll) hands focus to its opener', !f5.fly && f5.menu && f5.focus === 'Add to Dash', f5);
+  await page.keyboard.press('Escape');
+
   // module: a Dash card's own menu
   await goTab(page, 'machine');
   await page.waitForSelector('.home .dash-cell[data-id="widget:telemetry"]');
@@ -272,22 +330,30 @@ for (const theme of [null, PAPER]) {
   ok(t + ': the card joins the other Dash; this one stays on screen', 'widget:telemetry' in (await store(page)).layouts.Workout['full.machine']
     && (await rows(page)).includes('Default*'));
 
-  // persist, then the submenu follows a rename and a delete
+  // persist; Workout was never drawn: renamed after a reload, its adds are still written once measured
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('nav.rail [data-tab-id="cat2"]', { timeout: 15000 });
   await goTab(page, 'machine');
   await page.waitForSelector('.home .dash-cell');
   await page.waitForTimeout(400);
   const d1 = Object.keys(await homeCells(page));
-  await page.click('nav.rail [data-layout="Workout"]');
-  await page.waitForTimeout(400);
-  const d2 = Object.keys(await homeCells(page));
-  ok(t + ': persist: both Dashes hold their adds across a reload', d1.includes(FREQ_KEY) && Object.keys(seed).every((id) => d1.includes(id))
-    && JSON.stringify(d2.sort()) === JSON.stringify([DWELL_KEY, FREQ_KEY, 'widget:telemetry'].sort()), { d1, d2 });
-  await page.dblclick('nav.rail [data-layout="Workout"]');
+  // F2, and Tab to keep it: Enter's keypress lands on the row it refocuses and opens that layout.
+  await page.locator('nav.rail [data-layout="Workout"]').focus();
+  await page.keyboard.press('F2');
   await page.keyboard.press('Control+A');
   await page.keyboard.type('Gym');
-  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(100);
+  const WANT = [DWELL_KEY, FREQ_KEY, 'widget:telemetry'];
+  const pend = (await store(page)).layouts.Gym?.['full.machine'] || {};
+  await page.click('nav.rail [data-layout="Gym"]');
+  await page.waitForTimeout(600);
+  const d2 = Object.keys(await homeCells(page));
+  const gym = (await store(page)).layouts.Gym['full.machine'];
+  ok(t + ': persist: both Dashes hold their adds across a reload', d1.includes(FREQ_KEY) && Object.keys(seed).every((id) => d1.includes(id))
+    && JSON.stringify(d2.sort()) === JSON.stringify([...WANT].sort()), { d1, d2 });
+  ok(t + ': adds to a Dash never drawn, renamed after a reload, are written once it measures them', WANT.every((k) => pend[k] && pend[k].y == null && gym[k] && gym[k].y != null),
+    { pend, gym });
   await goTab(page, 'cat2');
   await page.waitForSelector(F(DWELL));
   await rclick(page, F(DWELL));
@@ -336,6 +402,32 @@ for (const theme of [null, PAPER]) {
   await subItem(page, 'Default').tap();
   await page.waitForTimeout(200);
   ok(t + ': a tap on a Dash adds the item', !(await subState(page)).menu && FREQ_KEY in ((await store(page))?.layouts?.Default?.['full.machine'] || {}));
+
+  // A long press low in the window: the menu opens above the finger, and the inline submenu never pushes it past the bottom.
+  await page.locator(F(FREQ)).first().evaluate((el) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 200, clientY: 700 })));
+  await page.waitForTimeout(100);
+  const low0 = await subState(page);
+  await page.locator(OPENER).tap();
+  await page.waitForTimeout(150);
+  const low1 = await subState(page);
+  await page.locator(OPENER).tap();
+  await page.waitForTimeout(100);
+  const low2 = await subState(page);
+  ok(t + ': opened low, the menu stays inside the window with the submenu open and goes back where it was when it closes', low1.inline
+    && low0.menuRect[3] <= 768 && low1.menuRect[3] <= 768 && low1.menuRect[1] >= 0 && !low2.inline && low2.menuRect[1] === low0.menuRect[1], { low0, low1, low2 });
+
+  // The touch keyboard resizes the window's height: the New Dash field stays open; a width change still closes the menu.
+  await page.locator(OPENER).tap();
+  await subItem(page, 'New Dash…').tap();
+  await page.waitForTimeout(100);
+  await page.setViewportSize({ width: 1024, height: 480 });
+  await page.waitForTimeout(150);
+  const kb = await page.evaluate(() => ({ field: document.activeElement?.classList.contains('ui-menu-ask'), bottom: document.querySelector('body > .ui-menu:popover-open')?.getBoundingClientRect().bottom }));
+  ok(t + ': a height-only resize while naming keeps the field focused, the menu inside the shorter window', kb.field && kb.bottom <= 480, kb);
+  await page.setViewportSize({ width: 1000, height: 480 });
+  await page.waitForTimeout(150);
+  ok(t + ': a width change closes the menu', !(await subState(page)).menu);
+  await page.setViewportSize({ width: 1024, height: 768 });
   ok(t + ': no page errors', errors.length === 0, errors);
   await ctx.close();
 }

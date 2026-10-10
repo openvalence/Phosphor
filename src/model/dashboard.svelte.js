@@ -153,26 +153,27 @@ export const moduleNames = () => Object.keys(layouts.modules || {});
 export const deleteModule = edit((n) => G.deleteModule(layouts, n));
 
 // Per view key: the content height a mounted grid measured (grid.js pack `fit`).
-// Per layout and view key: the ids an add left unplaced until a grid has measured them.
+// Per layout and view key: the ids a commit left unplaced until its grid has measured them.
 const fits = new Map();
 const held = new Map();
-const heldAt = (n, key) => n + '\n' + key;
-function hold(n, key, ids) {
-  if (ids.length) held.set(heldAt(n, key), new Set([...(held.get(heldAt(n, key)) || []), ...ids]));
-}
+const heldAt = (key) => layouts.active + '\n' + key;
+// An add (appendTo) is a plain entry with no rect, read from the map, so it waits through a
+// reload or a rename until its own layout is drawn. A nest is never read as one: Reset leaves
+// nests unplaced on purpose, to grow with their members until the next commit.
+const pending = (map) => Object.keys(map).filter((k) => map[k] && typeof map[k] === 'object' && !G.isNest(map[k]) && !G.positioned(map[k]));
 
 // Reads never write: arrange and nests run inside $derived, where a state write throws.
 function controller(key, read, write, members) {
   const fit = () => fits.get(key) || null;
-  const here = (ids) => hold(layouts.active, key, ids);
+  const hold = (ids) => { if (ids.length) held.set(heldAt(key), new Set([...(held.get(heldAt(key)) || []), ...ids])); };
   return {
     // `f` defaults to the registered one; a $derived passes its own, since the registry is not reactive.
     arrange: (items, cols, pin = null, f = fit()) => G.place(items, read(), cols, pin, f),
-    move: edit((items, cols, pin) => (here(G.commitPin(write(), items, cols, pin, fit())), true)),
+    move: edit((items, cols, pin) => (hold(G.commitPin(write(), items, cols, pin, fit())), true)),
     // A repair the user did not make (an add written once measured): saved, never an undo step.
     fit: (items, cols) => {
-      held.delete(heldAt(layouts.active, key));
-      here(G.commitPin(write(), items, cols, null, fit()));
+      held.delete(heldAt(key));
+      hold(G.commitPin(write(), items, cols, null, fit()));
       persist();
     },
     order: edit((items, cols, ids) => (G.commitOrder(write(), items, cols, ids), true)),
@@ -182,7 +183,7 @@ function controller(key, read, write, members) {
     /** The mounted grid's content height `fn(item, w, h) -> cells | null`; null unregisters. */
     measured: (fn) => { if (fn) fits.set(key, fn); else fits.delete(key); },
     /** Ids an add left unplaced until measured; the grid fixes them with fit(). */
-    held: () => held.get(heldAt(layouts.active, key)) || null,
+    held: () => new Set([...(held.get(heldAt(key)) || []), ...pending(read())]),
     /** True when `id` has a stored rect; an unplaced card follows its content. */
     saved: (id) => G.positioned(read()[id]),
   };
@@ -194,11 +195,9 @@ function controller(key, read, write, members) {
  * has measured it. Ids the view already holds are left as they are.
  */
 export const appendTo = edit((n, cls, viewId, ids) => {
-  if (!Object.prototype.hasOwnProperty.call(layouts.layouts, n)) return false;
+  if (!layoutNames().includes(n)) return false;
   const m = G.viewMap(layouts, cls, viewId, true, n);
-  const add = ids.filter((id) => m[id] === undefined);
-  for (const id of add) m[id] = {};
-  hold(n, cls + '.' + viewId, add);
+  for (const id of ids) if (m[id] === undefined) m[id] = {};
   return true;
 });
 

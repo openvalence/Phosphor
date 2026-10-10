@@ -125,7 +125,11 @@ async function showOnDash(nav, n, ids) {
   const cell = [...document.querySelectorAll('.dash-cell[data-id]')].find((c) => ids.includes(baseKey(c.dataset.id)));
   if (!cell) return;
   cell.scrollIntoView({ block: 'center' });
-  cell.querySelector(FOCUSABLE)?.focus({ preventScroll: true });
+  // Each in turn until one takes focus: a hidden or inert match refuses it.
+  for (const el of cell.querySelectorAll(FOCUSABLE)) {
+    el.focus({ preventScroll: true });
+    if (document.activeElement === el) break;
+  }
 }
 
 /**
@@ -139,7 +143,7 @@ function dashItems(t, heroes, nav) {
     : placeableControls(model, { heroes: heroes.widgets, safety: specSafetyAction() }).find((x) => x.key === t.key);
   if (!c) return [];
   const ids = [c.key, c.alias].filter(Boolean), seed = seedKeys(heroes);
-  const add = (n, s) => { addToDash(n, c.key, s); say('Added to ' + n); };
+  const add = (n, s) => { if (addToDash(n, c.key, s)) say('Added to ' + n); };
   return [{ label: 'Add to Dash', items: [
     ...orderedLayoutNames().map((n) => (dashHolds(n, ids, seed)
       ? { label: n, checked: true, title: 'Show it there', run: () => showOnDash(nav, n, ids) }

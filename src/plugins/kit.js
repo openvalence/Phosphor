@@ -1183,25 +1183,32 @@ export const module = (identity) => bound('module', identity);
  * disabled item names its reason as its title (law 3).
  * items: [{label, run, disabled, section, title, checked, items, ask}]:
  * `disabled` '' or the reason; `section` captions a group starting at that
- * item; `checked` (a boolean) makes it a checkbox item, drawn with a check
- * when true; `items` makes it a submenu; `ask` ({label, placeholder,
- * commit(text) -> '' or the reason})
- * turns it into a text field in place, Enter commits, an empty one or Escape
- * puts the item back.
+ * item; `checked` true draws a check, a mark only: the item still runs, so it
+ * keeps the menuitem role; `items` makes it a submenu; `ask` ({label,
+ * placeholder, commit(text) -> '' or the reason}) turns it into a text field
+ * in place, Enter commits, an empty one or Escape puts the item back.
  * A submenu opens beside the menu on hover, a click, ArrowRight or Enter, and
- * ArrowLeft or Escape closes it; a tap opens it inline.
+ * ArrowLeft or Escape closes it; a tap opens it inline. Focus inside a
+ * flyout keeps it open; a resize that only changes the height (a touch
+ * keyboard) leaves the menu open while its text field has focus.
  */
 export function menu(o = {}) {
   check('menu', o, ['title', 'desc', 'items', 'x', 'y', 'onClose']);
   const el = h('div', { class: cls('ui-menu surface-card', o), popover: 'manual', role: 'menu', tabindex: '-1', 'aria-label': o.title || 'Menu' });
   if (o.title) el.append(h('div', { class: 'ui-menu-h' }, h('div', { class: 'ui-menu-t', text: o.title }), o.desc ? h('div', { class: 'ui-menu-d', text: o.desc }) : null));
   const back = document.activeElement;
-  let open = true, off = null, sub = null, touch = false, leave = 0;
+  let open = true, off = null, sub = null, touch = false, leave = 0, y = 0, vw = innerWidth;
   const btns = [];
   const subs = new Map();
   // Below the strip and the pair (in page fullscreen the pair floats alone), clear of the screen corners.
   const rs = getComputedStyle(document.documentElement), px = (v) => parseFloat(rs.getPropertyValue(v)) || 0;
   const top0 = Math.max(px('--strip-h'), px('--stop-reserve-h')) + 4, m = 8 + px('--corner-r') * 0.3;
+  // The row picked at open (`y`), clamped inside the window at the current height: again whenever
+  // an inline submenu or the window changes it, so the menu never ends past the bottom edge.
+  const placeY = () => {
+    el.style.maxHeight = Math.max(120, innerHeight - top0 - m) + 'px';
+    el.style.top = clamp(y, top0, Math.max(top0, innerHeight - el.offsetHeight - m)) + 'px';
+  };
   const close = (e) => {
     if (!open) return;
     open = false;
@@ -1219,8 +1226,10 @@ export function menu(o = {}) {
     const s = sub;
     sub = null;
     s.opener.setAttribute('aria-expanded', 'false');
+    const inside = s.box.contains(document.activeElement);
     s.box.remove();
-    if (refocus) s.opener.focus({ preventScroll: true });
+    if (s.inline) placeY();
+    if (refocus || inside) s.opener.focus({ preventScroll: true });
   };
   // The flyout is a popover inside the menu, so it counts as inside for every close rule.
   const openSub = (opener, inline) => {
@@ -1230,7 +1239,7 @@ export function menu(o = {}) {
     const box = h('div', { class: inline ? 'ui-menu-in' : 'ui-menu ui-menu-sub surface-card', role: 'menu', 'aria-label': opener.textContent, popover: inline ? null : 'manual' });
     sub = { opener, box, inline, btns: subs.get(opener).map((it) => item(it, box)) };
     opener.setAttribute('aria-expanded', 'true');
-    if (inline) { opener.after(box); return sub; }
+    if (inline) { opener.after(box); placeY(); return sub; }
     box.addEventListener('pointerenter', () => clearTimeout(leave));
     el.append(box);
     box.showPopover();
@@ -1245,7 +1254,9 @@ export function menu(o = {}) {
   const ask = (b, spec) => {
     const f = h('input', { type: 'text', class: 'ui-menu-ask', placeholder: spec.placeholder || null, 'aria-label': spec.label || b.textContent });
     const row = h('div', { class: 'ui-menu-ask-row' }, f);
-    const undo = (refocus) => { if (!row.isConnected) return; row.replaceWith(b); if (refocus) b.focus({ preventScroll: true }); };
+    // Once: removing the focused field fires its blur inside replaceWith, which would swap the row a second time.
+    let gone = false;
+    const undo = (refocus) => { if (gone || !row.isConnected) return; gone = true; row.replaceWith(b); if (refocus) b.focus({ preventScroll: true }); };
     b.replaceWith(row);
     f.focus({ preventScroll: true });
     f.addEventListener('input', () => { f.removeAttribute('aria-invalid'); row.querySelector('.ui-menu-hint')?.remove(); });
@@ -1266,8 +1277,8 @@ export function menu(o = {}) {
   };
   function item(it, box) {
     if (it.section) box.append(h('div', { class: 'ui-menu-sec', role: 'separator', text: it.section }));
-    const b = h('button', { type: 'button', role: it.checked == null ? 'menuitem' : 'menuitemcheckbox', class: 'ui-menu-i', text: it.label,
-      title: it.disabled || it.title || null, 'aria-checked': it.checked == null ? null : String(!!it.checked) });
+    const b = h('button', { type: 'button', role: 'menuitem', class: 'ui-menu-i', text: it.label,
+      title: it.disabled || it.title || null, 'data-checked': it.checked ? '' : null });
     b.disabled = !!it.disabled;
     if (it.items) {
       subs.set(b, it.items);
@@ -1285,7 +1296,10 @@ export function menu(o = {}) {
     else b.addEventListener('click', (e) => { close(e); if (it.run) it.run(e); });
     // A pointer that wanders off the opener closes its flyout unless it reaches the flyout first.
     if (box === el) b.addEventListener('pointerenter', (e) => {
-      if (sub && !sub.inline && sub.opener !== b && e.pointerType !== 'touch') { clearTimeout(leave); leave = setTimeout(() => closeSub(), 300); }
+      if (sub && !sub.inline && sub.opener !== b && e.pointerType !== 'touch' && !sub.box.contains(document.activeElement)) {
+        clearTimeout(leave);
+        leave = setTimeout(() => closeSub(), 300);
+      }
     });
     box.append(b);
     return b;
@@ -1306,15 +1320,17 @@ export function menu(o = {}) {
   });
   el.addEventListener('scroll', () => { if (sub && !sub.inline) closeSub(); });
   const away = (e) => { if (!(e.target instanceof Node && el.contains(e.target))) close(e); };
-  const L = [['resize', close], ['blur', (e) => { if (e.target === window) close(e); }], ['wheel', away], ['scroll', away]];
+  const typing = () => document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement);
+  const resized = (e) => { if (innerWidth === vw && typing()) placeY(); else close(e); };
+  const L = [['resize', resized], ['blur', (e) => { if (e.target === window) close(e); }], ['wheel', away], ['scroll', away]];
   document.body.append(el);
   el.showPopover();
   el.style.maxHeight = Math.max(120, innerHeight - top0 - m) + 'px';
   const w = el.offsetWidth, ht = el.offsetHeight;
   const x = (o.x ?? 0) + w > innerWidth - m ? (o.x ?? 0) - w : (o.x ?? 0);
-  const y = (o.y ?? 0) + ht > innerHeight - m ? (o.y ?? 0) - ht : (o.y ?? 0);
+  y = (o.y ?? 0) + ht > innerHeight - m ? (o.y ?? 0) - ht : (o.y ?? 0);
   el.style.left = clamp(x, m, Math.max(m, innerWidth - w - m)) + 'px';
-  el.style.top = clamp(y, top0, Math.max(top0, innerHeight - ht - m)) + 'px';
+  placeY();
   off = outside(el, close);
   for (const [t, f] of L) window.addEventListener(t, f, true);
   (btns.find((b) => !b.disabled) || el).focus({ preventScroll: true });

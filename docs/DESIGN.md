@@ -879,7 +879,9 @@ Renderer classes (RENDERING §12.1, RFC-062; `src/model/rclass.js`), in CSS px:
   layouts are the indented sub-items under Dash in the sidebar (§10.11);
   clicking Dash opens Default, pinned first, never deleted or reordered;
   `+ Add layout` is the last sub-item and starts a layout from the rank
-  seed. The dash has no pane head: content starts at the top of the pane,
+  seed. New Dash… in the context menu's Add to Dash (§10.1, §10.13) is the
+  one exception: its layout starts holding only the item (`ph-hi4i.1`).
+  The dash has no pane head: content starts at the top of the pane,
   and the edit control is a wrench at the right end of the selected layout
   sub-item; what the Layout menu held (density, modules, export, import)
   rides the edit-mode chrome. A category page lays out from the rank seed
@@ -1163,9 +1165,9 @@ derives from one unit, and no size is tuned by hand.
   `src/ui/contextmenu.js`, `src/model/identity.js`.
 - Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): a field or module
   item on the full class (§10.1) that opens a submenu: every Dash in sidebar
-  order, then New Dash…. A Dash that holds the item wears a check, and
-  choosing it opens that Dash with the card in view; any other takes the
-  item. New Dash… turns into a name field in place with the Add layout
+  order, then New Dash…. A Dash that holds the item wears a check (a mark:
+  the row stays a menu item), and choosing it opens that Dash with the card
+  in view; any other takes the item. New Dash… turns into a name field in place with the Add layout
   rules: Enter keeps, a taken name is marked, Escape or an empty name goes
   back. The submenu opens beside the menu on hover, a click, ArrowRight or
   Enter, and ArrowLeft or Escape closes it back to its opener; a tap opens

@@ -1,5 +1,5 @@
 <script module>
-  import { layouts, checkpoint, appendTo } from '../model/dashboard.svelte.js';
+  import { layouts, layoutNames, checkpoint, appendTo } from '../model/dashboard.svelte.js';
   import { viewMap, isNest, nestsIn, baseKey } from '../model/grid.js';
 
   const VIEW = 'machine';
@@ -22,8 +22,10 @@
    * Add `key` to Dash `n` on the full class at the first free rect, active or
    * not (dashboard.svelte.js appendTo); one undo step. An unbuilt Dash takes
    * `seed` first, so nothing it showed goes; pass [] for one the user has not seen.
+   * False when no layout `n` exists.
    */
   export function addToDash(n, key, seed) {
+    if (!layoutNames().includes(n)) return false;
     checkpoint();
     const m = viewMap(layouts, 'full', VIEW, true, n);
     const built = Object.keys(m).some((k) => !isNest(m[k]));
