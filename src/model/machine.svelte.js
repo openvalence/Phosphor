@@ -205,6 +205,8 @@ let _lastOpts = {};
 let safetyMaxSeq = -1;
 let safetyLastLatch;
 let safetyEdgeSeen = false;
+// The device channels this session subscribed after its catalog (reset on WELCOME).
+let held = new Set();
 
 /** The live session handle, for the write plane. Null until connect(). */
 export function getSession() {
@@ -214,6 +216,11 @@ export function getSession() {
 /** The newest socket, or null (health.svelte.js's backlog reading). */
 export function currentSocket() {
   return _ws;
+}
+
+/** Did this session subscribe to the channel? A subscribed STATE sample is on its way (SPEC 6.8 retained). */
+export function subscribed(id) {
+  return held.has(id) || !!machine.grants[id];
 }
 
 /** Is the hub plane usable for writes right now? */
@@ -436,12 +443,10 @@ export function connect(opts = {}) {
   machine.link.phase = 'connecting';
   machine.link.since = Date.now();
 
-  // Per session (reset on WELCOME): the ids subscribed, whether a catalog was
-  // already adopted (a second one is RFC-077 growth), the last 0x0001
-  // snapshot, and the channels already reported withdrawn.
-  let held = new Set();
+  // Per session (reset on WELCOME): whether a catalog was already adopted (a
+  // second one is RFC-077 growth) and the channels already reported withdrawn.
+  held = new Set();
   let adopted = false;
-  let catalogSnap;
   let withdrawn = new Set();
 
   // A replay is not evidence: a virtual session records nothing (vault.js).
@@ -510,7 +515,6 @@ export function connect(opts = {}) {
     machine.link.limits = w.limits || {};
     held = new Set();
     adopted = false;
-    catalogSnap = undefined;
     withdrawn = new Set();
     // §6.7 snapshot adoption: session.js rebuilt its grants from this WELCOME
     // and emits them as 'grant' right after 'welcome'; mirror the reset so a
@@ -598,15 +602,6 @@ export function connect(opts = {}) {
     machine.stats.pushesByChannel[channelId] = (machine.stats.pushesByChannel[channelId] || 0) + 1;
     machine.stats.lastRxMs = Date.now();
 
-    // RFC-077: a changed catalog snapshot mid-session is a new etag; fetch it
-    // in the background and keep LIVE. Compared opaquely, never by field.
-    // TODO(rfc-58u): drop this once valence-js refetches on its own.
-    if (channelId === CORE_CHANNEL.catalog) {
-      const snap = JSON.stringify(sample);
-      if (catalogSnap !== undefined && snap !== catalogSnap && s.isLive) s.requestCatalog();
-      catalogSnap = snap;
-    }
-
     // ph-vdk.14: did the safety latch actually change, with nothing on its
     // EVENT twin (0x000E) to say so? Compared OPAQUELY -- this never reads a
     // field, only asks whether the snapshot differs from the last one.
@@ -665,6 +660,13 @@ export function connect(opts = {}) {
   });
 
   session.on('nack', (n) => {
+    // SPEC 8.6: the hub ends a catalog transfer its etag moved under with one
+    // CHUNK_UNAVAILABLE at the request's seq, 0 (store requests ride 1 and up),
+    // and the library restarts it. A restart, never a refusal.
+    if (n.code === NACK.CHUNK_UNAVAILABLE && !n.intentSeq) {
+      push(machine.events.session, { kind: 'catalog changed mid-transfer', detail: 'transfer restarted', at: Date.now() }, EVT_MAX);
+      return;
+    }
     // RFC-077: a withdrawn grant is said once per channel, never a refusal storm.
     if (n.code === NACK.CHANNEL_WITHDRAWN) {
       if (withdrawn.has(n.channel)) return;
