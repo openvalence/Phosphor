@@ -154,6 +154,9 @@ mem.set('sd32.theme', 'ember');
 ok('an old preset id migrates', T.loadTheme().id === 'ember' && T.loadTheme().accents.reality === '#FF8A4D');
 mem.set('phosphor.theme', JSON.stringify({ ...T.THEMES.find((x) => x.id === 'slate') }));
 ok('the new key wins over the legacy ones', T.loadTheme().id === 'slate');
+mem.set('phosphor.theme', JSON.stringify({ ...T.THEMES.find((x) => x.id === 'ember'), accents: { reality: '#FF8A4D', intent: '#FFD24D' }, look: { scale: 1.3 } }));
+ok('a stored shipped preset follows this build\'s preset, keeping its scale (ph-76i)',
+  T.loadTheme().accents.intent === T.THEMES.find((x) => x.id === 'ember').accents.intent && T.loadTheme().look.scale === 1.3);
 mem.clear();
 mem.set('sd32.theme', 'mytheme-neon');
 T.applyStoredTheme();

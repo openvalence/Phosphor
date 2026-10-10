@@ -7,7 +7,7 @@
  *   shot is the same on every run whatever the machine's speed.
  * - Shots go to --out (default: the OS temp dir), never into the repo.
  *
- * Run: node test/effect-lab.mjs [--out <dir>] [--theme "FF8A4D FFD24D"]
+ * Run: node test/effect-lab.mjs [--out <dir>] [--theme "FF8A4D 4CCEFE"]
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';

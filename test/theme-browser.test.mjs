@@ -406,6 +406,17 @@ for (const t of THEMES) {
   await ctx.close();
 }
 
+// ---- 3c. a preset stored by an older build loads as this build ships it (ph-76i) --
+{
+  const ember = THEMES.find((x) => x.id === 'ember');
+  const old = { ...ember, accents: { reality: '#FF8A4D', intent: '#FFD24D', highlight: null } };
+  const { ctx, page, errors } = await boot({ width: 1440, height: 900 }, { 'phosphor.theme': JSON.stringify(old) });
+  await page.waitForSelector('nav.rail [role=tab]', { timeout: 15000 });
+  ok('a stored Ember paints this build\'s intent (ph-76i)', await hexOf(page, '--intent') === ember.accents.intent, await hexOf(page, '--intent'));
+  ok('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
+
 // ---- 4. motion: html.still from theme motion 0, the Motion pref and the OS ---
 {
   console.log('\n--- motion ---');
