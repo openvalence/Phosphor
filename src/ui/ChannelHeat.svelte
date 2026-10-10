@@ -15,7 +15,7 @@
    * - Hover or focus opens ONE panel in the top layer (a popover): the same blocks, grouped the same way,
    *   each larger and labeled, live. A block there highlights and fills the details line at the panel's foot;
    *   no second tooltip is ever drawn. The panel sits below the top strip, so it never covers the safety
-   *   controls. The pointer gets a grace period to cross into it.
+   *   controls. The pointer must rest on the map before it opens and gets a grace period to cross into it.
    * - One tab stop: a toolbar whose arrows move among the bar's blocks (roving tabindex), the panel's
    *   blocks follow the focused one; Enter opens, Escape closes the panel.
    *   Under a coarse pointer the whole map is one 40 px button to the Link page, its blocks drawn only.
@@ -35,7 +35,7 @@
   let { onopen = null } = $props();
   const uid = $props.id();
 
-  const ROWS = 4, MAX_COLS = 32, GRACE_MS = 350;
+  const ROWS = 4, MAX_COLS = 32, GRACE_MS = 350, OPEN_MS = 300;
   // A silence this long is a real gap in the machine's updates; shorter ones are jitter.
   const GAP_MS = 1000;
   const CLASSES = [CHANNEL_CLASS.STATE, CHANNEL_CLASS.STREAM, CHANNEL_CLASS.INTENT, CHANNEL_CLASS.EVENT, CHANNEL_CLASS.STORE];
@@ -134,7 +134,7 @@
 
   // ---- the panel: hover or keyboard focus -----------------------------------------------------------
   let hovering = $state(false), hoverKey = $state(null), focusKey = $state(null), focused = $state(false), dismissed = $state(false);
-  let box = $state(null), panel = $state(null), leaveTimer = 0;
+  let box = $state(null), panel = $state(null), leaveTimer = 0, openTimer = 0;
   const rover = $derived(flat.some((b) => b.key === focusKey) ? focusKey : flat[0] && flat[0].key);
   const open = $derived(!dismissed && (hovering || focused));
   const activeKey = $derived(open ? hoverKey ?? (focused ? rover : null) : null);
@@ -161,8 +161,19 @@
     return () => clearInterval(id);
   });
 
-  function enter() { clearTimeout(leaveTimer); leaveTimer = 0; hovering = true; dismissed = false; }
+  // The pointer must rest on the map OPEN_MS before the panel opens (passing over opens nothing); once it
+  // is open, re-entering the map or the panel is immediate. Focus never waits.
+  function enter() {
+    clearTimeout(leaveTimer);
+    leaveTimer = 0;
+    if (hovering || openTimer) return;
+    openTimer = setTimeout(() => {
+      openTimer = 0;
+      if (box?.matches(':hover')) { hovering = true; dismissed = false; }
+    }, OPEN_MS);
+  }
   function leave() {
+    if (openTimer) { clearTimeout(openTimer); openTimer = 0; return; }
     if (leaveTimer) return;
     leaveTimer = setTimeout(() => { leaveTimer = 0; hovering = false; hoverKey = null; }, GRACE_MS);
   }
@@ -176,7 +187,7 @@
   });
   function onfocus(b) { focusKey = b.key; focused = true; dismissed = false; }
   function pick(b) { dismissed = true; if (onopen) onopen(b.open); }
-  $effect(() => () => clearTimeout(leaveTimer));
+  $effect(() => () => { clearTimeout(leaveTimer); clearTimeout(openTimer); });
 
   // The panel hangs from the top strip's lower edge, left-aligned to the map, inside the window.
   function place() {

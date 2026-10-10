@@ -153,6 +153,20 @@ try {
       JSON.stringify(routed) === JSON.stringify([[compact ? null : entries.filter((e) => e.cls === 'STATE')[1].id], false]), routed);
     await page.evaluate(() => { window.__opened.length = 0; });
 
+    // Open intent: passing over the map opens nothing; resting on it 300 ms does.
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(500);
+    await page.hover('.heat .bar .blk');
+    await page.waitForTimeout(150);
+    const early = await page.$eval('.heat .panel', (p) => p.matches(':popover-open'));
+    await page.mouse.move(w - 5, h - 5);
+    await page.waitForTimeout(500);
+    const passed = await page.$eval('.heat .panel', (p) => p.matches(':popover-open'));
+    ok(tag + ': passing over the map for 150 ms opens nothing', !early && !passed, [early, passed]);
+    await page.hover('.heat .bar .blk');
+    await page.waitForTimeout(450);
+    ok(tag + ': resting on the map opens the panel', await page.$eval('.heat .panel', (p) => p.matches(':popover-open')));
+
     // The grace period: leaving the bar for the panel within it keeps the panel; leaving both closes it.
     await page.mouse.move(w - 5, h - 5);
     await page.waitForTimeout(500);
@@ -207,6 +221,7 @@ try {
         await page.mouse.move(w - 5, h - 5);
         await page.waitForTimeout(500);
         await page.hover('.heat .bar .blk[aria-label^="Late samples"]');
+        await page.waitForSelector('.heat .panel:popover-open');
         await page.waitForTimeout(150);
         return page.evaluate(() => ({ label: document.querySelector('.heat .bar .blk[aria-label^="Late samples"]').getAttribute('aria-label'),
           detail: document.querySelector('.heat .panel .detail').innerText, why: document.querySelectorAll('.heat .panel .detail .why').length }));

@@ -295,9 +295,6 @@ console.log('\n--- desktop 1280x800 ---');
   await page.click('.full-caret');
   await page.waitForTimeout(200);
   ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
-  // The bar came back under the resting pointer, over the heatmap: its panel opens; leave it first.
-  await page.mouse.move(640, 600);
-  await page.waitForTimeout(500);
   await page.click('.full-caret');
   await page.waitForTimeout(200);
   await page.keyboard.press('Escape');
