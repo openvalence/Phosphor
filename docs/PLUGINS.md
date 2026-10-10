@@ -879,7 +879,7 @@ player's contract exports, prefs and hero spec; without `--unit`
 (`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
 shell bundle against a fake hub and the fake Stash, and `--live --port P
 --http P+7` against valencesim on spare ports; `--live-playback` there plays
-loop, auto-home, the seek glide, both latency settings and a Preview write.
+loop, auto-home, the seek glide, auto latency and a Preview write.
 
 `plugins/` sits outside `src/`, so `test/check-device-knowledge.mjs` never
 scans it: a plugin may know one machine's channel ids and field names. The

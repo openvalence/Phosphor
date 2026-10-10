@@ -1067,7 +1067,11 @@ key `play`. Each choice below is veto-able.
   landing delay is a clock residual, stepped past 25 ms. A-B points are the
   timeline's runtime state, not prefs (they belong to one video); a seek
   past b clears them, as MFP does. Count 0 plays forever; N plays the
-  section N times, then plays on.
+  section N times, then plays on. The seam lasts from its first knot to b
+  plus from a to its last knot: a point pressed a few ms beside a knot
+  leaves it that short, and the carriage crosses the script's jump at the
+  planner's limits (measured 63 to 95 ms for 0.15 of the window, ruling
+  owed: ph-bimb).
 - **Home on pause** (ph-hanh, ruling 2026-10-03: auto home happens when
   paused only). Never inside the script while playing: a gap plays as its
   one authored span. Once a pause or the end has lasted `homeAfterMs`,
@@ -1406,15 +1410,23 @@ Decisions (veto-able):
   script 500 ms on, then one joining span and the knots.
 - **Live playback:** `--live-playback --port P --http P+7 [--shots dir]`
   against valencesim on spare ports with a private `--state`: a 60 s clip
-  and script (400 to 697 ms spans of 25 to 75, inside the sim's speed limit,
-  so plans keep their durations, and a 14 s gap), auto latency on, a seek
-  glide, the gap sent as its one span with nothing homed, a pause that homes
-  once after `homeAfterMs`, an A-B loop, and a
-  Preview write the sim must show with its trial mark and then drop on
-  Discard; one `PB-RESULT` JSON line. After it the caller restarts the sim on
-  the same `--state`: the previewed field must read its stored value
-  (Playback, measured; Chase gain: stored 0.9, trial 0.95,
-  after the restart 0.9, no pb.cfg written).
+  and script (a staircase 20 to 80 and back in steps of 15 with 400 to 499
+  ms spans, inside the sim's speed limit so plans keep their durations and
+  under `EXPECT_MS` so every same-direction knot is sent free, I8; and a
+  14 s gap), auto latency on, the plan's speed through every knot that is
+  not a reversal and no hold outside one, a seek glide, the gap sent as its
+  one span (a timing-only restart may fold up to `COMP_MAX_MS` into it)
+  with nothing homed, a pause that homes to 0.9 (off the staircase) once
+  after `homeAfterMs`, an A-B loop with A and B mid-span so the seam is the
+  staircase's own step, and a Preview write of the first slider on the
+  Kinetic tuning card (the twin refuses a trial on the modes card
+  `UNSUPPORTED_OP`, SPEC §9.3 item 5) that the sim must show with its trial
+  mark and then drop on Discard; one `PB-RESULT` JSON line. After it the
+  caller restarts the sim on the same `--state`: the previewed field must
+  read its stored value. Measured 2026-10-10 (Nucleus 105e6fb): knot speed
+  0.88 to 0.90 of the span peak, no hold, the loop's largest step 0.019 to
+  0.023 of the window against 0.018 in plain play, Smoothness stored 0,
+  trial 0.05, 0 after Discard.
 - **The sync measurement:** `node test/funscript-sync-live.mjs --port P
   --http P+7 [--horizon 250|500|1000]`, never in `check`, skips when no sim
   answers or the hub has no segments STREAM, prints the hub_instance_id
