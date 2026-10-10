@@ -16,7 +16,8 @@
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
 
   let { fields, hero } = $props();
-  const host = $derived(hero.host);
+  // A hero can go null while its block tears down (a dock withdrawn while open): nothing mounts or updates then.
+  const host = $derived(hero?.host);
   // By identity: a prop read reruns an effect whenever its source object
   // changes (a card moved or resized), and a remount drops the plugin's own
   // state. Only a new hero or a new claim remounts.
@@ -28,13 +29,14 @@
 
   $effect(() => {
     const node = el;
-    if (!node) return;
     const h = sameHero;
+    if (!node || !h) return;
     const f = sameFields;
-    const mounted = untrack(() => host.mountHero(h, node, f));
+    const hs = h.host;
+    const mounted = untrack(() => hs.mountHero(h, node, f));
     inst = mounted;
     return () => {
-      untrack(() => host.unmountHero(mounted));
+      untrack(() => hs.unmountHero(mounted));
       node.replaceChildren();
     };
   });
@@ -57,7 +59,7 @@
     void machine.link.phase; void machine.link.roles; void machine.link.stale; void machine.link.sessionId;
     void machine.safety; void machine.samples[CH_CONTROL_OWNER];
     const i = inst;
-    untrack(() => host.updateHero(i));
+    untrack(() => host?.updateHero(i));
   });
 </script>
 

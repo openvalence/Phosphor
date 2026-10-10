@@ -289,6 +289,13 @@ export function since(ms) {
   return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
 }
 
+/** Elapsed time from a ms epoch in at most 3 characters, whole units (59s, 59m, 99h): a fixed slot never grows. */
+export function sinceShort(ms) {
+  if (!ms) return '--';
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm' : Math.min(99, Math.floor(s / 3600)) + 'h';
+}
+
 /** Elapsed ms -> h:mm:ss, or h:mm:ss.mmm when `withMs`. */
 export function clock(ms, withMs) {
   if (ms == null || !isFinite(ms) || ms < 0) return '--';
@@ -347,8 +354,8 @@ export function hubTitle(identity, liveName, virtual = null) {
 }
 
 /**
- * The HUB chip: the endpoint this session dialed (WS host:port, or the BLE
- * device name). Never location.hostname: in the shell that is the page's own
+ * The endpoint this session dialed (WS host:port, or the BLE device name),
+ * the Health view's Address row. Never location.hostname: in the shell that is the page's own
  * origin, not the hub.
  */
 export function endpointLabel(host, port, bleName) {

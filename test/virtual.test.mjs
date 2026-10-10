@@ -153,7 +153,6 @@ await sim.click();
 ok('Sim reaches LIVE on the virtual hub', await until(async () => (await chip()).includes('virtual')), await chip());
 ok('no socket was opened', wire.opens === 0, wire.opens);
 ok('the hub title reads virtual', (await page.locator('.linkbar .wordmark').innerText()) === 'Bench (virtual)');
-ok('the hub chip reads virtual', (await page.locator('.linkbar .chips.opt .chip').first().innerText()).includes('virtual'));
 ok('the safety strip is rendered', await page.locator('.strip').count() > 0);
 const remembered = await page.evaluate(() => [localStorage.getItem('shell_host'), JSON.parse(localStorage.getItem('phosphor.hubs')).length]);
 ok('the virtual hub is never remembered', remembered[0] === null && remembered[1] === 1, JSON.stringify(remembered));

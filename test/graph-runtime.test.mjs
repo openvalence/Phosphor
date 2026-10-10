@@ -238,6 +238,19 @@ console.log('(e) hub edges through the relationships store');
   rt.remove(back.id);
   await delay(10);
   ok('delete removes the item from the store and the graph', !slots.has(0) && !rt.graph.rels.some((x) => x.home === 'hub'));
+
+  // ph-2tjo: the roster's count bounds the read, as for every store; an empty slot asked costs a NACK.
+  const RID = CORE_CHANNEL.relationships_roster;
+  const asked = [];
+  const fb = env.fetchBlob;
+  env.fetchBlob = (o) => { asked.push(o.slot); return fb(o); };
+  entries.push({ id: RID, storeId: SID, layout: ['generation', 'count', 'capacity', 'a0', 'a1', 'f0', 'f1'].map((name) => ({ name })) });
+  samples[RID] = { generation: 3, count: 0, capacity: 16, a0: 0, a1: 0, f0: 0, f1: 0 };
+  await rt.refreshHub();
+  ok('an empty relationships roster: the store read asks no slot', asked.length === 0, JSON.stringify(asked));
+  entries.pop();
+  delete samples[RID];
+  env.fetchBlob = fb;
 }
 
 console.log('(f) the canvas: place, wire through drafts, refuse, undo and redo');

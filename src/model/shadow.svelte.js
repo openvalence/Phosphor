@@ -82,8 +82,10 @@ import { reportedValue, WIDGET } from './settings.js';
 import { labelFor } from './format.js';
 import { motionTarget, createMotionDoor, latchWords } from './motion.js';
 import { noteSend } from './health/health.svelte.js';
-import { noteEstopPress } from './actions.js';
-import { NACK, NACK_NAME, LOG_LEVEL_NAME } from '../../../Valence/clients/js/index.js';
+import { noteEstopPress, actionTag } from './actions.js';
+import { hubKey } from './prefs.js';
+import { noteStoreOp } from '../ui/widgets/roster.js';
+import { NACK, NACK_NAME, LOG_LEVEL_NAME, ACTION_TAG } from '../../../Valence/clients/js/index.js';
 
 const OVERDUE_MS = 500;
 const FAULT_MS = 2000;
@@ -420,6 +422,10 @@ export async function runAction(action, value = 1, extraFields = null) {
   try {
     const echo = await session.sendIntent(action.channelId, fields);
     const applied = (echo && echo.applied) || {};
+    if (actionTag(action) === ACTION_TAG.store) {
+      noteStoreOp(machine.catalog.entries, action, value, { ...fields, ...applied },
+        hubKey(machine.link.hubIdentity, machine.link.host, machine.link.port));
+    }
     if (sh.seq === seq) {
       sh.applied = Object.prototype.hasOwnProperty.call(applied, action.key) ? applied[action.key] : value;
       settle(sh);

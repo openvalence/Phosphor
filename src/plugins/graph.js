@@ -23,6 +23,7 @@ import {
   OPS, addOp, planLink, addLink, insOf, outOf, opLabel,
 } from '../model/graph.js';
 import { ROLE, claimRoles } from '../model/roles.js';
+import { rosterCount } from '../ui/widgets/roster.js';
 import { controlKey, WIDGET, reportedValue } from '../model/settings.js';
 import { labelFor, unitOf, hubTitle } from '../model/format.js';
 import { PACKED, CORE_CHANNEL, STORE_OP, UI_CATEGORY_TIER, UI_NAV_TIER } from '../../../Valence/clients/js/generated/registry_vocab.js';
@@ -259,9 +260,13 @@ export function graphRuntime(api, shell, env) {
     if (h.reason) { hub = { reason: h.reason, rels: [] }; mergeHub([]); return; }
     hub = { ...h, reason: '', rels: hub.rels };
     const found = [];
-    for (let slot = 0; slot < (h.store.store.capacity | 0); slot++) {
+    // The roster's count stops the read: an empty slot asked costs the hub a NACK.
+    const count = h.roster ? rosterCount(h.roster, env.sample(h.roster.id)) : null;
+    let held = 0;
+    for (let slot = 0; slot < (h.store.store.capacity | 0) && (count == null || held < count); slot++) {
       try {
         const res = await env.fetchBlob({ storeId: h.store.store.storeId, slot });
+        held++;
         const it = readStoreItem(res.bytes);
         if (it) found.push(it);
       } catch (e) {
