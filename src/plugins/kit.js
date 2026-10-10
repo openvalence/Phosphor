@@ -934,9 +934,9 @@ export function sheet(o = {}) {
 }
 
 /**
- * The page's status: on the phone class, inside a page, the footer's slot
- * (phosphor-page-status, sent on change) and nothing in place; elsewhere a
- * one-line row where the plugin placed it.
+ * The page's status: inside a page, on every class, the top strip's status
+ * slot (phosphor-page-status, sent on change) and nothing in place; elsewhere
+ * (a Dash card) a one-line row where the plugin placed it.
  */
 export function status(o = {}) {
   check('status', o, []);
@@ -945,7 +945,7 @@ export function status(o = {}) {
   let cur = { text: '', tone: null, title: '' }, sent = '', retry = false;
   const draw = () => {
     if (!el.isConnected && !retry) { retry = true; requestAnimationFrame(() => { retry = false; if (el.isConnected) draw(); }); }
-    const routed = phone() && !!el.closest('.pane-main.plugin');
+    const routed = !!el.closest('.pane-main.plugin');
     el.toggleAttribute('data-routed', routed);
     setText(txt, cur.text);
     attr(el, 'data-tone', cur.tone || null);
@@ -957,7 +957,6 @@ export function status(o = {}) {
     el.dispatchEvent(new CustomEvent('phosphor-page-status', { bubbles: true,
       detail: { text: cur.text, tone: cur.tone === 'intent' ? null : cur.tone, title: cur.title || cur.text } }));
   };
-  winOn(el, 'resize', draw);
   return def(el, {
     set: {
       value: (s = {}) => {

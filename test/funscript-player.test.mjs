@@ -1081,7 +1081,7 @@ if (!LIVE && !STASH_LIVE) {
         center: getComputedStyle(r.querySelector('.ui-stage-center')).display === 'none' };
     }, C);
     ok('redesign ' + at + ': script only is motion only: the stroke meter, Open video, Fullscreen grayed (No video), no center Play over the meter (ph-1qs5.11)',
-      moUi.mo && moUi.meter && moUi.full && moUi.open && moUi.center && mo.status === 'Motion only', { moUi, status: mo.status });
+      moUi.mo && moUi.meter && moUi.full && moUi.open && moUi.center && mo.status === '', { moUi, status: mo.status });
     if (cls === 'portrait') ok('redesign ' + at + ': motion only keeps the 120 px strip', Math.abs(mo.vbox[3] - 120) <= 1, mo.vbox);
     if (cls === 'desktop' && w === 1428) {
       const n0 = hub.bundles.length;
@@ -1362,10 +1362,10 @@ if (!LIVE && !STASH_LIVE) {
         nowShown && playing && paused && (await page.locator(C + ' .fsp-nowt').textContent()).length > 0, { nowShown, playing, paused });
       ok('library ' + at + ': the head reads 02 LIBRARY on the tab', (await page.locator(C + ' .fsp-src .fsp-h').evaluate((e) => e.dataset.pidx + e.textContent)) === '02Library');
       const foot = await page.locator(C).evaluate((r) => { const nw = r.querySelector('.fsp-now').getBoundingClientRect(), box = r.querySelector('.fsp-libbox').getBoundingClientRect(),
-        st = r.querySelector('.fsp-slot').getBoundingClientRect(), n = r.querySelector('.fsp-lib .ui-list-count');
-        return { gap: Math.round(box.bottom - nw.bottom), aboveStatus: Math.round(st.top - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
+        n = r.querySelector('.fsp-lib .ui-list-count');
+        return { gap: Math.round(box.bottom - nw.bottom), toCard: Math.round(r.getBoundingClientRect().bottom - nw.bottom), countCut: n.scrollWidth > n.clientWidth + 1 };
       });
-      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.aboveStatus <= 12 && !foot.countCut, foot);
+      ok('library ' + at + ': the now-playing row sits at the tab\'s bottom, the scene count whole', foot.gap <= 1 && foot.toCard <= 12 && !foot.countCut, foot);
     } else if (cls === 'desktop') {
       const col = await page.locator(C).evaluate((r) => ({ caret: !!r.querySelector('.fsp-libcaret').getClientRects().length, tiles: r.querySelector('.fsp-lib').dataset.form === 'grid',
         head: r.querySelector('.fsp-libbox > .fsp-h').dataset.pidx + r.querySelector('.fsp-libbox > .fsp-h').textContent }));
@@ -1544,7 +1544,7 @@ if (!LIVE && !STASH_LIVE) {
   await stash.close();
 }
 
-// ---- (q) host wiring (ph-1qs5.8, PR11, PR14, compact hero): the footer status, the quick rail, the one-row hero ----
+// ---- (q) host wiring (ph-1qs5.8, PR11, PR14 as superseded, compact hero): the strip's slot, the quick rail, the one-row hero ----
 if (!LIVE && !STASH_LIVE) {
   console.log('(q) host wiring');
   const cat = advgenCatalog();
@@ -1558,30 +1558,42 @@ if (!LIVE && !STASH_LIVE) {
       form: pop ? (pop.classList.contains('popup') ? 'vertical' : 'horizontal') : null,
       overPair: !!(r && p) && !(r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) };
   });
+  // ph-5u0g peeve 19: the page's status is the top strip's slot on every class; the card has no status row (its bottom
+  // inset matches its top) and the page no footer.
+  const slotOf = (page) => page.evaluate(() => { const s = document.querySelector('.topstrip .status');
+    return { kind: s.dataset.kind, text: (s.querySelector('.st-text') || {}).textContent || '' }; });
+  const rowLook = (page) => page.locator(C).evaluate((r) => {
+    const f = r.querySelector('.fsp-pframe').getBoundingClientRect(), foot = document.querySelector('main.pane .page-foot');
+    const kids = [...r.children].filter((e) => e.getClientRects().length && !e.matches('.fsp-pframe, .fsp-libbox, .fsp-slot, style')).map((e) => e.getBoundingClientRect());
+    return { row: !!r.querySelector('.fsp-slot').getClientRects().length, foot: !!(foot && foot.getClientRects().length),
+      top: Math.round(Math.min(...kids.map((k) => k.top)) - f.top), bottom: Math.round(f.bottom - Math.max(...kids.map((k) => k.bottom))) };
+  });
+  const rectsOf = (page) => page.evaluate((c) => [c, c + ' .fsp-stage', c + ' .fsp-tr', c + ' .fsp-tlh', 'main.pane', '.topstrip', '.topstrip .ops, .topstrip .home-menu',
+    '.topstrip .ovr', '.topstrip .pair']
+    .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '), C);
   for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
     const hub = makeHub(cat);
     hub.values[CH.config + ':window_min'] = 0;
     hub.values[CH.config + ':window_max'] = 100;
+    hub.values[CH.config + ':input_speed'] = 1000;
     const { ctx, page, errors } = await open({ cat, hub, width: w, height: hh, coarse: cls !== 'desktop' });
     const at = w + 'x' + hh;
     if (!await toPluginPage(page)) { ok('host ' + at + ': the page mounts the card', false); await ctx.close(); continue; }
     await page.waitForTimeout(400);
     const rail = C + ' .fsp-rail';
+    const r0 = await rowLook(page), s0 = await slotOf(page);
+    ok('host ' + at + ': no status row on the card (its bottom inset is its top), no page footer; the empty card sends nothing to the slot',
+      !r0.row && !r0.foot && Math.abs(r0.bottom - r0.top) <= 1 && !['page', 'note'].includes(s0.kind), { r0, s0 });
     if (cls !== 'desktop') {
       // compactHero is the shell's to draw: short of width for its one row (the fixture's five strip operations at
       // 420 px upright) it keeps the full hero by its own rule (TopStrip compactFits), so upright only reports it.
       const hero = await page.evaluate(() => !!document.querySelector('.topstrip .strip.compact'));
       if (cls === 'portrait' && !hero) console.log('  [NOTE] hero ' + at + ': the shell kept the full hero (its one row does not fit this hub\'s operations)');
-      // PR14: the footer's slot carries the player's status; the card draws no status row; a change moves no rect.
-      const foot = () => page.evaluate(() => { const e = document.querySelector('main.pane .page-foot .foot-status'); if (!e) return null;
-        const b = e.getBoundingClientRect(); return { text: e.textContent.trim(), rect: [b.x, b.y, b.width, b.height].map(Math.round) }; });
-      const empty = await foot();
       await page.setInputFiles(C + ' .fsp-files', [fun]);
       await page.waitForTimeout(500);
-      const mo = await foot();
-      const ownRow = await page.locator(C + ' .fsp-slot').evaluate((e) => !!e.getClientRects().length);
-      ok('host ' + at + ': ' + (cls === 'landscape' ? 'the hero is one row; ' : '') + 'the footer slot carries the player\'s status (No scene loaded, Motion only) and moves nothing',
-        (hero || cls === 'portrait') && !!empty && /No scene loaded/.test(empty.text) && !!mo && /Motion only/.test(mo.text) && same(empty.rect, mo.rect) && !ownRow, { hero, empty, mo, ownRow });
+      const mo = await slotOf(page), r1 = await rowLook(page);
+      ok('host ' + at + ': ' + (cls === 'landscape' ? 'the hero is one row; ' : '') + 'motion only sends nothing to the slot, still no row or footer',
+        (hero || cls === 'portrait') && !['page', 'note'].includes(mo.kind) && !r1.row && !r1.foot, { hero, mo, r1 });
       await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
       await page.waitForTimeout(600);
       const inline = await page.locator(rail).isVisible();
@@ -1600,11 +1612,20 @@ if (!LIVE && !STASH_LIVE) {
     } else {
       await page.setInputFiles(C + ' .fsp-filev', [clip, fun]);
       await page.waitForTimeout(600);
-      ok('host ' + at + ': no rail inline on the desktop; the status is the card\'s last row, --tx text', !(await page.locator(rail).isVisible())
-        && await page.locator(C).evaluate((r) => { const s = r.querySelector('.fsp-slot'), kids = [...r.children].filter((e) => e.getClientRects().length && e !== s && !e.matches('.fsp-pframe, .fsp-libbox'));
-          const probe = document.createElement('i'); probe.style.color = 'var(--tx)'; document.body.append(probe); const tx = getComputedStyle(probe).color; probe.remove();
-          return !!s.getClientRects().length && kids.every((k) => k.getBoundingClientRect().bottom <= s.getBoundingClientRect().top + 1) && getComputedStyle(s).color === tx; }));
+      ok('host ' + at + ': no rail inline on the desktop', !(await page.locator(rail).isVisible()));
     }
+    // A script past the input speed limit: the warning in the strip's slot on every class, nothing moving as it comes and goes.
+    const ra = await rectsOf(page);
+    hub.set(CH.config, 'input_speed', 100);
+    const over = await page.waitForFunction(() => { const s = document.querySelector('.topstrip .status');
+      return s.dataset.kind === 'page' && (s.querySelector('.st-text') || {}).textContent === 'Script past the input speed limit'; }, null, { timeout: 3000 }).then(() => true, () => false);
+    const rb = await rectsOf(page), sOver = await slotOf(page), rOver = await rowLook(page);
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, 'status-over-' + at + '.png') });
+    hub.set(CH.config, 'input_speed', 1000);
+    const clear = await page.waitForFunction(() => document.querySelector('.topstrip .status').dataset.kind !== 'page', null, { timeout: 3000 }).then(() => true, () => false);
+    const rc = await rectsOf(page);
+    ok('host ' + at + ': Script past the input speed limit shows in the top strip\'s slot, in no row of the card', over && !rOver.row && !rOver.foot, { sOver, rOver });
+    ok('host ' + at + ': the warning coming and going moves nothing (card, stage, bar, timeline head, pane, strip, its controls, stop pair)', clear && ra === rb && rb === rc, { ra, rb, rc });
     // In fullscreen the rail sits in the hover row: the vertical pop-up on phones, the horizontal one on the desktop.
     await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
     await page.waitForTimeout(700);
@@ -1753,7 +1774,7 @@ if (!LIVE) {
   const stageH = await page.locator(C + ' .fsp-stage').evaluate((e) => Math.round(e.getBoundingClientRect().height));
   ok('claim: the video stage gets real height on its page (at least 120 px)', stageH >= 120, stageH);
   const rects = { empty: await chrome(page) };
-  ok('empty: the status reads No scene loaded', (await statusText(page)) === 'No scene loaded', await statusText(page));
+  ok('empty: no status, the empty stage says it (ph-5u0g peeve 19)', (await statusText(page)) === '', await statusText(page));
   ok('empty: Play is grayed', await playBtn(page).isDisabled());
   const chooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator(C + ' .fsp-empty .og-btn').first().click()])
     .then(([fc]) => fc.isMultiple()).catch(() => false);
@@ -1789,7 +1810,7 @@ if (!LIVE) {
   const preDur = 400 + 1200 * Math.abs(0.8 - 0.15);
   ok('preroll: one segment to the script start, 400 + 1200 x |delta| ms', !!pre && pre.segs.length === 1
     && Math.abs(pre.segs[0].norm - 0.15) < 0.002 && Math.abs(pre.segs[0].dur - preDur) <= 1, pre && pre.segs);
-  ok('preroll: Positioning in the status, the video holds', (await statusText(page)) === 'Positioning'
+  ok('preroll: no status, the video holds', (await statusText(page)) === ''
     && await video(page, (v) => v.paused && v.currentTime === 0), await statusText(page));
   rects.preroll = await chrome(page);
   await page.waitForTimeout(preDur + 300);
@@ -2096,7 +2117,8 @@ if (!LIVE) {
   await page.waitForTimeout(600);
   await page.locator(C).evaluate((r) => { const b = r.querySelector('.fsp-src .fsp-close'); if (b.getClientRects().length) b.click(); else r.querySelector('.fsp-mclose').click(); });
   await page.waitForTimeout(200);
-  ok('transport: close unloads the media, the card is empty again, also while playing', (await statusText(page)) === 'No scene loaded' && await playBtn(page).isDisabled()
+  ok('transport: close unloads the media, the card is empty again, also while playing', (await statusText(page)) === ''
+    && await page.locator(C + ' .fsp-empty').evaluate((e) => !e.hidden) && await playBtn(page).isDisabled()
     && await video(page, (v) => !v.getAttribute('src') && v.paused));
   ok('no page error', errors.length === 0, errors.slice(0, 3));
   clearInterval(hub.timer);
@@ -2794,7 +2816,8 @@ if (!LIVE && !args.includes('--stash-live')) {
   const p1 = await at();
   ok('chapters: next goes to 10 s then 20 s, prev back to 10 s; next is off past the last chapter', n1 === 10 && n2 === 20 && p1 === 10 && nextOff, [n1, n2, p1, nextOff]);
   await click('fsp-close');
-  ok('chapters: close unloads the media and shows the library', (await statusText(page)) === 'No scene loaded'
+  ok('chapters: close unloads the media and shows the library', (await statusText(page)) === ''
+    && await page.locator(C + ' .fsp-empty').evaluate((e) => !e.hidden)
     && (await page.locator(C).getAttribute('data-view')) === 'library');
   clearInterval(hub.timer);
   await ctx.close();

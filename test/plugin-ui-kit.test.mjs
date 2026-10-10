@@ -55,8 +55,7 @@ console.log('\n--- one look ---');
   const blocks = (text, sel) => [...text.matchAll(new RegExp('\\n\\s*' + esc(sel) + '\\s*\\{([^}]*)\\}', 'g'))].map((m) => m[1]);
   const restated = Object.entries(comp).flatMap(([f, sels]) => sels.filter((s) => blocks(src(f).replace(/\r/g, ''), s).some((b) => VOICE.test(b))).map((s) => f + ' ' + s));
   ok('no component restates a shared look\'s voice (Field, DashItem, ActionField)', restated.length === 0, restated);
-  ok('App.svelte keeps only the footer slot\'s flex on .foot-status', /\.foot-status \{ flex: 1 1 0; \}/.test(src('src/App.svelte'))
-    && !/\.foot-status \{\s*\n\s*flex: 1 1 0;\s*\n\s*min-width/.test(src('src/App.svelte')));
+  ok('App.svelte draws no .foot-status: a page\'s status is the top strip\'s slot (ph-5u0g peeve 19)', !/foot-status/.test(src('src/App.svelte')));
 }
 
 const CAT = new Uint8Array(readFileSync(new URL('./fixtures/valencesim-catalog.bin', import.meta.url)));
@@ -318,9 +317,10 @@ console.log('\n--- desktop 1428x900 dark ---');
   // bar: one row here
   ok('bar: one row on the desktop, nothing dropped', await k(page, () => window.__k.bar.dataset.rows === '1' && !window.__k.bar.querySelector('.ui-dropped')));
 
-  // status: its own row on the desktop, no footer slot
-  ok('status: its own row at 1428x900, nothing in a footer slot', await k(page, () => {
-    const s = window.__k.status; return !s.hasAttribute('data-routed') && s.getClientRects().length > 0 && !document.querySelector('.page-foot .foot-status');
+  // status: the top strip's slot on the desktop too (ph-5u0g peeve 19), nothing in place, no footer slot
+  ok('status: the top strip\'s slot at 1428x900, nothing in place', await k(page, () => {
+    const s = window.__k.status, t = document.querySelector('.topstrip .status .st-text');
+    return s.hasAttribute('data-routed') && !s.getClientRects().length && !document.querySelector('.foot-status:not(.ui-status)') && !!t && t.textContent === 'Ready';
   }));
 
   // the sheet: a drawer here; an outside tap closes it and never reaches the page; the stop pair still takes its tap
@@ -459,11 +459,11 @@ console.log('\n--- phone 420x860 dark (touch) ---');
 {
   const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { touch: true });
   const st = await k(page, () => ({ routed: window.__k.status.hasAttribute('data-routed'), hidden: !window.__k.status.getClientRects().length,
-    foot: document.querySelector('.page-foot .foot-status')?.textContent }));
-  ok('status: the footer slot at 420x860, nothing in place', st.routed && st.hidden && st.foot === 'Ready', st);
+    foot: !!document.querySelector('.page-foot .foot-status'), slot: document.querySelector('.topstrip .status .st-text')?.textContent }));
+  ok('status: the top strip\'s slot at 420x860, nothing in place, no footer slot', st.routed && st.hidden && !st.foot && st.slot === 'Ready', st);
   await k(page, () => window.__k.status.set({ text: 'Moved on', tone: 'warn' }));
   await page.waitForTimeout(100);
-  ok('status: a change reaches the footer slot with its tone', await page.evaluate(() => { const f = document.querySelector('.page-foot .foot-status'); return f && f.textContent === 'Moved on' && f.dataset.tone === 'warn'; }));
+  ok('status: a warn change reaches the slot as a condition', await page.evaluate(() => { const s = document.querySelector('.topstrip .status'); return s.dataset.kind === 'page' && s.querySelector('.st-text').textContent === 'Moved on'; }));
 
   const bar = await k(page, () => {
     const b = window.__k.bar, btns = [...b.querySelectorAll('.og-btn')].filter((e) => e.getClientRects().length);
