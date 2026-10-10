@@ -127,7 +127,7 @@ export const machine = $state({
     since: 0,
     host: '',               // the hub this page is pointed at; '' = none chosen
     port: 82,
-    dialed: '',             // what the HUB chip shows: WS host:port or the BLE name
+    dialed: '',             // Health's Address row: WS host:port or the BLE name
     attempts: 0,            // consecutive failed opens since the last good one
     retryAt: 0,             // ms timestamp of the next automatic attempt; 0 = unknown
     sessionId: null,

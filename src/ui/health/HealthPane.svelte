@@ -2,7 +2,9 @@
   /**
    * HealthPane.svelte -- the Health view (ph-9t5l): Link, This device and
    * Machine cards, the Link card's 2-minute strip, the incident list with
-   * Send report, and on the served page the Sent reports list.
+   * Send report, and on the served page the Sent reports list. The address,
+   * the control list and the firmware live here, not in the top bar (DESIGN
+   * §10.3, operator 2026-10-10).
    *
    * Constraints:
    * - One fact per line, plain words left, the number right; a value the
@@ -13,6 +15,8 @@
    * - Warn and act read amber, never red: red is the hazard color.
    */
   import { health } from '../../model/health/health.svelte.js';
+  import { machine } from '../../model/machine.svelte.js';
+  import { bytes } from '../../model/format.js';
   import { CONDITIONS, evidenceText, secs } from '../../model/health/core.js';
   import ReportReview from './ReportReview.svelte';
   import SentReports from './SentReports.svelte';
@@ -26,6 +30,8 @@
   const M = $derived(health.machine);
   const ms = (v) => (v == null ? '--' : Math.round(v) + ' ms');
   const B = (n) => (n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB');
+  const controlList = $derived(machine.catalog.ready
+    ? bytes(machine.catalog.bytes) + (machine.catalog.cached ? ' · saved copy on this device' : ' · read from the machine') : 'not loaded');
 
   // The strip: x over the last 120 s, y over 0..yMax ms.
   const W = 240, H = 64;
@@ -61,6 +67,8 @@
       <dt>Machine WiFi drops</dt><dd class="nr">{NR}</dd>
       <dt>Reconnects</dt><dd class="mono">{L.reconnects ?? '--'}</dd>
       <dt>Times it sent fewer updates</dt><dd class="mono">{L.cuts ?? '--'}</dd>
+      <dt>Address</dt><dd class="mono">{machine.link.dialed || '--'}</dd>
+      <dt>Control list</dt><dd class="mono">{controlList}</dd>
     </dl>
     <figure class="strip" aria-label="Round trip and sent ahead, last 2 minutes">
       <svg viewBox={'0 0 ' + W + ' ' + H} preserveAspectRatio="none" aria-hidden="true">
@@ -103,6 +111,7 @@
       <dt>Motion anomalies</dt><dd class="mono">{M.anomaliesPerMin ?? '--'} per min</dd>
       <dt>Log lines skipped</dt><dd class="nr">{NR}</dd>
       <dt>Restarts seen</dt><dd class="mono">{M.restarts ?? '--'}</dd>
+      <dt>Firmware</dt><dd class="mono">{machine.link.hubIdentity?.fw_version || '--'}</dd>
     </dl>
   </section>
 

@@ -866,7 +866,7 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
       return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top) }; });
     ok(tag + (w > 400 ? ': the top bar rises into the cutout band' : ': the chips miss beside the cutout, so the bar pads under the inset'),
       w > 400 ? bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1) : !bar.cut && bar.rowTop >= HOLE.h, JSON.stringify(bar));
-    // An optional chip on the bar's line never cuts mid-text: the first one cannot wrap away, so it ellipsizes.
+    // An optional chip on the bar's line never cuts mid-text: one that does not fit wraps away whole.
     const cut = await page.evaluate(() => [...document.querySelectorAll('.linkbar .chips.opt > .chip')].filter((c) => c.getClientRects().length).map((c) => {
       const m = c.querySelector('.mono'), o = c.parentElement.getBoundingClientRect(), r = c.getBoundingClientRect();
       return r.top < o.bottom && r.left < o.right - 0.5 && (r.right > o.right + 0.5 || (m.scrollWidth > m.clientWidth + 1 && getComputedStyle(m).textOverflow !== 'ellipsis')) ? c.textContent.trim() : null;
