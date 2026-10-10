@@ -646,7 +646,7 @@ if (!ONLY || ONLY === 'bar') {
         rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
           return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
     });
-    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'loss', 'kb/s', '%'].includes(l))
+    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'resent', 'kb/s', '%'].includes(l))
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
     if (wide) scen(w + 'x' + h + ': render reads N fps; the frame rate and the smoothing delay are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
       && /Frame rate \d+ fps/.test(bar.tip) && /Rail draws \d+ ms behind, to smooth arrivals/.test(bar.tip) && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
@@ -728,10 +728,10 @@ if (!ONLY || ONLY === 'barstates') {
     const noRx = await page.evaluate(() => !/\b\d+s\b/.test(document.querySelector('.linkbar .chip-opt-last').textContent));
     scen(tag + ': "RX 0s" is gone from the bar', noRx);
 
-    // The loss chip: '--' with no model behind it, never a number; every value explained in words.
+    // The resent chip: '--' where the machine reports nothing (the fixture reports none), never a number; every value explained in words.
     const loss = await page.$eval('.linkbar .chip-opt:not(:has(.fps))', (c) => ({ vals: [...c.querySelectorAll('.lv')].map((e) => e.textContent.trim()), tip: c.getAttribute('data-tip') }));
-    if (w > 560) scen(tag + ': loss reads -- until the machine reports it; the tooltip explains each value', loss.vals.join() === '--,--'
-      && /This app: no reading/.test(loss.tip) && /Machine: no reading/.test(loss.tip) && /retries/i.test(loss.tip) && /Wi-Fi/.test(loss.tip), JSON.stringify(loss));
+    if (w > 560) scen(tag + ': resent reads -- where nothing is reported; the tooltip explains each value', loss.vals.join() === '--,--'
+      && /^This \w+.*: no reading/m.test(loss.tip) && /Machine: no reading/.test(loss.tip) && /Machine radio/.test(loss.tip) && /Wi-Fi/.test(loss.tip), JSON.stringify(loss));
 
     // No shift: rates change with the traffic and move nothing.
     const r0 = await rects(page), n0 = await rate(page);

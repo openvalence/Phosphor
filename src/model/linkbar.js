@@ -47,6 +47,34 @@ export function fmtRate(bytesPerSec) {
   return kb >= 999.5 ? '999+' : fmtNum(kb);
 }
 
+const SCOPE = { system: 'this PC', connection: 'this connection' };
+const pct = (v) => (v == null ? null : fmtNum(v) + '%');
+
+/** The loss chip's accessible name from machine.stats.link (linkstats.js): who each figure is about. */
+export function lossName(link) {
+  const c = pct(link?.clientLossPct), m = pct(link?.machine?.lossPct);
+  return 'Resent: ' + (SCOPE[link?.clientScope] || 'this app') + ' ' + (c ?? 'no reading') + ', machine ' + (m ?? 'no reading');
+}
+
+/**
+ * The loss chip's tooltip, one line per reported value, each in the words of what it measures: a share of
+ * TCP sent again (never "packets lost"), the client's scope and unit as the shell reported them.
+ */
+export function lossTip(link) {
+  const line = (who, v, what) => who + ': ' + (pct(v) ? pct(v) + ' ' + what : 'no reading');
+  const scope = link?.clientScope;
+  const unit = link?.clientUnit === 'bytes' ? 'bytes' : 'segments';
+  const c = line(scope === 'system' ? 'This PC' : scope === 'connection' ? 'This connection' : 'This app', link?.clientLossPct,
+    'of TCP ' + unit + ' sent again' + (scope === 'system' ? ', all TCP on this PC' : ''));
+  const rssi = link?.machine?.rssiDbm;
+  return [
+    c,
+    line('Machine', link?.machine?.lossPct, 'of its TCP segments sent again'),
+    line('Machine radio', link?.machine?.retryPct, 'of its transmits retried'),
+    'Machine Wi-Fi: ' + (rssi == null ? 'no reading' : rssi + ' dBm'),
+  ].join('\n');
+}
+
 /** Link phase -> the dot's state: live, connecting, stale (live but silent), offline. */
 export function dotState(phase, stale) {
   if (phase === 'live') return stale ? 'stale' : 'live';

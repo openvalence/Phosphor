@@ -39,7 +39,7 @@
   import { phoneMenu } from './PhoneMenu.svelte';
   import ChannelHeat from './ChannelHeat.svelte';
   import { totals } from '../model/activity.js';
-  import { SAMPLE_MS, rateMeter, fmtRate, fmtNum, dotState } from '../model/linkbar.js';
+  import { SAMPLE_MS, rateMeter, fmtRate, fmtNum, dotState, lossName as lossNameOf, lossTip as lossTipOf } from '../model/linkbar.js';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   // onheat(key): a heatmap block was clicked (ChannelHeat's onopen).
@@ -104,18 +104,13 @@
   const dotTip = $derived(dotCls === 'live' ? (machine.link.virtual ? 'Virtual: a simulated machine' : 'Live: frames arriving')
     : dotCls === 'stale' ? 'Stale: no frames for ' + ago(machine.stats.lastRxMs) : dotWord);
 
-  // The loss readout (machine.stats.link, the link-loss model): a value not reported reads '--'.
+  // The loss readout (machine.stats.link, linkstats.js): TCP sent again, this client's and the machine's.
+  // A value not reported reads '--'.
   const loss = $derived(machine.stats.link);
   const lossClient = $derived(loss?.clientLossPct ?? null);
   const lossMachine = $derived(loss?.machine?.lossPct ?? null);
-  const pct = (v) => (v == null ? 'no reading' : fmtNum(v) + '%');
-  const lossName = $derived('Loss: this app ' + pct(lossClient) + ', machine ' + pct(lossMachine));
-  const lossTip = $derived([
-    'This app: ' + pct(lossClient) + ' of the machine\'s frames lost',
-    'Machine: ' + pct(lossMachine) + ' of this app\'s frames lost',
-    'Machine retries: ' + pct(loss?.machine?.retryPct ?? null) + ' of its sends',
-    'Machine Wi-Fi: ' + (loss?.machine?.rssiDbm == null ? 'no reading' : loss.machine.rssiDbm + ' dBm'),
-  ].join('\n'));
+  const lossName = $derived(lossNameOf(loss));
+  const lossTip = $derived(lossTipOf(loss));
 
   // Render health, published by whichever widget owns the rAF loop. This is
   // the instrument for "position telemetry jitters in one shell but not the
@@ -198,7 +193,7 @@
       <span class="chip-lbl unit">KB/s</span>
     </span>
     <span class="chip chip-opt" role="img" aria-label={lossName} data-tip={lossTip}>
-      <span class="chip-lbl">loss</span>
+      <span class="chip-lbl">resent</span>
       <span class="mono lv">{fmtNum(lossClient)}</span><span class="mono sep">/</span><span class="mono lv">{fmtNum(lossMachine)}</span><span class="chip-lbl unit">%</span>
     </span>
     <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>

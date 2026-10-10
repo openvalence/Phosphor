@@ -7,7 +7,7 @@
  */
 import { encodeFrame, encodeEstopFrame, FRAME } from '../../Valence/clients/js/index.js';
 import { totals, countFrames } from '../src/model/activity.js';
-import { SAMPLE_MS, rateMeter, fmtNum, fmtRate, dotState } from '../src/model/linkbar.js';
+import { SAMPLE_MS, rateMeter, fmtNum, fmtRate, dotState, lossName, lossTip } from '../src/model/linkbar.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -89,6 +89,23 @@ ok('a rate past three digits says so', fmtRate(20_000_000) === '999+' && fmtRate
   ok('a live link gone silent is stale', dotState('live', true) === 'stale');
   ok('staleness never upgrades a link that is not live', dotState('failed', true) === 'offline' && dotState('retrying', true) === 'connecting');
   ok('an unknown phase reads offline, never live', dotState('bogus', false) === 'offline');
+}
+
+// ---- the loss chip's words: what each figure measures, from the fields the model gives -------------
+{
+  const win = { clientLossPct: 0.42, clientScope: 'system', clientUnit: 'segments', machine: { lossPct: 1.5, retryPct: null, rssiDbm: -58 } };
+  const t = lossTip(win).split('\n');
+  ok('Windows: the client line says all TCP on this PC, in segments', t[0] === 'This PC: 0.4% of TCP segments sent again, all TCP on this PC', t[0]);
+  ok('the machine line is its TCP segments sent again; no radio reading says so', t[1] === 'Machine: 1.5% of its TCP segments sent again' && t[2] === 'Machine radio: no reading', t.slice(1, 3));
+  ok('the signal is in dBm', t[3] === 'Machine Wi-Fi: -58 dBm');
+  ok('the name carries the scope', lossName(win) === 'Resent: this PC 0.4%, machine 1.5%', lossName(win));
+  const mac = lossTip({ ...win, clientUnit: 'bytes' }).split('\n')[0];
+  ok('macOS: the unit is bytes', mac === 'This PC: 0.4% of TCP bytes sent again, all TCP on this PC', mac);
+  const conn = lossTip({ ...win, clientScope: 'connection' }).split('\n')[0];
+  ok('a connection scope says this connection, not this PC', conn === 'This connection: 0.4% of TCP segments sent again', conn);
+  const virt = { clientLossPct: null, clientScope: null, clientUnit: null, machine: { lossPct: null, retryPct: null, rssiDbm: null } };
+  ok('nothing reported: every line says no reading', lossTip(virt).split('\n').every((l) => /no reading$/.test(l)) && lossName(virt) === 'Resent: this app no reading, machine no reading', lossTip(virt));
+  ok('no model at all reads the same, never a number', lossTip(undefined).split('\n').every((l) => /no reading$/.test(l)));
 }
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
