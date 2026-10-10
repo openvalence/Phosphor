@@ -1010,10 +1010,11 @@ export function fitGrid(W, H, gap = 8, min = 150, max = 300, text = 44) {
 /**
  * Tiles or rows. Paged: as many whole items as fit, onPage(page, perPage) when
  * that changes, and a page foot; else the body scrolls with the recess shades.
- * onMove(from, to): rows drag to reorder (a mouse at once, a touch after a hold).
+ * row.min (px): rows fill columns at least that wide, side by side; one column without it.
+ * onMove(from, to): rows drag to reorder (a mouse at once, a touch after a hold); one column only.
  */
 export function list(o = {}) {
-  check('list', o, ['form', 'paged', 'tile', 'count', 'onPage', 'onMove']);
+  check('list', o, ['form', 'paged', 'tile', 'row', 'count', 'onPage', 'onMove']);
   if (!['grid', 'rows'].includes(o.form || 'grid')) throw new Error('ui.list: form is grid or rows');
   const paged = o.paged !== false;
   const items = h('div', { class: 'ui-list-items', role: 'list' });
@@ -1041,9 +1042,15 @@ export function list(o = {}) {
     const gap = parseFloat(getComputedStyle(items).rowGap) || 0, rem = remPx();
     let f;
     if (form === 'rows') {
-      const v = getComputedStyle(el).getPropertyValue('--ui-row-h').trim(), rh = parseFloat(v) * (v.endsWith('rem') ? rem : 1) || 56;
+      // A probe resolves --ui-row-h as drawn: a calc(), max() or var() included.
+      const probe = h('div', { style: 'position: absolute; visibility: hidden; height: var(--ui-row-h)' });
+      el.append(probe);
+      const rh = probe.getBoundingClientRect().height || 56;
+      probe.remove();
       const n = Math.max(1, Math.floor((H + gap) / (rh + gap)));
-      f = { cols: 1, perPage: n };
+      const cg = parseFloat(getComputedStyle(items).columnGap) || gap;
+      const cols = o.row && o.row.min > 0 && !o.onMove ? Math.max(1, Math.floor((W + cg) / (o.row.min + cg))) : 1;
+      f = { cols, perPage: n * cols };
     } else f = fitGrid(W, H, gap, (o.tile && o.tile.min) || 150, (o.tile && o.tile.max) || 300, TILE_TEXT_REM * rem);
     items.style.gridTemplateColumns = 'repeat(' + f.cols + ', minmax(0, 1fr))';
     if (f.perPage === per) return;
