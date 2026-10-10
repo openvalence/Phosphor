@@ -52,6 +52,7 @@ const CONTRACT = {
     'HOME_MIN_MS', 'COMP_MAX_MS', 'COMP_STEP_MS', 'LAG_WINDOW', 'LAG_MIN', 'LAG_MATCH_MS', 'EXPECT_MS', 'applyT', 'knotVel', 'strokeSpeed',
     'createScheduler'],
   [P + 'stash.js']: ['SCENES_QUERY', 'SORTS', 'COPY', 'normalizeBase', 'rebase', 'withKey', 'toScene', 'createStash'],
+  [P + 'heat.js']: ['BUCKETS', 'CAP', 'DAY_MS', 'MAX_AGE_MS', 'LIMIT', 'HOVER_MS', 'crc32', 'heatBuckets', 'heatCss', 'memStore', 'idbStore', 'heatOf', 'createHeat'],
   [P + 'library.js']: ['CSS', 'COPY', 'formFor', 'mountLibrary', 'mountConnect'],
   [P + 'ui.js']: ['CSS', 'COPY', 'FULL_UP', 'GLANCE_UP', 'HOVER_IDLE_MS', 'createPlayer', 'createControl', 'compositionOf', 'clampOffset',
     'windowShare', 'ceilingOf', 'localScene', 'extraNote', 'PLAY_CSS', 'mountPlay', 'pageClass'],
@@ -1329,6 +1330,46 @@ if (!LIVE && !STASH_LIVE && !OSC_ONLY) {
       ok('library ' + at + ': no page error in the browse checks', errors.length === 0, errors.slice(0, 3));
     });
   }
+
+  // (L2) the script heat on the tiles (the cache itself is test/funscript-heat.test.mjs): painted for the page and the
+  // next one only, an overlay that moves nothing, hidden from assistive tech, shown on hover, repainted by a token change
+  // without a request, and kept in IndexedDB across a reload.
+  const m0 = stash.seen.length;
+  await visit(1428, 900, 'desktop', null, async ({ page, errors }) => {
+    const tiles = C + ' .fsp-lib .ui-list-items > .ui-tile';
+    const painted = () => page.$$eval(tiles + ' .fsp-heat', (e) => e.filter((x) => x.style.backgroundImage).length);
+    const n = await page.locator(tiles).count();
+    await page.waitForFunction(([q, k]) => [...document.querySelectorAll(q)].filter((x) => x.style.backgroundImage).length >= k, [tiles + ' .fsp-heat', n], { timeout: 8000 }).catch(() => {});
+    // The next page's prefetch follows the painted page.
+    for (let i = 0; i < 40 && new Set(stash.seen.slice(m0).filter((r) => /\/scene\/\d+\/funscript/.test(r.path)).map((r) => r.path.split("?")[0])).size < n * 2; i++) await page.waitForTimeout(250);
+    await page.waitForTimeout(400);
+    const asked = stash.seen.slice(m0).filter((r) => /\/scene\/\d+\/funscript/.test(r.path));
+    const ids = new Set(asked.map((r) => r.path.match(/scene\/(\d+)/)[1]));
+    ok('heat: every tile on the page is painted, the requests are this page and the next only, none for the Stash heatmap',
+      (await painted()) === n && ids.size === n * 2 && stash.seen.slice(m0).every((r) => !/heatmap/.test(r.path)), { n, painted: await painted(), asked: ids.size });
+    const geo = await page.locator(tiles).nth(1).evaluate((t) => {
+      const s = t.querySelector('.ui-tile-shot').getBoundingClientRect(), h = t.querySelector('.fsp-heat'), b = h.getBoundingClientRect(), r = t.getBoundingClientRect();
+      return { inside: b.left >= s.left - 1 && b.right <= s.right + 1 && b.bottom <= s.bottom + 1 && b.height > 0 && b.height <= 8, hidden: h.getAttribute('aria-hidden'),
+        op: getComputedStyle(h).opacity, rect: [r.x, r.y, r.width, r.height].map(Math.round), bg: getComputedStyle(h).backgroundImage };
+    });
+    ok('heat: an overlay on the shot bottom edge, hidden from assistive tech (the row meta carries the speed), invisible at rest',
+      geo.inside && geo.hidden === 'true' && geo.op === '0', geo);
+    await page.locator(tiles).nth(1).locator('.fsp-tile').hover();
+    await page.waitForTimeout(500);
+    const on = await page.locator(tiles).nth(1).evaluate((t) => ({ op: getComputedStyle(t.querySelector('.fsp-heat')).opacity, rect: (() => { const r = t.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); })() }));
+    ok('heat: hovering shows the strip and nothing moves', on.op === '1' && same(on.rect, geo.rect), { on, geo: geo.rect });
+    await page.mouse.move(5, 5);
+    // A token change repaints with no request.
+    const hits = stash.seen.length;
+    await page.evaluate(() => document.documentElement.style.setProperty('--reality', '#ff00ff'));
+    await page.waitForTimeout(200);
+    const bg2 = await page.locator(tiles).nth(1).evaluate((t) => getComputedStyle(t.querySelector('.fsp-heat')).backgroundImage);
+    await page.evaluate(() => document.documentElement.style.removeProperty('--reality'));
+    ok('heat: a changed theme token repaints the strip and makes no request', bg2 !== geo.bg && stash.seen.length === hits, { hits, now: stash.seen.length, bg: bg2 === geo.bg, late: stash.seen.slice(hits).map((r) => r.path) });
+    const stored = await page.evaluate(() => new Promise((ok) => { const r = indexedDB.open('fsp-heat'); r.onsuccess = () => { const q = r.result.transaction('e').objectStore('e').count(); q.onsuccess = () => ok(q.result); q.onerror = () => ok(-1); }; r.onerror = () => ok(-1); }));
+    ok('heat: the strips are in IndexedDB (the page, the next page and the server record)', stored >= n + 1, stored);
+    ok('heat: no page error', errors.length === 0, errors.slice(0, 3));
+  });
 
   if (SHOTS) {
     const paper = THEMES.find((t) => t.id === 'paper');
