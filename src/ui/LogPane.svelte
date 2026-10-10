@@ -160,7 +160,7 @@
 
   /** One event's parts; a row, its detail, Copy and the fold key all read this. */
   function parts(t, evt) {
-    const p = { src: 'hub', bucket: 'info', lvl: null, tag: null, text: '', kv: [], diag: false, superseded: false, health: evt.health || null };
+    const p = { src: 'hub', bucket: 'info', lvl: null, tag: null, id: null, text: '', kv: [], diag: false, superseded: false, health: evt.health || null };
     if (t === 'log') {
       const fields = bodyFields(evt);
       const get = (k) => fields.find((f) => f.key === k);
@@ -171,6 +171,8 @@
       p.src = sourceOf(evt, p.tag);
       p.bucket = bucketOf(p.lvl);
     } else if (t === 'anomaly') {
+      // Two channels never fold together, whatever their names read.
+      p.id = evt.channel;
       p.text = chan(evt, 'device');
       p.kv = bodyFields(evt);
     } else if (t === 'safety' && evt.diagnostic) {
@@ -201,8 +203,9 @@
       void ring.length;
       void ring[ring.length - 1];
       untrack(() => {
-        // A new ring is a new session (machine.svelte.js forgetDevice): nothing from the old one stays.
-        if (folds[id].ring && folds[id].ring !== ring) { resume(id); open.clear(); }
+        // A new ring is a new session (machine.svelte.js forgetDevice): nothing from the old one
+        // stays, a paused Safety or Session snapshot included.
+        if (folds[id].ring && folds[id].ring !== ring) { EVENT_FEEDS.forEach(resume); open.clear(); }
         if (ingest(folds[id], ring, (e) => parts(id, e))) bump();
       });
     });
@@ -306,13 +309,29 @@
     if (t) t.title = ago(+t.dataset.at);
   }
 
+  // A repeat moves its row to the tail and a DOM move drops focus to the body: the row's
+  // head takes it back after the render, unless focus went elsewhere (a focus or a click).
+  let focusRow = null;
+  $effect(() => {
+    const onFocus = (e) => { focusRow = e.target.closest?.('.logpane .feed .head') || null; };
+    const onDown = (e) => { if (!e.target.closest?.('.logpane .feed .head')) focusRow = null; };
+    window.addEventListener('focusin', onFocus);
+    window.addEventListener('pointerdown', onDown, true);
+    return () => { window.removeEventListener('focusin', onFocus); window.removeEventListener('pointerdown', onDown, true); };
+  });
+  $effect(() => {
+    void shown;
+    untrack(() => { if (focusRow?.isConnected && document.activeElement === document.body) focusRow.focus({ preventScroll: true }); });
+  });
+
   function onFeedKey(e) {
     const k = e.key;
     if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Home' && k !== 'End') return;
     const heads = [...e.currentTarget.querySelectorAll(':scope > .line > .head')];
     if (!heads.length) return;
     e.preventDefault();
-    const i = heads.indexOf(document.activeElement), last = heads.length - 1;
+    // From a row's detail (Copy row, Incident) the walk goes on from that row.
+    const i = heads.findIndex((h) => h.parentElement.contains(document.activeElement)), last = heads.length - 1;
     const n = k === 'Home' ? 0 : k === 'End' ? last
       : i < 0 ? (k === 'ArrowDown' ? 0 : last) : Math.max(0, Math.min(last, i + (k === 'ArrowDown' ? 1 : -1)));
     heads[n].focus();

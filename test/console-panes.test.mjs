@@ -24,7 +24,7 @@ import { createServer } from 'node:http';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { THEMES } from '../src/model/theme.js';
-import { shape } from '../src/ui/logfold.js';
+import { shape, createFold, addTo } from '../src/ui/logfold.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbBool, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
@@ -130,8 +130,24 @@ const word = (i) => { let s = ''; do { s = String.fromCharCode(97 + (i % 26)) + 
 // The fold key's shape: numbers and ids read '#', words stay.
 for (const [a, b, same] of [['gap 340 ms', 'gap 1512.5 ms', true], ['session 0x1a2b', 'session 0xff', true],
   ['inc-3f9a2b1c open', 'inc-77aa00ee open', true], ['report 123e4567-e89b-12d3-a456-426614174000', 'report 00000000-0000-0000-0000-000000000000', true],
-  ['flood abc', 'flood abd', false], ['motor facade', 'motor decade', false]]) {
+  ['flood abc', 'flood abd', false], ['motor facade', 'motor decade', false],
+  // A digit inside a name is the name; a number reads the same signed, grouped or long.
+  ['axis1 fault', 'axis2 fault', false], ['E12 trip', 'E34 trip', false], ['fw v1.2 rejected', 'fw v1.3 rejected', false],
+  ['offset -5 mm', 'offset 5 mm', true], ['travel 12\u202f345.6 mm', 'travel 999.5 mm', true], ['took 1234567.5 ms', 'took 12.5 ms', true],
+  ['node 3fa2c1 down', 'node 77aa00 down', true]]) {
   ok('fold: "' + a + '" and "' + b + '" ' + (same ? 'fold' : 'stay apart'), (shape(a) === shape(b)) === same, shape(a) + ' / ' + shape(b));
+}
+// Parts never run into one another, and a channel identity is never shaped away.
+{
+  const f = createFold(), p = (o) => ({ src: 'hub', bucket: 'info', lvl: 'info', tag: null, id: null, text: '', kvText: '', ...o });
+  addTo(f, { at: 1 }, p({ tag: 'a|b', text: 'c' }));
+  addTo(f, { at: 2 }, p({ tag: 'a', text: 'b|c' }));
+  addTo(f, { at: 3 }, p({ text: 'gap', kvText: 'x=1' }));
+  addTo(f, { at: 4 }, p({ text: 'gap x=1' }));
+  addTo(f, { at: 5 }, p({ id: 0x7001, text: 'channel 28673' }));
+  addTo(f, { at: 6 }, p({ id: 0x7002, text: 'channel 28674' }));
+  addTo(f, { at: 7 }, p({ id: 0x7002, text: 'channel 28674' }));
+  ok('fold: a tag, a text, the fields and the channel each keep apart', f.rows.length === 6 && f.rows[5].n === 2, f.rows.map((r) => r.n).join());
 }
 
 const browser = await chromium.launch();
@@ -346,11 +362,16 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('log: the Safety feed has its own empty state', /No safety events/.test(await page.textContent('#lp-feed-safety')));
   // ph-8l8: unitless integers read as sent, no decimals and no grouping.
   const sKey = (name) => entry(CORE_CHANNEL.safety_events).schema.find((f) => f.name === name).key;
-  wire.send(FRAME.EVENT, CORE_CHANNEL.safety_events, cbMap([[K.event_kind, cbUint(SAFETY_EVENT_KIND.estop_cleared)],
+  const edge = () => wire.send(FRAME.EVENT, CORE_CHANNEL.safety_events, cbMap([[K.event_kind, cbUint(SAFETY_EVENT_KIND.estop_cleared)],
     [K.body, cbMap([[sKey('word'), cbUint(8)], [sKey('cause'), cbUint(0)], [sKey('owner_session'), cbUint(3576056062)], [sKey('estop_seq'), cbUint(0)]])]]));
+  edge();
   await page.waitForSelector('#lp-feed-safety .line .kv');
   const safetyKv = await page.$$eval('#lp-feed-safety .line .kv', (els) => els.map((e) => e.textContent).join(' '));
   ok('log: a safety edge prints its integers as sent (ph-8l8)', /word=8 cause=0 owner_session=3576056062 estop_seq=0/.test(safetyKv), safetyKv);
+  edge();
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-safety > .line').length === 2, null, { timeout: 5000 }).catch(() => {});
+  ok('log: Safety never folds, the same edge twice is two rows', await page.$$eval('#lp-feed-safety > .line', (ls) => ls.length) === 2
+    && await page.$eval('#lp-feed-safety', (el) => !/×/.test(el.textContent)));
   await page.click('[data-feed="log"]');
   await settle();
   ok('log: a tab switch keeps the feed scroll position', await page.$eval('#lp-feed-log', (el) => el.scrollTop) === keptTop, String(keptTop));
@@ -387,13 +408,37 @@ for (const [label, viewport] of [['desktop', { width: 1440, height: 900 }], ['ph
   ok('log: Down from the search walks into the rows', focused === 1, String(focused));
   await page.keyboard.press('Enter');
   ok('log: Enter expands the row', await page.evaluate(() => document.activeElement?.getAttribute('aria-expanded')) === 'true');
-  await page.keyboard.press('Enter');
+  await page.focus('#lp-feed-log > .line.open button:has-text("Copy row")');
+  await page.keyboard.press('ArrowDown');
+  const fromDetail = await page.evaluate(() => [...document.querySelectorAll('#lp-feed-log > .line > .head')].indexOf(document.activeElement));
+  ok('log: Down from a row\'s detail goes on to the next row', fromDetail === 2, String(fromDetail));
+  await page.click('#lp-feed-log > .line.open .head');
 
   await page.click('.logpane .tools button:has-text("Clear")');
   await settle();
   ok('log: Clear empties the feed and its counts', /No log lines yet/.test(await page.textContent('#lp-feed-log'))
     && /^Log 0/.test((await page.textContent('[data-feed="log"]')).trim().replace(/\s+/g, ' ')));
   ok('log: the status slot never changes height', h0 > 0 && h0 === await slotH(), h0 + 'px');
+
+  // A repeat moves the focused row to the tail; the row keeps the focus.
+  for (const w of ['alpha', 'bravo', 'charlie']) logLine(2, 'net', 'kept ' + w);
+  await page.waitForFunction(() => document.querySelectorAll('#lp-feed-log > .line').length === 3, null, { timeout: 5000 });
+  await page.focus('.logpane .q');
+  await page.keyboard.press('ArrowDown');
+  logLine(2, 'net', 'kept alpha');
+  await page.waitForFunction(() => /×2/.test(document.querySelector('#lp-feed-log > .line:last-child')?.textContent || ''), null, { timeout: 5000 });
+  await settle();
+  ok('log: a row a repeat moves keeps the keyboard focus', await page.evaluate(() => document.activeElement?.closest('.line')?.querySelector('.text')?.textContent) === 'kept alpha',
+    await page.evaluate(() => document.activeElement?.tagName + '.' + document.activeElement?.className));
+
+  // Two device channels never fold together, whatever their names read.
+  for (const ch of [0x7001, 0x7002, 0x7002]) wire.send(FRAME.EVENT, ch, cbMap([[K.event_kind, cbUint(1)], [K.body, cbMap([[1, cbUint(5)]])]]));
+  await page.click('[data-feed="anomaly"]');
+  await page.waitForFunction(() => /^Anomalies 3/.test(document.querySelector('[data-feed="anomaly"]')?.textContent.trim().replace(/\s+/g, ' ') || ''), null, { timeout: 5000 }).catch(() => {});
+  await settle();
+  const anom = await page.$$eval('#lp-feed-anomaly > .line', (ls) => ls.map((l) => l.querySelector('.text').textContent + ' ' + l.querySelector('.n').textContent));
+  ok('log: two device channels keep their own rows, a repeat on one folds', anom.length === 2 && /×2/.test(anom[1]), anom.join(' | '));
+  await page.click('[data-feed="log"]');
 
   // ---- Display ---------------------------------------------------------------
   await openTab(page, 'display');
@@ -510,6 +555,27 @@ for (const [w, h] of [[1428, 900], [1024, 768], [844, 390], [420, 860]]) {
   logLine(4, 'net', 'one more after the flood');
   await page.waitForFunction(() => /one more/.test(document.querySelector('#lp-feed-log > .line:last-child')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
   ok('flood: a line after 5000 rows still lands fast', Date.now() - t1 < 1000, (Date.now() - t1) + ' ms');
+  // Off-screen rows skip their render, never their content: the keys reach them and a selection copies them.
+  const inView = (sel, re) => page.evaluate(([sel, re]) => {
+    const h = document.activeElement, f = document.querySelector('#lp-feed-log').getBoundingClientRect(), r = h.getBoundingClientRect();
+    return h.matches(sel) && r.top >= f.top - 1 && r.bottom <= f.bottom + 1 && new RegExp(re).test(h.textContent);
+  }, [sel, re]);
+  await page.focus('#lp-feed-log');
+  await page.keyboard.press('Home');
+  ok('flood: Home reaches the first of 5000 rows, in view', await inView('#lp-feed-log > .line:first-child > .head', 'flood'));
+  await page.keyboard.press('End');
+  ok('flood: End reaches the last, in view', await inView('#lp-feed-log > .line:last-child > .head', 'one more after the flood'));
+  const [rowsN, selected] = await page.evaluate(() => {
+    const words = (t) => t.match(/flood [a-z]+/g) || [];
+    const s = getSelection();
+    s.selectAllChildren(document.querySelector('#lp-feed-log'));
+    const t = s.toString();
+    s.removeAllRanges();
+    const all = new Set(words(t));
+    const rows = [...document.querySelectorAll('#lp-feed-log > .line .text')].flatMap((x) => words(x.textContent));
+    return [rows.length, rows.filter((w) => all.has(w)).length];
+  });
+  ok('flood: a selection over the list holds every row, off-screen ones too', rowsN > 4990 && selected === rowsN, selected + ' of ' + rowsN);
   ok('flood: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
   await ctx.close();
 }
