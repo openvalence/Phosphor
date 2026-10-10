@@ -5,7 +5,8 @@
  *
  * Constraints:
  * - Documents, never dispatches: a binding lives in its component. F1 and F3
- *   are the only keys bound off this table (KeyHelp, LookFor).
+ *   are the only keys bound off this table (KeyHelp, LookFor); the Log page
+ *   takes F3 first while its search is not focused.
  * - A binding added or changed in a component changes here in the same commit.
  * - Wording follows docs/COPY.md: one terse fragment per field.
  */
@@ -69,6 +70,13 @@ export const KEYS = [
     { keys: 'F2, Double-click', does: 'Rename the layout', where: 'Layout row, not Default', src: 'src/shell/RailLayouts.svelte' },
     { keys: 'Alt+Up, Alt+Down', does: 'Move the layout in the list', where: 'Layout row', src: 'src/shell/RailLayouts.svelte' },
     { keys: 'Hold Enter, Space', does: 'Delete the layout', where: 'Layout x, one second', src: 'src/shell/RailLayouts.svelte' },
+  ] },
+  { group: 'Log page', items: [
+    { keys: 'F3', does: 'Focus the search; again, Look for', where: 'Log page', src: 'src/ui/LogPane.svelte' },
+    { keys: 'Up, Down', does: 'Move between rows', where: 'Log list, search', src: 'src/ui/LogPane.svelte' },
+    { keys: 'Home, End', does: 'First, last row', where: 'Log list', src: 'src/ui/LogPane.svelte' },
+    { keys: 'Enter', does: 'Open or close the row detail', where: 'Log row', src: 'src/ui/LogPane.svelte' },
+    { keys: 'Escape', does: 'Clear the search', where: 'Log search', src: 'src/ui/LogPane.svelte' },
   ] },
   { group: 'Phosphor panes', items: [
     { keys: 'F2, Double-click', does: 'Rename the saved hub', where: 'Hubs', src: 'src/shell/HubsPane.svelte' },

@@ -383,6 +383,8 @@ for (const [w, h] of [[420, 860], [860, 420], [200, 390]]) {
   const missing = [];
   for (const t of deskTabs) {
     await page.keyboard.press('F3');
+    // The Log page takes the first F3 for its own search (ph-s5mu); the second is LookFor's.
+    if (!(await page.locator('.lf-q').isVisible())) await page.keyboard.press('F3');
     await page.fill('.lf-q', t.label);
     const want = t.label + ' · ' + t.path;
     const at = await page.$$eval('.lf-list li', (ls, want) => ls.findIndex((l) => l.textContent.replace(/\s+/g, ' ').trim() === want), want);

@@ -5,7 +5,8 @@
  *             meaning (registry-tables.js), the count past the 60-deep ring,
  *             the last time, the causing channel or range, the hub's detail;
  *             safety refusals render distinctly (amber, never red); Log opens
- *             the Log page; the Link health row counts them and jumps there
+ *             the Log page on that code's refusal rows (ph-s5mu.1); the Link
+ *             health row counts them and jumps there
  *   map       every registry range is a band in its own token color, every
  *             catalog channel a cell in its class color, the occupancy numbers
  *             are the fixture's, the device grid holds the device-range cells
@@ -256,6 +257,19 @@ const docTop = (page, sel) => page.$eval(sel, (el) => Math.round(el.getBoundingC
   await page.click('.refusals > li >> nth=0 >> button:has-text("Log")');
   await page.waitForTimeout(300);
   ok('refusals: Log opens the Log page', await page.$('.logpane') !== null && await page.$('.link-page') === null);
+  // ph-s5mu.1: on the Log feed, searched for the code's name, its refusal rows and nothing else.
+  const found = await page.$$eval('#lp-feed-log > .line', (ls) => ls.map((l) => [l.querySelector('.chip.tag')?.textContent, l.querySelector('.text').textContent,
+    l.querySelector('.kv')?.textContent || '']));
+  ok('refusals: Log lands on the rows of that code in the Log feed', await page.inputValue('.logpane .q') === 'INVALID_VALUE'
+    && await page.getAttribute('[data-feed="log"]', 'aria-selected') === 'true'
+    && found.length === 3 && found.every(([tag, text, kv]) => tag === 'refusal' && text === 'INVALID_VALUE' && kv.includes('code=' + hex(NACK.INVALID_VALUE))),
+    JSON.stringify(found));
+  ok('refusals: a row names the channel and the detail the hub sent', found.some(([, , kv]) => kv.includes('channel=' + hex(INTENT_CH) + ' ' + nameOf(INTENT_CH)) && kv.includes('detail=key 3 out of range')),
+    JSON.stringify(found));
+  await goTab(page, 'valence');
+  await goTab(page, 'log');
+  await page.waitForSelector('.logpane');
+  ok('refusals: the next visit to the Log starts with no search', await page.inputValue('.logpane .q') === '');
 
   // ---- the top bar's channel heatmap opens this page on a channel (ph-8yga.1) ----
   const far = ENTRIES.filter((e) => e.clsName === 'INTENT').at(-1);
@@ -288,7 +302,7 @@ for (const [w, h] of [[1428, 900], [1024, 768], [420, 860], [1300, 900], [1360, 
     const { ctx, page, errors } = await boot({ width: w, height: h }, { theme });
     nack(ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id, NACK.INVALID_VALUE, 'key 3 out of range');
     nack(ENTRIES.find((e) => e.clsName === 'INTENT' && e.id >= 0x100).id, NACK.NOT_HOMED);
-    nack(0, NACK.CHUNK_UNAVAILABLE);
+    nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
     await page.waitForTimeout(300);
     const fit = await page.evaluate(() => {
       const lp = document.querySelector('.link-page'), pr = lp.getBoundingClientRect();
@@ -313,7 +327,7 @@ for (const [w, h] of [[1428, 900], [1024, 768], [420, 860], [1300, 900], [1360, 
   console.log('\n--- coarse pointer 420x860 ---');
   const { ctx, page } = await boot({ width: 420, height: 860 }, { touch: true });
   const top0 = await docTop(page, '#vp-channels');
-  nack(0, NACK.CHUNK_UNAVAILABLE);
+  nack(0, NACK.CHUNK_UNAVAILABLE, null, 1);
   await page.waitForTimeout(300);
   ok('coarse: the first refusal moves nothing below it', await docTop(page, '#vp-channels') === top0, [top0, await docTop(page, '#vp-channels')]);
   const small = await page.$$eval('.link-page button', (bs) => bs.filter((b) => b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44)

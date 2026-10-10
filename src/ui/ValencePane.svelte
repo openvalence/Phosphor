@@ -22,7 +22,7 @@
   import { machine, getSession } from '../model/machine.svelte.js';
   import { ACCESS_NAME, NACK_NAME } from '../../../Valence/clients/js/index.js';
   import { NACK_FAMILY, NACK_MEANING, CHANNEL_RANGES } from '../model/registry-tables.js';
-  import { bytes, since } from '../model/format.js';
+  import { bytes, since, hexId } from '../model/format.js';
   import { logView } from './logview.svelte.js';
   import { linkView, selectChannel } from './linkview.svelte.js';
   import ChannelMap from './ChannelMap.svelte';
@@ -49,7 +49,6 @@
   // machine.svelte.js stores the etag as hex already.
   const etagHex = $derived(machine.catalog.etag || '--');
 
-  function hexId(id) { return '0x' + id.toString(16).padStart(4, '0').toUpperCase(); }
   function categoryOf(entry) {
     if (entry.category == null) return '--';
     return entry.categoryLabel || entry.categoryName || ('category ' + entry.category);
