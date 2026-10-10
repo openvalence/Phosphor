@@ -339,7 +339,7 @@ for (const [w, h] of [[420, 860], [860, 420], [200, 390]]) {
   const { ctx, page, errors } = await boot({ width: w, height: h }, { probe: true, touch: true });
   await page.waitForSelector('.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(400);
-  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.title, x: b.getAttribute('aria-expanded') }; });
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.getAttribute('data-tip'), x: b.getAttribute('aria-expanded') }; });
   ok(tag + ': no tab strip; the hamburger is a 40 px target, aria-expanded, title Menu', await page.locator('nav.tabs').count() === 0
     && btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.x === 'false', JSON.stringify(btn));
   const r0 = await outside(page);
@@ -860,12 +860,11 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
       ok(tag + ': ' + what + ': nothing drawn past a corner arc or in the cutout', r.sane && r.n > 0 && r.bad.length === 0, r.n + ' boxes; ' + r.bad.join(' | '));
       await shapeShot(page, file + '-' + w + 'x' + h + (theme ? '-paper' : '') + '.png');
     };
-    // The top bar takes the cutout's band, its items either side of the hole, where the phase and
-    // tier chips fit right of it; at 360 px they do not, and it pads under the inset instead.
+    // The top bar takes the cutout's band, its items either side of the hole, where the auth chip
+    // fits right of it; where it does not, the bar pads under the inset instead.
     const bar = await page.evaluate(() => { const b = document.querySelector('.linkbar'), r = b.getBoundingClientRect(), p = b.querySelector('.chips.pinned').getBoundingClientRect();
       return { top: Math.round(r.top), h: Math.round(r.height), cut: b.classList.contains('cut'), rowTop: Math.round(p.top) }; });
-    ok(tag + (w > 400 ? ': the top bar rises into the cutout band' : ': the chips miss beside the cutout, so the bar pads under the inset'),
-      w > 400 ? bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1) : !bar.cut && bar.rowTop >= HOLE.h, JSON.stringify(bar));
+    ok(tag + ': the top bar rises into the cutout band', bar.cut && bar.top === 0 && bar.h <= Math.max(41, HOLE.h + 1), JSON.stringify(bar));
     // An optional chip on the bar's line never cuts mid-text: one that does not fit wraps away whole.
     const cut = await page.evaluate(() => [...document.querySelectorAll('.linkbar .chips.opt > .chip')].filter((c) => c.getClientRects().length).map((c) => {
       const m = c.querySelector('.mono'), o = c.parentElement.getBoundingClientRect(), r = c.getBoundingClientRect();

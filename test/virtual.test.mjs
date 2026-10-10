@@ -134,7 +134,8 @@ const openTab = async (id) => {
   await page.click('[data-tab-id="' + id + '"]');
   await page.waitForTimeout(250);
 };
-const chip = () => page.locator('.linkbar .chips.pinned .chip').first().innerText();
+// The link dot's words: live, virtual, connecting...
+const chip = async () => (await page.locator('.linkbar .linkdot .sr').textContent()).replace(/^Link:\s*/, '').toLowerCase();
 async function until(fn, ms = 8000) {
   for (const end = Date.now() + ms; Date.now() < end; await page.waitForTimeout(50)) if (await fn()) return true;
   return false;

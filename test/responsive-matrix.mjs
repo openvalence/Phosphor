@@ -51,13 +51,19 @@
  *            it scrolls the page, the page passes the layout checks
  *            (ph-e82.6)
  *   bar      1428x900, 1024x768, 420x860: the top bar holds the hub name,
- *            phase, tier, rx and fps only (the address, firmware and control
- *            list are the Health view's); fps reads "N fps" with the frame
+ *            the link dot, auth, the data rate, loss and fps only (the address,
+ *            firmware and control list are the Health view's); fps reads "N fps" with the frame
  *            rate and the smoothing delay in plain words in its tooltip; no
  *            gap in the bar (the reserved warning slot is gone), and a
  *            drifting clock moves nothing and keeps the fps chip's width;
  *            the stalled and drift warnings are Health conditions in the
  *            status slot (operator 2026-10-10)
+ *   barstates the same three sizes: the data rate moves with the traffic and
+ *            moves nothing else, the dot wears its state per link phase in
+ *            words and class, the ripple stays inside the row and reaches no
+ *            further than "nucleus-p4", reduced motion stills it, and no
+ *            timer runs while the link is down; 1428x900 shots, dark and
+ *            Paper, live and connecting (operator 2026-10-10)
  *   phosphor the served page with a hub has no Phosphor group; the shell
  *            bundle (shell-build.mjs) carries it, and every Phosphor pane
  *            passes the layout and strip checks at desktop, landscape phone
@@ -81,6 +87,7 @@ import { decodeCatalog } from '../../Valence/clients/js/catalog.js';
 import { cbMap, cbUint, cbBstr, cbTstr, cbArray, cbDecodeFull } from '../../Valence/clients/js/cbor.js';
 import { encodeFrame, parseFrames, FRAME, K, WELCOME_LIMITS_K, IDENTITY_K, PACKED, LIMITS } from '../../Valence/clients/js/frames.js';
 import { SCALE_STEPS, SCALE_KEY, STORE_KEY } from '../src/model/grid.js';
+import { THEMES, THEME_KEY } from '../src/model/theme.js';
 import { buildShellPage, TAURI_STUB } from './shell-build.mjs';
 
 const args = process.argv.slice(2);
@@ -272,8 +279,9 @@ function measure({ phone, coarse = phone }) {
     const cs = getComputedStyle(el);
     if (!/(hidden|clip)/.test(cs.overflowX) && cs.textOverflow !== 'ellipsis') continue;
     // Fixed-height chrome (ph-e82.17) ellipsizes on purpose; its full form
-    // must then be one hover away, in its own or an ancestor's title.
-    const full = el.closest('[title]')?.title || '';
+    // must then be one hover away, in its own or an ancestor's title or data-tip.
+    const holder = el.closest('[title], [data-tip]');
+    const full = holder?.title || holder?.dataset.tip || '';
     if (full.includes(el.textContent.trim())) continue;
     if (el.scrollWidth > el.clientWidth + 1) fails.push(['clip', name(el) + ' ' + el.scrollWidth + '>' + el.clientWidth]);
   }
@@ -512,8 +520,8 @@ const scen = (name, cond, extra) => {
   if (!cond) { table.push(['scenario', name, 'fail', extra || '']); total++; }
   console.log('  [' + (cond ? 'PASS' : 'FAIL') + '] ' + name + (extra ? '  -- ' + extra : ''));
 };
-async function seeded(viewport, route) {
-  const ctx = await browser.newContext({ viewport, hasTouch: viewport.width < 600 });
+async function seeded(viewport, route, extra = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch: viewport.width < 600, ...extra });
   await ctx.addInitScript(([etag, bytes]) => {
     try { localStorage.setItem('valence.catalog.127.0.0.1', JSON.stringify({ etag, bytes })); } catch (e) { /* none */ }
   }, [ETAG, toHex(CAT)]);
@@ -633,15 +641,16 @@ if (!ONLY || ONLY === 'bar') {
       const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
       const fps = document.querySelector('.linkbar .fps');
       return { labels: [...document.querySelectorAll('.linkbar .chip-lbl')].filter(shown).map((e) => e.textContent.trim().toLowerCase()),
-        text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').title || '',
+        text: document.querySelector('.linkbar').innerText, fps: shown(fps) ? fps.textContent.trim() : null, tip: fps?.closest('.chip').getAttribute('data-tip') || '',
+        geo: [...document.querySelectorAll('.linkbar > *, .linkbar .header-left > *, .linkbar .chips > *')].map((e) => { const b = e.getBoundingClientRect(); return (e.className.baseVal ?? e.className).toString().split(' ')[0] + ':' + Math.round(b.left) + '-' + Math.round(b.right) + 'y' + Math.round(b.top); }).join(' '),
         rx: (() => { const o = document.querySelector('.linkbar .chips.opt').getBoundingClientRect(), x = document.querySelector('.linkbar .chip-opt-last').getBoundingClientRect();
           return x.top >= o.bottom - 0.5 ? 'shed' : x.left >= o.left - 0.5 && x.right <= o.right + 0.5 ? 'whole' : 'cut'; })() };
     });
-    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => l === 'tier' || l === 'rx')
+    scen(w + 'x' + h + ': the top bar holds no address, firmware or control list chip', bar.labels.every((l) => ['auth:', 'loss', 'kb/s', '%'].includes(l))
       && !/catalog|cached|fetched|0\.0\.0-fixture/.test(bar.text), JSON.stringify(bar));
     if (wide) scen(w + 'x' + h + ': render reads N fps; the frame rate and the smoothing delay are its tooltip in words', /^\d+ fps$/.test(bar.fps || '')
       && /Frame rate \d+ fps/.test(bar.tip) && /Rail draws \d+ ms behind, to smooth arrivals/.test(bar.tip) && !/held|skew|stalled|drift/i.test(bar.tip + bar.text), JSON.stringify(bar));
-    else scen(w + 'x' + h + ': the phone bar: no fps; rx shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
+    else scen(w + 'x' + h + ': the phone bar: no fps; the rate shows whole beside a short hub name', bar.fps === null && bar.rx === 'whole', JSON.stringify(bar));
     // No gap: every visible chip sits one chip gap from the next, the fps chip from rx too (the reserved warning slot is gone).
     const gaps = () => page.evaluate(() => { const c = [...document.querySelectorAll('.linkbar .chips .chip')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect());
       return c.slice(1).map((b, k) => Math.round(b.left - c[k].right)); });
@@ -659,6 +668,185 @@ if (!ONLY || ONLY === 'bar') {
     scen(w + 'x' + h + ': a drifting clock moves nothing in the bar', r0 === await rects(), r0 + ' -> ' + await rects());
     if (SHOTS) await page.screenshot({ path: join(OUT, 'bar-' + w + 'x' + h + '.png'), clip: { x: 0, y: 0, width: w, height: 80 } });
     await ctx.close();
+  }
+}
+
+if (!ONLY || ONLY === 'barstates') {
+  console.log('\ntop bar state scenarios (operator 2026-10-10)');
+  // Periodic timers by delay, so "no timer while the link is down" reads off the page.
+  const TIMERS = () => {
+    // Only the data rate's own interval: its callback is the one that calls the meter's .sample(.
+    const live = new Set(), si = window.setInterval.bind(window), ci = window.clearInterval.bind(window);
+    window.setInterval = (fn, ms, ...a) => { const id = si(fn, ms, ...a); if (ms === 250 && String(fn).includes('.sample(')) live.add(id); return id; };
+    window.clearInterval = (id) => { live.delete(id); return ci(id); };
+    window.__ivals = () => live.size;
+  };
+  const RECTS = '.linkbar .wordmark, .linkbar .linkdot, .linkbar .chip-opt-last, .linkbar .chip-opt';
+  const rects = (page) => page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length)
+    .map((e) => { const b = e.getBoundingClientRect(); return [e.className.split(' ')[0], b.left, b.top, b.width, b.height].map((v) => typeof v === 'number' ? Math.round(v * 10) / 10 : v).join(','); }).join(' | '), RECTS);
+  const rate = (page) => page.evaluate(() => [...document.querySelectorAll('.linkbar .chip-opt-last .rv')].map((e) => e.textContent.trim()));
+
+  for (const [w, h] of [[1428, 900], [1024, 768], [420, 860]]) {
+    const tag = w + 'x' + h;
+    // Traffic on demand: a 1500 B PING every 20 ms from the hub (the client PONGs the same back).
+    let burst = false, opens = 0, stuck = false;
+    const hub = (ws) => {
+      opens++;
+      if (stuck) return;   // no WELCOME: the session never gets past handshaking
+      fakeHub(ws, w > 560 ? 'Responsive fixture' : 'Bench');
+      const t = setInterval(() => { if (burst) try { ws.send(Buffer.from(encodeFrame(FRAME.PING, 1, new Uint8Array(1500)))); } catch (e) { /* closed */ } }, 20);
+      ws.onClose(() => clearInterval(t));
+    };
+    const { ctx, page } = await seeded({ width: w, height: h }, hub);
+    await ctx.addInitScript(TIMERS);
+    await page.goto('http://127.0.0.1:' + PORT + '/');
+    await page.waitForSelector('.linkbar .linkdot.live', { timeout: 15000 });
+    await page.waitForFunction(() => /^\d/.test(document.querySelector('.linkbar .chip-opt-last .rv')?.textContent.trim() || ''), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(800);
+
+    // The dot: live, in words, with a status text and a tooltip.
+    const dot = await page.$eval('.linkbar .linkdot', (d) => ({ cls: d.className, tip: d.getAttribute('data-tip'), role: d.getAttribute('role'), text: d.textContent.trim() }));
+    scen(tag + ': the dot is live, named in words (status text and tooltip), left of the chips', /\blive\b/.test(dot.cls) && dot.role === 'status'
+      && dot.text === 'Link: Live' && /^Live/.test(dot.tip || ''), JSON.stringify(dot));
+    const order = await page.evaluate(() => { const n = document.querySelector('.linkbar .wordmark').getBoundingClientRect(), d = document.querySelector('.linkbar .linkdot').getBoundingClientRect();
+      return d.left >= n.right - 0.5 && !document.querySelector('.linkbar .chips.pinned .chip-dot') && !/\blive\b/i.test(document.querySelector('.linkbar .chips.pinned').textContent); });
+    scen(tag + ': the dot sits right of the hub name; the live chip is gone', order);
+
+    // The auth label.
+    const auth = await page.$eval('.linkbar .chips.pinned', (c) => c.textContent.replace(/\s+/g, ' ').trim());
+    scen(tag + ': the tier reads "AUTH: <tier>" in capitals', /^auth:s*(watch|control|configure)$/.test(auth) && await page.$eval('.linkbar .chips.pinned .chip-lbl', (e) => getComputedStyle(e).textTransform) === 'uppercase', auth);
+
+    // The rate: arrows both ways, mono tabular numbers, KB/s, the liveness in the tooltip, no title.
+    const chip = await page.$eval('.linkbar .chip-opt-last', (c) => { const cs = (e) => getComputedStyle(e);
+      const a = c.querySelector('.arrow'), v = c.querySelector('.rv');
+      return { arrows: c.querySelectorAll('.arrow').length, bigger: a.getBoundingClientRect().height > parseFloat(cs(c).fontSize) * 1.05,
+        tab: cs(v).fontVariantNumeric.includes('tabular-nums'), text: c.textContent.replace(/\s+/g, ' ').trim(), tip: c.getAttribute('data-tip'), name: c.getAttribute('aria-label'),
+        title: c.hasAttribute('title') }; });
+    scen(tag + ': the rate reads down and up in KB/s, arrows a size up, tabular numbers, no title; liveness in the tooltip',
+      chip.arrows === 2 && chip.bigger && chip.tab && /KB\/s$/.test(chip.text) && !chip.title && /Last frame [\d.]+ s ago/.test(chip.tip)
+      && /^Data rate: down [\d.]+ kilobytes per second, up [\d.]+ kilobytes per second$/.test(chip.name) && !/\brx\b/i.test(chip.text), JSON.stringify(chip));
+    const noRx = await page.evaluate(() => !/\b\d+s\b/.test(document.querySelector('.linkbar .chip-opt-last').textContent));
+    scen(tag + ': "RX 0s" is gone from the bar', noRx);
+
+    // The loss chip: '--' with no model behind it, never a number; every value explained in words.
+    const loss = await page.$eval('.linkbar .chip-opt:not(:has(.fps))', (c) => ({ vals: [...c.querySelectorAll('.lv')].map((e) => e.textContent.trim()), tip: c.getAttribute('data-tip') }));
+    if (w > 560) scen(tag + ': loss reads -- until the machine reports it; the tooltip explains each value', loss.vals.join() === '--,--'
+      && /This app: no reading/.test(loss.tip) && /Machine: no reading/.test(loss.tip) && /retries/i.test(loss.tip) && /Wi-Fi/.test(loss.tip), JSON.stringify(loss));
+
+    // No shift: rates change with the traffic and move nothing.
+    const r0 = await rects(page), n0 = await rate(page);
+    burst = true;
+    await page.waitForTimeout(1800);
+    const n1 = await rate(page), r1 = await rects(page);
+    const kb = (v) => parseFloat(v);
+    scen(tag + ': the rate follows the traffic (' + n0.join('/') + ' -> ' + n1.join('/') + ' KB/s)', kb(n1[0]) > 20 && kb(n1[0]) > kb(n0[0]) * 3 && kb(n1[1]) > 20, JSON.stringify([n0, n1]));
+    scen(tag + ': a rate change shifts nothing in the bar', r0 === r1, r0 + ' -> ' + r1);
+    burst = false;
+    await page.waitForTimeout(2200);
+    const n2 = await rate(page);
+    scen(tag + ': the rate settles back when the traffic stops', kb(n2[0]) < kb(n1[0]) / 3, JSON.stringify(n2));
+    scen(tag + ': still no shift after the traffic stops', r0 === await rects(page));
+
+    // The one timer: 250 ms, live only.
+    scen(tag + ': one 250 ms timer while live', await page.evaluate(() => window.__ivals()) === 1);
+
+    // The ripple: inside the row, behind the content, no further than "nucleus-p4".
+    const geo = await page.evaluate(() => {
+      const bar = document.querySelector('.linkbar'), cs = getComputedStyle, rc = document.querySelector('.linkbar .rclip'), rp = document.querySelector('.linkbar .ripple');
+      const wm = document.querySelector('.linkbar .wordmark');
+      const probe = document.createElement('span');
+      const wcs = cs(wm);
+      probe.textContent = 'nucleus-p4';
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:' + wcs.font + ';letter-spacing:' + wcs.letterSpacing;
+      document.body.append(probe);
+      const textW = probe.getBoundingClientRect().width;
+      probe.remove();
+      const b = bar.getBoundingClientRect(), c = rc.getBoundingClientRect();
+      return { textW, radius: rp.offsetWidth / 2, zi: cs(rc).zIndex, iso: cs(bar).isolation, inRow: c.top >= b.top - 0.5 && c.bottom <= b.bottom + 0.5, rowH: c.height,
+        pe: cs(rc).pointerEvents, pos: cs(rp).position };
+    });
+    scen(tag + ': the ripple reaches about, and no further than, the width of "nucleus-p4" (' + Math.round(geo.radius) + ' of ' + Math.round(geo.textW) + ' px)',
+      geo.radius <= geo.textW && geo.radius >= geo.textW * 0.7, JSON.stringify(geo));
+    scen(tag + ': the ripple is clipped to the row, behind the content, out of flow, never hit', geo.inRow && geo.zi === '-1' && geo.iso === 'isolate' && geo.pe === 'none' && geo.pos === 'absolute', JSON.stringify(geo));
+
+    // The beat: a live 2 s swell about 36 % up, a 2 s ripple; connecting is 1 s; stale and offline do not ripple.
+    const anim = await page.evaluate(() => {
+      const d = document.querySelector('.linkbar .linkdot'), core = d.querySelector('.core'), rp = d.querySelector('.ripple'), rc = d.querySelector('.rclip');
+      const read = (cls) => { d.className = d.className.replace(/\b(live|connecting|stale|offline)\b/, cls);
+        const c = getComputedStyle(core), r = getComputedStyle(rp);
+        return { core: c.animationName === 'none' ? 'none' : c.animationName.replace(/^svelte-\w+-/, '') + ' ' + c.animationDuration, ripple: r.animationName === 'none' ? 'none' : r.animationDuration,
+          rclip: getComputedStyle(rc).display, ring: cls === 'offline' ? c.backgroundColor : null }; };
+      const keys = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } }).filter((r) => r.type === CSSRule.KEYFRAMES_RULE && /dot-beat/.test(r.name));
+      const peak = keys.length ? [...keys[0].cssRules].map((k) => k.style.transform).find((t) => /1\.\d+/.test(t)) : null;
+      const out = { live: read('live'), connecting: read('connecting'), stale: read('stale'), offline: read('offline'), peak };
+      read('live');
+      return out;
+    });
+    scen(tag + ': live beats on 2 s and ripples on 2 s; connecting is 1 s', /dot-beat 2s/.test(anim.live.core) && anim.live.ripple.startsWith('2s') && /dot-beat 1s/.test(anim.connecting.core) && anim.connecting.ripple.startsWith('1s'), JSON.stringify(anim));
+    scen(tag + ': the swell is 33-40 % up', anim.peak && (() => { const k = parseFloat(/[\d.]+/.exec(anim.peak)[0]); return k >= 1.33 && k <= 1.4; })(), JSON.stringify(anim.peak));
+    scen(tag + ': stale dims slowly with no ripple; offline is still, hollow, with no ripple', /dot-dim 3s/.test(anim.stale.core) && anim.stale.rclip === 'none' && anim.offline.core === 'none'
+      && anim.offline.rclip === 'none' && anim.offline.ring === 'rgba(0, 0, 0, 0)', JSON.stringify([anim.stale, anim.offline]));
+
+    // Reduced motion, and html.still: nothing animates.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForTimeout(150);
+    const still = await page.evaluate(() => [...document.querySelectorAll('.linkbar .linkdot .core, .linkbar .linkdot .ripple')].map((e) => getComputedStyle(e).animationName));
+    scen(tag + ': no animation under prefers-reduced-motion', still.length === 2 && still.every((n) => n === 'none'), JSON.stringify(still));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const still2 = await page.evaluate(() => { document.documentElement.classList.add('still');
+      const r = [...document.querySelectorAll('.linkbar .linkdot .core, .linkbar .linkdot .ripple')].map((e) => getComputedStyle(e).animationName);
+      document.documentElement.classList.remove('still'); return r; });
+    scen(tag + ': no animation under html.still', still2.length === 2 && still2.every((n) => n === 'none'), JSON.stringify(still2));
+    await ctx.close();
+
+    // Connecting: a hub that never answers HELLO.
+    stuck = true;
+    const c2 = await seeded({ width: w, height: h }, hub);
+    await c2.ctx.addInitScript(TIMERS);
+    await c2.page.goto('http://127.0.0.1:' + PORT + '/');
+    await c2.page.waitForSelector('.linkbar .linkdot', { timeout: 15000 });
+    await c2.page.waitForTimeout(1200);
+    const cd = await c2.page.$eval('.linkbar .linkdot', (d) => ({ cls: d.className, tip: d.getAttribute('data-tip'), text: d.textContent.trim() }));
+    scen(tag + ': a link that is not up wears the connecting class, in words', /\bconnecting\b/.test(cd.cls) && /Connecting/.test(cd.text) && /^Connecting/.test(cd.tip), JSON.stringify(cd));
+    const idle = await c2.page.evaluate(() => ({ t: window.__ivals(), v: [...document.querySelectorAll('.linkbar .chip-opt-last .rv')].map((e) => e.textContent.trim()), name: document.querySelector('.linkbar .chip-opt-last').getAttribute('aria-label') }));
+    scen(tag + ': no data-rate timer while the link is down; the rate reads --', idle.t === 0 && idle.v.join() === '--,--' && /no link/.test(idle.name), JSON.stringify(idle));
+    await c2.ctx.close();
+    stuck = false;
+
+    // A link that drops: live -> reconnecting moves nothing but the auth chip and clears the timer.
+    let n = 0;
+    const d3 = await seeded({ width: w, height: h }, (ws) => { n++; if (n > 1) { ws.close({ code: 1011, reason: 'gone' }); return; } fakeHub(ws, w > 560 ? 'Responsive fixture' : 'Bench'); setTimeout(() => ws.close({ code: 1011, reason: 'gone' }), 3500); });
+    await d3.ctx.addInitScript(TIMERS);
+    await d3.page.goto('http://127.0.0.1:' + PORT + '/');
+    await d3.page.waitForSelector('.linkbar .linkdot.live', { timeout: 15000 });
+    await d3.page.waitForTimeout(1200);
+    const live0 = await rects(d3.page);
+    await d3.page.waitForSelector('.linkbar .linkdot.connecting', { timeout: 10000 });
+    await d3.page.waitForTimeout(300);
+    const live1 = await rects(d3.page), t1 = await d3.page.evaluate(() => window.__ivals());
+    scen(tag + ': live -> reconnecting shifts nothing but the auth chip', live0 === live1, live0 + ' -> ' + live1);
+    scen(tag + ': the data-rate timer stops with the link', t1 === 0, t1);
+    await d3.ctx.close();
+  }
+
+  // Shots at 1428x900: dark and Paper, live and connecting. The ripple is paused mid-flight.
+  const paper = THEMES.find((t) => t.id === 'paper');
+  for (const [theme, store] of [['dark', null], ['paper', paper]]) {
+    for (const state of ['live', 'connecting']) {
+      const stuck = state === 'connecting';
+      const { ctx, page } = await seeded({ width: 1428, height: 900 }, (ws) => { if (!stuck) fakeHub(ws); }, { deviceScaleFactor: 2 });
+      if (store) await ctx.addInitScript(([k, v]) => { try { localStorage.setItem(k, v); } catch (e) { /* none */ } }, [THEME_KEY, JSON.stringify(store)]);
+      await page.goto('http://127.0.0.1:' + PORT + '/');
+      await page.waitForSelector('.linkbar .linkdot.' + state, { timeout: 15000 });
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => { for (const a of document.getAnimations()) { if (a.animationName?.includes('ripple') || a.animationName?.includes('dot-beat')) { a.pause(); a.currentTime = a.effect.getTiming().duration * 0.3; } } });
+      if (SHOTS) {
+        const shot = (name, x, width) => page.screenshot({ path: join(OUT, 'topbar-' + theme + '-' + state + '-' + name + '.png'), clip: { x, y: 0, width, height: 48 } });
+        await shot('left', 0, 720);
+        await shot('right', 1000, 428);
+      }
+      await ctx.close();
+    }
   }
 }
 

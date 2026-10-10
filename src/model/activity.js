@@ -25,6 +25,8 @@ const A = 0.3;           // smoothing weight of each new arrival
 const DATA = new Set([FRAME.STATE, FRAME.STREAM, FRAME.INTENT, FRAME.ECHO, FRAME.EVENT]);
 
 const chans = new Map(); // id -> {rx, tx}
+/** Raw socket bytes since load, by direction, every message (the top bar's data rate reads these). */
+export const totals = { rx: 0, tx: 0 };
 const blank = () => ({ last: 0, n: 0, ivl: LONE_MS, k: 0, b: 0, ck: 0, cb: 0, peak: 0, peakAt: 0 });
 function dirOf(id, dir) {
   let c = chans.get(id);
@@ -85,7 +87,9 @@ const batch = new Map(); // channel -> [frames, bytes] within one socket message
 export function countFrames(dir, data, t = Date.now()) {
   const u = data instanceof ArrayBuffer ? new Uint8Array(data)
     : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : null;
-  if (!u || u.length < 8) return;
+  if (!u) return;
+  totals[dir] += u.length;
+  if (u.length < 8) return;
   // The SPEC §5.5 ESTOP frame has no header.
   if (u[0] === 0xe5 && u[1] === 0xe5 && u[2] === 0xe5 && u[3] === 0xe5) return;
   batch.clear();

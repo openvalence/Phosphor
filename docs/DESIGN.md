@@ -603,26 +603,56 @@ question in §10.8).
   and a long text ellipsizes with its full form in `title`. A user's own act
   (the rail's hide tab, the sidebar collapse, a disclosure, a window resize)
   may change heights, because it cannot cause a misinput elsewhere.
-- The top bar (operator ruling 2026-10-10, `ph-6ydd`; `src/ui/LinkBar.svelte`)
-  carries what someone looks at when something goes wrong: the activity
-  heatmap, the hub name, phase, tier, rx and the frame rate, then the window
+- The top bar (operator ruling 2026-10-10, `ph-6ydd`, amended the same day;
+  `src/ui/LinkBar.svelte`) carries what someone looks at when something goes
+  wrong: the activity heatmap, the hub name with the link dot right of it,
+  then the chips auth, data rate, loss and the frame rate, then the window
   buttons. A reading that fails that test moves to the Health view (§10.14),
   never deleted: the address, the firmware and the control list (its size,
-  and whether this device's saved copy or the machine served it). The render
-  readout is `N fps` (`-- fps` until a rail draws); its tooltip says the
-  frame rate and how far behind the rail draws, to smooth arrivals, in
-  words. The rail's stall share and the frame clock's drift from the wall
-  clock (which the rail's
-  timing assumes is zero) are not on the chip: they are Health conditions
-  (§10.14), `rail-stalled` over 10 % of frames and `clock-drift` over 2 ms,
-  read in the status slot, which holds its height. Under 30 fps the fps chip wears the warn tone. The fps and rx
-  values hold fixed widths (rx in whole units, at most three characters: 59s,
-  12m, 3h), and no slot is reserved for a warning, so the bar has no gap.
-  The order is rx, fps, so where room runs out the fps sheds before rx;
-  under 561 px it is gone and rx sheds whole
-  where it does not fit, never a sliver. Phones keep no fps: at 420 px the
-  room the dock toggle gave back holds rx and leaves about 64 px, short of
-  the fps chip's 69 beside even a five-letter hub name.
+  and whether this device's saved copy or the machine served it).
+  - The link dot replaces the live chip. Its state is a class (`live`,
+    `connecting`, `stale`, `offline`) from the link phase and the freshness
+    rule, and is said in words in its tooltip and its status text, never by
+    color alone. Live: the reality color, a 2 s beat. Connecting (connecting,
+    handshaking, reconnecting): the intent color, a 1 s beat. Stale (live,
+    silent past the deadman): the warn tone, a slow dim, no ripple. Offline:
+    a hollow ring, still. A virtual session wears the warn tone in the live
+    state. Each beat swells the dot 36 % over its 6 px and launches one
+    ripple: a circle growing from the dot to a radius of about the width of
+    "nucleus-p4", fading on the write-ack ring's glow decay and ease-out,
+    clipped to the bar's row and drawn behind the name, the chips and every
+    other content. Transform and opacity only, pure CSS, no motion under
+    `html.still` or reduced motion, and no box moves.
+  - Auth reads `AUTH: <tier>` (`--` with no session), its value held to the
+    width of the longest tier name.
+  - The data rate reads `down up KB/s` (1 KB = 1000 B), arrows a step larger
+    than the digits: the bytes the hub session's socket carried
+    (`src/model/activity.js` totals; never the Stash or other traffic),
+    sampled every 250 ms and shown as the 1 s average of the last four
+    samples, the shown number stepping half way to it per sample. Each number
+    is three characters at most, right-aligned: one decimal under 10, whole
+    from 10, `999+` past it. The 250 ms interval runs only while the link is
+    live; otherwise the rate reads `--`. How long ago the last frame arrived
+    (the old rx) is the tooltip's last line. Phones drop the `KB/s` text (the
+    tooltip and the accessible name keep it) so the chip fits whole.
+  - Loss reads `loss <this app> / <machine> %` from `machine.stats.link`
+    (`clientLossPct`, `machine.lossPct`); a value the machine has not
+    reported reads `--`, never a number invented. Its tooltip gives all four
+    reported values (those two, `machine.retryPct`, `machine.rssiDbm`) in
+    words.
+  - The render readout is `N fps` (`-- fps` until a rail draws); its tooltip
+    says the frame rate and how far behind the rail draws, to smooth
+    arrivals, in words. The rail's stall share and the frame clock's drift
+    from the wall clock (which the rail's timing assumes is zero) are not on
+    the chip: they are Health conditions (§10.14), `rail-stalled` over 10 %
+    of frames and `clock-drift` over 2 ms, read in the status slot, which
+    holds its height. Under 30 fps the fps chip wears the warn tone.
+  - The fps number holds a fixed width and no slot is reserved for a warning,
+    so the bar has no gap. The order is rate, loss, fps, so where room runs
+    out the fps sheds before loss and loss before the rate; under 561 px fps
+    and loss are gone and the rate sheds whole where it does not fit, never a
+    sliver. Phones keep no fps: at 420 px the rate chip fits beside a
+    five-letter hub name.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic
@@ -1537,3 +1567,4 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.3, §10.13, plugins | Quick access docks per connected hub: the toggle exists while that hub has pins, and the last unpin there withdraws and closes the dock whatever other hubs hold (`api.onHub` re-checks on a hub change; with no hub yet the dock stays as it is). The top bar orders rx, the warning slot, fps, so fps sheds before rx; the fps chip wears the warn tone with either warning. Phones keep no fps: measured at 420 px the freed room holds rx and leaves about 64 px, short of the fps chip's 69 beside a five-letter hub name (`ph-6ydd`). | coordinator picks, veto-able: emptying closes per connected hub, keep the drawer on narrow windows and tablets; fps on phones was picked and not applied (it would need the hub name to yield on phones, or a narrower tier chip), the operator's to rule |
 | 2026-10-10 | §10.3 | The channel heatmap replaces the top bar's activity decor: a block per catalog channel grouped by class, then link traffic, round trip, late samples, frame budget and Health blocks; brightness is each block's share of its own budget, levels glide on a 500 ms tick and never step per arrival, a refusal wears the warn tint and a slash; a channel block opens the Link page on that channel through a selection shared with the map, Health opens the Health view (`ph-8yga`, `ph-8yga.1`). | operator ("a heatmap showing how the channels are being used ... a block for every channel, + a few more, brightness based on activity etc, like netdata inspired", "lerp pls, no need for flashing"; STORE as a fifth group, the five link blocks and their full scales, the 10 s idle cut, the 30 s peak decay, the compact form per class and counting at the socket are the agent's, veto-able; the selection shared with the Link page and Health opening the Health view are the coordinator's) |
 | 2026-10-10 | §10.10 | Open to LAN: the desktop shell shares the running Virtual on the LAN as more sessions of the same hub, with discovery, a Pairing window button and GOODBYE on every ending; Windows' first-run firewall prompt is the only firewall step (`ph-li30`, Nucleus `val-0o5`). | operator (the name; the Rust listener, the page relay, the ABI additions, the port fallback, booting with the window closed when opened to the LAN, no `/uitoken` on the LAN and the hub-side GOODBYE teardown are the agent's, veto-able) |
+| 2026-10-10 | §10.3 | The top bar's live chip becomes a link dot right of the hub name (live 2 s, connecting 1 s, stale dim, offline hollow; a ripple behind the row on the write-ack ring's easing and glow); "tier control" becomes "AUTH: control"; "RX 0s" becomes the data rate, down and up in KB/s from the hub session's socket bytes (250 ms samples, 1 s average, smoothed), with the last frame's age in its tooltip; a loss chip reads `machine.stats.link` and shows `--` for what is not reported (`src/model/linkbar.js`, `test/linkbar.test.mjs`, responsive-matrix `barstates`). | operator (the design as agreed 2026-10-10; the agent's calls, veto-able: the dot's reality color for live and the intent color for connecting; a virtual session wearing the warn tone; 1 KB = 1000 B; each number three characters wide with `999+` past it; the auth value held to the width of `configure`; the loss chip showing this app's loss and the machine's, the retry share and signal strength in its tooltip only; phones dropping the `KB/s` text to keep the rate whole at 420 px; the ripple clipped to the bar's row rather than bleeding over the strip) |

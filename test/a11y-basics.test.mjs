@@ -168,7 +168,7 @@ const browser = await chromium.launch();
   const { ctx, page, pageErrors } = await bootPage(browser, { width: 390, height: 844 });
   await page.waitForSelector('.menu-btn', { timeout: 15000 });
   await page.waitForTimeout(300);
-  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.title, x: b.getAttribute('aria-expanded'), n: b.getAttribute('aria-label') }; });
+  const btn = await page.$eval('.menu-btn', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, t: b.getAttribute('data-tip'), x: b.getAttribute('aria-expanded'), n: b.getAttribute('aria-label') }; });
   ok('phone menu: the hamburger is a named 40 px target with aria-expanded', btn.w >= 40 && btn.h >= 40 && btn.t === 'Menu' && btn.n === 'Menu' && btn.x === 'false', JSON.stringify(btn));
   await page.focus('.menu-btn');
   await page.keyboard.press('Enter');

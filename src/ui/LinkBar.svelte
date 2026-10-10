@@ -1,19 +1,23 @@
 <script>
   /**
    * LinkBar.svelte -- the top bar: ONE row of fixed height (operator
-   * 2026-10-02). Left: the channel heatmap and the hub name. Right: the
-   * chips (phase, tier, rx, fps), then the
-   * shell's window buttons at the far end, shell only. The bar is the Tauri
+   * 2026-10-02). Left: the channel heatmap, the hub name and the link dot.
+   * Right: the chips (auth, data rate, loss, fps), then the shell's window
+   * buttons at the far end, shell only. The bar is the Tauri
    * drag region. A reading nobody checks when something goes wrong lives in
    * the Health view instead (the address, the firmware, the control list;
    * DESIGN §10.3, operator 2026-10-10).
    *
    * Constraints:
    * - Never claims a healthier link than machine.link.phase reports (Ground
-   *   Truth Doctrine). The phase chip is the one live indicator; a dead link
+   *   Truth Doctrine). The dot is the one live indicator; a dead link
    *   and a link error are said in words by TopStrip's status slot, never as
-   *   a line added here.
-   * - Phase and tier are the last chips to shed at any width.
+   *   a line added here. The dot's state is also its tooltip and its status
+   *   text, never color alone.
+   * - The dot and the auth chip never shed; the rest shed from the tail.
+   * - The dot's ripple is a decoration behind the row: out of flow, vertically
+   *   clipped to the row, motion off under html.still. No timer runs while the
+   *   link is down: the one 250 ms interval is the data rate's, live only.
    * - Shell shading (--shell-*) applies only when `shell` is set; the served
    *   page has no shell chrome.
    * - The ends clear the screen's rounded corners, and beside a top cutout
@@ -21,38 +25,39 @@
    *   the inset vars); nothing in the row may overlap the cutout.
    * - Reads machine.* and the catalog's own role-tagged fields, never a
    *   device fact the machine did not send.
-   * - Every chip value is mono; only a chip that reports measured liveness
-   *   (phase, rx) may wear the reality tone. No tooltip repeats its text
+   * - Every chip value is mono; only the rate chip, which reports measured
+   *   liveness, may wear the reality tone. No tooltip repeats its text
    *   (docs/COPY.md rule 4): the name carries one only while ellipsized.
+   * - The rate reads the hub session's socket only (activity.js totals); a
+   *   loss value the machine has not reported reads '--', never a guess.
    */
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
-  import { sinceShort, hubTitle } from '../model/format.js';
+  import { hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { phoneMenu } from './PhoneMenu.svelte';
   import ChannelHeat from './ChannelHeat.svelte';
+  import { totals } from '../model/activity.js';
+  import { SAMPLE_MS, rateMeter, fmtRate, fmtNum, dotState } from '../model/linkbar.js';
 
   // shell: the shell's window buttons (src/shell/ShellStrip.svelte), or null.
   // onheat(key): a heatmap block was clicked (ChannelHeat's onopen).
   let { shell: Shell = null, onheat = null } = $props();
 
-  /** Presentation only — every phase machine.link.phase can actually be. */
-  const PHASE = {
-    idle: { label: 'idle', tone: 'dim' },
-    connecting: { label: 'connecting…', tone: 'warn' },
-    handshaking: { label: 'handshaking…', tone: 'warn' },
-    live: { label: 'live', tone: 'good' },
-    retrying: { label: 'reconnecting…', tone: 'warn' },
-    failed: { label: 'no link', tone: 'bad' },
+  /** The dot's words, one per machine.link.phase. */
+  const PHASE_WORD = {
+    idle: 'Not connected',
+    connecting: 'Connecting',
+    handshaking: 'Connecting',
+    live: 'Live',
+    retrying: 'Reconnecting',
+    failed: 'No link',
   };
 
-  // A virtual session never reads as a live machine.
-  const phaseInfo = $derived(machine.link.virtual && machine.link.phase === 'live' ? { label: 'virtual', tone: 'warn' }
-    : PHASE[machine.link.phase] || { label: String(machine.link.phase), tone: 'dim' });
   const isLive = $derived(machine.link.phase === 'live');
   const hasSession = $derived(machine.link.sessionId != null);
-  const tierLabel = $derived(hasSession
+  const authLabel = $derived(hasSession
     ? (ACCESS_NAME[machine.link.roles] || ('tier ' + machine.link.roles))
     : '--');
 
@@ -61,16 +66,19 @@
   const title = $derived(hubTitle(identity,
     nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : '', machine.link.virtual));
 
-  // A liveness readout needs a clock of its own — nothing else in this bar
-  // re-renders on a schedule, so without a tick "sinceShort(...)" would freeze the
-  // instant a frame stops arriving, which is exactly the moment it matters most.
+  // The data rate's clock, and the only timer in this bar: 250 ms, live only. It also ages the
+  // rx tone and the tooltips, which nothing else re-renders on a schedule.
   let nowTick = $state(Date.now());
+  let rate = $state(null);
   $effect(() => {
-    const id = setInterval(() => { nowTick = Date.now(); }, 1000);
+    if (!isLive) { rate = null; return; }
+    const meter = rateMeter();
+    // A local clock: reading nowTick here would make this effect depend on it and restart the meter every tick.
+    const tick = () => { const t = Date.now(); nowTick = t; rate = meter.sample(t, totals.rx, totals.tx); };
+    tick();
+    const id = setInterval(tick, SAMPLE_MS);
     return () => clearInterval(id);
   });
-  function ageLabel(ms, _tick) { return sinceShort(ms); }
-  const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
   const rxTone = $derived.by(() => {
     if (!isLive || !machine.stats.lastRxMs) return 'dim';
     const age = nowTick - machine.stats.lastRxMs;
@@ -78,9 +86,36 @@
     if (age < 3000) return 'warn';
     return 'bad';
   });
-  const rxToneLabel = $derived(
-    rxTone === 'good' ? 'flowing' : rxTone === 'warn' ? 'gapping' : rxTone === 'bad' ? 'stalled' : 'no data'
-  );
+  const ago = (ms) => { const s = Math.max(0, nowTick - ms) / 1000; return s < 60 ? s.toFixed(1) + ' s' : Math.round(s / 60) + ' min'; };
+  const down = $derived(rate ? fmtRate(rate.rx) : '--');
+  const up = $derived(rate ? fmtRate(rate.tx) : '--');
+  const rateName = $derived(rate ? 'Data rate: down ' + down + ' kilobytes per second, up ' + up + ' kilobytes per second' : 'Data rate: no link');
+  const rateTip = $derived(rate ? [
+    'Down ' + down + ' KB/s: from the machine',
+    'Up ' + up + ' KB/s: to the machine',
+    'This session only, averaged over 1 s',
+    machine.stats.lastRxMs ? 'Last frame ' + ago(machine.stats.lastRxMs) + ' ago' : 'No frame yet',
+  ].join('\n') : 'No link');
+
+  // The link dot: the state in words for the tooltip and the status text.
+  const dotCls = $derived(dotState(machine.link.phase, machine.link.stale));
+  const dotWord = $derived(machine.link.virtual && dotCls === 'live' ? 'Virtual'
+    : dotCls === 'stale' ? 'Stale' : PHASE_WORD[machine.link.phase] || String(machine.link.phase));
+  const dotTip = $derived(dotCls === 'live' ? (machine.link.virtual ? 'Virtual: a simulated machine' : 'Live: frames arriving')
+    : dotCls === 'stale' ? 'Stale: no frames for ' + ago(machine.stats.lastRxMs) : dotWord);
+
+  // The loss readout (machine.stats.link, the link-loss model): a value not reported reads '--'.
+  const loss = $derived(machine.stats.link);
+  const lossClient = $derived(loss?.clientLossPct ?? null);
+  const lossMachine = $derived(loss?.machine?.lossPct ?? null);
+  const pct = (v) => (v == null ? 'no reading' : fmtNum(v) + '%');
+  const lossName = $derived('Loss: this app ' + pct(lossClient) + ', machine ' + pct(lossMachine));
+  const lossTip = $derived([
+    'This app: ' + pct(lossClient) + ' of the machine\'s frames lost',
+    'Machine: ' + pct(lossMachine) + ' of this app\'s frames lost',
+    'Machine retries: ' + pct(loss?.machine?.retryPct ?? null) + ' of its sends',
+    'Machine Wi-Fi: ' + (loss?.machine?.rssiDbm == null ? 'no reading' : loss.machine.rssiDbm + ' dBm'),
+  ].join('\n'));
 
   // Render health, published by whichever widget owns the rAF loop. This is
   // the instrument for "position telemetry jitters in one shell but not the
@@ -97,8 +132,8 @@
   // machine's liveness (ph-51k).
   const fpsTone = $derived(render.fps != null && render.fps < 30 ? 'warn' : 'dim');
 
-  // Beside a top cutout the row rises into its band only while the phase and
-  // tier chips fit right of it, clear of the top right corner's arc; short of
+  // Beside a top cutout the row rises into its band only while the auth
+  // chip fits right of it, clear of the top right corner's arc; short of
   // that the bar pads under the inset as without one, until the next resize
   // or cutout change (style.css).
   let barEl = $state(null), pinnedEl = $state(null), besideCut = $state(true);
@@ -121,16 +156,6 @@
     requestAnimationFrame(check);
     return () => { ro.disconnect(); mo.disconnect(); removeEventListener('resize', retry); };
   });
-
-  /** The full text as a tooltip only while the bar ellipsizes it; a new `text` re-runs it. */
-  const fullTitle = (text) => (el) => {
-    void text;
-    const set = () => { el.title = el.scrollWidth > el.clientWidth + 0.5 ? el.textContent : ''; };
-    const ro = new ResizeObserver(set);
-    ro.observe(el);
-    set();
-    return () => ro.disconnect();
-  };
 </script>
 
 <!-- "deep": empty bar space drags the undecorated shell window; buttons and
@@ -139,34 +164,44 @@
   <div class="header-left">
     <!-- The phone menu (DESIGN §10.12): the sidebar as a drawer, buckets 1 and 2. -->
     {#if phoneMenu.shown}
-      <button type="button" class="menu-btn" aria-label="Menu" title="Menu" aria-expanded={phoneMenu.open}
+      <button type="button" class="menu-btn" aria-label="Menu" data-tip="Menu" aria-expanded={phoneMenu.open}
               onclick={() => (phoneMenu.open = !phoneMenu.open)}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" /></svg>
       </button>
     {/if}
     <ChannelHeat onopen={onheat} />
-    <span class="wordmark" {@attach fullTitle(title)}>{title}</span>
+    <span class="wordmark" data-tip={title}>{title}</span>
+    <!-- The link dot: state by class (live, connecting, stale, offline), words by tooltip and status text.
+         The ripple's clip is a row-high band behind the row's content (see .rclip). -->
+    <span class="linkdot {dotCls}" class:virtual={!!machine.link.virtual} role="status" data-tip={dotTip}>
+      <span class="rclip" aria-hidden="true"><span class="ripple"></span></span>
+      <span class="core" aria-hidden="true"></span>
+      <span class="sr">Link: {dotWord}</span>
+    </span>
   </div>
 
-  <!-- ONE flat row of equal chips (OG). Phase and tier lead it and never
-       shed: they are the two safety-relevant reads. The rest shed from the
-       tail, before the hub name ellipsizes. -->
+  <!-- ONE flat row of equal chips (OG). Auth leads it and never sheds: it is the
+       safety-relevant read. The rest shed from the tail, before the hub name ellipsizes. -->
   <div class="chips pinned" bind:this={pinnedEl}>
-    <span class="chip tone-{phaseInfo.tone}" role="status" aria-live="polite">
-      <span class="chip-dot"></span><span class="mono">{phaseInfo.label}</span>
-    </span>
     <span class="chip">
-      <span class="chip-lbl">tier</span><span class="mono">{tierLabel}</span>
+      <span class="chip-lbl">auth:</span><span class="mono auth">{authLabel}</span>
     </span>
   </div>
   <div class="chips opt">
     <!-- Zero wide and first on the line, so every chip after it wraps away whole. -->
     <span class="opt-lead"></span>
-    <span class="chip chip-opt-last tone-{rxTone}" aria-label={'telemetry: ' + rxToneLabel}>
-      <span class="chip-lbl">rx</span>
-      <span class="mono rx-age">{rxAge}</span>
+    <span class="chip chip-opt-last tone-{rxTone}" role="img" aria-label={rateName} data-tip={rateTip}>
+      <svg class="arrow" viewBox="0 0 8 10" aria-hidden="true"><path d="M4 1v8M1 6l3 3 3-3" /></svg>
+      <span class="mono rv">{down}</span>
+      <svg class="arrow" viewBox="0 0 8 10" aria-hidden="true"><path d="M4 9V1M1 4l3-3 3 3" /></svg>
+      <span class="mono rv">{up}</span>
+      <span class="chip-lbl unit">KB/s</span>
     </span>
-    <span class="chip chip-opt tone-{fpsTone}" title={renderTip}>
+    <span class="chip chip-opt" role="img" aria-label={lossName} data-tip={lossTip}>
+      <span class="chip-lbl">loss</span>
+      <span class="mono lv">{fmtNum(lossClient)}</span><span class="mono sep">/</span><span class="mono lv">{fmtNum(lossMachine)}</span><span class="chip-lbl unit">%</span>
+    </span>
+    <span class="chip chip-opt tone-{fpsTone}" data-tip={renderTip}>
       <span class="mono fps">{render.fps == null ? '-- fps' : render.fps + ' fps'}</span>
     </span>
   </div>
@@ -184,6 +219,7 @@
        screen's rounded corners: R - it bounds the arc for a row that far down. */
     --it: var(--chrome-inset-top, 0px);
     --row: 32px;
+    --wm: 1rem;   /* the hub name's size; the dot's ripple is sized in it */
     --pl: max(var(--gap), var(--corner-tl, 0px) - var(--it));
     --pr: max(var(--gap), var(--corner-tr, 0px) - var(--it));
     display: flex;
@@ -193,6 +229,8 @@
     padding: var(--it) var(--pr) 0 var(--pl);
     background: var(--bg-raised);
     box-shadow: inset 0 -1px 0 var(--line);
+    /* The ripple sits at z-index -1 in this context: over the bar's background, under its content. */
+    isolation: isolate;
   }
   @media (pointer: coarse) {
     .linkbar { --row: 40px; }
@@ -248,7 +286,7 @@
   .wordmark {
     font-family: var(--font);
     font-weight: 500;
-    font-size: 1rem;
+    font-size: var(--wm);
     letter-spacing: calc(var(--s) * 1px);
     color: var(--ink-hi);
     flex: 0 1 auto;
@@ -303,18 +341,98 @@
   }
   /* Shell chrome keeps 4.5:1 text (style.css --shell-*). */
   .linkbar.shell .chip-lbl { color: var(--tx-val); }
-  /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). rx
-     is at most 3 characters (sinceShort); fps is at most 7 characters. */
-  .rx-age { width: 3ch; }
+  /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). A rate or a loss value
+     and the auth value fill a slot of their widest reading, right-aligned for numbers; fps is at most 7 characters. */
+  .rv, .lv { display: inline-block; text-align: right; font-variant-numeric: tabular-nums; }
+  .rv { width: 3ch; }
+  .lv { width: 3ch; }
+  .auth { min-width: 9ch; }   /* "configure", the longest tier name */
+  .unit { text-transform: none; }
+  /* Arrows a step larger than the digits beside them; each rides close to its number. */
+  .arrow { flex: none; width: 1em; height: 1.25em; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+  .chip-opt-last { gap: var(--sp-1); }
+  .rv + .arrow { margin-left: var(--sp-2); }
   .fps { width: 7ch; text-align: right; }
   /* The gap after it cancelled: the lead takes no room at all. */
   .opt-lead { flex: none; width: 0; margin-right: calc(var(--sp-2) * -1); }
-  .chip-dot {
+
+  /* ---- the link dot ----
+     State is a class (live, connecting, stale, offline), never only color: the tooltip and the status
+     text say it, offline is a hollow ring, stale only dims. The beat and the ripple are the write-ack
+     ring's language (style.css, Ground Truth): the same glow ease, the same ease-out, intent for
+     "awaiting", warn for "unconfirmed". Only transform and opacity animate. The box is a fixed 16 px
+     hover target; nothing here moves a neighbor. */
+  .linkdot {
+    --lc: var(--reality-rgb);
+    --beat: 2s;
+    /* The ripple reaches about the width of "nucleus-p4" in the hub name (measured: test/responsive-matrix.mjs). */
+    --rip-r: calc(var(--wm) * 4.6);
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+  }
+  .linkdot.connecting { --lc: var(--intent-rgb); --beat: 1s; }
+  .linkdot.stale, .linkdot.virtual { --lc: var(--warn-rgb); }
+  .core {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: currentColor;
-    flex: 0 0 auto;
+    background: rgb(var(--lc));
+    box-shadow: 0 0 6px rgba(var(--lc), .6);
+    animation: dot-beat var(--beat) infinite;
+  }
+  .linkdot.stale .core { animation: dot-dim 3s ease-in-out infinite; }
+  .linkdot.offline .core { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-faint); animation: none; }
+  /* A row-high band centered on the dot, unbounded left and right: the ripple spreads along the bar
+     and never bleeds above or below it. */
+  .rclip {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: var(--row);
+    margin-top: calc(var(--row) / -2);
+    z-index: -1;
+    pointer-events: none;
+    clip-path: inset(0 -100vmax);
+  }
+  .ripple {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: calc(var(--rip-r) * 2);
+    height: calc(var(--rip-r) * 2);
+    margin: calc(var(--rip-r) * -1) 0 0 calc(var(--rip-r) * -1);
+    border-radius: 50%;
+    opacity: 0;
+    background: radial-gradient(circle closest-side, rgba(var(--lc), 0) 58%, rgba(var(--lc), .16) 80%,
+      rgba(var(--lc), .75) 95%, rgba(var(--lc), 0) 100%);
+    animation: ripple-grow var(--beat) var(--ease-out) infinite, ripple-fade var(--beat) var(--fx-glow-ease) infinite;
+  }
+  .linkdot:is(.stale, .offline) .rclip { display: none; }
+  /* The swell: 36 % up on the beat, a quick rise and a slow settle. */
+  @keyframes dot-beat {
+    0% { transform: scale(1); animation-timing-function: var(--ease-out); }
+    14% { transform: scale(1.36); animation-timing-function: ease-in-out; }
+    46%, 100% { transform: scale(1); }
+  }
+  @keyframes dot-dim { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes ripple-grow { from { transform: scale(.08); } to { transform: scale(1); } }
+  @keyframes ripple-fade { from { opacity: .7; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .core, .ripple { animation: none; }
+  }
+  :global(html.still) .core, :global(html.still) .ripple { animation: none; }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* Tone rides the text color plus a tinted border: the border tint is the
@@ -330,11 +448,15 @@
      :nth-child: a positional selector retargets when a chip turns conditional. */
   @media (max-width: 560px) {
     .chip-opt { display: none; }
+    /* The rate keeps its place on a phone by dropping its unit; the tooltip and the name say KB/s. */
+    .chip-opt-last .unit { display: none; }
+    .chips.pinned .chip { gap: var(--sp-1); }
+    .rv + .arrow { margin-left: 0; }
   }
   @media (max-width: 400px) {
     .chip-opt-last { display: none; }
     .chips.opt { display: none; }
-    .wordmark { font-size: .82rem; }
+    .linkbar { --wm: .82rem; }
     .header-left { min-width: 0; }
   }
 </style>
