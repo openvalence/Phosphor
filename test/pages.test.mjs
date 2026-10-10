@@ -290,6 +290,8 @@ console.log('\n--- desktop 1280x800 ---');
   ok('full: pointer movement brings it to full opacity', (await bareState()).opacity === '1');
   await page.waitForTimeout(1800);
   ok('full: and back to half at rest', (await bareState()).opacity === '0.5');
+  // The media page's caret is a corner hotspot shown on pointer movement (ph-9t5l.7).
+  await page.mouse.move(310, 410);
   await page.click('.full-caret');
   await page.waitForTimeout(200);
   ok('full: the caret brings the bar back', await page.locator('.linkbar').isVisible() && await page.locator('main.pane.full').count() === 1);
@@ -923,6 +925,8 @@ for (const [w, h] of [[420, 860], [860, 420], [360, 780]]) {
     await page.waitForSelector('main.pane .fsp', { timeout: 5000 });
     await page.keyboard.press('F11');
     await page.waitForTimeout(400);
+    await page.mouse.move(w / 2, h / 2);
+    await page.waitForTimeout(150);
     await check('bare fullscreen: the stop pair and the caret', ['.topstrip.bare .pair', '.full-caret'], 'shape-bare');
     // The caret sits above the strip (z 31 over 30): over the pair it would take a Pause tap.
     const over = await page.evaluate(() => {
