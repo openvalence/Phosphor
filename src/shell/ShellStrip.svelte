@@ -17,14 +17,18 @@
    *   overlay: it covers, never shifts) below the whole top strip, never over
    *   the e-stop or pause (laws 1, 11); only a held Close quits
    *   (close-confirm.js). Never red: law 13 keeps red for hazards.
+   * - Close immediately when idle (the `closeIdle` pref) skips the popover
+   *   only while closesAtOnce() holds at the moment of the request.
    */
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
+  import { get } from 'svelte/store';
   import { hubs } from './hubs.svelte.js';
-  import { machine } from '../model/machine.svelte.js';
+  import { machine, freshness } from '../model/machine.svelte.js';
+  import { prefs } from '../model/prefs.js';
   import { runsOnAlone } from '../model/actions.js';
   import { CH_CONTROL_OWNER } from '../../../Valence/clients/js/index.js';
-  import { createCloseGate, closeConsequences, HOLD_MS } from './close-confirm.js';
+  import { createCloseGate, closeConsequences, closesAtOnce, HOLD_MS } from './close-confirm.js';
 
   const win = ['android', 'ios'].includes(import.meta.env.TAURI_ENV_PLATFORM) ? null : getCurrentWindow();
   // macOS: the maximize button is the true fullscreen (its own Space), the
@@ -46,7 +50,11 @@
     serverRunning = false;
     invoke('bp_status').then((st) => { serverRunning = !!(st && st.running); }).catch(() => {});
   }
-  const gate = win ? createCloseGate(win, ask) : null;
+  const fresh = (ch) => { const f = freshness(ch); return !!f && !f.stale; };
+  // lastRxMs: any frame since this hub was chosen (forgetDevice zeroes it).
+  const idle = () => closesAtOnce({ on: get(prefs).closeIdle, heard: !!machine.stats.lastRxMs,
+    byRole: machine.catalog.model && machine.catalog.model.byRole, samples: machine.samples, fresh });
+  const gate = win ? createCloseGate(win, ask, { idle }) : null;
   $effect(() => () => gate && gate.dispose());
   $effect(() => { if (asking && holdEl) holdEl.focus(); });
 
@@ -99,7 +107,7 @@
       <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
     </button>
     <button class="sb-wbtn" bind:this={xEl} aria-label="Close" title="Close" aria-haspopup="dialog"
-            aria-expanded={asking} onclick={() => (asking ? dismiss(false) : ask())}>
+            aria-expanded={asking} onclick={() => (asking ? dismiss(false) : gate.request())}>
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
     </button>
     {#if asking}
