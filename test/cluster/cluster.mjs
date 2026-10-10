@@ -7,6 +7,8 @@
  *   node test/cluster/cluster.mjs --ramp 32,64,128,256,512,1024 [--minutes 5] [--long 30] [--per-worker 32]
  *                                [--max-workers physical cores] [--seed 1]
  *   node test/cluster/cluster.mjs --hubs 64 [--minutes 2]
+ *   node test/cluster/cluster.mjs --hubs 2048 --lockstep [--minutes 10]   every hub as --replay runs it, on a virtual
+ *                                1 ms clock per worker, as fast as the worker goes (--ramp and --long take it too)
  *   node test/cluster/cluster.mjs --replay SEED [--minutes 3] [--hw-safe] [--realtime] [--out FILE]   one hub alone,
  *                                traced, in lockstep on a virtual clock unless --realtime
  *   node test/cluster/cluster.mjs --replay SEED --target ws://HUB:PORT/ [--http 80] [--out FILE]   a real hub
@@ -21,9 +23,14 @@
  *   The loop polls, so a worker's thread reads 100 % CPU whatever its load: `work %` (time inside ticks,
  *   drains and client steps) is the load figure.
  * - A hub's seed reproduces it alone: --replay SEED boots the same options and the same client seeds.
+ * - --lockstep runs each hub exactly as --replay SEED does: the replay's subscription rates, the seed's own
+ *   Math.random stream, the hub's work and timers inside its own async context. A seed it flags replays alone
+ *   to the same per-minute counters and flags. It measures no timing: no tick-lateness fields, and its output
+ *   and summary say lockstep.
  * - --target never runs from the cluster: it is one hub, the operator's, run by the operator.
  */
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism, cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +42,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const EVID = join(HERE, '..', 'evidence', 'cluster');
 const BUCKET_US = 10, BUCKETS = 5000; // lateness histogram: 10 us bins to 50 ms, then overflow
 const HEALTHY_P99_MS = 4;            // under the hub's own 5 ms tick
+const REPLAY_RATES = { planHz: 45, motionHz: 60 }; // --replay and --lockstep subscribe alike, or a seed runs differently
+const als = new AsyncLocalStorage(); // lockstep: the hub whose code is running, {rand}
+const hubRand = (seed) => mulberry32(seed ^ 0x7a11);
 
 // ---- a worker (or a replay): hubs, clients, the loop ---------------------------------------------------------
 function quantile(hist, over, q) {
@@ -53,7 +63,7 @@ const DIAG = ['plans', 'failures', 'anomalies', 'anom_settle', 'anom_endvel_clam
   'anom_knot_refused', 'anom_piece_over_ceiling', 'sync_bundles', 'sync_samples', 'sync_enqueued', 'sync_dropped', 'sync_seg_bundles'];
 
 /** One hub: its Neutrino (null for a real target), its clients, its counters. */
-async function makeHub(seed, module, { hwSafe = false, record = false, target = null, planHz, preset = null } = {}) {
+async function makeHub(seed, module, { hwSafe = false, record = false, target = null, planHz, motionHz, preset = null } = {}) {
   const plan = hubPlan(seed, hwSafe || !!target);
   const rec = { seed, opts: plan.opts, flags: [], diag: null, logs: {} };
   let n = null;
@@ -67,8 +77,8 @@ async function makeHub(seed, module, { hwSafe = false, record = false, target = 
   const seeds = target ? plan.clients.slice(0, 1) : plan.clients;
   const clients = seeds.map((cs) => createClient(target ? {
     seed: cs, WebSocketImpl: globalThis.WebSocket, url: target.url, host: target.host, port: target.port, token: target.token,
-    record, hwSafe: true, planHz, hub: rec,
-  } : { seed: cs, WebSocketImpl: n.WebSocket, token: n.token, record, hwSafe, planHz, hub: rec, preset }));
+    record, hwSafe: true, planHz, motionHz, hub: rec,
+  } : { seed: cs, WebSocketImpl: n.WebSocket, token: n.token, record, hwSafe, planHz, motionHz, hub: rec, preset }));
   return { seed, n, clients, rec, prev: null };
 }
 
@@ -138,30 +148,34 @@ function runLoop(hubs, { minutes, tickUs = 1000, onMinute, onEnd }) {
 }
 
 if (!isMainThread) {
-  const { seeds, minutes, tickUs, planHz } = workerData;
+  const { seeds, minutes, tickUs, planHz, lockstep: ls } = workerData;
+  const vc = ls ? virtualClock(seeds[0]) : null;
   const module = new WebAssembly.Module(wasmBytes());
   const hubs = [];
-  for (const seed of seeds) hubs.push(await makeHub(seed, module, { planHz }));
+  for (const seed of seeds) {
+    if (!ls) { hubs.push(await makeHub(seed, module, { planHz })); continue; }
+    const ctx = { rand: hubRand(seed) };
+    hubs.push(Object.assign(await als.run(ctx, () => makeHub(seed, module, REPLAY_RATES)), { ctx }));
+  }
   parentPort.postMessage({ op: 'up', hubs: hubs.length });
-  runLoop(hubs, {
-    minutes, tickUs,
-    onMinute: (m) => parentPort.postMessage({ op: 'minute', m }),
-    onEnd: () => {
-      parentPort.postMessage({ op: 'done', hubs: hubs.map((h) => ({ seed: h.seed, opts: h.rec.opts, flags: h.rec.flags,
-        xfail: h.clients.flatMap((c) => c.stats.xfail), homeOsc: h.clients.reduce((a, c) => sum(a, c.stats.homeOsc), {}),
-        actions: h.clients.reduce((a, c) => sum(a, c.stats.actions), {}), results: h.clients.reduce((a, c) => sum(a, c.stats.results), {}),
-        diag: h.rec.diag, clean: !h.rec.opts.plan_delay_ms && h.clients.every((c) => !c.traits.imp.latMs && !c.traits.imp.loss && !c.traits.imp.reorder),
-        clients: h.clients.length })) });
-      process.exit(0);
-    },
-  });
+  const onMinute = (m) => parentPort.postMessage({ op: 'minute', m });
+  const onEnd = () => {
+    parentPort.postMessage({ op: 'done', hubs: hubs.map((h) => ({ seed: h.seed, opts: h.rec.opts, flags: h.rec.flags,
+      xfail: h.clients.flatMap((c) => c.stats.xfail), homeOsc: h.clients.reduce((a, c) => sum(a, c.stats.homeOsc), {}),
+      actions: h.clients.reduce((a, c) => sum(a, c.stats.actions), {}), results: h.clients.reduce((a, c) => sum(a, c.stats.results), {}),
+      diag: h.rec.diag, clean: !h.rec.opts.plan_delay_ms && h.clients.every((c) => !c.traits.imp.latMs && !c.traits.imp.loss && !c.traits.imp.reorder),
+      clients: h.clients.length })) });
+    process.exit(0);
+  };
+  if (ls) lockstep(vc, hubs, minutes, onMinute).then(onEnd);
+  else runLoop(hubs, { minutes, tickUs, onMinute, onEnd });
 }
 
 // ---- main ---------------------------------------------------------------------------------------------------
 const argv = process.argv.slice(2);
 const argOf = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 
-async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
+async function runStep(n, minutes, { perWorker, seed0, tickUs, label, lockstep: ls }) {
   // Never more polling workers than physical cores (half the logical ones, SMT assumed): a poller on a
   // shared core, or preempted, waits out a 15.6 ms Windows quantum. Measured 2026-10-10 on 16C/32T: 1024 hubs
   // on 30 workers p99 23 ms, on 16 workers p99 1.4 ms; past that cap a worker hosts more hubs instead.
@@ -174,14 +188,15 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
   const sysTimes = () => cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
   let cpu0 = process.cpuUsage(), t0 = performance.now(), sys0 = sysTimes();
   const cores = availableParallelism();
-  console.log(`\n== Neutrino cluster: ${label || n + ' hubs'}, ${W} workers x ~${Math.ceil(n / W)}, ${minutes} min`);
-  console.log('  min  hubs  p50ms  p99ms  maxms  work%  cpu%  sys%   rssMB  wasmMB  plans/s  anoms  fails  nacks  reaps  stalls  flags');
+  let simMs = 0;
+  console.log(`\n== Neutrino cluster: ${label || n + ' hubs'}, ${W} workers x ~${Math.ceil(n / W)}, ${minutes} min${ls ? ', LOCKSTEP (virtual 1 ms clock, no tick lateness)' : ''}`);
+  console.log('  min  hubs' + (ls ? '  sim/wall' : '  p50ms  p99ms  maxms  work%') + '  cpu%  sys%   rssMB  wasmMB  plans/s  anoms  fails  nacks  reaps  stalls  flags');
   await new Promise((resolve) => {
     let ended = 0;
     for (let w = 0; w < W; w++) {
       const seeds = [];
       for (let i = w; i < n; i += W) seeds.push(seed0 + i);
-      const wk = new Worker(fileURLToPath(import.meta.url), { workerData: { seeds, minutes, tickUs, planHz: 10 } });
+      const wk = new Worker(fileURLToPath(import.meta.url), { workerData: { seeds, minutes, tickUs, planHz: 10, lockstep: ls } });
       workers.push(wk);
       wk.on('message', (msg) => {
         if (msg.op === 'minute') {
@@ -212,10 +227,12 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
       stalls: hubs.reduce((a, h) => a + h.stalls + h.stuck, 0), timeouts: hubs.reduce((a, h) => a + h.timeouts, 0),
       segs: hubs.reduce((a, h) => a + h.segs, 0), actions: hubs.reduce((a, h) => a + h.actions, 0),
       ringDrops: hubs.reduce((a, h) => a + (h.ringDrops || 0), 0), traps: hubs.filter((h) => h.trap).map((h) => h.seed), perHub: hubs };
+    // Lockstep: sim-minutes per wall-minute in place of lateness, and rates per simulated second.
+    const secs = ls ? (list[0].simMs - simMs) / 1000 : wall / 1000, A = agg.diag;
+    if (ls) { agg.speed = +(secs * 1000 / wall).toFixed(2); simMs = list[0].simMs; for (const k of ['p50', 'p99', 'max', 'work']) delete agg[k]; }
     minutesAgg.push(agg);
-    const secs = wall / 1000, A = agg.diag;
-    console.log('  ' + [String(minute).padStart(3), String(n).padStart(5), agg.p50.toFixed(2).padStart(6), agg.p99.toFixed(2).padStart(6),
-      agg.max.toFixed(1).padStart(6), String(agg.work).padStart(6), String(agg.cpu).padStart(5), String(agg.sysCpu).padStart(5), String(agg.rssMB).padStart(7),
+    console.log('  ' + [String(minute).padStart(3), String(n).padStart(5), ...(ls ? [String(agg.speed).padStart(8)] : [agg.p50.toFixed(2).padStart(6),
+      agg.p99.toFixed(2).padStart(6), agg.max.toFixed(1).padStart(6), String(agg.work).padStart(6)]), String(agg.cpu).padStart(5), String(agg.sysCpu).padStart(5), String(agg.rssMB).padStart(7),
       String(agg.wasmMB).padStart(7), ((A.plans || 0) / secs).toFixed(0).padStart(8), String(A.anomalies || 0).padStart(6),
       String(A.failures || 0).padStart(6), String(Object.values(agg.nacks).reduce((a, b) => a + b, 0)).padStart(6),
       String(Object.values(agg.reaps).reduce((a, b) => a + b, 0)).padStart(6), String(agg.stalls).padStart(7),
@@ -236,12 +253,14 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
   const candidates = Object.fromEntries(KINDS.map((k) => [k, cleanHubs.filter((h) => h.diag[k] > 0).sort((a, b) => b.diag[k] - a.diag[k]).slice(0, 5).map((h) => [h.seed, h.diag[k]])]));
   const anomBy = (hs) => hs.reduce((a, h) => sum(a, Object.fromEntries(KINDS.map((k) => [k, (h.diag || {})[k] || 0]))), {});
   const split = { clean: { hubs: cleanHubs.length, ...anomBy(cleanHubs) }, impaired: { hubs: done.length - cleanHubs.length, ...anomBy(done.filter((h) => !cleanHubs.includes(h))) } };
-  const step = { hubs: n, workers: W, perWorker, minutes, p50: med('p50'), p99: med('p99'), work: med('work'), cpu: med('cpu'), sysCpu: med('sysCpu'),
+  const step = { mode: ls ? 'lockstep' : 'realtime', hubs: n, workers: W, perWorker, minutes,
+    ...(ls ? { speed: med('speed') } : { p50: med('p50'), p99: med('p99'), work: med('work') }), cpu: med('cpu'), sysCpu: med('sysCpu'),
     rssMB: Math.max(0, ...minutesAgg.map((m) => m.rssMB)), wasmMB: Math.max(0, ...minutesAgg.map((m) => m.wasmMB)),
-    healthy: med('p99') <= HEALTHY_P99_MS && !kinds.trap, flags: kinds, xfailCount: xfail.length, homeOsc, coverage, split, candidates,
+    healthy: (ls || med('p99') <= HEALTHY_P99_MS) && !kinds.trap, flags: kinds, xfailCount: xfail.length, homeOsc, coverage, split, candidates,
     minutes_detail: minutesAgg.map(({ perHub, ...m }) => m), flagged, xfail: xfail.slice(0, 200),
     results: done.reduce((a, h) => sum(a, h.results), {}) };
-  console.log(`  -> p99 ${step.p99} ms (median minute, worst worker), work ${step.work} %, cpu ${step.cpu} % (host ${step.sysCpu} %), rss ${step.rssMB} MB, ${step.healthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+  console.log('  -> ' + (ls ? `LOCKSTEP, ${step.speed} sim-min per wall-min (median minute)` : `p99 ${step.p99} ms (median minute, worst worker), work ${step.work} %`)
+    + `, cpu ${step.cpu} % (host ${step.sysCpu} %), rss ${step.rssMB} MB, ${step.healthy ? 'HEALTHY' : 'UNHEALTHY'}`);
   console.log('     flags: ' + (Object.entries(kinds).map(([k, v]) => k + ' x' + v.length + ' (seed ' + v.slice(0, 5).join(',') + ')').join('; ') || 'none'));
   const logs = minutesAgg.reduce((a, m) => sum(a, m.logs), {});
   step.hubLog = Object.fromEntries(Object.entries(logs).sort((a, b) => b[1] - a[1]));
@@ -255,18 +274,20 @@ async function runStep(n, minutes, { perWorker, seed0, tickUs, label }) {
 /**
  * Lockstep: one virtual millisecond per pass, and the clock every caller reads (performance.now, Date.now,
  * setTimeout, setInterval, Math.random seeded) is that one. The hub ticks to it, the links pump, due timers
- * fire, the clients step, and every promise settles before the next millisecond: a seed replays bit for bit.
- * Installed before anything that reads the time is built.
+ * fire, the clients step, and every promise settles before the next millisecond: a seed replays the same run,
+ * but for the session ids the hub mints from its own entropy.
+ * Installed before anything that reads the time is built. A timer runs in the async context that set it, and
+ * Math.random draws from that context's hub's stream (--lockstep), or the clock's own outside any (--replay).
  */
 function virtualClock(seed) {
   const realImmediate = globalThis.setImmediate, base = Date.now();
   const timers = new Map();
   let id = 1;
-  const vc = { now: 0, settle: () => new Promise((r) => realImmediate(r)) };
-  const add = (fn, ms, a, every) => { const i = id++; timers.set(i, { at: vc.now + Math.max(0, Number(ms) || 0), fn, a, every }); return i; };
+  const vc = { now: 0, rand: hubRand(seed), settle: () => new Promise((r) => realImmediate(r)) };
+  const add = (fn, ms, a, every) => { const i = id++; timers.set(i, { at: vc.now + Math.max(0, Number(ms) || 0), fn, a, every, ctx: als.getStore() }); return i; };
   performance.now = () => vc.now;
   Date.now = () => base + vc.now;
-  Math.random = mulberry32(seed ^ 0x7a11);
+  Math.random = () => (als.getStore() || vc).rand();
   globalThis.setTimeout = (fn, ms, ...a) => add(fn, ms, a, 0);
   globalThis.setInterval = (fn, ms, ...a) => add(fn, ms, a, Math.max(1, Number(ms) || 1));
   globalThis.clearTimeout = globalThis.clearInterval = (i) => timers.delete(i);
@@ -275,24 +296,30 @@ function virtualClock(seed) {
     for (const [i, t] of due) {
       if (!timers.has(i)) continue;
       if (t.every) t.at += t.every; else timers.delete(i);
-      t.fn(...t.a);
+      if (t.ctx) als.run(t.ctx, t.fn, ...t.a); else t.fn(...t.a);
     }
   };
   return vc;
 }
 
+/** Each hub's work runs in its own context (h.ctx; none for --replay), in the order a lone hub's would. */
 async function lockstep(vc, hubs, minutes, onMinute) {
-  const clients = hubs.flatMap((h) => h.clients);
-  for (let t = 1; t <= minutes * 60000; t++) {
+  const tickHub = (h, t) => {
+    if (h.n && !h.n.trap) { h.n.tick(t * 1000 + 1e6); h.n.drain(); if (h.n.trap) h.rec.flags.push({ kind: 'trap', detail: String(h.n.trap), seed: h.seed }); }
+    for (const c of h.clients) for (const s of c.W.all) s.pump(t);
+  };
+  const stepHub = (h, t) => { for (const c of h.clients) c.step(t); };
+  const closeHub = (h) => { for (const c of h.clients) c.close(); };
+  const end = minutes * 60000;
+  for (let t = 1; t <= end; t++) {
     vc.now = t;
-    for (const h of hubs) if (h.n && !h.n.trap) { h.n.tick(t * 1000 + 1e6); h.n.drain(); }
-    for (const c of clients) for (const s of c.W.all) s.pump(t);
+    for (const h of hubs) als.run(h.ctx, tickHub, h, t);
     vc.fire();
-    if (t % 10 === 0) for (const c of clients) c.step(t);
+    if (t % 10 === 0) for (const h of hubs) als.run(h.ctx, stepHub, h, t);
     await vc.settle();
-    if (t % 60000 === 0 || t === minutes * 60000) onMinute({ minute: Math.ceil(t / 60000) - 1, p99: 0, hubs: hubs.map(minuteOf) });
+    if (t % 60000 === 0 || t === end) onMinute({ minute: Math.ceil(t / 60000) - 1, simMs: t, hubs: hubs.map(minuteOf) });
   }
-  for (const c of clients) c.close();
+  for (const h of hubs) als.run(h.ctx, closeHub, h);
   for (let i = 0; i < 50; i++) { vc.now++; vc.fire(); await vc.settle(); }
 }
 
@@ -316,7 +343,7 @@ async function replay(seed) {
     preset = new Map();
     for (const e of like.clients[0].trace) if (e[1] === 'cfg' && !preset.has(e[2][0])) preset.set(e[2][0], e[2][1]);
   }
-  const h = await makeHub(seed, module, { hwSafe, record: true, target, planHz: 45, preset });
+  const h = await makeHub(seed, module, { hwSafe, record: true, target, ...REPLAY_RATES, preset });
   console.log(`Neutrino cluster replay: seed ${seed} on ${t || 'Neutrino ' + (h.n.version || '')}: options ${JSON.stringify(h.rec.opts)}, clients ${h.clients.map((c) => c.seed).join(',')}${hwSafe || t ? ', hw-safe' : ''}, ${minutes} min`);
   const mins = [];
   const onMinute = (m) => { mins.push(m); console.log(`  minute ${m.minute}: ${vc ? 'lockstep' : 'p99 ' + m.p99 + ' ms'}, plans ${m.hubs[0].diag.plans || 0}, anomalies ${m.hubs[0].diag.anomalies || 0}, nacks ${JSON.stringify(m.hubs[0].nacks)}`); };
@@ -325,7 +352,7 @@ async function replay(seed) {
   const out = argOf('--out', join(EVID, `replay-${seed}-${t ? 'hw' : hwSafe ? 'neutrino-hwsafe' : 'neutrino'}-${Date.now()}.json`));
   mkdirSync(dirname(out), { recursive: true });
   const doc = { seed, target: t || 'neutrino', version: h.n ? h.n.version : null, hwSafe: hwSafe || !!t, lockstep: !!vc, opts: h.rec.opts, minutes,
-    flags: h.rec.flags, logs: h.rec.logs,
+    flags: h.rec.flags, logs: h.rec.logs, perMinute: mins.map((m) => m.hubs[0]),
     clients: h.clients.map((c) => ({ seed: c.seed, traits: c.traits, stats: c.stats, trace: c.trace })) };
   writeFileSync(out, JSON.stringify(doc));
   console.log('flags: ' + (h.rec.flags.map((f) => f.kind + ' (' + f.detail + ')').join('; ') || 'none'));
@@ -340,33 +367,37 @@ if (isMainThread) {
   const minutes = Number(argOf('--minutes', 5));
   const seed0 = Number(argOf('--seed', 1));
   const tickUs = Number(argOf('--tick-us', 1000));
+  const ls = argv.includes('--lockstep');
   const ramp = argOf('--ramp', null) ? argOf('--ramp').split(',').map(Number) : [Number(argOf('--hubs', 32))];
   const dir = join(EVID, new Date().toISOString().replace(/[:.]/g, '-'));
   mkdirSync(dir, { recursive: true });
   const steps = [];
   for (const n of ramp) {
-    const { step, perHubMinutes } = await runStep(n, minutes, { perWorker, seed0, tickUs });
+    const { step, perHubMinutes } = await runStep(n, minutes, { perWorker, seed0, tickUs, lockstep: ls });
     steps.push(step);
     writeFileSync(join(dir, `step-${n}.json`), JSON.stringify({ ...step, perHubMinutes }));
   }
   const healthy = steps.filter((s) => s.healthy);
-  const knee = steps.find((s) => !s.healthy);
+  const knee = ls ? null : steps.find((s) => !s.healthy);
   const long = Number(argOf('--long', 0));
   let longRun = null;
   if (long && healthy.length) {
     const n = Math.max(...healthy.map((s) => s.hubs));
-    const { step, perHubMinutes } = await runStep(n, long, { perWorker, seed0, tickUs, label: `LONG ${n} hubs` });
+    const { step, perHubMinutes } = await runStep(n, long, { perWorker, seed0, tickUs, label: `LONG ${n} hubs`, lockstep: ls });
     longRun = step;
     writeFileSync(join(dir, `long-${n}.json`), JSON.stringify({ ...step, perHubMinutes }));
   }
   const strip = ({ minutes_detail, flagged, xfail, ...s }) => s;
-  const summary = { at: new Date().toISOString(), cores: availableParallelism(), healthyP99Ms: HEALTHY_P99_MS, steps: steps.map(strip),
+  const summary = { at: new Date().toISOString(), mode: ls ? 'lockstep' : 'realtime', cores: availableParallelism(),
+    healthyP99Ms: ls ? null : HEALTHY_P99_MS, steps: steps.map(strip),
     knee: knee ? knee.hubs : null, largestHealthy: healthy.length ? Math.max(...healthy.map((s) => s.hubs)) : null, long: longRun && strip(longRun) };
   writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 1));
-  console.log('\nNeutrino cluster ramp\n hubs  workers  p50ms  p99ms  work%  cpu%  host%   rssMB  healthy  flags');
-  for (const s of [...steps, ...(longRun ? [longRun] : [])]) console.log(' ' + [String(s.hubs).padStart(4), String(s.workers).padStart(8), s.p50.toFixed(2).padStart(6),
-    s.p99.toFixed(2).padStart(6), String(s.work).padStart(6), String(s.cpu).padStart(5), String(s.sysCpu).padStart(6), String(s.rssMB).padStart(7), (s.healthy ? 'yes' : 'NO').padStart(8),
+  console.log(ls ? '\nNeutrino cluster ramp, LOCKSTEP: virtual time, no tick lateness; sim/wall is sim-minutes per wall-minute\n hubs  workers  sim/wall  cpu%  host%   rssMB  healthy  flags'
+    : '\nNeutrino cluster ramp\n hubs  workers  p50ms  p99ms  work%  cpu%  host%   rssMB  healthy  flags');
+  for (const s of [...steps, ...(longRun ? [longRun] : [])]) console.log(' ' + [String(s.hubs).padStart(4), String(s.workers).padStart(8),
+    ...(ls ? [String(s.speed).padStart(8)] : [s.p50.toFixed(2).padStart(6), s.p99.toFixed(2).padStart(6), String(s.work).padStart(6)]),
+    String(s.cpu).padStart(5), String(s.sysCpu).padStart(6), String(s.rssMB).padStart(7), (s.healthy ? 'yes' : 'NO').padStart(8),
     ' ' + (Object.entries(s.flags).map(([k, v]) => k + ' x' + v.length).join(', ') || '-')].join(' '));
-  console.log('knee: ' + (knee ? knee.hubs + ' hubs' : 'none up to ' + ramp.at(-1)) + '; results: ' + dir);
+  console.log((ls ? 'lockstep: no timing knee' : 'knee: ' + (knee ? knee.hubs + ' hubs' : 'none up to ' + ramp.at(-1))) + '; results: ' + dir);
   process.exit(0);
 }

@@ -9,8 +9,8 @@
  * - Determinism: every action draws exactly DRAWS numbers from the seed's stream whatever the hub answered;
  *   an action's own detail comes from a sub-stream seeded by one of them, and every choice that reads the hub's
  *   state reads it at an action, never against a timer (patience is counted in actions). Two lockstep runs of
- *   a seed (cluster.mjs, virtualClock) are bit-identical; a real-time run takes the same branches while the hub
- *   answers alike.
+ *   a seed (cluster.mjs, virtualClock) are identical but for the session ids the hub mints; a real-time run takes
+ *   the same branches while the hub answers alike.
  * - Positions and window edges are fractions of the max_rail the hub reports, so a run against a hub with
  *   another rail is comparable in normalized terms (compare.mjs).
  * - hwSafe (implied for a real hub): no force_home, no preset save/delete/rename, every settings write a
@@ -152,7 +152,7 @@ const CORE = [
 ];
 
 /**
- * @param {Object} o {seed, WebSocketImpl, token, host, port, record, hwSafe, planHz, hub: shared per-hub
+ * @param {Object} o {seed, WebSocketImpl, token, host, port, record, hwSafe, planHz, motionHz, hub: shared per-hub
  *   record {diag, flags[]} for counters and faults}
  */
 export function createClient(o) {
@@ -185,7 +185,7 @@ export function createClient(o) {
     live = false; connectAt = performance.now(); lastStateAt = connectAt;
     const ses = createSession({ host: o.host || 'neutrino', port: o.port || 1, clientKind: 'webui', clientName: 'cluster ' + o.seed,
       autoReconnect: false, WebSocketImpl: W, token: o.token, catalogStore: store, subscriptions: CORE.map((w) =>
-        w[0] === CH.MOTION ? [w[0], o.record ? 60 : 20, w[2]] : w) });
+        w[0] === CH.MOTION ? [w[0], o.motionHz || 20, w[2]] : w) });
     s = ses;
     door = createMotionDoor({ session: () => (live && s === ses ? ses : null), entries: () => ses.catalog || [],
       setpoint: () => ({ ok: false, reason: 'no STREAM' }), log: () => {}, halted: () => latchWords(ses.state.safety),
