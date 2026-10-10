@@ -39,7 +39,7 @@ export const DEFAULTS = Object.freeze({
   railHidden: false,  // the rail is hidden right now (state)
   closeIdle: true,    // shell: the window closes with no hold while the machine is idle (DESIGN §10.3)
   openToLan: false,   // desktop shell: the Virtual's hub on the LAN while it runs (shell/lan.svelte.js)
-  lanPort: 82,        // its WebSocket port; taken, the OS picks one
+  lanPort: 82,        // its WebSocket port; unbindable, the OS picks one
 });
 
 function read(key) {

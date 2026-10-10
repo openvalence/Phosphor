@@ -87,7 +87,7 @@ async function start(port) {
   try {
     const up = await invoke('lan_start', { port, udpPort: DISCOVERY_PORT, subprotocol: WS_SUBPROTOCOL, farewell: BYE, events: c });
     if (chan !== c) return;
-    Object.assign(lan, { port: up.port, addrs: up.addrs, discovery: up.discovery, note: up.port === port ? '' : port + ' taken' });
+    Object.assign(lan, { port: up.port, addrs: up.addrs, discovery: up.discovery, note: up.port === port ? '' : port + ' unavailable' });
   } catch (e) {
     if (chan === c) { chan = null; lan.note = 'Not open: ' + e; }
   }

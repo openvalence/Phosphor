@@ -18,8 +18,9 @@
 //   close it (the hub's slow-consumer rule cannot see past the page), DGRAM_MAX
 //   bytes per datagram (a probe or an ESTOP frame is far smaller).
 // - A remote the page did not close is reported CLOSE exactly once.
-// - The port falls back to one the OS assigns when it is taken; the caller
-//   reports the bound port and discovery advertises it.
+// - A port that cannot be bound (taken; under 1024 without privileges on Linux
+//   and macOS) falls back to one the OS assigns; the caller reports the bound
+//   port and discovery advertises it.
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};

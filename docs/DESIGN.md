@@ -1029,7 +1029,8 @@ connected, then merge the setting changes onto the machine, ticked per item.
   responder). Nothing serves `/uitoken` on the LAN: a remote starts at
   `watch` and pairs. Opened to the LAN, Virtual boots with its pairing window
   closed; the section's Pairing window button is the twin's PAIR press
-  (`integral_pair_press`). A taken port falls back to one the OS assigns, and
+  (`integral_pair_press`). A port it cannot bind (taken, or under 1024 without
+  privileges on Linux and macOS) falls back to one the OS assigns, and
   discovery advertises the bound one. Off, a port change, Virtual stopping or
   Phosphor exiting sends every remote GOODBYE `NORMAL_CLOSURE` and closes it;
   while the hub lives on, each remote's session also gets that GOODBYE so the

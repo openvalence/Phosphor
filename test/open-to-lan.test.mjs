@@ -100,7 +100,7 @@ try {
   const [, addr, portText] = UP.exec(await status()) || [];
   const IP = addr && addr !== 'no LAN address' ? addr : '127.0.0.1';
   const PORT = Number(portText);
-  ok('a taken port falls back and says so', PORT && PORT !== HELD && (await status()).includes(HELD + ' taken'), await status());
+  ok('a port it cannot bind falls back and says so', PORT && PORT !== HELD && (await status()).includes(HELD + ' unavailable'), await status());
 
   const r1 = await probe(IP);
   ok('discovery answers with the Virtual on the bound port', !!r1 && r1.hub_name === 'Virtual' && r1.ws_port === PORT, JSON.stringify(r1));
