@@ -23,6 +23,11 @@
  *              closed, across a reload; the next pin arrives closed
  *   laws       a pinned field: pending while held, the refusal, the gate words
  *              at watch tier, stale dims on a silent link
+ *   drawer     420x860 with a fine pointer (a narrow window, not the phone
+ *              class): the toggle in the status row opens a drawer from the
+ *              right edge between the top strip and the status row, the stop
+ *              pair clear and unmoved, the page not shifted; a tap outside
+ *              closes it, the toggle inactive and the stored state closed
  *   phone      420x860: no quick access (DESIGN §10.13): no toggle or slot, no
  *              dock, no Pin or Unpin item; the pins stay stored; the top bar
  *              keeps its rx chip
@@ -45,7 +50,7 @@ import { EVIDENCE } from './dist.mjs';
 const args = process.argv.slice(2);
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : EVIDENCE;
 mkdirSync(SHOTS, { recursive: true });
-const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | phone
+const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';   // desk | gate | mid | drawer | phone
 const run = (name) => !ONLY || ONLY === name;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
@@ -497,6 +502,30 @@ for (const [w, h, theme] of run('mid') ? [[1428, 900, null], [1428, 900, PAPER],
   await page.click('.footstrip .dock-btn');
   await page.waitForTimeout(150);
   ok(w + 'x' + h + (theme ? ' Paper' : '') + ': the toggle closes it', await page.locator('.side-dock').count() === 0 && (await toggle(page)).exp === 'false');
+  ok('no page errors', errors.length === 0, errors);
+  await ctx.close();
+}
+
+// ---- a narrow window 420x860, fine pointer: the drawer ------------------------------------
+console.log('\n--- narrow window 420x860 (drawer) ---');
+if (run('drawer')) {
+  const { ctx, page, errors } = await boot({ width: 420, height: 860 }, { pins: { [HUB]: [
+    { key: FREQ_KEY, kind: 'field', title: 'Frequency' }, { key: 'hero:rail', kind: 'module', title: 'Rail' }] } });
+  const pair0 = await rect(page, '.topstrip .pair'), main0 = await rect(page, 'main.pane');
+  const td = await toggle(page);
+  ok('drawer: the toggle sits in the status row beside the scale control, inactive', td.n === 1 && td.foot && td.beside && td.exp === 'false', td);
+  await page.click('.footstrip .dock-btn');
+  await page.waitForSelector('.side-dock.drawer .qa-pin');
+  const dk = await rect(page, '.side-dock.drawer'), strip = await rect(page, '.topstrip'), foot = await rect(page, '.footstrip');
+  ok('drawer: from the right edge between the top strip and the status row; the stop pair clear and unmoved; the page not shifted', dk.r === 420 && dk.t >= strip.b - 1
+    && dk.b <= foot.t + 1 && !overlap(dk, pair0) && JSON.stringify(pair0) === JSON.stringify(await rect(page, '.topstrip .pair'))
+    && JSON.stringify(main0) === JSON.stringify(await rect(page, 'main.pane')), { dk, strip, foot, pair0 });
+  ok('drawer: the toggle reads active, the state stored open', (await toggle(page)).exp === 'true' && await prefOpen(page));
+  await shot(page, '420x860-fine-drawer');
+  await page.mouse.click(40, 600);
+  await page.waitForTimeout(200);
+  ok('drawer: a tap outside closes it, the toggle inactive, the stored state closed', await page.locator('.side-dock').count() === 0
+    && (await toggle(page)).exp === 'false' && !(await prefOpen(page)));
   ok('no page errors', errors.length === 0, errors);
   await ctx.close();
 }

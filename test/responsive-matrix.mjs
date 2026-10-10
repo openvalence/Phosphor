@@ -625,7 +625,7 @@ if (!ONLY || ONLY === 'bar') {
     await page.goto('http://127.0.0.1:' + PORT + '/');
     await page.waitForSelector('.linkbar .chip', { timeout: 15000 });
     const wide = w > 560;
-    if (wide) await page.waitForFunction(() => /fps$/.test(document.querySelector('.linkbar .fps')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    if (wide) await page.waitForFunction(() => /^[0-9]+ fps$/.test(document.querySelector('.linkbar .fps')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(400);
     const bar = await page.evaluate(() => {
       const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';

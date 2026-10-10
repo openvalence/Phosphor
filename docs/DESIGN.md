@@ -615,9 +615,10 @@ question in §10.8).
   timing assumes is zero) in words. Held over 10 % and skew over 2 ms show
   inline, warn toned, in a slot left of the fps held whether empty or not;
   two at once ellipsize, the tooltip has both. Under 30 fps the fps chip
-  wears the warn tone. The fps and rx values hold fixed widths. Under 561 px
-  the fps and the warning slot shed; rx sheds whole where it does not fit,
-  never a sliver.
+  wears the warn tone. The fps and rx values hold fixed widths (rx in whole
+  units, at most three characters: 59s, 12m, 3h). Under 561 px the fps
+  and the warning slot shed; rx sheds whole where it does not fit, never a
+  sliver.
 - The page footer (operator ruling 2026-10-02, `ph-vdk.60.12`;
   `src/ui/PageFoot.svelte`): one fixed 48 px bar at the bottom of the page
   area on every page with page controls (the advanced and diagnostic

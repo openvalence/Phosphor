@@ -29,7 +29,7 @@
   import { isStill } from './still.svelte.js';
   import { machine } from '../model/machine.svelte.js';
   import { ACCESS_NAME } from '../../../Valence/clients/js/index.js';
-  import { since, hubTitle } from '../model/format.js';
+  import { sinceShort, hubTitle } from '../model/format.js';
   import { reportedValue } from '../model/settings.js';
   import { ROLE } from '../model/roles.js';
   import { ac } from '../model/theme.js';
@@ -63,14 +63,14 @@
     nameField ? reportedValue(nameField, machine.samples[nameField.channelId]) : '', machine.link.virtual));
 
   // A liveness readout needs a clock of its own — nothing else in this bar
-  // re-renders on a schedule, so without a tick "since(...)" would freeze the
+  // re-renders on a schedule, so without a tick "sinceShort(...)" would freeze the
   // instant a frame stops arriving, which is exactly the moment it matters most.
   let nowTick = $state(Date.now());
   $effect(() => {
     const id = setInterval(() => { nowTick = Date.now(); }, 1000);
     return () => clearInterval(id);
   });
-  function ageLabel(ms, _tick) { return since(ms); }
+  function ageLabel(ms, _tick) { return sinceShort(ms); }
   const rxAge = $derived(ageLabel(machine.stats.lastRxMs, nowTick));
   const rxTone = $derived.by(() => {
     if (!isLive || !machine.stats.lastRxMs) return 'dim';
@@ -468,10 +468,10 @@
   }
   /* Shell chrome keeps 4.5:1 text (style.css --shell-*). */
   .linkbar.shell .chip-lbl { color: var(--tx-val); }
-  /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). The
-     render warning's slot is held while empty; two warnings ellipsize, the
-     tooltip has both. */
-  .rx-age { min-width: 3ch; }
+  /* Fixed slots: a reading that changes moves no neighbor (DESIGN §10.3). rx
+     is at most 3 characters (sinceShort); the render warning's slot is held
+     while empty; two warnings ellipsize, the tooltip has both. */
+  .rx-age { width: 3ch; }
   .fps { width: 7ch; text-align: right; }
   /* First on the line, it cannot wrap away: squeezed (a narrow window), it narrows and its chip ellipsizes.
      Where the optional chips shed it stays, empty and zero wide, so rx after it wraps away whole. */
