@@ -33,10 +33,11 @@ Rules for every module:
 | analyzer | ph-smvd.11 | `analyzer.js`; the playhead and the expand in `ui.js`, `timeline.js`; sections (c2), (g) and the live analyzer checks of `test/funscript-player.test.mjs` |
 | kinetic | ph-ge35 | `kinetic/kinetic.js`, `kinetic/bytes.js`, `kinetic/kinetic.pin`, `test/kinetic-trace.test.mjs`, `test/kinetic-pin.mjs`, `test/fixtures/kinetic_trace.json`; the render glue in `analyzer.js`, `timeline.js`; sections (c2) and (k) of `test/funscript-player.test.mjs` |
 | integration | ph-smvd.13, ph-smvd.14 | the playback wiring in `ui.js`, `timeline.js`, `index.js`; sections (h) and (p) `--live-playback` of `test/funscript-player.test.mjs`; the fixture |
+| multi-axis | ph-6dr6 | `axes.js`, `osc.js`; the multi-axis parse in `funscript.js`; the lanes in `timeline.js`; `submit.samples` in `src/model/motion.js`, `api.submitSamples`; the multi-axis section of `test/funscript-core.test.mjs`, (e3) of `test/plugins.test.mjs`, (o) of `test/funscript-player.test.mjs`, the fixture's `oscDrive` |
 
 Bare file names live in `plugins/factory/funscript-player/`. Import graph,
 no cycles: `index -> ui, prefs, library, scale`; `ui -> funscript, clock,
-scheduler, stash, library, timeline, prefs, scale, analyzer, rows`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
+scheduler, stash, library, timeline, prefs, scale, analyzer, rows, axes, osc`; `axes -> funscript`; `osc -> funscript`; `scale -> rows`; `page -> prefs, ui`; `analyzer -> funscript, scheduler, kinetic`;
 `kinetic -> scheduler, bytes`; `scheduler -> funscript`;
 `timeline -> funscript`; `library -> stash`; `stash -> funscript`;
 `prefs -> scale`.
@@ -54,7 +55,9 @@ scheduler, stash, library, timeline, prefs, scale, analyzer, rows`; `scale -> ro
   pos: Float32Array,          // 0..1, the file's `inverted` already applied, clamped
   durationMs: number,         // at[n-1]; n >= 1
   axis: 'L0',                 // only the main axis drives the rail
-  ignored: string[],          // other axes seen ('R0', 'roll', ...), never driven
+  axes: { V8?: {at: Float64Array, pos: Float32Array}, V9?: {...} },   // the oscillator axes (SPEC 9.7), parsed as a
+                              // Script's at/pos; embedded or from sibling files (axes.js withAxes); none: {}
+  ignored: string[],          // other axes seen ('R0', 'roll', ...), never driven; never V8, V9 or L0
   notes: string[],            // terse facts: 'range ignored', '3 duplicates dropped', '12 positions clamped'
   metadata: object | null,    // the file's metadata object, untouched
 }
@@ -123,14 +126,17 @@ export const MAX_SPAN_MS = 60000;   // a longer span is split along its line (u1
 export const MAX_SCRIPT_MS = 86400000, MAX_ACTIONS = 1000000;   // past either, refused before any expansion
 export const AXES;                  // frozen {suffix -> axis}: '' and 'stroke' -> 'L0', surge L1, sway L2,
                                     // twist R0, roll R1, pitch R2, vib V0, valve A0, suck A1, lube A2;
-                                    // bare TCode ids map to themselves
+                                    // bare TCode ids map to themselves (L0..L2, R0..R2, V0, V8, V9, A0..A2)
+export const OSC_AXES = ['V8', 'V9'];   // frozen: the Valence script reservation, amplitude then frequency (SPEC 9.7)
 export function parseFunscript(input, name = '');   // input: string | object -> Script
-  // throws Error('not a funscript') (bad JSON, no actions array) | Error('no actions') (none survive)
+  // throws Error('not a funscript') (bad JSON, no actions array and no channels.stroke) | Error('no actions') (none survive)
   //   | Error('more than a million actions') | Error('script longer than 24 hours') (an action past MAX_SCRIPT_MS)
   // keeps finite at >= 0 and finite pos; stable sort; duplicate at keeps the last; pos clamped 0..100, /100;
   // inverted (exactly true): pos = 1 - pos; a numeric range other than 100 is noted 'range ignored';
-  // an `axes` array (multi-axis) is listed in `ignored`. Further notes: 'N invalid actions dropped',
-  // 'N long spans split', 'actions sorted'; thin() adds 'N actions thinned'.
+  // multi-axis (funlib 1.1 `axes[]` {id}, 2.0 `channels{}` by name, looked up in AXES): the main axis is `actions`,
+  // else channels.stroke; an OSC_AXES axis is parsed into Script.axes (a failure is the note
+  // '<label> axis dropped: <words>'), every other non-L0 axis is listed in `ignored`, unparsed.
+  // Further notes: 'N invalid actions dropped', 'N long spans split', 'actions sorted'; thin() adds 'N actions thinned'.
 export function axisOf(fileName);   // -> {base: string, axis: string} | null (null when not *.funscript);
                                     // directory parts are stripped
 export function pairFiles(files);   // Array<{name, type?}> -> {video, script, extra: []}; media by MIME type,
@@ -150,7 +156,51 @@ export function fmtTime(ms);              // -> 'm:ss.t' under an hour, else 'h:
 `test/funscript-core.test.mjs` (node): parse variants (object, text,
 unsorted, duplicates, clamp, non-finite, inverted, range note, axes array,
 garbage, empty), the 60 s split, the axisOf table, pairFiles, posAt at and
-between knots, indexAfter edges, thin keeps reversals, heat bins, fmtTime.
+between knots, indexAfter edges, thin keeps reversals, heat bins, fmtTime;
+multi-axis: 1.1 and 2.0 embedded V8/V9, a channels-only 2.0 main, sibling
+pairing (axes.js), the resampler and the publisher's pacing (osc.js).
+
+---
+
+## multi-axis: `axes.js` and `osc.js` (ph-6dr6, SPEC 9.7)
+
+```js
+// axes.js
+export function oscFiles(main, extra = []);   // File-likes {name} -> {osc: File[], rest: File[]}: osc the extra files
+  // whose axisOf is V8 or V9 with main's base (case-insensitive); rest every other (the extra-axes note's list)
+export async function withAxes(main, files, read);   // main: Script | Promise<Script>; read(file) -> Promise<Script>
+  // -> Promise<Script>, a copy with each file's at/pos in axes[axisOf(file).axis] (a file overrides the embedded
+  // axis); a file that fails is the note '<id> file dropped: <words>', never a failed load
+
+// osc.js
+export const OSC_ROLE = 'osc.drive', OSC_LEAD_MS = 100, NO_STREAM = 'NO_STREAM';
+export function hasOsc(script);   // -> boolean: script.axes has V8 or V9
+export function oscSamples(axes, fromMs, stepMs, untilMs, mediaAt);   // -> [{atMs, values: [amplitude, frequency]}]
+  // every stepMs over [fromMs, untilMs] (wall ms, inclusive), each axis by posAt at mediaAt(atMs); an absent axis 0;
+  // stops at the first mediaAt that is not finite
+export function createOsc({ submit, now });   // submit(list) = api.submitSamples(OSC_ROLE, list) -> Osc
+// Osc = { tick(script, mediaAt | null), absent (get) }
+//   tick, once per controller tick: nothing without hasOsc(script) (absent false). Else submit([]) (the grant and
+//   the role's presence: absent = reason NO_STREAM) and, with mediaAt and a rateHz, the samples from
+//   max(now, the cursor) to now + OSC_LEAD_MS at 1000 / rateHz, submitted until a call sends nothing; the cursor
+//   advances by `sent` only. With mediaAt and the cursor past now + OSC_LEAD_MS / 2, no call at all.
+```
+
+The controller (ui.js createControl, deps gain `osc`, null without) calls
+`osc.tick(state.script, mediaAt)` every tick, `mediaAt` only while
+playing with Motion on, the clock ready, not buffering and not seeking:
+`(w) => fold(clock.mediaAt(w - T.offsetMs + scheduler.compMs))`, the
+trace's own map. `osc.absent` puts `COPY.noOsc` ('This machine has no
+oscillator input') first in the status notes. Open script takes several
+files (pairFiles; the V8/V9 siblings by oscFiles); Open video and a queued
+file entry pass theirs the same way. `createPlayer` builds the Osc on
+`api.submitSamples`.
+
+timeline.js: `setScript`'s raw Script (else the wire) gives the lanes: one
+`.fsp-lane` per present OSC_AXES axis (aria-label `COPY.V8`, `COPY.V9`)
+in `.fsp-lanes` after the detail, `curvePoints` over the detail's window
+untransformed, a playhead at the detail's share; `.fsp-tl[data-lanes=n]`
+takes their height out of the detail's, so the timeline box is unchanged.
 
 ---
 
@@ -328,6 +378,8 @@ export function filteredHubNowUs(s, nowMs = performance.now());
 // and lastNack(ch) -> the newest NACK record {name} the link saw on channel ch, or null.
 // The returned submit function gains a member:
 submit.segments(list);   // Seg[] -> SegResult
+submit.samples(role, list);   // [{atMs, values: number[]}] -> SegResult-shaped (ph-6dr6): the role door, below
+export function roleStream(entries, role);   // -> the c2h samples-kind STREAM entry carrying channel role `role`, or null
 export function streamGate({ live, roles, access, halted, running, busy });   // -> words | ''
 export function conflictWords(reason, owners, self);   // -> 'refused: rail owned by <label>' for SOURCE_CONFLICT, else reason
 ```
@@ -379,6 +431,20 @@ into `'refused: rail owned by <label>'`, the first labeled owner whose
 session differs from `self` (`'another source'` when none is labeled); any
 other reason passes through.
 
+`samples(role, list)`, in order: `deps.halted()` words; `roleStream`
+none: `'NO_STREAM'`; no session: `'not connected'`; the grant through the
+same `grantFor` (wish `[ch, entry.maxRateHz || 50]`); an empty list
+`{ok: true, sent: 0, rateHz}`; an item without finite `atMs`, with more
+`values` than the layout has fields, a non-finite value, or a stamp not
+above the previous: `'bad sample'`. Stamp `S = hubNow + (atMs - p) * 1000 -
+schedule_latency_us` (atMs is the instant the sample describes, SPEC
+Â§5.4); one bundle of the leading items within `bundle_max_span_ms` of
+`S0`, at most `bundle_max_samples` and one `min_transport_payload`; values
+fill the layout in order, a missing tail at `unspecified`.
+`s.publishSamples(ch, recs, {anchor: S0 >>> 0, offsetsUs})`. A
+`PublishError`: its code. Never a fallback, never logged, no producer
+lock: the role is not motion input.
+
 The existing `submit` stamps `now + lat` (execution at now + 2 x lat): flagged
 on the host bead for its owner, not changed by this work.
 
@@ -397,6 +463,7 @@ export function railOwned(byRole, samples);   // -> boolean: pattern.running or 
 
 ```js
 export function submitSegments(list);   // -> motionDoor.segments(list); one added export, nothing else
+export function submitSamples(role, list);   // -> motionDoor.samples(role, list) (ph-6dr6)
 ```
 
 ### `src/plugins/host.js`
@@ -406,6 +473,8 @@ export function submitSegments(list);   // -> motionDoor.segments(list); one add
 export const MOTION_HOLD_MS = 500;
 export function isHubUrl(u, host, port);   // deps.isHub's rule, exported for the node test
 api.submitSegments(list);   // need('motion'); producer lock; -> SegResult
+api.submitSamples(role, list);   // need('motion'); no lock; a role not a non-empty string: 'no role';
+                            // -> deps.submitSamples(role, list), 'NO_STREAM' without it (ph-6dr6)
 api.gate(field);            // unchanged signature; calls deps.gate(field, busy), busy the lock's words
                             // 'motion input in use by <plugin>' for every plugin but the holder, or '';
                             // streamGate places it last (plugins.svelte.js computes the rest)
@@ -426,6 +495,7 @@ finds no transport name on the API object.
 
 ### `src/plugins/plugins.svelte.js`
 
+- `deps.submitSamples`: the shadow's, as is.
 - `deps.submitSegments`: the shadow's, with a refused result's `reason`
   through `conflictWords` over `railOwners` (the `control-owner` entry and
   its sample) and the link's session id. `deps.now = () => performance.now()`.
