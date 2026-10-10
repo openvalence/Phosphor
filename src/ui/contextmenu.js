@@ -16,6 +16,9 @@
  *   confirm, the ladder and the refusal banner a control's own write gets.
  * - Add to Dash is offered on the full class only: the other classes draw
  *   every Dash as its seed (ph-e82.7), so an add there would show nowhere.
+ * - Never read the clipboard to draw a menu: a webview read asks the user for
+ *   permission (WebView2's prompt). Paste reads once, on the pick; the shell
+ *   reads and writes through the native clipboard plugin, which never asks.
  */
 import { tick } from 'svelte';
 import { menu } from '../plugins/kit.js';
@@ -53,17 +56,19 @@ export function sendToNodes(keys) {
 const TEXT = 'input:not([type=range], [type=checkbox], [type=radio], [type=button], [type=submit], [type=color], [type=file]), textarea, [contenteditable]:not([contenteditable=false])';
 const MODULE = '[data-menu-key], .dash-cell[data-id], .hero-slot[data-hero], .topstrip .mini';
 
+const SHELL = !!import.meta.env.TAURI_ENV_PLATFORM;
+const native = (cmd, args) => import('@tauri-apps/api/core').then(({ invoke }) => invoke('plugin:clipboard-manager|' + cmd, args));
+
 let lastCopy = '';
 function copy(text, done) {
   lastCopy = text;
-  navigator.clipboard?.writeText(text).catch(() => {});
+  (SHELL ? native('write_text', { text }) : Promise.reject()).catch(() => navigator.clipboard?.writeText(text)).catch(() => {});
   say(done);
 }
-// The webview may refuse or ask: a slow or refused read falls back to the last in-app copy.
-const readClip = () => Promise.race([
-  Promise.resolve(navigator.clipboard?.readText?.()).catch(() => null),
-  new Promise((r) => setTimeout(() => r(null), 400)),
-]).then((t) => (typeof t === 'string' && t ? t : lastCopy));
+/** The clipboard's text, on a pick only; a refused or empty read (no clipboard on a plain-http page) is the last in-app copy. */
+const readClip = () => Promise.resolve()
+  .then(() => (SHELL ? native('read_text') : navigator.clipboard.readText()))
+  .then((t) => (typeof t === 'string' && t ? t : lastCopy), () => lastCopy);
 
 const valueOf = (f) => displayValue(f, machine.samples[f.channelId]);
 
@@ -86,16 +91,16 @@ function chainAt(node, tab, heroes) {
   return out;
 }
 
-function fieldItems(t, nav, paste) {
+function fieldItems(t, nav) {
   const f = t.field, model = machine.catalog.model;
   const single = f.widget !== WIDGET.action && !f.lo && !f.r && f.widget !== WIDGET.secret;
   const items = [{ label: 'Copy path', disabled: t.path ? '' : 'no hub', run: () => copy(t.path, 'Path copied') }];
   if (single) items.push({ label: 'Copy value', disabled: valueOf(f) == null ? 'no value yet' : '', run: () => copy(String(valueOf(f)), 'Value copied') });
   if (single && !f.readOnly) {
-    paste.push(f);
-    items.push({ label: 'Paste value', disabled: gate(f) || 'reading the clipboard', paste: f, run: async () => {
+    items.push({ label: 'Paste value', disabled: gate(f), run: async () => {
       const v = pasteValue(f, await readClip());
-      if (v !== undefined) write(f, v);
+      if (v === undefined) say('Paste: no fitting value on the clipboard');
+      else write(f, v);
     } });
   }
   if (resetsToDefault(f)) {
@@ -170,10 +175,9 @@ export function installContextMenu(nav) {
     const model = machine.catalog.model;
     const heroes = model ? heroClaims(model.byRole, pluginHeroes()) : null;
     const chain = chainAt(node, nav.tab(), heroes);
-    const paste = [];
     const items = [];
     chain.forEach((t) => {
-      const own = t.kind === 'field' ? [...fieldItems(t, nav, paste), ...dashItems(t, heroes, nav)]
+      const own = t.kind === 'field' ? [...fieldItems(t, nav), ...dashItems(t, heroes, nav)]
         : t.kind === 'module' ? [...moduleItems(t), ...dashItems(t, heroes, nav)] : [];
       const mine = Object.freeze({ kind: t.kind, key: t.key, hub: t.hub, title: t.title, path: t.path });
       const list = [...own, ...nav.items(t, chain), ...host.menus(mine)];
@@ -183,16 +187,6 @@ export function installContextMenu(nav) {
     if (!items.length) return;
     const top = chain[0];
     const el = open = menu({ title: top.title, desc: top.desc || '', items, x, y, onClose: () => { if (open === el) open = null; } });
-    // Paste value waits on the clipboard: a fitting value enables it in place.
-    if (paste.length && !gate(paste[0])) {
-      const b = el.items[items.findIndex((it) => it.paste)];
-      readClip().then((text) => {
-        if (!el.isConnected) return;
-        const fits = pasteValue(paste[0], text) !== undefined;
-        b.disabled = !fits;
-        b.title = fits ? '' : 'no fitting value on the clipboard';
-      });
-    }
   };
   const onMenu = (e) => {
     if (e.defaultPrevented || !(e.target instanceof Element)) return;

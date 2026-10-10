@@ -277,9 +277,12 @@ Dash's edit-mode add menu, the node editor) prevents the event first, and the
 shell stays out.
 
 - Built-in field items: Copy path; Copy value (the reported value as text);
-  Paste value (enabled only while the clipboard holds a fitting value: a
-  number inside the field's bounds, an option's index, any text for a text
-  field; never a secret); Reset to default (where the catalog declares one,
+  Paste value (reads the clipboard once, on the pick, never to open the
+  menu; a value that does not fit is refused in the status slot. It fits as
+  a number inside the field's bounds, an option's index, any text for a text
+  field; never a secret. The shell reads and writes through the native
+  clipboard, which asks no permission; the served page reads the webview's,
+  falling back to the last in-app copy); Reset to default (where the catalog declares one,
   disabled at it); Send to node editor; Show in history (once this session
   wrote the field); Add to Dash. Module items: Copy path; Send fields to node
   editor; Add to Dash. Add to Dash is on the full class only and opens a

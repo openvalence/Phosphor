@@ -5,9 +5,12 @@
  * holds or refuses writes on the recorded valencesim catalog. Asserts:
  *   native     a right-click outside text entry is prevented and opens the shell
  *              menu; in a text input it is left to the webview (cut, copy, paste)
- *   field      the description heads it; Copy path, Copy value, Paste value (a
- *              fitting clipboard value only), Reset to default, Send to node
- *              editor (phosphor-node-add, else the queue), Show in history
+ *   field      the description heads it; Copy path, Copy value, Paste value,
+ *              Reset to default, Send to node editor (phosphor-node-add, else
+ *              the queue), Show in history
+ *   clipboard  through the native plugin (a fake: __clip); opening a menu reads
+ *              no clipboard, native or webview; Paste reads once, on the pick,
+ *              and a value that does not fit is refused in the status slot
  *   keys       Shift+F10 opens it on the focused control, arrows and End move,
  *              Escape closes and returns focus
  *   page       Edit layout on the Dash, Show advanced on a category page
@@ -142,6 +145,15 @@ async function boot(viewport, { touch = false, theme = null, pins = null, keep =
   if (!keep) {
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: PAGE.slice(0, -1) });
     await ctx.addInitScript(TAURI_STUB);
+    // The native clipboard plugin, and a spy on the webview's own read (which must never run).
+    await ctx.addInitScript(() => {
+      const clip = window.__clip = { text: '', reads: 0, webReads: 0 };
+      const inner = window.__TAURI_INTERNALS__.invoke;
+      window.__TAURI_INTERNALS__.invoke = (cmd, args, o) => (cmd === 'plugin:clipboard-manager|read_text' ? (clip.reads++, Promise.resolve(clip.text))
+        : cmd === 'plugin:clipboard-manager|write_text' ? ((clip.text = args.text), Promise.resolve(null)) : inner(cmd, args, o));
+      const web = navigator.clipboard && navigator.clipboard.readText.bind(navigator.clipboard);
+      if (web) navigator.clipboard.readText = () => { clip.webReads++; return web(); };
+    });
     await ctx.addInitScript(([etag, bytes, th, pinsJson]) => {
       try {
         if (!sessionStorage.getItem('booted')) {
@@ -183,7 +195,8 @@ const menuState = (page) => page.evaluate(() => {
     focus: document.activeElement?.textContent || '' };
 });
 const pick = async (page, label) => { await page.locator('.ui-menu:popover-open .ui-menu-i', { hasText: label }).first().click(); await page.waitForTimeout(150); };
-const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+const clip = (page) => page.evaluate(() => window.__clip.text);
+const reads = (page) => page.evaluate(() => [window.__clip.reads, window.__clip.webReads]);
 const rect = (page, sel) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width) }; });
 const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 const pins = (page) => page.evaluate((k) => (JSON.parse(localStorage.getItem(k) || 'null') || {})['127.0.0.1:82'] || [], PIN_PREF);
@@ -228,19 +241,24 @@ if (run('desk')) {
   await rclick(page, F(FREQ) + ' .field-label');
   await pick(page, 'Copy value');
   ok('Copy value: the reported value', await clip(page) === '10', await clip(page));
+  ok('clipboard: Copy wrote through the native plugin, and the menus so far read nothing', (await reads(page)).join() === '0,0', await reads(page));
   await rclick(page, F(DWELL) + ' .field-label');
   await page.waitForTimeout(500);
-  ok('Paste value: a value past the field\'s bounds leaves it disabled with the reason', (await menuState(page)).items.includes('-Paste value')
-    && await page.locator('.ui-menu-i', { hasText: 'Paste value' }).getAttribute('title') === 'no fitting value on the clipboard', await menuState(page));
-  await page.keyboard.press('Escape');
-  await page.evaluate(() => navigator.clipboard.writeText('3'));
+  ok('clipboard: opening a menu with Paste value reads no clipboard, native or webview', (await reads(page)).join() === '0,0', await reads(page));
+  ok('Paste value: enabled whatever the clipboard holds', (await menuState(page)).items.includes('Paste value'), await menuState(page));
+  const before = hub.intents.length;
+  await pick(page, 'Paste value');
+  await page.waitForTimeout(300);
+  ok('Paste value: reads the clipboard once, natively, on the pick', (await reads(page)).join() === '1,0', await reads(page));
+  ok('Paste value: a value past the field\'s bounds (10 into 0..4) is refused in the status slot and writes nothing',
+    /Paste: no fitting value on the clipboard/.test(await page.locator('.topstrip').innerText()) && hub.intents.length === before,
+    [await page.locator('.topstrip').innerText(), hub.intents.slice(before)]);
+  await page.evaluate(() => { window.__clip.text = '3'; });
   await rclick(page, F(DWELL) + ' .field-label');
-  await page.waitForTimeout(500);
-  ok('Paste value: enabled once the clipboard holds a fitting value', (await menuState(page)).items.includes('Paste value'), await menuState(page));
   await pick(page, 'Paste value');
   await page.waitForTimeout(400);
-  ok('Paste value: writes it through the normal path (an intent of 3, echoed)', lastWrite(DWELL) === 3
-    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed', hub.intents.slice(-2));
+  ok('Paste value: a fitting value writes through the normal path (an intent of 3, echoed), one read', lastWrite(DWELL) === 3
+    && await page.locator(F(DWELL)).getAttribute('data-shadow') === 'confirmed' && (await reads(page)).join() === '2,0', [hub.intents.slice(-2), await reads(page)]);
   await page.waitForTimeout(1100);
   await rclick(page, F(DWELL) + ' .field-label');
   await pick(page, 'Show in history');
