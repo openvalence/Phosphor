@@ -1,88 +1,564 @@
-/* Outrun: neon pink and cyan over a sunset. A sky and a sun behind the page, a
-   perspective grid under it that slides toward the viewer (transform only, off
-   under html.still), cards on glowing hairlines, wide display titles. */
+/* Outrun: a night drive toward a striped sun. The page is a sky, stars, the sun sinking
+   into a perspective grid that slides toward the viewer; the title bar is a dark glass
+   plate under a neon tube with chrome display type; buttons are stereo keys (a glossy
+   split face, a hard bottom edge, a pressed state that sinks); cards, nests and menus
+   are neon tubes (a ring plus a glow, never a border-color of their own); the heatmap
+   is an equalizer, unlit segments magenta and lit ones cyan.
+
+   Layers behind the page, all fixed, z-index -1, never over a control:
+     html::before   the sun, stripes cut by a mask        body::before  the floor and its horizon line
+     body::after    the grid (the only mover)             html::after   fog between horizon and grid
+   Variants set the --or-* tokens below; the rules read them and know no palette.
+
+   The sun and the stripes run from pale pink to violet: no yellow or orange anywhere, so
+   nothing here can be read as a hazard. Decoration sits on surface tokens' alpha, never
+   under a label that depends on it for contrast. */
+
 html:root[data-style="outrun"] {
   --font-head: 'Orbitron', Eurostile, 'Bank Gothic', Bahnschrift, 'Chakra Petch', sans-serif;
   --frame-w: 1px;
+
+  /* The scene's geometry. The horizon sits one floor-height above the viewport bottom. */
+  --or-floor: clamp(150px, 30vh, 320px);
+  --or-sun: min(50vmin, 460px);
+  --or-persp: calc(var(--or-floor) * 1.7);
+  --or-cell: 48px;
+
+  /* Palette (Outrun: sunset). */
+  --or-sky-top: #07030F;
+  --or-sky-mid: #1B0838;
+  --or-sky-low: #58107A;
+  --or-sky-hor: #A62A86;
+  --or-sun-a: #FFE9F6;
+  --or-sun-b: #FF6EC4;
+  --or-sun-c: #9B2CE0;
+  --or-floor-a: #3A0C5E;
+  --or-floor-b: #0A0214;
+  --or-stars:
+    radial-gradient(1px 1px at 8% 9%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 17% 31%, rgba(255, 255, 255, .8), transparent 60%),
+    radial-gradient(1.5px 1.5px at 29% 14%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 41% 24%, rgba(255, 255, 255, .7), transparent 60%),
+    radial-gradient(1px 1px at 58% 8%, #fff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 69% 27%, rgba(255, 255, 255, .85), transparent 60%),
+    radial-gradient(1px 1px at 78% 12%, rgba(255, 255, 255, .8), transparent 60%),
+    radial-gradient(1px 1px at 88% 33%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 94% 6%, rgba(255, 255, 255, .7), transparent 60%),
+    radial-gradient(1px 1px at 4% 44%, rgba(255, 255, 255, .6), transparent 60%);
+  --or-horizon: linear-gradient(90deg, #00E5FF, #FF4FD8 50%, #00E5FF);
+  --or-grid-h: rgba(0, 229, 255, .8);
+  --or-grid-v: rgba(255, 79, 216, .8);
+
+  /* Chrome type: a hard split at the horizon, light above, hot below; every stop reads on a dark plate. */
+  --or-chrome: linear-gradient(180deg, #FFFFFF 0%, #DDF7FF 44%, #8FE3FF 49%, #FFD2F5 52%, #FF9BE6 100%);
+  --or-bar-img:
+    linear-gradient(180deg, rgba(var(--intent-rgb), .24), rgba(var(--reality-rgb), .05) 72%, transparent),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, .03) 0 2px, transparent 2px 9px);
+  --or-tube: linear-gradient(90deg, var(--intent), var(--reality) 50%, var(--intent));
+
+  /* Stereo keys: a glossy split face (light over dark at the midline), a bright top edge, a hard bottom edge. */
+  --or-key: linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .02) 47%, rgba(0, 0, 0, .3) 53%, rgba(0, 0, 0, .14));
+  --or-key-down: linear-gradient(180deg, rgba(0, 0, 0, .35), rgba(0, 0, 0, .1) 60%, rgba(255, 255, 255, .04));
+  --or-key-sh: inset 0 1px 0 rgba(255, 255, 255, .18), 0 2px 0 rgba(0, 0, 0, .65);
+  --or-key-sh-hot: inset 0 1px 0 rgba(255, 255, 255, .26), 0 2px 0 rgba(0, 0, 0, .65), 0 0 14px -2px rgba(var(--reality-rgb), .65);
+  --or-key-sh-down: inset 0 3px 6px rgba(0, 0, 0, .7), 0 0 0 0 transparent;
+  --or-recess: inset 0 2px 6px rgba(0, 0, 0, .65), inset 0 0 0 1px rgba(var(--reality-rgb), .12);
+  --or-card-ring: 0 0 0 1px rgba(var(--intent-rgb), .6), 0 0 20px -2px rgba(var(--intent-rgb), .32), inset 0 0 24px -10px rgba(var(--intent-rgb), .4);
+  --or-nest-ring: 0 0 0 1px rgba(var(--reality-rgb), .6), 0 0 20px -2px rgba(var(--reality-rgb), .3), inset 0 0 24px -10px rgba(var(--reality-rgb), .35);
+  --or-pop-ring: 0 0 0 1px rgba(var(--reality-rgb), .7), 0 0 24px rgba(var(--reality-rgb), .32), 0 14px 30px rgba(0, 0, 0, .65);
+  --or-glow-text: 0 0 8px rgba(var(--reality-rgb), .5);
+  --or-glow-cur: 0 0 7px color-mix(in srgb, currentColor 50%, transparent);
+  --or-icon-glow: drop-shadow(0 0 3px currentColor);
+  --or-rail-rgb: var(--intent-rgb);
+  --or-lens: rgba(0, 0, 0, .5);
+  --or-glass: 90%;
+
   --tex-page:
-    radial-gradient(circle 24vmin at 50% 84%, #FF5FB0 0 62%, rgba(255, 95, 176, .25) 63% 66%, transparent 67%),
-    linear-gradient(180deg, #07030F 0%, #1A0838 46%, #4A1060 72%, #8A1F74 100%);
+    radial-gradient(ellipse 70vmin 34vmin at 50% calc(100% - var(--or-floor)), rgba(var(--intent-rgb), .55), transparent 70%),
+    var(--or-stars),
+    linear-gradient(180deg, var(--or-sky-top) 0%, var(--or-sky-mid) 36%, var(--or-sky-low) 66%, var(--or-sky-hor) calc(100% - var(--or-floor)), var(--or-sky-hor) 100%);
   --tex-page-size: 100% 100%;
-  --tex-card: repeating-linear-gradient(135deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 7px);
+  --tex-card: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px);
   --tex-card-size: auto;
 }
 
-/* The floor: a grid in perspective, sliding one cell per loop. */
+/* ---- Midnight: no sunset, a cold sky and a pale moon-sun over blue steel ---- */
+html:root[data-style="outrun"][data-variant="outrun-midnight"] {
+  --or-sky-top: #02040E;
+  --or-sky-mid: #07113A;
+  --or-sky-low: #17287A;
+  --or-sky-hor: #3558D8;
+  --or-sun-a: #F2FDFF;
+  --or-sun-b: #8FDCFF;
+  --or-sun-c: #7A5CFF;
+  --or-floor-a: #0C1650;
+  --or-floor-b: #02030C;
+  --or-horizon: linear-gradient(90deg, #8F6BFF, #35F0FF 50%, #8F6BFF);
+  --or-grid-h: rgba(143, 107, 255, .85);
+  --or-grid-v: rgba(53, 240, 255, .8);
+  --or-chrome: linear-gradient(180deg, #FFFFFF 0%, #DDF6FF 44%, #8FDCFF 49%, #D9CCFF 52%, #A68CFF 100%);
+}
+
+/* ---- Vice: pastel pink and teal on a light chassis; keys are glossy white, edges are soft rose ---- */
+html:root[data-style="outrun"][data-variant="outrun-vice"] {
+  --or-sky-top: #FFB8DD;
+  --or-sky-mid: #FFD0E8;
+  --or-sky-low: #FFE3F1;
+  --or-sky-hor: #FFF0F7;
+  --or-sun-a: #FFF8FC;
+  --or-sun-b: #FFA3D3;
+  --or-sun-c: #E86DB4;
+  --or-floor-a: #8FEDE0;
+  --or-floor-b: #29B3AC;
+  --or-stars: linear-gradient(transparent, transparent);
+  --or-horizon: linear-gradient(90deg, #FF8FC8, #FFFFFF 50%, #FF8FC8);
+  --or-grid-h: rgba(255, 255, 255, .9);
+  --or-grid-v: rgba(255, 143, 200, .9);
+  --or-chrome: linear-gradient(180deg, #6A1B9A 0%, #B0206A 46%, #00756C 52%, #00A89B 100%);
+  --or-bar-img: linear-gradient(90deg, rgba(255, 143, 200, .55), rgba(255, 255, 255, .15) 48%, rgba(120, 232, 220, .6));
+  --or-tube: linear-gradient(90deg, #FF8FC8, #FFFFFF 50%, #3FD6C8);
+  --or-key: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .55) 47%, rgba(255, 190, 224, .35) 53%, rgba(255, 255, 255, .5));
+  --or-key-down: linear-gradient(180deg, rgba(232, 109, 180, .28), rgba(255, 255, 255, .3) 70%);
+  --or-key-sh: inset 0 1px 0 #fff, 0 2px 0 rgba(176, 32, 106, .32);
+  --or-key-sh-hot: inset 0 1px 0 #fff, 0 2px 0 rgba(176, 32, 106, .32), 0 0 14px -2px rgba(var(--reality-rgb), .6);
+  --or-key-sh-down: inset 0 3px 6px rgba(176, 32, 106, .32), 0 0 0 0 transparent;
+  --or-recess: inset 0 2px 5px rgba(176, 32, 106, .18), inset 0 0 0 1px rgba(var(--reality-rgb), .2);
+  --or-card-ring: 0 0 0 1px rgba(var(--intent-rgb), .55), 0 6px 18px -6px rgba(var(--intent-rgb), .4);
+  --or-nest-ring: 0 0 0 1px rgba(var(--reality-rgb), .6), 0 6px 18px -6px rgba(var(--reality-rgb), .4);
+  --or-pop-ring: 0 0 0 1px rgba(var(--reality-rgb), .7), 0 10px 26px -6px rgba(var(--intent-rgb), .45);
+  --or-glow-text: none;
+  --or-glow-cur: none;
+  --or-icon-glow: none;
+  --or-rail-rgb: var(--reality-rgb);
+  --or-lens: rgba(255, 255, 255, .7);
+  --or-glass: 94%;
+  --tex-card: repeating-linear-gradient(0deg, rgba(176, 32, 106, .035) 0 1px, transparent 1px 3px);
+}
+
+/* ================= the scene ================= */
 html:root[data-style="outrun"]::before {
+  content: '';
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--or-floor) - var(--or-sun) * .3);
+  width: var(--or-sun);
+  height: var(--or-sun);
+  margin-left: calc(var(--or-sun) / -2);
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--or-sun-a) 0, var(--or-sun-b) 46%, var(--or-sun-c) 88%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0 43%, transparent 43% 46%, #000 46% 52%, transparent 52% 56.5%, #000 56.5% 61%, transparent 61% 66.5%, #000 66.5% 100%);
+  mask-image: linear-gradient(180deg, #000 0 43%, transparent 43% 46%, #000 46% 52%, transparent 52% 56.5%, #000 56.5% 61%, transparent 61% 66.5%, #000 66.5% 100%);
+}
+html:root[data-style="outrun"] body::before {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--or-floor);
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--or-floor-a), var(--or-floor-b));
+  border-top: 2px solid transparent;
+  border-image: var(--or-horizon) 1;
+  box-shadow: 0 -4px 18px 0 rgba(var(--intent-rgb), .75);
+}
+html:root[data-style="outrun"] body::after {
   content: '';
   position: fixed;
   left: -60%;
   right: -60%;
   bottom: 0;
-  height: 46vh;
+  height: calc(var(--or-floor) * 4);
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(rgba(0, 229, 255, .42) 1px, transparent 1px) 0 0 / 100% 56px,
-    linear-gradient(90deg, rgba(255, 79, 216, .42) 1px, transparent 1px) 0 0 / 72px 100%;
-  transform: perspective(280px) rotateX(58deg);
+    linear-gradient(90deg, var(--or-grid-v) 0 2px, transparent 2px) center top / 72px 100%,
+    linear-gradient(180deg, var(--or-grid-h) 0 2px, transparent 2px) 0 0 / 100% var(--or-cell);
   transform-origin: 50% 100%;
-  -webkit-mask-image: linear-gradient(transparent, #000 55%);
-  mask-image: linear-gradient(transparent, #000 55%);
+  transform: perspective(var(--or-persp)) rotateX(60deg);
 }
-html:root[data-style="outrun"]:not(.still):not(.hivis)::before { animation: theme-outrun-floor 3.2s linear infinite; will-change: transform; }
+html:root[data-style="outrun"]::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--or-floor) * .42);
+  height: calc(var(--or-floor) * .58 - 2px);
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--or-floor-a), transparent);
+}
+html:root[data-style="outrun"].hivis::before,
+html:root[data-style="outrun"].hivis::after,
+html:root[data-style="outrun"].hivis body::before,
+html:root[data-style="outrun"].hivis body::after { display: none; }
+
+html:root[data-style="outrun"]:not(.still):not(.hivis) body::after { animation: theme-outrun-floor 2.4s linear infinite; will-change: transform; }
 @keyframes theme-outrun-floor {
-  from { transform: perspective(280px) rotateX(58deg) translateY(0); }
-  to { transform: perspective(280px) rotateX(58deg) translateY(56px); }
+  from { transform: perspective(var(--or-persp)) rotateX(60deg) translateY(0); }
+  to { transform: perspective(var(--or-persp)) rotateX(60deg) translateY(var(--or-cell)); }
+}
+html:root[data-style="outrun"]:not(.still):not(.hivis)::before { animation: theme-outrun-sun 7s ease-in-out infinite alternate; }
+@keyframes theme-outrun-sun {
+  from { opacity: .9; }
+  to { opacity: 1; }
 }
 
-html:root[data-style="outrun"] [data-part="bar"] { background-image: linear-gradient(180deg, rgba(255, 79, 216, .12), transparent); box-shadow: inset 0 -1px 0 var(--line-3), 0 1px 14px rgba(255, 79, 216, .25); }
+html:root[data-style="outrun"] ::selection { background: rgba(var(--intent-rgb), .45); }
+
+/* ================= the title bar ================= */
+html:root[data-style="outrun"] [data-part="bar"] {
+  position: relative;
+  background-image: var(--or-bar-img);
+}
+html:root[data-style="outrun"] [data-part="bar"]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--or-tube);
+  box-shadow: 0 0 8px rgba(var(--intent-rgb), .9), 0 0 18px rgba(var(--reality-rgb), .45);
+}
+html:root[data-style="outrun"]:not(.still):not(.hivis) [data-part="bar"]::after { animation: theme-outrun-flicker 9s steps(1, end) infinite; }
+@keyframes theme-outrun-flicker {
+  0%, 90%, 92%, 95%, 100% { opacity: 1; }
+  91% { opacity: .45; }
+  93% { opacity: .75; }
+  94% { opacity: .5; }
+}
 html:root[data-style="outrun"] [data-part="bar"] .wordmark {
+  padding: 0 3px;
   font-family: var(--font-head);
   font-weight: 800;
   font-style: italic;
-  font-size: .85rem;
-  letter-spacing: .14em;
+  font-size: .86rem;
+  letter-spacing: .16em;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(var(--intent-rgb), .7);
+  color: var(--tx-hi);
+  background-image: var(--or-chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(1px 0 0 rgba(var(--reality-rgb), .7)) drop-shadow(-1px 0 0 rgba(var(--intent-rgb), .7));
 }
-html:root[data-style="outrun"] [data-part="strip"] { background-image: linear-gradient(180deg, rgba(0, 229, 255, .06), transparent 60%); }
-html:root[data-style="outrun"] [data-part="numerals"] .hn-val { font-family: var(--font-head); font-weight: 700; text-shadow: var(--glow-reality); }
-html:root[data-style="outrun"] [data-part="stop-frame"] { outline: 1px solid var(--line-3); outline-offset: 4px; }
-html:root[data-style="outrun"] [data-part="hero"] { box-shadow: inset 0 -1px 0 var(--line-3), 0 1px 12px rgba(0, 229, 255, .18); }
+html:root[data-style="outrun"]:not(.still):not(.hivis) [data-part="bar"] .wordmark { animation: theme-outrun-tracking 11s steps(1, end) infinite; }
+@keyframes theme-outrun-tracking {
+  0%, 94%, 96.5%, 100% { transform: translateX(0); }
+  95% { transform: translateX(-2px); }
+  96% { transform: translateX(2px); }
+}
+/* The mark: a striped sun, drawn in CSS, before the name. */
+html:root[data-style="outrun"] [data-part="bar"] .wordmark::before {
+  content: '';
+  display: inline-block;
+  width: .95em;
+  height: .95em;
+  margin-right: .5em;
+  vertical-align: -.12em;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--or-sun-a), var(--or-sun-b) 55%, var(--or-sun-c));
+  -webkit-mask-image: linear-gradient(180deg, #000 0 48%, transparent 48% 56%, #000 56% 66%, transparent 66% 76%, #000 76%);
+  mask-image: linear-gradient(180deg, #000 0 48%, transparent 48% 56%, #000 56% 66%, transparent 66% 76%, #000 76%);
+}
+html:root[data-style="outrun"] [data-part="bar"] .chip {
+  border-radius: 1px;
+  border-color: var(--line-3);
+  background-image: linear-gradient(180deg, rgba(var(--reality-rgb), .12), transparent);
+  box-shadow: var(--or-recess);
+}
 
-html:root[data-style="outrun"] [data-part="rail"] {
-  border-color: var(--line-2);
-  background-image: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--intent) 16%, transparent));
-  box-shadow: 0 0 16px rgba(255, 79, 216, .14);
+/* Caption buttons: three stereo keys with a neon edge in a 46 px hit box. */
+html:root[data-style="outrun"] [data-part="caption-btn"] { position: relative; background: transparent; color: var(--reality); }
+html:root[data-style="outrun"] [data-part="caption-btn"][data-cap="close"] { color: var(--intent); }
+html:root[data-style="outrun"] [data-part="caption-btn"]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 18px;
+  margin: -9px 0 0 -12px;
+  border-radius: 2px;
+  border: 1px solid rgba(var(--reality-rgb), .8);
+  background-color: var(--or-lens);
+  background-image: var(--or-key);
+  box-shadow: 0 0 9px -1px rgba(var(--reality-rgb), .65);
 }
-html:root[data-style="outrun"] [data-part="rail-label"] { font-family: var(--font-head); font-size: 10px; letter-spacing: .22em; }
+html:root[data-style="outrun"] [data-part="caption-btn"][data-cap="close"]::before { border-color: rgba(var(--intent-rgb), .85); box-shadow: 0 0 9px -1px rgba(var(--intent-rgb), .7); }
+html:root[data-style="outrun"] [data-part="caption-btn"] svg { position: relative; width: 10px; height: 10px; stroke-width: 1.6; }
+html:root[data-style="outrun"] [data-part="caption-btn"]:hover { background: transparent; color: var(--tx-hi); }
+html:root[data-style="outrun"] [data-part="caption-btn"]:hover::before { box-shadow: 0 0 14px 1px rgba(var(--reality-rgb), .85); }
+html:root[data-style="outrun"] [data-part="caption-btn"][data-cap="close"]:hover::before { box-shadow: 0 0 14px 1px rgba(var(--intent-rgb), .9); }
+html:root[data-style="outrun"] [data-part="caption-btn"]:active::before,
+html:root[data-style="outrun"] [data-part="caption-btn"][aria-expanded="true"]::before { background-image: var(--or-key-down); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .55); }
+
+/* ================= the strip, the hero, the stop pair's surroundings ================= */
+html:root[data-style="outrun"] [data-part="strip"] {
+  background-image:
+    linear-gradient(180deg, rgba(var(--reality-rgb), .09), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .02) 0 1px, transparent 1px 6px);
+}
+html:root[data-style="outrun"] [data-part="numerals"] .hn-val {
+  font-family: var(--font-head);
+  font-weight: 700;
+  text-shadow: var(--or-glow-cur);
+}
+html:root[data-style="outrun"] [data-part="stop-frame"] { outline: 1px solid var(--line-3); outline-offset: 4px; }
+html:root[data-style="outrun"] [data-part="hero"] { box-shadow: inset 0 -1px 0 var(--line-3), 0 1px 14px -2px rgba(var(--reality-rgb), .35); }
+
+/* ================= the rail: a faceplate with preset keys ================= */
+html:root[data-style="outrun"] [data-part="rail"] {
+  background-color: color-mix(in srgb, var(--bg) var(--or-glass), transparent);
+  background-image: linear-gradient(180deg, transparent 50%, rgba(var(--or-rail-rgb), .22));
+  box-shadow: 0 0 0 1px rgba(var(--intent-rgb), .4), 0 0 20px -4px rgba(var(--intent-rgb), .45);
+}
+html:root[data-style="outrun"] [data-part="rail-label"] {
+  font-family: var(--font-head);
+  font-size: 10px;
+  letter-spacing: .24em;
+  background-image: linear-gradient(90deg, rgba(var(--reality-rgb), .8), transparent 70%);
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  padding-bottom: 3px;
+}
+html:root[data-style="outrun"] [data-part="rail-tab"] { border-radius: 1px; }
+html:root[data-style="outrun"] [data-part="rail-tab"]:hover { background-image: linear-gradient(90deg, rgba(var(--reality-rgb), .2), transparent); }
 html:root[data-style="outrun"] [data-part="rail-tab"].on {
-  box-shadow: inset 3px 0 0 var(--intent), 0 0 14px -4px rgba(var(--intent-rgb), .8);
+  background-image: linear-gradient(90deg, rgba(var(--intent-rgb), .34), rgba(var(--intent-rgb), .04));
+  box-shadow: inset 3px 0 0 var(--intent), 0 0 16px -4px rgba(var(--intent-rgb), .85);
   border-color: var(--line-3);
 }
+html:root[data-style="outrun"] .rail-glyph { filter: var(--or-icon-glow); }
 
+/* ================= cards, nests, panels: neon tubes ================= */
 html:root[data-style="outrun"] [data-part="card"],
-html:root[data-style="outrun"] [data-part="nest"],
-html:root[data-style="outrun"] [data-part="panel"] { border-color: var(--line-3); box-shadow: 0 0 0 1px rgba(var(--intent-rgb), .3), 0 0 22px rgba(var(--intent-rgb), .14); }
+html:root[data-style="outrun"] [data-part="panel"] {
+  background-color: color-mix(in srgb, var(--bg-card) 95%, transparent);
+  box-shadow: var(--or-card-ring);
+}
+html:root[data-style="outrun"] [data-part="nest"] {
+  background-color: color-mix(in srgb, var(--bg-sunken) 95%, transparent);
+  box-shadow: var(--or-nest-ring);
+}
+html:root[data-style="outrun"] .og-panel { box-shadow: var(--or-card-ring); }
+html:root[data-style="outrun"] [data-part="card-head"]:not(.over) {
+  background-image: linear-gradient(90deg, rgba(var(--intent-rgb), .85), rgba(var(--reality-rgb), .3) 55%, transparent);
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
 html:root[data-style="outrun"] .dash-title {
   font-family: var(--font-head);
   font-weight: 700;
-  font-size: .68rem;
+  font-size: .66rem;
   letter-spacing: .2em;
   color: var(--tx-hi);
-  text-shadow: 0 0 9px rgba(var(--reality-rgb), .6);
+  text-shadow: var(--or-glow-text);
 }
-html:root[data-style="outrun"] .og-panel { border-color: var(--line-3); box-shadow: 0 0 18px rgba(var(--intent-rgb), .12); }
-html:root[data-style="outrun"] .pane-head h2 { font-family: var(--font-head); font-size: .75rem; letter-spacing: .18em; }
+html:root[data-style="outrun"] .card-sub { font-family: var(--font-head); font-size: .66rem; letter-spacing: .18em; }
+html:root[data-style="outrun"] .pane-head h2 {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--tx-hi);
+  background-image: var(--or-chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+html:root[data-style="outrun"] .og-screen { border-radius: 1px; box-shadow: var(--or-recess); }
 
+/* ================= keys: buttons, segments, steppers ================= */
 html:root[data-style="outrun"] .og-btn,
-html:root[data-style="outrun"] .og-seg button { background-color: var(--bg-card); text-shadow: 0 0 8px rgba(var(--reality-rgb), .35); }
-html:root[data-style="outrun"] .og-btn:hover,
-html:root[data-style="outrun"] .og-seg button:hover { background-color: color-mix(in srgb, var(--intent) 16%, var(--bg-card)); }
+html:root[data-style="outrun"] .og-seg button,
+html:root[data-style="outrun"] .stepper button {
+  position: relative;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  font-weight: 600;
+}
+html:root[data-style="outrun"] .og-btn,
+html:root[data-style="outrun"] .og-seg button:not(.active),
+html:root[data-style="outrun"] .stepper button {
+  background-color: var(--bg-card);
+  background-image: var(--or-key);
+}
+html:root[data-style="outrun"] .stepper button { letter-spacing: 0; }
+html:root[data-style="outrun"] .og-btn:not(.on):not(.primary):not(.running):not(.danger),
+html:root[data-style="outrun"] .og-seg button:not(.active),
+html:root[data-style="outrun"] .stepper button { box-shadow: var(--or-key-sh); }
+html:root[data-style="outrun"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):hover:not(:disabled),
+html:root[data-style="outrun"] .og-seg button:not(.active):hover:not(:disabled),
+html:root[data-style="outrun"] .stepper button:hover:not(:disabled) { box-shadow: var(--or-key-sh-hot); text-shadow: var(--or-glow-text); }
+html:root[data-style="outrun"] .og-btn:not(.on):not(.primary):not(.running):not(.danger):active:not(:disabled),
+html:root[data-style="outrun"] .og-seg button:not(.active):active:not(:disabled),
+html:root[data-style="outrun"] .stepper button:active:not(:disabled) { background-image: var(--or-key-down); box-shadow: var(--or-key-sh-down); }
+html:root[data-style="outrun"] .og-btn:disabled { background-image: none; box-shadow: none; }
+/* Segments carry a small lamp slit on the top edge: dark when off, lit when chosen. */
+html:root[data-style="outrun"] .og-seg button::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 14px;
+  height: 2px;
+  margin-left: -7px;
+  background: var(--line-2);
+  pointer-events: none;
+}
+html:root[data-style="outrun"] .og-seg button.active::before,
+html:root[data-style="outrun"] .og-seg button[aria-checked="true"]::before { background: var(--reality); box-shadow: 0 0 8px 1px var(--reality); }
+html:root[data-style="outrun"] .og-seg button.active { background-color: color-mix(in srgb, var(--reality) 14%, var(--bg-card)); }
+
+/* ================= fields: recessed readouts, lit selects ================= */
+html:root[data-style="outrun"] .og-num,
+html:root[data-style="outrun"] .value-input,
+html:root[data-style="outrun"] select,
+html:root[data-style="outrun"] .ui-text {
+  border-radius: 1px;
+  background-color: var(--bg-sunken);
+  box-shadow: var(--or-recess);
+}
+html:root[data-style="outrun"] .og-num,
+html:root[data-style="outrun"] .value-input { text-shadow: var(--or-glow-cur); }
+html:root[data-style="outrun"] .og-num:focus,
+html:root[data-style="outrun"] .value-input:focus,
+html:root[data-style="outrun"] select:focus { box-shadow: var(--or-recess), 0 0 0 1px var(--highlight), 0 0 14px -2px rgba(var(--highlight-rgb), .65); }
+html:root[data-style="outrun"] select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--reality) 50%),
+    linear-gradient(135deg, var(--reality) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+html:root[data-style="outrun"] .field-label { letter-spacing: .08em; }
+html:root[data-style="outrun"] .field-value { text-shadow: var(--or-glow-cur); }
+
+/* ================= switches, checks, sliders, progress ================= */
+html:root[data-style="outrun"] .og-switch .track { border-radius: 2px; background-color: var(--bg-sunken); box-shadow: var(--or-recess); }
+html:root[data-style="outrun"] .og-switch .track::after { border-radius: 1px; background-image: var(--or-key); }
+html:root[data-style="outrun"] input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  border: 1px solid var(--line-3);
+  border-radius: 2px;
+  background-color: var(--bg-sunken);
+  background-image: linear-gradient(var(--reality), var(--reality));
+  background-size: 0 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: var(--or-recess);
+  cursor: pointer;
+}
+html:root[data-style="outrun"] input[type="checkbox"]:not([role="switch"]):checked { background-size: 8px 8px; border-color: var(--reality); box-shadow: var(--or-recess), 0 0 10px -1px rgba(var(--reality-rgb), .75); }
+html:root[data-style="outrun"] input[type="range"] {
+  background-color: color-mix(in srgb, var(--intent) 55%, var(--bg));
+}
+@media (pointer: fine) {
+  html:root[data-style="outrun"] input[type="range"] { box-shadow: 0 0 7px 0 rgba(var(--intent-rgb), .55); }
+}
+/* A fader cap: a glossy key with a lit center line. */
+html:root[data-style="outrun"] input[type="range"]::-webkit-slider-thumb {
+  border-radius: 2px;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(90deg, transparent 45%, var(--intent) 45% 55%, transparent 55%), var(--or-key);
+}
+html:root[data-style="outrun"] input[type="range"]::-moz-range-thumb {
+  border-radius: 2px;
+  background-color: var(--bg-card);
+  background-image: linear-gradient(90deg, transparent 45%, var(--intent) 45% 55%, transparent 55%), var(--or-key);
+}
+html:root[data-style="outrun"] progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 10px;
+  border: 1px solid var(--line-3);
+  border-radius: 1px;
+  background-color: var(--bg-sunken);
+  overflow: hidden;
+}
+html:root[data-style="outrun"] progress::-webkit-progress-bar { background: var(--bg-sunken); }
+html:root[data-style="outrun"] progress::-webkit-progress-value { background-image: repeating-linear-gradient(90deg, var(--reality) 0 6px, transparent 6px 8px); background-color: transparent; }
+html:root[data-style="outrun"] progress::-moz-progress-bar { background-image: repeating-linear-gradient(90deg, var(--reality) 0 6px, transparent 6px 8px); background-color: transparent; }
+
+/* ================= tabs, chips ================= */
+html:root[data-style="outrun"] [role="tab"]:not([data-part="rail-tab"]) { border-radius: 2px 2px 0 0; }
+html:root[data-style="outrun"] [role="tab"][aria-selected="true"]:not([data-part="rail-tab"]),
+html:root[data-style="outrun"] .tabs button.on { box-shadow: 0 2px 0 var(--intent), 0 8px 12px -6px rgba(var(--intent-rgb), .8); }
+html:root[data-style="outrun"] .chip { border-radius: 1px; }
+
+/* ================= menus, tooltips, drawers ================= */
+html:root[data-style="outrun"] .ui-menu,
+html:root[data-style="outrun"] .ui-sheet,
+html:root[data-style="outrun"] #ph-tip,
+html:root[data-style="outrun"] .sb-pop {
+  border-radius: 2px;
+  border-color: var(--line-3);
+  background-color: var(--bg-card);
+  box-shadow: var(--or-pop-ring);
+}
+html:root[data-style="outrun"] #ph-tip { outline: none; }
+html:root[data-style="outrun"] .ui-menu-i:hover:not(:disabled),
+html:root[data-style="outrun"] .ui-menu-i:focus-visible,
+html:root[data-style="outrun"] .ui-menu-i[aria-expanded="true"] {
+  background-image: linear-gradient(90deg, rgba(var(--intent-rgb), .34), transparent);
+  box-shadow: inset 3px 0 0 var(--intent);
+}
+html:root[data-style="outrun"] .ui-menu-sec { font-family: var(--font-head); font-size: .6rem; letter-spacing: .22em; }
+html:root[data-style="outrun"] .ui-menu-t { text-shadow: var(--or-glow-text); }
+
+/* ================= the heatmap: an equalizer, unlit segments magenta and lit ones cyan ================= */
+html:root[data-style="outrun"] .heat { --cold: color-mix(in srgb, var(--intent) 30%, var(--bg-sunken)); }
+html:root[data-style="outrun"] .heat .blk { border-radius: 0; transition: background-color var(--tick) linear, box-shadow var(--tick) linear; }
+html:root[data-style="outrun"] .heat .blk:not(.warn) { box-shadow: 0 0 6px color-mix(in oklab, var(--reality) var(--lv), transparent); }
+html:root[data-style="outrun"].still .heat .blk { transition: none; }
+
+/* ================= the funscript player and the Log ================= */
+html:root[data-style="outrun"] .ui-stage-box {
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, .035) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 0 0 1px rgba(var(--intent-rgb), .55), inset 0 0 30px rgba(var(--intent-rgb), .18);
+}
+html:root[data-style="outrun"] .ui-scrub-played { box-shadow: 0 0 9px rgba(var(--highlight-rgb), .85); }
+html:root[data-style="outrun"] .ui-scrub-played::after { border-radius: 1px; rotate: 45deg; box-shadow: 0 0 10px var(--highlight); }
+html:root[data-style="outrun"] .ui-scrub-tip { border-color: var(--line-3); box-shadow: 0 0 10px rgba(var(--reality-rgb), .4); }
+html:root[data-style="outrun"] .ui-split::after { background: linear-gradient(90deg, transparent, var(--line-3) 20% 80%, transparent); }
+html:root[data-style="outrun"] .line .head:hover { background-image: linear-gradient(90deg, rgba(var(--intent-rgb), .22), transparent 70%); }
+html:root[data-style="outrun"] .feed { background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, .02) 0 1px, transparent 1px 3px); }
+
+/* ================= the status row ================= */
 html:root[data-style="outrun"] [data-part="status-row"],
-html:root[data-style="outrun"] [data-part="page-foot"] { box-shadow: 0 -1px 14px rgba(0, 229, 255, .16); }
-html:root[data-style="outrun"] * { scrollbar-width: thin; scrollbar-color: var(--line-3) var(--bg-sunken); }
+html:root[data-style="outrun"] [data-part="page-foot"] {
+  background-color: color-mix(in srgb, var(--bg-raised) 90%, transparent);
+  box-shadow: 0 -1px 0 rgba(var(--reality-rgb), .5), 0 -8px 18px -8px rgba(var(--reality-rgb), .45);
+}
+
+/* ================= scrollbars: neon thumbs on a dark rail ================= */
+html:root[data-style="outrun"] * { scrollbar-width: auto; scrollbar-color: auto; }
+html:root[data-style="outrun"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html:root[data-style="outrun"] ::-webkit-scrollbar-track { background: var(--bg-sunken); box-shadow: inset 0 0 0 1px var(--line-1); }
+html:root[data-style="outrun"] ::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  border: 1px solid var(--bg-sunken);
+  background-image: linear-gradient(90deg, var(--intent), var(--reality));
+  box-shadow: 0 0 8px rgba(var(--intent-rgb), .7);
+}
+html:root[data-style="outrun"] ::-webkit-scrollbar-thumb:horizontal { background-image: linear-gradient(180deg, var(--intent), var(--reality)); }
+
 @media (max-width: 560px) {
-  html:root[data-style="outrun"] [data-part="bar"] .wordmark { letter-spacing: .04em; font-size: .72rem; }
+  html:root[data-style="outrun"] [data-part="bar"] .wordmark { letter-spacing: .06em; font-size: .74rem; }
 }
