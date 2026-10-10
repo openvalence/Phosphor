@@ -12,8 +12,8 @@
  *   - dashboard handles are hidden until "Edit layout" and hide again on Done;
  *   - the phosphor ring (docs/EFFECTS.md) draws outside the field and wears
  *     each ladder state without moving the box;
- * and at a phone viewport, that the tab strip renders instead of the rail
- * and the strip keeps the pair.
+ * and at a phone viewport, that the sections move into the phone menu's
+ * drawer (no rail, no tab strip) and the strip keeps the pair.
  *
  * FIRES NO INTENTS AND COMMANDS NO MOTION — tab clicks and layout-edit
  * toggles only. Safe to run unattended against a live machine (motion
@@ -35,6 +35,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { catalogTabs } from './nav.mjs';
 
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
@@ -293,12 +294,14 @@ await page.click('nav.rail [role="tab"]');             // back to Home for the s
 await page.evaluate(() => window.scrollTo(0, 0));
 await page.screenshot({ path: join(OUT, 'flagship-desktop.png'), fullPage: false });
 
-// ---- phone viewport: tab strip, no rail ------------------------------------
+// ---- phone viewport: the phone menu, no rail ---------------------------------
+// Under 960 px the sections live in the phone menu's drawer, mounted only while open (DESIGN §10.12, ph-5u0g.4).
 await page.setViewportSize({ width: 390, height: 844 });
-const strip = await page.waitForSelector('nav.tabs [role="tab"]', { timeout: 5000 })
-  .then(() => true).catch(() => false);
-ok('phone width renders the tab strip', strip);
-ok('phone width drops the rail', (await page.$('nav.rail')) == null);
+const menuUp = await page.getByRole('button', { name: 'Menu' }).waitFor({ timeout: 5000 }).then(() => true, () => false);
+ok('phone width renders the menu button', menuUp);
+ok('phone width drops the rail and the tab strip', (await page.getByRole('navigation', { name: 'Sections' }).count()) === 0);
+const phoneTabs = await catalogTabs(page, 5000);
+ok('the menu opens the sections with the machine categories', phoneTabs.length >= 6, phoneTabs.map((t) => t.label).join(' | '));
 ok('phone width keeps the strip pair', (await pairOf()).length === 2);
 await page.screenshot({ path: join(OUT, 'flagship-phone.png'), fullPage: false });
 

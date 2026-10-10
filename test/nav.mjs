@@ -22,3 +22,22 @@ export async function tabIds(page, prefix = '') {
   if (menu) await page.keyboard.press('Escape');
   return ids;
 }
+
+/**
+ * The catalog's tabs once a category tab is in, [{id, label}] in sidebar
+ * order, or [] at `timeout`. Under 960 px they live in the phone menu's
+ * drawer, mounted only while open: it is opened to look and closed again.
+ */
+export async function catalogTabs(page, timeout = 25000) {
+  const sections = page.getByRole('navigation', { name: 'Sections' });
+  const menu = page.getByRole('button', { name: 'Menu' });
+  const cat = sections.getByRole('tab').and(page.locator('[data-tab-id^="cat"]'));
+  const end = Date.now() + timeout;
+  while (!(await cat.count()) && Date.now() < end) {
+    if (await menu.isVisible().catch(() => false) && await menu.getAttribute('aria-expanded') !== 'true') await menu.click().catch(() => {});
+    await page.waitForTimeout(200);
+  }
+  const tabs = await sections.getByRole('tab').evaluateAll((ts) => ts.map((t) => ({ id: t.dataset.tabId, label: t.textContent.trim() })));
+  if (await menu.isVisible().catch(() => false) && await menu.getAttribute('aria-expanded') === 'true') await page.keyboard.press('Escape');
+  return tabs.some((t) => t.id && t.id.startsWith('cat')) ? tabs : [];
+}
