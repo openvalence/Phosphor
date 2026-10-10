@@ -205,16 +205,20 @@
     return () => window.removeEventListener('phosphor-page-fullscreen', ask);
   });
   $effect(() => { if (OS_SHELL) document.documentElement.dataset.fullscreenMode = $prefs.fullscreen; });
-  // The page status (docs/PLUGINS.md, Pages, `status`): the latest
-  // phosphor-page-status per page, drawn in TopStrip's status slot on every class.
+  // The page status (docs/PLUGINS.md, Pages, `status`): per page, the latest
+  // phosphor-page-status of each source in the pane (a plugin page, or a card
+  // on the Dash or a category page), newest last. TopStrip's status slot shows
+  // one: the newest warn or bad, else the newest other.
   const TONES = ['ok', 'warn', 'bad'];
-  let pageStatus = $state({});
+  let pageStatus = $state.raw({});
   $effect(() => {
     const put = (e) => {
-      if (!current?.page || !e.target?.closest?.('main.pane .pane-main.plugin')) return;
+      const src = e.target;
+      if (!current || !src?.closest?.('main.pane .pane-main')) return;
       const d = e.detail || {};
-      pageStatus[current.id] = { text: String(d.text ?? ''), tone: TONES.includes(d.tone) ? d.tone : null,
-        title: d.title == null ? '' : String(d.title) };
+      const list = (pageStatus[current.id] || []).filter((s) => s.src !== src && s.src.isConnected);
+      if (d.text) list.push({ src, text: String(d.text), tone: TONES.includes(d.tone) ? d.tone : null, title: d.title == null ? '' : String(d.title) });
+      pageStatus = { ...pageStatus, [current.id]: list };
     };
     window.addEventListener('phosphor-page-status', put);
     return () => window.removeEventListener('phosphor-page-status', put);
@@ -247,7 +251,13 @@
     window.addEventListener('phosphor-quick-rail', ask);
     return () => window.removeEventListener('phosphor-quick-rail', ask);
   });
-  const statusSlot = $derived(current?.page?.status ? pageStatus[current.id] || null : null);
+  // ponytail: a card unmounted with the page on screen (a Dash edit) keeps its status until that page's next one or a page switch.
+  const statusSlot = $derived.by(() => {
+    if (!current || (current.page && !current.page.status)) return null;
+    const all = (pageStatus[current.id] || []).filter((s) => s.src.isConnected);
+    const warn = all.filter((s) => s.tone === 'warn' || s.tone === 'bad');
+    return (warn.length ? warn : all).at(-1) || null;
+  });
   $effect(() => { window.dispatchEvent(new CustomEvent('phosphor-page-fullscreen-change', { detail: { on: isFull } })); });
   // Scrollbars are a pref, off by default; style.css switches on this one attribute.
   $effect(() => { document.documentElement.toggleAttribute('data-scrollbars', $prefs.scrollbars); });

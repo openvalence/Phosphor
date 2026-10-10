@@ -593,13 +593,14 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   Routed: a fatal refusal or media error, the gate and `Script past the
   input speed limit` (warn); `Preview: not saved`, a transient refusal, `No
   script for this video` or `scene` (it says why Play is grayed) and the
-  parse and extra-axes notes (no tone). A Dash card keeps its own one-line
-  row (the shell has no slot for a card).)*
+  parse and extra-axes notes (no tone). The Dash card draws no row either
+  (2026-10-09, peeve 19 extended, `ph-5u0g.17`): its status is the Dash's,
+  in the same slot.)*
 - **As built, PR11, PR14 and the compact hero (`ph-1qs5.8`):** the page
   registers `compactHero` and `status`. On the phone class the card sends
   `phosphor-page-status` on every change (`tone` `warn` or null; the notes
-  as `title`) and draws no status row; the dash card keeps its own row
-  (2026-10-09: on every class, into the top strip's slot; PR14).
+  as `title`) and draws no status row (2026-10-09: on every class, the
+  page and the Dash card both, into the top strip's slot; PR14).
   The Rail button shows wherever the host publishes `data-quick-rail` (the
   phone inline, any bare fullscreen in the hover row). The compact hero is
   the shell's to draw: at 420 x 860 with five strip operations its one row
@@ -642,7 +643,7 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   queue lists and tiles with the pager and the queue's drag reorder, the
   stage (center glyph, the hover bar as its overlay, the tap and double,
   fullscreen and the turn into it), the hover bar's seek, the split bar,
-  the status (the top strip's slot on the page, the Dash card's row), the Rail button and the
+  the status (the top strip's slot on the page and the Dash card), the Rail button and the
   page's fill are api.ui's (docs/PLUGINS.md, The UI kit); the heat bar's
   scrub rides `ui.drag`. A touch on a slider, the heat, the seek or the
   number box acts only after horizontal intent or a hold, so a vertical
@@ -777,8 +778,8 @@ FULL
   `telemetry.position` (as a share of `window.min/max`, drawn only when the
   window is reported, law 9; dimmed when stale, law 8) `--reality`;
   playhead, selected tile and focus `--highlight`; gates and over-cap
-  `--warn`, as a mark only: the status slot's 3 px bar, the speed bar,
-  striped heat. Text stays `--tx`: `--warn` is locked (law 13) and reads
+  `--warn`, as a mark only: the speed bar, striped heat (the status is
+  the top strip's slot, PR14). Text stays `--tx`: `--warn` is locked (law 13) and reads
   1.8:1 on Paper's white card. Muted text (title, the Offset label, zoom
   glyphs, connect labels) rides the shell's `--tx-mut`, held to 3:1 by
   `theme.test.mjs` (3.5:1 on the Ember and Phosphor cards); 4.5:1 would

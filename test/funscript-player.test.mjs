@@ -1460,9 +1460,12 @@ if (!LIVE && !STASH_LIVE) {
     return { row: !!r.querySelector('.fsp-slot').getClientRects().length, foot: !!(foot && foot.getClientRects().length),
       top: Math.round(Math.min(...kids.map((k) => k.top)) - f.top), bottom: Math.round(f.bottom - Math.max(...kids.map((k) => k.bottom))) };
   });
-  const rectsOf = (page) => page.evaluate((c) => [c, c + ' .fsp-stage', c + ' .fsp-tr', c + ' .fsp-tlh', 'main.pane', '.topstrip', '.topstrip .ops, .topstrip .home-menu',
+  const rectsOf = (page, card = C) => page.evaluate((c) => [c, c + ' .fsp-stage', c + ' .fsp-tr', c + ' .fsp-tlh', 'main.pane', '.topstrip', '.topstrip .ops, .topstrip .home-menu',
     '.topstrip .ovr', '.topstrip .pair']
-    .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '), C);
+    .map((q) => { const e = document.querySelector(q); if (!e) return '-'; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' | '), card);
+  const overShown = (page) => page.waitForFunction(() => { const s = document.querySelector('.topstrip .status');
+    return s.dataset.kind === 'page' && (s.querySelector('.st-text') || {}).textContent === 'Script past the input speed limit'; }, null, { timeout: 3000 }).then(() => true, () => false);
+  const overGone = (page) => page.waitForFunction(() => document.querySelector('.topstrip .status').dataset.kind !== 'page', null, { timeout: 3000 }).then(() => true, () => false);
   for (const [w, hh, cls] of [[1428, 900, 'desktop'], [1024, 768, 'desktop'], [420, 860, 'portrait'], [860, 420, 'landscape']]) {
     const hub = makeHub(cat);
     hub.values[CH.config + ':window_min'] = 0;
@@ -1509,12 +1512,11 @@ if (!LIVE && !STASH_LIVE) {
     // A script past the input speed limit: the warning in the strip's slot on every class, nothing moving as it comes and goes.
     const ra = await rectsOf(page);
     hub.set(CH.config, 'input_speed', 100);
-    const over = await page.waitForFunction(() => { const s = document.querySelector('.topstrip .status');
-      return s.dataset.kind === 'page' && (s.querySelector('.st-text') || {}).textContent === 'Script past the input speed limit'; }, null, { timeout: 3000 }).then(() => true, () => false);
+    const over = await overShown(page);
     const rb = await rectsOf(page), sOver = await slotOf(page), rOver = await rowLook(page);
     if (SHOTS) await page.screenshot({ path: join(SHOTS, 'status-over-' + at + '.png') });
     hub.set(CH.config, 'input_speed', 1000);
-    const clear = await page.waitForFunction(() => document.querySelector('.topstrip .status').dataset.kind !== 'page', null, { timeout: 3000 }).then(() => true, () => false);
+    const clear = await overGone(page);
     const rc = await rectsOf(page);
     ok('host ' + at + ': Script past the input speed limit shows in the top strip\'s slot, in no row of the card', over && !rOver.row && !rOver.foot, { sOver, rOver });
     ok('host ' + at + ': the warning coming and going moves nothing (card, stage, bar, timeline head, pane, strip, its controls, stop pair)', clear && ra === rb && rb === rc, { ra, rb, rc });
@@ -1537,6 +1539,27 @@ if (!LIVE && !STASH_LIVE) {
     await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
+    // Peeve 19 extended (ph-5u0g.17): the Dash card draws no status row either; its warning is the strip's slot.
+    if (w === 1428 || w === 420) {
+      const D = 'main.pane .home .fsp';
+      await goTab(page, 'machine');
+      const onDash = await page.waitForSelector(D, { timeout: 5000 }).then(() => true, () => false);
+      await page.waitForTimeout(400);
+      const dash = onDash ? await page.locator(D).evaluate((r) => { const s = r.querySelector('.fsp-slot'), rows = getComputedStyle(r).gridTemplateRows.split(' ');
+        return { comp: r.dataset.comp, routed: s.hasAttribute('data-routed'), row: !!s.getClientRects().length, last: rows.at(-1) }; }) : null;
+      const da = onDash && await rectsOf(page, D);
+      hub.set(CH.config, 'input_speed', 100);
+      const dOver = onDash && await overShown(page);
+      const db = onDash && await rectsOf(page, D);
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, 'dash-status-over-' + at + '.png') });
+      hub.set(CH.config, 'input_speed', 1000);
+      const dClear = onDash && await overGone(page);
+      const dc = onDash && await rectsOf(page, D);
+      ok('dash ' + at + ': the Dash card draws no status row (no status track); Script past the input speed limit shows in the top strip slot',
+        onDash && dash.routed && !dash.row && (dash.comp === 'glance' || dash.last === '0px') && dOver, { dash, dOver });
+      ok('dash ' + at + ': the warning coming and going moves nothing (card, stage, bar, timeline head, pane, strip, its controls, stop pair)',
+        dClear && da === db && db === dc, { da, db, dc });
+    }
     ok('host ' + at + ': no page error', errors.length === 0, errors.slice(0, 3));
     clearInterval(hub.timer);
     await ctx.close();
@@ -1928,18 +1951,15 @@ if (!LIVE) {
     const warn = getComputedStyle(probe).color;
     probe.remove();
     const slot = document.querySelector(c + ' > .fsp-slot');
-    const tone = slot.dataset.tone;
-    slot.dataset.tone = 'warn';
     const speed = document.querySelector(c + ' .fsp-speed');
     speed.setAttribute('data-over', '');
     const hits = [...document.querySelectorAll(c + ' *')].filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
       && getComputedStyle(e).color === warn).map((e) => e.className || e.tagName);
-    const bar = getComputedStyle(slot).borderLeftColor === warn;
     speed.removeAttribute('data-over');
-    slot.dataset.tone = tone;
-    return { hits, bar };
+    return { hits, routed: slot.hasAttribute('data-routed') && !slot.getClientRects().length };
   }, C);
-  ok('layout: no text wears --warn; the warn slot marks it with a --warn bar', warnText.hits.length === 0 && warnText.bar, warnText);
+  ok('layout: no text wears --warn; the dash card draws no status row (its status is the top strip slot, peeve 19 extended)',
+    warnText.hits.length === 0 && warnText.routed, warnText);
   const sp = await spill(page);
   ok('layout: every control lies inside the card', sp.out.length === 0, sp.out);
   ok('layout: no button or readout cuts its label', sp.cut.length === 0, sp.cut);

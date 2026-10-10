@@ -488,6 +488,40 @@ for (const [name, theme, vp] of [['420x860 dark', null, [420, 860]], ['420x860 p
   ok('no page errors (status ' + name + ')', errors.length === 0, errors.slice(0, 3).join(' | '));
   await ctx.close();
 }
+// ph-5u0g.17: a card's status on the Dash is the Dash's. One source shows: the newest warn or bad, else the newest other;
+// a source that left the page counts no more.
+{
+  console.log('\n--- Dash card status sources ---');
+  const { ctx, page, errors } = await boot({ width: 1428, height: 900 });
+  await goTab(page, 'machine');
+  await page.waitForSelector('main.pane .home', { timeout: 5000 });
+  const say = async (i, d) => {
+    await page.evaluate(([i, d]) => {
+      let el = document.getElementById('src' + i);
+      if (!el) { el = document.createElement('i'); el.id = 'src' + i; document.querySelector('main.pane .home').append(el); }
+      el.dispatchEvent(new CustomEvent('phosphor-page-status', { bubbles: true, detail: d }));
+    }, [i, d]);
+    await page.waitForTimeout(60);
+    return page.evaluate((q) => { const s = document.querySelector(q), k = s.dataset.kind;
+      return ['page', 'note'].includes(k) ? k + ':' + s.querySelector('.st-text').textContent : '-'; }, SLOT);
+  };
+  const seen = [await say(1, { text: 'n1' }), await say(2, { text: 'w2', tone: 'warn' }), await say(3, { text: 'w3', tone: 'bad' }),
+    await say(1, { text: 'n1b' }), await say(3, { text: '' }), await say(2, { text: '' })];
+  await page.evaluate(() => document.getElementById('src1').remove());
+  seen.push(await say(4, { text: '' }));
+  ok('Dash: one source at a time; the newest warning wins, a newer note does not outrank it, a cleared or departed source falls away',
+    seen.join() === 'note:n1,page:w2,page:w3,page:w3,page:w2,note:n1b,-', seen);
+  await say(5, { text: 'w5', tone: 'warn' });
+  await goTab(page, 'log');
+  await page.waitForTimeout(200);
+  const away = await page.evaluate((q) => document.querySelector(q).dataset.kind, SLOT);
+  await goTab(page, 'machine');
+  await page.waitForTimeout(200);
+  const back = await page.evaluate((q) => document.querySelector(q).dataset.kind, SLOT);
+  ok('Dash: its status shows on no other page, and none outlives the cards that sent it', !['page', 'note'].includes(away) && !['page', 'note'].includes(back), { away, back });
+  ok('no page errors (Dash status)', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await ctx.close();
+}
 
 // ---- the quick rail (ph-5u0g.5) ----------------------------------------------
 const quickState = (page) => page.evaluate(() => {

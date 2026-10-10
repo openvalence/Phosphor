@@ -628,8 +628,8 @@ refusal, `overLimit` (warn: the script's peak chord, scaled by the range,
 past `limit.input.speed`), then the first load note (no script, a parse
 note, extra axes) with ` (+N more)`; else empty (never the empty card,
 motion only, preroll or buffering: the card shows those). `status.notes`
-holds them all, the slot's tooltip one per line. On the page it is the top
-strip's slot (`phosphor-page-status`), on a Dash card its last row. The
+holds them all, the slot's tooltip one per line. On the page and on a Dash
+card it is the top strip's slot (`phosphor-page-status`), never a row. The
 library is mounted with `prefs` as `{get, set}` over `readPrefs` and
 `writePref`, and `fetch: api.net.fetch`. Probe:
 `window.__funscriptProbe` (a ring of 5000: sent segments, clock
