@@ -1229,6 +1229,31 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
 .ui-sheet[data-form='popover'] .ui-sheet-body { gap: var(--sp-2); }
 .ui-sheet[data-form='popover'] .ui-sheet-body > .og-btn { justify-content: flex-start; width: 100%; }
 
+/* ---- the shell context menu (src/ui/contextmenu.js): the top layer, placed by kit.js menu() ---- */
+.ui-menu {
+  position: fixed; inset: auto; margin: 0; display: none; flex-direction: column; min-width: 12rem; max-width: min(20rem, calc(100vw - 2 * var(--sp-3)));
+  padding: var(--sp-2) 0; overflow-y: auto; overscroll-behavior: contain; color: var(--tx); box-shadow: 0 8px 24px rgba(var(--shade-rgb), .6); outline: none;
+}
+.ui-menu:popover-open { display: flex; }
+.ui-menu-h { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-1) var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--line-1); }
+.ui-menu-t { font-size: .82rem; font-weight: 500; color: var(--tx-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-menu-d { font-size: .72rem; color: var(--tx-mut); }
+.ui-menu-sec {
+  margin-top: var(--sp-1); padding: var(--sp-2) var(--sp-3) var(--sp-1); border-top: 1px solid var(--line-1);
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-menu-h + .ui-menu-sec { margin-top: 0; border-top: 0; }
+.ui-menu-i {
+  display: flex; align-items: center; flex: none; min-height: var(--ui-btn-h); padding: 0 var(--sp-3);
+  text-align: left; font-size: .82rem; color: var(--tx); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.ui-menu-i:hover:not(:disabled), .ui-menu-i:focus-visible { background: var(--line-soft); color: var(--tx-hi); }
+.ui-menu-i:focus-visible { outline: 2px solid var(--highlight); outline-offset: -2px; }
+.ui-menu-i:disabled { color: var(--tx-faint); cursor: default; }
+
+/* ---- field-bound controls (api.ui.field, api.ui.module): the shell's own, laid out as on a card ---- */
+.ui-control { display: block; min-width: 0; }
+
 /* ---- status ---- */
 .ui-status[data-routed] { display: none; }
 

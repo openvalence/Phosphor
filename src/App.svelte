@@ -37,6 +37,8 @@
   import HubPicker from './ui/HubPicker.svelte';
   import QuickRail from './ui/QuickRail.svelte';
   import PhoneMenu, { phoneMenu } from './ui/PhoneMenu.svelte';
+  import Dock from './ui/Dock.svelte';
+  import { installContextMenu } from './ui/contextmenu.js';
   import { railReadout } from './ui/hero/RailWidget.svelte';
   import { heroBar, openQuick } from './ui/hero/heroBar.svelte.js';
   import { untrack, tick } from 'svelte';
@@ -501,6 +503,28 @@
     });
     if (ok) applyReset();
   }
+  // The context menu's own items for the page and its cards (src/ui/contextmenu.js): the footer's and the pill's operations.
+  // The advanced toggle once per menu: on a card when one was clicked, else on the page.
+  function menuItems(t, chain) {
+    const out = [];
+    if (t.kind === 'page' && current.id === 'machine' && isDesktop) {
+      out.push({ label: dashEdit.on ? 'Done editing' : 'Edit layout', disabled: dashEdit.on ? redHint() : '', run: () => { dashEdit.on = !dashEdit.on; } });
+    }
+    const card = (x) => x.kind === 'module' && /^(group|diag):/.test(x.key);
+    const cat = catPage && (t.kind === 'page' || card(t));
+    if (cat && visibleGroups.adv && (card(t) || !chain.some(card))) {
+      out.push({ label: showAdvanced ? 'Hide advanced' : 'Show advanced', run: toggleAdvanced });
+    }
+    if (cat && t.kind === 'page' && visibleGroups.diagAll) {
+      out.push({ label: showDiagnostic ? 'Hide diagnostic' : 'Show diagnostic', run: () => { showDiagnostic = !showDiagnostic; } });
+    }
+    if (cat && t.kind === 'page' && hasDefaults) {
+      out.push({ label: drillItem ? 'Reset group to defaults' : 'Reset page to defaults', disabled: resetWhy, run: resetCategory });
+    }
+    return out;
+  }
+  $effect(() => installContextMenu({ tab: () => current, go: selectTab, items: menuItems }));
+
   // The expanded rail carries the page operations in the selected page's pill
   // (DESIGN §10.11); PageFoot keeps them on the mini rail and the tab strip.
   const railOps = $derived(isDesktop && !railMini && catPage);
@@ -749,6 +773,7 @@
       <div class="content" bind:this={contentEl} use:scrollshade>
         {@render pane()}
       </div>
+      <Dock />
     </div>
   {:else}
     {#if ready}<HeroStrip heroes={instrumentHeroes} />{/if}
@@ -785,6 +810,7 @@
     </nav>
     {/if}
     {@render pane()}
+    <Dock drawer />
   {/if}
 
   {#if isFull}
@@ -831,6 +857,8 @@
     overflow: hidden;
   }
   :global(:root[data-scrollbars]) .frame { --track: 4px; }
+  /* The right dock, opened by the user: a third column that narrows the content (Dock.svelte). */
+  .frame:has(> :global(.side-dock)) { grid-template-columns: auto minmax(0, 1fr) auto; }
   /* position: a pane's absolutely positioned descendants (sr-only labels)
      must scroll with it, never overflow the non-scrolling column. */
   .content {

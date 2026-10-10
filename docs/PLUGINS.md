@@ -239,6 +239,96 @@ it has no other meaning. The advanced-penetration
 plugin is the reference (`nudge` and the pointer handlers in its
 `makeEditor`).
 
+**Identities and paths** (`ph-kyjd`). A control's identity is the builder's
+placement key (DESIGN §10.2, law 10): `role:<role>` for the first field
+carrying a role, else `uid:<channel>:<field>`; a merged pair is its two keys
+joined by `+` (`role:window.min+role:window.max`); a composite is
+`hero:<id>` (a plugin hero `hero:plugin:<name>:<id>`), a safety pair
+`safety:estop` or `safety:pause`, a category page's card
+`group:<category id>:<group name>` (`diag:` for a diagnostic group), a Dash
+summary `widget:hero-rank`, `widget:telemetry` or `widget:actions`. A Dash
+duplicate's `#<n>` suffix names the same control. An identity never names a
+position, so it survives a catalog etag change while its control exists; one
+the catalog lacks resolves to nothing. A card whose fields a hero claimed is
+not on the page and resolves to nothing too.
+
+The **Valence path** is `valence://<hub>/<identity>`: `<hub>` is the hub's key
+(WELCOME identity `hub_instance_id`, else the dialed `host:port`, as
+`api.hub()` returns it), and the identity runs to the end of the string, a
+slash included (`valence://a1b2c3d4e5f60718/role:pattern.speed`,
+`valence://192.168.1.40:82/uid:4416:frequency`). The menu's Copy path writes
+it. Category and card are not part of it: they are presentation. Seam:
+`src/model/identity.js` (`pathOf`, `parsePath`, `resolveIdentity`).
+
+**Context menus** (experimental, `ph-kyjd`). The shell has one context menu
+(DESIGN §10.13); the webview's own (Print, Reload, Inspect) never shows outside
+text entry, where cut, copy and paste stay, and a dev build keeps it behind
+Shift+right-click. A right-click, a long press on touch, the menu key or
+Shift+F10 on the focused control opens it at the pointer or the control's
+corner, in the top layer, below the top strip and the stop pair; it moves
+nothing. Arrows, Home and End move, Enter picks, Escape, Tab, a scroll and a
+tap outside close it, and focus returns where it was. It lists the targets
+under the pointer, innermost first, each after a caption: the **field**
+(headed by its label and the hub's description), the **module** or card
+around it, and the **page**. A surface that takes its own right-click (the
+Dash's edit-mode add menu, the node editor) prevents the event first, and the
+shell stays out.
+
+- Built-in field items: Copy path; Copy value (the reported value as text);
+  Paste value (enabled only while the clipboard holds a fitting value: a
+  number inside the field's bounds, an option's index, any text for a text
+  field; never a secret); Reset to default (where the catalog declares one,
+  disabled at it); Send to node editor; Show in history (once this session
+  wrote the field). Module items: Copy path; Send fields to node editor. Page
+  items: Edit layout on the Dash; Show advanced, Show diagnostic and Reset
+  page to defaults on a category page (Show advanced on a card instead when
+  one was clicked). Writes take the plugin write door: the host's confirm,
+  the ladder and the refusal banner; a gated item is disabled with the gate's
+  words as its title (law 3).
+- **Send to node editor** dispatches `phosphor-node-add` on `window`
+  (cancelable, `detail: {refs: [{kind: 'field', key}]}`, a merged pair as its
+  parts). A mounted node editor takes it with `preventDefault()`; untaken,
+  the refs wait in `nodeQueue` (`src/ui/contextmenu.js`), oldest first, for
+  the editor to empty when it mounts.
+- `api.registerMenu({id, targets, label, run})` adds an item; it returns
+  `withdraw()` and needs the `menu` permission. `targets` lists `'field'`,
+  `'module'` and `'page'`; `label` is a string of 1 to 40 characters or a
+  function of the target returning one, or null to leave the item out for
+  that target. `run(target)` runs after the menu closes. The target is frozen
+  `{kind, key, hub, title, path}`: `key` the identity (a page's is its tab
+  id), `hub` the hub's key, `path` the Valence path. A label or run that
+  throws is recorded on the plugin and never reaches the shell. Items follow
+  the built-ins of their target, in plugin load order.
+- Seams: `src/ui/contextmenu.js`, `kit.js` `menu`, `src/App.svelte`
+  (`menuItems`, the page's items), `host.js` `menus`.
+
+**The dock** (experimental, `ph-kyjd`). `api.registerDock({id, label, icon,
+mount})` returns `withdraw()`: a panel in the shell's right dock. `id` follows
+the name rule, `label` is 1 to 24 characters, `icon` one SVG path `d` as a
+page's; `mount(el)` is a page's mount with no fields, driven the same way
+(`update()` on link and safety changes). The dock is closed until the user
+opens it from the top bar (the toggle at the bar's right end, named by the
+dock's label), and the toggle exists only while a dock is registered. On the
+desktop the open dock is a column right of the content, which it narrows
+(a user's act, DESIGN §10.3); its open state persists (`phosphor.dock`). On
+the phone class it is a drawer from the right edge under the top strip, over
+the page, never over the stop pair; Escape and a tap outside close it (the
+tap swallowed, the strip's never), and the quick rail's pop-up and its
+toggles work over it. With several docks a tab row picks one. Registering or
+withdrawing a dock reruns no claim pass, so no plugin hero remounts.
+Seams: `src/ui/Dock.svelte`, the toggle in `src/ui/LinkBar.svelte`,
+`host.js` `docks`.
+
+**The worked example**: `plugins/factory/quick-access/` builds the quick
+access tray on these three capabilities and nothing else. Its `registerMenu`
+item reads Pin to quick access, or Unpin from quick access, in module and
+field menus; a pin is `{key, kind, title}` stored per hub in `api.prefs`
+(`pins`, keyed by `api.hub()`). It registers its dock, Quick access, once
+anything is pinned on any hub, so a user who never pins sees no toggle; each
+pin is a kit card with a grip (drag, or ArrowUp and ArrowDown) and an Unpin
+button around `ui.field(pin)` or `ui.module(pin)`. A row is built once per pin
+and moved on a reorder, so a control keeps its in-flight write.
+
 ## The API (v1)
 
 | member | what | status |
@@ -273,6 +363,9 @@ plugin is the reference (`nudge` and the pointer handlers in its
 | `registerPage({id, label, icon, spec, mount, mediaFullscreen, fill, search, status, compactHero})` returning `withdraw()` | a tab under Plugins in the sidebar; `mount(el, fields)` as a hero's, `spec` resolved without claiming (Pages, above) | experimental |
 | `registerTheme(theme)` | a preset, kind `theme` only: the full object `{id, name, accents, chassis, look, overrides}` (docs/THEMES.md) or the old `{id, name, reality, intent}` pair. The id is namespaced; safety tokens are dropped (RENDERING law 13) | experimental |
 | `prefs.get(k)` / `prefs.set(k, v)` | per-plugin JSON in localStorage (browser state, never machine state) | experimental |
+| `hub()` | the connected hub's key (`hub_instance_id`, else `host:port`), null before a catalog: per-hub plugin state keys on it (Identities and paths) | experimental |
+| `registerMenu({id, targets, label, run})` returning `withdraw()` | an item in the shell's context menu of a field, a module or a page (Context menus). Needs `menu` | experimental |
+| `registerDock({id, label, icon, mount})` returning `withdraw()` | a panel in the right dock, closed until the user opens it (The dock) | experimental |
 | `ui` | the shell's controls and layout primitives in plain DOM, `ui.version` 1 (The UI kit, below) | **the kit only grows**: v1 is a contract; additive only |
 
 **Freeze.** Operator ruling (DESIGN §4): the widget API freezes the moment the
@@ -444,9 +537,26 @@ returns the `<svg>`; an `icon` option takes a name or a stroke path `d`.
   double window passes, a double, a 400 ms hold, and a two-finger pinch
   reporting its scale since the last call.
 - `ui.outside(el, onOutside, except)`: the overlays' outside-tap rule for a
-  plugin's own overlay; the `except` elements (its toggle) count as inside.
+  plugin's own overlay; the `except` elements (its toggle), or selectors,
+  count as inside.
 - `ui.shade(el)`: the shell's scroll recess shades (DESIGN §10.3) on a
   scroller of the plugin's own.
+
+**Field-bound controls** (`ph-5wsk.6`). `ui.field(identity)` and
+`ui.module(identity)` return an element that draws the shell's own control for
+an identity (Identities and paths): `field` one field, `module` anything a
+card holds (a field, a composite, a category card's fields, a Dash summary;
+the rail as its mini, whose press opens the hero's own rail, never a second
+rail). `identity` is the key or `{key, title}`, a menu target included. It is
+the component the pages draw, so every RENDERING law comes with it (the
+four-state ladder in words, the gate's words and graying, stale dimming, the
+refusal), and a write goes through the shell's normal path and confirm. It
+follows the catalog live; a key the catalog lacks draws one quiet row,
+`<title> · not on this machine`, and the element carries `data-missing`. Both
+need the `intent` permission. The handle is `key`. The rendering mounts while
+the element is in the document and is released after it leaves; moving it
+within one task (a reorder) keeps it. Seams: `kit.js` `field`, `module`,
+`src/ui/BoundControl.svelte`.
 
 **Example** (`plugins/examples/kit-demo/`): a settings card, and a page with
 a card, a bar, a sheet and a warning in the status (Count past 8), in about
@@ -478,7 +588,7 @@ a card, a bar, a sheet and a warning in the status (Count past 8), in about
 | `description` | shown in the Plugins pane; one fragment per `docs/COPY.md` |
 | `credits` | optional array of `{name, url, license}`, each a string of at most 120 characters, `url` http(s) only; shown on the Plugins row and in About's Notices, where the link is copied (the shell has no opener) |
 | `roles`, `channels` | what it binds, displayed in the pane. Informational: the claim spec is what binds |
-| `permissions` | `intent`, `motion`, `net.fetch`, `net.listen:<port>`; anything else makes the manifest invalid |
+| `permissions` | `intent`, `motion`, `menu`, `net.fetch`, `net.listen:<port>`; anything else makes the manifest invalid |
 
 Validation lives in one place, `src/plugins/host.js` `validateManifest`. An
 invalid manifest is listed with its problems and its code is never run.
@@ -494,7 +604,8 @@ It does **not** contain hostile code: a module can open its own WebSocket.
 Install a plugin only from a source you would trust with a program.
 
 Reading needs no permission. `intent` covers every settings/action/command
-write, `motion` covers motion input, and `net.listen:<port>` opens a TCP
+write and the field-bound controls (`ui.field`, `ui.module`), `motion` covers
+motion input, `menu` adds items to the shell's context menus, and `net.listen:<port>` opens a TCP
 listener on **127.0.0.1 only** (`src-tauri/src/plugins.rs`; a LAN bind would
 be an unauthenticated control path, `ph-vdk.28`). `net.fetch` reaches HTTP(S)
 services that are not the machine; the hub's own origins are refused, so it
@@ -699,6 +810,10 @@ Shipped:
   at a bound, so through a hold it parks on that bound. A handle drag is
   relative to the grab at gain 0.5 (Shift 0.05, Ctrl rounds to the decade)
   through the same geometry, so it never jumps on pickup.
+- `plugins/factory/quick-access/`: the quick access tray, the worked example
+  of Context menus, The dock and Field-bound controls (above). Enabled by
+  default; its dock exists once something is pinned and opens only when the
+  user opens it. Declares `intent` and `menu`.
 - `plugins/factory/funscript-player/`: plays a local or Stash video and
   drives the rail from its main (L0) funscript. One hero, `player`
   (`absorb: false`), requires `input.target` and `input.duration`, so it
@@ -734,6 +849,10 @@ refusals, the TCode parser, and the window mapping. It also loads every
 factory plugin and checks Advanced Penetration's substitution and each way
 it falls back. `node test/advanced-penetration.test.mjs` drives it in the
 shell bundle against a fake hub (`--live` against valencesim).
+`node test/quick-access.test.mjs` drives the context menu, the dock, the
+field-bound controls and the quick-access plugin in the shell bundle against a
+fake hub at 1428x900, 1024x768 and 420x860. `plugins.test.mjs` also checks
+every identity's path round trip and the three capabilities' checks.
 `node test/funscript-player.test.mjs --unit` (in `npm run check`) checks the
 player's contract exports, prefs and hero spec; without `--unit`
 (`npm run check:funscript`, needs ffmpeg) it plays a generated clip in the
