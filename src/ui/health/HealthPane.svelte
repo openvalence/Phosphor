@@ -12,8 +12,8 @@
    *   (no page shifting from non-user input).
    * - Warn and act read amber, never red: red is the hazard color.
    */
-  import { health, secs } from '../../model/health/health.svelte.js';
-  import { CONDITIONS, evidenceText } from '../../model/health/core.js';
+  import { health } from '../../model/health/health.svelte.js';
+  import { CONDITIONS, evidenceText, secs } from '../../model/health/core.js';
   import ReportReview from './ReportReview.svelte';
   import SentReports from './SentReports.svelte';
   import '../pane.css';
@@ -36,6 +36,11 @@
   const cuts = $derived(health.strip.filter((p) => p.cut));
 
   const when = (ms) => new Date(ms).toLocaleTimeString();
+  // The incident the status slot opened, in view.
+  let list = $state();
+  $effect(() => {
+    if (health.focus && list) list.querySelector('[data-id="' + health.focus + '"]')?.scrollIntoView({ block: 'nearest' });
+  });
 </script>
 
 {#if health.review}
@@ -76,7 +81,7 @@
       <dt>Memory</dt><dd class:mono={D.heapMb != null} class:nr={D.heapMb == null}>{D.heapMb != null ? Math.round(D.heapMb) + ' MB' + (D.heapTrendMb != null ? ' · ' + (D.heapTrendMb >= 0 ? '+' : '') + D.heapTrendMb.toFixed(1) + ' MB in 10 min' : '') : NM}</dd>
       <dt>Processor load</dt><dd class:nr={!D.pressure}>{D.pressure ?? NM}</dd>
       <dt>Background tasks</dt><dd class="mono">{D.workers ?? '--'}</dd>
-      <dt>Slowing over time</dt><dd class="st" data-sev={D.growth ? 'warn' : null}>{D.growth ? 'yes: reload Phosphor' : 'no'}</dd>
+      <dt>Memory growth</dt><dd class="st" data-sev={D.growth ? 'warn' : null}>{D.growth ?? 'none'}</dd>
     </dl>
   </section>
 
@@ -106,10 +111,10 @@
     {#if !health.incidents.length}
       <p class="pane-empty">No incidents</p>
     {:else}
-      <ul class="pane-list incs">
+      <ul class="pane-list incs" bind:this={list}>
         {#each health.incidents as inc (inc.id)}
-          <li data-sev={inc.sev} data-cond={inc.cond} data-cause={inc.cause} data-at={inc.wallAt}>
-            <details>
+          <li data-sev={inc.sev} data-cond={inc.cond} data-cause={inc.cause} data-at={inc.wallAt} data-id={inc.id}>
+            <details open={health.focus === inc.id}>
               <summary>
                 <time class="mono">{when(inc.wallAt)}</time>
                 <span class="text">{inc.text}</span>
@@ -117,7 +122,7 @@
               </summary>
               <div class="more">
                 {#if CONDITIONS[inc.cond].detail}<p>{CONDITIONS[inc.cond].detail}</p>{/if}
-                {#if CONDITIONS[inc.cond].action}<p class="act">{CONDITIONS[inc.cond].action}</p>{/if}
+                {#each inc.tip || [] as l, k (k)}<p class:act={l === CONDITIONS[inc.cond].action}>{l}</p>{/each}
                 <p class="ev mono">{[inc.why, evidenceText(inc.evidence), inc.durationMs ? 'total ' + secs(inc.durationMs) : ''].filter(Boolean).join(' · ')}</p>
                 <button type="button" class="og-btn sm" onclick={() => (health.review = inc.id)}>Send report</button>
               </div>

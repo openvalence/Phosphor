@@ -2,13 +2,16 @@
  * report.test.mjs -- the health report (src/model/health/report.js,
  * ph-9t5l.1): the field table covers every field the builder emits, nothing
  * outside the allowlist leaves even when seeded into the ring, the URL budget
- * and its attachment fallback, the issue lookups, and the two GitHub files.
+ * and its attachment fallback, the issue lookups, the two GitHub files, and
+ * against the operator's report KMCBXOPP: every least, typical and worst value
+ * over its stated window, a growth incident's own numbers, event kinds.
  * Run: node test/report.test.mjs
  */
 import { readFileSync, existsSync } from 'node:fs';
 import {
-  FIELDS, URL_BUDGET, buildBundle, fileName, issueState, issueUrl, leafPaths, lookupIssue, parseIssueLink, reportId, reportSource,
+  FIELDS, URL_BUDGET, buildBundle, fileName, issueState, issueUrl, kindOf, leafPaths, lookupIssue, parseIssueLink, reportId, reportSource,
 } from '../src/model/health/report.js';
+import { CONDITIONS, quantile } from '../src/model/health/core.js';
 
 let fails = 0;
 const ok = (name, cond, extra) => {
@@ -71,6 +74,41 @@ ok('times count from the incident: the window spans -60 s to +30 s at 2 s', b.wi
 ok('the cutout reads as cutout with its cause', b.incident.condition === 'cutout' && b.incident.cause === 'client' && b.incident.count === 2);
 ok('events carry kind and cause only', b.events.length === 3 && b.events.every((e) => Object.keys(e).join() === 't_ms,kind,cause'), b.events);
 ok('hub log: counts only', JSON.stringify(b.hub_log) === '{"warn":14,"error":0}');
+
+console.log('\n--- the operator\'s report KMCBXOPP: windows, growth, kinds ---');
+{
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/diag-report-growth-sawtooth.json', import.meta.url), 'utf8'));
+  const S = fx.window.series;
+  // Its 2 s history as the ring rows it was made of, one per point.
+  const KEY = { rtt_ms: 'rtt', lead_send_ms: 'lead', arrival_lead_ms: 'arr', downlink_gap_ms: 'gap', loop_lag_ms: 'lag', fps: 'fps', heap_mb: 'heap' };
+  const fxRows = S.heap_mb.map((_, i) => Object.fromEntries([['t', fx.window.from_ms + i * fx.window.step_ms],
+    ...Object.entries(KEY).map(([k, r]) => [r, S[k][i]])]));
+  const g = { id: reportId(), cond: 'growth', sev: 'warn', count: 1, durationMs: 35 * 60000, t0: 1000, episodes: [0],
+    m: { baseMb: 28, nowMb: 168, minutes: 35, slopeMbPerMin: 4, from: -2099000 }, evidence: { heapMb: 28.1, fps: 236, reconnects: 0 } };
+  const gb = buildBundle(reportSource({ inc: g, snap: { rows: fxRows, fine: [] }, ctx, protocol: 1 }));
+  const fin = (a) => a.filter(Number.isFinite);
+  const want = { loop_lag_ms_max: Math.max(...fin(S.loop_lag_ms)), rtt_ms_max: Math.max(...fin(S.rtt_ms)), rtt_ms_p50: quantile(S.rtt_ms, 0.5),
+    lead_send_ms_min: Math.min(...fin(S.lead_send_ms)), downlink_gap_ms_max: Math.max(...fin(S.downlink_gap_ms)), backlog_bytes_max: null };
+  ok('every least, typical and worst value is over the stated window, the one the history shows (loop lag 33.9, round trip 38)',
+    gb.evidence.from_ms === fx.window.from_ms && gb.evidence.to_ms === fx.window.to_ms
+    && Object.entries(want).every(([k, v]) => gb.evidence[k] === v) && want.loop_lag_ms_max === 33.9 && want.rtt_ms_max === 38,
+  { got: gb.evidence, want });
+  ok('...and the history it states round-trips', JSON.stringify(gb.window.series.loop_lag_ms) === JSON.stringify(S.loop_lag_ms)
+    && JSON.stringify(gb.window.series.heap_mb) === JSON.stringify(S.heap_mb));
+  const sum = buildBundle(reportSource({ inc: g, snap: { rows: fxRows, fine: [] }, ctx }), { summary: true });
+  ok('the summary (the link without history) still states the window', !sum.window && sum.evidence.from_ms === -60000 && sum.evidence.to_ms === 30000, sum.evidence);
+  ok('a growth incident carries its own numbers: what grew, from, to, over, how fast', gb.measure.metric === 'heap_floor_mb'
+    && gb.measure.baseline === 28 && gb.measure.current === 168 && gb.measure.window_ms === 2100000 && gb.measure.slope_per_min === 4, gb.measure);
+  ok('...its cause is this device, measured, and it lasted its growth window', gb.incident.condition === 'growth' && gb.incident.cause === 'client'
+    && gb.incident.confidence === 'decisive' && gb.incident.lasted_ms === 2100000, gb.incident);
+  ok('a cutout carries no growth numbers', b.measure.metric === null && b.measure.baseline === null);
+  const kinds = Object.keys(CONDITIONS).map((cond) => {
+    const e = buildBundle(reportSource({ inc: { ...g, cond, m: null }, snap: null, ctx })).events;
+    return [cond, e.length === 1 && e[0].kind];
+  });
+  const off = kinds.filter(([cond, k]) => k !== (cond.startsWith('cutout-') ? 'cutout' : cond));
+  ok('every condition\'s event kind is the condition (the cutouts are "cutout"), never "other"', !off.length && kindOf('cutout-hub') === 'cutout', off);
+}
 
 console.log('\n--- the URL ---');
 const u = issueUrl(src);
