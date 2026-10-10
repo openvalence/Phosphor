@@ -29,15 +29,18 @@
  * The door's `halted` rule mirrors shadow.svelte.js (runes do not load in
  * node); change both together.
  *
- * COMMANDS MOTION on the sim it is pointed at; puts the window and the flip
- * back. Skips (exit 0) when no sim answers.
+ * With no --port it starts its own homed sim (test/live-sim.mjs) and SKIPS
+ * (exit 0) without the exe; it rides test:browser as check:safetylive. With
+ * --port it COMMANDS MOTION on that sim (valencesim --homed), puts the window
+ * and the flip back, and SKIPS when none answers.
  * Build first (npm run build:only). Run:
- *   node test/safety-live.mjs [--port 8882] [--http 8880]   (valencesim --homed)
+ *   node test/safety-live.mjs [--port 8882 --http 8880]
  */
 import { DIST_HTML } from './dist.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { startSim, SIM } from './live-sim.mjs';
 import { createSession, PRIORITY } from '../../Valence/clients/js/index.js';
 import { acquireToken } from '../../Valence/clients/js/credentials.js';
 import { CORE_CHANNEL } from '../../Valence/clients/js/generated/registry_vocab.js';
@@ -51,8 +54,11 @@ import * as tcode from '../plugins/examples/tcode-adapter/index.js';
 const args = process.argv.slice(2);
 const argOf = (f, d) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : d; };
 const HOST = '127.0.0.1';
-const PORT = Number(argOf('--port', 8882));
-const HTTP = Number(argOf('--http', 8880));
+const OWN = argOf('--port', null) === null;
+const own = OWN ? await startSim() : null;
+if (OWN && !own) { console.log('SKIP: no valencesim at ' + SIM); process.exit(0); }
+const PORT = OWN ? own.port : Number(argOf('--port'));
+const HTTP = OWN ? own.http : Number(argOf('--http', 8880));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 3000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await sleep(25); } return !!(await fn()); };
 
@@ -137,6 +143,8 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto('http://127.0.0.1:' + srv.address().port + '/?hub=' + HOST + ':' + PORT);
 const up = await page.waitForSelector('.topstrip .pair .safety-op button:not([disabled])', { timeout: 15000 }).then(() => true).catch(() => false)
+  // Over the hero budget (DESIGN §10.12, TopStrip.svelte: a third of the window height) the rail is the mini; Show rail is the user's ask for it.
+  && await page.getByRole('button', { name: 'Show rail' }).first().click({ timeout: 3000 }).then(() => true, () => true)
   && await page.waitForSelector('.rail-hero .rail-tape-track', { timeout: 5000 }).then(() => true).catch(() => false);
 ok('the page adopted the live catalog and the rail', up);
 if (!up) { await browser.close(); srv.close(); raw.s.close(); process.exit(1); }
@@ -145,6 +153,7 @@ await page.waitForTimeout(800);
 const estop = page.locator('.topstrip .btn-estop'), pause = page.locator('.topstrip .btn-pause');
 const ovr = page.locator('.topstrip .dock .ovr .btn-override'), flip = page.locator('.topstrip .rw-flip');
 const tape = page.locator('.rail-hero .rail-tape-track');
+const jog = page.getByRole('slider', { name: /^Jog:/ });
 const lbl = async (l) => (await l.locator('.lbl').textContent()).trim();
 const numeral = async () => Number(await page.locator('.hn-primary .hn-val').textContent());
 const confirmHazard = () => page.locator('.overlay[role=alertdialog] .og-btn.confirm').click();
@@ -213,9 +222,10 @@ try {
   // A jog never takes the rail from a source (SPEC §11.4): the tape gives way
   // to the plan strip, which names the owner.
   const planFace = page.locator('.rail-hero .swap-face:has(.plan-strip)');
+  // The readback names the source kind and, since RFC-098, the owning client (PlanStrip.svelte: two .plan-owner spans).
   ok('rail: the tape gives way to the plan strip, naming the owner',
     await until(async () => !(await planFace.getAttribute('class')).includes('off')
-      && (await page.locator('.topstrip .readback .plan-owner').textContent().catch(() => '')).trim() !== ''),
+      && (await page.locator('.topstrip .readback').textContent().catch(() => '')).includes('owned by webui on safety-live streamer')),
     (await page.locator('.topstrip .readback').textContent().catch(() => '')).trim());
   // ...because the hub refuses both from anyone else (SOURCE_CONFLICT), and
   // grays the flip ahead of time through its enabled_mask. A throwaway
@@ -245,8 +255,10 @@ try {
   await confirmHazard();
   ok('rail: Override confirms, the hub latches override, the control reads Return',
     await until(() => mode('override')) && await until(async () => await lbl(ovr) === 'Return'), safety().modes_bits);
-  ok('rail: the tape is a jog over the whole travel', await until(async () => /jog . travel/.test(await page.locator('.rail-hero .rail-tape-mode').textContent())),
-    await page.locator('.rail-hero .rail-tape-mode').textContent());
+  // The jog slider's own bounds say it spans the travel (RailWidget.svelte tapeLo/tapeHi).
+  const jogSpan = async () => [Number(await jog.getAttribute('aria-valuemin')), Number(await jog.getAttribute('aria-valuemax'))];
+  ok('rail: the tape is a jog over the whole travel', await until(async () => { const [a, b] = await jogSpan(); return a < narrow[0] && b > narrow[1]; }),
+    await jogSpan());
   await tapAt(0.05);
   ok('rail: a jog lands outside the window', await until(() => pos() < narrow[0] - 5, 8000),
     { pos: pos(), window: narrow, strip: (await page.locator('.topstrip .st-text').textContent().catch(() => '')).trim(), owners: owners() });
