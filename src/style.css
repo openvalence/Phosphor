@@ -1156,6 +1156,11 @@ html.still .ui-stage-center[data-flash] { animation-duration: 1ms; }
 }
 .ui-stage[data-show] .ui-stage-overlay, .ui-stage-overlay:has(:focus-visible) { opacity: 1; pointer-events: auto; }
 .ui-stage-overlay:empty, .ui-stage[data-overlay='fullscreen']:not([data-full]) .ui-stage-overlay { display: none; }
+/* Hidden is display: none, never opacity 0 alone: nothing of the overlay stays laid out over a fullscreen video (ph-9t5l.7).
+   It fades out before it goes and in from its starting style; an engine without allow-discrete snaps. */
+.ui-stage-overlay { transition: opacity var(--t-move) var(--ease-out), display var(--t-move) var(--ease-out) allow-discrete; }
+.ui-stage:not([data-show]) .ui-stage-overlay:not(:has(:focus-visible)) { display: none; }
+@starting-style { .ui-stage[data-show] .ui-stage-overlay { opacity: 0; } }
 /* Fullscreen: the shell's bare page fullscreen owns the window; the stage covers it under the stop pair (TopStrip z 30). */
 .ui-stage[data-full] { position: fixed; inset: 0; z-index: 25; aspect-ratio: auto; max-height: none; }
 .ui-stage[data-full] .ui-stage-box { border-radius: 0; }

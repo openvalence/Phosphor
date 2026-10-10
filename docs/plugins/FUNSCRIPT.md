@@ -592,7 +592,10 @@ PHONE PORTRAIT (420 x 860)          DESKTOP (1428 x 900)
   with the inline bar.
 - **PR10 Stop pair** top right in fullscreen at full hit size and half
   opacity at rest, the caret above (DESIGN §10.3; RENDERING §8.4 row 11).
-  Restated, unchanged. No floating collapse chevrons.
+  Restated, unchanged. No floating collapse chevrons. *(As built
+  2026-10-10, `ph-9t5l.7`: the video goes edge to edge and the caret is a
+  top left corner hotspot over it, shown on pointer movement and gone at
+  rest; an open analyzer stops painting its rows behind the video.)*
 - **As built, PR8 to PR10 and PR17 (`ph-1qs5.4`):** the hover bar's row is
   the player bar's own buttons, moved into it on entry and back on exit
   (one set of controls and listeners); it has no mute or volume (`m` mutes,

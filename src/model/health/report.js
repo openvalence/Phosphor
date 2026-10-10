@@ -10,6 +10,8 @@
  *   (`re`) or a fixed set (`values`) and goes null outside it; the only free
  *   strings are the three version strings, and their shapes refuse an
  *   address, a date, a position or a name.
+ * - An `opt` field (the media block, the dropped-frame history) is left out
+ *   while it has no value, so a report without a video keeps the /1 shape.
  * - No clock time or date in a bundle: every time counts from the incident.
  *   `sentAt` lives in the local store only.
  * - Phosphor sends nothing: Send opens a prefilled public issue the user
@@ -39,7 +41,8 @@ const SERIES = (unit) => ({ type: 'series', unit });
 
 /**
  * Every field a bundle may carry, in order: path, plain name, what it is, why
- * it helps, type (num | int | str | bool | enum | series | events).
+ * it helps, type (num | int | str | bool | enum | series | events); opt: left
+ * out while it has no value.
  */
 export const FIELDS = [
   { path: 'schema', name: 'Report format', what: 'The layout version of this report', why: 'Lets a reader decode it', type: 'enum', values: [SCHEMA] },
@@ -81,6 +84,17 @@ export const FIELDS = [
   { path: 'evidence.reconnects', name: 'Reconnects', what: 'How often the link to the machine broke this session', why: 'Drops point at the network', type: 'int' },
   { path: 'evidence.heap_mb', name: 'Memory in use', what: "Phosphor's memory use on this device at the problem", why: 'One reading; the history shows the trend', type: n, unit: 'MB' },
   { path: 'evidence.fps', name: 'Frame rate', what: 'Screen updates per second at the problem', why: 'Low means this device was busy', type: n },
+  { path: 'media.width', name: 'Video width', what: "The playing video's width", why: 'Decoding work grows with size', type: 'int', unit: 'px', opt: true },
+  { path: 'media.height', name: 'Video height', what: "The playing video's height", why: 'Decoding work grows with size', type: 'int', unit: 'px', opt: true },
+  { path: 'media.video_fps', name: 'Video frame rate', what: 'Video frames per second, its decoded frames over its play time', why: 'A fast video needs a fast decoder and screen', type: n, unit: 'fps', opt: true },
+  { path: 'media.display_hz', name: 'Screen refresh', what: 'How often this screen draws, measured here', why: 'A screen slower than the video skips frames by design', type: n, unit: 'Hz', opt: true },
+  { path: 'media.rate', name: 'Playback speed', what: 'How fast the video played', why: 'Speed multiplies the frames to show', type: n, opt: true },
+  { path: 'media.window_ms', name: 'Video measured over', what: 'Play time the frame counts below cover, in the last 30 s', why: 'Sizes the counts', type: 'int', unit: ms, opt: true },
+  { path: 'media.frames_total', name: 'Video frames', what: 'Frames decoded in that time', why: 'With the screen refresh, what could be shown', type: 'int', opt: true },
+  { path: 'media.frames_dropped', name: 'Frames dropped', what: "Frames the engine dropped in that time, the screen's own skips included", why: 'Drops past the skips are stutter', type: 'int', opt: true },
+  { path: 'media.hdr', name: 'HDR screen', what: 'Whether the screen reports high dynamic range', why: 'HDR video takes another drawing path', type: b, opt: true },
+  { path: 'media.fullscreen', name: 'Fullscreen', what: "Whether the video's page was fullscreen", why: "Fullscreen video can bypass the page's drawing", type: b, opt: true },
+  { path: 'media.analyzer', name: 'Analyzer open', what: "Whether the player's analyzer was open", why: 'It keeps drawing while the video plays', type: b, opt: true },
   { path: 'window.from_ms', name: 'Window start', what: 'Where the history below starts, from the problem', why: 'Places the series in time', type: 'int', unit: ms },
   { path: 'window.to_ms', name: 'Window end', what: 'Where the history ends, from the problem', why: 'Places the series in time', type: 'int', unit: ms },
   { path: 'window.step_ms', name: 'Window step', what: 'Time between history points', why: 'Places the series in time', type: 'int', unit: ms },
@@ -93,6 +107,7 @@ export const FIELDS = [
   { path: 'window.series.heap_mb', name: 'Memory history', what: "Phosphor's memory use", why: 'Shows a leak', ...SERIES('MB') },
   { path: 'window.series.rssi_dbm', name: 'Signal history', what: "The machine's WiFi signal", why: 'Shows a weak signal', ...SERIES('dBm') },
   { path: 'window.series.late_plans', name: 'Late plan history', what: 'Moves the machine planned late', why: 'Shows the machine falling behind', ...SERIES('') },
+  { path: 'window.series.video_dropped', name: 'Dropped frame history', what: "Video frames dropped past the screen's own skips", why: 'Tells a steady stutter from one hitch', ...SERIES(''), opt: true },
   { path: 'window.fine.from_ms', name: 'Close-up start', what: 'Where the close-up starts, from the problem', why: 'Places the close-up in time', type: 'int', unit: ms },
   { path: 'window.fine.to_ms', name: 'Close-up end', what: 'Where the close-up ends', why: 'Places the close-up in time', type: 'int', unit: ms },
   { path: 'window.fine.step_ms', name: 'Close-up step', what: 'Time between close-up points', why: 'Places the close-up in time', type: 'int', unit: ms },
@@ -152,7 +167,9 @@ export function buildBundle(src, { summary = false } = {}) {
   const out = {};
   for (const f of FIELDS) {
     if (summary && (f.path.startsWith('window.') || f.path === 'events')) continue;
-    put(out, f.path, f.path === 'schema' ? SCHEMA : clean(f, src[f.path]));
+    const v = f.path === 'schema' ? SCHEMA : clean(f, src[f.path]);
+    if (f.opt && (v == null || (Array.isArray(v) && v.every((x) => x == null)))) continue;
+    put(out, f.path, v);
   }
   return out;
 }
@@ -263,6 +280,7 @@ export async function saveFile(name, text) {
 /** A condition as the bundle names it: the cutouts are one condition with a cause. */
 export const kindOf = (cond) => (cond.startsWith('cutout-') ? 'cutout' : cond);
 const maxOf = (a) => (a.length ? Math.max(...a) : null);
+const sumOf = (a) => (a.length ? a.reduce((x, y) => x + y, 0) : null);
 const minOf = (a) => (a.length ? Math.min(...a) : null);
 /** A condition without a classifier: where it was measured, and whether that pins it. */
 const AREA_CAUSE = { device: ['client', 'decisive'], link: ['network', 'likely'], machine: ['hub', 'decisive'] };
@@ -300,6 +318,8 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
   const d = CONDITIONS[inc.cond] || {};
   const [cause, confidence] = d.cause ? [inc.cause, inc.confidence] : AREA_CAUSE[d.area] || [null, null];
   const [metric, baseline, current, windowMs, slope] = MEASURE[inc.cond] && inc.m ? MEASURE[inc.cond](inc.m) : [];
+  // The video at the problem; a video-drops incident's own numbers, refreshed while it held.
+  const md = (inc.cond === 'video-drops' && inc.m && inc.m.frames != null ? inc.m : e.media) || {};
   const events = [];
   for (const o of [inc, ...others]) {
     if (o.t0 == null || inc.t0 == null) continue;
@@ -328,6 +348,9 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
     'evidence.downlink_gap_ms_max': maxOf(col('gap')), 'evidence.loop_lag_ms_max': maxOf(col('lag')),
     'evidence.backlog_bytes_max': maxOf(col('backlog')), 'evidence.rssi_dbm': null, 'evidence.wifi_drops': null,
     'evidence.late_plans_per_min': null, 'evidence.reconnects': e.reconnects, 'evidence.heap_mb': e.heapMb, 'evidence.fps': e.fps,
+    'media.width': md.w, 'media.height': md.h, 'media.video_fps': md.fps, 'media.display_hz': md.hz, 'media.rate': md.rate,
+    'media.window_ms': md.wallS != null ? md.wallS * 1000 : null, 'media.frames_total': md.frames, 'media.frames_dropped': md.dropped,
+    'media.hdr': md.hdr, 'media.fullscreen': md.full, 'media.analyzer': md.an,
     'window.from_ms': W[0], 'window.to_ms': W[1], 'window.step_ms': W[2],
     'window.series.rtt_ms': series(rows, 'rtt', maxOf, ...W),
     'window.series.lead_send_ms': series(rows, 'lead', minOf, ...W),
@@ -338,6 +361,7 @@ export function reportSource({ inc, snap, ctx, hubLog = null, protocol = null, o
     'window.series.heap_mb': series(rows, 'heap', maxOf, ...W),
     'window.series.rssi_dbm': series(rows, 'rssi', minOf, ...W),
     'window.series.late_plans': series(rows, 'late', maxOf, ...W),
+    'window.series.video_dropped': series(rows, 'vdrop', sumOf, ...W),
     'window.fine.from_ms': F[0], 'window.fine.to_ms': F[1], 'window.fine.step_ms': F[2],
     'window.fine.series.lead_send_ms': series(fine, 'lead', minOf, ...F),
     'window.fine.series.owd_up_ms': series(fine, 'owd', maxOf, ...F),

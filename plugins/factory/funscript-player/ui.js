@@ -75,7 +75,8 @@
 // - Auto Scale (prefs interp scaleAuto): a new script starts at [0, 1]; the analyzer's planner measure
 //   of the wire at scale 1 (ctl.fit, analyzer.js fit) sets the map when it lands.
 // - A card outside glance frames its analyzer, shown or not: its twin render is the timeline's intent
-//   curve and Auto's measure. Glance draws no curve.
+//   curve and Auto's measure. Glance draws no curve. In media fullscreen it is not shown: behind the video its
+//   rows never repaint (ph-9t5l.7).
 
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed, marksOf } from './funscript.js';
 import { createMediaClock, frameSource, createLoop, loopSpec } from './clock.js';
@@ -1538,7 +1539,7 @@ export function createPlayer(api) {
       if (comp && comp !== 'glance') anMount();
       if (comp !== 'glance') tl.frame(m, ctl.trace, analyzer && analyzer.kinetic);
       if (analyzer && comp !== 'glance') {
-        analyzer.frame(root.hasAttribute('data-an'));
+        analyzer.frame(anShown());
         const fr = analyzer.fit;
         if (fr && fr !== fitSeen) { fitSeen = fr; ctl.fitKinetic(fr.sc, fr.extent); }
       }
@@ -1567,14 +1568,15 @@ export function createPlayer(api) {
       hubSeen = hubKey(pu, stale, ceil);
       render();
     }
-    // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The open
-    // analyzer's rows read the hub when api.changed moves (analyzer.js); a collapsed one only checks whether its render is current.
+    // What a frame draws from the hub: the real tick (its share and staleness) and the speed ceiling. The shown
+    // analyzer's rows read the hub when api.changed moves (analyzer.js); a hidden one only checks whether its render is current.
+    const anShown = () => root.hasAttribute('data-an') && !root.hasAttribute('data-media');
     const realShare = () => (fields.pos ? windowShare(api.value(fields.pos), fields.lo && api.value(fields.lo), fields.hi && api.value(fields.hi)) : null);
     const hubKey = (pu, stale, c) => pu + ' ' + stale + ' ' + c.vmax + ' ' + c.spanMm;
     let hubSeen = '';
     function poll() {
       if (raf) return;
-      if (root.hasAttribute('data-an') || hubKey(realShare(), !!(fields.pos && api.stale(fields.pos)), ceilingOf(api, fields)) !== hubSeen) kick();
+      if (anShown() || hubKey(realShare(), !!(fields.pos && api.stale(fields.pos)), ceilingOf(api, fields)) !== hubSeen) kick();
       else if (analyzer && comp !== 'glance') analyzer.frame(false);
     }
     const hosting = () => vel.parentNode === stage.media;

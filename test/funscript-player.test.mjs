@@ -396,8 +396,10 @@ if (UNIT || fails) {
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
-//              page fullscreen bare with the stage alone, Escape returns; the
-//              analyzer column at 1280 and 1920 ([--shots <dir>])
+//              page fullscreen bare with the stage alone, edge to edge,
+//              Escape returns; at rest nothing but the stop pair over the
+//              playing video, the caret a hotspot on movement; the analyzer
+//              column at 1280 and 1920 ([--shots <dir>])
 // Stash live (--stash-live <file.json>, a local {base, apiKey}, never
 // committed): only the stash section, against that real Stash, read-only,
 // under the shell CSP's img-src and media-src: every tile's screenshot
@@ -2997,6 +2999,30 @@ if (!LIVE && !args.includes('--stash-live')) {
   if (SHOT) await page.locator(C).screenshot({ path: SHOT.replace(/[^/\\]+$/, 'analyzer-handheld.png') });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.waitForTimeout(600);
+  // ---- fullscreen (ph-9t5l.7): behind the video the open analyzer never repaints its rows ----
+  if (!await page.locator(C + '[data-an]').count()) await expandBtn.click();
+  await playBtn(page).click();
+  await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 4000 }).catch(() => {});
+  /** DOM writes inside the analyzer over ms (every attribute set counts, a same-value one too). */
+  const anWrites = (ms) => page.evaluate(([c, t]) => new Promise((done) => {
+    let n = 0;
+    const mo = new MutationObserver((l) => { n += l.length; });
+    mo.observe(document.querySelector(c + ' .fsp-anbox'), { subtree: true, childList: true, characterData: true, attributes: true });
+    setTimeout(() => { mo.disconnect(); done(n); }, t);
+  }), [C, ms]);
+  const wIn = await anWrites(1500);
+  await page.locator(C + ' .fsp-full').evaluate((e) => e.click());
+  await page.waitForTimeout(400);
+  const wFs = await anWrites(1500);
+  const fsAn = await page.locator(C).evaluate((r) => ({ media: r.hasAttribute('data-media'), an: r.hasAttribute('data-an'), playing: !r.querySelector('.fsp-stage video').paused }));
+  const back = anWrites(1200);
+  await page.waitForTimeout(100);
+  await page.keyboard.press('Escape');
+  const wBack = await back;
+  ok('fullscreen: the open analyzer makes no row writes behind the playing video; inline it does, and again on the way out',
+    fsAn.media && fsAn.an && fsAn.playing && wIn > 0 && wFs === 0 && wBack > 0, { wIn, wFs, wBack, fsAn });
+  if (await video(page, (v) => !v.paused)) await playBtn(page).click();
+  await page.waitForTimeout(300);
   // ---- collapse ----
   if (await page.locator(C + '[data-an]').count()) await expandBtn.click();
   await page.waitForTimeout(300);
@@ -3470,8 +3496,10 @@ if (!LIVE && !args.includes('--stash-live')) {
   ok('hover: no floating chevrons in the card (PR10)', await page.locator(C).evaluate((r) => !r.querySelector('[class*=chevron], [class*=caret]:not(.fsp-libcaret):not(.fsp-tlcaret)')));
   await page.waitForTimeout(IDLE + 400);
   ok('hover: hidden after ' + IDLE + ' ms idle', !(await shown()));
+  // The stage fills the window: the pointer leaves it for the stop pair (outside the stage).
   await overVideo(10);
-  await page.mouse.move(2, 400);
+  const pairBox = await page.locator('.topstrip .pair').boundingBox();
+  await page.mouse.move(pairBox.x + pairBox.width / 2, pairBox.y + pairBox.height / 2);
   await page.waitForTimeout(100);
   ok('hover: hidden on pointer leave', !(await shown()));
 
@@ -3486,6 +3514,47 @@ if (!LIVE && !args.includes('--stash-live')) {
   await page.waitForFunction((c) => !document.querySelector(c + ' .fsp-stage video').paused, C, { timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(1500);
   ok('hover play: the video plays after the preroll, started by the controller', await video(page, (v) => !v.paused) && await vids('play') === 1);
+  // ph-9t5l.7: at rest over the playing fullscreen video nothing of the page is laid out but the bare top strip (the
+  // stop pair, never hidden: RENDERING 8.4 row 11): the hover bar and the caret are display: none, never a transparent
+  // layer, and no ancestor draws a pseudo-element (a scroll shade) over it. The video fills the window edge to edge.
+  await page.mouse.move(2, 400);
+  await page.waitForTimeout(IDLE + 400);
+  const over = await page.evaluate((c) => {
+    const v = document.querySelector(c + ' .fsp-stage video'), r = v.getBoundingClientRect();
+    const st = document.head.appendChild(document.createElement('style'));
+    st.textContent = '* { pointer-events: auto !important; }';
+    const found = new Set();
+    for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++) {
+      const s = document.elementsFromPoint(r.left + (r.width - 1) * i / 12, r.top + (r.height - 1) * j / 12), k = s.indexOf(v);
+      if (k < 0) found.add('video not hit');
+      for (const e of s.slice(0, Math.max(0, k))) if (!e.contains(v) && !e.closest('.topstrip')) found.add(e.className || e.tagName);
+    }
+    st.remove();
+    // The fixed pane paints over everything under it: its own and its descendants' pseudo-elements are what could cover the video.
+    const pseudo = [], pane = v.closest('main.pane');
+    for (let a = v.parentElement; a; a = a === pane ? null : a.parentElement) {
+      for (const p of ['::before', '::after']) {
+        const cs = getComputedStyle(a, p);
+        if (cs.content !== 'none' && cs.content !== 'normal' && cs.display !== 'none') pseudo.push((a.className || a.tagName) + p);
+      }
+    }
+    return { found: [...found], pseudo, bar: getComputedStyle(document.querySelector(c + ' .ui-stage-overlay')).display,
+      caret: getComputedStyle(document.querySelector('.full-caret')).display, playing: !v.paused,
+      rect: [r.left, r.top, r.width, r.height], win: [innerWidth, innerHeight] };
+  }, C);
+  ok('fullscreen at rest: nothing over the playing video but the stop pair; the hover bar and the caret display: none (ph-9t5l.7)',
+    over.playing && !over.found.length && !over.pseudo.length && over.bar === 'none' && over.caret === 'none', over);
+  ok('fullscreen: the video fills the window edge to edge, no gutter or caret band (ph-9t5l.7)',
+    same(over.rect, [0, 0, ...over.win]), { rect: over.rect, win: over.win });
+  await page.mouse.move(300, 300);
+  await page.waitForTimeout(150);
+  const hot = await page.evaluate(() => {
+    const c = document.querySelector('.full-caret'), r = c.getBoundingClientRect(), p = document.querySelector('.topstrip .pair').getBoundingClientRect();
+    return { display: getComputedStyle(c).display, rect: [r.left, r.top, r.right, r.bottom].map(Math.round),
+      clear: r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom, label: c.getAttribute('aria-label') };
+  });
+  ok('fullscreen: a pointer move shows the caret, a corner hotspot top left over the video, clear of the stop pair (ph-9t5l.7)',
+    hot.display !== 'none' && hot.rect[0] < 24 && hot.rect[1] < 24 && hot.rect[2] > hot.rect[0] && hot.clear && hot.label === 'Show bar', hot);
   await overVideo(-10);
   await page.click(C + ' .fsp-hb .fsp-play');
   await page.waitForTimeout(200);
