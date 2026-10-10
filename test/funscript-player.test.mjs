@@ -440,7 +440,8 @@ try {
 }
 
 // The script: each span a distinct length (300..597 ms) between alternating
-// ends, so a captured segment names its knot by its duration alone.
+// ends, so a captured segment names its knot by its duration alone. Under --live 250..547 ms: 70 units in 250 ms
+// on the twin's 500 mm window is 1400 mm/s, past its factory limit.input.speed of 1200 (Nucleus val-sgj).
 const ACTIONS = [];
 // --live-playback: 400..499 ms spans over a staircase 20..80 and back in steps of 15 (inside the sim's speed limit,
 // so plans keep their durations; a reversal only at either end) and a gap from the last action at or before 20 s
@@ -448,7 +449,7 @@ const ACTIONS = [];
 // no rest at a same-direction knot (FUNSCRIPT.md I8); any 100 consecutive spans differ, so a duration names its knot.
 const PB_POS = [20, 35, 50, 65, 80, 65, 50, 35];
 if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % PB_POS.length] }); at += 400 + ((k * 37) % 100); }
-else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
+else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += (LIVE ? 250 : 300) + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 // A real-shaped script for the heat and Scale (v): slow full strokes, flicks at the top (Makima overshoots there),
 // a hold, a buzz, medium strokes, fast strokes. [until ms, span ms, positions cycled].
@@ -3532,8 +3533,9 @@ if (LIVE && !PB) {
   await playBtn(page).click();
   await page.waitForTimeout(2500);
   const nSeek = frames.bundles;
-  const ovBox = await page.locator(C + ' .fsp-ov').boundingBox();
-  await page.mouse.click(ovBox.x + ovBox.width * 0.6, ovBox.y + ovBox.height / 2);
+  // The locator's click scrolls the card's pane: on the sim's home page the card sits below the fold.
+  const ov = page.locator(C + ' .fsp-ov'), ovBox = await ov.boundingBox();
+  await ov.click({ position: { x: ovBox.width * 0.6, y: ovBox.height / 2 } });
   await page.waitForTimeout(2500);
   const afterSeek = await video(page, (v) => ({ t: v.currentTime, paused: v.paused, d: v.duration }));
   ok('live: a seek re-schedules: the video plays on from the new time and bundles flow, no NACK',
