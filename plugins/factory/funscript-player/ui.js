@@ -83,6 +83,8 @@ import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
 import { readPrefs, writePref } from './prefs.js';
 import { wire, fitMap, mapOf } from './scale.js';
+import { oscFiles, withAxes } from './axes.js';
+import { createOsc, OSC_ROLE } from './osc.js';
 
 import { mountQueue, toStored, fromStored, move, COPY as QCOPY } from './queue.js';
 
@@ -136,6 +138,7 @@ export const COPY = Object.freeze({
   buffering: 'Buffering',
   badFormat: 'Format not playable here',
   extra: 'Extra axes ignored: ',
+  noOsc: 'This machine has no oscillator input',
   overLimit: 'Script past the input speed limit',
   more: 'more',
   meter: 'Stroke',
@@ -230,10 +233,10 @@ export function extraNote(script, extra = []) {
  * ended, seeking, currentTime, duration, playbackRate, src, poster,
  * addEventListener); clock (MediaClock); scheduler; submit (Seg[] ->
  * SegResult, the probe-wrapped api.submitSegments); now; probe(entry);
- * onChange(); revoke(url); loop (clock.js createLoop).
+ * onChange(); revoke(url); loop (clock.js createLoop); osc (osc.js createOsc) or null.
  */
 export function createControl({ api, video, clock, scheduler, submit, now = () => performance.now(),
-  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop() }) {
+  probe = () => {}, onChange = () => {}, revoke = (u) => URL.revokeObjectURL(u), loop = createLoop(), osc = null }) {
   const prefs = readPrefs(api);
   const state = { phase: 'empty', scene: null, script: null, shaped: null, T: { ...prefs.T }, motion: prefs.motion !== false,
     status: { text: COPY.empty, tone: '', notes: [] }, view: prefs.view === 'library' ? 'library' : 'player', composition: 'full',
@@ -374,6 +377,8 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
       else transient = r.ok ? '' : r.reason;
       observePlan();
     } else if (state.phase === 'ready' && now() >= homeAt) goHome();
+    if (osc) osc.tick(state.script, state.phase === 'playing' && state.motion && clock.ready && !buffering && !video.seeking
+      ? (w) => fold(clock.mediaAt(w - state.T.offsetMs + scheduler.compMs)) : null);
     if (state.phase === 'playing' && !video.seeking && loop.due(video.currentTime * 1000)) {
       probe({ k: 'mark', t: now(), name: 'wrap', lap: loop.lap });
       video.currentTime = loop.wrap() / 1000;
@@ -554,10 +559,12 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     if (transient) return { text: transient, tone: '' };
     const ceil = fields ? ceilingOf(api, fields) : {};
     if (ceil.vmax && ceil.spanMm && peak * (state.T.hi - state.T.lo) * ceil.spanMm * (video.playbackRate || 1) > ceil.vmax) return { text: COPY.overLimit, tone: 'warn' };
-    if (info.length) return { text: info[0] + (info.length > 1 ? ' (+' + (info.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
+    const n = notes();
+    if (n.length) return { text: n[0] + (n.length > 1 ? ' (+' + (n.length - 1) + ' ' + COPY.more + ')' : ''), tone: '' };
     return { text: !state.scene ? COPY.empty : state.scene.stream ? '' : COPY.motionOnly, tone: '' };
   }
-  function refresh() { state.status = { ...status(), notes: info }; }
+  const notes = () => (osc && osc.absent ? [COPY.noOsc, ...info] : info);
+  function refresh() { state.status = { ...status(), notes: notes() }; }
   function changed() { refresh(); onChange(); }
 
   const on = (ev, fn) => video.addEventListener(ev, fn);
@@ -943,8 +950,9 @@ export function createPlayer(api) {
     return r;
   };
   const scheduler = createScheduler({ submit, log: (m, l) => api.log(m, l) });
+  const osc = createOsc({ submit: (list) => api.submitSamples(OSC_ROLE, list) });
   const views = [];
-  const ctl = createControl({ api, video, clock, scheduler, submit, probe, onChange: () => views.forEach((v) => v.render()) });
+  const ctl = createControl({ api, video, clock, scheduler, submit, probe, osc, onChange: () => views.forEach((v) => v.render()) });
   const stopFrames = frameSource(vel, ctl.onFrame);
 
   let stash = null, stashId = '';
@@ -965,8 +973,8 @@ export function createPlayer(api) {
   function openLocal(files) {
     const scene = localScene([...files]);
     if (!scene) return;
-    const sc = scene.script;
-    ctl.load(scene, sc ? parse(sc) : null, COPY.noScriptVideo, scene.extra);
+    const sc = scene.script, { osc: sib, rest } = oscFiles(sc, scene.extra);
+    ctl.load(scene, sc ? withAxes(parse(sc), sib, parse) : null, COPY.noScriptVideo, rest);
   }
   /** Open video (PR3): a video alone attaches to a loaded script without one; a .funscript picked with it pairs by base name. */
   function openVideo(files) {
@@ -989,16 +997,18 @@ export function createPlayer(api) {
     const { video: v, script } = pairFiles(files);
     const st = ctl.state;
     if (st.view !== 'player') ctl.setView('player');
-    if (!v) { if (script) openScript(script); return; }
+    if (!v) { if (script) openScript(files); return; }
     if (!script && st.script && st.scene && !st.scene.stream) ctl.load(localScene([v]), st.script, COPY.noScriptVideo);
     else openLocal(files);
   }
-  /** Open script (PR3): attaches to a loaded video, else plays motion only (PR4). */
-  function openScript(f) {
-    const st = ctl.state;
+  /** Open script (PR3): attaches to a loaded video, else plays motion only (PR4); its V8/V9 siblings pair by base name. */
+  function openScript(files) {
+    const { script: f, extra } = pairFiles(files);
+    if (!f) return;
+    const st = ctl.state, { osc: sib, rest } = oscFiles(f, extra), sc = withAxes(parse(f), sib, parse);
     if (st.view !== 'player') ctl.setView('player');
-    if (st.scene && st.scene.stream) ctl.attach(parse(f));
-    else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, parse(f), '');
+    if (st.scene && st.scene.stream) ctl.attach(sc, rest);
+    else ctl.load({ key: 'script:' + f.name + ':' + f.size, title: f.name.replace(/\.funscript$/i, ''), stream: null }, sc, '', rest);
   }
 
   let raf = 0;
@@ -1075,7 +1085,7 @@ export function createPlayer(api) {
     let comp = '', prevCls = '';
     // The kit draws every control (api.ui, docs/PLUGINS.md The UI kit); this view composes them.
     const fileV = ui.files({ accept: VIDEO_ACCEPT, multiple: true, onFiles: openVideo, class: 'fsp-filev' });
-    const fileS = ui.files({ accept: '.funscript', onFiles: (fl) => openScript(fl[0]), class: 'fsp-files' });
+    const fileS = ui.files({ accept: '.funscript', multiple: true, onFiles: openScript, class: 'fsp-files' });
     const tabs = ui.segmented({ tabs: true, class: 'fsp-tabs', value: st.view, onChange: (v) => ctl.setView(v),
       options: [{ value: 'player', label: COPY.player }, { value: 'queue', label: QCOPY.queue }, { value: 'library', label: COPY.library }] });
     // Desktop and the drawer: Library | Queue at the head of the column (a view switch for the session).

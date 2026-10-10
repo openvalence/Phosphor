@@ -19,6 +19,7 @@
  *
  * Run: node test/funscript-player.test.mjs --unit   (KINETIC_WASM=<path> renders through that build, not bytes.js)
  *      node test/funscript-player.test.mjs [--shot out.png] [--webkit]
+ *      node test/funscript-player.test.mjs --osc   (only (o), the oscillator axes)
  *      node test/funscript-player.test.mjs --live --port P --http P+7
  *      node test/funscript-player.test.mjs --stash-live <file.json>
  *      node test/funscript-player.test.mjs --live-playback --port P --http P+7 [--shots <dir>]
@@ -41,7 +42,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const P = '../plugins/factory/funscript-player/';
 const CONTRACT = {
-  [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
+  [P + 'funscript.js']: ['MAX_SPAN_MS', 'MAX_SCRIPT_MS', 'MAX_ACTIONS', 'AXES', 'OSC_AXES', 'parseFunscript', 'axisOf', 'pairFiles', 'posAt',
     'indexAfter', 'speedAt', 'peakSpeed', 'thin', 'heat', 'fmtTime'],
   [P + 'clock.js']: ['CLOCK_WINDOW', 'SLEW_MS_PER_S', 'STEP_MS', 'FALLBACK_AFTER_MS', 'WRAP_EARLY_MS', 'createMediaClock', 'frameSource',
     'loopSpec', 'createLoop'],
@@ -62,8 +63,10 @@ const CONTRACT = {
   [P + 'kinetic/kinetic.js']: ['LEAD_MS', 'PREROLL_MS', 'TAIL_MS', 'EVERY', 'FREE', 'TUNING', 'FLAGS', 'ANOMALIES', 'tuningOf',
     'segmentsOf', 'renderCore', 'instantiate', 'versionOf', 'createKinetic'],
   [P + 'index.js']: ['HERO', 'activate'],
+  [P + 'axes.js']: ['oscFiles', 'withAxes'],
+  [P + 'osc.js']: ['OSC_ROLE', 'OSC_LEAD_MS', 'NO_STREAM', 'hasOsc', 'oscSamples', 'createOsc'],
   '../src/model/motion.js': ['SEG_FLOOR_MS', 'CLOCK_KEEP', 'CLOCK_HUNT', 'CLOCK_HUNT_GAP_MS', 'CLOCK_DRIFT', 'filteredHubNowUs', 'latchWords', 'streamGate', 'conflictWords',
-    'createMotionDoor', 'bundleHead', 'motionStream'],
+    'createMotionDoor', 'bundleHead', 'motionStream', 'roleStream'],
   '../src/model/actions.js': ['railOwners', 'railOwnerName', 'railOwned'],
   '../src/plugins/host.js': ['MOTION_HOLD_MS', 'isHubUrl', 'createPluginHost', 'validateManifest'],
 };
@@ -353,6 +356,9 @@ if (UNIT || fails) {
 //   settings   the page's Settings mounts the plugin settings card without
 //              moving the card; a change there reads back in the Plugins
 //              pane and the reverse; open/closed persists ([--shots <dir>])
+//   osc        (o) V8/V9 sibling files publish the osc.drive STREAM found by role at the granted
+//              rate, values following the axes at the main axis's time, nothing after a pause;
+//              two lanes under the detail; a hub without the role: one status line, no stream
 //   hover      the bar over the video shows on a move and hides on idle and
 //              leave; its play, pause, seek and the keys act only through
 //              the controller; volume and mute persist; media fullscreen is
@@ -389,6 +395,7 @@ const { advgenCatalog } = await import('./fixtures/advgen-roles-catalog.mjs');
 const { startFakeStash } = await import('./fixtures/fake-stash.mjs');
 
 const PB = args.includes('--live-playback');
+const OSC_ONLY = args.includes('--osc');
 const LIVE = args.includes('--live') || PB;
 const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
 const SHOT = args.includes('--shot') ? args[args.indexOf('--shot') + 1] : null;
@@ -463,7 +470,7 @@ const hubUs = () => Math.round((performance.timeOrigin + performance.now()) * 10
 const unwrap = (u32, near) => near + ((u32 - (near >>> 0)) | 0);
 
 function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
-  const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null, nackStream: 0 };
+  const hub = { bundles: [], publishes: [], values: {}, latch: 0, socket: null, roles: 2, timer: null, nackStream: 0, osc: [] };
   const entry = (id) => cat.entries.find((e) => e.id === id);
   hub.intents = [];
   const valuesOf = (e) => Object.fromEntries(e.layout.map((f) => [f.name,
@@ -533,6 +540,13 @@ function makeHub(cat, { horizonMs = HORIZON_MS } = {}) {
           const n = dv.getUint8(4);
           const base = unwrap(dv.getUint32(0, true), arrival);
           const size = (payload.length - 6 - 2 * n) / n;
+          if (e.role === 'osc.drive') {   // samples kind: t_off in us, the stamp the instant described
+            for (let i = 0; i < n; i++) {
+              const r = decodePacked(payload.subarray(6 + 2 * n + size * i, 6 + 2 * n + size * (i + 1)), e.layout);
+              hub.osc.push({ exec: base + dv.getUint16(6 + 2 * i, true) + LAT_US, amp: r[e.layout[0].name], freq: r[e.layout[1].name], arrival, n });
+            }
+            continue;
+          }
           const tgt = e.layout.find((f) => f.role === 'input.target'), dur = e.layout.find((f) => f.role === 'input.duration');
           const segs = [];
           for (let i = 0; i < n; i++) {
@@ -821,6 +835,100 @@ function intended(asked, obs, rate) {
 
 const BAD_WORDS = [/\. /, /\bso that\b/i, /\ballows you\b/i, /\bsimply\b/i, /\bjust\b/i, /\bin order to\b/i];
 const copyOk = (t) => t.length <= 60 && t.split(/\s+/).filter(Boolean).length <= 8 && !BAD_WORDS.some((b) => b.test(t));
+
+// ---- (o) the oscillator axes (ph-6dr6, SPEC 9.7): V8/V9 to the osc.drive STREAM, by role ----
+if (!LIVE && !STASH_LIVE) {
+  console.log('(o) oscillator axes');
+  const ramp = (a, b) => ({ version: '1.0', actions: [{ at: 0, pos: a }, { at: CLIP_S * 1000, pos: b }] });
+  const FILES = [
+    { name: 'clip.webm', mimeType: 'video/webm', buffer: VIDEO },
+    { name: 'clip.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(SCRIPT)) },
+    { name: 'clip.v8.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(ramp(0, 100))) },
+    { name: 'clip.V9.funscript', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(ramp(100, 0))) },
+  ];
+  const loadAxes = (page) => page.setInputFiles(C + ' .fsp-filev', FILES)
+    .then(() => page.waitForFunction((c) => !document.querySelector(c + ' .fsp-play').disabled, C, { timeout: 5000 })).then(() => true, () => false);
+  {
+    const cat = advgenCatalog({ oscDrive: true });
+    cat.entries = decodeCatalog(cat.bytes);
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, up, errors } = await open({ cat, hub });
+    ok('osc: the page mounts and the clip loads with its v8 and V9 siblings', up && await toPluginPage(page) && await loadAxes(page));
+    await page.waitForTimeout(400);
+    const lanes = await page.locator(C + ' .fsp-tl').evaluate((tl) => ({ n: tl.dataset.lanes,
+      y0: [...tl.querySelectorAll('.fsp-lane:not([hidden]) polyline')].map((p) => +(p.getAttribute('points') || 'x,NaN').split(' ')[0].split(',')[1]),
+      labels: [...tl.querySelectorAll('.fsp-lane:not([hidden])')].map((l) => l.getAttribute('aria-label')),
+      h: [tl.querySelector('.fsp-dt'), tl.querySelector('.fsp-lanes')].map((e) => e.getBoundingClientRect().height) }));
+    ok('osc: two lanes under the detail, amplitude then frequency, drawn from the axes (V8 at 0, V9 at 1 at the start)',
+      lanes.n === '2' && lanes.labels.join() === 'Oscillation amplitude,Oscillation frequency'
+      && Math.abs(lanes.y0[0] - 100) < 1 && Math.abs(lanes.y0[1]) < 1 && lanes.h[1] > 16 && lanes.h[1] < 30, lanes);
+    ok('osc: idle, nothing published on the role', hub.osc.length === 0, hub.osc.length);
+    if (SHOT) await page.locator(C + ' .fsp-tlbox').screenshot({ path: SHOT.replace(/[^/\\]+$/, 'timeline-osc.png') });
+    const skew = await epochSkew(page);
+    await playBtn(page).click();
+    await page.waitForTimeout(3500);
+    const obs = await probeObs(page, skew);
+    const t0 = hubUs();
+    await playBtn(page).click();
+    const tPause = hubUs();
+    await page.waitForTimeout(700);
+    const pubs = hub.publishes.filter((p) => p.ch === 0x2140);
+    ok('osc: the osc.drive grant asked once at the entry rate', pubs.length === 1 && pubs[0].rate === 50, pubs);
+    const S = hub.osc.filter((x) => x.arrival <= t0);
+    const gaps = S.slice(1).map((x, i) => x.exec - S[i].exec);
+    ok('osc: samples at the granted 50 Hz (every 20 ms, ascending)', S.length >= 100 && Math.abs(median(gaps) - 20000) <= 1000 && gaps.every((g) => g > 0),
+      { n: S.length, gap: median(gaps), min: Math.min(...gaps) });
+    ok('osc: at most a 20 ms span per bundle', S.every((x) => x.n <= 2));
+    ok('osc: each sample is V8 and V9 at one script time (they sum to 1)', S.every((x) => Math.abs(x.amp + x.freq - 1) < 1e-3));
+    // The script time a sample describes: the clock's observed display of media m, at the instant the sample executes.
+    const mediaAt = (e) => { let b = null; for (const o of obs) if (!b || Math.abs(o.d - e) < Math.abs(b.d - e)) b = o; return b && Math.abs(b.d - e) < 200 ? b.m + (e - b.d) : NaN; };
+    // Signed, script ms: the page's hub clock estimate (within 25 ms, timing above) and the frame grid ride in it.
+    // The first 500 ms are left out: samples already sent cannot be superseded when the fresh clock map steps.
+    const err = S.filter((x) => x.exec >= S[0].exec + 500000).map((x) => [x.amp, mediaAt(x.exec / 1000)])
+      .filter(([, m]) => Number.isFinite(m)).map(([a, m]) => a * CLIP_S * 1000 - m);
+    // A clock step (a 30 fps frame, 33 ms) leaves up to the 100 ms lead already sent on the old map.
+    const q = [...err].sort((a, b) => a - b), pct = (p) => q[Math.floor(p * (q.length - 1))];
+    ok('osc: V8 follows the main axis time (median within 30 ms, 80 % within a 10 ms band, all within 70 ms)', err.length >= 80
+      && Math.abs(median(err)) <= 30 && pct(0.9) - pct(0.1) <= 10 && Math.max(...err.map(Math.abs)) <= 70,
+      { n: err.length, median: Math.round(median(err)), p10: Math.round(pct(0.1)), p90: Math.round(pct(0.9)), min: Math.round(q[0]), max: Math.round(q[q.length - 1]) });
+    ok('osc: led by at most 100 ms plus transport', S.every((x) => x.exec - x.arrival <= 130000), Math.round(Math.max(...S.map((x) => x.exec - x.arrival)) / 1000));
+    const late = hub.osc.filter((x) => x.arrival > tPause + 40000);
+    ok('osc: a pause stops it (nothing arrives after; the quiet release fades it)', late.length === 0
+      && hub.osc.every((x) => x.exec <= tPause + 130000), late.length);
+    ok('osc: the main axis still rides its segments STREAM', hub.bundles.filter((b) => b.ch === CH.segments).length > 3, hub.bundles.length);
+    ok('osc: no status line', !/oscillator/i.test(await statusText(page)), await statusText(page));
+    ok('osc: no page error', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  {
+    const cat = advgenCatalog();
+    cat.entries = decodeCatalog(cat.bytes);
+    const hub = makeHub(cat);
+    hub.values[CH.config + ':window_min'] = 0;
+    hub.values[CH.config + ':window_max'] = 100;
+    const { ctx, page, up, errors } = await open({ cat, hub });
+    ok('osc: without the role the clip and its siblings load', up && await toPluginPage(page) && await loadAxes(page));
+    await page.waitForTimeout(300);
+    ok('osc: one status line, This machine has no oscillator input', (await statusText(page)) === 'This machine has no oscillator input', await statusText(page));
+    await playBtn(page).click();
+    await page.waitForTimeout(1200);
+    await playBtn(page).click();
+    ok('osc: without the role it plays on the main axis, nothing else asked or sent',
+      hub.bundles.length > 3 && hub.bundles.every((b) => b.ch === CH.segments) && hub.publishes.every((p) => p.ch === CH.segments), hub.publishes);
+    ok('osc: no page error without the role', errors.length === 0, errors.slice(0, 3));
+    clearInterval(hub.timer);
+    await ctx.close();
+  }
+  if (OSC_ONLY) {
+    await browser.close();
+    srv.close();
+    console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');
+    process.exit(fails ? 1 : 0);
+  }
+}
 
 // ---- (r) the page redesign (ph-1qs5.2, .3): classes, shell cards, the stage, Open video and Open script, motion only ----
 if (!LIVE && !STASH_LIVE) {

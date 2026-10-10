@@ -7,7 +7,9 @@
  *
  * Constraints:
  * - `drop` removes those roles wherever they appear; `noStoreId` removes
- *   every entry's store_id. With neither, the recording's own bytes return.
+ *   every entry's store_id; `oscDrive` adds the c2h samples STREAM 0x2140
+ *   osc-drive with channel role osc.drive (SPEC 9.7, Nucleus val-o9r), until a
+ *   recording carries it. With none, the recording's own bytes return.
  */
 import { readFileSync } from 'node:fs';
 import { cbDecodeFull, cbMap, cbArray, cbUint, cbInt, cbF32, cbBool, cbTstr, cbBstr, cbNull } from '../../../Valence/clients/js/cbor.js';
@@ -30,10 +32,13 @@ function enc(v) {
 }
 
 /** @returns {{bytes: Uint8Array, etag: string}} */
-export function advgenCatalog({ drop = [], noStoreId = false } = {}) {
+export function advgenCatalog({ drop = [], noStoreId = false, oscDrive = false } = {}) {
   let bytes = new Uint8Array(readFileSync(new URL('./valencesim-catalog.bin', import.meta.url)));
-  if (drop.length || noStoreId) {
+  if (drop.length || noStoreId || oscDrive) {
     const entries = cbDecodeFull(bytes);
+    const f32 = (name) => new Map([[1, name], [2, 6], [4, 1], [18, 4]]);
+    if (oscDrive) entries.push(new Map([[1, 0x2140], [2, 'osc-drive'], [3, 1], [4, 1], [5, 1], [6, 50], [7, 2],
+      [8, [f32('amplitude'), f32('frequency')]], [15, 0], [18, 'osc.drive']]));
     for (const e of entries) {
       for (const f of [...(e.get(E.layout) || []), ...(e.get(E.schema) || new Map()).values()]) {
         if (drop.includes(f.get(F_ROLE))) f.delete(F_ROLE);
