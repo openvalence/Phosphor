@@ -415,7 +415,8 @@ const OSC_LAT_US = 156000;   // the osc-drive grant's: Nucleus kOscDriveLeadUs, 
 const HORIZON_MS = 250;
 const KEY = 'test-key-1';
 // Fixture channel ids, test-side only (registry.yaml / valencesim catalog).
-const CH = { config: 0x1000, motion: 0x1100, advgen: 0x1210, segments: 0x2101 };
+// tuning: the Kinetic tuning card, whose keys Nucleus trials; it refuses a trial on the modes card UNSUPPORTED_OP (SPEC 9.3 item 5).
+const CH = { config: 0x1000, motion: 0x1100, tuning: 0x1122, advgen: 0x1210, segments: 0x2101 };
 // The limits and rail the analyzer's Kinetic render needs (the tuning fixture declares no defaults).
 const KIN_VALUES = { [CH.config + ':max_rail']: 500, '12288:input_speed': 1000, '12288:input_accel': 50000, '12288:input_jerk': 2000000 };
 
@@ -441,11 +442,12 @@ try {
 // The script: each span a distinct length (300..597 ms) between alternating
 // ends, so a captured segment names its knot by its duration alone.
 const ACTIONS = [];
-// --live-playback: 400..697 ms spans over a staircase 20..80 and back in steps of 15 (inside the sim's speed limit,
+// --live-playback: 400..499 ms spans over a staircase 20..80 and back in steps of 15 (inside the sim's speed limit,
 // so plans keep their durations; a reversal only at either end) and a gap from the last action at or before 20 s
-// to 34 s that plays as one span (home is a pause behavior).
+// to 34 s that plays as one span (home is a pause behavior). Every span stays under EXPECT_MS, so the sender declares
+// no rest at a same-direction knot (FUNSCRIPT.md I8); any 100 consecutive spans differ, so a duration names its knot.
 const PB_POS = [20, 35, 50, 65, 80, 65, 50, 35];
-if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % PB_POS.length] }); at += 400 + ((k * 37) % 298); }
+if (PB) for (let at = 0, k = 0; at <= 59000; k++) { if (at > 20000 && at < 34000) at = 34000; ACTIONS.push({ at, pos: PB_POS[k % PB_POS.length] }); at += 400 + ((k * 37) % 100); }
 else for (let at = 0, k = 0; at <= CLIP_S * 1000 - 600; k++) { ACTIONS.push({ at, pos: k % 2 ? 85 : 15 }); at += 300 + ((k * 37) % 298); }
 const SCRIPT = { version: '1.0', inverted: false, range: 100, actions: ACTIONS };
 // A real-shaped script for the heat and Scale (v): slow full strokes, flicks at the top (Makima overshoots there),
@@ -3187,7 +3189,7 @@ if (PB) {
   if (!segEntry) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
   const byRole = (r) => { for (const e of cat0) for (const f of e.layout || []) if (f.role === r && e.dirName !== 'c2h') return { e, f }; return null; };
   const posR = byRole('telemetry.position'), loR = byRole('window.min'), hiR = byRole('window.max');
-  const slider = tuningGroups(buildSettingsModel(cat0)).flatMap((g) => g.fields).find((f) => f.widget === 'slider');
+  const slider = tuningGroups(buildSettingsModel(cat0)).flatMap((g) => g.fields).find((f) => f.widget === 'slider' && f.channelId === CH.tuning);
   const slEntry = cat0.find((e) => e.id === slider.channelId);
   const markF = slEntry.layout.find((f) => f.role === 'meta.trial_pending');
   const bit = slEntry.layout.filter((f) => f.settingKey != null).findIndex((f) => f.name === slider.name);
@@ -3216,7 +3218,8 @@ if (PB) {
   await sleep(500);
 
   const frames = { bundles: 0, nacks: [] };
-  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.5, homeSpeed: 0.33, seekMs: 500, autoLatency: true };
+  // homePoint off the staircase's 0.2..0.8: a segment to it is a home move, never an authored knot.
+  const PLAY = { loop: false, loopCount: 0, home: true, homeAfterMs: 5000, homePoint: 0.9, homeSpeed: 0.33, seekMs: 500, autoLatency: true };
   const { ctx, page, up, errors } = await open({ width: 1280, prefs: { 'phosphor.funscript.play': PLAY }, onPage: (pg) => pg.on('websocket', (ws) => {
     ws.on('framesent', ({ payload }) => {
       if (typeof payload === 'string') return;
@@ -3357,33 +3360,41 @@ if (PB) {
   await page.waitForFunction((c) => document.querySelector(c + ' .fsp-stage video').currentTime > 35.5, C, { timeout: 30000 }).catch(() => {});
   segs = await since(t0, 'seg');
   const gapSegs = segs.flatMap((x) => x.list);
-  const gapSpan = gapSegs.find((s) => Math.abs(s.durationMs - (gapB - gapA)) < 1);
-  R.gap = { gapMs: [gapA, gapB], spanMs: gapSpan ? Math.round(gapSpan.durationMs) : null, homeSegs: gapSegs.filter((s) => Math.abs(s.norm - 0.5) < 0.002).length };
+  // A timing-only restart (a compensation or clock step) folds its shift into the first unsent span (scheduler.js).
+  const gapPos = SCRIPT.actions.find((a) => a.at === gapB).pos / 100, { COMP_MAX_MS } = mods[P + 'scheduler.js'];
+  const gapSpan = gapSegs.find((s) => Math.abs(s.durationMs - (gapB - gapA)) <= COMP_MAX_MS && Math.abs(s.norm - gapPos) < 1e-4);
+  R.gap = { gapMs: [gapA, gapB], spanMs: gapSpan ? Math.round(gapSpan.durationMs) : null,
+    homeSegs: gapSegs.filter((s) => Math.abs(s.norm - PLAY.homePoint) < 0.002).length };
   ok('pb gap: while playing the gap is one authored span, nothing goes home', !!gapSpan && R.gap.homeSegs === 0, R.gap);
   t0 = await pnow();
   await playBtn(page).click();
   await page.waitForTimeout(PLAY.homeAfterMs + 3500);
-  const homeSeg = (await since(t0, 'seg')).flatMap((x) => x.list).find((s) => Math.abs(s.norm - 0.5) < 0.002);
+  const homeSeg = (await since(t0, 'seg')).flatMap((x) => x.list).find((s) => Math.abs(s.norm - PLAY.homePoint) < 0.002);
   const homeMark = (await since(t0, 'mark')).find((m) => m.name === 'home');
   const atHome = homeSeg ? posLog.filter((p) => p.at > nodeAt(homeSeg.atMs + homeSeg.durationMs) + 300).map((p) => p.u) : [];
   R.home = { afterPauseMs: homeMark ? Math.round(homeMark.t - t0) : null, moveMs: homeSeg ? Math.round(homeSeg.durationMs) : null,
     measured: atHome.length ? +median(atHome).toFixed(4) : null, samples: atHome.length,
-    worst: atHome.length ? +Math.max(...atHome.map((u) => Math.abs(u - 0.5))).toFixed(4) : null };
+    worst: atHome.length ? +Math.max(...atHome.map((u) => Math.abs(u - PLAY.homePoint))).toFixed(4) : null };
   ok('pb home: one move home once the pause lasts homeAfterMs, the machine measured at the point', !!homeSeg
     && R.home.afterPauseMs >= PLAY.homeAfterMs && R.home.afterPauseMs < PLAY.homeAfterMs + 300 && atHome.length > 10
-    && Math.abs(median(atHome) - 0.5) < 0.01, R.home);
+    && Math.abs(median(atHome) - PLAY.homePoint) < 0.01, R.home);
   await playBtn(page).click();
   await page.waitForTimeout(2500);
 
   // ---- 4: an A-B loop ----
+  // A and B mid-span, B's span eight knots after A's: the seam (the last knot before b to the first after a) is then
+  // the staircase's own step. A point within a few ms of a knot leaves the seam that short (FUNSCRIPT.md Loop, ph-bimb).
   const ab = page.locator(C + ' .fsp-ab');
+  const reach = (ms) => page.waitForFunction(([c, m]) => document.querySelector(c + ' .fsp-stage video').currentTime * 1000 >= m, [C, ms], { timeout: 10000 });
+  const m0 = await media(), kA = ACTIONS.findIndex((x) => x.at > m0 + 300);
+  await reach((ACTIONS[kA].at + ACTIONS[kA + 1].at) / 2);
   await ab.click();
   const a0 = await media();
-  await page.waitForTimeout(4000);
+  await reach((ACTIONS[kA + 8].at + ACTIONS[kA + 9].at) / 2);
   t0 = await pnow();
   const n0 = segNacks(), tLoop = performance.timeOrigin + performance.now();
+  const b0 = await media();   // before the press: B at the playhead wraps at once
   await ab.click();
-  const b0 = await media();
   await page.waitForTimeout(13000);
   segs = await since(t0, 'seg');
   const wrapT = (await since(t0, 'mark')).filter((m) => m.name === 'wrap').map((m) => m.t);
@@ -3417,7 +3428,7 @@ if (PB) {
   await cardShot('analyzer-1280x800');
   await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
   const stored = last[slEntry.id][slider.name];
-  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  const sl = page.locator(C + ' .fsa-row input[type=range][aria-label="' + (slider.label || slider.name) + '"]');
   await sl.scrollIntoViewIfNeeded();
   await sl.focus();
   await sl.press('ArrowRight');
@@ -3474,6 +3485,8 @@ if (LIVE && !PB) {
   for (let i = 0; i < 50 && live && !sess.catalog; i++) await sleep(100);
   const segEntry = live && (sess.catalog || []).find((e) => e.dirName === 'c2h' && (e.layout || []).some((f) => f.role === 'input.duration'));
   const seg = !!segEntry;
+  const tune = live && mods[P + 'analyzer.js'].tuningGroups(buildSettingsModel(sess.catalog || [])).flatMap((g) => g.fields)
+    .find((f) => f.widget === 'slider' && f.channelId === CH.tuning);
   try { sess.close(); } catch (e) { /* gone */ }
   if (!seg) { console.log('SKIP: no valencesim with a segments STREAM on 127.0.0.1:' + SIM_PORT); process.exit(0); }
 
@@ -3552,7 +3565,7 @@ if (LIVE && !PB) {
   const liveRows = await page.locator(C + ' .fsa-row').count();
   ok('live: the analyzer lists the sim\'s tuning controls', liveRows > 10, liveRows);
   await page.locator(C + ' .fsa-head .og-btn', { hasText: /^Preview$/ }).click();
-  const sl = page.locator(C + ' .fsa-row input[type=range]').first();
+  const sl = page.locator(C + ' .fsa-row input[type=range][aria-label="' + (tune.label || tune.name) + '"]');
   const v0 = await sl.inputValue();
   await sl.scrollIntoViewIfNeeded();
   await sl.focus();
