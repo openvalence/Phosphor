@@ -3,7 +3,7 @@
  * player's own osc.js and the app's motion door (src/model/motion.js submit.samples) publish to the hub's
  * osc.drive STREAM over valence-js (SPEC 9.7, Valence RFC-110; Nucleus val-o9r).
  *
- *   node test/fleet/player-osc.test.mjs
+ *   node test/cluster/player-osc.test.mjs
  *
  * Cases: the card is written square with osc.enabled false, the carriage parked mid-window; while the script
  * plays, the hub reports the oscillator rendering, driven (shape sine), osc.enabled still false, and every point
