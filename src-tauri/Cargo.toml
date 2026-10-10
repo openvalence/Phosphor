@@ -26,6 +26,10 @@ tauri = { version = "2.11.3", features = ["devtools"] }
 tauri-plugin-log = "2"
 # Rust-side fetch: /uitoken minting from a native origin (main.js shell branch)
 tauri-plugin-http = "2"
+# Native clipboard for the context menu's Paste and Copy: a webview read asks
+# the user for clipboard permission, a native one does not (capabilities: read
+# and write text only).
+tauri-plugin-clipboard-manager = "2"
 # BLE central (RFC-043 client side): btleplug on desktop, native Kotlin on Android.
 # Also asks Android's Bluetooth permission before a toy scan (bp_scan_start).
 tauri-plugin-blec = "0.12"

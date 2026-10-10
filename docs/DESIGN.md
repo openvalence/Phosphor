@@ -1179,16 +1179,23 @@ derives from one unit, and no size is tuned by hand.
   follows `prefers-reduced-motion`; Reduced and Full override it. Every
   animation keys off one class, `html.still`, which the theme's motion 0
   also sets; no component reads the media query itself.
-- The context menu (operator 2026-10-09, `ph-kyjd`): the shell's own menu
-  replaces the webview's everywhere but text entry (Inspect stays behind
-  Shift in a dev build). A right-click, a long press, the menu key or
-  Shift+F10 lists the targets under it, innermost first: the field (Copy
-  path, Copy value, Paste value, Reset to default, Send to node editor, Show
-  in history), the module or card (Copy path, Send fields to node editor),
-  the page (Edit layout, Show advanced, Show diagnostic, Reset page to
-  defaults); plugins add items (docs/PLUGINS.md, Context menus). Copy path is
-  the Valence path, `valence://<hub>/<identity>` (Blender's Copy Data Path).
-  It opens in the top layer under the strip and moves nothing. Seams:
+- The context menu (operator 2026-10-09, `ph-kyjd`; 2026-10-10, `ph-hi4i`):
+  the shell's own menu replaces the webview's everywhere, text entry
+  included; a release build turns WebView2's off at the source and a dev
+  build keeps it behind Shift. A right-click, a long press, the menu key or
+  Shift+F10 lists the targets under it, innermost first: a plugin's own
+  element (`api.ui.menu`), the field (Copy path, Copy value, Paste value,
+  Reset to default, Send to node editor, Show in history), the module or
+  card (Copy path, Send fields to node editor), the page (Edit layout, Show
+  advanced, Show diagnostic, Reset page to defaults; on a plugin page
+  Fullscreen and Manage plugins); plugins add items (docs/PLUGINS.md,
+  Context menus). Text entry lists Undo, Cut, Copy, Paste and Select all
+  first, then the field's items when it is a field's input. No menu reads
+  the clipboard to open: Paste and Paste value read it on the pick, through
+  the native clipboard in the shell, and a value that does not fit is
+  refused in the status slot. Copy path is the Valence path,
+  `valence://<hub>/<identity>` (Blender's Copy Data Path). It opens in the
+  top layer under the strip and moves nothing. Seams:
   `src/ui/contextmenu.js`, `src/model/identity.js`.
 - Add to Dash (operator ruling 2026-10-10, `ph-hi4i.1`): a field or module
   item on the full class (§10.1) that opens a submenu: every Dash in sidebar
@@ -1287,6 +1294,54 @@ issue the user submits under their own account; Phosphor sends nothing.
   Administration write is checked at setup). The workflow's run log is the
   audit trail.
 
+### 10.15 The Link page (operator rulings 2026-10-10, `ph-bszw`)
+
+- Sections, in order: Link health, Session and identity, Traffic, Channels
+  and map, Refusals. The first three share a row from 60 rem of page; from
+  36 rem Link health and Traffic stack beside Session and identity; below
+  that, one column. The page is the one scroller: no table or list scrolls
+  on its own. The channel list measures its own width: under 40 rem it drops
+  dir, category and offered, under 24 rem class and last; a grant under the
+  offer reads in emphasis, never amber. Copy identity sits in its card, not the
+  lifted head, so it holds 44 px under a coarse pointer.
+- Refusals: one row per NACK code, newest first: the registry name, its
+  family (the `nack_codes` range comment), its meaning (the code's registry
+  note, first sentence), the count since the hub was chosen, the age of the
+  last one, the channels that drew it with their counts (channel 0 and ids
+  outside the catalog read by their registry range), and the hub's last
+  `detail`. A safety-family row (0x04xx, which the registry says UIs SHOULD
+  render distinctly) wears `--warn`, never `--bad`. Log opens the Log page
+  with `logView.find` set to the code name (`ph-s5mu.1`). Refusals come last,
+  so a new code never moves anything else; the Link health row counts them
+  and jumps there. Counts live in `machine.stats.nacks`; the 60-deep
+  `events.nacks` ring stays for the Log.
+- The channel map (`src/ui/ChannelMap.svelte`): the 16-bit id space as a
+  256 x 256 grid, row the high byte, column the low byte. Device grid shows
+  rows 0x00 to 0x7F as the RFC-047 0xCDSS grid: bands by class nibble,
+  labeled from the registry, rules every 16 rows (class) and 16 slots
+  (family); the box stays square, so its cells are twice as tall. Ranges on
+  the neutral ramp: SESSION `--tx-mut`, spec-core `--line-4`, device-defined
+  `--line-2`, its experimental span `--line-1`, user `--line-3`, reserved
+  `--line-0`. Channels by class in the two accents, blue for what the hub
+  reports and violet for what clients command: STATE `--reality`, EVENT
+  `--reality` mixed half with `--tx-hi`, INTENT `--intent`, STREAM
+  `--intent` mixed half with `--tx-hi`, STORE `--tx-val`. `--highlight` rings
+  the selection only. The legend gives occupancy as allocated over range
+  size, per range and for all 65,536 ids, and the count per class.
+- Interaction: the pointer snaps to the nearest channel within 8 px (22 px
+  under a coarse pointer); a one-line readout gives id, name, class, offered
+  rate and subscribed state, or the range and `free` off a channel. A click
+  or Enter selects the channel's list row and scrolls it into view. The map
+  is one tab stop, a listbox: the arrows step through the channels in id
+  order, Home and End jump. The map box, the readout and the legend keep
+  their size across hover and view, so nothing moves.
+- Registry data the Valence JS client does not emit (`channel_id_ranges`, the
+  grid's class nibbles and experimental span, the NACK families and
+  meanings) is `src/model/registry-tables.js`, generated by
+  `tools/registry-tables.mjs` from the sibling `registry.yaml`; `npm run
+  check` fails when it is stale. Its upstream home is the Valence codegen.
+- Guard: `test/link-page.test.mjs` (`npm run check:link`).
+
 ## Amendments
 
 | Date | Section | Change | Approved by |
@@ -1379,3 +1434,5 @@ issue the user submits under their own account; Phosphor sends nothing.
 | 2026-10-10 | §10.11 | Diagnostic cards last: within their section after the live cards, and a diagnostic card with no section after every section under one Diagnostics header row; shown, a diagnostic group named like a live one rides that card instead of drawing a one-field card of its own (`ph-vrg`). | agent (the bead asks diagnostic groups last and the one-field card folded into its neighbor; keeping sections together, the header row and folding by group name are the agent's, veto-able) |
 | 2026-10-10 | §10.6 | Widgets drop their own card box at the source (Pattern, Limits, Advanced generator, Telemetry, the toy module's scroll); a roster shows 4 rows in slot order and an `N more` button opening every slot in the kit's sheet; the handheld drill-in page is one card under its title (`ph-e82.22.1`). | agent (the 2026-10-02 ruling's "fixed rows with More"; the row count, slot order and the kit sheet as its pane are the agent's, veto-able) |
 | 2026-10-10 | §10.12, §10.13, §10.14 | The Log page fits the window at every size, as the funscript page does: the tabs and tools stay put and the open feed is the one scroller, filling what the chrome leaves down to a 6 rem floor, under which the window scrolls. Repeated events (same source, level, tag, channel and message once numbers and ids read `#`; a digit inside a name, `axis1` or `E12`, stays) fold into one row with ×N; the newest repeat moves its row to the tail, and the row opens to its fields, first and last time, up to 20 instances and Copy row. Level toggles with counts (error, warn, info, debug), a source select (hub, client, plugin, health) and a search; the tail is followed until a scroll up or Pause, an `N new` pill jumps back, Clear empties the feed. A level is an icon and a color; time is absolute, relative on hover. F3 focuses the search; Up, Down, Home and End walk the rows; Enter opens one. A health row's tooltip is its incident's detail and its Incident button opens it on Health (the Details fold under health lines is gone, `ph-qf1s`). 5000 rows stay smooth: off-screen rows skip layout, the feed renders at most once a frame and never while idle (`ph-s5mu`, `ph-e1q`). | operator ("the contents of that page need to fit in the window, similar to the funscript ... combine duplicate log events", 2026-10-10, with the coordinator's seven-point brief the same day. Reading "bumps" as moving the row to the tail; two channels and a digit inside a name never folding; Safety and Session never folding, each edge being evidence; the 5000-row and 20-instance caps; the folded history outliving the 400-line ring until Clear or a new session; the tag select replaced by the search; Revert changes moved into the Changes feed; the status slot at the end of the tools row; a line with no level filing under info; F3's second press going on to Look for; a scroll back to the tail resuming while Pause holds; and `content-visibility` rows instead of a windowed list (measured headless: median 18 ms, p95 25 ms a frame scrolling 5000 rows) are the agent's, veto-able) |
+| 2026-10-10 | §10.13, plugins | No menu reads the clipboard to open (WebView2 asked the user for clipboard access on the first right-click): Paste value is always offered, reads once on the pick through `tauri-plugin-clipboard-manager` in the shell (read and write text only) and refuses a value that does not fit in the status slot. The shell menu replaces the webview's in text entry too (Undo, Cut, Copy, Paste, Select all, then the field's items), and a release build disables WebView2's default menus. Every plugin page gets the page menu; `api.ui.menu` puts a plugin's own items on its own elements; `api.net.open` opens a URL in the system browser inside the user's act; the funscript player's stage, timeline, scene rows and queue rows carry menus (`ph-hi4i`). | operator ("never read the clipboard just to open a menu"; the text-entry menu, the release switch, the three plugin layers and the player's item lists are the ruling's. Fullscreen and Manage plugins as the plugin page's items, a long press in text entry keeping the platform's selection bar, `net.open` behind `net.fetch` and the user's act, the keyboard's "here" being the playhead, Play next moving an already queued scene to the head, B before A swapping, and losing the webview's spelling suggestions are the agent's, veto-able) |
+| 2026-10-10 | §10.15 | The Link page: five sections in one scroller; refusals grouped by NACK code, newest first, with the registry family and meaning, count, last time, cause and a Log link; a map of the 16-bit channel id space (registry ranges on the neutral ramp, channels by class in the accents, occupancy per range) with a Device grid view on the RFC-047 0xCDSS grid; registry tables generated from registry.yaml (`ph-bszw`). | operator (2026-10-10: "the link tab is cool, but I don't know what the NACKS are ... I always loved a visual representation of the valence channel space ... the rest of the link page could be way better laid out and organized", and the coordinator's brief; the agent's calls, veto-able: refusals last with a jump from Link health; meanings are the note's first sentence trimmed by rule, not reworded; ranges neutral and classes in two accent families; NACK counts since the hub was chosen; publish grants as list rows) |

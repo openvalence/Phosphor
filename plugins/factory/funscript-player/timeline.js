@@ -498,6 +498,16 @@ export function mountTimeline(el, { ui, onSeek, onScrub, onRange, onZoom = () =>
     },
     /** {a, b} media ms, either null: what the A-B button has set. */
     setLoop(x) { if (x && (x.a !== ab.a || x.b !== ab.b)) { ab = { a: x.a, b: x.b }; draw(); } },
+    /** The timeline's own elements (the context menu's): the detail with its lanes, and the overview. */
+    menuEls: [root, ov],
+    /** The media ms under clientX x on the overview or the detail holding `node`; null without a script. */
+    timeAt(x, node) {
+      const d = dur();
+      if (!script || !(d > 0)) return null;
+      if (ov.contains(node)) { const r = ov.getBoundingClientRect(); return seekAt(x - r.left, r.width, d); }
+      const r = dt.getBoundingClientRect(), from = m - clamp(m / d, 0, 1) * zoom;
+      return r.width > 0 ? clamp(from + (x - r.left) / r.width * zoom, 0, d) : null;
+    },
     unmount() { root.remove(); ov.remove(); },
   };
 }

@@ -80,7 +80,7 @@
 import { parseFunscript, pairFiles, posAt, fmtTime, axisOf, peakSpeed, marksOf } from './funscript.js';
 import { createMediaClock, frameSource, createLoop, loopSpec } from './clock.js';
 import { createScheduler, applyT, strokeSpeed, TRANSIENT } from './scheduler.js';
-import { createStash } from './stash.js';
+import { createStash, normalizeBase } from './stash.js';
 import { mountLibrary } from './library.js';
 import { mountTimeline, CSS as TL_CSS } from './timeline.js';
 import { mountAnalyzer, CSS as AN_CSS, COPY as AN_COPY } from './analyzer.js';
@@ -162,6 +162,17 @@ export const COPY = Object.freeze({
   seek: 'Seek',
   full: 'Fullscreen (f)',
   fullExit: 'Exit fullscreen (f)',
+  fullMenu: 'Fullscreen',
+  fullExitMenu: 'Exit fullscreen',
+  seekHere: 'Seek here',
+  setA: 'Set A here',
+  setB: 'Set B here',
+  clearLoop: 'Clear loop',
+  noScript: 'no script',
+  aFirst: 'set A first',
+  noLoop: 'no loop',
+  notReady: 'nothing to play',
+  noOpen: 'Open in Stash: no browser here',
   auto: 'Auto latency',
   autoTip: 'Offset from the plan strip',
 
@@ -539,6 +550,13 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
     applyPlay();
     changed();
   }
+  /** A and B set directly (the timeline's menu), null clears either; B before A swaps them. */
+  function setAB(a, b) {
+    state.ab = a != null && b != null && b < a ? { a: b, b: a } : { a, b };
+    setLoopSpec();
+    if (state.ab.b != null && !loop.spec) state.ab = { a: null, b: null };
+    changed();
+  }
   /** One A-B press: sets A at the playhead, then B (the loop starts), then clears. */
   function markAB() {
     const m = mediaNow(), { a, b } = state.ab;
@@ -591,7 +609,7 @@ export function createControl({ api, video, clock, scheduler, submit, now = () =
   applyPlay();
 
   return {
-    state, trace, play, tick, onFrame, load, attach, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB,
+    state, trace, play, tick, onFrame, load, attach, unload, setMotion, setT, setView, seek, mediaNow, here, setPlay, markAB, setAB,
     get wire() { return wired; },
     /** The map in force, [lower, upper] (scale.js mapOf): Auto's fit or the operator's gain. */
     get scale() { return interp.scaleAuto ? autoMap : mapOf(interp); },
@@ -1039,9 +1057,21 @@ export function createPlayer(api) {
   const setAutoplay = (on) => { autoplay = !!on; writePref(api, 'autoplay', autoplay); views.forEach((w) => w.render()); };
   const saveQueue = () => { writePref(api, 'queue', queue.map(toStored)); views.forEach((w) => w.render()); };
   const loadEntry = (e) => { if (e.kind === 'stash') pick(e.scene); else if (e.files) openLocal(e.files); };
+  /** The scene's page on the Stash server, in the system browser; null without a server or an id. */
+  const stashPage = (s) => { const base = normalizeBase((readPrefs(api).stash || {}).base); return base && s.id ? base + '/scenes/' + encodeURIComponent(s.id) : null; };
+  const openStash = (s) => {
+    const u = stashPage(s);
+    if (!u) return null;
+    return () => Promise.resolve().then(() => api.net.open(u)).catch(() => false).then((ok) => { if (!ok) api.log(COPY.noOpen, 'warn'); });
+  };
   const Q = {
     list: () => queue,
     add(scene) { queue = [...queue, { kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }]; saveQueue(); },
+    /** The scene at the queue's head, once: an entry already queued moves there. */
+    addNext(scene) {
+      queue = [{ kind: 'stash', key: scene.key, title: scene.title, durationMs: scene.durationMs ?? null, scene }, ...queue.filter((e) => e.key !== scene.key)];
+      saveQueue();
+    },
     remove(i) { queue = queue.filter((_, k) => k !== i); saveQueue(); },
     next(i) { queue = move(queue, i, 0); saveQueue(); },
     move(from, to) { queue = move(queue, from, to); saveQueue(); },
@@ -1327,6 +1357,16 @@ export function createPlayer(api) {
       if (!media && st.scene && !st.scene.stream) return;
       stage.fullscreen = !media;
     };
+    // The context menus (api.ui.menu, docs/PLUGINS.md Context menus): the stage, then the timeline's own.
+    ui.menu(stage, () => {
+      const on = act(), noVid = !!st.scene && !st.scene.stream;
+      return [
+        { label: on ? COPY.pause : COPY.play, disabled: on || ctl.canPlay() ? '' : st.status.text || COPY.notReady, run: () => { ctl.toggle(); flash(); } },
+        ...(opts.fullscreen ? [{ label: media ? COPY.fullExitMenu : COPY.fullMenu, disabled: noVid ? COPY.noVideo : '', run: fullscreen }] : []),
+        { label: COPY.openVideo, run: () => fileV.open() },
+        { label: COPY.openScript, run: () => fileS.open() },
+      ];
+    }, { title: COPY.player });
 
     const KEY_SEEK = { j: -10000, l: 10000, ArrowLeft: -5000, ArrowRight: 5000 };
     root.addEventListener('keydown', (e) => {
@@ -1359,6 +1399,18 @@ export function createPlayer(api) {
       onRange: (partial, commit) => { if (commit) ctl.setT(partial); },
     });
     tlCaret.after(tl.zoomEl);
+    // The keyboard's here is the playhead.
+    const tlMenu = (at) => {
+      const t = at.keyboard ? ctl.mediaNow() : tl.timeAt(at.x, at.target), { a, b } = st.ab;
+      const none = t == null ? COPY.noScript : '';
+      return [
+        { label: COPY.seekHere, disabled: none, run: () => ctl.seek(t) },
+        { label: COPY.setA, disabled: none, run: () => ctl.setAB(t, b) },
+        { label: COPY.setB, disabled: none || (a == null ? COPY.aFirst : ''), run: () => ctl.setAB(a, t) },
+        { label: COPY.clearLoop, disabled: a == null && b == null ? COPY.noLoop : '', run: () => ctl.setAB(null, null) },
+      ];
+    };
+    for (const e of tl.menuEls) ui.menu(e, tlMenu, { title: COPY.timeline });
     off.before(tl.abEl);
     let library = null, analyzer = null;
     function expand(on) {
@@ -1384,7 +1436,7 @@ export function createPlayer(api) {
         if (hosting()) st.composition = c;
         if (c !== 'glance' && !library) {
           library = mountLibrary(lib, { ui, getStash, prefs: libPrefs, fetch: (u, i) => api.net.fetch(u, i),
-            onPick: (s) => { pick(s); setDrawer(false); }, onQueue: (s) => Q.add(s) });
+            onPick: (s) => { pick(s); setDrawer(false); }, onQueue: (s) => Q.add(s), onNext: (s) => Q.addNext(s), onOpen: openStash });
           lib.append(qbox, now);
           // The column's head row: 02 LIBRARY (the page's) and the Library | Queue switch.
           lib.prepend(h('div', { class: 'fsp-libh' }, opts.page ? h('h3', { class: 'dash-title fsp-h', 'data-pidx': '02', text: COPY.library }) : '', libseg));

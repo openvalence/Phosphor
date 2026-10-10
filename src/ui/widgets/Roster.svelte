@@ -14,8 +14,9 @@
    *   slots read; the rest open in the kit's sheet titled `title` (DESIGN §10.6).
    */
   import { untrack } from 'svelte';
-  import { machine, getSession } from '../../model/machine.svelte.js';
-  import { SLOT, pendingSlots, enumerateStore, storeLocked, rosterCount } from './roster.js';
+  import { machine, getSession, subscribed } from '../../model/machine.svelte.js';
+  import { SLOT, pendingSlots, enumerateStore, storeLocked, rosterCount, slotHint } from './roster.js';
+  import { hubKey } from '../../model/prefs.js';
   import { sheet } from '../../plugins/kit.js';
 
   let { store, roster = null, item = null, rows = null, title = '' } = $props();
@@ -36,11 +37,13 @@
     const s = getSession();
     if (!s || !live || locked) return;
     const count = roster ? rosterCount(roster, machine.samples[roster.id]) : null;
-    // A granted roster not yet sampled: its arrival re-runs this.
-    if (count == null && roster && machine.grants[roster.id]) return;
+    // A subscribed roster not yet sampled (a session start, before its GRANT): its
+    // arrival re-runs this. Read without a count, every empty slot costs a NACK.
+    if (count == null && roster && subscribed(roster.id)) return;
     const c = (ctl = new AbortController());
     enumerateStore(s.fetchBlob, store, {
       role: machine.link.roles, count, signal: c.signal,
+      known: slotHint(hubKey(machine.link.hubIdentity, machine.link.host, machine.link.port), store.store.storeId),
       onSlot: (r) => { if (ctl === c) slots[r.slot] = r; },
     });
   }

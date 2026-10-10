@@ -16,6 +16,8 @@ export const COPY = Object.freeze({
   add: 'Add to queue',
   playNext: 'Play next',
   remove: 'Remove',
+  top: 'Move to top',
+  first: 'already first',
   reopen: 'Reopen',
   empty: 'Queue empty',
   autoplay: 'Autoplay',
@@ -66,8 +68,11 @@ export function mountQueue(el, q, ui) {
     const up = ui.button({ icon: 'up', title: COPY.playNext, class: 'fsp-q-next', onClick: () => q.onNext(i) });
     up.disabled = i === 0;
     const rm = ui.button({ icon: 'close', title: COPY.remove, class: 'fsp-q-rm', onClick: () => q.onRemove(i) });
-    return ui.tile({ image: e.scene && e.scene.screenshot, title: e.title, meta, actions: [up, rm], class: 'fsp-q-row',
+    const t = ui.tile({ image: e.scene && e.scene.screenshot, title: e.title, meta, actions: [up, rm], class: 'fsp-q-row',
       onClick: () => (e.kind === 'file' && !e.files ? q.onReopen(i) : q.onPlay(i)) });
+    if (ui.menu) ui.menu(t, [{ label: COPY.remove, run: () => q.onRemove(i) },
+      { label: COPY.top, disabled: i === 0 ? COPY.first : '', run: () => q.onNext(i) }], { title: e.title });
+    return t;
   }
   function render() {
     const items = q.list(), per = lst.perPage;
