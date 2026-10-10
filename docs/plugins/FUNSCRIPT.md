@@ -1397,7 +1397,8 @@ Decisions (veto-able):
 - **Live smoke (bare-minimum floor):** `--live --port P --http P+7`
   against valencesim on spare ports, started from Bash and stopped after:
   plays 8 s, asserts bundles, no NACK, striped heat and the over-limit
-  words (the test script peaks past valencesim's 1000 mm/s), the plan strip moving, the strip's
+  words (the test script's 250 ms spans peak at 1400 mm/s, past the twin's
+  factory 1200 mm/s), the plan strip moving, the strip's
   Pause pauses the video and Resume leaves it paused, a seek on the
   overview plays on from the new time with bundles flowing, an Advanced
   start grays Play, and last the strip's E-stop pauses the video with the
