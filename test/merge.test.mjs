@@ -70,4 +70,16 @@ assert.equal(res2['x:arm'].text, 'not confirmed');
 
 unstage(st2, K, 'x:arm');
 assert.deepEqual(st2, {}, 'an emptied machine leaves staging');
+
+// Valence RFC-112: a row staged under another unit (the oscillator amplitude, once a window share) is inert.
+{
+  const amp = fields.find((f) => f.uid === uid(0x1140, 'amplitude'));
+  assert.equal(amp.unit, 'mm');
+  const st3 = {};
+  stageEcho(st3, K, fields, 0x3140, { 3: 5 });
+  assert.equal(mergeRows(st3[K], fields, {}).find((r) => r.uid === amp.uid).inert, '', 'the same unit applies');
+  st3[K][amp.uid] = { ...st3[K][amp.uid], value: 0.01 };
+  delete st3[K][amp.uid].unit;
+  assert.equal(mergeRows(st3[K], fields, {}).find((r) => r.uid === amp.uid).inert, 'not on this hub', 'a changed unit is inert');
+}
 console.log('merge: all passed');

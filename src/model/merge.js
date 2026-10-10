@@ -13,7 +13,8 @@
  * - Keyed (machine key, field uid); the machine key is vault.js's, so a
  *   merge only ever offers rows to the hub_instance_id it was staged for.
  * - Rows follow the live catalog's order. A field the live catalog lacks,
- *   or whose type, write channel or setting_key changed, is inert.
+ *   or whose type, write channel or setting_key changed, is inert, and so is
+ *   one whose unit changed (a row staged before units were kept reads unitless).
  * - Nothing is sent without a tick and a press; one intent per row through
  *   the caller's `send`, each awaited before the next.
  */
@@ -58,7 +59,7 @@ export function stageEcho(staging, machineKey, fields, writeChannel, applied) {
     if (!Object.prototype.hasOwnProperty.call(applied, f.settingKey)) continue;
     const v = applied[f.settingKey];
     (staging[machineKey] ||= {})[f.uid] = {
-      uid: f.uid, name: f.name, group: f.group, typeName: f.typeName,
+      uid: f.uid, name: f.name, group: f.group, typeName: f.typeName, unit: f.unit || '',
       writeChannel, settingKey: f.settingKey, value: typeof v === 'bigint' ? Number(v) : v,
     };
     n++;
@@ -96,7 +97,7 @@ export function mergeRows(staged, fields, samples) {
     if (!st) continue;
     seen.add(f.uid);
     const fits = stageable(f) && f.writeChannel === st.writeChannel && f.settingKey === st.settingKey
-      && f.typeName === st.typeName;
+      && f.typeName === st.typeName && (f.unit || '') === (st.unit || '');
     const current = reportedValue(f, samples[f.channelId]);
     rows.push({
       uid: f.uid, field: f, label: f.label, group: f.group, value: st.value, current,

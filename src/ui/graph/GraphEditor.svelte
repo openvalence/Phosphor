@@ -154,7 +154,7 @@
     }));
   });
 
-  const note = $derived.by(() => { void gen; return { ok: R.armed.ok, why: R.armed.why, hub: R.hub.reason }; });
+  const note = $derived.by(() => { void gen; return { ok: R.armed.ok, why: R.armed.why, hub: R.hub.reason, units: R.unitNote }; });
   const refOf = (id) => byId.get(id)?.o.ref;
   const fmt = (v) => (typeof v !== 'number' || !Number.isFinite(v) ? '' : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
   /** A typed value as text: a bool as true or false, a Gate's closed output as safe. */
@@ -848,6 +848,7 @@
   <p class="gnote">
     Client edges: <span data-phase={note.ok ? 'armed' : 'disarmed'}>{note.why || 'not evaluated yet'}</span>
     {#if note.hub}Hub edges: {note.hub}.{/if}
+    {#if note.units}<span data-phase="disarmed" role="status">{note.units}.</span>{/if}
   </p>
 
   <div class="gview" bind:this={vp} bind:clientWidth={vpW} bind:clientHeight={vpH} role="group" aria-label="Canvas" tabindex="-1"
